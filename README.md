@@ -3,7 +3,7 @@
 </p>
 
 
-# Teslo API
+# ProduApps API
 
 1. Clonar proyecto
 2. ```yarn install```
