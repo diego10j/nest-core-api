@@ -78,27 +78,29 @@ export class AuthService {
 
                     return {
                         accessToken: this.getJwtToken({ id: dataUser.ide_usua }),
-                        ide_usua: dataUser.ide_usua,
-                        ide_empr: dataPass.ide_empr,
-                        ide_perf: dataPass.ide_perf,
-                        perm_util_perf: dataPass.perm_util_perf,
-                        nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
-                        id: '8864c717-587d-472a-929a-8e5f298024da-0',
-                        displayName: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_usua),
-                        email: dataPass.mail_usua,
-                        login: dataPass.nick_usua,
-                        photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/avatar_default.jpg`, //dataPass.avatar_usua
-                        phoneNumber: '0983113543',
-                        country: 'Ecuador',
-                        address: '90210 Broadway Blvd',
-                        state: 'California',
-                        city: 'San Francisco',
-                        zipCode: '94116',
-                        about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
-                        role: 'admin',
-                        isPublic: true,
-                        menu,
-                        lastAccess
+                        user: {
+                            ide_usua: dataUser.ide_usua,
+                            ide_empr: dataPass.ide_empr,
+                            ide_perf: dataPass.ide_perf,
+                            perm_util_perf: dataPass.perm_util_perf,
+                            nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
+                            id: '8864c717-587d-472a-929a-8e5f298024da-0',
+                            displayName: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_usua),
+                            email: dataPass.mail_usua,
+                            login: dataPass.nick_usua,
+                            photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/avatar_default.jpg`, //dataPass.avatar_usua
+                            phoneNumber: '0983113543',
+                            country: 'Ecuador',
+                            address: '90210 Broadway Blvd',
+                            state: 'California',
+                            city: 'San Francisco',
+                            zipCode: '94116',
+                            about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
+                            role: 'admin',
+                            isPublic: true,
+                            lastAccess
+                        },
+                        menu
                     };
                 }
             }
@@ -115,7 +117,7 @@ export class AuthService {
      */
     private async getMenuByRol(ide_perf: number) {
         const selectQueryMenu = new SelectQuery(`SELECT ide_opci,nom_opci,sis_ide_opci,paquete_opci,
-        tipo_opci,icono_opci,
+        tipo_opci,
         (SELECT count(1) from sis_opcion WHERE sis_ide_opci = a.ide_opci ) as numHijos
         FROM sis_opcion a 
         WHERE a.ide_opci in (select ide_opci from sis_perfil_opcion where ide_perf=$1)
