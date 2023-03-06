@@ -1,1 +1,0 @@
-{"version":3,"file":"insert-query.js","sourceRoot":"","sources":["../../../../src/core/connection/helpers/insert-query.ts"],"names":[],"mappings":";;;AAAA,mCAAgC;AAEhC,MAAa,WAAY,SAAQ,aAAK;IAOlC,YAAY,KAAa;QACrB,KAAK,EAAE,CAAC;QAJZ,WAAM,GAAG,IAAI,GAAG,EAAe,CAAC;QAChC,YAAO,GAAa,EAAE,CAAC;QAInB,IAAI,CAAC,KAAK,GAAG,KAAK,CAAC;IACvB,CAAC;CAGJ;AAbD,kCAaC"}
