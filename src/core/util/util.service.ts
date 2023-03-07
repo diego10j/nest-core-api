@@ -38,13 +38,4 @@ export class UtilService {
         return typeof value !== "undefined" && value !== null;
     }
 
-    /**
-     * Retorna nombres de las pantallas genericas
-     * @returns 
-     */
-    getGenericScreen() {
-        return ["simple", "simple-ui", "doble", "recursiva", "triple"];
-    }
-
-
 }

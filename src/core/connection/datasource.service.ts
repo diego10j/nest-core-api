@@ -248,10 +248,10 @@ export class DataSourceService {
      * Busca un registro de una tabla
      * @param tableName 
      * @param primaryKey 
-     * @param valuePrimaryKey S
+     * @param valuePrimaryKey 
      * @returns Object data
      */
-    async findOneBy(tableName: string, primaryKey: string, valuePrimaryKey: number) {
+    async findOneBy(tableName: string, primaryKey: string, valuePrimaryKey: any) {
         const query = new SelectQuery(`SELECT * from ${tableName} where ${primaryKey} = $1 `);
         query.addNumberParam(1, valuePrimaryKey);
         return await this.createSingleQuery(query);

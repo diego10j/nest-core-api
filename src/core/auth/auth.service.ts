@@ -21,7 +21,7 @@ export class AuthService {
 
     async login(loginUserDto: LoginUserDto) {
         const { password, userName } = loginUserDto;
-        const queryUser = new SelectQuery("SELECT ide_usua FROM sis_usuario WHERE nick_usua = $1 AND activo_usua=true");
+        const queryUser = new SelectQuery("SELECT ide_usua,uuid FROM sis_usuario WHERE nick_usua = $1 AND activo_usua=true");
         queryUser.addStringParam(1, userName);
         const dataUser = await this.dataSource.createSingleQuery(queryUser);
         if (dataUser) {
@@ -77,18 +77,18 @@ export class AuthService {
                     );
 
                     return {
-                        accessToken: this.getJwtToken({ id: dataUser.ide_usua }),
+                        accessToken: this.getJwtToken({ id: dataUser.uuid }),
                         user: {
                             ide_usua: dataUser.ide_usua,
                             ide_empr: dataPass.ide_empr,
                             ide_perf: dataPass.ide_perf,
                             perm_util_perf: dataPass.perm_util_perf,
                             nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
-                            id: '8864c717-587d-472a-929a-8e5f298024da-0',
+                            id: dataUser.uuid,
                             displayName: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_usua),
                             email: dataPass.mail_usua,
                             login: dataPass.nick_usua,
-                            photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/avatar_default.jpg`, //dataPass.avatar_usua
+                            photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataPass.avatar_usua}`,
                             phoneNumber: '0983113543',
                             country: 'Ecuador',
                             address: '90210 Broadway Blvd',
@@ -98,7 +98,8 @@ export class AuthService {
                             about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
                             role: 'admin',
                             isPublic: true,
-                            lastAccess
+                            lastAccess,
+                            roles: ['user']
                         },
                         menu
                     };
@@ -117,8 +118,7 @@ export class AuthService {
      */
     private async getMenuByRol(ide_perf: number) {
         const selectQueryMenu = new SelectQuery(`SELECT ide_opci,nom_opci,sis_ide_opci,paquete_opci,
-        tipo_opci,
-        (SELECT count(1) from sis_opcion WHERE sis_ide_opci = a.ide_opci ) as numHijos
+        tipo_opci,a.uuid
         FROM sis_opcion a 
         WHERE a.ide_opci in (select ide_opci from sis_perfil_opcion where ide_perf=$1)
         ORDER BY sis_ide_opci DESC, nom_opci`);
@@ -154,13 +154,9 @@ export class AuthService {
         objMenu["data"] = `${row.ide_opci}`;
         objMenu["package"] = row.paquete_opci;
         objMenu["node"] = row.sis_ide_opci;
-        const index = this.dataSource.util.getGenericScreen().indexOf(row.tipo_opci);
+        objMenu["uuid"] = row.uuid;
         if (row.node !== null) {
-            if (index === -1) {
-                objMenu["path"] = row.tipo_opci;
-            } else {
-                objMenu["path"] = `${row.tipo_opci}/generic_${row.ide_opci}`;
-            }
+            objMenu["path"] = row.tipo_opci;
         } else {
             objMenu["label"] = row.nom_opci;
             objMenu["package"] = row.paquete_opci;
@@ -185,6 +181,15 @@ export class AuthService {
         }
         return lastDate;
     }
+
+
+    async checkAuthStatus(user: any) {
+        return {
+            user,
+            accessToken: this.getJwtToken({ id: user.uuid })
+        };
+    }
+
 
     private getJwtToken(payload: JwtPayload) {
         const token = this.jwtService.sign(payload);
