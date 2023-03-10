@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
-import { InsertQuery } from '../connection/helpers';
+import { InsertQuery, SelectQuery } from '../connection/helpers';
+import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
 
 @Injectable()
 export class AuditService {
@@ -8,7 +9,16 @@ export class AuditService {
     constructor(private readonly dataSource: DataSourceService) {
     }
 
-    async saveAccessAudit(ide_usua: number, ide_acau: number, ip: string, detalle_auac: string, dispositivo: string, fin_auac: boolean = true) {
+    /**
+     * Guarda una accion de Auditoria
+     * @param ide_usua 
+     * @param ide_acau 
+     * @param ip 
+     * @param detalle_auac 
+     * @param dispositivo 
+     * @param fin_auac 
+     */
+    async saveEventoAuditoria(ide_usua: number, ide_acau: number, ip: string, detalle_auac: string, dispositivo: string, fin_auac: boolean = true) {
         /** 
          const ds_auditoria = new DataStore(this.dataSource);
          ds_auditoria.setDataStoreTable('sis_auditoria_acceso', 'ide_auac');
@@ -40,5 +50,29 @@ export class AuditService {
 
 
     }
-
+    /**
+     * Retorna las acciones de auditoria realizadas en un rango de fechas 
+     * @param dtoIn 
+     * @returns 
+     */
+    async getEventosAuditoria(dtoIn: EventosAuditoriaDto) {
+        const { fechaInicio, fechaFin, ide_usua } = dtoIn;
+        const condUsuario = this.dataSource.util.isDefined(ide_usua) ? ' and a.ide_usua = $3' : '';
+        const queryPass = new SelectQuery(`
+        select a.ide_auac,fecha_auac,hora_auac,nom_usua,nom_acau,
+        (select nom_opci from sis_opcion where ide_opci = CAST (a.detalle_auac as INTEGER) and a.ide_acau=11) as pantalla,
+        ip_auac,id_session_auac
+        from sis_auditoria_acceso a
+        inner join sis_accion_auditoria b on a.ide_acau = b.ide_acau
+        left join sis_usuario c on a.ide_usua = c.ide_usua
+        where fecha_auac between $1 and $2
+        ${condUsuario}
+        order by fecha_auac desc ,hora_auac desc, nom_usua`);
+        queryPass.addDateParam(1, fechaInicio);
+        queryPass.addDateParam(2, fechaFin);
+        if (this.dataSource.util.isDefined(ide_usua))
+            queryPass.addIntParam(3, ide_usua);
+        return await this.dataSource.createQueryPG(queryPass);
+    }
+    // nest g co core/audit/auditoria-acceso --dry-run
 }

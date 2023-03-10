@@ -37,6 +37,10 @@ export class Query {
         this.params.push({ index, value });
     }
 
+    addDateParam(index: number, value: Date) {
+        this.params.push({ index, value });
+    }
+
     get paramValues() {
         return this.params.map(p => p.value);;
     }

@@ -7,7 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces';
 import { AuditService } from '../audit/audit.service';
 import { ServiceDto } from '../../common/dto/service.dto';
-import { AccessActions } from '../audit/enum/access-actions';
+import { EventAudit } from '../audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -27,7 +27,8 @@ export class AuthService {
         if (dataUser) {
             const queryPass = new SelectQuery(`
             SELECT bloqueado_usua,fecha_caduc_usua,fecha_vence_uscl,a.ide_usua,clave_uscl,
-            nom_usua,mail_usua,a.ide_empr,nom_perf,a.ide_perf,avatar_usua,perm_util_perf,a.ide_empr,nick_usua 
+            nom_usua,mail_usua,a.ide_empr,nom_perf,a.ide_perf,avatar_usua,perm_util_perf,a.ide_empr,nick_usua,
+            (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu 
             from sis_usuario a 
             inner join sis_usuario_clave b on a.ide_usua=b.ide_usua 
             inner join sis_perfil c on a.ide_perf=c.ide_perf 
@@ -45,9 +46,9 @@ export class AuthService {
                 // Verificar contraseña
                 if (!bcrypt.compareSync(password, dataPass.clave_uscl)) {
                     //Auditoria
-                    this.audit.saveAccessAudit(
+                    this.audit.saveEventoAuditoria(
                         dataUser.ide_usua,
-                        AccessActions.LOGIN_ERROR,
+                        EventAudit.LOGIN_ERROR,
                         loginUserDto.ip,
                         "Contraseña incorrecta",
                         loginUserDto.device
@@ -55,6 +56,11 @@ export class AuthService {
                     throw new UnauthorizedException('Credenciales no válidas, Contraseña incorrecta');
                 }
                 else {
+                    //valida sucursal del usuario
+                    if (!this.dataSource.util.isDefined(dataPass.ide_sucu)) {
+                        throw new UnauthorizedException('El usuario no tiene definida una sucursal');
+                    }
+
                     //recupera el menú del usuario
                     const menu = await this.getMenuByRol(dataPass.ide_perf);
                     //recupera fecha último acceso
@@ -64,13 +70,13 @@ export class AuthService {
                     updateQuery.values.set("fin_auac", true);
                     updateQuery.where = "ide_usua = $1 and ide_acau = $2 and  fin_auac = $3";
                     updateQuery.addNumberParam(1, dataUser.ide_usua);
-                    updateQuery.addNumberParam(2, AccessActions.LOGIN_SUCCESS);
+                    updateQuery.addNumberParam(2, EventAudit.LOGIN_SUCCESS);
                     updateQuery.addBooleanParam(3, false);
                     await this.dataSource.createQuery(updateQuery);
                     //Auditoria
-                    this.audit.saveAccessAudit(
+                    this.audit.saveEventoAuditoria(
                         dataUser.ide_usua,
-                        AccessActions.LOGIN_SUCCESS,
+                        EventAudit.LOGIN_SUCCESS,
                         loginUserDto.ip,
                         "Iniciar sessión",
                         loginUserDto.device
@@ -79,9 +85,10 @@ export class AuthService {
                     return {
                         accessToken: this.getJwtToken({ id: dataUser.uuid }),
                         user: {
-                            ide_usua: dataUser.ide_usua,
-                            ide_empr: dataPass.ide_empr,
-                            ide_perf: dataPass.ide_perf,
+                            ide_usua: Number.parseInt(dataUser.ide_usua),
+                            ide_empr: Number.parseInt(dataPass.ide_empr),
+                            ide_sucu: Number.parseInt(dataPass.ide_sucu),
+                            ide_perf: Number.parseInt(dataPass.ide_perf),
                             perm_util_perf: dataPass.perm_util_perf,
                             nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
                             id: dataUser.uuid,
@@ -205,25 +212,21 @@ export class AuthService {
         const updateQuery = new UpdateQuery("sis_auditoria_acceso");
         updateQuery.values.set("fin_auac", true);
         updateQuery.where = "ide_usua = $1 and ide_acau = $2 and  fin_auac = $3";
-        updateQuery.addNumberParam(1, Number(serviceDto.ide_usua));
-        updateQuery.addNumberParam(2, AccessActions.LOGOUT);
+        updateQuery.addNumberParam(1, serviceDto.ideUsua);
+        updateQuery.addNumberParam(2, EventAudit.LOGOUT);
         updateQuery.addBooleanParam(3, false);
         this.dataSource.createQuery(updateQuery);
         //Auditoria
-        this.audit.saveAccessAudit(
-            Number(serviceDto.ide_usua),
-            AccessActions.LOGOUT,
+        this.audit.saveEventoAuditoria(
+            serviceDto.ideUsua,
+            EventAudit.LOGOUT,
             serviceDto.ip,
             "Cerrar sessión",
             serviceDto.device
         );
-
-        const queryPass = new SelectQuery(`
-            SELECT * from sis_bloqueo where ide_bloq = -100`);
-        const res = await this.dataSource.createQueryPG(queryPass);
-
-
-        return res;
+        return {
+            message: 'ok'
+        };
     }
 
 }

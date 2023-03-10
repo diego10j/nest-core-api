@@ -1,21 +1,21 @@
 import {
-    IsIn, IsOptional, IsString, MinLength
+    IsIn, IsInt, IsOptional, IsString, MinLength
 } from 'class-validator';
 
 
 export class ServiceDto {
 
-    @IsString()
-    @MinLength(1)
-    ide_usua: string;
+    @IsInt()
+    ideUsua: number;
 
-    @IsString()
-    @MinLength(1)
-    ide_empr: string;
+    @IsInt()
+    ideEmpr: number;
 
-    @IsString()
-    @MinLength(1)
-    ide_sucu: string;
+    @IsInt()
+    ideSucu: number;
+
+    @IsInt()
+    idePerf: number;
 
     @IsString()
     @MinLength(4)
