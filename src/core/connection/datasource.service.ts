@@ -1,17 +1,14 @@
-import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { ColumnsTableDto } from './dto/columns-table.dto';
 import { UtilService } from '../util/util.service';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
-import { Column } from './interfaces/column';
-
 
 @Injectable()
 export class DataSourceService {
-
+    private readonly logger = new Logger('DataSourceService');
     private pool = new Pool({
         user: process.env.DB_USERNAME,
         host: process.env.DB_HOST,
@@ -19,113 +16,23 @@ export class DataSourceService {
         password: process.env.DB_PASSWORD,
         port: process.env.DB_PORT,
     });
-
-
-    private readonly logger = new Logger('DataSourceService');
-
+    private TYPE_DATESTAMP = 1082;
+    private TYPE_TIMESTAMP = 1114;
+    private TYPE_TIMESTAMPTZ = 1184;
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
         readonly util: UtilService,
-    ) { }
-
-
-    /**
-     * Retorna las columnas de una tabla
-     * @param ColumnsTableDto 
-     * @returns listado de columnas
-     */
-    async getColumnsTable(dto: ColumnsTableDto) {
-        //Valida DTO
-        await this.util.validateDTO(ColumnsTableDto, dto);
-
-        const pq = new SelectQuery(`SELECT 
-                    lower(column_name)  as nombre, 
-                    upper(column_name)  as nombreVisual, 
-                    ordinal_position  as orden,
-                    CASE WHEN is_nullable = 'YES' THEN false
-                    ELSE true end as requerida,
-                    data_type  as tipo,
-                    character_maximum_lengtH as  longitud,
-                    CASE WHEN numeric_scale isnull THEN 0
-                    ELSE numeric_scale end as decimales,
-                    'Texto' as componente,
-                    true as visible,
-                    false as lectura,
-                    null as valorDefecto,
-                    null as mascara,
-                    false as filtro,
-                    null as comentario,
-                    false as mayuscula,
-                    false as unico,
-                    true as ordenable,
-                    COALESCE(character_maximum_lengtH ,8)as anchoColumna,
-                    CASE WHEN numeric_precision isnull THEN false 
-                    ELSE true end as isNumber,
-                    numeric_scale as decimales,
-                    CASE WHEN datetime_precision isnull THEN false 
-                    ELSE true end as isDate,
-                    CASE WHEN data_type = 'boolean' THEN true 
-                    ELSE false end as isBoolean
-                    FROM information_schema.columns a       
-                    WHERE table_name  = $1 `);
-
-        pq.addStringParam(1, dto.tableName);
-        pq.setPaginator(2);
-        if (dto.columns) {
-            pq.query += ` AND column_name = ANY ($2)`;
-            pq.addArrayStringParam(2, dto.columns);
-        }
-        const data = await this.createQuery(pq);
-        // Valida que retorne resultados 
-        if (data.length === 0) {
-            throw new BadRequestException(
-                `No se encontraron resultados para la tabla: ${dto.tableName}, columnas: ${dto.columns}`
-            );
-        }
-
-        if (dto.columns) {
-            // Valida si se envia nombres de columnas se retorne la misma cantidad de columnas
-            if (data.length != dto.columns.length) {
-                throw new BadRequestException(
-                    `No se encontraron todas las columnas: ${dto.columns}`
-                );
-            }
-        }
-
-        //borrar
-        await this.getSeqTable("sis_usuario", "ide_usua");
-        /** 
-        const pu = new UpdateQuery("sis_bloqueo");
-        pu.values.set("maximo_bloq", 7);
-        pu.where = "ide_bloq = $1 and 2=2";
-        pu.addNumberParam(1, 68);        
-        const r = await this.dataSource.query(pu.query, pu.paramValues);
-        //console.log(pu.query);
-        //console.log(pu.paramValues);
-        console.log(r);
-       
-        const iq = new InsertQuery("sis_bloqueo");
-        iq.values.set("ide_bloq", 1000)
-        iq.values.set("ide_usua", 11)
-        iq.values.set("tabla_bloq", "prueba")
-        iq.values.set("maximo_bloq", 999)
-        iq.values.set("usuario_bloq", "sa")
-        const r = await this.createQuery(iq);
-        console.log(iq.query);
-        console.log(iq.paramValues);
-        console.log(r);
-
-        const dq = new DeleteQuery("sis_bloqueo");
-        dq.where = "ide_bloq = $1 and 2=2";
-        dq.addNumberParam(1, 1000);
-        const r2 = await this.createQuery(dq);
-        console.log(dq.query);
-        console.log(dq.paramValues);
-        console.log(r2);
-         */
-        //fin borrar
-
-        return data;
+    ) {
+        // Parse types bdd
+        types.setTypeParser(this.TYPE_DATESTAMP, (date) =>
+            this.util.DATE_UTIL.getDateFormatFront(date)
+        );
+        types.setTypeParser(this.TYPE_TIMESTAMP, (date) =>
+            this.util.DATE_UTIL.getDateTimeFormatFront(date)
+        );
+        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) =>
+            this.util.DATE_UTIL.getTimeFormat(date)
+        );
     }
 
 
@@ -162,23 +69,37 @@ export class DataSourceService {
             //console.log(query.query);
 
             const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
-
             const typesCols = res._types._types.builtins;
 
-            const cols: Column[] = res.fields.map(function (_col) {
+            const cols = res.fields.map((_col, index) => {
+                const dataTypeCore = this.util.SQL_UTIL.getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
                     dataTypeID: _col.dataTypeID,
-                    dataType: Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID),
-                    order: _col.columnID,
+                    dataType: dataTypeCore,
+                    order: index,
                     label: _col.name,
+                    required: false,
+                    visible: true,
+                    length: 0,
+                    decimals: 2,
+                    disabled: false,
+                    filter: false,
+                    comment: '',
+                    component: 'Label',
+                    upperCase: false,
+                    orderable: true,
+                    size: 0,
+                    align: alignColumn,
+                    header: _col.name,
+                    accessorKey: _col.name
                 };
             });
-
             return {
                 rowCount: res.rowCount,
-                data: res.rows,
+                rows: res.rows,
                 columns: cols
 
             } as ResultQuery;

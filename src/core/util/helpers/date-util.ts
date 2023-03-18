@@ -6,7 +6,7 @@ export class DateUtil {
     readonly FORMAT_TIME_BD: string = process.env.FORMAT_TIME_BD;
     readonly FORMAT_DATETIME_DB: string = this.FORMAT_DATE_BD + " " + this.FORMAT_TIME_BD;
     readonly FORMAT_DATE_FRONT: string = "DD/MM/YYYY";
-
+    readonly FORMAT_DATETIME_FRONT: string = this.FORMAT_DATE_FRONT + " " + this.FORMAT_TIME_BD;
     /**
      * Retorna la fecha actual en formato de la base de datos
      * @returns 
@@ -44,6 +44,10 @@ export class DateUtil {
 
     getDateFormatFront(date: Date): string {
         return moment(date).format(this.FORMAT_DATE_FRONT);
+    }
+
+    getDateTimeFormatFront(date: Date): string {
+        return moment(date).format(this.FORMAT_DATETIME_FRONT);
     }
 
     getTimeFormat(time: Date, format?: string): string {

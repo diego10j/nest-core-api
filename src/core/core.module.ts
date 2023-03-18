@@ -4,11 +4,13 @@ import { DataSourceService } from './connection/datasource.service';
 import { UtilService } from './util/util.service';
 import { AuditService } from './audit/audit.service';
 import { AuditController } from './audit/audit.controller';
+import { CoreController } from './core.controller';
+import { CoreService } from './core.service';
 
 @Module({
 
-  providers: [DataSourceService, UtilService, AuditService],
+  providers: [DataSourceService, UtilService, AuditService, CoreService],
   exports: [DataSourceService],
-  controllers: [AuditController],
+  controllers: [AuditController, CoreController],
 })
 export class CoreModule { }

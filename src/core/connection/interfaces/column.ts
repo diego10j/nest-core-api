@@ -6,6 +6,7 @@ export interface Column {
     dataType: string;
     label: string;
     required: boolean;
+    visible: boolean
     order: number;
     length: number;
     decimals: number;
@@ -14,8 +15,12 @@ export interface Column {
     mask: string;
     filter: boolean;
     comment: string;
+    component:string
     upperCase: boolean;
     unique: boolean;
     orderable: boolean;
     size: number;
+    align: string;
+    header: string;
+    accessorKey: string;
 }

@@ -22,7 +22,7 @@ import { AuditService } from '../audit/audit.service';
         return {
           secret: configService.get('JWT_SECRET'),
           signOptions: {
-            expiresIn: '2h'
+            expiresIn: '8h'
           }
         }
       }

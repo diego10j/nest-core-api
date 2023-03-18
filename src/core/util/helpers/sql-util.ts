@@ -88,4 +88,34 @@ export class SqlUtil {
         return query;
     }
 
+    getTypeCoreColumn(nameType: string) {
+        // https://github.com/brianc/node-pg-types/blob/master/lib/builtins.js
+        const TypesString = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID'];
+        const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC'];
+        const TypesInteger = ['INT8', 'INT2', 'INT4'];
+        const TypesDate = ['DATE'];
+        const TypesTime = ['TIME', 'TIMETZ'];
+        const TypesDateTime = ['TIMESTAMP', 'TIMESTAMPTZ'];
+        const TypesBoolean = ['BOOL', 'BIT'];
+        if (TypesString.includes(nameType)) return "String"
+        if (TypesNumber.includes(nameType)) return "Number"
+        if (TypesInteger.includes(nameType)) return "Integer"
+        if (TypesDate.includes(nameType)) return "Date"
+        if (TypesTime.includes(nameType)) return "Time"
+        if (TypesDateTime.includes(nameType)) return "DateTime"
+        if (TypesBoolean.includes(nameType)) return "Boolean"
+        return "String";
+    }
+
+
+    getAlignCoreColumn(nameType: string) {
+        const LeftTypes = ['String', 'Date', 'Time', 'DateTime'];
+        const RightTypes = ['Number', 'Integer'];
+        const CenterTypes = ['Boolean'];
+        if (LeftTypes.includes(nameType)) return "left"
+        if (RightTypes.includes(nameType)) return "right"
+        if (CenterTypes.includes(nameType)) return "center"
+        return "left";
+    }
+
 }

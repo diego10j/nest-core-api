@@ -1,7 +1,7 @@
 import { Query } from './query';
-import { SelectQuery } from './select-query';
 import { DataSourceService } from '../datasource.service';
 import { InternalServerErrorException } from '@nestjs/common';
+import { SelectQuery } from './select-query';
 import { InsertQuery } from './insert-query';
 import { UpdateQuery } from './update-query';
 import { DeleteQuery } from './delete-query';
@@ -69,7 +69,7 @@ export class DataStore {
         }
 
         const res = await this.dataSource.createQueryPG(this.query);
-        this.data = res.data;
+        this.data = res.rows;
         this.columns = res.columns;
 
         if (this.data.length > 0) {

@@ -17,4 +17,3 @@ export class SelectQuery extends Query {
         this.page= 1;
     }
 }
-

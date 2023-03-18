@@ -19,7 +19,7 @@ export class AuthService {
         private readonly jwtService: JwtService) {
     }
 
-    async login(loginUserDto: LoginUserDto) {
+    async login(loginUserDto: LoginUserDto, ip: string) {
         const { password, userName } = loginUserDto;
         const queryUser = new SelectQuery("SELECT ide_usua,uuid FROM sis_usuario WHERE nick_usua = $1 AND activo_usua=true");
         queryUser.addStringParam(1, userName);
@@ -49,7 +49,7 @@ export class AuthService {
                     this.audit.saveEventoAuditoria(
                         dataUser.ide_usua,
                         EventAudit.LOGIN_ERROR,
-                        loginUserDto.ip,
+                        ip,
                         "Contraseña incorrecta",
                         loginUserDto.device
                     );
@@ -77,7 +77,7 @@ export class AuthService {
                     this.audit.saveEventoAuditoria(
                         dataUser.ide_usua,
                         EventAudit.LOGIN_SUCCESS,
-                        loginUserDto.ip,
+                        ip,
                         "Iniciar sessión",
                         loginUserDto.device
                     );
@@ -106,6 +106,7 @@ export class AuthService {
                             role: 'admin',
                             isPublic: true,
                             lastAccess,
+                            ip,
                             roles: ['user']
                         },
                         menu

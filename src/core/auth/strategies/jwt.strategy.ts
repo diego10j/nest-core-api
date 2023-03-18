@@ -31,7 +31,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu,
         (select to_char(fecha_auac,'${this.dataSource.util.DATE_UTIL.FORMAT_DATE_FRONT}')  || ' ' ||hora_auac  from sis_auditoria_acceso 
         where ide_usua=a.ide_usua and ide_acau=0 
-        and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=a.ide_usua and ide_acau=0 and fin_auac=true)) as ult_date
+        and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=a.ide_usua and ide_acau=0 and fin_auac=true)) as ult_date,
+        (select ip_auac  from sis_auditoria_acceso 
+        where ide_usua=a.ide_usua and ide_acau=0 
+        and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=a.ide_usua and ide_acau=0 and fin_auac=true)) as ip
         from sis_usuario a 
         inner join sis_perfil c on a.ide_perf=c.ide_perf 
         where a.uuid=$1
@@ -61,6 +64,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             role: 'admin',
             isPublic: true,
             lastAccess: dataUser.ult_date,
+            ip: dataUser.ip,
             roles: ['user']
         }
 
