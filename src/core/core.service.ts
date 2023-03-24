@@ -10,6 +10,10 @@ export class CoreService {
     constructor(private readonly dataSource: DataSourceService) {
     }
 
+
+
+
+
     /**
      * Retorna las columnas de una tabla
      * @param ColumnsTableDto 
@@ -107,6 +111,11 @@ export class CoreService {
 
         return data;
     }
+
+
+
+
+
 
 
 }

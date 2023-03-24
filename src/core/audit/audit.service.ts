@@ -47,9 +47,8 @@ export class AuditService {
         insertQuery.values.set('detalle_auac', detalle_auac);
         insertQuery.values.set('ide_auac', await this.dataSource.getSeqTable('sis_auditoria_acceso', 'ide_auac'));
         this.dataSource.createQuery(insertQuery);
-
-
     }
+
     /**
      * Retorna las acciones de auditoria realizadas en un rango de fechas 
      * @param dtoIn 

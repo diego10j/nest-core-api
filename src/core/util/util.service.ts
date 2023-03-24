@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { DateUtil, SqlUtil, StringUtil } from './helpers';
+import { DateUtil, SqlUtil, StringUtil, ArrayUtil } from './helpers';
 
 @Injectable()
 export class UtilService {
@@ -9,6 +9,7 @@ export class UtilService {
     readonly SQL_UTIL: SqlUtil = new SqlUtil();
     readonly STRING_UTIL: StringUtil = new StringUtil();
     readonly DATE_UTIL: DateUtil = new DateUtil();
+    readonly ARRAY_UTIL: ArrayUtil = new ArrayUtil();
 
     /**
      * Valida que un objeto cumpla la estructura de la clase DTO

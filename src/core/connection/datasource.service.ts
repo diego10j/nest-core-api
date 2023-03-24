@@ -24,15 +24,9 @@ export class DataSourceService {
         readonly util: UtilService,
     ) {
         // Parse types bdd
-        types.setTypeParser(this.TYPE_DATESTAMP, (date) =>
-            this.util.DATE_UTIL.getDateFormatFront(date)
-        );
-        types.setTypeParser(this.TYPE_TIMESTAMP, (date) =>
-            this.util.DATE_UTIL.getDateTimeFormatFront(date)
-        );
-        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) =>
-            this.util.DATE_UTIL.getTimeFormat(date)
-        );
+        types.setTypeParser(this.TYPE_DATESTAMP, (date) => this.util.DATE_UTIL.getDateFormatFront(date));
+        types.setTypeParser(this.TYPE_TIMESTAMP, (date) => this.util.DATE_UTIL.getDateTimeFormatFront(date));
+        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => this.util.DATE_UTIL.getTimeFormat(date));
     }
 
 
@@ -58,22 +52,30 @@ export class DataSourceService {
 
 
     /**
- * Retorna la data de una consulta en la base de datos mediante el Pool pg
- * @param SelectQuery 
- * @returns Array data
- */
-    async createQueryPG(query: SelectQuery): Promise<ResultQuery> {
+     * Retorna la data de una consulta en la base de datos mediante el Pool pg
+     * @param SelectQuery 
+     * @param isSchema  por defecto consulta propiedades adicionales de las columnas 
+     * @returns Array data
+     */
+    async createQueryPG(query: SelectQuery, isSchema = true): Promise<ResultQuery> {
         this.formatSqlQuery(query);
         //Ejecuta el query
         try {
-            //console.log(query.query);
-
+            // console.log(query.query);
             const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
+            const columnsNames: string[] = res.fields.map(_element => {
+                return _element['name'];
+            });
+            const tablesID: number[] = res.fields.map(_element => {
+                return _element['tableID'];
+            });
+            const resSchema = isSchema ? await this.getColumnsSchema(this.util.ARRAY_UTIL.removeEqualsElements(columnsNames), this.util.ARRAY_UTIL.removeEqualsElements(tablesID)) : [];
             const typesCols = res._types._types.builtins;
-
             const cols = res.fields.map((_col, index) => {
                 const dataTypeCore = this.util.SQL_UTIL.getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
+                const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
+                const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.size || 0);
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -81,17 +83,17 @@ export class DataSourceService {
                     dataType: dataTypeCore,
                     order: index,
                     label: _col.name,
-                    required: false,
+                    required: colSchema?.nullable || false,
                     visible: true,
-                    length: 0,
-                    decimals: 2,
+                    length: colSchema?.length || 0,
+                    decimals: colSchema?.decimals || dataTypeCore !== 'String' ? 2 : null,
                     disabled: false,
                     filter: false,
                     comment: '',
                     component: 'Label',
                     upperCase: false,
                     orderable: true,
-                    size: 0,
+                    size: sizeColumn,
                     align: alignColumn,
                     header: _col.name,
                     accessorKey: _col.name
@@ -101,7 +103,6 @@ export class DataSourceService {
                 rowCount: res.rowCount,
                 rows: res.rows,
                 columns: cols
-
             } as ResultQuery;
 
         } catch (error) {
@@ -222,6 +223,29 @@ export class DataSourceService {
             seq++;
             return seq;
         }
+    }
+
+    /**
+     * Retorna propiedades de las columnas 
+     * @param columnsName 
+     * @param tablesID 
+     * @returns 
+     */
+    private async getColumnsSchema(columnsName: string[], tablesID: number[]) {
+        const pq = new SelectQuery(`
+        SELECT 
+        column_name as name,
+        character_maximum_lengtH as length,
+        numeric_scale  as decimals,
+        CASE WHEN is_nullable = 'NO' THEN false  ELSE true  END as  nullable,
+        table_name as table,
+        data_type as type     
+        FROM information_schema.columns a        
+        WHERE table_name IN (SELECT relname FROM pg_class WHERE relfilenode = ANY ($1))
+        AND column_name = ANY ($2)`);
+        pq.addArrayNumberParam(1, tablesID);
+        pq.addArrayStringParam(2, columnsName);
+        return await this.createQuery(pq);
     }
 
 
