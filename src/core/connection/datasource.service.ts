@@ -50,7 +50,6 @@ export class DataSourceService {
         }
     }
 
-
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
      * @param SelectQuery 
@@ -75,7 +74,7 @@ export class DataSourceService {
                 const dataTypeCore = this.util.SQL_UTIL.getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
                 const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
-                const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.size || 0);
+                const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -241,7 +240,7 @@ export class DataSourceService {
         table_name as table,
         data_type as type     
         FROM information_schema.columns a        
-        WHERE table_name IN (SELECT relname FROM pg_class WHERE relfilenode = ANY ($1))
+        WHERE table_name IN (SELECT relname FROM pg_class WHERE oid  = ANY ($1))
         AND column_name = ANY ($2)`);
         pq.addArrayNumberParam(1, tablesID);
         pq.addArrayStringParam(2, columnsName);

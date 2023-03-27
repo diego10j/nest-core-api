@@ -121,7 +121,7 @@ export class SqlUtil {
     getSizeCoreColumn(nameType: string, length: number): number {
         const minSize = ['Date', 'Time', 'Boolean'];
         const medSize = ['DateTime', 'Number', 'Integer'];
-        if (minSize.includes(nameType)) return 130;
+        if (minSize.includes(nameType)) return 120;
         if (medSize.includes(nameType)) return 150;
         if (length > 0 && length < 20) return 150;
         if (length >= 20 && length < 30) return 180;
@@ -133,7 +133,7 @@ export class SqlUtil {
         if (length >= 150 && length < 180) return 420;
         if (length >= 180 && length < 200) return 460;
         if (length >= 200) return 500;
-        return 150;
+        return 200;
     }
 
 }

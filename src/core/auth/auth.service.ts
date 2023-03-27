@@ -185,7 +185,7 @@ export class AuthService {
         selectQuery.addNumberParam(2, ide_usua);
         const data = await this.dataSource.createSingleQuery(selectQuery);
         if (data) {
-            lastDate = this.dataSource.util.DATE_UTIL.getDateFormatFront(data.fecha_auac) + " " + data.hora_auac;
+            lastDate = data.fecha_auac + " " + data.hora_auac;
         }
         return lastDate;
     }
