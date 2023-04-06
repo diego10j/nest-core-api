@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
+import { SelectDataValuesDto } from './connection/dto/list-data.dto';
 import { SelectQuery } from './connection/helpers/select-query';
 
 @Injectable()
@@ -10,53 +11,63 @@ export class CoreService {
     constructor(private readonly dataSource: DataSourceService) {
     }
 
-
-
+    /**
+     * Retorna una lista de datos para componentes como Select, Autocomplete
+     * @param dto 
+     * @returns 
+     */
+    async getListDataValues(dto: SelectDataValuesDto) {
+        const where = dto.where && ` WHERE 1=1 AND ${dto.where}`;
+        const orderBy = dto.orderBy || dto.columnLabel;
+        const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
+                                    FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
+        return await this.dataSource.createQuery(pq);
+    }
 
 
     /**
-     * Retorna las columnas de una tabla
-     * @param ColumnsTableDto 
-     * @returns listado de columnas
-     */
+      * Retorna las columnas de una tabla
+      * @param ColumnsTableDto 
+      * @returns listado de columnas
+      */
     async getColumnsTable(dto: ColumnsTableDto) {
         //Valida DTO
         await this.dataSource.util.validateDTO(ColumnsTableDto, dto);
 
         const pq = new SelectQuery(`SELECT 
-                    lower(column_name)  as nombre, 
-                    upper(column_name)  as nombreVisual, 
-                    ordinal_position  as orden,
-                    CASE WHEN is_nullable = 'YES' THEN false
+                    lower(column_name) as nombre,
+            upper(column_name) as nombreVisual,
+            ordinal_position as orden,
+            CASE WHEN is_nullable = 'YES' THEN false
                     ELSE true end as requerida,
-                    data_type  as tipo,
-                    character_maximum_lengtH as  longitud,
-                    CASE WHEN numeric_scale isnull THEN 0
+            data_type as tipo,
+            character_maximum_lengtH as longitud,
+            CASE WHEN numeric_scale isnull THEN 0
                     ELSE numeric_scale end as decimales,
-                    'Texto' as componente,
-                    true as visible,
-                    false as lectura,
-                    null as valorDefecto,
-                    null as mascara,
-                    false as filtro,
-                    null as comentario,
-                    false as mayuscula,
-                    false as unico,
-                    true as ordenable,
-                    COALESCE(character_maximum_lengtH ,8)as anchoColumna,
-                    CASE WHEN numeric_precision isnull THEN false 
+            'Texto' as componente,
+            true as visible,
+            false as lectura,
+            null as valorDefecto,
+            null as mascara,
+            false as filtro,
+            null as comentario,
+            false as mayuscula,
+            false as unico,
+            true as ordenable,
+            COALESCE(character_maximum_lengtH, 8) as anchoColumna,
+            CASE WHEN numeric_precision isnull THEN false 
                     ELSE true end as isNumber,
-                    numeric_scale as decimales,
-                    CASE WHEN datetime_precision isnull THEN false 
+            numeric_scale as decimales,
+            CASE WHEN datetime_precision isnull THEN false 
                     ELSE true end as isDate,
-                    CASE WHEN data_type = 'boolean' THEN true 
+            CASE WHEN data_type = 'boolean' THEN true 
                     ELSE false end as isBoolean
                     FROM information_schema.columns a       
-                    WHERE table_name  = $1 `);
+                    WHERE table_name = $1`);
 
         pq.addStringParam(1, dto.tableName);
         if (dto.columns) {
-            pq.query += ` AND column_name = ANY ($2)`;
+            pq.query += ` AND column_name = ANY($2)`;
             pq.addArrayStringParam(2, dto.columns);
         }
         const data = await this.dataSource.createQuery(pq);

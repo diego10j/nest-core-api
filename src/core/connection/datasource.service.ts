@@ -52,7 +52,7 @@ export class DataSourceService {
 
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
-     * @param SelectQuery 
+     * @param SelectQuery  primer campo del select debe ser el campo primaryKey de la consulta
      * @param isSchema  por defecto consulta propiedades adicionales de las columnas 
      * @returns Array data
      */
@@ -61,6 +61,7 @@ export class DataSourceService {
         //Ejecuta el query
         try {
             // console.log(query.query);
+            let primaryKey = "id";
             const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
             const columnsNames: string[] = res.fields.map(_element => {
                 return _element['name'];
@@ -71,6 +72,7 @@ export class DataSourceService {
             const resSchema = isSchema ? await this.getColumnsSchema(this.util.ARRAY_UTIL.removeEqualsElements(columnsNames), this.util.ARRAY_UTIL.removeEqualsElements(tablesID)) : [];
             const typesCols = res._types._types.builtins;
             const cols = res.fields.map((_col, index) => {
+                if (index === 0) primaryKey = _col.name;
                 const dataTypeCore = this.util.SQL_UTIL.getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
                 const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
@@ -101,7 +103,8 @@ export class DataSourceService {
             return {
                 rowCount: res.rowCount,
                 rows: res.rows,
-                columns: cols
+                columns: cols,
+                primaryKey
             } as ResultQuery;
 
         } catch (error) {

@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
-import { InsertQuery, SelectQuery } from '../connection/helpers';
+import { DeleteQuery, InsertQuery, SelectQuery } from '../connection/helpers';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
+import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
+import { EventAudit } from './enum/event-audit';
 
 @Injectable()
 export class AuditService {
 
-    constructor(private readonly dataSource: DataSourceService) {
+    constructor(private readonly dataSource: DataSourceService
+    ) {
     }
 
     /**
@@ -60,7 +63,7 @@ export class AuditService {
         const queryPass = new SelectQuery(`
         select a.ide_auac,fecha_auac,hora_auac,nom_usua,nom_acau,
         (select nom_opci from sis_opcion where ide_opci = CAST (a.detalle_auac as INTEGER) and a.ide_acau=11) as pantalla,
-        ip_auac,id_session_auac
+        ip_auac,detalle_auac
         from sis_auditoria_acceso a
         inner join sis_accion_auditoria b on a.ide_acau = b.ide_acau
         left join sis_usuario c on a.ide_usua = c.ide_usua
@@ -73,5 +76,26 @@ export class AuditService {
             queryPass.addIntParam(3, ide_usua);
         return await this.dataSource.createQueryPG(queryPass);
     }
+
+    async deleteEventosAuditoria(dtoIn: DeleteAuditoriaDto) {
+
+        const dq = new DeleteQuery("sis_auditoria_acceso");
+        if (dtoIn.ide_auac) {
+            dq.where = "ide_auac = ANY($1)";
+            dq.addArrayNumberParam(1, dtoIn.ide_auac);
+        }
+        await this.dataSource.createQuery(dq);
+
+        this.saveEventoAuditoria(
+            dtoIn.ideUsua,
+            EventAudit.DELETE_AUDIT,
+            dtoIn.ip,
+            `${dtoIn.login} Borra Auditoria`,
+            dtoIn.device
+        );
+
+    }
+
+
     // nest g co core/audit/auditoria-acceso --dry-run
 }
