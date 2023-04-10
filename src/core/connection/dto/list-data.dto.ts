@@ -1,9 +1,9 @@
-import {
-    IsString, IsOptional, IsArray, ArrayNotEmpty, IsNotEmpty
-} from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty } from 'class-validator';
+import { ServiceDto } from 'src/common/dto/service.dto';
+import { PartialType } from '@nestjs/mapped-types';
 
 
-export class SelectDataValuesDto {
+export class SelectDataValuesDto extends PartialType(ServiceDto) {
 
     @IsString()
     @IsNotEmpty()
