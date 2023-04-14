@@ -3,6 +3,7 @@ import { DataSourceService } from './connection/datasource.service';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { SelectDataValuesDto } from './connection/dto/list-data.dto';
 import { SelectQuery } from './connection/helpers/select-query';
+import { TableQueryDto } from './connection/dto/table-query.dto';
 
 @Injectable()
 export class CoreService {
@@ -24,7 +25,13 @@ export class CoreService {
         return await this.dataSource.createQuery(pq);
     }
 
-
+    async getSingleResultTable(dto: TableQueryDto) {
+        const columns = dto.columns || '*'; // all columns
+        const where = dto.where || '1=1'; // default where
+        const orderBy = dto.orderBy || dto.primaryKey;
+        const pq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} LIMIT 1`);
+        return await this.dataSource.createQueryPG(pq);
+    }
     /**
       * Retorna las columnas de una tabla
       * @param ColumnsTableDto 

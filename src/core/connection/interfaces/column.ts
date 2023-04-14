@@ -11,7 +11,7 @@ export interface Column {
     length: number;
     decimals: number;
     disabled: boolean;
-    default: any;
+    defaultValue: any;
     mask: string;
     filter: boolean;
     comment: string;

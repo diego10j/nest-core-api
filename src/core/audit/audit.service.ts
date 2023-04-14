@@ -77,15 +77,21 @@ export class AuditService {
         return await this.dataSource.createQueryPG(queryPass);
     }
 
+    /**
+     * Elimina los registros de auditoria en un rango de fechas
+     * @param dtoIn 
+     * @returns 
+     */
     async deleteEventosAuditoria(dtoIn: DeleteAuditoriaDto) {
-
         const dq = new DeleteQuery("sis_auditoria_acceso");
+        dq.where = "fecha_auac BETWEEN $1 AND $2";
+        dq.addDateParam(1, dtoIn.fechaInicio);
+        dq.addDateParam(2, dtoIn.fechaFin);
         if (dtoIn.ide_auac) {
-            dq.where = "ide_auac = ANY($1)";
-            dq.addArrayNumberParam(1, dtoIn.ide_auac);
+            dq.where += ' AND ide_auac = ANY($3)';
+            dq.addArrayStringParam(3, dtoIn.ide_auac);
         }
         await this.dataSource.createQuery(dq);
-
         this.saveEventoAuditoria(
             dtoIn.ideUsua,
             EventAudit.DELETE_AUDIT,
@@ -93,7 +99,9 @@ export class AuditService {
             `${dtoIn.login} Borra Auditoria`,
             dtoIn.device
         );
-
+        return {
+            message: 'ok'
+        };
     }
 
 

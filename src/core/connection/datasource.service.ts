@@ -37,7 +37,6 @@ export class DataSourceService {
      */
     async createQuery(query: Query): Promise<any[]> {
         this.formatSqlQuery(query);
-        //Ejecuta el query
         try {
             //console.log(query.query);
             const data = await this.dataSource.query(query.query, query.paramValues);
@@ -77,6 +76,7 @@ export class DataSourceService {
                 const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
                 const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
                 const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
+                const defaultValue = this.util.SQL_UTIL.getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -96,6 +96,7 @@ export class DataSourceService {
                     orderable: true,
                     size: sizeColumn,
                     align: alignColumn,
+                    defaultValue,
                     header: _col.name,
                     accessorKey: _col.name
                 };
@@ -117,10 +118,16 @@ export class DataSourceService {
 
     private async formatSqlQuery(query: Query) {
         //Forma sentencia sql
-        if (query instanceof InsertQuery) this.util.SQL_UTIL.getSqlInsert(query);
-        else if (query instanceof UpdateQuery) this.util.SQL_UTIL.getSqlUpdate(query);
-        else if (query instanceof DeleteQuery) this.util.SQL_UTIL.getSqlDelete(query);
-        else if (query instanceof SelectQuery) this.util.SQL_UTIL.getSqlSelect(query);
+        try {
+            if (query instanceof InsertQuery) this.util.SQL_UTIL.getSqlInsert(query);
+            else if (query instanceof UpdateQuery) this.util.SQL_UTIL.getSqlUpdate(query);
+            else if (query instanceof DeleteQuery) this.util.SQL_UTIL.getSqlDelete(query);
+            else if (query instanceof SelectQuery) this.util.SQL_UTIL.getSqlSelect(query);
+        }
+        catch (error) {
+            this.logger.error(error);
+            throw new InternalServerErrorException(error);
+        }
         //Valida que exista el mismo numero de $ con los valores de los parámetros
         const countParams = this.util.STRING_UTIL.getCountStringInText("$", query.query);
         if (countParams !== query.paramValues.length) {

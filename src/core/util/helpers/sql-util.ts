@@ -108,6 +108,20 @@ export class SqlUtil {
     }
 
 
+    getDefaultValueColumn(nameType: string) {
+        const TypesString = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID'];
+        const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
+        const TypesDate = ['DATE', 'TIME', 'TIMETZ', 'TIMESTAMP', 'TIMESTAMPTZ'];
+        const TypesBoolean = ['BOOL', 'BIT'];
+        if (TypesString.includes(nameType)) return ""
+        if (TypesNumber.includes(nameType)) return null
+        if (TypesDate.includes(nameType)) return null
+        if (TypesBoolean.includes(nameType)) return false
+        return null;
+    }
+
+
+
     getAlignCoreColumn(nameType: string) {
         const LeftTypes = ['String', 'Date', 'Time', 'DateTime'];
         const RightTypes = ['Number', 'Integer'];
