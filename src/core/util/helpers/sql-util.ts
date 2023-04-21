@@ -91,15 +91,13 @@ export class SqlUtil {
     getTypeCoreColumn(nameType: string) {
         // https://github.com/brianc/node-pg-types/blob/master/lib/builtins.js
         const TypesString = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID'];
-        const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC'];
-        const TypesInteger = ['INT8', 'INT2', 'INT4'];
+        const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
         const TypesDate = ['DATE'];
         const TypesTime = ['TIME', 'TIMETZ'];
         const TypesDateTime = ['TIMESTAMP', 'TIMESTAMPTZ'];
         const TypesBoolean = ['BOOL', 'BIT'];
         if (TypesString.includes(nameType)) return "String"
         if (TypesNumber.includes(nameType)) return "Number"
-        if (TypesInteger.includes(nameType)) return "Integer"
         if (TypesDate.includes(nameType)) return "Date"
         if (TypesTime.includes(nameType)) return "Time"
         if (TypesDateTime.includes(nameType)) return "DateTime"
@@ -118,6 +116,16 @@ export class SqlUtil {
         if (TypesDate.includes(nameType)) return null
         if (TypesBoolean.includes(nameType)) return false
         return null;
+    }
+
+    getComponentColumn(nameType: string) {
+        const TypesText = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID', 'FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
+        const TypesDate = ['DATE', 'TIME', 'TIMETZ', 'TIMESTAMP', 'TIMESTAMPTZ'];
+        const TypesBoolean = ['BOOL', 'BIT'];
+        if (TypesText.includes(nameType)) return "Text"
+        if (TypesDate.includes(nameType)) return "Calendar"
+        if (TypesBoolean.includes(nameType)) return "Checkbox"
+        return "Text";
     }
 
 
@@ -149,5 +157,20 @@ export class SqlUtil {
         if (length >= 200) return 500;
         return 200;
     }
+
+    /**
+     * Remplaza vacios por null, undefinded por null
+     * @param value 
+     * @returns 
+     */
+    toObjectTable(value: object): object {
+        const cloneObjUpdate: any = { ...value };
+        Object.keys(value).forEach(key => {
+            if (cloneObjUpdate[key] === '') cloneObjUpdate[key] = null;
+            if (cloneObjUpdate[key] === undefined) cloneObjUpdate[key] = null;
+        });
+        return cloneObjUpdate;
+    }
+
 
 }

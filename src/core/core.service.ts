@@ -4,6 +4,9 @@ import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { SelectDataValuesDto } from './connection/dto/list-data.dto';
 import { SelectQuery } from './connection/helpers/select-query';
 import { TableQueryDto } from './connection/dto/table-query.dto';
+import { SaveObjectDto } from './connection/dto/save-object.dto';
+import { UpdateQuery } from './connection/helpers/update-query';
+import { InsertQuery } from './connection/helpers/insert-query';
 
 @Injectable()
 export class CoreService {
@@ -25,13 +28,54 @@ export class CoreService {
         return await this.dataSource.createQuery(pq);
     }
 
+    /**
+     * Retorna el primer resultado de un Query
+     * @param dto 
+     * @returns 
+     */
     async getSingleResultTable(dto: TableQueryDto) {
         const columns = dto.columns || '*'; // all columns
         const where = dto.where || '1=1'; // default where
         const orderBy = dto.orderBy || dto.primaryKey;
-        const pq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} LIMIT 1`);
-        return await this.dataSource.createQueryPG(pq);
+        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} LIMIT 1`);
+        return await this.dataSource.createQueryPG(pgq);
     }
+
+    /**
+     * Guarda o actualiza un registro
+     * @param dto 
+     */
+    async saveOrUpdateObject(dto: SaveObjectDto) {
+        dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
+        dto.identity = dto.identity || true;
+        const mapObject = new Map(Object.entries(this.dataSource.util.SQL_UTIL.toObjectTable(dto.object)));
+        const valuePrimaryKey = mapObject.get(dto.primaryKey);
+        if (valuePrimaryKey) {
+            // update
+            const updateQuery = new UpdateQuery(dto.tableName);
+            mapObject.delete(dto.primaryKey);
+            updateQuery.where = `${dto.primaryKey} = $1`
+            updateQuery.addParam(1, valuePrimaryKey);
+            updateQuery.values = mapObject;
+            await this.dataSource.createQuery(updateQuery);
+
+        }
+        else {
+            // insert
+            const insertQuery = new InsertQuery(dto.tableName)
+            if (dto.identity === true) {
+                const id = await this.dataSource.getSeqTable(dto.tableName, dto.primaryKey);
+                mapObject.set(dto.primaryKey, id);
+            }
+            insertQuery.values = mapObject;
+            await this.dataSource.createQuery(insertQuery);
+        }
+        return {
+            message: 'ok'
+        };
+    }
+
+
     /**
       * Retorna las columnas de una tabla
       * @param ColumnsTableDto 

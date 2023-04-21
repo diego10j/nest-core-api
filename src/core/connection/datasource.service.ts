@@ -77,6 +77,7 @@ export class DataSourceService {
                 const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
                 const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
                 const defaultValue = this.util.SQL_UTIL.getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const componentCore = this.util.SQL_UTIL.getComponentColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -87,11 +88,11 @@ export class DataSourceService {
                     required: colSchema?.nullable || false,
                     visible: true,
                     length: colSchema?.length || 0,
-                    decimals: colSchema?.decimals || dataTypeCore !== 'String' ? 2 : null,
+                    decimals: colSchema?.decimals,
                     disabled: false,
                     filter: false,
                     comment: '',
-                    component: 'Label',
+                    component: componentCore,
                     upperCase: false,
                     orderable: true,
                     size: sizeColumn,
