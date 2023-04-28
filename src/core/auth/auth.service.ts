@@ -28,7 +28,8 @@ export class AuthService {
             const queryPass = new SelectQuery(`
             SELECT bloqueado_usua,fecha_caduc_usua,fecha_vence_uscl,a.ide_usua,clave_uscl,
             nom_usua,mail_usua,a.ide_empr,nom_perf,a.ide_perf,avatar_usua,perm_util_perf,a.ide_empr,nick_usua,
-            (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu 
+            (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu,
+            (select nom_empr from sis_empresa where ide_empr = a.ide_empr) as nom_empr
             from sis_usuario a 
             inner join sis_usuario_clave b on a.ide_usua=b.ide_usua 
             inner join sis_perfil c on a.ide_perf=c.ide_perf 
@@ -89,6 +90,7 @@ export class AuthService {
                             ide_empr: Number.parseInt(dataPass.ide_empr),
                             ide_sucu: Number.parseInt(dataPass.ide_sucu),
                             ide_perf: Number.parseInt(dataPass.ide_perf),
+                            nom_empr: dataPass.nom_empr,
                             perm_util_perf: dataPass.perm_util_perf,
                             nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
                             id: dataUser.uuid,
@@ -124,7 +126,7 @@ export class AuthService {
      * @param ide_perf 
      * @returns 
      */
-    private async getMenuByRol(ide_perf: number) {
+    public async getMenuByRol(ide_perf: number) {
         const selectQueryMenu = new SelectQuery(`SELECT ide_opci,nom_opci,sis_ide_opci,paquete_opci,
         tipo_opci,a.uuid
         FROM sis_opcion a 

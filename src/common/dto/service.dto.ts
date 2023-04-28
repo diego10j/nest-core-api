@@ -28,7 +28,6 @@ export class ServiceDto {
     @IsString()
     @MinLength(2)
     @IsOptional()
-    @IsIn(['PC', 'MOVIL'])
     device: string = 'PC';
 
 }

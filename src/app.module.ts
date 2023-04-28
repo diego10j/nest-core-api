@@ -5,7 +5,6 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
-import { ProductsModule } from './products/products.module';
 import { CommonModule } from './common/common.module';
 import { FilesModule } from './files/files.module';
 import { CoreModule } from './core/core.module';
@@ -30,8 +29,7 @@ import { AuthModule } from './core/auth/auth.module';
       rootPath: join(__dirname, '..', 'public'),
     }),
 
-    ProductsModule,
-
+   
     CommonModule,
 
     FilesModule,

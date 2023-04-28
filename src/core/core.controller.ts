@@ -11,7 +11,7 @@ export class CoreController {
     constructor(private readonly service: CoreService) { }
 
     @Post('getListDataValues')
-    @Auth()
+    //@Auth()
     getListDataValues(
         @Body() dtoIn: SelectDataValuesDto
     ) {
