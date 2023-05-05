@@ -56,6 +56,14 @@ export class CoreService {
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
         if (valuePrimaryKey) {
             // update
+
+            // asigna valores del core
+            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', dto.ideEmpr);
+            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', dto.ideSucu);
+            if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
+            if (mapObject.has('hora_actua')) mapObject.set('hora_actua', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
+            if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', dto.login);
+
             const updateQuery = new UpdateQuery(dto.tableName);
             mapObject.delete(dto.primaryKey);
             updateQuery.where = `${dto.primaryKey} = $1`
@@ -71,6 +79,14 @@ export class CoreService {
                 const id = await this.dataSource.getSeqTable(dto.tableName, dto.primaryKey);
                 mapObject.set(dto.primaryKey, id);
             }
+
+            // asigna valores del core
+            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', dto.ideEmpr);
+            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', dto.ideSucu);
+            if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
+            if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
+            if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', dto.login);
+
             insertQuery.values = mapObject;
             await this.dataSource.createQuery(insertQuery);
         }
