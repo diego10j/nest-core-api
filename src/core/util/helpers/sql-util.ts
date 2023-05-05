@@ -152,9 +152,9 @@ export class SqlUtil {
         if (minSize.includes(nameType)) return 120;
         if (medSize.includes(nameType)) return 150;
         if (length > 0 && length < 20) return 150;
-        if (length >= 20 && length < 30) return 180;
-        if (length >= 30 && length < 50) return 220;
-        if (length >= 50 && length < 70) return 260;
+        if (length >= 20 && length < 30) return 190;
+        if (length >= 30 && length < 50) return 230;
+        if (length >= 50 && length < 70) return 270;
         if (length >= 70 && length < 90) return 300;
         if (length >= 90 && length < 100) return 240;
         if (length >= 100 && length < 150) return 380;
