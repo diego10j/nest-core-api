@@ -19,12 +19,12 @@ export class CoreController {
     }
 
 
-    @Post('getSingleResultTable')
+    @Post('getResultQuery')
     //@Auth()
     getSingleResultTable(
         @Body() dtoIn: TableQueryDto
     ) {
-        return this.service.getSingleResultTable(dtoIn);
+        return this.service.getResultQuery(dtoIn);
     }
 
 

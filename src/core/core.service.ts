@@ -31,17 +31,19 @@ export class CoreService {
     }
 
     /**
-     * Retorna el primer resultado de un Query
+     * Retorna  resultado de un Query
      * @param dto 
      * @returns 
      */
-    async getSingleResultTable(dto: TableQueryDto) {
+    async getResultQuery(dto: TableQueryDto) {
         const columns = dto.columns || '*'; // all columns
         const where = dto.where || '1=1'; // default where
         const orderBy = dto.orderBy || dto.primaryKey;
-        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} LIMIT 1`);
+        const limit = dto.limit ? `LIMIT ${dto.limit}` : '';
+        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} ${limit}`);
         return await this.dataSource.createQueryPG(pgq);
     }
+
 
     /**
      * Guarda o actualiza un registro

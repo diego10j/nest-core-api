@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsInt, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
@@ -24,5 +24,10 @@ export class TableQueryDto extends PartialType(ServiceDto) {
     @IsString()
     @IsOptional()
     where?: string;
+
+    @IsInt()
+    @IsPositive()
+    @IsOptional()
+    limit?: number;
 
 }
