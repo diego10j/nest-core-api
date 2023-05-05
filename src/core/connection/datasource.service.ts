@@ -78,6 +78,8 @@ export class DataSourceService {
                 const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
                 const defaultValue = this.util.SQL_UTIL.getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const componentCore = this.util.SQL_UTIL.getComponentColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const visible = _col.name === primaryKey ? false : this.util.SQL_UTIL.getVisibleCoreColumn(_col.name);
+
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -86,7 +88,7 @@ export class DataSourceService {
                     order: index,
                     label: _col.name,
                     required: colSchema?.nullable || false,
-                    visible: true,
+                    visible,
                     length: colSchema?.length || 0,
                     decimals: colSchema?.decimals,
                     disabled: false,

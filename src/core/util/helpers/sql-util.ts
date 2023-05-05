@@ -130,7 +130,11 @@ export class SqlUtil {
         return "Text";
     }
 
-
+    getVisibleCoreColumn(nameColumn: string) {
+        const hiddenColumns = ['ide_empr', 'ide_sucu', 'fecha_actua', 'hora_actua', 'usuario_actua', 'fecha_ingre', 'hora_ingre', 'usuario_ingre', 'uuid'];
+        if (hiddenColumns.includes(nameColumn)) return false
+        return true;
+    }
 
     getAlignCoreColumn(nameType: string) {
         const LeftTypes = ['String', 'Date', 'Time', 'DateTime'];
