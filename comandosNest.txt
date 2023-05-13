@@ -1,0 +1,2 @@
+// Crear controlador
+nest g co core/audit/auditoria-acceso --dry-run

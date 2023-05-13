@@ -103,7 +103,4 @@ export class AuditService {
             message: 'ok'
         };
     }
-
-
-    // nest g co core/audit/auditoria-acceso --dry-run
 }
