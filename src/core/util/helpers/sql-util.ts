@@ -120,11 +120,13 @@ export class SqlUtil {
 
     getComponentColumn(nameType: string) {
         const TypesText = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID', 'FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
-        const TypesDate = ['DATE', 'TIMESTAMP', 'TIMESTAMPTZ'];
+        const TypesDate = ['DATE'];
         const TypesTime = ['TIME', 'TIMETZ'];
+        const TypesDateTime = ['TIMESTAMP', 'TIMESTAMPTZ'];
         const TypesBoolean = ['BOOL', 'BIT'];
         if (TypesText.includes(nameType)) return "Text"
         if (TypesDate.includes(nameType)) return "Calendar"
+        if (TypesDateTime.includes(nameType)) return "CalendarTime"
         if (TypesTime.includes(nameType)) return "Time"
         if (TypesBoolean.includes(nameType)) return "Checkbox"
         return "Text";
