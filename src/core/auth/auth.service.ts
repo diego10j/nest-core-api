@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { ServiceDto } from '../../common/dto/service.dto';
 import { EventAudit } from '../audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
+import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 
 @Injectable()
 export class AuthService {
@@ -16,6 +17,7 @@ export class AuthService {
     constructor(private readonly dataSource: DataSourceService,
         private readonly audit: AuditService,
         private readonly configService: ConfigService,
+        private readonly errorsLoggerService: ErrorsLoggerService,
         private readonly jwtService: JwtService) {
     }
 
@@ -54,6 +56,7 @@ export class AuthService {
                         "Contraseña incorrecta",
                         loginUserDto.device
                     );
+                    this.errorsLoggerService.createErrorLog(`Contraseña incorrecta usuario ${dataPass.nick_usua}`);
                     throw new UnauthorizedException('Credenciales no válidas, Contraseña incorrecta');
                 }
                 else {

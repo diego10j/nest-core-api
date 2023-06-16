@@ -3,7 +3,9 @@ import { Auth } from './auth/decorators';
 import { SelectDataValuesDto } from './connection/dto/list-data.dto';
 import { CoreService } from './core.service';
 import { TableQueryDto } from './connection/dto/table-query.dto';
-import { SaveObjectDto } from './connection/dto/save-object.dto';
+import { SaveListDto } from './connection/dto/save-list.dto';
+import { UniqueDto } from './connection/dto/unique.dto';
+import { DeleteDto } from './connection/dto/detele.dto';
 
 @Controller('core')
 export class CoreController {
@@ -28,12 +30,30 @@ export class CoreController {
     }
 
 
-    @Post('saveOrUpdateObject')
+    @Post('save')
     //@Auth()
-    saveOrUpdateObject(
-        @Body() dtoIn: SaveObjectDto
+    save(
+        @Body() dtoIn: SaveListDto
     ) {
-        return this.service.saveOrUpdateObject(dtoIn);
+        return this.service.save(dtoIn);
+    }
+
+
+    @Post('isUnique')
+    //@Auth()
+    isUnique(
+        @Body() dtoIn: UniqueDto
+    ) {
+        return this.service.isUnique(dtoIn);
+    }
+
+
+    @Post('isDelete')
+    //@Auth()
+    isDelete(
+        @Body() dtoIn: DeleteDto
+    ) {
+        return this.service.isDelete(dtoIn);
     }
 
 

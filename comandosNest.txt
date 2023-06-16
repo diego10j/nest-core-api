@@ -1,2 +1,5 @@
 // Crear controlador
 nest g co core/audit/auditoria-acceso --dry-run
+
+nest g resource errors --dry-run
+nest g service errors-logger --flat

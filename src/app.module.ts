@@ -9,6 +9,7 @@ import { CommonModule } from './common/common.module';
 import { FilesModule } from './files/files.module';
 import { CoreModule } from './core/core.module';
 import { AuthModule } from './core/auth/auth.module';
+import { ErrorsModule } from './errors/errors.module';
 
 @Module({
   imports: [
@@ -28,16 +29,11 @@ import { AuthModule } from './core/auth/auth.module';
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
     }),
-
-   
     CommonModule,
-
     FilesModule,
-
     AuthModule,
-
     CoreModule,
-
+    ErrorsModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

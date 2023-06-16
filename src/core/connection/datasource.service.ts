@@ -1,14 +1,16 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { UtilService } from '../util/util.service';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
 import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
+import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 
 @Injectable()
 export class DataSourceService {
-    private readonly logger = new Logger('DataSourceService');
+
+
     private pool = new Pool({
         user: process.env.DB_USERNAME,
         host: process.env.DB_HOST,
@@ -21,6 +23,7 @@ export class DataSourceService {
     private TYPE_TIMESTAMPTZ = 1184;
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
+        private readonly errorsLoggerService: ErrorsLoggerService,
         readonly util: UtilService,
     ) {
         // Parse types bdd
@@ -42,7 +45,7 @@ export class DataSourceService {
             const data = await this.dataSource.query(query.query, query.paramValues);
             return data;
         } catch (error) {
-            this.logger.error(error);
+            this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQuery - ${error}`
             );
@@ -87,7 +90,7 @@ export class DataSourceService {
                     dataType: dataTypeCore,
                     order: index,
                     label: _col.name,
-                    required: colSchema?.nullable || false,
+                    required: !colSchema?.nullable || false,
                     visible,
                     length: colSchema?.length || 0,
                     decimals: colSchema?.decimals,
@@ -112,7 +115,7 @@ export class DataSourceService {
             } as ResultQuery;
 
         } catch (error) {
-            this.logger.error(error);
+            this.errorsLoggerService.createErrorLog(`[ERROR] createQueryPG`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQueryPG - ${error}`
             );
@@ -128,7 +131,7 @@ export class DataSourceService {
             else if (query instanceof SelectQuery) this.util.SQL_UTIL.getSqlSelect(query);
         }
         catch (error) {
-            this.logger.error(error);
+            this.errorsLoggerService.createErrorLog(`[ERROR] formatSqlQuery`, error);
             throw new InternalServerErrorException(error);
         }
         //Valida que exista el mismo numero de $ con los valores de los parámetros
@@ -169,7 +172,7 @@ export class DataSourceService {
         } catch (error) {
             await queryRunner.rollbackTransaction();
             await queryRunner.release();
-            this.logger.error(error);
+            this.errorsLoggerService.createErrorLog(`[ERROR] createQueryList`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQueryList - ${error}`
             );
@@ -270,4 +273,25 @@ export class DataSourceService {
         }
         await this.createListQuery(listQuery);
     }
+
+
+    async isDelete(dq: DeleteQuery) {
+        const queryRunner = this.dataSource.createQueryRunner();
+        try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+            this.formatSqlQuery(dq);
+            await queryRunner.manager.query(dq.query, dq.paramValues);
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+            throw new InternalServerErrorException(
+                `Restricción eliminar - ${error}`
+            );
+        }
+    }
+
+
 }

@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { CoreModule } from '../core.module';
 import { AuditService } from '../audit/audit.service';
+import { ErrorsModule } from '../../errors/errors.module';
 
 
 @Module({
@@ -14,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
   imports: [
     ConfigModule,
     CoreModule,
+    ErrorsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -22,7 +24,7 @@ import { AuditService } from '../audit/audit.service';
         return {
           secret: configService.get('JWT_SECRET'),
           signOptions: {
-            expiresIn: '8h'
+            expiresIn: configService.get('JWT_SECRET_EXPIRES_TIME'),
           }
         }
       }

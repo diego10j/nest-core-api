@@ -1,16 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { SelectDataValuesDto } from './connection/dto/list-data.dto';
-import { SelectQuery } from './connection/helpers/select-query';
 import { TableQueryDto } from './connection/dto/table-query.dto';
-import { SaveObjectDto } from './connection/dto/save-object.dto';
-import { UpdateQuery } from './connection/helpers/update-query';
-import { InsertQuery } from './connection/helpers/insert-query';
+import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
+import { ObjectQueryDto } from './connection/dto/object-query.dto';
+import { SaveListDto } from './connection/dto/save-list.dto';
+import { UniqueDto } from './connection/dto/unique.dto';
+import { DeleteDto } from './connection/dto/detele.dto';
 
 @Injectable()
 export class CoreService {
-
 
     constructor(private readonly dataSource: DataSourceService) {
     }
@@ -46,50 +46,61 @@ export class CoreService {
 
 
     /**
-     * Guarda o actualiza un registro
+     * Transforma a Query un SaveObjectDto
      * @param dto 
+     * @param ideEmpr 
+     * @param ideSucu 
+     * @param login 
+     * @returns 
      */
-    async saveOrUpdateObject(dto: SaveObjectDto) {
+    toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string): UpdateQuery | DeleteQuery | InsertQuery {
         dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
-        dto.identity = dto.identity || true;
         const mapObject = new Map(Object.entries(this.dataSource.util.SQL_UTIL.toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
-        if (valuePrimaryKey) {
-            // update
-
+        if (dto.operation === 'update') {
             // asigna valores del core
-            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', dto.ideEmpr);
-            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', dto.ideSucu);
+            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
+            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
             if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
             if (mapObject.has('hora_actua')) mapObject.set('hora_actua', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
-            if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', dto.login);
-
+            if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName);
             mapObject.delete(dto.primaryKey);
             updateQuery.where = `${dto.primaryKey} = $1`
             updateQuery.addParam(1, valuePrimaryKey);
             updateQuery.values = mapObject;
-            await this.dataSource.createQuery(updateQuery);
-
+            return updateQuery;
         }
-        else {
+        else if (dto.operation === 'insert') {
             // insert
             const insertQuery = new InsertQuery(dto.tableName)
-            if (dto.identity === true) {
-                const id = await this.dataSource.getSeqTable(dto.tableName, dto.primaryKey);
-                mapObject.set(dto.primaryKey, id);
-            }
-
             // asigna valores del core
-            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', dto.ideEmpr);
-            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', dto.ideSucu);
+            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
+            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
             if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
             if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
-            if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', dto.login);
-
+            if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', login);
             insertQuery.values = mapObject;
-            await this.dataSource.createQuery(insertQuery);
+            return insertQuery;
         }
+        else if (dto.operation === 'delete') {
+            const deleteQuery = new DeleteQuery(dto.tableName)
+            deleteQuery.where = `${dto.primaryKey} = $1`
+            deleteQuery.addParam(1, valuePrimaryKey);
+            return deleteQuery;
+        }
+    }
+
+    /**
+     * Guarda el listado de objetos 
+     * @param listDto 
+     * @returns 
+     */
+    async save(dto: SaveListDto) {
+        const listQuery = dto.listQuery.map(_obj => {
+            return this.toQuery(_obj, dto.ideEmpr, dto.ideSucu, dto.login);
+        });
+        await this.dataSource.createListQuery(listQuery);
         return {
             message: 'ok'
         };
@@ -97,6 +108,42 @@ export class CoreService {
 
 
     /**
+     * Valida que un valor se único en la base de datos
+     * @param dto 
+     * @returns 
+     */
+    async isUnique(dto: UniqueDto) {
+        const sq = new SelectQuery(`SELECT (1) FROM ${dto.tableName} WHERE ${dto.columnName} = $1`);
+        sq.addParam(1, dto.value);
+        const data = await this.dataSource.createQuery(sq);
+        if (data.length > 0) {
+            throw new InternalServerErrorException(`Restricción única, ya existe un registro con el valor ${dto.value} en la columna ${dto.columnName}`);
+        } else {
+            return {
+                message: 'ok'
+            };
+        }
+    }
+
+    /**
+     * Valida que se pueda eliminar un registro
+     * @param dto 
+     * @returns 
+     */
+    async isDelete(dto: DeleteDto) {
+        const dq = new DeleteQuery(dto.tableName);
+        dq.where = `${dto.primaryKey} = $1`;
+        dq.addParam(1, dto.value);
+        const queryRunner = await this.dataSource.isDelete(dq)
+        return {
+            message: 'ok'
+        };
+    }
+
+
+
+
+    /**  xxxxxxxxxxxxxxxxxxxxxxx
       * Retorna las columnas de una tabla
       * @param ColumnsTableDto 
       * @returns listado de columnas
