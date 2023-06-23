@@ -1,11 +1,8 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { Auth } from './auth/decorators';
-import { SelectDataValuesDto } from './connection/dto/list-data.dto';
 import { CoreService } from './core.service';
-import { TableQueryDto } from './connection/dto/table-query.dto';
-import { SaveListDto } from './connection/dto/save-list.dto';
-import { UniqueDto } from './connection/dto/unique.dto';
-import { DeleteDto } from './connection/dto/detele.dto';
+
+import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto } from './connection/dto';
 
 @Controller('core')
 export class CoreController {
@@ -15,18 +12,18 @@ export class CoreController {
     @Post('getListDataValues')
     //@Auth()
     getListDataValues(
-        @Body() dtoIn: SelectDataValuesDto
+        @Body() dtoIn: ListDataValuesDto
     ) {
         return this.service.getListDataValues(dtoIn);
     }
 
 
-    @Post('getResultQuery')
+    @Post('getTableQuery')
     //@Auth()
-    getSingleResultTable(
+    getTableQuery(
         @Body() dtoIn: TableQueryDto
     ) {
-        return this.service.getResultQuery(dtoIn);
+        return this.service.getTableQuery(dtoIn);
     }
 
 
@@ -56,5 +53,13 @@ export class CoreController {
         return this.service.isDelete(dtoIn);
     }
 
+
+    @Post('getSeqTable')
+    //@Auth()
+    getSeqTable(
+        @Body() dtoIn: SeqTableDto
+    ) {
+        return this.service.getSeqTable(dtoIn);
+    }
 
 }

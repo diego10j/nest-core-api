@@ -1,14 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
-import { ColumnsTableDto } from './connection/dto/columns-table.dto';
-import { SelectDataValuesDto } from './connection/dto/list-data.dto';
-import { TableQueryDto } from './connection/dto/table-query.dto';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
-import { ObjectQueryDto } from './connection/dto/object-query.dto';
-import { SaveListDto } from './connection/dto/save-list.dto';
-import { UniqueDto } from './connection/dto/unique.dto';
-import { DeleteDto } from './connection/dto/detele.dto';
-
+import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto } from './connection/dto';
 @Injectable()
 export class CoreService {
 
@@ -20,7 +13,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async getListDataValues(dto: SelectDataValuesDto) {
+    async getListDataValues(dto: ListDataValuesDto) {
         const where = dto.where && ` WHERE 1=1 AND ${dto.where}`;
         const orderBy = dto.orderBy || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
@@ -35,7 +28,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async getResultQuery(dto: TableQueryDto) {
+    async getTableQuery(dto: TableQueryDto) {
         const columns = dto.columns || '*'; // all columns
         const where = dto.where || '1=1'; // default where
         const orderBy = dto.orderBy || dto.primaryKey;
@@ -58,9 +51,7 @@ export class CoreService {
         const mapObject = new Map(Object.entries(this.dataSource.util.SQL_UTIL.toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
         if (dto.operation === 'update') {
-            // asigna valores del core
-            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
-            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
+            // asigna valores del core            
             if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
             if (mapObject.has('hora_actua')) mapObject.set('hora_actua', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
             if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', login);
@@ -75,8 +66,10 @@ export class CoreService {
             // insert
             const insertQuery = new InsertQuery(dto.tableName)
             // asigna valores del core
-            if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
-            if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
+            if (!this.dataSource.util.isDefined(mapObject.get('ide_empr')))
+                if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
+            if (!this.dataSource.util.isDefined(mapObject.get('ide_sucu')))
+                if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
             if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
             if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
             if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', login);
@@ -140,7 +133,18 @@ export class CoreService {
         };
     }
 
-
+    /**
+     * Retona el secuencial de la tabla
+     * @param dto 
+     * @returns 
+     */
+    async getSeqTable(dto: SeqTableDto) {
+        const seqTable: number = await this.dataSource.getSeqTable(dto.tableName, dto.primaryKey, dto.numberRowsAdded);
+        return {
+            seqTable,
+            message: 'ok'
+        };
+    }
 
 
     /**  xxxxxxxxxxxxxxxxxxxxxxx

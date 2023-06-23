@@ -3,7 +3,7 @@ import { ServiceDto } from 'src/common/dto/service.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
 
-export class SelectDataValuesDto extends PartialType(ServiceDto) {
+export class ListDataValuesDto extends PartialType(ServiceDto) {
 
     @IsString()
     @IsNotEmpty()
