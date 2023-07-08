@@ -125,8 +125,8 @@ export class CoreService {
      */
     async isDelete(dto: DeleteDto) {
         const dq = new DeleteQuery(dto.tableName);
-        dq.where = `${dto.primaryKey} = $1`;
-        dq.addParam(1, dto.value);
+        dq.where = `${dto.primaryKey} = ANY($1)`;
+        dq.addParam(1, dto.values);
         const queryRunner = await this.dataSource.isDelete(dq)
         return {
             message: 'ok'

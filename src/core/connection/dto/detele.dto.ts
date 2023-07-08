@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsDefined } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsString, IsNotEmpty, IsOptional, IsDefined } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
@@ -13,7 +13,10 @@ export class DeleteDto extends PartialType(ServiceDto) {
     @IsNotEmpty()
     primaryKey: string;
 
-    @IsDefined()
-    value: any
+    @IsOptional()
+    @ArrayNotEmpty()
+    @IsNotEmpty({ each: true })
+    @IsArray()
+    values: any[];
 
 }
