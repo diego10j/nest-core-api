@@ -9,3 +9,9 @@ ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 ALTER TABLE "public"."sis_empresa" ALTER COLUMN "logo_empr" TYPE varchar(180)
 GO
 
+/**15/08/2023 Campos tabla articulo*/
+
+ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
+ALTER TABLE inv_articulo ADD COLUMN activo_inarti BOOLEAN;
+ALTER TABLE inv_articulo ADD COLUMN foto_inarti varchar(120);
+UPDATE inv_articulo SET  activo_inarti = true;

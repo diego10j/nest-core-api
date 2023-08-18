@@ -6,8 +6,9 @@ import { AuditController } from './audit/audit.controller';
 import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
 import { ErrorsModule } from '../errors/errors.module';
+import { ProductosModule } from './inventario/productos/productos.module';
 @Module({
-  imports: [ErrorsModule],
+  imports: [ErrorsModule, ProductosModule],
   providers: [DataSourceService, UtilService, AuditService, CoreService],
   exports: [DataSourceService],
   controllers: [AuditController, CoreController],
