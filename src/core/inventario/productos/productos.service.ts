@@ -18,8 +18,7 @@ export class ProductosService {
         uuid,
         nombre_inarti,
         codigo_inarti,
-        nombre_inuni,
-        foto_inarti,
+         foto_inarti,
         (
             select
                 sum (cantidad_indci * signo_intci)
@@ -34,6 +33,7 @@ export class ProductosService {
             GROUP BY
                 dci.ide_inarti
         ) AS existencia,
+        nombre_inuni,
         (
             select
                 precio_cpdfa
@@ -47,7 +47,21 @@ export class ProductosService {
                 fecha_emisi_cpcfa desc
             limit
                 1
-        ) AS ultimo_precio_compra,
+        ) AS precio_compra,
+        (
+            select
+                fecha_emisi_cpcfa
+            from
+                cxp_detall_factur
+                inner join cxp_cabece_factur on cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+            where
+                ide_cpefa = 0
+                and ide_inarti = ARTICULO.ide_inarti
+            order by
+                fecha_emisi_cpcfa desc
+            limit
+                1
+        ) AS fecha_compra,
         activo_inarti
     FROM
         inv_articulo ARTICULO
