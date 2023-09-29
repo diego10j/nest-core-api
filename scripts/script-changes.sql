@@ -18,7 +18,7 @@ UPDATE inv_articulo SET  activo_inarti = true;
 /**18/09/2023 */
 ALTER TABLE inv_articulo ADD COLUMN publicacion_inarti Text;
 CREATE INDEX idx_uuid ON inv_articulo(uuid);
-ALTER TABLE inv_articulo ADD COLUMN tags_inarti varchar[];
+ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
 
 ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Cantidad minima stock
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock

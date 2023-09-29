@@ -2,7 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { Auth } from './auth/decorators';
 import { CoreService } from './core.service';
 
-import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto } from './connection/dto';
+import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto } from './connection/dto';
 
 @Controller('core')
 export class CoreController {
@@ -62,4 +62,12 @@ export class CoreController {
         return this.service.getSeqTable(dtoIn);
     }
 
+
+    @Post('findByUuid')
+    //@Auth()
+    findByUuid(
+        @Body() dtoIn: FindByUuidDto
+    ) {
+        return this.service.findByUuid(dtoIn);
+    }
 }

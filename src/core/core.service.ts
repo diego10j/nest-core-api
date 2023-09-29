@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
-import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto } from './connection/dto';
+import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto } from './connection/dto';
 @Injectable()
 export class CoreService {
 
@@ -144,6 +144,18 @@ export class CoreService {
             seqTable,
             message: 'ok'
         };
+    }
+
+    /**
+     * Busca un regitro de una tabla por uuid
+     * @param dto 
+     * @returns 
+     */
+    async findByUuid(dto: FindByUuidDto) {
+        const columns = dto.columns || '*'; // all columns
+        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE uuid = $1`);
+        pgq.addParam(1, dto.uuid);
+        return await this.dataSource.createSingleQuery(pgq);
     }
 
 
