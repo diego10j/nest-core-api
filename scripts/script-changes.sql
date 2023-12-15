@@ -90,3 +90,7 @@ GO
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
 VALUES(6, 'OTROS', true, 0, 0)
 GO
+
+/**27-11-2023**/
+ALTER TABLE gen_persona ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
+CREATE INDEX idx_uuid_persona ON gen_persona(uuid);

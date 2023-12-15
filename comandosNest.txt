@@ -6,3 +6,5 @@ nest g service errors-logger --flat
 
 
 nest g resource core/inventario/productos --dry-run
+
+nest g resource core/ventas/clientes --dry-run
