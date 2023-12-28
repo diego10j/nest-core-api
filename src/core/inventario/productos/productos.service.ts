@@ -1,6 +1,9 @@
+import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
+import { TrnProductoDto } from './dto/trn-producto.dto';
+import { SaldoInicialDto } from './dto/saldo-inicial.dto';
 
 @Injectable()
 export class ProductosService {
@@ -74,6 +77,117 @@ export class ProductosService {
         ARTICULO.nombre_inarti`);
 
         return await this.dataSource.createQueryPG(query);
+    }
+
+
+    async getTrnProducto(dtoIn: TrnProductoDto) {
+
+        const query = new SelectQuery(`
+        SELECT
+        dci.ide_indci,
+        cci.ide_incci,
+        cci.fecha_trans_incci,
+        nombre_intti,        
+        COALESCE(
+            (
+                select
+                    secuencial_cccfa
+                from
+                    cxc_cabece_factura
+                where
+                    ide_cccfa = dci.ide_cccfa
+            ),
+            (
+                select
+                    numero_cpcfa
+                from
+                    cxp_cabece_factur
+                where
+                    ide_cpcfa = dci.ide_cpcfa
+            )
+        ) as NUM_DOCUMENTO,
+        nom_geper,
+        case
+            when signo_intci = 1 THEN cantidad_indci
+        end as INGRESO,
+        case
+            when signo_intci = -1 THEN cantidad_indci
+        end as EGRESO,
+        precio_indci as PRECIO,
+        '' as SALDO
+    from
+        inv_det_comp_inve dci
+        left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+        left join gen_persona gpe on cci.ide_geper = gpe.ide_geper
+        left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+        left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+        left join inv_articulo arti on dci.ide_inarti = arti.ide_inarti
+    where
+        dci.ide_inarti = $1
+        AND fecha_trans_incci BETWEEN $2 AND $3
+        AND ide_inepi = 1 -- " + utilitario.getVariable(" p_inv_estado_normal ")
+    ORDER BY cci.fecha_trans_incci asc,dci.ide_indci asc,signo_intci asc`);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        const res: ResultQuery = await this.dataSource.createQueryPG(query);
+        // Calcula saldos
+        const saldoInicial: number = await this.getSaldoInicial(dtoIn.ide_inarti, dtoIn.fechaInicio);
+        let saldoCalcula: number = saldoInicial;
+        res.rows.forEach(row => {
+            const { ingreso, egreso } = row;
+            saldoCalcula = saldoCalcula + Number(ingreso) - Number(egreso);
+            row.saldo = saldoCalcula;
+        });
+        if (saldoInicial !== 0) {
+            res.rows.unshift({
+                "ide_indci": 0,
+                "ide_incci": null,
+                "fecha_trans_incci": this.dataSource.util.DATE_UTIL.getDateFormatFront(dtoIn.fechaInicio),
+                "nombre_intti": "Saldo Inicial",
+                "nom_geper": `SALDO INICIAL AL ${this.dataSource.util.DATE_UTIL.getDateFormatFront(dtoIn.fechaInicio)}`,
+                "num_documento": null,
+                "ingreso": null,
+                "egreso": null,
+                "precio": null,
+                "saldo": saldoInicial
+            });
+            res.rowCount = res.rowCount + 1;
+        }
+
+        return res;
+
+
+    }
+
+    /**
+     * Retorna saldo inicial de un producto a una determinada fecha de corte
+     * @param ide_inarti 
+     * @param fechaCorte 
+     * @returns 
+     */
+    async getSaldoInicial(ide_inarti: number, fechaCorte: Date): Promise<number> {
+        let saldoInicial = 0;
+        const querySaldoInicial = new SelectQuery(`     
+        SELECT sum(cantidad_indci *signo_intci) as saldo
+        from
+            inv_det_comp_inve dci
+            left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+            left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+            left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+        where
+            dci.ide_inarti = $1
+            AND fecha_trans_incci <  $2
+            AND ide_inepi = 1 -- " + utilitario.getVariable(" p_inv_estado_normal ")
+        GROUP BY   ide_inarti `);
+        querySaldoInicial.addIntParam(1, ide_inarti);
+        querySaldoInicial.addDateParam(2, fechaCorte);
+        const data = await this.dataSource.createQuery(querySaldoInicial);
+        console.log(data);
+        if (data.length) {
+            saldoInicial = Number(data[0].saldo);
+        }
+        return saldoInicial;
     }
 
 
