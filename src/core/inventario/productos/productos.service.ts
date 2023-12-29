@@ -3,16 +3,25 @@ import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
-import { SaldoInicialDto } from './dto/saldo-inicial.dto';
+import { ComprasProductoDto } from './dto/compras-producto.dto';
 
 @Injectable()
 export class ProductosService {
 
+    private variables = new Map();
+
     constructor(private readonly dataSource: DataSourceService
     ) {
+        // obtiene las variables del sistema para el servicio
+        this.dataSource.getVariables([
+            'p_inv_estado_normal',  // 1
+            'p_cxp_estado_factura_normal', // 1
+            'p_parx'
+        ]).then(result => {
+            this.variables = result;
+        });
+
     }
-
-
 
     async getProductos() {
 
@@ -32,7 +41,7 @@ export class ProductosService {
                 left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
             where
                 dci.ide_inarti = ARTICULO.ide_inarti
-                and ide_inepi = 1 -- -- " + utilitario.getVariable(" p_inv_estado_normal ") + "
+                and ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
             GROUP BY
                 dci.ide_inarti
         ) AS existencia,
@@ -83,7 +92,7 @@ export class ProductosService {
     async getTrnProducto(dtoIn: TrnProductoDto) {
 
         const query = new SelectQuery(`
-        SELECT
+    SELECT
         dci.ide_indci,
         cci.ide_incci,
         cci.fecha_trans_incci,
@@ -115,17 +124,17 @@ export class ProductosService {
         end as EGRESO,
         precio_indci as PRECIO,
         '' as SALDO
-    from
+    FROM
         inv_det_comp_inve dci
         left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
         left join gen_persona gpe on cci.ide_geper = gpe.ide_geper
         left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
         left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
         left join inv_articulo arti on dci.ide_inarti = arti.ide_inarti
-    where
+    WHERE
         dci.ide_inarti = $1
         AND fecha_trans_incci BETWEEN $2 AND $3
-        AND ide_inepi = 1 -- " + utilitario.getVariable(" p_inv_estado_normal ")
+        AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
     ORDER BY cci.fecha_trans_incci asc,dci.ide_indci asc,signo_intci asc`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
@@ -160,6 +169,35 @@ export class ProductosService {
 
     }
 
+
+    async getComprasProducto(dtoIn: ComprasProductoDto) {
+        const query = new SelectQuery(`
+    SELECT
+        cdf.ide_cpdfa,
+        cf.fecha_emisi_cpcfa,
+        numero_cpcfa,
+        nom_geper,
+        cdf.cantidad_cpdfa,
+        cdf.precio_cpdfa,
+        cdf.valor_cpdfa
+    FROM
+        cxp_detall_factur cdf
+        left join cxp_cabece_factur cf on cf.ide_cpcfa = cdf.ide_cpcfa
+        left join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+        left join gen_persona p on cf.ide_geper = p.ide_geper
+    WHERE
+        cdf.ide_inarti =  $1
+        and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
+        and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+    ORDER BY cf.fecha_emisi_cpcfa, numero_cpcfa`);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQueryPG(query);
+    }
+
+
+
     /**
      * Retorna saldo inicial de un producto a una determinada fecha de corte
      * @param ide_inarti 
@@ -178,12 +216,11 @@ export class ProductosService {
         where
             dci.ide_inarti = $1
             AND fecha_trans_incci <  $2
-            AND ide_inepi = 1 -- " + utilitario.getVariable(" p_inv_estado_normal ")
+            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
         GROUP BY   ide_inarti `);
         querySaldoInicial.addIntParam(1, ide_inarti);
         querySaldoInicial.addDateParam(2, fechaCorte);
         const data = await this.dataSource.createQuery(querySaldoInicial);
-        console.log(data);
         if (data.length) {
             saldoInicial = Number(data[0].saldo);
         }
