@@ -8,8 +8,9 @@ import { CoreService } from './core.service';
 import { ErrorsModule } from '../errors/errors.module';
 import { ProductosModule } from './inventario/productos/productos.module';
 import { ClientesModule } from './ventas/clientes/clientes.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 @Module({
-  imports: [ErrorsModule, ProductosModule, ClientesModule],
+  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule],
   providers: [DataSourceService, UtilService, AuditService, CoreService],
   exports: [DataSourceService],
   controllers: [AuditController, CoreController],

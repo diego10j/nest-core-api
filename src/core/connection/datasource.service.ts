@@ -311,8 +311,8 @@ export class DataSourceService {
         resp.forEach(data => {
             respMap.set(data.nom_para, data.valor_para);
         });
-        if (lowercaseArray.length !== respMap.size ){
-            throw new InternalServerErrorException(
+        if (lowercaseArray.length !== respMap.size) {
+            console.log(
                 `No se encontraron todas las variables del sistema`
             );
         }

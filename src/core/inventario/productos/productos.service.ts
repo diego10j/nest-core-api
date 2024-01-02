@@ -16,7 +16,6 @@ export class ProductosService {
         this.dataSource.getVariables([
             'p_inv_estado_normal',  // 1
             'p_cxp_estado_factura_normal', // 1
-            'p_parx'
         ]).then(result => {
             this.variables = result;
         });
@@ -221,11 +220,11 @@ export class ProductosService {
         querySaldoInicial.addIntParam(1, ide_inarti);
         querySaldoInicial.addDateParam(2, fechaCorte);
         const data = await this.dataSource.createQuery(querySaldoInicial);
+        console.log(data);
         if (data.length) {
             saldoInicial = Number(data[0].saldo);
         }
         return saldoInicial;
     }
-
 
 }

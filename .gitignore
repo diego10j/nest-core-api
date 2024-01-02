@@ -46,3 +46,4 @@ lerna-debug.log*
 !.vscode/extensions.json
 yarn.lock
 *.png
+*.jpeg
