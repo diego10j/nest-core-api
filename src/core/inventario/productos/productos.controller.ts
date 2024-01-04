@@ -5,6 +5,7 @@ import { ProductosService } from './productos.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 // import { Auth } from '../../../core/auth/decorators';
+import { IdProductoDto } from './dto/id-producto.dto';
 
 @Controller('productos')
 export class ProductosController {
@@ -25,6 +26,32 @@ export class ProductosController {
     @Body() dtoIn: TrnProductoDto
   ) {
     return this.service.getTrnProducto(dtoIn);
+  }
+
+  @Post('getComprasProducto')
+  // @Auth()
+  getComprasProducto(
+    @Body() dtoIn: TrnProductoDto
+  ) {
+    return this.service.getComprasProducto(dtoIn);
+  }
+
+
+  @Post('getVentasProducto')
+  // @Auth()
+  getVentasProducto(
+    @Body() dtoIn: TrnProductoDto
+  ) {
+    return this.service.getVentasProducto(dtoIn);
+  }
+
+
+  @Post('getUltimosPreciosCompras')
+  // @Auth()
+  getUltimosPreciosCompras(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getUltimosPreciosCompras(dtoIn);
   }
 
 }

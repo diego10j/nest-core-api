@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
-import { ComprasProductoDto } from './dto/compras-producto.dto';
+import { IdProductoDto } from './dto/id-producto.dto';
 
 @Injectable()
 export class ProductosService {
@@ -15,13 +15,17 @@ export class ProductosService {
         // obtiene las variables del sistema para el servicio
         this.dataSource.getVariables([
             'p_inv_estado_normal',  // 1
-            'p_cxp_estado_factura_normal', // 1
+            'p_cxp_estado_factura_normal', // 0
+            'p_cxc_estado_factura_normal'  // 0
         ]).then(result => {
             this.variables = result;
         });
 
     }
-
+    /**
+     * Retorna el listado de Productos
+     * @returns 
+     */
     async getProductos() {
 
         const query = new SelectQuery(`SELECT
@@ -87,7 +91,11 @@ export class ProductosService {
         return await this.dataSource.createQueryPG(query);
     }
 
-
+    /**
+     * Retorna las transacciones de ingreso/egreso de un producto en un rango de fechas
+     * @param dtoIn 
+     * @returns 
+     */
     async getTrnProducto(dtoIn: TrnProductoDto) {
 
         const query = new SelectQuery(`
@@ -134,7 +142,8 @@ export class ProductosService {
         dci.ide_inarti = $1
         AND fecha_trans_incci BETWEEN $2 AND $3
         AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-    ORDER BY cci.fecha_trans_incci asc,dci.ide_indci asc,signo_intci asc`);
+    ORDER BY 
+        cci.fecha_trans_incci asc,dci.ide_indci asc,signo_intci asc`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -168,8 +177,45 @@ export class ProductosService {
 
     }
 
+    /**
+     * Retorna las facturas de ventas de un producto determinado en un rango de fechas
+     * @param dtoIn 
+     * @returns 
+     */
+    async getVentasProducto(dtoIn: TrnProductoDto) {
+        const query = new SelectQuery(`
+        SELECT
+            cdf.ide_ccdfa,
+            cf.fecha_emisi_cccfa,
+            secuencial_ccdfa,
+            nom_geper,
+            cdf.cantidad_ccdfa,
+            cdf.precio_ccdfa,
+            cdf.total_ccdfa
+        FROM
+            cxc_deta_factura cdf
+            left join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
+            left join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+            left join gen_persona p on cf.ide_geper = p.ide_geper
+        WHERE
+            cdf.ide_inarti =  $1
+            and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
+            and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+        ORDER BY 
+            cf.fecha_emisi_cccfa, secuencial_ccdfa`);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQueryPG(query);
+    }
 
-    async getComprasProducto(dtoIn: ComprasProductoDto) {
+
+    /**
+     * Retorna las facturas de compras de un producto determinado en un rango de fechas
+     * @param dtoIn 
+     * @returns 
+     */
+    async getComprasProducto(dtoIn: TrnProductoDto) {
         const query = new SelectQuery(`
     SELECT
         cdf.ide_cpdfa,
@@ -188,13 +234,53 @@ export class ProductosService {
         cdf.ide_inarti =  $1
         and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
         and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
-    ORDER BY cf.fecha_emisi_cpcfa, numero_cpcfa`);
+    ORDER BY 
+        cf.fecha_emisi_cpcfa, numero_cpcfa`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
         return await this.dataSource.createQueryPG(query);
     }
 
+    /**
+     * Retorna los últimos precios de compra a proveddores de un producto determinado
+     * @param dtoIn 
+     * @returns 
+     */
+    async getUltimosPreciosCompras(dtoIn: IdProductoDto) {
+        const query = new SelectQuery(`
+        SELECT
+        distinct b.ide_geper,nom_geper,max(b.fecha_emisi_cpcfa) as fecha_ultima_venta,
+            (select cantidad_cpdfa from cxp_detall_factur  
+            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
+            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$1 
+            order by fecha_emisi_cpcfa desc limit 1) as cantidad,
+            (select precio_cpdfa from cxp_detall_factur  
+            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
+            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$2 
+            order by fecha_emisi_cpcfa desc limit 1) as precio,
+            (select valor_cpdfa  from cxp_detall_factur  
+            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
+            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$3 
+            order by fecha_emisi_cpcfa desc limit 1) as total
+        FROM 
+            cxp_detall_factur a 
+            inner join cxp_cabece_factur b on a.ide_cpcfa=b.ide_cpcfa
+            inner join gen_persona c on b.ide_geper=c.ide_geper
+        WHERE
+            ide_cpefa=${this.variables.get('p_cxp_estado_factura_normal')}
+            and a.ide_inarti=$4
+        GROUP BY 
+            a.ide_inarti,b.ide_geper,nom_geper
+        ORDER BY 
+            3,nom_geper desc       
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addIntParam(2, dtoIn.ide_inarti);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addIntParam(4, dtoIn.ide_inarti);
+        return await this.dataSource.createQueryPG(query);
+    }
 
 
     /**
@@ -207,20 +293,20 @@ export class ProductosService {
         let saldoInicial = 0;
         const querySaldoInicial = new SelectQuery(`     
         SELECT sum(cantidad_indci *signo_intci) as saldo
-        from
+        FROM
             inv_det_comp_inve dci
             left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
             left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
             left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
-        where
+        WHERE
             dci.ide_inarti = $1
             AND fecha_trans_incci <  $2
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-        GROUP BY   ide_inarti `);
+        GROUP BY   
+            ide_inarti `);
         querySaldoInicial.addIntParam(1, ide_inarti);
         querySaldoInicial.addDateParam(2, fechaCorte);
         const data = await this.dataSource.createQuery(querySaldoInicial);
-        console.log(data);
         if (data.length) {
             saldoInicial = Number(data[0].saldo);
         }

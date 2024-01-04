@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
-import * as https from 'https';
 import { ServiceDto } from 'src/common/dto/service.dto';
-import { ActivarNumeroDto } from './dto/activar-numbero.dto';
+import { MensajeChatDto } from './dto/mensaje-chat.dto';
+import { HttpService } from '@nestjs/axios';
+import { AxiosRequestConfig } from 'axios';
 
 @Injectable()
 export class ChatbotService {
@@ -10,15 +11,20 @@ export class ChatbotService {
     private WHATSAPP_ID: string;
     private WHATSAPP_TOKEN: string;
 
-    constructor(private readonly dataSource: DataSourceService
+    constructor(private readonly httpService: HttpService,
+        private readonly dataSource: DataSourceService
     ) {
         // Recupera valores variables de entorno
         this.WHATSAPP_ID = process.env.WHATSAPP_API_ID;
         this.WHATSAPP_TOKEN = process.env.WHATSAPP_API_TOKEN;
     }
 
-
-    activarNumero(dtoIn: ActivarNumeroDto) {
+    /**
+     * Envia mensaje de la plantilla activar mensajes
+     * @param dtoIn 
+     * @returns 
+     */
+    async activarNumero(dtoIn: MensajeChatDto) {
         const data = JSON.stringify(
             {
                 "messaging_product": "whatsapp",
@@ -32,31 +38,34 @@ export class ChatbotService {
                 }
             }
         );
-
-        this.sendMessageWhatsApp(data);
-
+        const resp = await this.sendMessageWhatsApp(data);
         return {
-            ok: true
+            mensaje: 'ok',
+            data: resp
         }
     }
 
-    sendTextMessage(dtoIn: ServiceDto) {
-        const data = JSON.stringify({
+    /**
+     * Envia un mensaje a un numero determinado
+     * @param dtoIn 
+     * @returns 
+     */
+    async enviarMensaje(dtoIn: MensajeChatDto) {
+
+        const data = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": "593983113543",
+            "to": dtoIn.telefono,
             "type": "text",
             "text": {
                 "preview_url": false,
-                "body": "Mensaje de prueba enviado por *ProduBot*"
+                "body": dtoIn.mensaje  //"Mensaje de prueba enviado por *ProduBot*"
             }
-        });
-
-
-        this.sendMessageWhatsApp(data);
-
+        };
+        const resp = await this.sendMessageWhatsApp(data);
         return {
-            ok: true
+            mensaje: 'ok',
+            data: resp
         }
     }
 
@@ -64,29 +73,24 @@ export class ChatbotService {
     * Consume Api Whatsapp para enviar mensaje
     * @param data
     */
-    sendMessageWhatsApp(data: any) {
-        const options = {
-            host: "graph.facebook.com",
-            path: `/v17.0/${this.WHATSAPP_ID}/messages`,
-            method: "POST",
-            body: data,
+    async sendMessageWhatsApp(data: any) {
+
+        const URL = `https://graph.facebook.com/v17.0/${this.WHATSAPP_ID}/messages`;
+
+        const requestConfig: AxiosRequestConfig = {
             headers: {
-                "Content-Type": "application/json",
+                'Content-Type': 'application/json',
                 Authorization: `Bearer ${this.WHATSAPP_TOKEN}`
             }
         };
-        const req = https.request(options, res => {
-            res.on("data", d => {
-                process.stdout.write(d);
-            });
-        });
-
-        req.on("error", error => {
-            console.error(error);
-        });
-
-        req.write(data);
-        req.end();
+        try {
+            const resp = await this.httpService.axiosRef.post(URL, data, requestConfig);
+            return resp.data;
+        } catch (error) {
+            throw new InternalServerErrorException(
+                `[ERROR]: sendMessageWhatsApp ${error}`
+            );
+        }
     }
 
 }

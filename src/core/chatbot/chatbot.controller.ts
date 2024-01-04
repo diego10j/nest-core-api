@@ -1,6 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ChatbotService } from './chatbot.service';
-import { ActivarNumeroDto } from './dto/activar-numbero.dto';
+import { MensajeChatDto } from './dto/mensaje-chat.dto';
 
 @Controller('chatbot')
 export class ChatbotController {
@@ -9,8 +9,17 @@ export class ChatbotController {
   @Post('activarNumero')
   // @Auth()
   activarNumero(
-    @Body() dtoIn: ActivarNumeroDto
+    @Body() dtoIn: MensajeChatDto
   ) {
     return this.service.activarNumero(dtoIn);
   }
+
+  @Post('enviarMensaje')
+  // @Auth()
+  enviarMensaje(
+    @Body() dtoIn: MensajeChatDto
+  ) {
+    return this.service.enviarMensaje(dtoIn);
+  }
+  
 }

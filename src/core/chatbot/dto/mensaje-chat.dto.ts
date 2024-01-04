@@ -2,7 +2,7 @@ import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, Matc
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
-export class ActivarNumeroDto extends PartialType(ServiceDto) {
+export class MensajeChatDto extends PartialType(ServiceDto) {
 
     @IsString()
     @IsNotEmpty()
@@ -12,5 +12,8 @@ export class ActivarNumeroDto extends PartialType(ServiceDto) {
     })
     telefono: Number;
 
+    @IsString()
+    @IsOptional()
+    mensaje?: string;
 
 }
