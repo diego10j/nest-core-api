@@ -47,3 +47,4 @@ lerna-debug.log*
 yarn.lock
 *.png
 *.jpeg
+package-lock.json
