@@ -4,5 +4,6 @@ export interface ResultQuery {
     rowCount: number;
     rows: any[];
     columns: Column[];
-    primaryKey:string;
+    key?: string;  // primaryKey
+    ref?: string;  // tableName
 }

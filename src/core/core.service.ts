@@ -34,7 +34,10 @@ export class CoreService {
         const orderBy = dto.orderBy || dto.primaryKey;
         const limit = dto.limit ? `LIMIT ${dto.limit}` : '';
         const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} ${limit}`);
-        return await this.dataSource.createQueryPG(pgq);
+        const result = await this.dataSource.createQueryPG(pgq);
+        result.key = dto.primaryKey;
+        result.ref = dto.tableName;
+        return result
     }
 
 

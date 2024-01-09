@@ -111,7 +111,7 @@ export class DataSourceService {
                 rowCount: res.rowCount,
                 rows: res.rows,
                 columns: cols,
-                primaryKey
+                key: primaryKey
             } as ResultQuery;
 
         } catch (error) {
