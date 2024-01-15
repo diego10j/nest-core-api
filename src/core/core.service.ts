@@ -19,7 +19,7 @@ export class CoreService {
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
                                     FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createQuery(pq);
-        data.unshift({ value: '', label: '' }); //Add empty select option
+       // data.unshift({ value: '', label: '' }); //Add empty select option
         return data
     }
 

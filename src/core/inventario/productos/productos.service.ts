@@ -4,6 +4,7 @@ import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
+import { getNumberFormat } from '../../util/helpers/number-util';
 
 @Injectable()
 export class ProductosService {
@@ -33,7 +34,7 @@ export class ProductosService {
         uuid,
         nombre_inarti,
         codigo_inarti,
-         foto_inarti,
+        foto_inarti,
         (
             select
                 sum (cantidad_indci * signo_intci)
@@ -123,14 +124,14 @@ export class ProductosService {
             )
         ) as NUM_DOCUMENTO,
         nom_geper,
+        precio_indci as PRECIO,
         case
             when signo_intci = 1 THEN cantidad_indci
         end as INGRESO,
         case
             when signo_intci = -1 THEN cantidad_indci
         end as EGRESO,
-        precio_indci as PRECIO,
-        '' as SALDO
+        0.00 as SALDO
     FROM
         inv_det_comp_inve dci
         left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
@@ -154,7 +155,7 @@ export class ProductosService {
         res.rows.forEach(row => {
             const { ingreso, egreso } = row;
             saldoCalcula = saldoCalcula + Number(ingreso) - Number(egreso);
-            row.saldo = saldoCalcula;
+            row.saldo = getNumberFormat(saldoCalcula, 3);
         });
         if (saldoInicial !== 0) {
             res.rows.unshift({
@@ -190,7 +191,6 @@ export class ProductosService {
             secuencial_ccdfa,
             nom_geper,
             cdf.cantidad_ccdfa,
-            cdf.precio_ccdfa,
             cdf.total_ccdfa
         FROM
             cxc_deta_factura cdf
