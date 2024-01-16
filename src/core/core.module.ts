@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
-import { UtilService } from './util/util.service';
 import { AuditService } from './audit/audit.service';
 import { AuditController } from './audit/audit.controller';
 import { CoreController } from './core.controller';
@@ -11,7 +10,7 @@ import { ClientesModule } from './ventas/clientes/clientes.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 @Module({
   imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule],
-  providers: [DataSourceService, UtilService, AuditService, CoreService],
+  providers: [DataSourceService, AuditService, CoreService],
   exports: [DataSourceService],
   controllers: [AuditController, CoreController],
 })

@@ -2,6 +2,11 @@ import { BadRequestException, Injectable, InternalServerErrorException } from '@
 import { DataSourceService } from './connection/datasource.service';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
 import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto } from './connection/dto';
+import { validate } from 'class-validator';
+import { ClassConstructor, plainToClass } from "class-transformer";
+import { getDateFormat, getTimeFormat } from './util/helpers/date-util';
+import { toObjectTable } from './util/helpers/sql-util';
+import { isDefined } from './util/helpers/common-util';
 @Injectable()
 export class CoreService {
 
@@ -19,7 +24,7 @@ export class CoreService {
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
                                     FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createQuery(pq);
-       // data.unshift({ value: '', label: '' }); //Add empty select option
+        // data.unshift({ value: '', label: '' }); //Add empty select option
         return data
     }
 
@@ -51,12 +56,12 @@ export class CoreService {
      */
     toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string): UpdateQuery | DeleteQuery | InsertQuery {
         dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
-        const mapObject = new Map(Object.entries(this.dataSource.util.SQL_UTIL.toObjectTable(dto.object)));
+        const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
         if (dto.operation === 'update') {
             // asigna valores del core            
-            if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
-            if (mapObject.has('hora_actua')) mapObject.set('hora_actua', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
+            if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', getDateFormat(new Date()));
+            if (mapObject.has('hora_actua')) mapObject.set('hora_actua', getTimeFormat(new Date()));
             if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName);
             mapObject.delete(dto.primaryKey);
@@ -69,12 +74,12 @@ export class CoreService {
             // insert
             const insertQuery = new InsertQuery(dto.tableName)
             // asigna valores del core
-            if (!this.dataSource.util.isDefined(mapObject.get('ide_empr')))
+            if (!isDefined(mapObject.get('ide_empr')))
                 if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
-            if (!this.dataSource.util.isDefined(mapObject.get('ide_sucu')))
+            if (!isDefined(mapObject.get('ide_sucu')))
                 if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
-            if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', this.dataSource.util.DATE_UTIL.getDateFormat(new Date()));
-            if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', this.dataSource.util.DATE_UTIL.getTimeFormat(new Date()));
+            if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', getDateFormat(new Date()));
+            if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', getTimeFormat(new Date()));
             if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', login);
             insertQuery.values = mapObject;
             return insertQuery;
@@ -169,7 +174,7 @@ export class CoreService {
       */
     async getColumnsTable(dto: ColumnsTableDto) {
         //Valida DTO
-        await this.dataSource.util.validateDTO(ColumnsTableDto, dto);
+        await this.validateDTO(ColumnsTableDto, dto);
 
         const pq = new SelectQuery(`SELECT 
                     lower(column_name) as nombre,
@@ -263,7 +268,24 @@ export class CoreService {
 
 
 
-
+    /**
+     * Valida que un objeto cumpla la estructura de la clase DTO
+     */
+    validateDTO = async <T extends ClassConstructor<any>>(
+        dto: T,
+        obj: Object
+    ) => {
+        // tranform the literal object to class object
+        const objInstance = plainToClass(dto, obj);
+        // validating and check the errors, throw the errors if exist
+        const errors = await validate(objInstance);
+        // errors is an array of validation errors
+        if (errors.length > 0) {
+            throw new BadRequestException(
+                `${errors}`
+            );
+        }
+    };
 
 
 }

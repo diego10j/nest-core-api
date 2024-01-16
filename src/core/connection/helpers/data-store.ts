@@ -6,6 +6,7 @@ import { InsertQuery } from './insert-query';
 import { UpdateQuery } from './update-query';
 import { DeleteQuery } from './delete-query';
 import { Column } from '../interfaces/column';
+import { isDefined } from '../../util/helpers/common-util';
 
 
 export class DataStore {
@@ -93,10 +94,10 @@ export class DataStore {
     setValue(index: number, column: string, value: any) {
         this.data[index][column] = value;
         if (this.isDataStoreQuery === false) {
-            if (!this.dataSource.util.isDefined(this.data[index]['insert'])) {
+            if (!isDefined(this.data[index]['insert'])) {
                 this.data[index]['update'] = true;
                 let colsUpdate = [];
-                if (this.dataSource.util.isDefined(this.data[index]['colsUpdate'])) {
+                if (isDefined(this.data[index]['colsUpdate'])) {
                     colsUpdate = this.data[index]['colsUpdate'];
                 }
                 colsUpdate.indexOf(column) === -1 ? colsUpdate.push(column) : colsUpdate;
@@ -108,7 +109,7 @@ export class DataStore {
 
 
     delete(index: number) {
-        if (!this.dataSource.util.isDefined(this.data[index]['insert'])) {
+        if (!isDefined(this.data[index]['insert'])) {
             this.data[index]['delete'] = true;
         }
     }

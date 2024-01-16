@@ -4,6 +4,8 @@ import { DeleteQuery, InsertQuery, SelectQuery } from '../connection/helpers';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
 import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventAudit } from './enum/event-audit';
+import { getCurrentDate, getCurrentTime } from '../util/helpers/date-util';
+import { isDefined } from '../util/helpers/common-util';
 
 @Injectable()
 export class AuditService {
@@ -30,8 +32,8 @@ export class AuditService {
          ds_auditoria.insert();
          ds_auditoria.setValue(0, 'ide_usua', ide_usua);
          ds_auditoria.setValue(0, 'ide_acau', ide_acau);
-         ds_auditoria.setValue(0, 'fecha_auac', this.dataSource.util.DATE_UTIL.getCurrentDate());
-         ds_auditoria.setValue(0, 'hora_auac', this.dataSource.util.DATE_UTIL.getCurrentTime());
+         ds_auditoria.setValue(0, 'fecha_auac', getCurrentDate());
+         ds_auditoria.setValue(0, 'hora_auac', getCurrentTime());
          ds_auditoria.setValue(0, 'ip_auac', ip);
          ds_auditoria.setValue(0, 'fin_auac', fin_auac);
          ds_auditoria.setValue(0, 'id_session_auac', dispositivo);
@@ -42,8 +44,8 @@ export class AuditService {
         const insertQuery = new InsertQuery('sis_auditoria_acceso');
         insertQuery.values.set('ide_usua', ide_usua);
         insertQuery.values.set('ide_acau', ide_acau);
-        insertQuery.values.set('fecha_auac', this.dataSource.util.DATE_UTIL.getCurrentDate());
-        insertQuery.values.set('hora_auac', this.dataSource.util.DATE_UTIL.getCurrentTime());
+        insertQuery.values.set('fecha_auac', getCurrentDate());
+        insertQuery.values.set('hora_auac', getCurrentTime());
         insertQuery.values.set('ip_auac', ip);
         insertQuery.values.set('fin_auac', fin_auac);
         insertQuery.values.set('id_session_auac', dispositivo);
@@ -59,7 +61,7 @@ export class AuditService {
      */
     async getEventosAuditoria(dtoIn: EventosAuditoriaDto) {
         const { fechaInicio, fechaFin, ide_usua } = dtoIn;
-        const condUsuario = this.dataSource.util.isDefined(ide_usua) ? ' and a.ide_usua = $3' : '';
+        const condUsuario = isDefined(ide_usua) ? ' and a.ide_usua = $3' : '';
         const queryPass = new SelectQuery(`
         select a.ide_auac,fecha_auac,hora_auac,nom_usua,nom_acau,
         (select nom_opci from sis_opcion where ide_opci = CAST (a.detalle_auac as INTEGER) and a.ide_acau=11) as pantalla,
@@ -72,7 +74,7 @@ export class AuditService {
         order by fecha_auac desc ,hora_auac desc, nom_usua`);
         queryPass.addDateParam(1, fechaInicio);
         queryPass.addDateParam(2, fechaFin);
-        if (this.dataSource.util.isDefined(ide_usua))
+        if (isDefined(ide_usua))
             queryPass.addIntParam(3, ide_usua);
         return await this.dataSource.createQueryPG(queryPass);
     }

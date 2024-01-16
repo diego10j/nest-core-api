@@ -1,11 +1,14 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { UtilService } from '../util/util.service';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
 import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
+import { removeEqualsElements } from '../util/helpers/array-util';
+import { getDateFormatFront, getDateTimeFormatFront, getTimeFormat } from '../util/helpers/date-util';
+import { getCountStringInText } from '../util/helpers/string-util';
+import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../util/helpers/sql-util';
 
 @Injectable()
 export class DataSourceService {
@@ -23,13 +26,12 @@ export class DataSourceService {
     private TYPE_TIMESTAMPTZ = 1184;
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
-        private readonly errorsLoggerService: ErrorsLoggerService,
-        readonly util: UtilService,
+        private readonly errorsLoggerService: ErrorsLoggerService
     ) {
         // Parse types bdd
-        types.setTypeParser(this.TYPE_DATESTAMP, (date) => this.util.DATE_UTIL.getDateFormatFront(date));
-        types.setTypeParser(this.TYPE_TIMESTAMP, (date) => this.util.DATE_UTIL.getDateTimeFormatFront(date));
-        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => this.util.DATE_UTIL.getTimeFormat(date));
+        types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormatFront(date));
+        types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormatFront(date));
+        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
     }
 
 
@@ -71,17 +73,17 @@ export class DataSourceService {
             const tablesID: number[] = res.fields.map(_element => {
                 return _element['tableID'];
             });
-            const resSchema = isSchema ? await this.getColumnsSchema(this.util.ARRAY_UTIL.removeEqualsElements(columnsNames), this.util.ARRAY_UTIL.removeEqualsElements(tablesID)) : [];
+            const resSchema = isSchema ? await this.getColumnsSchema(removeEqualsElements(columnsNames), removeEqualsElements(tablesID)) : [];
             const typesCols = res._types._types.builtins;
             const cols = res.fields.map((_col, index) => {
                 if (index === 0) primaryKey = _col.name;
-                const dataTypeCore = this.util.SQL_UTIL.getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
-                const alignColumn = this.util.SQL_UTIL.getAlignCoreColumn(dataTypeCore);
+                const dataTypeCore = getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const alignColumn = getAlignCoreColumn(dataTypeCore);
                 const [colSchema] = isSchema ? resSchema.filter(_element => _element['name'] === _col.name) : [{}];
-                const sizeColumn = this.util.SQL_UTIL.getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
-                const defaultValue = this.util.SQL_UTIL.getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
-                const componentCore = this.util.SQL_UTIL.getComponentColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
-                const visible = _col.name === primaryKey ? false : this.util.SQL_UTIL.getVisibleCoreColumn(_col.name);
+                const sizeColumn = getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
+                const defaultValue = getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const componentCore = getComponentColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
+                const visible = _col.name === primaryKey ? false : getVisibleCoreColumn(_col.name);
 
                 return {
                     name: _col.name,
@@ -125,17 +127,17 @@ export class DataSourceService {
     private async formatSqlQuery(query: Query) {
         //Forma sentencia sql
         try {
-            if (query instanceof InsertQuery) this.util.SQL_UTIL.getSqlInsert(query);
-            else if (query instanceof UpdateQuery) this.util.SQL_UTIL.getSqlUpdate(query);
-            else if (query instanceof DeleteQuery) this.util.SQL_UTIL.getSqlDelete(query);
-            else if (query instanceof SelectQuery) this.util.SQL_UTIL.getSqlSelect(query);
+            if (query instanceof InsertQuery) getSqlInsert(query);
+            else if (query instanceof UpdateQuery) getSqlUpdate(query);
+            else if (query instanceof DeleteQuery) getSqlDelete(query);
+            else if (query instanceof SelectQuery) getSqlSelect(query);
         }
         catch (error) {
             this.errorsLoggerService.createErrorLog(`[ERROR] formatSqlQuery`, error);
             throw new InternalServerErrorException(error);
         }
         //Valida que exista el mismo numero de $ con los valores de los parámetros
-        const countParams = this.util.STRING_UTIL.getCountStringInText("$", query.query);
+        const countParams = getCountStringInText("$", query.query);
         if (countParams !== query.paramValues.length) {
             throw new InternalServerErrorException(
                 "[ERROR] Número de parámetros es diferente a la cantidad $ en el query"
@@ -299,7 +301,7 @@ export class DataSourceService {
      * @returns 
      */
     async getVariables(listVariables: string[]) {
-        listVariables = this.util.ARRAY_UTIL.removeEqualsElements(listVariables);
+        listVariables = removeEqualsElements(listVariables);
         const lowercaseArray = listVariables.map(item => item.toLowerCase());
         const pq = new SelectQuery(`
             SELECT nom_para,valor_para

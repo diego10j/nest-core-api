@@ -54,4 +54,12 @@ export class ProductosController {
     return this.service.getUltimosPreciosCompras(dtoIn);
   }
 
+  @Post('getSaldo')
+  // @Auth()
+  getSaldo(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getSaldo(dtoIn);
+  }
+
 }

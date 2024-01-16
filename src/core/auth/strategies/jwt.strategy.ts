@@ -1,3 +1,4 @@
+import { FORMAT_DATE_FRONT } from './../../util/helpers/date-util';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
@@ -5,6 +6,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { toTitleCase } from '../../util/helpers/string-util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -30,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         SELECT a.ide_usua,a.ide_empr,a.ide_perf,perm_util_perf, initcap(nom_perf) as nom_perf,uuid as id, initcap(nom_usua) as nom_usua,
         mail_usua as email, nick_usua as login, avatar_usua,bloqueado_usua, 
         (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu,
-        (select to_char(fecha_auac,'${this.dataSource.util.DATE_UTIL.FORMAT_DATE_FRONT}')  || ' ' ||hora_auac  from sis_auditoria_acceso 
+        (select to_char(fecha_auac,'${FORMAT_DATE_FRONT}')  || ' ' ||hora_auac  from sis_auditoria_acceso 
         where ide_usua=a.ide_usua and ide_acau=0 
         and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=a.ide_usua and ide_acau=0 and fin_auac=true)) as ult_date,
         (select ip_auac  from sis_auditoria_acceso 
@@ -49,9 +51,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             ide_sucu: Number.parseInt(dataUser.ide_sucu),
             ide_perf: Number.parseInt(dataUser.ide_perf),
             perm_util_perf: dataUser.perm_util_perf,
-            nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataUser.nom_perf),
+            nom_perf: toTitleCase(dataUser.nom_perf),
             id: dataUser.uuid,
-            displayName: this.dataSource.util.STRING_UTIL.toTitleCase(dataUser.nom_usua),
+            displayName: toTitleCase(dataUser.nom_usua),
             email: dataUser.mail_usua,
             login: dataUser.nick_usua,
             photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataUser.avatar_usua}`,

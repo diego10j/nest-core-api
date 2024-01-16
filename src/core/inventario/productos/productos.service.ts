@@ -5,6 +5,8 @@ import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { getNumberFormat } from '../../util/helpers/number-util';
+import { getDateFormatFront, toDate, getDateFormat } from '../../util/helpers/date-util';
+import { toResultQuery } from '../../util/helpers/sql-util';
 
 @Injectable()
 export class ProductosService {
@@ -100,51 +102,51 @@ export class ProductosService {
     async getTrnProducto(dtoIn: TrnProductoDto) {
 
         const query = new SelectQuery(`
-    SELECT
-        dci.ide_indci,
-        cci.ide_incci,
-        cci.fecha_trans_incci,
-        nombre_intti,        
-        COALESCE(
-            (
-                select
-                    secuencial_cccfa
-                from
-                    cxc_cabece_factura
-                where
-                    ide_cccfa = dci.ide_cccfa
-            ),
-            (
-                select
-                    numero_cpcfa
-                from
-                    cxp_cabece_factur
-                where
-                    ide_cpcfa = dci.ide_cpcfa
-            )
-        ) as NUM_DOCUMENTO,
-        nom_geper,
-        precio_indci as PRECIO,
-        case
-            when signo_intci = 1 THEN cantidad_indci
-        end as INGRESO,
-        case
-            when signo_intci = -1 THEN cantidad_indci
-        end as EGRESO,
-        0.00 as SALDO
-    FROM
-        inv_det_comp_inve dci
-        left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
-        left join gen_persona gpe on cci.ide_geper = gpe.ide_geper
-        left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
-        left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
-        left join inv_articulo arti on dci.ide_inarti = arti.ide_inarti
-    WHERE
-        dci.ide_inarti = $1
-        AND fecha_trans_incci BETWEEN $2 AND $3
-        AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-    ORDER BY 
-        cci.fecha_trans_incci asc,dci.ide_indci asc,signo_intci asc`);
+        SELECT
+            dci.ide_indci,
+            cci.ide_incci,
+            cci.fecha_trans_incci,
+            nombre_intti,        
+            COALESCE(
+                (
+                    select
+                        secuencial_cccfa
+                    from
+                        cxc_cabece_factura
+                    where
+                        ide_cccfa = dci.ide_cccfa
+                ),
+                (
+                    select
+                        numero_cpcfa
+                    from
+                        cxp_cabece_factur
+                    where
+                        ide_cpcfa = dci.ide_cpcfa
+                )
+            ) as NUM_DOCUMENTO,
+            nom_geper,
+            precio_indci as PRECIO,
+            case
+                when signo_intci = 1 THEN cantidad_indci
+            end as INGRESO,
+            case
+                when signo_intci = -1 THEN cantidad_indci
+            end as EGRESO,
+            0.00 as SALDO
+        FROM
+            inv_det_comp_inve dci
+            left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+            left join gen_persona gpe on cci.ide_geper = gpe.ide_geper
+            left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+            left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+            left join inv_articulo arti on dci.ide_inarti = arti.ide_inarti
+        WHERE
+            dci.ide_inarti = $1
+            AND fecha_trans_incci BETWEEN $2 AND $3
+            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
+        ORDER BY 
+            cci.fecha_trans_incci desc,dci.ide_indci asc,signo_intci asc`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -152,30 +154,30 @@ export class ProductosService {
         // Calcula saldos
         const saldoInicial: number = await this.getSaldoInicial(dtoIn.ide_inarti, dtoIn.fechaInicio);
         let saldoCalcula: number = saldoInicial;
-        res.rows.forEach(row => {
+        const tmpRow = res.rows.reverse();
+        tmpRow.forEach(row => {
             const { ingreso, egreso } = row;
             saldoCalcula = saldoCalcula + Number(ingreso) - Number(egreso);
             row.saldo = getNumberFormat(saldoCalcula, 3);
         });
         if (saldoInicial !== 0) {
-            res.rows.unshift({
+            tmpRow.unshift({
                 "ide_indci": 0,
                 "ide_incci": null,
-                "fecha_trans_incci": this.dataSource.util.DATE_UTIL.getDateFormatFront(dtoIn.fechaInicio),
+                "fecha_trans_incci": getDateFormatFront(dtoIn.fechaInicio),
                 "nombre_intti": "Saldo Inicial",
-                "nom_geper": `SALDO INICIAL AL ${this.dataSource.util.DATE_UTIL.getDateFormatFront(dtoIn.fechaInicio)}`,
+                "nom_geper": `SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)}`,
                 "num_documento": null,
                 "ingreso": null,
                 "egreso": null,
                 "precio": null,
-                "saldo": saldoInicial
+                "saldo": getNumberFormat(saldoInicial, 3)
             });
             res.rowCount = res.rowCount + 1;
         }
+        res.rows = tmpRow.reverse();
 
         return res;
-
-
     }
 
     /**
@@ -202,7 +204,7 @@ export class ProductosService {
             and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
             and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
         ORDER BY 
-            cf.fecha_emisi_cccfa, secuencial_ccdfa`);
+            cf.fecha_emisi_cccfa desc, secuencial_ccdfa`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -235,7 +237,7 @@ export class ProductosService {
         and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
         and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
     ORDER BY 
-        cf.fecha_emisi_cpcfa, numero_cpcfa`);
+        cf.fecha_emisi_cpcfa desc, numero_cpcfa`);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -282,6 +284,35 @@ export class ProductosService {
         return await this.dataSource.createQueryPG(query);
     }
 
+    /**
+     * Retorna el saldo de un producto
+     * @param dtoIn 
+     * @returns 
+     */
+    async getSaldo(dtoIn: IdProductoDto) {
+        let msg: string;
+        const query = new SelectQuery(`     
+        SELECT ide_inarti,round( sum(cantidad_indci *signo_intci), 3) as saldo
+        FROM
+            inv_det_comp_inve dci
+            left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+            left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+            left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+        WHERE
+            dci.ide_inarti = $1
+            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
+        GROUP BY   
+            ide_inarti`);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        const data = await this.dataSource.createQuery(query);
+        if (data.length === 0)
+            msg = `[ERROR] No existe el producto ${dtoIn.ide_inarti}`;
+        return toResultQuery(data, msg);
+    }
+
+
+
+    // =====================================================================
 
     /**
      * Retorna saldo inicial de un producto a una determinada fecha de corte
@@ -306,9 +337,9 @@ export class ProductosService {
             ide_inarti `);
         querySaldoInicial.addIntParam(1, ide_inarti);
         querySaldoInicial.addDateParam(2, fechaCorte);
-        const data = await this.dataSource.createQuery(querySaldoInicial);
-        if (data.length) {
-            saldoInicial = Number(data[0].saldo);
+        const data = await this.dataSource.createSingleQuery(querySaldoInicial);
+        if (data) {
+            saldoInicial = Number(data.saldo);
         }
         return saldoInicial;
     }

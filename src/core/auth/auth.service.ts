@@ -10,6 +10,9 @@ import { ServiceDto } from '../../common/dto/service.dto';
 import { EventAudit } from '../audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
+import { isDefined } from '../util/helpers/common-util';
+import { toTitleCase } from '../util/helpers/string-util';
+import { getDateFormatFront } from '../util/helpers/date-util';
 
 @Injectable()
 export class AuthService {
@@ -61,7 +64,7 @@ export class AuthService {
                 }
                 else {
                     //valida sucursal del usuario
-                    if (!this.dataSource.util.isDefined(dataPass.ide_sucu)) {
+                    if (!isDefined(dataPass.ide_sucu)) {
                         throw new UnauthorizedException('El usuario no tiene definida una sucursal');
                     }
 
@@ -95,9 +98,9 @@ export class AuthService {
                             ide_perf: Number.parseInt(dataPass.ide_perf),
                             nom_empr: dataPass.nom_empr,
                             perm_util_perf: dataPass.perm_util_perf,
-                            nom_perf: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_perf),
+                            nom_perf: toTitleCase(dataPass.nom_perf),
                             id: dataUser.uuid,
-                            displayName: this.dataSource.util.STRING_UTIL.toTitleCase(dataPass.nom_usua),
+                            displayName: toTitleCase(dataPass.nom_usua),
                             email: dataPass.mail_usua,
                             login: dataPass.nick_usua,
                             photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataPass.avatar_usua}`,
@@ -183,7 +186,7 @@ export class AuthService {
      * @returns 
      */
     private async getLastAccessUser(ide_usua: number) {
-        let lastDate: string = this.dataSource.util.DATE_UTIL.getDateFormatFront(new Date());
+        let lastDate: string = getDateFormatFront(new Date());
         const selectQuery = new SelectQuery(`select fecha_auac,hora_auac from sis_auditoria_acceso where ide_usua=$1 and ide_acau=0
         and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=$2 and ide_acau=0 and fin_auac=true)`);
         selectQuery.addNumberParam(1, ide_usua);
