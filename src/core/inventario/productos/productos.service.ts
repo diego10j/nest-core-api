@@ -105,8 +105,7 @@ export class ProductosService {
         SELECT
             dci.ide_indci,
             cci.ide_incci,
-            cci.fecha_trans_incci,
-            nombre_intti,        
+            cci.fecha_trans_incci,                   
             COALESCE(
                 (
                     select
@@ -126,6 +125,7 @@ export class ProductosService {
                 )
             ) as NUM_DOCUMENTO,
             nom_geper,
+            nombre_intti, 
             precio_indci as PRECIO,
             case
                 when signo_intci = 1 THEN cantidad_indci
