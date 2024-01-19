@@ -159,11 +159,12 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async findByUuid(dto: FindByUuidDto) {
-        const columns = dto.columns || '*'; // all columns
-        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE uuid = $1`);
-        pgq.addParam(1, dto.uuid);
-        return await this.dataSource.createSingleQuery(pgq);
+    async findByUuid(dtoIn: FindByUuidDto) {
+        let msg: string;
+        const columns = dtoIn.columns || '*'; // all columns
+        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE uuid = $1`);
+        query.addParam(1, dtoIn.uuid);
+        return await this.dataSource.createSingleQuery(query);
     }
 
 

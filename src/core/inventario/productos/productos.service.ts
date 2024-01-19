@@ -7,6 +7,7 @@ import { IdProductoDto } from './dto/id-producto.dto';
 import { getNumberFormat } from '../../util/helpers/number-util';
 import { getDateFormatFront, toDate, getDateFormat } from '../../util/helpers/date-util';
 import { toResultQuery } from '../../util/helpers/sql-util';
+import { ServiceDto } from '../../../common/dto/service.dto';
 
 @Injectable()
 export class ProductosService {
@@ -29,7 +30,7 @@ export class ProductosService {
      * Retorna el listado de Productos
      * @returns 
      */
-    async getProductos() {
+    async getProductos(_dtoIn?: ServiceDto) {
 
         const query = new SelectQuery(`SELECT
         ide_inarti,
