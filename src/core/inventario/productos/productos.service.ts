@@ -8,6 +8,7 @@ import { getNumberFormat } from '../../util/helpers/number-util';
 import { getDateFormatFront, toDate, getDateFormat } from '../../util/helpers/date-util';
 import { toResultQuery } from '../../util/helpers/sql-util';
 import { ServiceDto } from '../../../common/dto/service.dto';
+import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 
 @Injectable()
 export class ProductosService {
@@ -311,6 +312,89 @@ export class ProductosService {
         return toResultQuery(data, msg);
     }
 
+
+    /**
+       * Retorna el total de ventas mensuales de un producto en un periodo 
+       * @param dtoIn 
+       * @returns 
+       */
+    async getVentasMensuales(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`
+    SELECT
+        gm.nombre_gemes,
+        ${dtoIn.periodo} as periodo,
+        COALESCE(count(cdf.ide_ccdfa), 0) AS num_facturas,
+        COALESCE(sum(cdf.cantidad_ccdfa), 0) AS cantidad,
+        COALESCE(sum(cdf.total_ccdfa), 0) AS total
+    FROM
+        gen_mes gm
+    LEFT JOIN (
+        SELECT
+            EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+            cdf.ide_ccdfa,
+            cdf.cantidad_ccdfa,
+            cdf.total_ccdfa
+        FROM
+            cxc_cabece_factura a
+        INNER JOIN
+            cxc_deta_factura cdf ON a.ide_cccfa = cdf.ide_cccfa
+        WHERE
+            EXTRACT(YEAR FROM fecha_emisi_cccfa) = $1
+            AND cdf.ide_inarti = $2
+            AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+    ) cdf ON gm.ide_gemes = cdf.mes
+    GROUP BY
+        gm.nombre_gemes, gm.ide_gemes
+    ORDER BY
+        gm.ide_gemes       
+        `);
+        query.addIntParam(1, dtoIn.periodo);
+        query.addIntParam(2, dtoIn.ide_inarti);
+
+        return await this.dataSource.createQueryPG(query);
+    }
+
+
+    /**
+       * Retorna el total de compras mensuales de un producto en un periodo 
+       * @param dtoIn 
+       * @returns 
+       */
+    async getComprasMensuales(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`
+    SELECT
+        gm.nombre_gemes,
+        ${dtoIn.periodo} as periodo,
+        COALESCE(count(cdf.ide_cpcfa), 0) AS num_facturas,
+        COALESCE(sum(cdf.cantidad_cpdfa), 0) AS cantidad,
+        COALESCE(sum(cdf.valor_cpdfa), 0) AS total
+    FROM
+        gen_mes gm
+    LEFT JOIN (
+        SELECT
+            EXTRACT(MONTH FROM fecha_emisi_cpcfa) AS mes,
+            cdf.ide_cpcfa,
+            cdf.cantidad_cpdfa,
+            cdf.valor_cpdfa
+        FROM
+            cxp_cabece_factur a
+        INNER JOIN
+            cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
+        WHERE
+            EXTRACT(YEAR FROM fecha_emisi_cpcfa) = $1
+            AND cdf.ide_inarti = $2
+            AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+    ) cdf ON gm.ide_gemes = cdf.mes
+    GROUP BY
+        gm.nombre_gemes, gm.ide_gemes
+    ORDER BY
+        gm.ide_gemes       
+        `);
+        query.addIntParam(1, dtoIn.periodo);
+        query.addIntParam(2, dtoIn.ide_inarti);
+
+        return await this.dataSource.createQueryPG(query);
+    }
 
 
     // =====================================================================

@@ -6,6 +6,7 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 // import { Auth } from '../../../core/auth/decorators';
 import { IdProductoDto } from './dto/id-producto.dto';
+import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 
 @Controller('productos')
 export class ProductosController {
@@ -61,5 +62,23 @@ export class ProductosController {
   ) {
     return this.service.getSaldo(dtoIn);
   }
+
+
+  @Post('getVentasMensuales')
+  // @Auth()
+  getVentasMensuales(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getVentasMensuales(dtoIn);
+  }
+
+  @Post('getComprasMensuales')
+  // @Auth()
+  getComprasMensuales(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getComprasMensuales(dtoIn);
+  }
+
 
 }
