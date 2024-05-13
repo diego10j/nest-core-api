@@ -10,6 +10,7 @@ import { FilesModule } from './files/files.module';
 import { CoreModule } from './core/core.module';
 import { AuthModule } from './core/auth/auth.module';
 import { ErrorsModule } from './errors/errors.module';
+import { GeneralModule } from './core/general/general.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ErrorsModule } from './errors/errors.module';
     AuthModule,
     CoreModule,
     ErrorsModule,
+    GeneralModule,
   ],
 })
 export class AppModule { }

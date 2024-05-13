@@ -9,8 +9,9 @@ import { ProductosModule } from './inventario/productos/productos.module';
 import { ClientesModule } from './ventas/clientes/clientes.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { UsuariosModule } from './sistema/usuarios/usuarios.module';
+import { GeneralModule } from './general/general.module';
 @Module({
-  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, UsuariosModule],
+  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, UsuariosModule, GeneralModule],
   providers: [DataSourceService, AuditService, CoreService],
   exports: [DataSourceService],
   controllers: [AuditController, CoreController],
