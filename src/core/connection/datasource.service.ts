@@ -67,12 +67,8 @@ export class DataSourceService {
             // console.log(query.query);
             let primaryKey = "id";
             const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
-            const columnsNames: string[] = res.fields.map(_element => {
-                return _element['name'];
-            });
-            const tablesID: number[] = res.fields.map(_element => {
-                return _element['tableID'];
-            });
+            const columnsNames: string[] = res.fields.map(field => field.name);
+            const tablesID: number[] = res.fields.map(field => field.tableID);
             const resSchema = isSchema ? await this.getColumnsSchema(removeEqualsElements(columnsNames), removeEqualsElements(tablesID)) : [];
             const typesCols = res._types._types.builtins;
             const cols = res.fields.map((_col, index) => {
@@ -152,10 +148,7 @@ export class DataSourceService {
      */
     async createSingleQuery(query: Query): Promise<any> {
         const data = await this.createQuery(query);
-        if (data.length > 0) {
-            return data[0];
-        }
-        return null;
+        return data.length > 0 ? data[0] : null;
     }
 
 
@@ -169,17 +162,17 @@ export class DataSourceService {
                 await queryRunner.manager.query(currentQuery.query, currentQuery.paramValues);
             }
             await queryRunner.commitTransaction();
-            await queryRunner.release();
             return true;
         } catch (error) {
             await queryRunner.rollbackTransaction();
-            await queryRunner.release();
             this.errorsLoggerService.createErrorLog(`[ERROR] createQueryList`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQueryList - ${error}`
             );
         }
-        return false;
+        finally {
+            await queryRunner.release();
+        }
     }
 
 
@@ -237,8 +230,7 @@ export class DataSourceService {
                 queryInsert.values.set("usuario_bloq", "sa");  //-----
                 await this.createQuery(queryInsert);
             }
-            seq++;
-            return seq;
+            return ++seq;
         }
     }
 
@@ -284,14 +276,14 @@ export class DataSourceService {
             await queryRunner.startTransaction();
             this.formatSqlQuery(dq);
             await queryRunner.manager.query(dq.query, dq.paramValues);
-            await queryRunner.rollbackTransaction();
-            await queryRunner.release();
         } catch (error) {
-            await queryRunner.rollbackTransaction();
-            await queryRunner.release();
             throw new InternalServerErrorException(
                 `Restricción eliminar - ${error}`
             );
+        }
+        finally {
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
         }
     }
 

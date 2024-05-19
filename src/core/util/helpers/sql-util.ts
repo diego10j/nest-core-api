@@ -89,46 +89,92 @@ export function getSqlSelect(query: SelectQuery) {
 
 export function getTypeCoreColumn(nameType: string) {
     // https://github.com/brianc/node-pg-types/blob/master/lib/builtins.js
-    const TypesString = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID'];
-    const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
-    const TypesDate = ['DATE'];
-    const TypesTime = ['TIME', 'TIMETZ'];
-    const TypesDateTime = ['TIMESTAMP', 'TIMESTAMPTZ'];
-    const TypesBoolean = ['BOOL', 'BIT'];
-    if (TypesString.includes(nameType)) return "String"
-    if (TypesNumber.includes(nameType)) return "Number"
-    if (TypesDate.includes(nameType)) return "Date"
-    if (TypesTime.includes(nameType)) return "Time"
-    if (TypesDateTime.includes(nameType)) return "DateTime"
-    if (TypesBoolean.includes(nameType)) return "Boolean"
-    return "String";
+    // Diccionario para mapear tipos
+    const typeMap: { [key: string]: string } = {
+        'VARCHAR': 'String',
+        'TEXT': 'String',
+        'CHAR': 'String',
+        'XML': 'String',
+        'JSON': 'String',
+        'UUID': 'String',
+        'FLOAT4': 'Number',
+        'FLOAT8': 'Number',
+        'MONEY': 'Number',
+        'NUMERIC': 'Number',
+        'INT8': 'Number',
+        'INT2': 'Number',
+        'INT4': 'Number',
+        'DATE': 'Date',
+        'TIME': 'Time',
+        'TIMETZ': 'Time',
+        'TIMESTAMP': 'DateTime',
+        'TIMESTAMPTZ': 'DateTime',
+        'BOOL': 'Boolean',
+        'BIT': 'Boolean'
+    };
+
+    // Devolver el tipo mapeado o 'String' por defecto
+    return typeMap[nameType] || 'String';
 }
 
 
 export function getDefaultValueColumn(nameType: string) {
-    const TypesString = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID'];
-    const TypesNumber = ['FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
-    const TypesDate = ['DATE', 'TIME', 'TIMETZ', 'TIMESTAMP', 'TIMESTAMPTZ'];
-    const TypesBoolean = ['BOOL', 'BIT'];
-    if (TypesString.includes(nameType)) return ""
-    if (TypesNumber.includes(nameType)) return null
-    if (TypesDate.includes(nameType)) return null
-    if (TypesBoolean.includes(nameType)) return false
-    return null;
+    // Diccionario para mapear tipos
+    const defaultValues: { [key: string]: any } = {
+        'VARCHAR': "",
+        'TEXT': "",
+        'CHAR': "",
+        'XML': "",
+        'JSON': "",
+        'UUID': "",
+        'FLOAT4': null,
+        'FLOAT8': null,
+        'MONEY': null,
+        'NUMERIC': null,
+        'INT8': null,
+        'INT2': null,
+        'INT4': null,
+        'DATE': null,
+        'TIME': null,
+        'TIMETZ': null,
+        'TIMESTAMP': null,
+        'TIMESTAMPTZ': null,
+        'BOOL': false,
+        'BIT': false
+    };
+
+    // Devolver el valor por defecto mapeado o null por defecto
+    return defaultValues[nameType] || null;
 }
 
 export function getComponentColumn(nameType: string) {
-    const TypesText = ['VARCHAR', 'TEXT', 'CHAR', 'XML', 'JSON', 'UUID', 'FLOAT4', 'FLOAT8', 'MONEY', 'NUMERIC', 'INT8', 'INT2', 'INT4'];
-    const TypesDate = ['DATE'];
-    const TypesTime = ['TIME', 'TIMETZ'];
-    const TypesDateTime = ['TIMESTAMP', 'TIMESTAMPTZ'];
-    const TypesBoolean = ['BOOL', 'BIT'];
-    if (TypesText.includes(nameType)) return "Text"
-    if (TypesDate.includes(nameType)) return "Calendar"
-    if (TypesDateTime.includes(nameType)) return "CalendarTime"
-    if (TypesTime.includes(nameType)) return "Time"
-    if (TypesBoolean.includes(nameType)) return "Checkbox"
-    return "Text";
+    // Diccionario para mapear tipos de datos a componentes
+    const componentMap: { [key: string]: string } = {
+        'VARCHAR': "Text",
+        'TEXT': "Text",
+        'CHAR': "Text",
+        'XML': "Text",
+        'JSON': "Text",
+        'UUID': "Text",
+        'FLOAT4': "Text",
+        'FLOAT8': "Text",
+        'MONEY': "Text",
+        'NUMERIC': "Text",
+        'INT8': "Text",
+        'INT2': "Text",
+        'INT4': "Text",
+        'DATE': "Calendar",
+        'TIME': "Time",
+        'TIMETZ': "Time",
+        'TIMESTAMP': "CalendarTime",
+        'TIMESTAMPTZ': "CalendarTime",
+        'BOOL': "Checkbox",
+        'BIT': "Checkbox"
+    };
+
+    // Devolver el componente correspondiente o "Text" por defecto
+    return componentMap[nameType] || "Text";
+
 }
 
 export function getVisibleCoreColumn(nameColumn: string) {
@@ -138,13 +184,19 @@ export function getVisibleCoreColumn(nameColumn: string) {
 }
 
 export function getAlignCoreColumn(nameType: string) {
-    const LeftTypes = ['String', 'Date', 'Time', 'DateTime'];
-    const RightTypes = ['Number', 'Integer'];
-    const CenterTypes = ['Boolean'];
-    if (LeftTypes.includes(nameType)) return "left"
-    if (RightTypes.includes(nameType)) return "right"
-    if (CenterTypes.includes(nameType)) return "center"
-    return "left";
+   // Diccionario para mapear tipos de datos a alineaciones
+   const alignmentMap: { [key: string]: string } = {
+    'String': "left",
+    'Date': "left",
+    'Time': "left",
+    'DateTime': "left",
+    'Number': "right",
+    'Integer': "right",
+    'Boolean': "center"
+};
+
+// Devolver la alineación correspondiente o "left" por defecto
+return alignmentMap[nameType] || "left";
 }
 
 export function getSizeCoreColumn(nameType: string, length: number): number {
