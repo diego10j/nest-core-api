@@ -339,8 +339,8 @@ export class ProductosService {
         INNER JOIN
             cxc_deta_factura cdf ON a.ide_cccfa = cdf.ide_cccfa
         WHERE
-            EXTRACT(YEAR FROM fecha_emisi_cccfa) = $1
-            AND cdf.ide_inarti = $2
+            fecha_emisi_cccfa  >=  $1 AND a.fecha_emisi_cccfa <=  $2 
+            AND cdf.ide_inarti = $3
             AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
     ) cdf ON gm.ide_gemes = cdf.mes
     GROUP BY
@@ -348,8 +348,9 @@ export class ProductosService {
     ORDER BY
         gm.ide_gemes       
         `);
-        query.addIntParam(1, dtoIn.periodo);
-        query.addIntParam(2, dtoIn.ide_inarti);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(3, dtoIn.ide_inarti);
 
         return await this.dataSource.createQueryPG(query);
     }
@@ -381,8 +382,8 @@ export class ProductosService {
         INNER JOIN
             cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
         WHERE
-            EXTRACT(YEAR FROM fecha_emisi_cpcfa) = $1
-            AND cdf.ide_inarti = $2
+            fecha_emisi_cpcfa  >=  $1 AND a.fecha_emisi_cpcfa <=  $2 
+            AND cdf.ide_inarti = $3
             AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
     ) cdf ON gm.ide_gemes = cdf.mes
     GROUP BY
@@ -390,9 +391,58 @@ export class ProductosService {
     ORDER BY
         gm.ide_gemes       
         `);
-        query.addIntParam(1, dtoIn.periodo);
-        query.addIntParam(2, dtoIn.ide_inarti);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        return await this.dataSource.createQueryPG(query);
+    }
 
+    /**
+        * Retorna la sumatoria de total ventas / compras en un periodo
+        * @param dtoIn 
+        * @returns 
+        */
+    async getTotalesTrn(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`
+        SELECT
+        COALESCE(cantidadCompras, 0) AS cantidadCompras,
+        COALESCE(cantidadVentas, 0) AS cantidadVentas,
+        COALESCE(totalCompras, 0) AS totalCompras,
+        COALESCE(totalVentas, 0) AS totalVentas
+    FROM
+        (
+            SELECT
+                SUM(cdf.valor_cpdfa) AS totalCompras,
+                SUM(cdf.cantidad_cpdfa) AS cantidadCompras
+            FROM
+                cxp_cabece_factur a
+                INNER JOIN cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
+            WHERE
+                a.fecha_emisi_cpcfa >= $1
+                AND a.fecha_emisi_cpcfa <= $2
+                AND cdf.ide_inarti = $3
+                AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+        ) AS compras,
+        (
+            SELECT
+                SUM(cdf.total_ccdfa) AS totalVentas,
+                SUM(cdf.cantidad_ccdfa) AS cantidadVentas
+            FROM
+                cxc_cabece_factura a
+                INNER JOIN cxc_deta_factura cdf ON a.ide_cccfa = cdf.ide_cccfa
+            WHERE
+                a.fecha_emisi_cccfa >= $4
+                AND a.fecha_emisi_cccfa <= $5
+                AND cdf.ide_inarti = $6
+                AND ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
+        ) AS ventas
+        `);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(6, dtoIn.ide_inarti);
         return await this.dataSource.createQueryPG(query);
     }
 

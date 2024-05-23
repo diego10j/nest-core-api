@@ -81,4 +81,13 @@ export class ProductosController {
   }
 
 
+  @Post('getTotalesTrn')
+  // @Auth()
+  getTotalesTrn(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getTotalesTrn(dtoIn);
+  }
+
+
 }
