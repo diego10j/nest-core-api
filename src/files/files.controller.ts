@@ -6,10 +6,15 @@ import { diskStorage } from 'multer';
 import { FilesService } from './files.service';
 
 import { fileFilter, fileNamer } from './helpers';
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { GetFilesDto } from './dto/get-files.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { PATH_DRIVE } from './helpers/fileNamer.helper';
+import { UploadFileDto } from './dto/upload-file.dto';
+import { DeleteFilesDto } from './dto/delete-files.dto';
+import { CheckExistFileDto } from './dto/check-exist-file.dto';
+import { RenameFileDto } from './dto/rename-file.dto';
+import { FavoriteFileDto } from './dto/favorite-file.dto';
+
 
 
 @Controller('files')
@@ -78,47 +83,67 @@ export class FilesController {
 
 
 
-  @Get('list-files')
-  getFilesRoot() {
-    return this.filesService.getFiles(undefined);
+
+
+  @Post('uploadFile')
+  @UseInterceptors(FileInterceptor('file', {
+    // limits: { fileSize: 1000 }
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const folderPath = PATH_DRIVE();
+        cb(null, folderPath);
+      },
+      filename: fileNamer
+    })
+  }))
+  uploadFile(@UploadedFile() file: Express.Multer.File,
+    @Body() dtoIn: UploadFileDto) {
+    return this.filesService.uploadFile(dtoIn, file);
   }
 
-  @Post('upload-file/:folderName')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const folderName = req.params.folderName;
-          const folderPath = join('/drive', folderName);
-          if (!existsSync(folderPath)) {
-            mkdirSync(folderPath, { recursive: true });
-          }
-          cb(null, folderPath);
-        },
-        filename: (req, file, cb) => {
-          cb(null, file.originalname);
-        },
-      }),
-    }),
-  )
-  uploadFile(@Param('folderName') folderName: string, @UploadedFile() file: Express.Multer.File) {
-    return this.filesService.uploadFile(folderName, file);
+  @Post('deleteFiles')
+  //@Auth()
+  deleteFiles(
+    @Body() dtoIn: DeleteFilesDto
+  ) {
+    return this.filesService.deleteFiles(dtoIn);
   }
 
-  @Delete('delete-folder/:folderName')
-  deleteFolder(@Param('folderName') folderName: string) {
-    return this.filesService.deleteFolder(folderName);
+  @Get('downloadFile/:uuid')
+  downloadFile(
+    @Res() res: Response,
+    @Param('uuid') uuid: string
+  ) {
+
+    return this.filesService.downloadFile(uuid, res);
   }
 
-  @Delete('delete-file/:folderName/:fileName')
-  deleteFile(@Param('folderName') folderName: string, @Param('fileName') fileName: string) {
-    return this.filesService.deleteFile(folderName, fileName);
+  @Post('checkExistFile')
+  //@Auth()
+  checkExistFile(
+    @Body() dtoIn: CheckExistFileDto
+  ) {
+    return this.filesService.checkExistFile(dtoIn);
   }
 
-  @Put('rename')
-  renameItem(@Body('currentPath') currentPath: string, @Body('newName') newName: string) {
-    return this.filesService.renameItem(currentPath, newName);
+
+  @Post('renameFile')
+  //@Auth()
+  renameFile(
+    @Body() dtoIn: RenameFileDto
+  ) {
+    return this.filesService.renameFile(dtoIn);
   }
+
+  @Post('favoriteFile')
+  //@Auth()
+  favoriteFile(
+    @Body() dtoIn: FavoriteFileDto
+  ) {
+    return this.filesService.favoriteFile(dtoIn);
+  }
+
+
 
   @Put('move')
   moveItem(@Body('sourcePath') sourcePath: string, @Body('destinationPath') destinationPath: string) {

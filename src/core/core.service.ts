@@ -135,7 +135,7 @@ export class CoreService {
         const dq = new DeleteQuery(dto.tableName);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
-        const queryRunner = await this.dataSource.isDelete(dq)
+       await this.dataSource.isDelete(dq)
         return {
             message: 'ok'
         };
@@ -178,7 +178,7 @@ export class CoreService {
         await this.validateDTO(ColumnsTableDto, dto);
 
         const pq = new SelectQuery(`SELECT 
-                    lower(column_name) as nombre,
+            column_name as nombre,
             upper(column_name) as nombreVisual,
             ordinal_position as orden,
             CASE WHEN is_nullable = 'YES' THEN false

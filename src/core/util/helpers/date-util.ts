@@ -7,7 +7,7 @@ export const FORMAT_DATE_BD = (): string => process.env.FORMAT_DATE_BD;  // yyyy
 export const FORMAT_TIME_BD = (): string => process.env.FORMAT_TIME_BD;
 export const FORMAT_DATETIME_DB = (): string => process.env.FORMAT_DATE_BD + " " + process.env.FORMAT_TIME_BD;
 export const FORMAT_DATE_FRONT = (): string => "dd/MM/yyyy";
-export const FORMAT_DATETIME_FRONT = (): string => FORMAT_DATE_FRONT + " " + FORMAT_TIME_BD;
+export const FORMAT_DATETIME_FRONT = (): string => "dd/MM/yyyy HH:mm:ss";
 
 
 // getDateTimeFormatFront, getTimeFormat
@@ -86,8 +86,11 @@ export function getDateTimeFormatFront(date: InputValue, newFormat?: string): st
  * @returns
  */
 export function toDate(date: string, newFormat?: string): Date {
-    const fm = newFormat || FORMAT_DATE_BD();
-    return parse(date, toString(fm), new Date());
+    if (date) {
+        const fm = newFormat || FORMAT_DATE_BD();
+        return parse(date, toString(fm), new Date());
+    }
+    return null;
 }
 
 /**

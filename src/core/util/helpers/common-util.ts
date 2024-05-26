@@ -1,5 +1,7 @@
 
 
+export const HOST_API = (): string => process.env.HOST_API;  
+
 export function isEmpty(value: any): boolean {
     return !isDefined(value) || value === '';
 }

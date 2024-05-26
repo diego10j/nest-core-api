@@ -124,10 +124,10 @@ CREATE INDEX idx_uuid_inv_doc_producto ON inv_doc_producto(uuid);
 CREATE TABLE "public"."sis_archivo" (
     "ide_arch" int4,
     "nombre_arch" varchar(200),
-    "ruta_arch" varchar(250),
+    "nombre2_arch" varchar(80),
     "url_arch" varchar(200),
     "carpeta_arch" bool,
-    "peso_arch" int2,
+    "peso_arch" int4,
     "ide_empr" int2,
     "ide_sucu" int2,
     "usuario_ingre" varchar(50),
@@ -141,7 +141,9 @@ CREATE TABLE "public"."sis_archivo" (
     "favorita_arch" bool,
     "descargable_arch" bool,
     "comentario_arch" bool,
-    "type_arch" varchar,
+    "type_arch" varchar(150),
+	"extension_arch" varchar(50),
+	"descargas_arch" int4,
     CONSTRAINT pk_sis_archivo PRIMARY KEY(ide_arch)
 );
 ALTER TABLE public.sis_archivo
@@ -163,7 +165,7 @@ ALTER TABLE public.sis_archivo
 	FOREIGN KEY(sis_ide_arch)
 	REFERENCES public.sis_archivo(ide_arch)
 	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
 ALTER TABLE sis_archivo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_sis_archivo ON sis_archivo(uuid);
