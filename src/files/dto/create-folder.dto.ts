@@ -13,4 +13,9 @@ export class CreateFolderDto extends PartialType(ServiceDto) {
     @IsOptional()
     sis_ide_arch?: number;
 
+    @IsInt()
+    @IsPositive()
+    @IsOptional()
+    ide_inarti?: number;
+
 }

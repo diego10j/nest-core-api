@@ -1,5 +1,5 @@
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
@@ -9,6 +9,7 @@ import { getDateFormatFront, toDate, getDateFormat } from '../../util/helpers/da
 import { toResultQuery } from '../../util/helpers/sql-util';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 
 @Injectable()
 export class ProductosService {
@@ -154,7 +155,7 @@ export class ProductosService {
         query.addDateParam(3, dtoIn.fechaFin);
         const res: ResultQuery = await this.dataSource.createQueryPG(query);
         // Calcula saldos
-        const saldoInicial: number = await this.getSaldoInicial(dtoIn.ide_inarti, dtoIn.fechaInicio);
+        const saldoInicial: number = await this._getSaldoInicial(dtoIn.ide_inarti, dtoIn.fechaInicio);
         let saldoCalcula: number = saldoInicial;
         const tmpRow = res.rows.reverse();
         tmpRow.forEach(row => {
@@ -402,50 +403,121 @@ export class ProductosService {
         * @param dtoIn 
         * @returns 
         */
-    async getTotalesTrn(dtoIn: IVentasMensualesDto) {
+    async getSumatoriaTrnPeriodo(dtoIn: IVentasMensualesDto) {
         const query = new SelectQuery(`
-        SELECT
-        COALESCE(cantidadCompras, 0) AS cantidadCompras,
-        COALESCE(cantidadVentas, 0) AS cantidadVentas,
-        COALESCE(totalCompras, 0) AS totalCompras,
-        COALESCE(totalVentas, 0) AS totalVentas
+    SELECT
+        COALESCE(v.nombre_inuni, c.nombre_inuni) AS unidad,
+        v.fact_ventas,
+        v.cantidad_ventas,
+        v.total_ventas,
+        c.fact_compras,
+        c.cantidad_compras,
+        c.total_compras,
+        v.total_ventas -  c.total_compras as margen
     FROM
         (
             SELECT
-                SUM(cdf.valor_cpdfa) AS totalCompras,
-                SUM(cdf.cantidad_cpdfa) AS cantidadCompras
+                count(1) AS fact_ventas,
+                sum(cdf.cantidad_ccdfa) AS cantidad_ventas,
+                sum(cdf.total_ccdfa) AS total_ventas,
+                nombre_inuni
             FROM
-                cxp_cabece_factur a
-                INNER JOIN cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
+                cxc_deta_factura cdf
+                LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+                LEFT JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
             WHERE
-                a.fecha_emisi_cpcfa >= $1
-                AND a.fecha_emisi_cpcfa <= $2
-                AND cdf.ide_inarti = $3
-                AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-        ) AS compras,
-        (
+                cdf.ide_inarti = $1
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.fecha_emisi_cccfa BETWEEN $2  AND $3
+            GROUP BY
+                nombre_inuni
+        ) v FULL
+        OUTER JOIN (
             SELECT
-                SUM(cdf.total_ccdfa) AS totalVentas,
-                SUM(cdf.cantidad_ccdfa) AS cantidadVentas
+                count(1) AS fact_compras,
+                sum(cdf.cantidad_cpdfa) AS cantidad_compras,
+                sum(cdf.valor_cpdfa) AS total_compras,
+                nombre_inuni
             FROM
-                cxc_cabece_factura a
-                INNER JOIN cxc_deta_factura cdf ON a.ide_cccfa = cdf.ide_cccfa
+                cxp_detall_factur cdf
+                LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+                LEFT JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
             WHERE
-                a.fecha_emisi_cccfa >= $4
-                AND a.fecha_emisi_cccfa <= $5
-                AND cdf.ide_inarti = $6
-                AND ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
-        ) AS ventas
+                cdf.ide_inarti = $4
+                AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                AND cf.fecha_emisi_cpcfa BETWEEN $5 AND $6
+            GROUP BY
+                nombre_inuni
+        ) c ON v.nombre_inuni = c.nombre_inuni
         `);
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(6, dtoIn.ide_inarti);
-        return await this.dataSource.createQueryPG(query);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addStringParam(2, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(3, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(4, dtoIn.ide_inarti);
+        query.addStringParam(5, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(6, `${dtoIn.periodo}-12-31`);
+
+        const data = await this.dataSource.createQuery(query);
+
+        return {
+            rows: data,
+            rowCount: data.length
+        } as ResultQuery;
     }
 
+
+    async getVariacionPreciosCompras(dtoIn: VariacionPreciosComprasDto) {
+        const query = new SelectQuery(`
+        WITH compras AS (
+            SELECT
+                cf.fecha_emisi_cpcfa AS fecha,
+                cdf.cantidad_cpdfa AS cantidad,
+                cdf.precio_cpdfa AS precio,
+                p.ide_geper,
+                p.nom_geper
+            FROM
+                cxp_detall_factur cdf
+                LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+                LEFT JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+                LEFT JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+            WHERE
+                cdf.ide_inarti = $1
+                AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+        )
+        SELECT
+            fecha,
+            cantidad,
+            ide_geper,
+            nom_geper,
+            precio,
+            LAG(precio) OVER (ORDER BY fecha) AS precio_anterior,
+            ROUND(
+                CASE 
+                    WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
+                    ELSE ((precio - LAG(precio) OVER (ORDER BY fecha)) / LAG(precio) OVER (ORDER BY fecha)) * 100 
+                END, 
+                2
+            ) AS porcentaje_variacion,
+            CASE
+                WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
+                WHEN precio > LAG(precio) OVER (ORDER BY fecha) THEN '+'
+                WHEN precio < LAG(precio) OVER (ORDER BY fecha) THEN '-'
+                ELSE '='
+            END AS variacion
+        FROM
+            compras
+        ORDER BY
+            fecha;     
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQueryPG(query);
+    }
 
     // =====================================================================
 
@@ -455,7 +527,7 @@ export class ProductosService {
      * @param fechaCorte 
      * @returns 
      */
-    async getSaldoInicial(ide_inarti: number, fechaCorte: Date): Promise<number> {
+    async _getSaldoInicial(ide_inarti: number, fechaCorte: Date): Promise<number> {
         let saldoInicial = 0;
         const querySaldoInicial = new SelectQuery(`     
         SELECT sum(cantidad_indci *signo_intci) as saldo

@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { Response } from 'express';
 import { Injectable, BadRequestException } from '@nestjs/common';
@@ -16,13 +16,10 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { toDate, FORMAT_DATETIME_DB } from '../core/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 
-
 @Injectable()
 export class FilesService {
 
-    private basePath = PATH_DRIVE(); // Cambiar a /drive como directorio raíz
-
-    // private basePath = 'C:/drive'; // Cambiar a /drive como directorio raíz
+    private basePath = PATH_DRIVE(); // Cambiar a /drive 'C:/drive' como directorio raíz
 
     private tableName = 'sis_archivo';
     private primaryKey = 'ide_arch';
@@ -33,9 +30,13 @@ export class FilesService {
         }
     }
 
-
+    /**
+     * Crea una carpeta en un directorio especifico
+     * @param dto 
+     * @returns 
+     */
     async createFolder(dto: CreateFolderDto): Promise<ResultQuery> {
-        const { folderName, sis_ide_arch } = dto;
+        const { folderName, sis_ide_arch, ide_inarti } = dto;
         if (await this._checkExistFile(folderName, sis_ide_arch)) {
             throw new BadRequestException(`La carpeta ${folderName} ya existe`);
         }
@@ -44,78 +45,106 @@ export class FilesService {
         insertQuery.values.set('nombre_arch', folderName);
         insertQuery.values.set('carpeta_arch', true);
         insertQuery.values.set('sis_ide_arch', sis_ide_arch || null);
+        insertQuery.values.set('ide_inarti', ide_inarti || null);
         insertQuery.values.set('public_arch', true);
         insertQuery.values.set('favorita_arch', false);
+        insertQuery.values.set('descargas_arch', 0);
         insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey));
         await this.dataSource.createQuery(insertQuery);
-
         return {
             message: `Carpeta ${folderName} creada exitosamente`
         } as ResultQuery;
     }
 
-
-
+    /**
+     * Retorna todos los archivos de un directorio especifico
+     * @param dto 
+     * @returns 
+     */
     async getFiles(dto: GetFilesDto): Promise<ResultQuery> {
-        const { ide_archi } = dto;
-
+        const { ide_archi, ide_inarti } = dto;
         const whereClause = `
             WHERE public_arch = TRUE
-            ${isDefined(ide_archi) ? ' AND sis_ide_arch = $1' : ' AND sis_ide_arch IS NULL'}`;
-
+            ${isDefined(ide_archi) ? ' AND a.sis_ide_arch = $1' : ' AND a.sis_ide_arch IS NULL'}
+            ${isDefined(ide_inarti) ? ` AND a.ide_inarti = ${ide_inarti}` : ' AND a.ide_inarti IS NULL'}
+        `;
         const query = new SelectQuery(`
+        WITH archivo_aggregates AS (
+            SELECT
+                sis_ide_arch,
+                COUNT(*) AS num_arch,
+                SUM(peso_arch) AS sum_peso_arch
+            FROM
+                sis_archivo
+            WHERE
+                public_arch = TRUE
+            GROUP BY
+                sis_ide_arch
+        )
         SELECT
-            ide_arch,
-            nombre_arch as name,
-            extension_arch as url,
-            carpeta_arch,
-            peso_arch as size,
-            usuario_ingre,
-            fecha_ingre || ' ' || hora_ingre  as fecha_ingre,
-            fecha_actua || ' ' || hora_actua  as fecha_actua,
-            sis_ide_arch,
-            uuid as id,
-            usuario_ingre,
-            favorita_arch
+            a.ide_arch,
+            a.nombre_arch AS name,
+            a.extension_arch AS url,
+            a.carpeta_arch,
+            a.peso_arch AS size,
+            a.usuario_ingre,
+            a.fecha_ingre || ' ' || a.hora_ingre AS fecha_ingre,
+            a.fecha_actua || ' ' || a.hora_actua AS fecha_actua,
+            a.sis_ide_arch,
+            a.uuid AS id,
+            a.usuario_ingre,
+            a.favorita_arch,
+            a.descargas_arch AS descargas,
+            COALESCE(agg.num_arch, 0) AS num_arch,
+            COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch
         FROM
-            sis_archivo
-        ${whereClause}
+            sis_archivo a
+            LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
+            ${whereClause}
         ORDER BY
-            carpeta_arch desc, nombre_arch`);
-        if (isDefined(ide_archi)) {
+            carpeta_arch desc, nombre_arch
+        `);
+        if (isDefined(ide_archi))
             query.addParam(1, ide_archi);
-        }
-        const res = await this.dataSource.createQueryPG(query);
 
-        res.rows.map(function (obj) {
+        const data = await this.dataSource.createQuery(query);
+        data.map(function (obj) {
             if (obj.carpeta_arch === true) {
-                // obj.id = `${obj.id}_folder`;
                 obj.type = 'folder';
+                obj.size = Number(obj.sum_peso_arch);
+                obj.totalFiles = Number(obj.num_arch);
             }
             else {
                 obj.type = getExtensionFile(obj.name);; // getFileType(obj.type_arch);
                 obj.url = `${HOST_API()}/api/files/downloadFile/${obj.id}.${obj.type}`;
             }
-
             obj.tags = [];
             obj.shared = [];
             obj.isFavorited = obj.favorita_arch;
             obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
             obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
-            delete obj.fecha_ingre
-            delete obj.fecha_actua
-            delete obj.fecha_actua
-
+            delete obj.fecha_ingre;
+            delete obj.fecha_actua;
+            delete obj.sum_peso_arch;
+            delete obj.num_arch;
+            delete obj.favorita_arch;
+            delete obj.carpeta_arch;
             return obj;
         });
-
-        return res;
-
+        return {
+            rowCount: data.length,
+            rows: data
+        } as ResultQuery;
     }
 
+    /**
+     * Sube un archivo a un directorio determinado
+     * @param dto 
+     * @param file 
+     * @returns 
+     */
     async uploadFile(dto: UploadFileDto, file: Express.Multer.File): Promise<ResultQuery> {
-        const { sis_ide_arch } = dto;
-
+        const { sis_ide_arch, ide_inarti } = dto;
         const exist = await this._checkExistFile(file.originalname, sis_ide_arch ? Number(sis_ide_arch) : undefined);
         if (exist === false) {
             const name = getUuidNameFile(file.filename);
@@ -123,10 +152,11 @@ export class FilesService {
             // inserta 
             const insertQuery = new InsertQuery(this.tableName, dto)
             insertQuery.values.set('nombre_arch', file.originalname);
-            insertQuery.values.set('nombre2_arch', file.filename);
+            insertQuery.values.set('nombre2_arch', `${name}.${extension}`);
             insertQuery.values.set('peso_arch', file.size);
             insertQuery.values.set('carpeta_arch', false);
             insertQuery.values.set('sis_ide_arch', sis_ide_arch ? Number(sis_ide_arch) : null);
+            insertQuery.values.set('ide_inarti', ide_inarti ? Number(ide_inarti) : null);
             insertQuery.values.set('public_arch', true);
             insertQuery.values.set('favorita_arch', false);
             insertQuery.values.set('uuid', name);
@@ -138,8 +168,8 @@ export class FilesService {
             await this.dataSource.createQuery(insertQuery);
         }
         else {
-            const whereClause = `nombre_arch = $1 AND ${isDefined(sis_ide_arch) ? 'sis_ide_arch = $2' : 'sis_ide_arch IS NULL'}`;
             const updateQuery = new UpdateQuery(this.tableName, dto);
+            const whereClause = `nombre_arch = $1 AND ${isDefined(sis_ide_arch) ? 'sis_ide_arch = $2' : 'sis_ide_arch IS NULL'}`;
             updateQuery.values.set("nombre_arch", file.originalname)
             updateQuery.where = whereClause;
             updateQuery.addParam(1, file.originalname);
@@ -148,15 +178,16 @@ export class FilesService {
             }
             await this.dataSource.createQuery(updateQuery)
         }
-
-
         return {
             message: `Archivo ${file.originalname} creado exitosamente`
         } as ResultQuery;
-
     }
 
-
+    /**
+     * Elimina un archivo 
+     * @param dto 
+     * @returns 
+     */
     async deleteFiles(dto: DeleteFilesDto): Promise<ResultQuery> {
 
         const query = new SelectQuery(`
@@ -211,10 +242,13 @@ export class FilesService {
         }
     }
 
+    /**
+     * Descarga un archivo
+     * @param uuid 
+     * @param res 
+     */
     async downloadFile(uuid: string, res: Response) {
-
         const name = getUuidNameFile(uuid);
-
         const query = new SelectQuery(`
         SELECT
             nombre2_arch as name,
@@ -225,24 +259,19 @@ export class FilesService {
             sis_archivo
         WHERE
             uuid = $1`);
-
         query.addParam(1, name);
-
         const data = await this.dataSource.createSingleQuery(query);
-
         // Valida que retorne resultados 
         if (!data) {
             throw new BadRequestException(
                 `El archivo no existe`
             );
         }
-
         const updateQuery = new UpdateQuery(this.tableName);
         updateQuery.values.set("descargas_arch", Number(data.descargas_arch) + 1);
         updateQuery.where = `uuid = $1`;
         updateQuery.addParam(1, name);
         this.dataSource.createQuery(updateQuery)
-
         const filePath = join(this.basePath, data.name);
         if (!existsSync(filePath)) {
             throw new BadRequestException(`El archivo ${data.nombre_arch} no existe`);
@@ -264,25 +293,30 @@ export class FilesService {
             res.setHeader('Content-Length', fileStat.size);
             res.setHeader('Content-Disposition', `attachment; filename="${data.nombre_arch}"`);
         }
-
         fileStream.pipe(res);
     }
 
+    /**
+     * Valida por nombre si existe un archivo en un directorio determinado
+     * @param dto 
+     * @returns 
+     */
     async checkExistFile(dto: CheckExistFileDto) {
         const { fileName, sis_ide_arch } = dto;
         const exist = await this._checkExistFile(fileName, sis_ide_arch);
-
         return {
             message: `${exist === true ? 'El archivo ya existe' : 'El archivo no existe'}`,
             row: { exist, fileName },
             error: exist
         } as ResultQuery;
-
     }
 
-
+    /**
+     * Renombra un archivo 
+     * @param dto 
+     * @returns 
+     */
     async renameFile(dto: RenameFileDto): Promise<ResultQuery> {
-
         //valida que el nombre nuevo no exista en el mismo directorio
         const whereClause = `
         WHERE nombre_arch = $1 AND uuid != $2
@@ -300,13 +334,9 @@ export class FilesService {
         if (isDefined(dto.sis_ide_arch))
             query.addParam(3, dto.sis_ide_arch);
         const data = await this.dataSource.createSingleQuery(query);
-
-
         if (data) {
             throw new BadRequestException(`Ya existe un archivo con el nombre ${dto.fileName}`);
         }
-
-
         const updateQuery = new UpdateQuery(this.tableName, dto);
         updateQuery.values.set("nombre_arch", dto.fileName);
         updateQuery.where = `uuid = $1`;
@@ -317,6 +347,11 @@ export class FilesService {
         } as ResultQuery;
     }
 
+    /**
+     * Agrega/Quita de favoritos un archivo
+     * @param dto 
+     * @returns 
+     */
     async favoriteFile(dto: FavoriteFileDto): Promise<ResultQuery> {
         const updateQuery = new UpdateQuery(this.tableName, dto);
         updateQuery.values.set("favorita_arch", dto.favorite);

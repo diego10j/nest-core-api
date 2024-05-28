@@ -144,6 +144,7 @@ CREATE TABLE "public"."sis_archivo" (
     "type_arch" varchar(150),
 	"extension_arch" varchar(50),
 	"descargas_arch" int4,
+	"ide_inarti" int4,
     CONSTRAINT pk_sis_archivo PRIMARY KEY(ide_arch)
 );
 ALTER TABLE public.sis_archivo
@@ -169,3 +170,11 @@ ALTER TABLE public.sis_archivo
 	ON UPDATE CASCADE ;
 ALTER TABLE sis_archivo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_sis_archivo ON sis_archivo(uuid);
+
+ALTER TABLE public.sis_archivo
+	ADD CONSTRAINT sis_archivo_ide_inarti_fkey
+	FOREIGN KEY(ide_inarti)
+	REFERENCES public.inv_articulo(ide_inarti)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;

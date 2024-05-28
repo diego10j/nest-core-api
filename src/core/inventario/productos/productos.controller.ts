@@ -7,6 +7,7 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 // import { Auth } from '../../../core/auth/decorators';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 
 @Controller('productos')
 export class ProductosController {
@@ -81,13 +82,22 @@ export class ProductosController {
   }
 
 
-  @Post('getTotalesTrn')
+  @Post('getSumatoriaTrnPeriodo')
   // @Auth()
-  getTotalesTrn(
+  getSumatoriaTrnPeriodo(
     @Body() dtoIn: IVentasMensualesDto
   ) {
-    return this.service.getTotalesTrn(dtoIn);
+    return this.service.getSumatoriaTrnPeriodo(dtoIn);
   }
+
+  @Post('getVariacionPreciosCompras')
+  // @Auth()
+  getVariacionPreciosCompras(
+    @Body() dtoIn: VariacionPreciosComprasDto
+  ) {
+    return this.service.getVariacionPreciosCompras(dtoIn);
+  }
+
 
 
 }

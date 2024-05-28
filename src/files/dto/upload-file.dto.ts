@@ -10,4 +10,8 @@ export class UploadFileDto extends PartialType(ServiceDto) {
     @IsOptional()
     sis_ide_arch?: string;
 
+    @IsString()
+    @IsOptional()
+    ide_inarti?: string;
+
 }
