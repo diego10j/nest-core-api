@@ -12,6 +12,6 @@ export class ClientesController {
   getClientes(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getClientes();
+    return this.service.getClientes(dtoIn);
   }
 }

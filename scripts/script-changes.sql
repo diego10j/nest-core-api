@@ -178,3 +178,28 @@ ALTER TABLE public.sis_archivo
 	MATCH SIMPLE
 	ON DELETE CASCADE 
 	ON UPDATE CASCADE ;
+
+
+/**29/05/22024**/
+ALTER TABLE gen_persona ADD COLUMN activo_geper BOOLEAN;
+UPDATE gen_persona SET  activo_geper = true;
+
+
+CREATE INDEX idx_gen_persona_cliente_identificacion_nivel
+ON gen_persona (es_cliente_geper, identificac_geper, nivel_geper);
+CREATE INDEX idx_gen_persona_ide_cndfp
+ON gen_persona (ide_cndfp);
+CREATE INDEX idx_gen_persona_ide_vgven
+ON gen_persona (ide_vgven);
+CREATE INDEX idx_con_deta_forma_pago_ide_cndfp
+ON con_deta_forma_pago (ide_cndfp);
+CREATE INDEX idx_ven_vendedor_ide_vgven
+ON ven_vendedor (ide_vgven);
+CREATE INDEX idx_cxc_detall_transa_ide_ccctr_ide_ccttr
+ON cxc_detall_transa (ide_ccctr, ide_ccttr);
+CREATE INDEX idx_cxc_cabece_transa_ide_ccctr
+ON cxc_cabece_transa (ide_ccctr);
+CREATE INDEX idx_cxc_tipo_transacc_ide_ccttr
+ON cxc_tipo_transacc (ide_ccttr);
+
+

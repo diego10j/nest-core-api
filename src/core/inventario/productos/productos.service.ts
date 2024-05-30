@@ -1,11 +1,9 @@
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
-import { getNumberFormat } from '../../util/helpers/number-util';
-import { getDateFormatFront, toDate, getDateFormat } from '../../util/helpers/date-util';
 import { toResultQuery } from '../../util/helpers/sql-util';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
@@ -34,65 +32,56 @@ export class ProductosService {
      */
     async getProductos(_dtoIn?: ServiceDto) {
 
-        const query = new SelectQuery(`SELECT
-        ide_inarti,
-        uuid,
-        nombre_inarti,
-        codigo_inarti,
-        foto_inarti,
-        (
-            select
-                sum (cantidad_indci * signo_intci)
-            from
-                inv_det_comp_inve dci
-                left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
-                left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
-                left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
-            where
-                dci.ide_inarti = ARTICULO.ide_inarti
-                and ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-            GROUP BY
-                dci.ide_inarti
-        ) AS existencia,
-        nombre_inuni,
-        (
-            select
-                precio_cpdfa
-            from
-                cxp_detall_factur
-                inner join cxp_cabece_factur on cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
-            where
-                ide_cpefa = 0
-                and ide_inarti = ARTICULO.ide_inarti
-            order by
-                fecha_emisi_cpcfa desc
-            limit
-                1
-        ) AS precio_compra,
-        (
-            select
-                fecha_emisi_cpcfa
-            from
-                cxp_detall_factur
-                inner join cxp_cabece_factur on cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
-            where
-                ide_cpefa = 0
-                and ide_inarti = ARTICULO.ide_inarti
-            order by
-                fecha_emisi_cpcfa desc
-            limit
-                1
-        ) AS fecha_compra,
-        activo_inarti
+        const query = new SelectQuery(`
+    WITH existencia_cte AS (
+        SELECT
+            dci.ide_inarti,
+            SUM(cantidad_indci * signo_intci) AS existencia
+        FROM
+            inv_det_comp_inve dci
+            LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+            LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE
+            ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+        GROUP BY
+            dci.ide_inarti
+    ),
+    precio_cte AS (
+        SELECT
+            ide_inarti,
+            precio_cpdfa,
+            fecha_emisi_cpcfa,
+            ROW_NUMBER() OVER (PARTITION BY ide_inarti ORDER BY fecha_emisi_cpcfa DESC) AS rn
+        FROM
+            cxp_detall_factur
+            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+        WHERE
+            ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
+    )
+    SELECT
+        ARTICULO.ide_inarti,
+        ARTICULO.uuid,
+        ARTICULO.nombre_inarti,
+        ARTICULO.codigo_inarti,
+        ARTICULO.foto_inarti,
+        COALESCE(existencia_cte.existencia, 0) AS existencia,
+        UNIDAD.nombre_inuni,
+        precio_cte.precio_cpdfa AS precio_compra,
+        precio_cte.fecha_emisi_cpcfa AS fecha_compra,
+        ARTICULO.activo_inarti
     FROM
         inv_articulo ARTICULO
         LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
-        LEFT JOIN inv_marca m on ARTICULO.ide_inmar = m.ide_inmar
+        LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
+        LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
+        LEFT JOIN precio_cte ON ARTICULO.ide_inarti = precio_cte.ide_inarti AND precio_cte.rn = 1
     WHERE
-        ide_intpr = 1 ---solo productos
-        and nivel_inarti = 'HIJO'
+        ARTICULO.ide_intpr = 1 -- solo productos
+        AND ARTICULO.nivel_inarti = 'HIJO'
     ORDER BY
-        ARTICULO.nombre_inarti`);
+        ARTICULO.nombre_inarti;
+    `);
 
         return await this.dataSource.createQueryPG(query);
     }
@@ -105,82 +94,107 @@ export class ProductosService {
     async getTrnProducto(dtoIn: TrnProductoDto) {
 
         const query = new SelectQuery(`
-        SELECT
-            dci.ide_indci,
-            cci.ide_incci,
-            cci.fecha_trans_incci,                   
-            COALESCE(
-                (
-                    select
-                        secuencial_cccfa
-                    from
-                        cxc_cabece_factura
-                    where
-                        ide_cccfa = dci.ide_cccfa
-                ),
-                (
-                    select
-                        numero_cpcfa
-                    from
-                        cxp_cabece_factur
-                    where
-                        ide_cpcfa = dci.ide_cpcfa
-                )
-            ) as NUM_DOCUMENTO,
-            nom_geper,
-            nombre_intti, 
-            precio_indci as PRECIO,
-            case
-                when signo_intci = 1 THEN cantidad_indci
-            end as INGRESO,
-            case
-                when signo_intci = -1 THEN cantidad_indci
-            end as EGRESO,
-            0.00 as SALDO
-        FROM
-            inv_det_comp_inve dci
-            left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
-            left join gen_persona gpe on cci.ide_geper = gpe.ide_geper
-            left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
-            left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
-            left join inv_articulo arti on dci.ide_inarti = arti.ide_inarti
-        WHERE
-            dci.ide_inarti = $1
-            AND fecha_trans_incci BETWEEN $2 AND $3
-            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-        ORDER BY 
-            cci.fecha_trans_incci desc,dci.ide_indci asc,signo_intci asc`);
+        WITH saldo_inicial AS (
+            SELECT 
+                dci.ide_inarti,
+                SUM(cantidad_indci * signo_intci) AS saldo
+            FROM
+                inv_det_comp_inve dci
+                LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            WHERE
+                dci.ide_inarti = $1
+                AND fecha_trans_incci < $2
+                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+            GROUP BY
+                dci.ide_inarti
+        ),
+        movimientos AS (
+            SELECT
+                dci.ide_indci,
+                dci.ide_inarti,
+                cci.ide_incci,
+                cci.fecha_trans_incci,
+                COALESCE(
+                    (
+                        SELECT secuencial_cccfa
+                        FROM cxc_cabece_factura
+                        WHERE ide_cccfa = dci.ide_cccfa
+                    ),
+                    (
+                        SELECT numero_cpcfa
+                        FROM cxp_cabece_factur
+                        WHERE ide_cpcfa = dci.ide_cpcfa
+                    )
+                ) AS NUM_DOCUMENTO,
+                gpe.nom_geper,
+                tti.nombre_intti,
+                dci.precio_indci AS PRECIO,
+                CASE
+                    WHEN signo_intci = 1 THEN cantidad_indci
+                END AS INGRESO,
+                CASE
+                    WHEN signo_intci = -1 THEN cantidad_indci
+                END AS EGRESO,
+                cantidad_indci * signo_intci AS movimiento
+            FROM
+                inv_det_comp_inve dci
+                LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                LEFT JOIN gen_persona gpe ON cci.ide_geper = gpe.ide_geper
+                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                LEFT JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
+            WHERE
+                dci.ide_inarti = $3
+                AND fecha_trans_incci BETWEEN $4 AND $5
+                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+        ),
+        saldo_movimientos AS (
+            SELECT
+                ide_indci AS ide_indci,
+                mov.ide_inarti,
+                ide_incci AS ide_incci,
+                mov.fecha_trans_incci,
+                mov.NUM_DOCUMENTO,
+                mov.nom_geper,
+                mov.nombre_intti,
+                mov.PRECIO,
+                mov.INGRESO,
+                mov.EGRESO,
+                (COALESCE(saldo_inicial.saldo, 0) + SUM(mov.movimiento) OVER (ORDER BY mov.fecha_trans_incci, mov.ide_indci)) AS SALDO
+            FROM
+                movimientos mov
+                LEFT JOIN saldo_inicial ON mov.ide_inarti = saldo_inicial.ide_inarti
+            UNION ALL
+            SELECT
+                NULL AS ide_indci,
+                saldo_inicial.ide_inarti,
+                NULL AS ide_incci,
+                '2019-01-01' AS fecha_trans_incci,
+                NULL AS NUM_DOCUMENTO,        
+                'SALDO INICIAL AL ' || to_char('2019-01-01'::date, 'DD/MM/YYYY') AS  nom_geper,
+                'Saldo Inicial' AS nombre_intti,
+                NULL AS PRECIO,
+                NULL AS INGRESO,
+                NULL AS EGRESO,
+                saldo_inicial.saldo AS SALDO
+            FROM
+                saldo_inicial
+        )
+        SELECT *
+        FROM saldo_movimientos
+        ORDER BY fecha_trans_incci, ide_indci NULLS FIRST
+        `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
-        const res: ResultQuery = await this.dataSource.createQueryPG(query);
-        // Calcula saldos
-        const saldoInicial: number = await this._getSaldoInicial(dtoIn.ide_inarti, dtoIn.fechaInicio);
-        let saldoCalcula: number = saldoInicial;
-        const tmpRow = res.rows.reverse();
-        tmpRow.forEach(row => {
-            const { ingreso, egreso } = row;
-            saldoCalcula = saldoCalcula + Number(ingreso) - Number(egreso);
-            row.saldo = getNumberFormat(saldoCalcula, 3);
-        });
-        if (saldoInicial !== 0) {
-            tmpRow.unshift({
-                "ide_indci": 0,
-                "ide_incci": null,
-                "fecha_trans_incci": getDateFormatFront(dtoIn.fechaInicio),
-                "nombre_intti": "Saldo Inicial",
-                "nom_geper": `SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)}`,
-                "num_documento": null,
-                "ingreso": null,
-                "egreso": null,
-                "precio": null,
-                "saldo": getNumberFormat(saldoInicial, 3)
-            });
-            res.rowCount = res.rowCount + 1;
-        }
-        res.rows = tmpRow.reverse();
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addDateParam(4, dtoIn.fechaInicio);
+        query.addDateParam(5, dtoIn.fechaFin);
 
-        return res;
+
+
+        return await this.dataSource.createQueryPG(query);
     }
 
     /**
@@ -295,17 +309,23 @@ export class ProductosService {
     async getSaldo(dtoIn: IdProductoDto) {
         let msg: string;
         const query = new SelectQuery(`     
-        SELECT ide_inarti,round( sum(cantidad_indci *signo_intci), 3) as saldo
+        SELECT 
+            iart.ide_inarti,
+            COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
+            nombre_inuni
         FROM
             inv_det_comp_inve dci
-            left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
-            left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
-            left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+            inner join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+            inner join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+            inner join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+            inner join inv_articulo iart on iart.ide_inarti = dci.ide_inarti
+            left join inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         WHERE
             dci.ide_inarti = $1
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
         GROUP BY   
-            ide_inarti`);
+            iart.ide_inarti,nombre_inuni
+        `);
         query.addIntParam(1, dtoIn.ide_inarti);
         const data = await this.dataSource.createQuery(query);
         if (data.length === 0)

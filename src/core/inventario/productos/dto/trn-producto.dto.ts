@@ -18,5 +18,4 @@ export class TrnProductoDto extends PartialType(ServiceDto) {
     @IsPositive()
     @IsOptional()
     ide_inbod?: number;
-
 }

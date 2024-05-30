@@ -184,19 +184,19 @@ export function getVisibleCoreColumn(nameColumn: string) {
 }
 
 export function getAlignCoreColumn(nameType: string) {
-   // Diccionario para mapear tipos de datos a alineaciones
-   const alignmentMap: { [key: string]: string } = {
-    'String': "left",
-    'Date': "left",
-    'Time': "left",
-    'DateTime': "left",
-    'Number': "right",
-    'Integer': "right",
-    'Boolean': "center"
-};
+    // Diccionario para mapear tipos de datos a alineaciones
+    const alignmentMap: { [key: string]: string } = {
+        'String': "left",
+        'Date': "left",
+        'Time': "left",
+        'DateTime': "left",
+        'Number': "right",
+        'Integer': "right",
+        'Boolean': "center"
+    };
 
-// Devolver la alineación correspondiente o "left" por defecto
-return alignmentMap[nameType] || "left";
+    // Devolver la alineación correspondiente o "left" por defecto
+    return alignmentMap[nameType] || "left";
 }
 
 export function getSizeCoreColumn(nameType: string, length: number): number {

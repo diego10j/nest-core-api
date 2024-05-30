@@ -109,7 +109,8 @@ export class DataSourceService {
                 rowCount: res.rowCount,
                 rows: res.rows,
                 columns: cols,
-                key: primaryKey
+                key: primaryKey,
+                pagination: query.getPagination()
             } as ResultQuery;
 
         } catch (error) {

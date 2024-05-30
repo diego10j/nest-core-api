@@ -1,6 +1,8 @@
+import { PaginationDto } from './pagination.dto';
 import {
-    IsInt, IsOptional, IsString, MinLength
+    IsInt, IsNotEmpty, IsOptional, IsString, MinLength, ValidateNested
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 
 export class ServiceDto {
@@ -23,11 +25,16 @@ export class ServiceDto {
 
     @IsString()
     @MinLength(5)
-    ip: string = "127.0.0.1";
+    ip?: string = "127.0.0.1";
 
     @IsString()
     @MinLength(2)
     @IsOptional()
-    device: string = 'PC';
+    device?: string = 'PC';
 
+    @IsOptional()
+    @IsNotEmpty()
+    @ValidateNested({ each: true })
+    @Type(() => PaginationDto)
+    pagination?: PaginationDto;
 }
