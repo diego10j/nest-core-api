@@ -1,35 +1,37 @@
 import { Query } from "./query";
 import { ServiceDto } from '../../../common/dto/service.dto';
+import { isDefined } from '../../util/helpers/common-util';
 
 export class SelectQuery extends Query {
 
-    offset?: number;
-    rows?: number;
-    page?: number;
+    pagination?: {
+        offset: number;
+        rows: number;
+        page: number;
+    }
 
     constructor(query: string, dto?: ServiceDto) {
         super();
         this.query = query;
-
         if (dto) {
             // Asigna valores paginador
             const { pagination } = dto;
-            if (pagination) {
-                const mapObject = new Map(Object.entries(pagination));
-                this.rows = mapObject.get('rows')
-                this.page = mapObject.get('page')
-                this.offset = 0;
+            if (isDefined(pagination)) {
+                this.pagination = {
+                    rows: pagination.rows,
+                    page: pagination.page,
+                    offset: this.calculateOffset(pagination.rows, pagination.page)
+                }
             }
-
         }
     }
 
+    private calculateOffset(rows: number, page: number): number {
+        return (page - 1) * rows;
+    }
+
     getPagination() {
-        return {
-            rows: this.rows,
-            page: this.page,
-            offset: this.offset
-        }
+        return this.pagination;
     }
 
 }

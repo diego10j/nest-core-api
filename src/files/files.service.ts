@@ -49,7 +49,7 @@ export class FilesService {
         insertQuery.values.set('public_arch', true);
         insertQuery.values.set('favorita_arch', false);
         insertQuery.values.set('descargas_arch', 0);
-        insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey));
+        insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
         await this.dataSource.createQuery(insertQuery);
         return {
             message: `Carpeta ${folderName} creada exitosamente`
@@ -164,7 +164,7 @@ export class FilesService {
             insertQuery.values.set('extension_arch', extension);
             insertQuery.values.set('descargas_arch', 0);
 
-            insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey));
+            insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
             await this.dataSource.createQuery(insertQuery);
         }
         else {
@@ -199,7 +199,8 @@ export class FilesService {
             sis_archivo
         WHERE
             uuid =  ANY ($1)
-        OR sis_ide_arch in (SELECT ide_arch FROM sis_archivo WHERE  carpeta_arch = true and uuid =  ANY ($2) )`);
+        OR sis_ide_arch in (SELECT ide_arch FROM sis_archivo WHERE  carpeta_arch = true and uuid =  ANY ($2) )
+        `);
 
         query.addParam(1, dto.values);
         query.addParam(2, dto.values);

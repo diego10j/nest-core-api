@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { isDefined } from '../util/helpers/common-util';
 import { toTitleCase } from '../util/helpers/string-util';
-import { getDateFormatFront } from '../util/helpers/date-util';
+import { getDateFormatFront, getDateTimeFormatFront } from '../util/helpers/date-util';
 
 @Injectable()
 export class AuthService {
@@ -31,15 +31,42 @@ export class AuthService {
         const dataUser = await this.dataSource.createSingleQuery(queryUser);
         if (dataUser) {
             const queryPass = new SelectQuery(`
-            SELECT bloqueado_usua,fecha_caduc_usua,fecha_vence_uscl,a.ide_usua,clave_uscl,
-            nom_usua,mail_usua,a.ide_empr,nom_perf,a.ide_perf,avatar_usua,perm_util_perf,a.ide_empr,nick_usua,
-            (select ide_sucu from sis_usuario_sucursal where ide_usua = a.ide_usua  order by ide_ussu limit 1 ) as ide_sucu,
-            (select nom_empr from sis_empresa where ide_empr = a.ide_empr) as nom_empr
-            from sis_usuario a 
-            inner join sis_usuario_clave b on a.ide_usua=b.ide_usua 
-            inner join sis_perfil c on a.ide_perf=c.ide_perf 
-            where a.ide_usua=$1 and activo_usua=true 
-            and activo_uscl=true
+            SELECT 
+                a.bloqueado_usua,
+                a.fecha_caduc_usua,
+                fecha_vence_uscl,
+                a.ide_usua,
+                b.clave_uscl,
+                a.nom_usua,
+                a.mail_usua,
+                a.ide_empr,
+                c.nom_perf,
+                c.ide_perf,
+                a.avatar_usua,
+                c.perm_util_perf,
+                a.nick_usua,
+                d.ide_sucu,
+                e.nom_empr,
+                f.fecha_auac,
+                f.hora_auac
+            FROM 
+                sis_usuario a 
+                INNER JOIN sis_usuario_clave b ON a.ide_usua = b.ide_usua 
+                INNER JOIN sis_perfil c ON a.ide_perf = c.ide_perf 
+                INNER JOIN (SELECT ide_usua, ide_sucu FROM sis_usuario_sucursal GROUP BY ide_usua, ide_sucu) d ON a.ide_usua = d.ide_usua
+                INNER JOIN sis_empresa e ON a.ide_empr = e.ide_empr
+                LEFT JOIN (
+                    SELECT fecha_auac, hora_auac, ide_usua
+                    FROM sis_auditoria_acceso 
+                    WHERE ide_acau = 0 
+                        AND fin_auac = true
+                    ORDER BY ide_auac DESC
+                    LIMIT 1
+                ) f ON a.ide_usua = f.ide_usua
+            WHERE 
+                a.ide_usua = $1 
+                AND a.activo_usua = true 
+                AND b.activo_uscl = true       
             `);
             queryPass.addIntParam(1, dataUser.ide_usua);
             const dataPass = await this.dataSource.createSingleQuery(queryPass);
@@ -47,7 +74,7 @@ export class AuthService {
                 //Valida si el usuario no esta bloqueado
                 if (dataPass.bloqueado_usua === true)
                     throw new UnauthorizedException('Usuario bloqueado, contactese con el administrador del sistema.');
-                //TODO: Verifica que el usuario no este caducoado
+                //TODO: Verifica que el usuario no este caducado
                 //TODO:  Verifica que la clave no haya caducado
                 // Verificar contraseña
                 if (!bcrypt.compareSync(password, dataPass.clave_uscl)) {
@@ -71,7 +98,7 @@ export class AuthService {
                     //recupera el menú del usuario
                     const menu = await this.getMenuByRol(dataPass.ide_perf);
                     //recupera fecha último acceso
-                    const lastAccess = await this.getLastAccessUser(dataUser.ide_usua);
+                    const lastAccess = dataPass.fecha_auac ? dataPass.fecha_auac + " " + dataPass.hora_auac : getDateTimeFormatFront(new Date());
                     //actualiza estado true a sessiones no cerradas
                     const updateQuery = new UpdateQuery("sis_auditoria_acceso");
                     updateQuery.values.set("fin_auac", true);
@@ -132,12 +159,24 @@ export class AuthService {
      * @param ide_perf 
      * @returns 
      */
-    public async getMenuByRol(ide_perf: number) {
-        const selectQueryMenu = new SelectQuery(`SELECT ide_opci,nom_opci,sis_ide_opci,paquete_opci,
-        tipo_opci,a.uuid
-        FROM sis_opcion a 
-        WHERE a.ide_opci in (select ide_opci from sis_perfil_opcion where ide_perf=$1)
-        ORDER BY sis_ide_opci DESC, nom_opci`);
+    private async getMenuByRol(ide_perf: number) {
+        const selectQueryMenu = new SelectQuery(`
+        SELECT
+            o.ide_opci,
+            o.nom_opci,
+            o.sis_ide_opci,
+            o.paquete_opci,
+            o.tipo_opci,
+            o.uuid
+        FROM
+            sis_opcion o
+            LEFT JOIN sis_perfil_opcion p ON o.ide_opci = p.ide_opci
+        WHERE
+            p.ide_perf = $1
+        ORDER BY
+            sis_ide_opci DESC,
+            nom_opci            
+        `);
         selectQueryMenu.addNumberParam(1, ide_perf);
         const data = await this.dataSource.createQuery(selectQueryMenu);
         let objStructure = new Array();
@@ -180,23 +219,6 @@ export class AuthService {
         return objMenu;
     }
 
-    /**
-     * Obtener la última fecha de acceso del usuario
-     * @param ide_usua 
-     * @returns 
-     */
-    private async getLastAccessUser(ide_usua: number) {
-        let lastDate: string = getDateFormatFront(new Date());
-        const selectQuery = new SelectQuery(`select fecha_auac,hora_auac from sis_auditoria_acceso where ide_usua=$1 and ide_acau=0
-        and ide_auac = (select max(ide_auac) from sis_auditoria_acceso where ide_usua=$2 and ide_acau=0 and fin_auac=true)`);
-        selectQuery.addNumberParam(1, ide_usua);
-        selectQuery.addNumberParam(2, ide_usua);
-        const data = await this.dataSource.createSingleQuery(selectQuery);
-        if (data) {
-            lastDate = data.fecha_auac + " " + data.hora_auac;
-        }
-        return lastDate;
-    }
 
 
     async checkAuthStatus(user: any) {

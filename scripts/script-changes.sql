@@ -202,4 +202,12 @@ ON cxc_cabece_transa (ide_ccctr);
 CREATE INDEX idx_cxc_tipo_transacc_ide_ccttr
 ON cxc_tipo_transacc (ide_ccttr);
 
+CREATE INDEX idx_sis_auditoria_acceso_optimized ON sis_auditoria_acceso (ide_usua, ide_acau, fin_auac);
+CREATE INDEX idx_sis_auditoria_acceso_ide_acau_fin_auac ON sis_auditoria_acceso(ide_acau, fin_auac);
+CREATE INDEX idx_sis_usuario_ide_usua ON sis_usuario(ide_usua);
+CREATE INDEX idx_sis_usuario_clave_ide_usua ON sis_usuario_clave(ide_usua);
+CREATE INDEX idx_sis_usuario_sucursal_ide_usua ON sis_usuario_sucursal(ide_usua);
+CREATE INDEX idx_sis_auditoria_acceso_ide_usua ON sis_auditoria_acceso(ide_usua);
+CREATE INDEX idx_sis_usuario_ide_perf ON sis_usuario(ide_perf);
+CREATE INDEX idx_sis_perfil_ide_perf ON sis_perfil(ide_perf);
 

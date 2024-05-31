@@ -90,7 +90,8 @@ export class DataSourceService {
                     label: _col.name,
                     required: !colSchema?.nullable || false,
                     visible,
-                    length: colSchema?.length || 0,
+                    length: colSchema?.length,
+                    precision: colSchema?.precision,
                     decimals: colSchema?.decimals,
                     disabled: false,
                     filter: false,
@@ -121,6 +122,9 @@ export class DataSourceService {
         }
     }
 
+    /**
+     * Da formato sql al query dependiendo del tipo
+     */
     private async formatSqlQuery(query: Query) {
         //Forma sentencia sql
         try {
@@ -197,41 +201,26 @@ export class DataSourceService {
      * @param numberRowsAdded 
      * @returns 
      */
-    async getSeqTable(tableName: string, primaryKey: string, numberRowsAdded: number = 1): Promise<number> {
+    async getSeqTable(tableName: string, primaryKey: string, numberRowsAdded: number = 1, login: string = 'sa'): Promise<number> {
         {
-            let seq = 0;
-            //Busca maximo en la tabla sis_bloqueo
-            const query = new SelectQuery(`select maximo_bloq from sis_bloqueo where tabla_bloq = $1 `);
-            query.addStringParam(1, tableName.toUpperCase());
-            const data = await this.createQuery(query);
-            if (data.length > 0) {
-                //Calcula el secuencial de la tabla
-                seq = parseInt(data[0].maximo_bloq);
-                //Actualiza secuencial en la tabla sis_bloqueo
-                const queryUpdate = new UpdateQuery("sis_bloqueo");
-                queryUpdate.values.set("maximo_bloq", (seq + numberRowsAdded));
-                queryUpdate.where = "tabla_bloq = $1";
-                queryUpdate.addStringParam(1, tableName.toUpperCase());
-                await this.createQuery(queryUpdate);
-            }
-            else {
-                //Si no existe busca el maximo de la tabla
-                const queryCon = new SelectQuery(`SELECT COALESCE(MAX(${primaryKey}),0) AS max FROM ${tableName}`);
-                const dataCon = await this.createQuery(queryCon);
-                if (dataCon.length > 0) {
-                    seq = parseInt(dataCon[0].max);
+            let seq = 1;
+            // Busca maximo en la tabla sis_bloqueo
+            const query = new SelectQuery(`SELECT get_seq_table($1, $2, $3, $4) AS seq`);
+            query.addStringParam(1, tableName);
+            query.addStringParam(2, primaryKey);
+            query.addIntParam(3, numberRowsAdded);
+            query.addStringParam(4, login);
+            try {
+                const data = await this.createSingleQuery(query);
+                if (data) {
+                    seq = parseInt(data.seq);
                 }
-                //Inserta secuencial en la tabla sis_bloqueo
-                const queryMax = new SelectQuery(`SELECT COALESCE(MAX(ide_bloq),0)+1 AS max FROM sis_bloqueo`);
-                const dataMax = await this.createQuery(queryMax);
-                const queryInsert = new InsertQuery("sis_bloqueo");
-                queryInsert.values.set("maximo_bloq", (seq + numberRowsAdded));
-                queryInsert.values.set("tabla_bloq", tableName.toUpperCase());
-                queryInsert.values.set("ide_bloq", (dataMax[0].max));
-                queryInsert.values.set("usuario_bloq", "sa");  //-----
-                await this.createQuery(queryInsert);
+            } catch (error) {
+                throw new InternalServerErrorException(
+                    `[ERROR] getSeqTable - ${error}`
+                );
             }
-            return ++seq;
+            return seq;
         }
     }
 
@@ -243,16 +232,41 @@ export class DataSourceService {
      */
     private async getColumnsSchema(columnsName: string[], tablesID: number[]) {
         const pq = new SelectQuery(`
-        SELECT 
-        column_name as name,
-        character_maximum_lengtH as length,
-        numeric_scale  as decimals,
-        CASE WHEN is_nullable = 'NO' THEN false  ELSE true  END as  nullable,
-        table_name as table,
-        data_type as type     
-        FROM information_schema.columns a        
-        WHERE table_name IN (SELECT relname FROM pg_class WHERE oid  = ANY ($1))
-        AND column_name = ANY ($2)`);
+        SELECT
+        a.attname AS name,
+        CASE
+            WHEN t.typname = 'varchar' OR t.typname = 'bpchar' THEN a.atttypmod - 4
+            WHEN t.typname = 'uuid' THEN 36
+        	ELSE NULL
+        END AS length,
+        CASE
+            WHEN t.typname = 'numeric' THEN (a.atttypmod - 4) >> 16
+            WHEN t.typname = 'int2' THEN ceil(log(2^15)::numeric / log(10)) 
+	        WHEN t.typname = 'int4' THEN ceil(log(2^31)::numeric / log(10)) 
+	        WHEN t.typname = 'int8' THEN ceil(log(2^63)::numeric / log(10)) 
+            ELSE NULL
+        END AS precision,
+        CASE
+            WHEN t.typname = 'numeric' THEN (a.atttypmod - 4) & 65535
+            WHEN t.typname in ('int2','int4','int8') THEN 0
+            ELSE NULL
+        END AS decimals,
+        NOT a.attnotnull AS nullable,
+        c.relname AS table,
+        t.typname AS type
+    FROM
+        pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+        JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+    WHERE
+        c.oid = ANY ($1)
+        AND a.attname = ANY ($2)
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+    ORDER BY
+        c.relname,
+        a.attname      
+        `);
         pq.addArrayNumberParam(1, tablesID);
         pq.addArrayStringParam(2, columnsName);
         return await this.createQuery(pq);

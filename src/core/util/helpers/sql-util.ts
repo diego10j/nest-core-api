@@ -80,9 +80,9 @@ export function getSqlDelete(query: DeleteQuery) {
  * @returns 
  */
 export function getSqlSelect(query: SelectQuery) {
-    if (!isNaN(query.rows)) {
-        query.offset = query.rows * (query.page - 1);
-        query.query += ` OFFSET ${query.offset} LIMIT ${query.rows}`;
+    if ((query.pagination)) {
+        const { pagination } = query;
+        query.query += ` OFFSET ${pagination.offset} LIMIT ${pagination.rows}`;
     }
     return query;
 }
