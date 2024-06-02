@@ -13,5 +13,5 @@ export class DeleteFilesDto extends PartialType(ServiceDto) {
 
     @IsBoolean()
     @IsOptional()
-    trash?: boolean = false;
+    trash?: boolean = true;
 }

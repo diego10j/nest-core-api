@@ -211,3 +211,14 @@ CREATE INDEX idx_sis_auditoria_acceso_ide_usua ON sis_auditoria_acceso(ide_usua)
 CREATE INDEX idx_sis_usuario_ide_perf ON sis_usuario(ide_perf);
 CREATE INDEX idx_sis_perfil_ide_perf ON sis_perfil(ide_perf);
 
+-- 1 June 2024 10:14:46 AM
+ALTER TABLE "public"."inv_unidad"
+ADD COLUMN "siglas_inuni" varchar(4);
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'UNI' WHERE "ide_inuni" = 0;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'LIB' WHERE "ide_inuni" = 8;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FRA' WHERE "ide_inuni" = 7;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'LT' WHERE "ide_inuni" = 6;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'KG' WHERE "ide_inuni" = 5;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FUN' WHERE "ide_inuni" = 4;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'CAJ' WHERE "ide_inuni" = 1;
+UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'GAL' WHERE "ide_inuni" = 2;

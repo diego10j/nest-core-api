@@ -14,7 +14,7 @@ export class ClientesService extends BaseService {
         super();
         // obtiene las variables del sistema para el servicio
         this.dataSource.getVariables([
-            'p_cxc_estado_factura_normal'  // 0
+            'p_cxc_estado_factura_normal' // 0
         ]).then(result => {
             this.variables = result;
         });

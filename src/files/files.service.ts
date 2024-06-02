@@ -15,6 +15,7 @@ import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { toDate, FORMAT_DATETIME_DB } from '../core/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
+import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
 
 @Injectable()
 export class FilesService {
@@ -24,7 +25,9 @@ export class FilesService {
     private tableName = 'sis_archivo';
     private primaryKey = 'ide_arch';
 
-    constructor(private readonly dataSource: DataSourceService) {
+    constructor(
+        private readonly errorLog: ErrorsLoggerService,
+        private readonly dataSource: DataSourceService) {
         if (!existsSync(this.basePath)) {
             mkdirSync(this.basePath, { recursive: true });
         }
@@ -62,12 +65,21 @@ export class FilesService {
      * @returns 
      */
     async getFiles(dto: GetFilesDto): Promise<ResultQuery> {
-        const { ide_archi, ide_inarti } = dto;
-        const whereClause = `
-            WHERE public_arch = TRUE
-            ${isDefined(ide_archi) ? ' AND a.sis_ide_arch = $1' : ' AND a.sis_ide_arch IS NULL'}
-            ${isDefined(ide_inarti) ? ` AND a.ide_inarti = ${ide_inarti}` : ' AND a.ide_inarti IS NULL'}
-        `;
+        const { ide_archi, ide_inarti, mode } = dto;
+
+        const conditions = [
+            { condition: 'public_arch = TRUE', mode: ['files', 'favorites'] },
+            { condition: 'public_arch = FALSE', mode: ['trash'] },
+            { condition: 'favorita_arch = TRUE', mode: ['favorites'] },
+            { condition: isDefined(ide_archi) ? `a.sis_ide_arch = ${ide_archi}` : 'a.sis_ide_arch IS NULL', mode: ['files'] },
+            { condition: isDefined(ide_inarti) ? `a.ide_inarti = ${ide_inarti}` : 'a.ide_inarti IS NULL', mode: ['files', 'favorites', 'trash'] }
+        ];
+
+        const whereClause = conditions
+            .filter(cond => cond.mode.includes(mode))
+            .map(cond => cond.condition)
+            .join(' AND ');
+
         const query = new SelectQuery(`
         WITH archivo_aggregates AS (
             SELECT
@@ -99,13 +111,11 @@ export class FilesService {
             COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch
         FROM
             sis_archivo a
-            LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
-            ${whereClause}
+        LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
+        WHERE ${whereClause}
         ORDER BY
             carpeta_arch desc, nombre_arch
         `);
-        if (isDefined(ide_archi))
-            query.addParam(1, ide_archi);
 
         const data = await this.dataSource.createQuery(query);
         data.map(function (obj) {
@@ -222,7 +232,11 @@ export class FilesService {
                 // Elimina archivos 
                 if (row.carpeta_arch === false) {
                     const filePath = join(this.basePath, row.name);
-                    unlinkSync(filePath);
+                    try {
+                        unlinkSync(filePath);
+                    } catch (error) {
+                        this.errorLog.createErrorLog(`No se pudo borrar el archivo ${filePath} : ${error}`);
+                    }
                 }
             });
             return {

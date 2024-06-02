@@ -33,7 +33,7 @@ export const fileNamer = (req: Express.Request, file: Express.Multer.File, callb
   // console.log({ file })
   if (!file) return callback(new Error('File is empty'), false);
 
-  const fileExtension = file.mimetype.split('/')[1];
+  const fileExtension = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
 
   const fileName = `${uuid()}.${fileExtension}`;
 

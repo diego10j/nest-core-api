@@ -24,6 +24,9 @@ export class DataSourceService {
     private TYPE_DATESTAMP = 1082;
     private TYPE_TIMESTAMP = 1114;
     private TYPE_TIMESTAMPTZ = 1184;
+    private NUMERIC_OID = 1700;
+    private FLOAT8_OID = 701;
+    private INT8_OID = 20;
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
         private readonly errorsLoggerService: ErrorsLoggerService
@@ -32,6 +35,18 @@ export class DataSourceService {
         types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormatFront(date));
         types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormatFront(date));
         types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
+        types.setTypeParser(this.NUMERIC_OID, (val) => {
+            return parseFloat(val);
+          });
+          
+          types.setTypeParser(this.FLOAT8_OID, (val) => {
+            return parseFloat(val);
+          });
+          
+          types.setTypeParser(this.INT8_OID, (val) => {
+            return parseInt(val, 10);
+          });
+          
     }
 
 

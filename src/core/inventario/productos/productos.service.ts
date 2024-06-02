@@ -312,7 +312,7 @@ export class ProductosService {
         SELECT 
             iart.ide_inarti,
             COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
-            nombre_inuni
+            siglas_inuni
         FROM
             inv_det_comp_inve dci
             inner join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
@@ -324,7 +324,7 @@ export class ProductosService {
             dci.ide_inarti = $1
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
         GROUP BY   
-            iart.ide_inarti,nombre_inuni
+            iart.ide_inarti,siglas_inuni
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         const data = await this.dataSource.createQuery(query);
@@ -426,7 +426,7 @@ export class ProductosService {
     async getSumatoriaTrnPeriodo(dtoIn: IVentasMensualesDto) {
         const query = new SelectQuery(`
     SELECT
-        COALESCE(v.nombre_inuni, c.nombre_inuni) AS unidad,
+        COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
         v.fact_ventas,
         v.cantidad_ventas,
         v.total_ventas,
@@ -440,7 +440,7 @@ export class ProductosService {
                 count(1) AS fact_ventas,
                 sum(cdf.cantidad_ccdfa) AS cantidad_ventas,
                 sum(cdf.total_ccdfa) AS total_ventas,
-                nombre_inuni
+                siglas_inuni
             FROM
                 cxc_deta_factura cdf
                 LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
@@ -451,14 +451,14 @@ export class ProductosService {
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.fecha_emisi_cccfa BETWEEN $2  AND $3
             GROUP BY
-                nombre_inuni
+                siglas_inuni
         ) v FULL
         OUTER JOIN (
             SELECT
                 count(1) AS fact_compras,
                 sum(cdf.cantidad_cpdfa) AS cantidad_compras,
                 sum(cdf.valor_cpdfa) AS total_compras,
-                nombre_inuni
+                siglas_inuni
             FROM
                 cxp_detall_factur cdf
                 LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
@@ -469,8 +469,8 @@ export class ProductosService {
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
                 AND cf.fecha_emisi_cpcfa BETWEEN $5 AND $6
             GROUP BY
-                nombre_inuni
-        ) c ON v.nombre_inuni = c.nombre_inuni
+                siglas_inuni
+        ) c ON v.siglas_inuni = c.siglas_inuni
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
@@ -480,11 +480,65 @@ export class ProductosService {
         query.addStringParam(6, `${dtoIn.periodo}-12-31`);
 
         const data = await this.dataSource.createQuery(query);
+        if (data.length === 0) {
+            data.push(
+                {
+                    "unidad": "",
+                    "fact_ventas": "0",
+                    "cantidad_ventas": "0",
+                    "total_ventas": "0",
+                    "fact_compras": "0",
+                    "cantidad_compras": "0",
+                    "total_compras": "0",
+                    "margen": "0"
+                }
+            );
+        }
 
         return {
             rows: data,
             rowCount: data.length
         } as ResultQuery;
+    }
+
+
+    /**
+     * Retorna los 10 proveedores que mas se ha comprado
+     * @param dtoIn 
+     * @returns 
+     */
+    async getTopProveedores(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`
+        SELECT
+            p.ide_geper,
+            p.nom_geper,
+            COUNT(1) AS num_facturas,
+            SUM(cdf.cantidad_cpdfa) AS total_cantidad,
+            SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
+            siglas_inuni
+        FROM
+            cxp_detall_factur cdf
+            INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+        WHERE
+            cdf.ide_inarti = $1
+            AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+            AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+        GROUP BY
+            p.ide_geper,
+            p.nom_geper,
+            siglas_inuni
+        ORDER BY
+            total_valor DESC
+        LIMIT 10
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addStringParam(2, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(3, `${dtoIn.periodo}-12-31`);
+
+        return await this.dataSource.createQueryPG(query);
     }
 
 
@@ -499,10 +553,10 @@ export class ProductosService {
                 p.nom_geper
             FROM
                 cxp_detall_factur cdf
-                LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
-                LEFT JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+                INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
                 LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-                LEFT JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+                INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
             WHERE
                 cdf.ide_inarti = $1
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 

@@ -90,6 +90,14 @@ export class ProductosController {
     return this.service.getSumatoriaTrnPeriodo(dtoIn);
   }
 
+  @Post('getTopProveedores')
+  // @Auth()
+  getTopProveedores(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getTopProveedores(dtoIn);
+  }
+
   @Post('getVariacionPreciosCompras')
   // @Auth()
   getVariacionPreciosCompras(
