@@ -27,26 +27,25 @@ export class DataSourceService {
     private NUMERIC_OID = 1700;
     private FLOAT8_OID = 701;
     private INT8_OID = 20;
+    private  INT2_OID = 21;
+    private  INT4_OID = 23;
+    
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
         private readonly errorsLoggerService: ErrorsLoggerService
     ) {
         // Parse types bdd
+        // DATE
         types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormatFront(date));
         types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormatFront(date));
         types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
-        types.setTypeParser(this.NUMERIC_OID, (val) => {
-            return parseFloat(val);
-          });
-          
-          types.setTypeParser(this.FLOAT8_OID, (val) => {
-            return parseFloat(val);
-          });
-          
-          types.setTypeParser(this.INT8_OID, (val) => {
-            return parseInt(val, 10);
-          });
-          
+        // NUMBERS
+        types.setTypeParser(this.NUMERIC_OID, (val) => parseFloat(val));
+        types.setTypeParser(this.FLOAT8_OID, (val) => parseFloat(val));
+        types.setTypeParser(this.INT8_OID, (val) => parseInt(val, 10));
+        types.setTypeParser(this.INT2_OID, (val) => parseInt(val, 10));
+        types.setTypeParser(this.INT4_OID, (val) => parseInt(val, 10));
+
     }
 
 
