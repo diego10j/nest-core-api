@@ -222,3 +222,65 @@ UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'KG' WHERE "ide_inuni" = 5;
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FUN' WHERE "ide_inuni" = 4;
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'CAJ' WHERE "ide_inuni" = 1;
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'GAL' WHERE "ide_inuni" = 2;
+
+
+CREATE INDEX idx_ide_geper_cab_transa ON cxc_cabece_transa (ide_geper);
+CREATE INDEX idx_fecha_trans_ccdtr ON cxc_detall_transa (fecha_trans_ccdtr);
+CREATE INDEX idx_ide_sucu ON cxc_detall_transa (ide_sucu);
+CREATE INDEX idx_ide_ccctr ON cxc_cabece_transa (ide_ccctr);
+CREATE INDEX idx_ide_ccttr ON cxc_tipo_transacc (ide_ccttr);
+CREATE INDEX idx_ide_usua ON sis_usuario (ide_usua);
+
+-- Índice compuesto en la tabla cxc_cabece_factura
+CREATE INDEX idx_facturas_fecha_geper_ccefa ON cxc_cabece_factura (fecha_emisi_cccfa, ide_geper, ide_ccefa);
+
+-- Índice adicional en las columnas ide_geper y ide_ccefa (opcional)
+CREATE INDEX idx_facturas_geper_ccefa ON cxc_cabece_factura (ide_geper, ide_ccefa);
+
+-- Índice en la columna fecha_emisi_cccfa (opcional si el índice compuesto no se puede usar)
+CREATE INDEX idx_facturas_fecha ON cxc_cabece_factura (fecha_emisi_cccfa);
+
+-- 07 June 2024 10:14:46 AM
+CREATE TABLE "public"."sis_calendario" (
+    "ide_cale" int4,
+    "titulo_cale" text NOT NULL,
+    "descripcion_cale" text,
+    "fecha_inicio_cale" timestamp,
+    "fecha_fin_cale" timestamp,
+    "todo_el_dia_cale" bool,
+    "color_cale" varchar(50),
+    "ide_usua" int4,
+    "usuario_ingre" varchar(50),
+    "fecha_ingre" date,
+    "hora_ingre" time,
+    "usuario_actua" varchar(50),
+    "fecha_actua" date,
+    "hora_actua" time,
+    "ide_geper" int4,
+    "ide_inarti" int4,
+    "publico_cale" bool,
+	"notificar_cale" bool,
+);
+ALTER TABLE public.sis_calendario
+	ADD CONSTRAINT sis_calendario_ide_usua_fkey
+	FOREIGN KEY(ide_usua)
+	REFERENCES public.sis_usuario(ide_usua)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
+ALTER TABLE public.sis_calendario
+	ADD CONSTRAINT sis_calendario_ide_inarti_fkey
+	FOREIGN KEY(ide_inarti)
+	REFERENCES public.inv_articulo(ide_inarti)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
+ALTER TABLE public.sis_calendario
+	ADD CONSTRAINT sis_calendario_ide_geper_fkey
+	FOREIGN KEY(ide_geper)
+	REFERENCES public.gen_persona(ide_geper)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
+ALTER TABLE sis_calendario ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
+CREATE INDEX idx_uuid_sis_calendario ON sis_calendario(uuid);

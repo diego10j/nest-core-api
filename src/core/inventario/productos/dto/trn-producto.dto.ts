@@ -1,8 +1,7 @@
 import { IsDateString, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
-import { PartialType } from '@nestjs/mapped-types';
 
-export class TrnProductoDto extends PartialType(ServiceDto) {
+export class TrnProductoDto extends ServiceDto {
 
     @IsDateString()
     fechaInicio: Date;

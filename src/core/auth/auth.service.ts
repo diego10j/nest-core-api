@@ -161,64 +161,87 @@ export class AuthService {
      */
     private async getMenuByRol(ide_perf: number) {
         const selectQueryMenu = new SelectQuery(`
+        WITH RECURSIVE RecursiveMenu AS (
+            SELECT
+                o.ide_opci,
+                o.nom_opci,
+                o.sis_ide_opci,
+                o.paquete_opci,
+                o.tipo_opci,
+                o.uuid,
+                NULL::bigint AS parent_id
+            FROM
+                sis_opcion o
+            LEFT JOIN
+                sis_perfil_opcion p ON o.ide_opci = p.ide_opci
+            WHERE
+                p.ide_perf = $1
+                AND o.sis_ide_opci IS NULL
+        
+            UNION ALL
+        
+            SELECT
+                o.ide_opci,
+                o.nom_opci,
+                o.sis_ide_opci,
+                o.paquete_opci,
+                o.tipo_opci,
+                o.uuid,
+                rm.ide_opci AS parent_id
+            FROM
+                sis_opcion o
+            INNER JOIN
+                RecursiveMenu rm ON o.sis_ide_opci = rm.ide_opci
+        )
         SELECT
-            o.ide_opci,
-            o.nom_opci,
-            o.sis_ide_opci,
-            o.paquete_opci,
-            o.tipo_opci,
-            o.uuid
+            ide_opci,
+            nom_opci,
+            sis_ide_opci,
+            paquete_opci,
+            tipo_opci,
+            uuid,
+            parent_id
         FROM
-            sis_opcion o
-            LEFT JOIN sis_perfil_opcion p ON o.ide_opci = p.ide_opci
-        WHERE
-            p.ide_perf = $1
+            RecursiveMenu
         ORDER BY
-            sis_ide_opci DESC,
-            nom_opci            
+            parent_id, nom_opci        
         `);
         selectQueryMenu.addNumberParam(1, ide_perf);
         const data = await this.dataSource.createQuery(selectQueryMenu);
-        let objStructure = new Array();
-        for (let row of data) {
-            objStructure.push(this.getMenuItem(row));
+        // Estructurar los datos en formato jerárquico
+        const menuMap = new Map<number, any>();
+
+        // Crear los nodos del menú
+        for (const row of data) {
+            const menuItem = {
+                label: row.nom_opci,
+                data: row.ide_opci.toString(),
+                package: row.paquete_opci,
+                node: row.sis_ide_opci?.toString() || null,
+                uuid: row.uuid,
+                path: row.tipo_opci || null,
+                items: []
+            };
+            menuMap.set(row.ide_opci, menuItem);
         }
-        //Forma el arreglo hijos
-        let resp = [];
-        for (let row of objStructure) {
-            const result = objStructure.filter(
-                (hijos) => hijos.node === row.data
-            );
-            if (result.length > 0) {
-                let chi = new Array();
-                for (let auxFila of result) {
-                    chi.push(auxFila);
-                }
-                row["items"] = chi;
-                if (row.node === null) {
-                    resp.push(row);
+
+        // Crear la estructura jerárquica
+        const rootItems = [];
+
+        for (const row of data) {
+            const menuItem = menuMap.get(row.ide_opci);
+            if (row.parent_id === null) {
+                rootItems.push(menuItem);
+            } else {
+                const parentItem = menuMap.get(row.parent_id);
+                if (parentItem) {
+                    parentItem.items.push(menuItem);
                 }
             }
         }
-        return resp;
-    }
 
-    private getMenuItem(row: any) {
-        let objMenu = {};
-        objMenu["label"] = row.nom_opci;
-        objMenu["data"] = `${row.ide_opci}`;
-        objMenu["package"] = row.paquete_opci;
-        objMenu["node"] = row.sis_ide_opci;
-        objMenu["uuid"] = row.uuid;
-        if (row.node !== null) {
-            objMenu["path"] = row.tipo_opci;
-        } else {
-            objMenu["label"] = row.nom_opci;
-            objMenu["package"] = row.paquete_opci;
-        }
-        return objMenu;
+        return rootItems;
     }
-
 
 
     async checkAuthStatus(user: any) {

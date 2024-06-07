@@ -19,7 +19,7 @@ export class ProductosController {
   getProductos(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getProductos();
+    return this.service.getProductos(dtoIn);
   }
 
   @Post('getTrnProducto')
@@ -98,6 +98,14 @@ export class ProductosController {
     return this.service.getTopProveedores(dtoIn);
   }
 
+  @Post('getTopClientes')
+  // @Auth()
+  getTopClientes(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getTopClientes(dtoIn);
+  }
+
   @Post('getVariacionPreciosCompras')
   // @Auth()
   getVariacionPreciosCompras(
@@ -106,6 +114,14 @@ export class ProductosController {
     return this.service.getVariacionPreciosCompras(dtoIn);
   }
 
+
+  @Post('getVariacionInventario')
+  // @Auth()
+  getVariacionInventario(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.getVariacionInventario(dtoIn);
+  }
 
 
 }

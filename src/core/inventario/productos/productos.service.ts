@@ -1,3 +1,4 @@
+import { getDateFormat } from 'src/core/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -8,14 +9,15 @@ import { toResultQuery } from '../../util/helpers/sql-util';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
+import { BaseService } from '../../../common/base-service';
+import { getDateFormatFront } from 'src/core/util/helpers/date-util';
 
 @Injectable()
-export class ProductosService {
-
-    private variables = new Map();
+export class ProductosService extends BaseService {
 
     constructor(private readonly dataSource: DataSourceService
     ) {
+        super();
         // obtiene las variables del sistema para el servicio
         this.dataSource.getVariables([
             'p_inv_estado_normal',  // 1
@@ -26,6 +28,7 @@ export class ProductosService {
         });
 
     }
+
     /**
      * Retorna el listado de Productos
      * @returns 
@@ -81,7 +84,7 @@ export class ProductosService {
         AND ARTICULO.nivel_inarti = 'HIJO'
     ORDER BY
         ARTICULO.nombre_inarti;
-    `);
+    `, _dtoIn);
 
         return await this.dataSource.createQueryPG(query);
     }
@@ -92,7 +95,6 @@ export class ProductosService {
      * @returns 
      */
     async getTrnProducto(dtoIn: TrnProductoDto) {
-
         const query = new SelectQuery(`
         WITH saldo_inicial AS (
             SELECT 
@@ -100,13 +102,14 @@ export class ProductosService {
                 SUM(cantidad_indci * signo_intci) AS saldo
             FROM
                 inv_det_comp_inve dci
-                LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
                 LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
             WHERE
                 dci.ide_inarti = $1
                 AND fecha_trans_incci < $2
                 AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                AND dci.ide_sucu =  ${dtoIn.ideSucu}
             GROUP BY
                 dci.ide_inarti
         ),
@@ -140,15 +143,16 @@ export class ProductosService {
                 cantidad_indci * signo_intci AS movimiento
             FROM
                 inv_det_comp_inve dci
-                LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
                 LEFT JOIN gen_persona gpe ON cci.ide_geper = gpe.ide_geper
                 LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
                 LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-                LEFT JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
+                INNER JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
             WHERE
                 dci.ide_inarti = $3
                 AND fecha_trans_incci BETWEEN $4 AND $5
                 AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                AND dci.ide_sucu =  ${dtoIn.ideSucu}
         ),
         saldo_movimientos AS (
             SELECT
@@ -168,12 +172,12 @@ export class ProductosService {
                 LEFT JOIN saldo_inicial ON mov.ide_inarti = saldo_inicial.ide_inarti
             UNION ALL
             SELECT
-                NULL AS ide_indci,
+                -1 AS ide_indci,
                 saldo_inicial.ide_inarti,
                 NULL AS ide_incci,
-                '2019-01-01' AS fecha_trans_incci,
+                '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_incci,
                 NULL AS NUM_DOCUMENTO,        
-                'SALDO INICIAL AL ' || to_char('2019-01-01'::date, 'DD/MM/YYYY') AS  nom_geper,
+                'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
                 'Saldo Inicial' AS nombre_intti,
                 NULL AS PRECIO,
                 NULL AS INGRESO,
@@ -184,15 +188,13 @@ export class ProductosService {
         )
         SELECT *
         FROM saldo_movimientos
-        ORDER BY fecha_trans_incci, ide_indci NULLS FIRST
+        ORDER BY fecha_trans_incci, ide_indci 
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addIntParam(3, dtoIn.ide_inarti);
         query.addDateParam(4, dtoIn.fechaInicio);
         query.addDateParam(5, dtoIn.fechaFin);
-
-
 
         return await this.dataSource.createQueryPG(query);
     }
@@ -213,9 +215,9 @@ export class ProductosService {
             cdf.total_ccdfa
         FROM
             cxc_deta_factura cdf
-            left join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
-            left join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
-            left join gen_persona p on cf.ide_geper = p.ide_geper
+        INNER join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
+        INNER join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+        INNER join gen_persona p on cf.ide_geper = p.ide_geper
         WHERE
             cdf.ide_inarti =  $1
             and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
@@ -254,7 +256,8 @@ export class ProductosService {
         and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
         and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
     ORDER BY 
-        cf.fecha_emisi_cpcfa desc, numero_cpcfa`);
+        cf.fecha_emisi_cpcfa desc, numero_cpcfa`
+            , dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -268,36 +271,47 @@ export class ProductosService {
      */
     async getUltimosPreciosCompras(dtoIn: IdProductoDto) {
         const query = new SelectQuery(`
-        SELECT
-        distinct b.ide_geper,nom_geper,max(b.fecha_emisi_cpcfa) as fecha_ultima_venta,
-            (select cantidad_cpdfa from cxp_detall_factur  
-            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
-            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$1 
-            order by fecha_emisi_cpcfa desc limit 1) as cantidad,
-            (select precio_cpdfa from cxp_detall_factur  
-            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
-            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$2 
-            order by fecha_emisi_cpcfa desc limit 1) as precio,
-            (select valor_cpdfa  from cxp_detall_factur  
-            inner join cxp_cabece_factur  on cxp_detall_factur.ide_cpcfa=cxp_cabece_factur.ide_cpcfa 
-            where ide_cpefa= ${this.variables.get('p_cxp_estado_factura_normal')}  and ide_geper=b.ide_geper and ide_inarti=$3 
-            order by fecha_emisi_cpcfa desc limit 1) as total
-        FROM 
-            cxp_detall_factur a 
-            inner join cxp_cabece_factur b on a.ide_cpcfa=b.ide_cpcfa
-            inner join gen_persona c on b.ide_geper=c.ide_geper
-        WHERE
-            ide_cpefa=${this.variables.get('p_cxp_estado_factura_normal')}
-            and a.ide_inarti=$4
-        GROUP BY 
-            a.ide_inarti,b.ide_geper,nom_geper
-        ORDER BY 
-            3,nom_geper desc       
+    SELECT
+        DISTINCT b.ide_geper,
+        c.nom_geper,
+        MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
+        df.cantidad,
+        df.precio,
+        df.total
+    FROM 
+        cxp_detall_factur a
+        INNER JOIN cxp_cabece_factur b ON a.ide_cpcfa = b.ide_cpcfa
+        INNER JOIN gen_persona c ON b.ide_geper = c.ide_geper
+        LEFT JOIN (
+            SELECT
+                ide_geper,
+                ide_inarti,
+                cantidad_cpdfa AS cantidad,
+                precio_cpdfa AS precio,
+                valor_cpdfa AS total,
+                ROW_NUMBER() OVER (PARTITION BY ide_geper ORDER BY fecha_emisi_cpcfa DESC) AS rn
+            FROM 
+                cxp_detall_factur 
+                INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+            WHERE 
+                ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                AND ide_inarti = $1
+        ) df ON df.ide_geper = b.ide_geper AND df.rn = 1
+    WHERE
+        b.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
+        AND a.ide_inarti = $2
+    GROUP BY 
+        a.ide_inarti,
+        b.ide_geper,
+        c.nom_geper,
+        df.cantidad,
+        df.precio,
+        df.total
+    ORDER BY 
+        3, c.nom_geper DESC  
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addIntParam(4, dtoIn.ide_inarti);
         return await this.dataSource.createQueryPG(query);
     }
 
@@ -449,7 +463,7 @@ export class ProductosService {
             WHERE
                 cdf.ide_inarti = $1
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND cf.fecha_emisi_cccfa BETWEEN $2  AND $3
+                AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
             GROUP BY
                 siglas_inuni
         ) v FULL
@@ -503,7 +517,7 @@ export class ProductosService {
 
 
     /**
-     * Retorna los 10 proveedores que mas se ha comprado
+     * Retorna top 10 mejores proveedores en un periodo
      * @param dtoIn 
      * @returns 
      */
@@ -511,7 +525,7 @@ export class ProductosService {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
-            p.nom_geper,
+            upper(p.nom_geper) as nom_geper,
             COUNT(1) AS num_facturas,
             SUM(cdf.cantidad_cpdfa) AS total_cantidad,
             SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
@@ -526,6 +540,45 @@ export class ProductosService {
             cdf.ide_inarti = $1
             AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
             AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+        GROUP BY
+            p.ide_geper,
+            p.nom_geper,
+            siglas_inuni
+        ORDER BY
+            total_valor DESC
+        LIMIT 10
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addStringParam(2, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(3, `${dtoIn.periodo}-12-31`);
+
+        return await this.dataSource.createQueryPG(query);
+    }
+
+    /**
+     * Retorna top 10 mejores clientes en un periodo
+     * @param dtoIn 
+     * @returns 
+     */
+    async getTopClientes(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`
+        SELECT
+            p.ide_geper,
+            upper(p.nom_geper) as nom_geper,
+            COUNT(1) AS num_facturas,
+            SUM(cdf.cantidad_ccdfa) AS total_cantidad,
+            SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
+            siglas_inuni
+        FROM
+            cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+        WHERE
+            cdf.ide_inarti = $1
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
         GROUP BY
             p.ide_geper,
             p.nom_geper,
@@ -590,6 +643,66 @@ export class ProductosService {
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQueryPG(query);
+    }
+
+
+    async getVariacionInventario(dtoIn: IVentasMensualesDto) {
+        const query = new SelectQuery(`       
+        WITH Meses AS (
+            SELECT
+                gm.nombre_gemes,
+                gm.ide_gemes,
+                TO_DATE('${dtoIn.periodo}-' || LPAD(gm.ide_gemes::text, 2, '0') || '-01', 'YYYY-MM-DD') AS inicio_mes,
+                (TO_DATE('${dtoIn.periodo}-' || LPAD(gm.ide_gemes::text, 2, '0') || '-01', 'YYYY-MM-DD') + INTERVAL '1 MONTH' - INTERVAL '1 DAY') AS fin_mes
+            FROM
+                gen_mes gm
+        ),
+        Transacciones AS (
+            SELECT
+                m.ide_gemes,
+                m.inicio_mes,
+                m.fin_mes,
+                SUM(CASE
+                    WHEN cci.fecha_trans_incci < m.inicio_mes THEN dci.cantidad_indci * tci.signo_intci
+                    ELSE 0
+                END) AS saldo_inicial,
+                SUM(CASE
+                    WHEN cci.fecha_trans_incci <= m.fin_mes THEN dci.cantidad_indci * tci.signo_intci
+                    ELSE 0
+                END) AS saldo_final,
+                SUM(CASE
+                    WHEN cci.fecha_trans_incci BETWEEN m.inicio_mes AND m.fin_mes AND tci.signo_intci = 1 THEN dci.cantidad_indci
+                    ELSE 0
+                END) AS ingresos,
+                SUM(CASE
+                    WHEN cci.fecha_trans_incci BETWEEN m.inicio_mes AND m.fin_mes AND tci.signo_intci = -1 THEN dci.cantidad_indci
+                    ELSE 0
+                END) AS egresos
+            FROM
+                Meses m
+            LEFT JOIN inv_det_comp_inve dci ON dci.ide_inarti = $1
+            INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci AND cci.ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
+            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            GROUP BY
+                m.ide_gemes, m.inicio_mes, m.fin_mes
+        )
+        SELECT
+            m.nombre_gemes,
+            COALESCE(t.saldo_inicial, 0) AS saldo_inicial,            
+            COALESCE(t.ingresos, 0) AS ingresos,
+            COALESCE(t.egresos, 0) AS egresos,
+            COALESCE(t.saldo_final, 0) AS saldo_final
+        FROM
+            Meses m
+        LEFT JOIN
+            Transacciones t ON m.ide_gemes = t.ide_gemes
+        ORDER BY
+            m.ide_gemes;
+
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQueryPG(query);
     }
 

@@ -160,7 +160,6 @@ export class CoreService {
      * @returns 
      */
     async findByUuid(dtoIn: FindByUuidDto) {
-        let msg: string;
         const columns = dtoIn.columns || '*'; // all columns
         const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE uuid = $1`);
         query.addParam(1, dtoIn.uuid);

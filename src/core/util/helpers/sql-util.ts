@@ -1,6 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common';
 import { UpdateQuery, InsertQuery, DeleteQuery, SelectQuery } from '../../connection/helpers';
 import { ResultQuery } from '../../connection/interfaces/resultQuery';
+import { ServiceDto } from '../../../common/dto/service.dto';
 
 /**
  * Retorna la sentencia SQL del objeto UpdateQuery
@@ -242,4 +243,13 @@ export function toResultQuery(data: any[], message?: string): ResultQuery {
         rows: data,
         message
     } as ResultQuery;
+}
+
+
+export function getWhereIdeSucu(tabla: string, dto: ServiceDto) {
+    return ` AND ${tabla}.ide_sucu = ${dto.ideSucu}`;
+}
+
+export function getWhereIdeEmpr(tabla: string, dto: ServiceDto) {
+    return ` AND ${tabla}.ide_empr = ${dto.ideEmpr}`;
 }

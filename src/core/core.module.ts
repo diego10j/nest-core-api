@@ -10,8 +10,9 @@ import { ClientesModule } from './ventas/clientes/clientes.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { UsuariosModule } from './sistema/usuarios/usuarios.module';
 import { GeneralModule } from './general/general.module';
+import { CalendarioModule } from './sistema/calendario/calendario.module';
 @Module({
-  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, UsuariosModule, GeneralModule],
+  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, UsuariosModule, GeneralModule, CalendarioModule],
   providers: [DataSourceService, AuditService, CoreService],
   exports: [DataSourceService],
   controllers: [AuditController, CoreController],

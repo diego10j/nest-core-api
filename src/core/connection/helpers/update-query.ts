@@ -26,5 +26,22 @@ export class UpdateQuery extends Query {
             this.values.set('hora_actua', getTimeFormat(new Date()));
         }
     }
+
+    /**
+     * Asigna los valores 
+     * @param entry 
+     */
+    setValues(entry: any) {
+        delete entry.hora_ingre;
+        delete entry.usuario_ingre;
+        delete entry.fecha_ingre;
+        delete entry.uuid;
+        // Iterar sobre las propiedades del objeto 'entry'
+        for (const [key, value] of Object.entries(entry)) {
+            this.values.set(key, value);
+        }
+    }
+
+
 }
 

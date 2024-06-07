@@ -27,6 +27,17 @@ export class InsertQuery extends Query {
         }
     }
 
+    /**
+     * Asigna los valores 
+     * @param entry 
+     */
+    setValues(entry: object) {
+        // Iterar sobre las propiedades del objeto 'entry'
+        for (const [key, value] of Object.entries(entry)) {
+            this.values.set(key, value);
+        }
+    }
+
 
 }
 

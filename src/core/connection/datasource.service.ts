@@ -36,9 +36,9 @@ export class DataSourceService {
     ) {
         // Parse types bdd
         // DATE
-        types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormatFront(date));
-        types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormatFront(date));
-        types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
+        // types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormatFront(date));
+        // types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormatFront(date));
+        // types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
         // NUMBERS
         types.setTypeParser(this.NUMERIC_OID, (val) => parseFloat(val));
         types.setTypeParser(this.FLOAT8_OID, (val) => parseFloat(val));
@@ -129,6 +129,7 @@ export class DataSourceService {
             } as ResultQuery;
 
         } catch (error) {
+            console.error(error);
             this.errorsLoggerService.createErrorLog(`[ERROR] createQueryPG`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQueryPG - ${error}`
