@@ -25,6 +25,7 @@ export class ServiceDto {
 
     @IsString()
     @MinLength(5)
+    @IsOptional()
     ip?: string = "127.0.0.1";
 
     @IsString()

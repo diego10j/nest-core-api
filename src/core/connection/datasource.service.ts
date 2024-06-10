@@ -57,7 +57,7 @@ export class DataSourceService {
     async createQuery(query: Query): Promise<any[]> {
         this.formatSqlQuery(query);
         try {
-            //console.log(query.query);
+            // console.log(query.query);
             const data = await this.dataSource.query(query.query, query.paramValues);
             return data;
         } catch (error) {

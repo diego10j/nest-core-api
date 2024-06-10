@@ -31,11 +31,17 @@ export class UpdateQuery extends Query {
      * Asigna los valores 
      * @param entry 
      */
-    setValues(entry: any) {
-        delete entry.hora_ingre;
-        delete entry.usuario_ingre;
-        delete entry.fecha_ingre;
-        delete entry.uuid;
+    setValues(entry: Record<string, any>) {
+        const keysToDelete = [
+            'ip', 'device', 'login', 'pagination', 
+            'ideUsua', 'ideEmpr', 'ideSucu', 'idePerf',
+            'hora_ingre', 'usuario_ingre', 'fecha_ingre', 'uuid'
+        ];
+    
+        // Eliminar las claves no deseadas
+        for (const key of keysToDelete) {
+            delete entry[key];
+        }
         // Iterar sobre las propiedades del objeto 'entry'
         for (const [key, value] of Object.entries(entry)) {
             this.values.set(key, value);

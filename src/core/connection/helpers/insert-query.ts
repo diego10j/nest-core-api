@@ -31,8 +31,17 @@ export class InsertQuery extends Query {
      * Asigna los valores 
      * @param entry 
      */
-    setValues(entry: object) {
+    setValues(entry: Record<string, any>) {
         // Iterar sobre las propiedades del objeto 'entry'
+        const keysToDelete = [
+            'ip', 'device', 'login', 'pagination',
+            'ideUsua', 'ideEmpr', 'ideSucu', 'idePerf'
+        ];
+
+        // Eliminar las claves no deseadas
+        for (const key of keysToDelete) {
+            delete entry[key];
+        }
         for (const [key, value] of Object.entries(entry)) {
             this.values.set(key, value);
         }

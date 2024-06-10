@@ -1,8 +1,6 @@
 import { toString } from './common-util';
 import { parse, format, getTime, addDays, isValid, formatDistanceToNow } from 'date-fns';
-import  es  from 'date-fns/locale/es';
 
-const locale = es;
 
 export const FORMAT_DATE_BD = (): string => process.env.FORMAT_DATE_BD;  // yyyy-MM-dd
 export const FORMAT_TIME_BD = (): string => process.env.FORMAT_TIME_BD;
@@ -21,19 +19,19 @@ type InputValue = Date | string | number | null | undefined;
 export function fDate(date: InputValue, newFormat?: string) {
     const fm = newFormat || 'dd LLLL yyyy';  // dd MMM yyyy
 
-    return date ? format(new Date(date), fm, { locale }) : '';
+    return date ? format(new Date(date), fm) : '';
 }
 
 export function fTime(date: InputValue, newFormat?: string) {
     const fm = newFormat || 'p';
 
-    return date ? format(new Date(date), fm, { locale }) : '';
+    return date ? format(new Date(date), fm) : '';
 }
 
 export function fDateTime(date: InputValue, newFormat?: string) {
     const fm = newFormat || 'dd MMM yyyy p';
 
-    return date ? format(new Date(date), fm, { locale }) : '';
+    return date ? format(new Date(date), fm) : '';
 }
 
 export function fTimestamp(date: InputValue) {

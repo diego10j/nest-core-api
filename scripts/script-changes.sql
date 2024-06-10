@@ -260,6 +260,8 @@ CREATE TABLE "public"."sis_calendario" (
     "ide_inarti" int4,
     "publico_cale" bool,
 	"notificar_cale" bool,
+	"ide_empr" int2,
+	"ide_sucu" int2
 );
 ALTER TABLE public.sis_calendario
 	ADD CONSTRAINT sis_calendario_ide_usua_fkey
