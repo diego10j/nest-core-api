@@ -51,6 +51,7 @@ export function getSqlInsert(query: InsertQuery) {
             sqlValues += `$${cont}`;
             query.params.push({ index: cont, value })
         }
+        /// campos istas de auidtoria
     }
     query.query += `${sqlColumns} ) VALUES ( ${sqlValues} )`;
     return query;

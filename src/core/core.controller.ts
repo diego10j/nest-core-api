@@ -1,8 +1,10 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Auth } from './auth/decorators';
 import { CoreService } from './core.service';
 
 import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto } from './connection/dto';
+import { ColumnsTableDto } from './connection/dto/columns-table.dto';
+import { ServiceDto } from '../common/dto/service.dto';
 
 @Controller('core')
 export class CoreController {
@@ -70,4 +72,32 @@ export class CoreController {
     ) {
         return this.service.findByUuid(dtoIn);
     }
+
+
+    @Post('getTableColumns')
+    //@Auth()
+    getTableColumns(
+        @Body() dtoIn: ColumnsTableDto
+    ) {
+        return this.service.getTableColumns(dtoIn);
+    }
+
+    @Post('refreshTableColumns')
+    //@Auth()
+    refreshTableColumns(
+        @Body() dtoIn: ColumnsTableDto
+    ) {
+        return this.service.refreshTableColumns(dtoIn);
+    }
+
+
+    @Post('clearTableColumnsCache')
+    //@Auth()
+    clearTableColumnsCache(
+        @Body() _dtoIn: ServiceDto
+    ) {
+        return this.service.clearTableColumnsCache();
+    }
+
+
 }

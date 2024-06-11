@@ -1,6 +1,7 @@
 import { Query } from "./query";
 import { isDefined } from '../../util/helpers/common-util';
 import { getDateFormat, getTimeFormat } from '../../util/helpers/date-util';
+import { ServiceDto } from '../../../common/dto/service.dto';
 
 export class InsertQuery extends Query {
 

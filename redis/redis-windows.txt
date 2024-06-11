@@ -1,0 +1,4 @@
+https://github.com/ServiceStack/redis-windows
+
+cd c:\redis
+redis-server.exe redis.windows.conf

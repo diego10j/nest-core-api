@@ -1,6 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { Injectable, InternalServerErrorException, Inject } from '@nestjs/common';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
 import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
@@ -9,6 +7,7 @@ import { removeEqualsElements } from '../util/helpers/array-util';
 import { getDateFormatFront, getDateTimeFormatFront, getTimeFormat } from '../util/helpers/date-util';
 import { getCountStringInText } from '../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../util/helpers/sql-util';
+import { Redis } from 'ioredis';
 
 @Injectable()
 export class DataSourceService {
@@ -27,12 +26,12 @@ export class DataSourceService {
     private NUMERIC_OID = 1700;
     private FLOAT8_OID = 701;
     private INT8_OID = 20;
-    private  INT2_OID = 21;
-    private  INT4_OID = 23;
-    
+    private INT2_OID = 21;
+    private INT4_OID = 23;
+
     constructor(
-        @InjectDataSource() private readonly dataSource: DataSource,
-        private readonly errorsLoggerService: ErrorsLoggerService
+        private readonly errorsLoggerService: ErrorsLoggerService,
+        @Inject('REDIS_CLIENT') private readonly redisClient: Redis
     ) {
         // Parse types bdd
         // DATE
@@ -55,11 +54,12 @@ export class DataSourceService {
      * @returns Array data
      */
     async createQuery(query: Query): Promise<any[]> {
-        this.formatSqlQuery(query);
+        await this.formatSqlQuery(query);
         try {
             // console.log(query.query);
-            const data = await this.dataSource.query(query.query, query.paramValues);
-            return data;
+            const result = await this.pool.query(query.query, query.params.map(_param => _param.value));
+            console.log(result);
+            return result.rows || [];
         } catch (error) {
             this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
             throw new InternalServerErrorException(
@@ -75,7 +75,7 @@ export class DataSourceService {
      * @returns Array data
      */
     async createQueryPG(query: SelectQuery, isSchema = true): Promise<ResultQuery> {
-        this.formatSqlQuery(query);
+        await this.formatSqlQuery(query);
         //Ejecuta el query
         try {
             // console.log(query.query);
@@ -94,7 +94,6 @@ export class DataSourceService {
                 const defaultValue = getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const componentCore = getComponentColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
                 const visible = _col.name === primaryKey ? false : getVisibleCoreColumn(_col.name);
-
                 return {
                     name: _col.name,
                     tableID: _col.tableID,
@@ -143,7 +142,12 @@ export class DataSourceService {
     private async formatSqlQuery(query: Query) {
         //Forma sentencia sql
         try {
-            if (query instanceof InsertQuery) getSqlInsert(query);
+            if (query instanceof InsertQuery) {
+                if (query.columns.length === 0) {
+                    query.columns = await this.getTableColumns(query.table)
+                }
+                getSqlInsert(query);
+            }
             else if (query instanceof UpdateQuery) getSqlUpdate(query);
             else if (query instanceof DeleteQuery) getSqlDelete(query);
             else if (query instanceof SelectQuery) getSqlSelect(query);
@@ -173,18 +177,17 @@ export class DataSourceService {
 
 
     async createListQuery(listQuery: Query[]): Promise<boolean> {
-        const queryRunner = this.dataSource.createQueryRunner();
+        const queryRunner = await this.pool.connect();
         try {
-            await queryRunner.connect();
-            await queryRunner.startTransaction();
+            await queryRunner.query('BEGIN');
             for (let currentQuery of listQuery) {
-                this.formatSqlQuery(currentQuery);
-                await queryRunner.manager.query(currentQuery.query, currentQuery.paramValues);
+                await this.formatSqlQuery(currentQuery);
+                await queryRunner.query(currentQuery.query, currentQuery.paramValues);
             }
-            await queryRunner.commitTransaction();
+            await queryRunner.query('COMMIT');
             return true;
         } catch (error) {
-            await queryRunner.rollbackTransaction();
+            await queryRunner.query('ROLLBACK');
             this.errorsLoggerService.createErrorLog(`[ERROR] createQueryList`, error);
             throw new InternalServerErrorException(
                 `[ERROR] createQueryList - ${error}`
@@ -300,11 +303,10 @@ export class DataSourceService {
 
 
     async isDelete(dq: DeleteQuery) {
-        const queryRunner = this.dataSource.createQueryRunner();
+        const queryRunner = await this.pool.connect();
         try {
-            await queryRunner.connect();
-            await queryRunner.startTransaction();
-            this.formatSqlQuery(dq);
+            await queryRunner.query('BEGIN');
+            await this.formatSqlQuery(dq);
             await queryRunner.manager.query(dq.query, dq.paramValues);
         } catch (error) {
             throw new InternalServerErrorException(
@@ -312,7 +314,7 @@ export class DataSourceService {
             );
         }
         finally {
-            await queryRunner.rollbackTransaction();
+            await queryRunner.query('ROLLBACK');
             await queryRunner.release();
         }
     }
@@ -342,5 +344,72 @@ export class DataSourceService {
         }
         return respMap;
     }
+
+    // --------------------------- REDIS  ------------------------------
+
+    /**
+     * Crea un key de cahce para table_columns
+     * @param tableName 
+     * @returns 
+     */
+    private getCacheKey(tableName: string): string {
+        return `table_columns:${tableName}`;
+    }
+
+    async getTableColumns(tableName: string): Promise<string[]> {
+        const cacheKey = this.getCacheKey(tableName);
+
+        // Check cache
+        const cachedColumns = await this.redisClient.get(cacheKey);
+        if (cachedColumns) {
+            return JSON.parse(cachedColumns);
+        }
+        // Fetch from database if not cached
+        return this.fetchAndCacheTableColumns(tableName);
+    }
+
+    private async fetchAndCacheTableColumns(tableName: string): Promise<string[]> {
+        const query = `
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = $1
+        `;
+        const result = await this.pool.query(query, [tableName]);
+        const columns = result.rows.map(row => row.column_name);
+
+        // Cache the result
+        const cacheKey = this.getCacheKey(tableName);
+        // await this.redisClient.set(cacheKey, JSON.stringify(columns), 'EX', 3600); // Cache for 1 hour
+        await this.redisClient.set(cacheKey, JSON.stringify(columns));
+        return columns;
+    }
+
+    async updateTableColumnsCache(tableName: string): Promise<string[]> {
+        const cacheKey = this.getCacheKey(tableName);
+
+        // Invalidate cache
+        await this.redisClient.del(cacheKey);
+
+        // Fetch and cache the new data
+        return this.fetchAndCacheTableColumns(tableName);
+    }
+
+
+    async clearTableColumnsCache() {
+        // Obtener todas las claves que coinciden con el patrón 'table_columns:*'
+        const keys = await this.redisClient.keys('table_columns:*');
+
+        // Si se encuentran claves, eliminarlas
+        if (keys.length > 0) {
+            await this.redisClient.del(...keys);
+        }
+        return {
+            message: 'ok'
+        }
+    }
+
+
+    // --------------------------- FIN REDIS  ----------------------------
 
 }

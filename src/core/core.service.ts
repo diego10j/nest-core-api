@@ -25,7 +25,7 @@ export class CoreService {
                                     FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
-        return data
+        return data;
     }
 
     /**
@@ -135,7 +135,7 @@ export class CoreService {
         const dq = new DeleteQuery(dto.tableName);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
-       await this.dataSource.isDelete(dq)
+        await this.dataSource.isDelete(dq)
         return {
             message: 'ok'
         };
@@ -164,6 +164,18 @@ export class CoreService {
         const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE uuid = $1`);
         query.addParam(1, dtoIn.uuid);
         return await this.dataSource.createSingleQuery(query);
+    }
+
+    async getTableColumns(dtoIn: ColumnsTableDto) {
+        return await this.dataSource.getTableColumns(dtoIn.tableName);
+    }
+
+    async refreshTableColumns(dtoIn: ColumnsTableDto) {
+        return await this.dataSource.updateTableColumnsCache(dtoIn.tableName);
+    }
+
+    async clearTableColumnsCache() {
+        return await this.dataSource.clearTableColumnsCache();
     }
 
 
