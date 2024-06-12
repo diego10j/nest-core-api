@@ -175,6 +175,7 @@ export class CoreService {
     }
 
     async clearTableColumnsCache() {
+        await this.dataSource.clearSchemaQueryCache();
         return await this.dataSource.clearTableColumnsCache();
     }
 

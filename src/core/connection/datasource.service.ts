@@ -484,7 +484,7 @@ export class DataSourceService {
         return columns;
     }
 
-    async clearSchemaQuery() {
+    async clearSchemaQueryCache() {
         // Obtener todas las claves que coinciden con el patrón 'schema:*'
         const keys = await this.redisClient.keys('schema:*');
 
