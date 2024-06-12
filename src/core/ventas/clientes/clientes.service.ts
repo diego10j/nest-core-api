@@ -6,7 +6,6 @@ import { BaseService } from '../../../common/base-service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
-import { toResultQuery } from '../../util/helpers/sql-util';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 
 
@@ -70,7 +69,7 @@ export class ClientesService extends BaseService {
             p.nom_geper
         `, dtoIn);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -168,7 +167,7 @@ export class ClientesService extends BaseService {
         query.addIntParam(3, dtoIn.ide_geper);
         query.addDateParam(4, dtoIn.fechaInicio);
         query.addDateParam(5, dtoIn.fechaFin);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -211,7 +210,7 @@ export class ClientesService extends BaseService {
         query.addIntParam(1, dtoIn.ide_geper);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -221,7 +220,6 @@ export class ClientesService extends BaseService {
      * @returns 
      */
     async getSaldo(dtoIn: IdClienteDto) {
-        let msg: string;
         const query = new SelectQuery(`     
             SELECT 
                 ct.ide_geper,
@@ -237,10 +235,7 @@ export class ClientesService extends BaseService {
                 ide_geper
             `);
         query.addIntParam(1, dtoIn.ide_geper);
-        const data = await this.dataSource.createQuery(query);
-        if (data.length === 0)
-            msg = `[ERROR] No existe el cliente ${dtoIn.ide_geper}`;
-        return toResultQuery(data, msg);
+        return await this.dataSource.createQuery(query, false);
     }
 
 
@@ -309,7 +304,7 @@ export class ClientesService extends BaseService {
         query.addIntParam(1, dtoIn.ide_geper);
         query.addIntParam(2, dtoIn.ide_geper);
         query.addIntParam(3, dtoIn.ide_geper);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -355,7 +350,7 @@ export class ClientesService extends BaseService {
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_geper);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 

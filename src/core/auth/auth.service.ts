@@ -207,7 +207,7 @@ export class AuthService {
             parent_id, nom_opci        
         `);
         selectQueryMenu.addNumberParam(1, ide_perf);
-        const data = await this.dataSource.createQuery(selectQueryMenu);
+        const data = await this.dataSource.createSelectQuery(selectQueryMenu);
         // Estructurar los datos en formato jerárquico
         const menuMap = new Map<number, any>();
 

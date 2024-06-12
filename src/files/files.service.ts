@@ -53,10 +53,9 @@ export class FilesService {
         insertQuery.values.set('favorita_arch', false);
         insertQuery.values.set('descargas_arch', 0);
         insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
-        await this.dataSource.createQuery(insertQuery);
-        return {
-            message: `Carpeta ${folderName} creada exitosamente`
-        } as ResultQuery;
+        const res = await this.dataSource.createQuery(insertQuery);
+        res.message = `Carpeta ${folderName} creada exitosamente`;
+        return res;
     }
 
     /**
@@ -117,7 +116,7 @@ export class FilesService {
             carpeta_arch desc, nombre_arch
         `);
 
-        const data = await this.dataSource.createQuery(query);
+        const data = await this.dataSource.createSelectQuery(query);
         data.map(function (obj) {
             if (obj.carpeta_arch === true) {
                 obj.type = 'folder';
@@ -215,7 +214,7 @@ export class FilesService {
         query.addParam(1, dto.values);
         query.addParam(2, dto.values);
 
-        const data = await this.dataSource.createQuery(query);
+        const data = await this.dataSource.createSelectQuery(query);
 
         if (data.length === 0) {
             throw new BadRequestException('No se encontraron los archivos');

@@ -5,7 +5,6 @@ import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
-import { toResultQuery } from '../../util/helpers/sql-util';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
@@ -86,7 +85,7 @@ export class ProductosService extends BaseService {
         ARTICULO.nombre_inarti;
     `, _dtoIn);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -196,7 +195,7 @@ export class ProductosService extends BaseService {
         query.addDateParam(4, dtoIn.fechaInicio);
         query.addDateParam(5, dtoIn.fechaFin);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -227,7 +226,7 @@ export class ProductosService extends BaseService {
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -261,7 +260,7 @@ export class ProductosService extends BaseService {
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -312,7 +311,7 @@ export class ProductosService extends BaseService {
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -321,7 +320,6 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getSaldo(dtoIn: IdProductoDto) {
-        let msg: string;
         const query = new SelectQuery(`     
         SELECT 
             iart.ide_inarti,
@@ -341,10 +339,7 @@ export class ProductosService extends BaseService {
             iart.ide_inarti,siglas_inuni
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        const data = await this.dataSource.createQuery(query);
-        if (data.length === 0)
-            msg = `[ERROR] No existe el producto ${dtoIn.ide_inarti}`;
-        return toResultQuery(data, msg);
+        return await this.dataSource.createQuery(query, false);
     }
 
 
@@ -387,7 +382,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -429,7 +424,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -493,7 +488,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(5, `${dtoIn.periodo}-01-01`);
         query.addStringParam(6, `${dtoIn.periodo}-12-31`);
 
-        const data = await this.dataSource.createQuery(query);
+        const data = await this.dataSource.createSelectQuery(query);
         if (data.length === 0) {
             data.push(
                 {
@@ -552,7 +547,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
         query.addStringParam(3, `${dtoIn.periodo}-12-31`);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     /**
@@ -591,7 +586,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
         query.addStringParam(3, `${dtoIn.periodo}-12-31`);
 
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -643,7 +638,7 @@ export class ProductosService extends BaseService {
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -703,7 +698,7 @@ export class ProductosService extends BaseService {
 
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
     // =====================================================================

@@ -23,7 +23,7 @@ export class CoreService {
         const orderBy = dto.orderBy || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
                                     FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
-        const data: any[] = await this.dataSource.createQuery(pq);
+        const data: any[] = await this.dataSource.createSelectQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data;
     }
@@ -39,7 +39,7 @@ export class CoreService {
         const orderBy = dto.orderBy || dto.primaryKey;
         const limit = dto.limit ? `LIMIT ${dto.limit}` : '';
         const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} ${limit}`);
-        const result = await this.dataSource.createQueryPG(pgq);
+        const result = await this.dataSource.createQuery(pgq);
         result.key = dto.primaryKey;
         result.ref = dto.tableName;
         return result
@@ -116,7 +116,7 @@ export class CoreService {
     async isUnique(dto: UniqueDto) {
         const sq = new SelectQuery(`SELECT (1) FROM ${dto.tableName} WHERE ${dto.columnName} = $1`);
         sq.addParam(1, dto.value);
-        const data = await this.dataSource.createQuery(sq);
+        const data = await this.dataSource.createSelectQuery(sq);
         if (data.length > 0) {
             throw new InternalServerErrorException(`Restricción única, ya existe un registro con el valor ${dto.value} en la columna ${dto.columnName}`);
         } else {
@@ -224,7 +224,7 @@ export class CoreService {
             pq.query += ` AND column_name = ANY($2)`;
             pq.addArrayStringParam(2, dto.columns);
         }
-        const data = await this.dataSource.createQuery(pq);
+        const data = await this.dataSource.createSelectQuery(pq);
         // Valida que retorne resultados 
         if (data.length === 0) {
             throw new BadRequestException(

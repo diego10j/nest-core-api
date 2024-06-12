@@ -29,7 +29,7 @@ export class InsertQuery extends Query {
     }
 
     /**
-     * Asigna los valores 
+     * Asigna los valores de un objeto 
      * @param entry 
      */
     setValues(entry: Record<string, any>) {

@@ -76,7 +76,7 @@ export class AuditService {
         queryPass.addDateParam(2, fechaFin);
         if (isDefined(ide_usua))
             queryPass.addIntParam(3, ide_usua);
-        return await this.dataSource.createQueryPG(queryPass);
+        return await this.dataSource.createQuery(queryPass);
     }
 
     /**

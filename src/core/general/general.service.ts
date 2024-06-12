@@ -22,7 +22,7 @@ export class GeneralService {
         GROUP BY EXTRACT(YEAR FROM fecha_emisi_cccfa)
         ORDER BY 1 DESC
         `);
-        const data: any[] = await this.dataSource.createQuery(query);
+        const data: any[] = await this.dataSource.createSelectQuery(query);
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data
     }

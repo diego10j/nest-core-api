@@ -3,7 +3,6 @@ import { DataSourceService } from '../../connection/datasource.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { InsertQuery } from '../../connection/helpers/insert-query';
-import { ObjectQueryDto } from '../../connection/dto/object-query.dto';
 import { UpdateQuery } from '../../connection/helpers/update-query';
 import { DeleteQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
@@ -44,13 +43,7 @@ export class CalendarioService {
             publico_cale = TRUE
         ORDER BY fecha_inicio_cale
         `);
-        const data = await this.dataSource.createQuery(query);
-
-
-        return {
-            rows: data,
-            rowCount: data?.length
-        } as ResultQuery;
+        return await this.dataSource.createQuery(query, false);
     }
 
 
@@ -67,10 +60,7 @@ export class CalendarioService {
         insertQuery.values.set('publico_cale', dto.publico_cale);
         insertQuery.values.set('notificar_cale', dto.notificar_cale);
         insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
-        await this.dataSource.createQuery(insertQuery);
-        return {
-            message: `Evento creado exitosamente`
-        } as ResultQuery;
+        return await this.dataSource.createQuery(insertQuery);
     }
 
 
@@ -85,13 +75,10 @@ export class CalendarioService {
         updateQuery.values.set('color_cale', dto.color);
         updateQuery.values.set('ide_usua', dto.ide_usua);
         updateQuery.values.set('publico_cale', dto.publico_cale);
-        updateQuery.values.set('notificar_cale', dto.notificar_cale);     
+        updateQuery.values.set('notificar_cale', dto.notificar_cale);
         updateQuery.where = `uuid = $1`
         updateQuery.addParam(1, dto.id);
-        await this.dataSource.createQuery(updateQuery);
-        return {
-            message: `Evento actualizado exitosamente`
-        } as ResultQuery;
+        return await this.dataSource.createQuery(updateQuery);
     }
 
     async deleteEvento(dto: UpdateEventoDto): Promise<ResultQuery> {
@@ -99,10 +86,7 @@ export class CalendarioService {
         const deleteQuery = new DeleteQuery(this.tableName)
         deleteQuery.where = `uuid = $1`
         deleteQuery.addParam(1, dto.id);
-        await this.dataSource.createQuery(deleteQuery);
-        return {
-            message: `Evento eliminado exitosamente`
-        } as ResultQuery;
+        return await this.dataSource.createQuery(deleteQuery);
     }
 
 }

@@ -233,20 +233,6 @@ export function toObjectTable(value: object): object {
     return cloneObjUpdate;
 }
 
-/**
- * Retorna un objeto ResultQuery a partir de un array data
- * @param data 
- * @returns 
- */
-export function toResultQuery(data: any[], message?: string): ResultQuery {
-    return {
-        rowCount: data.length,
-        rows: data,
-        message
-    } as ResultQuery;
-}
-
-
 export function getWhereIdeSucu(tabla: string, dto: ServiceDto) {
     return ` AND ${tabla}.ide_sucu = ${dto.ideSucu}`;
 }

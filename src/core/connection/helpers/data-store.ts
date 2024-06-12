@@ -69,7 +69,7 @@ export class DataStore {
             this.query.query = `SELECT ${this.selectColumnsTable} FROM ${this.tableName} WHERE 1=1 ${this.whereTable} ORDER BY ${this.orderColumn}`;
         }
 
-        const res = await this.dataSource.createQueryPG(this.query, false);
+        const res = await this.dataSource.createQuery(this.query, false);
         this.data = res.rows;
         this.columns = res.columns;
 

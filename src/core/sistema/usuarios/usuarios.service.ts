@@ -31,7 +31,7 @@ export class UsuariosService {
         inner join sis_perfil b on a.ide_perf = b.ide_perf
     ORDER BY
         nom_usua`);
-        return await this.dataSource.createQueryPG(query);
+        return await this.dataSource.createQuery(query);
     }
 
 }
