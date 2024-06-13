@@ -34,14 +34,21 @@ export class CoreService {
      * @returns 
      */
     async getTableQuery(dto: TableQueryDto) {
-        const columns = dto.columns || '*'; // all columns
-        const where = dto.where || '1=1'; // default where
-        const orderBy = dto.orderBy || dto.primaryKey;
-        const limit = dto.limit ? `LIMIT ${dto.limit}` : '';
-        const pgq = new SelectQuery(`SELECT ${columns} FROM ${dto.tableName} WHERE ${where} ORDER BY ${orderBy} ${limit}`);
-        const result = await this.dataSource.createQuery(pgq);
-        result.key = dto.primaryKey;
-        result.ref = dto.tableName;
+        const { columns, tableName, where, orderBy, primaryKey } = dto;
+        // Default values
+        const selectedColumns = columns || '*';
+        const whereClause = where || '1=1';
+        const orderByClause = orderBy || primaryKey;
+
+        const pgq = new SelectQuery(`        
+        SELECT ${selectedColumns} 
+        FROM ${tableName} 
+        WHERE ${whereClause} 
+        ORDER BY ${orderByClause}    
+        `, dto);
+        const result = await this.dataSource.createQuery(pgq, true, tableName);
+        result.key = primaryKey;
+        result.ref = tableName;
         return result
     }
 

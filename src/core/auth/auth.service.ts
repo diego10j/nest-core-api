@@ -95,8 +95,6 @@ export class AuthService {
                         throw new UnauthorizedException('El usuario no tiene definida una sucursal');
                     }
 
-                    //recupera el menú del usuario
-                    const menu = await this.getMenuByRol(dataPass.ide_perf);
                     //recupera fecha último acceso
                     const lastAccess = dataPass.fecha_auac ? dataPass.fecha_auac + " " + dataPass.hora_auac : getDateTimeFormatFront(new Date());
                     //actualiza estado true a sessiones no cerradas
@@ -144,7 +142,6 @@ export class AuthService {
                             ip,
                             roles: ['user']
                         },
-                        menu
                     };
                 }
             }
@@ -159,7 +156,7 @@ export class AuthService {
      * @param ide_perf 
      * @returns 
      */
-    private async getMenuByRol(ide_perf: number) {
+    async getMenuByRol(dtoIn: ServiceDto) {
         const selectQueryMenu = new SelectQuery(`
         WITH RECURSIVE RecursiveMenu AS (
             SELECT
@@ -177,7 +174,7 @@ export class AuthService {
             WHERE
                 p.ide_perf = $1
                 AND o.sis_ide_opci IS NULL
-        
+                AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
             UNION ALL
         
             SELECT
@@ -206,7 +203,7 @@ export class AuthService {
         ORDER BY
             parent_id, nom_opci        
         `);
-        selectQueryMenu.addNumberParam(1, ide_perf);
+        selectQueryMenu.addNumberParam(1, dtoIn.idePerf);
         const data = await this.dataSource.createSelectQuery(selectQueryMenu);
         // Estructurar los datos en formato jerárquico
         const menuMap = new Map<number, any>();
