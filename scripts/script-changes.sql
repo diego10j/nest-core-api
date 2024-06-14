@@ -319,10 +319,10 @@ update sis_opcion set ide_sist = 1, activo_opci = true;
 
 
 ----MENU NUEVO ERP
-INSERT INTO "public"."sis_opcion" ("ide_opci", "nom_opci", "paquete_opci", "auditoria_opci", "ide_sist","activo_sist") VALUES 
-(1000, 'Administrador', 'sistema', FALSE, 2, TRUE);
+INSERT INTO "public"."sis_opcion" ("ide_opci", "nom_opci", "tipo_opci","paquete_opci", "auditoria_opci", "ide_sist","activo_sist") VALUES 
+(1000, 'Administrador', '/dashboard/sistema','sistema', FALSE, 2, TRUE);
 INSERT INTO "public"."sis_opcion" ("ide_opci", "sis_ide_opci", "nom_opci", "tipo_opci", "paquete_opci", "auditoria_opci", "ide_sist", "activo_opci") VALUES
-(1001, 1000, 'Sistemas', 'sistemas', 'sistema', FALSE, 2, TRUE);
+(1001, 1000, 'Sistemas', '/dashboard/sistema/simple', 'sistema', FALSE, 2, TRUE);
 
 --PERFIL ADMIN NUEVO ERP
 INSERT INTO "public"."sis_perfil" ("ide_perf", "nom_perf", "activo_perf") VALUES
