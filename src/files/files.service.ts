@@ -5,7 +5,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../core/connection/datasource.service';
 import { GetFilesDto } from './dto/get-files.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
-import { HOST_API, isDefined } from '../core/util/helpers/common-util';
+import {  isDefined } from '../core/util/helpers/common-util';
 import { PATH_DRIVE, getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { DeleteQuery, SelectQuery, InsertQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -16,7 +16,7 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { toDate, FORMAT_DATETIME_DB } from '../core/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
-
+import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class FilesService {
 
@@ -26,6 +26,7 @@ export class FilesService {
     private primaryKey = 'ide_arch';
 
     constructor(
+        private readonly configService: ConfigService,
         private readonly errorLog: ErrorsLoggerService,
         private readonly dataSource: DataSourceService) {
         if (!existsSync(this.basePath)) {
@@ -125,7 +126,7 @@ export class FilesService {
             }
             else {
                 obj.type = getExtensionFile(obj.name);; // getFileType(obj.type_arch);
-                obj.url = `${HOST_API()}/api/files/downloadFile/${obj.id}.${obj.type}`;
+                obj.url = `${this.configService.get('HOST_API')}/api/files/downloadFile/${obj.id}.${obj.type}`;
             }
             obj.tags = [];
             obj.shared = [];

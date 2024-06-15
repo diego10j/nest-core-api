@@ -23,6 +23,14 @@ export class AuthController {
         return this.authService.checkAuthStatus(user);
     }
 
+    @Post('getMenuByRol')
+    @Auth()
+    getMenu(
+        @Body() serviceDto: ServiceDto
+    ) {
+        return this.authService.getMenuByRol(serviceDto);
+    }
+
 
     @Post('logout')
     @Auth()

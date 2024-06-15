@@ -8,6 +8,7 @@ import { getDateFormatFront, getDateTimeFormatFront, getTimeFormat } from '../ut
 import { getCountStringInText } from '../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../util/helpers/sql-util';
 import { Redis } from 'ioredis';
+import { isDefined } from '../util/helpers/common-util';
 
 @Injectable()
 export class DataSourceService {
@@ -62,10 +63,11 @@ export class DataSourceService {
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
      * @param SelectQuery  primer campo del select debe ser el campo primaryKey de la consulta
-     * @param isSchema  por defecto consulta propiedades adicionales de las columnas 
+     * @param isSchema  consulta propiedades adicionales de las columnas 
+     * @param ref referencia cuando se pcupa una función que realiza query  y poder identificarla
      * @returns Array data
      */
-    async createQuery(query: Query, isSchema = true): Promise<ResultQuery> {
+    async createQuery(query: Query, isSchema = true, ref = undefined): Promise<ResultQuery> {
 
         if (query instanceof InsertQuery || query instanceof UpdateQuery || query instanceof DeleteQuery) {
             isSchema = false;
@@ -83,6 +85,8 @@ export class DataSourceService {
             if (query instanceof SelectQuery && isSchema === true) {
                 // Obtiene esquema de las columnas del SelectQuery
                 queryName = this.extractCallerInfo();
+                if (isDefined(ref))
+                    queryName = `${queryName}.${ref}`;  // para identificar la consulta
                 columns = await this.getSchemaQuery(queryName, primaryKey, res);
                 if (columns.length > 0)
                     primaryKey = columns[0].name; // siempre el primarikey debe ir en la primera columna del query

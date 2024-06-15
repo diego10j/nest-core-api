@@ -95,8 +95,6 @@ export class AuthService {
                         throw new UnauthorizedException('El usuario no tiene definida una sucursal');
                     }
 
-                    //recupera el menú del usuario
-                    const menu = await this.getMenuByRol(dataPass.ide_perf);
                     //recupera fecha último acceso
                     const lastAccess = dataPass.fecha_auac ? dataPass.fecha_auac + " " + dataPass.hora_auac : getDateTimeFormatFront(new Date());
                     //actualiza estado true a sessiones no cerradas
@@ -144,7 +142,6 @@ export class AuthService {
                             ip,
                             roles: ['user']
                         },
-                        menu
                     };
                 }
             }
@@ -159,7 +156,7 @@ export class AuthService {
      * @param ide_perf 
      * @returns 
      */
-    private async getMenuByRol(ide_perf: number) {
+    async getMenuByRol(dtoIn: ServiceDto) {
         const selectQueryMenu = new SelectQuery(`
         WITH RECURSIVE RecursiveMenu AS (
             SELECT
@@ -177,9 +174,8 @@ export class AuthService {
             WHERE
                 p.ide_perf = $1
                 AND o.sis_ide_opci IS NULL
-        
+                AND o.ide_sist =  ${this.configService.get('ID_SISTEMA')}
             UNION ALL
-        
             SELECT
                 o.ide_opci,
                 o.nom_opci,
@@ -192,21 +188,35 @@ export class AuthService {
                 sis_opcion o
             INNER JOIN
                 RecursiveMenu rm ON o.sis_ide_opci = rm.ide_opci
+        ),
+        ChildrenCount AS (
+            SELECT
+                rm.ide_opci,
+                COUNT(c.ide_opci) AS num_nodos
+            FROM
+                RecursiveMenu rm
+            LEFT JOIN
+                RecursiveMenu c ON rm.ide_opci = c.parent_id
+            GROUP BY
+                rm.ide_opci
         )
         SELECT
-            ide_opci,
-            nom_opci,
-            sis_ide_opci,
-            paquete_opci,
-            tipo_opci,
-            uuid,
-            parent_id
+            rm.ide_opci,
+            rm.nom_opci,
+            rm.sis_ide_opci,
+            rm.paquete_opci,
+            rm.tipo_opci,
+            rm.uuid,
+            rm.parent_id,
+            COALESCE(cc.num_nodos, 0) AS num_nodos
         FROM
-            RecursiveMenu
+            RecursiveMenu rm
+        LEFT JOIN
+            ChildrenCount cc ON rm.ide_opci = cc.ide_opci
         ORDER BY
-            parent_id, nom_opci        
+            rm.parent_id, rm.nom_opci  
         `);
-        selectQueryMenu.addNumberParam(1, ide_perf);
+        selectQueryMenu.addNumberParam(1, dtoIn.idePerf);
         const data = await this.dataSource.createSelectQuery(selectQueryMenu);
         // Estructurar los datos en formato jerárquico
         const menuMap = new Map<number, any>();
@@ -214,13 +224,29 @@ export class AuthService {
         // Crear los nodos del menú
         for (const row of data) {
             const menuItem = {
-                label: row.nom_opci,
+                title: row.nom_opci,
+                path: row.tipo_opci || null,
+                children: row.num_nodos > 0 ? [] : undefined,
                 data: row.ide_opci.toString(),
                 package: row.paquete_opci,
                 node: row.sis_ide_opci?.toString() || null,
                 uuid: row.uuid,
-                path: row.tipo_opci || null,
-                items: []
+                totalNodes: row.num_nodos,
+                icon: {
+                    type: {},
+                    key: null,
+                    ref: null,
+                    props: {
+                        src: "/assets/icons/navbar/ic_ecommerce.svg",
+                        sx: {
+                            width: 1,
+                            height: 1
+                        }
+                    },
+                    _owner: null,
+                    _store: {}
+                },
+                
             };
             menuMap.set(row.ide_opci, menuItem);
         }
@@ -235,12 +261,131 @@ export class AuthService {
             } else {
                 const parentItem = menuMap.get(row.parent_id);
                 if (parentItem) {
-                    parentItem.items.push(menuItem);
+                    parentItem.children.push(menuItem);
                 }
             }
         }
 
-        return rootItems;
+        return [
+            {
+                subheader: "overview",
+                items: [
+                  {
+                    title: "app",
+                    path: "/dashboard",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_dashboard.svg",
+                        sx: {
+                          width: 1,
+                          height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  },
+                  {
+                    title: "e-commerce",
+                    path: "/dashboard/ecommerce",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_ecommerce.svg",
+                        sx: {
+                          width: 1,
+                          height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  },
+                  {
+                    title: "analytics",
+                    path: "/dashboard/analytics",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_analytics.svg",
+                        sx: {
+                          width: 1,
+                          height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  },
+                  {
+                    title: "banking",
+                    path: "/dashboard/banking",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_banking.svg",
+                        sx: {
+                          width: 1,
+                          height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  },
+                  {
+                    title: "booking",
+                    path: "/dashboard/booking",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_booking.svg",
+                        sx: {
+                          width: 1,
+                          height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  },
+                  {
+                    title: "file",
+                    path: "/dashboard/file",
+                    icon: {
+                      type: {},
+                      key: null,
+                      ref: null,
+                      props: {
+                        src: "/assets/icons/navbar/ic_file.svg",
+                        sx: {
+                         width: 1,
+                         height: 1
+                        }
+                      },
+                      _owner: null,
+                      _store: {}
+                    }
+                  }
+                ]
+              }
+        ]
+
+       // return [{
+       //     subheader: 'Menu general',
+       //     items: rootItems
+       // }];
     }
 
 

@@ -261,7 +261,8 @@ CREATE TABLE "public"."sis_calendario" (
     "publico_cale" bool,
 	"notificar_cale" bool,
 	"ide_empr" int2,
-	"ide_sucu" int2
+	"ide_sucu" int2,
+	CONSTRAINT pk_sis_calendario PRIMARY KEY(ide_cale)
 );
 ALTER TABLE public.sis_calendario
 	ADD CONSTRAINT sis_calendario_ide_usua_fkey
@@ -286,3 +287,50 @@ ALTER TABLE public.sis_calendario
 	ON UPDATE CASCADE ;
 ALTER TABLE sis_calendario ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_sis_calendario ON sis_calendario(uuid);
+
+-- 12 June 2024 16:34:46 PM
+CREATE TABLE "public"."sis_sistema" (
+    "ide_sist" int4,
+    "nombre_sist" varchar(60),
+    "descripcion_sist" text,
+    "nombre_corto_sist" varchar(30),
+    "icono_sist" varchar(250),
+    "activo_sist" bool,
+	CONSTRAINT pk_sis_sistema PRIMARY KEY(ide_sist)
+);
+ALTER TABLE "public"."sis_opcion" ADD COLUMN "ide_sist" int4;
+ALTER TABLE "public"."sis_opcion" ADD COLUMN "refe_opci" varchar(60);
+ALTER TABLE "public"."sis_opcion" ADD COLUMN "activo_opci" bool;
+
+ALTER TABLE public.sis_opcion
+	ADD CONSTRAINT sis_opcion_ide_sist_fkey
+	FOREIGN KEY(ide_sist)
+	REFERENCES public.sis_sistema(ide_sist)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
+
+INSERT INTO "public"."sis_sistema" ("ide_sist", "nombre_sist", "nombre_corto_sist", "activo_sist") VALUES
+(1, 'Sistema de Gestión Administrativa y Financiera', 'SIGAFI', 'true');
+INSERT INTO "public"."sis_sistema" ("ide_sist", "nombre_sist", "nombre_corto_sist", "activo_sist") VALUES
+(2, 'Erp', 'Arkei Cloud ERP', 'TRUE');
+-- actualiza las opciones al sistema 1
+update sis_opcion set ide_sist = 1, activo_opci = true;
+
+
+----MENU NUEVO ERP
+INSERT INTO "public"."sis_opcion" ("ide_opci", "nom_opci", "tipo_opci","paquete_opci", "auditoria_opci", "ide_sist","activo_sist") VALUES 
+(1000, 'Administrador', '/dashboard/sistema','sistema', FALSE, 2, TRUE);
+INSERT INTO "public"."sis_opcion" ("ide_opci", "sis_ide_opci", "nom_opci", "tipo_opci", "paquete_opci", "auditoria_opci", "ide_sist", "activo_opci") VALUES
+(1001, 1000, 'Sistemas', '/dashboard/sistema/simple', 'sistema', FALSE, 2, TRUE);
+
+--PERFIL ADMIN NUEVO ERP
+INSERT INTO "public"."sis_perfil" ("ide_perf", "nom_perf", "activo_perf") VALUES
+(20, 'Admin ERP', 'TRUE');
+
+--PERMISOS MENU ADMIN NUEVO ERP
+INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES
+(1000, 20, 1000, FALSE);
+
+INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES
+(1001, 20, 10001, FALSE);
