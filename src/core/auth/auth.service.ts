@@ -232,21 +232,6 @@ export class AuthService {
                 node: row.sis_ide_opci?.toString() || null,
                 uuid: row.uuid,
                 totalNodes: row.num_nodos,
-                icon: {
-                    type: {},
-                    key: null,
-                    ref: null,
-                    props: {
-                        src: "/assets/icons/navbar/ic_ecommerce.svg",
-                        sx: {
-                            width: 1,
-                            height: 1
-                        }
-                    },
-                    _owner: null,
-                    _store: {}
-                },
-                
             };
             menuMap.set(row.ide_opci, menuItem);
         }
@@ -270,122 +255,47 @@ export class AuthService {
             {
                 subheader: "overview",
                 items: [
-                  {
-                    title: "app",
-                    path: "/dashboard",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_dashboard.svg",
-                        sx: {
-                          width: 1,
-                          height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
+                    {
+                        title: "app",
+                        path: "/dashboard",
+                    },
+                    {
+                        title: "calendar",
+                        path: "/dashboard/calendar",
+                    },
+                    {
+                        title: "file",
+                        path: "/dashboard/file-manager",
                     }
-                  },
-                  {
-                    title: "e-commerce",
-                    path: "/dashboard/ecommerce",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_ecommerce.svg",
-                        sx: {
-                          width: 1,
-                          height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
-                    }
-                  },
-                  {
-                    title: "analytics",
-                    path: "/dashboard/analytics",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_analytics.svg",
-                        sx: {
-                          width: 1,
-                          height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
-                    }
-                  },
-                  {
-                    title: "banking",
-                    path: "/dashboard/banking",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_banking.svg",
-                        sx: {
-                          width: 1,
-                          height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
-                    }
-                  },
-                  {
-                    title: "booking",
-                    path: "/dashboard/booking",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_booking.svg",
-                        sx: {
-                          width: 1,
-                          height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
-                    }
-                  },
-                  {
-                    title: "file",
-                    path: "/dashboard/file",
-                    icon: {
-                      type: {},
-                      key: null,
-                      ref: null,
-                      props: {
-                        src: "/assets/icons/navbar/ic_file.svg",
-                        sx: {
-                         width: 1,
-                         height: 1
-                        }
-                      },
-                      _owner: null,
-                      _store: {}
-                    }
-                  }
                 ]
-              }
+            },
+            {
+                subheader: "Menu general",
+                items: [
+                    {
+                        title: "administrador",
+                        path: "/dashboard/sistema",
+                        children: [{
+                            title: "sistemas",
+                            path: "/dashboard/sistema/simple",
+                        },
+                        {
+                            title: "empresas",
+                            path: "/dashboard/sistema/empresa",
+                        },
+                        {
+                            title: "sucursales",
+                            path: "/dashboard/sistema/sucursal",
+                        }]
+                    }
+                ]
+            },
         ]
 
-       // return [{
-       //     subheader: 'Menu general',
-       //     items: rootItems
-       // }];
+        // return [{
+        //     subheader: 'Menu general',
+        //     items: rootItems
+        // }];
     }
 
 
