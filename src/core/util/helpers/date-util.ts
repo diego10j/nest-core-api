@@ -78,6 +78,11 @@ export function getDateTimeFormatFront(date: InputValue, newFormat?: string): st
 }
 
 
+export function getDateTimeFormat(date: InputValue, newFormat?: string): string {
+    const fm = newFormat || FORMAT_DATETIME_DB();
+    return date ? format(new Date(date), fm) : '';
+}
+
 /**
  * Convierte una fecha en string a Objeto Date
  * @param date

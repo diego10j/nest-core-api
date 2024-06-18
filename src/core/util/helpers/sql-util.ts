@@ -204,7 +204,7 @@ export function getAlignCoreColumn(nameType: string) {
 export function getSizeCoreColumn(nameType: string, length: number): number {
     const minSize = ['Date', 'Time', 'Boolean'];
     const medSize = ['DateTime', 'Number', 'Integer'];
-    if (minSize.includes(nameType)) return 100;
+    if (minSize.includes(nameType)) return 110;
     if (medSize.includes(nameType)) return 120;
     if (length > 0 && length < 20) return 150;
     if (length >= 20 && length < 30) return 190;
