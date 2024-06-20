@@ -72,6 +72,13 @@ export function getTimeFormat(time: InputValue, newFormat?: string): string {
 
 }
 
+export function getTimeISOFormat(stringValue: string): string | null {
+    if (!stringValue) return null; // Manejar casos nulos o vacíos
+    // Convertir el string TIME en un objeto Date
+    const [hours, minutes, seconds] = stringValue.split(':').map(Number);
+    return `1989-07-11T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.000Z`;
+}
+
 export function getDateTimeFormatFront(date: InputValue, newFormat?: string): string {
     const fm = newFormat || FORMAT_DATETIME_FRONT();
     return date ? format(new Date(date), fm) : '';

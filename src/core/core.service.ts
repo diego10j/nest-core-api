@@ -7,6 +7,8 @@ import { ClassConstructor, plainToClass } from "class-transformer";
 import { getDateFormat, getTimeFormat } from './util/helpers/date-util';
 import { toObjectTable } from './util/helpers/sql-util';
 import { isDefined } from './util/helpers/common-util';
+import { ResultQuery } from './connection/interfaces/resultQuery';
+
 @Injectable()
 export class CoreService {
 
@@ -121,15 +123,43 @@ export class CoreService {
      * @returns 
      */
     async isUnique(dto: UniqueDto) {
-        const sq = new SelectQuery(`SELECT (1) FROM ${dto.tableName} WHERE ${dto.columnName} = $1`);
-        sq.addParam(1, dto.value);
-        const data = await this.dataSource.createSelectQuery(sq);
-        if (data.length > 0) {
-            throw new InternalServerErrorException(`Restricción única, ya existe un registro con el valor ${dto.value} en la columna ${dto.columnName}`);
-        } else {
-            return {
-                message: 'ok'
-            };
+        const baseQuery = `SELECT ${dto.columns.map(col => col.columnName).join(', ')} FROM ${dto.tableName} WHERE `;
+        const conditions = dto.columns.map((col, index) => `${col.columnName} = $${index + 1}`).join(' OR ');
+        const params = dto.columns.map(col => col.value);
+
+        let query = baseQuery + conditions;
+        if (dto.id) {
+            query += ` AND ${dto.primaryKey} != $${dto.columns.length + 1}`;
+            params.push(dto.id);
+        }
+
+        try {
+            const sq = new SelectQuery(query);
+            params.forEach((param, index) => sq.addParam(index + 1, param));
+            const result = await this.dataSource.createSelectQuery(sq);
+
+            if (result.length > 0) {
+                const duplicates: { columnName: string; value: any }[] = [];
+
+                dto.columns.forEach(col => {
+                    const duplicate = result.find(row => row[col.columnName] === col.value);
+                    if (duplicate) {
+                        duplicates.push({ columnName: col.columnName, value: col.value });
+                    }
+                });
+
+                if (duplicates.length > 0) {
+                    const duplicateRows = duplicates.map(dup => `${dup.value}`).join(', ');
+                    return {
+                        message: `No se puede guardar el registro debido a que ya existe otro con los mismos valores: ${duplicateRows}`,
+                        rows: duplicates
+                    } as ResultQuery;
+                }
+            }
+
+            return { message: 'ok', rows: [] } as ResultQuery;
+        } catch (error) {
+            throw new InternalServerErrorException(`Error al verificar la unicidad: ${error.message}`);
         }
     }
 

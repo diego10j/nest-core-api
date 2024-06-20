@@ -4,7 +4,7 @@ import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { removeEqualsElements } from '../util/helpers/array-util';
-import { getDateFormat, getDateTimeFormat, getTimeFormat } from '../util/helpers/date-util';
+import { getDateFormat, getDateTimeFormat, getTimeFormat, getTimeISOFormat } from '../util/helpers/date-util';
 import { getCountStringInText } from '../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../util/helpers/sql-util';
 import { Redis } from 'ioredis';
@@ -24,6 +24,7 @@ export class DataSourceService {
     private TYPE_DATESTAMP = 1082;
     private TYPE_TIMESTAMP = 1114;
     private TYPE_TIMESTAMPTZ = 1184;
+    private TIME_OID = 1083;
     private NUMERIC_OID = 1700;
     private FLOAT8_OID = 701;
     private INT8_OID = 20;
@@ -39,6 +40,7 @@ export class DataSourceService {
         //   types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
+        types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));
         // NUMBERS
         types.setTypeParser(this.NUMERIC_OID, (val) => parseFloat(val));
         types.setTypeParser(this.FLOAT8_OID, (val) => parseFloat(val));
