@@ -25,9 +25,9 @@ export class AuthService {
     }
 
     async login(loginUserDto: LoginUserDto, ip: string) {
-        const { password, userName } = loginUserDto;
-        const queryUser = new SelectQuery("SELECT ide_usua,uuid FROM sis_usuario WHERE nick_usua = $1 AND activo_usua=true");
-        queryUser.addStringParam(1, userName);
+        const { password, email } = loginUserDto;
+        const queryUser = new SelectQuery("SELECT ide_usua,uuid FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true");
+        queryUser.addStringParam(1, email);
         const dataUser = await this.dataSource.createSingleQuery(queryUser);
         if (dataUser) {
             const queryPass = new SelectQuery(`

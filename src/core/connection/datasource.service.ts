@@ -40,7 +40,7 @@ export class DataSourceService {
         //   types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
-        types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));
+         types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));
         // NUMBERS
         types.setTypeParser(this.NUMERIC_OID, (val) => parseFloat(val));
         types.setTypeParser(this.FLOAT8_OID, (val) => parseFloat(val));
