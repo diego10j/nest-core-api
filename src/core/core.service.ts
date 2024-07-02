@@ -68,10 +68,10 @@ export class CoreService {
         const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
         if (dto.operation === 'update') {
-            // asigna valores del core            
-            if (mapObject.has('fecha_actua')) mapObject.set('fecha_actua', getDateFormat(new Date()));
-            if (mapObject.has('hora_actua')) mapObject.set('hora_actua', getTimeFormat(new Date()));
-            if (mapObject.has('usuario_actua')) mapObject.set('usuario_actua', login);
+            // asigna valores update campos del core            
+            mapObject.set('fecha_actua', getDateFormat(new Date()));
+            mapObject.set('hora_actua', getTimeFormat(new Date()));
+            mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName);
             mapObject.delete(dto.primaryKey);
             updateQuery.where = `${dto.primaryKey} = $1`
@@ -82,14 +82,12 @@ export class CoreService {
         else if (dto.operation === 'insert') {
             // insert
             const insertQuery = new InsertQuery(dto.tableName)
-            // asigna valores del core
-            if (!isDefined(mapObject.get('ide_empr')))
-                if (mapObject.has('ide_empr')) mapObject.set('ide_empr', ideEmpr);
-            if (!isDefined(mapObject.get('ide_sucu')))
-                if (mapObject.has('ide_sucu')) mapObject.set('ide_sucu', ideSucu);
-            if (mapObject.has('fecha_ingre')) mapObject.set('fecha_ingre', getDateFormat(new Date()));
-            if (mapObject.has('hora_ingre')) mapObject.set('hora_ingre', getTimeFormat(new Date()));
-            if (mapObject.has('usuario_ingre')) mapObject.set('usuario_ingre', login);
+            //  asigna valores update campos del core
+            mapObject.set('ide_empr', ideEmpr);
+            mapObject.set('ide_sucu', ideSucu);
+            mapObject.set('fecha_ingre', getDateFormat(new Date()));
+            mapObject.set('hora_ingre', getTimeFormat(new Date()));
+            mapObject.set('usuario_ingre', login);
             insertQuery.values = mapObject;
             return insertQuery;
         }

@@ -40,7 +40,7 @@ export class DataSourceService {
         //   types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormat(date));
         //   types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
-         types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));
+        types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));
         // NUMBERS
         types.setTypeParser(this.NUMERIC_OID, (val) => parseFloat(val));
         types.setTypeParser(this.FLOAT8_OID, (val) => parseFloat(val));
@@ -347,9 +347,28 @@ export class DataSourceService {
                 if (query.columns.length === 0) {
                     query.columns = await this.getTableColumns(query.table)
                 }
+                const keysToDelete = [];
+                // Elimina valores que no existan en las columnas de la tabla
+                query.values.forEach((_value, key) => {
+                    if (!query.columns.includes(key)) {
+                        keysToDelete.push(key);
+                    }
+                });
+                keysToDelete.forEach(key => query.values.delete(key));
                 getSqlInsert(query);
             }
-            else if (query instanceof UpdateQuery) getSqlUpdate(query);
+            else if (query instanceof UpdateQuery) {
+                const cols: string[] = await this.getTableColumns(query.table)
+                const keysToDelete = [];
+                // Elimina valores que no existan en las columnas de la tabla
+                query.values.forEach((_value, key) => {
+                    if (!cols.includes(key)) {
+                        keysToDelete.push(key);
+                    }
+                });
+                keysToDelete.forEach(key => query.values.delete(key));
+                getSqlUpdate(query);
+            }
             else if (query instanceof DeleteQuery) getSqlDelete(query);
             else if (query instanceof SelectQuery) getSqlSelect(query);
         }
