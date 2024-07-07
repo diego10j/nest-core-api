@@ -35,14 +35,14 @@ export class FilesController {
     res.sendFile(path);
   }
 
-
-
   @Post('image')
   @UseInterceptors(FileInterceptor('file', {
-    fileFilter: fileFilter,
     // limits: { fileSize: 1000 }
     storage: diskStorage({
-      destination: './static/images',
+      destination: (req, file, cb) => {
+        const folderPath = PATH_DRIVE();
+        cb(null, folderPath);
+      },
       filename: fileNamer
     })
   }))

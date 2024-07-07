@@ -25,7 +25,8 @@ export class UsuariosService {
         nom_perf,
         avatar_usua,
         bloqueado_usua,
-        fecha_reg_usua
+        fecha_reg_usua,
+        mail_usua
     FROM
         sis_usuario a
         inner join sis_perfil b on a.ide_perf = b.ide_perf

@@ -65,6 +65,7 @@ export class ProductosService extends BaseService {
         ARTICULO.ide_inarti,
         ARTICULO.uuid,
         ARTICULO.nombre_inarti,
+        nombre_incate,
         ARTICULO.codigo_inarti,
         ARTICULO.foto_inarti,
         COALESCE(existencia_cte.existencia, 0) AS existencia,
@@ -78,6 +79,7 @@ export class ProductosService extends BaseService {
         LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
         LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
         LEFT JOIN precio_cte ON ARTICULO.ide_inarti = precio_cte.ide_inarti AND precio_cte.rn = 1
+        LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
     WHERE
         ARTICULO.ide_intpr = 1 -- solo productos
         AND ARTICULO.nivel_inarti = 'HIJO'

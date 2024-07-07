@@ -422,7 +422,7 @@ export class FilesService {
 
 
     getStaticImage(imageName: string) {
-        let path = join(__dirname, '../../static/images', imageName);
+        let path = join(this.basePath, imageName);
         if (!existsSync(path))
             path = join(__dirname, '../../public/assets/images', 'no-image.png');
         if (!existsSync(path))
