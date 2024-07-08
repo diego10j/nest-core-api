@@ -155,3 +155,8 @@ export function getCurrentDate(newFormat?: string): string {
 export function getCurrentTime(newFormat?: string): string {
     return getTimeFormat(new Date(), newFormat);
 }
+
+export function getCurrentDateTime(newFormat?: string): string {
+    return getDateTimeFormat(new Date(), newFormat);
+}
+

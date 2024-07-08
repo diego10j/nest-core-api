@@ -341,3 +341,17 @@ INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "l
 INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES (1002, 20, 1002, 'f');
 
 INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES (1003, 20, 1003, 'f');
+
+-- 07 July 2024 10:14:46 AM
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    "from" VARCHAR(50),
+    "to" VARCHAR(50),
+    body TEXT,
+    timestamp TIMESTAMPTZ,
+    type VARCHAR(20),
+    status VARCHAR(20) DEFAULT 'unread',
+    attachment_url TEXT,
+    attachment_type VARCHAR(20),
+    direction VARCHAR(10) -- 'inbound' o 'outbound'
+);

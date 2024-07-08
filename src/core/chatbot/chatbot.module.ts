@@ -4,10 +4,11 @@ import { ChatbotController } from './chatbot.controller';
 import { ErrorsModule } from 'src/errors/errors.module';
 import { DataSourceService } from '../connection/datasource.service';
 import { HttpModule } from '@nestjs/axios';
+import { WebhookController } from './webhook.controller';
 
 @Module({
   imports: [ErrorsModule, HttpModule],
-  controllers: [ChatbotController],
+  controllers: [ChatbotController, WebhookController],
   providers: [DataSourceService, ChatbotService]
 })
 export class ChatbotModule { }
