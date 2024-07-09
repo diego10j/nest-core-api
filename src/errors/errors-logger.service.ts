@@ -7,12 +7,29 @@ export class ErrorsLoggerService {
     /** Utlizamos la clase Logger para registrar los errores */
     private logger: winston.Logger;
 
+    /*TODO: Controlar tamaño de archivo y renombrar historicos*/
+
     constructor() {
-        /** Configuracmos nuestra instancia de Logger con winston */
+        /** Configuramos nuestra instancia de Logger con winston */
         this.logger = winston.createLogger({
-            level: "error", // Nivel de registro
-            format: winston.format.combine(winston.format.timestamp(), winston.format.json()), // Combinar formatos (para guardar la fecha del error en formato JSON)
-            transports: [new winston.transports.File({ filename: "logs/error.log" })], // Archivo de registro donde se guardaran los errores
+            level: 'error', // Nivel de registro
+            format: winston.format.combine(
+                winston.format.timestamp({
+                    format: 'YYYY-MM-DD HH:mm:ss' // Formato de fecha y hora
+                }),
+                winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+                    const log = {
+                        timestamp,
+                        level,
+                        message,
+                        ...metadata
+                    };
+                    return JSON.stringify(log);
+                })
+            ),
+            transports: [
+                new winston.transports.File({ filename: 'logs/error.log' }) // Archivo de registro donde se guardarán los errores
+            ],
         });
     }
 

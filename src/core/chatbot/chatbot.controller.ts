@@ -34,12 +34,12 @@ export class ChatbotController {
   }
 
   @Patch('mark-read/:id')
-  async markMessageAsRead(@Param('id') id: number) {
+  async markMessageAsRead(@Param('id') id: string) {
     return this.service.markMessageAsRead(id);
   }
 
   @Patch('mark-pending/:id')
-  async markMessageAsPending(@Param('id') id: number) {
+  async markMessageAsPending(@Param('id') id: string) {
     return this.service.markMessageAsPending(id);
   }
 

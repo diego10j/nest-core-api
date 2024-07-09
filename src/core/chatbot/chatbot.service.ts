@@ -14,7 +14,7 @@ export class ChatbotService {
     private WHATSAPP_ID: string;
     private WHATSAPP_TOKEN: string;
     private readonly logger = new Logger(ChatbotService.name);
-    private tableName = 'messages';
+    private tableName = 'cha_mensajes';
 
     constructor(private readonly httpService: HttpService,
         private readonly dataSource: DataSourceService
@@ -140,15 +140,15 @@ export class ChatbotService {
                     // Añadir más tipos de mensajes según sea necesario
                 }
                 const insertQuery = new InsertQuery(this.tableName)
-                insertQuery.values.set('from', message.from);
-                insertQuery.values.set('to', this.WHATSAPP_ID);
-                insertQuery.values.set('body', message.text ? message.text.body : null);
-                insertQuery.values.set('timestamp', message.timestamp);
-                insertQuery.values.set('type', message.type);
-                insertQuery.values.set('status', 'unread');
-                insertQuery.values.set('attachment_url', attachmentUrl);
-                insertQuery.values.set('attachment_type', attachmentType);
-                insertQuery.values.set('direction', 'inbound');
+                insertQuery.values.set('from_chmen', message.from);
+                insertQuery.values.set('to_chmen', this.WHATSAPP_ID);
+                insertQuery.values.set('body_chmen', message.text ? message.text.body : null);
+                insertQuery.values.set('created_at_chmen', message.timestamp);
+                insertQuery.values.set('content_type_chmen', message.type);
+                insertQuery.values.set('status_chmen', 'unread');
+                insertQuery.values.set('attachment_url_chmen', attachmentUrl);
+                insertQuery.values.set('attachment_type_chmen', attachmentType);
+                insertQuery.values.set('direction_chmen', 'inbound');
                 await this.dataSource.createQuery(insertQuery);
             } else {
                 this.logger.warn('No se encontró ningún mensaje en la solicitud entrante.');
@@ -160,36 +160,72 @@ export class ChatbotService {
 
     async getMessages() {
         const query = new SelectQuery(`
-            SELECT * FROM messages ORDER BY timestamp DESC`);
+            SELECT * FROM ${this.tableName}  ORDER BY created_at_chmen DESC`);
         const { rows } = await this.dataSource.createQuery(query);
         return rows;
     }
 
+
+    /**
+     * Obtiene todos los mensajes agrupados por número de teléfono
+     * @returns Lista de conversaciones agrupadas por número de teléfono
+     */
+    async getConversations() {
+        const query = new SelectQuery(`
+            SELECT DISTINCT ON (from_chmen) from_chmen, to_chmen, MAX(created_at_chmen) AS last_message_time
+            FROM ${this.tableName}
+            GROUP BY from_chmen, to_chmen
+            ORDER BY last_message_time DESC`);
+        const { rows } = await this.dataSource.createQuery(query);
+        return rows;
+    }
+
+
     async getMessagesByPhone(phone: string) {
         const query = new SelectQuery(`
-            SELECT * FROM messages 
-            WHERE "from" = $1 OR "to" = $2 
-            ORDER BY timestamp DESC
+            SELECT * FROM ${this.tableName} 
+            WHERE from_chmen = $1 OR to_chmen = $2 
+            ORDER BY created_at_chmen DESC
            `);
         query.addStringParam(1, phone);
         query.addStringParam(2, phone);
         const { rows } = await this.dataSource.createQuery(query);
+
+        // Formatear los datos de salida
+        // const messages = rows.map(row => ({
+        //     id: row.id,
+        //     body: row.body,
+        //     senderId: row.sender_id,
+        //     contentType: row.content_type,
+        //     createdAt: row.created_at,
+        //     attachments: row.attachment_id ? [{
+        //         id: row.attachment_id,
+        //         name: row.attachment_name,
+        //         size: row.attachment_size,
+        //         type: row.attachment_type,
+        //         path: row.attachment_path,
+        //         preview: row.attachment_preview,
+        //         createdAt: row.created_at,
+        //         modifiedAt: row.modified_at
+        //     }] : []
+        // }));
+
         return rows;
     }
 
-    async markMessageAsRead(id: number) {
+    async markMessageAsRead(uuid: string) {
         const updateQuery = new UpdateQuery(this.tableName);
-        updateQuery.values.set("status", 'read')
-        updateQuery.where = 'id = $1';
-        updateQuery.addParam(1, id);
+        updateQuery.values.set('status_chmen', 'read')
+        updateQuery.where = 'uuid = $1';
+        updateQuery.addParam(1, uuid);
         await this.dataSource.createQuery(updateQuery)
     }
 
-    async markMessageAsPending(id: number) {
+    async markMessageAsPending(uuid: string) {
         const updateQuery = new UpdateQuery(this.tableName);
-        updateQuery.values.set("status", 'pending')
-        updateQuery.where = 'id = $1';
-        updateQuery.addParam(1, id);
+        updateQuery.values.set("status_chmen", 'pending')
+        updateQuery.where = 'uuid = $1';
+        updateQuery.addParam(1, uuid);
         await this.dataSource.createQuery(updateQuery)
     }
 
@@ -293,21 +329,21 @@ export class ChatbotService {
             const response = await lastValueFrom(this.httpService.post(URL, data, requestConfig));
 
             const insertQuery = new InsertQuery(this.tableName)
-            insertQuery.values.set('"from"', this.WHATSAPP_ID);
-            insertQuery.values.set('"to"', to);
-            insertQuery.values.set('body', content.body || '');
-            insertQuery.values.set('timestamp', getCurrentDateTime());
-            insertQuery.values.set('type', type);
-            insertQuery.values.set('status', 'read');
-            insertQuery.values.set('attachment_url', content.link || '');
-            insertQuery.values.set('attachment_type', type);
-            insertQuery.values.set('direction', 'outbound');
+            insertQuery.values.set('from_chmen', this.WHATSAPP_ID);
+            insertQuery.values.set('to_chmen', to);
+            insertQuery.values.set('body_chmen', content.body || '');
+            insertQuery.values.set('created_at_chmen', getCurrentDateTime());
+            insertQuery.values.set('content_type_chmen', type);
+            insertQuery.values.set('status_chmen', 'read');
+            insertQuery.values.set('attachment_url_chmen', content.link || '');
+            insertQuery.values.set('attachment_type_chmen', type);
+            insertQuery.values.set('direction_chmen', 'outbound');
             await this.dataSource.createQuery(insertQuery);
 
             return response.data;
         } catch (error) {
             this.logger.error(`Error sending message: ${error.message}`);
-            throw new InternalServerErrorException(`[ERROR]: sendMessage ${error.message}`);
+            throw new InternalServerErrorException(`Error sending message: ${error.message}`);
         }
     }
 }

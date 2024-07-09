@@ -343,15 +343,15 @@ INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "l
 INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES (1003, 20, 1003, 'f');
 
 -- 07 July 2024 10:14:46 AM
-CREATE TABLE messages (
-    id SERIAL PRIMARY KEY,
-    "from" VARCHAR(50),
-    "to" VARCHAR(50),
-    body TEXT,
-    timestamp TIMESTAMPTZ,
-    type VARCHAR(20),
-    status VARCHAR(20) DEFAULT 'unread',
-    attachment_url TEXT,
-    attachment_type VARCHAR(20),
-    direction VARCHAR(10) -- 'inbound' o 'outbound'
+CREATE TABLE cha_mensajes (
+    uuid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+	from_chmen VARCHAR(50),
+    to_chmen VARCHAR(50),
+    body_chmen TEXT,
+	created_at_chmen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    content_type_chmen VARCHAR(50) NOT NULL,
+	status_chmen VARCHAR(20) DEFAULT 'unread',  -- 'read' o 'pending'
+	attachment_url_chmen TEXT,
+    attachment_type_chmen VARCHAR(20),
+    direction_chmen VARCHAR(10) -- 'inbound' o 'outbound'
 );
