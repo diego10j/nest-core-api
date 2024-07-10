@@ -5,6 +5,7 @@ import { CoreService } from './core.service';
 import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto } from './connection/dto';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { ServiceDto } from '../common/dto/service.dto';
+import { TreeDto } from './connection/dto/tree-dto';
 
 @Controller('core')
 export class CoreController {
@@ -97,6 +98,14 @@ export class CoreController {
         @Body() _dtoIn: ServiceDto
     ) {
         return this.service.clearTableColumnsCache();
+    }
+
+    @Post('getTreeModel')
+    //@Auth()
+    getTreeModel(
+        @Body() dtoIn: TreeDto
+    ) {
+        return this.service.getTreeModel(dtoIn);
     }
 
 

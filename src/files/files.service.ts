@@ -5,7 +5,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../core/connection/datasource.service';
 import { GetFilesDto } from './dto/get-files.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
-import {  HOST_API, isDefined } from '../core/util/helpers/common-util';
+import { HOST_API, isDefined } from '../core/util/helpers/common-util';
 import { PATH_DRIVE, getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { DeleteQuery, SelectQuery, InsertQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -428,6 +428,21 @@ export class FilesService {
         if (!existsSync(path))
             throw new BadRequestException(`No image found with  ${imageName}`);
         return path;
+    }
+
+    deleteStaticFile(fileName: string) {
+        const filePath = join(this.basePath, fileName);
+        try {
+            unlinkSync(filePath);
+        } catch (error) {
+            this.errorLog.createErrorLog(`No se pudo borrar el archivo ${filePath} : ${error}`);
+            return {
+                message: `No se pudo eliminar el archivo ${fileName}`
+            }
+        }
+        return {
+            message: 'Archivo eliminado'
+        }
     }
 
 }

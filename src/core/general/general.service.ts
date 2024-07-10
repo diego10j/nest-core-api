@@ -16,7 +16,7 @@ export class GeneralService {
     async getListDataPeriodos(_dtoIn?: ServiceDto) {
 
         const query = new SelectQuery(`
-        SELECT EXTRACT(YEAR FROM fecha_emisi_cccfa) AS value, EXTRACT(YEAR FROM fecha_emisi_cccfa) AS label  
+        SELECT EXTRACT(YEAR FROM fecha_emisi_cccfa) AS value, CAST(EXTRACT(YEAR FROM fecha_emisi_cccfa) AS VARCHAR) AS label  
         FROM cxc_cabece_factura 
         WHERE ide_empr = 0 
         GROUP BY EXTRACT(YEAR FROM fecha_emisi_cccfa)

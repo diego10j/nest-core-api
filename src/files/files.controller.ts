@@ -25,7 +25,7 @@ export class FilesController {
   ) { }
 
   @Get('image/:imageName')
-  findImage(
+  getStaticImage(
     @Res() res: Response,
     @Param('imageName') imageName: string
   ) {
@@ -33,6 +33,14 @@ export class FilesController {
     const path = this.filesService.getStaticImage(imageName);
 
     res.sendFile(path);
+  }
+
+
+  @Post('deleteFile/:fileName')
+  deleteStaticFile(
+    @Param('fileName') fileName: string
+  ) {
+    return this.filesService.deleteStaticFile(fileName);
   }
 
   @Post('image')
@@ -46,7 +54,7 @@ export class FilesController {
       filename: fileNamer
     })
   }))
-  uploadImage(
+  uploadStaticImage(
     @UploadedFile() file: Express.Multer.File,
   ) {
 

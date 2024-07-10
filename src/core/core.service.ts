@@ -8,6 +8,7 @@ import { getDateFormat, getTimeFormat } from './util/helpers/date-util';
 import { toObjectTable } from './util/helpers/sql-util';
 import { isDefined } from './util/helpers/common-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
+import { TreeDto } from './connection/dto/tree-dto';
 
 @Injectable()
 export class CoreService {
@@ -56,7 +57,7 @@ export class CoreService {
 
 
     /**
-     * Transforma a Query un SaveObjectDto
+     * Transforma a Query un ObjectQueryDto
      * @param dto 
      * @param ideEmpr 
      * @param ideSucu 
@@ -213,6 +214,71 @@ export class CoreService {
         await this.dataSource.clearSchemaQueryCache();
         return await this.dataSource.clearTableColumnsCache();
     }
+
+
+
+    async getTreeModel(dtoIn: TreeDto) {
+
+        const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
+        const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
+
+        const query = new SelectQuery(`
+        WITH RECURSIVE tree AS (
+            -- Selección inicial para los nodos raíz
+            SELECT 
+                ${dtoIn.primaryKey} AS id,
+                ${dtoIn.columnName} AS label,
+                ${dtoIn.columnNode}  AS parent_id,
+                ${orderColumn}  AS order_column,
+                ARRAY[${dtoIn.primaryKey}] AS path,
+                1 AS level
+            FROM 
+                ${dtoIn.tableName}
+            WHERE 
+                ${dtoIn.columnNode} IS NULL -- Considerando que los nodos raíz tienen NULL
+                ${conditionClause}
+            UNION ALL            
+            -- Selección recursiva para obtener los hijos
+            SELECT 
+                child.${dtoIn.primaryKey} AS id,
+                child.${dtoIn.columnName} AS label,
+                child.${dtoIn.columnNode} AS parent_id,
+                child.${orderColumn} AS order_column,
+                parent.path || child.${dtoIn.primaryKey},
+                parent.level + 1
+            FROM 
+                ${dtoIn.tableName} child
+            JOIN 
+                tree parent ON child.${dtoIn.columnNode} = parent.id
+            WHERE NOT child.${dtoIn.primaryKey} = ANY(parent.path)
+                 ${conditionClause}
+        )        
+        -- Consulta final para construir la vista en formato JSON
+        SELECT 
+            json_agg(json_build_object(
+                'id', CAST(root.id AS VARCHAR),
+                'label', root.label,
+                'children', (
+                    SELECT json_agg(json_build_object(
+                        'id',  CAST(child.id AS VARCHAR) ,
+                        'label', child.label
+                    ) ORDER BY child.order_column)
+                    FROM tree child
+                    WHERE child.parent_id = root.id
+                )
+            ) ORDER BY root.order_column) AS tree_view
+        FROM 
+            tree root
+        WHERE 
+            root.level = 1        
+        `);
+        const data = await this.dataSource.createSingleQuery(query);
+        return {
+            rowCount: 1,
+            rows: data.tree_view
+        } as ResultQuery;
+    }
+
 
 
     /**  xxxxxxxxxxxxxxxxxxxxxxx

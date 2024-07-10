@@ -1,0 +1,34 @@
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { ServiceDto } from 'src/common/dto/service.dto';
+
+
+
+export class TreeDto extends ServiceDto {
+
+    @IsString()
+    @IsNotEmpty()
+    tableName: string;
+
+    @IsString()
+    @IsNotEmpty()
+    primaryKey: string;
+
+    @IsString()
+    @IsNotEmpty()
+    columnName: string;
+
+    @IsString()
+    @IsNotEmpty()
+    columnNode: string;
+
+    @IsString()
+    @IsOptional()
+    orderBy?: string;
+
+    @IsString()
+    @IsOptional()
+    condition?: string;
+
+
+
+}
