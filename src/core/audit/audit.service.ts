@@ -4,8 +4,8 @@ import { DeleteQuery, InsertQuery, SelectQuery } from '../connection/helpers';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
 import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventAudit } from './enum/event-audit';
-import { getCurrentDate, getCurrentTime } from '../util/helpers/date-util';
-import { isDefined } from '../util/helpers/common-util';
+import { getCurrentDate, getCurrentTime } from '../../util/helpers/date-util';
+import { isDefined } from '../../util/helpers/common-util';
 
 @Injectable()
 export class AuditService {

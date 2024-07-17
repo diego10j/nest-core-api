@@ -23,7 +23,7 @@ export class TableQueryDto extends ServiceDto {
 
     @IsString()
     @IsOptional()
-    where?: string;
+    condition?: string;
 
 
 

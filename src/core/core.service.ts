@@ -4,9 +4,9 @@ import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './con
 import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { getDateFormat, getTimeFormat } from './util/helpers/date-util';
-import { toObjectTable } from './util/helpers/sql-util';
-import { isDefined } from './util/helpers/common-util';
+import { getDateFormat, getTimeFormat } from '../util/helpers/date-util';
+import { toObjectTable } from '../util/helpers/sql-util';
+import { isDefined } from '../util/helpers/common-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 
@@ -22,10 +22,10 @@ export class CoreService {
      * @returns 
      */
     async getListDataValues(dto: ListDataValuesDto) {
-        const where = dto.where && ` WHERE 1=1 AND ${dto.where}`;
+        const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
         const orderBy = dto.orderBy || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
-                                    FROM ${dto.tableName}  ${where} ORDER BY ${orderBy}`);
+                                    FROM ${dto.tableName}  ${condition} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createSelectQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data;
@@ -37,10 +37,10 @@ export class CoreService {
      * @returns 
      */
     async getTableQuery(dto: TableQueryDto) {
-        const { columns, tableName, where, orderBy, primaryKey } = dto;
+        const { columns, tableName, condition, orderBy, primaryKey } = dto;
         // Default values
         const selectedColumns = columns || '*';
-        const whereClause = where || '1=1';
+        const whereClause = condition || '1=1';
         const orderByClause = orderBy || primaryKey;
 
         const pgq = new SelectQuery(`        

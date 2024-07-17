@@ -1,8 +1,8 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { GeneralService } from './general.service';
-import { ServiceDto } from '../../common/dto/service.dto';
+import { ServiceDto } from '../../../common/dto/service.dto';
 
-@Controller('general')
+@Controller('sistema/general')
 export class GeneralController {
   constructor(private readonly service: GeneralService) { }
 

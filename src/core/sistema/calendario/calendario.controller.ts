@@ -1,11 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { CalendarioService } from './calendario.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
-import { EventoDto } from './dto/evento.dto';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEventoDto } from './dto/update-evento.dto';
 
-@Controller('calendario')
+@Controller('sistema/calendario')
 export class CalendarioController {
   constructor(private readonly service: CalendarioService) {
   }

@@ -1,6 +1,6 @@
 import { isDefined } from "class-validator";
 import { Query } from "./query";
-import { getDateFormat, getTimeFormat } from "src/core/util/helpers/date-util";
+import { getDateFormat, getTimeFormat } from "src/util/helpers/date-util";
 
 export class UpdateQuery extends Query {
 

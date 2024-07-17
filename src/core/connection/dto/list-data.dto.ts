@@ -25,6 +25,6 @@ export class ListDataValuesDto extends PartialType(ServiceDto) {
 
     @IsOptional()
     @IsString()
-    where?: string
+    condition?: string
 
 }

@@ -17,7 +17,7 @@ import { FavoriteFileDto } from './dto/favorite-file.dto';
 
 
 
-@Controller('files')
+@Controller('sistema/files')
 export class FilesController {
   constructor(
     private readonly filesService: FilesService,

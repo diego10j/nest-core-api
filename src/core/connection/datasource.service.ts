@@ -3,12 +3,12 @@ import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } 
 import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
-import { removeEqualsElements } from '../util/helpers/array-util';
-import { getTimeISOFormat } from '../util/helpers/date-util';
-import { getCountStringInText } from '../util/helpers/string-util';
-import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../util/helpers/sql-util';
+import { removeEqualsElements } from '../../util/helpers/array-util';
+import { getTimeISOFormat } from '../../util/helpers/date-util';
+import { getCountStringInText } from '../../util/helpers/string-util';
+import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
-import { isDefined } from '../util/helpers/common-util';
+import { isDefined } from '../../util/helpers/common-util';
 
 @Injectable()
 export class DataSourceService {

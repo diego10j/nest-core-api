@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { DataSourceService } from '../connection/datasource.service';
-import { ServiceDto } from '../../common/dto/service.dto';
-import { SelectQuery } from '../connection/helpers/select-query';
+import { DataSourceService } from '../../connection/datasource.service';
+import { ServiceDto } from '../../../common/dto/service.dto';
+import { SelectQuery } from '../../connection/helpers/select-query';
 
 @Injectable()
 export class GeneralService {

@@ -6,7 +6,7 @@ import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
 import { lastValueFrom } from 'rxjs';
 import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
-import { getCurrentDateTime } from '../util/helpers/date-util';
+import { getCurrentDateTime } from '../../util/helpers/date-util';
 
 @Injectable()
 export class ChatbotService {

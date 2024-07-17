@@ -10,9 +10,9 @@ import { ServiceDto } from '../../common/dto/service.dto';
 import { EventAudit } from '../audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
-import { isDefined } from '../util/helpers/common-util';
-import { toTitleCase } from '../util/helpers/string-util';
-import { getDateFormatFront, getDateTimeFormatFront } from '../util/helpers/date-util';
+import { isDefined } from '../../util/helpers/common-util';
+import { toTitleCase } from '../../util/helpers/string-util';
+import { getDateFormatFront, getDateTimeFormatFront } from '../../util/helpers/date-util';
 
 @Injectable()
 export class AuthService {

@@ -1,4 +1,4 @@
-import { getDateFormat } from 'src/core/util/helpers/date-util';
+import { getDateFormat } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -9,7 +9,7 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 import { BaseService } from '../../../common/base-service';
-import { getDateFormatFront } from 'src/core/util/helpers/date-util';
+import { getDateFormatFront } from 'src/util/helpers/date-util';
 
 @Injectable()
 export class ProductosService extends BaseService {

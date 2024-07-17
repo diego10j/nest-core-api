@@ -1,6 +1,6 @@
 import { Query } from "./query";
 import { ServiceDto } from '../../../common/dto/service.dto';
-import { isDefined } from '../../util/helpers/common-util';
+import { isDefined } from 'src/util/helpers/common-util';
 
 export class SelectQuery extends Query {
 

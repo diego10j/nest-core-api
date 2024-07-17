@@ -1,13 +1,34 @@
-import { Injectable } from '@nestjs/common';
+import { UsuarioDto } from './dto/usuario.dto';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { DataSourceService } from '../../connection/datasource.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
+import { CoreService } from '../../core.service';
+import { isDefined } from 'src/util/helpers/common-util';
 
 @Injectable()
 export class UsuariosService {
 
 
-    constructor(private readonly dataSource: DataSourceService) { }
+    constructor(private readonly dataSource: DataSourceService,
+        private readonly core: CoreService) { }
+
+
+    // -------------------------------- USUARIO ---------------------------- //
+    async getListDataUsuario(dto: ServiceDto) {
+        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua' }
+        return this.core.getListDataValues(dtoIn);
+    }
+
+    async getTableQueryUsuarioByUuid(dto: UsuarioDto) {
+        if (isDefined(dto.uuid) === false) {
+            throw new InternalServerErrorException(`Error uuid es obligatorio`);
+        }
+        const whereClause = `uuid = '${dto.uuid}'`;
+        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', condition: `${whereClause}` }
+        return this.core.getTableQuery(dtoIn);
+    }
+
 
     /**
     * Retorna el listado de Usuarios

@@ -1,4 +1,4 @@
-import { FORMAT_DATE_FRONT } from './../../util/helpers/date-util';
+import { FORMAT_DATE_FRONT } from '../../../util/helpers/date-util';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
@@ -6,7 +6,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
-import { toTitleCase } from '../../util/helpers/string-util';
+import { toTitleCase } from '../../../util/helpers/string-util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {

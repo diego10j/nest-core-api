@@ -6,7 +6,7 @@ import { InsertQuery } from './insert-query';
 import { UpdateQuery } from './update-query';
 import { DeleteQuery } from './delete-query';
 import { Column } from '../interfaces/column';
-import { isDefined } from '../../util/helpers/common-util';
+import { isDefined } from 'src/util/helpers/common-util';
 
 
 export class DataStore {

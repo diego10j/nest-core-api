@@ -13,9 +13,10 @@ nest g resource core/chatbot --dry-run
 
 nest g resource core/sistema/usuarios --dry-run
 
-nest g resource core/general -—spec=false
-
 nest g resource core/sistema/calendario -—spec=false
+
+nest g resource core/sistema/admin -—spec=false
+nest g resource core/sistema/general -—spec=false
 
 yarn add ioredis
 
