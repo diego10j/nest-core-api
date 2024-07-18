@@ -424,9 +424,9 @@ export class FilesService {
     getStaticImage(imageName: string) {
         let path = join(this.basePath, imageName);
         if (!existsSync(path))
-            path = join(__dirname, '../../public/assets/images', 'no-image.png');
+            path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
         if (!existsSync(path))
-            throw new BadRequestException(`No image found with  ${imageName}`);
+            throw new BadRequestException(`No image found with  ${path}`);
         return path;
     }
 

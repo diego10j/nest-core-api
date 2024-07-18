@@ -275,7 +275,7 @@ export class CoreService {
         const data = await this.dataSource.createSingleQuery(query);
         return {
             rowCount: 1,
-            rows: data.tree_view
+            rows: data.tree_view || []
         } as ResultQuery;
     }
 

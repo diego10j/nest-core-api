@@ -21,10 +21,11 @@ export class UsuariosService {
     }
 
     async getTableQueryUsuarioByUuid(dto: UsuarioDto) {
+        let whereClause = `uuid = '${dto.uuid}'`;
         if (isDefined(dto.uuid) === false) {
-            throw new InternalServerErrorException(`Error uuid es obligatorio`);
+            whereClause = `ide_usua = -1`;
         }
-        const whereClause = `uuid = '${dto.uuid}'`;
+
         const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', condition: `${whereClause}` }
         return this.core.getTableQuery(dtoIn);
     }
