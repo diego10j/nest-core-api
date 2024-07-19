@@ -217,69 +217,122 @@ export class CoreService {
 
 
 
-    async getTreeModel(dtoIn: TreeDto) {
+async getTreeModel(dtoIn: TreeDto) {
+    const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
+    const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
 
-        const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
-        const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
-
-        const query = new SelectQuery(`
-        WITH RECURSIVE tree AS (
-            -- Selección inicial para los nodos raíz
-            SELECT 
-                ${dtoIn.primaryKey} AS id,
-                ${dtoIn.columnName} AS label,
-                ${dtoIn.columnNode}  AS parent_id,
-                ${orderColumn}  AS order_column,
-                ARRAY[${dtoIn.primaryKey}] AS path,
-                1 AS level
-            FROM 
-                ${dtoIn.tableName}
-            WHERE 
-                ${dtoIn.columnNode} IS NULL -- Considerando que los nodos raíz tienen NULL
-                ${conditionClause}
-            UNION ALL            
-            -- Selección recursiva para obtener los hijos
-            SELECT 
-                child.${dtoIn.primaryKey} AS id,
-                child.${dtoIn.columnName} AS label,
-                child.${dtoIn.columnNode} AS parent_id,
-                child.${orderColumn} AS order_column,
-                parent.path || child.${dtoIn.primaryKey},
-                parent.level + 1
-            FROM 
-                ${dtoIn.tableName} child
-            JOIN 
-                tree parent ON child.${dtoIn.columnNode} = parent.id
-            WHERE NOT child.${dtoIn.primaryKey} = ANY(parent.path)
-                 ${conditionClause}
-        )        
-        -- Consulta final para construir la vista en formato JSON
+    const query = new SelectQuery(`
+    WITH RECURSIVE tree AS (
+        -- Selección inicial para los nodos raíz
         SELECT 
-            json_agg(json_build_object(
-                'id', CAST(root.id AS VARCHAR),
-                'label', root.label,
+            ${dtoIn.primaryKey} AS id,
+            ${dtoIn.columnName} AS label,
+            ${dtoIn.columnNode} AS parent_id,
+            ${orderColumn} AS order_column,
+            ARRAY[${dtoIn.primaryKey}] AS path,
+            1 AS level
+        FROM 
+            ${dtoIn.tableName}
+        WHERE 
+            ${dtoIn.columnNode} IS NULL -- Considerando que los nodos raíz tienen NULL
+            ${conditionClause}
+        UNION ALL            
+        -- Selección recursiva para obtener los hijos
+        SELECT 
+            child.${dtoIn.primaryKey} AS id,
+            child.${dtoIn.columnName} AS label,
+            child.${dtoIn.columnNode} AS parent_id,
+            child.${orderColumn} AS order_column,
+            parent.path || child.${dtoIn.primaryKey},
+            parent.level + 1
+        FROM 
+            ${dtoIn.tableName} child
+        JOIN 
+            tree parent ON child.${dtoIn.columnNode} = parent.id
+        WHERE NOT child.${dtoIn.primaryKey} = ANY(parent.path)
+            ${conditionClause}
+    )        
+    -- Consulta final para construir la vista en formato JSON
+    SELECT 
+        json_agg(
+            json_build_object(
+                'id', root.id::text,
+                'label', root.label::text,
                 'children', (
-                    SELECT json_agg(json_build_object(
-                        'id',  CAST(child.id AS VARCHAR) ,
-                        'label', child.label
-                    ) ORDER BY child.order_column)
+                    SELECT
+                        CASE
+                            WHEN COUNT(child.id) > 0 THEN
+                                json_agg(
+                                    json_build_object(
+                                        'id', child.id::text,
+                                        'label', child.label::text,
+                                        'children', (
+                                            SELECT json_agg(
+                                                json_build_object(
+                                                    'id', grandchild.id::text,
+                                                    'label', grandchild.label::text,
+                                                    'children', (
+                                                        SELECT json_agg(
+                                                            json_build_object(
+                                                                'id', greatgrandchild.id::text,
+                                                                'label', greatgrandchild.label::text
+                                                            ) 
+                                                        )
+                                                        FROM tree greatgrandchild
+                                                        WHERE greatgrandchild.parent_id = grandchild.id
+                                                    )
+                                                )
+                                            )
+                                            FROM tree grandchild
+                                            WHERE grandchild.parent_id = child.id
+                                        )
+                                    ) 
+                                    ORDER BY child.order_column
+                                )
+                            ELSE NULL
+                        END
                     FROM tree child
                     WHERE child.parent_id = root.id
                 )
-            ) ORDER BY root.order_column) AS tree_view
-        FROM 
-            tree root
-        WHERE 
-            root.level = 1        
-        `);
-        const data = await this.dataSource.createSingleQuery(query);
-        return {
-            rowCount: 1,
-            rows: data.tree_view || []
-        } as ResultQuery;
-    }
+            )
+        ORDER BY root.order_column
+        ) AS tree_view
+    FROM 
+        tree root
+    WHERE 
+        root.level = 1
+    `);
 
+    // const data = await this.dataSource.createSingleQuery(query);
+    
+    // // Post-procesamiento para eliminar 'children' si es NULL
+    // const removeNullChildren = (item) => {
+    //     if (item.children === null) {
+    //         delete item.children;
+    //     }
+    //     if (item.children && Array.isArray(item.children)) {
+    //         item.children.forEach(removeNullChildren);
+    //     }
+    //     return item;
+    // };
 
+    // const result = data.tree_view.map(removeNullChildren);
+
+    // return {
+    //     rowCount: 1,
+    //     rows: result || []
+    // } as ResultQuery;
+
+   
+    
+    const data = await this.dataSource.createSingleQuery(query);
+    return {
+        rowCount: 1,
+        rows: data.tree_view || []
+    } as ResultQuery;
+}
+
+    
 
     /**  xxxxxxxxxxxxxxxxxxxxxxx
       * Retorna las columnas de una tabla
