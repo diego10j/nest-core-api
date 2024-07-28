@@ -48,12 +48,12 @@ export class CoreController {
     }
 
 
-    @Post('isDelete')
+    @Post('canDelete')
     //@Auth()
     isDelete(
         @Body() dtoIn: DeleteDto
     ) {
-        return this.service.isDelete(dtoIn);
+        return this.service.canDelete(dtoIn);
     }
 
 

@@ -167,11 +167,11 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async isDelete(dto: DeleteDto) {
+    async canDelete(dto: DeleteDto) {
         const dq = new DeleteQuery(dto.tableName);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
-        await this.dataSource.isDelete(dq)
+        await this.dataSource.canDelete(dq)
         return {
             message: 'ok'
         };

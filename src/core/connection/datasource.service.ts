@@ -216,12 +216,12 @@ export class DataSourceService {
         await this.createListQuery(listQuery);
     }
 
-    async isDelete(dq: DeleteQuery) {
+    async canDelete(dq: DeleteQuery) {
         const queryRunner = await this.pool.connect();
         try {
             await queryRunner.query('BEGIN');
             await this.formatSqlQuery(dq);
-            await queryRunner.manager.query(dq.query, dq.paramValues);
+            await queryRunner.query(dq.query, dq.paramValues);
         } catch (error) {
             throw new InternalServerErrorException(
                 `Restricción eliminar - ${error}`
