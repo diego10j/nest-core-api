@@ -2,6 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { OpcionDto } from './dto/opcion.dto';
+import { PerfilDto } from './dto/perfil.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
@@ -76,6 +77,24 @@ export class AdminController {
     @Body() dtoIn: OpcionDto
   ) {
     return this.adminService.getTreeModelOpcion(dtoIn);
+  }
+
+  // -------------------------------- PERFILES ---------------------------- //
+
+  @Post('getTableQueryPerfil')
+  // @Auth()
+  getTableQueryPerfil(
+    @Body() dtoIn: PerfilDto
+  ) {
+    return this.adminService.getTableQueryPerfil(dtoIn);
+  }
+
+  @Post('getPerfilesSistema')
+  // @Auth()
+  getPerfilesSistema(
+    @Body() dtoIn: PerfilDto
+  ) {
+    return this.adminService.getPerfilesSistema(dtoIn);
   }
 
 }

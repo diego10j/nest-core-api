@@ -4,6 +4,8 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { OpcionDto } from './dto/opcion.dto';
+import { PerfilDto } from './dto/perfil.dto';
+import { SelectQuery } from 'src/core/connection/helpers';
 
 @Injectable()
 export class AdminService {
@@ -40,7 +42,7 @@ export class AdminService {
         const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' }
         return this.core.getListDataValues(dtoIn);
     }
-    
+
     async getTableQuerySistema(dto: ServiceDto) {
         const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist' }
         return this.core.getTableQuery(dtoIn);
@@ -58,6 +60,32 @@ export class AdminService {
         const dtoIn = { ...dto, tableName: 'sis_opcion', primaryKey: 'ide_opci', columnName: 'nom_opci', columnNode: 'sis_ide_opci', condition: `${whereClause}`, orderBy: 'nom_opci' }
         return this.core.getTreeModel(dtoIn);
     }
+
+    // -------------------------------- PERFILES ---------------------------- //
+    async getTableQueryPerfil(dto: PerfilDto) {
+        const whereClause = `ide_sist = ${dto.ide_sist}`;
+        const dtoIn = { ...dto, tableName: 'sis_perfil', primaryKey: 'ide_perf', condition: `${whereClause}`, orderBy: 'nom_perf' }
+        return this.core.getTableQuery(dtoIn);
+    }
+
+    async getPerfilesSistema(dtoIn: PerfilDto) {
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_perf,
+            nom_perf,
+            nombre_corto_sist
+        FROM
+            sis_perfil a
+            INNER JOIN sis_sistema b ON a.ide_sist = b.ide_sist
+        WHERE
+            a.ide_sist = $1
+        ORDER BY
+            nom_perf
+            `, dtoIn);
+        query.addIntParam(1, dtoIn.ide_sist);
+        return await this.dataSource.createQuery(query);
+    }
+
 
 
 }

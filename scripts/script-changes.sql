@@ -355,3 +355,16 @@ CREATE TABLE cha_mensajes (
     attachment_type_chmen VARCHAR(20),
     direction_chmen VARCHAR(10) -- 'inbound' o 'outbound'
 );
+
+-- 02 Ago 2024
+ALTER TABLE "public"."sis_perfil" ADD COLUMN "ide_sist" int4;
+
+ALTER TABLE public.sis_perfil
+	ADD CONSTRAINT sis_perfil_ide_sist_fkey
+	FOREIGN KEY(ide_sist)
+	REFERENCES public.sis_sistema(ide_sist)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE;
+-- actualiza las opciones al sistema 1
+update sis_perfil set ide_sist = 1;
