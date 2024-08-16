@@ -49,7 +49,7 @@ export class CalendarioService {
 
     async createEvento(dto: CreateEventoDto): Promise<ResultQuery> {
 
-        const insertQuery = new InsertQuery(this.tableName, dto)
+        const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
         insertQuery.values.set('titulo_cale', dto.title);
         insertQuery.values.set('descripcion_cale', dto.description);
         insertQuery.values.set('fecha_inicio_cale', dto.start);
@@ -66,7 +66,7 @@ export class CalendarioService {
 
     async updateEvento(dto: UpdateEventoDto): Promise<ResultQuery> {
 
-        const updateQuery = new UpdateQuery(this.tableName, dto)
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto)
         updateQuery.values.set('titulo_cale', dto.title);
         updateQuery.values.set('descripcion_cale', dto.description);
         updateQuery.values.set('fecha_inicio_cale', dto.start);

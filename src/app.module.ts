@@ -8,7 +8,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { CommonModule } from './common/common.module';
 
 import { CoreModule } from './core/core.module';
-import { AuthModule } from './core/auth/auth.module';
 import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
 import { SistemaModule } from './core/sistema/sistema.module';
@@ -21,7 +20,6 @@ import { SistemaModule } from './core/sistema/sistema.module';
       rootPath: join(__dirname, '..', 'public'),
     }),
     CommonModule,
-    AuthModule,
     CoreModule,
     ErrorsModule,
     SistemaModule,

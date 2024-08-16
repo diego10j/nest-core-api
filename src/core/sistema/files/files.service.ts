@@ -44,7 +44,7 @@ export class FilesService {
             throw new BadRequestException(`La carpeta ${folderName} ya existe`);
         }
         // inserta 
-        const insertQuery = new InsertQuery(this.tableName, dto)
+        const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
         insertQuery.values.set('nombre_arch', folderName);
         insertQuery.values.set('carpeta_arch', true);
         insertQuery.values.set('sis_ide_arch', sis_ide_arch || null);
@@ -159,7 +159,7 @@ export class FilesService {
             const name = getUuidNameFile(file.filename);
             const extension = getExtensionFile(file.originalname);
             // inserta 
-            const insertQuery = new InsertQuery(this.tableName, dto)
+            const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
             insertQuery.values.set('nombre_arch', file.originalname);
             insertQuery.values.set('nombre2_arch', `${name}.${extension}`);
             insertQuery.values.set('peso_arch', file.size);
@@ -177,7 +177,7 @@ export class FilesService {
             await this.dataSource.createQuery(insertQuery);
         }
         else {
-            const updateQuery = new UpdateQuery(this.tableName, dto);
+            const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
             const whereClause = `nombre_arch = $1 AND ${isDefined(sis_ide_arch) ? 'sis_ide_arch = $2' : 'sis_ide_arch IS NULL'}`;
             updateQuery.values.set("nombre_arch", file.originalname)
             updateQuery.where = whereClause;
@@ -245,7 +245,7 @@ export class FilesService {
         }
         else {
 
-            const updateQuery = new UpdateQuery(this.tableName, dto);
+            const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
             updateQuery.values.set("public_arch", false);
             updateQuery.where = `uuid = ANY($1)`;
             updateQuery.addParam(1, dto.values);
@@ -281,7 +281,7 @@ export class FilesService {
                 `El archivo no existe`
             );
         }
-        const updateQuery = new UpdateQuery(this.tableName);
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey);
         updateQuery.values.set("descargas_arch", Number(data.descargas_arch) + 1);
         updateQuery.where = `uuid = $1`;
         updateQuery.addParam(1, name);
@@ -351,7 +351,7 @@ export class FilesService {
         if (data) {
             throw new BadRequestException(`Ya existe un archivo con el nombre ${dto.fileName}`);
         }
-        const updateQuery = new UpdateQuery(this.tableName, dto);
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
         updateQuery.values.set("nombre_arch", dto.fileName);
         updateQuery.where = `uuid = $1`;
         updateQuery.addParam(1, dto.id);
@@ -367,7 +367,7 @@ export class FilesService {
      * @returns 
      */
     async favoriteFile(dto: FavoriteFileDto): Promise<ResultQuery> {
-        const updateQuery = new UpdateQuery(this.tableName, dto);
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
         updateQuery.values.set("favorita_arch", dto.favorite);
         updateQuery.where = `uuid = $1`;
         updateQuery.addParam(1, dto.id);

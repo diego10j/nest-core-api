@@ -98,7 +98,7 @@ export class AuthService {
                     //recupera fecha último acceso
                     const lastAccess = dataPass.fecha_auac ? dataPass.fecha_auac + " " + dataPass.hora_auac : getDateTimeFormatFront(new Date());
                     //actualiza estado true a sessiones no cerradas
-                    const updateQuery = new UpdateQuery("sis_auditoria_acceso");
+                    const updateQuery = new UpdateQuery("sis_auditoria_acceso", "ide_auac");
                     updateQuery.values.set("fin_auac", true);
                     updateQuery.where = "ide_usua = $1 and ide_acau = $2 and  fin_auac = $3";
                     updateQuery.addNumberParam(1, dataUser.ide_usua);
@@ -318,7 +318,7 @@ export class AuthService {
      */
     async logout(serviceDto: ServiceDto) {
         //actualiza estado true a sessiones no cerradas
-        const updateQuery = new UpdateQuery("sis_auditoria_acceso");
+        const updateQuery = new UpdateQuery("sis_auditoria_acceso", "ide_auac");
         updateQuery.values.set("fin_auac", true);
         updateQuery.where = "ide_usua = $1 and ide_acau = $2 and  fin_auac = $3";
         updateQuery.addNumberParam(1, serviceDto.ideUsua);

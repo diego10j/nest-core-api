@@ -15,6 +15,7 @@ export class ChatbotService {
     private WHATSAPP_TOKEN: string;
     private readonly logger = new Logger(ChatbotService.name);
     private tableName = 'cha_mensajes';
+    private primaryKey = 'ide_chmen';
 
     constructor(private readonly httpService: HttpService,
         private readonly dataSource: DataSourceService
@@ -139,7 +140,7 @@ export class ChatbotService {
                         break;
                     // Añadir más tipos de mensajes según sea necesario
                 }
-                const insertQuery = new InsertQuery(this.tableName)
+                const insertQuery = new InsertQuery(this.tableName, this.primaryKey)
                 insertQuery.values.set('from_chmen', message.from);
                 insertQuery.values.set('to_chmen', this.WHATSAPP_ID);
                 insertQuery.values.set('body_chmen', message.text ? message.text.body : null);
@@ -214,7 +215,7 @@ export class ChatbotService {
     }
 
     async markMessageAsRead(uuid: string) {
-        const updateQuery = new UpdateQuery(this.tableName);
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey);
         updateQuery.values.set('status_chmen', 'read')
         updateQuery.where = 'uuid = $1';
         updateQuery.addParam(1, uuid);
@@ -222,7 +223,7 @@ export class ChatbotService {
     }
 
     async markMessageAsPending(uuid: string) {
-        const updateQuery = new UpdateQuery(this.tableName);
+        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey);
         updateQuery.values.set("status_chmen", 'pending')
         updateQuery.where = 'uuid = $1';
         updateQuery.addParam(1, uuid);
@@ -328,7 +329,7 @@ export class ChatbotService {
         try {
             const response = await lastValueFrom(this.httpService.post(URL, data, requestConfig));
 
-            const insertQuery = new InsertQuery(this.tableName)
+            const insertQuery = new InsertQuery(this.tableName, this.primaryKey)
             insertQuery.values.set('from_chmen', this.WHATSAPP_ID);
             insertQuery.values.set('to_chmen', to);
             insertQuery.values.set('body_chmen', content.body || '');

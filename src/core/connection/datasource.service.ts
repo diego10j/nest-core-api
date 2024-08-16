@@ -9,6 +9,8 @@ import { getCountStringInText } from '../../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
+import { AuditService } from '../audit/audit.service';
+
 
 @Injectable()
 export class DataSourceService {
@@ -33,6 +35,7 @@ export class DataSourceService {
 
     constructor(
         private readonly errorsLoggerService: ErrorsLoggerService,
+        private readonly auditService: AuditService,
         @Inject('REDIS_CLIENT') private readonly redisClient: Redis
     ) {
         // Parse types bdd
@@ -56,8 +59,8 @@ export class DataSourceService {
      * @param Query 
      * @returns Array data
      */
-    async createSelectQuery(query: Query): Promise<any[]> {
-        const result = await this.createQuery(query, false);
+    async createSelectQuery(query: Query, isSchema = true): Promise<any[]> {
+        const result = await this.createQuery(query, isSchema);
         return result.rows || [];
     }
 
@@ -134,12 +137,16 @@ export class DataSourceService {
      * @param SelectQuery 
      * @returns Object data
      */
-    async createSingleQuery(query: SelectQuery): Promise<any> {
-        const data = await this.createSelectQuery(query);
+    async createSingleQuery(query: SelectQuery, isSchema = true): Promise<any> {
+        const data = await this.createSelectQuery(query, isSchema);
         return data.length > 0 ? data[0] : null;
     }
 
-
+    /**
+     * Ejecuta un listado de objetos Query, control de transaccionalidad con Begin, commit, rollback
+     * @param listQuery 
+     * @returns 
+     */
     async createListQuery(listQuery: Query[]): Promise<boolean> {
         const queryRunner = await this.pool.connect();
         try {
@@ -147,6 +154,15 @@ export class DataSourceService {
             for (let currentQuery of listQuery) {
                 await this.formatSqlQuery(currentQuery);
                 await queryRunner.query(currentQuery.query, currentQuery.paramValues);
+                // registrar auditoria Actividad
+                if (currentQuery instanceof InsertQuery) {
+                    if (currentQuery.audit)
+                        queryRunner.query(this.auditService.getInsertActivityTable(currentQuery));
+                }
+                if (currentQuery instanceof UpdateQuery) {
+                    if (currentQuery.audit)
+                        queryRunner.query(this.auditService.getUpdateActivityTable(currentQuery));
+                }
             }
             await queryRunner.query('COMMIT');
             return true;

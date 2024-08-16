@@ -132,7 +132,7 @@ export class DataStore {
             //INSERTADAS
             let insertedRows = this.data.filter(row => row.insert === true);
             if (insertedRows.length > 0) {
-                const insertQuery = new InsertQuery(this.tableName);
+                const insertQuery = new InsertQuery(this.tableName, this.primaryKey);
                 let seqTable = 1;
                 if (!this.isAutoIncrementPK) {
                     seqTable = await this.dataSource.getSeqTable(this.tableName, this.primaryKey, insertedRows.length);
@@ -152,7 +152,7 @@ export class DataStore {
             if (updatedRows.length > 0) {
                 for (let row of updatedRows) {
                     //Columnas Modificadas
-                    const updateQuery = new UpdateQuery(this.tableName);
+                    const updateQuery = new UpdateQuery(this.tableName, this.primaryKey);
                     const colsUpdate = row.colsUpdate;
                     for (let colM of colsUpdate) {
                         updateQuery.values[colM] = row[colM];

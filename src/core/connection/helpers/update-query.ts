@@ -6,12 +6,15 @@ export class UpdateQuery extends Query {
 
 
     table: string;
+    primaryKey: string;
     values = new Map<string, any>();
     where: string;
+    audit: boolean = true;
 
-    constructor(table: string, dto?: object) {
+    constructor(table: string, primaryKey: string, dto?: object) {
         super();
         this.table = table;
+        this.primaryKey = primaryKey;
         if (dto) {
             // Asigna variables enviadas en el dto Base
             const mapObject = new Map(Object.entries(dto));
@@ -41,6 +44,10 @@ export class UpdateQuery extends Query {
         for (const [key, value] of Object.entries(entry)) {
             this.values.set(key, value);
         }
+    }
+
+    setAudit(audit: boolean = true) {
+        this.audit = audit;
     }
 
 

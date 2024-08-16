@@ -73,7 +73,7 @@ export class CoreService {
             mapObject.set('fecha_actua', getDateFormat(new Date()));
             mapObject.set('hora_actua', getTimeFormat(new Date()));
             mapObject.set('usuario_actua', login);
-            const updateQuery = new UpdateQuery(dto.tableName);
+            const updateQuery = new UpdateQuery(dto.tableName, dto.primaryKey);
             mapObject.delete(dto.primaryKey);
             updateQuery.where = `${dto.primaryKey} = $1`
             updateQuery.addParam(1, valuePrimaryKey);
@@ -82,7 +82,7 @@ export class CoreService {
         }
         else if (dto.operation === 'insert') {
             // insert
-            const insertQuery = new InsertQuery(dto.tableName)
+            const insertQuery = new InsertQuery(dto.tableName, dto.primaryKey)
             //  asigna valores update campos del core
             mapObject.set('ide_empr', ideEmpr);
             mapObject.set('ide_sucu', ideSucu);
