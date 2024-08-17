@@ -13,13 +13,11 @@ import { ChatbotModule } from './chatbot/chatbot.module';
 // import { AdminModule } from './sistema/admin/admin.module';
 // import { GeneralModule } from './sistema/general/general.module';
 // import { SistemaModule } from './sistema/sistema.module';
-import { AuditModule } from './audit/audit.module';
-import { AuthModule } from './auth/auth.module';
 @Module({
   //   imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, UsuariosModule, GeneralModule, CalendarioModule, AdminModule, SistemaModule],
-  imports: [AuthModule, ErrorsModule, ProductosModule, ClientesModule, ChatbotModule, AuditModule],
-  providers: [DataSourceService, CoreService],
+  imports: [ErrorsModule, ProductosModule, ClientesModule, ChatbotModule],
+  providers: [DataSourceService, AuditService, CoreService],
   exports: [DataSourceService],
-  controllers: [CoreController],
+  controllers: [AuditController, CoreController],
 })
 export class CoreModule { }

@@ -111,7 +111,7 @@ export class AuditService {
     // --------------------------------------------
 
     getInsertActivityTable(objInsert: InsertQuery): InsertQuery {
-        const insertQuery = new InsertQuery('sis_archivo', 'ide_arch');
+        const insertQuery = new InsertQuery('sis_actividad', 'ide_acti');
         insertQuery.values.set('tabla_acti', objInsert.table);
         insertQuery.values.set('valor_pk_acti', objInsert.values.get(objInsert.primaryKey));
         insertQuery.values.set('nom_acti', 'Registro Creado');
@@ -142,7 +142,7 @@ export class AuditService {
                 }
             );
         }
-        const insertQuery = new InsertQuery('sis_archivo', 'ide_arch');
+        const insertQuery = new InsertQuery('sis_actividad', 'ide_acti');
         insertQuery.values.set('tabla_acti', objUpdate.table);
         insertQuery.values.set('valor_pk_acti', objUpdate.values.get(objUpdate.primaryKey));
         insertQuery.values.set('nom_acti', 'Registro Modificado');

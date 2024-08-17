@@ -6,13 +6,14 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { CoreModule } from '../core.module';
+import { AuditService } from '../audit/audit.service';
 import { ErrorsModule } from '../../errors/errors.module';
 
 
 @Module({
   controllers: [AuthController],
-  providers: [AuthService, ConfigService, JwtStrategy],
   imports: [
+    ConfigModule,
     CoreModule,
     ErrorsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
@@ -29,6 +30,7 @@ import { ErrorsModule } from '../../errors/errors.module';
       }
     })
   ],
-  exports: [PassportModule, JwtModule]
+  providers: [AuthService, JwtStrategy, AuditService],
+  exports: [PassportModule]
 })
 export class AuthModule { }

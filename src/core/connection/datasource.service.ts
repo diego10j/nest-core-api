@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Inject } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
 import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
@@ -10,6 +10,7 @@ import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultVal
 import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
 import { AuditService } from '../audit/audit.service';
+// import { AuditService } from '../audit/audit.service';
 
 
 @Injectable()
@@ -34,8 +35,10 @@ export class DataSourceService {
     private INT4_OID = 23;
 
     constructor(
+       // @Optional() @Inject(forwardRef(() => AuditService)) private readonly auditService: AuditService,
+
         private readonly errorsLoggerService: ErrorsLoggerService,
-        private readonly auditService: AuditService,
+       // private readonly auditService: AuditService,
         @Inject('REDIS_CLIENT') private readonly redisClient: Redis
     ) {
         // Parse types bdd
@@ -155,14 +158,14 @@ export class DataSourceService {
                 await this.formatSqlQuery(currentQuery);
                 await queryRunner.query(currentQuery.query, currentQuery.paramValues);
                 // registrar auditoria Actividad
-                if (currentQuery instanceof InsertQuery) {
-                    if (currentQuery.audit)
-                        queryRunner.query(this.auditService.getInsertActivityTable(currentQuery));
-                }
-                if (currentQuery instanceof UpdateQuery) {
-                    if (currentQuery.audit)
-                        queryRunner.query(this.auditService.getUpdateActivityTable(currentQuery));
-                }
+                // if (currentQuery instanceof InsertQuery) {
+                //     if (currentQuery.audit)
+                //         queryRunner.query(this.auditService.getInsertActivityTable(currentQuery));
+                // }
+                // if (currentQuery instanceof UpdateQuery) {
+                //     if (currentQuery.audit)
+                //         queryRunner.query(this.auditService.getUpdateActivityTable(currentQuery));
+                // }
             }
             await queryRunner.query('COMMIT');
             return true;
