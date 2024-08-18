@@ -104,6 +104,7 @@ export class AuthService {
                     updateQuery.addNumberParam(1, dataUser.ide_usua);
                     updateQuery.addNumberParam(2, EventAudit.LOGIN_SUCCESS);
                     updateQuery.addBooleanParam(3, false);
+                    updateQuery.setAudit(false);
                     await this.dataSource.createQuery(updateQuery);
                     //Auditoria
                     this.audit.saveEventoAuditoria(

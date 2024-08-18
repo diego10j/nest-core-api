@@ -91,14 +91,6 @@ export class DataSourceService {
                     primaryKey = columns[0].name; // siempre el primarikey debe ir en la primera columna del query
             }
 
-            if (query instanceof InsertQuery) {
-                message = res.rowCount > 0 ? 'Creación exitosa' : 'No se creó ningún registro';
-                if (query.audit) {
-                    const insertActivity = this.getInsertActivityTable(query);
-                    await this.formatSqlQuery(insertActivity);
-                    this.pool.query(insertActivity);
-                }
-            }
             // Registra  Actividad Auditoria
             if (query.audit) {
                 let activityQuery: InsertQuery | undefined;
@@ -112,9 +104,6 @@ export class DataSourceService {
                     await this.pool.query(activityQuery.query, activityQuery.paramValues);
                 }
             }
-
-            if (query instanceof InsertQuery)
-                message = res.rowCount > 0 ? `Creación exitosa, 1 registro afectado` : 'No se insertó ningún registro';
 
             if (query instanceof UpdateQuery)
                 message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
@@ -138,6 +127,7 @@ export class DataSourceService {
             } as ResultQuery;
 
         } catch (error) {
+            console.error(query);
             console.error(error);
             this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
             throw new InternalServerErrorException(
@@ -424,12 +414,14 @@ export class DataSourceService {
             else if (query instanceof SelectQuery) getSqlSelect(query);
         }
         catch (error) {
+            console.error(error);
             this.errorsLoggerService.createErrorLog(`[ERROR] formatSqlQuery`, error);
             throw new InternalServerErrorException(error);
         }
         //Valida que exista el mismo numero de $ con los valores de los parámetros
         const countParams = getCountStringInText("$", query.query);
         if (countParams !== query.paramValues.length) {
+            console.error(query);
             throw new InternalServerErrorException(
                 "[ERROR] Número de parámetros es diferente a la cantidad $ en el query"
             );
@@ -599,7 +591,7 @@ export class DataSourceService {
 
         // Construir la consulta para obtener los valores actuales en la base de datos
         const keysString = keysArray.join(', ');
-        const query = new SelectQuery(`SELECT ${keysString} FROM ${objUpdate.table} ${objUpdate.where}`);
+        const query = new SelectQuery(`SELECT ${keysString} FROM ${objUpdate.table} WHERE ${objUpdate.primaryKey} = ${objUpdate.valuePrimaryKey}`);
         const result = await this.createSingleQuery(query);
 
         // Comparar valores y construir el historial de cambios

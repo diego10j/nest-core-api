@@ -6,7 +6,7 @@ export class Query {
     query: string;
     params?: ParamQuery[];
     dto: ServiceDto;
-    audit: boolean = true;
+    audit: boolean = false;
 
     constructor() {
         this.params = [];
@@ -48,8 +48,8 @@ export class Query {
         return this.params.map(p => p.value);;
     }
 
-    setAudit(audit: boolean = true) {
-        this.audit = audit;
+    setAudit(isAudit: boolean) {
+        this.audit = isAudit;
     }
 }
 

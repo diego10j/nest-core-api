@@ -6,7 +6,6 @@ import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
 import { getDateFormat, getTimeFormat } from '../util/helpers/date-util';
 import { toObjectTable } from '../util/helpers/sql-util';
-import { isDefined } from '../util/helpers/common-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 
@@ -64,7 +63,7 @@ export class CoreService {
      * @param login 
      * @returns 
      */
-    toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string): UpdateQuery | DeleteQuery | InsertQuery {
+    toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string, audit: boolean): UpdateQuery | DeleteQuery | InsertQuery {
         dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
         const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
@@ -75,6 +74,7 @@ export class CoreService {
             mapObject.set('hora_actua', getTimeFormat(new Date()));
             mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName, dto.primaryKey);
+            updateQuery.setAudit(audit);
             mapObject.delete(dto.primaryKey);
             if (dto.condition)
                 updateQuery.where = dto.condition;
@@ -89,6 +89,7 @@ export class CoreService {
         else if (dto.operation === 'insert') {
             // insert
             const insertQuery = new InsertQuery(dto.tableName, dto.primaryKey)
+            insertQuery.setAudit(audit);
             //  asigna valores update campos del core
             if (dto.primaryKey !== 'ide_empr')
                 mapObject.set('ide_empr', ideEmpr);
@@ -102,6 +103,7 @@ export class CoreService {
         }
         else if (dto.operation === 'delete') {
             const deleteQuery = new DeleteQuery(dto.tableName)
+            deleteQuery.setAudit(audit);
             if (dto.condition)
                 deleteQuery.where = dto.condition;
             else
@@ -118,7 +120,7 @@ export class CoreService {
      */
     async save(dto: SaveListDto) {
         const listQuery = dto.listQuery.map(_obj => {
-            return this.toQuery(_obj, dto.ideEmpr, dto.ideSucu, dto.login);
+            return this.toQuery(_obj, dto.ideEmpr, dto.ideSucu, dto.login, dto.audit);
         });
 
         const messages = await this.dataSource.createListQuery(listQuery);

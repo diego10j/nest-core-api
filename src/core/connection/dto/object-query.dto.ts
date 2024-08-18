@@ -24,8 +24,6 @@ export class ObjectQueryDto {
     @IsOptional()
     condition?: string;
 
-    //   @IsBoolean()
-    //   @IsOptional()
-    //   identity?: boolean = false;
+
 
 }
