@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
 import { DeleteQuery, InsertQuery, SelectQuery } from '../connection/helpers';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
@@ -11,7 +11,9 @@ import { UpdateQuery } from '../connection/helpers/update-query';
 @Injectable()
 export class AuditService {
 
-    constructor(private readonly dataSource: DataSourceService
+    constructor(
+       //  @Inject(forwardRef(() => DataSourceService))
+        private readonly dataSource: DataSourceService
     ) {
     }
 

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsDefined, IsObject, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsDefined, IsObject, IsIn, IsOptional } from 'class-validator';
 
 export class ObjectQueryDto {
 
@@ -19,6 +19,10 @@ export class ObjectQueryDto {
     @IsObject()
     @IsDefined()
     object: object;
+
+    @IsString()
+    @IsOptional()
+    condition?: string;
 
     //   @IsBoolean()
     //   @IsOptional()

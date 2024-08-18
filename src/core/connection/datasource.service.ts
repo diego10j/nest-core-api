@@ -4,14 +4,11 @@ import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { removeEqualsElements } from '../../util/helpers/array-util';
-import { getTimeISOFormat } from '../../util/helpers/date-util';
+import { getCurrentDateTime, getTimeISOFormat } from '../../util/helpers/date-util';
 import { getCountStringInText } from '../../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
-import { AuditService } from '../audit/audit.service';
-// import { AuditService } from '../audit/audit.service';
-
 
 @Injectable()
 export class DataSourceService {
@@ -35,10 +32,7 @@ export class DataSourceService {
     private INT4_OID = 23;
 
     constructor(
-       // @Optional() @Inject(forwardRef(() => AuditService)) private readonly auditService: AuditService,
-
         private readonly errorsLoggerService: ErrorsLoggerService,
-       // private readonly auditService: AuditService,
         @Inject('REDIS_CLIENT') private readonly redisClient: Redis
     ) {
         // Parse types bdd
@@ -53,7 +47,6 @@ export class DataSourceService {
         types.setTypeParser(this.INT8_OID, (val) => parseInt(val, 10));
         types.setTypeParser(this.INT2_OID, (val) => parseInt(val, 10));
         types.setTypeParser(this.INT4_OID, (val) => parseInt(val, 10));
-
     }
 
 
@@ -66,7 +59,6 @@ export class DataSourceService {
         const result = await this.createQuery(query, isSchema);
         return result.rows || [];
     }
-
 
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
@@ -88,7 +80,6 @@ export class DataSourceService {
             let columns: any[] | undefined = undefined;
             let queryName: string | undefined = undefined;
             let message = 'ok';
-
             const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
             if (query instanceof SelectQuery && isSchema === true) {
                 // Obtiene esquema de las columnas del SelectQuery
@@ -100,8 +91,30 @@ export class DataSourceService {
                     primaryKey = columns[0].name; // siempre el primarikey debe ir en la primera columna del query
             }
 
-            if (query instanceof InsertQuery)
+            if (query instanceof InsertQuery) {
                 message = res.rowCount > 0 ? 'Creación exitosa' : 'No se creó ningún registro';
+                if (query.audit) {
+                    const insertActivity = this.getInsertActivityTable(query);
+                    await this.formatSqlQuery(insertActivity);
+                    this.pool.query(insertActivity);
+                }
+            }
+            // Registra  Actividad Auditoria
+            if (query.audit) {
+                let activityQuery: InsertQuery | undefined;
+                if (query instanceof InsertQuery) {
+                    activityQuery = this.getInsertActivityTable(query);
+                } else if (query instanceof UpdateQuery) {
+                    activityQuery = await this.getUpdateActivityTable(query);
+                }
+                if (activityQuery) {
+                    await this.formatSqlQuery(activityQuery);
+                    await this.pool.query(activityQuery.query, activityQuery.paramValues);
+                }
+            }
+
+            if (query instanceof InsertQuery)
+                message = res.rowCount > 0 ? `Creación exitosa, 1 registro afectado` : 'No se insertó ningún registro';
 
             if (query instanceof UpdateQuery)
                 message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
@@ -140,8 +153,8 @@ export class DataSourceService {
      * @param SelectQuery 
      * @returns Object data
      */
-    async createSingleQuery(query: SelectQuery, isSchema = true): Promise<any> {
-        const data = await this.createSelectQuery(query, isSchema);
+    async createSingleQuery(query: SelectQuery): Promise<any> {
+        const data = await this.createSelectQuery(query, false);
         return data.length > 0 ? data[0] : null;
     }
 
@@ -150,36 +163,55 @@ export class DataSourceService {
      * @param listQuery 
      * @returns 
      */
-    async createListQuery(listQuery: Query[]): Promise<boolean> {
+    async createListQuery(listQuery: Query[]): Promise<string[]> {
         const queryRunner = await this.pool.connect();
+        const messages: string[] = [];
         try {
             await queryRunner.query('BEGIN');
-            for (let currentQuery of listQuery) {
+
+            for (const currentQuery of listQuery) {
                 await this.formatSqlQuery(currentQuery);
-                await queryRunner.query(currentQuery.query, currentQuery.paramValues);
-                // registrar auditoria Actividad
-                // if (currentQuery instanceof InsertQuery) {
-                //     if (currentQuery.audit)
-                //         queryRunner.query(this.auditService.getInsertActivityTable(currentQuery));
-                // }
-                // if (currentQuery instanceof UpdateQuery) {
-                //     if (currentQuery.audit)
-                //         queryRunner.query(this.auditService.getUpdateActivityTable(currentQuery));
-                // }
+
+                const res = await queryRunner.query(currentQuery.query, currentQuery.paramValues);
+
+                // Registra  Actividad Auditoria
+                if (currentQuery.audit) {
+                    let activityQuery: InsertQuery | undefined;
+                    if (currentQuery instanceof InsertQuery) {
+                        activityQuery = this.getInsertActivityTable(currentQuery);
+                    } else if (currentQuery instanceof UpdateQuery) {
+                        activityQuery = await this.getUpdateActivityTable(currentQuery);
+                    }
+                    if (activityQuery) {
+                        await this.formatSqlQuery(activityQuery);
+                        await queryRunner.query(activityQuery.query, activityQuery.paramValues);
+                    }
+                }
+                let message = 'ok';
+                if (currentQuery instanceof InsertQuery)
+                    message = res.rowCount > 0 ? `Creación exitosa, 1 registro afectado` : 'No se insertó ningún registro';
+
+                if (currentQuery instanceof UpdateQuery)
+                    message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
+
+                if (currentQuery instanceof DeleteQuery)
+                    message = res.rowCount > 0 ? `Eliminación exitosa, ${res.rowCount} registros afectados` : 'No se eliminó ningún registro';
+
+                messages.push(message);
             }
+
             await queryRunner.query('COMMIT');
-            return true;
+            return messages;
         } catch (error) {
+            console.error(error);
             await queryRunner.query('ROLLBACK');
             this.errorsLoggerService.createErrorLog(`[ERROR] createQueryList`, error);
-            throw new InternalServerErrorException(
-                `[ERROR] createQueryList - ${error}`
-            );
-        }
-        finally {
+            throw new InternalServerErrorException(`[ERROR] createQueryList - ${error}`);
+        } finally {
             await queryRunner.release();
         }
     }
+
 
 
     /**
@@ -265,13 +297,13 @@ export class DataSourceService {
             FROM sis_parametros
             WHERE LOWER(nom_para) = ANY ($1)`);
         pq.addArrayStringParam(1, lowercaseArray);
-        const resp = await this.createSelectQuery(pq);
+        const resp = await this.createSelectQuery(pq, false);
         const respMap = new Map();
         resp.forEach(data => {
             respMap.set(data.nom_para, data.valor_para);
         });
         if (lowercaseArray.length !== respMap.size) {
-            console.log(
+            console.error(
                 `No se encontraron todas las variables del sistema`
             );
         }
@@ -353,7 +385,7 @@ export class DataSourceService {
         `);
         pq.addArrayNumberParam(1, tablesID);
         pq.addArrayStringParam(2, columnsName);
-        return await this.createSelectQuery(pq);
+        return await this.createSelectQuery(pq, false);
     }
 
     /**
@@ -543,4 +575,66 @@ export class DataSourceService {
 
     // --------------------------- END REDIS  ----------------------------
 
+    // --------------------------- AUDIT ---------------------------------
+    getInsertActivityTable(objInsert: InsertQuery): InsertQuery {
+        const insertQuery = new InsertQuery('sis_actividad', 'ide_acti');
+        insertQuery.values.set('tabla_acti', objInsert.table);
+        insertQuery.values.set('valor_pk_acti', objInsert.values.get(objInsert.primaryKey));
+        insertQuery.values.set('nom_acti', 'Registro Creado');
+        insertQuery.values.set('ide_actti', 1); // Registro creado
+        insertQuery.values.set('ide_actes', 2); // Finalizado
+        insertQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
+        insertQuery.values.set('activo_acti', true);
+        return insertQuery;
+    }
+
+    async getUpdateActivityTable(objUpdate: UpdateQuery): Promise<InsertQuery> {
+        // Extraer y eliminar valores innecesarios del Map
+        const usuarioActua = objUpdate.values.get('usuario_actua');
+        const keysToDelete = ['fecha_actua', 'hora_actua', 'usuario_actua'];
+        keysToDelete.forEach(key => objUpdate.values.delete(key));
+
+        // Crear una lista de columnas restantes
+        const keysArray = [...objUpdate.values.keys()];
+
+        // Construir la consulta para obtener los valores actuales en la base de datos
+        const keysString = keysArray.join(', ');
+        const query = new SelectQuery(`SELECT ${keysString} FROM ${objUpdate.table} ${objUpdate.where}`);
+        const result = await this.createSingleQuery(query);
+
+        // Comparar valores y construir el historial de cambios
+        const arrayChanges = keysArray.reduce((changes, key) => {
+            const newValue = objUpdate.values.get(key);
+            if (result[key] !== newValue) {
+                changes.push({
+                    campo_modificado: key,
+                    valor_anterior: result[key],
+                    valor_nuevo: newValue,
+                    fecha_cambio: getCurrentDateTime(),
+                    usuario_actua: usuarioActua,
+                });
+            }
+            return changes;
+        }, []);
+
+        // Si no hay cambios, retornar undefined
+        if (arrayChanges.length === 0) {
+            return undefined;
+        }
+
+        // Construir la consulta de inserción para registrar la actividad
+        const insertQuery = new InsertQuery('sis_actividad', 'ide_acti');
+        insertQuery.values.set('tabla_acti', objUpdate.table);
+        insertQuery.values.set('valor_pk_acti', objUpdate.valuePrimaryKey);
+        insertQuery.values.set('nom_acti', 'Registro Modificado');
+        insertQuery.values.set('ide_actti', 2); // Registro modificado
+        insertQuery.values.set('ide_actes', 2); // Finalizado
+        insertQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
+        insertQuery.values.set('activo_acti', true);
+        insertQuery.values.set('historial_acti', JSON.stringify(arrayChanges));
+
+        return insertQuery;
+    }
+
+    // --------------------------- END AUDIT  ----------------------------
 }

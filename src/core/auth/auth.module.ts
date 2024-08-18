@@ -8,6 +8,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { CoreModule } from '../core.module';
 import { AuditService } from '../audit/audit.service';
 import { ErrorsModule } from '../../errors/errors.module';
+import { DataSourceService } from '../connection/datasource.service';
 
 
 @Module({
@@ -30,7 +31,7 @@ import { ErrorsModule } from '../../errors/errors.module';
       }
     })
   ],
-  providers: [AuthService, JwtStrategy, AuditService],
+  providers: [DataSourceService, AuthService, JwtStrategy, AuditService],
   exports: [PassportModule]
 })
 export class AuthModule { }

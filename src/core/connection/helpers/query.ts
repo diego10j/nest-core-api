@@ -6,6 +6,7 @@ export class Query {
     query: string;
     params?: ParamQuery[];
     dto: ServiceDto;
+    audit: boolean = true;
 
     constructor() {
         this.params = [];
@@ -45,6 +46,10 @@ export class Query {
 
     get paramValues() {
         return this.params.map(p => p.value);;
+    }
+
+    setAudit(audit: boolean = true) {
+        this.audit = audit;
     }
 }
 

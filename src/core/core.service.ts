@@ -68,6 +68,7 @@ export class CoreService {
         dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
         const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
+
         if (dto.operation === 'update') {
             // asigna valores update campos del core            
             mapObject.set('fecha_actua', getDateFormat(new Date()));
@@ -75,17 +76,24 @@ export class CoreService {
             mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName, dto.primaryKey);
             mapObject.delete(dto.primaryKey);
-            updateQuery.where = `${dto.primaryKey} = $1`
-            updateQuery.addParam(1, valuePrimaryKey);
+            if (dto.condition)
+                updateQuery.where = dto.condition;
+            else
+                updateQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
+
+            // updateQuery.addParam(1, valuePrimaryKey);
             updateQuery.values = mapObject;
+            updateQuery.valuePrimaryKey = valuePrimaryKey;
             return updateQuery;
         }
         else if (dto.operation === 'insert') {
             // insert
             const insertQuery = new InsertQuery(dto.tableName, dto.primaryKey)
             //  asigna valores update campos del core
-            mapObject.set('ide_empr', ideEmpr);
-            mapObject.set('ide_sucu', ideSucu);
+            if (dto.primaryKey !== 'ide_empr')
+                mapObject.set('ide_empr', ideEmpr);
+            if (dto.primaryKey !== 'ide_sucu')
+                mapObject.set('ide_sucu', ideSucu);
             mapObject.set('fecha_ingre', getDateFormat(new Date()));
             mapObject.set('hora_ingre', getTimeFormat(new Date()));
             mapObject.set('usuario_ingre', login);
@@ -94,8 +102,11 @@ export class CoreService {
         }
         else if (dto.operation === 'delete') {
             const deleteQuery = new DeleteQuery(dto.tableName)
-            deleteQuery.where = `${dto.primaryKey} = $1`
-            deleteQuery.addParam(1, valuePrimaryKey);
+            if (dto.condition)
+                deleteQuery.where = dto.condition;
+            else
+                deleteQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
+            // deleteQuery.addParam(1, valuePrimaryKey);
             return deleteQuery;
         }
     }
@@ -109,9 +120,13 @@ export class CoreService {
         const listQuery = dto.listQuery.map(_obj => {
             return this.toQuery(_obj, dto.ideEmpr, dto.ideSucu, dto.login);
         });
-        await this.dataSource.createListQuery(listQuery);
+
+        const messages = await this.dataSource.createListQuery(listQuery);
+
         return {
-            message: 'ok'
+            message: 'ok',
+            rowCount: listQuery.length,
+            resultMessage: messages,
         };
     }
 
@@ -217,11 +232,11 @@ export class CoreService {
 
 
 
-async getTreeModel(dtoIn: TreeDto) {
-    const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
-    const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
+    async getTreeModel(dtoIn: TreeDto) {
+        const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
+        const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
 
-    const query = new SelectQuery(`
+        const query = new SelectQuery(`
     WITH RECURSIVE tree AS (
         -- Selección inicial para los nodos raíz
         SELECT 
@@ -303,134 +318,35 @@ async getTreeModel(dtoIn: TreeDto) {
         root.level = 1
     `);
 
-    // const data = await this.dataSource.createSingleQuery(query);
-    
-    // // Post-procesamiento para eliminar 'children' si es NULL
-    // const removeNullChildren = (item) => {
-    //     if (item.children === null) {
-    //         delete item.children;
-    //     }
-    //     if (item.children && Array.isArray(item.children)) {
-    //         item.children.forEach(removeNullChildren);
-    //     }
-    //     return item;
-    // };
+        // const data = await this.dataSource.createSingleQuery(query);
 
-    // const result = data.tree_view.map(removeNullChildren);
+        // // Post-procesamiento para eliminar 'children' si es NULL
+        // const removeNullChildren = (item) => {
+        //     if (item.children === null) {
+        //         delete item.children;
+        //     }
+        //     if (item.children && Array.isArray(item.children)) {
+        //         item.children.forEach(removeNullChildren);
+        //     }
+        //     return item;
+        // };
 
-    // return {
-    //     rowCount: 1,
-    //     rows: result || []
-    // } as ResultQuery;
+        // const result = data.tree_view.map(removeNullChildren);
 
-   
-    
-    const data = await this.dataSource.createSingleQuery(query);
-    return {
-        rowCount: 1,
-        rows: data.tree_view || []
-    } as ResultQuery;
-}
+        // return {
+        //     rowCount: 1,
+        //     rows: result || []
+        // } as ResultQuery;
 
-    
 
-    /**  xxxxxxxxxxxxxxxxxxxxxxx
-      * Retorna las columnas de una tabla
-      * @param ColumnsTableDto 
-      * @returns listado de columnas
-      */
-    async getColumnsTable(dto: ColumnsTableDto) {
-        //Valida DTO
-        await this.validateDTO(ColumnsTableDto, dto);
 
-        const pq = new SelectQuery(`SELECT 
-            column_name as nombre,
-            upper(column_name) as nombreVisual,
-            ordinal_position as orden,
-            CASE WHEN is_nullable = 'YES' THEN false
-                    ELSE true end as requerida,
-            data_type as tipo,
-            character_maximum_lengtH as longitud,
-            CASE WHEN numeric_scale isnull THEN 0
-                    ELSE numeric_scale end as decimales,
-            'Texto' as componente,
-            true as visible,
-            false as lectura,
-            null as valorDefecto,
-            null as mascara,
-            false as filtro,
-            null as comentario,
-            false as mayuscula,
-            false as unico,
-            true as ordenable,
-            COALESCE(character_maximum_lengtH, 8) as anchoColumna,
-            CASE WHEN numeric_precision isnull THEN false 
-                    ELSE true end as isNumber,
-            numeric_scale as decimales,
-            CASE WHEN datetime_precision isnull THEN false 
-                    ELSE true end as isDate,
-            CASE WHEN data_type = 'boolean' THEN true 
-                    ELSE false end as isBoolean
-                    FROM information_schema.columns a       
-                    WHERE table_name = $1`);
-
-        pq.addStringParam(1, dto.tableName);
-        if (dto.columns) {
-            pq.query += ` AND column_name = ANY($2)`;
-            pq.addArrayStringParam(2, dto.columns);
-        }
-        const data = await this.dataSource.createSelectQuery(pq);
-        // Valida que retorne resultados 
-        if (data.length === 0) {
-            throw new BadRequestException(
-                `No se encontraron resultados para la tabla: ${dto.tableName}, columnas: ${dto.columns}`
-            );
-        }
-
-        if (dto.columns) {
-            // Valida si se envia nombres de columnas se retorne la misma cantidad de columnas
-            if (data.length != dto.columns.length) {
-                throw new BadRequestException(
-                    `No se encontraron todas las columnas: ${dto.columns}`
-                );
-            }
-        }
-
-        //borrar
-        await this.dataSource.getSeqTable("sis_usuario", "ide_usua");
-        /** 
-        const pu = new UpdateQuery("sis_bloqueo");
-        pu.values.set("maximo_bloq", 7);
-        pu.where = "ide_bloq = $1 and 2=2";
-        pu.addNumberParam(1, 68);        
-        const r = await this.dataSource.query(pu.query, pu.paramValues);
-        //console.log(pu.query);
-        //console.log(pu.paramValues);
-        console.log(r);
-       
-        const iq = new InsertQuery("sis_bloqueo");
-        iq.values.set("ide_bloq", 1000)
-        iq.values.set("ide_usua", 11)
-        iq.values.set("tabla_bloq", "prueba")
-        iq.values.set("maximo_bloq", 999)
-        iq.values.set("usuario_bloq", "sa")
-        const r = await this.createQuery(iq);
-        console.log(iq.query);
-        console.log(iq.paramValues);
-        console.log(r);
-
-        const dq = new DeleteQuery("sis_bloqueo");
-        dq.where = "ide_bloq = $1 and 2=2";
-        dq.addNumberParam(1, 1000);
-        const r2 = await this.createQuery(dq);
-        console.log(dq.query);
-        console.log(dq.paramValues);
-        console.log(r2);
-         */
-        //fin borrar
-
-        return data;
+        const data = await this.dataSource.createSingleQuery(query);
+        return {
+            rowCount: 1,
+            rows: data.tree_view || []
+        } as ResultQuery;
     }
+
 
 
 

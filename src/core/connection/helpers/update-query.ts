@@ -9,7 +9,8 @@ export class UpdateQuery extends Query {
     primaryKey: string;
     values = new Map<string, any>();
     where: string;
-    audit: boolean = true;
+
+    valuePrimaryKey: number;
 
     constructor(table: string, primaryKey: string, dto?: object) {
         super();
@@ -46,9 +47,6 @@ export class UpdateQuery extends Query {
         }
     }
 
-    setAudit(audit: boolean = true) {
-        this.audit = audit;
-    }
 
 
 }
