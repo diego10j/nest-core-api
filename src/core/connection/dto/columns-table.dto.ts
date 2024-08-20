@@ -1,12 +1,13 @@
 import {
-    IsString,  IsOptional, IsArray, ArrayNotEmpty, IsNotEmpty
+    IsString, IsOptional, IsArray, ArrayNotEmpty, IsNotEmpty, Matches
 } from 'class-validator';
 
 
-export class ColumnsTableDto  {
+export class ColumnsTableDto {
 
     @IsString()
     @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'tableName no debe contener espacios' })
     tableName: string;
 
     @IsOptional()

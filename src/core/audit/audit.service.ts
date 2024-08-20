@@ -108,4 +108,61 @@ export class AuditService {
     }
 
 
+    getQueryActividadesPorTabla(tableName: string, valor: number) {
+        const query = new SelectQuery(`     
+    SELECT
+        a.ide_acti,
+        a.nom_acti,
+        a.ide_usua,
+        a.sis_ide_usua,
+        a.descripcion_acti,
+        a.fecha_creacion_acti,
+        a.fecha_completada_acti,
+        a.historial_acti,
+        a.usuario_ingre,
+        a.usuario_actua,
+        at.nom_actti,
+        ae.nom_actes,
+        a.descripcion_acti,
+        a.fecha_actividad_acti,
+        COALESCE(
+            json_agg(
+                json_build_object(
+                    'ide_actco', c.ide_actco,
+                    'comentario_actco', c.comentario_actco,
+                    'fecha_comentario_actco', c.fecha_comentario_actco,
+                    'usuario_ingre', c.usuario_ingre
+                )
+            ) FILTER (WHERE c.ide_actco IS NOT NULL),
+            NULL
+        ) AS comentarios
+    FROM
+        sis_actividad a
+        JOIN sis_actividad_tipo at ON a.ide_actti = at.ide_actti
+        JOIN sis_actividad_estado ae ON a.ide_actes = ae.ide_actes
+        LEFT JOIN sis_actividad_comentario c ON c.ide_acti = a.ide_acti
+    WHERE
+        a.tabla_acti = $1
+        AND a.valor_pk_acti = $2
+    GROUP BY
+        a.ide_acti,
+        a.nom_acti,
+        a.ide_usua,
+        a.sis_ide_usua,
+        a.descripcion_acti,
+        a.fecha_creacion_acti,
+        a.fecha_completada_acti,
+        a.historial_acti,
+        a.usuario_ingre,
+        a.usuario_actua,
+        at.nom_actti,
+        ae.nom_actes,
+        a.fecha_actividad_acti
+        `);
+        query.addStringParam(1, tableName);
+        query.addIntParam(2, valor);
+        return query;
+    }
+
+
 }

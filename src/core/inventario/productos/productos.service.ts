@@ -10,11 +10,14 @@ import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 import { BaseService } from '../../../common/base-service';
 import { getDateFormatFront } from 'src/util/helpers/date-util';
+import { AuditService } from '../../audit/audit.service';
 
 @Injectable()
 export class ProductosService extends BaseService {
 
-    constructor(private readonly dataSource: DataSourceService
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly audit: AuditService,
     ) {
         super();
         // obtiene las variables del sistema para el servicio
@@ -703,6 +706,17 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+    /**
+     * Retrona la actividades/log registradas sobre un producto
+     * @param dtoIn 
+     * @returns 
+     */
+    async getActividades(dtoIn: IdProductoDto) {
+        const query = this.audit.getQueryActividadesPorTabla('inv_articulo',dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query, false);
+    }
+
+
     // =====================================================================
 
     /**
@@ -734,5 +748,8 @@ export class ProductosService extends BaseService {
         }
         return saldoInicial;
     }
+
+
+
 
 }

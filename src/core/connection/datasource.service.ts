@@ -470,6 +470,9 @@ export class DataSourceService {
         return columns;
     }
 
+    /**
+     * Actualiza cache de Redis de las columnas de una tabla
+     */
     async updateTableColumnsCache(tableName: string): Promise<string[]> {
         const cacheKey = this.getCacheKeyTableColumns(tableName);
 
@@ -480,6 +483,9 @@ export class DataSourceService {
         return this.fetchAndCacheTableColumns(tableName);
     }
 
+    /**
+     * Elimina el cache de Redis de table_columns 
+     */
     async clearTableColumnsCache() {
         // Obtener todas las claves que coinciden con el patrón 'table_columns:*'
         const keys = await this.redisClient.keys('table_columns:*');
@@ -577,6 +583,7 @@ export class DataSourceService {
         insertQuery.values.set('ide_actes', 2); // Finalizado
         insertQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
         insertQuery.values.set('activo_acti', true);
+        insertQuery.values.set('usuario_ingre', objInsert.values.get('usuario_ingre'));
         return insertQuery;
     }
 
@@ -593,6 +600,11 @@ export class DataSourceService {
         const keysString = keysArray.join(', ');
         const query = new SelectQuery(`SELECT ${keysString} FROM ${objUpdate.table} WHERE ${objUpdate.primaryKey} = ${objUpdate.valuePrimaryKey}`);
         const result = await this.createSingleQuery(query);
+
+        // No existe registro a actualizar
+        if (!isDefined(result)) {
+            return undefined;
+        }
 
         // Comparar valores y construir el historial de cambios
         const arrayChanges = keysArray.reduce((changes, key) => {
@@ -624,7 +636,7 @@ export class DataSourceService {
         insertQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
         insertQuery.values.set('activo_acti', true);
         insertQuery.values.set('historial_acti', JSON.stringify(arrayChanges));
-
+        insertQuery.values.set('usuario_ingre', usuarioActua);
         return insertQuery;
     }
 

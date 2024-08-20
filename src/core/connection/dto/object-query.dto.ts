@@ -1,7 +1,6 @@
-import { IsString, IsNotEmpty, IsDefined, IsObject, IsIn, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsDefined, IsObject, IsIn, IsOptional, Matches } from 'class-validator';
 
 export class ObjectQueryDto {
-
 
     @IsString()
     @IsIn(["insert", "update", "delete"])
@@ -10,10 +9,12 @@ export class ObjectQueryDto {
 
     @IsString()
     @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'tableName no debe contener espacios' })
     tableName: string;
 
     @IsString()
     @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'primaryKey no debe contener espacios' })
     primaryKey: string;
 
     @IsObject()
@@ -23,7 +24,4 @@ export class ObjectQueryDto {
     @IsString()
     @IsOptional()
     condition?: string;
-
-
-
 }

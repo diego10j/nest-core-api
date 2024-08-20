@@ -124,4 +124,12 @@ export class ProductosController {
   }
 
 
+  @Post('getActividades')
+  // @Auth()
+  getActividades(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getActividades(dtoIn);
+  }
+
 }
