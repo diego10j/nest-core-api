@@ -1,7 +1,7 @@
 
 export interface Column {
     name: string;
-    tableID: string;
+    tableID: number;
     dataTypeID: number;
     dataType: string;
     label: string;
@@ -9,13 +9,14 @@ export interface Column {
     visible: boolean
     order: number;
     length: number;
+    precision: number;
     decimals: number;
     disabled: boolean;
     defaultValue: any;
     mask: string;
     filter: boolean;
     comment: string;
-    component:string
+    component: string
     upperCase: boolean;
     unique: boolean;
     orderable: boolean;

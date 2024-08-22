@@ -8,3 +8,4 @@ export { SeqTableDto } from './seq-table.dto';
 export { TableQueryDto } from './table-query.dto';
 export { UniqueDto } from './unique.dto';
 export { FindByUuidDto } from './find-by-uuid.dto';
+export { UpdateColumnsDto } from './update-columns.dto';

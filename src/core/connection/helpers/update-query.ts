@@ -21,8 +21,6 @@ export class UpdateQuery extends Query {
             const mapObject = new Map(Object.entries(dto));
             if (isDefined(mapObject.get('login')))
                 this.values.set('usuario_actua', mapObject.get('login'));
-            this.values.set('fecha_actua', getDateFormat(new Date()));
-            this.values.set('hora_actua', getTimeFormat(new Date()));
         }
     }
 

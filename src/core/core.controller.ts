@@ -2,10 +2,11 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Auth } from './auth/decorators';
 import { CoreService } from './core.service';
 
-import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto } from './connection/dto';
+import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto, UpdateColumnsDto } from './connection/dto';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { ServiceDto } from '../common/dto/service.dto';
 import { TreeDto } from './connection/dto/tree-dto';
+
 
 @Controller('core')
 export class CoreController {
@@ -106,6 +107,14 @@ export class CoreController {
         @Body() dtoIn: TreeDto
     ) {
         return this.service.getTreeModel(dtoIn);
+    }
+
+    @Post('updateColumns')
+    //@Auth()
+    updateColumns(
+        @Body() dtoIn: UpdateColumnsDto
+    ) {
+        return this.service.updateColumns(dtoIn);
     }
 
 

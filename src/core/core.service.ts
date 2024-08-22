@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
-import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto } from './connection/dto';
+import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, UpdateColumnsDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { getDateFormat, getTimeFormat } from '../util/helpers/date-util';
 import { toObjectTable } from '../util/helpers/sql-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
+import { isDefined } from '../util/helpers/common-util';
 
 @Injectable()
 export class CoreService {
@@ -70,8 +70,6 @@ export class CoreService {
 
         if (dto.operation === 'update') {
             // asigna valores update campos del core            
-            mapObject.set('fecha_actua', getDateFormat(new Date()));
-            mapObject.set('hora_actua', getTimeFormat(new Date()));
             mapObject.set('usuario_actua', login);
             const updateQuery = new UpdateQuery(dto.tableName, dto.primaryKey);
             updateQuery.setAudit(audit);
@@ -95,8 +93,6 @@ export class CoreService {
                 mapObject.set('ide_empr', ideEmpr);
             if (dto.primaryKey !== 'ide_sucu')
                 mapObject.set('ide_sucu', ideSucu);
-            mapObject.set('fecha_ingre', getDateFormat(new Date()));
-            mapObject.set('hora_ingre', getTimeFormat(new Date()));
             mapObject.set('usuario_ingre', login);
             insertQuery.values = mapObject;
             return insertQuery;
@@ -350,6 +346,92 @@ export class CoreService {
     }
 
 
+    /**
+     * Actualiza la configuracion de las columnas 
+     * @param dtoIn 
+     * @returns 
+     */
+    async updateColumns(dtoIn: UpdateColumnsDto) {
+        let ide_tabl = -1;
+        // Busca la tabla 
+        const baseQuery = `
+            SELECT ide_tabl 
+            FROM sis_tabla 
+            WHERE query_name_tabl = $1
+            AND ide_opci ${dtoIn.ide_opci ? '= $2' : 'IS NULL'}`;
+
+        const sq = new SelectQuery(baseQuery);
+        sq.addStringParam(1, dtoIn.queryName);
+        if (dtoIn.ide_opci) {
+            sq.addNumberParam(2, dtoIn.ide_opci);
+        }
+        const result = await this.dataSource.createSingleQuery(sq);
+
+        if (!isDefined(result)) {
+            // Crea registro en sis_tabla
+            const insertQuery = new InsertQuery('sis_tabla', 'ide_tabl', dtoIn)
+            if (dtoIn.ide_opci) {
+                insertQuery.values.set('ide_opci', dtoIn.ide_opci);
+            }
+            insertQuery.values.set('primaria_tabl', dtoIn.primaryKey);
+            insertQuery.values.set('tabla_tabl', dtoIn.queryName);
+            insertQuery.values.set('query_name_tabl', dtoIn.queryName);
+            ide_tabl = await this.dataSource.getSeqTable('sis_tabla', 'ide_tabl', 1, dtoIn.login);
+            insertQuery.values.set('ide_tabl', ide_tabl);
+            await this.dataSource.createQuery(insertQuery);
+        }
+        else {
+            ide_tabl = result.ide_tabl;
+        }
+
+        const listQuery: Query[] = [];
+        // Elimina columnas existentes
+
+        const dq = new DeleteQuery("sis_campo");
+        dq.where = "ide_tabl = $1";
+        dq.addIntParam(1, ide_tabl);
+        listQuery.push(dq);
+
+        // inserta columnas
+        let ide_camp = await this.dataSource.getSeqTable('sis_campo', 'ide_camp', dtoIn.columns.length, dtoIn.login);
+
+        dtoIn.columns.forEach((column) => {
+            const insertQuery = new InsertQuery('sis_campo', 'ide_camp',);
+            insertQuery.values.set('ide_camp', ide_camp);
+            insertQuery.values.set('ide_tabl', ide_tabl);
+            insertQuery.values.set('nom_camp', column.name);
+            insertQuery.values.set('table_id_camp', column.tableID);
+            insertQuery.values.set('data_type_id_camp', column.dataTypeID);
+            insertQuery.values.set('data_type_camp', column.dataType);
+            insertQuery.values.set('orden_camp', column.order);
+            insertQuery.values.set('nom_visual_camp', column.label);
+            insertQuery.values.set('requerido_camp', column.required);
+            insertQuery.values.set('visible_camp', column.visible);
+            insertQuery.values.set('length_camp', column.length);
+            insertQuery.values.set('precision_camp', column.precision);
+            insertQuery.values.set('decimals_camp', column.decimals);
+            insertQuery.values.set('lectura_camp', column.disabled);
+            insertQuery.values.set('filtro_camp', column.filter);
+            insertQuery.values.set('comentario_camp', column.comment);
+            insertQuery.values.set('size_camp', column.size);
+            insertQuery.values.set('align_camp', column.align);
+            insertQuery.values.set('defecto_camp', column.defaultValue);
+            insertQuery.values.set('mayuscula_camp', column.upperCase);
+            insertQuery.values.set('mascara_camp', column.mask);
+            insertQuery.values.set('usuario_ingre', dtoIn.login);
+            listQuery.push(insertQuery);
+            ide_camp = ide_camp + 1;
+        });
+        // Ejecuta querys
+        const messages = await this.dataSource.createListQuery(listQuery);
+
+        return {
+            message: 'ok',
+            rowCount: listQuery.length,
+            resultMessage: messages,
+        };
+
+    }
 
 
 

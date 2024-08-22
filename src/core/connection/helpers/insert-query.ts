@@ -24,9 +24,6 @@ export class InsertQuery extends Query {
                 this.values.set('ide_sucu', mapObject.get('ideSucu'));
             if (isDefined(mapObject.get('login')))
                 this.values.set('usuario_ingre', mapObject.get('login'));
-
-            this.values.set('fecha_ingre', getDateFormat(new Date()));
-            this.values.set('hora_ingre', getTimeFormat(new Date()));
         }
     }
 

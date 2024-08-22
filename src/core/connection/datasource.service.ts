@@ -4,7 +4,7 @@ import { Pool, types } from "pg";
 import { ResultQuery } from './interfaces/resultQuery';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { removeEqualsElements } from '../../util/helpers/array-util';
-import { getCurrentDateTime, getTimeISOFormat } from '../../util/helpers/date-util';
+import { getCurrentDateTime, getDateTimeFormat, getTimeFormat, getTimeISOFormat, getDateFormat } from '../../util/helpers/date-util';
 import { getCountStringInText } from '../../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
@@ -396,6 +396,20 @@ export class DataSourceService {
                     }
                 });
                 keysToDelete.forEach(key => query.values.delete(key));
+
+                // Pistas de auditoría
+                const tieneFechaIngre = query.columns.includes('fecha_ingre');
+                const tieneHoraIngre = query.columns.includes('hora_ingre');
+                const now = new Date();
+
+                if (tieneHoraIngre && !tieneFechaIngre) {
+                    query.values.set('hora_ingre', getDateTimeFormat(now));
+                } else if (tieneHoraIngre && tieneFechaIngre) {
+                    query.values.set('fecha_ingre', getDateFormat(now));
+                    query.values.set('hora_ingre', getTimeFormat(now));
+                }
+                query.values.delete('hora_actua');
+                query.values.delete('fecha_actua');
                 getSqlInsert(query);
             }
             else if (query instanceof UpdateQuery) {
@@ -408,6 +422,20 @@ export class DataSourceService {
                     }
                 });
                 keysToDelete.forEach(key => query.values.delete(key));
+
+                // Pistas de auditoría
+                const tieneFechaActua = cols.includes('fecha_actua');
+                const tieneHoraActua = cols.includes('hora_actua');
+                const now = new Date();
+
+                if (tieneHoraActua && !tieneFechaActua) {
+                    query.values.set('hora_actua', getDateTimeFormat(now));
+                } else if (tieneHoraActua && tieneFechaActua) {
+                    query.values.set('fecha_actua', getDateFormat(now));
+                    query.values.set('hora_actua', getTimeFormat(now));
+                }
+                query.values.delete('hora_ingre');
+                query.values.delete('fecha_ingre');
                 getSqlUpdate(query);
             }
             else if (query instanceof DeleteQuery) getSqlDelete(query);

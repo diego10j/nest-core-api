@@ -348,7 +348,7 @@ CREATE TABLE cha_mensajes (
 	from_chmen VARCHAR(50),
     to_chmen VARCHAR(50),
     body_chmen TEXT,
-	created_at_chmen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	created_at_chmen TIMESTAMP NOT NULL DEFAULT NOW(),
     content_type_chmen VARCHAR(50) NOT NULL,
 	status_chmen VARCHAR(20) DEFAULT 'unread',  -- 'read' o 'pending'
 	attachment_url_chmen TEXT,
@@ -368,3 +368,28 @@ ALTER TABLE public.sis_perfil
 	ON UPDATE CASCADE;
 -- actualiza las opciones al sistema 1
 update sis_perfil set ide_sist = 1;
+
+-- 21 Ago 2024
+ALTER TABLE sis_tabla ADD COLUMN query_name_tabl varchar(100); 
+ALTER TABLE sis_tabla ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_tabla ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE sis_tabla ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_tabla ADD COLUMN hora_actua TIMESTAMP;
+
+CREATE INDEX idx_query_name_sis_tabla ON sis_tabla(query_name_tabl);
+CREATE INDEX idx_query_name_opci_sis_tabla ON sis_tabla(ide_opci,query_name_tabl);
+
+ALTER TABLE sis_campo ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_campo ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE sis_campo ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_campo ADD COLUMN hora_actua TIMESTAMP;
+ALTER TABLE sis_campo ADD COLUMN table_id_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN data_type_id_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN data_type_camp varchar(50); 
+ALTER TABLE sis_campo ADD COLUMN length_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN decimals_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN precision_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN component_camp varchar(80); 
+ALTER TABLE sis_campo ADD COLUMN size_camp int4; 
+ALTER TABLE sis_campo ADD COLUMN align_camp varchar(50); 
+
