@@ -393,3 +393,24 @@ ALTER TABLE sis_campo ADD COLUMN component_camp varchar(80);
 ALTER TABLE sis_campo ADD COLUMN size_camp int4; 
 ALTER TABLE sis_campo ADD COLUMN align_camp varchar(50); 
 
+-- 24 Ago 2024
+ALTER TABLE "public"."inv_articulo"
+ADD COLUMN "url_inarti" varchar(200),
+ADD COLUMN "se_vende_inarti" bool,
+ADD COLUMN "se_compra_inarti" bool,
+ADD COLUMN "ide_inbod" int4,
+ADD COLUMN "cod_barras_inarti" varchar(50);
+
+ALTER TABLE public.inv_articulo
+	ADD CONSTRAINT inv_articulo_ide_inbod_fkey
+	FOREIGN KEY(ide_inbod)
+	REFERENCES public.inv_bodega(ide_inbod)
+	MATCH SIMPLE
+	ON DELETE CASCADE 
+	ON UPDATE CASCADE ;
+
+
+update inv_articulo set se_vende_inarti = true, se_compra_inarti = true,  ide_inbod = 2,
+url_inarti= 'https://produquimic.com.ec/product';
+
+
