@@ -55,7 +55,7 @@ export class DataSourceService {
      * @param Query 
      * @returns Array data
      */
-    async createSelectQuery(query: Query, isSchema = true): Promise<any[]> {
+    async createSelectQuery(query: Query, isSchema = false): Promise<any[]> {
         const result = await this.createQuery(query, isSchema);
         return result.rows || [];
     }

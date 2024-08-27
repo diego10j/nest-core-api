@@ -216,11 +216,15 @@ export class ProductosService extends BaseService {
             secuencial_ccdfa,
             nom_geper,
             cdf.cantidad_ccdfa,
-            cdf.total_ccdfa
+            siglas_inuni,
+            cdf.precio_ccdfa,
+            cdf.total_ccdfa,
+            p.uuid
         FROM
             cxc_deta_factura cdf
         INNER join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
         INNER join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         INNER join gen_persona p on cf.ide_geper = p.ide_geper
         WHERE
             cdf.ide_inarti =  $1
@@ -248,12 +252,15 @@ export class ProductosService extends BaseService {
         numero_cpcfa,
         nom_geper,
         cdf.cantidad_cpdfa,
+        siglas_inuni,
         cdf.precio_cpdfa,
-        cdf.valor_cpdfa
+        cdf.valor_cpdfa,
+        p.uuid
     FROM
         cxp_detall_factur cdf
         left join cxp_cabece_factur cf on cf.ide_cpcfa = cdf.ide_cpcfa
         left join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         left join gen_persona p on cf.ide_geper = p.ide_geper
     WHERE
         cdf.ide_inarti =  $1
@@ -516,6 +523,40 @@ export class ProductosService extends BaseService {
     }
 
 
+    async getProveedores(dtoIn: IdProductoDto) {
+        const query = new SelectQuery(`
+        SELECT
+            p.ide_geper,
+            p.nom_geper as nom_geper,
+            p.identificac_geper,
+            COUNT(1) AS num_facturas,
+            SUM(cdf.cantidad_cpdfa) AS total_cantidad,
+            SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
+            siglas_inuni,
+            p.uuid
+        FROM
+            cxp_detall_factur cdf
+            INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+        WHERE
+            cdf.ide_inarti = $1
+            AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+        GROUP BY
+            p.ide_geper,
+            p.nom_geper,
+            p.identificac_geper,
+            siglas_inuni,
+            p.uuid
+        ORDER BY
+            p.nom_geper
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+
+        return await this.dataSource.createQuery(query);
+    }
+
     /**
      * Retorna top 10 mejores proveedores en un periodo
      * @param dtoIn 
@@ -594,6 +635,44 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+
+    /**
+     * Retorna los clientes que han comprado un producto
+     * @param dtoIn 
+     * @returns 
+     */
+    async getClientes(dtoIn: IdProductoDto) {
+        const query = new SelectQuery(`            
+            SELECT
+                p.ide_geper,
+                p.nom_geper,
+                p.identificac_geper,
+                max(cf.fecha_emisi_cccfa) as fecha_ultima,
+                count(1) as num_facturas,
+                sum(cdf.cantidad_ccdfa) as cantidad,
+                uni.siglas_inuni,
+                SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
+                p.uuid
+            FROM
+                cxc_deta_factura cdf
+                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+                INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+                INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+            WHERE
+                cdf.ide_inarti = $1
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            GROUP BY
+                p.ide_geper,
+                p.nom_geper,
+                p.identificac_geper,
+                uni.siglas_inuni
+            order by
+                p.nom_geper
+            `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
+    }
 
     async getVariacionPreciosCompras(dtoIn: VariacionPreciosComprasDto) {
         const query = new SelectQuery(`
@@ -712,7 +791,7 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getActividades(dtoIn: IdProductoDto) {
-        const query = this.audit.getQueryActividadesPorTabla('inv_articulo',dtoIn.ide_inarti);
+        const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query, false);
     }
 

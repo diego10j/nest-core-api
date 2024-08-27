@@ -9,7 +9,7 @@ import { IdProductoDto } from './dto/id-producto.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 
-@Controller('productos')
+@Controller('inventario/productos')
 export class ProductosController {
   constructor(private readonly service: ProductosService) { }
 
@@ -90,12 +90,29 @@ export class ProductosController {
     return this.service.getSumatoriaTrnPeriodo(dtoIn);
   }
 
+
+  @Post('getProveedores')
+  // @Auth()
+  getProveedores(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getProveedores(dtoIn);
+  }
+
   @Post('getTopProveedores')
   // @Auth()
   getTopProveedores(
     @Body() dtoIn: IVentasMensualesDto
   ) {
     return this.service.getTopProveedores(dtoIn);
+  }
+
+  @Post('getClientes')
+  // @Auth()
+  getClientes(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getClientes(dtoIn);
   }
 
   @Post('getTopClientes')

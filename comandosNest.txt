@@ -18,6 +18,8 @@ nest g resource core/sistema/calendario -—spec=false
 nest g resource core/sistema/admin -—spec=false
 nest g resource core/sistema/general -—spec=false
 
+nest g resource core/inventario/bodegas
+
 yarn add ioredis
 
 nest g module redis --dry-run

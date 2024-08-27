@@ -11,7 +11,6 @@ import { CoreModule } from './core/core.module';
 import { AuthModule } from './core/auth/auth.module';
 import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
-import { SistemaModule } from './core/sistema/sistema.module';
 
 @Module({
   imports: [
@@ -24,7 +23,6 @@ import { SistemaModule } from './core/sistema/sistema.module';
     AuthModule,
     CoreModule,
     ErrorsModule,
-    SistemaModule,
     RedisModule,
   ],
 })

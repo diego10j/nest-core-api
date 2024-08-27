@@ -414,3 +414,40 @@ update inv_articulo set se_vende_inarti = true, se_compra_inarti = true,  ide_in
 url_inarti= 'https://produquimic.com.ec/product';
 
 
+
+ALTER TABLE inv_bodega ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE inv_bodega ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE inv_bodega ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE inv_bodega ADD COLUMN hora_actua TIMESTAMP;
+
+ALTER TABLE inv_bodega ADD COLUMN ide_geprov int4;
+ALTER TABLE inv_bodega ADD COLUMN ide_gecant int4;
+ALTER TABLE inv_bodega ADD COLUMN activo_inbod bool;
+
+update inv_bodega set  activo_inbod = true
+
+ALTER TABLE public.inv_bodega
+	ADD CONSTRAINT inv_bodega_ide_geprov_fkey
+	FOREIGN KEY(ide_geprov)
+	REFERENCES public.gen_provincia(ide_geprov)
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT;
+
+ALTER TABLE public.inv_bodega
+	ADD CONSTRAINT inv_bodega_ide_gecant_fkey
+	FOREIGN KEY(ide_gecant)
+	REFERENCES public.gen_canton(ide_gecant)
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT;
+
+CREATE INDEX idx_inv_cab_comp_inve_filter
+ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_empr);
+
+CREATE INDEX idx_inv_articulo_hace_kardex
+ON inv_articulo (hace_kardex_inarti);
+
+CREATE INDEX idx_inv_cab_comp_inve_order
+ON inv_cab_comp_inve (fecha_trans_incci, ide_incci);
+
+ALTER TABLE inv_cab_comp_inve ADD COLUMN automatico_incci bool;
+update inv_cab_comp_inve set automatico_incci=false;

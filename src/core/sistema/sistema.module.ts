@@ -9,7 +9,7 @@ import { GeneralModule } from '../sistema/general/general.module';
 import { FilesModule } from './files/files.module';
 
 @Module({
-    imports: [GeneralModule, CalendarioModule, UsuariosModule, AdminModule, SistemaModule, FilesModule],
+    imports: [GeneralModule, CalendarioModule, UsuariosModule, AdminModule, FilesModule],
     providers: [],
     exports: [],
     controllers: [],
