@@ -529,6 +529,7 @@ export class ProductosService extends BaseService {
             p.ide_geper,
             p.nom_geper as nom_geper,
             p.identificac_geper,
+            max(cf.fecha_emisi_cpcfa) as fecha_ultima,
             COUNT(1) AS num_facturas,
             SUM(cdf.cantidad_cpdfa) AS total_cantidad,
             SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
@@ -649,7 +650,7 @@ export class ProductosService extends BaseService {
                 p.identificac_geper,
                 max(cf.fecha_emisi_cccfa) as fecha_ultima,
                 count(1) as num_facturas,
-                sum(cdf.cantidad_ccdfa) as cantidad,
+                sum(cdf.cantidad_ccdfa) as total_cantidad,
                 uni.siglas_inuni,
                 SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
                 p.uuid
