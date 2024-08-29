@@ -5,6 +5,7 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
+import { CoreService } from '../../core.service';
 
 
 @Injectable()
@@ -13,6 +14,7 @@ export class BodegasService extends BaseService {
 
     constructor(
         private readonly dataSource: DataSourceService,
+        private readonly core: CoreService
     ) {
         super();
         // obtiene las variables del sistema para el servicio
@@ -74,12 +76,14 @@ export class BodegasService extends BaseService {
         case
             when signo_intci = -1 THEN b.cantidad_indci
         end as EGRESO,
+        siglas_inuni,
         f.nom_geper,
         a.observacion_incci,
         a.ide_cnccc,
         a.usuario_ingre,
         g.uuid,
-        a.ide_inbod
+        a.ide_inbod,
+        f.uuid as uuid_per
     from
         inv_cab_comp_inve a
         inner join inv_det_comp_inve b on a.ide_incci = b.ide_incci
@@ -88,6 +92,7 @@ export class BodegasService extends BaseService {
         inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
         inner join gen_persona f on a.ide_geper = f.ide_geper
         inner join inv_articulo g on b.ide_inarti = g.ide_inarti
+        LEFT JOIN inv_unidad h ON g.ide_inuni = h.ide_inuni
     where
         a.ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
         and fecha_trans_incci BETWEEN $1 AND $2
@@ -116,6 +121,18 @@ export class BodegasService extends BaseService {
         return await this.getMovimientos(dtoIn);
     }
 
+
+
+
+    // ==================================ListData==============================
+    /**
+    * Retorna las bodegas activas de la empresa
+    * @returns 
+    */
+    async getListDataBodegas(dto?: ServiceDto) {
+        const dtoIn = { ...dto, tableName: 'inv_bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true` }
+        return this.core.getListDataValues(dtoIn);
+    }
 
 
 }

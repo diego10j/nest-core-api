@@ -33,4 +33,12 @@ export class BodegasController {
   }
 
 
+  @Post('getListDataBodegas')
+  // @Auth()
+  getListDataBodegas(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getListDataBodegas(dtoIn);
+  }
+
 }
