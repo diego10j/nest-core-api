@@ -451,3 +451,11 @@ ON inv_cab_comp_inve (fecha_trans_incci, ide_incci);
 
 ALTER TABLE inv_cab_comp_inve ADD COLUMN automatico_incci bool;
 update inv_cab_comp_inve set automatico_incci=false;
+
+// 30 Ago 2024
+
+ALTER TABLE cxc_datos_fac ADD COLUMN establecimiento_ccdfa varchar(3); 
+ALTER TABLE cxc_datos_fac ADD COLUMN pto_emision_ccdfa varchar(3); 
+ALTER TABLE cxc_datos_fac ADD COLUMN num_actual_ccdfa TIMESTAMP;
+ALTER TABLE cxc_datos_fac ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE cxc_datos_fac ADD COLUMN hora_ingre TIMESTAMP;

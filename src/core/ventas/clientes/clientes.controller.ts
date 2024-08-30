@@ -5,7 +5,7 @@ import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 
-@Controller('clientes')
+@Controller('ventas/clientes')
 export class ClientesController {
   constructor(private readonly service: ClientesService) { }
 

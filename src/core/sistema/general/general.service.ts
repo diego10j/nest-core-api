@@ -4,6 +4,8 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { CantonesDto } from './dto/cantones.dto';
 import { CoreService } from '../../core.service';
+import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
+import { RucDto } from './dto/ruc.dto';
 
 @Injectable()
 export class GeneralService {
@@ -81,6 +83,33 @@ export class GeneralService {
     async getListDataTiposDireccion(dto?: ServiceDto) {
         const dtoIn = { ...dto, tableName: 'gen_tipo_direccion', primaryKey: 'ide_getidi', columnLabel: 'nombre_getidi' }
         return this.core.getListDataValues(dtoIn);
+    }
+
+
+    /**
+    * Valida cédula
+    * @returns 
+    */
+    validateCedula(id: string) {
+        const valid = validateCedula(id);
+        const message = valid === true ? 'Cédula válida' : 'Cédula no válida';
+        return {
+            valid,
+            message
+        }
+    }
+
+    /**
+    * Valida RUC
+    * @returns 
+    */
+    validateRuc(dtoIn: RucDto) {
+        const result = validateRUC(dtoIn.ruc, dtoIn.isSas);
+        const message = result.isValid === true ? `${result.type} válido` : 'RUC no válido'
+        return {
+            valid: result.isValid,
+            message
+        }
     }
 
 }

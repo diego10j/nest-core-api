@@ -172,7 +172,7 @@ export class ClientesService extends BaseService {
 
 
     /**
-     * Retorna las facturas de ventas del cliente en un rango de fechas
+     * Retorna el detalle de facturas de ventas del cliente en un rango de fechas
      * @param dtoIn 
      * @returns 
      */

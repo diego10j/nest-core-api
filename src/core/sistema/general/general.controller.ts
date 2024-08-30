@@ -2,6 +2,8 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { GeneralService } from './general.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { CantonesDto } from './dto/cantones.dto';
+import { CedulaDto } from './dto/cedula.dto';
+import { RucDto } from './dto/ruc.dto';
 
 @Controller('sistema/general')
 export class GeneralController {
@@ -50,6 +52,25 @@ export class GeneralController {
     return this.service.getListDataTiposDireccion(dtoIn);
   }
 
+
+
+  // ================================= VALIDATIONS
+
+  @Post('validateCedula')
+  // @Auth()
+  validateCedula(
+    @Body() dtoIn: CedulaDto
+  ) {
+    return this.service.validateCedula(dtoIn.cedula);
+  }
+
+  @Post('validateRuc')
+  // @Auth()
+  validateRuc(
+    @Body() dtoIn: RucDto
+  ) {
+    return this.service.validateRuc(dtoIn);
+  }
 
 
 

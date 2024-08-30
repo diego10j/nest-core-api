@@ -36,7 +36,6 @@ export class UsuariosService {
     * @returns 
     */
     async getUsuarios(_dtoIn?: ServiceDto) {
-
         const query = new SelectQuery(`
     SELECT
         a.uuid,
