@@ -24,7 +24,7 @@ export class ServiceDto {
     login: string;
 
     @IsString()
-    @MinLength(5)
+    @MinLength(2)
     @IsOptional()
     ip?: string = "127.0.0.1";
 

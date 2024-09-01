@@ -6,6 +6,7 @@ import { SelectQuery } from '../../connection/helpers/select-query';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { CoreService } from '../../core.service';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 
 @Injectable()
@@ -53,6 +54,15 @@ export class BodegasService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+    /**
+     * Retorna una bodega
+     * @param dto 
+     * @returns 
+     */
+    async getBodega(dto: IdeDto) {
+        const dtoIn = { ...dto, tableName: 'inv_bodega', primaryKey: 'ide_inbod', condition: `ide_inbod = ${dto.ide}` }
+        return this.core.getTableQuery(dtoIn);
+    }
 
 
     /**

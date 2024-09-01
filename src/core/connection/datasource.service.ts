@@ -257,19 +257,27 @@ export class DataSourceService {
         await this.createListQuery(listQuery);
     }
 
-    async canDelete(dq: DeleteQuery) {
+    async canDelete(dq: DeleteQuery, validate: boolean = true) {
         const queryRunner = await this.pool.connect();
         try {
             await queryRunner.query('BEGIN');
             await this.formatSqlQuery(dq);
             await queryRunner.query(dq.query, dq.paramValues);
+            if (validate === false) {
+                await queryRunner.query('COMMIT');
+            }
         } catch (error) {
+            if (validate === false) {
+                await queryRunner.query('ROLLBACK');
+            }
             throw new InternalServerErrorException(
                 `Restricción eliminar - ${error}`
             );
         }
         finally {
-            await queryRunner.query('ROLLBACK');
+            if (validate === true) {
+                await queryRunner.query('ROLLBACK');
+            }
             await queryRunner.release();
         }
     }

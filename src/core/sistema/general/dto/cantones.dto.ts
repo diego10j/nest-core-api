@@ -5,7 +5,6 @@ export class CantonesDto extends ServiceDto {
 
 
     @IsInt()
-    @IsPositive()
     ide_geprov: number;
 
 }

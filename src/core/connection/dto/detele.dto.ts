@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsString, IsNotEmpty, IsOptional, Matches } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsString, IsNotEmpty, IsOptional, Matches, IsBoolean, } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
 
@@ -13,6 +13,10 @@ export class DeleteDto extends ServiceDto {
     @IsNotEmpty()
     @Matches(/^\S*$/, { message: 'primaryKey no debe contener espacios' })
     primaryKey: string;
+
+    @IsBoolean()
+    @IsOptional()
+    validate?: boolean = true;
 
     @IsOptional()
     @ArrayNotEmpty()

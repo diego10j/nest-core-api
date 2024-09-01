@@ -184,7 +184,7 @@ export class CoreService {
         const dq = new DeleteQuery(dto.tableName);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
-        await this.dataSource.canDelete(dq)
+        await this.dataSource.canDelete(dq, dto.validate)
         return {
             message: 'ok'
         };

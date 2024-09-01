@@ -3,6 +3,7 @@ import { BodegasService } from './bodegas.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 @Controller('inventario/bodegas')
 export class BodegasController {
@@ -14,6 +15,14 @@ export class BodegasController {
     @Body() dtoIn: ServiceDto
   ) {
     return this.service.getBodegas(dtoIn);
+  }
+
+  @Post('getBodega')
+  // @Auth()
+  getBodega(
+    @Body() dtoIn: IdeDto
+  ) {
+    return this.service.getBodega(dtoIn);
   }
 
   @Post('getMovimientos')
