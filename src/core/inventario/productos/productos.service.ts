@@ -72,7 +72,7 @@ export class ProductosService extends BaseService {
         ARTICULO.codigo_inarti,
         ARTICULO.foto_inarti,
         COALESCE(existencia_cte.existencia, 0) AS existencia,
-        UNIDAD.nombre_inuni,
+        UNIDAD.siglas_inuni,
         precio_cte.precio_cpdfa AS precio_compra,
         precio_cte.fecha_emisi_cpcfa AS fecha_compra,
         ARTICULO.activo_inarti
