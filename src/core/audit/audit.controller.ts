@@ -17,7 +17,7 @@ export class AuditController {
     }
 
 
-    @Delete('deleteEventosAuditoria')
+    @Post('deleteEventosAuditoria')
     // @Auth()
     deleteEventosAuditoria(
         @Body() dtoIn: DeleteAuditoriaDto
