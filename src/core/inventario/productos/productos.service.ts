@@ -49,6 +49,7 @@ export class ProductosService extends BaseService {
             LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
         WHERE
             ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+            and dci.ide_empr = ${_dtoIn.ideEmpr}
         GROUP BY
             dci.ide_inarti
     ),
@@ -59,10 +60,11 @@ export class ProductosService extends BaseService {
             fecha_emisi_cpcfa,
             ROW_NUMBER() OVER (PARTITION BY ide_inarti ORDER BY fecha_emisi_cpcfa DESC) AS rn
         FROM
-            cxp_detall_factur
-            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+            cxp_detall_factur a
+            INNER JOIN cxp_cabece_factur ON a.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
         WHERE
             ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
+            and a.ide_empr = ${_dtoIn.ideEmpr}
     )
     SELECT
         ARTICULO.ide_inarti,
@@ -86,6 +88,7 @@ export class ProductosService extends BaseService {
     WHERE
         ARTICULO.ide_intpr = 1 -- solo productos
         AND ARTICULO.nivel_inarti = 'HIJO'
+        AND ARTICULO.ide_empr = ${_dtoIn.ideEmpr}
     ORDER BY
         ARTICULO.nombre_inarti;
     `, _dtoIn);
@@ -154,6 +157,7 @@ export class ProductosService extends BaseService {
                 INNER JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
             WHERE
                 dci.ide_inarti = $3
+                AND arti.ide_empr = ${dtoIn.ideEmpr}        
                 AND fecha_trans_incci BETWEEN $4 AND $5
                 AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
                 AND dci.ide_sucu =  ${dtoIn.ideSucu}
@@ -228,6 +232,7 @@ export class ProductosService extends BaseService {
         INNER join gen_persona p on cf.ide_geper = p.ide_geper
         WHERE
             cdf.ide_inarti =  $1
+            AND iart.ide_empr = ${dtoIn.ideEmpr}  
             and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
             and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
         ORDER BY 
@@ -264,6 +269,7 @@ export class ProductosService extends BaseService {
         left join gen_persona p on cf.ide_geper = p.ide_geper
     WHERE
         cdf.ide_inarti =  $1
+        AND iart.ide_empr = ${dtoIn.ideEmpr} 
         and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
         and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
     ORDER BY 
@@ -282,18 +288,7 @@ export class ProductosService extends BaseService {
      */
     async getUltimosPreciosCompras(dtoIn: IdProductoDto) {
         const query = new SelectQuery(`
-    SELECT
-        DISTINCT b.ide_geper,
-        c.nom_geper,
-        MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
-        df.cantidad,
-        df.precio,
-        df.total
-    FROM 
-        cxp_detall_factur a
-        INNER JOIN cxp_cabece_factur b ON a.ide_cpcfa = b.ide_cpcfa
-        INNER JOIN gen_persona c ON b.ide_geper = c.ide_geper
-        LEFT JOIN (
+        WITH UltimaVenta AS (
             SELECT
                 ide_geper,
                 ide_inarti,
@@ -302,24 +297,38 @@ export class ProductosService extends BaseService {
                 valor_cpdfa AS total,
                 ROW_NUMBER() OVER (PARTITION BY ide_geper ORDER BY fecha_emisi_cpcfa DESC) AS rn
             FROM 
-                cxp_detall_factur 
-                INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+                cxp_detall_factur
+            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
             WHERE 
-                ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
                 AND ide_inarti = $1
-        ) df ON df.ide_geper = b.ide_geper AND df.rn = 1
-    WHERE
-        b.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
-        AND a.ide_inarti = $2
-    GROUP BY 
-        a.ide_inarti,
-        b.ide_geper,
-        c.nom_geper,
-        df.cantidad,
-        df.precio,
-        df.total
-    ORDER BY 
-        3, c.nom_geper DESC  
+        )
+        SELECT
+            b.ide_geper,
+            c.nom_geper,
+            MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
+            u.cantidad,
+            u.precio,
+            u.total
+        FROM 
+            cxp_detall_factur a
+            INNER JOIN cxp_cabece_factur b ON a.ide_cpcfa = b.ide_cpcfa
+            INNER JOIN gen_persona c ON b.ide_geper = c.ide_geper
+            LEFT JOIN UltimaVenta u ON u.ide_geper = b.ide_geper AND u.rn = 1
+        WHERE
+            b.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
+            AND a.ide_inarti = $2
+            AND b.ide_empr = ${dtoIn.ideEmpr}  
+        GROUP BY 
+            a.ide_inarti,
+            b.ide_geper,
+            c.nom_geper,
+            u.cantidad,
+            u.precio,
+            u.total
+        ORDER BY 
+            3, c.nom_geper DESC;
+        
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
@@ -335,6 +344,7 @@ export class ProductosService extends BaseService {
         const query = new SelectQuery(`     
         SELECT 
             iart.ide_inarti,
+            nombre_inarti,
             COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
             siglas_inuni
         FROM
@@ -347,6 +357,7 @@ export class ProductosService extends BaseService {
         WHERE
             dci.ide_inarti = $1
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
+            AND cci.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY   
             iart.ide_inarti,siglas_inuni
         `);
@@ -384,6 +395,7 @@ export class ProductosService extends BaseService {
             fecha_emisi_cccfa  >=  $1 AND a.fecha_emisi_cccfa <=  $2 
             AND cdf.ide_inarti = $3
             AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
     ) cdf ON gm.ide_gemes = cdf.mes
     GROUP BY
         gm.nombre_gemes, gm.ide_gemes
@@ -427,6 +439,7 @@ export class ProductosService extends BaseService {
             fecha_emisi_cpcfa  >=  $1 AND a.fecha_emisi_cpcfa <=  $2 
             AND cdf.ide_inarti = $3
             AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
     ) cdf ON gm.ide_gemes = cdf.mes
     GROUP BY
         gm.nombre_gemes, gm.ide_gemes
@@ -459,8 +472,8 @@ export class ProductosService extends BaseService {
         (
             SELECT
                 count(1) AS fact_ventas,
-                sum(cdf.cantidad_ccdfa) AS cantidad_ventas,
-                sum(cdf.total_ccdfa) AS total_ventas,
+                ROUND(SUM(cdf.cantidad_ccdfa), 0)  AS cantidad_ventas,
+                ROUND(SUM(cdf.total_ccdfa), 0)  AS total_ventas,
                 siglas_inuni
             FROM
                 cxc_deta_factura cdf
@@ -471,14 +484,15 @@ export class ProductosService extends BaseService {
                 cdf.ide_inarti = $1
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 siglas_inuni
         ) v FULL
         OUTER JOIN (
             SELECT
                 count(1) AS fact_compras,
-                sum(cdf.cantidad_cpdfa) AS cantidad_compras,
-                sum(cdf.valor_cpdfa) AS total_compras,
+                ROUND(SUM(cdf.cantidad_cpdfa), 0) AS cantidad_compras,
+                ROUND(SUM(cdf.valor_cpdfa), 0) AS total_compras,
                 siglas_inuni
             FROM
                 cxp_detall_factur cdf
@@ -489,6 +503,7 @@ export class ProductosService extends BaseService {
                 cdf.ide_inarti = $4
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
                 AND cf.fecha_emisi_cpcfa BETWEEN $5 AND $6
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 siglas_inuni
         ) c ON v.siglas_inuni = c.siglas_inuni
@@ -544,6 +559,7 @@ export class ProductosService extends BaseService {
         WHERE
             cdf.ide_inarti = $1
             AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY
             p.ide_geper,
             p.nom_geper,
@@ -582,6 +598,7 @@ export class ProductosService extends BaseService {
             cdf.ide_inarti = $1
             AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
             AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY
             p.ide_geper,
             p.nom_geper,
@@ -621,6 +638,7 @@ export class ProductosService extends BaseService {
             cdf.ide_inarti = $1
             AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY
             p.ide_geper,
             p.nom_geper,
@@ -663,6 +681,7 @@ export class ProductosService extends BaseService {
             WHERE
                 cdf.ide_inarti = $1
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 p.ide_geper,
                 p.nom_geper,
@@ -694,6 +713,7 @@ export class ProductosService extends BaseService {
                 cdf.ide_inarti = $1
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
                 AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
         )
         SELECT
             fecha,
@@ -765,6 +785,7 @@ export class ProductosService extends BaseService {
             INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci AND cci.ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
             INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
             INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            where cci.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 m.ide_gemes, m.inicio_mes, m.fin_mes
         )
