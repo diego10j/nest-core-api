@@ -217,7 +217,7 @@ export class ProductosService extends BaseService {
         SELECT
             cdf.ide_ccdfa,
             cf.fecha_emisi_cccfa,
-            secuencial_ccdfa,
+            secuencial_cccfa,
             nom_geper,
             cdf.cantidad_ccdfa,
             siglas_inuni,
@@ -308,12 +308,15 @@ export class ProductosService extends BaseService {
             c.nom_geper,
             MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
             u.cantidad,
+            siglas_inuni,
             u.precio,
             u.total
         FROM 
             cxp_detall_factur a
             INNER JOIN cxp_cabece_factur b ON a.ide_cpcfa = b.ide_cpcfa
             INNER JOIN gen_persona c ON b.ide_geper = c.ide_geper
+            left join inv_articulo iart on a.ide_inarti = iart.ide_inarti
+            LEFT JOIN inv_unidad uni ON iart.ide_inuni = uni.ide_inuni
             LEFT JOIN UltimaVenta u ON u.ide_geper = b.ide_geper AND u.rn = 1
         WHERE
             b.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
@@ -324,10 +327,11 @@ export class ProductosService extends BaseService {
             b.ide_geper,
             c.nom_geper,
             u.cantidad,
+            siglas_inuni,
             u.precio,
             u.total
         ORDER BY 
-            3, c.nom_geper DESC;
+            3 DESC;
         
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
@@ -461,12 +465,12 @@ export class ProductosService extends BaseService {
         const query = new SelectQuery(`
     SELECT
         COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
-        v.fact_ventas,
-        v.cantidad_ventas,
-        v.total_ventas,
-        c.fact_compras,
-        c.cantidad_compras,
-        c.total_compras,
+         COALESCE(v.fact_ventas,0) as fact_ventas,
+        COALESCE(v.cantidad_ventas,0) as cantidad_ventas,
+        COALESCE(v.total_ventas,0) as total_ventas,
+        COALESCE(c.fact_compras,0) as fact_compras,
+        COALESCE(c.cantidad_compras,0) as cantidad_compras,
+        COALESCE(c.total_compras,0) as total_compras,
         v.total_ventas -  c.total_compras as margen
     FROM
         (
