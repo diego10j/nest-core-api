@@ -149,4 +149,22 @@ export class ProductosController {
     return this.service.getActividades(dtoIn);
   }
 
+
+  @Post('chartVentasPeriodoPorVendedor')
+  // @Auth()
+  chartVentasPeriodoPorVendedor(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.chartVentasPeriodoPorVendedor(dtoIn);
+  }
+
+
+  @Post('chartVentasPeriodoPorFormaPago')
+  // @Auth()
+  chartVentasPeriodoPorFormaPago(
+    @Body() dtoIn: IVentasMensualesDto
+  ) {
+    return this.service.chartVentasPeriodoPorFormaPago(dtoIn);
+  }
+
 }
