@@ -899,16 +899,15 @@ export class ProductosService extends BaseService {
             ["Num. Facturas", "num_facturas"],
             [`Cantidad ${data.siglas_inuni}`, "cantidad"]
         ]);
-        const char1 = formatBarChartData(rows, categoryField, seriesFields)
+        const barChar = formatBarChartData(rows, categoryField, seriesFields)
 
         // Definir el campo para labels y values
         const labelField = "nombre_vgven";
         const valueField = "cantidad";
-        const char2 = formatPieChartData(rows, labelField, valueField);
+        const chart2 = formatPieChartData(rows, labelField, valueField);
 
         return {
-            char1,
-            char2,
+            chart: barChar,
             message: 'ok'
         }
     }
@@ -952,10 +951,10 @@ export class ProductosService extends BaseService {
         // Definir el campo para labels y values
         const labelField = "nombre_cndfp";
         const valueField = "total";
-        const char1 = formatPieChartData(rows, labelField, valueField);
+        const chart1 = formatPieChartData(rows, labelField, valueField);
 
         return {
-            char1,
+            chart:chart1,
             message: 'ok'
         }
     }
