@@ -383,6 +383,7 @@ export class ProductosService extends BaseService {
             ${dtoIn.periodo} as periodo,
             COALESCE(count(cdf.ide_ccdfa), 0) AS num_facturas,
             COALESCE(sum(cdf.cantidad_ccdfa), 0) AS cantidad,
+            siglas_inuni,
             COALESCE(sum(cdf.total_ccdfa), 0) AS total
         FROM
             gen_mes gm
@@ -391,11 +392,16 @@ export class ProductosService extends BaseService {
                 EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
                 cdf.ide_ccdfa,
                 cdf.cantidad_ccdfa,
-                cdf.total_ccdfa
+                cdf.total_ccdfa,
+                siglas_inuni
             FROM
                 cxc_cabece_factura a
             INNER JOIN
                 cxc_deta_factura cdf ON a.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN 
+                inv_articulo d ON cdf.ide_inarti = d.ide_inarti
+            LEFT JOIN 
+                inv_unidad f ON d.ide_inuni = f.ide_inuni 
             WHERE
                 fecha_emisi_cccfa  >=  $1 AND a.fecha_emisi_cccfa <=  $2 
                 AND cdf.ide_inarti = $3
@@ -403,7 +409,7 @@ export class ProductosService extends BaseService {
                 AND a.ide_empr = ${dtoIn.ideEmpr} 
         ) cdf ON gm.ide_gemes = cdf.mes
         GROUP BY
-            gm.nombre_gemes, gm.ide_gemes
+            gm.nombre_gemes, gm.ide_gemes, siglas_inuni
         ORDER BY
             gm.ide_gemes       
         `);
@@ -427,6 +433,7 @@ export class ProductosService extends BaseService {
         ${dtoIn.periodo} as periodo,
         COALESCE(count(cdf.ide_cpcfa), 0) AS num_facturas,
         COALESCE(sum(cdf.cantidad_cpdfa), 0) AS cantidad,
+        siglas_inuni,
         COALESCE(sum(cdf.valor_cpdfa), 0) AS total
     FROM
         gen_mes gm
@@ -435,11 +442,16 @@ export class ProductosService extends BaseService {
             EXTRACT(MONTH FROM fecha_emisi_cpcfa) AS mes,
             cdf.ide_cpcfa,
             cdf.cantidad_cpdfa,
-            cdf.valor_cpdfa
+            cdf.valor_cpdfa,
+            siglas_inuni
         FROM
             cxp_cabece_factur a
         INNER JOIN
             cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
+        INNER JOIN 
+            inv_articulo d ON cdf.ide_inarti = d.ide_inarti
+        LEFT JOIN 
+            inv_unidad f ON d.ide_inuni = f.ide_inuni 
         WHERE
             fecha_emisi_cpcfa  >=  $1 AND a.fecha_emisi_cpcfa <=  $2 
             AND cdf.ide_inarti = $3
@@ -447,7 +459,7 @@ export class ProductosService extends BaseService {
             AND a.ide_empr = ${dtoIn.ideEmpr} 
     ) cdf ON gm.ide_gemes = cdf.mes
     GROUP BY
-        gm.nombre_gemes, gm.ide_gemes
+        gm.nombre_gemes, gm.ide_gemes, siglas_inuni
     ORDER BY
         gm.ide_gemes       
         `);
@@ -466,7 +478,7 @@ export class ProductosService extends BaseService {
         const query = new SelectQuery(`
     SELECT
         COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
-         COALESCE(v.fact_ventas,0) as fact_ventas,
+        COALESCE(v.fact_ventas,0) as fact_ventas,
         COALESCE(v.cantidad_ventas,0) as cantidad_ventas,
         COALESCE(v.total_ventas,0) as total_ventas,
         COALESCE(c.fact_compras,0) as fact_compras,
@@ -743,7 +755,8 @@ export class ProductosService extends BaseService {
         FROM
             compras
         ORDER BY
-            fecha;     
+            fecha desc
+        LIMIT 10;     
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
@@ -809,7 +822,7 @@ export class ProductosService extends BaseService {
 
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return await this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -856,9 +869,138 @@ export class ProductosService extends BaseService {
     }
 
 
-
-    async chartVentasPeriodoPorVendedor(dtoIn: IVentasMensualesDto) {
+    /**
+       * Retorna el total de PROFORMAS mensuales de un producto en un periodo 
+       * @param dtoIn 
+       * @returns 
+       */
+    async getProformasMensuales(dtoIn: IVentasMensualesDto) {
         const query = new SelectQuery(`
+        SELECT
+            gm.nombre_gemes,
+            ${dtoIn.periodo} as periodo,
+            COALESCE(count(cdf.ide_ccdpr), 0) AS num_proformas,
+            COALESCE(sum(cdf.cantidad_ccdpr), 0) AS cantidad,
+            siglas_inuni,
+            COALESCE(sum(cdf.total_ccdpr), 0) AS total
+        FROM
+            gen_mes gm
+        LEFT JOIN (
+            SELECT
+                EXTRACT(MONTH FROM fecha_cccpr) AS mes,
+                cdf.ide_ccdpr,
+                cdf.cantidad_ccdpr,
+                cdf.total_ccdpr,
+                siglas_inuni
+            FROM
+                cxc_cabece_proforma a
+            INNER JOIN
+                cxc_deta_proforma cdf ON a.ide_cccpr = cdf.ide_cccpr
+            INNER JOIN 
+                inv_articulo d ON cdf.ide_inarti = d.ide_inarti
+            LEFT JOIN 
+                inv_unidad f ON d.ide_inuni = f.ide_inuni 
+            WHERE
+                fecha_cccpr  >=  $1  AND fecha_cccpr <=  $2
+                AND cdf.ide_inarti = $3
+                AND anulado_cccpr = false
+                AND a.ide_empr = ${dtoIn.ideEmpr} 
+        ) cdf ON gm.ide_gemes = cdf.mes
+        GROUP BY
+            gm.nombre_gemes, gm.ide_gemes,siglas_inuni
+        ORDER BY
+            gm.ide_gemes        
+        `);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(3, dtoIn.ide_inarti);
+
+        const resp = await this.dataSource.createQuery(query)
+        const data = resp.rows ? resp.rows[0] : {};
+        const siglas_inuni = data.siglas_inuni ? data.siglas_inuni : '';
+        // Chart
+        // Definir el campo para categorías y las series usando un Map
+        const categoryField = "nombre_gemes";
+        const seriesFields = new Map<string, string>([
+            [`Cantidad ${siglas_inuni}`, "cantidad"]
+        ]);
+        const barChar = formatBarChartData(resp.rows, categoryField, seriesFields)
+        resp.charts = [barChar]
+        return resp;
+    }
+
+
+    async getTotalVentasPorFormaPago(dtoIn: IVentasMensualesDto) {
+        const queryFormaPago = new SelectQuery(`
+        SELECT
+            a.ide_cndfp1,
+            ${dtoIn.periodo} as periodo,
+            c.nombre_cndfp,
+            COUNT(1) AS num_facturas,
+            SUM(b.cantidad_ccdfa) AS cantidad,
+            SUM(a.total_cccfa) AS total
+        FROM
+            cxc_cabece_factura a
+            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
+            inner join con_deta_forma_pago c on a.ide_cndfp1 = c.ide_cndfp
+        WHERE
+            a.fecha_emisi_cccfa >= $1
+            AND a.fecha_emisi_cccfa <= $2
+            AND b.ide_inarti = $3
+            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            a.ide_cndfp1,
+            nombre_cndfp
+        ORDER BY
+            6 DESC
+        LIMIT  20
+        `);
+        queryFormaPago.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        queryFormaPago.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        queryFormaPago.addIntParam(3, dtoIn.ide_inarti);
+
+        return await this.dataSource.createSelectQuery(queryFormaPago);
+    }
+
+
+    async getTotalVentasPorIdCliente(dtoIn: IVentasMensualesDto) {
+
+        const queryTipoId = new SelectQuery(`
+        SELECT
+            c.ide_getid,
+            ${dtoIn.periodo} as periodo,
+            nombre_getid,
+            COUNT(1) AS num_facturas,
+            SUM(b.cantidad_ccdfa) AS cantidad
+        FROM
+            cxc_cabece_factura a
+            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
+            inner join gen_persona c on a.ide_geper = c.ide_geper
+            inner join gen_tipo_identifi d on c.ide_getid = d.ide_getid
+        WHERE
+            a.fecha_emisi_cccfa >= $1
+            AND a.fecha_emisi_cccfa <= $2
+            AND b.ide_inarti = $3
+            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            c.ide_getid,
+            nombre_getid    
+        ORDER BY
+            5 DESC    
+        LIMIT
+            20
+        `);
+        queryTipoId.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        queryTipoId.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        queryTipoId.addIntParam(3, dtoIn.ide_inarti);
+
+        return await this.dataSource.createSelectQuery(queryTipoId);
+    }
+
+    async getTotalVentasPorVendedor(dtoIn: IVentasMensualesDto) {
+        const queryVendedor = new SelectQuery(`
         SELECT
             a.ide_vgven,
             ${dtoIn.periodo} as periodo,
@@ -886,78 +1028,58 @@ export class ProductosService extends BaseService {
             5 DESC
         LIMIT 20     
         `);
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
+        queryVendedor.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        queryVendedor.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        queryVendedor.addIntParam(3, dtoIn.ide_inarti);
+        return await this.dataSource.createSelectQuery(queryVendedor);
+    }
 
-        const rows = await this.dataSource.createSelectQuery(query);
-        const data = rows[0];
 
-        // Definir el campo para categorías y las series usando un Map
+    /**
+     * Retorna data para graficos relacionada a las ventas en un periodo
+     * @param dtoIn 
+     * @returns 
+     */
+    async chartVentasPeriodo(dtoIn: IVentasMensualesDto) {
+        // ---------------- POR VENDEDOR
+        const dataTotalVendedor = await this.getTotalVentasPorVendedor(dtoIn);
+        const data = dataTotalVendedor ? dataTotalVendedor[0] : {};
+        const siglas_inuni = data.siglas_inuni ? data.siglas_inuni : '';
+
         const categoryField = "nombre_vgven";
         const seriesFields = new Map<string, string>([
-            ["Num. Facturas", "num_facturas"],
-            [`Cantidad ${data.siglas_inuni}`, "cantidad"]
+            // ["Num. Facturas", "num_facturas"],
+            [`Cantidad (${siglas_inuni})`, "cantidad"]
         ]);
-        const barChar = formatBarChartData(rows, categoryField, seriesFields)
+        const barCharVendedor = formatBarChartData(dataTotalVendedor, categoryField, seriesFields)
 
-        // Definir el campo para labels y values
-        const labelField = "nombre_vgven";
-        const valueField = "cantidad";
-        const chart2 = formatPieChartData(rows, labelField, valueField);
+        const pieChartVendedor = formatPieChartData(dataTotalVendedor, "nombre_vgven", "cantidad");
+
+        // ---------------- POR FORMA DE PAGO
+        const dataTotalPorFormaPago = await this.getTotalVentasPorFormaPago(dtoIn);
+        const pieChartFormaPago = formatPieChartData(dataTotalPorFormaPago, "nombre_cndfp", "cantidad");
+
+        // ---------------- POR TIPO IDENTIFICACIÓN CLIENTE
+        const dataTotalPorIdClie = await this.getTotalVentasPorIdCliente(dtoIn);
+        const pieChartTipoId = formatPieChartData(dataTotalPorIdClie, "nombre_getid", "cantidad");
+
+        // ---------------- VARIACION DE INVENTARIO INGRESOS/EGRESOS POR MES
+        const dataVaria = await this.getVariacionInventario(dtoIn);
+        const seriesFieldsVaria = new Map<string, string>([
+            [`Ingresos (${siglas_inuni})`, "ingresos"],
+            [`Egresos (${siglas_inuni})`, "egresos"]
+        ]);
+        const barCharVaria = formatBarChartData(dataVaria, "nombre_gemes", seriesFieldsVaria)
 
         return {
-            chart: barChar,
+            rowCount: 5,
+            charts: [barCharVendedor, pieChartVendedor, pieChartFormaPago, pieChartTipoId, barCharVaria],
             message: 'ok'
-        }
+        } as ResultQuery
     }
 
 
-    async chartVentasPeriodoPorFormaPago(dtoIn: IVentasMensualesDto) {
-        const query = new SelectQuery(`
 
-        SELECT
-            a.ide_cndfp1,
-            ${dtoIn.periodo} as periodo,
-            c.nombre_cndfp,
-            COUNT(1) AS num_facturas,
-            SUM(b.cantidad_ccdfa) AS cantidad,
-            SUM(a.total_cccfa) AS total
-        FROM
-            cxc_cabece_factura a
-            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
-            inner join con_deta_forma_pago c on a.ide_cndfp1 = c.ide_cndfp
-        WHERE
-            a.fecha_emisi_cccfa >= $1
-            AND a.fecha_emisi_cccfa <= $2
-            AND b.ide_inarti = $3
-            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND a.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            a.ide_cndfp1,
-            nombre_cndfp
-        ORDER BY
-            6 DESC
-        LIMIT  20
-        `);
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
-
-        const rows = await this.dataSource.createSelectQuery(query);
-        const data = rows[0];
-
-
-        // Definir el campo para labels y values
-        const labelField = "nombre_cndfp";
-        const valueField = "total";
-        const chart1 = formatPieChartData(rows, labelField, valueField);
-
-        return {
-            chart:chart1,
-            message: 'ok'
-        }
-    }
 
 
 

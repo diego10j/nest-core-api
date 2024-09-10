@@ -132,15 +132,6 @@ export class ProductosController {
   }
 
 
-  @Post('getVariacionInventario')
-  // @Auth()
-  getVariacionInventario(
-    @Body() dtoIn: IVentasMensualesDto
-  ) {
-    return this.service.getVariacionInventario(dtoIn);
-  }
-
-
   @Post('getActividades')
   // @Auth()
   getActividades(
@@ -150,21 +141,21 @@ export class ProductosController {
   }
 
 
-  @Post('chartVentasPeriodoPorVendedor')
+  @Post('getProformasMensuales')
   // @Auth()
-  chartVentasPeriodoPorVendedor(
+  getProformasMensuales(
     @Body() dtoIn: IVentasMensualesDto
   ) {
-    return this.service.chartVentasPeriodoPorVendedor(dtoIn);
+    return this.service.getProformasMensuales(dtoIn);
   }
 
-
-  @Post('chartVentasPeriodoPorFormaPago')
+  @Post('chartVentasPeriodo')
   // @Auth()
-  chartVentasPeriodoPorFormaPago(
+  chartVentasPeriodo(
     @Body() dtoIn: IVentasMensualesDto
   ) {
-    return this.service.chartVentasPeriodoPorFormaPago(dtoIn);
+    return this.service.chartVentasPeriodo(dtoIn);
   }
+
 
 }
