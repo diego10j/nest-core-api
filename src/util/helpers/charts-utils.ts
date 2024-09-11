@@ -30,12 +30,34 @@ export function formatPieChartData(
     valueField: string
 ): { series: { label: string; value: number }[] } {
     // Crear las series en formato Pie chart
+
     const series = data.map(item => ({
         label: toTitleCase(item[labelField]),
         value: item[valueField]
     }));
 
     return {
+        series
+    };
+}
+
+
+export function formatRadialBarChartData(
+    data: any[],
+    labelField: string,
+    valueField: string
+): { total: number, series: { label: string; value: number }[] } {
+    // Crear las series en formato Pie chart
+
+    const series = data.map(item => ({
+        label: toTitleCase(item[labelField]),
+        value: item[valueField]
+    }));
+    const total = series.reduce((sum, item) => sum + item.value, 0);
+
+
+    return {
+        total,
         series
     };
 }

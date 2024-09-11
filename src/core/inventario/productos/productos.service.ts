@@ -1071,9 +1071,28 @@ export class ProductosService extends BaseService {
         ]);
         const barCharVaria = formatBarChartData(dataVaria, "nombre_gemes", seriesFieldsVaria)
 
+
+        // ---------------- COMPRAS VS VENTAS 
+        const { rows: dataVentas } = await this.getVentasMensuales(dtoIn);
+        const seriesCantidadV = new Map<string, string>([
+            [`Ventas (${siglas_inuni})`, "cantidad"]
+        ]);
+        const barCharVentas = formatBarChartData(dataVentas, "nombre_gemes", seriesCantidadV)
+
+        const { rows: dataCompras } = await this.getComprasMensuales(dtoIn);
+        const seriesCantidadC = new Map<string, string>([
+            [`Compras (${siglas_inuni})`, "cantidad"]
+        ]);
+        const barCharCompras = formatBarChartData(dataCompras, "nombre_gemes", seriesCantidadC)
+
+        // Unifica series
+        const barCharVentComp = barCharVentas;
+        barCharVentComp.series.push(barCharCompras.series[0]);
+
+
         return {
-            rowCount: 5,
-            charts: [barCharVendedor, pieChartVendedor, pieChartFormaPago, pieChartTipoId, barCharVaria],
+            rowCount: 6,
+            charts: [barCharVendedor, pieChartVendedor, pieChartFormaPago, pieChartTipoId, barCharVaria, barCharVentComp],
             message: 'ok'
         } as ResultQuery
     }
