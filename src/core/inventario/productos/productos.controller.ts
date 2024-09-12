@@ -8,6 +8,7 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
+import { UuidDto } from 'src/common/dto/uuid.dto';
 
 @Controller('inventario/productos')
 export class ProductosController {
@@ -20,6 +21,14 @@ export class ProductosController {
     @Body() dtoIn: ServiceDto
   ) {
     return this.service.getProductos(dtoIn);
+  }
+
+  @Post('getProducto')
+  // @Auth()
+  getProducto(
+    @Body() dtoIn: UuidDto
+  ) {
+    return this.service.getProducto(dtoIn);
   }
 
   @Post('getTrnProducto')
@@ -62,6 +71,14 @@ export class ProductosController {
     @Body() dtoIn: IdProductoDto
   ) {
     return this.service.getSaldo(dtoIn);
+  }
+
+  @Post('getSaldoPorBodega')
+  // @Auth()
+  getSaldoPorBodega(
+    @Body() dtoIn: IdProductoDto
+  ) {
+    return this.service.getSaldoPorBodega(dtoIn);
   }
 
 

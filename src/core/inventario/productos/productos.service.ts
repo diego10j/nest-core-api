@@ -1,6 +1,6 @@
 import { getDateFormat } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
@@ -12,6 +12,7 @@ import { BaseService } from '../../../common/base-service';
 import { getDateFormatFront } from 'src/util/helpers/date-util';
 import { AuditService } from '../../audit/audit.service';
 import { formatBarChartData, formatPieChartData } from '../../../util/helpers/charts-utils';
+import { UuidDto } from '../../../common/dto/uuid.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -95,6 +96,109 @@ export class ProductosService extends BaseService {
     `, _dtoIn);
 
         return await this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Retorna la información de un producto
+     * @param dtoIn 
+     * @returns 
+     */
+    async getProducto(dtoIn: UuidDto) {
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_inarti,
+            uuid,
+            codigo_inarti,
+            nombre_inarti,
+            nombre_intpr,
+            nombre_invmar,
+            nombre_inuni,
+            siglas_inuni,
+            iva_inarti,
+            observacion_inarti,
+            ice_inarti,
+            hace_kardex_inarti,
+            activo_inarti,
+            foto_inarti,
+            publicacion_inarti,
+            cant_stock1_inarti,
+            cant_stock2_inarti,
+            por_util1_inarti,
+            por_util2_inarti,
+            nombre_incate,
+            tags_inarti,
+            url_inarti,
+            se_vende_inarti,
+            se_compra_inarti,
+            nombre_inbod,
+            nombre_infab,
+            cod_barras_inarti,
+            notas_inarti
+        FROM
+            inv_articulo a
+            left join inv_marca b on a.ide_inmar = b.ide_inmar
+            left join inv_unidad c on a.ide_inuni = c.ide_inuni
+            left join inv_tipo_producto d on a.ide_intpr = d.ide_intpr
+            left join inv_categoria e on a.ide_incate = e.ide_incate
+            left join inv_bodega f on a.ide_inbod = f.ide_inbod
+            left join inv_fabricante g on a.ide_infab = g.ide_infab
+        where
+            uuid = $1`
+        );
+        query.addStringParam(1, dtoIn.uuid);
+
+        const res = await this.dataSource.createSingleQuery(query);
+        if (res) {
+
+            const queryCarac = new SelectQuery(`
+            select
+                a.ide_inarc,
+                nombre_incar,
+                detalle_inarc
+            from
+                inv_articulo_carac a
+                inner join inv_caracteristica b on a.ide_incar = b.ide_incar
+                inner join inv_articulo c on a.ide_inarti = c.ide_inarti
+            where
+                uuid = $1
+            `);
+            queryCarac.addStringParam(1, dtoIn.uuid);
+            const resCarac = await this.dataSource.createSelectQuery(queryCarac);
+
+            const queryConve = new SelectQuery(`
+            select
+                a.ide_incon,
+                cantidad_incon,
+                b.nombre_inuni AS unidad_origen,
+                d.nombre_inuni AS unidad_destino,
+                valor_incon,
+                observacion,
+                nombre_inarti
+            from
+                inv_conversion_unidad a
+                inner join inv_unidad b on a.ide_inuni = b.ide_inuni
+                inner join inv_articulo c on a.ide_inarti = c.ide_inarti
+                inner join inv_unidad d on a.inv_ide_inuni = d.ide_inuni
+            where
+                uuid = $1
+            `);
+            queryConve.addStringParam(1, dtoIn.uuid);
+            const resConve = await this.dataSource.createSelectQuery(queryConve);
+
+            return {
+                rowCount: 1,
+                row: {
+                    producto: res,
+                    caracteristicas: resCarac,
+                    conversion: resConve,
+                },
+                message: 'ok'
+            } as ResultQuery
+
+        }
+        else {
+            throw new BadRequestException(`No existe el producto`);
+        }
     }
 
     /**
@@ -368,6 +472,38 @@ export class ProductosService extends BaseService {
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query, false);
+    }
+
+    /**
+     * Retorna el saldo de un producto por bodega
+     * @param dtoIn 
+     * @returns 
+     */
+    async getSaldoPorBodega(dtoIn: IdProductoDto) {
+        const query = new SelectQuery(`     
+        SELECT 
+            cci.ide_inbod,
+            nombre_inbod,
+            nombre_inarti,
+            COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
+            siglas_inuni
+        FROM
+            inv_det_comp_inve dci
+            inner join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
+            inner join inv_bodega bod on cci.ide_inbod = bod.ide_inbod
+            inner join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
+            inner join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+            inner join inv_articulo iart on iart.ide_inarti = dci.ide_inarti
+            left join inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+        WHERE
+            dci.ide_inarti = $1
+            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
+            AND cci.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY   
+            cci.ide_inbod,nombre_inbod,nombre_inarti,siglas_inuni
+        `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -870,10 +1006,10 @@ export class ProductosService extends BaseService {
 
 
     /**
-       * Retorna el total de PROFORMAS mensuales de un producto en un periodo 
-       * @param dtoIn 
-       * @returns 
-       */
+     * Retorna el total de PROFORMAS mensuales de un producto en un periodo 
+     * @param dtoIn 
+     * @returns 
+    */
     async getProformasMensuales(dtoIn: IVentasMensualesDto) {
         const query = new SelectQuery(`
         SELECT
@@ -915,18 +1051,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
 
-        const resp = await this.dataSource.createQuery(query)
-        const data = resp.rows ? resp.rows[0] : {};
-        const siglas_inuni = data.siglas_inuni ? data.siglas_inuni : '';
-        // Chart
-        // Definir el campo para categorías y las series usando un Map
-        const categoryField = "nombre_gemes";
-        const seriesFields = new Map<string, string>([
-            [`Cantidad ${siglas_inuni}`, "cantidad"]
-        ]);
-        const barChar = formatBarChartData(resp.rows, categoryField, seriesFields)
-        resp.charts = [barChar]
-        return resp;
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -965,7 +1090,6 @@ export class ProductosService extends BaseService {
 
 
     async getTotalVentasPorIdCliente(dtoIn: IVentasMensualesDto) {
-
         const queryTipoId = new SelectQuery(`
         SELECT
             c.ide_getid,
@@ -1044,7 +1168,7 @@ export class ProductosService extends BaseService {
         // ---------------- POR VENDEDOR
         const dataTotalVendedor = await this.getTotalVentasPorVendedor(dtoIn);
         const data = dataTotalVendedor ? dataTotalVendedor[0] : {};
-        const siglas_inuni = data.siglas_inuni ? data.siglas_inuni : '';
+        const siglas_inuni = data ? data.siglas_inuni : '';
 
         const categoryField = "nombre_vgven";
         const seriesFields = new Map<string, string>([
@@ -1089,16 +1213,19 @@ export class ProductosService extends BaseService {
         const barCharVentComp = barCharVentas;
         barCharVentComp.series.push(barCharCompras.series[0]);
 
+        // ---------------- PROFORMAS
+        const { rows: dataProf } = await this.getProformasMensuales(dtoIn);
+        const seriesCantidadP = new Map<string, string>([
+            [`Proformas ${siglas_inuni}`, "cantidad"]
+        ]);
+        const barCharProf = formatBarChartData(dataProf, "nombre_gemes", seriesCantidadP)
 
         return {
-            rowCount: 6,
-            charts: [barCharVendedor, pieChartVendedor, pieChartFormaPago, pieChartTipoId, barCharVaria, barCharVentComp],
+            rowCount: 7,
+            charts: [barCharVendedor, pieChartVendedor, pieChartFormaPago, pieChartTipoId, barCharVaria, barCharVentComp, barCharProf],
             message: 'ok'
         } as ResultQuery
     }
-
-
-
 
 
 

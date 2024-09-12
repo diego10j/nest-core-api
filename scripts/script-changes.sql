@@ -459,3 +459,28 @@ ALTER TABLE cxc_datos_fac ADD COLUMN pto_emision_ccdfa varchar(3);
 ALTER TABLE cxc_datos_fac ADD COLUMN num_actual_ccdfa TIMESTAMP;
 ALTER TABLE cxc_datos_fac ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE cxc_datos_fac ADD COLUMN hora_ingre TIMESTAMP;
+
+// 12 Sep 2024
+
+ALTER TABLE inv_caracteristica ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE inv_caracteristica ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE inv_caracteristica ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE inv_caracteristica ADD COLUMN hora_actua TIMESTAMP;
+ALTER TABLE inv_caracteristica ADD COLUMN hora_actua int;
+ALTER TABLE inv_caracteristica ADD COLUMN ide_empr int;
+ALTER TABLE inv_caracteristica ADD COLUMN ide_sucu int;
+
+ALTER TABLE inv_articulo ADD COLUMN notas_inarti TEXT;
+
+ALTER TABLE inv_articulo_carac DROP COLUMN ide_inare;
+
+CREATE INDEX idx_inv_marca_ide_inmar ON inv_marca(ide_inmar);
+CREATE INDEX idx_inv_unidad_ide_inuni ON inv_unidad(ide_inuni);
+CREATE INDEX idx_inv_tipo_producto_ide_intpr ON inv_tipo_producto(ide_intpr);
+CREATE INDEX idx_inv_categoria_ide_incate ON inv_categoria(ide_incate);
+CREATE INDEX idx_inv_bodega_ide_inbod ON inv_bodega(ide_inbod);
+CREATE INDEX idx_inv_fabricante_ide_infab ON inv_fabricante(ide_infab);
+
+CREATE INDEX idx_inv_conversion_unidad_ide_inuni ON inv_conversion_unidad(ide_inuni);
+CREATE INDEX idx_inv_conversion_unidad_inv_ide_inuni ON inv_conversion_unidad(inv_ide_inuni);
+CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
