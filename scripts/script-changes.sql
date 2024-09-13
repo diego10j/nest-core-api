@@ -466,7 +466,6 @@ ALTER TABLE inv_caracteristica ADD COLUMN usuario_ingre varchar(50);
 ALTER TABLE inv_caracteristica ADD COLUMN hora_ingre TIMESTAMP;
 ALTER TABLE inv_caracteristica ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE inv_caracteristica ADD COLUMN hora_actua TIMESTAMP;
-ALTER TABLE inv_caracteristica ADD COLUMN hora_actua int;
 ALTER TABLE inv_caracteristica ADD COLUMN ide_empr int;
 ALTER TABLE inv_caracteristica ADD COLUMN ide_sucu int;
 
