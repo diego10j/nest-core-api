@@ -31,7 +31,7 @@ export class CoreService {
     }
 
     /**
-     * Retorna  resultado de un Query
+     * Retorna todos los registros 
      * @param dto 
      * @returns 
      */
@@ -45,13 +45,23 @@ export class CoreService {
         const pgq = new SelectQuery(`        
         SELECT ${selectedColumns} 
         FROM ${tableName} 
-        WHERE ${whereClause} 
+        WHERE ide_empr = ${dto.ideEmpr} AND ${whereClause} 
         ORDER BY ${orderByClause}    
         `, dto);
         const result = await this.dataSource.createQuery(pgq, true, tableName);
         result.key = primaryKey;
         result.ref = tableName;
         return result
+    }
+
+
+    async getTableQueryByUuid(dto: FindByUuidDto) {
+        let whereClause = `uuid = '${dto.uuid}'`;
+        if (isDefined(dto.uuid) === false) {
+            whereClause = `${dto.primaryKey} = -1`;
+        }
+        const dtoIn = { ...dto, condition: `${whereClause}` }
+        return this.getTableQuery(dtoIn);
     }
 
 
@@ -210,8 +220,11 @@ export class CoreService {
      */
     async findByUuid(dtoIn: FindByUuidDto) {
         const columns = dtoIn.columns || '*'; // all columns
-        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE uuid = $1`);
-        query.addParam(1, dtoIn.uuid);
+        let whereClause = `uuid = '${dtoIn.uuid}'`;
+        if (isDefined(dtoIn.uuid) === false) {
+            whereClause = `${dtoIn.primaryKey} = -1`;
+        }
+        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE ${whereClause}`);
         return await this.dataSource.createSingleQuery(query);
     }
 

@@ -1,4 +1,4 @@
-import { getDateFormat } from 'src/util/helpers/date-util';
+import { fShortDate, getDateFormat } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -8,11 +8,15 @@ import { IdProductoDto } from './dto/id-producto.dto';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
+import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { BaseService } from '../../../common/base-service';
 import { getDateFormatFront } from 'src/util/helpers/date-util';
 import { AuditService } from '../../audit/audit.service';
 import { formatBarChartData, formatPieChartData } from '../../../util/helpers/charts-utils';
 import { UuidDto } from '../../../common/dto/uuid.dto';
+import { fNumber } from 'src/util/helpers/number-util';
+
+
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -317,7 +321,12 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getVentasProducto(dtoIn: TrnProductoDto) {
+    async getVentasProducto(dtoIn: PreciosProductoDto) {
+
+
+        // Ajustar el porcentaje según  criterio 30% margen
+        const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
+
         const query = new SelectQuery(`
         SELECT
             cdf.ide_ccdfa,
@@ -340,6 +349,7 @@ export class ProductosService extends BaseService {
             AND iart.ide_empr = ${dtoIn.ideEmpr}  
             and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
             and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+            ${whereCantidad}
         ORDER BY 
             cf.fecha_emisi_cccfa desc, secuencial_ccdfa`);
         query.addIntParam(1, dtoIn.ide_inarti);
@@ -348,6 +358,123 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+
+    async getVentasProductoUtilidad(dtoIn: PreciosProductoDto) {
+
+
+        // Ajustar el porcentaje según  criterio 30% margen
+        const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
+
+
+        const query = new SelectQuery(`
+        WITH precios_compra AS (
+            SELECT
+                ide_inarti,
+                precio_cpdfa,
+                fecha_emisi_cpcfa
+            FROM cxp_detall_factur
+            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+            WHERE ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
+            AND ide_inarti = $1
+            AND fecha_emisi_cpcfa BETWEEN $2 AND $3
+            ORDER BY fecha_emisi_cpcfa 
+        ),
+        datos_completos AS (
+            SELECT
+                cdf.ide_ccdfa,
+                cf.fecha_emisi_cccfa,
+                secuencial_cccfa,
+                nom_geper,
+                cdf.cantidad_ccdfa,
+                siglas_inuni,
+                cdf.precio_ccdfa AS precio_venta,
+                cdf.total_ccdfa,
+                p.uuid,
+                COALESCE((
+                  SELECT pc.precio_cpdfa 
+                  FROM precios_compra pc
+                  WHERE pc.ide_inarti = cdf.ide_inarti 
+                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa + INTERVAL '7 days'
+                  ORDER BY pc.fecha_emisi_cpcfa desc
+                  LIMIT 1), 0) AS PRECIO_COMPRA
+            FROM
+                cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+            WHERE
+                cdf.ide_inarti = $4
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+                ${whereCantidad}
+        )
+        SELECT
+            dc.ide_ccdfa,
+            dc.fecha_emisi_cccfa,
+            dc.secuencial_cccfa,
+            dc.nom_geper,
+            dc.cantidad_ccdfa,
+            dc.siglas_inuni,
+            dc.precio_venta,
+            dc.total_ccdfa,
+            dc.uuid,
+            dc.precio_compra,
+            ( dc.precio_venta - dc.precio_compra )  as utilidad ,
+            CASE 
+                WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
+                ELSE 0 
+            END AS porcentaje_utilidad,
+            ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
+        FROM datos_completos dc
+        ORDER BY 
+            dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
+        LIMIT 200
+            `);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        query.addIntParam(4, dtoIn.ide_inarti);
+        query.addDateParam(5, dtoIn.fechaInicio);
+        query.addDateParam(6, dtoIn.fechaFin);
+        const res = await this.dataSource.createQuery(query);
+
+        res.row = {
+            precio_minimo_venta: 0,
+            precio_maximo_venta: 0,
+            promedio_precio: 0,
+            precio_sugerido: 0,
+        }
+        // Filtrar los datos por cantidad
+        const margin = 0.2; // 20% de margen
+        if (res.rowCount > 0 && dtoIn.cantidad) {
+            const filteredSales = res.rows.filter(sale => Math.abs(sale.cantidad_ccdfa - dtoIn.cantidad) <= margin * dtoIn.cantidad);
+
+            // Encontrar precios minimos y maximos
+            const precios_venta = filteredSales.map(sale => sale.precio_venta);
+            const precio_minimo_venta = Math.min(...precios_venta);
+            const precio_maximo_venta = Math.max(...precios_venta);
+
+            // Calcular el promedio
+            const promedio_precio = precios_venta.reduce((a, b) => a + b, 0) / precios_venta.length;
+
+            // Sugestión de precio
+            let precio_sugerido;
+            if (precio_minimo_venta && precio_maximo_venta) {
+                precio_sugerido = (precio_minimo_venta + precio_maximo_venta) / 2;
+            } else {
+                precio_sugerido = promedio_precio;
+            }
+            res.row = {
+                precio_minimo_venta,
+                precio_maximo_venta,
+                promedio_precio: Number(fNumber(promedio_precio)),
+                precio_sugerido: Number(fNumber(precio_sugerido))
+            }
+        }
+
+        return res
+    }
 
     /**
      * Retorna las facturas de compras de un producto determinado en un rango de fechas
@@ -847,7 +974,7 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async getVariacionPreciosCompras(dtoIn: VariacionPreciosComprasDto) {
+    async charVariacionPreciosCompras(dtoIn: VariacionPreciosComprasDto) {
         const query = new SelectQuery(`
         WITH compras AS (
             SELECT
@@ -865,8 +992,9 @@ export class ProductosService extends BaseService {
             WHERE
                 cdf.ide_inarti = $1
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-                AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
                 AND cf.ide_empr = ${dtoIn.ideEmpr} 
+            ORDER BY fecha_emisi_cpcfa desc
+            LIMIT 10
         )
         SELECT
             fecha,
@@ -891,15 +1019,40 @@ export class ProductosService extends BaseService {
         FROM
             compras
         ORDER BY
-            fecha desc
-        LIMIT 10;     
+            fecha
+
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+        const res = await this.dataSource.createSelectQuery(query);
+        let charts = [];
+        if (res) {
+            // Obtener el total (precio del último registro)
+            const total = res[res.length - 1].precio;
 
+            // Obtener el percent (porcentaje_variacion del último registro)
+            const percent = res[res.length - 1].porcentaje_variacion;
+
+            // Formatear las fechas para las categorías en el formato 'Ene 2023'
+            const categories = res.map(row => fShortDate(row.fecha));
+
+            // Obtener los precios para la serie
+            const series = [{
+                data: res.map(row => row.precio)
+            }];
+            charts = [{
+                total,
+                percent,
+                categories,
+                series
+            }]
+        }
+
+        return {
+            rowCount: charts.length,
+            charts,
+            message: 'ok'
+        } as ResultQuery
+    }
 
     async getVariacionInventario(dtoIn: IVentasMensualesDto) {
         const query = new SelectQuery(`       

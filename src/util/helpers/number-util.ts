@@ -1,7 +1,10 @@
 import { isDefined } from "./common-util";
 
 
-export function getNumberFormat(value: number, decimals?: number): string {
+/**
+ * Redpndea a dos decimales un numero
+ */
+export function fNumber(value: number, decimals: number = 2): string {
 
     // console.log(new Intl.NumberFormat().format(number));
     if (!isDefined(value)) {

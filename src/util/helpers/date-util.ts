@@ -1,6 +1,7 @@
 import { toString } from './common-util';
 import { parse, format, getTime, addDays, isValid, formatDistanceToNow } from 'date-fns';
-
+import { es } from 'date-fns/locale';
+import { toTitleCase } from './string-util';
 
 export const FORMAT_DATE_BD = (): string => process.env.FORMAT_DATE_BD;  // yyyy-MM-dd
 export const FORMAT_TIME_BD = (): string => process.env.FORMAT_TIME_BD;
@@ -20,6 +21,16 @@ export function fDate(date: InputValue, newFormat?: string) {
     const fm = newFormat || 'dd LLLL yyyy';  // dd MMM yyyy
 
     return date ? format(new Date(date), fm) : '';
+}
+
+/**
+ * Retorna una fecha en formato corto 
+ * @param date 
+ * @returns   Ene 2024
+ */
+export function fShortDate(date: InputValue) {
+    const fm = 'MMM yyyy';
+    return date ? toTitleCase(format(new Date(date), fm, { locale: es })) : '';
 }
 
 export function fTime(date: InputValue, newFormat?: string) {
