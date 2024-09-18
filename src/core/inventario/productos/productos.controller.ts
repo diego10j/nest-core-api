@@ -8,8 +8,8 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
-import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
+import { ClientesProductoDto } from './dto/clientes-producto.dto';
 @Controller('inventario/productos')
 export class ProductosController {
   constructor(private readonly service: ProductosService) { }
@@ -127,7 +127,7 @@ export class ProductosController {
   @Post('getClientes')
   // @Auth()
   getClientes(
-    @Body() dtoIn: IdProductoDto
+    @Body() dtoIn: ClientesProductoDto
   ) {
     return this.service.getClientes(dtoIn);
   }
@@ -143,7 +143,7 @@ export class ProductosController {
   @Post('charVariacionPreciosCompras')
   // @Auth()
   charVariacionPreciosCompras(
-    @Body() dtoIn: VariacionPreciosComprasDto
+    @Body() dtoIn: IdProductoDto
   ) {
     return this.service.charVariacionPreciosCompras(dtoIn);
   }
@@ -182,5 +182,29 @@ export class ProductosController {
     return this.service.chartVentasPeriodo(dtoIn);
   }
 
+
+  @Post('getTopProductosVendidos')
+  // @Auth()
+  getTopProductosVendidos(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getTopProductosVendidos(dtoIn);
+  }
+
+  @Post('getTopProductosFacturados')
+  // @Auth()
+  getTopProductosFacturados(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getTopProductosFacturados(dtoIn);
+  }
+
+  @Post('chartProductos')
+  // @Auth()
+  chartProductos(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.chartProductos(dtoIn);
+  }
 
 }

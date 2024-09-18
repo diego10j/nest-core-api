@@ -7,7 +7,6 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
-import { VariacionPreciosComprasDto } from './dto/varia-precio-compras.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { BaseService } from '../../../common/base-service';
 import { getDateFormatFront } from 'src/util/helpers/date-util';
@@ -15,6 +14,7 @@ import { AuditService } from '../../audit/audit.service';
 import { formatBarChartData, formatPieChartData } from '../../../util/helpers/charts-utils';
 import { UuidDto } from '../../../common/dto/uuid.dto';
 import { fNumber } from 'src/util/helpers/number-util';
+import { ClientesProductoDto } from './dto/clientes-producto.dto';
 
 
 
@@ -41,7 +41,7 @@ export class ProductosService extends BaseService {
      * Retorna el listado de Productos
      * @returns 
      */
-    async getProductos(_dtoIn?: ServiceDto) {
+    async getProductos(dtoIn: ServiceDto) {
 
         const query = new SelectQuery(`
     WITH existencia_cte AS (
@@ -55,7 +55,7 @@ export class ProductosService extends BaseService {
             LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
         WHERE
             ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-            and dci.ide_empr = ${_dtoIn.ideEmpr}
+            and dci.ide_empr = ${dtoIn.ideEmpr}
         GROUP BY
             dci.ide_inarti
     ),
@@ -70,7 +70,7 @@ export class ProductosService extends BaseService {
             INNER JOIN cxp_cabece_factur ON a.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
         WHERE
             ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
-            and a.ide_empr = ${_dtoIn.ideEmpr}
+            and a.ide_empr = ${dtoIn.ideEmpr}
     )
     SELECT
         ARTICULO.ide_inarti,
@@ -94,10 +94,10 @@ export class ProductosService extends BaseService {
     WHERE
         ARTICULO.ide_intpr = 1 -- solo productos
         AND ARTICULO.nivel_inarti = 'HIJO'
-        AND ARTICULO.ide_empr = ${_dtoIn.ideEmpr}
+        AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
     ORDER BY
         ARTICULO.nombre_inarti;
-    `, _dtoIn);
+    `, dtoIn);
 
         return await this.dataSource.createQuery(query);
     }
@@ -940,17 +940,31 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getClientes(dtoIn: IdProductoDto) {
-        const query = new SelectQuery(`            
+    async getClientes(dtoIn: ClientesProductoDto) {
+        let sql = '';
+        if (dtoIn.modo == 1) {
+            sql = `                        
+            SELECT 
+                COUNT(DISTINCT cf.ide_geper) AS total_clientes
+            FROM
+                cxc_deta_factura cdf
+                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            WHERE
+                cdf.ide_inarti = $1
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
+        `;
+        }
+        else {
+            sql = `            
             SELECT
                 p.ide_geper,
-                p.nom_geper,
-                p.identificac_geper,
-                max(cf.fecha_emisi_cccfa) as fecha_ultima,
-                count(1) as num_facturas,
-                sum(cdf.cantidad_ccdfa) as total_cantidad,
-                uni.siglas_inuni,
+                upper(p.nom_geper) as nom_geper,
+                COUNT(1) AS num_facturas,
+                SUM(cdf.cantidad_ccdfa) AS total_cantidad,
+                siglas_inuni,
                 SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
+                max(fecha_emisi_cccfa) as fecha_ultima,
                 p.uuid
             FROM
                 cxc_deta_factura cdf
@@ -968,13 +982,22 @@ export class ProductosService extends BaseService {
                 p.identificac_geper,
                 uni.siglas_inuni
             order by
-                p.nom_geper
-            `);
+                fecha_ultima DESC
+            `;
+        }
+
+        const query = new SelectQuery(sql, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        if (dtoIn.modo == 1) {
+            return await this.dataSource.createSelectQuery(query);
+        }
+        else {
+            return await this.dataSource.createQuery(query);
+        }
+
     }
 
-    async charVariacionPreciosCompras(dtoIn: VariacionPreciosComprasDto) {
+    async charVariacionPreciosCompras(dtoIn: IdProductoDto) {
         const query = new SelectQuery(`
         WITH compras AS (
             SELECT
@@ -1381,5 +1404,101 @@ export class ProductosService extends BaseService {
     }
 
 
+    /**
+     * Retorna los 10 productos mas vendidos por la cantidad
+     * @param dtoIn 
+     * @returns 
+     */
+    async getTopProductosVendidos(dtoIn: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT
+            iart.ide_inarti,
+            upper(iart.nombre_inarti) as nombre_inarti,
+            SUM(cdf.cantidad_ccdfa) AS total_cantidad,
+            siglas_inuni
+        FROM
+            cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+        WHERE
+            cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            iart.ide_inarti,
+            iart.nombre_inarti,
+            siglas_inuni
+        ORDER BY
+            total_cantidad DESC
+        LIMIT 10       
+        `, dtoIn);
+        return await this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Retorna los productos mas facturados
+     * @param dtoIn 
+     * @returns 
+     */
+    async getTopProductosFacturados(dtoIn: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT
+            iart.ide_inarti,
+            upper(iart.nombre_inarti) as nombre_inarti,
+            COUNT(1) AS num_facturas
+        FROM
+            cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+        WHERE
+            cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            iart.ide_inarti,
+            iart.nombre_inarti
+        ORDER BY
+            num_facturas  DESC
+        LIMIT 10    
+        `, dtoIn);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    /**
+ * Retorna data para graficos relacionada a los productos
+ * @param dtoIn 
+ * @returns 
+ */
+    async chartProductos(dtoIn: ServiceDto) {
+        // ---------------- POR TIPO CATEGORIA
+        const dataTotalProdCategoria = await this.getTotalProductosPorCategoria(dtoIn);
+        const pieChartProdCategoria = formatPieChartData(dataTotalProdCategoria, "categoria", "cantidad");
+        return {
+            rowCount: 1,
+            charts: [pieChartProdCategoria],
+            message: 'ok'
+        } as ResultQuery
+    }
+
+
+    async getTotalProductosPorCategoria(dtoIn: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT 
+            COALESCE(c.nombre_incate, 'SIN CATEGORIA') AS categoria,
+            COUNT(a.ide_inarti) AS cantidad
+        FROM 
+            inv_articulo a
+        LEFT JOIN 
+            inv_categoria c ON a.ide_incate = c.ide_incate
+        WHERE a.ide_empr = ${dtoIn.ideEmpr} 
+        AND ide_intpr = 1
+        AND nivel_inarti = 'HIJO'    
+        GROUP BY 
+            c.nombre_incate
+        order by 2
+        `);
+        return await this.dataSource.createSelectQuery(query);
+    }
 
 }
