@@ -997,7 +997,7 @@ export class ProductosService extends BaseService {
 
     }
 
-    async charVariacionPreciosCompras(dtoIn: IdProductoDto) {
+    async chartVariacionPreciosCompras(dtoIn: IdProductoDto) {
         const query = new SelectQuery(`
         WITH compras AS (
             SELECT
