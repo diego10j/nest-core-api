@@ -483,3 +483,9 @@ CREATE INDEX idx_inv_fabricante_ide_infab ON inv_fabricante(ide_infab);
 CREATE INDEX idx_inv_conversion_unidad_ide_inuni ON inv_conversion_unidad(ide_inuni);
 CREATE INDEX idx_inv_conversion_unidad_inv_ide_inuni ON inv_conversion_unidad(inv_ide_inuni);
 CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
+
+// 25 Sep 2024
+
+ALTER TABLE inv_articulo ADD COLUMN otro_nombre_inarti varchar(200);     -- Otros nombres del producto
+ALTER TABLE inv_articulo DROP COLUMN por_util1_inarti; 
+ALTER TABLE inv_articulo DROP COLUMN por_util2_inarti;  

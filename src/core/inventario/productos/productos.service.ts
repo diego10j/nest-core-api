@@ -127,8 +127,6 @@ export class ProductosService extends BaseService {
             publicacion_inarti,
             cant_stock1_inarti,
             cant_stock2_inarti,
-            por_util1_inarti,
-            por_util2_inarti,
             nombre_incate,
             tags_inarti,
             url_inarti,
@@ -153,7 +151,7 @@ export class ProductosService extends BaseService {
 
         const res = await this.dataSource.createSingleQuery(query);
         if (res) {
-
+            const ide_inarti = res.ide_inarti;
             const queryCarac = new SelectQuery(`
             select
                 a.ide_inarc,
@@ -189,12 +187,51 @@ export class ProductosService extends BaseService {
             queryConve.addStringParam(1, dtoIn.uuid);
             const resConve = await this.dataSource.createSelectQuery(queryConve);
 
+            // Stock
+            const stock = await this.getStock(ide_inarti);
+            const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : 0;
+            const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : 0;
+            let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
+            let color_stock = stock > 0 ? 'green' : 'red';
+            if (stockMinimo !== 0) {
+                // stock minimo
+                detalle_stock = stock < stockMinimo && 'STOCK BAJO';
+                color_stock = 'orange';
+            }
+            if (stockIdeal !== 0) {
+                color_stock = 'green';
+                if (stock > stockIdeal) {
+                    // supera de stock ideal
+                    detalle_stock = 'STOCK EXTRA';
+                }
+                else if (stock === stockIdeal) {
+                    detalle_stock = 'STOCK IDEAL';
+                }
+                else if (stock > stockMinimo && stock < stockIdeal) {
+                    detalle_stock = 'STOCK ÓPTIMO';
+                }
+            }
+
+            // Total clientes
+            const total_clientes = await this.getTotalClientesProducto(ide_inarti);
+
+            // Ultima Trn
+
+            const resUltima = await this.getUltimaTrnProducto(ide_inarti);
+
             return {
                 rowCount: 1,
                 row: {
                     producto: res,
                     caracteristicas: resCarac,
                     conversion: resConve,
+                    stock: {
+                        stock,
+                        detalle_stock,
+                        color_stock
+                    },
+                    total_clientes,
+                    utlima_trn: resUltima,
                 },
                 message: 'ok'
             } as ResultQuery
@@ -941,22 +978,8 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getClientes(dtoIn: ClientesProductoDto) {
-        let sql = '';
-        if (dtoIn.modo == 1) {
-            sql = `                        
-            SELECT 
-                COUNT(DISTINCT cf.ide_geper) AS total_clientes
-            FROM
-                cxc_deta_factura cdf
-                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            WHERE
-                cdf.ide_inarti = $1
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        `;
-        }
-        else {
-            sql = `            
+
+        const sql = `            
             SELECT
                 p.ide_geper,
                 upper(p.nom_geper) as nom_geper,
@@ -984,17 +1007,9 @@ export class ProductosService extends BaseService {
             order by
                 fecha_ultima DESC
             `;
-        }
-
         const query = new SelectQuery(sql, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        if (dtoIn.modo == 1) {
-            return await this.dataSource.createSelectQuery(query);
-        }
-        else {
-            return await this.dataSource.createQuery(query);
-        }
-
+        return await this.dataSource.createQuery(query);
     }
 
     async charVariacionPreciosCompras(dtoIn: IdProductoDto) {
@@ -1156,8 +1171,12 @@ export class ProductosService extends BaseService {
      * @param fechaCorte 
      * @returns 
      */
-    async _getSaldoInicial(ide_inarti: number, fechaCorte: Date): Promise<number> {
+    async getStock(ide_inarti: number, fechaCorte?: Date): Promise<number> {
         let saldoInicial = 0;
+        let fecha = new Date();
+        if (fechaCorte) {
+            fecha = fechaCorte;
+        }
         const querySaldoInicial = new SelectQuery(`     
         SELECT sum(cantidad_indci *signo_intci) as saldo
         FROM
@@ -1167,17 +1186,68 @@ export class ProductosService extends BaseService {
             left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
         WHERE
             dci.ide_inarti = $1
-            AND fecha_trans_incci <  $2
+            AND fecha_trans_incci <=  $2
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
         GROUP BY   
             ide_inarti `);
         querySaldoInicial.addIntParam(1, ide_inarti);
-        querySaldoInicial.addDateParam(2, fechaCorte);
+        querySaldoInicial.addDateParam(2, fecha);
         const data = await this.dataSource.createSingleQuery(querySaldoInicial);
         if (data) {
             saldoInicial = Number(data.saldo);
         }
         return saldoInicial;
+    }
+
+    /**
+     * Retorna el total de clientes de un producto 
+     * @param ide_inarti 
+     * @returns 
+     */
+    async getTotalClientesProducto(ide_inarti: number): Promise<number> {
+        let totalClientes = 0;
+
+        const query = new SelectQuery(`     
+        SELECT 
+            COUNT(DISTINCT cf.ide_geper) AS total_clientes
+        FROM
+            cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+        WHERE
+            cdf.ide_inarti = $1
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+         `);
+        query.addIntParam(1, ide_inarti);
+        const data = await this.dataSource.createSingleQuery(query);
+        if (data) {
+            totalClientes = Number(data.total_clientes);
+        }
+        return totalClientes;
+    }
+
+
+    /**
+     * Retorna la fecha de la última transaccion del producto
+     * @param ide_inarti 
+     * @returns 
+     */
+    async getUltimaTrnProducto(ide_inarti: number) {
+        const query = new SelectQuery(`
+        SELECT DISTINCT ON (dci.ide_inarti) 
+            dci.ide_inarti,
+            cci.fecha_trans_incci as max_fecha_trans_incci,
+            tti.nombre_intti
+        FROM
+            inv_cab_comp_inve cci
+            LEFT JOIN inv_det_comp_inve dci ON cci.ide_incci = dci.ide_incci
+            LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+        WHERE
+            dci.ide_inarti = $1
+            AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+        ORDER BY dci.ide_inarti, cci.fecha_trans_incci DESC    
+        `);
+        query.addIntParam(1, ide_inarti);
+        return await this.dataSource.createSingleQuery(query);
     }
 
 
@@ -1464,20 +1534,27 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-
     /**
- * Retorna data para graficos relacionada a los productos
- * @param dtoIn 
- * @returns 
- */
+     * Retorna data para graficos relacionada a los productos
+     * @param dtoIn 
+     * @returns 
+     */
     async chartProductos(dtoIn: ServiceDto) {
         // ---------------- POR TIPO CATEGORIA
         const dataTotalProdCategoria = await this.getTotalProductosPorCategoria(dtoIn);
+
+        const totalProductos = dataTotalProdCategoria.reduce((accumulator, item) => accumulator + item.cantidad, 0);
+        const totalCategorias = dataTotalProdCategoria.length > 0 ? dataTotalProdCategoria.length - 1 : 0;
+
         const pieChartProdCategoria = formatPieChartData(dataTotalProdCategoria, "categoria", "cantidad");
         return {
             rowCount: 1,
             charts: [pieChartProdCategoria],
-            message: 'ok'
+            message: 'ok',
+            row: {
+                totalProductos,
+                totalCategorias
+            }
         } as ResultQuery
     }
 
