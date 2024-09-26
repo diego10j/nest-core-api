@@ -1012,7 +1012,7 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async charVariacionPreciosCompras(dtoIn: IdProductoDto) {
+    async chartVariacionPreciosCompras(dtoIn: IdProductoDto) {
         const query = new SelectQuery(`
         WITH compras AS (
             SELECT

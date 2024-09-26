@@ -140,12 +140,12 @@ export class ProductosController {
     return this.service.getTopClientes(dtoIn);
   }
 
-  @Post('charVariacionPreciosCompras')
+  @Post('chartVariacionPreciosCompras')
   // @Auth()
   charVariacionPreciosCompras(
     @Body() dtoIn: IdProductoDto
   ) {
-    return this.service.charVariacionPreciosCompras(dtoIn);
+    return this.service.chartVariacionPreciosCompras(dtoIn);
   }
 
   @Post('getVariacionInventario')
