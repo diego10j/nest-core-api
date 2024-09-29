@@ -10,6 +10,7 @@ import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
+import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 @Controller('inventario/productos')
 export class ProductosController {
   constructor(private readonly service: ProductosService) { }
@@ -30,6 +31,15 @@ export class ProductosController {
   ) {
     return this.service.getProducto(dtoIn);
   }
+
+  @Post('getProductosPorNombre')
+  // @Auth()
+  getProductosPorNombre(
+    @Body() dtoIn: BusquedaPorNombreDto
+  ) {
+    return this.service.getProductosPorNombre(dtoIn);
+  }
+
 
   @Post('getTrnProducto')
   // @Auth()

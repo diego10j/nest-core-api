@@ -15,6 +15,7 @@ import { formatBarChartData, formatPieChartData } from '../../../util/helpers/ch
 import { UuidDto } from '../../../common/dto/uuid.dto';
 import { fNumber } from 'src/util/helpers/number-util';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
+import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 
 
 
@@ -102,6 +103,29 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+
+    async getProductosPorNombre(dtoIn: BusquedaPorNombreDto) {
+        const query = new SelectQuery(`
+        SELECT
+            ide_inarti,
+            foto_inarti,
+            CONCAT(COALESCE(nombre_inarti, ''), ' - ', COALESCE(otro_nombre_inarti, '')) AS nombre_inarti,
+            uuid
+        FROM
+            inv_articulo
+        WHERE
+            immutable_unaccent_replace (nombre_inarti)
+            ILIKE immutable_unaccent_replace ($1)
+            OR immutable_unaccent_replace (otro_nombre_inarti)
+            ILIKE immutable_unaccent_replace ($2)
+        LIMIT 20
+        `
+        );
+        query.addStringParam(1, `%${dtoIn.nombre}%`);
+        query.addStringParam(2, `%${dtoIn.nombre}%`);
+        return await this.dataSource.createQuery(query, false);
+    }
+
     /**
      * Retorna la información de un producto
      * @param dtoIn 
@@ -135,7 +159,13 @@ export class ProductosService extends BaseService {
             nombre_inbod,
             nombre_infab,
             cod_barras_inarti,
-            notas_inarti
+            notas_inarti,
+            publicado_inarti,
+            total_vistas_inarti,
+            otro_nombre_inarti,
+            total_ratings_inarti,
+            fotos_inarti,
+            desc_corta_inarti
         FROM
             inv_articulo a
             left join inv_marca b on a.ide_inmar = b.ide_inmar
@@ -192,14 +222,15 @@ export class ProductosService extends BaseService {
             const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : 0;
             const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : 0;
             let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
-            let color_stock = stock > 0 ? 'green' : 'red';
+
+            let color_stock = stock > 0 ? 'success.main' : 'error.main';
             if (stockMinimo !== 0) {
                 // stock minimo
                 detalle_stock = stock < stockMinimo && 'STOCK BAJO';
-                color_stock = 'orange';
+                color_stock = 'warning.main';
             }
             if (stockIdeal !== 0) {
-                color_stock = 'green';
+                color_stock = 'success.main';
                 if (stock > stockIdeal) {
                     // supera de stock ideal
                     detalle_stock = 'STOCK EXTRA';
@@ -217,7 +248,7 @@ export class ProductosService extends BaseService {
 
             // Ultima Trn
 
-            const resUltima = await this.getUltimaTrnProducto(ide_inarti);
+            const resUltimaVentaCompra = await this.getUltimaVentaCompra(ide_inarti);
 
             return {
                 rowCount: 1,
@@ -230,8 +261,7 @@ export class ProductosService extends BaseService {
                         detalle_stock,
                         color_stock
                     },
-                    total_clientes,
-                    utlima_trn: resUltima,
+                    datos: { total_clientes, ...resUltimaVentaCompra },
                 },
                 message: 'ok'
             } as ResultQuery
@@ -1208,15 +1238,15 @@ export class ProductosService extends BaseService {
         let totalClientes = 0;
 
         const query = new SelectQuery(`     
-        SELECT 
-            COUNT(DISTINCT cf.ide_geper) AS total_clientes
-        FROM
-            cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-        WHERE
-            cdf.ide_inarti = $1
-            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-         `);
+            SELECT 
+                COUNT(DISTINCT cf.ide_geper) AS total_clientes
+            FROM
+                cxc_deta_factura cdf
+                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            WHERE
+                cdf.ide_inarti = $1
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            `);
         query.addIntParam(1, ide_inarti);
         const data = await this.dataSource.createSingleQuery(query);
         if (data) {
@@ -1226,25 +1256,30 @@ export class ProductosService extends BaseService {
     }
 
 
-    /**
-     * Retorna la fecha de la última transaccion del producto
-     * @param ide_inarti 
-     * @returns 
-     */
-    async getUltimaTrnProducto(ide_inarti: number) {
+
+    async getUltimaVentaCompra(ide_inarti: number) {
         const query = new SelectQuery(`
-        SELECT DISTINCT ON (dci.ide_inarti) 
-            dci.ide_inarti,
-            cci.fecha_trans_incci as max_fecha_trans_incci,
-            tti.nombre_intti
+        SELECT
+            -- Datos de ventas
+            COUNT(DISTINCT cf.ide_cccfa) AS total_facturas,
+            MAX(cdf.cantidad_ccdfa) AS max_cantidad_venta,
+            MIN(cdf.cantidad_ccdfa) AS min_cantidad_venta,
+            MIN(cf.fecha_emisi_cccfa) AS primera_fecha_venta,
+            MAX(cf.fecha_emisi_cccfa) AS ultima_fecha_venta,
+            -- Datos de compras
+            MAX(cdp.cantidad_cpdfa) AS max_cantidad_compra,
+            MIN(cdp.cantidad_cpdfa) AS min_cantidad_compra
         FROM
-            inv_cab_comp_inve cci
-            LEFT JOIN inv_det_comp_inve dci ON cci.ide_incci = dci.ide_incci
-            LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            LEFT JOIN cxp_detall_factur cdp ON cdp.ide_inarti = cdf.ide_inarti
+            LEFT JOIN cxp_cabece_factur cp ON cp.ide_cpcfa = cdp.ide_cpcfa
         WHERE
-            dci.ide_inarti = $1
-            AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-        ORDER BY dci.ide_inarti, cci.fecha_trans_incci DESC    
+            cdf.ide_inarti = $1
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            AND (cp.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} OR cp.ide_cpefa IS NULL)
+        GROUP BY
+            cdf.ide_inarti
         `);
         query.addIntParam(1, ide_inarti);
         return await this.dataSource.createSingleQuery(query);

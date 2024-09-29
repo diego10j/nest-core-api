@@ -13,6 +13,10 @@ export function getSqlUpdate(query: UpdateQuery) {
     let sqlSetValues = "";
     let cont = query.params.length;
     for (let [key, value] of query.values) {
+        // Verifica si el valor es un objeto, si es así lo serializamos a JSON
+        if (value !== null && typeof value === 'object') {
+            value = JSON.stringify(value);
+        }
         sqlSetValues = sqlSetValues !== "" ? sqlSetValues + "," : sqlSetValues;
         cont++;
         sqlSetValues += `${key} = $${cont}`;
@@ -48,10 +52,16 @@ export function getSqlInsert(query: InsertQuery) {
             sqlValues = sqlValues !== "" ? sqlValues + "," : sqlValues;
             cont++;
             sqlColumns += `${key}`;
+
+            // Verifica si el valor es un objeto, lo serializamos
+            if (value !== null && typeof value === 'object') {
+                value = JSON.stringify(value);
+            }
+
             sqlValues += `$${cont}`;
-            query.params.push({ index: cont, value })
+            query.params.push({ index: cont, value });
         }
-        /// campos istas de auidtoria
+        // Campos de auditoría
     }
     query.query += `${sqlColumns} ) VALUES ( ${sqlValues} )`;
     return query;

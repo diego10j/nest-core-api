@@ -486,6 +486,28 @@ CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
 
 // 25 Sep 2024
 
-ALTER TABLE inv_articulo ADD COLUMN otro_nombre_inarti varchar(200);     -- Otros nombres del producto
+ALTER TABLE inv_articulo ADD COLUMN otro_nombre_inarti varchar(200);   -- Otros nombres del producto     --contador de vistas 
 ALTER TABLE inv_articulo DROP COLUMN por_util1_inarti; 
 ALTER TABLE inv_articulo DROP COLUMN por_util2_inarti;  
+
+ALTER TABLE inv_articulo ADD COLUMN total_vistas_inarti int;
+ALTER TABLE inv_articulo ADD COLUMN fotos_inarti JSONB;  
+ALTER TABLE inv_articulo ADD COLUMN ratings_inaerti JSON;   
+ALTER TABLE inv_articulo ADD COLUMN total_ratings_inarti decimal(12,2);
+ALTER TABLE inv_articulo ADD COLUMN publicado_inarti boolean; 
+ALTER TABLE inv_articulo ADD COLUMN desc_corta_inarti varchar(500); 
+
+update inv_articulo set publicado_inarti = false, total_vistas_inarti =0, total_ratings_inarti= 0;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+
+CREATE INDEX idx_cdf_ide_inarti ON cxc_deta_factura (ide_inarti);
+CREATE INDEX idx_cf_ide_ccefa ON cxc_cabece_factura (ide_ccefa);
+CREATE INDEX idx_cdp_ide_inarti ON cxp_detall_factur (ide_inarti);
+CREATE INDEX idx_cp_ide_cpefa ON cxp_cabece_factur (ide_cpefa);
+
+CREATE INDEX idx_immutable_unaccent_replace_nombre_inarti
+ON inv_articulo (immutable_unaccent_replace(nombre_inarti));
+
+CREATE INDEX idx_immutable_unaccent_replace_otro_nombre_inarti
+ON inv_articulo (immutable_unaccent_replace(otro_nombre_inarti));
