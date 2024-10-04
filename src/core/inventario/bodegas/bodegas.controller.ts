@@ -1,10 +1,12 @@
 import { Body, Controller, Post } from '@nestjs/common';
+import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BodegasService } from './bodegas.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 
+@ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
   constructor(private readonly service: BodegasService) { }

@@ -1,4 +1,6 @@
-export const HOST_API = (): string => process.env.HOST_API;
+import { envs } from "src/config/envs";
+
+export const HOST_API = (): string => envs.hostApi;
 
 export function isEmpty(value: any): boolean {
     return !isDefined(value) || value === '';

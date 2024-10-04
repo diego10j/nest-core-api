@@ -1,10 +1,11 @@
 import { Body, Controller, Post } from '@nestjs/common';
+import { ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CabComprobanteInventarioDto } from '../comprobantes/dto/cab-compr-inv.dto';
 import { ComprobantesInvService } from './comprobantes.service';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { ServiceDto } from '../../../common/dto/service.dto';
-
+@ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
     constructor(private readonly service: ComprobantesInvService) { }

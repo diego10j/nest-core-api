@@ -9,7 +9,7 @@ nest g resource core/inventario/productos --dry-run
 
 nest g resource core/ventas/clientes --dry-run
 
-nest g resource core/chatbot --dry-run
+nest g resource core/whatsapp --dry-run
 
 nest g resource core/sistema/usuarios --dry-run
 
@@ -23,4 +23,5 @@ nest g resource core/inventario/bodegas
 yarn add ioredis
 
 nest g module redis --dry-run
+
 

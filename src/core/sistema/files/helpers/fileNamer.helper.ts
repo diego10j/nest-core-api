@@ -1,6 +1,7 @@
+import { envs } from 'src/config/envs';
 import { v4 as uuid } from 'uuid'
 
-export const PATH_DRIVE = (): string => process.env.PATH_DRIVE;
+export const PATH_DRIVE = (): string => envs.pathDrive;
 
 const mimeTypeMap: { [key: string]: string } = {
   'text/plain': 'txt',

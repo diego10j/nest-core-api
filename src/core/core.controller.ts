@@ -101,12 +101,12 @@ export class CoreController {
     }
 
 
-    @Post('clearTableColumnsCache')
+    @Post('clearCacheRedis')
     //@Auth()
     clearTableColumnsCache(
         @Body() _dtoIn: ServiceDto
     ) {
-        return this.service.clearTableColumnsCache();
+        return this.service.clearCacheRedis();
     }
 
     @Post('getTreeModel')

@@ -236,7 +236,7 @@ export class CoreService {
         return await this.dataSource.updateTableColumnsCache(dtoIn.tableName);
     }
 
-    async clearTableColumnsCache() {
+    async clearCacheRedis() {
         await this.dataSource.clearSchemaQueryCache();
         return await this.dataSource.clearTableColumnsCache();
     }

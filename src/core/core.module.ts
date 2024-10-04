@@ -4,7 +4,7 @@ import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
 import { ErrorsModule } from '../errors/errors.module';
 
-import { ChatbotModule } from './chatbot/chatbot.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { SistemaModule } from './sistema/sistema.module';
 
 import { InventarioModule } from './inventario/inventario.module';
@@ -12,7 +12,7 @@ import { VentasModule } from './ventas/ventas.module';
 import { ChartsModule } from './charts/charts.module';
 import { AuditModule } from './audit/audit.module';
 @Module({
-  imports: [ErrorsModule, AuditModule, ChatbotModule, ChartsModule,
+  imports: [ErrorsModule, AuditModule, WhatsappModule, ChartsModule,
     InventarioModule, SistemaModule, VentasModule],
   providers: [DataSourceService, CoreService],
   exports: [DataSourceService],

@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { ChatbotService } from './chatbot.service';
+import { WhatsappService } from './whatsapp.service';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
 
-@Controller('chatbot')
-export class ChatbotController {
-  constructor(private readonly service: ChatbotService) { }
+@Controller('whatsapp')
+export class WhatsappController {
+  constructor(private readonly service: WhatsappService) { }
 
   @Post('activarNumero')
   // @Auth()

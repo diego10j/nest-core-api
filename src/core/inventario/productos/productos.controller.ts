@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
+import { ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ProductosService } from './productos.service';
-
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 // import { Auth } from '../../../core/auth/decorators';
@@ -11,6 +11,10 @@ import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
+import { StockProductosDto } from './dto/stock-productos.dto';
+
+
+@ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
 export class ProductosController {
   constructor(private readonly service: ProductosService) { }
@@ -22,6 +26,14 @@ export class ProductosController {
     @Body() dtoIn: ServiceDto
   ) {
     return this.service.getProductos(dtoIn);
+  }
+
+  @Post('getStockProductos')
+  // @Auth()
+  getStockProductos(
+    @Body() dtoIn: StockProductosDto
+  ) {
+    return this.service.getStockProductos(dtoIn);
   }
 
   @Post('getProducto')

@@ -7,13 +7,14 @@ import { AxiosRequestConfig } from 'axios';
 import { lastValueFrom } from 'rxjs';
 import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
 import { getCurrentDateTime } from '../../util/helpers/date-util';
+import { envs } from 'src/config/envs';
 
 @Injectable()
-export class ChatbotService {
+export class WhatsappService {
 
     private WHATSAPP_ID: string;
     private WHATSAPP_TOKEN: string;
-    private readonly logger = new Logger(ChatbotService.name);
+    private readonly logger = new Logger(WhatsappService.name);
     private tableName = 'cha_mensajes';
     private primaryKey = 'ide_chmen';
 
@@ -21,8 +22,8 @@ export class ChatbotService {
         private readonly dataSource: DataSourceService
     ) {
         // Recupera valores variables de entorno
-        this.WHATSAPP_ID = process.env.WHATSAPP_API_ID;
-        this.WHATSAPP_TOKEN = process.env.WHATSAPP_API_TOKEN;
+        this.WHATSAPP_ID = envs.whatsappApiId
+        this.WHATSAPP_TOKEN = envs.whatsappApiToken
     }
 
     /**

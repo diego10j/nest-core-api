@@ -2,10 +2,11 @@ import { toString } from './common-util';
 import { parse, format, getTime, addDays, isValid, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toTitleCase } from './string-util';
+import { envs } from 'src/config/envs';
 
-export const FORMAT_DATE_BD = (): string => process.env.FORMAT_DATE_BD;  // yyyy-MM-dd
-export const FORMAT_TIME_BD = (): string => process.env.FORMAT_TIME_BD;
-export const FORMAT_DATETIME_DB = (): string => process.env.FORMAT_DATE_BD + " " + process.env.FORMAT_TIME_BD;
+export const FORMAT_DATE_BD = (): string => envs.formatDateBd;  // yyyy-MM-dd
+export const FORMAT_TIME_BD = (): string => envs.formatTimeBd;
+export const FORMAT_DATETIME_DB = (): string => envs.formatDateBd + " " + envs.formatTimeBd;
 export const FORMAT_DATE_FRONT = (): string => "dd/MM/yyyy";
 export const FORMAT_DATETIME_FRONT = (): string => "dd/MM/yyyy HH:mm:ss";
 

@@ -16,8 +16,7 @@ import { UuidDto } from '../../../common/dto/uuid.dto';
 import { fNumber } from 'src/util/helpers/number-util';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
-
-
+import { StockProductosDto } from './dto/stock-productos.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -35,71 +34,93 @@ export class ProductosService extends BaseService {
         ]).then(result => {
             this.variables = result;
         });
+    }
 
+
+    /**
+         * Retorna el listado de Productos
+         * @returns 
+         */
+    async getProductos(dtoIn: ServiceDto) {
+
+        const query = new SelectQuery(`
+        SELECT
+            ARTICULO.ide_inarti,
+            ARTICULO.uuid,
+            ARTICULO.nombre_inarti,
+            nombre_incate,
+            ARTICULO.codigo_inarti,
+            ARTICULO.foto_inarti,
+            UNIDAD.siglas_inuni,
+            ARTICULO.activo_inarti
+        FROM
+            inv_articulo ARTICULO
+            LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
+            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
+        WHERE
+            ARTICULO.ide_intpr = 1 -- solo productos
+            AND ARTICULO.nivel_inarti = 'HIJO'
+            AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
+        ORDER BY
+            ARTICULO.nombre_inarti;
+`, dtoIn);
+
+        return await this.dataSource.createQuery(query);
     }
 
     /**
      * Retorna el listado de Productos
      * @returns 
      */
-    async getProductos(dtoIn: ServiceDto) {
+    async getStockProductos(dtoIn: StockProductosDto) {
+
+        const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
+
+        const conditionStock = dtoIn.isStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
 
         const query = new SelectQuery(`
-    WITH existencia_cte AS (
+        WITH existencia_cte AS (
+            SELECT
+                dci.ide_inarti,
+                SUM(cantidad_indci * signo_intci) AS existencia
+            FROM
+                inv_det_comp_inve dci
+                LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            WHERE
+                ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                and dci.ide_empr = ${dtoIn.ideEmpr}
+                and fecha_trans_incci <= $1
+            GROUP BY
+                dci.ide_inarti
+        )
         SELECT
-            dci.ide_inarti,
-            SUM(cantidad_indci * signo_intci) AS existencia
+            ARTICULO.ide_inarti,
+            '${getDateFormat(fechaCorte)}' as fecha_corte,
+            ARTICULO.uuid,
+            ARTICULO.nombre_inarti,
+            nombre_incate,
+            ARTICULO.codigo_inarti,
+            COALESCE(existencia_cte.existencia, 0) AS existencia,
+            UNIDAD.siglas_inuni
         FROM
-            inv_det_comp_inve dci
-            LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-            LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-            LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            inv_articulo ARTICULO
+            LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
+            LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
+            LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
+            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
         WHERE
-            ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-            and dci.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY
-            dci.ide_inarti
-    ),
-    precio_cte AS (
-        SELECT
-            ide_inarti,
-            precio_cpdfa,
-            fecha_emisi_cpcfa,
-            ROW_NUMBER() OVER (PARTITION BY ide_inarti ORDER BY fecha_emisi_cpcfa DESC) AS rn
-        FROM
-            cxp_detall_factur a
-            INNER JOIN cxp_cabece_factur ON a.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
-        WHERE
-            ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
-            and a.ide_empr = ${dtoIn.ideEmpr}
-    )
-    SELECT
-        ARTICULO.ide_inarti,
-        ARTICULO.uuid,
-        ARTICULO.nombre_inarti,
-        nombre_incate,
-        ARTICULO.codigo_inarti,
-        ARTICULO.foto_inarti,
-        COALESCE(existencia_cte.existencia, 0) AS existencia,
-        UNIDAD.siglas_inuni,
-        precio_cte.precio_cpdfa AS precio_compra,
-        precio_cte.fecha_emisi_cpcfa AS fecha_compra,
-        ARTICULO.activo_inarti
-    FROM
-        inv_articulo ARTICULO
-        LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
-        LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
-        LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
-        LEFT JOIN precio_cte ON ARTICULO.ide_inarti = precio_cte.ide_inarti AND precio_cte.rn = 1
-        LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
-    WHERE
-        ARTICULO.ide_intpr = 1 -- solo productos
-        AND ARTICULO.nivel_inarti = 'HIJO'
-        AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
-    ORDER BY
-        ARTICULO.nombre_inarti;
+            ARTICULO.ide_intpr = 1 -- solo productos
+            AND ARTICULO.nivel_inarti = 'HIJO'
+            AND hace_kardex_inarti = true
+            AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
+            AND activo_inarti = true
+           ${conditionStock} -- Filtro de existencia mayor a 0
+        ORDER BY
+            nombre_incate,ARTICULO.nombre_inarti;
     `, dtoIn);
-
+        query.addDateParam(1, fechaCorte);
         return await this.dataSource.createQuery(query);
     }
 
@@ -1203,10 +1224,7 @@ export class ProductosService extends BaseService {
      */
     async getStock(ide_inarti: number, fechaCorte?: Date): Promise<number> {
         let saldoInicial = 0;
-        let fecha = new Date();
-        if (fechaCorte) {
-            fecha = fechaCorte;
-        }
+        const fecha = fechaCorte ? fechaCorte : new Date();
         const querySaldoInicial = new SelectQuery(`     
         SELECT sum(cantidad_indci *signo_intci) as saldo
         FROM

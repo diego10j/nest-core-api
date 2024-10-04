@@ -9,17 +9,18 @@ import { getCountStringInText } from '../../util/helpers/string-util';
 import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
+import { envs } from 'src/config/envs';
 
 @Injectable()
 export class DataSourceService {
 
 
     private pool = new Pool({
-        user: process.env.DB_USERNAME,
-        host: process.env.DB_HOST,
-        database: process.env.DB_NAME,
-        password: process.env.DB_PASSWORD,
-        port: process.env.DB_PORT,
+        user: envs.dbUsername,
+        host: envs.dbHost,
+        database: envs.dbName,
+        password: envs.dbPassword,
+        port: envs.dbPort,
     });
     private TYPE_DATESTAMP = 1082;
     private TYPE_TIMESTAMP = 1114;

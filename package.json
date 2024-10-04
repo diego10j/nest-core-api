@@ -30,11 +30,13 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/serve-static": "^4.0.0",
+    "@nestjs/swagger": "^7.4.2",
     "axios": "^1.6.4",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "date-fns": "^2.30.0",
+    "dotenv": "^16.4.5",
     "ioredis": "^5.4.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -43,7 +45,8 @@
     "rimraf": "^5.0.5",
     "rxjs": "^7.8.1",
     "uuid": "^9.0.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",
