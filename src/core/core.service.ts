@@ -120,7 +120,7 @@ export class CoreService {
     }
 
     /**
-     * Guarda el listado de objetos 
+     * Guarda el listado de objetos query
      * @param listDto 
      * @returns 
      */

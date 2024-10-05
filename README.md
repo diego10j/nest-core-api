@@ -17,8 +17,7 @@ docker-compose up -d
 6. Levantar: ```yarn start:dev```
 
 
-# Dep
-
+# Added extra dependencies
 yarn add @nestjs/swagger
 yarn add dotenv
 yarn add zod
