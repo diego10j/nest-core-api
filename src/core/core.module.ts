@@ -11,9 +11,10 @@ import { InventarioModule } from './inventario/inventario.module';
 import { VentasModule } from './ventas/ventas.module';
 import { ChartsModule } from './charts/charts.module';
 import { AuditModule } from './audit/audit.module';
+import { GptModule } from './gpt/gpt.module';
 @Module({
   imports: [ErrorsModule, AuditModule, WhatsappModule, ChartsModule,
-    InventarioModule, SistemaModule, VentasModule],
+    InventarioModule, SistemaModule, VentasModule, GptModule],
   providers: [DataSourceService, CoreService],
   exports: [DataSourceService],
   controllers: [CoreController],

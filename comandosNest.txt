@@ -13,14 +13,16 @@ nest g resource core/whatsapp --dry-run
 
 nest g resource core/sistema/usuarios --dry-run
 
-nest g resource core/sistema/calendario -—spec=false
+nest g resource core/sistema/calendario --no-spec
 
-nest g resource core/sistema/admin -—spec=false
-nest g resource core/sistema/general -—spec=false
+nest g resource core/sistema/admin --no-spec
+nest g resource core/sistema/general --no-spec
 
 nest g resource core/inventario/bodegas
 
-yarn add ioredis
+nest g resource core/gpt --no-spec
+
+
 
 nest g module redis --dry-run
 

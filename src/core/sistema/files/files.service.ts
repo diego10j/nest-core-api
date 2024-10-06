@@ -125,7 +125,7 @@ export class FilesService {
             }
             else {
                 obj.type = getExtensionFile(obj.name);; // getFileType(obj.type_arch);
-                obj.url = `${HOST_API()}/api/files/downloadFile/${obj.id}.${obj.type}`;
+                obj.url = `${HOST_API()}/api/sistema/files/downloadFile/${obj.id}.${obj.type}`;
             }
             obj.tags = [];
             obj.shared = [];

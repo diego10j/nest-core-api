@@ -14,6 +14,6 @@ export class StockProductosDto extends ServiceDto {
 
     @IsBoolean()
     @IsOptional()
-    isStock?: boolean = true;
+    onlyStock?: boolean = true;
 
 }

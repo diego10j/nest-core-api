@@ -1,4 +1,4 @@
-import { fShortDate, getDateFormat } from 'src/util/helpers/date-util';
+import { fShortDate, fDate, getDateFormatFront } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -9,7 +9,6 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { BaseService } from '../../../common/base-service';
-import { getDateFormatFront } from 'src/util/helpers/date-util';
 import { AuditService } from '../../audit/audit.service';
 import { formatBarChartData, formatPieChartData } from '../../../util/helpers/charts-utils';
 import { UuidDto } from '../../../common/dto/uuid.dto';
@@ -73,10 +72,8 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getStockProductos(dtoIn: StockProductosDto) {
-
         const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
-
-        const conditionStock = dtoIn.isStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
+        const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
 
         const query = new SelectQuery(`
         WITH existencia_cte AS (
@@ -90,39 +87,62 @@ export class ProductosService extends BaseService {
                 LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
             WHERE
                 ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-                and dci.ide_empr = ${dtoIn.ideEmpr}
-                and fecha_trans_incci <= $1
+                AND dci.ide_empr = ${dtoIn.ideEmpr}
+                AND fecha_trans_incci <= $1
             GROUP BY
                 dci.ide_inarti
         )
         SELECT
             ARTICULO.ide_inarti,
-            '${getDateFormat(fechaCorte)}' as fecha_corte,
+            '${fDate(fechaCorte)}' AS fecha_corte,
             ARTICULO.uuid,
             ARTICULO.nombre_inarti,
             nombre_incate,
             ARTICULO.codigo_inarti,
             COALESCE(existencia_cte.existencia, 0) AS existencia,
-            UNIDAD.siglas_inuni
+            UNIDAD.siglas_inuni,
+            
+            -- Calcular detalle_stock
+            CASE
+                WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'SIN STOCK'
+                WHEN ARTICULO.cant_stock1_inarti IS NULL AND ARTICULO.cant_stock2_inarti IS NULL THEN 'EN STOCK'
+                WHEN COALESCE(existencia_cte.existencia, 0) > COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK EXTRA'
+                WHEN COALESCE(existencia_cte.existencia, 0) = COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK IDEAL'
+                WHEN COALESCE(existencia_cte.existencia, 0) BETWEEN COALESCE(ARTICULO.cant_stock1_inarti, 0) AND COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK ÓPTIMO'
+                WHEN COALESCE(existencia_cte.existencia, 0) < COALESCE(ARTICULO.cant_stock1_inarti, 0) THEN 'STOCK BAJO'
+                ELSE 'EN STOCK'
+            END AS detalle_stock,
+    
+            -- Calcular color_stock
+            CASE
+                WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'error.main'
+                WHEN COALESCE(existencia_cte.existencia, 0) < COALESCE(ARTICULO.cant_stock1_inarti, 0) THEN 'warning.main'
+                ELSE 'success.main'
+            END AS color_stock,
+            ARTICULO.cant_stock1_inarti AS stock_minimo,
+            ARTICULO.cant_stock2_inarti AS stock_ideal
+    
         FROM
             inv_articulo ARTICULO
             LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
             LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
             LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
-            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
+            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate = c.ide_incate
         WHERE
             ARTICULO.ide_intpr = 1 -- solo productos
             AND ARTICULO.nivel_inarti = 'HIJO'
             AND hace_kardex_inarti = true
             AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
             AND activo_inarti = true
-           ${conditionStock} -- Filtro de existencia mayor a 0
+            ${conditionStock} -- Filtro de existencia mayor a 0
         ORDER BY
-            nombre_incate,ARTICULO.nombre_inarti;
-    `, dtoIn);
+            nombre_incate, ARTICULO.nombre_inarti;
+        `, dtoIn);
+
         query.addDateParam(1, fechaCorte);
         return await this.dataSource.createQuery(query);
     }
+
 
 
     async getProductosPorNombre(dtoIn: BusquedaPorNombreDto) {
@@ -240,27 +260,28 @@ export class ProductosService extends BaseService {
 
             // Stock
             const stock = await this.getStock(ide_inarti);
-            const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : 0;
-            const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : 0;
-            let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
+            const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : null;
+            const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : null;
 
+            let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
             let color_stock = stock > 0 ? 'success.main' : 'error.main';
-            if (stockMinimo !== 0) {
-                // stock minimo
-                detalle_stock = stock < stockMinimo && 'STOCK BAJO';
-                color_stock = 'warning.main';
-            }
-            if (stockIdeal !== 0) {
-                color_stock = 'success.main';
-                if (stock > stockIdeal) {
-                    // supera de stock ideal
-                    detalle_stock = 'STOCK EXTRA';
+
+            // Si hay valores definidos para stockMinimo o stockIdeal, se procede con las validaciones
+            if (stockMinimo !== null || stockIdeal !== null) {
+                if (stockMinimo !== null && stock < stockMinimo) {
+                    detalle_stock = 'STOCK BAJO';
+                    color_stock = 'warning.main';
                 }
-                else if (stock === stockIdeal) {
-                    detalle_stock = 'STOCK IDEAL';
-                }
-                else if (stock > stockMinimo && stock < stockIdeal) {
-                    detalle_stock = 'STOCK ÓPTIMO';
+
+                if (stockIdeal !== null) {
+                    color_stock = 'success.main';
+                    if (stock > stockIdeal) {
+                        detalle_stock = 'STOCK EXTRA';
+                    } else if (stock === stockIdeal) {
+                        detalle_stock = 'STOCK IDEAL';
+                    } else if (stock > stockMinimo && stock < stockIdeal) {
+                        detalle_stock = 'STOCK ÓPTIMO';
+                    }
                 }
             }
 
@@ -380,7 +401,7 @@ export class ProductosService extends BaseService {
                 -1 AS ide_indci,
                 saldo_inicial.ide_inarti,
                 NULL AS ide_incci,
-                '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_incci,
+                '${fDate(dtoIn.fechaInicio)}' AS fecha_trans_incci,
                 NULL AS NUM_DOCUMENTO,        
                 'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
                 'Saldo Inicial' AS nombre_intti,

@@ -25,6 +25,9 @@ interface EnvVars {
 
   WHATSAPP_API_ID: string;
   WHATSAPP_API_TOKEN: string;
+
+  OPENAI_API_KEY: string;
+  
 }
 
 const envsSchema = z.object({
@@ -58,6 +61,8 @@ const envsSchema = z.object({
 
   WHATSAPP_API_ID: z.string(),
   WHATSAPP_API_TOKEN: z.string(),
+
+  OPENAI_API_KEY: z.string(),
 }).passthrough();
 
 const result = envsSchema.safeParse(process.env);
@@ -92,4 +97,5 @@ export const envs = {
 
   whatsappApiId: envVars.WHATSAPP_API_ID,
   whatsappApiToken: envVars.WHATSAPP_API_TOKEN,
+  openaiApiKey: envVars.OPENAI_API_KEY,
 };

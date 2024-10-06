@@ -18,6 +18,9 @@ docker-compose up -d
 
 
 # Added extra dependencies
+yarn add ioredis
 yarn add @nestjs/swagger
 yarn add dotenv
 yarn add zod
+yarn add openai
+yarn add sharp

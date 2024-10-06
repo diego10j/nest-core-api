@@ -19,9 +19,9 @@ export const FORMAT_DATETIME_FRONT = (): string => "dd/MM/yyyy HH:mm:ss";
 type InputValue = Date | string | number | null | undefined;
 
 export function fDate(date: InputValue, newFormat?: string) {
-    const fm = newFormat || 'dd LLLL yyyy';  // dd MMM yyyy
+    const fm = newFormat || 'dd MMM yyyy';  // dd MMM yyyy
 
-    return date ? format(new Date(date), fm) : '';
+    return date ? toTitleCase(format(new Date(date), fm, { locale: es })) : '';
 }
 
 /**
