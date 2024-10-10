@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsInt, IsOptional, IsPositive } from 'class-validator';
+import { IsBoolean, IsDateString, ArrayNotEmpty, IsOptional, IsNotEmpty, IsArray } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
 export class StockProductosDto extends ServiceDto {
@@ -7,10 +7,12 @@ export class StockProductosDto extends ServiceDto {
     @IsOptional()
     fechaCorte?: Date;
 
-    @IsInt()
-    @IsPositive()
+
     @IsOptional()
-    ide_inbod?: number;
+    @ArrayNotEmpty()
+    @IsNotEmpty({ each: true })
+    @IsArray()
+    ide_inbod?: number[];
 
     @IsBoolean()
     @IsOptional()

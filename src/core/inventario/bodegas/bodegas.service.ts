@@ -7,7 +7,8 @@ import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { CoreService } from '../../core.service';
 import { IdeDto } from 'src/common/dto/ide.dto';
-
+import { StockProductosDto } from './dto/stock-productos.dto';
+import { fDate } from 'src/util/helpers/date-util';
 
 @Injectable()
 export class BodegasService extends BaseService {
@@ -133,6 +134,99 @@ export class BodegasService extends BaseService {
 
 
 
+    /**
+  * Retorna el listado de Stock de Productos 
+  * @returns 
+  */
+    async getStockProductos(dtoIn: StockProductosDto) {
+
+        let nombre_inbod = '';
+        // Obtiene nombre de las bodegas consultadas
+        if (dtoIn.ide_inbod) {
+            const queryBod = new SelectQuery(`
+            SELECT STRING_AGG(nombre_inbod, ', ') AS nombre_inbod
+            FROM inv_bodega bod
+            WHERE ide_inbod = ANY ($1)`);
+            queryBod.addParam(1, dtoIn.ide_inbod);
+            const res = await this.dataSource.createSingleQuery(queryBod);
+            nombre_inbod = res.nombre_inbod;
+        }
+
+        const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
+        const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
+        const conditionBodega = dtoIn.ide_inbod ? `AND cci.ide_inbod = ANY($2)` : '';
+
+        const query = new SelectQuery(`
+        WITH existencia_cte AS (
+            SELECT
+                dci.ide_inarti,
+                SUM(cantidad_indci * signo_intci) AS existencia                
+            FROM
+                inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            WHERE
+                ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                AND dci.ide_empr = ${dtoIn.ideEmpr}
+                ${conditionBodega}
+                AND fecha_trans_incci <= $1
+            GROUP BY
+                dci.ide_inarti
+        )
+        SELECT
+            ARTICULO.ide_inarti,
+            '${nombre_inbod}' as nombre_inbod,
+            ARTICULO.uuid,
+            ARTICULO.nombre_inarti,
+            nombre_incate,
+            ARTICULO.codigo_inarti,
+            COALESCE(existencia_cte.existencia, 0) AS existencia,
+            UNIDAD.siglas_inuni,            
+            -- Calcular detalle_stock
+            CASE
+                WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'SIN STOCK'
+                WHEN ARTICULO.cant_stock1_inarti IS NULL AND ARTICULO.cant_stock2_inarti IS NULL THEN 'EN STOCK'
+                WHEN COALESCE(existencia_cte.existencia, 0) > COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK EXTRA'
+                WHEN COALESCE(existencia_cte.existencia, 0) = COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK IDEAL'
+                WHEN COALESCE(existencia_cte.existencia, 0) BETWEEN COALESCE(ARTICULO.cant_stock1_inarti, 0) AND COALESCE(ARTICULO.cant_stock2_inarti, 0) THEN 'STOCK ÓPTIMO'
+                WHEN COALESCE(existencia_cte.existencia, 0) < COALESCE(ARTICULO.cant_stock1_inarti, 0) THEN 'STOCK BAJO'
+                ELSE 'EN STOCK'
+            END AS detalle_stock,    
+            -- Calcular color_stock
+            CASE
+                WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'error.main'
+                WHEN COALESCE(existencia_cte.existencia, 0) < COALESCE(ARTICULO.cant_stock1_inarti, 0) THEN 'warning.main'
+                ELSE 'success.main'
+            END AS color_stock,
+            ARTICULO.cant_stock1_inarti AS stock_minimo,
+            ARTICULO.cant_stock2_inarti AS stock_ideal,
+            '${fDate(fechaCorte)}' AS fecha_corte
+        FROM
+            inv_articulo ARTICULO
+            LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
+            LEFT JOIN inv_marca m ON ARTICULO.ide_inmar = m.ide_inmar
+            LEFT JOIN existencia_cte ON ARTICULO.ide_inarti = existencia_cte.ide_inarti
+            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate = c.ide_incate
+        WHERE
+            ARTICULO.ide_intpr = 1 -- solo productos
+            AND ARTICULO.nivel_inarti = 'HIJO'
+            AND hace_kardex_inarti = true
+            AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
+            AND activo_inarti = true
+            ${conditionStock} -- Filtro de existencia mayor a 0
+        ORDER BY
+            nombre_incate, ARTICULO.nombre_inarti;
+        `, dtoIn);
+
+        query.addDateParam(1, fechaCorte);
+        if (dtoIn.ide_inbod) {
+            query.addParam(2, dtoIn.ide_inbod);
+        }
+        return await this.dataSource.createQuery(query);
+    }
+
+
 
     // ==================================ListData==============================
     /**
@@ -144,5 +238,34 @@ export class BodegasService extends BaseService {
         return this.core.getListDataValues(dtoIn);
     }
 
+
+    async getListDataDetalleStock(_dto?: ServiceDto) {
+        return [
+            {
+                "value": 1,
+                "label": "EN STOCK"
+            },
+            {
+                "value": 2,
+                "label": "STOCK EXTRA"
+            },
+            {
+                "value": 3,
+                "label": "STOCK IDEAL"
+            },
+            {
+                "value": 4,
+                "label": "STOCK ÓPTIMO"
+            },
+            {
+                "value": 5,
+                "label": "STOCK BAJO"
+            },
+            {
+                "value": 6,
+                "label": "SIN STOCK"
+            }
+        ]
+    }
 
 }

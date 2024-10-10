@@ -5,6 +5,7 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { StockProductosDto } from './dto/stock-productos.dto';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
@@ -44,6 +45,15 @@ export class BodegasController {
   }
 
 
+  @Post('getStockProductos')
+  // @Auth()
+  getStockProductos(
+    @Body() dtoIn: StockProductosDto
+  ) {
+    return this.service.getStockProductos(dtoIn);
+  }
+
+
   @Post('getListDataBodegas')
   // @Auth()
   getListDataBodegas(
@@ -51,5 +61,14 @@ export class BodegasController {
   ) {
     return this.service.getListDataBodegas(dtoIn);
   }
+
+  @Post('getListDataDetalleStock')
+  // @Auth()
+  getListDataDetalleStock(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getListDataDetalleStock(dtoIn);
+  }
+
 
 }

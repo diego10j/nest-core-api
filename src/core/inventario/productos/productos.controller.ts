@@ -11,7 +11,7 @@ import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
-import { StockProductosDto } from './dto/stock-productos.dto';
+
 
 
 @ApiTags('Inventario-Productos')
@@ -28,13 +28,7 @@ export class ProductosController {
     return this.service.getProductos(dtoIn);
   }
 
-  @Post('getStockProductos')
-  // @Auth()
-  getStockProductos(
-    @Body() dtoIn: StockProductosDto
-  ) {
-    return this.service.getStockProductos(dtoIn);
-  }
+
 
   @Post('getProducto')
   // @Auth()
