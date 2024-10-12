@@ -587,7 +587,8 @@ export class DataSourceService {
                 align: alignColumn,
                 defaultValue,
                 header: _col.name,
-                accessorKey: _col.name
+                accessorKey: _col.name,
+                filterFn:'arrIncludesSome'
             };
         });
         // await this.redisClient.set(cacheKey, JSON.stringify(columns), 'EX', 3600); // Cache for 1 hour

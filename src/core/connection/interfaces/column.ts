@@ -24,4 +24,5 @@ export interface Column {
     align: string;
     header: string;
     accessorKey: string;
+    filterFn: string;
 }

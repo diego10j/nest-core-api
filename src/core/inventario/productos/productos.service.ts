@@ -50,8 +50,10 @@ export class ProductosService extends BaseService {
             nombre_incate,
             ARTICULO.codigo_inarti,
             ARTICULO.foto_inarti,
-            UNIDAD.siglas_inuni,
-            ARTICULO.activo_inarti
+            UNIDAD.nombre_inuni,
+            ARTICULO.activo_inarti,
+            otro_nombre_inarti,
+            ARTICULO.ide_incate
         FROM
             inv_articulo ARTICULO
             LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni

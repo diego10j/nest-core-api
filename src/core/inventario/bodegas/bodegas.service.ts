@@ -176,7 +176,6 @@ export class BodegasService extends BaseService {
         )
         SELECT
             ARTICULO.ide_inarti,
-            '${nombre_inbod}' as nombre_inbod,
             ARTICULO.uuid,
             ARTICULO.nombre_inarti,
             nombre_incate,
@@ -201,7 +200,10 @@ export class BodegasService extends BaseService {
             END AS color_stock,
             ARTICULO.cant_stock1_inarti AS stock_minimo,
             ARTICULO.cant_stock2_inarti AS stock_ideal,
-            '${fDate(fechaCorte)}' AS fecha_corte
+            '${fDate(fechaCorte)}' AS fecha_corte,
+            '${nombre_inbod}' as nombre_inbod,
+            otro_nombre_inarti,
+             ARTICULO.ide_incate
         FROM
             inv_articulo ARTICULO
             LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
