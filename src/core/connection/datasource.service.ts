@@ -6,7 +6,7 @@ import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { removeEqualsElements } from '../../util/helpers/array-util';
 import { getCurrentDateTime, getDateTimeFormat, getTimeFormat, getTimeISOFormat, getDateFormat } from '../../util/helpers/date-util';
 import { getCountStringInText } from '../../util/helpers/string-util';
-import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect } from '../../util/helpers/sql-util';
+import { getTypeCoreColumn, getAlignCoreColumn, getSizeCoreColumn, getDefaultValueColumn, getComponentColumn, getVisibleCoreColumn, getSqlInsert, getSqlUpdate, getSqlDelete, getSqlSelect, getTypeFilterColumn } from '../../util/helpers/sql-util';
 import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
 import { envs } from 'src/config/envs';
@@ -560,6 +560,7 @@ export class DataSourceService {
             if (index === 0) primaryKey = _col.name;
             const dataTypeCore = getTypeCoreColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
             const alignColumn = getAlignCoreColumn(dataTypeCore);
+            const filterType = getTypeFilterColumn(dataTypeCore);
             const [colSchema] = resSchema.filter(_element => _element['name'] === _col.name);
             const sizeColumn = getSizeCoreColumn(dataTypeCore, colSchema?.length || 0);
             const defaultValue = getDefaultValueColumn(Object.keys(typesCols).find(key => typesCols[key] === _col.dataTypeID));
@@ -588,7 +589,7 @@ export class DataSourceService {
                 defaultValue,
                 header: _col.name,
                 accessorKey: _col.name,
-                filterFn:'arrIncludesSome'
+                filterFn: filterType
             };
         });
         // await this.redisClient.set(cacheKey, JSON.stringify(columns), 'EX', 3600); // Cache for 1 hour

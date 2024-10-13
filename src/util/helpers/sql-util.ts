@@ -211,6 +211,21 @@ export function getAlignCoreColumn(nameType: string) {
     return alignmentMap[nameType] || "left";
 }
 
+export function getTypeFilterColumn(nameType: string) {
+    // Diccionario para mapear tipos de datos filtrofn
+    const filerMap: { [key: string]: string } = {
+        'String': "arrIncludesSome",
+        'Date': "arrIncludesSome",
+        'Time': "arrIncludesSome",
+        'DateTime': "arrIncludesSome",
+        'Number': "numberFilterFn",
+        'Integer': "numberFilterFn",
+        'Boolean': "booleanFilterFn"
+    };
+
+    return filerMap[nameType] || "arrIncludesSome";
+}
+
 export function getSizeCoreColumn(nameType: string, length: number): number {
     const minSize = ['Date', 'Time', 'Boolean'];
     const medSize = ['DateTime', 'Number', 'Integer'];
