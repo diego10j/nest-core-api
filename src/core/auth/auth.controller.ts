@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { ServiceDto } from '../../common/dto/service.dto';
 import { Auth, GetUser } from './decorators';
+import { HorarioLoginDto } from './dto/horario-login';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -31,6 +32,16 @@ export class AuthController {
     ) {
         return this.authService.getMenuByRol(serviceDto);
     }
+
+    @Post('validarHorarioLogin')
+    // @Auth()
+    validarHorarioLogin(
+        @Body() serviceDto: HorarioLoginDto
+    ) {
+        return this.authService.validarHorarioLogin(serviceDto);
+    }
+
+
 
 
     @Post('logout')

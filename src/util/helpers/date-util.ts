@@ -172,3 +172,7 @@ export function getCurrentDateTime(newFormat?: string): string {
     return getDateTimeFormat(new Date(), newFormat);
 }
 
+export function getDayNumber(date?: InputValue): number {
+    const day = format(new Date(date || new Date()), 'i');
+    return parseInt(day, 10);
+}

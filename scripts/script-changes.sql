@@ -511,3 +511,154 @@ ON inv_articulo (immutable_unaccent_replace(nombre_inarti));
 
 CREATE INDEX idx_immutable_unaccent_replace_otro_nombre_inarti
 ON inv_articulo (immutable_unaccent_replace(otro_nombre_inarti));
+
+
+// 17 Oct 2024
+// Horarios login
+
+CREATE TABLE sis_tipo_horario (
+    ide_tihor int PRIMARY KEY ,
+	nombre_tihor  VARCHAR(80),
+    activo_tihor bool,
+	ide_empr     	int NULL,
+	ide_sucu     	int NULL,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+
+   );
+ALTER TABLE public.sis_tipo_horario
+	ADD CONSTRAINT sis_tipo_horario_ide_sucu_fkey
+	FOREIGN KEY(ide_sucu)
+	REFERENCES public.sis_sucursal(ide_sucu)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_tipo_horario
+	ADD CONSTRAINT sis_tipo_horario_ide_empr_fkey
+	FOREIGN KEY(ide_empr)
+	REFERENCES public.sis_empresa(ide_empr)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+
+INSERT INTO "public"."sis_tipo_horario" ("ide_tihor", "nombre_tihor", "activo_tihor", "ide_empr", "ide_sucu") VALUES
+(1, 'HORARIO ADMIN', 't', 0, 2);
+
+CREATE TABLE sis_horario (
+    ide_hora int PRIMARY KEY ,
+	ide_tihor int ,
+	dia_hora  int,
+	hora_inicio_hora time,
+	hora_fin_hora time,
+    activo_hora bool,
+	ide_empr     	int NULL,
+	ide_sucu     	int NULL,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+
+   );
+ALTER TABLE public.sis_horario
+	ADD CONSTRAINT sis_horario_ide_tihor_fkey
+	FOREIGN KEY(ide_tihor)
+	REFERENCES public.sis_tipo_horario(ide_tihor)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_horario
+	ADD CONSTRAINT sis_horario_ide_sucu_fkey
+	FOREIGN KEY(ide_sucu)
+	REFERENCES public.sis_sucursal(ide_sucu)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_horario
+	ADD CONSTRAINT sis_horario_ide_empr_fkey
+	FOREIGN KEY(ide_empr)
+	REFERENCES public.sis_empresa(ide_empr)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (1, 1, 1, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (2, 1, 2, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (3, 1, 3, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (4, 1, 4, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (5, 1, 5, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (6, 1, 6, '00:00:00', '23:59:59', 't', 0,2);
+INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (7, 1, 7, '00:00:00', '23:59:59', 't', 0,2);
+
+CREATE TABLE sis_usuario_perfil (
+	ide_usper int PRIMARY KEY ,
+	ide_usua  int,
+    ide_perf  int,
+	ide_tihor int,
+	extra_util_usper bool DEFAULT false,
+	activo_usper bool,
+	ide_empr     	int NULL,
+	ide_sucu     	int NULL,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+   );
+ALTER TABLE public.sis_usuario_perfil
+	ADD CONSTRAINT sis_usuario_perfil_ide_usua_fkey
+	FOREIGN KEY(ide_usua)
+	REFERENCES public.sis_usuario(ide_usua)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_usuario_perfil
+	ADD CONSTRAINT sis_usuario_perfil_ide_perf_fkey
+	FOREIGN KEY(ide_perf)
+	REFERENCES public.sis_perfil(ide_perf)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_usuario_perfil
+	ADD CONSTRAINT sis_usuario_perfil_ide_tihor_fkey
+	FOREIGN KEY(ide_tihor)
+	REFERENCES public.sis_tipo_horario(ide_tihor)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_usuario_perfil
+	ADD CONSTRAINT sis_usuario_perfil_ide_sucu_fkey
+	FOREIGN KEY(ide_sucu)
+	REFERENCES public.sis_sucursal(ide_sucu)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+ALTER TABLE public.sis_usuario_perfil
+	ADD CONSTRAINT sis_usuario_perfil_ide_empr_fkey
+	FOREIGN KEY(ide_empr)
+	REFERENCES public.sis_empresa(ide_empr)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT 
+GO
+
+--ROLES ADMIN
+INSERT INTO "public"."sis_usuario_perfil" ("ide_usper", "ide_usua", "ide_perf", "ide_tihor", "activo_usper", "ide_empr", "ide_sucu") VALUES (1, 0, 0, 1, 't', 0, 2);
+INSERT INTO "public"."sis_usuario_perfil" ("ide_usper", "ide_usua", "ide_perf", "ide_tihor", "activo_usper", "ide_empr", "ide_sucu") VALUES (2, 11, 0, 1, 't', 0, 2);
+
+--sis_usuario_sucursal
+ALTER TABLE sis_usuario_sucursal ADD COLUMN activo_ussu bool DEFAULT true;
+ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_actua TIMESTAMP DEFAULT;
+
