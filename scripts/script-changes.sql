@@ -534,17 +534,14 @@ ALTER TABLE public.sis_tipo_horario
 	REFERENCES public.sis_sucursal(ide_sucu)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_tipo_horario
 	ADD CONSTRAINT sis_tipo_horario_ide_empr_fkey
 	FOREIGN KEY(ide_empr)
 	REFERENCES public.sis_empresa(ide_empr)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
-
+	ON UPDATE RESTRICT ;
 INSERT INTO "public"."sis_tipo_horario" ("ide_tihor", "nombre_tihor", "activo_tihor", "ide_empr", "ide_sucu") VALUES
 (1, 'HORARIO ADMIN', 't', 0, 2);
 
@@ -569,24 +566,21 @@ ALTER TABLE public.sis_horario
 	REFERENCES public.sis_tipo_horario(ide_tihor)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_horario
 	ADD CONSTRAINT sis_horario_ide_sucu_fkey
 	FOREIGN KEY(ide_sucu)
 	REFERENCES public.sis_sucursal(ide_sucu)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_horario
 	ADD CONSTRAINT sis_horario_ide_empr_fkey
 	FOREIGN KEY(ide_empr)
 	REFERENCES public.sis_empresa(ide_empr)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 
 INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (1, 1, 1, '00:00:00', '23:59:59', 't', 0,2);
 INSERT INTO "public"."sis_horario" ("ide_hora", "ide_tihor", "dia_hora", "hora_inicio_hora", "hora_fin_hora", "activo_hora", "ide_empr", "ide_sucu") VALUES (2, 1, 2, '00:00:00', '23:59:59', 't', 0,2);
@@ -616,40 +610,35 @@ ALTER TABLE public.sis_usuario_perfil
 	REFERENCES public.sis_usuario(ide_usua)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_usuario_perfil
 	ADD CONSTRAINT sis_usuario_perfil_ide_perf_fkey
 	FOREIGN KEY(ide_perf)
 	REFERENCES public.sis_perfil(ide_perf)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_usuario_perfil
 	ADD CONSTRAINT sis_usuario_perfil_ide_tihor_fkey
 	FOREIGN KEY(ide_tihor)
 	REFERENCES public.sis_tipo_horario(ide_tihor)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_usuario_perfil
 	ADD CONSTRAINT sis_usuario_perfil_ide_sucu_fkey
 	FOREIGN KEY(ide_sucu)
 	REFERENCES public.sis_sucursal(ide_sucu)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.sis_usuario_perfil
 	ADD CONSTRAINT sis_usuario_perfil_ide_empr_fkey
 	FOREIGN KEY(ide_empr)
 	REFERENCES public.sis_empresa(ide_empr)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 
 --ROLES ADMIN
 INSERT INTO "public"."sis_usuario_perfil" ("ide_usper", "ide_usua", "ide_perf", "ide_tihor", "activo_usper", "ide_empr", "ide_sucu") VALUES (1, 0, 0, 1, 't', 0, 2);
@@ -660,5 +649,5 @@ ALTER TABLE sis_usuario_sucursal ADD COLUMN activo_ussu bool DEFAULT true;
 ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_actua varchar(50); 
-ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_actua TIMESTAMP DEFAULT;
+ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_actua TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 

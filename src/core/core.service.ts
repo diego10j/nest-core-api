@@ -45,9 +45,10 @@ export class CoreService {
         const pgq = new SelectQuery(`        
         SELECT ${selectedColumns} 
         FROM ${tableName} 
-        WHERE ide_empr = ${dto.ideEmpr} AND ${whereClause} 
+        WHERE 1=1 AND ${whereClause} 
         ORDER BY ${orderByClause}    
         `, dto);
+        // ide_empr = ${dto.ideEmpr} AND 
         const result = await this.dataSource.createQuery(pgq, true, tableName);
         result.key = primaryKey;
         result.ref = tableName;

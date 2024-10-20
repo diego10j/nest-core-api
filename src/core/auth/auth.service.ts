@@ -12,7 +12,8 @@ import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { toTitleCase } from '../../util/helpers/string-util';
 import { getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
-import { HorarioLoginDto } from './dto/horario-login';
+import { HorarioLoginDto } from './dto/horario-login.dto';
+import { MenuRolDto } from './dto/menu-rol.dto';
 
 @Injectable()
 export class AuthService {
@@ -164,7 +165,7 @@ export class AuthService {
      * @param ide_perf 
      * @returns 
      */
-    async getMenuByRol(dtoIn: ServiceDto) {
+    async getMenuByRol(dtoIn: MenuRolDto) {
         const selectQueryMenu = new SelectQuery(`
         WITH RECURSIVE RecursiveMenu AS (
             SELECT
@@ -224,7 +225,7 @@ export class AuthService {
         ORDER BY
             rm.parent_id, rm.nom_opci  
         `);
-        selectQueryMenu.addNumberParam(1, dtoIn.idePerf);
+        selectQueryMenu.addNumberParam(1, dtoIn.ide_perf);
         const data = await this.dataSource.createSelectQuery(selectQueryMenu);
         // Estructurar los datos en formato jerárquico
         const menuMap = new Map<number, any>();
@@ -259,47 +260,7 @@ export class AuthService {
             }
         }
 
-        return [
-            {
-                subheader: "overview",
-                items: [
-                    {
-                        title: "app",
-                        path: "/dashboard",
-                    },
-                    {
-                        title: "calendar",
-                        path: "/dashboard/calendar",
-                    },
-                    {
-                        title: "file",
-                        path: "/dashboard/file-manager",
-                    }
-                ]
-            },
-            {
-                subheader: "Menu general",
-                items: [
-                    {
-                        title: "administrador",
-                        path: "/dashboard/sistema",
-                        children: [{
-                            title: "sistemas",
-                            path: "/dashboard/sistema/simple",
-                        },
-                        {
-                            title: "empresas",
-                            path: "/dashboard/sistema/empresa",
-                        },
-                        {
-                            title: "sucursales",
-                            path: "/dashboard/sistema/sucursal",
-                        }]
-                    }
-                ]
-            },
-        ]
-
+        return this.getMenuApp();
         // return [{
         //     subheader: 'Menu general',
         //     items: rootItems
@@ -436,6 +397,111 @@ export class AuthService {
     private getJwtToken(payload: JwtPayload) {
         const token = this.jwtService.sign(payload);
         return token;
+    }
+
+
+    private getMenuApp() {
+        return [
+            {
+                "subheader": "Overview",
+                "items": [
+                    {
+                        "title": "App",
+                        "path": "/dashboard",
+                        "icon": "carbon:dashboard"
+                    },
+                    {
+                        "title": "Drive",
+                        "path": "/dashboard/file-manager",
+                        "icon": "solar:flash-drive-linear"
+                    },
+                    {
+                        "title": "Calendario",
+                        "path": "/dashboard/calendar",
+                        "icon": "mdi:calendar-month-outline"
+                    }
+                ]
+            },
+            {
+                "subheader": "Management",
+                "items": [
+                    {
+                        "title": "Administración",
+                        "path": "/dashboard/sistema",
+                        "icon": "clarity:administrator-solid",
+                        "children": [
+                            {
+                                "title": "Empresa",
+                                "path": "/dashboard/sistema/empresa"
+                            },
+                            {
+                                "title": "Sucursales",
+                                "path": "/dashboard/sistema/sucursal"
+                            },
+                            {
+                                "title": "Usuarios",
+                                "path": "/dashboard/usuarios/list"
+                            },
+                            {
+                                "title": "Sistemas",
+                                "path": "/dashboard/sistema/sistemas"
+                            },
+                            {
+                                "title": "Opciones",
+                                "path": "/dashboard/sistema/opciones"
+                            }
+                        ]
+                    },
+                    {
+                        "title": "Seguridad",
+                        "path": "/dashboard/seguridad",
+                        "icon": "mage:security-shield-fill",
+                        "children": [
+                            {
+                                "title": "Tipos de Horarios",
+                                "path": "/dashboard/seguridad/tipo-horario"
+                            },
+                            {
+                                "title": "Horarios",
+                                "path": "/dashboard/seguridad/horarios"
+                            },
+                            {
+                                "title": "Perfiles",
+                                "path": "/dashboard/seguridad/perfiles"
+                            },
+                            {
+                                "title": "Opciones Perfil",
+                                "path": "/dashboard/seguridad/perfil-opcion"
+                            }
+                        ]
+                    },
+                    {
+                        "title": "Inventario",
+                        "path": "/dashboard/inventario",
+                        "icon": "fluent-mdl2:product-variant",
+                        "children": [
+                            {
+                                "title": "Productos",
+                                "path": "/dashboard/productos/list"
+                            },
+                            {
+                                "title": "Bodegas",
+                                "path": "/dashboard/bodegas/list"
+                            },
+                            {
+                                "title": "Movimientos",
+                                "path": "/dashboard/bodegas/trn"
+                            },
+                            {
+                                "title": "Stock",
+                                "path": "/dashboard/bodegas/stock"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+
     }
 
 

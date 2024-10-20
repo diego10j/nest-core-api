@@ -4,7 +4,8 @@ import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { ServiceDto } from '../../common/dto/service.dto';
 import { Auth, GetUser } from './decorators';
-import { HorarioLoginDto } from './dto/horario-login';
+import { HorarioLoginDto } from './dto/horario-login.dto';
+import { MenuRolDto } from './dto/menu-rol.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -28,7 +29,7 @@ export class AuthController {
     @Post('getMenuByRol')
     @Auth()
     getMenu(
-        @Body() serviceDto: ServiceDto
+        @Body() serviceDto: MenuRolDto
     ) {
         return this.authService.getMenuByRol(serviceDto);
     }
