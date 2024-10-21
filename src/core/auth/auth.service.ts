@@ -113,7 +113,8 @@ export class AuthService {
                     {
                         ide_empr: Number.parseInt(dataPass.ide_empr),
                         nom_empr: dataPass.nom_empr,
-                        logo_empr: dataPass.logo_empr
+                        logo_empr: dataPass.logo_empr,
+                        identificacion_empr: dataPass.identificacion_empr
                     }
                 ],
                 roles: ['user']
@@ -320,6 +321,7 @@ export class AuthService {
             a.avatar_usua,
             a.nick_usua,
             e.nom_empr,
+            e.identificacion_empr,
             e.logo_empr,
             f.fecha_auac,
             f.ip_auac,
@@ -403,7 +405,7 @@ export class AuthService {
     private getMenuApp() {
         return [
             {
-                "subheader": "Overview",
+                "subheader": "General",
                 "items": [
                     {
                         "title": "App",
@@ -423,7 +425,7 @@ export class AuthService {
                 ]
             },
             {
-                "subheader": "Management",
+                "subheader": "Módulos",
                 "items": [
                     {
                         "title": "Administración",

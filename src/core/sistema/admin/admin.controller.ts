@@ -97,4 +97,32 @@ export class AdminController {
     return this.adminService.getPerfilesSistema(dtoIn);
   }
 
+  // -------------------------------- HORARIOS ---------------------------- //
+
+  @Post('getListDataTiposHorario')
+  // @Auth()
+  getListDataTiposHorario(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.adminService.getListDataTiposHorario(dtoIn);
+  }
+
+  @Post('getTableQueryTiposHorario')
+  // @Auth()
+  getTableQueryTiposHorario(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.adminService.getTableQueryTiposHorario(dtoIn);
+  }
+
+
+  @Post('getTableQueryHorario')
+  // @Auth()
+  getTableQueryHorario(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.adminService.getTableQueryHorario(dtoIn);
+  }
+
+
 }

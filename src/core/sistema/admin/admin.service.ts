@@ -27,24 +27,28 @@ export class AdminService {
 
     // -------------------------------- SUCURSAL ---------------------------- //
     async getListDataSucursal(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'sis_sucursal', primaryKey: 'ide_sucu', columnLabel: 'nom_sucu', condition: `ide_empr = ${dto.ideEmpr}` }
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_sucursal', primaryKey: 'ide_sucu', columnLabel: 'nom_sucu', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
     async getTableQuerySucursal(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'sis_sucursal', primaryKey: 'ide_sucu', condition: `ide_empr = ${dto.ideEmpr}` }
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_sucursal', primaryKey: 'ide_sucu', condition }
         return this.core.getTableQuery(dtoIn);
     }
 
 
     // -------------------------------- SISTEMAS ---------------------------- //
     async getListDataSistema(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' }
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
     async getTableQuerySistema(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist' }
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', condition }
         return this.core.getTableQuery(dtoIn);
     }
 
@@ -87,5 +91,26 @@ export class AdminService {
     }
 
 
+
+
+    // -------------------------------- HORARIOS ---------------------------- //
+    async getListDataTiposHorario(dto: ServiceDto) {
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_tipo_horario', primaryKey: 'ide_tihor', columnLabel: 'nombre_tihor', condition }
+        return this.core.getListDataValues(dtoIn);
+    }
+
+    async getTableQueryTiposHorario(dto: ServiceDto) {
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_tipo_horario', primaryKey: 'ide_tihor', condition }
+        return this.core.getTableQuery(dtoIn);
+    }
+
+
+    async getTableQueryHorario(dto: ServiceDto) {
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_horario', primaryKey: 'ide_hora', condition }
+        return this.core.getTableQuery(dtoIn);
+    }
 
 }
