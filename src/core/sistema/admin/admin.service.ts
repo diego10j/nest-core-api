@@ -6,6 +6,7 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { HorarioDto } from './dto/horario.dto';
 
 @Injectable()
 export class AdminService {
@@ -41,14 +42,12 @@ export class AdminService {
 
     // -------------------------------- SISTEMAS ---------------------------- //
     async getListDataSistema(dto: ServiceDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist', condition }
+        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' }
         return this.core.getListDataValues(dtoIn);
     }
 
     async getTableQuerySistema(dto: ServiceDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist', condition }
+        const dtoIn = { ...dto, tableName: 'sis_sistema', primaryKey: 'ide_sist' }
         return this.core.getTableQuery(dtoIn);
     }
 
@@ -107,8 +106,8 @@ export class AdminService {
     }
 
 
-    async getTableQueryHorario(dto: ServiceDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
+    async getTableQueryHorario(dto: HorarioDto) {
+        const condition = `ide_empr = ${dto.ideEmpr} and ide_tihor=${dto.ide_tihor}`;
         const dtoIn = { ...dto, tableName: 'sis_horario', primaryKey: 'ide_hora', condition }
         return this.core.getTableQuery(dtoIn);
     }

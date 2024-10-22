@@ -3,6 +3,7 @@ import { AdminService } from './admin.service';
 import { ServiceDto } from '../../../common/dto/service.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
+import { HorarioDto } from './dto/horario.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
@@ -119,7 +120,7 @@ export class AdminController {
   @Post('getTableQueryHorario')
   // @Auth()
   getTableQueryHorario(
-    @Body() dtoIn: ServiceDto
+    @Body() dtoIn: HorarioDto
   ) {
     return this.adminService.getTableQueryHorario(dtoIn);
   }
