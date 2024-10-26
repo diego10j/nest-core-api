@@ -20,6 +20,7 @@ export class ProductosController {
   constructor(private readonly service: ProductosService) { }
 
 
+
   @Post('getProductos')
   // @Auth()
   getProductos(
@@ -28,6 +29,13 @@ export class ProductosController {
     return this.service.getProductos(dtoIn);
   }
 
+  @Post('getCatalogoProductos')
+  // @Auth()
+  getCatalogoProductos(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getCatalogoProductos(dtoIn);
+  }
 
 
   @Post('getProducto')

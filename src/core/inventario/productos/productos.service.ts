@@ -67,10 +67,37 @@ export class ProductosService extends BaseService {
 `, dtoIn);
 
         return await this.dataSource.createQuery(query);
+
+
     }
 
- 
 
+
+    async getCatalogoProductos(dtoIn: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT
+            ide_inarti,
+            nombre_inarti,
+            precio_inarti,
+            foto_inarti,
+            a.ide_incate,
+            nombre_incate
+        FROM
+            inv_articulo a
+            LEFT JOIN inv_categoria b ON a.ide_incate = b.ide_incate
+        WHERE
+            ide_intpr = 1 -- solo productos
+            AND nivel_inarti = 'HIJO'
+            AND a.ide_empr  = ${dtoIn.ideEmpr}
+            AND activo_inarti = TRUE
+            AND a.ide_incate IS NULL
+        ORDER BY
+            nombre_inarti
+        `, dtoIn);
+
+        return await this.dataSource.createQuery(query);
+
+    }
 
     async getProductosPorNombre(dtoIn: BusquedaPorNombreDto) {
         const query = new SelectQuery(`

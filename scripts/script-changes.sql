@@ -15,6 +15,7 @@ GO
 ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 ALTER TABLE inv_articulo ADD COLUMN activo_inarti BOOLEAN;
 ALTER TABLE inv_articulo ADD COLUMN foto_inarti varchar(120);
+
 UPDATE inv_articulo SET  activo_inarti = true;
 
 /**18/09/2023 */
@@ -25,10 +26,12 @@ ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
 ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Cantidad minima stock
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
 ALTER TABLE inv_articulo ADD COLUMN por_util1_inarti decimal(12,3); 	  -- % Utilidad venta por mayor
-ALTER TABLE inv_articulo ADD COLUMN por_util2_inarti decimal(12,3); 	  -- % Utilidad venta por menor
+ALTER TABLE inv_articulo ADD COLUMN por_util2_inarti decimal(12,3); 	
+ALTER TABLE inv_articulo ADD COLUMN precio_inarti decimal(12,3); -- % Cuando tiene precio fjo
 
 
-CREATE TABLE public.inv_categoria  ( 
+
+CREATE TABLE inv_categoria  ( 
 	ide_incate  	integer NOT NULL,
 	nombre_incate	varchar(150) NULL,
 	inv_ide_incate 	integer NULL,
@@ -42,26 +45,21 @@ CREATE TABLE public.inv_categoria  (
 	fecha_actua  	date NULL,
 	hora_actua   	time(6) NULL,
 	CONSTRAINT pk_inv_categoria PRIMARY KEY(ide_incate)
-)
-GO
+);
 ALTER TABLE public.inv_categoria
 	ADD CONSTRAINT inv_categoria_ide_sucu_fkey
 	FOREIGN KEY(ide_sucu)
 	REFERENCES public.sis_sucursal(ide_sucu)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 ALTER TABLE public.inv_categoria
 	ADD CONSTRAINT inv_categoria_ide_empr_fkey
 	FOREIGN KEY(ide_empr)
 	REFERENCES public.sis_empresa(ide_empr)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
-ALTER TABLE public.inv_categoria OWNER TO postgres
-GO
+	ON UPDATE RESTRICT ;
 
 ALTER TABLE inv_articulo ADD COLUMN ide_incate integer; 	  -- % Categoria
 
@@ -71,27 +69,20 @@ ALTER TABLE public.inv_articulo
 	REFERENCES public.inv_categoria(ide_incate)
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT 
-GO
+	ON UPDATE RESTRICT ;
 
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(1, 'MATERIA PRIMA', true, 0, 0)
-GO
+VALUES(1, 'MATERIA PRIMA', true, 0, 0);
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(2, 'FRAGANCIAS', true, 0, 0)
-GO
+VALUES(2, 'FRAGANCIAS', true, 0, 0);
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(3, 'SABORIZANTES', true, 0, 0)
-GO
+VALUES(3, 'SABORIZANTES', true, 0, 0);
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(4, 'ENVASES', true, 0, 0)
-GO
+VALUES(4, 'ENVASES', true, 0, 0);
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(5, 'MATERIAL DE LABORATORIO', true, 0, 0)
-GO
+VALUES(5, 'MATERIAL DE LABORATORIO', true, 0, 0);
 INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(6, 'OTROS', true, 0, 0)
-GO
+VALUES(6, 'OTROS', true, 0, 0);
 
 /**27-11-2023**/
 ALTER TABLE gen_persona ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
