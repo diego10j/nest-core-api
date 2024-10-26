@@ -95,7 +95,7 @@ export class ProductosService extends BaseService {
             nombre_inarti
         `, dtoIn);
 
-        return await this.dataSource.createQuery(query);
+        return await this.dataSource.createSelectQuery(query);
 
     }
 
