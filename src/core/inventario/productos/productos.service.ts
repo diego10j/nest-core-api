@@ -631,7 +631,7 @@ export class ProductosService extends BaseService {
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
             AND cci.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY   
-            iart.ide_inarti,siglas_inuni
+            iart.ide_inarti,nombre_inarti,siglas_inuni
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query, false);

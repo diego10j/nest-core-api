@@ -16,11 +16,15 @@ export class DataSourceService {
 
 
     private pool = new Pool({
-        user: envs.dbUsername,
-        host: envs.dbHost,
-        database: envs.dbName,
-        password: envs.dbPassword,
-        port: envs.dbPort,
+        // user: envs.dbUsername,
+        // host: envs.dbHost,
+        // database: envs.dbName,
+        // password: envs.dbPassword,
+        // port: envs.dbPort,
+        connectionString: envs.bdUrlPool,
+        ssl: {
+            rejectUnauthorized: false, // If you're connecting to an SSL-enabled database
+        },
     });
     private TYPE_DATESTAMP = 1082;
     private TYPE_TIMESTAMP = 1114;

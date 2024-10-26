@@ -2,12 +2,12 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 interface EnvVars {
-  DB_PASSWORD: string;
-  DB_NAME: string;
-  DB_HOST: string;
-  DB_PORT: number;
-  DB_USERNAME: string;
-
+  // DB_PASSWORD: string;
+  // DB_NAME: string;
+  // DB_HOST: string;
+  // DB_PORT: number;
+  // DB_USERNAME: string;
+  DB_URL_POOL: string;
   ID_SISTEMA: number;
 
   REDIS_HOST: string;
@@ -31,13 +31,14 @@ interface EnvVars {
 }
 
 const envsSchema = z.object({
-  DB_PASSWORD: z.string(),
-  DB_NAME: z.string(),
-  DB_HOST: z.string(),
-  DB_PORT: z.string().refine(val => !isNaN(Number(val)), {
-    message: "DB_PORT must be a number"
-  }).transform(Number),
-  DB_USERNAME: z.string(),
+  // DB_PASSWORD: z.string(),
+  // DB_NAME: z.string(),
+  // DB_HOST: z.string(),
+  // DB_PORT: z.string().refine(val => !isNaN(Number(val)), {
+  //   message: "DB_PORT must be a number"
+  // }).transform(Number),
+  // DB_USERNAME: z.string(),
+  DB_URL_POOL: z.string(),
 
   ID_SISTEMA: z.string().refine(val => !isNaN(Number(val)), {
     message: "ID_SISTEMA must be a number"
@@ -74,11 +75,12 @@ if (!result.success) {
 const envVars = result.data as EnvVars;
 
 export const envs = {
-  dbPassword: envVars.DB_PASSWORD,
-  dbName: envVars.DB_NAME,
-  dbHost: envVars.DB_HOST,
-  dbPort: envVars.DB_PORT,
-  dbUsername: envVars.DB_USERNAME,
+  // dbPassword: envVars.DB_PASSWORD,
+  // dbName: envVars.DB_NAME,
+  // dbHost: envVars.DB_HOST,
+  // dbPort: envVars.DB_PORT,
+  // dbUsername: envVars.DB_USERNAME,
+  bdUrlPool:envVars.DB_URL_POOL,
 
   idSistema: envVars.ID_SISTEMA,
 
