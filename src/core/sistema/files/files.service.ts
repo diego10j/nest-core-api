@@ -192,6 +192,15 @@ export class FilesService {
         } as ResultQuery;
     }
 
+
+
+    async uploadOriginalFile(file: Express.Multer.File): Promise<ResultQuery> {
+        return {
+            message: `Archivo ${file.originalname} cargado exitosamente`
+        } as ResultQuery;
+    }
+
+
     /**
      * Elimina un archivo 
      * @param dto 
@@ -424,7 +433,7 @@ export class FilesService {
     getStaticImage(imageName: string) {
         let path = join(this.basePath, imageName);
         if (!existsSync(path))
-            path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
+            path = join(this.basePath, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
         if (!existsSync(path))
             throw new BadRequestException(`No image found with  ${path}`);
         return path;

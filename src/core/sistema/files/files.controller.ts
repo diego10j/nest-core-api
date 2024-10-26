@@ -8,7 +8,7 @@ import { FilesService } from './files.service';
 import { fileFilter, fileNamer } from './helpers';
 import { GetFilesDto } from './dto/get-files.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
-import { PATH_DRIVE } from './helpers/fileNamer.helper';
+import { fileOriginalNamer, PATH_DRIVE } from './helpers/fileNamer.helper';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
@@ -90,7 +90,21 @@ export class FilesController {
   }
 
 
-
+  @Post('uploadOriginalFile')
+  @UseInterceptors(FileInterceptor('file', {
+    // limits: { fileSize: 1000 }
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const folderPath = PATH_DRIVE();
+        cb(null, folderPath);
+      },
+      filename: fileOriginalNamer
+    })
+  }))
+  uploadOriginalFile(@UploadedFile() file: Express.Multer.File,
+    @Body() dtoIn: UploadFileDto) {
+    return this.filesService.uploadOriginalFile(file);
+  }
 
 
   @Post('uploadFile')

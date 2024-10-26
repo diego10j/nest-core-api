@@ -30,17 +30,21 @@ const mimeTypeMap: { [key: string]: string } = {
 };
 
 export const fileNamer = (req: Express.Request, file: Express.Multer.File, callback: Function) => {
-
   // console.log({ file })
   if (!file) return callback(new Error('File is empty'), false);
-
   const fileExtension = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
-
   const fileName = `${uuid()}.${fileExtension}`;
-
-
   callback(null, fileName);
+}
 
+export const fileOriginalNamer = (req: Express.Request, file: Express.Multer.File, callback: Function) => {
+  if (!file) return callback(new Error('File is empty'), false);
+  // Reemplazamos 'jpeg' por 'jpg' en la extensión
+  const fileExtension = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
+  // Tomamos el nombre sin la extensión original y le agregamos la nueva extensión
+  const originalName = file.originalname.split('.')[0];
+  const fileName = `${originalName}.${fileExtension}`;
+  callback(null, fileName);
 }
 
 
