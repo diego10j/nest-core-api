@@ -90,7 +90,7 @@ export class ProductosService extends BaseService {
             AND nivel_inarti = 'HIJO'
             AND a.ide_empr  = ${dtoIn.ideEmpr}
             AND activo_inarti = TRUE
-            AND a.ide_incate IS NULL
+            -- AND a.ide_incate IS NULL
         ORDER BY
             nombre_inarti
         `, dtoIn);
