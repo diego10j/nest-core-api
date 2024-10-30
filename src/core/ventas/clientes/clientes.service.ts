@@ -65,6 +65,7 @@ export class ClientesService extends BaseService {
             p.es_cliente_geper = true
             AND p.identificac_geper IS NOT NULL
             AND p.nivel_geper = 'HIJO'
+            AND P.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY
             p.nom_geper
         `, dtoIn);
@@ -92,7 +93,7 @@ export class ClientesService extends BaseService {
             WHERE 
                 ide_geper = $1
                 AND fecha_trans_ccdtr < $2
-                AND dt.ide_sucu =  ${dtoIn.ideSucu}
+                AND dt.ide_empr = ${dtoIn.ideEmpr}
             GROUP BY 
                 ide_geper
         ),
@@ -203,7 +204,7 @@ export class ClientesService extends BaseService {
             cf.ide_geper =  $1
             AND cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
-            AND cf.ide_sucu =  ${dtoIn.ideSucu}
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY 
             cf.fecha_emisi_cccfa desc, serie_ccdaf,secuencial_ccdfa
         `, dtoIn);
@@ -230,7 +231,7 @@ export class ClientesService extends BaseService {
             INNER JOIN cxc_tipo_transacc tt on tt.ide_ccttr=dt.ide_ccttr
             WHERE
                 ct.ide_geper = $1
-                AND ct.ide_sucu =  ${dtoIn.ideSucu}
+                AND ct.ide_empr = ${dtoIn.ideEmpr}
             GROUP BY   
                 ide_geper
             `);
@@ -255,7 +256,7 @@ export class ClientesService extends BaseService {
             INNER JOIN cxc_cabece_factura b ON a.ide_cccfa = b.ide_cccfa
             WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND b.ide_geper = $1
-            AND a.ide_sucu = ${dtoIn.ideSucu}
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY a.ide_inarti
         ),
         DetallesUltimaVenta AS (
@@ -275,7 +276,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni AND b.fecha_emisi_cccfa = uv.fecha_ultima_venta
             WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND b.ide_geper = $2
-            AND d.ide_sucu = ${dtoIn.ideSucu}
+            AND b.ide_empr = ${dtoIn.ideEmpr} 
         )
         SELECT DISTINCT 
             a.ide_inarti,
@@ -297,7 +298,7 @@ export class ClientesService extends BaseService {
         LEFT JOIN DetallesUltimaVenta dv ON uv.ide_inarti = dv.ide_inarti AND uv.fecha_ultima_venta = dv.fecha_ultima_venta
         WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
         AND b.ide_geper = $3
-        AND a.ide_sucu = ${dtoIn.ideSucu}
+        AND b.ide_empr = ${dtoIn.ideEmpr} 
         ORDER BY c.nombre_inarti
         `
             , dtoIn);
@@ -330,6 +331,7 @@ export class ClientesService extends BaseService {
                 fecha_emisi_cccfa >= $1 AND fecha_emisi_cccfa <= $2
                 AND ide_geper = $3
                 AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND ide_empr = ${dtoIn.ideEmpr}
             GROUP BY 
                 EXTRACT(MONTH FROM fecha_emisi_cccfa)
         )

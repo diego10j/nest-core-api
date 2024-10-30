@@ -112,6 +112,7 @@ export class FilesService {
             sis_archivo a
         LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
         WHERE ${whereClause}
+              AND ide_empr = ${dto.ideEmpr}
         ORDER BY
             carpeta_arch desc, nombre_arch
         `);

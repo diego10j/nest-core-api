@@ -22,7 +22,7 @@ nest g resource core/inventario/bodegas
 
 nest g resource core/gpt --no-spec
 
-
+nest g resource core/ventas/punto-venta --no-spec
 
 nest g module redis --dry-run
 

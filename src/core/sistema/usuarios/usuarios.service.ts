@@ -16,7 +16,8 @@ export class UsuariosService {
 
     // -------------------------------- USUARIO ---------------------------- //
     async getListDataUsuario(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua' }
+        const condition = `ide_empr = ${dto.ideEmpr}`;
+        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
@@ -35,7 +36,7 @@ export class UsuariosService {
     * Retorna el listado de Usuarios
     * @returns 
     */
-    async getUsuarios(_dtoIn?: ServiceDto) {
+    async getUsuarios(dtoIn?: ServiceDto) {
         const query = new SelectQuery(`
     SELECT
         a.uuid,
@@ -51,6 +52,8 @@ export class UsuariosService {
     FROM
         sis_usuario a
         inner join sis_perfil b on a.ide_perf = b.ide_perf
+    WHERE
+        ide_empr = ${dtoIn.ideEmpr}
     ORDER BY
         nom_usua`);
         return await this.dataSource.createQuery(query);

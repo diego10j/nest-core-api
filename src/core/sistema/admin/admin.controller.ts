@@ -4,6 +4,7 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { HorarioDto } from './dto/horario.dto';
+import { RucDto } from './dto/ruc.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
@@ -60,6 +61,13 @@ export class AdminController {
     @Body() dtoIn: ServiceDto
   ) {
     return this.adminService.getTableQuerySistema(dtoIn);
+  }
+
+  @Post('getEmpresaByRuc')
+  getEmpresaByRuc(
+    @Body() dtoIn: RucDto
+  ) {
+    return this.adminService.getEmpresaByRuc(dtoIn);
   }
 
   // -------------------------------- OPCIONES ---------------------------- //

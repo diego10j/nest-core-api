@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
@@ -7,6 +7,7 @@ import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { HorarioDto } from './dto/horario.dto';
+import { RucDto } from './dto/ruc.dto';
 
 @Injectable()
 export class AdminService {
@@ -25,6 +26,29 @@ export class AdminService {
         const dtoIn = { ...dto, tableName: 'sis_empresa', primaryKey: 'ide_empr' }
         return this.core.getTableQuery(dtoIn);
     }
+
+    async getEmpresaByRuc(dtoIn: RucDto) {
+        const query = new SelectQuery(`
+        select
+            ide_empr,
+            nom_empr,
+            identificacion_empr,
+            nom_corto_empr,
+            mail_empr,
+            logo_empr
+        from
+            sis_empresa
+        where
+            identificacion_empr = $1
+            `);
+        query.addStringParam(1, dtoIn.ruc);
+        const res = await this.dataSource.createSingleQuery(query);
+        if (res === null) {
+            throw new BadRequestException(`La empresa no existe`);
+        }
+        return res
+    }
+
 
     // -------------------------------- SUCURSAL ---------------------------- //
     async getListDataSucursal(dto: ServiceDto) {

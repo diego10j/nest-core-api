@@ -22,7 +22,7 @@ export class CalendarioService {
     * Retorna el listado de Usuarios
     * @returns 
     */
-    async getEventos(_dtoIn?: ServiceDto) {
+    async getEventos(dtoIn?: ServiceDto) {
 
         const query = new SelectQuery(`
         SELECT
@@ -41,6 +41,7 @@ export class CalendarioService {
             sis_calendario
         WHERE
             publico_cale = TRUE
+            AND ide_empr = ${dtoIn.ideEmpr}
         ORDER BY fecha_inicio_cale
         `);
         return await this.dataSource.createQuery(query, false);

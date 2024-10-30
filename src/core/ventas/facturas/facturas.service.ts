@@ -91,9 +91,11 @@ export class FacturasService extends BaseService {
             left join con_deta_forma_pago x on a.ide_cndfp1 = x.ide_cndfp
         where
             fecha_emisi_cccfa BETWEEN $1 AND $2
+            AND a.ide_empr = ${dtoIn.ideEmpr}
             ${condPtoEmision}
             ${condEstadoFact}
             ${condEstadoComp}
+            
         ORDER BY
             secuencial_cccfa desc,
             ide_cccfa desc
