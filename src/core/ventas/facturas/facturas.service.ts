@@ -4,12 +4,16 @@ import { SelectQuery } from '../../connection/helpers/select-query';
 import { BaseService } from '../../../common/base-service';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasDto } from './dto/facturas.dto';
+import { CoreService } from 'src/core/core.service';
+import { ServiceDto } from 'src/common/dto/service.dto';
 
 @Injectable()
 export class FacturasService extends BaseService {
 
 
-    constructor(private readonly dataSource: DataSourceService
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly core: CoreService
     ) {
         super();
         // obtiene las variables del sistema para el servicio
@@ -20,6 +24,17 @@ export class FacturasService extends BaseService {
             this.variables = result;
         });
     }
+
+
+    async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto) {
+        const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
+        const condition = `ide_empr = ${dto.ideEmpr} 
+                           AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
+                           ${condSucu}`;
+        const dtoIn = { ...dto, tableName: 'cxc_datos_fac', primaryKey: 'ide_ccdaf', orderBy: 'establecimiento_ccdfa', condition }
+        return this.core.getTableQuery(dtoIn);
+    }
+
 
     async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto) {
         const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';

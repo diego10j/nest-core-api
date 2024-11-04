@@ -4,11 +4,20 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { UuidDto } from 'src/common/dto/uuid.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
   constructor(private readonly service: ClientesService) { }
 
+
+  @Post('getCliente')
+  // @Auth()
+  getCliente(
+    @Body() dtoIn: UuidDto
+  ) {
+    return this.service.getCliente(dtoIn);
+  }
 
   @Post('getClientes')
   // @Auth()
@@ -17,6 +26,15 @@ export class ClientesController {
   ) {
     return this.service.getClientes(dtoIn);
   }
+
+  @Post('getSaldosClientes')
+  // @Auth()
+  getSaldosClientes(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getSaldosClientes(dtoIn);
+  }
+
 
 
   @Post('getTrnCliente')

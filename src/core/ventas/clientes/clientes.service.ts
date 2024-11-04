@@ -1,5 +1,5 @@
 import { getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { BaseService } from '../../../common/base-service';
@@ -7,6 +7,8 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { UuidDto } from 'src/common/dto/uuid.dto';
+import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 
 
 @Injectable()
@@ -24,12 +26,114 @@ export class ClientesService extends BaseService {
         });
     }
 
+
+    async getCliente(dtoIn: UuidDto) {
+        const query = new SelectQuery(`
+        SELECT
+            p.ide_geper,
+            p.uuid,
+            p.ide_getip,
+            detalle_getip,
+            p.codigo_geper,
+            p.nom_geper,
+            nombre_getid,
+            p.identificac_geper,
+            p.nombre_compl_geper,
+            p.contacto_geper,
+            p.direccion_geper,
+            nombre_geprov,
+            nombre_gecan,
+            p.correo_geper,
+            p.telefono_geper,
+            p.movil_geper,
+            p.pagina_web_geper,
+            repre_legal_geper,
+            observacion_geper,
+            p.fecha_ingre_geper,
+            b.nombre_cndfp,
+            p.limite_credito_geper,
+            dias_credito_geper,
+            c.nombre_vgven,
+            activo_geper,
+            requiere_actua_geper,
+            nombre_getitp,
+            nombre_cntco
+        FROM
+            gen_persona p
+            LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
+            LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
+            LEFT JOIN gen_tipo_persona d ON p.ide_getip = d.ide_getip
+            LEFT JOIN gen_provincia e ON p.ide_geprov = e.ide_geprov
+            LEFT JOIN gen_canton f ON p.ide_gecant = f.ide_gecant
+            LEFT JOIN gen_titulo_persona g ON p.ide_getitp = g.ide_getitp
+            LEFT JOIN gen_tipo_identifi h ON p.ide_getip = h.ide_getid
+            LEFT JOIN con_tipo_contribu i ON p.ide_cntco = i.ide_cntco
+        WHERE  
+            uuid = $1`
+        );
+        query.addStringParam(1, dtoIn.uuid);
+
+        const res = await this.dataSource.createSingleQuery(query);
+        if (res) {
+            return {
+                rowCount: 1,
+                row: {
+                    cliente: res,
+                },
+                message: 'ok'
+            } as ResultQuery
+
+        }
+        else {
+            throw new BadRequestException(`No existe el cliente`);
+        }
+    }
+
+
+    /**
+    * Retorna el listado de clientes 
+    * @param dtoIn 
+    * @returns 
+    */
+    async getClientes(dtoIn: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT
+            p.ide_geper,
+            p.uuid,
+            p.nom_geper,
+            nombre_getid,
+            p.identificac_geper,
+            detalle_getip,
+            p.correo_geper,
+            p.fecha_ingre_geper,
+            b.nombre_cndfp,
+            c.nombre_vgven,
+            activo_geper
+        FROM
+            gen_persona p
+            LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
+            LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
+            LEFT JOIN gen_tipo_persona d on p.ide_getip = d.ide_getip
+            LEFT JOIN gen_tipo_identifi h on p.ide_getip = h.ide_getid
+        WHERE
+            p.es_cliente_geper = true
+            AND p.identificac_geper IS NOT NULL
+            AND p.nivel_geper = 'HIJO'
+            AND P.ide_empr = ${dtoIn.ideEmpr}
+        ORDER BY
+            p.nom_geper
+        `, dtoIn);
+
+        return await this.dataSource.createQuery(query);
+    }
+
+
     /**
      * Retorna el listado de clientes 
      * @param dtoIn 
      * @returns 
      */
-    async getClientes(dtoIn: ServiceDto) {
+    async getSaldosClientes(dtoIn: ServiceDto) {
         const query = new SelectQuery(`
         WITH saldo_cte AS (
             SELECT
@@ -40,6 +144,8 @@ export class ClientesService extends BaseService {
                 cxc_detall_transa dt
                 LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
                 LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            WHERE 
+                dt.ide_empr = ${dtoIn.ideEmpr}
             GROUP BY
                 ide_geper
         )
@@ -47,8 +153,9 @@ export class ClientesService extends BaseService {
             p.ide_geper,
             p.uuid,
             p.nom_geper,
+            nombre_getid,
             p.identificac_geper,
-            p.codigo_geper,
+            detalle_getip,
             p.correo_geper,
             p.fecha_ingre_geper,
             b.nombre_cndfp,
@@ -61,11 +168,14 @@ export class ClientesService extends BaseService {
             LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
             LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
             LEFT JOIN saldo_cte s ON s.ide_geper = p.ide_geper
+            LEFT JOIN gen_tipo_persona d on p.ide_getip = d.ide_getip
+            LEFT JOIN gen_tipo_identifi h on p.ide_getip = h.ide_getid
         WHERE
             p.es_cliente_geper = true
             AND p.identificac_geper IS NOT NULL
             AND p.nivel_geper = 'HIJO'
             AND P.ide_empr = ${dtoIn.ideEmpr}
+            AND COALESCE(s.saldo, 0) != 0
         ORDER BY
             p.nom_geper
         `, dtoIn);

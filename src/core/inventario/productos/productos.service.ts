@@ -15,6 +15,10 @@ import { UuidDto } from '../../../common/dto/uuid.dto';
 import { fNumber } from 'src/util/helpers/number-util';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
+import { CoreService } from 'src/core/core.service';
+import { CategoriasDto } from './dto/categorias.dto';
+import { isDefined } from 'src/util/helpers/common-util';
+
 
 
 @Injectable()
@@ -23,6 +27,7 @@ export class ProductosService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly audit: AuditService,
+        private readonly core: CoreService
     ) {
         super();
         // obtiene las variables del sistema para el servicio
@@ -36,10 +41,43 @@ export class ProductosService extends BaseService {
     }
 
 
+    // -------------------------------- CATEGORIAS ---------------------------- //
+    async getTableQueryCategorias(dto: CategoriasDto) {
+        const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
+            ? `inv_ide_incate = ${dto.inv_ide_incate}`
+            : 'inv_ide_incate IS NULL';
+
+        const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
+        const dtoIn = {
+            ...dto,
+            tableName: 'inv_categoria',
+            primaryKey: 'ide_incate',
+            orderBy: 'nombre_incate',
+            condition,
+        };
+
+        return this.core.getTableQuery(dtoIn);
+    }
+
+    async getTreeModelCategorias(dto: CategoriasDto) {
+        const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
+            ? `inv_ide_incate = ${dto.inv_ide_incate}`
+            : 'inv_ide_incate IS NULL';
+
+        const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
+
+        const dtoIn = { ...dto, tableName: 'inv_categoria', primaryKey: 'ide_incate', columnName: 'nombre_incate', columnNode: 'inv_ide_incate', condition: `${condition}`, orderBy: 'nombre_incate' }
+        return this.core.getTreeModel(dtoIn);
+    }
+
+
+    // -------------------------------- PRODUCTOS ---------------------------- //
+
+
     /**
-         * Retorna el listado de Productos
-         * @returns 
-         */
+    * Retorna el listado de Productos
+    * @returns 
+    */
     async getProductos(dtoIn: ServiceDto) {
 
         const query = new SelectQuery(`

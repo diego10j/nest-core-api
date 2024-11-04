@@ -17,7 +17,7 @@ ADD CONSTRAINT unique_ide_geper UNIQUE (ide_geper);
 
 CREATE TABLE public.cxc_estado_orden (
     ide_ccesor INT PRIMARY KEY, -- Primary key 
-    titulo_ccesor varchar(100) NOT NULL,
+    nombre_ccesor varchar(100) NOT NULL,
     activo_cceso boolean DEFAULT true, 
     color_cceso varchar(30) NOT NULL,
     ide_empr     	int NULL REFERENCES public.sis_empresa(ide_empr),
@@ -29,13 +29,13 @@ CREATE TABLE public.cxc_estado_orden (
 );
 
 
-INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "titulo_ccesor", "activo_cceso", "color_cceso") VALUES
+INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "nombre_ccesor", "activo_cceso", "color_cceso") VALUES
 (1, 'PROCESADA', 'TRUE', 'success');
 
-INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "titulo_ccesor", "activo_cceso", "color_cceso") VALUES
+INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "nombre_ccesor", "activo_cceso", "color_cceso") VALUES
 (2, 'PENDIENTE', 'TRUE', 'warning');
 
-INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "titulo_ccesor", "activo_cceso", "color_cceso") VALUES
+INSERT INTO "public"."cxc_estado_orden" ("ide_ccesor", "nombre_ccesor", "activo_cceso", "color_cceso") VALUES
 (3, 'REVERSADA', 'TRUE', 'error');
 
 
@@ -55,7 +55,7 @@ CREATE TABLE public.cxc_punto_venta (
 );
 
 CREATE TABLE public.cxc_aper_cierre_pnto_vta (
-    ide_ccacpv int4 PRIMARY KEY, -- Primary key 
+    ide_ccacpv int8 PRIMARY KEY, -- Primary key 
     ide_ccptv INT REFERENCES public.cxc_punto_venta(ide_ccptv), -- Foreign key hacia el punto de venta
     ide_usua  	int NULL REFERENCES public.sis_usuario(ide_usua), -- Usuario apertura
     fecha_aper_ccacpv DATE DEFAULT CURRENT_TIMESTAMP, -- Fecha apertura
@@ -133,15 +133,15 @@ CREATE TABLE public.cxc_forma_pago_pnto_vta (
 );
 
 
+-- ordenes generadas por el punto de venta
 CREATE TABLE public.cxc_orden_punto_venta (
     ide_ccopvt int8 NOT NULL,
     ide_ccacpv INT REFERENCES public.cxc_aper_cierre_pnto_vta(ide_ccacpv), 
     ide_ccptv INT REFERENCES public.cxc_punto_venta(ide_ccptv), -- Foreign key hacia el punto de venta
-    ide_vgven int8 NULL,
+    ide_vgven int NULL,
     ide_ccesor INT REFERENCES public.cxc_estado_orden(ide_ccesor), 
     ide_geper int8 NULL,
-    ide_usua  int8 NULL REFERENCES public.sis_usuario(ide_usua),
-    ide_cndfp INT REFERENCES public.con_deta_forma_pago(ide_cndfp), -- Foreign key hacia forma de pago
+    ide_usua  int4 NULL REFERENCES public.sis_usuario(ide_usua),
     fecha_emisi_ccopvt date,
     secuencial_ccopvt varchar(15),
     direccion_ccopvt varchar(180),
@@ -156,6 +156,7 @@ CREATE TABLE public.cxc_orden_punto_venta (
     telefono_ccopvt varchar(20),
     tarifa_iva_ccopvt numeric(12,2),
     correo_ccopvt varchar(100),
+    referencia_ccopvt int NULL,
     activo_ccopvt  boolean DEFAULT true, 
     ide_empr     	int NULL REFERENCES public.sis_empresa(ide_empr),
 	ide_sucu     	int NULL REFERENCES public.sis_sucursal(ide_sucu),
@@ -171,15 +172,11 @@ CREATE TABLE public.cxc_orden_punto_venta (
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT ;
-
-
 ALTER TABLE public.cxc_orden_punto_venta
 ADD CONSTRAINT unique_ide_ccopvt UNIQUE (ide_ccopvt);
 
-
+-- utiliza detalle de factura para guardar los detalles de la orden
 ALTER TABLE public.cxc_deta_factura ADD COLUMN ide_ccopvt int8;
-
-
 ALTER TABLE public.cxc_deta_factura
 	ADD CONSTRAINT cxc_deta_factura_ide_ccopvt_fkey
 	FOREIGN KEY(ide_ccopvt)
@@ -187,3 +184,24 @@ ALTER TABLE public.cxc_deta_factura
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT ;
+
+-- Pagos de la orden
+CREATE TABLE public.cxc_pago_orden_pnto_vta (
+    ide_ccpavt int8 NOT NULL,
+    ide_ccopvt int8 NULL REFERENCES public.cxc_orden_punto_venta(ide_ccopvt),
+    ide_cndfp INT REFERENCES public.con_deta_forma_pago(ide_cndfp), -- Foreign key hacia forma de pago
+    ide_usua  int4 NULL REFERENCES public.sis_usuario(ide_usua),
+    fecha_ccpavt date,
+    valor_ccpavt numeric(12,2),
+    efectivo_ccpavt numeric(12,2),
+    cambio_ccpavt numeric(12,2),
+    ide_empr     	int NULL REFERENCES public.sis_empresa(ide_empr),
+	ide_sucu     	int NULL REFERENCES public.sis_sucursal(ide_sucu),
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+
+ALTER TABLE "public"."inv_categoria"
+ADD COLUMN "nivel_incate" varchar(20);

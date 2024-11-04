@@ -16,6 +16,15 @@ export class FacturasController {
         return this.service.getPuntosEmisionFacturas(dtoIn);
     }
 
+    @Post('getTableQueryPuntosEmisionFacturas')
+    // @Auth()
+    getTableQueryPuntosEmisionFacturas(
+        @Body() dtoIn: PuntosEmisionFacturasDto
+    ) {
+        return this.service.getTableQueryPuntosEmisionFacturas(dtoIn);
+    }
+
+
 
     @Post('getFacturas')
     // @Auth()
@@ -24,6 +33,7 @@ export class FacturasController {
     ) {
         return this.service.getFacturas(dtoIn);
     }
+
 
 
 }

@@ -11,6 +11,7 @@ import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
+import { CategoriasDto } from './dto/categorias.dto';
 
 
 
@@ -44,6 +45,22 @@ export class ProductosController {
     @Body() dtoIn: UuidDto
   ) {
     return this.service.getProducto(dtoIn);
+  }
+
+  @Post('getTableQueryCategorias')
+  // @Auth()
+  getTableQueryCategorias(
+    @Body() dtoIn: CategoriasDto
+  ) {
+    return this.service.getTableQueryCategorias(dtoIn);
+  }
+
+  @Post('getTreeModelCategorias')
+  // @Auth()
+  getTreeModelCategorias(
+    @Body() dtoIn: CategoriasDto
+  ) {
+    return this.service.getTreeModelCategorias(dtoIn);
   }
 
   @Post('getProductosPorNombre')

@@ -512,3 +512,21 @@ CREATE TABLE sis_actividad_comentario (
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
 );
+
+// gen_persona
+ALTER TABLE gen_persona ADD COLUMN ide_geprov int4;
+ALTER TABLE gen_persona ADD COLUMN ide_gecant int4;
+
+ALTER TABLE public.gen_persona
+	ADD CONSTRAINT gen_persona_ide_geprov_fkey
+	FOREIGN KEY(ide_geprov)
+	REFERENCES public.gen_provincia(ide_geprov)
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT;
+
+ALTER TABLE public.gen_persona
+	ADD CONSTRAINT gen_persona_ide_gecant_fkey
+	FOREIGN KEY(ide_gecant)
+	REFERENCES public.gen_canton(ide_gecant)
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT;
