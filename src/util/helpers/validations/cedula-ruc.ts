@@ -30,7 +30,7 @@ export function validateCedula(id) {
 export function validateRUC(ruc: string, isSas = false) {
     const result = {
         isValid: false,
-        type: null,
+        type: 'RUC',
     }
 
     if (!ruc || ruc.length !== 13) return result
