@@ -1,5 +1,6 @@
 // 29-10-2024
 
+
 ALTER TABLE public.sis_sucursal
 ADD CONSTRAINT unique_ide_sucu UNIQUE (ide_sucu);
 

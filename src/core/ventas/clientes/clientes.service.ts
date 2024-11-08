@@ -9,6 +9,9 @@ import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
+import { validateDataRequiere } from 'src/util/helpers/common-util';
+import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
+import { SaveClienteDto } from './dto/save-cliente.dto';
 
 
 @Injectable()
@@ -20,7 +23,9 @@ export class ClientesService extends BaseService {
         super();
         // obtiene las variables del sistema para el servicio
         this.dataSource.getVariables([
-            'p_cxc_estado_factura_normal' // 0
+            'p_cxc_estado_factura_normal',// 0 
+            'p_gen_tipo_identificacion_ruc', //  1
+            'p_gen_tipo_identificacion_cedula'  // 0
         ]).then(result => {
             this.variables = result;
         });
@@ -465,5 +470,61 @@ export class ClientesService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+    async save(dtoIn: SaveClienteDto) {
+        const isValid = this.validateCrearCliente(dtoIn.data, dtoIn.ideEmpr);
+        return isValid;
+    }
+
+    /**
+     * Validación para crear cliente
+     * @param data 
+     */
+    private async validateCrearCliente(data: any, ideEmpr: number) {
+        // Campos requeridos
+        const colReq = ['identificac_geper', 'nom_geper', 'nombre_compl_geper', 'codigo_geper', 'ide_getid', 'ide_cntco', 'direccion_geper',
+            'telefono_geper'];
+
+        const resColReq = validateDataRequiere(data, colReq);
+
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
+
+        // Valida identificacion
+        if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+            const valid = validateCedula(data.identificac_geper);
+            if (valid === false) {
+                throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
+            }
+        }
+        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+            const result = validateRUC(data.identificac_geper, false);
+            if (result.isValid === false) {
+                throw new BadRequestException(`${result.type} no válido`);
+            }
+        }
+
+        // validar que no exista el cliente en la misma empresa
+        const queryClie = new SelectQuery(`
+            select
+                1
+            from
+                gen_persona
+            where
+                identificac_geper = $1
+            and ide_empr = $2
+            `);
+        queryClie.addParam(1, data.identificac_geper);
+        queryClie.addParam(2, ideEmpr);
+        const resClie = await this.dataSource.createSelectQuery(queryClie);
+        if (resClie.length > 0) {
+            throw new BadRequestException(`El cliente ${data.identificac_geper} ya existe`);
+        }
+
+
+
+
+        return true;
+    }
 
 }

@@ -640,5 +640,11 @@ ALTER TABLE sis_usuario_sucursal ADD COLUMN activo_ussu bool DEFAULT true;
 ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE sis_usuario_sucursal ADD COLUMN usuario_actua varchar(50); 
-ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_actua TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE sis_usuario_sucursal ADD COLUMN hora_actua TIMESTAMP;
 
+
+ALTER TABLE sis_sucursal ADD COLUMN activo_sucu bool DEFAULT true;
+ALTER TABLE sis_sucursal ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_sucursal ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE sis_sucursal ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;

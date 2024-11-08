@@ -5,6 +5,7 @@ import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
+import { SaveClienteDto } from './dto/save-cliente.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
@@ -80,5 +81,13 @@ export class ClientesController {
     return this.service.getVentasMensuales(dtoIn);
   }
 
+
+  @Post('save')
+  // @Auth()
+  save(
+    @Body() dtoIn: SaveClienteDto
+  ) {
+    return this.service.save(dtoIn);
+  }
 
 }
