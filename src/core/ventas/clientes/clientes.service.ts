@@ -489,7 +489,6 @@ export class ClientesService extends BaseService {
         if (resColReq.length > 0) {
             throw new BadRequestException(resColReq);
         }
-
         // Valida identificacion
         if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
             const valid = validateCedula(data.identificac_geper);
@@ -497,7 +496,7 @@ export class ClientesService extends BaseService {
                 throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
             }
         }
-        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
             const result = validateRUC(data.identificac_geper, false);
             if (result.isValid === false) {
                 throw new BadRequestException(`${result.type} no válido`);
