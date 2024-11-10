@@ -216,21 +216,18 @@ export class ClientesService extends BaseService {
             SELECT 
                 a.ide_ccdtr,
                 fecha_trans_ccdtr,
-                ide_cnccc,
-                nombre_ccttr AS transaccion,
                 docum_relac_ccdtr, 
-                CASE WHEN signo_ccttr = 1 THEN valor_ccdtr END AS ingresos,
-                CASE WHEN signo_ccttr = -1 THEN valor_ccdtr END AS egresos,
-                '',
                 observacion_ccdtr AS observacion,
-                nom_usua AS usuario,
+                nombre_ccttr AS transaccion,            
+                CASE WHEN signo_ccttr = 1 THEN valor_ccdtr END AS debe,
+                CASE WHEN signo_ccttr = -1 THEN valor_ccdtr END AS haber,
+                0 as saldo,
                 fecha_venci_ccdtr,
                 ide_teclb,
-                numero_pago_ccdtr
+                ide_cnccc
             FROM 
                 cxc_detall_transa a
                 INNER JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
-                INNER JOIN sis_usuario c ON a.ide_usua = c.ide_usua
                 INNER JOIN cxc_cabece_transa d ON a.ide_ccctr = d.ide_ccctr
             WHERE 
                 ide_geper = $3
@@ -242,17 +239,15 @@ export class ClientesService extends BaseService {
         SELECT 
             -1 AS ide_ccdtr,
             '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_ccdtr,
-            NULL AS ide_cnccc,
-            'Saldo Inicial' AS transaccion,
             NULL AS docum_relac_ccdtr,
-            NULL AS ingresos,
-            NULL AS egresos,
             'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  observacion,
-            NULL AS usuario,
+            'Saldo Inicial' AS transaccion,
+            NULL AS debe,
+            NULL AS haber,
+            saldo_inicial.saldo_inicial AS saldo,
             NULL AS fecha_venci_ccdtr,
             NULL AS ide_teclb,
-            NULL AS numero_pago_ccdtr,
-            saldo_inicial.saldo_inicial AS saldo
+            NULL AS ide_cnccc
         FROM 
             saldo_inicial
         
@@ -261,17 +256,15 @@ export class ClientesService extends BaseService {
         SELECT 
             mov.ide_ccdtr,
             mov.fecha_trans_ccdtr,
-            mov.ide_cnccc,
-            mov.transaccion,
             mov.docum_relac_ccdtr,
-            mov.ingresos,
-            mov.egresos,
             mov.observacion,
-            mov.usuario,
+            mov.transaccion,
+            mov.debe,
+            mov.haber,
+            saldo_inicial.saldo_inicial + COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) - COALESCE(SUM(mov.haber) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) AS saldo,
             mov.fecha_venci_ccdtr,
             mov.ide_teclb,
-            mov.numero_pago_ccdtr,
-            saldo_inicial.saldo_inicial + COALESCE(SUM(mov.ingresos) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) - COALESCE(SUM(mov.egresos) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) AS saldo
+            mov.ide_cnccc
         FROM 
             movimientos mov
             CROSS JOIN saldo_inicial
