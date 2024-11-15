@@ -90,4 +90,14 @@ export class ClientesController {
     return this.service.save(dtoIn);
   }
 
+
+
+  @Post('getVentasConUtilidad')
+  // @Auth()
+  getVentasConUtilidad(
+    @Body() dtoIn: TrnClienteDto
+  ) {
+    return this.service.getVentasConUtilidad(dtoIn);
+  }
+
 }

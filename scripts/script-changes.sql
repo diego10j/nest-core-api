@@ -648,3 +648,17 @@ ALTER TABLE sis_sucursal ADD COLUMN usuario_ingre varchar(50);
 ALTER TABLE sis_sucursal ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE sis_sucursal ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;
+
+
+
+// 12 Nov 2024
+
+
+CREATE INDEX IF NOT EXISTS idx_cxp_cabece_factur_fecha_estado ON cxp_cabece_factur(ide_cpefa, fecha_emisi_cpcfa, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_inarti_ccdfa ON cxc_deta_factura(ide_cccfa, ide_inarti);
+CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_precio ON cxc_deta_factura(precio_ccdfa, total_ccdfa);
+CREATE INDEX IF NOT EXISTS idx_cxc_cabece_factura_geper_fecha_estado ON cxc_cabece_factura(ide_geper, ide_ccefa, fecha_emisi_cccfa, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_inv_articulo_inarti ON inv_articulo(ide_inarti, uuid);
+CREATE INDEX IF NOT EXISTS idx_inv_unidad_inuni ON inv_unidad(ide_inuni);
+
+

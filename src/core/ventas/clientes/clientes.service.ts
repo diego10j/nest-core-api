@@ -12,18 +12,21 @@ import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { validateDataRequiere } from 'src/util/helpers/common-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 import { SaveClienteDto } from './dto/save-cliente.dto';
-
+import { CoreService } from 'src/core/core.service';
+import { ObjectQueryDto } from 'src/core/connection/dto';
 
 @Injectable()
 export class ClientesService extends BaseService {
 
 
-    constructor(private readonly dataSource: DataSourceService
+    constructor(private readonly dataSource: DataSourceService,
+        private readonly core: CoreService
     ) {
         super();
         // obtiene las variables del sistema para el servicio
         this.dataSource.getVariables([
             'p_cxc_estado_factura_normal',// 0 
+            'p_cxp_estado_factura_normal', // 0
             'p_gen_tipo_identificacion_ruc', //  1
             'p_gen_tipo_identificacion_cedula'  // 0
         ]).then(result => {
@@ -464,16 +467,131 @@ export class ClientesService extends BaseService {
     }
 
     async save(dtoIn: SaveClienteDto) {
-        const isValid = this.validateCrearCliente(dtoIn.data, dtoIn.ideEmpr);
-        return isValid;
+
+        if (dtoIn.isUpdate === true) {
+            // Actualiza el cliente
+            const isValid = await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid) {
+                const ide_geper = dtoIn.data.ide_geper;
+                delete dtoIn.data.ide_geper;
+                delete dtoIn.data.uuid;
+                const objQuery = {
+                    operation: "update",
+                    tableName: "gen_persona",
+                    primaryKey: "ide_geper",
+                    object: dtoIn.data,
+                    condition: `ide_geper = ${ide_geper}`
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: true
+                });
+            }
+        }
+        else {
+            // Crea el cliente
+            const isValid = await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid === true) {
+                const objQuery = {
+                    operation: "insert",
+                    tableName: "gen_persona",
+                    primaryKey: "ide_geper",
+                    object: dtoIn.data,
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: true
+                });
+            }
+        }
+
     }
+
+
+
+
+    async getVentasConUtilidad(dtoIn: TrnClienteDto) {
+        // Ajustar el porcentaje según  criterio 30% margen
+        const query = new SelectQuery(`
+        WITH precios_compra AS (
+            SELECT
+                ide_geper,
+                precio_cpdfa,
+                fecha_emisi_cpcfa
+            FROM cxp_detall_factur df
+            INNER JOIN cxp_cabece_factur cf ON df.ide_cpcfa = cf.ide_cpcfa
+            WHERE ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
+            AND ide_geper = $1
+            AND fecha_emisi_cpcfa BETWEEN $2 AND $3
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY fecha_emisi_cpcfa 
+        ),
+        datos_completos AS (
+            SELECT
+                cdf.ide_ccdfa,
+                cf.fecha_emisi_cccfa,
+                secuencial_cccfa,
+                nombre_inarti,
+                cdf.cantidad_ccdfa,
+                siglas_inuni,
+                cdf.precio_ccdfa AS precio_venta,
+                cdf.total_ccdfa,
+                iart.uuid,
+                COALESCE((
+                  SELECT pc.precio_cpdfa 
+                  FROM precios_compra pc
+                  WHERE pc.ide_geper = cf.ide_geper 
+                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa + INTERVAL '7 days'
+                  ORDER BY pc.fecha_emisi_cpcfa desc
+                  LIMIT 1), 0) AS PRECIO_COMPRA
+            FROM
+                cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            WHERE
+                cf.ide_geper = $4
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+        )
+        SELECT
+            dc.ide_ccdfa,
+            dc.fecha_emisi_cccfa,
+            dc.secuencial_cccfa,
+            dc.nombre_inarti,
+            dc.cantidad_ccdfa,
+            dc.siglas_inuni,
+            dc.precio_venta,
+            dc.total_ccdfa,
+            dc.uuid,
+            dc.precio_compra,
+            ( dc.precio_venta - dc.precio_compra )  as utilidad ,
+            CASE 
+                WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
+                ELSE 0 
+            END AS porcentaje_utilidad,
+            ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
+        FROM datos_completos dc
+        ORDER BY 
+            dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
+            `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addDateParam(3, dtoIn.fechaFin);
+        query.addIntParam(4, dtoIn.ide_geper);
+        query.addDateParam(5, dtoIn.fechaInicio);
+        query.addDateParam(6, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    // -------------------------------- PRIVATE FUNCTIONS ---------------------------- //
 
     /**
      * Validación para crear cliente
      * @param data 
      */
-    private async validateCrearCliente(data: any, ideEmpr: number) {
-        // Campos requeridos
+    private async validateInsertCliente(data: any, ideEmpr: number) {
+
         const colReq = ['identificac_geper', 'nom_geper', 'nombre_compl_geper', 'codigo_geper', 'ide_getid', 'ide_cntco', 'direccion_geper',
             'telefono_geper'];
 
@@ -514,9 +632,77 @@ export class ClientesService extends BaseService {
         }
 
 
+        return true;
+    }
+
+    private async validateUpdateCliente(data: any, ideEmpr: number) {
+
+        const colReq = ['ide_geper', 'ide_getid', 'identificac_geper'];
+
+        const resColReq = validateDataRequiere(data, colReq);
+
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
+
+
+        // Valida identificacion
+        if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+            const valid = validateCedula(data.identificac_geper);
+            if (valid === false) {
+                throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
+            }
+        }
+        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
+            const result = validateRUC(data.identificac_geper, false);
+            if (result.isValid === false) {
+                throw new BadRequestException(`${result.type} no válido`);
+            }
+        }
+
+        // validar que el cliente exista
+        const queryClieE = new SelectQuery(`
+        select
+            1
+        from
+            gen_persona
+        where
+            identificac_geper = $1
+        and ide_empr = $2 and ide_geper = $3
+        `);
+        queryClieE.addParam(1, data.identificac_geper);
+        queryClieE.addParam(2, ideEmpr);
+        queryClieE.addParam(3, data.ide_geper);
+        const resClieE = await this.dataSource.createSelectQuery(queryClieE);
+        if (resClieE.length > 0) {
+            throw new BadRequestException(`El cliente ${data.identificac_geper} no existe`);
+        }
+
+
+
+        // validar que algun otro cliente no tenga la misma identificacion
+        const queryClie = new SelectQuery(`
+            select
+                1
+            from
+                gen_persona
+            where
+                identificac_geper = $1
+            and ide_empr = $2
+            and ide_geper != $3
+            `);
+        queryClie.addParam(1, data.identificac_geper);
+        queryClie.addParam(2, ideEmpr);
+        queryClie.addParam(3, data.ide_geper);
+        const resClie = await this.dataSource.createSelectQuery(queryClie);
+        if (resClie.length > 0) {
+            throw new BadRequestException(`Otro cliente ya existe con el néumro de identificación ${data.identificac_geper}`);
+        }
 
 
         return true;
     }
+
+
 
 }

@@ -508,6 +508,7 @@ export class ProductosService extends BaseService {
                 cdf.ide_inarti = $4
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
                 ${whereCantidad}
         )
         SELECT

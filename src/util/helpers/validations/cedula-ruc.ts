@@ -34,6 +34,7 @@ export function validateRUC(ruc: string, isSas = false) {
     }
 
     if (!ruc || ruc.length !== 13) return result
+    if (!ruc.endsWith('001')) return result
     if (!/^[0-9][0-9][1-9]$/.test(ruc.slice(-3))) return result
 
     if (isSas === true) {
