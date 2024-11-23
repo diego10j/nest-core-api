@@ -5,7 +5,6 @@ export class IdClienteDto extends ServiceDto {
 
 
     @IsInt()
-    @IsPositive()
     ide_geper: number;
 
 }

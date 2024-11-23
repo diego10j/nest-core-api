@@ -390,33 +390,32 @@ export class ClientesService extends BaseService {
             AND b.ide_empr = ${dtoIn.ideEmpr} 
         )
         SELECT DISTINCT 
-            a.ide_inarti,
+            uv.ide_inarti,
             c.nombre_inarti,
             uv.fecha_ultima_venta,
             dv.ultimo_precio,
             dv.ultima_cantidad,
             dv.siglas_inuni,
             dv.ide_cccfa,
+            c.foto_inarti,
             CONCAT(
                 SUBSTRING(dv.serie_ccdaf FROM 1 FOR 3), '-', 
                 SUBSTRING(dv.serie_ccdaf FROM 4 FOR 3), '-', 
                 dv.secuencial_cccfa
             ) AS secuencial  
-        FROM cxc_deta_factura a
-        INNER JOIN cxc_cabece_factura b ON a.ide_cccfa = b.ide_cccfa
-        INNER JOIN inv_articulo c ON a.ide_inarti = c.ide_inarti
-        INNER JOIN UltimasVentas uv ON a.ide_inarti = uv.ide_inarti
+        FROM UltimasVentas uv
+        INNER JOIN inv_articulo c ON uv.ide_inarti = c.ide_inarti
         LEFT JOIN DetallesUltimaVenta dv ON uv.ide_inarti = dv.ide_inarti AND uv.fecha_ultima_venta = dv.fecha_ultima_venta
-        WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-        AND b.ide_geper = $3
-        AND b.ide_empr = ${dtoIn.ideEmpr} 
         ORDER BY c.nombre_inarti
         `
             , dtoIn);
         query.addIntParam(1, dtoIn.ide_geper);
         query.addIntParam(2, dtoIn.ide_geper);
-        query.addIntParam(3, dtoIn.ide_geper);
-        return await this.dataSource.createQuery(query);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return {
+            rows,
+            rowCount: rows.length || 0
+        }
     }
 
 
@@ -504,9 +503,6 @@ export class ClientesService extends BaseService {
         }
 
     }
-
-
-
 
     async getVentasConUtilidad(dtoIn: TrnClienteDto) {
         // Ajustar el porcentaje según  criterio 30% margen
