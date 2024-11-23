@@ -473,8 +473,8 @@ export class ClientesService extends BaseService {
             const isValid = await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
             if (isValid) {
                 const ide_geper = dtoIn.data.ide_geper;
-                delete dtoIn.data.ide_geper;
-                delete dtoIn.data.uuid;
+                // delete dtoIn.data.ide_geper;
+                // delete dtoIn.data.uuid;
                 const objQuery = {
                     operation: "update",
                     tableName: "gen_persona",
@@ -483,7 +483,7 @@ export class ClientesService extends BaseService {
                     condition: `ide_geper = ${ide_geper}`
                 } as ObjectQueryDto;
                 return await this.core.save({
-                    ...dtoIn, listQuery: [objQuery], audit: true
+                    ...dtoIn, listQuery: [objQuery], audit: false
                 });
             }
         }
@@ -674,7 +674,7 @@ export class ClientesService extends BaseService {
         queryClieE.addParam(2, ideEmpr);
         queryClieE.addParam(3, data.ide_geper);
         const resClieE = await this.dataSource.createSelectQuery(queryClieE);
-        if (resClieE.length > 0) {
+        if (resClieE.length === 0) {
             throw new BadRequestException(`El cliente ${data.identificac_geper} no existe`);
         }
 
