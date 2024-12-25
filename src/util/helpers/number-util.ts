@@ -2,7 +2,7 @@ import { isDefined } from "./common-util";
 
 
 /**
- * Redpndea a dos decimales un numero
+ * Redondea a dos decimales un numero
  */
 export function fNumber(value: number, decimals: number = 2): string {
 
