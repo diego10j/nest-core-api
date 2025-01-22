@@ -317,10 +317,10 @@ CREATE TABLE gen_tipo_direccion (
 );
 
 
-insert into gen_tipo_direccion values(1, 'Contacto','Utiliza esta opción para organizar los detalles de contacto de los empleados de una empresa, créalos según su departamento, como ventas, contabilidad, entre otros.',true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into gen_tipo_direccion values(2, 'Dirección de factura','La dirección preferida para todas las facturas. Se selecciona de forma predeterminada cuando factura una orden que pertenece a esta empresa.',true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into gen_tipo_direccion values(3, 'Dirección de entrega','La dirección preferida para todas las entregas. Se selecciona de forma predeterminada al entregar una orden que pertenece a esta empresa.',true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into gen_tipo_direccion values(4, 'Otra Dirección','Otras direcciones para la empresa (por ejemplo, sucursales...)',true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into gen_tipo_direccion values(1, 'Contacto','Utiliza esta opción para organizar los detalles de contacto de los empleados de una empresa, créalos según su departamento, como ventas, contabilidad, entre otros.',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into gen_tipo_direccion values(2, 'Dirección de factura','La dirección preferida para todas las facturas. Se selecciona de forma predeterminada cuando factura una orden que pertenece a esta empresa.',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into gen_tipo_direccion values(3, 'Dirección de entrega','La dirección preferida para todas las entregas. Se selecciona de forma predeterminada al entregar una orden que pertenece a esta empresa.',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into gen_tipo_direccion values(4, 'Otra Dirección','Otras direcciones para la empresa (por ejemplo, sucursales...)',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
 
 
 CREATE TABLE gen_titulo_persona (
@@ -403,7 +403,7 @@ CREATE TABLE "public"."gen_direccion_persona" (
     "referencia_gedirp" varchar(200),
     "longitud_gedirp" varchar(25),
     "latitud_gedirp" varchar(25),
-    "telefono_gedirp" varchar(20),
+    "telefono_gedirp" varchar(60),
     "movil_gedirp" varchar(10),
     "activo_gedirp" bool,
     "usuario_ingre" varchar(50),
@@ -530,3 +530,88 @@ ALTER TABLE public.gen_persona
 	REFERENCES public.gen_canton(ide_gecant)
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT;
+
+-- 07/09/2024
+ALTER TABLE gen_direccion_persona ADD COLUMN defecto_gedirp boolean default false;
+ALTER TABLE gen_direccion_persona ADD COLUMN ide_gegen int;
+
+
+--  insertar direcciones exiistentes de gen_persona
+
+
+WITH max_id AS (
+    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
+)
+INSERT INTO gen_direccion_persona (
+    ide_gedirp,
+    ide_getidi,
+    ide_gepais,
+    ide_geprov,
+    ide_gecant,
+    ide_geper,
+    nombre_dir_gedirp,
+    direccion_gedirp,
+    telefono_gedirp,
+    movil_gedirp,
+    activo_gedirp,
+    defecto_gedirp,
+    usuario_ingre,
+    hora_ingre
+)
+SELECT
+    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente
+    1 AS ide_getidi,            -- Tipo de dirección, valor nulo
+    1 AS ide_gepais,               -- País por defecto
+    gp.ide_geprov,                 -- Provincia
+    gp.ide_gecant,                 -- Cantón
+    gp.ide_geper,
+    'Direccion Principal' as   nombre_dir_gedirp,                -- Persona
+    gp.direccion_geper,    
+    gp.telefono_geper,
+    LEFT(gp.movil_geper, 10) AS movil_gedirp, -- Móvil truncado a 10 dígitos     -- Dirección
+    TRUE AS activo_gedirp,  
+    TRUE AS defecto_gedirp,         -- Activo
+    'sa' AS usuario_ingre,     -- Usuario de ingreso
+    NOW() AS hora_ingre            -- Fecha y hora de ingreso
+FROM
+    gen_persona gp,
+    max_id
+WHERE
+    gp.direccion_geper IS NOT NULL;
+
+
+
+-- inserta contactos 
+
+WITH max_id AS (
+    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
+)
+INSERT INTO gen_direccion_persona (
+    ide_gedirp,
+    ide_geper,
+    nombre_dir_gedirp,
+    telefono_gedirp,
+    movil_gedirp,
+    correo_gedirp,
+    activo_gedirp,
+    usuario_ingre,
+    hora_ingre
+)
+SELECT
+    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente         -- Tipo de dirección, valor nulo               -- Cantón
+    gp.ide_geper,
+    gp.contacto_geper as   nombre_dir_gedirp,                -- Persona  
+    gp.telefono_geper,
+    LEFT(gp.movil_geper, 10) AS movil_gedirp, 
+    gp.correo_geper, -- Móvil truncado a 10 dígitos     -- Dirección
+    TRUE AS activo_gedirp,          -- Activo
+    'sa' AS usuario_ingre,     -- Usuario de ingreso
+    NOW() AS hora_ingre            -- Fecha y hora de ingreso
+FROM
+    gen_persona gp,
+    max_id
+WHERE
+    gp.contacto_geper is not null
+
+
+

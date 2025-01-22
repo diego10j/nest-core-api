@@ -62,7 +62,7 @@ export class FacturasService extends BaseService {
 
     async getFacturas(dtoIn: FacturasDto) {
         const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoFact = dtoIn.ide_ccefa ? `and a.ide_ccefa = =  ${dtoIn.ide_ccefa}` : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
+        const condEstadoFact = dtoIn.ide_ccefa ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}` : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
         const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
         const query = new SelectQuery(`     
@@ -118,6 +118,32 @@ export class FacturasService extends BaseService {
         query.addDateParam(1, dtoIn.fechaInicio);
         query.addDateParam(2, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
+    }
+
+    async getTotalFacturasPorEstado(dtoIn: FacturasDto) {
+        const query = new SelectQuery(`  
+        SELECT 
+            COUNT(a.ide_srcom) AS contador, 
+            b.nombre_sresc, 
+            b.ide_sresc,
+            b.icono_sresc,
+            b.color_sresc
+        FROM 
+            sri_estado_comprobante b
+        LEFT JOIN 
+            sri_comprobante a 
+        ON 
+            a.ide_sresc = b.ide_sresc
+            AND a.coddoc_srcom = '01'
+            AND a.fechaemision_srcom BETWEEN '2010-01-01' AND '2022-01-01'
+            AND a.ide_sucu = 2
+        GROUP BY 
+            b.nombre_sresc, 
+            b.ide_sresc,
+            b.icono_sresc,
+            b.color_sresc
+      `);
+        return await this.dataSource.createSelectQuery(query);
     }
 
 

@@ -100,4 +100,21 @@ export class ClientesController {
     return this.service.getVentasConUtilidad(dtoIn);
   }
 
+  @Post('getDireccionesCliente')
+  // @Auth()
+  getDireccionesCliente(
+    @Body() dtoIn: IdClienteDto
+  ) {
+    return this.service.getDireccionesCliente(dtoIn);
+  }
+
+
+  @Post('getContactosCliente')
+  // @Auth()
+  getContactosCliente(
+    @Body() dtoIn: IdClienteDto
+  ) {
+    return this.service.getContactosCliente(dtoIn);
+  }
+
 }

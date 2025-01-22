@@ -35,5 +35,15 @@ export class FacturasController {
     }
 
 
+    @Post('getTotalFacturasPorEstado')
+    // @Auth()
+    getTotalFacturasPorEstado(
+        @Body() dtoIn: FacturasDto
+    ) {
+        return this.service.getTotalFacturasPorEstado(dtoIn);
+    }
+    
+
+
 
 }

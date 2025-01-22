@@ -74,7 +74,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN gen_provincia e ON p.ide_geprov = e.ide_geprov
             LEFT JOIN gen_canton f ON p.ide_gecant = f.ide_gecant
             LEFT JOIN gen_titulo_persona g ON p.ide_getitp = g.ide_getitp
-            LEFT JOIN gen_tipo_identifi h ON p.ide_getip = h.ide_getid
+            LEFT JOIN gen_tipo_identifi h ON p.ide_getid = h.ide_getid
             LEFT JOIN con_tipo_contribu i ON p.ide_cntco = i.ide_cntco
         WHERE  
             uuid = $1`
@@ -122,7 +122,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
             LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
             LEFT JOIN gen_tipo_persona d on p.ide_getip = d.ide_getip
-            LEFT JOIN gen_tipo_identifi h on p.ide_getip = h.ide_getid
+            LEFT JOIN gen_tipo_identifi h on p.ide_getid = h.ide_getid
         WHERE
             p.es_cliente_geper = true
             AND p.identificac_geper IS NOT NULL
@@ -700,5 +700,68 @@ export class ClientesService extends BaseService {
     }
 
 
+    /**
+    * Retorna el listado de clientes 
+    * @param dtoIn 
+    * @returns 
+    */
+    async getDireccionesCliente(dtoIn: IdClienteDto) {
+        const query = new SelectQuery(`
+        select
+            a.ide_gedirp,
+            a.nombre_dir_gedirp,
+            a.direccion_gedirp,
+            a.referencia_gedirp ,
+            a.telefono_gedirp ,
+            a.movil_gedirp,
+            a.longitud_gedirp,
+            a.latitud_gedirp ,
+            b.nombre_geprov ,
+            c.nombre_gecan ,
+            d.nombre_getidi,
+            a.activo_gedirp,
+            a.defecto_gedirp
+        from
+            gen_direccion_persona a
+        left join gen_provincia b on
+            a.ide_geprov = b.ide_geprov
+        left join gen_canton c on
+            a.ide_gecant = c.ide_gecant
+        inner join gen_tipo_direccion d on
+            a.ide_getidi = d.ide_getidi 
+        where a.ide_geper = $1
+        and a.ide_getidi is not null
+        order by defecto_gedirp desc, activo_gedirp desc
+        `, dtoIn);
+        query.addParam(1, dtoIn.ide_geper);
+        return await this.dataSource.createSelectQuery(query);
+    }
+
+
+    /**
+        * Retorna el listado de clientes 
+        * @param dtoIn 
+        * @returns 
+        */
+    async getContactosCliente(dtoIn: IdClienteDto) {
+        const query = new SelectQuery(`
+    select
+        a.ide_gedirp,
+        a.nombre_dir_gedirp,
+        a.referencia_gedirp ,
+        a.telefono_gedirp ,
+        a.correo_gedirp,
+        a.movil_gedirp,
+        a.activo_gedirp,
+        a.ide_gegen
+    from
+        gen_direccion_persona a
+    where a.ide_geper = $1
+    and ide_getidi is null
+    order by activo_gedirp desc, nombre_dir_gedirp
+    `, dtoIn);
+        query.addParam(1, dtoIn.ide_geper);
+        return await this.dataSource.createSelectQuery(query);
+    }
 
 }
