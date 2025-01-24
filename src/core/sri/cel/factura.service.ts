@@ -68,10 +68,10 @@ export class FacturaService extends BaseService {
             <factura id=\"comprobante\" version=\"1.1.0\">
                <infoTributaria>
                    <ambiente>${emisor.ambiente}</ambiente>
-                   <tipoEmision>").append(comprobante.getTipoemision()).</tipoEmision>
-                   <razonSocial>").append(emisor.getRazonsocial()).</razonSocial>
-                   <nombreComercial>").append(emisor.getNombrecomercial()).</nombreComercial>
-                   <ruc>").append(emisor.getRuc()).</ruc>
+                   <tipoEmision>${comprobante.tipoemision}</tipoEmision>
+                   <razonSocial>${emisor.razonSocial}</razonSocial>
+                   <nombreComercial>${emisor.nombreComercial}</nombreComercial>
+                   <ruc>${emisor.ruc}</ruc>
                    <claveAcceso>").append(comprobante.getClaveacceso()).</claveAcceso>
                    <codDoc>").append(TipoComprobanteEnum.FACTURA.getCodigo()).</codDoc>
                    <estab>").append(comprobante.getEstab()).</estab>

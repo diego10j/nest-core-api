@@ -150,7 +150,7 @@ export class ComprobantesInvService extends BaseService {
     * @returns 
     */
      async getListDataEstadosComprobantes(dto?: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'inv_est_prev_inve', primaryKey: 'ide_inepi', columnLabel: 'nombre_inepi' }
+        const dtoIn = { ...dto, module: 'inv', tableName: 'est_prev_inve', primaryKey: 'ide_inepi', columnLabel: 'nombre_inepi' }
         return this.core.getListDataValues(dtoIn);
     }
 

@@ -29,8 +29,8 @@ export class GeneralService {
         ORDER BY 1 DESC
         `);
         const data: any[] = await this.dataSource.createSelectQuery(query);
-        if(data.length === 0){
-            data.unshift({ value: getYear(new Date()), label: `${getYear(new Date())}` }) 
+        if (data.length === 0) {
+            data.unshift({ value: getYear(new Date()), label: `${getYear(new Date())}` })
         }
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data
@@ -41,7 +41,7 @@ export class GeneralService {
     * @returns 
     */
     async getListDataProvincias(dto?: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'gen_provincia', primaryKey: 'ide_geprov', columnLabel: 'nombre_geprov' }
+        const dtoIn = { ...dto, module: 'gen', tableName: 'provincia', primaryKey: 'ide_geprov', columnLabel: 'nombre_geprov' }
         return this.core.getListDataValues(dtoIn);
     }
 
@@ -75,7 +75,7 @@ export class GeneralService {
     * @returns 
     */
     async getListDataTitulosPersona(dto?: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'gen_titulo_persona', primaryKey: 'ide_getitp', columnLabel: "nombre_getitp || ' - ' || abreviatura_getitp" }
+        const dtoIn = { ...dto, module: 'gen', tableName: 'titulo_persona', primaryKey: 'ide_getitp', columnLabel: "nombre_getitp || ' - ' || abreviatura_getitp" }
         return this.core.getListDataValues(dtoIn);
     }
 
@@ -85,7 +85,7 @@ export class GeneralService {
     * @returns 
     */
     async getListDataTiposDireccion(dto?: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'gen_tipo_direccion', primaryKey: 'ide_getidi', columnLabel: 'nombre_getidi' }
+        const dtoIn = { ...dto, module: 'gen', tableName: 'tipo_direccion', primaryKey: 'ide_getidi', columnLabel: 'nombre_getidi' }
         return this.core.getListDataValues(dtoIn);
     }
 

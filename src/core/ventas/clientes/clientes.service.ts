@@ -81,13 +81,22 @@ export class ClientesService extends BaseService {
         );
         query.addStringParam(1, dtoIn.uuid);
 
+
+
+
         const res = await this.dataSource.createSingleQuery(query);
         if (res) {
+            const ide_geper = res.ide_geper;
+            // Total 
+            const totales = await this.getInfoTotalesCliente(ide_geper);
+
             return {
                 rowCount: 1,
                 row: {
                     cliente: res,
                 },
+                datos: { totales },
+
                 message: 'ok'
             } as ResultQuery
 
@@ -476,7 +485,8 @@ export class ClientesService extends BaseService {
                 // delete dtoIn.data.uuid;
                 const objQuery = {
                     operation: "update",
-                    tableName: "gen_persona",
+                    module: "gen",
+                    tableName: "persona",
                     primaryKey: "ide_geper",
                     object: dtoIn.data,
                     condition: `ide_geper = ${ide_geper}`
@@ -492,7 +502,8 @@ export class ClientesService extends BaseService {
             if (isValid === true) {
                 const objQuery = {
                     operation: "insert",
-                    tableName: "gen_persona",
+                    module: "gen",
+                    tableName: "persona",
                     primaryKey: "ide_geper",
                     object: dtoIn.data,
                 } as ObjectQueryDto;
@@ -753,9 +764,12 @@ export class ClientesService extends BaseService {
         a.correo_gedirp,
         a.movil_gedirp,
         a.activo_gedirp,
-        a.ide_gegen
+        a.ide_gegen,
+        a.ide_gegen,
+        nombre_gegen
     from
         gen_direccion_persona a
+    left join gen_genero b on a.ide_gegen = b.ide_gegen
     where a.ide_geper = $1
     and ide_getidi is null
     order by activo_gedirp desc, nombre_dir_gedirp
@@ -763,5 +777,32 @@ export class ClientesService extends BaseService {
         query.addParam(1, dtoIn.ide_geper);
         return await this.dataSource.createSelectQuery(query);
     }
+
+
+    /**
+     * Retorna información de totales de trn del cliente
+     * @param ide_geper 
+     * @returns 
+     */
+    async getInfoTotalesCliente(ide_geper: number) {
+        let totalClientes = 0;
+
+        const query = new SelectQuery(`     
+            SELECT 
+                COUNT(1) AS total_facturas,
+                MAX(fecha_emisi_cccfa) AS ultima_venta,
+                MIN(fecha_emisi_cccfa) AS primera_venta,
+                SUM(total_cccfa) AS total_ventas
+            FROM 
+                cxc_cabece_factura cf
+            WHERE 
+                    cf.ide_geper = $1
+                    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                `);
+        query.addIntParam(1, ide_geper);
+        return await this.dataSource.createSingleQuery(query);
+
+    }
+
 
 }

@@ -50,7 +50,8 @@ export class ProductosService extends BaseService {
         const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
         const dtoIn = {
             ...dto,
-            tableName: 'inv_categoria',
+            module: 'inv',
+            tableName: 'categoria',
             primaryKey: 'ide_incate',
             orderBy: 'nombre_incate',
             condition,
@@ -66,7 +67,7 @@ export class ProductosService extends BaseService {
 
         const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
 
-        const dtoIn = { ...dto, tableName: 'inv_categoria', primaryKey: 'ide_incate', columnName: 'nombre_incate', columnNode: 'inv_ide_incate', condition: `${condition}`, orderBy: 'nombre_incate' }
+        const dtoIn = { ...dto, module: 'inv', tableName: 'categoria', primaryKey: 'ide_incate', columnName: 'nombre_incate', columnNode: 'inv_ide_incate', condition: `${condition}`, orderBy: 'nombre_incate' }
         return this.core.getTreeModel(dtoIn);
     }
 

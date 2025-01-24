@@ -28,7 +28,7 @@ export class PuntoVentaService extends BaseService {
      * @returns 
      */
     async getTableQueryEstadosOrden(dto: ServiceDto) {
-        const dtoIn = { ...dto, tableName: 'cxc_estado_orden', primaryKey: 'ide_ccesor', orderBy: 'nombre_ccesor' }
+        const dtoIn = { ...dto,module:'cxc', tableName: 'estado_orden', primaryKey: 'ide_ccesor', orderBy: 'nombre_ccesor' }
         return this.core.getTableQuery(dtoIn);
     }
 

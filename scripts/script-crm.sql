@@ -388,7 +388,7 @@ WHERE nom_geper ILIKE ANY(ARRAY[
   ]);
   
 -----------------------------------------------
-
+ALTER TABLE gen_persona ADD COLUMN ide_geprov int4;
 -- Direccion de persona
 CREATE TABLE "public"."gen_direccion_persona" (
     "ide_gedirp" int4,

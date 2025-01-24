@@ -17,7 +17,7 @@ export class UsuariosService {
     // -------------------------------- USUARIO ---------------------------- //
     async getListDataUsuario(dto: ServiceDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua', condition }
+        const dtoIn = { ...dto, module: 'sis', tableName: 'usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
@@ -27,7 +27,7 @@ export class UsuariosService {
             whereClause = `ide_usua = -1`;
         }
 
-        const dtoIn = { ...dto, tableName: 'sis_usuario', primaryKey: 'ide_usua', condition: `${whereClause}` }
+        const dtoIn = { ...dto, module: 'sis', tableName: 'usuario', primaryKey: 'ide_usua', condition: `${whereClause}` }
         return this.core.getTableQuery(dtoIn);
     }
 

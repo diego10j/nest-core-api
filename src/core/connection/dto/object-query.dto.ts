@@ -3,6 +3,11 @@ import { IsString, IsNotEmpty, IsDefined, IsObject, IsIn, IsOptional, Matches } 
 export class ObjectQueryDto {
 
     @IsString()
+    @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'module no debe contener espacios' })
+    module: string;
+
+    @IsString()
     @IsIn(["insert", "update", "delete"])
     @IsNotEmpty()
     operation: string;

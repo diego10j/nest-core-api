@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSourceService } from './connection/datasource.service';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
-import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, UpdateColumnsDto } from './connection/dto';
+import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
 import { toObjectTable } from '../util/helpers/sql-util';
@@ -24,7 +24,7 @@ export class CoreService {
         const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
         const orderBy = dto.orderBy || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
-                                    FROM ${dto.tableName}  ${condition} ORDER BY ${orderBy}`);
+                                    FROM ${dto.module}_${dto.tableName}  ${condition} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createSelectQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data;
@@ -36,7 +36,7 @@ export class CoreService {
      * @returns 
      */
     async getTableQuery(dto: TableQueryDto) {
-        const { columns, tableName, condition, orderBy, primaryKey } = dto;
+        const { columns, module, tableName, condition, orderBy, primaryKey } = dto;
         // Default values
         const selectedColumns = columns || '*';
         const whereClause = condition || '1=1';
@@ -44,14 +44,14 @@ export class CoreService {
 
         const pgq = new SelectQuery(`        
         SELECT ${selectedColumns} 
-        FROM ${tableName} 
+        FROM ${module}_${tableName} 
         WHERE 1=1 AND ${whereClause} 
         ORDER BY ${orderByClause}    
         `, dto);
         // ide_empr = ${dto.ideEmpr} AND 
-        const result = await this.dataSource.createQuery(pgq, true, tableName);
+        const result = await this.dataSource.createQuery(pgq, true, `${module}_${tableName}`);
         result.key = primaryKey;
-        result.ref = tableName;
+        result.ref = `${module}_${tableName}`;
         return result
     }
 
@@ -76,13 +76,14 @@ export class CoreService {
      */
     toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string, audit: boolean): UpdateQuery | DeleteQuery | InsertQuery {
         dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
+        const tableName = `${dto.module}_${dto.tableName}`.toLocaleLowerCase();
         const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
         const valuePrimaryKey = mapObject.get(dto.primaryKey);
 
         if (dto.operation === 'update') {
             // asigna valores update campos del core            
             mapObject.set('usuario_actua', login);
-            const updateQuery = new UpdateQuery(dto.tableName, dto.primaryKey);
+            const updateQuery = new UpdateQuery(tableName, dto.primaryKey);
             updateQuery.setAudit(audit);
             mapObject.delete(dto.primaryKey);
             if (dto.condition)
@@ -97,7 +98,7 @@ export class CoreService {
         }
         else if (dto.operation === 'insert') {
             // insert
-            const insertQuery = new InsertQuery(dto.tableName, dto.primaryKey)
+            const insertQuery = new InsertQuery(tableName, dto.primaryKey)
             insertQuery.setAudit(audit);
             //  asigna valores update campos del core
             if (dto.primaryKey !== 'ide_empr')
@@ -109,7 +110,7 @@ export class CoreService {
             return insertQuery;
         }
         else if (dto.operation === 'delete') {
-            const deleteQuery = new DeleteQuery(dto.tableName)
+            const deleteQuery = new DeleteQuery(tableName)
             deleteQuery.setAudit(audit);
             if (dto.condition)
                 deleteQuery.where = dto.condition;
@@ -146,7 +147,7 @@ export class CoreService {
      * @returns 
      */
     async isUnique(dto: UniqueDto) {
-        const baseQuery = `SELECT ${dto.columns.map(col => col.columnName).join(', ')} FROM ${dto.tableName} WHERE `;
+        const baseQuery = `SELECT ${dto.columns.map(col => col.columnName).join(', ')} FROM ${dto.module}_${dto.tableName} WHERE `;
         const conditions = dto.columns.map((col, index) => `${col.columnName} = $${index + 1}`).join(' OR ');
         const params = dto.columns.map(col => col.value);
 
@@ -192,7 +193,7 @@ export class CoreService {
      * @returns 
      */
     async canDelete(dto: DeleteDto) {
-        const dq = new DeleteQuery(dto.tableName);
+        const dq = new DeleteQuery(`${dto.module}_${dto.tableName}`);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
         await this.dataSource.canDelete(dq, dto.validate)
@@ -207,7 +208,7 @@ export class CoreService {
      * @returns 
      */
     async getSeqTable(dto: SeqTableDto) {
-        const seqTable: number = await this.dataSource.getSeqTable(dto.tableName, dto.primaryKey, dto.numberRowsAdded);
+        const seqTable: number = await this.dataSource.getSeqTable(`${dto.module}_${dto.tableName}`, dto.primaryKey, dto.numberRowsAdded);
         return {
             seqTable,
             message: 'ok'
@@ -225,16 +226,23 @@ export class CoreService {
         if (isDefined(dtoIn.uuid) === false) {
             whereClause = `${dtoIn.primaryKey} = -1`;
         }
-        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.tableName} WHERE ${whereClause}`);
+        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
+        return await this.dataSource.createSingleQuery(query);
+    }
+
+    async findById(dtoIn: FindByIdDto) {
+        const columns = dtoIn.columns || '*'; // all columns
+        const whereClause = `${dtoIn.primaryKey} = ${dtoIn.value}`;
+        const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
         return await this.dataSource.createSingleQuery(query);
     }
 
     async getTableColumns(dtoIn: ColumnsTableDto) {
-        return await this.dataSource.getTableColumns(dtoIn.tableName);
+        return await this.dataSource.getTableColumns(`${dtoIn.module}_${dtoIn.tableName}`);
     }
 
     async refreshTableColumns(dtoIn: ColumnsTableDto) {
-        return await this.dataSource.updateTableColumnsCache(dtoIn.tableName);
+        return await this.dataSource.updateTableColumnsCache(`${dtoIn.module}_${dtoIn.tableName}`);
     }
 
     async clearCacheRedis() {
@@ -259,7 +267,7 @@ export class CoreService {
             ARRAY[${dtoIn.primaryKey}] AS path,
             1 AS level
         FROM 
-            ${dtoIn.tableName}
+            ${dtoIn.module}_${dtoIn.tableName}
         WHERE 
             ${dtoIn.columnNode} IS NULL -- Considerando que los nodos raíz tienen NULL
             ${conditionClause}
@@ -273,7 +281,7 @@ export class CoreService {
             parent.path || child.${dtoIn.primaryKey},
             parent.level + 1
         FROM 
-            ${dtoIn.tableName} child
+            ${dtoIn.module}_${dtoIn.tableName} child
         JOIN 
             tree parent ON child.${dtoIn.columnNode} = parent.id
         WHERE NOT child.${dtoIn.primaryKey} = ANY(parent.path)

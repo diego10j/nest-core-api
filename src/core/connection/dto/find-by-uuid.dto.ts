@@ -5,6 +5,11 @@ export class FindByUuidDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'module no debe contener espacios' })
+    module: string;
+
+    @IsString()
+    @IsNotEmpty()
     @Matches(/^\S*$/, { message: 'tableName no debe contener espacios' })
     tableName: string;
 
