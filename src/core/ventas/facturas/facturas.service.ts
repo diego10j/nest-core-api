@@ -6,6 +6,8 @@ import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasDto } from './dto/facturas.dto';
 import { CoreService } from 'src/core/core.service';
 import { ServiceDto } from 'src/common/dto/service.dto';
+import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { VentasDiariasDto } from './dto/ventas-diarias.dto';
 
 @Injectable()
 export class FacturasService extends BaseService {
@@ -31,7 +33,7 @@ export class FacturasService extends BaseService {
         const condition = `ide_empr = ${dto.ideEmpr} 
                            AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
                            ${condSucu}`;
-        const dtoIn = { ...dto,module:'cxc', tableName: 'datos_fac', primaryKey: 'ide_ccdaf', orderBy: 'establecimiento_ccdfa', condition }
+        const dtoIn = { ...dto, module: 'cxc', tableName: 'datos_fac', primaryKey: 'ide_ccdaf', orderBy: 'establecimiento_ccdfa', condition }
         return this.core.getTableQuery(dtoIn);
     }
 
@@ -145,6 +147,119 @@ export class FacturasService extends BaseService {
       `);
         return await this.dataSource.createSelectQuery(query);
     }
+
+
+
+    /**
+    * Retorna el total de ventas mensuales en un período
+    * @param dtoIn 
+    * @returns 
+    */
+    async getTotalVentasPeriodo(dtoIn: VentasMensualesDto) {
+        const query = new SelectQuery(`
+            WITH FacturasFiltradas AS (
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+                    COUNT(ide_cccfa) AS num_facturas,
+                    SUM(base_grabada_cccfa) AS ventas12,
+                    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas0,
+                    SUM(valor_iva_cccfa) AS iva,
+                    SUM(total_cccfa) AS total
+                FROM 
+                    cxc_cabece_factura
+                WHERE 
+                    fecha_emisi_cccfa >= $1 AND fecha_emisi_cccfa <= $2
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa)
+            )
+            SELECT 
+                gm.nombre_gemes,
+                COALESCE(ff.num_facturas, 0) AS num_facturas,
+                COALESCE(ff.ventas12, 0) AS ventas12,
+                COALESCE(ff.ventas0, 0) AS ventas0,
+                COALESCE(ff.iva, 0) AS iva,
+                COALESCE(ff.total, 0) AS total
+            FROM 
+                gen_mes gm
+            LEFT JOIN 
+                FacturasFiltradas ff ON gm.ide_gemes = ff.mes
+            ORDER BY 
+                gm.ide_gemes
+            `);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+
+    /**
+    * Retorna el total de ventas de los últimos 7 dias a excepcion del dia domingo
+    * @param dtoIn 
+    * @returns 
+    */
+    async getTotalUltimasVentasDiarias(dtoIn: VentasDiariasDto) {
+        const query = new SelectQuery(`
+        WITH DiasFiltrados AS (
+            -- Generar los últimos 9 días excluyendo domingos
+            SELECT fecha::DATE
+            FROM generate_series(
+                '${dtoIn.fecha}'::DATE - INTERVAL '9 days',
+                '${dtoIn.fecha}'::DATE,
+                INTERVAL '1 day'
+            ) fecha
+            WHERE EXTRACT(DOW FROM fecha) != 0 -- Excluir domingos
+            ORDER BY fecha DESC
+            LIMIT 7
+        ),
+        FacturasFiltradas AS (
+            SELECT 
+                fecha_emisi_cccfa AS fecha,
+                TO_CHAR(fecha_emisi_cccfa, 'FMDay') AS nombre_dia,
+                LEFT(TO_CHAR(fecha_emisi_cccfa, 'FMDay'), 1) AS inicial_dia,
+                EXTRACT(DAY FROM fecha_emisi_cccfa) AS numero_dia,
+                (EXTRACT(DOW FROM fecha_emisi_cccfa) + 6) % 7 + 1 AS numero_dia_semana,
+                COUNT(ide_cccfa) AS num_facturas,
+                SUM(base_grabada_cccfa) AS ventas12,
+                SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas0,
+                SUM(valor_iva_cccfa) AS iva,
+                SUM(total_cccfa) AS total
+            FROM cxc_cabece_factura
+            WHERE 
+                fecha_emisi_cccfa >= (SELECT MIN(fecha) FROM DiasFiltrados)
+                AND fecha_emisi_cccfa <= $1 
+                AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY fecha_emisi_cccfa
+        )
+        SELECT 
+            numero_dia,
+            d.fecha,
+            nombre_dia,
+            inicial_dia,
+            numero_dia_semana,
+            COALESCE(f.num_facturas, 0) AS num_facturas,
+            COALESCE(f.ventas12, 0) AS ventas12,
+            COALESCE(f.ventas0, 0) AS ventas0,
+            COALESCE(f.iva, 0) AS iva,
+            COALESCE(f.total, 0) AS total,
+            CASE 
+                WHEN LAG(f.total) OVER (ORDER BY d.fecha) IS NOT NULL THEN 
+                    ROUND(((f.total - LAG(f.total) OVER (ORDER BY d.fecha)) / LAG(f.total) OVER (ORDER BY d.fecha)) * 100, 2)
+                ELSE NULL 
+            END AS variacion_porcentual
+        FROM DiasFiltrados d
+        LEFT JOIN FacturasFiltradas f ON d.fecha = f.fecha
+        ORDER BY d.fecha;       
+        
+            `);
+        query.addDateParam(1, dtoIn.fecha);
+
+        return await this.dataSource.createQuery(query);
+    }
+
 
 
 }

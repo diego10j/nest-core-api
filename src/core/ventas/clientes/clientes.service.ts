@@ -65,7 +65,11 @@ export class ClientesService extends BaseService {
             activo_geper,
             requiere_actua_geper,
             nombre_getitp,
-            nombre_cntco
+            nombre_cntco,
+            p.fecha_ingre,
+            p.fecha_actua,
+            p.usuario_ingre,
+            p.usuario_actua
         FROM
             gen_persona p
             LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
@@ -785,9 +789,7 @@ export class ClientesService extends BaseService {
      * @returns 
      */
     async getInfoTotalesCliente(ide_geper: number) {
-        let totalClientes = 0;
-
-        const query = new SelectQuery(`     
+       const query = new SelectQuery(`     
             SELECT 
                 COUNT(1) AS total_facturas,
                 MAX(fecha_emisi_cccfa) AS ultima_venta,

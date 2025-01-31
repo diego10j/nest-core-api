@@ -743,6 +743,8 @@ export class ProductosService extends BaseService {
        * @returns 
        */
     async getVentasMensuales(dtoIn: IVentasMensualesDto) {
+        // para filtrar dotos de un cliente
+        const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
         const query = new SelectQuery(`
         SELECT
             gm.nombre_gemes,
@@ -773,6 +775,7 @@ export class ProductosService extends BaseService {
                 AND cdf.ide_inarti = $3
                 AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND a.ide_empr = ${dtoIn.ideEmpr} 
+                ${conditionCliente}
         ) cdf ON gm.ide_gemes = cdf.mes
         GROUP BY
             gm.nombre_gemes, gm.ide_gemes, siglas_inuni
