@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Res, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, HttpException, HttpStatus, Logger, Res } from '@nestjs/common';
 import { envs } from 'src/config/envs';
 import { WhatsappService } from './whatsapp.service';
 
@@ -6,29 +6,30 @@ import { WhatsappService } from './whatsapp.service';
 export class WebhookController {
     private readonly logger = new Logger(WebhookController.name);
 
-    constructor(private readonly whatsappService: WhatsappService) {}
+    constructor(private readonly whatsappService: WhatsappService) { }
 
     @Get()
-    verifyWebhook(@Query('hub.challenge') challenge: string, @Query('hub.verify_token') verifyToken: string, @Res() res: any) {
-        const token = envs.whatsappApiToken;
+    verifyWebhook(@Query('hub.challenge') challenge: string, @Query('hub.verify_token') verifyToken: string) {
+        const token = envs.whatsappVerifyToken; // Debe ser el mismo que configuraste en Meta
         if (verifyToken === token) {
             this.logger.log('Webhook verification successful');
-            res.status(HttpStatus.OK).send(challenge);
-        } else {
-            this.logger.warn('Webhook verification failed');
-            res.status(HttpStatus.FORBIDDEN).send('Verification token mismatch');
+            return challenge;
         }
+        this.logger.warn('Webhook verification failed');
+        throw new HttpException('Verification token mismatch', HttpStatus.FORBIDDEN);
     }
 
     @Post()
     async handleWebhook(@Body() body: any, @Res() res: any) {
-        this.logger.log(`Webhook received: ${JSON.stringify(body)}`);
+        this.logger.log(`Webhook received: ${JSON.stringify(body, null, 2)}`);
+        // Responde inmediatamente a Meta para evitar reintentos
+        res.status(HttpStatus.OK).send({ status: 'EVENT_RECEIVED' });
+        // Procesa el mensaje en segundo plano
         try {
-            await this.whatsappService.manejarMensajeEntrante(body);
-            res.status(HttpStatus.OK).send('EVENT_RECEIVED');
+            await this.whatsappService.saveReceivedMessage(body);
         } catch (error) {
-            this.logger.error(`Error handling webhook: ${error.message}`);
-            res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('ERROR');
+            this.logger.error(`❌ Error manejando webhook: ${error.message}`);
         }
     }
+
 }

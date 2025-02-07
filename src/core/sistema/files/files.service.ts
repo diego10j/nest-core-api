@@ -16,12 +16,12 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { toDate, FORMAT_DATETIME_DB } from 'src/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
-import { ConfigService } from '@nestjs/config';
+
 @Injectable()
 export class FilesService {
 
     private basePath = PATH_DRIVE(); // Cambiar a /drive 'C:/drive' como directorio raíz
-
+   
     private tableName = 'sis_archivo';
     private primaryKey = 'ide_arch';
 

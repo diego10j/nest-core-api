@@ -1,8 +1,7 @@
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, Matches } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
-
-export class MensajeChatDto extends ServiceDto {
+export class GetMensajesDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
@@ -11,9 +10,5 @@ export class MensajeChatDto extends ServiceDto {
         message: 'Número de teléfono no válido'
     })
     telefono: string;
-
-    @IsString()
-    @IsOptional()
-    mensaje?: string;
 
 }

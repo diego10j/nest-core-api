@@ -5,7 +5,7 @@ import { Response } from 'express';
 import { diskStorage } from 'multer';
 import { FilesService } from './files.service';
 
-import { fileFilter, fileNamer } from './helpers';
+import { fileNamer } from './helpers';
 import { GetFilesDto } from './dto/get-files.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { fileOriginalNamer, PATH_DRIVE } from './helpers/fileNamer.helper';

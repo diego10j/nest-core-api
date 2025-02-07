@@ -27,3 +27,10 @@ nest g resource core/ventas/punto-venta --no-spec
 nest g module redis --dry-run
 
 
+
+-----
+sudo lsof -i :3000
+sudo kill -9 5155
+
+
+

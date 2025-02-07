@@ -24,3 +24,6 @@ yarn add dotenv
 yarn add zod
 yarn add openai
 yarn add sharp
+
+yarn add form-data --save
+yarn add @nestjs/websockets @nestjs/platform-socket.io socket.io --save

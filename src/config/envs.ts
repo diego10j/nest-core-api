@@ -23,11 +23,15 @@ interface EnvVars {
   FORMAT_TIME_BD: string;
   PATH_DRIVE: string;
 
+
+  WHATSAPP_API_URL: string;
   WHATSAPP_API_ID: string;
   WHATSAPP_API_TOKEN: string;
+  WHATSAPP_VERIFY_TOKEN: string
+  WHATSAPP_SOCKET_PORT: number;
 
   OPENAI_API_KEY: string;
-  
+
 }
 
 const envsSchema = z.object({
@@ -60,8 +64,14 @@ const envsSchema = z.object({
   FORMAT_TIME_BD: z.string(),
   PATH_DRIVE: z.string(),
 
+
   WHATSAPP_API_ID: z.string(),
   WHATSAPP_API_TOKEN: z.string(),
+  WHATSAPP_VERIFY_TOKEN: z.string(),
+  WHATSAPP_API_URL: z.string(),
+  WHATSAPP_SOCKET_PORT: z.string().refine(val => !isNaN(Number(val)), {
+    message: "WHATSAPP_SOCKET_PORT must be a number"
+  }).transform(Number),
 
   OPENAI_API_KEY: z.string(),
 }).passthrough();
@@ -80,7 +90,7 @@ export const envs = {
   // dbHost: envVars.DB_HOST,
   // dbPort: envVars.DB_PORT,
   // dbUsername: envVars.DB_USERNAME,
-  bdUrlPool:envVars.DB_URL_POOL,
+  bdUrlPool: envVars.DB_URL_POOL,
 
   idSistema: envVars.ID_SISTEMA,
 
@@ -97,7 +107,12 @@ export const envs = {
   formatTimeBd: envVars.FORMAT_TIME_BD,
   pathDrive: envVars.PATH_DRIVE,
 
+
   whatsappApiId: envVars.WHATSAPP_API_ID,
   whatsappApiToken: envVars.WHATSAPP_API_TOKEN,
+  whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN,
+  whatsappApiUrl: envVars.WHATSAPP_API_URL,
+  whatsappSocketPort: envVars.WHATSAPP_SOCKET_PORT,
+
   openaiApiKey: envVars.OPENAI_API_KEY,
 };

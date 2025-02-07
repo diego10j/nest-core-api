@@ -15,7 +15,7 @@ import { envs } from 'src/config/envs';
 export class DataSourceService {
 
 
-    private pool = new Pool({
+    public pool = new Pool({
         // user: envs.dbUsername,
         // host: envs.dbHost,
         // database: envs.dbName,

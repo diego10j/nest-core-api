@@ -333,7 +333,7 @@ INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "l
 
 INSERT INTO "public"."sis_perfil_opcion" ("ide_peop", "ide_perf", "ide_opci", "lectura_peop") VALUES (1003, 20, 1003, 'f');
 
--- 07 July 2024 10:14:46 AM
+-- 07 July 2024 10:14:46 AM  ******************************BORRAR
 CREATE TABLE cha_mensajes (
     uuid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 	from_chmen VARCHAR(50),
@@ -662,3 +662,116 @@ CREATE INDEX IF NOT EXISTS idx_inv_articulo_inarti ON inv_articulo(ide_inarti, u
 CREATE INDEX IF NOT EXISTS idx_inv_unidad_inuni ON inv_unidad(ide_inuni);
 
 
+// 04-02-2025
+
+CREATE TABLE wha_lista (
+	ide_whlis SERIAL PRIMARY KEY,,
+	nombre_whlis varchar(80),
+	icono_whlis varchar(50),
+	color_whlis varchar(30),
+	descripcion_whlis text,
+	activo_whlis bool DEFAULT true,
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+
+
+CREATE TABLE wha_chat (
+	ide_whcha SERIAL PRIMARY KEY,   -- secuencial de chats
+	fecha_crea_whcha TIMESTAMP DEFAULT CURRENT_TIMESTAMP, --fecha crea chat
+	fecha_msg_whcha TIMESTAMP,  --fecha último mensaje
+	nombre_whcha varchar(80),
+	name_whcha varchar(80),   				--- name API
+	wa_id_whcha varchar(20),  				--- wa_id API ---telefono
+	id_whcha varchar(80),  				    ---  id ultimo mensaje
+	phone_number_id_whcha  varchar(20),  	-- phone_number_id API
+	phone_number_whcha varchar(20),  		-- display_phone_number API
+	leido_whcha bool DEFAULT false,
+	eliminado_whcha bool DEFAULT false,
+	favorito_whcha bool DEFAULT false,
+	notas_whcha TEXT,
+	color_whcha varchar(30),
+	no_leidos_whcha  INT DEFAULT 0,
+	ide_geper INT8 REFERENCES gen_persona(ide_geper) ON DELETE SET NULL,    -- Asocia a una persona
+	ide_vgven INT,  -- Asocia a un vendedor
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+ALTER TABLE wha_chat ADD CONSTRAINT wha_chat_ide_whcha_unique UNIQUE (ide_whcha);
+ALTER TABLE wha_chat ADD CONSTRAINT wha_chat_wa_id_unique UNIQUE (wa_id_whcha);
+
+CREATE INDEX IF NOT EXISTS idx_wha_chat_wa_id_whcha ON wha_chat(wa_id_whcha);
+CREATE INDEX IF NOT EXISTS idx_wha_chat_favorito_whcha ON wha_chat(favorito_whcha);
+CREATE INDEX IF NOT EXISTS idx_wha_chat_leido_whcha ON wha_chat(leido_whcha);
+
+--- Asociar listas de Chats
+CREATE TABLE wha_lista_chat (
+	ide_whlic  SERIAL primary KEY ,
+	ide_whlis INT REFERENCES wha_lista(ide_whlis) ON DELETE CASCADE,   -- Asocia a lista 
+	wa_id_whlic varchar(20),   -- Asocia a chats   --TELEFONO
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+  
+CREATE INDEX idx_wlc_ide_whlis ON wha_lista_chat (ide_whlis);
+CREATE INDEX idx_wla_ide_whlis ON wha_lista (ide_whlis);
+CREATE INDEX idx_wlc_wa_id_whlic ON wha_lista_chat (wa_id_whlic);
+CREATE INDEX idx_wch_wa_id_whcha ON wha_chat (wa_id_whcha);
+CREATE UNIQUE INDEX idx_unique_ide_whlis_wa_id_whlic ON wha_lista_chat (ide_whlis, wa_id_whlic);
+
+
+CREATE TABLE wha_mensaje (
+    uuid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+	ide_whmem SERIAL,
+	ide_whcha INT8,   -- Chat
+    phone_number_id_whmem  varchar(20),  	-- phone_number_id API
+	phone_number_whmem varchar(20),  		-- display_phone_number API
+	id_whmem  VARCHAR(80) NOT NULL,         -- id
+    wa_id_whmem VARCHAR(20),                -- wa_id   telefono 
+	wa_id_context_whmem  VARCHAR(80),       -- context wa_id
+    body_whmem TEXT,                        -- mensaje
+    fecha_whmem TIMESTAMP NOT NULL,         -- timestamp
+    content_type_whmem  VARCHAR(80) NOT NULL,
+    leido_whmem  bool DEFAULT false,       -- 'read' o 'pending'
+	caption_whmem  TEXT,
+	attachment_id_whmem   VARCHAR(100),
+    attachment_type_whmem  VARCHAR(50),
+    direction_whmem  CHAR(1), -- 0 = recibidos, 1 = enviados
+	status_whmem    VARCHAR(10) ,  -- 'sent', 'delivered' , 'read'
+	timestamp_sent_whmem TIMESTAMP ,  
+	timestamp_read_whmem TIMESTAMP ,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+ALTER TABLE public.wha_mensaje
+ADD CONSTRAINT wha_mensaje_ide_whcha_fkey
+FOREIGN KEY (ide_whcha)
+REFERENCES public.wha_chat (ide_whcha)
+ON DELETE RESTRICT 
+ON UPDATE RESTRICT;
+CREATE INDEX IF NOT EXISTS idx_wha_mensaje_ide_whcha ON wha_mensaje(ide_whcha);
+CREATE INDEX IF NOT EXISTS idx_wha_mensaje_wa_id_whmem ON wha_mensaje(wa_id_whmem);
+
+
+-- Índice para acelerar la búsqueda 
+CREATE INDEX idx_wha_chat_phone_number_id ON wha_chat(phone_number_id_whcha);
+CREATE INDEX idx_wha_mensaje_id_whmem ON wha_mensaje(id_whmem);
+CREATE INDEX idx_wha_chat_id_whcha ON wha_chat(id_whcha);
+CREATE INDEX idx_wha_chat_fecha_msg ON wha_chat(phone_number_id_whcha, fecha_msg_whcha DESC);
+
+CREATE INDEX idx_wha_mensaje_phone_wa_fecha 
+ON wha_mensaje(phone_number_id_whmem, wa_id_whmem, fecha_whmem DESC);
+CREATE INDEX idx_wha_mensaje_phone ON wha_mensaje(phone_number_id_whmem);
+CREATE INDEX idx_wha_mensaje_wa_id ON wha_mensaje(wa_id_whmem);

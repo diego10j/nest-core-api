@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProERP - API (DEV)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Animación de máquina de escribir */
+        .typing-animation {
+            width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            animation: typing 5s steps(40) 1s forwards, blink-caret .75s step-end infinite;
+        }
+
+        @keyframes typing {
+            100% {
+                width: 100%;
+            }
+        }
+
+        @keyframes blink-caret {
+            50% {
+                border-color: transparent;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="text-center px-6 py-12 max-w-xl mx-auto">
+            <h1 class="text-5xl font-bold mb-4">
+                <span class="text-emerald-400">ProERP</span> - API
+            </h1>
+
+            <div class="text-xl mb-6">
+                <p class="typing-animation text-lg text-gray-300">
+                    🚀 Bienvenido a la API de ProERP (Ambiente de Desarrollo)
+                </p>
+            </div>
+
+            <div class="text-sm text-gray-400">
+                <p>🔧 ProERP API está diseñada para integrar todos los aspectos de tu ERP de forma rápida y segura.</p>
+                <p>⚡ Optimización de procesos 🛠️ Conexión con bases de datos 📊 y mucho más.</p>
+            </div>
+
+
+            <div class="mt-6">
+                <a href="https://github.com/TuUsuario/ProERP" target="_blank" class="text-blue-400 hover:text-blue-600">
+                    <i class="fab fa-github"></i> Ver en GitHub
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agregar el icono de la máquina de escribir en el fondo para darle un toque más interactivo -->
+    <script>
+        // Este es un ejemplo de cómo hacer el efecto de máquina de escribir, pero se puede personalizar más.
+        document.addEventListener('DOMContentLoaded', () => {
+            const typingElement = document.querySelector('.typing-animation');
+            if (typingElement) {
+                typingElement.classList.add('typing-animation');
+            }
+        });
+    </script>
+</body>
+</html>
