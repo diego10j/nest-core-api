@@ -25,8 +25,6 @@ interface EnvVars {
 
 
   WHATSAPP_API_URL: string;
-  WHATSAPP_API_ID: string;
-  WHATSAPP_API_TOKEN: string;
   WHATSAPP_VERIFY_TOKEN: string
   WHATSAPP_SOCKET_PORT: number;
 
@@ -65,8 +63,6 @@ const envsSchema = z.object({
   PATH_DRIVE: z.string(),
 
 
-  WHATSAPP_API_ID: z.string(),
-  WHATSAPP_API_TOKEN: z.string(),
   WHATSAPP_VERIFY_TOKEN: z.string(),
   WHATSAPP_API_URL: z.string(),
   WHATSAPP_SOCKET_PORT: z.string().refine(val => !isNaN(Number(val)), {
@@ -108,8 +104,6 @@ export const envs = {
   pathDrive: envVars.PATH_DRIVE,
 
 
-  whatsappApiId: envVars.WHATSAPP_API_ID,
-  whatsappApiToken: envVars.WHATSAPP_API_TOKEN,
   whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN,
   whatsappApiUrl: envVars.WHATSAPP_API_URL,
   whatsappSocketPort: envVars.WHATSAPP_SOCKET_PORT,

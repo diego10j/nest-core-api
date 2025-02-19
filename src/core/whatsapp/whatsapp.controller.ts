@@ -5,7 +5,8 @@ import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ListaDto } from './dto/lista.dto';
+import { ListaChatDto } from './dto/lista-chat.dto';
+import { FindChatDto } from './dto/find-chat.dto';
 
 
 @Controller('whatsapp')
@@ -15,10 +16,20 @@ export class WhatsappController {
 
   @Post('getChats')
   // @Auth()
-  async getChats(dto: ServiceDto) {
-    return this.service.getChats(dto);
+  getChats(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getChats(dtoIn);
   }
 
+  @Post('getCuenta')
+  // @Auth()
+  getCuenta(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getCuenta(dtoIn);
+  }
+  
 
   @Post('getListas')
   // @Auth()
@@ -36,16 +47,6 @@ export class WhatsappController {
     return this.service.getMensajes(dtoIn);
   }
 
-  @Post('getContactosLista')
-  // @Auth()
-  getContactosLista(
-    @Body() dtoIn: ListaDto
-  ) {
-    return this.service.getContactosLista(dtoIn);
-  }
-
-  
-
   @Post('enviarMensajeTexto')
   // @Auth()
   enviarMensajeTexto(
@@ -54,13 +55,23 @@ export class WhatsappController {
     return this.service.enviarMensajeTexto(dtoIn);
   }
 
-  @Post('getProfilePictureUrl')
+
+  @Post('getProfile')
   // @Auth()
-  getProfilePictureUrl(
-    @Body() dtoIn: EnviarMensajeDto
+  getProfile(
+    @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getProfilePictureUrl(dtoIn);
+    return this.service.getProfile(dtoIn);
   }
+
+  @Post('validarPermisoAgente')
+  // @Auth()
+  validarPermisoAgente(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.validarPermisoAgente(dtoIn);
+  }
+
 
 
   @Post('enviarMensajeImagen')
@@ -90,6 +101,38 @@ export class WhatsappController {
     return this.service.setChatNoLeido(dtoIn);
   }
 
+  @Post('getContactosLista')
+  // @Auth()
+  getContactosLista(
+    @Body() dtoIn: ListaChatDto
+  ) {
+    return this.service.getContactosLista(dtoIn);
+  }
+
+
+  @Post('getTotalMensajes')
+  // @Auth()
+  getTotalMensajes(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getTotalMensajes(dtoIn);
+  }
+
+  @Post('findContacto')
+  // @Auth()
+  findContacto(
+    @Body() dtoIn: FindChatDto
+  ) {
+    return this.service.findContacto(dtoIn);
+  }
+
+  @Post('findTextoMensajes')
+  // @Auth()
+  findTextoMensajes(
+    @Body() dtoIn: FindChatDto
+  ) {
+    return this.service.findTextoMensajes(dtoIn);
+  }
 
   // ----------------------------
 
@@ -103,16 +146,6 @@ export class WhatsappController {
   }
 
 
-
-  @Patch('mark-read/:id')
-  async markMessageAsRead(@Param('id') id: string) {
-    return this.service.markMessageAsRead(id);
-  }
-
-  @Patch('mark-pending/:id')
-  async markMessageAsPending(@Param('id') id: string) {
-    return this.service.markMessageAsPending(id);
-  }
 
   @Post('send/:to')
   async sendMessage(@Param('to') to: string, @Body() body: { type: string, content: any }) {

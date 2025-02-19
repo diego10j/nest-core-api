@@ -4,13 +4,26 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { envs } from './config/envs';
+import { SocketIoAdapter } from './socket-io.adapter';
+
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
   app.setGlobalPrefix('api');
-  app.enableCors();
+  app.enableCors({
+    origin: ['http://localhost:8080', 'http://172.21.50.13:8080','http://devproerpec.site'], // Agrega más si es necesario
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
+// Configurar el adaptador de WebSockets
+app.useWebSocketAdapter(new SocketIoAdapter(app));
+
+
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

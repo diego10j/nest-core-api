@@ -38,7 +38,7 @@ export class DataSourceService {
 
     constructor(
         private readonly errorsLoggerService: ErrorsLoggerService,
-        @Inject('REDIS_CLIENT') private readonly redisClient: Redis
+        @Inject('REDIS_CLIENT') public readonly redisClient: Redis
     ) {
         // Parse types bdd
         // DATE

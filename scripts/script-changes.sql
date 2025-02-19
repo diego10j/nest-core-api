@@ -651,7 +651,7 @@ ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;
 
 
 
-// 12 Nov 2024
+-- 12 Nov 2024
 
 
 CREATE INDEX IF NOT EXISTS idx_cxp_cabece_factur_fecha_estado ON cxp_cabece_factur(ide_cpefa, fecha_emisi_cpcfa, ide_empr);
@@ -662,7 +662,80 @@ CREATE INDEX IF NOT EXISTS idx_inv_articulo_inarti ON inv_articulo(ide_inarti, u
 CREATE INDEX IF NOT EXISTS idx_inv_unidad_inuni ON inv_unidad(ide_inuni);
 
 
-// 04-02-2025
+-- 04-02-2025
+
+
+-- cuenta API WhatsApp
+CREATE TABLE wha_cuenta (
+	ide_whcue INT primary KEY ,
+	nombre_whcue varchar(100),
+	id_telefono_whcue varchar(20),
+	id_aplicacion_whcue varchar(100),
+	id_cuenta_whcue varchar(50),
+	id_token_whcue varchar(200),
+	activo_whcue bool,
+	envia_msg_bienv_whcue bool,
+	msg_bienv_whcue TEXT,
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+ --- Agentes que tienen acceso a whatsaap 
+CREATE TABLE wha_agente (
+	ide_whage INT primary KEY ,
+	observacion_whage varchar(250),
+	activo_whage bool,
+	ide_usua INT REFERENCES sis_usuario(ide_usua) ON DELETE CASCADE,  
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+  
+
+  CREATE TABLE wha_cuenta_agente (
+	ide_whcuag SERIAL primary KEY ,
+	ide_whcue INT REFERENCES wha_cuenta(ide_whcue) ON DELETE CASCADE,  
+	ide_whage INT REFERENCES wha_agente(ide_whage) ON DELETE CASCADE,  
+	activo_whcuag bool,
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+ALTER TABLE wha_cuenta_agente ADD CONSTRAINT wha_cuenta_agente_unique UNIQUE (ide_whcue,ide_whage);
+
+CREATE INDEX idx_wha_chat_phone_number_id_whcha ON wha_chat(phone_number_id_whcha);
+CREATE INDEX idx_wha_cuenta_ide_empr ON wha_cuenta(ide_empr);
+CREATE INDEX idx_wha_agente_ide_usua ON wha_agente(ide_usua);
+CREATE INDEX idx_wha_agente_activo_whage ON wha_agente(activo_whage);
+CREATE INDEX idx_wha_cuenta_agente_ide_whage ON wha_cuenta_agente(ide_whage);
+CREATE INDEX idx_wha_cuenta_agente_ide_whcue ON wha_cuenta_agente(ide_whcue);
+CREATE INDEX idx_wha_cuenta_ide_empr_id_cuenta_whcue ON wha_cuenta(ide_empr, id_cuenta_whcue);
+
+
+CREATE TABLE wha_etiqueta(
+	ide_wheti int PRIMARY KEY,
+	nombre_wheti varchar(80),
+	color_wheti varchar(30),
+	descripcion_wheti text,
+	activo_wheti bool DEFAULT true,
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+
+
 
 CREATE TABLE wha_lista (
 	ide_whlis SERIAL PRIMARY KEY,,
@@ -678,7 +751,6 @@ CREATE TABLE wha_lista (
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
 );
-
 
 CREATE TABLE wha_chat (
 	ide_whcha SERIAL PRIMARY KEY,   -- secuencial de chats
@@ -696,7 +768,8 @@ CREATE TABLE wha_chat (
 	notas_whcha TEXT,
 	color_whcha varchar(30),
 	no_leidos_whcha  INT DEFAULT 0,
-	ide_geper INT8 REFERENCES gen_persona(ide_geper) ON DELETE SET NULL,    -- Asocia a una persona
+	ide_geper INT REFERENCES gen_persona(ide_geper) ON DELETE SET NULL,    -- Asocia a una persona
+	ide_wheti INT REFERENCES wha_etiqueta(ide_wheti) ON DELETE CASCADE,   -- Asocia a lista 
 	ide_vgven INT,  -- Asocia a un vendedor
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -746,6 +819,8 @@ CREATE TABLE wha_mensaje (
 	caption_whmem  TEXT,
 	attachment_id_whmem   VARCHAR(100),
     attachment_type_whmem  VARCHAR(50),
+	attachment_name_whmem   VARCHAR(150),
+	attachment_url_whmem   VARCHAR(250),
     direction_whmem  CHAR(1), -- 0 = recibidos, 1 = enviados
 	status_whmem    VARCHAR(10) ,  -- 'sent', 'delivered' , 'read'
 	timestamp_sent_whmem TIMESTAMP ,  
@@ -775,3 +850,6 @@ CREATE INDEX idx_wha_mensaje_phone_wa_fecha
 ON wha_mensaje(phone_number_id_whmem, wa_id_whmem, fecha_whmem DESC);
 CREATE INDEX idx_wha_mensaje_phone ON wha_mensaje(phone_number_id_whmem);
 CREATE INDEX idx_wha_mensaje_wa_id ON wha_mensaje(wa_id_whmem);
+
+CREATE EXTENSION pgcrypto;
+SELECT * FROM pg_extension WHERE extname = 'pgcrypto';

@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION mensaje_whatsapp(json_data JSONB)
-RETURNS VOID AS $$
+RETURNS VARCHAR(30) AS $$
 DECLARE
     v_wa_id_whcha VARCHAR(30);
     v_name_whcha VARCHAR(80);
@@ -32,14 +32,15 @@ BEGIN
     -- Insertar o actualizar el contacto en wha_chat
     INSERT INTO wha_chat (
         wa_id_whcha, nombre_whcha, name_whcha, phone_number_id_whcha, 
-        phone_number_whcha, fecha_msg_whcha, id_whcha
+        phone_number_whcha, fecha_msg_whcha, id_whcha,leido_whcha
     ) VALUES (
-        v_wa_id_whcha, v_name_whcha, v_name_whcha, v_phone_number_id, 
-        v_phone_number, NOW(), v_id_whcha
+        v_wa_id_whcha, v_phone_number_id, v_name_whcha, v_phone_number_id, 
+        v_phone_number, NOW(), v_id_whcha, false
     )
     ON CONFLICT (wa_id_whcha) DO UPDATE 
     SET fecha_msg_whcha = EXCLUDED.fecha_msg_whcha,
         id_whcha = EXCLUDED.id_whcha,
+        leido_whcha =  false,
         no_leidos_whcha = COALESCE(wha_chat.no_leidos_whcha, 0) + 1
     RETURNING ide_whcha INTO v_ide_whcha;  -- Obtener el ID del chat
 
@@ -86,16 +87,20 @@ BEGIN
             ide_whcha, phone_number_id_whmem, phone_number_whmem, 
             id_whmem, wa_id_whmem, wa_id_context_whmem, body_whmem, 
             fecha_whmem, content_type_whmem, direction_whmem, 
-            attachment_id_whmem, attachment_type_whmem, caption_whmem
+            attachment_id_whmem, attachment_type_whmem, caption_whmem,leido_whmem
         ) VALUES (
             v_ide_whcha, v_phone_number_id, v_phone_number, 
             v_id_whmem, v_wa_id_whmem, v_wa_id_context_whmem, v_body_whmem, 
             v_fecha_whmem, v_content_type_whmem, v_direction_whmem, 
-            v_attachment_id_whmem, v_attachment_type_whmem, v_caption_whmem
+            v_attachment_id_whmem, v_attachment_type_whmem, v_caption_whmem,false
         );
     END LOOP;
+
+    -- Retornar el valor de v_wa_id_whcha
+    RETURN v_wa_id_whcha;
 END;
 $$ LANGUAGE plpgsql;
+
 
 
 
