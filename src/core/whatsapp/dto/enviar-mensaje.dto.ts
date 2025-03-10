@@ -14,7 +14,7 @@ export class EnviarMensajeDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
-    tipo: 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
+    tipo: string | 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
 
     @IsString()
     @IsOptional()
@@ -23,9 +23,18 @@ export class EnviarMensajeDto extends ServiceDto {
 
     @IsString()
     @IsOptional()
-    idWts?: string;  
+    idWts?: string;
 
     @IsString()
     @IsOptional()
     mediaId?: string;
+
+    @IsString()
+    @IsOptional()
+    fileName?: string;
+
+    @IsString()
+    @IsOptional()
+    mimeType?: string;
+
 }

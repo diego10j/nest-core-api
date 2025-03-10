@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Response } from 'express';
 import { WhatsappService } from './whatsapp.service';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
@@ -7,6 +8,11 @@ import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ListaChatDto } from './dto/lista-chat.dto';
 import { FindChatDto } from './dto/find-chat.dto';
+import { GetUrlArchivoDto } from './dto/get-url-media.dto';
+import { UploadMediaDto } from './dto/upload-media.dto';
+import { openInBrowserMimeTypes } from 'src/util/helpers/download-image-as-png';
+import { ChatFavoritoDto } from './dto/chat-favorito.dto';
+import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
 
 
 @Controller('whatsapp')
@@ -29,7 +35,7 @@ export class WhatsappController {
   ) {
     return this.service.getCuenta(dtoIn);
   }
-  
+
 
   @Post('getListas')
   // @Auth()
@@ -47,12 +53,62 @@ export class WhatsappController {
     return this.service.getMensajes(dtoIn);
   }
 
+  @Post('getListasContacto')
+  // @Auth()
+  getListasContacto(
+    @Body() dtoIn: GetMensajesDto
+  ) {
+    return this.service.getListasContacto(dtoIn);
+  }
+
+
+
+
   @Post('enviarMensajeTexto')
   // @Auth()
   enviarMensajeTexto(
     @Body() dtoIn: EnviarMensajeDto
   ) {
     return this.service.enviarMensajeTexto(dtoIn);
+  }
+
+
+
+  @Post('getUrlArchivo')
+  // @Auth()
+  getUrlArchivo(
+    @Body() dtoIn: GetUrlArchivoDto
+  ) {
+    return this.service.getUrlArchivo(dtoIn);
+  }
+
+
+  @Get('download/:ideEmpr/:id')
+  async download(
+    @Res() res: Response,
+    @Param('id') id: string
+  ) {
+    try {
+      const file = await this.service.download(id);
+
+      // Nombre del archivo (puedes personalizarlo)
+      const fileName = file.fileName;
+      console.log(fileName);
+      // Configurar los encabezados de la respuesta
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      // Configurar otros encabezados
+      res.set({
+        'Content-Type': file.contentType,
+        'Content-Length': file.fileSize,
+      });
+
+      // Enviar los datos binarios como respuesta
+      res.send(file.data);
+    } catch (error) {
+      console.error('❌ Error en el controlador download:', error);
+      res.status(500).send('Error al descargar el archivo');
+    }
   }
 
 
@@ -74,13 +130,12 @@ export class WhatsappController {
 
 
 
-  @Post('enviarMensajeImagen')
+  @Post('enviarMensajeMedia')
   // @Auth()
   @UseInterceptors(FileInterceptor('file'))
-  async enviarImagen(
-    @UploadedFile() file: Express.Multer.File
-  ) {
-    return this.service.enviarMensajeImagen(file);
+  async enviarMensajeMedia(@UploadedFile() file: Express.Multer.File,
+    @Body() dtoIn: UploadMediaDto) {
+    return this.service.enviarMensajeMedia(dtoIn, file);
   }
 
 
@@ -96,9 +151,17 @@ export class WhatsappController {
   @Post('setChatNoLeido')
   // @Auth()
   setChatNoLeido(
-    @Body() dtoIn: GetMensajesDto
+    @Body() dtoIn: ChatNoLeidoDto
   ) {
     return this.service.setChatNoLeido(dtoIn);
+  }
+
+  @Post('setChatFavorito')
+  // @Auth()
+  setChatFavorito(
+    @Body() dtoIn: ChatFavoritoDto
+  ) {
+    return this.service.setChatFavorito(dtoIn);
   }
 
   @Post('getContactosLista')
@@ -145,11 +208,5 @@ export class WhatsappController {
     return this.service.activarNumero(dtoIn);
   }
 
-
-
-  @Post('send/:to')
-  async sendMessage(@Param('to') to: string, @Body() body: { type: string, content: any }) {
-    return this.service.sendMessage(to, body.type, body.content);
-  }
 
 }

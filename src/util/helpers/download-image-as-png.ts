@@ -47,3 +47,26 @@ export const downloadBase64ImageAsPng = async (
 
   return fullPath ? completePath : imageNamePng;
 };
+
+
+export const openInBrowserMimeTypes = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/svg+xml',
+  'image/webp',
+  'application/pdf',
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+  'audio/webm',
+  'text/plain',
+  'text/csv',
+  'text/html',
+  'application/xml',
+  'text/xml',
+  'application/json',
+];

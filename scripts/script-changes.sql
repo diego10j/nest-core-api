@@ -734,7 +734,7 @@ CREATE TABLE wha_etiqueta(
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
 );
-
+CREATE INDEX idx_wlc_ide_wheti ON wha_etiqueta (ide_wheti);
 
 
 CREATE TABLE wha_lista (
@@ -766,10 +766,9 @@ CREATE TABLE wha_chat (
 	eliminado_whcha bool DEFAULT false,
 	favorito_whcha bool DEFAULT false,
 	notas_whcha TEXT,
-	color_whcha varchar(30),
 	no_leidos_whcha  INT DEFAULT 0,
 	ide_geper INT REFERENCES gen_persona(ide_geper) ON DELETE SET NULL,    -- Asocia a una persona
-	ide_wheti INT REFERENCES wha_etiqueta(ide_wheti) ON DELETE CASCADE,   -- Asocia a lista 
+	ide_wheti INT REFERENCES wha_etiqueta(ide_wheti) ON DELETE CASCADE,   -- Asocia a etiqueta 
 	ide_vgven INT,  -- Asocia a un vendedor
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -818,13 +817,17 @@ CREATE TABLE wha_mensaje (
     leido_whmem  bool DEFAULT false,       -- 'read' o 'pending'
 	caption_whmem  TEXT,
 	attachment_id_whmem   VARCHAR(100),
-    attachment_type_whmem  VARCHAR(50),
-	attachment_name_whmem   VARCHAR(150),
-	attachment_url_whmem   VARCHAR(250),
+    attachment_type_whmem  VARCHAR(150),
+	attachment_name_whmem   VARCHAR(250),
+	attachment_url_whmem   VARCHAR(200),
+	attachment_size_whmem  int8,
     direction_whmem  CHAR(1), -- 0 = recibidos, 1 = enviados
 	status_whmem    VARCHAR(10) ,  -- 'sent', 'delivered' , 'read'
 	timestamp_sent_whmem TIMESTAMP ,  
 	timestamp_read_whmem TIMESTAMP ,  
+	timestamp_whmem VARCHAR(20),
+	error_whmem VARCHAR(500),
+	code_error_whmem VARCHAR(250),
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua varchar(50),
@@ -838,7 +841,8 @@ ON DELETE RESTRICT
 ON UPDATE RESTRICT;
 CREATE INDEX IF NOT EXISTS idx_wha_mensaje_ide_whcha ON wha_mensaje(ide_whcha);
 CREATE INDEX IF NOT EXISTS idx_wha_mensaje_wa_id_whmem ON wha_mensaje(wa_id_whmem);
-
+CREATE INDEX IF NOT EXISTS idx_wha_mensaje_attachment_id_whmem ON wha_mensaje(attachment_id_whmem);
+CREATE INDEX idx_wha_mensaje_phone_attachment ON wha_mensaje (phone_number_id_whmem, attachment_id_whmem);
 
 -- Índice para acelerar la búsqueda 
 CREATE INDEX idx_wha_chat_phone_number_id ON wha_chat(phone_number_id_whcha);
@@ -853,3 +857,5 @@ CREATE INDEX idx_wha_mensaje_wa_id ON wha_mensaje(wa_id_whmem);
 
 CREATE EXTENSION pgcrypto;
 SELECT * FROM pg_extension WHERE extname = 'pgcrypto';
+
+SET TIME ZONE 'America/Guayaquil';

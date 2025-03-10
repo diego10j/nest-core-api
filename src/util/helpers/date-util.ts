@@ -13,7 +13,7 @@ export const FORMAT_DATETIME_FRONT = (): string => "dd/MM/yyyy HH:mm:ss";
 
 // getDateTimeFormatFront, getTimeFormat
 
-
+// sudo timedatectl set-timezone America/Guayaquil
 // ----------------------------------------------------------------------
 
 type InputValue = Date | string | number | null | undefined;

@@ -15,6 +15,10 @@ import { ListaChatDto } from './dto/lista-chat.dto';
 import { FindChatDto } from './dto/find-chat.dto';
 import { CacheConfig, WhatsAppConfig } from './interfaces/whatsapp';
 import { isDefined } from 'src/util/helpers/common-util';
+import { GetUrlArchivoDto } from './dto/get-url-media.dto';
+import { UploadMediaDto } from './dto/upload-media.dto';
+import { ChatFavoritoDto } from './dto/chat-favorito.dto';
+import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
 
 @Injectable()
 export class WhatsappService {
@@ -53,8 +57,9 @@ export class WhatsappService {
             const resp = await this.httpService.axiosRef.post(URL, data, requestConfig);
             return resp.data;
         } catch (error) {
+            console.error("❌ Error en sendMessageWhatsApp:", error.response?.data || error.message);
             throw new InternalServerErrorException(
-                `[ERROR]: sendMessageWhatsApp ${error.message}`
+                `[ERROR]: sendMessageWhatsApp ${JSON.stringify(error.response?.data || error.message)}`
             );
         }
     }
@@ -89,18 +94,29 @@ export class WhatsappService {
         }
     }
 
-
-    async sendMediaWhatsApp(file: Express.Multer.File, ideEmpr: number) {
+    /**
+     * Sube un archivo a los servidores de WhatsApp
+     * @param file 
+     * @param ideEmpr 
+     * @returns 
+     */
+    private async sendMediaWhatsApp(file: Express.Multer.File, ideEmpr: number) {
         const config = await this.getConfigWhatsApp(ideEmpr);
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
         const URL = `${this.WHATSAPP_API_URL}/${config.WHATSAPP_API_ID}/media`;
 
+        // control tipo de archivos permitidos
+        let typeFile = file.mimetype;
+        if (typeFile === "text/xml") {
+            typeFile = "text/plain";
+        }
+
         // Primero, subimos la imagen a los servidores de WhatsApp
         const formData = new FormData();
         formData.append("file", file.buffer, {
             filename: file.originalname,
-            contentType: file.mimetype,
+            contentType: typeFile,
         });
         formData.append("messaging_product", "whatsapp");
         const requestConfig: AxiosRequestConfig = {
@@ -117,6 +133,119 @@ export class WhatsappService {
             console.error("❌ Error en sendMediaWhatsApp:", error.response?.data || error.message);
             throw new InternalServerErrorException(
                 `[ERROR]: sendMediaWhatsApp ${JSON.stringify(error.response?.data || error.message)}`
+            );
+        }
+    }
+
+    /**
+     * Obtiene la URL y datos del archivo media
+     * @param id 
+     * @param ideEmpr 
+     * @returns 
+     */
+    private async getMediaWhatsApp(id: string, ideEmpr: number) {
+        const config = await this.getConfigWhatsApp(ideEmpr);
+        if (isDefined(config) === false)
+            throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+        const URL = `${this.WHATSAPP_API_URL}/${id}`;
+
+        const requestConfig: AxiosRequestConfig = {
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${config.WHATSAPP_API_TOKEN}`
+            }
+        };
+        try {
+            const resp = await this.httpService.axiosRef.get(URL, requestConfig);
+            return resp.data;
+        } catch (error) {
+            console.error("❌ Error en getMediaWhatsApp:", error.response?.data || error.message);
+            throw new InternalServerErrorException(
+                `[ERROR]: getMediaWhatsApp ${JSON.stringify(error.response?.data || error.message)}`
+            );
+        }
+    }
+
+
+    /**
+     * Permite descargar un archivo del API de whatsaap 
+     * @param id 
+     * @returns 
+     */
+    async download(id: string) {
+        // Busca datos del archivo
+        const queryFile = new SelectQuery(`
+            SELECT
+                ide_whmem,
+                attachment_type_whmem,
+                attachment_name_whmem,
+                attachment_url_whmem,
+                attachment_size_whmem,
+                content_type_whmem,
+                phone_number_id_whmem,
+                b.ide_empr
+            FROM
+                wha_mensaje a
+            INNER JOIN
+                wha_cuenta b ON b.id_cuenta_whcue = a.phone_number_id_whmem
+            WHERE
+                a.attachment_id_whmem = $1
+        `);
+        queryFile.addStringParam(1, id);
+        const resFile = await this.dataSource.createSingleQuery(queryFile);
+
+        if (!resFile) {
+            throw new BadRequestException('El id no existe');
+        }
+        const {
+            ide_empr,
+            attachment_name_whmem: fileName,
+            attachment_size_whmem: sizeFile,
+            attachment_type_whmem: contentType
+        } = resFile;
+
+        // Obtener la configuración de WhatsApp
+        const config = await this.getConfigWhatsApp(Number(ide_empr));
+        if (!isDefined(config)) {
+            throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+        }
+
+        const resUrl = await this.getMediaWhatsApp(id, Number(ide_empr));
+        //  console.log(resUrl)
+        const URL = resUrl.url;
+
+        // Si no hay URL, obtenerla desde la API de WhatsApp
+        if (!sizeFile) {
+            // Actualizar la URL y el tamaño en la base de datos
+            const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
+            updateQuery.values.set('attachment_size_whmem', resUrl.file_size);
+            updateQuery.where = 'attachment_id_whmem = $1';
+            updateQuery.addParam(1, id);
+            await this.dataSource.createQuery(updateQuery); // Usar await para asegurar que se complete la actualización
+        }
+
+        // Configuración de la solicitud HTTP
+        const requestConfig: AxiosRequestConfig = {
+            responseType: 'arraybuffer', // Importante para manejar binarios
+            headers: {
+                Authorization: `Bearer ${config.WHATSAPP_API_TOKEN}`,
+            },
+        };
+
+        try {
+            // console.log(URL);
+            const resp = await this.httpService.axiosRef.get(URL, requestConfig);
+            // console.log(resp);
+            return {
+                data: resp.data, // Datos binarios del archivo
+                contentType, //: resp.headers['content-type'], // Tipo MIME del archivo
+                fileSize: resp.headers['content-length'], // Tamaño del archivo
+                fileName
+            };
+        } catch (error) {
+            console.error('❌ Error en download:', error.response?.data || error.message);
+            throw new InternalServerErrorException(
+                `[ERROR]: download ${JSON.stringify(error.response?.data || error.message)}`,
             );
         }
     }
@@ -141,13 +270,21 @@ export class WhatsappService {
                     try {
                         const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
                         updateQuery.values.set("status_whmem", statuses.status);
-                        if (statuses.status === 'delivered' || statuses.status === 'sent') {
-                            updateQuery.values.set("timestamp_sent_whmem", new Date(statuses.timestamp * 1000).toISOString());
+                        if (statuses.status === 'sent') {
+                            updateQuery.values.set("timestamp_whmem", `${statuses.timestamp}`);
+                        }
+                        else if (statuses.status === 'delivered') {
+                            updateQuery.values.set("timestamp_sent_whmem", new Date(Number(statuses.timestamp) * 1000).toISOString());
                         }
                         else if (statuses.status === 'read') {
-                            updateQuery.values.set("timestamp_read_whmem", new Date(statuses.timestamp * 1000).toISOString());
+                            updateQuery.values.set("timestamp_read_whmem", new Date(Number(statuses.timestamp)* 1000).toISOString());
                             updateQuery.values.set("leido_whmem", true);
                             this.whatsappGateway.sendReadMessageToClients(statuses.id);  // Emitir el mensaje recibido a los clientes WebSocket
+                        }
+                        else if (statuses.status === 'failed') {
+                            updateQuery.values.set("timestamp_whmem", `${statuses.timestamp}`);
+                            updateQuery.values.set("error_whmem", statuses?.errors[0].error_data.details);
+                            updateQuery.values.set("code_error_whmem", `${statuses?.errors[0].code} - ${statuses?.errors[0].title}`);
                         }
                         updateQuery.where = 'id_whmem = $1';
                         updateQuery.addParam(1, statuses.id);
@@ -164,7 +301,8 @@ export class WhatsappService {
                     const query = new SelectQuery(`SELECT mensaje_whatsapp('${jsonMsg}'::jsonb) AS wa_id`);
                     const res = await this.dataSource.createSingleQuery(query);
                     // Emitir el mensaje a través de WebSocket
-                    this.whatsappGateway.sendMessageToClients(res.wa_id);  // Emitir el mensaje recibido a los clientes WebSocket
+                    this.whatsappGateway.sendMessageToClients(res.wa_id);  // Emitir el mensaje recibido a los clientes WebSocket                    
+
                 } catch (error) {
                     this.logger.error('Error al guardar el mensaje', error);
                 }
@@ -191,7 +329,6 @@ export class WhatsappService {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
-        this.setMensajesLeidosChat(dto);
         const query = new SelectQuery(`
             select
                 *
@@ -201,7 +338,7 @@ export class WhatsappService {
                 phone_number_id_whmem = $1
             and wa_id_whmem = $2
             order by
-                fecha_whmem     
+                ide_whmem     
         `, dto);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addParam(2, dto.telefono);
@@ -210,7 +347,37 @@ export class WhatsappService {
 
     }
 
+    /**
+     * Retorna el array de las listas en las que se encuentra un contacto
+     * @param dto 
+     * @returns  [1,2]
+     */
+    async getListasContacto(dto: GetMensajesDto) {
+        if (dto.telefono === '000000000000') {
+            return [];
+        }
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_whlis
+        FROM
+            wha_lista_chat a
+            inner join wha_lista b on a.ide_whlis = b.ide_whlis
+        WHERE
+            a.wa_id_whlic = $1
+            AND activo_whlis = TRUE
+        `, dto);
+        query.addParam(1, dto.telefono);
+        const data = await this.dataSource.createSelectQuery(query, false);
+        const result = data.map(item => item.ide_whlis);
+        return result;
+    }
 
+
+    /**
+     * Retorna la cuanta de whatsapp configurada para la empresa
+     * @param dto 
+     * @returns 
+     */
     async getCuenta(dto: ServiceDto) {
         const query = new SelectQuery(`       
         SELECT
@@ -232,6 +399,19 @@ export class WhatsappService {
 
     }
 
+
+    /**
+     * Retorna url y datos de un archivo 
+     * @param dto 
+     * @returns 
+     */
+    async getUrlArchivo(dto: GetUrlArchivoDto) {
+        if (dto.id === '000000000000') {
+            return {};
+        }
+
+        return await this.getMediaWhatsApp(dto.id, dto.ideEmpr);
+    }
 
     /**
      * Obtiene todos los mensajes agrupados por número de teléfono
@@ -261,10 +441,13 @@ export class WhatsappService {
             content_type_whmem,
             status_whmem,
             direction_whmem,
-            no_leidos_whcha
+            no_leidos_whcha,
+            nombre_wheti,
+            color_wheti
         FROM
             wha_chat a
             left join wha_mensaje b on a.id_whcha = b.id_whmem
+            left join wha_etiqueta c on a.ide_wheti = a.ide_wheti
         WHERE phone_number_id_whcha = $1
         order by
             fecha_msg_whcha desc
@@ -295,11 +478,44 @@ export class WhatsappService {
             wha_lista_chat wlc ON a.ide_whlis = wlc.ide_whlis
         where 
             a.ide_empr = $1
+            and activo_whlis = true            
         GROUP BY
             a.ide_whlis, a.nombre_whlis, a.color_whlis, a.descripcion_whlis, a.icono_whlis
+        ORDER BY a.nombre_whlis
         `, dto);
         query.addParam(1, dto.ideEmpr);
         const data = await this.dataSource.createSelectQuery(query);
+
+        data.unshift(
+            {
+                "ide_whlis": -3,
+                "nombre_whlis": "Favoritos",
+                "color_whlis": null,
+                "descripcion_whlis": null,
+                "icono_whlis": 'uil:favorite',
+                "total_chats": 0
+            }
+        );
+        data.unshift(
+            {
+                "ide_whlis": -2,
+                "nombre_whlis": "No leídos",
+                "color_whlis": null,
+                "descripcion_whlis": null,
+                "icono_whlis": 'solar:chat-unread-outline',
+                "total_chats": 0
+            }
+        );
+        data.unshift(
+            {
+                "ide_whlis": -1,
+                "nombre_whlis": "Todos",
+                "color_whlis": null,
+                "descripcion_whlis": null,
+                "icono_whlis": 'mynaui:list-check-solid',
+                "total_chats": 0
+            }
+        );
         return data;
     }
 
@@ -534,32 +750,84 @@ export class WhatsappService {
     }
 
 
-    async enviarMensajeImagen(file: Express.Multer.File) {
+    async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File) {
         try {
             // Subir imagen y obtener media_id
-            const mediaId = await this.sendMediaWhatsApp(file, 0); // ************ cambiar
+            const mediaId = await this.sendMediaWhatsApp(file, Number(dto.ideEmpr));
+
+            // console.log(file.mimetype);
+            let data: any = undefined;
+            // Crear el mensaje de imagen
+
             const dtoIn: EnviarMensajeDto = {
-                telefono: '593983113543',
-                tipo: 'image',
+                telefono: dto.telefono,
+                tipo: dto.fileType,
                 idWts: '',
                 mediaId,
-                ideUsua: 1,
-                ideEmpr: 1,
-                ideSucu: 1,
+                ideUsua: Number(dto.ideUsua),
+                ideEmpr: Number(dto.ideEmpr),
+                ideSucu: Number(dto.ideSucu),
                 idePerf: 1,
-                login: 'diego'
+                login: dto.login,
+                fileName: dto.fileName,
+                mimeType: file.mimetype
             }
-            // Crear el mensaje de imagen
-            const data = {
-                messaging_product: "whatsapp",
-                recipient_type: "individual",
-                to: dtoIn.telefono,
-                type: "image",
-                image: {
-                    id: mediaId, // El ID de la imagen subida a WhatsApp
-                    caption: 'Imagen',
-                },
-            };
+
+            switch (dto.fileType) {
+                case 'image':
+                    data = {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: dto.telefono,
+                        type: dto.fileType,
+                        image: {
+                            id: mediaId,
+                            caption: dto.caption
+                        },
+                    };
+                    break;
+                case 'audio':
+                    data = {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: dto.telefono,
+                        type: dto.fileType,
+                        audio: {
+                            id: mediaId, // El ID de la imagen subida a WhatsApp
+                            caption: dto.caption
+                        }
+                    };
+                    break;
+                case 'video':
+                    data = {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: dto.telefono,
+                        type: dto.fileType,
+                        video: {
+                            id: mediaId, // El ID de la imagen subida a WhatsApp
+                            caption: dto.caption
+                        }
+                    };
+                    break;
+                default:
+                    data = {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: dto.telefono,
+                        type: 'document',
+                        document: {
+                            id: mediaId, // El ID de la imagen subida a WhatsApp
+                            caption: dto.caption,
+                            filename: dto.fileName
+                        }
+                    };
+                    break;
+
+                // Añadir más tipos de mensajes según sea necesario
+            }
+
+            // console.log(data);
 
             const respWts = await this.sendMessageWhatsApp(data, dtoIn.ideEmpr);
             // Asigna el id del API para el mensaje
@@ -568,11 +836,13 @@ export class WhatsappService {
             const resp = await this.saveMensajeEnviado(dtoIn);
             return {
                 mensaje: 'ok',
-                data: resp
+                data: respWts,
+                resp
+
             };
         } catch (error) {
             console.log(error);
-            throw new InternalServerErrorException(`[ERROR]: enviarMensajeImagen ${error}`);
+            throw new InternalServerErrorException(`[ERROR]: enviarMensajeMedia ${error}`);
         }
     }
 
@@ -598,13 +868,32 @@ export class WhatsappService {
     /**
     * Marca como no leido un chat
     */
-    async setChatNoLeido(dto: GetMensajesDto) {
+    async setChatNoLeido(dto: ChatNoLeidoDto) {
 
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
         const updateQuery = new UpdateQuery('wha_chat', 'uuid');
-        updateQuery.values.set('leido_whcha', false);
+        updateQuery.values.set('leido_whcha', dto.leido);
+        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
+        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
+        updateQuery.addParam(2, dto.telefono);
+        return await this.dataSource.createQuery(updateQuery)
+
+    }
+
+    /**
+     * Marca como favorito un chat
+     * @param dto 
+     * @returns 
+     */
+    async setChatFavorito(dto: ChatFavoritoDto) {
+
+        const config = await this.getConfigWhatsApp(dto.ideEmpr);
+        if (isDefined(config) === false)
+            throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+        const updateQuery = new UpdateQuery('wha_chat', 'uuid');
+        updateQuery.values.set('favorito_whcha', dto.favorito);
         updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
         updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
         updateQuery.addParam(2, dto.telefono);
@@ -639,6 +928,9 @@ export class WhatsappService {
             insertQuery.values.set('content_type_whmem', dto.tipo);
             insertQuery.values.set('leido_whmem', true);
             insertQuery.values.set('direction_whmem', 1);
+            insertQuery.values.set('attachment_name_whmem', dto.fileName);
+            insertQuery.values.set('attachment_type_whmem', dto.mimeType);
+
             //media
             insertQuery.values.set('attachment_id_whmem', dto.mediaId);
             const res = await this.dataSource.createQuery(insertQuery);
@@ -664,103 +956,6 @@ export class WhatsappService {
         `);
         query.addParam(1, ideEmpr);
         return await this.dataSource.createSingleQuery(query);
-    }
-
-    async sendMessage(to: string, type: string, content: any) {
-        let data: any;
-        switch (type) {
-            case 'text':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'text',
-                    text: {
-                        preview_url: false,
-                        body: content.body
-                    }
-                };
-                break;
-            case 'image':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'image',
-                    image: {
-                        link: content.link,
-                        caption: content.caption
-                    }
-                };
-                break;
-            case 'audio':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'audio',
-                    audio: {
-                        link: content.link
-                    }
-                };
-                break;
-            case 'video':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'video',
-                    video: {
-                        link: content.link,
-                        caption: content.caption
-                    }
-                };
-                break;
-            case 'document':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'document',
-                    document: {
-                        link: content.link,
-                        caption: content.caption
-                    }
-                };
-                break;
-            case 'location':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'location',
-                    location: {
-                        latitude: content.latitude,
-                        longitude: content.longitude,
-                        name: content.name,
-                        address: content.address
-                    }
-                };
-                break;
-            case 'contacts':
-                data = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: to,
-                    type: 'contacts',
-                    contacts: content.contacts
-                };
-                break;
-            // Añadir más tipos de mensajes según sea necesario
-        }
-        const URL = `https://graph.facebook.com/v22.0/{this.WHATSAPP_ID}/messages`;
-        const requestConfig: AxiosRequestConfig = {
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer {this.WHATSAPP_TOKEN}`
-            }
-        };
-
     }
 
 
