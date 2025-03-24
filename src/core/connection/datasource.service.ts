@@ -36,6 +36,8 @@ export class DataSourceService {
     private INT2_OID = 21;
     private INT4_OID = 23;
 
+    private SIZE_DEFAULT = 100;
+
     constructor(
         private readonly errorsLoggerService: ErrorsLoggerService,
         @Inject('REDIS_CLIENT') public readonly redisClient: Redis
@@ -73,30 +75,103 @@ export class DataSourceService {
      * @returns Array data
      */
     async createQuery(query: Query, isSchema = true, ref = undefined): Promise<ResultQuery> {
-
         if (query instanceof InsertQuery || query instanceof UpdateQuery || query instanceof DeleteQuery) {
             isSchema = false;
         }
         await this.formatSqlQuery(query);
-        //Ejecuta el query
         try {
-            // console.log(query.query);
             let primaryKey: string | undefined = undefined;
             let columns: any[] | undefined = undefined;
             let queryName: string | undefined = undefined;
             let message = 'ok';
-            const res = await this.pool.query(query.query, query.params.map(_param => _param.value));
-            if (query instanceof SelectQuery && isSchema === true) {
-                // Obtiene esquema de las columnas del SelectQuery
-                queryName = this.extractCallerInfo();
-                if (isDefined(ref))
-                    queryName = `${queryName}.${ref}`;  // para identificar la consulta
-                columns = await this.getSchemaQuery(queryName, primaryKey, res);
-                if (columns.length > 0)
-                    primaryKey = columns[0].name; // siempre el primarikey debe ir en la primera columna del query
+    
+            // Envolver la consulta original en una subconsulta
+            let finalQuery = query.query;
+    
+            if (query instanceof SelectQuery) {
+                query.query = query.query.trim();
+                if (query.query.endsWith(';')) {
+                    query.query = query.query.slice(0, -1);
+                }
+                finalQuery = `SELECT * FROM (${query.query}) AS wrapped_query`;
             }
 
-            // Registra  Actividad Auditoria
+            // Si no hay paginación, establecer un valor predeterminado
+            if (query instanceof SelectQuery && !query.pagination) {
+                query.setPagination(this.SIZE_DEFAULT, 1);
+            }
+    
+            // Aplicar filtros dinámicos
+            if (query instanceof SelectQuery && query.filters && query.filters.length > 0) {
+                const filterConditions = query.filters.map(filter => {
+                    if (filter.operator === 'ILIKE') {
+                        return `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`;
+                    } else {
+                        return `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`;
+                    }
+                }).join(' AND ');
+                finalQuery += ` WHERE ${filterConditions}`;
+            }
+    
+            // Aplicar filtro global
+            if (query instanceof SelectQuery && query.globalFilter) {
+                const globalFilterConditions = query.globalFilter.columns
+                    .map(column => `wrapped_query.${column}::text ILIKE '%${query.globalFilter.value}%'`)
+                    .join(' OR ');
+                finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
+                // query.setPagination(this.SIZE_DEFAULT, 1);
+            }
+    
+            // Aplicar orden dinámico
+            if (query instanceof SelectQuery && query.orderBy) {
+                finalQuery += ` ORDER BY wrapped_query.${query.orderBy.column} ${query.orderBy.direction}`;
+            }
+    
+            // Contar el total de registros
+            let totalRecords: number | undefined = undefined;
+            if (query instanceof SelectQuery) {
+                // Si no hay filtros ni filtro global, contar sobre la consulta original
+                if (!query.filters?.length && !query.globalFilter) {
+                    const countQuery = `SELECT COUNT(*) FROM (${query.query}) AS count_query`;
+                    const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
+                    totalRecords = parseInt(countResult.rows[0].count, 10);
+                } else {
+                    // Si hay filtros o filtro global, contar sobre la consulta final (sin paginación)
+                    const countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
+                    const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
+                    totalRecords = parseInt(countResult.rows[0].count, 10);
+                }
+            }
+    
+            // Aplicar paginación dinámica
+            if (query instanceof SelectQuery && query.pagination) {
+                query.setPagination(query.pagination.rows, query.pagination.page);
+                finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.rows}`;
+
+                if (query.pagination && totalRecords !== undefined) {
+                    const totalPages = Math.ceil(totalRecords / query.pagination.rows);
+                    query.setIsPreviousPage(query.pagination.page > 1);
+                    query.setIsNextPage(query.pagination.page < totalPages);
+                    query.setTotalPages(totalPages);
+                }
+            }
+    
+            // Ejecutar la consulta final
+            const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
+    
+            // Obtener información del esquema si es necesario
+            if (query instanceof SelectQuery && isSchema) {
+                queryName = this.extractCallerInfo();
+                if (isDefined(ref)) {
+                    queryName = `${queryName}.${ref}`;
+                }
+                columns = await this.getSchemaQuery(queryName, primaryKey, res);
+                if (columns.length > 0) {
+                    primaryKey = columns[0].name;
+                }
+            }
+    
+            // Manejar auditoría
             if (query.audit) {
                 let activityQuery: InsertQuery | undefined;
                 if (query instanceof InsertQuery) {
@@ -109,38 +184,38 @@ export class DataSourceService {
                     await this.pool.query(activityQuery.query, activityQuery.paramValues);
                 }
             }
-
-            if (query instanceof UpdateQuery)
+    
+            // Establecer mensajes apropiados según el tipo de consulta
+            if (query instanceof UpdateQuery) {
                 message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
-
-            if (query instanceof DeleteQuery)
-                message = res.rowCount > 0 ? `Eliminación exitosa, ${res.rowCount} registros afectados` : 'No se eliminó ningún registro';
-
-            if (query instanceof SelectQuery) {
-                if (res.rowCount === 0)
-                    message = `No existen registros`;
             }
-
+    
+            if (query instanceof DeleteQuery) {
+                message = res.rowCount > 0 ? `Eliminación exitosa, ${res.rowCount} registros afectados` : 'No se eliminó ningún registro';
+            }
+    
+            if (query instanceof SelectQuery && res.rowCount === 0) {
+                message = `No existen registros`;
+            }
+    
             return {
+                totalRecords: query instanceof SelectQuery ? totalRecords : undefined,
+                pagination: query instanceof SelectQuery ? query.getPagination() : undefined,
                 rowCount: res.rowCount,
                 rows: query instanceof SelectQuery ? res.rows : undefined,
                 message,
                 columns: query instanceof SelectQuery ? columns : undefined,
                 key: query instanceof SelectQuery ? primaryKey : undefined,
-                pagination: query instanceof SelectQuery ? query.getPagination() : undefined,
                 queryName: query instanceof SelectQuery ? queryName : undefined,
             } as ResultQuery;
-
+    
         } catch (error) {
             console.error(query);
             console.error(error);
             this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
-            throw new InternalServerErrorException(
-                `[ERROR] createQuery - ${error}`
-            );
+            throw new InternalServerErrorException(`[ERROR] createQuery - ${error}`);
         }
     }
-
 
 
     /**
@@ -452,7 +527,7 @@ export class DataSourceService {
                 getSqlUpdate(query);
             }
             else if (query instanceof DeleteQuery) getSqlDelete(query);
-            else if (query instanceof SelectQuery) getSqlSelect(query);
+            //  else if (query instanceof SelectQuery) getSqlSelect(query);
         }
         catch (error) {
             console.error(error);

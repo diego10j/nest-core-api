@@ -173,6 +173,7 @@ export class FilesService {
             insertQuery.values.set('type_arch', file.mimetype);
             insertQuery.values.set('extension_arch', extension);
             insertQuery.values.set('descargas_arch', 0);
+            insertQuery.values.set('ide_empr',dto.ide_empr)
 
             insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
             await this.dataSource.createQuery(insertQuery);

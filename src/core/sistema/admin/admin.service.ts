@@ -78,20 +78,20 @@ export class AdminService {
     // -------------------------------- OPCIONES ---------------------------- //
     async getTableQueryOpcion(dto: OpcionDto) {
         const whereClause = `ide_sist = ${dto.ide_sist} AND ${isDefined(dto.sis_ide_opci) === false ? 'sis_ide_opci IS NULL' : `sis_ide_opci = ${dto.sis_ide_opci}`}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', condition: `${whereClause}`, orderBy: 'nom_opci' }
+        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
         return this.core.getTableQuery(dtoIn);
     }
 
     async getTreeModelOpcion(dto: OpcionDto) {
         const whereClause = `ide_sist = ${dto.ide_sist}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', columnName: 'nom_opci', columnNode: 'sis_ide_opci', condition: `${whereClause}`, orderBy: 'nom_opci' }
+        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', columnName: 'nom_opci', columnNode: 'sis_ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
         return this.core.getTreeModel(dtoIn);
     }
 
     // -------------------------------- PERFILES ---------------------------- //
     async getTableQueryPerfil(dto: PerfilDto) {
         const whereClause = `ide_sist = ${dto.ide_sist}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', condition: `${whereClause}`, orderBy: 'nom_perf' }
+        const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', condition: `${whereClause}`, orderBy: { column: 'nom_perf' } }
         return this.core.getTableQuery(dtoIn);
     }
 

@@ -33,7 +33,7 @@ export class FacturasService extends BaseService {
         const condition = `ide_empr = ${dto.ideEmpr} 
                            AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
                            ${condSucu}`;
-        const dtoIn = { ...dto, module: 'cxc', tableName: 'datos_fac', primaryKey: 'ide_ccdaf', orderBy: 'establecimiento_ccdfa', condition }
+        const dtoIn = { ...dto, module: 'cxc', tableName: 'datos_fac', primaryKey: 'ide_ccdaf', orderBy: { column: 'establecimiento_ccdfa' }, condition }
         return this.core.getTableQuery(dtoIn);
     }
 

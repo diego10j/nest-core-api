@@ -24,9 +24,6 @@ export class TableQueryDto extends ServiceDto {
     @IsOptional()
     columns?: string;
 
-    @IsString()
-    @IsOptional()
-    orderBy?: string;
 
     @IsString()
     @IsOptional()

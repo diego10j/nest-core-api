@@ -4,7 +4,8 @@ import { PartialType } from '@nestjs/mapped-types';
 
 export class UploadFileDto extends PartialType(ServiceDto) {
 
-
+    @IsString()
+    ide_empr: string;
 
     @IsString()
     @IsOptional()

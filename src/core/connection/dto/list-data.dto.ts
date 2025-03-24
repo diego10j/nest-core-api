@@ -25,12 +25,6 @@ export class ListDataValuesDto extends PartialType(ServiceDto) {
     @Matches(/^\S*$/, { message: 'columnLabel no debe contener espacios' })
     columnLabel: string;
 
-
-    @IsOptional()
-    @IsString()
-    orderBy?: string
-
-
     @IsOptional()
     @IsString()
     condition?: string

@@ -46,7 +46,6 @@ export class CoreService {
         SELECT ${selectedColumns} 
         FROM ${module}_${tableName} 
         WHERE 1=1 AND ${whereClause} 
-        ORDER BY ${orderByClause}    
         `, dto);
         // ide_empr = ${dto.ideEmpr} AND 
         const result = await this.dataSource.createQuery(pgq, true, `${module}_${tableName}`);

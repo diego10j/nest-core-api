@@ -30,9 +30,6 @@ export class TreeDto extends ServiceDto {
     @Matches(/^\S*$/, { message: 'columnNode no debe contener espacios' })
     columnNode: string;
 
-    @IsString()
-    @IsOptional()
-    orderBy?: string;
 
     @IsString()
     @IsOptional()

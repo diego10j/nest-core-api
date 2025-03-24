@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
+import { OrderByDto } from 'src/common/dto/order-by.dto';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
@@ -28,7 +29,13 @@ export class PuntoVentaService extends BaseService {
      * @returns 
      */
     async getTableQueryEstadosOrden(dto: ServiceDto) {
-        const dtoIn = { ...dto,module:'cxc', tableName: 'estado_orden', primaryKey: 'ide_ccesor', orderBy: 'nombre_ccesor' }
+        const dtoIn = {
+            ...dto,
+            module: 'cxc',
+            tableName: 'estado_orden',
+            primaryKey: 'ide_ccesor',
+            orderBy: { column: 'nombre_ccesor', direction: 'ASC' } as OrderByDto
+        }
         return this.core.getTableQuery(dtoIn);
     }
 

@@ -236,7 +236,7 @@ export class BodegasService extends BaseService {
     * @returns 
     */
     async getListDataBodegas(dto?: ServiceDto) {
-        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true` }
+        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true`, orderBy: { column: 'nombre_inbod'} }
         return this.core.getListDataValues(dtoIn);
     }
 

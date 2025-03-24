@@ -10,9 +10,10 @@ import { ListaChatDto } from './dto/lista-chat.dto';
 import { FindChatDto } from './dto/find-chat.dto';
 import { GetUrlArchivoDto } from './dto/get-url-media.dto';
 import { UploadMediaDto } from './dto/upload-media.dto';
-import { openInBrowserMimeTypes } from 'src/util/helpers/download-image-as-png';
 import { ChatFavoritoDto } from './dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
+import { ListContactDto } from './dto/list-contact.dto';
+import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
 
 
 @Controller('whatsapp')
@@ -43,6 +44,15 @@ export class WhatsappController {
     @Body() dtoIn: ServiceDto
   ) {
     return this.service.getListas(dtoIn);
+  }
+
+
+  @Post('getEtiquetas')
+  // @Auth()
+  getEtiquetas(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.service.getEtiquetas(dtoIn);
   }
 
   @Post('getMensajes')
@@ -93,7 +103,7 @@ export class WhatsappController {
 
       // Nombre del archivo (puedes personalizarlo)
       const fileName = file.fileName;
-      console.log(fileName);
+      // console.log(fileName);
       // Configurar los encabezados de la respuesta
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
@@ -164,6 +174,15 @@ export class WhatsappController {
     return this.service.setChatFavorito(dtoIn);
   }
 
+  @Post('setEtiquetaChat')
+  // @Auth()
+  setEtiquetaChat(
+    @Body() dtoIn: ChatEtiquetaDto
+  ) {
+    return this.service.setEtiquetaChat(dtoIn);
+  }
+
+
   @Post('getContactosLista')
   // @Auth()
   getContactosLista(
@@ -196,6 +215,26 @@ export class WhatsappController {
   ) {
     return this.service.findTextoMensajes(dtoIn);
   }
+
+  @Post('searchContacto')
+  // @Auth()
+  searchContacto(
+    @Body() dtoIn: FindChatDto
+  ) {
+    return this.service.searchContacto(dtoIn);
+  }
+
+  
+
+  @Post('saveListasContacto')
+  // @Auth()
+  saveListasContacto(
+    @Body() dtoIn: ListContactDto
+  ) {
+    return this.service.saveListasContacto(dtoIn);
+  }
+
+
 
   // ----------------------------
 

@@ -4,7 +4,7 @@ import { ServiceDto } from 'src/common/dto/service.dto';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
 import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
-import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
+import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../connection/helpers';
 import { getCurrentDateTime } from '../../util/helpers/date-util';
 import { envs } from 'src/config/envs';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
@@ -19,6 +19,8 @@ import { GetUrlArchivoDto } from './dto/get-url-media.dto';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { ChatFavoritoDto } from './dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
+import { ListContactDto } from './dto/list-contact.dto';
+import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
 
 @Injectable()
 export class WhatsappService {
@@ -277,7 +279,7 @@ export class WhatsappService {
                             updateQuery.values.set("timestamp_sent_whmem", new Date(Number(statuses.timestamp) * 1000).toISOString());
                         }
                         else if (statuses.status === 'read') {
-                            updateQuery.values.set("timestamp_read_whmem", new Date(Number(statuses.timestamp)* 1000).toISOString());
+                            updateQuery.values.set("timestamp_read_whmem", new Date(Number(statuses.timestamp) * 1000).toISOString());
                             updateQuery.values.set("leido_whmem", true);
                             this.whatsappGateway.sendReadMessageToClients(statuses.id);  // Emitir el mensaje recibido a los clientes WebSocket
                         }
@@ -329,6 +331,9 @@ export class WhatsappService {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+
+        this.setMensajesLeidosChat(dto);
+
         const query = new SelectQuery(`
             select
                 *
@@ -443,11 +448,12 @@ export class WhatsappService {
             direction_whmem,
             no_leidos_whcha,
             nombre_wheti,
-            color_wheti
+            color_wheti,
+            a.ide_wheti
         FROM
             wha_chat a
             left join wha_mensaje b on a.id_whcha = b.id_whmem
-            left join wha_etiqueta c on a.ide_wheti = a.ide_wheti
+            left join wha_etiqueta c on a.ide_wheti = c.ide_wheti
         WHERE phone_number_id_whcha = $1
         order by
             fecha_msg_whcha desc
@@ -457,6 +463,66 @@ export class WhatsappService {
         return data;
 
     }
+
+    /**
+     * Busca un contacto por nombre o numero, retorna 25 coincidencias
+     * @param dto 
+     * @returns 
+     */
+    async searchContacto(dto: FindChatDto) {
+
+        const config = await this.getConfigWhatsApp(dto.ideEmpr);
+        if (isDefined(config) === false)
+            throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+
+        if (dto.texto.trim() === '') {
+            return [];
+        }
+
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_whcha,
+            fecha_crea_whcha,
+            fecha_msg_whcha,
+            name_whcha,
+            nombre_whcha,
+            phone_number_whcha,
+            leido_whcha,
+            favorito_whcha,
+            wa_id_whmem,
+            id_whmem,
+            wa_id_context_whmem,
+            body_whmem,
+            fecha_whmem,
+            content_type_whmem,
+            status_whmem,
+            direction_whmem,
+            no_leidos_whcha,
+            nombre_wheti,
+            color_wheti,
+            a.ide_wheti
+        FROM
+            wha_chat a
+            left join wha_mensaje b on a.id_whcha = b.id_whmem
+            left join wha_etiqueta c on a.ide_wheti = c.ide_wheti
+        WHERE phone_number_id_whcha = $1
+        AND (
+            unaccent(LOWER(a.name_whcha)) ILIKE '%' || unaccent(LOWER($2)) || '%'
+            OR unaccent(LOWER(a.nombre_whcha)) ILIKE '%' || unaccent(LOWER($3)) || '%'
+            OR unaccent(LOWER(f_phone_number(a.wa_id_whcha))) ILIKE '%' || unaccent(LOWER($4)) || '%'
+        )
+        order by nombre_whcha 
+        LIMIT ${dto.resultados}            
+        `, dto);
+        query.addStringParam(1, config.WHATSAPP_API_ID);
+        query.addStringParam(2, dto.texto);
+        query.addStringParam(3, dto.texto);
+        query.addStringParam(4, dto.texto);
+        const data = await this.dataSource.createSelectQuery(query);
+        return data;
+
+    }
+
 
     /**
      * Retorna las listas de chats
@@ -517,6 +583,26 @@ export class WhatsappService {
             }
         );
         return data;
+    }
+
+
+    async getEtiquetas(dto: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_wheti,
+            a.nombre_wheti,
+            a.color_wheti,
+            a.descripcion_wheti
+        FROM
+            wha_etiqueta a
+        WHERE
+            a.ide_empr = $1
+            AND activo_wheti = TRUE
+        ORDER BY
+            a.nombre_wheti
+        `, dto);
+        query.addParam(1, dto.ideEmpr);
+        return await this.dataSource.createSelectQuery(query);
     }
 
 
@@ -625,7 +711,7 @@ export class WhatsappService {
             )
         order by
             a.fecha_msg_whcha DESC
-        LIMIT 100
+        LIMIT ${dto.resultados}
         `, dto);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addStringParam(2, dto.texto);
@@ -901,6 +987,23 @@ export class WhatsappService {
 
     }
 
+
+    async setEtiquetaChat(dto: ChatEtiquetaDto) {
+
+        const config = await this.getConfigWhatsApp(dto.ideEmpr);
+        if (isDefined(config) === false)
+            throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+        const updateQuery = new UpdateQuery('wha_chat', 'uuid');
+        updateQuery.values.set('ide_wheti', dto.etiqueta);
+        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
+        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
+        updateQuery.addParam(2, dto.telefono);
+        return await this.dataSource.createQuery(updateQuery)
+
+    }
+
+
+
     // ---------------------------------------
 
     /**
@@ -1028,7 +1131,37 @@ export class WhatsappService {
             WHATSAPP_API_TOKEN: data.id_token_whcue,
         };
     }
+
+    async saveListasContacto(dtoIn: ListContactDto) {
+        const listQuery: Query[] = [];
+        // borra todas las listas asignadas previamente
+        const dq = new DeleteQuery("wha_lista_chat");
+        dq.where = "wa_id_whlic = $1";
+        dq.addParam(1, dtoIn.telefono);
+        listQuery.push(dq);
+
+        // inserta las listas del array 
+        dtoIn.listas.forEach((list: number) => {
+            const insertQuery = new InsertQuery('wha_lista_chat', 'ide_whlic',);
+            insertQuery.values.set('ide_whlis', list);
+            insertQuery.values.set('wa_id_whlic', dtoIn.telefono);
+            insertQuery.values.set('usuario_ingre', dtoIn.login);
+            listQuery.push(insertQuery);
+        });
+        // Ejecuta querys
+        const messages = await this.dataSource.createListQuery(listQuery);
+
+        return {
+            message: 'ok',
+            rowCount: listQuery.length,
+            resultMessage: messages,
+        };
+
+    }
+
+
 }
+
 
 
 // throw new Error('Error al obtener la configuración de WhatsApp');

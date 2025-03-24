@@ -2,6 +2,7 @@ import { Column } from "./column";
 
 export interface ResultQuery {
     rowCount?: number;
+    totalRecords?: number;
     rows?: any[];
     charts?: any[];
     columns?: Column[];

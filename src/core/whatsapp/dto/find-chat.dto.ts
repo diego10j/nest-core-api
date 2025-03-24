@@ -1,4 +1,4 @@
-import { IsInt, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
 export class FindChatDto extends ServiceDto {
@@ -7,5 +7,12 @@ export class FindChatDto extends ServiceDto {
     texto: string;
 
     @IsInt()
-    resultados: number = 50;
+    @IsOptional()
+    lista?: number;
+
+    @IsInt()
+    @IsOptional()
+    resultados?: number = 25;
+
+
 }
