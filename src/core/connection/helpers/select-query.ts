@@ -9,11 +9,11 @@ export class SelectQuery extends Query {
 
     pagination?: {
         offset: number;
-        rows: number;
-        page: number;
+        pageSize: number;
+        pageIndex: number;
         totalPages?: number; // Total de páginas calculadas
-        next?: boolean; // Indica si hay una siguiente página    
-        previous?: boolean; // Indica si hay una página anterior
+        hasNextPage?: boolean; // Indica si hay una siguiente página    
+        hasPreviousPage?: boolean; // Indica si hay una página anterior
     };
 
     globalFilter?: GlobalFilterDto;
@@ -31,9 +31,9 @@ export class SelectQuery extends Query {
 
             if (isDefined(pagination)) {
                 this.pagination = {
-                    rows: pagination.rows,
-                    page: pagination.page,
-                    offset: this.calculateOffset(pagination.rows, pagination.page)
+                    pageSize: pagination.pageSize,
+                    pageIndex: pagination.pageIndex,
+                    offset: this.calculateOffset(pagination.pageSize, pagination.pageIndex)
                 };
             }
 
@@ -51,30 +51,34 @@ export class SelectQuery extends Query {
         }
     }
 
-    private calculateOffset(rows: number, page: number): number {
-        return (page - 1) * rows;
-    }
 
+    private calculateOffset(pageSize: number, pageIndex: number): number {
+        return pageIndex > 0 ? pageIndex * pageSize : 0;
+    }
+    
     getPagination() {
-        return this.pagination;
+        if (this.pagination.totalPages && this.pagination.totalPages > 1) {
+            return this.pagination;
+        }
+        return undefined;
     }
 
-    setPagination(rows: number, page: number) {
+    setPagination(pageSize: number, pageIndex: number) {
         this.pagination = {
-            rows,
-            page,
-            offset: this.calculateOffset(rows, page)
+            pageSize,
+            pageIndex,
+            offset: this.calculateOffset(pageSize, pageIndex)
         };
     }
     setIsNextPage(next: boolean) {
         if (this.pagination) {
-            this.pagination.next = next;
+            this.pagination.hasNextPage = next;
         }
     }
 
     setIsPreviousPage(previous: boolean) {
         if (this.pagination) {
-            this.pagination.previous = previous;
+            this.pagination.hasPreviousPage = previous;
         }
     }
 

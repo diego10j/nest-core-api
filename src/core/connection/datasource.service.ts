@@ -84,10 +84,10 @@ export class DataSourceService {
             let columns: any[] | undefined = undefined;
             let queryName: string | undefined = undefined;
             let message = 'ok';
-    
+
             // Envolver la consulta original en una subconsulta
             let finalQuery = query.query;
-    
+
             if (query instanceof SelectQuery) {
                 query.query = query.query.trim();
                 if (query.query.endsWith(';')) {
@@ -98,9 +98,9 @@ export class DataSourceService {
 
             // Si no hay paginación, establecer un valor predeterminado
             if (query instanceof SelectQuery && !query.pagination) {
-                query.setPagination(this.SIZE_DEFAULT, 1);
+                query.setPagination(this.SIZE_DEFAULT, 0);
             }
-    
+
             // Aplicar filtros dinámicos
             if (query instanceof SelectQuery && query.filters && query.filters.length > 0) {
                 const filterConditions = query.filters.map(filter => {
@@ -112,7 +112,7 @@ export class DataSourceService {
                 }).join(' AND ');
                 finalQuery += ` WHERE ${filterConditions}`;
             }
-    
+
             // Aplicar filtro global
             if (query instanceof SelectQuery && query.globalFilter) {
                 const globalFilterConditions = query.globalFilter.columns
@@ -121,12 +121,12 @@ export class DataSourceService {
                 finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
                 // query.setPagination(this.SIZE_DEFAULT, 1);
             }
-    
+
             // Aplicar orden dinámico
             if (query instanceof SelectQuery && query.orderBy) {
                 finalQuery += ` ORDER BY wrapped_query.${query.orderBy.column} ${query.orderBy.direction}`;
             }
-    
+
             // Contar el total de registros
             let totalRecords: number | undefined = undefined;
             if (query instanceof SelectQuery) {
@@ -142,23 +142,23 @@ export class DataSourceService {
                     totalRecords = parseInt(countResult.rows[0].count, 10);
                 }
             }
-    
+
             // Aplicar paginación dinámica
             if (query instanceof SelectQuery && query.pagination) {
-                query.setPagination(query.pagination.rows, query.pagination.page);
-                finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.rows}`;
+                query.setPagination(query.pagination.pageSize, query.pagination.pageIndex);
+                finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.pageSize}`;
 
                 if (query.pagination && totalRecords !== undefined) {
-                    const totalPages = Math.ceil(totalRecords / query.pagination.rows);
-                    query.setIsPreviousPage(query.pagination.page > 1);
-                    query.setIsNextPage(query.pagination.page < totalPages);
+                    const totalPages = Math.ceil(totalRecords / query.pagination.pageSize);
+                    query.setIsPreviousPage(query.pagination.pageIndex > 1);
+                    query.setIsNextPage(query.pagination.pageIndex < totalPages);
                     query.setTotalPages(totalPages);
                 }
             }
-    
+
             // Ejecutar la consulta final
             const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
-    
+
             // Obtener información del esquema si es necesario
             if (query instanceof SelectQuery && isSchema) {
                 queryName = this.extractCallerInfo();
@@ -170,7 +170,7 @@ export class DataSourceService {
                     primaryKey = columns[0].name;
                 }
             }
-    
+
             // Manejar auditoría
             if (query.audit) {
                 let activityQuery: InsertQuery | undefined;
@@ -184,20 +184,20 @@ export class DataSourceService {
                     await this.pool.query(activityQuery.query, activityQuery.paramValues);
                 }
             }
-    
+
             // Establecer mensajes apropiados según el tipo de consulta
             if (query instanceof UpdateQuery) {
                 message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
             }
-    
+
             if (query instanceof DeleteQuery) {
                 message = res.rowCount > 0 ? `Eliminación exitosa, ${res.rowCount} registros afectados` : 'No se eliminó ningún registro';
             }
-    
+
             if (query instanceof SelectQuery && res.rowCount === 0) {
                 message = `No existen registros`;
             }
-    
+
             return {
                 totalRecords: query instanceof SelectQuery ? totalRecords : undefined,
                 pagination: query instanceof SelectQuery ? query.getPagination() : undefined,
@@ -208,7 +208,7 @@ export class DataSourceService {
                 key: query instanceof SelectQuery ? primaryKey : undefined,
                 queryName: query instanceof SelectQuery ? queryName : undefined,
             } as ResultQuery;
-    
+
         } catch (error) {
             console.error(query);
             console.error(error);

@@ -29,8 +29,7 @@ export class AuthService {
         const { password, email } = loginUserDto;
         const queryUser = new SelectQuery('SELECT ide_usua,uuid FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true');
         queryUser.addStringParam(1, email);
-        const dataUser = await this.dataSource.createSingleQuery(queryUser);
-
+        const dataUser = await this.dataSource.createSingleQuery(queryUser);        
         if (!dataUser) {
             throw new UnauthorizedException('Credenciales no válidas, usuario incorrecto');
         }

@@ -22,7 +22,7 @@ export class CoreService {
      */
     async getListDataValues(dto: ListDataValuesDto) {
         const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
-        const orderBy = dto.orderBy || dto.columnLabel;
+        const orderBy = dto.orderBy.column || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
                                     FROM ${dto.module}_${dto.tableName}  ${condition} ORDER BY ${orderBy}`);
         const data: any[] = await this.dataSource.createSelectQuery(pq);
@@ -40,7 +40,7 @@ export class CoreService {
         // Default values
         const selectedColumns = columns || '*';
         const whereClause = condition || '1=1';
-        const orderByClause = orderBy || primaryKey;
+        const orderByClause = orderBy.column || primaryKey;
 
         const pgq = new SelectQuery(`        
         SELECT ${selectedColumns} 

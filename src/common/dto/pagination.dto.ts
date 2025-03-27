@@ -6,12 +6,12 @@ export class PaginationDto {
 
     @IsPositive()
     @Type(() => Number) // enableImplicitConversions: true
-    rows: number;
+    @Min(1)
+    pageSize: number;
 
     @IsInt()
     @Min(0)
-    @IsPositive()
-    page: number = 1;
+    pageIndex: number = 0;
 
 
 }

@@ -94,7 +94,7 @@ export function getSqlDelete(query: DeleteQuery) {
 export function getSqlSelect(query: SelectQuery) {
     if ((query.pagination)) {
         const { pagination } = query;
-        query.query += ` OFFSET ${pagination.offset} LIMIT ${pagination.rows}`;
+        query.query += ` OFFSET ${pagination.offset} LIMIT ${pagination.pageSize}`;
     }
     return query;
 }
