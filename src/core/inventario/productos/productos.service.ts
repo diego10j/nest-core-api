@@ -152,12 +152,13 @@ export class ProductosService extends BaseService {
             ILIKE immutable_unaccent_replace ($1)
             OR immutable_unaccent_replace (otro_nombre_inarti)
             ILIKE immutable_unaccent_replace ($2)
-        LIMIT 20
+        ORDER BY nombre_inarti
+        LIMIT ${dtoIn.limit}
         `
         );
         query.addStringParam(1, `%${dtoIn.nombre}%`);
         query.addStringParam(2, `%${dtoIn.nombre}%`);
-        return await this.dataSource.createQuery(query, false);
+        return await this.dataSource.createSelectQuery(query, false);
     }
 
     /**

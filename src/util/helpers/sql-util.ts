@@ -265,3 +265,7 @@ export function getWhereIdeSucu(tabla: string, dto: ServiceDto) {
 export function getWhereIdeEmpr(tabla: string, dto: ServiceDto) {
     return ` AND ${tabla}.ide_empr = ${dto.ideEmpr}`;
 }
+
+export function toStringColumns(columns: string[]): string {
+    return columns.map(col => `${col}`).join(', ');
+}

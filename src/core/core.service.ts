@@ -4,10 +4,11 @@ import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './con
 import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { toObjectTable } from '../util/helpers/sql-util';
+import { getWhereIdeEmpr, toObjectTable, toStringColumns } from '../util/helpers/sql-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 import { isDefined } from '../util/helpers/common-util';
+import { SearchDto } from 'src/common/dto/search.dto';
 
 @Injectable()
 export class CoreService {
@@ -22,9 +23,9 @@ export class CoreService {
      */
     async getListDataValues(dto: ListDataValuesDto) {
         const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
-        const orderBy = dto.orderBy.column || dto.columnLabel;
+        const columnOrder = dto.columnOrder || dto.columnLabel;
         const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
-                                    FROM ${dto.module}_${dto.tableName}  ${condition} ORDER BY ${orderBy}`);
+                                    FROM ${dto.module}_${dto.tableName}  ${condition} ORDER BY ${columnOrder}`);
         const data: any[] = await this.dataSource.createSelectQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
         return data;
@@ -40,12 +41,13 @@ export class CoreService {
         // Default values
         const selectedColumns = columns || '*';
         const whereClause = condition || '1=1';
-        const orderByClause = orderBy.column || primaryKey;
+        const orderByClause = orderBy?.column || primaryKey;
 
         const pgq = new SelectQuery(`        
         SELECT ${selectedColumns} 
         FROM ${module}_${tableName} 
         WHERE 1=1 AND ${whereClause} 
+        ORDER BY ${orderByClause}
         `, dto);
         // ide_empr = ${dto.ideEmpr} AND 
         const result = await this.dataSource.createQuery(pgq, true, `${module}_${tableName}`);
@@ -64,61 +66,6 @@ export class CoreService {
         return this.getTableQuery(dtoIn);
     }
 
-
-    /**
-     * Transforma a Query un ObjectQueryDto
-     * @param dto 
-     * @param ideEmpr 
-     * @param ideSucu 
-     * @param login 
-     * @returns 
-     */
-    toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string, audit: boolean): UpdateQuery | DeleteQuery | InsertQuery {
-        dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
-        const tableName = `${dto.module}_${dto.tableName}`.toLocaleLowerCase();
-        const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
-        const valuePrimaryKey = mapObject.get(dto.primaryKey);
-
-        if (dto.operation === 'update') {
-            // asigna valores update campos del core            
-            mapObject.set('usuario_actua', login);
-            const updateQuery = new UpdateQuery(tableName, dto.primaryKey);
-            updateQuery.setAudit(audit);
-            mapObject.delete(dto.primaryKey);
-            if (dto.condition)
-                updateQuery.where = dto.condition;
-            else
-                updateQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
-
-            // updateQuery.addParam(1, valuePrimaryKey);
-            updateQuery.values = mapObject;
-            updateQuery.valuePrimaryKey = valuePrimaryKey;
-            return updateQuery;
-        }
-        else if (dto.operation === 'insert') {
-            // insert
-            const insertQuery = new InsertQuery(tableName, dto.primaryKey)
-            insertQuery.setAudit(audit);
-            //  asigna valores update campos del core
-            if (dto.primaryKey !== 'ide_empr')
-                mapObject.set('ide_empr', ideEmpr);
-            if (dto.primaryKey !== 'ide_sucu')
-                mapObject.set('ide_sucu', ideSucu);
-            mapObject.set('usuario_ingre', login);
-            insertQuery.values = mapObject;
-            return insertQuery;
-        }
-        else if (dto.operation === 'delete') {
-            const deleteQuery = new DeleteQuery(tableName)
-            deleteQuery.setAudit(audit);
-            if (dto.condition)
-                deleteQuery.where = dto.condition;
-            else
-                deleteQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
-            // deleteQuery.addParam(1, valuePrimaryKey);
-            return deleteQuery;
-        }
-    }
 
     /**
      * Guarda el listado de objetos query
@@ -234,6 +181,33 @@ export class CoreService {
         const whereClause = `${dtoIn.primaryKey} = ${dtoIn.value}`;
         const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
         return await this.dataSource.createSingleQuery(query);
+    }
+
+    async search(dtoIn: SearchDto) {
+        const selectClause = toStringColumns(dtoIn.columnsReturn);
+
+        const whereClause = dtoIn.columnsSearch.map((col, index) =>
+            `unaccent(LOWER(${col})) ILIKE '%' || unaccent(LOWER($${index + 1})) || '%'`
+        ).join(' OR ');
+
+        const orderByClause = `ORDER BY ${dtoIn.columnOrder}`;
+
+        const whereEmpresa = getWhereIdeEmpr(`${dtoIn.module}_${dtoIn.tableName}`, dtoIn);
+
+
+        const query = new SelectQuery(`
+        SELECT ${selectClause}
+        FROM ${dtoIn.module}_${dtoIn.tableName}
+        WHERE ${whereClause}
+        ${whereEmpresa}
+        ${orderByClause}
+        LIMIT ${dtoIn.limit}`, dtoIn);
+
+        // Añadir parámetros para cada columna de búsqueda (repetir el valor para cada columna)
+        for (let i = 0; i < dtoIn.columnsSearch.length; i++) {
+            query.addStringParam(i + 1, dtoIn.value); // $1, $2, etc. con el mismo valor
+        }
+        return await this.dataSource.createSelectQuery(query);
     }
 
     async getTableColumns(dtoIn: ColumnsTableDto) {
@@ -475,5 +449,61 @@ export class CoreService {
         }
     };
 
+
+
+    /**
+     * Transforma a Query un ObjectQueryDto
+     * @param dto 
+     * @param ideEmpr 
+     * @param ideSucu 
+     * @param login 
+     * @returns 
+     */
+    private toQuery(dto: ObjectQueryDto, ideEmpr: number, ideSucu: number, login: string, audit: boolean): UpdateQuery | DeleteQuery | InsertQuery {
+        dto.primaryKey = dto.primaryKey.toLocaleLowerCase();
+        const tableName = `${dto.module}_${dto.tableName}`.toLocaleLowerCase();
+        const mapObject = new Map(Object.entries(toObjectTable(dto.object)));
+        const valuePrimaryKey = mapObject.get(dto.primaryKey);
+
+        if (dto.operation === 'update') {
+            // asigna valores update campos del core            
+            mapObject.set('usuario_actua', login);
+            const updateQuery = new UpdateQuery(tableName, dto.primaryKey);
+            updateQuery.setAudit(audit);
+            mapObject.delete(dto.primaryKey);
+            if (dto.condition)
+                updateQuery.where = dto.condition;
+            else
+                updateQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
+
+            // updateQuery.addParam(1, valuePrimaryKey);
+            updateQuery.values = mapObject;
+            updateQuery.valuePrimaryKey = valuePrimaryKey;
+            return updateQuery;
+        }
+        else if (dto.operation === 'insert') {
+            // insert
+            const insertQuery = new InsertQuery(tableName, dto.primaryKey)
+            insertQuery.setAudit(audit);
+            //  asigna valores update campos del core
+            if (dto.primaryKey !== 'ide_empr')
+                mapObject.set('ide_empr', ideEmpr);
+            if (dto.primaryKey !== 'ide_sucu')
+                mapObject.set('ide_sucu', ideSucu);
+            mapObject.set('usuario_ingre', login);
+            insertQuery.values = mapObject;
+            return insertQuery;
+        }
+        else if (dto.operation === 'delete') {
+            const deleteQuery = new DeleteQuery(tableName)
+            deleteQuery.setAudit(audit);
+            if (dto.condition)
+                deleteQuery.where = dto.condition;
+            else
+                deleteQuery.where = `${dto.primaryKey} = ${valuePrimaryKey}`
+            // deleteQuery.addParam(1, valuePrimaryKey);
+            return deleteQuery;
+        }
+    }
 
 }

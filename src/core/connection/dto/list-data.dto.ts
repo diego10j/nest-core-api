@@ -1,9 +1,7 @@
-import { IsString, IsOptional, IsNotEmpty, Matches } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, Matches, IsInt } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
-import { PartialType } from '@nestjs/mapped-types';
 
-
-export class ListDataValuesDto extends PartialType(ServiceDto) {
+export class ListDataValuesDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
@@ -28,5 +26,10 @@ export class ListDataValuesDto extends PartialType(ServiceDto) {
     @IsOptional()
     @IsString()
     condition?: string
+
+    @IsString()
+    @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'columnOrder no debe contener espacios' })
+    columnOrder?: string;
 
 }

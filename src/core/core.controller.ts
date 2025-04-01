@@ -2,10 +2,11 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Auth } from './auth/decorators';
 import { CoreService } from './core.service';
 
-import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto, FindByIdDto,UpdateColumnsDto } from './connection/dto';
+import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { ServiceDto } from '../common/dto/service.dto';
 import { TreeDto } from './connection/dto/tree-dto';
+import { SearchDto } from 'src/common/dto/search.dto';
 
 
 @Controller('core')
@@ -89,6 +90,14 @@ export class CoreController {
         @Body() dtoIn: FindByIdDto
     ) {
         return this.service.findById(dtoIn);
+    }
+
+    @Post('search')
+    //@Auth()
+    search(
+        @Body() dtoIn: SearchDto
+    ) {
+        return this.service.search(dtoIn);
     }
 
 

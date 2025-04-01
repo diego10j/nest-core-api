@@ -61,7 +61,7 @@ export class ComprobantesInvService extends BaseService {
         ${condBodega}
         ${condEstado}
         order by  fecha_trans_incci desc, ide_incci desc
-    `);
+    `, dtoIn);
 
         query.addDateParam(1, dtoIn.fechaInicio);
         query.addDateParam(2, dtoIn.fechaFin);
@@ -102,7 +102,7 @@ export class ComprobantesInvService extends BaseService {
 		a.ide_incci = $1
         and hace_kardex_inarti = true
         order by  g.nombre_inarti
-    `);
+    `, dtoIn);
         query.addIntParam(1, dtoIn.ide_incci);
         return await this.dataSource.createQuery(query);
     }
@@ -137,19 +137,19 @@ export class ComprobantesInvService extends BaseService {
             inner join inv_est_prev_inve g on a.ide_inepi = g.ide_inepi
         where
             a.ide_incci = $1
-    `);
+    `,dtoIn);
         query.addIntParam(1, dtoIn.ide_incci);
         return await this.dataSource.createQuery(query);
     }
 
 
 
-// ==================================ListData==============================
+    // ==================================ListData==============================
     /**
     * Retorna las estados de los comprobantes de inventario
     * @returns 
     */
-     async getListDataEstadosComprobantes(dto?: ServiceDto) {
+    async getListDataEstadosComprobantes(dto?: ServiceDto) {
         const dtoIn = { ...dto, module: 'inv', tableName: 'est_prev_inve', primaryKey: 'ide_inepi', columnLabel: 'nombre_inepi' }
         return this.core.getListDataValues(dtoIn);
     }

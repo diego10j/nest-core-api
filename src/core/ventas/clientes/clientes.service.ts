@@ -213,80 +213,83 @@ export class ClientesService extends BaseService {
     async getTrnCliente(dtoIn: TrnClienteDto) {
 
         const query = new SelectQuery(`
-        WITH saldo_inicial AS (
+            WITH saldo_inicial AS (
+                SELECT 
+                    ide_geper,
+                    COALESCE(SUM(valor_ccdtr * signo_ccttr), 0) AS saldo_inicial
+                FROM 
+                    cxc_detall_transa dt 
+                    LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr 
+                    LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr 
+                WHERE 
+                    ide_geper = $1
+                    AND fecha_trans_ccdtr < $2
+                    AND dt.ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    ide_geper
+            ),
+            movimientos AS (
+                SELECT 
+                    a.ide_ccdtr,
+                    fecha_trans_ccdtr,
+                    docum_relac_ccdtr, 
+                    observacion_ccdtr AS observacion,
+                    nombre_ccttr AS transaccion,            
+                    CASE WHEN signo_ccttr = 1 THEN valor_ccdtr END AS debe,
+                    CASE WHEN signo_ccttr = -1 THEN valor_ccdtr END AS haber,
+                    0 as saldo,
+                    fecha_venci_ccdtr,
+                    ide_teclb,
+                    ide_cnccc
+                FROM 
+                    cxc_detall_transa a
+                    INNER JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
+                    INNER JOIN cxc_cabece_transa d ON a.ide_ccctr = d.ide_ccctr
+                WHERE 
+                    ide_geper = $3
+                    AND fecha_trans_ccdtr BETWEEN $4 AND $5
+                    AND a.ide_sucu = ${dtoIn.ideSucu}
+                ORDER BY 
+                    fecha_trans_ccdtr, a.ide_ccdtr
+            )
             SELECT 
-                ide_geper,
-                COALESCE(SUM(valor_ccdtr * signo_ccttr), 0) AS saldo_inicial
+                -1 AS ide_ccdtr,
+                '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_ccdtr,
+                NULL AS docum_relac_ccdtr,
+                'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)}' AS observacion,
+                'Saldo Inicial' AS transaccion,
+                NULL AS debe,
+                NULL AS haber,
+                COALESCE(saldo_inicial.saldo_inicial, 0) AS saldo,  -- Aseguramos saldo 0 si no hay registros
+                NULL AS fecha_venci_ccdtr,
+                NULL AS ide_teclb,
+                NULL AS ide_cnccc
             FROM 
-                cxc_detall_transa dt 
-                LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr 
-                LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr 
-            WHERE 
-                ide_geper = $1
-                AND fecha_trans_ccdtr < $2
-                AND dt.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                ide_geper
-        ),
-        movimientos AS (
+                (SELECT 1) AS dummy
+                LEFT JOIN saldo_inicial ON TRUE  -- Cambio clave para manejar casos sin registros
+                
+            UNION ALL
+                
             SELECT 
-                a.ide_ccdtr,
-                fecha_trans_ccdtr,
-                docum_relac_ccdtr, 
-                observacion_ccdtr AS observacion,
-                nombre_ccttr AS transaccion,            
-                CASE WHEN signo_ccttr = 1 THEN valor_ccdtr END AS debe,
-                CASE WHEN signo_ccttr = -1 THEN valor_ccdtr END AS haber,
-                0 as saldo,
-                fecha_venci_ccdtr,
-                ide_teclb,
-                ide_cnccc
+                mov.ide_ccdtr,
+                mov.fecha_trans_ccdtr,
+                mov.docum_relac_ccdtr,
+                mov.observacion,
+                mov.transaccion,
+                mov.debe,
+                mov.haber,
+                COALESCE(saldo_inicial.saldo_inicial, 0) + 
+                COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) - 
+                COALESCE(SUM(mov.haber) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) AS saldo,
+                mov.fecha_venci_ccdtr,
+                mov.ide_teclb,
+                mov.ide_cnccc
             FROM 
-                cxc_detall_transa a
-                INNER JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
-                INNER JOIN cxc_cabece_transa d ON a.ide_ccctr = d.ide_ccctr
-            WHERE 
-                ide_geper = $3
-                AND fecha_trans_ccdtr BETWEEN $4 AND $5
-                AND a.ide_sucu =  ${dtoIn.ideSucu}
+                movimientos mov
+                CROSS JOIN (SELECT COALESCE(SUM(saldo_inicial), 0) AS saldo_inicial FROM saldo_inicial) saldo_inicial
             ORDER BY 
-                fecha_trans_ccdtr, a.ide_ccdtr
-        )
-        SELECT 
-            -1 AS ide_ccdtr,
-            '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_ccdtr,
-            NULL AS docum_relac_ccdtr,
-            'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  observacion,
-            'Saldo Inicial' AS transaccion,
-            NULL AS debe,
-            NULL AS haber,
-            saldo_inicial.saldo_inicial AS saldo,
-            NULL AS fecha_venci_ccdtr,
-            NULL AS ide_teclb,
-            NULL AS ide_cnccc
-        FROM 
-            saldo_inicial
-        
-        UNION ALL
-        
-        SELECT 
-            mov.ide_ccdtr,
-            mov.fecha_trans_ccdtr,
-            mov.docum_relac_ccdtr,
-            mov.observacion,
-            mov.transaccion,
-            mov.debe,
-            mov.haber,
-            saldo_inicial.saldo_inicial + COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) - COALESCE(SUM(mov.haber) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) AS saldo,
-            mov.fecha_venci_ccdtr,
-            mov.ide_teclb,
-            mov.ide_cnccc
-        FROM 
-            movimientos mov
-            CROSS JOIN saldo_inicial
-        ORDER BY 
-            fecha_trans_ccdtr, ide_ccdtr;
-        `, dtoIn);
+                fecha_trans_ccdtr, ide_ccdtr;
+          `, dtoIn);
         query.addIntParam(1, dtoIn.ide_geper);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addIntParam(3, dtoIn.ide_geper);
@@ -789,7 +792,7 @@ export class ClientesService extends BaseService {
      * @returns 
      */
     async getInfoTotalesCliente(ide_geper: number) {
-       const query = new SelectQuery(`     
+        const query = new SelectQuery(`     
             SELECT 
                 COUNT(1) AS total_facturas,
                 MAX(fecha_emisi_cccfa) AS ultima_venta,

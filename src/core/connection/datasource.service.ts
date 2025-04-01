@@ -69,7 +69,7 @@ export class DataSourceService {
 
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
-     * @param SelectQuery  primer campo del select debe ser el campo primaryKey de la consulta
+     * @param Query  
      * @param isSchema  consulta propiedades adicionales de las columnas 
      * @param ref referencia cuando se pcupa una función que realiza query  y poder identificarla
      * @returns Array data
@@ -78,6 +78,11 @@ export class DataSourceService {
         if (query instanceof InsertQuery || query instanceof UpdateQuery || query instanceof DeleteQuery) {
             isSchema = false;
         }
+        // no retona schema si pageIndex es mayor que 0
+        if (query instanceof SelectQuery && query.pagination?.pageIndex > 0) {
+            isSchema = false;
+        }
+
         await this.formatSqlQuery(query);
         try {
             let primaryKey: string | undefined = undefined;
@@ -95,7 +100,7 @@ export class DataSourceService {
                 }
                 finalQuery = `SELECT * FROM (${query.query}) AS wrapped_query`;
             }
-
+           
             // Si no hay paginación, establecer un valor predeterminado
             if (query instanceof SelectQuery && !query.pagination) {
                 query.setPagination(this.SIZE_DEFAULT, 0);
@@ -119,7 +124,6 @@ export class DataSourceService {
                     .map(column => `wrapped_query.${column}::text ILIKE '%${query.globalFilter.value}%'`)
                     .join(' OR ');
                 finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
-                // query.setPagination(this.SIZE_DEFAULT, 1);
             }
 
             // Aplicar orden dinámico
@@ -147,7 +151,13 @@ export class DataSourceService {
             if (query instanceof SelectQuery && query.pagination) {
                 query.setPagination(query.pagination.pageSize, query.pagination.pageIndex);
                 finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.pageSize}`;
+            }
 
+            // Ejecutar la consulta final
+            const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
+
+
+            if (query instanceof SelectQuery && query.pagination) {
                 if (query.pagination && totalRecords !== undefined) {
                     const totalPages = Math.ceil(totalRecords / query.pagination.pageSize);
                     query.setIsPreviousPage(query.pagination.pageIndex > 1);
@@ -155,10 +165,6 @@ export class DataSourceService {
                     query.setTotalPages(totalPages);
                 }
             }
-
-            // Ejecutar la consulta final
-            const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
-
             // Obtener información del esquema si es necesario
             if (query instanceof SelectQuery && isSchema) {
                 queryName = this.extractCallerInfo();
@@ -220,7 +226,7 @@ export class DataSourceService {
 
     /**
      * Retorna el primer registro de una consulta en la base de datos
-     * @param SelectQuery 
+     * @query SelectQuery 
      * @returns Object data
      */
     async createSingleQuery(query: SelectQuery): Promise<any> {

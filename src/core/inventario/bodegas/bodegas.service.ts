@@ -111,7 +111,7 @@ export class BodegasService extends BaseService {
         and a.ide_empr = $3
         ${condBodega}
         order by  fecha_trans_incci desc, ide_incci desc
-        `);
+        `,dtoIn);
 
         query.addDateParam(1, dtoIn.fechaInicio);
         query.addDateParam(2, dtoIn.fechaFin);
@@ -236,7 +236,7 @@ export class BodegasService extends BaseService {
     * @returns 
     */
     async getListDataBodegas(dto?: ServiceDto) {
-        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true`, orderBy: { column: 'nombre_inbod'} }
+        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true` }
         return this.core.getListDataValues(dtoIn);
     }
 
