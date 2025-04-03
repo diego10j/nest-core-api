@@ -44,7 +44,7 @@ export class CalendarioService {
             AND ide_empr = ${dtoIn.ideEmpr}
         ORDER BY fecha_inicio_cale
         `);
-        return await this.dataSource.createQuery(query, false);
+        return await this.dataSource.createQuery(query);
     }
 
 

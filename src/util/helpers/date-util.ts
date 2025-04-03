@@ -142,11 +142,23 @@ export function getDateFormatFront(date: InputValue): string {
  * @param newFormat
  * @returns
  */
-export function addDaysDate(date: Date, numDays: number, newFormat?: string): Date {
-    const fm = newFormat || FORMAT_DATE_BD();
-    return addDays(toDate(getDateFormat(date, fm)), numDays);
-}
+export function addDaysDate(date: Date | string, numDays: number, newFormat?: string): Date {
+    // Primero convertir a Date si es string
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
 
+    // Crear copia para no modificar el original
+    const result = new Date(dateObj);
+
+    // Sumar/restar los días directamente
+    result.setDate(result.getDate() + numDays);
+
+    // Si se necesita formatear, hacerlo al final
+    if (newFormat) {
+        return new Date(getDateFormat(result, newFormat));
+    }
+
+    return result;
+}
 export function isValidDate(date: any): boolean {
     return isValid(date);
 }

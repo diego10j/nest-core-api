@@ -363,7 +363,7 @@ export class ClientesService extends BaseService {
                 ide_geper
             `);
         query.addIntParam(1, dtoIn.ide_geper);
-        return await this.dataSource.createQuery(query, false);
+        return await this.dataSource.createQuery(query);
     }
 
 

@@ -1,4 +1,4 @@
-import { fShortDate, fDate, getDateFormatFront } from 'src/util/helpers/date-util';
+import { fShortDate, fDate, getDateFormatFront, getDateFormat, addDaysDate } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -158,7 +158,7 @@ export class ProductosService extends BaseService {
         );
         query.addStringParam(1, `%${dtoIn.nombre}%`);
         query.addStringParam(2, `%${dtoIn.nombre}%`);
-        return await this.dataSource.createSelectQuery(query, false);
+        return await this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -314,109 +314,86 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getTrnProducto(dtoIn: TrnProductoDto) {
+        // 1. Determinar el saldo inicial
+        const saldoInicial = await this.getStock(dtoIn.ide_inarti, addDaysDate(dtoIn.fechaInicio, -1));
+        // 2. Construir consulta con fila de saldo inicial
         const query = new SelectQuery(`
-        WITH saldo_inicial AS (
-            SELECT 
-                dci.ide_inarti,
-                SUM(cantidad_indci * signo_intci) AS saldo
-            FROM
-                inv_det_comp_inve dci
-                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-            WHERE
-                dci.ide_inarti = $1
-                AND fecha_trans_incci < $2
-                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-                AND dci.ide_sucu =  ${dtoIn.ideSucu}
-            GROUP BY
-                dci.ide_inarti
-        ),
-        movimientos AS (
+            -- Fila de saldo inicial
+            SELECT
+                -1 AS ide_indci,
+                ${dtoIn.ide_inarti}::integer AS ide_inarti,
+                NULL AS ide_incci,
+                '${fDate(dtoIn.fechaInicio)}' AS fecha_trans_incci,
+                NULL AS num_documento,
+                'Saldo Inicial al ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
+                'Saldo Inicial' AS nombre_intti,
+                NULL AS precio,
+                NULL AS ingreso,
+                NULL AS egreso,
+                NULL AS movimiento,
+                ${saldoInicial}::numeric AS saldo
+            
+            UNION ALL
+            
             SELECT
                 dci.ide_indci,
                 dci.ide_inarti,
                 cci.ide_incci,
                 cci.fecha_trans_incci,
                 COALESCE(
-                    (
-                        SELECT secuencial_cccfa
-                        FROM cxc_cabece_factura
-                        WHERE ide_cccfa = dci.ide_cccfa
-                    ),
-                    (
-                        SELECT numero_cpcfa
-                        FROM cxp_cabece_factur
-                        WHERE ide_cpcfa = dci.ide_cpcfa
-                    )
-                ) AS NUM_DOCUMENTO,
+                    (SELECT secuencial_cccfa FROM cxc_cabece_factura WHERE ide_cccfa = dci.ide_cccfa),
+                    (SELECT numero_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = dci.ide_cpcfa)
+                ) AS num_documento,
                 gpe.nom_geper,
                 tti.nombre_intti,
-                dci.precio_indci AS PRECIO,
-                CASE
-                    WHEN signo_intci = 1 THEN cantidad_indci
-                END AS INGRESO,
-                CASE
-                    WHEN signo_intci = -1 THEN cantidad_indci
-                END AS EGRESO,
-                cantidad_indci * signo_intci AS movimiento
+                dci.precio_indci AS precio,
+                CASE 
+                    WHEN tci.signo_intci = 1 THEN dci.cantidad_indci
+                    ELSE NULL 
+                END AS ingreso,
+                CASE 
+                    WHEN tci.signo_intci = -1 THEN dci.cantidad_indci
+                    ELSE NULL 
+                END AS egreso,
+                dci.cantidad_indci * tci.signo_intci AS movimiento,
+                0 AS saldo
             FROM
                 inv_det_comp_inve dci
                 INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
                 LEFT JOIN gen_persona gpe ON cci.ide_geper = gpe.ide_geper
-                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
                 INNER JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
             WHERE
-                dci.ide_inarti = $3
-                AND arti.ide_empr = ${dtoIn.ideEmpr}        
-                AND fecha_trans_incci BETWEEN $4 AND $5
-                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
-                AND dci.ide_sucu =  ${dtoIn.ideSucu}
-        ),
-        saldo_movimientos AS (
-            SELECT
-                ide_indci AS ide_indci,
-                mov.ide_inarti,
-                ide_incci AS ide_incci,
-                mov.fecha_trans_incci,
-                mov.NUM_DOCUMENTO,
-                mov.nom_geper,
-                mov.nombre_intti,
-                mov.PRECIO,
-                mov.INGRESO,
-                mov.EGRESO,
-                (COALESCE(saldo_inicial.saldo, 0) + SUM(mov.movimiento) OVER (ORDER BY mov.fecha_trans_incci, mov.ide_indci)) AS SALDO
-            FROM
-                movimientos mov
-                LEFT JOIN saldo_inicial ON mov.ide_inarti = saldo_inicial.ide_inarti
-            UNION ALL
-            SELECT
-                -1 AS ide_indci,
-                saldo_inicial.ide_inarti,
-                NULL AS ide_incci,
-                '${fDate(dtoIn.fechaInicio)}' AS fecha_trans_incci,
-                NULL AS NUM_DOCUMENTO,        
-                'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
-                'Saldo Inicial' AS nombre_intti,
-                NULL AS PRECIO,
-                NULL AS INGRESO,
-                NULL AS EGRESO,
-                saldo_inicial.saldo AS SALDO
-            FROM
-                saldo_inicial
-        )
-        SELECT *
-        FROM saldo_movimientos
-        ORDER BY fecha_trans_incci, ide_indci 
-        `);
+                dci.ide_inarti = $1   
+                AND cci.fecha_trans_incci BETWEEN $2 AND $3
+                AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}       
+            ORDER BY fecha_trans_incci , ide_indci 
+        `, dtoIn);
+
+        // 3. Asignar parámetros
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addDateParam(4, dtoIn.fechaInicio);
-        query.addDateParam(5, dtoIn.fechaFin);
+        query.addDateParam(3, dtoIn.fechaFin);
 
-        return await this.dataSource.createQuery(query);
+        query.setAutoPagination(false);
+
+        const res = await this.dataSource.createQuery(query);
+        const rows = res.rows;
+
+        // 4. Calcular saldos acumulados
+        if (rows.length > 1) {
+            let saldoActual = rows[0].saldo; // Saldo inicial
+
+            // Recorrer en orden cronológico (fecha ASC)
+            for (let i = 1; i < rows.length; i++) {
+                saldoActual += rows[i].movimiento;
+                rows[i].saldo = saldoActual;
+            }
+        }
+
+
+        return res;
     }
 
     /**
@@ -425,7 +402,6 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getVentasProducto(dtoIn: PreciosProductoDto) {
-
 
         // Ajustar el porcentaje según  criterio 30% margen
         const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
@@ -454,7 +430,7 @@ export class ProductosService extends BaseService {
             and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
             ${whereCantidad}
         ORDER BY 
-            cf.fecha_emisi_cccfa desc, secuencial_ccdfa`);
+            cf.fecha_emisi_cccfa desc, secuencial_ccdfa desc`, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -534,7 +510,7 @@ export class ProductosService extends BaseService {
         ORDER BY 
             dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
         LIMIT 200
-            `);
+            `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addDateParam(2, dtoIn.fechaInicio);
         query.addDateParam(3, dtoIn.fechaFin);
@@ -669,7 +645,7 @@ export class ProductosService extends BaseService {
         ORDER BY 
             3 DESC;
         
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
@@ -702,7 +678,7 @@ export class ProductosService extends BaseService {
             iart.ide_inarti,nombre_inarti,siglas_inuni
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query, false);
+        return await this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -732,7 +708,7 @@ export class ProductosService extends BaseService {
             AND cci.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY   
             cci.ide_inbod,nombre_inbod,nombre_inarti,siglas_inuni
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
     }
@@ -782,7 +758,7 @@ export class ProductosService extends BaseService {
             gm.nombre_gemes, gm.ide_gemes, siglas_inuni
         ORDER BY
             gm.ide_gemes       
-        `);
+        `, dtoIn);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
@@ -832,7 +808,7 @@ export class ProductosService extends BaseService {
         gm.nombre_gemes, gm.ide_gemes, siglas_inuni
     ORDER BY
         gm.ide_gemes       
-        `);
+        `, dtoIn);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
@@ -894,7 +870,7 @@ export class ProductosService extends BaseService {
             GROUP BY
                 siglas_inuni
         ) c ON v.siglas_inuni = c.siglas_inuni
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
         query.addStringParam(3, `${dtoIn.periodo}-12-31`);
@@ -955,7 +931,7 @@ export class ProductosService extends BaseService {
             p.uuid
         ORDER BY
             p.nom_geper
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
 
         return await this.dataSource.createQuery(query);
@@ -993,7 +969,7 @@ export class ProductosService extends BaseService {
         ORDER BY
             total_valor DESC
         LIMIT 10
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
         query.addStringParam(3, `${dtoIn.periodo}-12-31`);
@@ -1033,7 +1009,7 @@ export class ProductosService extends BaseService {
         ORDER BY
             total_valor DESC
         LIMIT 10
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addStringParam(2, `${dtoIn.periodo}-01-01`);
         query.addStringParam(3, `${dtoIn.periodo}-12-31`);
@@ -1129,7 +1105,7 @@ export class ProductosService extends BaseService {
         ORDER BY
             fecha
 
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         const res = await this.dataSource.createSelectQuery(query);
         let charts = [];
@@ -1217,7 +1193,7 @@ export class ProductosService extends BaseService {
         ORDER BY
             m.ide_gemes;
 
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createSelectQuery(query);
     }
@@ -1229,7 +1205,7 @@ export class ProductosService extends BaseService {
      */
     async getActividades(dtoIn: IdProductoDto) {
         const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query, false);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -1364,7 +1340,7 @@ export class ProductosService extends BaseService {
             gm.nombre_gemes, gm.ide_gemes,siglas_inuni
         ORDER BY
             gm.ide_gemes        
-        `);
+        `, dtoIn);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);

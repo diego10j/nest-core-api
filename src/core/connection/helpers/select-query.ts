@@ -22,8 +22,16 @@ export class SelectQuery extends Query {
 
     filters?: FilterDto[];
 
+    isSchema?: boolean;
+    isAutoPagination?: boolean;
+
+    isWrappedQuery?: boolean;
+
     constructor(query: string, dto?: ServiceDto) {
         super();
+        this.isSchema = true;  // Por defecto retorna el esquema de la consulta
+        this.isAutoPagination = true;    // Por defecto autopaginacion calculada
+        this.isWrappedQuery = true;    // Por defecto para paginacion, orden, filtro global
         this.query = query;
         if (dto) {
             // Asigna valores paginador
@@ -55,11 +63,14 @@ export class SelectQuery extends Query {
     private calculateOffset(pageSize: number, pageIndex: number): number {
         return pageIndex > 0 ? pageIndex * pageSize : 0;
     }
-    
+
     getPagination() {
-        if (this.pagination.totalPages && this.pagination.totalPages > 1) {
-            return this.pagination;
+        if (this.isAutoPagination === true) {
+            if (this.pagination.totalPages && this.pagination.totalPages > 1) {
+                return this.pagination;
+            }
         }
+
         return undefined;
     }
 
@@ -85,6 +96,21 @@ export class SelectQuery extends Query {
     setTotalPages(totalPages: number) {
         if (this.pagination) {
             this.pagination.totalPages = totalPages;
+        }
+    }
+
+    setFindSchema(isSchema: boolean) {
+        this.isSchema = isSchema;
+    }
+
+    setWrappedQuery(isWrappedQuery: boolean) {
+        this.isWrappedQuery = isWrappedQuery;
+    }
+
+    setAutoPagination(isAutoPagination: boolean) {
+        this.isAutoPagination = isAutoPagination;
+        if (isAutoPagination === true) {
+            this.pagination = undefined;
         }
     }
 

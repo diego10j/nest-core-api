@@ -1,6 +1,5 @@
 import { Query } from './query';
 import { DataSourceService } from '../datasource.service';
-import { InternalServerErrorException } from '@nestjs/common';
 import { SelectQuery } from './select-query';
 import { InsertQuery } from './insert-query';
 import { UpdateQuery } from './update-query';
@@ -69,7 +68,7 @@ export class DataStore {
             this.query.query = `SELECT ${this.selectColumnsTable} FROM ${this.tableName} WHERE 1=1 ${this.whereTable} ORDER BY ${this.orderColumn}`;
         }
 
-        const res = await this.dataSource.createQuery(this.query, false);
+        const res = await this.dataSource.createQuery(this.query);
         this.data = res.rows;
         this.columns = res.columns;
 

@@ -56,14 +56,16 @@ export class DataSourceService {
         types.setTypeParser(this.INT4_OID, (val) => parseInt(val, 10));
     }
 
-
     /**
-     * Retorna la data de una consulta en la base de datos
+     * Retorna la data de una consulta en la base de datos, no retorna esquema y no hace autopaginacion
      * @param Query 
      * @returns Array data
      */
-    async createSelectQuery(query: Query, isSchema = false): Promise<any[]> {
-        const result = await this.createQuery(query, isSchema);
+    async createSelectQuery(query: SelectQuery): Promise<any[]> {
+        query.isAutoPagination = false;
+        query.isSchema = false;
+        query.isWrappedQuery = false;
+        const result = await this.createQuery(query);
         return result.rows || [];
     }
 
@@ -71,19 +73,13 @@ export class DataSourceService {
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
      * @param Query  
      * @param isSchema  consulta propiedades adicionales de las columnas 
-     * @param ref referencia cuando se pcupa una función que realiza query  y poder identificarla
+     * @param ref referencia cuando se pcupa una función getTableQuery poder identificarla
      * @returns Array data
      */
-    async createQuery(query: Query, isSchema = true, ref = undefined): Promise<ResultQuery> {
-        if (query instanceof InsertQuery || query instanceof UpdateQuery || query instanceof DeleteQuery) {
-            isSchema = false;
-        }
-        // no retona schema si pageIndex es mayor que 0
-        if (query instanceof SelectQuery && query.pagination?.pageIndex > 0) {
-            isSchema = false;
-        }
+    async createQuery(query: Query, ref = undefined): Promise<ResultQuery> {
 
         await this.formatSqlQuery(query);
+
         try {
             let primaryKey: string | undefined = undefined;
             let columns: any[] | undefined = undefined;
@@ -92,81 +88,95 @@ export class DataSourceService {
 
             // Envolver la consulta original en una subconsulta
             let finalQuery = query.query;
-
-            if (query instanceof SelectQuery) {
-                query.query = query.query.trim();
-                if (query.query.endsWith(';')) {
-                    query.query = query.query.slice(0, -1);
-                }
-                finalQuery = `SELECT * FROM (${query.query}) AS wrapped_query`;
-            }
-           
-            // Si no hay paginación, establecer un valor predeterminado
-            if (query instanceof SelectQuery && !query.pagination) {
-                query.setPagination(this.SIZE_DEFAULT, 0);
-            }
-
-            // Aplicar filtros dinámicos
-            if (query instanceof SelectQuery && query.filters && query.filters.length > 0) {
-                const filterConditions = query.filters.map(filter => {
-                    if (filter.operator === 'ILIKE') {
-                        return `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`;
-                    } else {
-                        return `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`;
-                    }
-                }).join(' AND ');
-                finalQuery += ` WHERE ${filterConditions}`;
-            }
-
-            // Aplicar filtro global
-            if (query instanceof SelectQuery && query.globalFilter) {
-                const globalFilterConditions = query.globalFilter.columns
-                    .map(column => `wrapped_query.${column}::text ILIKE '%${query.globalFilter.value}%'`)
-                    .join(' OR ');
-                finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
-            }
-
-            // Aplicar orden dinámico
-            if (query instanceof SelectQuery && query.orderBy) {
-                finalQuery += ` ORDER BY wrapped_query.${query.orderBy.column} ${query.orderBy.direction}`;
-            }
-
-            // Contar el total de registros
             let totalRecords: number | undefined = undefined;
-            if (query instanceof SelectQuery) {
-                // Si no hay filtros ni filtro global, contar sobre la consulta original
-                if (!query.filters?.length && !query.globalFilter) {
-                    const countQuery = `SELECT COUNT(*) FROM (${query.query}) AS count_query`;
-                    const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
-                    totalRecords = parseInt(countResult.rows[0].count, 10);
-                } else {
-                    // Si hay filtros o filtro global, contar sobre la consulta final (sin paginación)
-                    const countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
-                    const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
-                    totalRecords = parseInt(countResult.rows[0].count, 10);
+            // Para autopaginacion, establecer un valor predeterminado
+            if (query instanceof SelectQuery && !query.pagination) {
+                if (query.isAutoPagination === true) {
+                    query.setPagination(this.SIZE_DEFAULT, 0);
                 }
             }
 
-            // Aplicar paginación dinámica
-            if (query instanceof SelectQuery && query.pagination) {
-                query.setPagination(query.pagination.pageSize, query.pagination.pageIndex);
-                finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.pageSize}`;
+            if (query instanceof SelectQuery && query.isWrappedQuery === true) {
+                if (query instanceof SelectQuery) {
+                    query.query = query.query.trim();
+                    if (query.query.endsWith(';')) {
+                        query.query = query.query.slice(0, -1);
+                    }
+                    finalQuery = `SELECT * FROM (${query.query}) AS wrapped_query`;
+                }
+
+                // Aplicar filtros dinámicos
+                if (query instanceof SelectQuery && query.filters && query.filters.length > 0) {
+                    const filterConditions = query.filters.map(filter => {
+                        if (filter.operator === 'ILIKE') {
+                            return `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`;
+                        } else {
+                            return `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`;
+                        }
+                    }).join(' AND ');
+                    finalQuery += ` WHERE ${filterConditions}`;
+                }
+
+                // Aplicar filtro global
+                if (query instanceof SelectQuery && query.globalFilter) {
+                    const globalFilterConditions = query.globalFilter.columns
+                        .map(column => `wrapped_query.${column}::text ILIKE '%${query.globalFilter.value}%'`)
+                        .join(' OR ');
+                    finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
+                }
+
+                // Aplicar orden dinámico
+                if (query instanceof SelectQuery && query.orderBy) {
+                    const direction = query.orderBy.direction || 'ASC ';
+                    finalQuery += ` ORDER BY wrapped_query.${query.orderBy.column} ${direction}`;
+                }
+
+                // Contar el total de registros     
+                if (query instanceof SelectQuery) {
+                    // Si no hay filtros ni filtro global, contar sobre la consulta original
+                    if (!query.filters?.length && !query.globalFilter) {
+                        const countQuery = `SELECT COUNT(*) FROM (${query.query}) AS count_query`;
+                        const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
+                        totalRecords = parseInt(countResult.rows[0].count, 10);
+                    } else {
+                        // Si hay filtros o filtro global, contar sobre la consulta final (sin paginación)
+                        const countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
+                        const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
+                        totalRecords = parseInt(countResult.rows[0].count, 10);
+                    }
+                }
+
+                // Aplicar paginación dinámica
+                if (query instanceof SelectQuery && query.pagination) {
+                    if (query.isAutoPagination === true) {
+                        query.setPagination(query.pagination.pageSize, query.pagination.pageIndex);
+                        finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.pageSize}`;
+                    }
+                }
+
             }
 
+            // console.log(finalQuery);
             // Ejecutar la consulta final
             const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
 
+            if (query instanceof SelectQuery && query.isWrappedQuery === false) {
+                totalRecords = res.rowCount;
+            }
 
-            if (query instanceof SelectQuery && query.pagination) {
+            if (query instanceof SelectQuery && query.isWrappedQuery === true) {
                 if (query.pagination && totalRecords !== undefined) {
-                    const totalPages = Math.ceil(totalRecords / query.pagination.pageSize);
-                    query.setIsPreviousPage(query.pagination.pageIndex > 1);
-                    query.setIsNextPage(query.pagination.pageIndex < totalPages);
-                    query.setTotalPages(totalPages);
+                    if (query.isAutoPagination === true) {
+                        const totalPages = Math.ceil(totalRecords / query.pagination.pageSize);
+                        query.setIsPreviousPage(query.pagination.pageIndex > 1);
+                        query.setIsNextPage(query.pagination.pageIndex < totalPages);
+                        query.setTotalPages(totalPages);
+                    }
                 }
             }
+
             // Obtener información del esquema si es necesario
-            if (query instanceof SelectQuery && isSchema) {
+            if (query instanceof SelectQuery && query.isSchema) {
                 queryName = this.extractCallerInfo();
                 if (isDefined(ref)) {
                     queryName = `${queryName}.${ref}`;
@@ -230,7 +240,7 @@ export class DataSourceService {
      * @returns Object data
      */
     async createSingleQuery(query: SelectQuery): Promise<any> {
-        const data = await this.createSelectQuery(query, false);
+        const data = await this.createSelectQuery(query);
         return data.length > 0 ? data[0] : null;
     }
 
@@ -381,7 +391,7 @@ export class DataSourceService {
             FROM sis_parametros
             WHERE LOWER(nom_para) = ANY ($1)`);
         pq.addArrayStringParam(1, lowercaseArray);
-        const resp = await this.createSelectQuery(pq, false);
+        const resp = await this.createSelectQuery(pq);
         const respMap = new Map();
         resp.forEach(data => {
             respMap.set(data.nom_para, data.valor_para);
@@ -403,25 +413,26 @@ export class DataSourceService {
     private extractCallerInfo(): string {
         const err = new Error();
         const stackTrace = err.stack?.split('\n');
-        if (stackTrace && stackTrace.length > 4) {
-            const firstLine = stackTrace[4]; // Obtenemos el último elemento del array
-            const match = firstLine.match(/at\s+([^(]+)\s+\(([^)]+)\)/); // Utilizamos una expresión regular para hacer coincidir el formato de la línea
-            if (match) {
-                const functionName = match[1].trim();
-                if (functionName) {
-                    return functionName;
-                }
-                else {
-                    // propaga una excepcion si no encuentra el nombre del servicio
-                    this.errorsLoggerService.createErrorLog(`[ERROR] no existe el nombre del servicio: ${stackTrace}`);
-                    throw new InternalServerErrorException(`[ERROR] no existe el nombre del servicio`);
-                }
 
+        if (stackTrace && stackTrace.length > 4) {
+            const callerLine = stackTrace[4]; // Línea que contiene la información del llamador
+
+            // Expresión regular mejorada para capturar el nombre de la función
+            const match = callerLine.match(/at\s+(?:async\s+)?([^\s(]+)/);
+
+            if (match && match[1]) {
+                // Eliminamos el prefijo "async " si existe y devolvemos solo el nombre
+                return match[1].trim();
+            } else {
+                // Log y excepción si no se puede extraer el nombre
+                this.errorsLoggerService.createErrorLog(`[ERROR] No se pudo extraer el nombre del servicio: ${callerLine}`);
+                throw new InternalServerErrorException(`[ERROR] No se pudo extraer el nombre del servicio`);
             }
         }
-        // propaga una excepcion si no encuentra el nombre del servicio
-        this.errorsLoggerService.createErrorLog(`[ERROR] no se puede obtener el nombre del servicio : ${stackTrace}`);
-        throw new InternalServerErrorException(`[ERROR] no se puede obtener el nombre del servicio`);
+
+        // Log y excepción si no hay suficiente información en el stack trace
+        this.errorsLoggerService.createErrorLog(`[ERROR] Stack trace insuficiente para obtener el nombre del servicio`);
+        throw new InternalServerErrorException(`[ERROR] Stack trace insuficiente para obtener el nombre del servicio`);
     }
 
     /**
@@ -469,7 +480,7 @@ export class DataSourceService {
         `);
         pq.addArrayNumberParam(1, tablesID);
         pq.addArrayStringParam(2, columnsName);
-        return await this.createSelectQuery(pq, false);
+        return await this.createSelectQuery(pq);
     }
 
     /**

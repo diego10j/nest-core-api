@@ -17,4 +17,5 @@ export class TrnProductoDto extends ServiceDto {
     @IsPositive()
     @IsOptional()
     ide_inbod?: number;
+
 }

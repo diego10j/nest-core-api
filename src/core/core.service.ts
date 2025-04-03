@@ -50,7 +50,7 @@ export class CoreService {
         ORDER BY ${orderByClause}
         `, dto);
         // ide_empr = ${dto.ideEmpr} AND 
-        const result = await this.dataSource.createQuery(pgq, true, `${module}_${tableName}`);
+        const result = await this.dataSource.createQuery(pgq, `${module}_${tableName}`);
         result.key = primaryKey;
         result.ref = `${module}_${tableName}`;
         return result
@@ -227,113 +227,87 @@ export class CoreService {
 
     async getTreeModel(dtoIn: TreeDto) {
         const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
-        const orderColumn = dtoIn.orderBy ? dtoIn.orderBy : dtoIn.columnName;
+        const orderColumn = dtoIn.orderBy ? dtoIn.orderBy.column : dtoIn.columnName;
 
         const query = new SelectQuery(`
-    WITH RECURSIVE tree AS (
-        -- Selección inicial para los nodos raíz
+    WITH RECURSIVE tree_items AS (
+        -- Nodos raíz
         SELECT 
             ${dtoIn.primaryKey} AS id,
             ${dtoIn.columnName} AS label,
             ${dtoIn.columnNode} AS parent_id,
             ${orderColumn} AS order_column,
-            ARRAY[${dtoIn.primaryKey}] AS path,
             1 AS level
         FROM 
             ${dtoIn.module}_${dtoIn.tableName}
         WHERE 
-            ${dtoIn.columnNode} IS NULL -- Considerando que los nodos raíz tienen NULL
+            ${dtoIn.columnNode} IS NULL
             ${conditionClause}
-        UNION ALL            
-        -- Selección recursiva para obtener los hijos
+        
+        UNION ALL
+        
+        -- Nodos hijos
         SELECT 
             child.${dtoIn.primaryKey} AS id,
             child.${dtoIn.columnName} AS label,
             child.${dtoIn.columnNode} AS parent_id,
             child.${orderColumn} AS order_column,
-            parent.path || child.${dtoIn.primaryKey},
             parent.level + 1
         FROM 
             ${dtoIn.module}_${dtoIn.tableName} child
         JOIN 
-            tree parent ON child.${dtoIn.columnNode} = parent.id
-        WHERE NOT child.${dtoIn.primaryKey} = ANY(parent.path)
+            tree_items parent ON child.${dtoIn.columnNode} = parent.id
+        WHERE 1=1
             ${conditionClause}
-    )        
-    -- Consulta final para construir la vista en formato JSON
-    SELECT 
-        json_agg(
+    ),
+    -- Construcción del árbol JSON
+    tree_json AS (
+        SELECT 
+            id,
+            label,
+            parent_id,
+            order_column,
+            level,
             json_build_object(
-                'id', root.id::text,
-                'label', root.label::text,
-                'children', (
-                    SELECT
-                        CASE
-                            WHEN COUNT(child.id) > 0 THEN
-                                json_agg(
-                                    json_build_object(
-                                        'id', child.id::text,
-                                        'label', child.label::text,
-                                        'children', (
-                                            SELECT json_agg(
-                                                json_build_object(
-                                                    'id', grandchild.id::text,
-                                                    'label', grandchild.label::text,
-                                                    'children', (
-                                                        SELECT json_agg(
-                                                            json_build_object(
-                                                                'id', greatgrandchild.id::text,
-                                                                'label', greatgrandchild.label::text
-                                                            ) 
-                                                        )
-                                                        FROM tree greatgrandchild
-                                                        WHERE greatgrandchild.parent_id = grandchild.id
-                                                    )
-                                                )
-                                            )
-                                            FROM tree grandchild
-                                            WHERE grandchild.parent_id = child.id
-                                        )
-                                    ) 
-                                    ORDER BY child.order_column
-                                )
-                            ELSE NULL
-                        END
-                    FROM tree child
-                    WHERE child.parent_id = root.id
+                'id', id::text,
+                'label', label::text,
+                'children', '[]'::json
+            ) AS json_data
+        FROM tree_items
+    ),
+    -- Unir hijos con padres
+    tree_with_children AS (
+        SELECT 
+            t1.id,
+            t1.label,
+            t1.parent_id,
+            t1.order_column,
+            t1.level,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM tree_json t2 
+                WHERE t2.parent_id = t1.id
+            ) THEN
+                jsonb_set(
+                    t1.json_data::jsonb,
+                    '{children}',
+                    (
+                        SELECT jsonb_agg(t2.json_data ORDER BY t2.order_column)
+                        FROM tree_json t2
+                        WHERE t2.parent_id = t1.id
+                    )
                 )
-            )
-        ORDER BY root.order_column
-        ) AS tree_view
-    FROM 
-        tree root
-    WHERE 
-        root.level = 1
+            ELSE
+                t1.json_data::jsonb
+            END AS json_data
+        FROM tree_json t1
+    )
+    SELECT json_agg(t.json_data ORDER BY t.order_column) AS tree_view
+    FROM tree_with_children t
+    WHERE t.level = 1;
     `);
 
-        // const data = await this.dataSource.createSingleQuery(query);
-
-        // // Post-procesamiento para eliminar 'children' si es NULL
-        // const removeNullChildren = (item) => {
-        //     if (item.children === null) {
-        //         delete item.children;
-        //     }
-        //     if (item.children && Array.isArray(item.children)) {
-        //         item.children.forEach(removeNullChildren);
-        //     }
-        //     return item;
-        // };
-
-        // const result = data.tree_view.map(removeNullChildren);
-
-        // return {
-        //     rowCount: 1,
-        //     rows: result || []
-        // } as ResultQuery;
-
-
-
         const data = await this.dataSource.createSingleQuery(query);
+
         return {
             rowCount: 1,
             rows: data.tree_view || []

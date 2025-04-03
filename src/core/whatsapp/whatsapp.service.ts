@@ -347,7 +347,7 @@ export class WhatsappService {
         `, dto);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addParam(2, dto.telefono);
-        const data = await this.dataSource.createSelectQuery(query, false);
+        const data = await this.dataSource.createSelectQuery(query);
         return data;
 
     }
@@ -372,7 +372,7 @@ export class WhatsappService {
             AND activo_whlis = TRUE
         `, dto);
         query.addParam(1, dto.telefono);
-        const data = await this.dataSource.createSelectQuery(query, false);
+        const data = await this.dataSource.createSelectQuery(query);
         const result = data.map(item => item.ide_whlis);
         return result;
     }
