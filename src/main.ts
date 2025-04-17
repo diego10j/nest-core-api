@@ -1,12 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Server } from 'socket.io';
 
 import { AppModule } from './app.module';
 import { envs } from './config/envs';
 import { SocketIoAdapter } from './socket-io.adapter';
-
-
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,21 +13,24 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: ['http://localhost:8080', 'http://172.21.50.13:8080','http://devproerpec.site'], // Agrega más si es necesario
+    origin: ['http://localhost:8080', 'http://172.21.50.13:8080', 'http://devproerpec.site'],
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-// Configurar el adaptador de WebSockets
-app.useWebSocketAdapter(new SocketIoAdapter(app));
-
-
+  // Configurar el adaptador de WebSockets
+  const socketIoAdapter = new SocketIoAdapter(app);
+  app.useWebSocketAdapter(socketIoAdapter);
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
-    })
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
   );
 
   const config = new DocumentBuilder()
@@ -41,5 +43,27 @@ app.useWebSocketAdapter(new SocketIoAdapter(app));
 
   await app.listen(envs.port);
   logger.log(`App running on port ${envs.port}`);
+
+  // Manejo de señales para cierre limpio
+  const server = app.getHttpServer();
+  const io: Server = socketIoAdapter.getIoInstance(); // Obtén la instancia de Socket.IO
+
+  process.on('SIGINT', () => {
+    logger.log('Cerrando servidor HTTP y WebSocket...');
+    io.close(); // Cierra todas las conexiones WebSocket
+    server.close(() => {
+      logger.log('Servidor HTTP cerrado');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGTERM', () => {
+    logger.log('Recibida señal SIGTERM');
+    io.close();
+    server.close(() => {
+      logger.log('Servidor HTTP cerrado');
+      process.exit(0);
+    });
+  });
 }
 bootstrap();

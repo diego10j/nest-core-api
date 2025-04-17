@@ -6,6 +6,8 @@ import { IdClienteDto } from './dto/id-cliente.dto';
 import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { SaveClienteDto } from './dto/save-cliente.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
+import { ExistClienteDto } from './dto/exist-client.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
@@ -116,5 +118,23 @@ export class ClientesController {
   ) {
     return this.service.getContactosCliente(dtoIn);
   }
+
+  @Post('searchCliente')
+  // @Auth()
+  searchCliente(
+    @Body() dtoIn: SearchDto
+  ) {
+    return this.service.searchCliente(dtoIn);
+  }
+
+
+  @Post('existCliente')
+  // @Auth()
+  existCliente(
+    @Body() dtoIn: ExistClienteDto
+  ) {
+    return this.service.existCliente(dtoIn);
+  }
+
 
 }

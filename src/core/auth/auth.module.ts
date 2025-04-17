@@ -32,6 +32,6 @@ import { DataSourceService } from '../connection/datasource.service';
     })
   ],
   providers: [DataSourceService, AuthService, JwtStrategy, AuditService],
-  exports: [PassportModule]
+  exports: [PassportModule, JwtStrategy, JwtModule]
 })
 export class AuthModule { }

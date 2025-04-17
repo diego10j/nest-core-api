@@ -1,11 +1,11 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { DataSourceService } from '../connection/datasource.service';
+import { DataSourceService } from '../../connection/datasource.service';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
 import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
-import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../connection/helpers';
-import { getCurrentDateTime } from '../../util/helpers/date-util';
+import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../../connection/helpers';
+import { getCurrentDateTime } from '../../../util/helpers/date-util';
 import { envs } from 'src/config/envs';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
@@ -13,7 +13,7 @@ import * as FormData from 'form-data';
 import { WhatsappGateway } from './whatsapp.gateway';
 import { ListaChatDto } from './dto/lista-chat.dto';
 import { FindChatDto } from './dto/find-chat.dto';
-import { CacheConfig, WhatsAppConfig } from './interfaces/whatsapp';
+import { CacheConfig, WhatsAppConfig } from './interface/whatsapp';
 import { isDefined } from 'src/util/helpers/common-util';
 import { GetUrlArchivoDto } from './dto/get-url-media.dto';
 import { UploadMediaDto } from './dto/upload-media.dto';
@@ -34,7 +34,6 @@ export class WhatsappService {
     ) {
         // Recupera valores variables de entorno
         this.WHATSAPP_API_URL = envs.whatsappApiUrl;
-
     }
 
 
@@ -391,7 +390,8 @@ export class WhatsappService {
             id_telefono_whcue,
             id_aplicacion_whcue,
             enmascarar_texto (id_cuenta_whcue) AS id_cuenta_whcue,
-            enmascarar_texto (id_token_whcue) AS id_token_whcue
+            enmascarar_texto (id_token_whcue) AS id_token_whcue,
+            tipo_whcue
         FROM
             wha_cuenta
         WHERE
@@ -1033,6 +1033,7 @@ export class WhatsappService {
             insertQuery.values.set('direction_whmem', 1);
             insertQuery.values.set('attachment_name_whmem', dto.fileName);
             insertQuery.values.set('attachment_type_whmem', dto.mimeType);
+            insertQuery.values.set('tipo_whmem', 'API');
 
             //media
             insertQuery.values.set('attachment_id_whmem', dto.mediaId);
@@ -1055,6 +1056,7 @@ export class WhatsappService {
         WHERE
             ide_empr = $1
             AND activo_whcue = TRUE
+            and tipo_whcue = 'API'
         LIMIT 1        
         `);
         query.addParam(1, ideEmpr);
@@ -1116,7 +1118,7 @@ export class WhatsappService {
      * @param ideEmpr - ID de la empresa.
      */
     async getConfigWhatsApp(ideEmpr: number): Promise<CacheConfig | undefined> {
-        const cacheKey = `whatsapp_config_${ideEmpr}`;
+        const cacheKey = `whatsapp_config:${ideEmpr}`;
         let data = await this.getFromCache(cacheKey);
         if (!data) {
             data = await this.fetchConfigFromDatabase(ideEmpr);

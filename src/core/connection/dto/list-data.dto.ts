@@ -27,6 +27,7 @@ export class ListDataValuesDto extends ServiceDto {
     @IsString()
     condition?: string
 
+    @IsOptional()
     @IsString()
     @IsNotEmpty()
     @Matches(/^\S*$/, { message: 'columnOrder no debe contener espacios' })

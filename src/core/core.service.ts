@@ -8,7 +8,7 @@ import { getWhereIdeEmpr, toObjectTable, toStringColumns } from '../util/helpers
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 import { isDefined } from '../util/helpers/common-util';
-import { SearchDto } from 'src/common/dto/search.dto';
+import { SearchTableDto } from 'src/common/dto/search-table.dto';
 
 @Injectable()
 export class CoreService {
@@ -183,23 +183,25 @@ export class CoreService {
         return await this.dataSource.createSingleQuery(query);
     }
 
-    async search(dtoIn: SearchDto) {
+    async search(dtoIn: SearchTableDto) {
+        if (dtoIn.value === "") {
+            return [];
+        }
         const selectClause = toStringColumns(dtoIn.columnsReturn);
 
         const whereClause = dtoIn.columnsSearch.map((col, index) =>
             `unaccent(LOWER(${col})) ILIKE '%' || unaccent(LOWER($${index + 1})) || '%'`
         ).join(' OR ');
 
+        const extraCondition = dtoIn.condition ? `AND ${dtoIn.condition} ` : '';
+
         const orderByClause = `ORDER BY ${dtoIn.columnOrder}`;
-
-        const whereEmpresa = getWhereIdeEmpr(`${dtoIn.module}_${dtoIn.tableName}`, dtoIn);
-
 
         const query = new SelectQuery(`
         SELECT ${selectClause}
         FROM ${dtoIn.module}_${dtoIn.tableName}
         WHERE ${whereClause}
-        ${whereEmpresa}
+        ${extraCondition}
         ${orderByClause}
         LIMIT ${dtoIn.limit}`, dtoIn);
 
@@ -219,8 +221,7 @@ export class CoreService {
     }
 
     async clearCacheRedis() {
-        await this.dataSource.clearSchemaQueryCache();
-        return await this.dataSource.clearTableColumnsCache();
+        return await this.dataSource.clearCacheRedis();
     }
 
 

@@ -72,8 +72,7 @@ export class DataSourceService {
     /**
      * Retorna la data de una consulta en la base de datos mediante el Pool pg
      * @param Query  
-     * @param isSchema  consulta propiedades adicionales de las columnas 
-     * @param ref referencia cuando se pcupa una función getTableQuery poder identificarla
+     * @param ref referencia cuando se utiliza una función getTableQuery para poder identificarla
      * @returns Array data
      */
     async createQuery(query: Query, ref = undefined): Promise<ResultQuery> {
@@ -616,21 +615,7 @@ export class DataSourceService {
         return this.fetchAndCacheTableColumns(tableName);
     }
 
-    /**
-     * Elimina el cache de Redis de table_columns 
-     */
-    async clearTableColumnsCache() {
-        // Obtener todas las claves que coinciden con el patrón 'table_columns:*'
-        const keys = await this.redisClient.keys('table_columns:*');
 
-        // Si se encuentran claves, eliminarlas
-        if (keys.length > 0) {
-            await this.redisClient.del(...keys);
-        }
-        return {
-            message: 'ok'
-        }
-    }
 
     /**
     * Crea un key de cahce para table_columns
@@ -693,17 +678,21 @@ export class DataSourceService {
         return columns;
     }
 
-    async clearSchemaQueryCache() {
-        // Obtener todas las claves que coinciden con el patrón 'schema:*'
-        const keys = await this.redisClient.keys('schema:*');
+    async clearCacheRedis() {
 
-        // Si se encuentran claves, eliminarlas
-        if (keys.length > 0) {
-            await this.redisClient.del(...keys);
+        const patterns = ['schema:*','table_columns:*','whatsapp_config:*'];
+
+        for (const pattern of patterns) {
+            const keys = await this.redisClient.keys(pattern);
+            if (keys.length > 0) {
+                await this.redisClient.del(...keys);
+            }
         }
+
         return {
-            message: 'ok'
-        }
+            message: 'Multiple Redis key patterns cleared successfully'
+        };
+
     }
 
     // --------------------------- END REDIS  ----------------------------

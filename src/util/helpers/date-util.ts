@@ -188,3 +188,22 @@ export function getDayNumber(date?: InputValue): number {
     const day = format(new Date(date || new Date()), 'i');
     return parseInt(day, 10);
 }
+
+
+
+/**
+ * Convierte un timestamp de WhatsApp (segundos) a formato ISO string
+ * @param timestamp - Timestamp en segundos (ej: 1743007866)
+ * @returns Fecha en formato ISO string (ej: "2025-02-08T23:23:51.471Z")
+ */
+export function fTimestampToISODate(timestamp: number): string {
+    // Verificar si el timestamp está en segundos (WhatsApp) o milisegundos
+    const adjustedTimestamp = timestamp > 1e10 ? timestamp : timestamp * 1000;
+
+    const date = new Date(adjustedTimestamp);
+
+    // Formatear a ISO string y asegurar milisegundos (3 dígitos)
+    const isoString = date.toISOString();
+
+    return isoString;
+}

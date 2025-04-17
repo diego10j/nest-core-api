@@ -14,6 +14,8 @@ import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula
 import { SaveClienteDto } from './dto/save-cliente.dto';
 import { CoreService } from 'src/core/core.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
+import { SearchDto } from 'src/common/dto/search.dto';
+import { ExistClienteDto } from './dto/exist-client.dto';
 
 @Injectable()
 export class ClientesService extends BaseService {
@@ -809,5 +811,43 @@ export class ClientesService extends BaseService {
 
     }
 
+
+    async searchCliente(dto: SearchDto) {
+        const dtoIn = {
+            ...dto,
+            module: 'gen',
+            tableName: 'persona',
+            columnsReturn: ["ide_geper", "identificac_geper", "nom_geper"],
+            columnsSearch: ["nom_geper", "identificac_geper", "correo_geper"],
+            columnOrder: "nom_geper",
+            condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true`
+        }
+        return await this.core.search(dtoIn);
+
+    }
+
+    async existCliente(dto: ExistClienteDto) {
+        const query = new SelectQuery(`     
+        SELECT 
+            ide_geper,
+            uuid,
+            nom_geper
+        FROM 
+            gen_persona 
+        WHERE 
+                identificac_geper = $1
+                and ide_empr = $2
+            `);
+        query.addStringParam(1, dto.identificacion);
+        query.addIntParam(1, dto.ideEmpr);
+        const data = await this.dataSource.createSingleQuery(query);
+        return {
+            rowCount: data ? 1:0,
+            row: {
+                cliente: data,
+            },
+            message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado`:'',
+        } as ResultQuery
+    }
 
 }

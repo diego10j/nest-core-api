@@ -4,10 +4,12 @@ import { ServiceDto } from '../../../common/dto/service.dto';
 import { CantonesDto } from './dto/cantones.dto';
 import { CedulaDto } from './dto/cedula.dto';
 import { RucDto } from './dto/ruc.dto';
+import { GeneralLdService } from './general-ld.service';
 
 @Controller('sistema/general')
 export class GeneralController {
-  constructor(private readonly service: GeneralService) { }
+  constructor(private readonly service: GeneralService,
+    private readonly serviceLd: GeneralLdService) { }
 
 
   @Post('getListDataPeriodos')
@@ -15,7 +17,7 @@ export class GeneralController {
   getListDataPeriodos(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getListDataPeriodos(dtoIn);
+    return this.serviceLd.getListDataPeriodos(dtoIn);
   }
 
 
@@ -24,7 +26,7 @@ export class GeneralController {
   getListDataProvincias(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getListDataProvincias(dtoIn);
+    return this.serviceLd.getListDataProvincias(dtoIn);
   }
 
   @Post('getListDataCantones')
@@ -32,7 +34,7 @@ export class GeneralController {
   getListDataCantones(
     @Body() dtoIn: CantonesDto
   ) {
-    return this.service.getListDataCantones(dtoIn);
+    return this.serviceLd.getListDataCantones(dtoIn);
   }
 
 
@@ -41,7 +43,7 @@ export class GeneralController {
   getListDataTitulosPersona(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getListDataTitulosPersona(dtoIn);
+    return this.serviceLd.getListDataTitulosPersona(dtoIn);
   }
 
   @Post('getListDataTiposDireccion')
@@ -49,7 +51,15 @@ export class GeneralController {
   getListDataTiposDireccion(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.service.getListDataTiposDireccion(dtoIn);
+    return this.serviceLd.getListDataTiposDireccion(dtoIn);
+  }
+
+  @Post('getListDataTiposIdentificacion')
+  // @Auth()
+  getListDataTiposIdentificacion(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.serviceLd.getListDataTiposIdentificacion(dtoIn);
   }
 
 

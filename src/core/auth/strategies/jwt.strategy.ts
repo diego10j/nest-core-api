@@ -63,8 +63,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
         if (!dataUser)
             throw new UnauthorizedException('Token no válido')
-
-        if (dataUser.bloqueado_usua)
+        else if (dataUser.bloqueado_usua)
             throw new UnauthorizedException('Usuario bloqueado, contactese con el administrador del sistema.');
 
         return user;

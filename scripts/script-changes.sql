@@ -828,6 +828,7 @@ CREATE TABLE wha_mensaje (
 	timestamp_whmem VARCHAR(20),
 	error_whmem VARCHAR(500),
 	code_error_whmem VARCHAR(250),
+	tipo_whmem VARCHAR(3),       -- API, WEB
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua varchar(50),
@@ -859,3 +860,5 @@ CREATE EXTENSION pgcrypto;
 SELECT * FROM pg_extension WHERE extname = 'pgcrypto';
 
 SET TIME ZONE 'America/Guayaquil';
+
+

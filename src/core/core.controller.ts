@@ -6,7 +6,7 @@ import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListData
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { ServiceDto } from '../common/dto/service.dto';
 import { TreeDto } from './connection/dto/tree-dto';
-import { SearchDto } from 'src/common/dto/search.dto';
+import { SearchTableDto } from 'src/common/dto/search-table.dto';
 
 
 @Controller('core')
@@ -95,7 +95,7 @@ export class CoreController {
     @Post('search')
     //@Auth()
     search(
-        @Body() dtoIn: SearchDto
+        @Body() dtoIn: SearchTableDto
     ) {
         return this.service.search(dtoIn);
     }
