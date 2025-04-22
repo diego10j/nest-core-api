@@ -1,10 +1,12 @@
 import { IsNotEmpty, IsString } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
-export class GetUrlArchivoDto extends ServiceDto {
+
+export class GetUrlImgUserDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
-    id: string;
+    idContact: string;
+
 
 }

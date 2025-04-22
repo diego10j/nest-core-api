@@ -17,11 +17,11 @@ export class ApiPersonaService extends BaseService {
 
 
     async consultaCedula(dtoIn: CedulaDto) {
-
         try {
-
             const URL = `https://si.secap.gob.ec/sisecap/logeo_web/json/busca_persona_registro_civil.php`;
+    
             const requestConfig: AxiosRequestConfig = {
+                timeout: 15000, // 15 segundos
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Origin': 'https://si.secap.gob.ec',
@@ -31,10 +31,12 @@ export class ApiPersonaService extends BaseService {
                     'X-Requested-With': 'XMLHttpRequest',
                 }
             };
+    
             const data = {
                 documento: dtoIn.cedula,
                 tipo: 1
-            }
+            };
+    
             const resp = await this.httpService.axiosRef.post(URL, data, requestConfig);
             return resp.data;
         } catch (error) {
@@ -44,6 +46,7 @@ export class ApiPersonaService extends BaseService {
             );
         }
     }
+    
 
 
     async consultaRUC(dtoIn: RucDto) {
@@ -52,6 +55,7 @@ export class ApiPersonaService extends BaseService {
 
             const URL = `https://si.secap.gob.ec/sisecap/ServicioConsultaDatosRUC.php?ruc=${dtoIn.ruc}`;
             const requestConfig: AxiosRequestConfig = {
+                timeout: 15000, // 15 segundos
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Origin': 'https://si.secap.gob.ec',

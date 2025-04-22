@@ -1,12 +1,12 @@
 import { Controller, Get, Post, Body, Query, HttpException, HttpStatus, Logger, Res } from '@nestjs/common';
 import { envs } from 'src/config/envs';
-import { WhatsappService } from './whatsapp.service';
+import { WhatsappApiService } from './whatsapp-api.service';
 
 @Controller('webhook')
 export class WebhookController {
     private readonly logger = new Logger(WebhookController.name);
 
-    constructor(private readonly whatsappService: WhatsappService) { }
+    constructor(private readonly whatsappApiService: WhatsappApiService) { }
 
     @Get()
     verifyWebhook(@Query('hub.challenge') challenge: string, @Query('hub.verify_token') verifyToken: string) {
@@ -26,7 +26,7 @@ export class WebhookController {
         res.status(HttpStatus.OK).send({ status: 'EVENT_RECEIVED' });
         // Procesa el mensaje en segundo plano
         try {
-            await this.whatsappService.saveReceivedMessage(body);
+            await this.whatsappApiService.saveReceivedMessage(body);
         } catch (error) {
             this.logger.error(`❌ Error manejando webhook: ${error.message}`);
         }

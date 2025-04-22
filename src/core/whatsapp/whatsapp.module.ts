@@ -1,18 +1,21 @@
 import { Module } from '@nestjs/common';
-import { WhatsappService } from './api/whatsapp.service';
-import { WhatsappController } from './api/whatsapp.controller';
+import { WhatsappApiService } from './api/whatsapp-api.service';
+import { WhatsappController } from './whatsapp.controller';
 import { ErrorsModule } from 'src/errors/errors.module';
 import { DataSourceService } from '../connection/datasource.service';
 import { HttpModule } from '@nestjs/axios';
 import { WebhookController } from './api/webhook.controller';
-import { WhatsappGateway } from './api/whatsapp.gateway';
+import { WhatsappGateway } from './whatsapp.gateway';
 import { WhatsappWebService } from './web/whatsapp-web.service';
-import { WhatsappWebController } from './web/whatsapp-web.controller';
+import { WhatsappDbService } from './whatsapp-db.service';
+import { WhatsappService } from './whatsapp.service';
+import { FileTempService } from '../sistema/files/file-temp.service';
+
 
 @Module({
   imports: [ErrorsModule, HttpModule],
-  controllers: [WhatsappController, WhatsappWebController,WebhookController],
-  providers: [DataSourceService, WhatsappService, WhatsappGateway, WhatsappWebService],
-  exports: [WhatsappWebService],
+  controllers: [WhatsappController, WebhookController],
+  providers: [DataSourceService, WhatsappApiService, WhatsappGateway, WhatsappWebService, WhatsappDbService,WhatsappService,FileTempService],
+  exports: [WhatsappService],
 })
 export class WhatsappModule { }

@@ -1,14 +1,14 @@
 import { IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
-export class GetChatsWebDto extends ServiceDto {
+export class GetChatsDto extends ServiceDto {
 
 
-
+    // WEB
     @IsInt()
     @IsPositive()
     @IsOptional()
-    limit?: number = 50;
+    limit?: number = 25;
 
     @IsString()
     @IsOptional()

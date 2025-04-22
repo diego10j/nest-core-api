@@ -12,13 +12,16 @@ export class EnviarMensajeDto extends ServiceDto {
     })
     telefono: string;
 
+
+    @IsString()
+    texto: string;
+
+
+    // API
+
     @IsString()
     @IsNotEmpty()
     tipo: string | 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
-
-    @IsString()
-    @IsOptional()
-    texto?: string;
 
 
     @IsString()

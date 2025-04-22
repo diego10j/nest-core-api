@@ -1,11 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { Client, LocalAuth, Location, Message, MessageMedia } from "whatsapp-web.js";
+import { Chat, Client, LocalAuth, Location, Message, } from "whatsapp-web.js";
 import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import * as qrcode from 'qrcode-terminal';
 import PQueue from 'p-queue';
-import { WHATSAPP_CONFIG, WEB_VERSION_CACHE } from './whatsapp-web.constants';
+import { WHATSAPP_CONFIG, WEB_VERSION_CACHE } from './config';
 import {
     WhatsAppEvent,
     MessageData,
@@ -13,14 +14,29 @@ import {
     SendMessageResponse,
     WhatsAppClientInstance,
 } from './interface/whatsapp-web.interface';
-import { SendMenssageDto } from "./dto/send-message.dto";
-import { SendMediaDto } from "./dto/send-media.dto";
 import { ServiceDto } from "src/common/dto/service.dto";
 import { fTimestampToISODate } from "src/util/helpers/date-util";
-import { detectMimeType, generateFilename, getDefaultMimeType } from "src/util/helpers/file-utils";
 import { SendLocationDto } from "./dto/send-location.dto";
-import { GetChatsWebDto } from "./dto/get-chats-web.dto";
-import { GetMessagesWebDto } from "./dto/get-messages-web.dto";
+import { GetChatsDto } from "../dto/get-chats.dto";
+import { GetMensajesDto } from "../dto/get-mensajes.dto";
+import { EnviarMensajeDto } from "../dto/enviar-mensaje.dto";
+import { WhatsappDbService } from "../whatsapp-db.service";
+import { SearchChatDto } from "../dto/search-chat.dto";
+import { GetUrlImgUserDto } from "./dto/get-url-img-user.dto";
+import { WhatsappGateway } from "../whatsapp.gateway";
+import {
+    createMediaInstance,
+    formatPhoneNumber,
+    getFileExtension,
+    getMediaOptions,
+    getStatusMessage,
+    validateCoordinates,
+    validateMediaType
+} from "./helper/util";
+import { UploadMediaDto } from "../api/dto/upload-media.dto";
+import { FileTempService } from "src/core/sistema/files/file-temp.service";
+import { MediaFile } from "../api/interface/whatsapp";
+import { isDefined } from "class-validator";
 
 
 
@@ -30,9 +46,27 @@ export class WhatsappWebService implements OnModuleInit {
     private clients: Map<string, WhatsAppClientInstance> = new Map();
     private messageQueues: Map<string, PQueue> = new Map();
 
+    constructor(private readonly whatsappDb: WhatsappDbService,
+        private readonly fileTempService: FileTempService,
+        private readonly whatsappGateway: WhatsappGateway  // Inyectamos el gateway
+    ) {
+    }
+
+
     async onModuleInit() {
         await this.initializeSession();
+        // Inicia sessiones de cuentas habilitadas para whatsapp web
+        const empresasActivas = await this.whatsappDb.getCuentaHabilitadas();
+        for (const empresa of empresasActivas) {
+            try {
+                this.logger.log(`Iniciando WhatsApp web para empresa ${empresa.ide_empr}`);
+                await this.createClientInstance(`${empresa.ide_empr}`);
+            } catch (err) {
+                this.logger.error(`Error al inicializar WhatsApp para empresa ${empresa.ideEmpr}:`, err);
+            }
+        }
     }
+
 
     // --- Initialization --- //
     private async initializeSession() {
@@ -144,9 +178,11 @@ export class WhatsappWebService implements OnModuleInit {
             this.attemptReconnection(ideEmpr);
         });
 
-        client.on('auth_failure', (msg) => {
+        client.on('auth_failure', async (msg) => {
             this.logger.error(`Authentication failure for company ${ideEmpr}:`, msg);
             instance.status = 'disconnected';
+            await this.clearSession(ideEmpr);
+            this.attemptReconnection(ideEmpr);
         });
 
         client.on('message', (message) => this.processIncomingMessage(ideEmpr, message));
@@ -159,13 +195,18 @@ export class WhatsappWebService implements OnModuleInit {
         if (instance.connectionAttempts < WHATSAPP_CONFIG.maxConnectionAttempts) {
             instance.connectionAttempts++;
             const delay = WHATSAPP_CONFIG.reconnectDelay * instance.connectionAttempts;
+
             this.logger.log(`Reconnecting company ${ideEmpr} in ${delay / 1000} seconds...`);
 
             setTimeout(async () => {
                 try {
-                    await instance.client.initialize();
+                    await instance.client.destroy(); // Destruye el cliente previo
+                    this.clients.delete(ideEmpr); // Elimina la instancia actual
+                    const newInstance = await this.createClientInstance(ideEmpr);
+                    this.clients.set(ideEmpr, newInstance);
                 } catch (error) {
-                    this.attemptReconnection(ideEmpr);
+                    this.logger.error(`Reconnection failed for company ${ideEmpr}:`, error);
+                    this.attemptReconnection(ideEmpr); // Sigue intentando
                 }
             }, delay);
         } else {
@@ -173,15 +214,20 @@ export class WhatsappWebService implements OnModuleInit {
         }
     }
 
+
     // --- Message Handling --- //
     private async processIncomingMessage(ideEmpr: string, message: Message) {
         try {
             const instance = this.clients.get(ideEmpr);
             if (!instance) return;
 
+            // Excluir mensajes de estado
+            if (message.from === 'status@broadcast') return;
+
             const contact = await message.getContact();
             const chat = await message.getChat();
             instance.lastActivity = new Date();
+            // console.log(message);
 
             const messageData: MessageData = {
                 from: message.from,
@@ -192,10 +238,10 @@ export class WhatsappWebService implements OnModuleInit {
                 chatName: chat.isGroup ? chat.name : null,
                 messageId: message.id._serialized,
                 hasMedia: message.hasMedia,
-                ...(message.hasMedia && { media: await this.processMedia(message) })
             };
 
             instance.eventEmitter.emit('message', messageData);
+            this.whatsappGateway.sendMessageToClients(message.id._serialized);
         } catch (error) {
             this.logger.error(`Error processing message for company ${ideEmpr}:`, error);
         }
@@ -204,27 +250,27 @@ export class WhatsappWebService implements OnModuleInit {
 
 
     // --- Message Sending --- //
-    async sendMessage(dto: SendMenssageDto): Promise<any> {
+    async enviarMensajeTexto(dto: EnviarMensajeDto): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
         if (!queue) throw new Error(`No client initialized for company ${dto.ideEmpr}`);
 
         return queue.add(() => this.unsafeSendMessage(dto));
     }
 
-    private async unsafeSendMessage(dto: SendMenssageDto): Promise<SendMessageResponse> {
+    private async unsafeSendMessage(dto: EnviarMensajeDto): Promise<SendMessageResponse> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
         try {
-            const chatId = this.formatPhoneNumber(dto.telefono);
-            const sentMessage = await instance.client.sendMessage(chatId, dto.mensaje);
+            const chatId = formatPhoneNumber(dto.telefono);
+            const sentMessage = await instance.client.sendMessage(chatId, dto.texto)
             instance.lastActivity = new Date();
-
             this.logger.log(`Message sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
                 messageId: sentMessage.id._serialized
             });
-
+            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
+            this.whatsappGateway.sendMessageToClients(sentMessage.id._serialized);
             return {
                 success: true,
                 messageId: sentMessage.id._serialized
@@ -239,38 +285,57 @@ export class WhatsappWebService implements OnModuleInit {
         }
     }
 
+
+    async getUrlImgUser(dto: GetUrlImgUserDto): Promise<any> {
+        const instance = await this.getClientInstance(`${dto.ideEmpr}`);
+        if (instance.status !== 'ready') {
+            throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
+        }
+        return await this.getProfilePic(`${dto.ideEmpr}`, dto.idContact);
+    }
+
+
+
+
     // --- Media Sending --- //
-    async sendMedia(dto: SendMediaDto): Promise<any> {
+    async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
         if (!queue) throw new Error(`No client initialized for company ${dto.ideEmpr}`);
 
-        return queue.add(() => this.unsafeSendMedia(dto));
+        return queue.add(() => this.unsafeSendMedia(dto, file));
     }
 
-    private async unsafeSendMedia(dto: SendMediaDto): Promise<SendMessageResponse> {
+    private async unsafeSendMedia(dto: UploadMediaDto, file: Express.Multer.File): Promise<SendMessageResponse> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
 
-        const chatId = this.formatPhoneNumber(dto.telefono);
-        const media = this.createMediaInstance(dto);
-        const options = this.getMediaOptions(dto);
+        try {
+            const chatId = formatPhoneNumber(dto.telefono);
+            const media = createMediaInstance(dto, file);
+            const options = getMediaOptions(dto);
 
-        if (dto.type === 'sticker') options['sendMediaAsSticker'] = true;
-        if (dto.type === 'document') options['sendMediaAsDocument'] = true;
+            // Validación adicional del tipo de archivo
+            validateMediaType(file.mimetype, dto.type);
 
-        const sentMessage = await instance.client.sendMessage(chatId, media, options);
-        instance.lastActivity = new Date();
+            const sentMessage = await instance.client.sendMessage(chatId, media, options);
+            instance.lastActivity = new Date();
 
-        this.logger.log(`${dto.type} sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
-            messageId: sentMessage.id._serialized
-        });
+            this.logger.log(`${dto.type} sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
+                messageId: sentMessage.id._serialized
+            });
 
-        return {
-            success: true,
-            messageId: sentMessage.id._serialized
-        };
+            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
+
+            return {
+                success: true,
+                messageId: sentMessage.id._serialized
+            };
+        } catch (error) {
+            this.logger.error(`Error sending media to ${dto.telefono}: ${error.message}`);
+            throw new Error(`Failed to send media: ${error.message}`);
+        }
     }
 
     // --- Location Sending --- //
@@ -287,9 +352,9 @@ export class WhatsappWebService implements OnModuleInit {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
 
-        this.validateCoordinates(dto.latitude, dto.longitude);
+        validateCoordinates(dto.latitude, dto.longitude);
 
-        const chatId = this.formatPhoneNumber(dto.telefono);
+        const chatId = formatPhoneNumber(dto.telefono);
         const location = new Location(
             dto.latitude,
             dto.longitude,
@@ -298,7 +363,7 @@ export class WhatsappWebService implements OnModuleInit {
 
         const sentMessage = await instance.client.sendMessage(chatId, location);
         instance.lastActivity = new Date();
-
+        await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
         this.logger.log(`Location sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
             messageId: sentMessage.id._serialized
         });
@@ -336,7 +401,7 @@ export class WhatsappWebService implements OnModuleInit {
         }
     }
 
-    async getProfilePic(ideEmpr: string, contactId: string): Promise<string | null> {
+    private async getProfilePic(ideEmpr: string, contactId: string): Promise<string | null> {
         const instance = await this.getClientInstance(ideEmpr);
         try {
             return await instance.client.getProfilePicUrl(contactId);
@@ -347,14 +412,38 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
     // --- Chat Management --- //
-    async getChats(dto: GetChatsWebDto) {
+    async getChats(dto: GetChatsDto) {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
 
         const allChats = await instance.client.getChats();
-        const sortedChats = allChats.sort((a, b) =>
+
+        // Filtro principal
+        const filteredChats = allChats.filter(chat => {
+            // 1. Excluir grupos
+            if (chat.isGroup) return false;
+
+            // 2. Excluir mensajes del sistema de WhatsApp (ID '0' o 'status@broadcast')
+            if (chat.id.user === '0' || chat.id._serialized.includes('status@broadcast')) return false;
+
+            // 3. Excluir mensajes de notificaciones o invitaciones 
+            if (chat.lastMessage?.type === 'notification_template' ||
+                chat.lastMessage?.type === 'groups_v4_invite' // || chat.lastMessage?.type === 'call_log'
+            ) {
+                return false;
+            }
+
+            // 4. Asegurarse que tiene último mensaje (opcional)
+            if (!chat.lastMessage) return false;
+
+            return true;
+        });
+
+        // console.log("Chats filtrados:", filteredChats.length); // Debug
+
+        const sortedChats = filteredChats.sort((a, b) =>
             (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0)
         );
 
@@ -381,15 +470,18 @@ export class WhatsappWebService implements OnModuleInit {
             body_whmem: chat.lastMessage?.body?.substring(0, 50) || '',
             fecha_whmem: fTimestampToISODate(chat.lastMessage?.timestamp),
             content_type_whmem: chat.lastMessage?.type,
-            status_whmem: null,
-            direction_whmem: chat.lastMessage?.fromMe === false,
+            leido_whmem: !chat.lastMessage?.fromMe && chat.lastMessage?.ack === 3, // 3: Read
+            direction_whmem: chat.lastMessage?.fromMe ? '1' : 'o', // 0: Sent, 1: Received
+            status_whmem: getStatusMessage(chat.lastMessage?.ack),
             no_leidos_whcha: chat.unreadCount,
-            is_group: chat.isGroup,
-            contact: await this.getContactInfo(`${dto.ideEmpr}`, chat.id._serialized),
+            is_group: chat.isGroup, // Aunque estamos filtrando, mantenemos la propiedad por si acaso
+            // chat
+            // profilePicUrl: await instance.client.getProfilePicUrl(chat.id._serialized)
+            // contact: await this.getContactInfo(`${dto.ideEmpr}`, chat.id._serialized),
         })));
     }
 
-    async getMessages(dto: GetMessagesWebDto) {
+    async getMensajes(dto: GetMensajesDto) {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -401,18 +493,19 @@ export class WhatsappWebService implements OnModuleInit {
 
         const rawMessages = await chat.fetchMessages(fetchOptions);
         const processedMessages = await Promise.all(
-            rawMessages.map(async msg => this.processMessageForDisplay(msg, instance))
+            rawMessages.map(async msg => this.processMessageForDisplay(chat, msg, instance))
         );
 
-        return {
-            messages: processedMessages,
-            hasMore: rawMessages.length === limit,
-        };
+        // return {
+        //     messages: processedMessages,
+        //     hasMore: rawMessages.length === limit,
+        // };
+        return processedMessages
     }
 
-    private async processMessageForDisplay(msg: Message, instance: WhatsAppClientInstance): Promise<any> {
-        const contact = await msg.getContact();
-        const chat = await msg.getChat();
+    private async processMessageForDisplay(chat: Chat, msg: Message, instance: WhatsAppClientInstance): Promise<any> {
+        // const contact = await msg.getContact();
+
 
         const baseMessage = {
             uuid: msg.id._serialized,
@@ -422,16 +515,34 @@ export class WhatsappWebService implements OnModuleInit {
             body_whmem: msg.body,
             fecha_whmem: fTimestampToISODate(msg.timestamp),
             content_type_whmem: msg.type,
-            leido_whmem: msg.isStatus,
-            direction_whmem: msg.ack === 0,
-            status_whmem: 'delivered',
+            leido_whmem: !msg.fromMe && msg.ack === 3, // 3: Read
+            direction_whmem: msg.fromMe ? '1' : 'o', // 0: Sent, 1: Received
+            status_whmem: getStatusMessage(msg.ack),
             timestamp_sent_whmem: fTimestampToISODate(msg.timestamp),
             timestamp_whmem: fTimestampToISODate(msg.timestamp),
             fromMe: msg.fromMe,
             hasMedia: msg.hasMedia,
             isStatus: msg.isStatus,
+            isForwarded: msg.isForwarded,
+            forwardingScore: msg.isForwarded,
             isGroupMsg: chat.isGroup,
-            senderName: contact.pushname || contact.number,
+            senderName: chat.name,
+            location: msg.location,
+            // Nuevos campos para multimedia
+            mediaInfo: msg.hasMedia ? {
+                deprecatedMms3Url: msg['_data']?.deprecatedMms3Url,
+                mimetype: msg['_data']?.mimetype,
+                filename: msg['_data']?.filename,
+                // filehash: msg['_data']?.filehash,
+                // encFilehash: msg['_data']?.encFilehash,
+                size: msg['_data']?.size,
+                mediaKey: msg['_data']?.mediaKey,
+                // mediaKeyTimestamp: msg['_data']?.mediaKeyTimestamp,
+                width: msg['_data']?.width,
+                height: msg['_data']?.height,
+                isViewOnce: msg['_data']?.isViewOnce,
+                caption: msg['_data']?.caption
+            } : null,
         };
 
         if (msg.type === 'location') {
@@ -514,63 +625,124 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
 
-    
+    async searchContacto(dto: SearchChatDto): Promise<any[]> {
+        const instance = await this.getClientInstance(`${dto.ideEmpr}`);
+        if (instance.status !== 'ready') {
+            throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
+        }
 
-    // --- Utility Methods --- //
-    private formatPhoneNumber(phoneNumber: string): string {
-        return phoneNumber.includes('@c.us') ? phoneNumber : `${phoneNumber}@c.us`;
-    }
+        if (dto.texto.trim() === '') {
+            return [];
+        }
 
-    private validateCoordinates(latitude: number, longitude: number): void {
-        if (isNaN(latitude) || isNaN(longitude) ||
-            latitude < -90 || latitude > 90 ||
-            longitude < -180 || longitude > 180) {
-            throw new Error('Invalid coordinates');
+        try {
+            const limit = dto.resultados || 25;
+            const allContacts = await instance.client.getContacts();
+
+            // Filtrar contactos que coincidan con la búsqueda y sean @c.us
+            const filteredContacts = allContacts.filter(contact => {
+                const isIndividualContact = contact.id._serialized.endsWith('@c.us');
+                const matchesSearch = (
+                    contact.name?.toLowerCase().includes(dto.texto.toLowerCase()) ||
+                    contact.pushname?.toLowerCase().includes(dto.texto.toLowerCase()) ||
+                    contact.number?.includes(dto.texto)
+                );
+
+                return isIndividualContact && matchesSearch;
+            });
+
+            // Limitar los resultados
+            const limitedContacts = filteredContacts.slice(0, limit);
+
+            // Procesar los contactos seleccionados
+            return Promise.all(limitedContacts.map(async contact => ({
+                ide_whcha: contact.id._serialized,
+                nombre_whcha: contact.name || contact.pushname || contact.number,
+                name_whcha: contact.pushname,
+                wa_id_whmem: contact.number,
+                isBusiness: contact.isBusiness,
+                isEnterprise: contact.isEnterprise,
+                isMyContact: contact.isMyContact,
+                profilePicUrl: await instance.client.getProfilePicUrl(contact.id._serialized)
+            })));
+        } catch (error) {
+            this.logger.error(`Error searching contacts for company ${dto.ideEmpr}:`, error);
+            throw error;
         }
     }
 
-    private createMediaInstance(mediaMessage: SendMediaDto): MessageMedia {
-        const mimeType = detectMimeType(mediaMessage.filename) ||
-            getDefaultMimeType(mediaMessage.type);
-
-        return new MessageMedia(
-            mimeType,
-            this.normalizeBuffer(mediaMessage.file),
-            mediaMessage.filename || generateFilename(mediaMessage.type)
-        );
-    }
-
-    private normalizeBuffer(data: Buffer | string): string {
-        if (Buffer.isBuffer(data)) return data.toString('base64');
-        if (typeof data === 'string' && data.startsWith('data:')) {
-            return data.split(',')[1];
+    private async clearSession(ideEmpr: string) {
+        const sessionDir = path.join(__dirname, '..', '..', WHATSAPP_CONFIG.sessionPath, ideEmpr);
+        if (fs.existsSync(sessionDir)) {
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+            this.logger.warn(`Session directory cleared for company ${ideEmpr}`);
         }
-        return data;
     }
 
-    private getMediaOptions(mediaMessage: SendMediaDto): any {
-        const options: any = { caption: mediaMessage.caption };
 
-        if (mediaMessage.type === 'sticker') {
-            options.sendMediaAsSticker = true;
-        } else if (mediaMessage.type === 'document') {
-            options.sendMediaAsDocument = true;
+
+    async download(ideEmpr: string, messageId: string): Promise<MediaFile> {
+        const instance = await this.getClientInstance(`${ideEmpr}`);
+        if (instance.status !== 'ready') {
+            throw new Error(`WhatsApp client is not ready for company ${ideEmpr}`);
         }
 
-        return options;
-    }
+        // 1. Verificar existencia del archivo en BD
+        const resFile = await this.whatsappDb.getFile(messageId);
+        if (resFile) {
+            const {
+                attachment_name_whmem: filename,
+                attachment_size_whmem: filesize,
+                attachment_type_whmem: contentType,
+                attachment_url_whmem: existingUrl
+            } = resFile;
+            // Si ya tiene URL, retornar los datos existentes
+            if (isDefined(existingUrl)) {
+                return {
+                    url: existingUrl,
+                    data: null, // No descargamos los datos nuevamente
+                    mimeType: contentType,
+                    fileSize: filesize,
+                    fileName: filename
+                };
+            }
+        }
 
-    private async processMedia(message: Message) {
+
+        const message: Message = await instance.client.getMessageById(messageId);
+        if (!message) {
+            throw new Error('Message not found');
+        }
+
         try {
             const media = await message.downloadMedia();
-            return media ? {
+            if (!media) {
+                throw new Error('Media not available');
+            }
+
+            // Determinar extensión del archivo
+            const extension = getFileExtension(media.mimetype, media.filename);
+
+            // Guardar en archivo temporal
+            const buffer = Buffer.from(media.data, 'base64');
+            const { fileName } = await this.fileTempService.saveTempFile(buffer, extension);
+
+            // Generar URL temporal
+            const url = await this.fileTempService.getFileUrl(fileName);
+
+            // 6. Actualizar la base de datos con la nueva información
+            await this.whatsappDb.updateUrlFile(messageId, url);
+            return {
+                url,
                 mimeType: media.mimetype,
-                data: media.data,
-                filename: media.filename
-            } : null;
+                fileName: media.filename || `${uuidv4()}.${extension}`
+            };
         } catch (error) {
-            this.logger.error('Error processing media:', error);
-            return null;
+            this.logger.error('Error downloading media:', error);
+            throw new Error('Failed to download media');
         }
     }
+
+
+
 }

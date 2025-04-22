@@ -808,7 +808,7 @@ CREATE TABLE wha_mensaje (
 	ide_whcha INT8,   -- Chat
     phone_number_id_whmem  varchar(20),  	-- phone_number_id API
 	phone_number_whmem varchar(20),  		-- display_phone_number API
-	id_whmem  VARCHAR(80) NOT NULL,         -- id
+	id_whmem  VARCHAR(80),         -- id
     wa_id_whmem VARCHAR(20),                -- wa_id   telefono 
 	wa_id_context_whmem  VARCHAR(80),       -- context wa_id
     body_whmem TEXT,                        -- mensaje

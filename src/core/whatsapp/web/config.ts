@@ -12,7 +12,6 @@ export const WHATSAPP_CONFIG = {
     ],
     maxMessagesPerMinute: 10, // Límite para evitar baneos
     initializationTimeout: 30000, // 30 segundos
-    maxInitializationAttempts: 3,
 };
 
 export const WEB_VERSION_CACHE = {

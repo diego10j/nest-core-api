@@ -1,12 +1,9 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export class UploadMediaDto {
 
     @IsString()
-    @IsOptional()
-    caption?: string;
-
-
+    type: 'image' | 'video' | 'document' | 'audio' | 'sticker';
 
     @IsString()
     @IsNotEmpty()
@@ -15,17 +12,22 @@ export class UploadMediaDto {
         message: 'Número de teléfono no válido'
     })
     telefono: string;
-    
-
-    @IsString()
-    fileType: string;
-
-    @IsString()
-    fileName: string;
 
 
     @IsString()
+    @IsOptional()
+    caption?: string;
 
+
+    // @IsString()
+    // @IsOptional()
+    // fileType?: string;
+
+    @IsString()
+    @IsOptional()
+    fileName?: string;
+
+    @IsString()
     ideUsua: string;
 
     @IsString()

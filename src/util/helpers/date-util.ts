@@ -197,13 +197,16 @@ export function getDayNumber(date?: InputValue): number {
  * @returns Fecha en formato ISO string (ej: "2025-02-08T23:23:51.471Z")
  */
 export function fTimestampToISODate(timestamp: number): string {
-    // Verificar si el timestamp está en segundos (WhatsApp) o milisegundos
-    const adjustedTimestamp = timestamp > 1e10 ? timestamp : timestamp * 1000;
+    if (timestamp) {
+        // Verificar si el timestamp está en segundos (WhatsApp) o milisegundos
+        const adjustedTimestamp = timestamp > 1e10 ? timestamp : timestamp * 1000;
 
-    const date = new Date(adjustedTimestamp);
+        const date = new Date(adjustedTimestamp);
 
-    // Formatear a ISO string y asegurar milisegundos (3 dígitos)
-    const isoString = date.toISOString();
+        // Formatear a ISO string y asegurar milisegundos (3 dígitos)
+        const isoString = date.toISOString();
 
-    return isoString;
+        return isoString;
+    }
+
 }
