@@ -21,6 +21,7 @@ export class EnviarMensajeDto extends ServiceDto {
 
     @IsString()
     @IsNotEmpty()
+    @IsOptional()
     tipo: string | 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
 
 

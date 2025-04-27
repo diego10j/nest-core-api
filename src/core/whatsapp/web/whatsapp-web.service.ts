@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { Chat, Client, LocalAuth, Location, Message, } from "whatsapp-web.js";
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,21 +22,23 @@ import { GetMensajesDto } from "../dto/get-mensajes.dto";
 import { EnviarMensajeDto } from "../dto/enviar-mensaje.dto";
 import { WhatsappDbService } from "../whatsapp-db.service";
 import { SearchChatDto } from "../dto/search-chat.dto";
-import { GetUrlImgUserDto } from "./dto/get-url-img-user.dto";
 import { WhatsappGateway } from "../whatsapp.gateway";
 import {
     createMediaInstance,
     formatPhoneNumber,
     getFileExtension,
     getMediaOptions,
+    getMediaTypeFromMime,
     getStatusMessage,
     validateCoordinates,
     validateMediaType
 } from "./helper/util";
-import { UploadMediaDto } from "../api/dto/upload-media.dto";
+import { UploadMediaDto } from "../dto/upload-media.dto";
 import { FileTempService } from "src/core/sistema/files/file-temp.service";
 import { MediaFile } from "../api/interface/whatsapp";
 import { isDefined } from "class-validator";
+import { HttpService } from "@nestjs/axios";
+import { Response } from "express";
 
 
 
@@ -46,7 +48,10 @@ export class WhatsappWebService implements OnModuleInit {
     private clients: Map<string, WhatsAppClientInstance> = new Map();
     private messageQueues: Map<string, PQueue> = new Map();
 
-    constructor(private readonly whatsappDb: WhatsappDbService,
+
+    constructor(
+        private readonly httpService: HttpService,
+        private readonly whatsappDb: WhatsappDbService,
         private readonly fileTempService: FileTempService,
         private readonly whatsappGateway: WhatsappGateway  // Inyectamos el gateway
     ) {
@@ -286,17 +291,6 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
 
-    async getUrlImgUser(dto: GetUrlImgUserDto): Promise<any> {
-        const instance = await this.getClientInstance(`${dto.ideEmpr}`);
-        if (instance.status !== 'ready') {
-            throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
-        }
-        return await this.getProfilePic(`${dto.ideEmpr}`, dto.idContact);
-    }
-
-
-
-
     // --- Media Sending --- //
     async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
@@ -312,13 +306,14 @@ export class WhatsappWebService implements OnModuleInit {
         }
 
         try {
+            dto.type = getMediaTypeFromMime(file.mimetype);
             const chatId = formatPhoneNumber(dto.telefono);
             const media = createMediaInstance(dto, file);
             const options = getMediaOptions(dto);
 
+
             // Validación adicional del tipo de archivo
             validateMediaType(file.mimetype, dto.type);
-
             const sentMessage = await instance.client.sendMessage(chatId, media, options);
             instance.lastActivity = new Date();
 
@@ -326,7 +321,7 @@ export class WhatsappWebService implements OnModuleInit {
                 messageId: sentMessage.id._serialized
             });
 
-            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
+            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage, file.originalname);
 
             return {
                 success: true,
@@ -401,7 +396,8 @@ export class WhatsappWebService implements OnModuleInit {
         }
     }
 
-    private async getProfilePic(ideEmpr: string, contactId: string): Promise<string | null> {
+
+    async getProfilePicUrl(ideEmpr: string, contactId: string): Promise<string | null> {
         const instance = await this.getClientInstance(ideEmpr);
         try {
             return await instance.client.getProfilePicUrl(contactId);
@@ -520,6 +516,7 @@ export class WhatsappWebService implements OnModuleInit {
             status_whmem: getStatusMessage(msg.ack),
             timestamp_sent_whmem: fTimestampToISODate(msg.timestamp),
             timestamp_whmem: fTimestampToISODate(msg.timestamp),
+            attachment_id_whmem: msg.id._serialized,
             fromMe: msg.fromMe,
             hasMedia: msg.hasMedia,
             isStatus: msg.isStatus,
@@ -727,13 +724,11 @@ export class WhatsappWebService implements OnModuleInit {
             const buffer = Buffer.from(media.data, 'base64');
             const { fileName } = await this.fileTempService.saveTempFile(buffer, extension);
 
-            // Generar URL temporal
-            const url = await this.fileTempService.getFileUrl(fileName);
 
             // 6. Actualizar la base de datos con la nueva información
-            await this.whatsappDb.updateUrlFile(messageId, url);
+            await this.whatsappDb.updateUrlFile(messageId, fileName);
             return {
-                url,
+                url: fileName,
                 mimeType: media.mimetype,
                 fileName: media.filename || `${uuidv4()}.${extension}`
             };
@@ -743,6 +738,59 @@ export class WhatsappWebService implements OnModuleInit {
         }
     }
 
+
+
+    /**
+    * Obtiene o crea la imagen de perfil y la sirve
+    * @param ideEmpr Identificador de empresa
+    * @param contactId Identificador de contacto
+    * @param response Objeto Response de Express
+    */
+    async getOrCreateProfilePicture(
+        ideEmpr: string,
+        contactId: string,
+        response: Response
+    ) {
+        const filename = `${contactId}.jpg`; // Asumimos formato JPG
+        const fileExists = await this.fileTempService.fileExists(filename);
+        if (!fileExists) {
+            await this.createProfilePictureFile(ideEmpr, contactId, filename);
+        }
+
+        return this.fileTempService.downloadFile(response, filename);
+    }
+
+    /**
+    * Crea el archivo de imagen de perfil
+    * @param ideEmpr Identificador de empresa
+    * @param contactId Identificador de contacto
+    * @param filename Nombre del archivo a crear
+    */
+    private async createProfilePictureFile(
+        ideEmpr: string,
+        contactId: string,
+        filename: string
+    ) {
+        try {
+            const profilePicUrl = await this.getProfilePicUrl(ideEmpr, contactId);
+            if (!profilePicUrl) {
+                throw new NotFoundException('No se pudo obtener la imagen de perfil');
+            }
+            // Descargar la imagen
+            const response = await this.httpService.axiosRef.get(profilePicUrl, {
+                responseType: 'arraybuffer'
+            });
+            // Guardar en archivo temporal
+            await this.fileTempService.saveTempFile(
+                Buffer.from(response.data, 'binary'),
+                path.extname(filename).substring(1), // Extraer extensión
+                filename
+            );
+        } catch (error) {
+            this.logger.error(`Error creating profile picture for ${contactId}:`, error);
+            throw error;
+        }
+    }
 
 
 }

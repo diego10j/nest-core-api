@@ -14,7 +14,7 @@ import { SearchChatDto } from '../dto/search-chat.dto';
 import { CacheConfig, MediaFile, WhatsAppConfig } from './interface/whatsapp';
 import { isDefined } from 'src/util/helpers/common-util';
 
-import { UploadMediaDto } from './dto/upload-media.dto';
+import { UploadMediaDto } from '../dto/upload-media.dto';
 import { ChatFavoritoDto } from './dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
 import { ListContactDto } from './dto/list-contact.dto';
@@ -197,13 +197,13 @@ export class WhatsappApiService {
                 fileData,
                 fileExtension
             );
-            const tempFileUrl = await this.fileTempService.getFileUrl(tempFileName);
+    
 
             // 6. Actualizar la base de datos con la nueva información
-            await this.whatsappDb.updateUrlFile(id, tempFileUrl);
+            await this.whatsappDb.updateUrlFile(id, tempFileName);
 
             return {
-                url: tempFileUrl,
+                url: tempFileName,
                 data: fileData,
                 mimeType: contentType,
                 fileSize: fileData.length,

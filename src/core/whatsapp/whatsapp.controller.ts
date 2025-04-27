@@ -1,7 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { Response } from 'express';
-import * as path from 'path';
-import { createReadStream, statSync } from 'fs';
 import { memoryStorage } from 'multer';
 import { WhatsappService } from './whatsapp.service';
 import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
@@ -10,7 +8,7 @@ import { ServiceDto } from 'src/common/dto/service.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
-import { UploadMediaDto } from './api/dto/upload-media.dto';
+import { UploadMediaDto } from './dto/upload-media.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
 import { ListContactDto } from './api/dto/list-contact.dto';
@@ -20,14 +18,12 @@ import { ApiOperation } from '@nestjs/swagger';
 import { SendLocationDto } from './web/dto/send-location.dto';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { SearchChatDto } from './dto/search-chat.dto';
-import { GetUrlImgUserDto } from './web/dto/get-url-img-user.dto';
-import { FileTempService } from '../sistema/files/file-temp.service';
+
 
 @Controller('whatsapp')
 export class WhatsappController {
 
   constructor(private readonly service: WhatsappService,
-    private readonly fileTempService: FileTempService,
     private readonly whatsappDbService: WhatsappDbService,
   ) { }
 
@@ -97,52 +93,10 @@ export class WhatsappController {
   async download(
     @Param('ideEmpr') ideEmpr: string,
     @Param('id') messageId: string,
-    @Res({ passthrough: true }) res: Response
-  ): Promise<StreamableFile> {
-    try {
-      const fileInfo = await this.service.downloadMedia(ideEmpr, messageId);
-
-      // Si el archivo ya está en el servidor (ruta temporal)
-      if (fileInfo.url.includes('/temp-media/')) {
-        const fileName = fileInfo.url.split('/').pop();
-        const filePath = path.join(this.fileTempService.tempDir, fileName);
-        // console.log(filePath);
-        const fileStats = statSync(filePath);
-
-        res.set({
-          'Content-Type': fileInfo.mimeType,
-          'Content-Length': fileStats.size,
-          'Content-Disposition': `attachment; filename="${encodeURIComponent(fileInfo.fileName)}"`,
-          'Last-Modified': fileStats.mtime.toUTCString(),
-          'ETag': `"${fileStats.mtime.getTime()}"`
-        });
-
-        const fileStream = createReadStream(filePath);
-        return new StreamableFile(fileStream);
-      }
-
-      // Si es un archivo recién descargado (en memoria)
-      res.set({
-        'Content-Type': fileInfo.mimeType,
-        'Content-Length': fileInfo.fileSize,
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileInfo.fileName)}"`
-      });
-
-      return new StreamableFile(Buffer.from(fileInfo.data));
-
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        res.status(400).json({
-          statusCode: 400,
-          message: error.message
-        });
-      } else {
-        res.status(500).json({
-          statusCode: 500,
-          message: 'Error al descargar el archivo multimedia'
-        });
-      }
-    }
+    @Res() res: Response
+  ) {
+    const fileInfo = await this.service.downloadMedia(ideEmpr, messageId);
+    return await this.service.fileTempService.downloadMediaFile(fileInfo, res);
   }
 
   // ==============================
@@ -310,11 +264,28 @@ export class WhatsappController {
   }
 
 
-  @Post('getUrlImgUser')
-  @ApiOperation({ summary: 'getUrlImgUser  message' })
-  async getUrlImgUser(@Body() dtoIn: GetUrlImgUserDto) {
-    return this.service.whatsappWeb.getUrlImgUser(dtoIn);
+
+
+  @Get('serveFile/:filename')
+  async serveFile(
+    @Param('filename') filename: string,
+    @Res() response: Response
+  ) {
+    return this.service.fileTempService.downloadFile(response, filename);
   }
 
+
+  @Get('getProfilePicture/:ideEmpr/:contactId')
+  async getProfilePicture(
+    @Param('ideEmpr') ideEmpr: string,
+    @Param('contactId') contactId: string,
+    @Res() response: Response
+  ) {
+    return this.service.whatsappWeb.getOrCreateProfilePicture(
+      ideEmpr,
+      contactId,
+      response
+    );
+  }
 
 }

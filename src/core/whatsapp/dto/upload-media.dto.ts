@@ -2,8 +2,7 @@ import { IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-vali
 
 export class UploadMediaDto {
 
-    @IsString()
-    type: 'image' | 'video' | 'document' | 'audio' | 'sticker';
+
 
     @IsString()
     @IsNotEmpty()
@@ -19,9 +18,10 @@ export class UploadMediaDto {
     caption?: string;
 
 
-    // @IsString()
-    // @IsOptional()
-    // fileType?: string;
+    @IsString()
+    @IsOptional()
+    type?: string | 'image' | 'video' | 'document' | 'audio' | 'sticker';
+
 
     @IsString()
     @IsOptional()

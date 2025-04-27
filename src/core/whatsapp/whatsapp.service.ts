@@ -8,13 +8,16 @@ import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
-import { UploadMediaDto } from './api/dto/upload-media.dto';
+import { UploadMediaDto } from './dto/upload-media.dto';
 import { MediaFile } from './api/interface/whatsapp';
+import { FileTempService } from '../sistema/files/file-temp.service';
 
 @Injectable()
 export class WhatsappService {
 
-    constructor(public readonly whatsappApi: WhatsappApiService,
+    constructor(
+        public readonly whatsappApi: WhatsappApiService,
+        public readonly fileTempService: FileTempService,
         public readonly whatsappWeb: WhatsappWebService) { }
 
 
@@ -127,5 +130,10 @@ export class WhatsappService {
         }
         throw new BadRequestException('Tipo de WhatsApp no soportado');
     }
+
+
+
+    
+
 
 }

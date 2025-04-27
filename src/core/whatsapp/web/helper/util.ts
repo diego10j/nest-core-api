@@ -1,5 +1,5 @@
 import { MessageAck, MessageMedia } from "whatsapp-web.js";
-import { UploadMediaDto } from "../../api/dto/upload-media.dto";
+import { UploadMediaDto } from "../../dto/upload-media.dto";
 import * as fs from 'fs';
 
 // types/mime-types.const.ts
@@ -277,7 +277,7 @@ function getDefaultMimeType(mediaType: string): string {
  * @param originalName El nombre original del archivo (opcional)
  * @returns La extensión de archivo adecuada
  */
- export function getFileExtension(mimeType: string, originalName?: string): string {
+export function getFileExtension(mimeType: string, originalName?: string): string {
     // Primero intentamos obtener la extensión del nombre de archivo si está disponible y es válida
     if (originalName) {
         const extFromName = originalName.split('.').pop()?.toLowerCase();
@@ -301,4 +301,29 @@ function getDefaultMimeType(mediaType: string): string {
 
     // Default para tipos desconocidos
     return 'dat';
+}
+
+
+// Función adicional para determinar el MIME type por extensión
+export function getDefaultMimeTypeFromExtension(filename: string): string {
+    const extension = filename.split('.').pop()?.toLowerCase();
+    if (!extension) return 'application/octet-stream';
+
+    return EXTENSION_TO_MIME[extension] || 'application/octet-stream';
+}
+
+
+/**
+ * Obtiene el tipo de medio (image, video, audio, document, sticker) a partir de un MIME type
+ * @param mimeType El MIME type a evaluar
+ * @returns El tipo de medio como string o undefined si no coincide con ningún tipo conocido
+ */
+export function getMediaTypeFromMime(mimeType: string): string {
+    // Buscar en cada categoría
+    for (const [type, mimes] of Object.entries(ALLOWED_TYPES)) {
+        if (mimes.includes(mimeType)) {
+            return type;
+        }
+    }
+    return 'document'; // Si no encuentra coincidencia
 }

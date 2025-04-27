@@ -646,13 +646,14 @@ export class WhatsappDbService {
        * Guarda un mensaje usando whatsapp web.
        * @param msg - datos del mensaje.
     */
-    async saveMensajeEnviadoWeb(msg: Message) {
+    async saveMensajeEnviadoWeb(msg: Message, originalName: string = null) {
         try {
             const data = msg['_data'];
+
             const mediaInfo = msg.hasMedia ? {
                 deprecatedMms3Url: data?.deprecatedMms3Url,
                 mimetype: data?.mimetype,
-                filename: data?.filename,
+                filename: originalName || data?.filename,
                 size: data?.size,
                 mediaKey: data?.mediaKey,
                 // mediaKeyTimestamp: data?.mediaKeyTimestamp,
