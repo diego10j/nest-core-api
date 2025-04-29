@@ -1,6 +1,7 @@
 import { MessageAck, MessageMedia } from "whatsapp-web.js";
 import { UploadMediaDto } from "../../dto/upload-media.dto";
 import * as fs from 'fs';
+import { MediaFile } from "../../api/interface/whatsapp";
 
 // types/mime-types.const.ts
 export const MIME_TYPES = {
@@ -17,7 +18,9 @@ export const MIME_TYPES = {
         MP4: 'video/mp4',
         QUICKTIME: 'video/quicktime',
         AVI: 'video/x-msvideo',
-        WEBM: 'video/webm'
+        WEBM: 'video/webm',
+        OGG: 'video/ogg',
+        MPEG: 'video/mpeg'
     },
     AUDIO: {
         MPEG: 'audio/mpeg',
@@ -326,4 +329,22 @@ export function getMediaTypeFromMime(mimeType: string): string {
         }
     }
     return 'document'; // Si no encuentra coincidencia
+}
+
+
+export function isVideoFile(mimeType: string): boolean {
+    return Object.values(MIME_TYPES.VIDEOS).some((mt) => mt === mimeType);
+}
+
+
+
+export function getContentDisposition(fileInfo: MediaFile): string {
+    const isInline =
+        Object.values(MIME_TYPES.IMAGES).some((mt) => mt === fileInfo.mimeType) ||
+        Object.values(MIME_TYPES.VIDEOS).some((mt) => mt === fileInfo.mimeType) ||
+        Object.values(MIME_TYPES.STICKERS).some((mt) => mt === fileInfo.mimeType);
+
+    return isInline
+        ? `inline; filename="${encodeURIComponent(fileInfo.fileName)}"`
+        : `attachment; filename="${encodeURIComponent(fileInfo.fileName)}"`;
 }

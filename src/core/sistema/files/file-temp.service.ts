@@ -1,9 +1,9 @@
 import { Injectable, OnModuleDestroy, OnApplicationShutdown, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MediaFile } from 'src/core/whatsapp/api/interface/whatsapp';
-import { detectMimeType, getDefaultMimeTypeFromExtension, MIME_TYPES } from 'src/core/whatsapp/web/helper/util';
+import { detectMimeType, getDefaultMimeTypeFromExtension, isVideoFile, MIME_TYPES } from 'src/core/whatsapp/web/helper/util';
 import { PassThrough } from 'stream';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,6 +15,8 @@ const stat = promisify(fs.stat);
 const unlink = promisify(fs.unlink);
 const access = promisify(fs.access);
 const constants = fs.constants;
+const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 @Injectable()
 export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
@@ -191,8 +193,18 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
         }
     }
 
-    async downloadMediaFile(fileInfo: MediaFile, res: Response) {
+    async downloadMediaFile(fileInfo: MediaFile, req: Request, res: Response) {
         try {
+            // Verificar tamaño máximo del archivo
+            if (fileInfo.fileSize && fileInfo.fileSize > MAX_FILE_SIZE) {
+                throw new BadRequestException('El archivo es demasiado grande');
+            }
+
+            // Manejar solicitudes de rango para videos
+            const range = req.headers.range;
+            if (range && isVideoFile(fileInfo.mimeType)) {
+                return this.handleVideoRangeRequest(fileInfo, range, res);
+            }
 
             // Función helper para verificar MIME types
             const isMimeTypeInGroup = (group: Record<string, string>, mimeType: string): boolean => {
@@ -221,24 +233,26 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
                 const filePath = path.join(this.tempDir, fileName);
                 const stats = fs.statSync(filePath);
 
+                if (!stats.isFile()) {
+                    throw new NotFoundException('Archivo no encontrado');
+                }
+
                 Object.assign(headers, {
                     'Content-Length': stats.size,
                     'Last-Modified': stats.mtime.toUTCString(),
                     'ETag': `"${stats.size}-${stats.mtime.getTime()}"`
                 });
 
+                if (stats.size > LARGE_FILE_THRESHOLD) {
+                    headers['Accept-Ranges'] = 'bytes';
+                }
+
+
                 res.set(headers);
 
-                const fileStream = fs.createReadStream(filePath);
+                const fileStream = fs.createReadStream(filePath)
 
-                // Manejo de cierre prematuro
-                res.on('close', () => {
-                    if (!res.writableEnded) {
-                        fileStream.destroy();
-                        // this.logger.warn(`Download interrupted for file: ${filePath}`);
-                    }
-                });
-
+                this.setupStreamErrorHandling(fileStream, res);
                 return fileStream.pipe(res);
             }
 
@@ -262,15 +276,70 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
             return bufferStream.pipe(res);
 
         } catch (error) {
-            if (error.code === 'ENOENT') {
-                throw new NotFoundException('Archivo no encontrado');
-            }
-            if (error instanceof BadRequestException) {
-                throw error;
-            }
-            // this.logger.error(`Download error: ${error.message}`, error.stack);
-            throw new InternalServerErrorException('Error al descargar el archivo multimedia');
+            this.handleDownloadError(error);
         }
     }
+
+    private handleVideoRangeRequest(fileInfo: MediaFile, range: string, res: Response) {
+        const filePath = path.join(this.tempDir, fileInfo.url.split('/').pop());
+        const stats = fs.statSync(filePath);
+
+        if (!stats.isFile()) {
+            throw new NotFoundException('Archivo de video no encontrado');
+        }
+
+        const fileSize = stats.size;
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        if (start >= fileSize || end >= fileSize) {
+            res.status(416).header({
+                'Content-Range': `bytes */${fileSize}`
+            }).send();
+            return;
+        }
+
+        const chunksize = (end - start) + 1;
+        const fileStream = fs.createReadStream(filePath, { start, end });
+
+        res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': fileInfo.mimeType,
+            'Content-Disposition': `inline; filename="${encodeURIComponent(fileInfo.fileName)}"`
+        });
+
+        this.setupStreamErrorHandling(fileStream, res);
+        return fileStream.pipe(res);
+    }
+
+    private setupStreamErrorHandling(stream: fs.ReadStream | PassThrough, res: Response) {
+        stream.on('error', (error) => {
+            stream.destroy();
+            if (!res.headersSent) {
+                throw new InternalServerErrorException('Error al transmitir el archivo');
+            }
+        });
+
+        res.on('close', () => {
+            if (!res.writableEnded) {
+                stream.destroy();
+            }
+        });
+    }
+
+    private handleDownloadError(error: any) {
+        if (error.code === 'ENOENT') {
+            throw new NotFoundException('Archivo no encontrado');
+        }
+        if (error instanceof BadRequestException ||
+            error instanceof NotFoundException) {
+            throw error;
+        }
+        throw new InternalServerErrorException('Error al descargar el archivo multimedia');
+    }
+
 
 }

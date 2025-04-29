@@ -1,7 +1,7 @@
-import { Client } from "whatsapp-web.js";
+import { Client, ClientInfo } from "whatsapp-web.js";
 import { EventEmitter } from 'events';
 
-export type WhatsAppStatus = 'disconnected' | 'authenticated' | 'ready' | 'qr' | 'loading';
+export type WhatsAppStatus = 'disconnected' | 'authenticated' | 'ready' | 'qr' | 'loading'| 'unauthorized';
 export type WhatsAppEvent = 'qr' | 'message' | 'ready' | 'disconnected' | 'auth_failure';
 
 export interface MessageData {
@@ -25,7 +25,8 @@ export interface StatusResponse {
         size: number,
         pending: number,
         isPaused: boolean
-    }
+    },
+    info?:ClientInfo
 }
 export interface SendMessageResponse {
     success: boolean;
@@ -49,5 +50,12 @@ export interface WhatsAppClientInstance {
     lastActivity: Date | null;
     connectionAttempts: number;
     eventEmitter: EventEmitter;
+  }
+  
+  export interface AccountConfig {
+    id_cuenta_whcue: string,
+    id_telefono_whcue : string,
+    id_empr: number,
+    nombre_whcue: string
   }
   

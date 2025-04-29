@@ -13,6 +13,7 @@ import {
     StatusResponse,
     SendMessageResponse,
     WhatsAppClientInstance,
+    AccountConfig,
 } from './interface/whatsapp-web.interface';
 import { ServiceDto } from "src/common/dto/service.dto";
 import { fTimestampToISODate } from "src/util/helpers/date-util";
@@ -98,8 +99,9 @@ export class WhatsappWebService implements OnModuleInit {
 
     private async createClientInstance(ideEmpr: string): Promise<WhatsAppClientInstance> {
         // Obtener configuración de la empresa desde tu base de datos
-        const cuenta = await this.getAccountConfig(ideEmpr);
+        const cuenta = await this.getAccountConfig(Number(ideEmpr));
 
+       if(cuenta){
         const client = new Client({
             authStrategy: new LocalAuth({
                 dataPath: path.join(__dirname, '..', '..', WHATSAPP_CONFIG.sessionPath, ideEmpr),
@@ -122,7 +124,7 @@ export class WhatsappWebService implements OnModuleInit {
             eventEmitter: new EventEmitter()
         };
 
-        this.setupEventHandlers(ideEmpr, instance);
+        this.setupEventHandlers(ideEmpr, instance , cuenta);
         this.clients.set(ideEmpr, instance);
         this.messageQueues.set(ideEmpr, this.createMessageQueue());
 
@@ -135,15 +137,22 @@ export class WhatsappWebService implements OnModuleInit {
             this.attemptReconnection(ideEmpr);
             throw error;
         }
+       }
     }
 
-    private async getAccountConfig(ideEmpr: string): Promise<any> {
-        // Implementa la lógica para obtener la configuración de tu tabla wha_cuenta
-        // Esto es un ejemplo:
-        return {
-            id_cuenta_whcue: `account_${ideEmpr}`,
-            // otros campos necesarios...
-        };
+    private async getAccountConfig(ideEmpr: number): Promise<AccountConfig> {
+        
+        const res = await this.whatsappDb.getCuenta(ideEmpr)
+        if ( res) {
+            return {
+                id_cuenta_whcue: `account_${ideEmpr}`,
+                id_telefono_whcue : res.id_telefono_whcue,
+                id_empr: ideEmpr,
+                nombre_whcue: res.nombre_whcue
+                // otros campos necesarios...
+            };
+        }
+        return undefined;
     }
 
     private createMessageQueue(): PQueue {
@@ -154,7 +163,7 @@ export class WhatsappWebService implements OnModuleInit {
         });
     }
 
-    private setupEventHandlers(ideEmpr: string, instance: WhatsAppClientInstance) {
+    private setupEventHandlers(ideEmpr: string, instance: WhatsAppClientInstance, cuenta: AccountConfig) {
         const { client, eventEmitter } = instance;
 
         client.on('qr', (qr) => {
@@ -171,7 +180,23 @@ export class WhatsappWebService implements OnModuleInit {
             this.logger.log(`Client authenticated for company ${ideEmpr}`);
         });
 
-        client.on('ready', () => {
+        client.on('ready', async () => {
+            const currentNumber = client.info?.wid?.user || '';
+            if (currentNumber!==cuenta.id_telefono_whcue) {
+                this.logger.error(`Número no autorizado conectado: ${currentNumber} empresa ${cuenta.nombre_whcue}`);
+                 // Desconexión segura
+                 // await client.logout();
+                 // instance.status = 'unauthorized';
+                //  eventEmitter.emit('auth_error', {
+                //      type: 'UNAUTHORIZED_NUMBER',
+                //      message: 'Número no autorizado',
+                //      currentNumber,                     
+                //  });
+                 // Opcional: Limpiar la sesión
+                 // await this.clearSession(ideEmpr);
+                // return;
+            }
+            
             instance.status = 'ready';
             instance.lastActivity = new Date();
             this.logger.log(`Client is ready for company ${ideEmpr}`);
@@ -188,6 +213,18 @@ export class WhatsappWebService implements OnModuleInit {
             instance.status = 'disconnected';
             await this.clearSession(ideEmpr);
             this.attemptReconnection(ideEmpr);
+        });
+
+        // Manejar cambios de estado para detectar conflictos
+        client.on('change_state', async (state) => {
+            if (state === 'CONFLICT' || state === 'UNPAIRED') {
+                this.logger.warn(`State changed to ${state} for company ${ideEmpr}`);
+                const currentNumber = client.info?.wid?.user || '';                             
+                if (currentNumber !== cuenta.id_telefono_whcue) {
+                    await client.logout();
+                    instance.status = 'unauthorized';
+                }
+            }
         });
 
         client.on('message', (message) => this.processIncomingMessage(ideEmpr, message));
@@ -525,6 +562,7 @@ export class WhatsappWebService implements OnModuleInit {
             isGroupMsg: chat.isGroup,
             senderName: chat.name,
             location: msg.location,
+            // data:  msg['_data'],
             // Nuevos campos para multimedia
             mediaInfo: msg.hasMedia ? {
                 deprecatedMms3Url: msg['_data']?.deprecatedMms3Url,
@@ -535,6 +573,7 @@ export class WhatsappWebService implements OnModuleInit {
                 size: msg['_data']?.size,
                 mediaKey: msg['_data']?.mediaKey,
                 // mediaKeyTimestamp: msg['_data']?.mediaKeyTimestamp,
+                duration: msg['_data']?.duration,
                 width: msg['_data']?.width,
                 height: msg['_data']?.height,
                 isViewOnce: msg['_data']?.isViewOnce,
@@ -577,8 +616,8 @@ export class WhatsappWebService implements OnModuleInit {
 
         const instance = this.clients.get(`${dto.ideEmpr}`);
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
-
         return {
+            
             status: instance.status,
             isOnline: instance.status === 'ready',
             lastQr: instance.qrCode,
@@ -588,7 +627,8 @@ export class WhatsappWebService implements OnModuleInit {
                 size: queue?.size || 0,
                 pending: queue?.pending || 0,
                 isPaused: queue?.isPaused || false
-            }
+            }, 
+            info: instance.client.info
         };
     }
 
@@ -678,12 +718,7 @@ export class WhatsappWebService implements OnModuleInit {
 
 
 
-    async download(ideEmpr: string, messageId: string): Promise<MediaFile> {
-        const instance = await this.getClientInstance(`${ideEmpr}`);
-        if (instance.status !== 'ready') {
-            throw new Error(`WhatsApp client is not ready for company ${ideEmpr}`);
-        }
-
+    async download(ideEmpr: string, messageId: string): Promise<MediaFile> {       
         // 1. Verificar existencia del archivo en BD
         const resFile = await this.whatsappDb.getFile(messageId);
         if (resFile) {
@@ -705,7 +740,10 @@ export class WhatsappWebService implements OnModuleInit {
             }
         }
 
-
+        const instance = await this.getClientInstance(`${ideEmpr}`);
+        if (instance.status !== 'ready') {
+            throw new Error(`WhatsApp client is not ready for company ${ideEmpr}`);
+        }
         const message: Message = await instance.client.getMessageById(messageId);
         if (!message) {
             throw new Error('Message not found');
@@ -719,7 +757,6 @@ export class WhatsappWebService implements OnModuleInit {
 
             // Determinar extensión del archivo
             const extension = getFileExtension(media.mimetype, media.filename);
-
             // Guardar en archivo temporal
             const buffer = Buffer.from(media.data, 'base64');
             const { fileName } = await this.fileTempService.saveTempFile(buffer, extension);
@@ -734,7 +771,8 @@ export class WhatsappWebService implements OnModuleInit {
             };
         } catch (error) {
             this.logger.error('Error downloading media:', error);
-            throw new Error('Failed to download media');
+            // throw new Error('Failed to download media');
+            return undefined;
         }
     }
 
@@ -774,7 +812,9 @@ export class WhatsappWebService implements OnModuleInit {
         try {
             const profilePicUrl = await this.getProfilePicUrl(ideEmpr, contactId);
             if (!profilePicUrl) {
-                throw new NotFoundException('No se pudo obtener la imagen de perfil');
+                this.logger.error(`No se pudo obtener la imagen de perfil ${contactId}`);
+                return undefined;
+                // throw new NotFoundException('No se pudo obtener la imagen de perfil');
             }
             // Descargar la imagen
             const response = await this.httpService.axiosRef.get(profilePicUrl, {
@@ -794,3 +834,29 @@ export class WhatsappWebService implements OnModuleInit {
 
 
 }
+
+
+// async getQrCode(dto: ServiceDto) {
+//     return 'ok'
+    
+//     const instance = await this.getClientInstance(`${dto.ideEmpr}`);
+//     return {ok:'ok'}
+//     if (instance.status === 'qr') {
+//         // Verifica que qrCode sea un string no vacío
+//         if (!instance.qrCode || typeof instance.qrCode !== 'string') {
+//             throw new Error('QR code data is invalid');
+//         }
+
+//         try {
+//             const qrCodeImageBuffer = await qrcode.toBuffer(instance.qrCode);
+//             const fileName = `qr_${dto.ideEmpr}.png`;
+//             await this.fileTempService.saveTempFile(qrCodeImageBuffer, 'png', fileName);
+//             return { qr: instance.qrCode, status: 'qr-pending', fileName };
+//         } catch (error) {
+//             console.error('Error generating QR buffer:', error);
+//             return {er:error}
+//             throw new Error('Failed to generate QR code image');
+//         }
+//     }
+//     return { qr: null, status: instance.status };
+// }

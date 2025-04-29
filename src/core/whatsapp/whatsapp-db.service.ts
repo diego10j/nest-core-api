@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
 import { ServiceDto } from 'src/common/dto/service.dto';
 import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
@@ -34,7 +34,7 @@ export class WhatsappDbService {
         * @param dto 
         * @returns 
         */
-    async getCuenta(dto: ServiceDto) {
+    async getCuenta(ideEmpr: number) {
         const query = new SelectQuery(`       
         SELECT
             ide_whcue,
@@ -50,9 +50,13 @@ export class WhatsappDbService {
             ide_empr = $1
             AND activo_whcue = TRUE
         LIMIT 1
-        `, dto);
-        query.addParam(1, dto.ideEmpr);
-        return await this.dataSource.createSingleQuery(query);
+        `);
+        query.addParam(1, ideEmpr);
+        const res= await this.dataSource.createSingleQuery(query);
+        if(res){
+            return res;
+        }
+        throw new NotFoundException('No existe cuenta configurada');
 
     }
 

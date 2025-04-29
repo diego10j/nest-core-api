@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { Response } from 'express';
+import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { WhatsappService } from './whatsapp.service';
 import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
@@ -41,7 +41,7 @@ export class WhatsappController {
   getCuenta(
     @Body() dtoIn: ServiceDto
   ) {
-    return this.whatsappDbService.getCuenta(dtoIn);
+    return this.whatsappDbService.getCuenta(dtoIn.ideEmpr);
   }
 
 
@@ -89,14 +89,15 @@ export class WhatsappController {
 
 
   @Get('download/:ideEmpr/:id')
-  @Header('Cache-Control', 'no-store, max-age=0')
+  @Header('Cache-Control', 'public, max-age=3600')
   async download(
     @Param('ideEmpr') ideEmpr: string,
     @Param('id') messageId: string,
+    @Req() req: Request,
     @Res() res: Response
   ) {
     const fileInfo = await this.service.downloadMedia(ideEmpr, messageId);
-    return await this.service.fileTempService.downloadMediaFile(fileInfo, res);
+    return await this.service.fileTempService.downloadMediaFile(fileInfo, req, res);
   }
 
   // ==============================
