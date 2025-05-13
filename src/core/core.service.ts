@@ -24,7 +24,7 @@ export class CoreService {
     async getListDataValues(dto: ListDataValuesDto) {
         const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
         const columnOrder = dto.columnOrder || dto.columnLabel;
-        const pq = new SelectQuery(`SELECT ${dto.primaryKey} as value, ${dto.columnLabel} as label 
+        const pq = new SelectQuery(`SELECT CAST(${dto.primaryKey} AS VARCHAR) as value, ${dto.columnLabel} as label 
                                     FROM ${dto.module}_${dto.tableName}  ${condition} ORDER BY ${columnOrder}`);
         const data: any[] = await this.dataSource.createSelectQuery(pq);
         // data.unshift({ value: '', label: '' }); //Add empty select option
@@ -64,6 +64,14 @@ export class CoreService {
         }
         const dtoIn = { ...dto, condition: `${whereClause}` }
         return this.getTableQuery(dtoIn);
+    }
+
+
+    async getTableQueryById(dto: FindByIdDto) {
+
+        const whereClause = `${dto.primaryKey} = ${dto.value}`;
+        const dtoIn = { ...dto, condition: `${whereClause}` }
+        return await this.getTableQuery(dtoIn);
     }
 
 
@@ -204,6 +212,7 @@ export class CoreService {
         ${extraCondition}
         ${orderByClause}
         LIMIT ${dtoIn.limit}`, dtoIn);
+        console.log(query)
 
         // Añadir parámetros para cada columna de búsqueda (repetir el valor para cada columna)
         for (let i = 0; i < dtoIn.columnsSearch.length; i++) {

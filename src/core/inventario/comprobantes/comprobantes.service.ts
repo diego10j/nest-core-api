@@ -63,8 +63,8 @@ export class ComprobantesInvService extends BaseService {
         order by  fecha_trans_incci desc, ide_incci desc
     `, dtoIn);
 
-        query.addDateParam(1, dtoIn.fechaInicio);
-        query.addDateParam(2, dtoIn.fechaFin);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
         query.addIntParam(3, dtoIn.ideEmpr);
 
         return await this.dataSource.createQuery(query);

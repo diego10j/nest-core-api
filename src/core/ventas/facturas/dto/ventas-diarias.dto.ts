@@ -5,6 +5,6 @@ import { PartialType } from '@nestjs/mapped-types';
 export class VentasDiariasDto extends PartialType(ServiceDto) {
 
     @IsDateString()
-    fecha: Date;
+    fecha: string;
 
 }

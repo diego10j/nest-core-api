@@ -23,6 +23,7 @@ import { GetChatsDto } from '../dto/get-chats.dto';
 import { WhatsappDbService } from '../whatsapp-db.service';
 import { getFileExtension } from '../web/helper/util';
 import { FileTempService } from 'src/core/sistema/files/file-temp.service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class WhatsappApiService {
@@ -305,7 +306,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async getMensajes(dto: GetMensajesDto) {
+    async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
         if (dto.telefono === '000000000000') {
             return [];
         }
@@ -602,7 +603,7 @@ export class WhatsappApiService {
     /**
         * Marca como leidos todos los mensajes de un chat
         */
-    async setMensajesLeidosChat(dto: GetMensajesDto) {
+    async setMensajesLeidosChat(dto: GetMensajesDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
         return await this.whatsappDb.setMensajesLeidosChat(dto, config);
 

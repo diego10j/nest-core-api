@@ -1,7 +1,7 @@
 import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, Matches } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
-export class GetMensajesDto extends ServiceDto {
+export class GetMensajesDto {
 
     // API
     @IsString()
@@ -11,7 +11,6 @@ export class GetMensajesDto extends ServiceDto {
 
 
     // WEB
-
     @IsString()
     @IsNotEmpty()
     chatId: string;

@@ -4,13 +4,12 @@ import { ServiceDto } from 'src/common/dto/service.dto';
 export class TrnClienteDto extends ServiceDto {
 
     @IsDateString()
-    fechaInicio: Date;
+    fechaInicio: string;
 
     @IsDateString()
-    fechaFin: Date;
+    fechaFin: string;
 
     @IsInt()
-    @IsPositive()
     ide_geper: number;
 
 }

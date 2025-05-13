@@ -5,10 +5,10 @@ import { PartialType } from '@nestjs/mapped-types';
 export class EventosAuditoriaDto extends PartialType(ServiceDto) {
 
     @IsDateString()
-    fechaInicio: Date;
+    fechaInicio: string;
 
     @IsDateString()
-    fechaFin: Date;
+    fechaFin: string;
 
     @IsInt()
     @IsPositive()

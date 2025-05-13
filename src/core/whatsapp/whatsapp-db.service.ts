@@ -16,6 +16,7 @@ import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
+import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 
 
 
@@ -52,8 +53,8 @@ export class WhatsappDbService {
         LIMIT 1
         `);
         query.addParam(1, ideEmpr);
-        const res= await this.dataSource.createSingleQuery(query);
-        if(res){
+        const res = await this.dataSource.createSingleQuery(query);
+        if (res) {
             return res;
         }
         throw new NotFoundException('No existe cuenta configurada');
@@ -73,13 +74,13 @@ export class WhatsappDbService {
                     CASE 
                         WHEN EXISTS (
                             SELECT 1 
-                            FROM wha_agente ag
-                            INNER JOIN wha_cuenta_agente cag ON ag.ide_whage = cag.ide_whage
+                            FROM sis_usuario ag
+                            INNER JOIN wha_cuenta_agente cag ON ag.ide_usua = cag.ide_usua
                             INNER JOIN wha_cuenta cue ON cag.ide_whcue = cue.ide_whcue
                             WHERE ag.ide_usua = $1
                             AND cue.ide_empr = $2
                             AND activo_whcue = true
-                            AND ag.activo_whage = TRUE
+                            AND activo_whcuag = true
                             limit 1
                         ) THEN 'si'
                         ELSE 'no'
@@ -98,7 +99,23 @@ export class WhatsappDbService {
         return data;
     }
 
-
+    /**
+     * Obtine los agentes de la cuenta de whatsapp
+     * @param dto 
+     * @returns 
+     */
+    async getAgentesCuenta(dto: ServiceDto) {
+        const query = new SelectQuery(`
+            select  ca.ide_whcuag, ca.ide_usua, 
+                    nom_usua, ca.activo_whcuag,ca.hora_ingre, avatar_usua
+            from wha_cuenta_agente ca
+            inner join sis_usuario u on ca.ide_usua = u.ide_usua
+            inner join wha_cuenta c on ca.ide_whcue = c.ide_whcue
+            where c.ide_empr = $1
+            and c.activo_whcue = true `, dto);
+        query.addParam(1, dto.ideEmpr);
+        return await this.dataSource.createQuery(query);
+    }
 
     /**
     * Obtiene todos los mensajes agrupados por número de teléfono
@@ -294,7 +311,7 @@ export class WhatsappDbService {
             and wa_id_whmem = $2
             order by
                 ide_whmem     
-        `, dto);
+        `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addParam(2, dto.telefono);
         return await this.dataSource.createSelectQuery(query);
@@ -319,7 +336,7 @@ export class WhatsappDbService {
         WHERE
             a.wa_id_whlic = $1
             AND activo_whlis = TRUE
-        `, dto);
+        `);
         query.addParam(1, dto.telefono);
         const data = await this.dataSource.createSelectQuery(query);
         const result = data.map(item => item.ide_whlis);
@@ -699,6 +716,88 @@ export class WhatsappDbService {
 
 
 
+
+    // ================================= CAMPAÑAS
+
+    /**
+* Obtine los agentes de la cuenta de whatsapp
+* @param dto 
+* @returns 
+*/
+    async getListaCampanias(dto: ServiceDto) {
+        const query = new SelectQuery(`
+        SELECT 
+            cab.ide_whcenv, 
+            cab.hora_ingre AS fecha, 
+            cab.nombre_whcenv, 
+            cab.descripcion_whcenv, 
+            CASE 
+                WHEN LENGTH(cab.mensaje_whcenv) > 50 
+                THEN CONCAT(LEFT(cab.mensaje_whcenv, 50), '...') 
+                ELSE cab.mensaje_whcenv 
+            END AS mensaje_whcenv,
+            cab.programado_whcenv, 
+            cab.hora_progra_whcenv, 
+            cab.status_auto_whcenv, 
+            c.activo_whcue, 
+            t.nombre_whtice, 
+            t.color_whtice, 
+            u.nom_usua,
+            COUNT(det.ide_whdenv) AS total_detalle,
+            SUM(CASE WHEN det.id_mensaje_whden IS NOT NULL THEN 1 ELSE 0 END) AS total_enviados_exito
+        FROM 
+            wha_cab_camp_envio cab
+        LEFT JOIN 
+            wha_tipo_camp_envio t ON cab.ide_whtice = t.ide_whtice
+        INNER JOIN 
+            sis_usuario u ON cab.ide_usua = u.ide_usua
+        INNER JOIN 
+            wha_cuenta c ON cab.ide_whcue = c.ide_whcue
+        LEFT JOIN 
+            wha_det_camp_envio det ON cab.ide_whcenv = det.ide_whcenv
+        WHERE 
+            c.ide_empr = $1
+            AND c.activo_whcue = TRUE
+        GROUP BY 
+            cab.ide_whcenv, 
+            cab.hora_ingre,
+            cab.nombre_whcenv, 
+            cab.descripcion_whcenv, 
+            cab.mensaje_whcenv,  -- Aunque lo usamos en el CASE, debe estar en GROUP BY
+            cab.programado_whcenv, 
+            cab.hora_progra_whcenv, 
+            cab.status_auto_whcenv, 
+            c.activo_whcue, 
+            t.nombre_whtice, 
+            t.color_whtice, 
+            u.nom_usua`, dto);
+        query.addParam(1, dto.ideEmpr);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    async getDetalleCampania(dto: GetDetalleCampaniaDto) {
+        const query = new SelectQuery(`
+        SELECT
+            ide_whdenv,
+            telefono_whden,
+            d.hora_ingre AS fecha_creacion,
+            fecha_envio_whden,
+            id_mensaje_whden,
+            status_whmem,
+            timestamp_sent_whmem,
+            timestamp_read_whmem,
+            error_whmem
+        FROM
+            wha_det_camp_envio d
+            LEFT JOIN wha_mensaje m ON d.id_mensaje_whden = m.id_whmem
+        WHERE
+            ide_whcenv = $1
+        ORDER BY
+            d.hora_ingre`, dto);
+        query.addParam(1, dto.ide_whcenv);
+        return await this.dataSource.createQuery(query);
+    }
 }
 
 

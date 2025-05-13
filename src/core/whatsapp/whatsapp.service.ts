@@ -11,6 +11,7 @@ import { SearchChatDto } from './dto/search-chat.dto';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { MediaFile } from './api/interface/whatsapp';
 import { FileTempService } from '../sistema/files/file-temp.service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class WhatsappService {
@@ -26,7 +27,7 @@ export class WhatsappService {
      * @param dto 
      * @returns 
      */
-    async getMensajes(dto: GetMensajesDto) {
+    async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
         if (dto.telefono === '000000000000') {
             return [];
         }

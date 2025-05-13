@@ -21,13 +21,13 @@ export class EventoDto extends ServiceDto {
   @IsBeforeOrEqualTo('fecha_fin_cale', {
     message: 'Fecha Inicio debe ser menor o igual que la Fecha fin',
   })
-  start: Date;
+  start: string;
 
   @IsDateString()
   @IsAfterOrEqualTo('fecha_inicio_cale', {
     message: 'Fecha fin debe ser mayor o igual que la Fecha inicio',
   })
-  end: Date;
+  end: string;
 
   @IsOptional()
   @IsBoolean()

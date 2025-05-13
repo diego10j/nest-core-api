@@ -373,8 +373,8 @@ export class ProductosService extends BaseService {
 
         // 3. Asignar parámetros
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
 
         query.setAutoPagination(false);
 
@@ -432,8 +432,8 @@ export class ProductosService extends BaseService {
         ORDER BY 
             cf.fecha_emisi_cccfa desc, secuencial_ccdfa desc`, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -512,11 +512,11 @@ export class ProductosService extends BaseService {
         LIMIT 200
             `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
         query.addIntParam(4, dtoIn.ide_inarti);
-        query.addDateParam(5, dtoIn.fechaInicio);
-        query.addDateParam(6, dtoIn.fechaFin);
+        query.addParam(5, dtoIn.fechaInicio);
+        query.addParam(6, dtoIn.fechaFin);
         const res = await this.dataSource.createQuery(query);
 
         res.row = {
@@ -588,8 +588,8 @@ export class ProductosService extends BaseService {
         cf.fecha_emisi_cpcfa desc, numero_cpcfa`
             , dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -1234,7 +1234,7 @@ export class ProductosService extends BaseService {
         GROUP BY   
             ide_inarti `);
         querySaldoInicial.addIntParam(1, ide_inarti);
-        querySaldoInicial.addDateParam(2, fecha);
+        querySaldoInicial.addParam(2, fecha);
         const data = await this.dataSource.createSingleQuery(querySaldoInicial);
         if (data) {
             saldoInicial = Number(data.saldo);

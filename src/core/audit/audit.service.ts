@@ -73,8 +73,8 @@ export class AuditService {
         where fecha_auac between $1 and $2
         ${condUsuario}
         order by fecha_auac desc ,hora_auac desc, nom_usua`);
-        queryPass.addDateParam(1, fechaInicio);
-        queryPass.addDateParam(2, fechaFin);
+        queryPass.addParam(1, fechaInicio);
+        queryPass.addParam(2, fechaFin);
         if (isDefined(ide_usua))
             queryPass.addIntParam(3, ide_usua);
         return await this.dataSource.createQuery(queryPass);
@@ -88,8 +88,8 @@ export class AuditService {
     async deleteEventosAuditoria(dtoIn: DeleteAuditoriaDto) {
         const dq = new DeleteQuery("sis_auditoria_acceso");
         dq.where = "fecha_auac BETWEEN $1 AND $2";
-        dq.addDateParam(1, dtoIn.fechaInicio);
-        dq.addDateParam(2, dtoIn.fechaFin);
+        dq.addParam(1, dtoIn.fechaInicio);
+        dq.addParam(2, dtoIn.fechaFin);
         if (dtoIn.ide_auac) {
             dq.where += ' AND ide_auac = ANY($3)';
             dq.addArrayStringParam(3, dtoIn.ide_auac);

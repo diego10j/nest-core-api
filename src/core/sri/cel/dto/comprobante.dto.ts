@@ -10,7 +10,7 @@ export class ComprobanteDto {
     estab: string;
     ptoemi: string;
     secuencial: string;
-    fechaemision: Date;
+    fechaemision: string;
     direstablecimiento?: string; // Dirección de la oficina
     guiaremision?: string;
     numAutorizacion: string;
@@ -23,12 +23,12 @@ export class ComprobanteDto {
     rise?: string;
     coddocmodificado?: string;
     numdocmodificado?: string;
-    fechaemisiondocsustento?: Date;
+    fechaemisiondocsustento?: string;
     valormodificacion?: number;
     codigofirma?: any; // Define correctamente según tu implementación para "Firma"
     codigoestado?: number;
     oficina?: string;
-    fechaautoriza?: Date;
+    fechaautoriza?: string;
     cliente?: ClienteDto;
     subtotal0?: number;
     subtotal?: number;
@@ -47,8 +47,8 @@ export class ComprobanteDto {
     correo?: string;
     // Campos para guías de remisión
     dirPartida?: string;
-    fechaIniTransporte?: Date;
-    fechaFinTransporte?: Date;
+    fechaIniTransporte?: string;
+    fechaFinTransporte?: string;
     placa?: string;
     destinatario?: any; // Define correctamente según tu implementación para "Destinatario"
     codigoComprobanteFactura?: number;

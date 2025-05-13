@@ -5,7 +5,7 @@ export class StockProductosDto extends ServiceDto {
 
     @IsDateString()
     @IsOptional()
-    fechaCorte?: Date;
+    fechaCorte?: string;
 
 
     @IsOptional()

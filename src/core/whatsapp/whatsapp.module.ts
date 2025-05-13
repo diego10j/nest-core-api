@@ -10,12 +10,13 @@ import { WhatsappWebService } from './web/whatsapp-web.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
 import { FileTempService } from '../sistema/files/file-temp.service';
+import { WhatsappCampaniaService } from './whatsapp-camp.service';
 
 
 @Module({
   imports: [ErrorsModule, HttpModule],
   controllers: [WhatsappController, WebhookController],
-  providers: [DataSourceService, WhatsappApiService, WhatsappGateway, WhatsappWebService, WhatsappDbService,WhatsappService,FileTempService],
+  providers: [DataSourceService, WhatsappApiService, WhatsappGateway, WhatsappWebService, WhatsappDbService,WhatsappService,FileTempService, WhatsappCampaniaService],
   exports: [WhatsappService],
 })
 export class WhatsappModule { }

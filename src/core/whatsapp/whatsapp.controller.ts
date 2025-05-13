@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { WhatsappService } from './whatsapp.service';
@@ -18,6 +18,11 @@ import { ApiOperation } from '@nestjs/swagger';
 import { SendLocationDto } from './web/dto/send-location.dto';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { SearchChatDto } from './dto/search-chat.dto';
+import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
+import { WhatsappCampaniaService } from './whatsapp-camp.service';
+import { SaveDetallesCampaniaDto } from './dto/save-det-camp.dto';
+import {  HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 
 
 @Controller('whatsapp')
@@ -25,10 +30,11 @@ export class WhatsappController {
 
   constructor(private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
+    private readonly whatsappCamp: WhatsappCampaniaService
   ) { }
 
   // ---------------------------- COMMON
-  @Post('getChats')
+  @Get('getChats')
   // @Auth()
   getChats(
     @Body() dtoIn: GetChatsDto
@@ -36,22 +42,46 @@ export class WhatsappController {
     return this.service.getChats(dtoIn);
   }
 
-  @Post('getCuenta')
+  // @Get('getCuenta')
+  // // @Auth()
+  // getCuenta(
+  //   @Query() dtoIn: ServiceDto
+  // ) {
+  //   return this.whatsappDbService.getCuenta(dtoIn.ideEmpr);
+  // }
+
+
+  @Get('getCuenta')
   // @Auth()
-  getCuenta(
-    @Body() dtoIn: ServiceDto
-  ) {
-    return this.whatsappDbService.getCuenta(dtoIn.ideEmpr);
+  async getCuenta(
+    @AppHeaders() headersParams: HeaderParamsDto) {
+    return this.whatsappDbService.getCuenta(headersParams.ideEmpr);
   }
 
 
-  @Post('getMensajes')
+
+  @Get('getMensajes')
   // @Auth()
-  getMensajes(
-    @Body() dtoIn: GetMensajesDto
-  ) {
-    return this.service.getMensajes(dtoIn);
+  async getMensajes(
+    @AppHeaders() appHeaders: HeaderParamsDto,
+    @Query() dtoIn: GetMensajesDto
+    ) {
+      return this.service.getMensajes({
+        ...appHeaders,
+        ...dtoIn
+      });
   }
+
+
+
+
+  // @Get('getMensajes')
+  // // @Auth()
+  // getMensajes(
+  //   @Body() dtoIn: GetMensajesDto
+  // ) {
+  //   return this.service.getMensajes(dtoIn);
+  // }
 
 
   @Post('enviarMensajeMedia')
@@ -100,9 +130,19 @@ export class WhatsappController {
     return await this.service.fileTempService.downloadMediaFile(fileInfo, req, res);
   }
 
+
+
+  @Get('getAgentesCuenta')
+  // @Auth()
+  getAgentesCuenta(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.whatsappDbService.getAgentesCuenta(dtoIn);
+  }
+
   // ==============================
   // ---------------------------- API
-  @Post('getListasContacto')
+  @Get('getListasContacto')
   // @Auth()
   getListasContacto(
     @Body() dtoIn: GetMensajesDto
@@ -111,7 +151,7 @@ export class WhatsappController {
   }
 
 
-  @Post('getListas')
+  @Get('getListas')
   // @Auth()
   getListas(
     @Body() dtoIn: ServiceDto
@@ -120,7 +160,7 @@ export class WhatsappController {
   }
 
 
-  @Post('getEtiquetas')
+  @Get('getEtiquetas')
   // @Auth()
   getEtiquetas(
     @Body() dtoIn: ServiceDto
@@ -128,9 +168,9 @@ export class WhatsappController {
     return this.service.whatsappApi.getEtiquetas(dtoIn);
   }
 
-  @Post('validarPermisoAgente')
+  @Get('getPermisoAgente')
   // @Auth()
-  validarPermisoAgente(
+  getPermisoAgente(
     @Body() dtoIn: ServiceDto
   ) {
     return this.whatsappDbService.validarPermisoAgente(dtoIn);
@@ -141,7 +181,8 @@ export class WhatsappController {
   setMensajesLeidosChat(
     @Body() dtoIn: GetMensajesDto
   ) {
-    return this.service.whatsappApi.setMensajesLeidosChat(dtoIn);
+    return 'k'
+   // return this.service.whatsappApi.setMensajesLeidosChat(dtoIn);
   }
 
   @Post('setChatNoLeido')
@@ -169,7 +210,7 @@ export class WhatsappController {
   }
 
 
-  @Post('getContactosLista')
+  @Get('getContactosLista')
   // @Auth()
   getContactosLista(
     @Body() dtoIn: ListaChatDto
@@ -178,7 +219,7 @@ export class WhatsappController {
   }
 
 
-  @Post('getTotalMensajes')
+  @Get('getTotalMensajes')
   // @Auth()
   getTotalMensajes(
     @Body() dtoIn: ServiceDto
@@ -186,7 +227,7 @@ export class WhatsappController {
     return this.service.whatsappApi.getTotalMensajes(dtoIn);
   }
 
-  @Post('findContacto')
+  @Get('findContacto')
   // @Auth()
   findContacto(
     @Body() dtoIn: SearchChatDto
@@ -194,7 +235,7 @@ export class WhatsappController {
     return this.service.whatsappApi.findContacto(dtoIn);
   }
 
-  @Post('findTextoMensajes')
+  @Get('findTextoMensajes')
   // @Auth()
   findTextoMensajes(
     @Body() dtoIn: SearchChatDto
@@ -202,7 +243,7 @@ export class WhatsappController {
     return this.service.whatsappApi.findTextoMensajes(dtoIn);
   }
 
-  @Post('searchContacto')
+  @Get('searchContacto')
   // @Auth()
   searchContacto(
     @Body() dtoIn: SearchChatDto
@@ -231,7 +272,7 @@ export class WhatsappController {
 
   // ---------------------------- WEB
 
-  @Post('getStatus')
+  @Get('getStatus')
   @ApiOperation({ summary: 'Post WhatsApp connection status' })
   getStatus(
     @Body() dtoIn: ServiceDto
@@ -239,7 +280,7 @@ export class WhatsappController {
     return this.service.whatsappWeb.getStatus(dtoIn);
   }
 
-  @Post('getQr')
+  @Get('getQr')
   @ApiOperation({ summary: 'Post current QR code for authentication' })
   async getQr(
     @Body() dtoIn: ServiceDto
@@ -265,10 +306,9 @@ export class WhatsappController {
   }
 
 
-
-
-  @Get('serveFile/:filename')
-  async serveFile(
+  @Get('getServeFile/:filename')
+  @Header('Cache-Control', 'public, max-age=3600')
+  async getServeFile(
     @Param('filename') filename: string,
     @Res() response: Response
   ) {
@@ -277,6 +317,7 @@ export class WhatsappController {
 
 
   @Get('getProfilePicture/:ideEmpr/:contactId')
+  @Header('Cache-Control', 'public, max-age=3600')
   async getProfilePicture(
     @Param('ideEmpr') ideEmpr: string,
     @Param('contactId') contactId: string,
@@ -287,6 +328,34 @@ export class WhatsappController {
       contactId,
       response
     );
+  }
+
+
+  // ---------------------------- CAMPAÑAS
+
+
+  @Get('getListaCampanias')
+  // @Auth()
+  getListaCampanias(
+    @Body() dtoIn: ServiceDto
+  ) {
+    return this.whatsappDbService.getListaCampanias(dtoIn);
+  }
+
+  @Get('getDetalleCampania')
+  // @Auth()
+  getDetalleCampania(
+    @Body() dtoIn: GetDetalleCampaniaDto
+  ) {
+    return this.whatsappDbService.getDetalleCampania(dtoIn);
+  }
+
+  @Post('saveDetalleCampania')
+  // @Auth()
+  saveDetalleCampania(
+    @Body() dtoIn: SaveDetallesCampaniaDto
+  ) {
+    return this.whatsappCamp.saveDetalleCampania(dtoIn);
   }
 
 }

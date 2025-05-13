@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import {  IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
 

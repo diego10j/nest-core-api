@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import { ServiceDto } from 'src/common/dto/service.dto';
 
 
@@ -12,11 +12,16 @@ export class SendLocationDto extends ServiceDto {
     })
     telefono: string;
 
-    @IsInt()
+    @IsNumber({ maxDecimalPlaces: 8 }, {
+        message: 'latitude debe ser un número con hasta 8 decimales'
+    })
     latitude: number;
 
-    @IsInt()
+    @IsNumber({ maxDecimalPlaces: 8 }, {
+        message: 'longitude debe ser un número con hasta 8 decimales'
+    })
     longitude: number;
+
 
     @IsString()
     @IsOptional()

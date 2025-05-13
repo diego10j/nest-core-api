@@ -293,10 +293,10 @@ export class ClientesService extends BaseService {
                 fecha_trans_ccdtr, ide_ccdtr;
           `, dtoIn);
         query.addIntParam(1, dtoIn.ide_geper);
-        query.addDateParam(2, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaInicio);
         query.addIntParam(3, dtoIn.ide_geper);
-        query.addDateParam(4, dtoIn.fechaInicio);
-        query.addDateParam(5, dtoIn.fechaFin);
+        query.addParam(4, dtoIn.fechaInicio);
+        query.addParam(5, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -338,8 +338,8 @@ export class ClientesService extends BaseService {
             cf.fecha_emisi_cccfa desc, serie_ccdaf,secuencial_ccdfa
         `, dtoIn);
         query.addIntParam(1, dtoIn.ide_geper);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -591,11 +591,11 @@ export class ClientesService extends BaseService {
             dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
             `);
         query.addIntParam(1, dtoIn.ide_geper);
-        query.addDateParam(2, dtoIn.fechaInicio);
-        query.addDateParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
         query.addIntParam(4, dtoIn.ide_geper);
-        query.addDateParam(5, dtoIn.fechaInicio);
-        query.addDateParam(6, dtoIn.fechaFin);
+        query.addParam(5, dtoIn.fechaInicio);
+        query.addParam(6, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -820,7 +820,7 @@ export class ClientesService extends BaseService {
             columnsReturn: ["ide_geper", "identificac_geper", "nom_geper"],
             columnsSearch: ["nom_geper", "identificac_geper", "correo_geper"],
             columnOrder: "nom_geper",
-            condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true`
+            condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true and es_cliente_geper = true and nivel_geper = 'HIJO'`,
         }
         return await this.core.search(dtoIn);
 

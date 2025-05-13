@@ -40,6 +40,7 @@ import { MediaFile } from "../api/interface/whatsapp";
 import { isDefined } from "class-validator";
 import { HttpService } from "@nestjs/axios";
 import { Response } from "express";
+import { HeaderParamsDto } from "src/common/dto/common-params.dto";
 
 
 
@@ -228,6 +229,16 @@ export class WhatsappWebService implements OnModuleInit {
         });
 
         client.on('message', (message) => this.processIncomingMessage(ideEmpr, message));
+        client.on('message_create', (message) => {
+            if (message.fromMe) { // mensajes enviados por el cliente
+                this.processIncomingMessage(ideEmpr, message);
+            }
+        });
+        client.on('message_ack', (message, ack) => {
+            if ( ack === 3) { // 3 indicates the message was read    message.fromMe && 
+            this.whatsappGateway.sendReadMessageToClients(message.id._serialized);
+            }
+        });
     }
 
     private async attemptReconnection(ideEmpr: string) {
@@ -514,7 +525,7 @@ export class WhatsappWebService implements OnModuleInit {
         })));
     }
 
-    async getMensajes(dto: GetMensajesDto) {
+    async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);

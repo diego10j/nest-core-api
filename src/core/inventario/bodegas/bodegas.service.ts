@@ -113,8 +113,8 @@ export class BodegasService extends BaseService {
         order by  fecha_trans_incci desc, ide_incci desc
         `,dtoIn);
 
-        query.addDateParam(1, dtoIn.fechaInicio);
-        query.addDateParam(2, dtoIn.fechaFin);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
         query.addIntParam(3, dtoIn.ideEmpr);
         if (dtoIn.ide_inbod) {
             query.addIntParam(4, dtoIn.ide_inbod);
@@ -221,7 +221,7 @@ export class BodegasService extends BaseService {
             nombre_incate, ARTICULO.nombre_inarti;
         `, dtoIn);
 
-        query.addDateParam(1, fechaCorte);
+        query.addParam(1, fechaCorte);
         if (dtoIn.ide_inbod) {
             query.addParam(2, dtoIn.ide_inbod);
         }

@@ -117,8 +117,8 @@ export class FacturasService extends BaseService {
             secuencial_cccfa desc,
             ide_cccfa desc
         `);
-        query.addDateParam(1, dtoIn.fechaInicio);
-        query.addDateParam(2, dtoIn.fechaFin);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -255,7 +255,7 @@ export class FacturasService extends BaseService {
         ORDER BY d.fecha;       
         
             `);
-        query.addDateParam(1, dtoIn.fecha);
+        query.addParam(1, dtoIn.fecha);
 
         return await this.dataSource.createQuery(query);
     }

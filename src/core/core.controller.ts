@@ -31,6 +31,15 @@ export class CoreController {
         return this.service.getTableQueryByUuid(dtoIn);
     }
 
+
+    @Post('getTableQueryById')
+    //@Auth()
+    getTableQueryById(
+        @Body() dtoIn: FindByIdDto
+    ) {
+        return this.service.getTableQueryById(dtoIn);
+    }
+
     @Post('getTableQuery')
     //@Auth()
     getTableQuery(

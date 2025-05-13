@@ -9,6 +9,7 @@ interface EnvVars {
   // DB_USERNAME: string;
   DB_URL_POOL: string;
   ID_SISTEMA: number;
+  MODE:string;
 
   REDIS_HOST: string;
   REDIS_PORT: string;
@@ -45,6 +46,8 @@ const envsSchema = z.object({
   ID_SISTEMA: z.string().refine(val => !isNaN(Number(val)), {
     message: "ID_SISTEMA must be a number"
   }).transform(Number),
+
+  MODE: z.string(),
 
   REDIS_HOST: z.string(),
   REDIS_PORT: z.string(),
@@ -89,6 +92,7 @@ export const envs = {
   bdUrlPool: envVars.DB_URL_POOL,
 
   idSistema: envVars.ID_SISTEMA,
+  mode: envVars.MODE,
 
   redisHost: envVars.REDIS_HOST,
   redisPort: envVars.REDIS_PORT,

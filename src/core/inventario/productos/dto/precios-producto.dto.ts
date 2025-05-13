@@ -4,10 +4,10 @@ import { ServiceDto } from 'src/common/dto/service.dto';
 export class PreciosProductoDto extends ServiceDto {
 
     @IsDateString()
-    fechaInicio: Date;
+    fechaInicio: string;
 
     @IsDateString()
-    fechaFin: Date;
+    fechaFin: string;
 
     @IsInt()
     @IsPositive()
