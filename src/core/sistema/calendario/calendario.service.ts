@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { InsertQuery } from '../../connection/helpers/insert-query';
 import { UpdateQuery } from '../../connection/helpers/update-query';
@@ -8,6 +8,7 @@ import { DeleteQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEventoDto } from './dto/update-evento.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class CalendarioService {
@@ -22,7 +23,7 @@ export class CalendarioService {
     * Retorna el listado de Usuarios
     * @returns 
     */
-    async getEventos(dtoIn?: ServiceDto) {
+    async getEventos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
 
         const query = new SelectQuery(`
         SELECT
@@ -48,7 +49,7 @@ export class CalendarioService {
     }
 
 
-    async createEvento(dto: CreateEventoDto): Promise<ResultQuery> {
+    async createEvento(dto: CreateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
 
         const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
         insertQuery.values.set('titulo_cale', dto.title);
@@ -65,7 +66,7 @@ export class CalendarioService {
     }
 
 
-    async updateEvento(dto: UpdateEventoDto): Promise<ResultQuery> {
+    async updateEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
 
         const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto)
         updateQuery.values.set('titulo_cale', dto.title);
@@ -82,7 +83,7 @@ export class CalendarioService {
         return await this.dataSource.createQuery(updateQuery);
     }
 
-    async deleteEvento(dto: UpdateEventoDto): Promise<ResultQuery> {
+    async deleteEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
 
         const deleteQuery = new DeleteQuery(this.tableName)
         deleteQuery.where = `uuid = $1`

@@ -1,9 +1,9 @@
 import { IsInt } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 
 
-export class HorarioDto extends ServiceDto {
+export class HorarioDto extends QueryOptionsDto {
 
     @IsInt()
     ide_tihor: number;

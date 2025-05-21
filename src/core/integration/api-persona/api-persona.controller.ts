@@ -1,27 +1,37 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Query, Controller, Get } from '@nestjs/common';
 import { ApiPersonaService } from './api-persona.service';
 import { RucDto } from '../dto/ruc.dto';
 import { CedulaDto } from '../dto/cedula.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Controller('integration/api-persona')
 export class ApiPersonaController {
   constructor(private readonly service: ApiPersonaService) { }
 
-  @Post('consultaCedula')
+  @Get('consultaCedula')
   // @Auth()
   consultaCedula(
-    @Body() dtoIn: CedulaDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: CedulaDto
   ) {
-    return this.service.consultaCedula(dtoIn);
+    return this.service.consultaCedula({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('consultaRUC')
+  @Get('consultaRUC')
   // @Auth()
   consultaRUC(
-    @Body() dtoIn: RucDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: RucDto
   ) {
-    return this.service.consultaRUC(dtoIn);
+    return this.service.consultaRUC({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 

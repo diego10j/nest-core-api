@@ -1,9 +1,9 @@
 import { IsString, IsNotEmpty, IsDefined, IsOptional, IsArray, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
 
-export class UniqueDto extends PartialType(ServiceDto) {
+export class UniqueDto extends PartialType(QueryOptionsDto) {
 
     @IsString()
     @IsNotEmpty()

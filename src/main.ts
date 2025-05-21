@@ -13,9 +13,31 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: ['http://localhost:8080', 'http://172.21.50.13:8080', 'http://devproerpec.site'],
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: [
+      'http://localhost:8080',
+      'http://172.21.50.13:8080',
+      'http://devproerpec.site'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Agregué métodos comunes
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Ide-Usua',
+      'X-Ide-Empr',
+      'X-Ide-Sucu',
+      'X-Ide-Perf',
+      'X-Login',
+      'X-Ip',
+      'X-Terminal'
+    ],
+    exposedHeaders: [
+      'Authorization',
+      'X-Ide-Usua',
+      'X-Ide-Empr',
+      'X-Ide-Sucu',
+      'X-Ide-Perf',
+      'X-Login'
+    ],
   });
 
   // Configurar el adaptador de WebSockets

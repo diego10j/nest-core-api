@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { BaseService } from '../../../common/base-service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
@@ -9,6 +9,7 @@ import { CoreService } from '../../core.service';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
 import { fDate } from 'src/util/helpers/date-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class BodegasService extends BaseService {
@@ -32,7 +33,7 @@ export class BodegasService extends BaseService {
     * Retorna listado de bodegas de la empresa
     * @returns 
     */
-    async getBodegas(dtoIn?: ServiceDto) {
+    async getBodegas(dtoIn?: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         select
             ide_inbod,
@@ -60,7 +61,7 @@ export class BodegasService extends BaseService {
      * @param dto 
      * @returns 
      */
-    async getBodega(dto: IdeDto) {
+    async getBodega(dto: IdeDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', condition: `ide_inbod = ${dto.ide}` }
         return this.core.getTableQuery(dtoIn);
     }
@@ -71,7 +72,7 @@ export class BodegasService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getMovimientos(dtoIn: MovimientosInvDto) {
+    async getMovimientos(dtoIn: MovimientosInvDto & HeaderParamsDto) {
         const condBodega = dtoIn.ide_inbod ? 'AND a.ide_inbod = $4' : '';
         const query = new SelectQuery(`
     select
@@ -111,7 +112,7 @@ export class BodegasService extends BaseService {
         and a.ide_empr = $3
         ${condBodega}
         order by  fecha_trans_incci desc, ide_incci desc
-        `,dtoIn);
+        `, dtoIn);
 
         query.addParam(1, dtoIn.fechaInicio);
         query.addParam(2, dtoIn.fechaFin);
@@ -128,7 +129,7 @@ export class BodegasService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getMovimientosBodega(dtoIn: MovimientosBodegaDto) {
+    async getMovimientosBodega(dtoIn: MovimientosBodegaDto & HeaderParamsDto) {
         return await this.getMovimientos(dtoIn);
     }
 
@@ -138,7 +139,7 @@ export class BodegasService extends BaseService {
   * Retorna el listado de Stock de Productos 
   * @returns 
   */
-    async getStockProductos(dtoIn: StockProductosDto) {
+    async getStockProductos(dtoIn: StockProductosDto & HeaderParamsDto) {
 
         let nombre_inbod = '';
         // Obtiene nombre de las bodegas consultadas
@@ -235,13 +236,13 @@ export class BodegasService extends BaseService {
     * Retorna las bodegas activas de la empresa
     * @returns 
     */
-    async getListDataBodegas(dto?: ServiceDto) {
+    async getListDataBodegas(dto?: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true` }
         return this.core.getListDataValues(dtoIn);
     }
 
 
-    async getListDataDetalleStock(_dto?: ServiceDto) {
+    async getListDataDetalleStock(_dto?: QueryOptionsDto & HeaderParamsDto) {
         return [
             {
                 "value": 1,

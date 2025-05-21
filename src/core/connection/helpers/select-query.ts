@@ -1,5 +1,5 @@
 import { Query } from "./query";
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { isDefined } from 'src/util/helpers/common-util';
 import { GlobalFilterDto } from "src/common/dto/global-filter.dto";
 import { FilterDto } from "src/common/dto/filter.dto";
@@ -27,7 +27,7 @@ export class SelectQuery extends Query {
 
     isWrappedQuery?: boolean;
 
-    constructor(query: string, dto?: ServiceDto) {
+    constructor(query: string, dto?: QueryOptionsDto) {
         super();
         this.isSchema = true;  // Por defecto retorna el esquema de la consulta
         this.isAutoPagination = true;    // Por defecto autopaginacion calculada

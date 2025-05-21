@@ -1,7 +1,7 @@
 import { IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class ContentProductDto extends ServiceDto {
+export class ContentProductDto extends QueryOptionsDto {
   @IsString()
   readonly product: string;
 

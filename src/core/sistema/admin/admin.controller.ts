@@ -1,10 +1,12 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { RucDto } from './dto/ruc.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
@@ -12,125 +14,181 @@ export class AdminController {
 
   // -------------------------------- EMPRESA ---------------------------- //
 
-  @Post('getListDataEmpresa')
+  @Get('getListDataEmpresa')
   // @Auth()
   getListDataEmpresa(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getListDataEmpresa(dtoIn);
+    return this.adminService.getListDataEmpresa({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getTableQueryEmpresa')
+  @Get('getTableQueryEmpresa')
   // @Auth()
   getTableQueryEmpresa(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getTableQueryEmpresa(dtoIn);
+    return this.adminService.getTableQueryEmpresa({
+      ...headersParams,
+      ...dtoIn
+    });
   }
   // -------------------------------- SUCURSAL ---------------------------- //
 
-  @Post('getListDataSucursal')
+  @Get('getListDataSucursal')
   // @Auth()
   getListDataSucursal(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getListDataSucursal(dtoIn);
+    return this.adminService.getListDataSucursal({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getTableQuerySucursal')
+  @Get('getTableQuerySucursal')
   // @Auth()
   getTableQuerySucursal(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getTableQuerySucursal(dtoIn);
+    return this.adminService.getTableQuerySucursal({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   // -------------------------------- SISTEMAS ---------------------------- //
-  @Post('getListDataSistema')
+  @Get('getListDataSistema')
   // @Auth()
   getListDataSistema(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getListDataSistema(dtoIn);
+    return this.adminService.getListDataSistema({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getTableQuerySistema')
+  @Get('getTableQuerySistema')
   // @Auth()
   getTableQuerySistema(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getTableQuerySistema(dtoIn);
+    return this.adminService.getTableQuerySistema({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getEmpresaByRuc')
+  @Get('getEmpresaByRuc')
   getEmpresaByRuc(
-    @Body() dtoIn: RucDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: RucDto
   ) {
-    return this.adminService.getEmpresaByRuc(dtoIn);
+    return this.adminService.getEmpresaByRuc({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   // -------------------------------- OPCIONES ---------------------------- //
 
-  @Post('getTableQueryOpcion')
+  @Get('getTableQueryOpcion')
   // @Auth()
   getTableQueryOpcion(
-    @Body() dtoIn: OpcionDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: OpcionDto
   ) {
-    return this.adminService.getTableQueryOpcion(dtoIn);
+    return this.adminService.getTableQueryOpcion({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getTreeModelOpcion')
+  @Get('getTreeModelOpcion')
   // @Auth()
   getTreeModelOpcion(
-    @Body() dtoIn: OpcionDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: OpcionDto
   ) {
-    return this.adminService.getTreeModelOpcion(dtoIn);
+    return this.adminService.getTreeModelOpcion({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   // -------------------------------- PERFILES ---------------------------- //
 
-  @Post('getTableQueryPerfil')
+  @Get('getTableQueryPerfil')
   // @Auth()
   getTableQueryPerfil(
-    @Body() dtoIn: PerfilDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PerfilDto
   ) {
-    return this.adminService.getTableQueryPerfil(dtoIn);
+    return this.adminService.getTableQueryPerfil({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getPerfilesSistema')
+  @Get('getPerfilesSistema')
   // @Auth()
   getPerfilesSistema(
-    @Body() dtoIn: PerfilDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PerfilDto
   ) {
-    return this.adminService.getPerfilesSistema(dtoIn);
+    return this.adminService.getPerfilesSistema({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   // -------------------------------- HORARIOS ---------------------------- //
 
-  @Post('getListDataTiposHorario')
+  @Get('getListDataTiposHorario')
   // @Auth()
   getListDataTiposHorario(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getListDataTiposHorario(dtoIn);
+    return this.adminService.getListDataTiposHorario({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getTableQueryTiposHorario')
+  @Get('getTableQueryTiposHorario')
   // @Auth()
   getTableQueryTiposHorario(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.adminService.getTableQueryTiposHorario(dtoIn);
+    return this.adminService.getTableQueryTiposHorario({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getTableQueryHorario')
+  @Get('getTableQueryHorario')
   // @Auth()
   getTableQueryHorario(
-    @Body() dtoIn: HorarioDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: HorarioDto
   ) {
-    return this.adminService.getTableQueryHorario(dtoIn);
+    return this.adminService.getTableQueryHorario({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 

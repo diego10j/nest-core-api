@@ -1,7 +1,7 @@
 import { IsBoolean, IsOptional, IsString, Length } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class RucDto extends ServiceDto {
+export class RucDto extends QueryOptionsDto {
 
     @IsString()
     @Length(13, 13, { message: 'El RUC debe tener 13 caracteres.' })

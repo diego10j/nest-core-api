@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Chat, Client, LocalAuth, Location, Message, } from "whatsapp-web.js";
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,9 +15,9 @@ import {
     WhatsAppClientInstance,
     AccountConfig,
 } from './interface/whatsapp-web.interface';
-import { ServiceDto } from "src/common/dto/service.dto";
+import { QueryOptionsDto } from "src/common/dto/query-options.dto";
 import { fTimestampToISODate } from "src/util/helpers/date-util";
-import { SendLocationDto } from "./dto/send-location.dto";
+import { EnviarUbicacionDto } from "./dto/send-location.dto";
 import { GetChatsDto } from "../dto/get-chats.dto";
 import { GetMensajesDto } from "../dto/get-mensajes.dto";
 import { EnviarMensajeDto } from "../dto/enviar-mensaje.dto";
@@ -303,14 +303,14 @@ export class WhatsappWebService implements OnModuleInit {
 
 
     // --- Message Sending --- //
-    async enviarMensajeTexto(dto: EnviarMensajeDto): Promise<any> {
+    async enviarMensajeTexto(dto: EnviarMensajeDto & HeaderParamsDto ): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
         if (!queue) throw new Error(`No client initialized for company ${dto.ideEmpr}`);
 
         return queue.add(() => this.unsafeSendMessage(dto));
     }
 
-    private async unsafeSendMessage(dto: EnviarMensajeDto): Promise<SendMessageResponse> {
+    private async unsafeSendMessage(dto: EnviarMensajeDto & HeaderParamsDto): Promise<SendMessageResponse> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -322,7 +322,7 @@ export class WhatsappWebService implements OnModuleInit {
             this.logger.log(`Message sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
                 messageId: sentMessage.id._serialized
             });
-            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
+            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage,dto.emitSocket);
             this.whatsappGateway.sendMessageToClients(sentMessage.id._serialized);
             return {
                 success: true,
@@ -340,14 +340,14 @@ export class WhatsappWebService implements OnModuleInit {
 
 
     // --- Media Sending --- //
-    async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File): Promise<any> {
+    async enviarMensajeMedia(dto: UploadMediaDto  & HeaderParamsDto , file: Express.Multer.File): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
         if (!queue) throw new Error(`No client initialized for company ${dto.ideEmpr}`);
 
         return queue.add(() => this.unsafeSendMedia(dto, file));
     }
 
-    private async unsafeSendMedia(dto: UploadMediaDto, file: Express.Multer.File): Promise<SendMessageResponse> {
+    private async unsafeSendMedia(dto: UploadMediaDto  & HeaderParamsDto , file: Express.Multer.File): Promise<SendMessageResponse> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -369,7 +369,7 @@ export class WhatsappWebService implements OnModuleInit {
                 messageId: sentMessage.id._serialized
             });
 
-            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage, file.originalname);
+            await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage, dto.emitSocket ,file.originalname);
 
             return {
                 success: true,
@@ -382,14 +382,14 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
     // --- Location Sending --- //
-    async sendLocation(dto: SendLocationDto): Promise<any> {
+    async enviarUbicacion(dto: EnviarUbicacionDto  & HeaderParamsDto): Promise<any> {
         const queue = this.messageQueues.get(`${dto.ideEmpr}`);
         if (!queue) throw new Error(`No client initialized for company ${dto.ideEmpr}`);
 
         return queue.add(() => this.unsafeSendLocation(dto));
     }
 
-    private async unsafeSendLocation(dto: SendLocationDto): Promise<SendMessageResponse> {
+    private async unsafeSendLocation(dto: EnviarUbicacionDto  & HeaderParamsDto): Promise<SendMessageResponse> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -406,7 +406,7 @@ export class WhatsappWebService implements OnModuleInit {
 
         const sentMessage = await instance.client.sendMessage(chatId, location);
         instance.lastActivity = new Date();
-        await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage);
+        await this.whatsappDb.saveMensajeEnviadoWeb(sentMessage,dto.emitSocket);
         this.logger.log(`Location sent to ${dto.telefono} for company ${dto.ideEmpr}`, {
             messageId: sentMessage.id._serialized
         });
@@ -422,13 +422,14 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
     // --- Contact Management --- //
-    async getContactInfo(ideEmpr: string, contactId: string): Promise<any> {
-        const instance = await this.getClientInstance(ideEmpr);
+    async getContactInfo(ideEmpr: number, contactId: string): Promise<any> {
+        const instance = await this.getClientInstance(`${ideEmpr}`);
         try {
             const contact = await instance.client.getContactById(contactId);
             return {
                 id: contact.id._serialized,
                 name: contact.name || contact.pushname || contact.number,
+                pushname: contact.pushname,
                 number: contact.number,
                 isBusiness: contact.isBusiness,
                 isEnterprise: contact.isEnterprise,
@@ -436,7 +437,9 @@ export class WhatsappWebService implements OnModuleInit {
                 isMyContact: contact.isMyContact,
                 isUser: contact.isUser,
                 isWAContact: contact.isWAContact,
-                profilePicUrl: await instance.client.getProfilePicUrl(contact.id._serialized)
+                type: contact.type,
+                labels: contact.labels,
+               // profilePicUrl: await instance.client.getProfilePicUrl(contact.id._serialized)
             };
         } catch (error) {
             this.logger.error(`Error getting contact info for company ${ideEmpr}:`, error);
@@ -456,7 +459,7 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
     // --- Chat Management --- //
-    async getChats(dto: GetChatsDto) {
+    async getChats(dto: GetChatsDto  & HeaderParamsDto) {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -609,7 +612,7 @@ export class WhatsappWebService implements OnModuleInit {
 
 
     // --- Public API --- //
-    async getStatus(dto: ServiceDto): Promise<StatusResponse> {
+    async getStatus(dto: QueryOptionsDto  & HeaderParamsDto): Promise<StatusResponse> {
         if (!this.clients.has(`${dto.ideEmpr}`)) {
             return {
                 status: 'disconnected',
@@ -643,12 +646,52 @@ export class WhatsappWebService implements OnModuleInit {
         };
     }
 
-    async getQrCode(dto: ServiceDto) {
+    async getQrCode(dto: QueryOptionsDto  & HeaderParamsDto) {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         return instance.status === 'qr'
             ? { qr: instance.qrCode, status: 'qr-pending' }
             : { qr: null, status: instance.status };
     }
+
+
+    async validateWhatsAppNumber(
+        ideEmpr: number, 
+        phoneNumber: string
+    ): Promise<{ isValid: boolean; formattedNumber?: string; error?: string }> {
+        const instance = await this.getClientInstance(`${ideEmpr}`);
+        
+        try {
+            // Formatea el número (elimina caracteres no numéricos y añade código de país si es necesario)
+            const formattedNumber = formatPhoneNumber(phoneNumber); // Asume que tienes esta función
+            
+            // Verifica si el número está registrado en WhatsApp
+            const numberId = await instance.client.getNumberId(formattedNumber);
+            
+            if (numberId) {
+                return {
+                    isValid: true,
+                    formattedNumber: numberId._serialized,
+                };
+            } else {
+                return {
+                    isValid: false,
+                    formattedNumber,
+                    error: "El número no está registrado en WhatsApp.",
+                };
+            }
+        } catch (error) {
+            this.logger.error(
+                `Error al validar número ${phoneNumber} para empresa ${ideEmpr}:`,
+                error
+            );
+            
+            return {
+                isValid: false,
+                error: "Error al validar el número. Por favor, inténtalo de nuevo.",
+            };
+        }
+    }
+
 
     onEvent(ideEmpr: string, event: WhatsAppEvent, listener: (data: any) => void) {
         if (!this.clients.has(ideEmpr)) {
@@ -661,7 +704,7 @@ export class WhatsappWebService implements OnModuleInit {
         return () => instance.eventEmitter.off(event, listener);
     }
 
-    async logout(dto: ServiceDto) {
+    async logout(dto: QueryOptionsDto  & HeaderParamsDto) {
         if (this.clients.has(`${dto.ideEmpr}`)) {
             const instance = this.clients.get(`${dto.ideEmpr}`);
             await instance.client.logout();
@@ -673,7 +716,7 @@ export class WhatsappWebService implements OnModuleInit {
     }
 
 
-    async searchContacto(dto: SearchChatDto): Promise<any[]> {
+    async searchContacto(dto: SearchChatDto & HeaderParamsDto): Promise<any[]> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
             throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
@@ -842,12 +885,10 @@ export class WhatsappWebService implements OnModuleInit {
             throw error;
         }
     }
-
-
 }
 
 
-// async getQrCode(dto: ServiceDto) {
+// async getQrCode(dto: QueryOptionsDto) {
 //     return 'ok'
     
 //     const instance = await this.getClientInstance(`${dto.ideEmpr}`);

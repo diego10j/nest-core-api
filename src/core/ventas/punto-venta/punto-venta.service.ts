@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { OrderByDto } from 'src/common/dto/order-by.dto';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
 
@@ -10,17 +11,9 @@ export class PuntoVentaService extends BaseService {
 
 
     constructor(
-        private readonly dataSource: DataSourceService,
         private readonly core: CoreService
     ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        // this.dataSource.getVariables([
-        //     'p_cxc_estado_factura_normal', // 0
-        //     'p_con_tipo_documento_factura', // 3
-        // ]).then(result => {
-        //     this.variables = result;
-        // });
+        super();      
     }
 
     /**
@@ -28,7 +21,7 @@ export class PuntoVentaService extends BaseService {
      * @param dto 
      * @returns 
      */
-    async getTableQueryEstadosOrden(dto: ServiceDto) {
+    async getTableQueryEstadosOrden(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = {
             ...dto,
             module: 'cxc',

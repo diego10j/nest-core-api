@@ -6,6 +6,7 @@ import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventAudit } from './enum/event-audit';
 import { getCurrentDate, getCurrentTime } from '../../util/helpers/date-util';
 import { isDefined } from '../../util/helpers/common-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class AuditService {
@@ -60,7 +61,7 @@ export class AuditService {
      * @param dtoIn 
      * @returns 
      */
-    async getEventosAuditoria(dtoIn: EventosAuditoriaDto) {
+    async getEventosAuditoria(dtoIn: EventosAuditoriaDto & HeaderParamsDto) {
         const { fechaInicio, fechaFin, ide_usua } = dtoIn;
         const condUsuario = isDefined(ide_usua) ? ' and a.ide_usua = $3' : '';
         const queryPass = new SelectQuery(`
@@ -85,7 +86,7 @@ export class AuditService {
      * @param dtoIn 
      * @returns 
      */
-    async deleteEventosAuditoria(dtoIn: DeleteAuditoriaDto) {
+    async deleteEventosAuditoria(dtoIn: DeleteAuditoriaDto & HeaderParamsDto) {
         const dq = new DeleteQuery("sis_auditoria_acceso");
         dq.where = "fecha_auac BETWEEN $1 AND $2";
         dq.addParam(1, dtoIn.fechaInicio);

@@ -1,11 +1,11 @@
 import { ParamQuery } from "../interfaces/paramQuery";
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 
 export class Query {
 
     query: string;
     params?: ParamQuery[];
-    dto: ServiceDto;
+    dto: QueryOptionsDto;
     audit: boolean = false;
 
     constructor() {

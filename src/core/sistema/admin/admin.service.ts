@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
@@ -8,6 +8,7 @@ import { PerfilDto } from './dto/perfil.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { HorarioDto } from './dto/horario.dto';
 import { RucDto } from './dto/ruc.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class AdminService {
@@ -17,17 +18,17 @@ export class AdminService {
 
 
     // -------------------------------- EMPRESA ---------------------------- //
-    async getListDataEmpresa(dto: ServiceDto) {
+    async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr', columnLabel: 'nom_empr' }
         return this.core.getListDataValues(dtoIn);
     }
 
-    async getTableQueryEmpresa(dto: ServiceDto) {
+    async getTableQueryEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr' }
         return this.core.getTableQuery(dtoIn);
     }
 
-    async getEmpresaByRuc(dtoIn: RucDto) {
+    async getEmpresaByRuc(dtoIn: RucDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         select
             ide_empr,
@@ -51,13 +52,13 @@ export class AdminService {
 
 
     // -------------------------------- SUCURSAL ---------------------------- //
-    async getListDataSucursal(dto: ServiceDto) {
+    async getListDataSucursal(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'sucursal', primaryKey: 'ide_sucu', columnLabel: 'nom_sucu', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
-    async getTableQuerySucursal(dto: ServiceDto) {
+    async getTableQuerySucursal(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'sucursal', primaryKey: 'ide_sucu', condition }
         return this.core.getTableQuery(dtoIn);
@@ -65,37 +66,37 @@ export class AdminService {
 
 
     // -------------------------------- SISTEMAS ---------------------------- //
-    async getListDataSistema(dto: ServiceDto) {
+    async getListDataSistema(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' }
         return this.core.getListDataValues(dtoIn);
     }
 
-    async getTableQuerySistema(dto: ServiceDto) {
+    async getTableQuerySistema(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist' }
         return this.core.getTableQuery(dtoIn);
     }
 
     // -------------------------------- OPCIONES ---------------------------- //
-    async getTableQueryOpcion(dto: OpcionDto) {
+    async getTableQueryOpcion(dto: OpcionDto & HeaderParamsDto) {
         const whereClause = `ide_sist = ${dto.ide_sist} AND ${isDefined(dto.sis_ide_opci) === false ? 'sis_ide_opci IS NULL' : `sis_ide_opci = ${dto.sis_ide_opci}`}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
         return this.core.getTableQuery(dtoIn);
     }
 
-    async getTreeModelOpcion(dto: OpcionDto) {
+    async getTreeModelOpcion(dto: OpcionDto & HeaderParamsDto) {
         const whereClause = `ide_sist = ${dto.ide_sist}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', columnName: 'nom_opci', columnNode: 'sis_ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
         return this.core.getTreeModel(dtoIn);
     }
 
     // -------------------------------- PERFILES ---------------------------- //
-    async getTableQueryPerfil(dto: PerfilDto) {
+    async getTableQueryPerfil(dto: PerfilDto & HeaderParamsDto) {
         const whereClause = `ide_sist = ${dto.ide_sist}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', condition: `${whereClause}`, orderBy: { column: 'nom_perf' } }
         return this.core.getTableQuery(dtoIn);
     }
 
-    async getPerfilesSistema(dtoIn: PerfilDto) {
+    async getPerfilesSistema(dtoIn: PerfilDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             a.ide_perf,
@@ -117,20 +118,20 @@ export class AdminService {
 
 
     // -------------------------------- HORARIOS ---------------------------- //
-    async getListDataTiposHorario(dto: ServiceDto) {
+    async getListDataTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'tipo_horario', primaryKey: 'ide_tihor', columnLabel: 'nombre_tihor', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
-    async getTableQueryTiposHorario(dto: ServiceDto) {
+    async getTableQueryTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'tipo_horario', primaryKey: 'ide_tihor', condition }
         return this.core.getTableQuery(dtoIn);
     }
 
 
-    async getTableQueryHorario(dto: HorarioDto) {
+    async getTableQueryHorario(dto: HorarioDto  & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr} and ide_tihor=${dto.ide_tihor}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'horario', primaryKey: 'ide_hora', condition }
         return this.core.getTableQuery(dtoIn);

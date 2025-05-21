@@ -1,7 +1,8 @@
 import { InternalServerErrorException } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { UpdateQuery, InsertQuery, DeleteQuery, SelectQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
-import { ServiceDto } from '../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../common/dto/query-options.dto';
 
 /**
  * Retorna la sentencia SQL del objeto UpdateQuery
@@ -258,11 +259,11 @@ export function toObjectTable(value: object): object {
     return cloneObjUpdate;
 }
 
-export function getWhereIdeSucu(tabla: string, dto: ServiceDto) {
+export function getWhereIdeSucu(tabla: string, dto: QueryOptionsDto & HeaderParamsDto) {
     return ` AND ${tabla}.ide_sucu = ${dto.ideSucu}`;
 }
 
-export function getWhereIdeEmpr(tabla: string, dto: ServiceDto) {
+export function getWhereIdeEmpr(tabla: string, dto: QueryOptionsDto & HeaderParamsDto) {
     return ` AND ${tabla}.ide_empr = ${dto.ideEmpr}`;
 }
 

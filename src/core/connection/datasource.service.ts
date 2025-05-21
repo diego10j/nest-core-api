@@ -256,7 +256,7 @@ export class DataSourceService {
 
             for (const currentQuery of listQuery) {
                 await this.formatSqlQuery(currentQuery);
-                // console.log(currentQuery);
+               //  console.log(currentQuery);
                 const res = await queryRunner.query(currentQuery.query, currentQuery.paramValues);
 
                 // Registra  Actividad Auditoria

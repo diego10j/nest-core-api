@@ -1,7 +1,7 @@
 import { IsInt } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class IdClienteDto extends ServiceDto {
+export class IdClienteDto extends QueryOptionsDto {
 
 
     @IsInt()

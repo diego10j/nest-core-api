@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
 import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
@@ -198,7 +198,7 @@ export class WhatsappApiService {
                 fileData,
                 fileExtension
             );
-    
+
 
             // 6. Actualizar la base de datos con la nueva información
             await this.whatsappDb.updateUrlFile(id, tempFileName);
@@ -330,7 +330,7 @@ export class WhatsappApiService {
      * Obtiene todos los mensajes agrupados por número de teléfono
      * @returns Lista de conversaciones agrupadas por número de teléfono
      */
-    async getChats(dto: GetChatsDto) {
+    async getChats(dto: GetChatsDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         return await this.whatsappDb.getChats(dto, config);
     }
@@ -340,7 +340,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async searchContacto(dto: SearchChatDto) {
+    async searchContacto(dto: SearchChatDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         return await this.whatsappDb.searchContacto(dto, config);
     }
@@ -351,7 +351,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async getListas(dto: ServiceDto) {
+    async getListas(dto: QueryOptionsDto  & HeaderParamsDto) {
         const data = await this.whatsappDb.getListas(dto);
         data.unshift(
             {
@@ -387,7 +387,7 @@ export class WhatsappApiService {
     }
 
 
-    async getEtiquetas(dto: ServiceDto) {
+    async getEtiquetas(dto: QueryOptionsDto & HeaderParamsDto) {
         return await this.whatsappDb.getEtiquetas(dto);
     }
 
@@ -406,7 +406,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async findContacto(dto: SearchChatDto) {
+    async findContacto(dto: SearchChatDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         return await this.whatsappDb.findContacto(dto, config);
     }
@@ -416,7 +416,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async findTextoMensajes(dto: SearchChatDto) {
+    async findTextoMensajes(dto: SearchChatDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         return await this.whatsappDb.findTextoMensajes(dto, config);
     }
@@ -427,14 +427,14 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async getTotalMensajes(dto: ServiceDto) {
+    async getTotalMensajes(dto: QueryOptionsDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dto.ideEmpr);
         return await this.whatsappDb.getTotalMensajes(dto, config);
     }
 
 
 
-    async enviarMensajeTexto(dtoIn: EnviarMensajeDto) {
+    async enviarMensajeTexto(dtoIn: EnviarMensajeDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(dtoIn.ideEmpr);
         const data = {
             messaging_product: "whatsapp",
@@ -463,7 +463,7 @@ export class WhatsappApiService {
     }
 
 
-    async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File) {
+    async enviarMensajeMedia(dto: UploadMediaDto & HeaderParamsDto, file: Express.Multer.File) {
         const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
@@ -482,11 +482,11 @@ export class WhatsappApiService {
                 texto: null,
                 idWts: '',
                 mediaId,
-                ideUsua: Number(dto.ideUsua),
-                ideEmpr: Number(dto.ideEmpr),
-                ideSucu: Number(dto.ideSucu),
-                idePerf: 1,
-                login: dto.login,
+                // ideUsua: Number(dto.ideUsua),
+                // ideEmpr: Number(dto.ideEmpr),
+                // ideSucu: Number(dto.ideSucu),
+                // idePerf: 1,
+                // login: dto.login,
                 fileName: dto.fileName,
                 mimeType: file.mimetype
             }
@@ -547,7 +547,7 @@ export class WhatsappApiService {
 
             // console.log(data);
 
-            const respWts = await this.sendMessageWhatsApp(data, dtoIn.ideEmpr);
+            const respWts = await this.sendMessageWhatsApp(data, dto.ideEmpr);
             // Asigna el id del API para el mensaje
             dtoIn.idWts = respWts.messages[0].id;
             // Guarda el mensaje
@@ -564,20 +564,14 @@ export class WhatsappApiService {
         }
     }
 
-
-
-
-
     // ---------------------------------------
-
-
 
     /**
      * Envia mensaje de la plantilla activar mensajes
      * @param dtoIn 
      * @returns 
      */
-    async activarNumero(dtoIn: MensajeChatDto) {
+    async activarNumero(dtoIn: MensajeChatDto & HeaderParamsDto) {
         const data = JSON.stringify(
             {
                 "messaging_product": "whatsapp",
@@ -612,7 +606,7 @@ export class WhatsappApiService {
     /**
     * Marca como no leido un chat
     */
-    async setChatNoLeido(dto: ChatNoLeidoDto) {
+    async setChatNoLeido(dto: ChatNoLeidoDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
         return await this.whatsappDb.setChatNoLeido(dto, config);
     }
@@ -622,14 +616,14 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async setChatFavorito(dto: ChatFavoritoDto) {
+    async setChatFavorito(dto: ChatFavoritoDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
         return await this.whatsappDb.setChatFavorito(dto, config);
 
     }
 
 
-    async setEtiquetaChat(dto: ChatEtiquetaDto) {
+    async setEtiquetaChat(dto: ChatEtiquetaDto & HeaderParamsDto) {
         const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
         return await this.whatsappDb.setEtiquetaChat(dto, config);
 
@@ -678,7 +672,7 @@ export class WhatsappApiService {
         };
     }
 
-    async saveListasContacto(dtoIn: ListContactDto) {
+    async saveListasContacto(dtoIn: ListContactDto & HeaderParamsDto) {
         const listQuery: Query[] = [];
         // borra todas las listas asignadas previamente
         const dq = new DeleteQuery("wha_lista_chat");

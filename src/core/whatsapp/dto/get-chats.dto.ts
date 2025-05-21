@@ -1,7 +1,6 @@
 import { IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
 
-export class GetChatsDto extends ServiceDto {
+export class GetChatsDto  {
 
 
     // WEB

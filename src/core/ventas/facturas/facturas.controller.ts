@@ -1,65 +1,91 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { FacturasService } from './facturas.service';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasDto } from './dto/facturas.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VentasDiariasDto } from './dto/ventas-diarias.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Controller('ventas/facturas')
 export class FacturasController {
     constructor(private readonly service: FacturasService) { }
 
 
-    @Post('getPuntosEmisionFacturas')
+    @Get('getPuntosEmisionFacturas')
     // @Auth()
     getPuntosEmisionFacturas(
-        @Body() dtoIn: PuntosEmisionFacturasDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: PuntosEmisionFacturasDto
     ) {
-        return this.service.getPuntosEmisionFacturas(dtoIn);
+        return this.service.getPuntosEmisionFacturas({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('getTableQueryPuntosEmisionFacturas')
+    @Get('getTableQueryPuntosEmisionFacturas')
     // @Auth()
     getTableQueryPuntosEmisionFacturas(
-        @Body() dtoIn: PuntosEmisionFacturasDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: PuntosEmisionFacturasDto
     ) {
-        return this.service.getTableQueryPuntosEmisionFacturas(dtoIn);
+        return this.service.getTableQueryPuntosEmisionFacturas({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
 
-    @Post('getFacturas')
+    @Get('getFacturas')
     // @Auth()
     getFacturas(
-        @Body() dtoIn: FacturasDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FacturasDto
     ) {
-        return this.service.getFacturas(dtoIn);
+        return this.service.getFacturas({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('getTotalFacturasPorEstado')
+    @Get('getTotalFacturasPorEstado')
     // @Auth()
     getTotalFacturasPorEstado(
-        @Body() dtoIn: FacturasDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FacturasDto
     ) {
-        return this.service.getTotalFacturasPorEstado(dtoIn);
+        return this.service.getTotalFacturasPorEstado({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('getTotalVentasPeriodo')
+    @Get('getTotalVentasPeriodo')
     // @Auth()
     getTotalVentasPeriodo(
-        @Body() dtoIn: VentasMensualesDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: VentasMensualesDto
     ) {
-        return this.service.getTotalVentasPeriodo(dtoIn);
+        return this.service.getTotalVentasPeriodo({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('getTotalUltimasVentasDiarias')
+    @Get('getTotalUltimasVentasDiarias')
     // @Auth()
     getTotalUltimasVentasDiarias(
-        @Body() dtoIn: VentasDiariasDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: VentasDiariasDto
     ) {
-        return this.service.getTotalUltimasVentasDiarias(dtoIn);
+        return this.service.getTotalUltimasVentasDiarias({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 

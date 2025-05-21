@@ -1,10 +1,12 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Query, Controller, Get } from '@nestjs/common';
 import { GeneralService } from './general.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { CantonesDto } from './dto/cantones.dto';
 import { CedulaDto } from './dto/cedula.dto';
 import { RucDto } from './dto/ruc.dto';
 import { GeneralLdService } from './general-ld.service';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Controller('sistema/general')
 export class GeneralController {
@@ -12,72 +14,98 @@ export class GeneralController {
     private readonly serviceLd: GeneralLdService) { }
 
 
-  @Post('getListDataPeriodos')
+  @Get('getListDataPeriodos')
   // @Auth()
   getListDataPeriodos(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.serviceLd.getListDataPeriodos(dtoIn);
+    return this.serviceLd.getListDataPeriodos({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 
-  @Post('getListDataProvincias')
+  @Get('getListDataProvincias')
   // @Auth()
   getListDataProvincias(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.serviceLd.getListDataProvincias(dtoIn);
+    return this.serviceLd.getListDataProvincias({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getListDataCantones')
+  @Get('getListDataCantones')
   // @Auth()
   getListDataCantones(
-    @Body() dtoIn: CantonesDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: CantonesDto
   ) {
-    return this.serviceLd.getListDataCantones(dtoIn);
+    return this.serviceLd.getListDataCantones({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 
-  @Post('getListDataTitulosPersona')
+  @Get('getListDataTitulosPersona')
   // @Auth()
   getListDataTitulosPersona(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.serviceLd.getListDataTitulosPersona(dtoIn);
+    return this.serviceLd.getListDataTitulosPersona({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getListDataTiposDireccion')
+  @Get('getListDataTiposDireccion')
   // @Auth()
   getListDataTiposDireccion(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.serviceLd.getListDataTiposDireccion(dtoIn);
+    return this.serviceLd.getListDataTiposDireccion({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getListDataTiposIdentificacion')
+  @Get('getListDataTiposIdentificacion')
   // @Auth()
   getListDataTiposIdentificacion(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.serviceLd.getListDataTiposIdentificacion(dtoIn);
+    return this.serviceLd.getListDataTiposIdentificacion({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 
 
   // ================================= VALIDATIONS
 
-  @Post('validateCedula')
+  @Get('validateCedula')
   // @Auth()
   validateCedula(
-    @Body() dtoIn: CedulaDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: CedulaDto
   ) {
     return this.service.validateCedula(dtoIn.cedula);
   }
 
-  @Post('validateRuc')
+  @Get('validateRuc')
   // @Auth()
   validateRuc(
-    @Body() dtoIn: RucDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: RucDto
   ) {
     return this.service.validateRuc(dtoIn);
   }

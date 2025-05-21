@@ -1,8 +1,8 @@
 import { ArrayNotEmpty, IsArray, IsString, IsNotEmpty, IsOptional, Matches, IsBoolean, } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 
-export class DeleteDto extends ServiceDto {
+export class DeleteDto extends QueryOptionsDto {
 
     @IsString()
     @IsNotEmpty()

@@ -1,17 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
 
-export class UploadMediaDto {
+export class UploadMediaDto extends TelefonoWebDto {
 
 
-
-    @IsString()
-    @IsNotEmpty()
-    @Matches(
-        /^\d{12}$/g, {
-        message: 'Número de teléfono no válido'
-    })
-    telefono: string;
-
+    @IsBoolean()
+    @IsOptional()
+    emitSocket: boolean = true;  // true emite mensajes por socket a clientes conectados
 
     @IsString()
     @IsOptional()
@@ -26,18 +21,5 @@ export class UploadMediaDto {
     @IsString()
     @IsOptional()
     fileName?: string;
-
-    @IsString()
-    ideUsua: string;
-
-    @IsString()
-    ideEmpr: string;
-
-    @IsString()
-    ideSucu: string;
-
-    @IsString()
-    @MinLength(4)
-    login: string;
 
 }

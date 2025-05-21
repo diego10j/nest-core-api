@@ -1,15 +1,7 @@
-import { IsBoolean, IsNotEmpty, IsString, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { IsBoolean } from 'class-validator';
+import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
 
-export class ChatNoLeidoDto extends ServiceDto {
-
-    @IsString()
-    @IsNotEmpty()
-    @Matches(
-        /^\d{12}$/g, {
-        message: 'Número de teléfono no válido'
-    })
-    telefono: string;
+export class ChatNoLeidoDto  extends TelefonoWebDto{
 
     @IsBoolean()
     leido: boolean;

@@ -1,4 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import {  Controller, Get,  Query } from '@nestjs/common';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ComprobantesElecService } from './comprobantes-elec.service';
 import { ClaveAccesoDto } from './dto/clave-acceso.dto';
 
@@ -7,12 +9,16 @@ export class ComprobantesElecController {
     constructor(private readonly service: ComprobantesElecService) { }
 
 
-    @Post('getComprobantePorClaveAcceso')
+    @Get('getComprobantePorClaveAcceso')
     // @Auth()
     getCliente(
-        @Body() dtoIn: ClaveAccesoDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ClaveAccesoDto
     ) {
-        return this.service.getComprobantePorClaveAcceso(dtoIn);
+        return this.service.getComprobantePorClaveAcceso({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 

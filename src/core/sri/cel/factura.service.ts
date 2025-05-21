@@ -3,12 +3,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { BaseService } from '../../../common/base-service';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { ClaveAccesoDto } from './dto/clave-acceso.dto';
 import { ComprobantesElecService } from './comprobantes-elec.service';
 import { EmisorService } from './emisor.service';
 import { fNumber } from 'src/util/helpers/number-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Injectable()
@@ -22,7 +23,7 @@ export class FacturaService extends BaseService {
     }
 
 
-    async getXmlFactura(dtoIn: ClaveAccesoDto) {
+    async getXmlFactura(dtoIn: ClaveAccesoDto & HeaderParamsDto) {
 
         const comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso(dtoIn);
         const emisor = await this.emisorService.getEmisor(dtoIn);

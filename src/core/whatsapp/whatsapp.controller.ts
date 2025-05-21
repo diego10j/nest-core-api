@@ -1,10 +1,10 @@
-import { BadRequestException, Body, Controller, Get, Header, InternalServerErrorException, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, InternalServerErrorException, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { WhatsappService } from './whatsapp.service';
 import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
@@ -15,14 +15,19 @@ import { ListContactDto } from './api/dto/list-contact.dto';
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { ApiOperation } from '@nestjs/swagger';
-import { SendLocationDto } from './web/dto/send-location.dto';
+import { EnviarUbicacionDto } from './web/dto/send-location.dto';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
-import { SaveDetallesCampaniaDto } from './dto/save-det-camp.dto';
-import {  HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { TelefonoWebDto } from './web/dto/telefono-web.dto';
+import { ContactIdWebDto } from './web/dto/contact-id-web.dto';
+import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
+import { SaveCampaniaDto } from './dto/save-campania.dto';
+import { FILE_STORAGE_CONSTANTS } from '../sistema/files/file-temp.service';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 
 @Controller('whatsapp')
@@ -37,19 +42,14 @@ export class WhatsappController {
   @Get('getChats')
   // @Auth()
   getChats(
-    @Body() dtoIn: GetChatsDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetChatsDto
   ) {
-    return this.service.getChats(dtoIn);
+    return this.service.getChats({
+      ...headersParams,
+      ...dtoIn
+    });
   }
-
-  // @Get('getCuenta')
-  // // @Auth()
-  // getCuenta(
-  //   @Query() dtoIn: ServiceDto
-  // ) {
-  //   return this.whatsappDbService.getCuenta(dtoIn.ideEmpr);
-  // }
-
 
   @Get('getCuenta')
   // @Auth()
@@ -58,30 +58,17 @@ export class WhatsappController {
     return this.whatsappDbService.getCuenta(headersParams.ideEmpr);
   }
 
-
-
   @Get('getMensajes')
   // @Auth()
   async getMensajes(
-    @AppHeaders() appHeaders: HeaderParamsDto,
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetMensajesDto
-    ) {
-      return this.service.getMensajes({
-        ...appHeaders,
-        ...dtoIn
-      });
+  ) {
+    return this.service.getMensajes({
+      ...headersParams,
+      ...dtoIn
+    });
   }
-
-
-
-
-  // @Get('getMensajes')
-  // // @Auth()
-  // getMensajes(
-  //   @Body() dtoIn: GetMensajesDto
-  // ) {
-  //   return this.service.getMensajes(dtoIn);
-  // }
 
 
   @Post('enviarMensajeMedia')
@@ -89,11 +76,12 @@ export class WhatsappController {
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(), // Usa memoryStorage importado directamente
     limits: {
-      fileSize: 50 * 1024 * 1024, // Límite de 50MB
+      fileSize: FILE_STORAGE_CONSTANTS.MAX_FILE_SIZE,
       files: 1
     },
   }))
   async enviarMensajeMedia(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @UploadedFile() file: Express.Multer.File,
     @Body() dtoIn: UploadMediaDto
   ) {
@@ -102,26 +90,51 @@ export class WhatsappController {
     }
 
     try {
-      return await this.service.enviarMensajeMedia(dtoIn, file);
+      return await this.service.enviarMensajeMedia({
+        ...headersParams,
+        ...dtoIn
+      }, file);
     } catch (error) {
       throw new InternalServerErrorException(`Error al enviar el mensaje: ${error.message}`);
     }
   }
 
 
+
+  @Post('uploadMediaFile')
+  // @Auth()
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(), // Usa memoryStorage importado directamente
+    limits: {
+      fileSize: FILE_STORAGE_CONSTANTS.MAX_FILE_SIZE,
+      files: 1
+    },
+  }))
+  uploadMedia(
+    @AppHeaders() _headersParams: HeaderParamsDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.uploadMediaFile(file);
+  }
+
+
   @Post('enviarMensajeTexto')
   // @Auth()
   enviarMensajeTexto(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: EnviarMensajeDto
   ) {
-    return this.service.enviarMensajeTexto(dtoIn);
+    return this.service.enviarMensajeTexto({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Get('download/:ideEmpr/:id')
   @Header('Cache-Control', 'public, max-age=3600')
   async download(
-    @Param('ideEmpr') ideEmpr: string,
+    @Param('ideEmpr') ideEmpr: string,  // Quitar ****
     @Param('id') messageId: string,
     @Req() req: Request,
     @Res() res: Response
@@ -135,120 +148,177 @@ export class WhatsappController {
   @Get('getAgentesCuenta')
   // @Auth()
   getAgentesCuenta(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.whatsappDbService.getAgentesCuenta(dtoIn);
+    return this.whatsappDbService.getAgentesCuenta({
+      ...headersParams,
+      ...dtoIn
+    });
   }
+
+
 
   // ==============================
   // ---------------------------- API
   @Get('getListasContacto')
   // @Auth()
   getListasContacto(
-    @Body() dtoIn: GetMensajesDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetMensajesDto
   ) {
-    return this.service.whatsappApi.getListasContacto(dtoIn);
+    return this.service.whatsappApi.getListasContacto({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Get('getListas')
   // @Auth()
   getListas(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappApi.getListas(dtoIn);
+    return this.service.whatsappApi.getListas({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Get('getEtiquetas')
   // @Auth()
   getEtiquetas(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappApi.getEtiquetas(dtoIn);
+    return this.service.whatsappApi.getEtiquetas({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('getPermisoAgente')
   // @Auth()
   getPermisoAgente(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.whatsappDbService.validarPermisoAgente(dtoIn);
+    return this.whatsappDbService.validarPermisoAgente({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Post('setMensajesLeidosChat')
   // @Auth()
   setMensajesLeidosChat(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: GetMensajesDto
   ) {
-    return 'k'
-   // return this.service.whatsappApi.setMensajesLeidosChat(dtoIn);
+    return this.service.whatsappApi.setMensajesLeidosChat({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Post('setChatNoLeido')
   // @Auth()
   setChatNoLeido(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: ChatNoLeidoDto
   ) {
-    return this.service.whatsappApi.setChatNoLeido(dtoIn);
+    return this.service.whatsappApi.setChatNoLeido({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Post('setChatFavorito')
   // @Auth()
   setChatFavorito(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: ChatFavoritoDto
   ) {
-    return this.service.whatsappApi.setChatFavorito(dtoIn);
+    return this.service.whatsappApi.setChatFavorito({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Post('setEtiquetaChat')
   // @Auth()
   setEtiquetaChat(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: ChatEtiquetaDto
   ) {
-    return this.service.whatsappApi.setEtiquetaChat(dtoIn);
+    return this.service.whatsappApi.setEtiquetaChat({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Get('getContactosLista')
   // @Auth()
   getContactosLista(
-    @Body() dtoIn: ListaChatDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ListaChatDto
   ) {
-    return this.service.whatsappApi.getContactosLista(dtoIn);
+    return this.service.whatsappApi.getContactosLista({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Get('getTotalMensajes')
   // @Auth()
   getTotalMensajes(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappApi.getTotalMensajes(dtoIn);
+    return this.service.whatsappApi.getTotalMensajes({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('findContacto')
   // @Auth()
   findContacto(
-    @Body() dtoIn: SearchChatDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SearchChatDto
   ) {
-    return this.service.whatsappApi.findContacto(dtoIn);
+    return this.service.whatsappApi.findContacto({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('findTextoMensajes')
   // @Auth()
   findTextoMensajes(
-    @Body() dtoIn: SearchChatDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SearchChatDto
   ) {
-    return this.service.whatsappApi.findTextoMensajes(dtoIn);
+    return this.service.whatsappApi.findTextoMensajes({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('searchContacto')
   // @Auth()
   searchContacto(
-    @Body() dtoIn: SearchChatDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SearchChatDto
   ) {
-    return this.service.searchContacto(dtoIn);
+    return this.service.searchContacto({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
@@ -256,53 +326,98 @@ export class WhatsappController {
   @Post('saveListasContacto')
   // @Auth()
   saveListasContacto(
-    @Body() dtoIn: ListContactDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ListContactDto
   ) {
-    return this.service.whatsappApi.saveListasContacto(dtoIn);
+    return this.service.whatsappApi.saveListasContacto({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Post('activarNumero')
   // @Auth()
   activarNumero(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: MensajeChatDto
   ) {
-    return this.service.whatsappApi.activarNumero(dtoIn);
+    return this.service.whatsappApi.activarNumero({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   // ---------------------------- WEB
 
   @Get('getStatus')
-  @ApiOperation({ summary: 'Post WhatsApp connection status' })
+  @ApiOperation({ summary: 'Get WhatsApp connection status' })
   getStatus(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappWeb.getStatus(dtoIn);
+    return this.service.whatsappWeb.getStatus({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('getQr')
-  @ApiOperation({ summary: 'Post current QR code for authentication' })
+  @ApiOperation({ summary: 'Get current QR code for authentication' })
   async getQr(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappWeb.getQrCode(dtoIn);
+    return this.service.whatsappWeb.getQrCode({
+      ...headersParams,
+      ...dtoIn
+    });
   }
+
+
+  @Get('validateWhatsAppNumber')
+  @ApiOperation({ summary: 'Get validateWhatsAppNumber' })
+  async validateWhatsAppNumber(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: TelefonoWebDto
+  ) {
+    return this.service.whatsappWeb.validateWhatsAppNumber(headersParams.ideEmpr, dtoIn.telefono);
+  }
+
+  @Get('getContactInfo')
+  @ApiOperation({ summary: 'Get getContactInfo' })
+  async getContactInfo(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ContactIdWebDto
+  ) {
+    return this.service.whatsappWeb.getContactInfo(headersParams.ideEmpr, dtoIn.contactId);
+  }
+
 
 
   @Post('logout')
   @ApiOperation({ summary: 'Logout from WhatsApp' })
   async logout(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: QueryOptionsDto
   ) {
-    return this.service.whatsappWeb.logout(dtoIn);
+    return this.service.whatsappWeb.logout({
+      ...headersParams,
+      ...dtoIn
+    });
     // return { success: true };
   }
 
 
-  @Post('sendLocation')
+  @Post('enviarUbicacion')
   @ApiOperation({ summary: 'Send location' })
-  async sendLocation(@Body() locationMessage: SendLocationDto) {
-    return this.service.whatsappWeb.sendLocation(locationMessage);
+  async enviarUbicacio(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: EnviarUbicacionDto) {
+    return this.service.whatsappWeb.enviarUbicacion({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
@@ -319,7 +434,8 @@ export class WhatsappController {
   @Get('getProfilePicture/:ideEmpr/:contactId')
   @Header('Cache-Control', 'public, max-age=3600')
   async getProfilePicture(
-    @Param('ideEmpr') ideEmpr: string,
+    @AppHeaders() _headersParams: HeaderParamsDto,
+    @Param('ideEmpr') ideEmpr: string,   // Quitar *******
     @Param('contactId') contactId: string,
     @Res() response: Response
   ) {
@@ -337,25 +453,62 @@ export class WhatsappController {
   @Get('getListaCampanias')
   // @Auth()
   getListaCampanias(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.whatsappDbService.getListaCampanias(dtoIn);
+    return this.whatsappDbService.getListaCampanias({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
   @Get('getDetalleCampania')
   // @Auth()
   getDetalleCampania(
-    @Body() dtoIn: GetDetalleCampaniaDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetDetalleCampaniaDto
   ) {
-    return this.whatsappDbService.getDetalleCampania(dtoIn);
+    return this.whatsappDbService.getDetalleCampania({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('saveDetalleCampania')
+
+  @Post('sendCampania')
   // @Auth()
-  saveDetalleCampania(
-    @Body() dtoIn: SaveDetallesCampaniaDto
+  sendCampania(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: EnviarCampaniaDto
   ) {
-    return this.whatsappCamp.saveDetalleCampania(dtoIn);
+    return this.whatsappCamp.sendCampania({
+      ...headersParams,
+      ...dtoIn
+    });
   }
+
+
+  @Post('saveCampania')
+  // @Auth()
+  saveCampania(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: SaveCampaniaDto
+  ) {
+    return this.whatsappCamp.saveCampania({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+
+  @Delete('deleteDetailCampaniaById')
+  // @Auth()
+  deleteDetailCampaniaById(
+    @AppHeaders() _headersParams: HeaderParamsDto,
+    @Body() dtoIn: IdeDto
+  ) {
+    return this.whatsappCamp.deleteDetailCampaniaById(dtoIn.ide);
+  }
+
 
 }

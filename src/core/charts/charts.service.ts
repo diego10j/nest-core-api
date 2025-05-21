@@ -4,6 +4,7 @@ import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery } from '../connection/helpers/select-query';
 import { RadialBarDto } from './dto/radial-bar.dto';
 import { toTitleCase } from '../../util/helpers/string-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 
@@ -20,7 +21,7 @@ export class ChartsService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async radialBar(dtoIn: RadialBarDto) {
+    async radialBar(dtoIn: RadialBarDto & HeaderParamsDto) {
 
         const conditionLabel = dtoIn.conditionLabel ? ` AND ${dtoIn.conditionLabel}` : '';
 
@@ -51,7 +52,7 @@ export class ChartsService extends BaseService {
             order by
                 a.${dtoIn.columnLabel}
         ) as subquery
-        `, dtoIn);
+        `);
 
         const result: any = await this.dataSource.createSelectQuery(query);
         const total = result[0].total;

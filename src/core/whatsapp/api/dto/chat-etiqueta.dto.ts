@@ -1,15 +1,7 @@
-import { IsNumber, IsNotEmpty, IsString, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { IsNumber } from 'class-validator';
+import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
 
-export class ChatEtiquetaDto extends ServiceDto {
-
-    @IsString()
-    @IsNotEmpty()
-    @Matches(
-        /^\d{12}$/g, {
-        message: 'Número de teléfono no válido'
-    })
-    telefono: string;
+export class ChatEtiquetaDto extends TelefonoWebDto {
 
     @IsNumber()
     etiqueta: boolean;

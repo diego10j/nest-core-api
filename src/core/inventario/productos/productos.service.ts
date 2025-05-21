@@ -5,8 +5,8 @@ import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
-import { ServiceDto } from '../../../common/dto/service.dto';
-import { IVentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
+import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { BaseService } from '../../../common/base-service';
 import { AuditService } from '../../audit/audit.service';
@@ -18,6 +18,7 @@ import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 import { CoreService } from 'src/core/core.service';
 import { CategoriasDto } from './dto/categorias.dto';
 import { isDefined } from 'src/util/helpers/common-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 
@@ -42,7 +43,7 @@ export class ProductosService extends BaseService {
 
 
     // -------------------------------- CATEGORIAS ---------------------------- //
-    async getTableQueryCategorias(dto: CategoriasDto) {
+    async getTableQueryCategorias(dto: CategoriasDto & HeaderParamsDto) {
         const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
             ? `inv_ide_incate = ${dto.inv_ide_incate}`
             : 'inv_ide_incate IS NULL';
@@ -60,7 +61,7 @@ export class ProductosService extends BaseService {
         return this.core.getTableQuery(dtoIn);
     }
 
-    async getTreeModelCategorias(dto: CategoriasDto) {
+    async getTreeModelCategorias(dto: CategoriasDto & HeaderParamsDto) {
         const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
             ? `inv_ide_incate = ${dto.inv_ide_incate}`
             : 'inv_ide_incate IS NULL';
@@ -79,7 +80,7 @@ export class ProductosService extends BaseService {
     * Retorna el listado de Productos
     * @returns 
     */
-    async getProductos(dtoIn: ServiceDto) {
+    async getProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
 
         const query = new SelectQuery(`
         SELECT
@@ -112,7 +113,7 @@ export class ProductosService extends BaseService {
 
 
 
-    async getCatalogoProductos(dtoIn: ServiceDto) {
+    async getCatalogoProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             ide_inarti,
@@ -138,7 +139,7 @@ export class ProductosService extends BaseService {
 
     }
 
-    async getProductosPorNombre(dtoIn: BusquedaPorNombreDto) {
+    async getProductosPorNombre(dtoIn: BusquedaPorNombreDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             ide_inarti,
@@ -166,7 +167,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getProducto(dtoIn: UuidDto) {
+    async getProducto(dtoIn: UuidDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             a.ide_inarti,
@@ -313,7 +314,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getTrnProducto(dtoIn: TrnProductoDto) {
+    async getTrnProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
         // 1. Determinar el saldo inicial
         const saldoInicial = await this.getStock(dtoIn.ide_inarti, addDaysDate(dtoIn.fechaInicio, -1));
         // 2. Construir consulta con fila de saldo inicial
@@ -401,7 +402,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getVentasProducto(dtoIn: PreciosProductoDto) {
+    async getVentasProducto(dtoIn: PreciosProductoDto & HeaderParamsDto) {
 
         // Ajustar el porcentaje según  criterio 30% margen
         const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
@@ -438,7 +439,7 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getVentasProductoUtilidad(dtoIn: PreciosProductoDto) {
+    async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
 
 
         // Ajustar el porcentaje según  criterio 30% margen
@@ -561,7 +562,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getComprasProducto(dtoIn: TrnProductoDto) {
+    async getComprasProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
     SELECT
         cdf.ide_cpdfa,
@@ -598,7 +599,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getUltimosPreciosCompras(dtoIn: IdProductoDto) {
+    async getUltimosPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         WITH UltimaVenta AS (
             SELECT
@@ -656,7 +657,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldo(dtoIn: IdProductoDto) {
+    async getSaldo(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`     
         SELECT 
             iart.ide_inarti,
@@ -686,7 +687,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldoPorBodega(dtoIn: IdProductoDto) {
+    async getSaldoPorBodega(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`     
         SELECT 
             cci.ide_inbod,
@@ -719,7 +720,7 @@ export class ProductosService extends BaseService {
        * @param dtoIn 
        * @returns 
        */
-    async getVentasMensuales(dtoIn: IVentasMensualesDto) {
+    async getVentasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         // para filtrar dotos de un cliente
         const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
         const query = new SelectQuery(`
@@ -772,7 +773,7 @@ export class ProductosService extends BaseService {
        * @param dtoIn 
        * @returns 
        */
-    async getComprasMensuales(dtoIn: IVentasMensualesDto) {
+    async getComprasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
     SELECT
         gm.nombre_gemes,
@@ -820,7 +821,7 @@ export class ProductosService extends BaseService {
         * @param dtoIn 
         * @returns 
         */
-    async getSumatoriaTrnPeriodo(dtoIn: IVentasMensualesDto) {
+    async getSumatoriaTrnPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
     SELECT
         COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
@@ -901,7 +902,7 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getProveedores(dtoIn: IdProductoDto) {
+    async getProveedores(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -942,7 +943,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getTopProveedores(dtoIn: IVentasMensualesDto) {
+    async getTopProveedores(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -982,7 +983,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getTopClientes(dtoIn: IVentasMensualesDto) {
+    async getTopClientes(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -1023,7 +1024,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getClientes(dtoIn: ClientesProductoDto) {
+    async getClientes(dtoIn: ClientesProductoDto & HeaderParamsDto) {
 
         const sql = `            
             SELECT
@@ -1058,7 +1059,7 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async chartVariacionPreciosCompras(dtoIn: IdProductoDto) {
+    async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         WITH compras AS (
             SELECT
@@ -1138,7 +1139,7 @@ export class ProductosService extends BaseService {
         } as ResultQuery
     }
 
-    async getVariacionInventario(dtoIn: IVentasMensualesDto) {
+    async getVariacionInventario(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`       
         WITH Meses AS (
             SELECT
@@ -1203,7 +1204,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getActividades(dtoIn: IdProductoDto) {
+    async getActividades(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
     }
@@ -1304,7 +1305,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
     */
-    async getProformasMensuales(dtoIn: IVentasMensualesDto) {
+    async getProformasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             gm.nombre_gemes,
@@ -1349,7 +1350,7 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getTotalVentasPorFormaPago(dtoIn: IVentasMensualesDto) {
+    async getTotalVentasPorFormaPago(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const queryFormaPago = new SelectQuery(`
         SELECT
             a.ide_cndfp1,
@@ -1383,7 +1384,7 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getTotalVentasPorIdCliente(dtoIn: IVentasMensualesDto) {
+    async getTotalVentasPorIdCliente(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const queryTipoId = new SelectQuery(`
         SELECT
             c.ide_getid,
@@ -1417,7 +1418,7 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createSelectQuery(queryTipoId);
     }
 
-    async getTotalVentasPorVendedor(dtoIn: IVentasMensualesDto) {
+    async getTotalVentasPorVendedor(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const queryVendedor = new SelectQuery(`
         SELECT
             a.ide_vgven,
@@ -1458,7 +1459,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async chartVentasPeriodo(dtoIn: IVentasMensualesDto) {
+    async chartVentasPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         // ---------------- POR VENDEDOR
         const dataTotalVendedor = await this.getTotalVentasPorVendedor(dtoIn);
         const data = dataTotalVendedor ? dataTotalVendedor[0] : {};
@@ -1527,7 +1528,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getTopProductosVendidos(dtoIn: ServiceDto) {
+    async getTopProductosVendidos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             iart.ide_inarti,
@@ -1558,7 +1559,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getTopProductosFacturados(dtoIn: ServiceDto) {
+    async getTopProductosFacturados(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             iart.ide_inarti,
@@ -1587,7 +1588,7 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async chartProductos(dtoIn: ServiceDto) {
+    async chartProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         // ---------------- POR TIPO CATEGORIA
         const dataTotalProdCategoria = await this.getTotalProductosPorCategoria(dtoIn);
 
@@ -1607,7 +1608,7 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getTotalProductosPorCategoria(dtoIn: ServiceDto) {
+    async getTotalProductosPorCategoria(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT 
             COALESCE(c.nombre_incate, 'SIN CATEGORIA') AS categoria,

@@ -1,7 +1,7 @@
 import { IsString, Length } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class CedulaDto extends ServiceDto {
+export class CedulaDto extends QueryOptionsDto {
 
     @IsString()
     @Length(10, 10, { message: 'La cédula debe tener 10 caracteres.' })

@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { CantonesDto } from './dto/cantones.dto';
 import { CoreService } from '../../core.service';
 import { getYear } from 'date-fns';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class GeneralLdService {
@@ -17,7 +18,7 @@ export class GeneralLdService {
      * Retorna los Periodos (years) desde que se usa el sistema, para componentes como Select, Autocomplete
      * @returns 
      */
-    async getListDataPeriodos(dto?: ServiceDto) {
+    async getListDataPeriodos(dto?: QueryOptionsDto & HeaderParamsDto) {
 
         const query = new SelectQuery(`
         SELECT EXTRACT(YEAR FROM fecha_emisi_cccfa) AS value, CAST(EXTRACT(YEAR FROM fecha_emisi_cccfa) AS VARCHAR) AS label  
@@ -38,7 +39,7 @@ export class GeneralLdService {
     * Retorna las provincias
     * @returns 
     */
-    async getListDataProvincias(dto?: ServiceDto) {
+    async getListDataProvincias(dto?: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'gen', tableName: 'provincia', primaryKey: 'ide_geprov', columnLabel: 'nombre_geprov' }
         return this.core.getListDataValues(dtoIn);
     }
@@ -48,7 +49,7 @@ export class GeneralLdService {
     * Retorna los cantones de una provincia
     * @returns 
     */
-    async getListDataCantones(dtoIn: CantonesDto) {
+    async getListDataCantones(dtoIn: CantonesDto & HeaderParamsDto) {
 
         const query = new SelectQuery(`
             select
@@ -72,7 +73,7 @@ export class GeneralLdService {
     * Retorna los titulos para una persona
     * @returns 
     */
-    async getListDataTitulosPersona(dto?: ServiceDto) {
+    async getListDataTitulosPersona(dto?: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'gen', tableName: 'titulo_persona', primaryKey: 'ide_getitp', columnLabel: "nombre_getitp || ' - ' || abreviatura_getitp" }
         return this.core.getListDataValues(dtoIn);
     }
@@ -82,7 +83,7 @@ export class GeneralLdService {
     * Retorna los tipos de direccion
     * @returns 
     */
-    async getListDataTiposDireccion(dto?: ServiceDto) {
+    async getListDataTiposDireccion(dto?: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'gen', tableName: 'tipo_direccion', primaryKey: 'ide_getidi', columnLabel: 'nombre_getidi' }
         return this.core.getListDataValues(dtoIn);
     }
@@ -91,7 +92,7 @@ export class GeneralLdService {
     * Retorna los tipos de identificacion
     * @returns 
     */
-    async getListDataTiposIdentificacion(dto?: ServiceDto) {
+    async getListDataTiposIdentificacion(dto?: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'gen', tableName: 'tipo_identifi', primaryKey: 'ide_getid', columnLabel: 'nombre_getid' }
         return this.core.getListDataValues(dtoIn);
     }

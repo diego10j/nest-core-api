@@ -1,8 +1,7 @@
 import { IsInt, IsPositive } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
-import { PartialType } from '@nestjs/mapped-types';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class IVentasMensualesClienteDto extends PartialType(ServiceDto) {
+export class VentasMensualesClienteDto extends QueryOptionsDto {
 
 
     @IsInt()

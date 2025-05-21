@@ -1,7 +1,9 @@
 import { MessageAck, MessageMedia } from "whatsapp-web.js";
 import { UploadMediaDto } from "../../dto/upload-media.dto";
 import * as fs from 'fs';
+import * as path from 'path';
 import { MediaFile } from "../../api/interface/whatsapp";
+import { FILE_STORAGE_CONSTANTS } from "src/core/sistema/files/file-temp.service";
 
 // types/mime-types.const.ts
 export const MIME_TYPES = {
@@ -159,7 +161,23 @@ export function getMediaOptions(mediaMessage: UploadMediaDto): any {
 
 // --- Utility Methods --- //
 export function formatPhoneNumber(phoneNumber: string): string {
-    return phoneNumber.includes('@c.us') ? phoneNumber : `${phoneNumber}@c.us`;
+    // Elimina todo excepto dígitos y "+"
+    const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+
+    // Si empieza con 0 (Ecuador), reemplaza por 593
+    if (cleaned.startsWith('0') && cleaned.length === 10) {
+        return `593${cleaned.substring(1)}@c.us`;
+    }
+    // Si tiene código de país (+593 o 593), limpia el "+"
+    else if (cleaned.startsWith('+593') || cleaned.startsWith('593')) {
+        return `${cleaned.replace('+', '')}@c.us`;
+    }
+    // Si es un número internacional (ej: +8698524444)
+    else if (cleaned.startsWith('+')) {
+        return `${cleaned.replace('+', '')}@c.us`;
+    }
+    // Si no cumple ningún formato esperado
+    throw new Error('Formato de número no soportado');
 }
 
 export function validateCoordinates(latitude: number, longitude: number): void {
@@ -228,6 +246,72 @@ export function createMediaInstance(mediaMessage: UploadMediaDto, file: Express.
             }
         }
         throw new Error(`Error al crear instancia de media: ${error.message}`);
+    }
+}
+
+// Crea un File existente en la carpeta de temporales 
+export async function createFileInstanceFromPath(
+    fileName: string
+): Promise<Express.Multer.File> {
+    const directoryPath = FILE_STORAGE_CONSTANTS.TEMP_DIR;
+    const fullPath = path.join(directoryPath, fileName);
+    
+    // console.log('Nombre de archivo:', fileName);
+    // console.log('Ruta completa:', fullPath);
+
+    // 1. Validaciones de entrada
+    if (!directoryPath || typeof directoryPath !== 'string') {
+        throw new Error('No se proporcionó un directorio válido');
+    }
+    if (!fileName || typeof fileName !== 'string') {
+        throw new Error('No se proporcionó un nombre de archivo válido');
+    }
+
+    try {
+        // 2. Normalizar rutas para seguridad
+        const normalizedPath = path.normalize(fullPath);
+
+        // 3. Verificar existencia del archivo
+        if (!fs.existsSync(normalizedPath)) {
+            throw new Error(`El archivo no existe en la ruta: ${normalizedPath}`);
+        }
+
+        // 4. Obtener estadísticas y contenido del archivo
+        const stats = fs.statSync(normalizedPath);
+        if (!stats.isFile()) {
+            throw new Error('La ruta proporcionada no es un archivo válido');
+        }
+
+        const fileContent = fs.readFileSync(normalizedPath);
+        if (fileContent.length === 0) {
+            throw new Error('El archivo está vacío');
+        }
+
+        // 5. Determinar el tipo MIME
+        const mimeType = detectMimeType(fileName) || getDefaultMimeTypeFromExtension(fileName);
+
+        // 6. Crear objeto Multer.File
+        const multerFile: Express.Multer.File = {
+            fieldname: 'file',
+            originalname: fileName,
+            encoding: '7bit',
+            mimetype: mimeType,
+            size: stats.size,
+            destination: directoryPath,
+            filename: path.basename(fileName),
+            path: normalizedPath,
+            buffer: fileContent,
+            stream: fs.createReadStream(normalizedPath)
+        };
+
+        return multerFile;
+
+    } catch (error) {
+        // Mejor manejo de errores
+        if (error instanceof Error) {
+            throw new Error(`Error al crear instancia de media: ${error.message}`);
+        }
+        throw new Error('Error desconocido al crear instancia de media');
     }
 }
 

@@ -1,20 +1,15 @@
-import {  IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
 
-
-export class EnviarMensajeDto extends ServiceDto {
-
-    @IsString()
-    @IsNotEmpty()
-    @Matches(
-        /^\d{12}$/g, {
-        message: 'Número de teléfono no válido'
-    })
-    telefono: string;
+export class EnviarMensajeDto extends TelefonoWebDto {
 
 
     @IsString()
     texto: string;
+
+    @IsBoolean()
+    @IsOptional()
+    emitSocket?: boolean = true;  // true emite mensajes por socket a clientes conectados
 
 
     // API

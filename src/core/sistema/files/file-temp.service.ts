@@ -15,13 +15,18 @@ const stat = promisify(fs.stat);
 const unlink = promisify(fs.unlink);
 const access = promisify(fs.access);
 const constants = fs.constants;
-const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+
+export const FILE_STORAGE_CONSTANTS = {
+    BASE_PATH: PATH_DRIVE(),
+    TEMP_DIR: path.join(PATH_DRIVE(), 'temp_media'),  
+    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
+    LARGE_FILE_THRESHOLD :10 * 1024 * 1024 // 10MB
+} as const;
+
 
 @Injectable()
 export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
-    private readonly basePath = PATH_DRIVE(); // Directorio base configurable
-    public readonly tempDir = path.join(this.basePath, 'temp_media');
+
 
     // Configuración de tiempos (en milisegundos)
     private readonly fileLifetime = 15 * 24 * 3600 * 1000; // 15 días
@@ -34,8 +39,8 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
     }
 
     private ensureTempDirExists(): void {
-        if (!fs.existsSync(this.tempDir)) {
-            fs.mkdirSync(this.tempDir, { recursive: true });
+        if (!fs.existsSync(FILE_STORAGE_CONSTANTS.TEMP_DIR)) {
+            fs.mkdirSync(FILE_STORAGE_CONSTANTS.TEMP_DIR, { recursive: true });
         }
     }
 
@@ -53,7 +58,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
 
     async saveTempFile(data: Buffer, extension: string, originalName: string = undefined): Promise<{ filePath: string; fileName: string }> {
         const fileName = originalName ? originalName : `${uuidv4()}.${extension}`;
-        const filePath = path.join(this.tempDir, fileName);
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
 
         await writeFile(filePath, data);
         return { filePath, fileName };
@@ -66,7 +71,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
      * @returns Promise<boolean> true si existe, false si no existe
      */
     async fileExists(filename: string): Promise<boolean> {
-        const filePath = path.join(this.tempDir, filename);
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, filename);
         try {
             await access(filePath, constants.F_OK);
             return true;
@@ -84,11 +89,11 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
     async cleanupOldFiles(): Promise<void> {
         try {
             const now = Date.now();
-            const files = await readdir(this.tempDir);
+            const files = await readdir(FILE_STORAGE_CONSTANTS.TEMP_DIR);
             const deletionPromises = [];
 
             for (const file of files) {
-                const filePath = path.join(this.tempDir, file);
+                const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, file);
 
                 try {
                     const fileStat = await stat(filePath);
@@ -129,9 +134,9 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
         clearInterval(this.cleanupTimer);
 
         try {
-            const files = await readdir(this.tempDir);
+            const files = await readdir(FILE_STORAGE_CONSTANTS.TEMP_DIR);
             await Promise.all(files.map(file =>
-                unlink(path.join(this.tempDir, file)).catch(() => { }))
+                unlink(path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, file)).catch(() => { }))
             );
             console.log(`Deleted all ${files.length} temporary files on shutdown`);
         } catch (error) {
@@ -143,7 +148,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
 
     async downloadFile(response: Response, filename: string) {
 
-        const filePath = path.join(this.tempDir, filename);
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, filename);
 
         try {
             //  Verificar existencia del archivo
@@ -196,7 +201,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
     async downloadMediaFile(fileInfo: MediaFile, req: Request, res: Response) {
         try {
             // Verificar tamaño máximo del archivo
-            if (fileInfo.fileSize && fileInfo.fileSize > MAX_FILE_SIZE) {
+            if (fileInfo.fileSize && fileInfo.fileSize > FILE_STORAGE_CONSTANTS.MAX_FILE_SIZE) {
                 throw new BadRequestException('El archivo es demasiado grande');
             }
 
@@ -230,7 +235,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
             // Manejo de archivo temporal
             if (fileInfo.url) {
                 const fileName = fileInfo.url.split('/').pop();
-                const filePath = path.join(this.tempDir, fileName);
+                const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
                 const stats = fs.statSync(filePath);
 
                 if (!stats.isFile()) {
@@ -243,7 +248,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
                     'ETag': `"${stats.size}-${stats.mtime.getTime()}"`
                 });
 
-                if (stats.size > LARGE_FILE_THRESHOLD) {
+                if (stats.size > FILE_STORAGE_CONSTANTS.LARGE_FILE_THRESHOLD) {
                     headers['Accept-Ranges'] = 'bytes';
                 }
 
@@ -281,7 +286,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
     }
 
     private handleVideoRangeRequest(fileInfo: MediaFile, range: string, res: Response) {
-        const filePath = path.join(this.tempDir, fileInfo.url.split('/').pop());
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileInfo.url.split('/').pop());
         const stats = fs.statSync(filePath);
 
         if (!stats.isFile()) {

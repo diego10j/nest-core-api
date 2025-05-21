@@ -1,18 +1,24 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { PuntoVentaService } from './punto-venta.service';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 
 @Controller('ventas/punto-venta')
 export class PuntoVentaController {
   constructor(private readonly service: PuntoVentaService) { }
 
 
-  @Post('getTableQueryEstadosOrden')
+  @Get('getTableQueryEstadosOrden')
   // @Auth()
   getTableQueryEstadosOrden(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getTableQueryEstadosOrden(dtoIn);
+    return this.service.getTableQueryEstadosOrden({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 }

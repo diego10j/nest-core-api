@@ -1,5 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { FirmaService } from './firma.service';
 
 @Controller('sri/cel/firma')
@@ -7,29 +9,41 @@ export class FirmaController {
     constructor(private readonly service: FirmaService) { }
 
 
-    @Post('getFirma')
+    @Get('getFirma')
     // @Auth()
     getCliente(
-        @Body() dtoIn: ServiceDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto
     ) {
-        return this.service.getFirma(dtoIn);
+        return this.service.getFirma({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('getFirmas')
+    @Get('getFirmas')
     // @Auth()
     getFirmas(
-        @Body() dtoIn: ServiceDto
-    ) {
-        return this.service.getFirmas(dtoIn);
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto
+    ) {        
+        return this.service.getFirmas({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('clearCacheFirma')
     // @Auth()
     clearCacheFirma(
-        @Body() dtoIn: ServiceDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: QueryOptionsDto
     ) {
-        return this.service.clearCacheFirma(dtoIn);
+        return this.service.clearCacheFirma({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 

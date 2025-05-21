@@ -4,11 +4,12 @@ import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './con
 import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { getWhereIdeEmpr, toObjectTable, toStringColumns } from '../util/helpers/sql-util';
+import { toObjectTable, toStringColumns } from '../util/helpers/sql-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 import { isDefined } from '../util/helpers/common-util';
 import { SearchTableDto } from 'src/common/dto/search-table.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class CoreService {
@@ -21,7 +22,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async getListDataValues(dto: ListDataValuesDto) {
+    async getListDataValues(dto: ListDataValuesDto & HeaderParamsDto) {
         const condition = dto.condition && ` WHERE 1=1 AND ${dto.condition}`;
         const columnOrder = dto.columnOrder || dto.columnLabel;
         const pq = new SelectQuery(`SELECT CAST(${dto.primaryKey} AS VARCHAR) as value, ${dto.columnLabel} as label 
@@ -36,7 +37,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async getTableQuery(dto: TableQueryDto) {
+    async getTableQuery(dto: TableQueryDto & HeaderParamsDto) {
         const { columns, module, tableName, condition, orderBy, primaryKey } = dto;
         // Default values
         const selectedColumns = columns || '*';
@@ -57,7 +58,7 @@ export class CoreService {
     }
 
 
-    async getTableQueryByUuid(dto: FindByUuidDto) {
+    async getTableQueryByUuid(dto: FindByUuidDto & HeaderParamsDto) {
         let whereClause = `uuid = '${dto.uuid}'`;
         if (isDefined(dto.uuid) === false) {
             whereClause = `${dto.primaryKey} = -1`;
@@ -67,7 +68,7 @@ export class CoreService {
     }
 
 
-    async getTableQueryById(dto: FindByIdDto) {
+    async getTableQueryById(dto: FindByIdDto & HeaderParamsDto) {
 
         const whereClause = `${dto.primaryKey} = ${dto.value}`;
         const dtoIn = { ...dto, condition: `${whereClause}` }
@@ -80,7 +81,7 @@ export class CoreService {
      * @param listDto 
      * @returns 
      */
-    async save(dto: SaveListDto) {
+    async save(dto: SaveListDto & HeaderParamsDto) {
         const listQuery = dto.listQuery.map(_obj => {
             return this.toQuery(_obj, dto.ideEmpr, dto.ideSucu, dto.login, dto.audit);
         });
@@ -100,7 +101,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async isUnique(dto: UniqueDto) {
+    async isUnique(dto: UniqueDto & HeaderParamsDto) {
         const baseQuery = `SELECT ${dto.columns.map(col => col.columnName).join(', ')} FROM ${dto.module}_${dto.tableName} WHERE `;
         const conditions = dto.columns.map((col, index) => `${col.columnName} = $${index + 1}`).join(' OR ');
         const params = dto.columns.map(col => col.value);
@@ -146,7 +147,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async canDelete(dto: DeleteDto) {
+    async canDelete(dto: DeleteDto & HeaderParamsDto) {
         const dq = new DeleteQuery(`${dto.module}_${dto.tableName}`);
         dq.where = `${dto.primaryKey} = ANY($1)`;
         dq.addParam(1, dto.values);
@@ -161,7 +162,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async getSeqTable(dto: SeqTableDto) {
+    async getSeqTable(dto: SeqTableDto & HeaderParamsDto) {
         const seqTable: number = await this.dataSource.getSeqTable(`${dto.module}_${dto.tableName}`, dto.primaryKey, dto.numberRowsAdded);
         return {
             seqTable,
@@ -174,7 +175,7 @@ export class CoreService {
      * @param dto 
      * @returns 
      */
-    async findByUuid(dtoIn: FindByUuidDto) {
+    async findByUuid(dtoIn: FindByUuidDto & HeaderParamsDto) {
         const columns = dtoIn.columns || '*'; // all columns
         let whereClause = `uuid = '${dtoIn.uuid}'`;
         if (isDefined(dtoIn.uuid) === false) {
@@ -184,14 +185,14 @@ export class CoreService {
         return await this.dataSource.createSingleQuery(query);
     }
 
-    async findById(dtoIn: FindByIdDto) {
+    async findById(dtoIn: FindByIdDto & HeaderParamsDto) {
         const columns = dtoIn.columns || '*'; // all columns
         const whereClause = `${dtoIn.primaryKey} = ${dtoIn.value}`;
         const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
         return await this.dataSource.createSingleQuery(query);
     }
 
-    async search(dtoIn: SearchTableDto) {
+    async search(dtoIn: SearchTableDto & HeaderParamsDto) {
         if (dtoIn.value === "") {
             return [];
         }
@@ -221,11 +222,11 @@ export class CoreService {
         return await this.dataSource.createSelectQuery(query);
     }
 
-    async getTableColumns(dtoIn: ColumnsTableDto) {
+    async getTableColumns(dtoIn: ColumnsTableDto & HeaderParamsDto) {
         return await this.dataSource.getTableColumns(`${dtoIn.module}_${dtoIn.tableName}`);
     }
 
-    async refreshTableColumns(dtoIn: ColumnsTableDto) {
+    async refreshTableColumns(dtoIn: ColumnsTableDto & HeaderParamsDto) {
         return await this.dataSource.updateTableColumnsCache(`${dtoIn.module}_${dtoIn.tableName}`);
     }
 
@@ -235,7 +236,7 @@ export class CoreService {
 
 
 
-    async getTreeModel(dtoIn: TreeDto) {
+    async getTreeModel(dtoIn: TreeDto & HeaderParamsDto) {
         const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
         const orderColumn = dtoIn.orderBy ? dtoIn.orderBy.column : dtoIn.columnName;
 
@@ -330,7 +331,7 @@ export class CoreService {
      * @param dtoIn 
      * @returns 
      */
-    async updateColumns(dtoIn: UpdateColumnsDto) {
+    async updateColumns(dtoIn: UpdateColumnsDto & HeaderParamsDto) {
         let ide_tabl = -1;
         // Busca la tabla 
         const baseQuery = `
@@ -390,7 +391,7 @@ export class CoreService {
             insertQuery.values.set('precision_camp', column.precision);
             insertQuery.values.set('decimals_camp', column.decimals);
             insertQuery.values.set('lectura_camp', column.disabled);
-            insertQuery.values.set('filtro_camp', column.filter);
+            // insertQuery.values.set('filtro_camp', column.filter);
             insertQuery.values.set('comentario_camp', column.comment);
             insertQuery.values.set('size_camp', column.size);
             insertQuery.values.set('align_camp', column.align);

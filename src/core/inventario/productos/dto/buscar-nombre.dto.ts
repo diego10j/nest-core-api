@@ -1,7 +1,7 @@
 import { IsInt, IsOptional, IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class BusquedaPorNombreDto extends ServiceDto {
+export class BusquedaPorNombreDto extends QueryOptionsDto {
 
     @IsString()
     nombre: string;

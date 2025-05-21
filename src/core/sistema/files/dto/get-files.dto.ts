@@ -1,6 +1,6 @@
 import { IsInt, IsPositive, IsOptional, IsString, IsNotEmpty, IsIn } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
-export class GetFilesDto extends ServiceDto {
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+export class GetFilesDto extends QueryOptionsDto {
 
 
     @IsString()

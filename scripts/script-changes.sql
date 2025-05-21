@@ -1,3 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+
+
 ALTER TABLE sis_usuario ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_usuario ON sis_usuario(uuid);
 
@@ -8,8 +12,8 @@ UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
 /**27/04/2023 Cambia de tipo bytea a string el logo de la empresa*/
-ALTER TABLE "public"."sis_empresa" ALTER COLUMN "logo_empr" TYPE varchar(180)
-GO
+ALTER TABLE sis_empresa ADD COLUMN logotipo_empr varchar(120);
+
 
 /**15/08/2023 Campos tabla articulo*/
 ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
@@ -25,8 +29,6 @@ ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
 
 ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Cantidad minima stock
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
-ALTER TABLE inv_articulo ADD COLUMN por_util1_inarti decimal(12,3); 	  -- % Utilidad venta por mayor
-ALTER TABLE inv_articulo ADD COLUMN por_util2_inarti decimal(12,3); 	
 ALTER TABLE inv_articulo ADD COLUMN precio_inarti decimal(12,3); -- % Cuando tiene precio fjo
 
 
@@ -203,8 +205,6 @@ CREATE INDEX idx_sis_usuario_ide_perf ON sis_usuario(ide_perf);
 CREATE INDEX idx_sis_perfil_ide_perf ON sis_perfil(ide_perf);
 
 -- 1 June 2024 10:14:46 AM
-ALTER TABLE "public"."inv_unidad"
-ADD COLUMN "siglas_inuni" varchar(4);
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'UNI' WHERE "ide_inuni" = 0;
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'LIB' WHERE "ide_inuni" = 8;
 UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FRA' WHERE "ide_inuni" = 7;
@@ -478,8 +478,7 @@ CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
 // 25 Sep 2024
 
 ALTER TABLE inv_articulo ADD COLUMN otro_nombre_inarti varchar(200);   -- Otros nombres del producto     --contador de vistas 
-ALTER TABLE inv_articulo DROP COLUMN por_util1_inarti; 
-ALTER TABLE inv_articulo DROP COLUMN por_util2_inarti;  
+ 
 
 ALTER TABLE inv_articulo ADD COLUMN total_vistas_inarti int;
 ALTER TABLE inv_articulo ADD COLUMN fotos_inarti JSONB;  
@@ -669,6 +668,7 @@ CREATE INDEX IF NOT EXISTS idx_inv_unidad_inuni ON inv_unidad(ide_inuni);
 CREATE TABLE wha_cuenta (
 	ide_whcue INT primary KEY ,
 	nombre_whcue varchar(100),
+	tipo_whcue varchar(5),
 	id_telefono_whcue varchar(20),
 	id_aplicacion_whcue varchar(100),
 	id_cuenta_whcue varchar(50),
@@ -723,7 +723,7 @@ CREATE INDEX idx_wlc_ide_wheti ON wha_etiqueta (ide_wheti);
 
 -- API
 CREATE TABLE wha_lista (
-	ide_whlis SERIAL PRIMARY KEY,,
+	ide_whlis SERIAL PRIMARY KEY,
 	nombre_whlis varchar(80),
 	icono_whlis varchar(50),
 	color_whlis varchar(30),
@@ -849,6 +849,31 @@ SET TIME ZONE 'America/Guayaquil';
 
 
 -- 15052025 Campaña de mensajes
+
+CREATE TABLE wha_estado_camp_envio (
+	ide_whesce INT primary KEY ,
+	nombre_whesce VARCHAR(150) NOT NULL,
+	color_whesce VARCHAR(50),
+	icono_whesce VARCHAR(50),
+	activo_whesce bool DEFAULT true, 
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE SET NULL,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE SET NULL,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
+(1, 'PENDIENTE');
+
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
+(2, 'PROCESANDO');
+
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
+(3, 'ENVIADA');
+
+
+
 CREATE TABLE wha_tipo_camp_envio (
 	ide_whtice INT primary KEY ,
 	nombre_whtice VARCHAR(150) NOT NULL,
@@ -869,15 +894,14 @@ ALTER TABLE wha_tipo_camp_envio ADD CONSTRAINT wha_tipo_camp_envio_unique UNIQUE
 CREATE TABLE wha_cab_camp_envio (
 	ide_whcenv INT primary KEY ,
 	ide_whtice INT REFERENCES wha_tipo_camp_envio(ide_whtice) ON DELETE SET NULL,  --tipo campaña
+	ide_whesce  INT REFERENCES wha_estado_camp_envio(ide_whesce) ON DELETE SET NULL,  --estado
 	ide_whcue INT REFERENCES wha_cuenta(ide_whcue) ON DELETE SET NULL,  --cuenta whatsapp
-	ide_usua INT REFERENCES sis_usuario(ide_usua) ON DELETE SET NULL,   
-	nombre_whcenv VARCHAR(150) NOT NULL,
+	ide_usua INT REFERENCES sis_usuario(ide_usua) ON DELETE SET NULL,   	
 	descripcion_whcenv text,
 	mensaje_whcenv TEXT NOT NULL,  
 	media_whcenv VARCHAR(200),
 	programado_whcenv boolean default false,
-	hora_progra_whcenv  TIMESTAMP NOT NULL,
-	status_auto_whcenv  VARCHAR(1) DEFAULT 'P' ,   -- P PENIENTE, E ENVIADA, A ANULADA
+	hora_progra_whcenv  TIMESTAMP,
 	activo_whcenv bool DEFAULT false, 
 	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE SET NULL,  
 	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE SET NULL,  
@@ -893,8 +917,9 @@ CREATE TABLE wha_det_camp_envio (
 	ide_whcenv INT REFERENCES wha_cab_camp_envio(ide_whcenv) ON DELETE CASCADE,  --cuenta whatsapp
 	telefono_whden VARCHAR(20) NOT NULL,
 	tiene_whats_whden bool DEFAULT false,    --- valida que el numero tenga whatsapp
-	nombre_whden VARCHAR(200),  	
-	fecha_envio_whden  TIMESTAMP NOT NULL,
+	observacion_whden VARCHAR(200),  	
+	error_whden VARCHAR(200),  	
+	fecha_envio_whden  TIMESTAMP,
 	id_mensaje_whden VARCHAR(80), 
 	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
 	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
@@ -913,3 +938,5 @@ CREATE INDEX idx_wha_cab_camp_envio_usuario ON wha_cab_camp_envio(ide_usua);
 CREATE INDEX idx_wha_det_camp_envio_cabecera ON wha_det_camp_envio(ide_whcenv);
 
 CREATE INDEX idx_wha_det_camp_envio_mensaje ON wha_det_camp_envio(ide_whcenv, id_mensaje_whden);
+
+

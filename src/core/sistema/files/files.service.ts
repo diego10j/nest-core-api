@@ -16,11 +16,11 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { toDate, FORMAT_DATETIME_DB } from 'src/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { FILE_STORAGE_CONSTANTS } from './file-temp.service';
 
 @Injectable()
 export class FilesService {
-
-    private basePath = PATH_DRIVE(); // Cambiar a /drive 'C:/drive' como directorio raíz
    
     private tableName = 'sis_archivo';
     private primaryKey = 'ide_arch';
@@ -28,8 +28,8 @@ export class FilesService {
     constructor(
         private readonly errorLog: ErrorsLoggerService,
         private readonly dataSource: DataSourceService) {
-        if (!existsSync(this.basePath)) {
-            mkdirSync(this.basePath, { recursive: true });
+        if (!existsSync(FILE_STORAGE_CONSTANTS.BASE_PATH)) {
+            mkdirSync(FILE_STORAGE_CONSTANTS.BASE_PATH, { recursive: true });
         }
     }
 
@@ -38,7 +38,7 @@ export class FilesService {
      * @param dto 
      * @returns 
      */
-    async createFolder(dto: CreateFolderDto): Promise<ResultQuery> {
+    async createFolder(dto: CreateFolderDto & HeaderParamsDto): Promise<ResultQuery> {
         const { folderName, sis_ide_arch, ide_inarti } = dto;
         if (await this._checkExistFile(folderName, sis_ide_arch)) {
             throw new BadRequestException(`La carpeta ${folderName} ya existe`);
@@ -63,7 +63,7 @@ export class FilesService {
      * @param dto 
      * @returns 
      */
-    async getFiles(dto: GetFilesDto): Promise<ResultQuery> {
+    async getFiles(dto: GetFilesDto & HeaderParamsDto): Promise<ResultQuery> {
         const { ide_archi, ide_inarti, mode } = dto;
 
         const conditions = [
@@ -153,7 +153,7 @@ export class FilesService {
      * @param file 
      * @returns 
      */
-    async uploadFile(dto: UploadFileDto, file: Express.Multer.File): Promise<ResultQuery> {
+    async uploadFile(dto: UploadFileDto  & HeaderParamsDto, file: Express.Multer.File): Promise<ResultQuery> {
         const { sis_ide_arch, ide_inarti } = dto;
         const exist = await this._checkExistFile(file.originalname, sis_ide_arch ? Number(sis_ide_arch) : undefined);
         if (exist === false) {
@@ -208,7 +208,7 @@ export class FilesService {
      * @param dto 
      * @returns 
      */
-    async deleteFiles(dto: DeleteFilesDto): Promise<ResultQuery> {
+    async deleteFiles(dto: DeleteFilesDto & HeaderParamsDto): Promise<ResultQuery> {
 
         const query = new SelectQuery(`
         SELECT
@@ -241,7 +241,7 @@ export class FilesService {
             data.forEach(row => {
                 // Elimina archivos 
                 if (row.carpeta_arch === false) {
-                    const filePath = join(this.basePath, row.name);
+                    const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, row.name);
                     try {
                         unlinkSync(filePath);
                     } catch (error) {
@@ -297,7 +297,7 @@ export class FilesService {
         updateQuery.where = `uuid = $1`;
         updateQuery.addParam(1, name);
         this.dataSource.createQuery(updateQuery)
-        const filePath = join(this.basePath, data.name);
+        const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, data.name);
         if (!existsSync(filePath)) {
             throw new BadRequestException(`El archivo ${data.nombre_arch} no existe`);
         }
@@ -390,8 +390,8 @@ export class FilesService {
 
 
     moveItem(sourcePath: string, destinationPath: string): string {
-        const sourceFullPath = join(this.basePath, sourcePath);
-        const destinationFullPath = join(this.basePath, destinationPath);
+        const sourceFullPath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, sourcePath);
+        const destinationFullPath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, destinationPath);
         if (!existsSync(sourceFullPath)) {
             throw new BadRequestException(`Source item ${sourcePath} does not exist`);
         }
@@ -433,16 +433,16 @@ export class FilesService {
 
 
     getStaticImage(imageName: string) {
-        let path = join(this.basePath, imageName);
+        let path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, imageName);
         if (!existsSync(path))
-            path = join(this.basePath, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
+            path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
         if (!existsSync(path))
             throw new BadRequestException(`No image found with  ${path}`);
         return path;
     }
 
     deleteStaticFile(fileName: string) {
-        const filePath = join(this.basePath, fileName);
+        const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, fileName);
         try {
             unlinkSync(filePath);
         } catch (error) {

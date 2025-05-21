@@ -1,9 +1,9 @@
 
 import { IsInt } from 'class-validator';
-import { ServiceDto } from './service.dto';
+import { QueryOptionsDto } from './query-options.dto';
 
 
-export class IdeDto extends ServiceDto {
+export class IdeDto extends QueryOptionsDto {
 
     @IsInt()
     ide: number;

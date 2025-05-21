@@ -1,9 +1,9 @@
 import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
 
-export class LoginUserDto extends PartialType(ServiceDto) {
+export class LoginUserDto extends PartialType(QueryOptionsDto) {
 
     @IsEmail({}, { message: 'El correo electrónico no es válido' })
     email: string;

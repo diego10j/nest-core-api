@@ -1,9 +1,9 @@
 import { IsInt ,IsString, MinLength } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
 
-export class HorarioLoginDto extends PartialType(ServiceDto) {
+export class HorarioLoginDto extends PartialType(QueryOptionsDto) {
     
     @IsInt()
     ide_usua: number;

@@ -1,7 +1,7 @@
 import { IsDateString, IsInt, IsOptional, IsPositive } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class ComprobantesInvDto extends ServiceDto {
+export class ComprobantesInvDto extends QueryOptionsDto {
 
     @IsDateString()
     fechaInicio: string;

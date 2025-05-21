@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { DataSourceService } from '../../connection/datasource.service';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 import { RucDto } from './dto/ruc.dto';
 
@@ -7,9 +6,7 @@ import { RucDto } from './dto/ruc.dto';
 @Injectable()
 export class GeneralService {
 
-    constructor(private readonly dataSource: DataSourceService) { }
-
-
+    constructor() { }
 
     /**
     * Valida cédula

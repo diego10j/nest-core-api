@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { DataSourceService } from '../connection/datasource.service';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
 import { Message } from 'whatsapp-web.js';
 import { fTimestampToISODate, getCurrentDateTime } from 'src/util/helpers/date-util';
@@ -17,6 +17,8 @@ import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 
 
 
@@ -67,7 +69,7 @@ export class WhatsappDbService {
        * @param dto 
        * @returns 
        */
-    async validarPermisoAgente(dto: ServiceDto) {
+    async validarPermisoAgente(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT 
                     COALESCE(SUM(a.no_leidos_whcha), 0) AS total_no_leidos,
@@ -104,7 +106,7 @@ export class WhatsappDbService {
      * @param dto 
      * @returns 
      */
-    async getAgentesCuenta(dto: ServiceDto) {
+    async getAgentesCuenta(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             select  ca.ide_whcuag, ca.ide_usua, 
                     nom_usua, ca.activo_whcuag,ca.hora_ingre, avatar_usua
@@ -155,7 +157,7 @@ export class WhatsappDbService {
         WHERE phone_number_id_whcha = $1
         order by
             fecha_msg_whcha desc
-        `, dto);
+        `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         const data = await this.dataSource.createSelectQuery(query);
         return data;
@@ -168,7 +170,7 @@ export class WhatsappDbService {
        * @param dto 
        * @returns 
        */
-    async getTotalMensajes(dto: ServiceDto, config: CacheConfig) {
+    async getTotalMensajes(dto: QueryOptionsDto, config: CacheConfig) {
         if (isDefined(config) === false)
             throw new BadRequestException('Error al obtener la configuración de WhatsApp');
         const query = new SelectQuery(`
@@ -233,7 +235,7 @@ export class WhatsappDbService {
         order by
             a.fecha_msg_whcha DESC
         LIMIT ${dto.resultados}
-        `, dto);
+        `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
@@ -243,7 +245,7 @@ export class WhatsappDbService {
 
     }
 
-    async getEtiquetas(dto: ServiceDto) {
+    async getEtiquetas(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             a.ide_wheti,
@@ -268,7 +270,7 @@ export class WhatsappDbService {
      * @param dto 
      * @returns 
      */
-    async getListas(dto: ServiceDto) {
+    async getListas(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             SELECT
                 a.ide_whlis,
@@ -393,7 +395,7 @@ export class WhatsappDbService {
     )
     order by nombre_whcha 
     LIMIT ${dto.resultados}            
-    `, dto);
+    `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
@@ -465,7 +467,7 @@ export class WhatsappDbService {
             order by
                 a.fecha_msg_whcha DESC
             LIMIT ${dto.resultados}
-            `, dto);
+            `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
@@ -667,7 +669,7 @@ export class WhatsappDbService {
        * Guarda un mensaje usando whatsapp web.
        * @param msg - datos del mensaje.
     */
-    async saveMensajeEnviadoWeb(msg: Message, originalName: string = null) {
+    async saveMensajeEnviadoWeb(msg: Message, emitSocket: boolean, originalName: string = null) {
         try {
             const data = msg['_data'];
 
@@ -706,7 +708,9 @@ export class WhatsappDbService {
             insertQuery.values.set('tipo_whmem', 'WEB');
             insertQuery.values.set('status_whmem', getStatusMessage(data.ack));
             const res = await this.dataSource.createQuery(insertQuery);
-            this.whatsappGateway.sendMessageToClients(msg.from);  // Emitir el mensaje enviado a los clientes WebSocket
+            if (emitSocket) {
+                this.whatsappGateway.sendMessageToClients(data.to.user);  // Emitir el mensaje enviado a los clientes WebSocket
+            }
             return res;
         } catch (error) {
             this.logger.error(`Error saveMensajeEnviadoWeb: ${error.message}`);
@@ -724,31 +728,33 @@ export class WhatsappDbService {
 * @param dto 
 * @returns 
 */
-    async getListaCampanias(dto: ServiceDto) {
+    async getListaCampanias(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT 
             cab.ide_whcenv, 
             cab.hora_ingre AS fecha, 
-            cab.nombre_whcenv, 
             cab.descripcion_whcenv, 
             CASE 
                 WHEN LENGTH(cab.mensaje_whcenv) > 50 
                 THEN CONCAT(LEFT(cab.mensaje_whcenv, 50), '...') 
                 ELSE cab.mensaje_whcenv 
-            END AS mensaje_whcenv,
+            END AS mensaje_whcenv,          
+            nombre_whesce,
+            cab.activo_whcenv, 
+            t.nombre_whtice, 
+            u.nom_usua,                         
+            COUNT(det.ide_whdenv) AS total_detalle,
+            SUM(CASE WHEN det.id_mensaje_whden IS NOT NULL THEN 1 ELSE 0 END) AS total_enviados_exito,
             cab.programado_whcenv, 
             cab.hora_progra_whcenv, 
-            cab.status_auto_whcenv, 
-            c.activo_whcue, 
-            t.nombre_whtice, 
-            t.color_whtice, 
-            u.nom_usua,
-            COUNT(det.ide_whdenv) AS total_detalle,
-            SUM(CASE WHEN det.id_mensaje_whden IS NOT NULL THEN 1 ELSE 0 END) AS total_enviados_exito
+            cab.ide_whesce,
+            color_whesce
         FROM 
             wha_cab_camp_envio cab
         LEFT JOIN 
             wha_tipo_camp_envio t ON cab.ide_whtice = t.ide_whtice
+        INNER JOIN 
+        wha_estado_camp_envio e ON cab.ide_whesce = e.ide_whesce
         INNER JOIN 
             sis_usuario u ON cab.ide_usua = u.ide_usua
         INNER JOIN 
@@ -761,32 +767,31 @@ export class WhatsappDbService {
         GROUP BY 
             cab.ide_whcenv, 
             cab.hora_ingre,
-            cab.nombre_whcenv, 
             cab.descripcion_whcenv, 
-            cab.mensaje_whcenv,  -- Aunque lo usamos en el CASE, debe estar en GROUP BY
+            cab.mensaje_whcenv,  
             cab.programado_whcenv, 
             cab.hora_progra_whcenv, 
-            cab.status_auto_whcenv, 
+            cab.ide_whesce, 
+            nombre_whesce,
             c.activo_whcue, 
             t.nombre_whtice, 
-            t.color_whtice, 
+            color_whesce, 
             u.nom_usua`, dto);
         query.addParam(1, dto.ideEmpr);
         return await this.dataSource.createQuery(query);
     }
 
 
-    async getDetalleCampania(dto: GetDetalleCampaniaDto) {
+    async getDetalleCampania(dto: GetDetalleCampaniaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             ide_whdenv,
             telefono_whden,
+            observacion_whden,
             d.hora_ingre AS fecha_creacion,
             fecha_envio_whden,
             id_mensaje_whden,
-            status_whmem,
             timestamp_sent_whmem,
-            timestamp_read_whmem,
             error_whmem
         FROM
             wha_det_camp_envio d
@@ -797,6 +802,28 @@ export class WhatsappDbService {
             d.hora_ingre`, dto);
         query.addParam(1, dto.ide_whcenv);
         return await this.dataSource.createQuery(query);
+    }
+
+
+    async getCampaniaEnvio(dto: EnviarCampaniaDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT
+            ide_whdenv,
+            telefono_whden,
+            ide_whesce,
+            mensaje_whcenv,
+            media_whcenv
+        FROM
+            wha_det_camp_envio d
+            LEFT JOIN wha_cab_camp_envio c on d.ide_whcenv = c.ide_whcenv            
+        WHERE
+            c.ide_whcenv = $1
+        AND id_mensaje_whden is NULL
+        AND tiene_whats_whden = true
+        ORDER BY d.hora_ingre
+    `);
+        query.addParam(1, dto.ide_whcenv);
+        return await this.dataSource.createSelectQuery(query);
     }
 }
 

@@ -513,7 +513,7 @@ CREATE TABLE sis_actividad_comentario (
     hora_actua TIMESTAMP
 );
 
-// gen_persona
+-- gen_persona
 ALTER TABLE gen_persona ADD COLUMN ide_geprov int4;
 ALTER TABLE gen_persona ADD COLUMN ide_gecant int4;
 

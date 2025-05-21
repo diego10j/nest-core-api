@@ -2,9 +2,10 @@ import { UsuarioDto } from './dto/usuario.dto';
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { DataSourceService } from '../../connection/datasource.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { CoreService } from '../../core.service';
 import { isDefined } from 'src/util/helpers/common-util';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class UsuariosService {
@@ -15,13 +16,13 @@ export class UsuariosService {
 
 
     // -------------------------------- USUARIO ---------------------------- //
-    async getListDataUsuario(dto: ServiceDto) {
+    async getListDataUsuario(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'usuario', primaryKey: 'ide_usua', columnLabel: 'nom_usua', condition }
         return this.core.getListDataValues(dtoIn);
     }
 
-    async getTableQueryUsuarioByUuid(dto: UsuarioDto) {
+    async getTableQueryUsuarioByUuid(dto: UsuarioDto & HeaderParamsDto) {
         let whereClause = `uuid = '${dto.uuid}'`;
         if (isDefined(dto.uuid) === false) {
             whereClause = `ide_usua = -1`;
@@ -36,7 +37,7 @@ export class UsuariosService {
     * Retorna el listado de Usuarios
     * @returns 
     */
-    async getUsuarios(dtoIn?: ServiceDto) {
+    async getUsuarios(dtoIn?: QueryOptionsDto  & HeaderParamsDto) {
         const query = new SelectQuery(`
     SELECT
         a.uuid,
@@ -55,7 +56,7 @@ export class UsuariosService {
     WHERE
         ide_empr = ${dtoIn.ideEmpr}
     ORDER BY
-        nom_usua`);
+        nom_usua`,dtoIn);
         return await this.dataSource.createQuery(query);
     }
 

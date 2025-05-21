@@ -3,9 +3,10 @@ import { DataSourceService } from '../../connection/datasource.service';
 
 import { BaseService } from '../../../common/base-service';
 
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { Redis } from 'ioredis';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Injectable()
@@ -19,7 +20,7 @@ export class EmisorService extends BaseService {
     }
 
 
-    async getEmisor(dtoIn: ServiceDto) {
+    async getEmisor(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const cacheKey = `emisor_${dtoIn.ideEmpr}`;
         // Check cache
         const cachedEmisor = await this.redisClient.get(cacheKey);
@@ -47,7 +48,7 @@ export class EmisorService extends BaseService {
     }
 
 
-    async clearCacheEmisor(_dtoIn: ServiceDto) {
+    async clearCacheEmisor(_dtoIn: QueryOptionsDto  & HeaderParamsDto) {
         // Obtener todas las claves que coinciden con el patrón 'schema:*'
         const keys = await this.redisClient.keys('emisor_:*');
 

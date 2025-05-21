@@ -3,10 +3,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
 import { BaseService } from '../../../common/base-service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
-import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { validateDataRequiere } from 'src/util/helpers/common-util';
@@ -16,6 +16,7 @@ import { CoreService } from 'src/core/core.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class ClientesService extends BaseService {
@@ -37,7 +38,7 @@ export class ClientesService extends BaseService {
     }
 
 
-    async getCliente(dtoIn: UuidDto) {
+    async getCliente(dtoIn: UuidDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -118,7 +119,7 @@ export class ClientesService extends BaseService {
     * @param dtoIn 
     * @returns 
     */
-    async getClientes(dtoIn: ServiceDto) {
+    async getClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -156,7 +157,7 @@ export class ClientesService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldosClientes(dtoIn: ServiceDto) {
+    async getSaldosClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         WITH saldo_cte AS (
             SELECT
@@ -212,7 +213,7 @@ export class ClientesService extends BaseService {
     * @param dtoIn 
     * @returns 
     */
-    async getTrnCliente(dtoIn: TrnClienteDto) {
+    async getTrnCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
 
         const query = new SelectQuery(`
             WITH saldo_inicial AS (
@@ -306,7 +307,7 @@ export class ClientesService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getDetalleVentasCliente(dtoIn: TrnClienteDto) {
+    async getDetalleVentasCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             cdf.ide_ccdfa,
@@ -349,7 +350,7 @@ export class ClientesService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldo(dtoIn: IdClienteDto) {
+    async getSaldo(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`     
             SELECT 
                 ct.ide_geper,
@@ -375,7 +376,7 @@ export class ClientesService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getProductosCliente(dtoIn: IdClienteDto) {
+    async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`     
         WITH UltimasVentas AS (
             SELECT 
@@ -443,7 +444,7 @@ export class ClientesService extends BaseService {
    * @param dtoIn 
    * @returns 
    */
-    async getVentasMensuales(dtoIn: IVentasMensualesClienteDto) {
+    async getVentasMensuales(dtoIn: VentasMensualesClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         WITH FacturasFiltradas AS (
             SELECT 
@@ -483,7 +484,7 @@ export class ClientesService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async save(dtoIn: SaveClienteDto) {
+    async save(dtoIn: SaveClienteDto & HeaderParamsDto) {
 
         if (dtoIn.isUpdate === true) {
             // Actualiza el cliente
@@ -524,7 +525,7 @@ export class ClientesService extends BaseService {
 
     }
 
-    async getVentasConUtilidad(dtoIn: TrnClienteDto) {
+    async getVentasConUtilidad(dtoIn: TrnClienteDto & HeaderParamsDto) {
         // Ajustar el porcentaje según  criterio 30% margen
         const query = new SelectQuery(`
         WITH precios_compra AS (
@@ -725,7 +726,7 @@ export class ClientesService extends BaseService {
     * @param dtoIn 
     * @returns 
     */
-    async getDireccionesCliente(dtoIn: IdClienteDto) {
+    async getDireccionesCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         select
             a.ide_gedirp,
@@ -763,7 +764,7 @@ export class ClientesService extends BaseService {
         * @param dtoIn 
         * @returns 
         */
-    async getContactosCliente(dtoIn: IdClienteDto) {
+    async getContactosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`
     select
         a.ide_gedirp,
@@ -812,7 +813,7 @@ export class ClientesService extends BaseService {
     }
 
 
-    async searchCliente(dto: SearchDto) {
+    async searchCliente(dto: SearchDto & HeaderParamsDto) {
         const dtoIn = {
             ...dto,
             module: 'gen',
@@ -826,7 +827,7 @@ export class ClientesService extends BaseService {
 
     }
 
-    async existCliente(dto: ExistClienteDto) {
+    async existCliente(dto: ExistClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(`     
         SELECT 
             ide_geper,

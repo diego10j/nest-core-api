@@ -1,8 +1,8 @@
 import { IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
-export class RenameFileDto extends PartialType(ServiceDto) {
+export class RenameFileDto extends PartialType(QueryOptionsDto) {
 
 
     @IsString()

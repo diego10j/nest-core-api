@@ -4,6 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
 import { CedulaDto } from '../dto/cedula.dto';
 import { RucDto } from '../dto/ruc.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Injectable()
@@ -16,12 +17,12 @@ export class ApiPersonaService extends BaseService {
     }
 
 
-    async consultaCedula(dtoIn: CedulaDto) {
+    async consultaCedula(dtoIn: CedulaDto  & HeaderParamsDto) {
         try {
             const URL = `https://si.secap.gob.ec/sisecap/logeo_web/json/busca_persona_registro_civil.php`;
     
             const requestConfig: AxiosRequestConfig = {
-                timeout: 15000, // 15 segundos
+                timeout: 30000, // 30 segundos
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Origin': 'https://si.secap.gob.ec',
@@ -49,13 +50,13 @@ export class ApiPersonaService extends BaseService {
     
 
 
-    async consultaRUC(dtoIn: RucDto) {
+    async consultaRUC(dtoIn: RucDto  & HeaderParamsDto) {
 
         try {
 
             const URL = `https://si.secap.gob.ec/sisecap/ServicioConsultaDatosRUC.php?ruc=${dtoIn.ruc}`;
             const requestConfig: AxiosRequestConfig = {
-                timeout: 15000, // 15 segundos
+                timeout: 30000, // 30 segundos
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Origin': 'https://si.secap.gob.ec',

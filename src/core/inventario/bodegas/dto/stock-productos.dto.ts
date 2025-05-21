@@ -1,7 +1,7 @@
 import { IsBoolean, IsDateString, ArrayNotEmpty, IsOptional, IsNotEmpty, IsArray } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class StockProductosDto extends ServiceDto {
+export class StockProductosDto extends QueryOptionsDto {
 
     @IsDateString()
     @IsOptional()

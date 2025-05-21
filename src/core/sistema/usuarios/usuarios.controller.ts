@@ -1,35 +1,49 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Query, Controller, Get } from '@nestjs/common';
 import { UsuariosService } from './usuarios.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { UsuarioDto } from './dto/usuario.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Controller('sistema/usuarios')
 export class UsuariosController {
   constructor(private readonly service: UsuariosService) {
   }
 
-  @Post('getUsuarios')
+  @Get('getUsuarios')
   // @Auth()
   getProductos(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getUsuarios(dtoIn);
+    return this.service.getUsuarios({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getTableQueryUsuarioByUuid')
+  @Get('getTableQueryUsuarioByUuid')
   // @Auth()
   getTableQueryUsuarioByUuid(
-    @Body() dtoIn: UsuarioDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: UsuarioDto
   ) {
-    return this.service.getTableQueryUsuarioByUuid(dtoIn);
+    return this.service.getTableQueryUsuarioByUuid({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getListDataUsuario')
+  @Get('getListDataUsuario')
   // @Auth()
   getListDataUsuario(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getListDataUsuario(dtoIn);
+    return this.service.getListDataUsuario({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 }

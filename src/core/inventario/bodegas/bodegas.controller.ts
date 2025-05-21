@@ -1,73 +1,103 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Query, Controller, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { BodegasService } from './bodegas.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
   constructor(private readonly service: BodegasService) { }
 
-  @Post('getBodegas')
+  @Get('getBodegas')
   // @Auth()
   getBodegas(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getBodegas(dtoIn);
+    return this.service.getBodegas({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getBodega')
+  @Get('getBodega')
   // @Auth()
   getBodega(
-    @Body() dtoIn: IdeDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdeDto
   ) {
-    return this.service.getBodega(dtoIn);
+    return this.service.getBodega({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getMovimientos')
+  @Get('getMovimientos')
   // @Auth()
   getMovimientos(
-    @Body() dtoIn: MovimientosInvDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: MovimientosInvDto
   ) {
-    return this.service.getMovimientos(dtoIn);
+    return this.service.getMovimientos({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getMovimientosBodega')
+  @Get('getMovimientosBodega')
   // @Auth()
   getMovimientosBodega(
-    @Body() dtoIn: MovimientosBodegaDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: MovimientosBodegaDto
   ) {
-    return this.service.getMovimientosBodega(dtoIn);
+    return this.service.getMovimientosBodega({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getStockProductos')
+  @Get('getStockProductos')
   // @Auth()
   getStockProductos(
-    @Body() dtoIn: StockProductosDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: StockProductosDto
   ) {
-    return this.service.getStockProductos(dtoIn);
+    return this.service.getStockProductos({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getListDataBodegas')
+  @Get('getListDataBodegas')
   // @Auth()
   getListDataBodegas(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getListDataBodegas(dtoIn);
+    return this.service.getListDataBodegas({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getListDataDetalleStock')
+  @Get('getListDataDetalleStock')
   // @Auth()
   getListDataDetalleStock(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getListDataDetalleStock(dtoIn);
+    return this.service.getListDataDetalleStock({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 

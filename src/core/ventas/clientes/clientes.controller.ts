@@ -1,139 +1,197 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ClientesService } from './clientes.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
-import { IVentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { SaveClienteDto } from './dto/save-cliente.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 
 @Controller('ventas/clientes')
 export class ClientesController {
   constructor(private readonly service: ClientesService) { }
 
 
-  @Post('getCliente')
+  @Get('getCliente')
   // @Auth()
   getCliente(
-    @Body() dtoIn: UuidDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: UuidDto
   ) {
-    return this.service.getCliente(dtoIn);
+    return this.service.getCliente({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getClientes')
+  @Get('getClientes')
   // @Auth()
   getClientes(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getClientes(dtoIn);
+    return this.service.getClientes({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getSaldosClientes')
+  @Get('getSaldosClientes')
   // @Auth()
   getSaldosClientes(
-    @Body() dtoIn: ServiceDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getSaldosClientes(dtoIn);
+    return this.service.getSaldosClientes({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
 
-  @Post('getTrnCliente')
+  @Get('getTrnCliente')
   // @Auth()
   getTrnCliente(
-    @Body() dtoIn: TrnClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: TrnClienteDto
   ) {
-    return this.service.getTrnCliente(dtoIn);
+    return this.service.getTrnCliente({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getDetalleVentasCliente')
+  @Get('getDetalleVentasCliente')
   // @Auth()
   getDetalleVentasCliente(
-    @Body() dtoIn: TrnClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: TrnClienteDto
   ) {
-    return this.service.getDetalleVentasCliente(dtoIn);
+    return this.service.getDetalleVentasCliente({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getSaldo')
+  @Get('getSaldo')
   // @Auth()
   getSaldo(
-    @Body() dtoIn: IdClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdClienteDto
   ) {
-    return this.service.getSaldo(dtoIn);
+    return this.service.getSaldo({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
-  @Post('getProductosCliente')
+  @Get('getProductosCliente')
   // @Auth()
   getProductosCliente(
-    @Body() dtoIn: IdClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdClienteDto
   ) {
-    return this.service.getProductosCliente(dtoIn);
+    return this.service.getProductosCliente({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
-  @Post('getVentasMensuales')
+  @Get('getVentasMensuales')
   // @Auth()
   getVentasMensuales(
-    @Body() dtoIn: IVentasMensualesClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: VentasMensualesClienteDto
   ) {
-    return this.service.getVentasMensuales(dtoIn);
+    return this.service.getVentasMensuales({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Post('save')
   // @Auth()
   save(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: SaveClienteDto
   ) {
-    return this.service.save(dtoIn);
+    return this.service.save({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
 
-  @Post('getVentasConUtilidad')
+  @Get('getVentasConUtilidad')
   // @Auth()
   getVentasConUtilidad(
-    @Body() dtoIn: TrnClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: TrnClienteDto
   ) {
-    return this.service.getVentasConUtilidad(dtoIn);
+    return this.service.getVentasConUtilidad({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('getDireccionesCliente')
+  @Get('getDireccionesCliente')
   // @Auth()
   getDireccionesCliente(
-    @Body() dtoIn: IdClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdClienteDto
   ) {
-    return this.service.getDireccionesCliente(dtoIn);
+    return this.service.getDireccionesCliente({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 
-  @Post('getContactosCliente')
+  @Get('getContactosCliente')
   // @Auth()
   getContactosCliente(
-    @Body() dtoIn: IdClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdClienteDto
   ) {
-    return this.service.getContactosCliente(dtoIn);
+    return this.service.getContactosCliente({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
-  @Post('searchCliente')
+  @Get('searchCliente')
   // @Auth()
   searchCliente(
-    @Body() dtoIn: SearchDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SearchDto
   ) {
-    return this.service.searchCliente(dtoIn);
+    return this.service.searchCliente({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 
-  @Post('existCliente')
+  @Get('existCliente')
   // @Auth()
   existCliente(
-    @Body() dtoIn: ExistClienteDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ExistClienteDto
   ) {
-    return this.service.existCliente(dtoIn);
+    return this.service.existCliente({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
 

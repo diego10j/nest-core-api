@@ -1,7 +1,6 @@
 import { IsInt, IsOptional, IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
 
-export class SearchChatDto extends ServiceDto {
+export class SearchChatDto {
 
     @IsString()
     texto: string;

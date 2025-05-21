@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UploadedFile, UseInterceptors, BadRequestException, Res, Body, Delete, Put } from '@nestjs/common';
+import { Controller, Get, Post, Param, UploadedFile, UseInterceptors, BadRequestException, Res, Body, Delete, Put, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
@@ -14,6 +14,8 @@ import { DeleteFilesDto } from './dto/delete-files.dto';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 
@@ -43,7 +45,7 @@ export class FilesController {
     return this.filesService.deleteStaticFile(fileName);
   }
 
-  @Post('image')
+  @Get('image')
   @UseInterceptors(FileInterceptor('file', {
     // limits: { fileSize: 1000 }
     storage: diskStorage({
@@ -72,21 +74,29 @@ export class FilesController {
   }
   //--------------
 
-  @Post('getFiles')
+  @Get('getFiles')
   //@Auth()
   getFiles(
-    @Body() dtoIn: GetFilesDto
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetFilesDto
   ) {
-    return this.filesService.getFiles(dtoIn);
+    return this.filesService.getFiles({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
   @Post('createFolder')
   //@Auth()
   createFolder(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: CreateFolderDto
   ) {
-    return this.filesService.createFolder(dtoIn);
+    return this.filesService.createFolder({
+      ...headersParams,
+      ...dtoIn
+    });
   }
 
 
@@ -118,17 +128,26 @@ export class FilesController {
       filename: fileNamer
     })
   }))
-  uploadFile(@UploadedFile() file: Express.Multer.File,
+  uploadFile(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @UploadedFile() file: Express.Multer.File,
     @Body() dtoIn: UploadFileDto) {
-    return this.filesService.uploadFile(dtoIn, file);
+    return this.filesService.uploadFile({
+      ...headersParams,
+      ...dtoIn
+    }, file);
   }
 
   @Post('deleteFiles')
   //@Auth()
   deleteFiles(
+    @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: DeleteFilesDto
   ) {
-    return this.filesService.deleteFiles(dtoIn);
+    return this.filesService.deleteFiles({
+      ...headersParams,
+      ...dtoIn
+  });
   }
 
   @Get('downloadFile/:uuid')

@@ -6,7 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces';
 import { AuditService } from '../audit/audit.service';
-import { ServiceDto } from '../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../common/dto/query-options.dto';
 import { EventAudit } from '../audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
@@ -14,6 +14,7 @@ import { toTitleCase } from '../../util/helpers/string-util';
 import { getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class AuthService {
@@ -29,7 +30,7 @@ export class AuthService {
         const { password, email } = loginUserDto;
         const queryUser = new SelectQuery('SELECT ide_usua,uuid FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true');
         queryUser.addStringParam(1, email);
-        const dataUser = await this.dataSource.createSingleQuery(queryUser);        
+        const dataUser = await this.dataSource.createSingleQuery(queryUser);
         if (!dataUser) {
             throw new UnauthorizedException('Credenciales no válidas, usuario incorrecto');
         }
@@ -53,7 +54,7 @@ export class AuthService {
                 EventAudit.LOGIN_ERROR,
                 ip,
                 "Contraseña incorrecta",
-                loginUserDto.device
+                '' // device
             );
             this.errorsLoggerService.createErrorLog(`Contraseña incorrecta usuario ${dataPass.nick_usua}`);
             throw new UnauthorizedException('Credenciales no válidas, Contraseña incorrecta');
@@ -83,7 +84,7 @@ export class AuthService {
             EventAudit.LOGIN_SUCCESS,
             ip,
             "Iniciar sessión",
-            loginUserDto.device
+            '' // device
         );
 
         return {
@@ -277,24 +278,24 @@ export class AuthService {
 
     /**
     * Cierra la sessión del usuario
-    * @param serviceDto 
+    * @param QueryOptionsDto 
     */
-    async logout(serviceDto: ServiceDto) {
+    async logout(QueryOptionsDto: QueryOptionsDto & HeaderParamsDto) {
         //actualiza estado true a sessiones no cerradas
         const updateQuery = new UpdateQuery("sis_auditoria_acceso", "ide_auac");
         updateQuery.values.set("fin_auac", true);
         updateQuery.where = "ide_usua = $1 and ide_acau = $2 and  fin_auac = $3";
-        updateQuery.addNumberParam(1, serviceDto.ideUsua);
+        updateQuery.addNumberParam(1, QueryOptionsDto.ideUsua);
         updateQuery.addNumberParam(2, EventAudit.LOGOUT);
         updateQuery.addBooleanParam(3, false);
         this.dataSource.createQuery(updateQuery);
         //Auditoria
         this.audit.saveEventoAuditoria(
-            serviceDto.ideUsua,
+            QueryOptionsDto.ideUsua,
             EventAudit.LOGOUT,
-            serviceDto.ip,
+            QueryOptionsDto.ip,
             "Cerrar sessión",
-            serviceDto.device
+            QueryOptionsDto.device
         );
         return {
             message: 'ok'

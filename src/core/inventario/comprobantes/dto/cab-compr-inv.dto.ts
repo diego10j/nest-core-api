@@ -1,7 +1,7 @@
 import { IsInt, IsPositive } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class CabComprobanteInventarioDto extends ServiceDto {
+export class CabComprobanteInventarioDto extends QueryOptionsDto {
 
     @IsInt()
     @IsPositive()

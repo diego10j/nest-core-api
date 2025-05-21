@@ -1,11 +1,11 @@
 import {
     IsString, IsArray, ArrayNotEmpty, IsNotEmpty, Matches, IsInt, IsOptional
 } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { Column } from '../interfaces/column';
 
 
-export class UpdateColumnsDto extends ServiceDto {
+export class UpdateColumnsDto extends QueryOptionsDto {
 
     @IsString()
     @IsNotEmpty()

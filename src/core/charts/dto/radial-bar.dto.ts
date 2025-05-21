@@ -1,8 +1,6 @@
 import { IsString, IsNotEmpty, IsOptional, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
 
-
-export class RadialBarDto extends ServiceDto {
+export class RadialBarDto  {
 
     @IsString()
     @IsNotEmpty()

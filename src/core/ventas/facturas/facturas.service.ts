@@ -5,9 +5,9 @@ import { BaseService } from '../../../common/base-service';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasDto } from './dto/facturas.dto';
 import { CoreService } from 'src/core/core.service';
-import { ServiceDto } from 'src/common/dto/service.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VentasDiariasDto } from './dto/ventas-diarias.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class FacturasService extends BaseService {
@@ -28,7 +28,7 @@ export class FacturasService extends BaseService {
     }
 
 
-    async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto) {
+    async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto & HeaderParamsDto) {
         const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
         const condition = `ide_empr = ${dto.ideEmpr} 
                            AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
@@ -38,7 +38,7 @@ export class FacturasService extends BaseService {
     }
 
 
-    async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto) {
+    async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto & HeaderParamsDto) {
         const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';
         const query = new SelectQuery(`     
         select
@@ -62,7 +62,7 @@ export class FacturasService extends BaseService {
     }
 
 
-    async getFacturas(dtoIn: FacturasDto) {
+    async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
         const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
         const condEstadoFact = dtoIn.ide_ccefa ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}` : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
         const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
@@ -122,7 +122,7 @@ export class FacturasService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async getTotalFacturasPorEstado(dtoIn: FacturasDto) {
+    async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
         const query = new SelectQuery(`  
         SELECT 
             COUNT(a.ide_srcom) AS contador, 
@@ -155,7 +155,7 @@ export class FacturasService extends BaseService {
     * @param dtoIn 
     * @returns 
     */
-    async getTotalVentasPeriodo(dtoIn: VentasMensualesDto) {
+    async getTotalVentasPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             WITH FacturasFiltradas AS (
                 SELECT 
@@ -200,7 +200,7 @@ export class FacturasService extends BaseService {
     * @param dtoIn 
     * @returns 
     */
-    async getTotalUltimasVentasDiarias(dtoIn: VentasDiariasDto) {
+    async getTotalUltimasVentasDiarias(dtoIn: VentasDiariasDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         WITH DiasFiltrados AS (
             -- Generar los últimos 9 días excluyendo domingos

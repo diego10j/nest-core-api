@@ -1,7 +1,7 @@
 import { IsBoolean, IsOptional } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class PuntosEmisionFacturasDto extends ServiceDto {
+export class PuntosEmisionFacturasDto extends QueryOptionsDto {
 
     @IsBoolean()
     @IsOptional()

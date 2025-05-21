@@ -5,7 +5,8 @@ import { SelectQuery } from '../../connection/helpers/select-query';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { CoreService } from '../../core.service';
-import { ServiceDto } from '../../../common/dto/service.dto';
+import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -30,7 +31,7 @@ export class ComprobantesInvService extends BaseService {
         * @param dtoIn 
         * @returns 
         */
-    async getComprobantesInventario(dtoIn: ComprobantesInvDto) {
+    async getComprobantesInventario(dtoIn: ComprobantesInvDto & HeaderParamsDto) {
         const condBodega = dtoIn.ide_inbod ? `AND a.ide_inbod = ${dtoIn.ide_inbod}` : '';
 
         const condEstado = dtoIn.ide_inepi ? `AND a.ide_inepi = ${dtoIn.ide_inepi}` : '';
@@ -75,7 +76,7 @@ export class ComprobantesInvService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getDetComprobanteInventario(dtoIn: CabComprobanteInventarioDto) {
+    async getDetComprobanteInventario(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
         const query = new SelectQuery(`
     select
         b.ide_incci,
@@ -113,7 +114,7 @@ export class ComprobantesInvService extends BaseService {
         * @param dtoIn 
         * @returns 
         */
-    async getCabComprobanteInventario(dtoIn: CabComprobanteInventarioDto) {
+    async getCabComprobanteInventario(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         select
             a.ide_incci,
@@ -149,7 +150,7 @@ export class ComprobantesInvService extends BaseService {
     * Retorna las estados de los comprobantes de inventario
     * @returns 
     */
-    async getListDataEstadosComprobantes(dto?: ServiceDto) {
+    async getListDataEstadosComprobantes(dto: QueryOptionsDto & HeaderParamsDto) {
         const dtoIn = { ...dto, module: 'inv', tableName: 'est_prev_inve', primaryKey: 'ide_inepi', columnLabel: 'nombre_inepi' }
         return this.core.getListDataValues(dtoIn);
     }

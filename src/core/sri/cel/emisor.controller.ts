@@ -1,5 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { EmisorService } from './emisor.service';
 
 @Controller('sri/cel/emisor')
@@ -7,21 +9,29 @@ export class EmisorController {
     constructor(private readonly service: EmisorService) { }
 
 
-    @Post('getEmisor')
+    @Get('getEmisor')
     // @Auth()
     getEmisor(
-        @Body() dtoIn: ServiceDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto
     ) {
-        return this.service.getEmisor(dtoIn);
+        return this.service.getEmisor({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('clearCacheEmisor')
     // @Auth()
     clearCacheEmisor(
-        @Body() dtoIn: ServiceDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: QueryOptionsDto
     ) {
-        return this.service.clearCacheEmisor(dtoIn);
+        return this.service.clearCacheEmisor({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 

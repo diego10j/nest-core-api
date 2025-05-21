@@ -1,8 +1,8 @@
 import { IsBoolean, IsInt, IsOptional, IsString, IsDate, IsDateString } from 'class-validator';
 import { IsAfterOrEqualTo, IsBeforeOrEqualTo } from 'src/common/decorators/date-validations.decorator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class EventoDto extends ServiceDto {
+export class EventoDto extends QueryOptionsDto {
 
   @IsInt()
   ide_cale: number;

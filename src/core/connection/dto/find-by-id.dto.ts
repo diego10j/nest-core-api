@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty, IsInt, IsOptional, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class FindByIdDto extends ServiceDto {
+export class FindByIdDto extends QueryOptionsDto {
 
     @IsString()
     @IsNotEmpty()

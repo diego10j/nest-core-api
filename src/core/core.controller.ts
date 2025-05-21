@@ -1,12 +1,13 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Auth } from './auth/decorators';
 import { CoreService } from './core.service';
 
 import { TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
-import { ServiceDto } from '../common/dto/service.dto';
 import { TreeDto } from './connection/dto/tree-dto';
 import { SearchTableDto } from 'src/common/dto/search-table.dto';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Controller('core')
@@ -14,142 +15,200 @@ export class CoreController {
 
     constructor(private readonly service: CoreService) { }
 
-    @Post('getListDataValues')
+    @Get('getListDataValues')
     //@Auth()
     getListDataValues(
-        @Body() dtoIn: ListDataValuesDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ListDataValuesDto
     ) {
-        return this.service.getListDataValues(dtoIn);
+        return this.service.getListDataValues({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('getTableQueryByUuid')
+    @Get('getTableQueryByUuid')
     //@Auth()
     getTableQueryByUuid(
-        @Body() dtoIn: FindByUuidDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FindByUuidDto
     ) {
-        return this.service.getTableQueryByUuid(dtoIn);
+        return this.service.getTableQueryByUuid({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('getTableQueryById')
+    @Get('getTableQueryById')
     //@Auth()
     getTableQueryById(
-        @Body() dtoIn: FindByIdDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FindByIdDto
     ) {
-        return this.service.getTableQueryById(dtoIn);
+        return this.service.getTableQueryById({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('getTableQuery')
+    @Get('getTableQuery')
     //@Auth()
     getTableQuery(
-        @Body() dtoIn: TableQueryDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: TableQueryDto
     ) {
-        return this.service.getTableQuery(dtoIn);
+        return this.service.getTableQuery({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('save')
     //@Auth()
     save(
+        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveListDto
     ) {
-        return this.service.save(dtoIn);
+        return this.service.save({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('isUnique')
     //@Auth()
     isUnique(
+        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: UniqueDto
     ) {
-        return this.service.isUnique(dtoIn);
+        return this.service.isUnique({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('canDelete')
     //@Auth()
     isDelete(
+        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: DeleteDto
     ) {
-        return this.service.canDelete(dtoIn);
+        return this.service.canDelete({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('getSeqTable')
+    @Get('getSeqTable')
     //@Auth()
     getSeqTable(
-        @Body() dtoIn: SeqTableDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: SeqTableDto
     ) {
-        return this.service.getSeqTable(dtoIn);
+        return this.service.getSeqTable({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
-    @Post('findByUuid')
+    @Get('findByUuid')
     //@Auth()
     findByUuid(
-        @Body() dtoIn: FindByUuidDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FindByUuidDto
     ) {
-        return this.service.findByUuid(dtoIn);
+        return this.service.findByUuid({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('findById')
+    @Get('findById')
     //@Auth()
     findById(
-        @Body() dtoIn: FindByIdDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: FindByIdDto
     ) {
-        return this.service.findById(dtoIn);
+        return this.service.findById({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
-    @Post('search')
+    @Get('search')
     //@Auth()
     search(
-        @Body() dtoIn: SearchTableDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: SearchTableDto
     ) {
-        return this.service.search(dtoIn);
+        return this.service.search({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
 
-    @Post('getTableColumns')
+    @Get('getTableColumns')
     //@Auth()
     getTableColumns(
-        @Body() dtoIn: ColumnsTableDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ColumnsTableDto
     ) {
-        return this.service.getTableColumns(dtoIn);
+        return this.service.getTableColumns({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
     @Post('refreshTableColumns')
     //@Auth()
     refreshTableColumns(
+        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: ColumnsTableDto
     ) {
-        return this.service.refreshTableColumns(dtoIn);
+        return this.service.refreshTableColumns({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 
     @Post('clearCacheRedis')
     //@Auth()
-    clearTableColumnsCache(
-        @Body() _dtoIn: ServiceDto
-    ) {
+    clearTableColumnsCache(  ) {
         return this.service.clearCacheRedis();
     }
 
-    @Post('getTreeModel')
+    @Get('getTreeModel')
     //@Auth()
     getTreeModel(
-        @Body() dtoIn: TreeDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: TreeDto
     ) {
-        return this.service.getTreeModel(dtoIn);
+        return this.service.getTreeModel({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
     @Post('updateColumns')
     //@Auth()
     updateColumns(
+        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: UpdateColumnsDto
     ) {
-        return this.service.updateColumns(dtoIn);
+        return this.service.updateColumns({
+            ...headersParams,
+            ...dtoIn
+        });
     }
 
 

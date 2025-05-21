@@ -49,7 +49,7 @@ export class WhatsappService {
      * Obtiene todos los mensajes agrupados por número de teléfono
      * @returns Lista de conversaciones agrupadas por número de teléfono
      */
-    async getChats(dto: GetChatsDto) {
+    async getChats(dto: GetChatsDto & HeaderParamsDto) {
 
         const config = await this.whatsappApi.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
@@ -68,7 +68,7 @@ export class WhatsappService {
 
 
 
-    async searchContacto(dto: SearchChatDto) {
+    async searchContacto(dto: SearchChatDto & HeaderParamsDto) {
 
         const config = await this.whatsappApi.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
@@ -85,7 +85,7 @@ export class WhatsappService {
     }
 
 
-    async enviarMensajeTexto(dto: EnviarMensajeDto) {
+    async enviarMensajeTexto(dto: EnviarMensajeDto & HeaderParamsDto) {
 
         const config = await this.whatsappApi.getConfigWhatsApp(dto.ideEmpr);
         if (isDefined(config) === false)
@@ -101,7 +101,7 @@ export class WhatsappService {
     }
 
 
-    async enviarMensajeMedia(dto: UploadMediaDto, file: Express.Multer.File) {
+    async enviarMensajeMedia(dto: UploadMediaDto & HeaderParamsDto, file: Express.Multer.File) {
         if (!file?.buffer) {
             throw new Error('Archivo no válido o vacío');
         }
@@ -134,7 +134,17 @@ export class WhatsappService {
 
 
 
-    
+
+    /**
+     * Sube un archivo y lo guarda en temporales 
+     */
+    async uploadMediaFile(file: Express.Multer.File) {
+        const result = await this.fileTempService.saveTempFile(
+            file.buffer,          // Buffer del archivo
+            file.originalname.split('.').pop(),  // Extensión del archivo
+        );
+        return { fileName: result.fileName }
+    }
 
 
 }

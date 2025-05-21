@@ -3,9 +3,10 @@ import { DataSourceService } from '../../connection/datasource.service';
 
 import { BaseService } from '../../../common/base-service';
 
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { Redis } from 'ioredis';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
 @Injectable()
@@ -19,7 +20,7 @@ export class FirmaService extends BaseService {
     }
 
 
-    async getFirma(dtoIn: ServiceDto) {
+    async getFirma(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const cacheKey = `firma_${dtoIn.ideEmpr}`;
         // Check cache
         const cachedFirma = await this.redisClient.get(cacheKey);
@@ -50,7 +51,7 @@ export class FirmaService extends BaseService {
         }
     }
 
-    async getFirmas(dtoIn: ServiceDto) {
+    async getFirmas(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             *
@@ -65,7 +66,7 @@ export class FirmaService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async clearCacheFirma(_dtoIn: ServiceDto) {
+    async clearCacheFirma(_dtoIn: QueryOptionsDto & HeaderParamsDto) {
         // Obtener todas las claves que coinciden con el patrón 'schema:*'
         const keys = await this.redisClient.keys('firma_:*');
 

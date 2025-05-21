@@ -1,9 +1,9 @@
 import { ArrayNotEmpty, IsArray, IsBoolean, IsNotEmpty, IsOptional } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { PartialType } from '@nestjs/mapped-types';
 
 
-export class DeleteFilesDto extends PartialType(ServiceDto) {
+export class DeleteFilesDto extends PartialType(QueryOptionsDto) {
 
 
     @ArrayNotEmpty()

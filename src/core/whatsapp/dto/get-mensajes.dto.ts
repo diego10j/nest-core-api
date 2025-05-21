@@ -1,14 +1,7 @@
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, Matches } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
+import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
 
-export class GetMensajesDto {
-
-    // API
-    @IsString()
-    @IsNotEmpty()
-    @Matches(/^\S*$/, { message: 'telefono no debe contener espacios' })
-    telefono: string;
-
+export class GetMensajesDto extends TelefonoWebDto{
 
     // WEB
     @IsString()
@@ -23,6 +16,5 @@ export class GetMensajesDto {
     @IsString()
     @IsOptional()
     beforeId?: string;
-
 
 }

@@ -1,8 +1,8 @@
 
 import { IsInt, IsString } from 'class-validator';
-import { ServiceDto } from 'src/common/dto/service.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class SearchDto extends ServiceDto {
+export class SearchDto extends QueryOptionsDto {
 
     @IsString()
     value: string;

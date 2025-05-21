@@ -8,6 +8,7 @@ import { ComprobanteDto } from './dto/comprobante.dto';
 import { ClienteDto } from './dto/cliente.dto';
 import { TipoComprobanteEnum } from './enum/tipo-comprobante.enum';
 import { DetalleComprobanteDto } from './dto/detalle-comprobante.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class ComprobantesElecService extends BaseService {
@@ -18,7 +19,7 @@ export class ComprobantesElecService extends BaseService {
         super();
     }
 
-    async getComprobantePorClaveAcceso(dtoIn: ClaveAccesoDto) {
+    async getComprobantePorClaveAcceso(dtoIn: ClaveAccesoDto  & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT 
             a.*,
