@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { ProformasMensualesDto } from './dto/proformas-mensuales.dto';
 import { ProformasDto } from './dto/proformas.dto';
@@ -22,6 +23,31 @@ export class ProformasController {
             ...dtoIn
         });
     }
+
+    @Get('getCabProforma')
+    // @Auth()
+    getCabProforma(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdeDto
+    ) {
+        return this.service.getCabProforma({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getDetallesProforma')
+    // @Auth()
+    getDetallesProforma(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdeDto
+    ) {
+        return this.service.getDetallesProforma({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
 
     // =============================ANALISIS DE DATOS
 
@@ -162,7 +188,7 @@ export class ProformasController {
             ...dtoIn
         });
     }
-    
+
     @Get('getEfectividadPorTipo')
     getEfectividadPorTipo(
         @AppHeaders() headersParams: HeaderParamsDto,
@@ -184,6 +210,6 @@ export class ProformasController {
             ...dtoIn
         });
     }
-    
-    
+
+
 }

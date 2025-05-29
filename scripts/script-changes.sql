@@ -958,3 +958,41 @@ ALTER TABLE public.cxc_cabece_proforma
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT ;
+
+  
+    -- Índices para mejorar los filtros y joins en inv_cab_comp_inve
+CREATE INDEX idx_cab_fecha_inepi_intti
+ON inv_cab_comp_inve (fecha_trans_incci, ide_inepi, ide_intti);
+
+-- Índice para joins en inv_det_comp_inve por ide_incci y búsqueda por artículo
+CREATE INDEX idx_det_incci_inarti_precio
+ON inv_det_comp_inve (ide_incci, ide_inarti, precio_indci);
+
+-- Índice para inv_tip_tran_inve para join con ide_intti
+CREATE INDEX idx_tran_intti_intci
+ON inv_tip_tran_inve (ide_intti, ide_intci);
+
+-- Índice para inv_tip_comp_inve por signo y clave
+CREATE INDEX idx_tip_comp_intci_signo
+ON inv_tip_comp_inve (ide_intci, signo_intci);
+
+-- Opcional: si haces muchos filtros por tipo de transacción específica
+CREATE INDEX idx_cab_intti
+ON inv_cab_comp_inve (ide_intti);
+
+-- Si consultas frecuentemente por ide_inarti
+CREATE INDEX idx_det_inarti
+ON inv_det_comp_inve (ide_inarti);
+
+-- Para acelerar el NOT IN final con ide_inarti
+-- (en compras_periodo CTE)
+CREATE INDEX idx_temp_compras_periodo_inarti
+ON inv_det_comp_inve (ide_inarti);
+
+    
+    
+    
+    
+    
+    
+ 
