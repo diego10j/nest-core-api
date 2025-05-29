@@ -45,7 +45,7 @@ export class FilesController {
     return this.filesService.deleteStaticFile(fileName);
   }
 
-  @Get('image')
+  @Post('uploadStaticImage')
   @UseInterceptors(FileInterceptor('file', {
     // limits: { fileSize: 1000 }
     storage: diskStorage({

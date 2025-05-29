@@ -1,11 +1,8 @@
 import { IsInt, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class VentasMensualesDto extends QueryOptionsDto {
+export class ProformasMensualesDto extends QueryOptionsDto {
 
-
-    @IsInt()
-    ide_inarti: number;
 
     @IsInt()
     periodo: number;
@@ -13,6 +10,6 @@ export class VentasMensualesDto extends QueryOptionsDto {
 
     @IsInt()
     @IsOptional()
-    ide_geper?: number;
+    ide_usua?: number;
 
 }

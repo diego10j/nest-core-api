@@ -1,4 +1,4 @@
-import { fShortDate, fDate, getDateFormatFront, getDateFormat, addDaysDate } from 'src/util/helpers/date-util';
+import { fShortDate, fDate, getDateFormatFront, addDaysDate } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -19,7 +19,8 @@ import { CoreService } from 'src/core/core.service';
 import { CategoriasDto } from './dto/categorias.dto';
 import { isDefined } from 'src/util/helpers/common-util';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-
+import { SaldoProducto } from './interfaces/productos';
+import { getYear } from 'date-fns';
 
 
 @Injectable()
@@ -74,6 +75,31 @@ export class ProductosService extends BaseService {
 
 
     // -------------------------------- PRODUCTOS ---------------------------- //
+
+
+    async getProductoByUuid(dtoIn: UuidDto & HeaderParamsDto) {
+        let whereClause = `ide_inarti = -1`;
+        if (dtoIn.uuid) {
+            whereClause = `uuid = $1`;
+        }
+        const query = new SelectQuery(`SELECT * FROM inv_articulo WHERE ${whereClause}`);
+        if (dtoIn.uuid) {
+            query.addStringParam(1, dtoIn.uuid);
+        }
+        const res = await this.dataSource.createQuery(query);
+
+        if (dtoIn.uuid) {
+            if (res.rowCount !== 1) {
+                throw new BadRequestException(`No existe el producto`);
+            }
+        }
+
+        return {
+            row: res.rows[0],
+            columns: res.columns,
+            key: res.key
+        }
+    }
 
 
     /**
@@ -144,11 +170,13 @@ export class ProductosService extends BaseService {
         SELECT
             ide_inarti,
             foto_inarti,
-            CONCAT(COALESCE(nombre_inarti, ''), ' - ', COALESCE(otro_nombre_inarti, '')) AS nombre_inarti,
+            nombre_inarti,
+            otro_nombre_inarti,
             uuid
         FROM
             inv_articulo
-        WHERE
+        WHERE ide_empr = ${dtoIn.ideEmpr} 
+        AND    
             immutable_unaccent_replace (nombre_inarti)
             ILIKE immutable_unaccent_replace ($1)
             OR immutable_unaccent_replace (otro_nombre_inarti)
@@ -254,7 +282,8 @@ export class ProductosService extends BaseService {
             const resConve = await this.dataSource.createSelectQuery(queryConve);
 
             // Stock
-            const stock = await this.getStock(ide_inarti);
+            const saldoProducto = await this.getStock(ide_inarti);
+            const stock = saldoProducto?.saldo || 0;
             const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : null;
             const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : null;
 
@@ -285,7 +314,7 @@ export class ProductosService extends BaseService {
 
             // Ultima Trn
 
-            const resUltimaVentaCompra = await this.getUltimaVentaCompra(ide_inarti);
+            const resUltimaVentaCompra = await this.getUltimaVentaCompra(ide_inarti, saldoProducto?.decim_stock_inarti);
 
             return {
                 rowCount: 1,
@@ -316,7 +345,9 @@ export class ProductosService extends BaseService {
      */
     async getTrnProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
         // 1. Determinar el saldo inicial
-        const saldoInicial = await this.getStock(dtoIn.ide_inarti, addDaysDate(dtoIn.fechaInicio, -1));
+        const saldoProducto = await this.getStock(dtoIn.ide_inarti, addDaysDate(dtoIn.fechaInicio, -1));
+        const saldoInicial = saldoProducto?.saldo || 0;
+        const numDecimales = saldoProducto?.decim_stock_inarti || 2;
         // 2. Construir consulta con fila de saldo inicial
         const query = new SelectQuery(`
             -- Fila de saldo inicial
@@ -349,11 +380,11 @@ export class ProductosService extends BaseService {
                 tti.nombre_intti,
                 dci.precio_indci AS precio,
                 CASE 
-                    WHEN tci.signo_intci = 1 THEN dci.cantidad_indci
+                    WHEN tci.signo_intci = 1 THEN  f_decimales(dci.cantidad_indci, ${numDecimales})::numeric
                     ELSE NULL 
                 END AS ingreso,
                 CASE 
-                    WHEN tci.signo_intci = -1 THEN dci.cantidad_indci
+                    WHEN tci.signo_intci = -1 THEN f_decimales(dci.cantidad_indci, ${numDecimales})::numeric
                     ELSE NULL 
                 END AS egreso,
                 dci.cantidad_indci * tci.signo_intci AS movimiento,
@@ -389,7 +420,7 @@ export class ProductosService extends BaseService {
             // Recorrer en orden cronológico (fecha ASC)
             for (let i = 1; i < rows.length; i++) {
                 saldoActual += rows[i].movimiento;
-                rows[i].saldo = saldoActual;
+                rows[i].saldo = fNumber(saldoActual, numDecimales);
             }
         }
 
@@ -413,10 +444,11 @@ export class ProductosService extends BaseService {
             cf.fecha_emisi_cccfa,
             secuencial_cccfa,
             nom_geper,
-            cdf.cantidad_ccdfa,
+            f_decimales(cdf.cantidad_ccdfa, decim_stock_inarti)::numeric as cantidad_ccdfa,
             siglas_inuni,
             cdf.precio_ccdfa,
             cdf.total_ccdfa,
+            ven.nombre_vgven,
             p.uuid
         FROM
             cxc_deta_factura cdf
@@ -424,6 +456,7 @@ export class ProductosService extends BaseService {
         INNER join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         INNER join gen_persona p on cf.ide_geper = p.ide_geper
+        LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
         WHERE
             cdf.ide_inarti =  $1
             AND iart.ide_empr = ${dtoIn.ideEmpr}  
@@ -431,7 +464,7 @@ export class ProductosService extends BaseService {
             and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
             ${whereCantidad}
         ORDER BY 
-            cf.fecha_emisi_cccfa desc, secuencial_ccdfa desc`, dtoIn);
+            cf.fecha_emisi_cccfa desc, secuencial_cccfa desc`, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.fechaInicio);
         query.addParam(3, dtoIn.fechaFin);
@@ -440,24 +473,28 @@ export class ProductosService extends BaseService {
 
 
     async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
-
-
         // Ajustar el porcentaje según  criterio 30% margen
         const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
-
 
         const query = new SelectQuery(`
         WITH precios_compra AS (
             SELECT
-                ide_inarti,
-                precio_cpdfa,
-                fecha_emisi_cpcfa
-            FROM cxp_detall_factur
-            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
-            WHERE ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
-            AND ide_inarti = $1
-            AND fecha_emisi_cpcfa BETWEEN $2 AND $3
-            ORDER BY fecha_emisi_cpcfa 
+                d.ide_inarti,
+                c.fecha_trans_incci AS fecha_emisi_cpcfa,
+                precio_indci AS precio_cpdfa
+            FROM
+                inv_det_comp_inve d
+                INNER JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+                INNER JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+                INNER JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+            WHERE
+                d.ide_inarti= $1
+                AND c.ide_inepi = ${this.variables.get('p_inv_estado_normal')}    
+                AND signo_intci  = 1
+                AND c.fecha_trans_incci >= ($2::date - INTERVAL '5 days')
+                AND c.fecha_trans_incci <= ($3::date + INTERVAL '5 days')
+                AND precio_indci > 0
+                and c.ide_intti in (19,16,3025)   --Compra, Orden de Producción, Saldo inicial,Otros ingresos ( + )           
         ),
         datos_completos AS (
             SELECT
@@ -466,15 +503,17 @@ export class ProductosService extends BaseService {
                 secuencial_cccfa,
                 nom_geper,
                 cdf.cantidad_ccdfa,
+                decim_stock_inarti,
                 siglas_inuni,
                 cdf.precio_ccdfa AS precio_venta,
                 cdf.total_ccdfa,
+                ven.nombre_vgven,
                 p.uuid,
                 COALESCE((
                   SELECT pc.precio_cpdfa 
                   FROM precios_compra pc
                   WHERE pc.ide_inarti = cdf.ide_inarti 
-                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa + INTERVAL '7 days'
+                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa 
                   ORDER BY pc.fecha_emisi_cpcfa desc
                   LIMIT 1), 0) AS PRECIO_COMPRA
             FROM
@@ -483,6 +522,7 @@ export class ProductosService extends BaseService {
             INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
             LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
             INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+            LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
             WHERE
                 cdf.ide_inarti = $4
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
@@ -495,23 +535,24 @@ export class ProductosService extends BaseService {
             dc.fecha_emisi_cccfa,
             dc.secuencial_cccfa,
             dc.nom_geper,
-            dc.cantidad_ccdfa,
+            f_decimales(dc.cantidad_ccdfa, dc.decim_stock_inarti)::numeric as cantidad_ccdfa,
             dc.siglas_inuni,
             dc.precio_venta,
             dc.total_ccdfa,
             dc.uuid,
+            dc.nombre_vgven,
             dc.precio_compra,
             ( dc.precio_venta - dc.precio_compra )  as utilidad ,
             CASE 
-                WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
+                WHEN dc.precio_compra > 0 THEN f_redondeo(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
                 ELSE 0 
             END AS porcentaje_utilidad,
-            ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
+            f_redondeo((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
         FROM datos_completos dc
         ORDER BY 
             dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
-        LIMIT 200
             `, dtoIn);
+
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.fechaInicio);
         query.addParam(3, dtoIn.fechaFin);
@@ -569,7 +610,7 @@ export class ProductosService extends BaseService {
         cf.fecha_emisi_cpcfa,
         numero_cpcfa,
         nom_geper,
-        cdf.cantidad_cpdfa,
+        f_decimales(cdf.cantidad_cpdfa, iart.decim_stock_inarti)::numeric as cantidad_cpdfa,
         siglas_inuni,
         cdf.precio_cpdfa,
         cdf.valor_cpdfa,
@@ -620,7 +661,7 @@ export class ProductosService extends BaseService {
             b.ide_geper,
             c.nom_geper,
             MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
-            u.cantidad,
+            f_decimales(u.cantidad, iart.decim_stock_inarti)::numeric as cantidad,
             siglas_inuni,
             u.precio,
             u.total
@@ -662,8 +703,10 @@ export class ProductosService extends BaseService {
         SELECT 
             iart.ide_inarti,
             nombre_inarti,
-            COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
-            siglas_inuni
+            f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo,
+            siglas_inuni,
+            decim_stock_inarti,
+            to_char(now(), 'YYYY-MM-DD HH24:MI:SS') AS fecha
         FROM
             inv_det_comp_inve dci
             inner join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
@@ -676,10 +719,10 @@ export class ProductosService extends BaseService {
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
             AND cci.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY   
-            iart.ide_inarti,nombre_inarti,siglas_inuni
+            iart.ide_inarti,nombre_inarti,siglas_inuni,decim_stock_inarti
         `);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createSingleQuery(query) as SaldoProducto;
     }
 
     /**
@@ -693,7 +736,8 @@ export class ProductosService extends BaseService {
             cci.ide_inbod,
             nombre_inbod,
             nombre_inarti,
-            COALESCE(ROUND(SUM(cantidad_indci * signo_intci), 3), 0) AS saldo,
+            f_decimales(SUM(cantidad_indci * signo_intci), decim_stock_inarti)::numeric AS saldo,
+            decim_stock_inarti,
             siglas_inuni
         FROM
             inv_det_comp_inve dci
@@ -708,7 +752,7 @@ export class ProductosService extends BaseService {
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
             AND cci.ide_empr = ${dtoIn.ideEmpr} 
         GROUP BY   
-            cci.ide_inbod,nombre_inbod,nombre_inarti,siglas_inuni
+            cci.ide_inbod,nombre_inbod,nombre_inarti,siglas_inuni,decim_stock_inarti
         `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
@@ -721,6 +765,11 @@ export class ProductosService extends BaseService {
        * @returns 
        */
     async getVentasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
+
         // para filtrar dotos de un cliente
         const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
         const query = new SelectQuery(`
@@ -730,6 +779,7 @@ export class ProductosService extends BaseService {
             COALESCE(count(cdf.ide_ccdfa), 0) AS num_facturas,
             COALESCE(sum(cdf.cantidad_ccdfa), 0) AS cantidad,
             siglas_inuni,
+            decim_stock_inarti,
             COALESCE(sum(cdf.total_ccdfa), 0) AS total
         FROM
             gen_mes gm
@@ -739,7 +789,8 @@ export class ProductosService extends BaseService {
                 cdf.ide_ccdfa,
                 cdf.cantidad_ccdfa,
                 cdf.total_ccdfa,
-                siglas_inuni
+                siglas_inuni,
+                decim_stock_inarti
             FROM
                 cxc_cabece_factura a
             INNER JOIN
@@ -756,10 +807,10 @@ export class ProductosService extends BaseService {
                 ${conditionCliente}
         ) cdf ON gm.ide_gemes = cdf.mes
         GROUP BY
-            gm.nombre_gemes, gm.ide_gemes, siglas_inuni
+            gm.nombre_gemes, gm.ide_gemes, siglas_inuni,decim_stock_inarti
         ORDER BY
             gm.ide_gemes       
-        `, dtoIn);
+        `);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
@@ -774,6 +825,11 @@ export class ProductosService extends BaseService {
        * @returns 
        */
     async getComprasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`
     SELECT
         gm.nombre_gemes,
@@ -822,6 +878,10 @@ export class ProductosService extends BaseService {
         * @returns 
         */
     async getSumatoriaTrnPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`
     SELECT
         COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
@@ -944,6 +1004,10 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getTopProveedores(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -984,6 +1048,10 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getTopClientes(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`
         SELECT
             p.ide_geper,
@@ -1035,6 +1103,7 @@ export class ProductosService extends BaseService {
                 siglas_inuni,
                 SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
                 max(fecha_emisi_cccfa) as fecha_ultima,
+                ven.nombre_vgven,
                 p.uuid
             FROM
                 cxc_deta_factura cdf
@@ -1042,6 +1111,7 @@ export class ProductosService extends BaseService {
                 INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
                 LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
                 INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+                LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
             WHERE
                 cdf.ide_inarti = $1
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
@@ -1050,7 +1120,8 @@ export class ProductosService extends BaseService {
                 p.ide_geper,
                 p.nom_geper,
                 p.identificac_geper,
-                uni.siglas_inuni
+                uni.siglas_inuni,
+                ven.nombre_vgven
             order by
                 fecha_ultima DESC
             `;
@@ -1079,7 +1150,7 @@ export class ProductosService extends BaseService {
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
                 AND cf.ide_empr = ${dtoIn.ideEmpr} 
             ORDER BY fecha_emisi_cpcfa desc
-            LIMIT 10
+            LIMIT 12
         )
         SELECT
             fecha,
@@ -1140,6 +1211,10 @@ export class ProductosService extends BaseService {
     }
 
     async getVariacionInventario(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`       
         WITH Meses AS (
             SELECT
@@ -1218,29 +1293,34 @@ export class ProductosService extends BaseService {
      * @param fechaCorte 
      * @returns 
      */
-    async getStock(ide_inarti: number, fechaCorte?: Date): Promise<number> {
-        let saldoInicial = 0;
+    async getStock(ide_inarti: number, fechaCorte?: Date): Promise<SaldoProducto> {
         const fecha = fechaCorte ? fechaCorte : new Date();
         const querySaldoInicial = new SelectQuery(`     
-        SELECT sum(cantidad_indci *signo_intci) as saldo
+        SELECT 
+            iart.ide_inarti,
+            nombre_inarti,
+            f_decimales(SUM(cantidad_indci * signo_intci), decim_stock_inarti)::numeric AS saldo,
+            siglas_inuni,
+            decim_stock_inarti,
+            '${fDate(fecha)}' AS fecha
         FROM
             inv_det_comp_inve dci
             left join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
             left join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
             left join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
+            inner join inv_articulo iart on iart.ide_inarti = dci.ide_inarti
+            left join inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         WHERE
             dci.ide_inarti = $1
             AND fecha_trans_incci <=  $2
             AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
         GROUP BY   
-            ide_inarti `);
+            iart.ide_inarti,nombre_inarti,siglas_inuni,decim_stock_inarti `);
+
         querySaldoInicial.addIntParam(1, ide_inarti);
         querySaldoInicial.addParam(2, fecha);
-        const data = await this.dataSource.createSingleQuery(querySaldoInicial);
-        if (data) {
-            saldoInicial = Number(data.saldo);
-        }
-        return saldoInicial;
+
+        return await this.dataSource.createSingleQuery(querySaldoInicial) as SaldoProducto;
     }
 
     /**
@@ -1252,14 +1332,11 @@ export class ProductosService extends BaseService {
         let totalClientes = 0;
 
         const query = new SelectQuery(`     
-            SELECT 
-                COUNT(DISTINCT cf.ide_geper) AS total_clientes
-            FROM
-                cxc_deta_factura cdf
-                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            WHERE
-                cdf.ide_inarti = $1
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+        SELECT COUNT(DISTINCT cf.ide_geper) AS total_clientes
+        FROM cxc_cabece_factura cf
+        INNER JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa
+        WHERE cdf.ide_inarti = $1
+        AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
             `);
         query.addIntParam(1, ide_inarti);
         const data = await this.dataSource.createSingleQuery(query);
@@ -1271,18 +1348,18 @@ export class ProductosService extends BaseService {
 
 
 
-    async getUltimaVentaCompra(ide_inarti: number) {
+    async getUltimaVentaCompra(ide_inarti: number, decim_stock_inarti: number = 3) {
         const query = new SelectQuery(`
         SELECT
             -- Datos de ventas
             COUNT(DISTINCT cf.ide_cccfa) AS total_facturas,
-            MAX(cdf.cantidad_ccdfa) AS max_cantidad_venta,
-            MIN(cdf.cantidad_ccdfa) AS min_cantidad_venta,
+            f_decimales(MAX(cdf.cantidad_ccdfa), ${decim_stock_inarti})::numeric AS max_cantidad_venta,
+            f_decimales(MIN(cdf.cantidad_ccdfa), ${decim_stock_inarti})::numeric AS min_cantidad_venta,
             MIN(cf.fecha_emisi_cccfa) AS primera_fecha_venta,
             MAX(cf.fecha_emisi_cccfa) AS ultima_fecha_venta,
             -- Datos de compras
-            MAX(cdp.cantidad_cpdfa) AS max_cantidad_compra,
-            MIN(cdp.cantidad_cpdfa) AS min_cantidad_compra
+            f_decimales(MAX(cdp.cantidad_cpdfa), ${decim_stock_inarti})::numeric AS max_cantidad_compra,
+            f_decimales(MIN(cdp.cantidad_cpdfa), ${decim_stock_inarti})::numeric AS min_cantidad_compra
         FROM
             cxc_deta_factura cdf
             INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
@@ -1306,51 +1383,87 @@ export class ProductosService extends BaseService {
      * @returns 
     */
     async getProformasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const query = new SelectQuery(`
-        SELECT
-            gm.nombre_gemes,
-            ${dtoIn.periodo} as periodo,
-            COALESCE(count(cdf.ide_ccdpr), 0) AS num_proformas,
-            COALESCE(sum(cdf.cantidad_ccdpr), 0) AS cantidad,
-            siglas_inuni,
-            COALESCE(sum(cdf.total_ccdpr), 0) AS total
-        FROM
-            gen_mes gm
-        LEFT JOIN (
+        WITH 
+        proformas_mes AS (
             SELECT
-                EXTRACT(MONTH FROM fecha_cccpr) AS mes,
-                cdf.ide_ccdpr,
-                cdf.cantidad_ccdpr,
-                cdf.total_ccdpr,
-                siglas_inuni
+                EXTRACT(MONTH FROM a.fecha_cccpr) AS mes,
+                COUNT(cdf.ide_ccdpr) AS num_proformas,
+                SUM(cdf.cantidad_ccdpr) AS cantidad_cotizada,
+                SUM(cdf.total_ccdpr) AS total_cotizado,
+                MAX(f.siglas_inuni) AS siglas_inuni
             FROM
                 cxc_cabece_proforma a
-            INNER JOIN
-                cxc_deta_proforma cdf ON a.ide_cccpr = cdf.ide_cccpr
-            INNER JOIN 
-                inv_articulo d ON cdf.ide_inarti = d.ide_inarti
-            LEFT JOIN 
-                inv_unidad f ON d.ide_inuni = f.ide_inuni 
+            INNER JOIN cxc_deta_proforma cdf ON a.ide_cccpr = cdf.ide_cccpr
+            INNER JOIN inv_articulo d ON cdf.ide_inarti = d.ide_inarti
+            LEFT JOIN inv_unidad f ON d.ide_inuni = f.ide_inuni
             WHERE
-                fecha_cccpr  >=  $1  AND fecha_cccpr <=  $2
+                a.fecha_cccpr BETWEEN $1 AND $2
                 AND cdf.ide_inarti = $3
-                AND anulado_cccpr = false
+                AND a.anulado_cccpr = false
                 AND a.ide_empr = ${dtoIn.ideEmpr} 
-        ) cdf ON gm.ide_gemes = cdf.mes
-        GROUP BY
-            gm.nombre_gemes, gm.ide_gemes,siglas_inuni
+            GROUP BY EXTRACT(MONTH FROM a.fecha_cccpr)
+        ),
+        
+        facturas_efectivas AS (
+            SELECT
+                EXTRACT(MONTH FROM c.fecha_emisi_cccfa) AS mes,
+                COUNT(DISTINCT c.ide_cccfa) AS cotizaciones_efectivas,
+                SUM(d.cantidad_ccdfa) AS cantidad_efectiva
+            FROM
+                cxc_cabece_factura c
+            INNER JOIN cxc_deta_factura d ON c.ide_cccfa = d.ide_cccfa
+            WHERE
+                c.fecha_emisi_cccfa BETWEEN $4 AND $5
+                AND d.ide_inarti = $6
+                AND c.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND c.num_proforma_cccfa IS NOT NULL
+            GROUP BY EXTRACT(MONTH FROM c.fecha_emisi_cccfa)
+        )
+        SELECT
+            gm.nombre_gemes,
+            ${dtoIn.periodo} AS periodo,
+            COALESCE(pm.num_proformas, 0) AS num_proformas,
+            COALESCE(pm.cantidad_cotizada, 0) AS cantidad,
+            COALESCE(pm.siglas_inuni, '') AS siglas_inuni,
+            COALESCE(pm.total_cotizado, 0) AS total,
+            COALESCE(fe.cotizaciones_efectivas, 0) AS cotizaciones_efectivas,
+            COALESCE(fe.cantidad_efectiva, 0) AS cantidad_efectiva,
+            CASE 
+                WHEN COALESCE(pm.cantidad_cotizada, 0) = 0 THEN 0
+                ELSE ROUND(
+                    (COALESCE(fe.cantidad_efectiva, 0)::numeric / 
+                    NULLIF(pm.cantidad_cotizada, 0)::numeric) * 100, 
+                    2
+                )
+            END AS porcentaje_efectividad
+        FROM
+            gen_mes gm
+        LEFT JOIN proformas_mes pm ON gm.ide_gemes = pm.mes
+        LEFT JOIN facturas_efectivas fe ON gm.ide_gemes = fe.mes
         ORDER BY
-            gm.ide_gemes        
+            gm.ide_gemes
         `, dtoIn);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addIntParam(3, dtoIn.ide_inarti);
+        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(6, dtoIn.ide_inarti);
 
         return await this.dataSource.createQuery(query);
     }
 
 
     async getTotalVentasPorFormaPago(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const queryFormaPago = new SelectQuery(`
         SELECT
             a.ide_cndfp1,
@@ -1385,6 +1498,10 @@ export class ProductosService extends BaseService {
 
 
     async getTotalVentasPorIdCliente(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const queryTipoId = new SelectQuery(`
         SELECT
             c.ide_getid,
@@ -1419,6 +1536,10 @@ export class ProductosService extends BaseService {
     }
 
     async getTotalVentasPorVendedor(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
         const queryVendedor = new SelectQuery(`
         SELECT
             a.ide_vgven,

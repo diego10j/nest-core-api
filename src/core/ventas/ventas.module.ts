@@ -10,10 +10,12 @@ import { FacturasController } from './facturas/facturas.controller';
 import { FacturasService } from './facturas/facturas.service';
 import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
+import { ProformasController } from './proformas/proformas.controller';
+import { ProformasService } from './proformas/proformas.service';
 
 @Module({
     imports: [ErrorsModule],
-    controllers: [ClientesController, FacturasController, PuntoVentaController],
-    providers: [DataSourceService, ClientesService, AuditService, CoreService, FacturasService, PuntoVentaService]
+    controllers: [ClientesController, FacturasController, PuntoVentaController, ProformasController],
+    providers: [DataSourceService, ClientesService, AuditService, CoreService, FacturasService, PuntoVentaService, ProformasService]
 })
 export class VentasModule { }

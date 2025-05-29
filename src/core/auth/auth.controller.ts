@@ -41,25 +41,17 @@ export class AuthController {
     @Post('getMenuByRol')
     @Auth()
     getMenu(
-        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: MenuRolDto
     ) {
-        return this.authService.getMenuByRol({
-            ...headersParams,
-            ...dtoIn
-        });
+        return this.authService.getMenuByRol(dtoIn);
     }
 
     @Post('validarHorarioLogin')
     // @Auth()
     validarHorarioLogin(
-        @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: HorarioLoginDto
     ) {
-        return this.authService.validarHorarioLogin({
-            ...headersParams,
-            ...dtoIn
-        });
+        return this.authService.validarHorarioLogin(dtoIn);
     }
 
 

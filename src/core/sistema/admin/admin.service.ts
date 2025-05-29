@@ -36,7 +36,7 @@ export class AdminService {
             identificacion_empr,
             nom_corto_empr,
             mail_empr,
-            logo_empr
+            logotipo_empr
         from
             sis_empresa
         where

@@ -113,7 +113,7 @@ export class AuthService {
                     {
                         ide_empr: Number.parseInt(dataPass.ide_empr),
                         nom_empr: dataPass.nom_empr,
-                        logo_empr: dataPass.logo_empr,
+                        logo_empr: dataPass.logotipo_empr,
                         identificacion_empr: dataPass.identificacion_empr
                     }
                 ],
@@ -322,7 +322,7 @@ export class AuthService {
             a.nick_usua,
             e.nom_empr,
             e.identificacion_empr,
-            e.logo_empr,
+            e.logotipo_empr,
             f.fecha_auac,
             f.ip_auac,
             a.uuid
@@ -383,7 +383,7 @@ export class AuthService {
             SELECT
                 b.ide_sucu,
                 nom_sucu,
-                logo_sucu
+                '' as logo_sucu
             FROM
                 sis_usuario_sucursal a
             INNER JOIN sis_sucursal b on a.sis_ide_sucu = b.ide_sucu

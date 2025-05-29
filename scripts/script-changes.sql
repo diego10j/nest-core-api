@@ -31,7 +31,8 @@ ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Can
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
 ALTER TABLE inv_articulo ADD COLUMN precio_inarti decimal(12,3); -- % Cuando tiene precio fjo
 
-
+ALTER TABLE inv_articulo ADD COLUMN decim_stock_inarti int2; -- % Numero de decimales para control de stock 
+UPDATE inv_articulo SET  decim_stock_inarti = 3;  -- por defecto 3 decimales para todos
 
 CREATE TABLE inv_categoria  ( 
 	ide_incate  	integer NOT NULL,
@@ -939,4 +940,21 @@ CREATE INDEX idx_wha_det_camp_envio_cabecera ON wha_det_camp_envio(ide_whcenv);
 
 CREATE INDEX idx_wha_det_camp_envio_mensaje ON wha_det_camp_envio(ide_whcenv, id_mensaje_whden);
 
+CREATE INDEX IF NOT EXISTS idx_cxc_cabece_proforma_fecha_anulado ON cxc_cabece_proforma(fecha_cccpr, anulado_cccpr, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_cxc_deta_proforma_articulo ON cxc_deta_proforma(ide_cccpr, ide_inarti);
+CREATE INDEX IF NOT EXISTS idx_cxc_cabece_factura_fecha_proforma ON cxc_cabece_factura(fecha_emisi_cccfa, ide_ccefa, num_proforma_cccfa);
+CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_articulo ON cxc_deta_factura(ide_cccfa, ide_inarti);
+CREATE INDEX IF NOT EXISTS idx_inv_articulo_unidad ON inv_articulo(ide_inarti, ide_inuni);
 
+
+
+ALTER TABLE "public"."cxc_cabece_proforma"
+ADD COLUMN "ide_geper" int4;
+
+ALTER TABLE public.cxc_cabece_proforma
+	ADD CONSTRAINT cxc_cabece_proforma_ide_geper_fkey
+	FOREIGN KEY(ide_geper)
+	REFERENCES public.gen_persona(ide_geper)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT ;

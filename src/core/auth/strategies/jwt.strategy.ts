@@ -35,7 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
                 {
                     ide_empr: Number.parseInt(dataUser.ide_empr),
                     nom_empr: dataUser.nom_empr,
-                    logo_empr: dataUser.logo_empr
+                    logo_empr: dataUser.logotipo_empr
                 }
             ],
             // ide_sucu: Number.parseInt(dataUser.ide_sucu),

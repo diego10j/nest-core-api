@@ -24,6 +24,18 @@ export class ProductosController {
 
 
 
+  @Get('getProductoByUuid')
+  // @Auth()
+  getProductoByUuid(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: UuidDto
+  ) {
+    return this.service.getProductoByUuid({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
   @Get('getProductos')
   // @Auth()
   getProductos(
@@ -126,6 +138,18 @@ export class ProductosController {
   @Get('getVentasProducto')
   // @Auth()
   getVentasProducto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PreciosProductoDto
+  ) {
+    return this.service.getVentasProducto({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+  @Get('getVentasProductoUtilidad')
+  // @Auth()
+  getVentasProductoUtilidad(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: PreciosProductoDto
   ) {

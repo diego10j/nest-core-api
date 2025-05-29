@@ -38,7 +38,8 @@ BEGIN
                 INNER JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
             WHERE
                 c.ide_inepi = 1
-                AND c.fecha_trans_incci <= (fecha_fin + INTERVAL '3 days')
+                AND c.fecha_trans_incci >= (fecha_inicio - INTERVAL '5 days')
+                AND c.fecha_trans_incci <= (fecha_fin + INTERVAL '5 days')
                 AND signo_intci = 1
                 AND precio_indci > 0
 				and c.ide_intti in (19,16, 3025)   --Compra, Orden de Producción, Saldo inicial,Otros ingresos ( + )

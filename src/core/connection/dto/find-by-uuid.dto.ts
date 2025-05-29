@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty, IsUUID, IsOptional, Matches } from 'class-validator';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-export class FindByUuidDto extends QueryOptionsDto {
+
+export class FindByUuidDto  {
 
     @IsString()
     @IsNotEmpty()
