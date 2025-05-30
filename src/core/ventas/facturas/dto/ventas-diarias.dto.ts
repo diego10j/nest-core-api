@@ -1,10 +1,10 @@
-import { IsDateString } from 'class-validator';
+import { IsDateString, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { PartialType } from '@nestjs/mapped-types';
 
-export class VentasDiariasDto extends PartialType(QueryOptionsDto) {
+export class VentasDiariasDto extends QueryOptionsDto {
 
     @IsDateString()
-    fecha: string;
+    @IsOptional()
+    fecha?: string;
 
 }

@@ -6,6 +6,7 @@ import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { VentasDiariasDto } from './dto/ventas-diarias.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 @Controller('ventas/facturas')
 export class FacturasController {
@@ -50,6 +51,7 @@ export class FacturasController {
         });
     }
 
+    // ===================================== ANALISIS DE DATOS
 
     @Get('getTotalFacturasPorEstado')
     // @Auth()
@@ -76,19 +78,149 @@ export class FacturasController {
         });
     }
 
-    @Get('getTotalUltimasVentasDiarias')
+    @Get('getVariacionDiariaVentas')
     // @Auth()
-    getTotalUltimasVentasDiarias(
+    getVariacionDiariaVentas(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: VentasDiariasDto
     ) {
-        return this.service.getTotalUltimasVentasDiarias({
+        return this.service.getVariacionDiariaVentas({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getTendenciaVentasDia')
+    // @Auth()
+    getTendenciaVentasDia(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTendenciaVentasDia({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getTopVendedores')
+    // @Auth()
+    getTopVendedores(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTopVendedores({
             ...headersParams,
             ...dtoIn
         });
     }
 
 
+    @Get('getTotalVentasPorFormaPago')
+    // @Auth()
+    getTotalVentasPorFormaPago(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTotalVentasPorFormaPago({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
 
+    @Get('getTopProductos')
+    // @Auth()
+    getTopProductos(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTopProductos({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getTotalVentasPorHora')
+    // @Auth()
+    getTotalVentasPorHora(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTotalVentasPorHora({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+
+    @Get('getTopClientes')
+    // @Auth()
+    getTopClientes(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTopClientes({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getPromedioVentasPorVendedor')
+    // @Auth()
+    getPromedioVentasPorVendedor(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getPromedioVentasPorVendedor({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getVentasPorCategoriaProducto')
+    // @Auth()
+    getVentasPorCategoriaProducto(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getVentasPorCategoriaProducto({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getTasaCrecimientoMensual')
+    // @Auth()
+    getTasaCrecimientoMensual(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getTasaCrecimientoMensual({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+    @Get('getFacturasMayorValor')
+    // @Auth()
+    getFacturasMayorValor(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getFacturasMayorValor({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+    
+   
+    @Get('getResumenVentasPeriodos')
+    // @Auth()
+    getResumenVentasPeriodos(
+        @AppHeaders() headersParams: HeaderParamsDto
+    ) {
+        return this.service.getResumenVentasPeriodos(headersParams);
+    } 
+
+    
 
 }

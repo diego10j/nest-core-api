@@ -82,8 +82,8 @@ CREATE OR REPLACE FUNCTION Utilidad_en_Ventas(
     fecha_fin DATE
 )
 RETURNS TABLE (
-    ide_inarti BIGINT,
     ide_ccdfa BIGINT,
+    ide_inarti BIGINT,    
     fecha_emisi_cccfa DATE,
     secuencial_cccfa VARCHAR(50),
     nom_geper VARCHAR(250),
@@ -219,8 +219,8 @@ BEGIN
         )
     )
     SELECT
-        dc.ide_inarti,
         dc.ide_ccdfa,
+        dc.ide_inarti,        
         dc.fecha_emisi_cccfa,
         dc.secuencial_cccfa,
         dc.nom_geper,
