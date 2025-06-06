@@ -188,6 +188,19 @@ export class FacturasController {
         });
     }
 
+    @Get('getVentasPorIdCliente')
+    // @Auth()
+    getVentasPorIdCliente(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getVentasPorIdCliente({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+    
+
     @Get('getTasaCrecimientoMensual')
     // @Auth()
     getTasaCrecimientoMensual(
@@ -220,6 +233,19 @@ export class FacturasController {
     ) {
         return this.service.getResumenVentasPeriodos(headersParams);
     } 
+
+
+  
+    @Get('getVariacionVentasPeriodos')
+    // @Auth()
+    getVariacionVentasPeriodos(
+        @AppHeaders() headersParams: HeaderParamsDto
+    ) {
+        return this.service.getVariacionVentasPeriodos(headersParams);
+    } 
+
+
+    
 
     
 

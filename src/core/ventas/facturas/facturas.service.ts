@@ -206,7 +206,7 @@ export class FacturasService extends BaseService {
 
 
     /**
-    * 1. Variación diaria de ventas (últimos 30 días)
+    * 1. Variación diaria de ventas (últimos 10 días)
     * @param dtoIn 
     * @returns 
     */
@@ -223,15 +223,16 @@ export class FacturasService extends BaseService {
         FROM 
             cxc_cabece_factura
         WHERE 
-            fecha_emisi_cccfa BETWEEN ${fecha} - INTERVAL '30 days' AND ${fecha}
+            fecha_emisi_cccfa BETWEEN ${fecha} - INTERVAL '90 days' AND ${fecha}
             AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND ide_empr = ${dtoIn.ideEmpr}
         GROUP BY 
             fecha_emisi_cccfa
         ORDER BY 
-            fecha_emisi_cccfa             
+            fecha_emisi_cccfa   
+        limit 10      
             `);
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -263,7 +264,7 @@ export class FacturasService extends BaseService {
             `);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -277,15 +278,15 @@ export class FacturasService extends BaseService {
             SELECT 
                 v.nombre_vgven AS vendedor,
                 COUNT(cf.ide_cccfa) AS num_facturas,
-                SUM(cf.total_cccfa) AS total_ventas,
-                ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) AS promedio_venta,
-                RANK() OVER (ORDER BY SUM(cf.total_cccfa) DESC) AS ranking
+                SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas,
+                ROUND(SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) / COUNT(cf.ide_cccfa), 2) AS promedio_venta,
+                ROUND(SUM(cf.total_cccfa) * 100.0 / (SELECT SUM(total_cccfa) FROM cxc_cabece_factura WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
             FROM 
                 cxc_cabece_factura cf
             JOIN 
                 ven_vendedor v ON cf.ide_vgven = v.ide_vgven
             WHERE 
-                fecha_emisi_cccfa BETWEEN $1 AND $2
+                fecha_emisi_cccfa BETWEEN $3 AND $4
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
             GROUP BY 
@@ -296,7 +297,9 @@ export class FacturasService extends BaseService {
                 `);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createSelectQuery(query);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -311,7 +314,7 @@ export class FacturasService extends BaseService {
                 fp.ide_cndfp,
                 fp.nombre_cndfp AS forma_pago,
                 COUNT(cf.ide_cccfa) AS num_facturas,
-                SUM(cf.total_cccfa) AS total_ventas,
+                SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas,
                 ROUND(SUM(cf.total_cccfa) * 100.0 / (SELECT SUM(total_cccfa) 
                                                    FROM cxc_cabece_factura 
                                                    WHERE fecha_emisi_cccfa BETWEEN $1 AND $2
@@ -335,7 +338,7 @@ export class FacturasService extends BaseService {
         query.addStringParam(2, dtoIn.fechaFin);
         query.addStringParam(3, dtoIn.fechaInicio);
         query.addStringParam(4, dtoIn.fechaFin);
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -348,42 +351,41 @@ export class FacturasService extends BaseService {
 */
     async getTopProductos(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const query = new SelectQuery(`
-    SELECT 
-        iart.ide_inarti,
-        iart.nombre_inarti AS producto,
-        SUM(cdf.cantidad_ccdfa) AS cantidad_vendida,
-        f.siglas_inuni,
-        SUM(cdf.total_ccdfa) AS total_ventas,
-        ROUND(SUM(cdf.total_ccdfa) * 100.0 / (SELECT SUM(total_ccdfa) 
-                                            FROM cxc_deta_factura cdf2
-                                            JOIN cxc_cabece_factura cf2 ON cdf2.ide_cccfa = cf2.ide_cccfa
-                                            WHERE cf2.fecha_emisi_cccfa BETWEEN $1 AND $2
-                                            AND cf2.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-                                            AND cf2.ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
-    FROM 
-        cxc_deta_factura cdf
-    JOIN 
-        inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
-    JOIN 
-        cxc_cabece_factura cf ON cdf.ide_cccfa = cf.ide_cccfa
-    LEFT JOIN inv_unidad f ON iart.ide_inuni = f.ide_inuni
-    WHERE 
-        cf.fecha_emisi_cccfa BETWEEN $3 AND $4
-        AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-        AND cf.ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY 
-        iart.ide_inarti,
-        iart.nombre_inarti,
-        f.siglas_inuni
-    ORDER BY 
-        total_ventas DESC
-    LIMIT 10
-                `);
+        SELECT 
+            iart.ide_inarti,
+            iart.uuid,
+            iart.nombre_inarti AS producto,      
+            COUNT(cf.ide_cccfa) AS num_facturas,
+            SUM(total_ccdfa) AS total_ventas,
+            ROUND(SUM(cdf.total_ccdfa) * 100.0 / (SELECT SUM(total_ccdfa) 
+                                                FROM cxc_deta_factura cdf2
+                                                JOIN cxc_cabece_factura cf2 ON cdf2.ide_cccfa = cf2.ide_cccfa
+                                                WHERE cf2.fecha_emisi_cccfa BETWEEN $1 AND $2
+                                                AND cf2.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                                                AND cf2.ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
+        FROM 
+            cxc_deta_factura cdf
+        JOIN 
+            inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
+        JOIN 
+            cxc_cabece_factura cf ON cdf.ide_cccfa = cf.ide_cccfa
+    
+        WHERE 
+            cf.fecha_emisi_cccfa BETWEEN $3 AND $4
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            and iart.hace_kardex_inarti = true
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
+        GROUP BY 
+            iart.ide_inarti,
+            iart.nombre_inarti
+        ORDER BY 
+            total_ventas DESC
+        LIMIT 10 `,dtoIn);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
         query.addStringParam(3, dtoIn.fechaInicio);
         query.addStringParam(4, dtoIn.fechaFin);
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -412,7 +414,7 @@ export class FacturasService extends BaseService {
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
 
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -426,16 +428,17 @@ export class FacturasService extends BaseService {
         const query = new SelectQuery(`  
         SELECT 
             p.ide_geper,
+            p.uuid,
             p.nom_geper AS cliente,
             COUNT(cf.ide_cccfa) AS num_facturas,
-            SUM(cf.total_cccfa) AS total_ventas,
-            ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) AS ticket_promedio
+            SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa +base_grabada_cccfa) AS total_ventas,
+            ROUND(SUM(cf.total_cccfa) * 100.0 / (SELECT SUM(total_cccfa) FROM cxc_cabece_factura WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
         FROM 
             cxc_cabece_factura cf
         JOIN 
             gen_persona p ON cf.ide_geper = p.ide_geper
         WHERE 
-            cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+            cf.fecha_emisi_cccfa BETWEEN $3 AND $4
             AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
             AND cf.ide_empr = ${dtoIn.ideEmpr}
         GROUP BY 
@@ -443,7 +446,9 @@ export class FacturasService extends BaseService {
             p.nom_geper
         ORDER BY 
             total_ventas DESC
-        LIMIT 10 `);
+        LIMIT 10 `,dtoIn);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
 
@@ -457,28 +462,31 @@ export class FacturasService extends BaseService {
   */
     async getPromedioVentasPorVendedor(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const query = new SelectQuery(`    
-    SELECT 
-	v.ide_vgven,
-    v.nombre_vgven AS vendedor,
-    COUNT(cf.ide_cccfa) AS num_facturas,
-    SUM(cf.total_cccfa) AS total_ventas,
-    ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) AS ticket_promedio,
-    PERCENT_RANK() OVER (ORDER BY ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) DESC) AS percentil
-FROM 
-    cxc_cabece_factura cf
-JOIN 
-    ven_vendedor v ON cf.ide_vgven = v.ide_vgven
-WHERE 
-    fecha_emisi_cccfa  BETWEEN $1 AND $2
-    AND cf.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')}
-    AND cf.ide_empr = ${dtoIn.ideEmpr}
-GROUP BY 
-	v.ide_vgven,
-    v.nombre_vgven
-ORDER BY 
-    ticket_promedio DESC`);
+            SELECT 
+            v.ide_vgven,
+            v.nombre_vgven AS vendedor,
+            COUNT(cf.ide_cccfa) AS num_facturas,
+            SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa +base_grabada_cccfa) AS total_ventas,
+            ROUND(SUM(cf.total_cccfa) * 100.0 / (SELECT SUM(total_cccfa) FROM cxc_cabece_factura WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje,
+            PERCENT_RANK() OVER (ORDER BY ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) DESC) AS percentil
+        FROM 
+            cxc_cabece_factura cf
+        JOIN 
+            ven_vendedor v ON cf.ide_vgven = v.ide_vgven
+        WHERE 
+            fecha_emisi_cccfa  BETWEEN $3 AND $4
+            AND cf.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')}
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
+        GROUP BY 
+            v.ide_vgven,
+            v.nombre_vgven
+        ORDER BY 
+            nombre_vgven`,dtoIn);
+
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
 
         return await this.dataSource.createQuery(query);
     }
@@ -494,7 +502,7 @@ ORDER BY
     SELECT 
     COALESCE( art.ide_incate, -1) AS categoria,
     COALESCE(cat.nombre_incate, 'SIN CATEGORÍA') AS categoria,
-    SUM(cdf.cantidad_ccdfa) AS cantidad_vendida,
+    COUNT(cf.ide_cccfa) AS num_facturas,
     SUM(cdf.total_ccdfa) AS total_ventas
 FROM 
     cxc_deta_factura cdf
@@ -508,6 +516,7 @@ WHERE
     cf.fecha_emisi_cccfa  BETWEEN $1 AND $2
     AND cf.ide_ccefa   = ${this.variables.get('p_cxc_estado_factura_normal')}
     AND cf.ide_empr  = ${dtoIn.ideEmpr}
+    and art.hace_kardex_inarti = true
 GROUP BY 
     art.ide_incate,
     COALESCE(cat.nombre_incate, 'SIN CATEGORÍA')
@@ -516,9 +525,42 @@ ORDER BY
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
 
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
+
+    async getVentasPorIdCliente(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        
+        const query = new SelectQuery(`
+        SELECT
+            c.ide_getid,
+            nombre_getid,
+            COUNT(1) AS num_facturas,
+            SUM(b.total_ccdfa) AS total_ventas
+        FROM
+            cxc_cabece_factura a
+            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
+            inner join gen_persona c on a.ide_geper = c.ide_geper
+            inner join gen_tipo_identifi d on c.ide_getid = d.ide_getid
+        WHERE
+            a.fecha_emisi_cccfa >= $1
+            AND a.fecha_emisi_cccfa <= $2
+            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND a.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            c.ide_getid,
+            nombre_getid    
+        ORDER BY
+            nombre_getid   
+        LIMIT
+            20
+        `);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+
+
+        return await this.dataSource.createSelectQuery(query);
+    }
 
 
     /**
@@ -557,7 +599,7 @@ ORDER BY
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
 
-        return await this.dataSource.createSelectQuery(query);
+        return await this.dataSource.createQuery(query);
     }
 
 
@@ -572,7 +614,7 @@ ORDER BY
         const query = new SelectQuery(`      
       
         SELECT 
-        cf._cccfa,
+        cf.ide_cccfa,
         cf.secuencial_cccfa,
         p.nom_geper AS cliente,
         cf.fecha_emisi_cccfa,
@@ -631,5 +673,111 @@ ORDER BY
 `);
         return await this.dataSource.createQuery(query);
     }
+
+
+
+    /**
+* 12.  Resumen Ventas por años
+* @param dtoIn 
+* @returns 
+*/
+    async getVariacionVentasPeriodos(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`            
+  
+   
+   
+WITH VentasPeriodo1 AS (
+    SELECT 
+        EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+        COUNT(ide_cccfa) AS facturas_p1,
+        SUM(total_cccfa) AS ventas_p1,
+        SUM(base_grabada_cccfa) AS base12_p1,
+        SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p1,
+        SUM(valor_iva_cccfa) AS iva_p1
+    FROM 
+        cxc_cabece_factura
+    WHERE 
+        EXTRACT(YEAR FROM fecha_emisi_cccfa) = 2024
+        AND ide_ccefa = 0
+        AND ide_empr = 0
+    GROUP BY 
+        EXTRACT(MONTH FROM fecha_emisi_cccfa)
+),
+VentasPeriodo2 AS (
+    SELECT 
+        EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+        COUNT(ide_cccfa) AS facturas_p2,
+        SUM(total_cccfa) AS ventas_p2,
+        SUM(base_grabada_cccfa) AS base12_p2,
+        SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p2,
+        SUM(valor_iva_cccfa) AS iva_p2
+    FROM 
+        cxc_cabece_factura
+    WHERE 
+        EXTRACT(YEAR FROM fecha_emisi_cccfa) = 2025
+        AND ide_ccefa = 0
+        AND ide_empr = 0
+    GROUP BY 
+        EXTRACT(MONTH FROM fecha_emisi_cccfa)
+)
+SELECT 
+    gm.nombre_gemes AS mes,
+    -- Facturas
+    COALESCE(v1.facturas_p1, 0) AS facturas_p1,
+    COALESCE(v2.facturas_p2, 0) AS facturas_p2,
+    CASE 
+        WHEN COALESCE(v1.facturas_p1, 0) = 0 THEN NULL
+        ELSE ROUND((COALESCE(v2.facturas_p2, 0) - COALESCE(v1.facturas_p1, 0)) * 100.0 / 
+             COALESCE(v1.facturas_p1, 1), 2)
+    END AS variacion_facturas,
+    
+    -- Ventas totales
+    COALESCE(v1.ventas_p1, 0) AS ventas_p1,
+    COALESCE(v2.ventas_p2, 0) AS ventas_p2,
+    CASE 
+        WHEN COALESCE(v1.ventas_p1, 0) = 0 THEN NULL
+        ELSE ROUND((COALESCE(v2.ventas_p2, 0) - COALESCE(v1.ventas_p1, 0)) * 100.0 / 
+             COALESCE(v1.ventas_p1, 1), 2)
+    END AS variacion_ventas,
+    
+    -- Base 12
+    COALESCE(v1.base12_p1, 0) AS base12_p1,
+    COALESCE(v2.base12_p2, 0) AS base12_p2,
+    CASE 
+        WHEN COALESCE(v1.base12_p1, 0) = 0 THEN NULL
+        ELSE ROUND((COALESCE(v2.base12_p2, 0) - COALESCE(v1.base12_p1, 0)) * 100.0 / 
+             COALESCE(v1.base12_p1, 1), 2)
+    END AS variacion_base12,
+    
+    -- Base 0
+    COALESCE(v1.base0_p1, 0) AS base0_p1,
+    COALESCE(v2.base0_p2, 0) AS base0_p2,
+    CASE 
+        WHEN COALESCE(v1.base0_p1, 0) = 0 THEN NULL
+        ELSE ROUND((COALESCE(v2.base0_p2, 0) - COALESCE(v1.base0_p1, 0)) * 100.0 / 
+             COALESCE(v1.base0_p1, 1), 2)
+    END AS variacion_base0,
+    
+    -- IVA
+    COALESCE(v1.iva_p1, 0) AS iva_p1,
+    COALESCE(v2.iva_p2, 0) AS iva_p2,
+    CASE 
+        WHEN COALESCE(v1.iva_p1, 0) = 0 THEN NULL
+        ELSE ROUND((COALESCE(v2.iva_p2, 0) - COALESCE(v1.iva_p1, 0)) * 100.0 / 
+             COALESCE(v1.iva_p1, 1), 2)
+    END AS variacion_iva
+FROM 
+    gen_mes gm
+LEFT JOIN 
+    VentasPeriodo1 v1 ON gm.ide_gemes = v1.mes
+LEFT JOIN 
+    VentasPeriodo2 v2 ON gm.ide_gemes = v2.mes
+ORDER BY 
+    gm.ide_gemes
+`);
+        return await this.dataSource.createQuery(query);
+    }
+
+
 
 }
