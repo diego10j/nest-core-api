@@ -990,9 +990,65 @@ CREATE INDEX idx_temp_compras_periodo_inarti
 ON inv_det_comp_inve (ide_inarti);
 
     
+
+CREATE TABLE inv_conf_precios_articulo (
+	ide_incpa INT primary KEY ,
+	ide_inarti INT REFERENCES inv_articulo(ide_inarti) ON DELETE RESTRICT,  --articulo
+	rangos_incpa bool default false,
+	rango1_cant_incpa decimal(12,3),
+	rango2_cant_incpa decimal(12,3),
+	rango_infinito_incpa bool DEFAULT false,
+	precio_fijo_incpa  decimal(12,2),
+	porcentaje_util_incpa decimal(12,2),
+	incluye_iva_incpa  bool default false,
+	observacion_incpa VARCHAR(200),
+	activo_incpa bool DEFAULT true, 
+	autorizado_incpa bool DEFAULT false, 
+	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
+	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
+);
     
-    
-    
-    
-    
- 
+
+CREATE INDEX idx_inv_conf_precios_articulo_inarti ON inv_conf_precios_articulo(ide_inarti);
+CREATE INDEX idx_inv_articulo_ide ON inv_articulo(ide_inarti);
+
+-- Para compras_periodo y ultima_compra_fuera_periodo
+CREATE INDEX idx_inv_det_comp_inve_ide_inarti ON inv_det_comp_inve(ide_inarti);
+CREATE INDEX idx_inv_cab_comp_inve_fecha_ide ON inv_cab_comp_inve(fecha_trans_incci, ide_incci, ide_intti, ide_inepi);
+CREATE INDEX idx_inv_cab_comp_inve_ide_intti ON inv_cab_comp_inve(ide_intti);
+
+-- Para datos_completos
+CREATE INDEX idx_cxc_deta_factura_ide_inarti ON cxc_deta_factura(ide_inarti, ide_cccfa);
+CREATE INDEX idx_cxc_cabece_factura_fecha_emisi ON cxc_cabece_factura(fecha_emisi_cccfa, ide_cccfa, ide_ccefa, ide_empr, ide_geper);
+CREATE INDEX idx_cxc_cabece_factura_secuencial ON cxc_cabece_factura(secuencial_cccfa);
+
+-- Para joins frecuentes
+CREATE INDEX idx_inv_articulo_ide ON inv_articulo(ide_inarti, hace_kardex_inarti, ide_inuni);
+CREATE INDEX idx_gen_persona_ide ON gen_persona(ide_geper);
+CREATE INDEX idx_ven_vendedor_ide ON ven_vendedor(ide_vgven);
+CREATE INDEX idx_inv_unidad_ide ON inv_unidad(ide_inuni);
+
+-- Índice compuesto para mejorar búsquedas de precios
+CREATE INDEX idx_inv_det_comp_inve_compuesto ON inv_det_comp_inve(ide_inarti, ide_incci, precio_indci);
+
+-- Índice para compras (ya existía, pero lo refuerzo con uno compuesto)
+CREATE INDEX IF NOT EXISTS idx_inv_det_comp_inve_arti_fecha ON inv_det_comp_inve(ide_inarti, precio_indci, ide_incci)
+WHERE precio_indci > 0;
+
+-- Índice compuesto para cabecera de compras con tipo de transacción
+CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_arti_tipo ON inv_cab_comp_inve(ide_incci, ide_intti, ide_inepi, fecha_trans_incci);
+
+-- Índice para detalles de facturación (mejorado)
+CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_arti_cab ON cxc_deta_factura(ide_inarti, ide_cccfa, cantidad_ccdfa, precio_ccdfa, total_ccdfa);
+
+-- Índice para artículos (completo)
+CREATE INDEX IF NOT EXISTS idx_inv_articulo_completo ON inv_articulo(ide_inarti, nombre_inarti, hace_kardex_inarti, ide_inuni);
+
+CREATE INDEX idx_det_comp_inve_arti_cci_precio ON inv_det_comp_inve (ide_inarti, ide_incci, precio_indci);
+
+CREATE INDEX idx_cab_comp_inve_epi_fecha_tipo ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_intti);
+

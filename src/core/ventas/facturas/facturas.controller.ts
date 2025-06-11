@@ -7,6 +7,7 @@ import { VentasDiariasDto } from './dto/ventas-diarias.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { VariacionVentasPeriodoDto } from './dto/variacion-periodos.dto';
 
 @Controller('ventas/facturas')
 export class FacturasController {
@@ -239,9 +240,13 @@ export class FacturasController {
     @Get('getVariacionVentasPeriodos')
     // @Auth()
     getVariacionVentasPeriodos(
-        @AppHeaders() headersParams: HeaderParamsDto
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: VariacionVentasPeriodoDto
     ) {
-        return this.service.getVariacionVentasPeriodos(headersParams);
+        return this.service.getVariacionVentasPeriodos({
+            ...headersParams,
+            ...dtoIn
+        });
     } 
 
 

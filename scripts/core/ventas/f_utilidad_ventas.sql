@@ -77,9 +77,10 @@ ON inv_det_comp_inve (ide_inarti);
 
 --- version mejorada para precios de compra    
     
-CREATE OR REPLACE FUNCTION Utilidad_en_Ventas(
+    CREATE OR REPLACE FUNCTION Utilidad_en_Ventas(
     fecha_inicio DATE,
-    fecha_fin DATE
+    fecha_fin DATE,
+    id_articulo BIGINT DEFAULT NULL  -- Parámetro opcional
 )
 RETURNS TABLE (
     ide_ccdfa BIGINT,
@@ -120,6 +121,7 @@ BEGIN
             AND e.signo_intci = 1
             AND d.precio_indci > 0
             AND c.ide_intti IN (19, 16, 3025)
+            AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
     ),
     ultima_compra_fuera_periodo AS (
         SELECT DISTINCT ON (d.ide_inarti)
@@ -137,6 +139,7 @@ BEGIN
             AND d.precio_indci > 0
             AND c.ide_intti IN (19, 16, 3025)
             AND c.fecha_trans_incci < (fecha_inicio - INTERVAL '5 days')
+            AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
         ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
     ),
     precios_compra AS (
@@ -205,6 +208,7 @@ BEGIN
             cf.ide_ccefa = 0
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
             AND cf.ide_empr = 0
+            AND (id_articulo IS NULL OR cdf.ide_inarti = id_articulo)
     ),
     facturas_con_nota AS (
         SELECT 
@@ -252,4 +256,4 @@ $$ LANGUAGE plpgsql;
 
 --  SELECT * FROM Utilidad_en_Ventas ('2025-04-01', '2025-04-30')
 
-
+--  SELECT * FROM Utilidad_en_Ventas ('2024-09-01', '2025-04-30',1704)

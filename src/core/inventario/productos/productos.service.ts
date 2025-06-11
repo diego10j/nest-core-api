@@ -21,6 +21,8 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaldoProducto } from './interfaces/productos';
 import { getYear } from 'date-fns';
+import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
+import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 
 
 @Injectable()
@@ -474,91 +476,34 @@ export class ProductosService extends BaseService {
 
     async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
         // Ajustar el porcentaje según  criterio 30% margen
-        const whereCantidad = dtoIn.cantidad ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
+        const whereCantidad = dtoIn.cantidad ? `WHERE ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} ` : '';
 
         const query = new SelectQuery(`
-        WITH precios_compra AS (
-            SELECT
-                d.ide_inarti,
-                c.fecha_trans_incci AS fecha_emisi_cpcfa,
-                precio_indci AS precio_cpdfa
-            FROM
-                inv_det_comp_inve d
-                INNER JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-                INNER JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
-                INNER JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-            WHERE
-                d.ide_inarti= $1
-                AND c.ide_inepi = ${this.variables.get('p_inv_estado_normal')}    
-                AND signo_intci  = 1
-                AND c.fecha_trans_incci >= ($2::date - INTERVAL '5 days')
-                AND c.fecha_trans_incci <= ($3::date + INTERVAL '5 days')
-                AND precio_indci > 0
-                and c.ide_intti in (19,16,3025)   --Compra, Orden de Producción, Saldo inicial,Otros ingresos ( + )           
-        ),
-        datos_completos AS (
-            SELECT
-                cdf.ide_ccdfa,
-                cf.fecha_emisi_cccfa,
-                secuencial_cccfa,
-                nom_geper,
-                cdf.cantidad_ccdfa,
-                decim_stock_inarti,
-                siglas_inuni,
-                cdf.precio_ccdfa AS precio_venta,
-                cdf.total_ccdfa,
-                ven.nombre_vgven,
-                p.uuid,
-                COALESCE((
-                  SELECT pc.precio_cpdfa 
-                  FROM precios_compra pc
-                  WHERE pc.ide_inarti = cdf.ide_inarti 
-                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa 
-                  ORDER BY pc.fecha_emisi_cpcfa desc
-                  LIMIT 1), 0) AS PRECIO_COMPRA
-            FROM
-                cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
-            LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
-            WHERE
-                cdf.ide_inarti = $4
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND cf.fecha_emisi_cccfa BETWEEN $5 AND $6
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
-                ${whereCantidad}
-        )
-        SELECT
-            dc.ide_ccdfa,
-            dc.fecha_emisi_cccfa,
-            dc.secuencial_cccfa,
-            dc.nom_geper,
-            f_decimales(dc.cantidad_ccdfa, dc.decim_stock_inarti)::numeric as cantidad_ccdfa,
-            dc.siglas_inuni,
-            dc.precio_venta,
-            dc.total_ccdfa,
-            dc.uuid,
-            dc.nombre_vgven,
-            dc.precio_compra,
-            ( dc.precio_venta - dc.precio_compra )  as utilidad ,
-            CASE 
-                WHEN dc.precio_compra > 0 THEN f_redondeo(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
-                ELSE 0 
-            END AS porcentaje_utilidad,
-            f_redondeo((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
-        FROM datos_completos dc
-        ORDER BY 
-            dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
-            `, dtoIn);
-
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
-        query.addIntParam(4, dtoIn.ide_inarti);
-        query.addParam(5, dtoIn.fechaInicio);
-        query.addParam(6, dtoIn.fechaFin);
+        SELECT 
+            uv.ide_ccdfa,
+            uv.ide_inarti,
+            uv.fecha_emisi_cccfa,
+            uv.secuencial_cccfa,
+            uv.nom_geper,
+            uv.nombre_inarti,
+            uv.cantidad_ccdfa,
+            uv.siglas_inuni,
+            uv.precio_venta,
+            uv.total_ccdfa,
+            uv.nombre_vgven,
+            uv.hace_kardex_inarti,
+            uv.precio_compra,
+            uv.utilidad,
+            uv.utilidad_neta,
+            uv.porcentaje_utilidad,
+            uv.nota_credito,
+            uv.fecha_ultima_compra
+        FROM Utilidad_en_Ventas($1,$2,$3) uv
+             ${whereCantidad}
+            `, dtoIn);        
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        query.addIntParam(3, dtoIn.ide_inarti);
         const res = await this.dataSource.createQuery(query);
 
         res.row = {
@@ -1746,6 +1691,38 @@ export class ProductosService extends BaseService {
         order by 2
         `);
         return await this.dataSource.createSelectQuery(query);
+    }
+
+
+    async getPrecioVentaProducto(dtoIn: PrecioVentaProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT
+            precio_ultima_compra,
+            fecha_ultima_compra,
+            porcentaje_utilidad,
+            cantidad,
+            precio_venta_sin_iva,	
+            porcentaje_iva,
+            precio_venta_con_iva,
+            valor_total_con_iva,
+            utilidad
+        FROM
+            f_calcula_precio_venta ($1, $2);
+        `);
+        query.addParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.cantidad);
+        return await this.dataSource.createSelectQuery(query);
+    }
+
+
+    async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT f_generar_config_precios($1, $2, $3)`);
+        query.addParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        await this.dataSource.createSelectQuery(query);
+        return { message: 'ok' };
     }
 
 }

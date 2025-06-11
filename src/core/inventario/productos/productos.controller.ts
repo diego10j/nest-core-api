@@ -1,4 +1,4 @@
-import { Query, Controller, Get } from '@nestjs/common';
+import { Query, Controller, Get, Body, Post } from '@nestjs/common';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ProductosService } from './productos.service';
@@ -14,6 +14,8 @@ import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 import { CategoriasDto } from './dto/categorias.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
+import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 
 
 
@@ -381,5 +383,34 @@ export class ProductosController {
       ...dtoIn
     });
   }
+
+
+
+  @Get('getPrecioVentaProducto')
+  // @Auth()
+  getPrecioVentaProducto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PrecioVentaProductoDto
+  ) {
+    return this.service.getPrecioVentaProducto({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+  
+  @Post('generarConfigPreciosVenta')
+  //@Auth()
+  generarConfigPreciosVenta(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: GeneraConfigPreciosVentaDto
+  ) {
+    return this.service.generarConfigPreciosVenta({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+
 
 }
