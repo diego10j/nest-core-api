@@ -213,7 +213,7 @@ export class CoreService {
         ${extraCondition}
         ${orderByClause}
         LIMIT ${dtoIn.limit}`, dtoIn);
-        console.log(query)
+        // console.log(query)
 
         // Añadir parámetros para cada columna de búsqueda (repetir el valor para cada columna)
         for (let i = 0; i < dtoIn.columnsSearch.length; i++) {

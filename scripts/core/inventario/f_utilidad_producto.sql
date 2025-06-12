@@ -1,4 +1,5 @@
 CREATE OR REPLACE FUNCTION f_utilidad_producto(
+    id_empresa BIGINT,
     id BIGINT, 
     fecha_inicio DATE,
     fecha_fin DATE
@@ -20,7 +21,7 @@ RETURNS TABLE (
     utilidad NUMERIC,
     utilidad_neta NUMERIC,
     porcentaje_utilidad NUMERIC,
-    nota_credito BOOLEAN,
+    nota_credito NUMERIC,
     fecha_ultima_compra DATE
 ) AS $$
 BEGIN
@@ -44,11 +45,11 @@ BEGIN
         uv.porcentaje_utilidad,
         uv.nota_credito,
         uv.fecha_ultima_compra
-    FROM Utilidad_en_Ventas(fecha_inicio, fecha_fin, id) uv;
+    FROM f_utilidad_ventas(id_empresa,fecha_inicio, fecha_fin, id) uv;
 END;
 $$ LANGUAGE plpgsql;
 
 
---  SELECT * FROM f_utilidad_producto (1704,'2025-04-01', '2025-04-30')
+--  SELECT * FROM f_utilidad_producto (0, 1704,'2025-04-01', '2025-04-30')
 
 

@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
-import { IsInt, IsPositive, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsPositive, IsString, Min } from 'class-validator';
+
 
 
 export class PaginationDto {
@@ -12,6 +13,10 @@ export class PaginationDto {
     @IsInt()
     @Min(0)
     pageIndex: number = 0;
+
+    @IsIn(['true', 'false']) // Solo permite estos valores
+    @IsOptional()
+    lastPage?: 'true' | 'false' = 'false';
 
 
 }

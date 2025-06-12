@@ -1,5 +1,6 @@
 
 CREATE OR REPLACE FUNCTION f_generar_config_precios(
+    id_empresa BIGINT,
     p_ide_inarti INT,
     p_fecha_inicio DATE,
     p_fecha_fin DATE,
@@ -31,7 +32,7 @@ BEGIN
     
     -- Crear tabla temporal con los datos de ventas
     CREATE TEMP TABLE temp_ventas_producto AS
-    SELECT * FROM f_utilidad_producto(p_ide_inarti, p_fecha_inicio, p_fecha_fin);
+    SELECT * FROM f_utilidad_producto(id_empresa,p_ide_inarti, p_fecha_inicio, p_fecha_fin);
     
     -- Verificar si hay datos de ventas
     SELECT COUNT(*) INTO v_count FROM temp_ventas_producto;
@@ -94,10 +95,10 @@ BEGIN
         v_seq_id := get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login);
         
         INSERT INTO inv_conf_precios_articulo (
-            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,
+            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,ide_empr,
             porcentaje_util_incpa, incluye_iva_incpa, activo_incpa, rango_infinito_incpa, usuario_ingre,observacion_incpa
         ) VALUES (
-            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,
+            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,id_empresa,
             COALESCE(v_porcentaje_promedio, v_avg_porcentaje), false, true, false, p_login, 'Configuración automática basada en ventas desde ' || p_fecha_inicio || ' hasta ' || p_fecha_fin
         );
         
@@ -125,10 +126,10 @@ BEGIN
         v_seq_id := get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login);
         
         INSERT INTO inv_conf_precios_articulo (
-            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,
+            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,ide_empr,
             porcentaje_util_incpa, incluye_iva_incpa, activo_incpa, rango_infinito_incpa, usuario_ingre,observacion_incpa
         ) VALUES (
-            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,
+            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,id_empresa,
             COALESCE(v_porcentaje_promedio, v_avg_porcentaje), false, true, false, p_login, 'Configuración automática basada en ventas desde ' || p_fecha_inicio || ' hasta ' || p_fecha_fin
         );
         
@@ -156,10 +157,10 @@ BEGIN
         v_seq_id := get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login);
         
         INSERT INTO inv_conf_precios_articulo (
-            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,
+            ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,ide_empr,
             porcentaje_util_incpa, incluye_iva_incpa, activo_incpa, rango_infinito_incpa, usuario_ingre,observacion_incpa
         ) VALUES (
-            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,
+            v_seq_id, p_ide_inarti, true, v_rango_actual, v_siguiente_rango,id_empresa,
             COALESCE(v_porcentaje_promedio, v_avg_porcentaje), false, true, false, p_login, 'Configuración automática basada en ventas desde ' || p_fecha_inicio || ' hasta ' || p_fecha_fin
         );
         
@@ -174,10 +175,10 @@ BEGIN
     WHERE cantidad_ccdfa >= v_rango_actual;
     
     INSERT INTO inv_conf_precios_articulo (
-        ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,
+        ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,ide_empr,
         porcentaje_util_incpa, incluye_iva_incpa, activo_incpa, rango_infinito_incpa, usuario_ingre,observacion_incpa
     ) VALUES (
-        v_seq_id, p_ide_inarti, true, v_rango_actual, NULL,
+        v_seq_id, p_ide_inarti, true, v_rango_actual, NULL,id_empresa,
         COALESCE(v_porcentaje_promedio, v_avg_porcentaje), false, true, true, p_login, 'Configuración automática basada en ventas desde ' || p_fecha_inicio || ' hasta ' || p_fecha_fin
     );
     
@@ -211,7 +212,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
---SELECT f_generar_config_precios(1704, '2025-01-01', '2025-12-31');
+--SELECT f_generar_config_precios(0, 1704, '2025-01-01', '2025-12-31');
 
 -- Ver los resultados
 --SELECT * FROM inv_conf_precios_articulo WHERE ide_inarti = 1704 ORDER BY rango1_cant_incpa;

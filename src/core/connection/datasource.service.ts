@@ -62,9 +62,8 @@ export class DataSourceService {
      * @returns Array data
      */
     async createSelectQuery(query: SelectQuery): Promise<any[]> {
-        query.isAutoPagination = false;
+        query.isLazy = false;
         query.isSchema = false;
-        query.isWrappedQuery = false;
         const result = await this.createQuery(query);
         return result.rows || [];
     }
@@ -76,141 +75,67 @@ export class DataSourceService {
      * @returns Array data
      */
     async createQuery(query: Query, ref = undefined): Promise<ResultQuery> {
-
         await this.formatSqlQuery(query);
 
         try {
-            let primaryKey: string | undefined = undefined;
-            let columns: any[] | undefined = undefined;
-            let queryName: string | undefined = undefined;
+            let primaryKey: string | undefined;
+            let columns: any[] | undefined;
+            let queryName: string | undefined;
             let message = 'ok';
-
-            // Envolver la consulta original en una subconsulta
             let finalQuery = query.query;
-            let totalRecords: number | undefined = undefined;
-            // Para autopaginacion, establecer un valor predeterminado
-            if (query instanceof SelectQuery && !query.pagination) {
-                if (query.isAutoPagination === true) {
-                    query.setPagination(this.SIZE_DEFAULT, 0);
+            let totalRecords: number | undefined;
+
+            // Handle SelectQuery specific logic
+            if (query instanceof SelectQuery) {
+                const selectQuery = query as SelectQuery;
+
+                // Initialize default pagination if needed
+                if (!selectQuery.pagination && selectQuery.isLazy) {
+                    selectQuery.setPagination(this.SIZE_DEFAULT, 0);
+                }
+
+                // Prepare base query
+                finalQuery = this.prepareBaseQuery(selectQuery);
+
+                // Apply filters and ordering
+                finalQuery = this.applyFiltersAndOrdering(selectQuery, finalQuery);
+
+                // Calculate total records
+                // Siempre calculamos el total de registros para lazy queries
+                if (selectQuery.isLazy) {
+                    totalRecords = await this.calculateTotalRecords(selectQuery, finalQuery);
+                }
+
+                // Apply pagination
+                if (selectQuery.isLazy && selectQuery.pagination) {
+                    finalQuery = this.applyPagination(selectQuery, finalQuery, totalRecords);
+                }
+
+                // Handle schema information
+                if (selectQuery.isSchema) {
+                    [queryName, columns, primaryKey] = await this.handleSchemaInfo(selectQuery, ref);
+                }
+
+                // Set pagination metadata
+                if (selectQuery.isLazy && selectQuery.pagination && totalRecords !== undefined) {
+                    this.setPaginationMetadata(selectQuery, totalRecords);
                 }
             }
 
-            if (query instanceof SelectQuery && query.isWrappedQuery === true) {
-                if (query instanceof SelectQuery) {
-                    query.query = query.query.trim();
-                    if (query.query.endsWith(';')) {
-                        query.query = query.query.slice(0, -1);
-                    }
-                    finalQuery = `SELECT * FROM (${query.query}) AS wrapped_query`;
-                }
-
-                // Aplicar filtros dinámicos
-                if (query instanceof SelectQuery && query.filters && query.filters.length > 0) {
-                    const filterConditions = query.filters.map(filter => {
-                        if (filter.operator === 'ILIKE') {
-                            return `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`;
-                        } else {
-                            return `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`;
-                        }
-                    }).join(' AND ');
-                    finalQuery += ` WHERE ${filterConditions}`;
-                }
-
-                // Aplicar filtro global
-                if (query instanceof SelectQuery && query.globalFilter) {
-                    const globalFilterConditions = query.globalFilter.columns
-                        .map(column => `wrapped_query.${column}::text ILIKE '%${query.globalFilter.value}%'`)
-                        .join(' OR ');
-                    finalQuery += query.filters && query.filters.length > 0 ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
-                }
-
-                // Aplicar orden dinámico
-                if (query instanceof SelectQuery && query.orderBy) {
-                    const direction = query.orderBy.direction || 'ASC ';
-                    finalQuery += ` ORDER BY wrapped_query.${query.orderBy.column} ${direction}`;
-                }
-
-                // Contar el total de registros     
-                if (query instanceof SelectQuery) {
-                    // Si no hay filtros ni filtro global, contar sobre la consulta original
-                    if (!query.filters?.length && !query.globalFilter) {
-                        const countQuery = `SELECT COUNT(*) FROM (${query.query}) AS count_query`;
-                        const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
-                        totalRecords = parseInt(countResult.rows[0].count, 10);
-                    } else {
-                        // Si hay filtros o filtro global, contar sobre la consulta final (sin paginación)
-                        const countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
-                        const countResult = await this.pool.query(countQuery, query.params.map(_param => _param.value));
-                        totalRecords = parseInt(countResult.rows[0].count, 10);
-                    }
-                }
-
-                // Aplicar paginación dinámica
-                if (query instanceof SelectQuery && query.pagination) {
-                    if (query.isAutoPagination === true) {
-                        query.setPagination(query.pagination.pageSize, query.pagination.pageIndex);
-                        finalQuery += ` OFFSET ${query.pagination.offset} LIMIT ${query.pagination.pageSize}`;
-                    }
-                }
-
-            }
-
-            // console.log(finalQuery);
-            // Ejecutar la consulta final
+            // Execute the final query
             const res = await this.pool.query(finalQuery, query.params.map(_param => _param.value));
 
-            if (query instanceof SelectQuery && query.isWrappedQuery === false) {
+            // Set total records for non-lazy select queries
+            if (query instanceof SelectQuery && !query.isLazy) {
                 totalRecords = res.rowCount;
             }
 
-            if (query instanceof SelectQuery && query.isWrappedQuery === true) {
-                if (query.pagination && totalRecords !== undefined) {
-                    if (query.isAutoPagination === true) {
-                        const totalPages = Math.ceil(totalRecords / query.pagination.pageSize);
-                        query.setIsPreviousPage(query.pagination.pageIndex > 1);
-                        query.setIsNextPage(query.pagination.pageIndex < totalPages);
-                        query.setTotalPages(totalPages);
-                    }
-                }
-            }
+            // Set appropriate message based on query type
+            message = this.getResultMessage(query, res.rowCount);
 
-            // Obtener información del esquema si es necesario
-            if (query instanceof SelectQuery && query.isSchema) {
-                queryName = this.extractCallerInfo();
-                if (isDefined(ref)) {
-                    queryName = `${queryName}.${ref}`;
-                }
-                columns = await this.getSchemaQuery(queryName, primaryKey, res);
-                if (columns.length > 0) {
-                    primaryKey = columns[0].name;
-                }
-            }
-
-            // Manejar auditoría
+            // Handle audit logging
             if (query.audit) {
-                let activityQuery: InsertQuery | undefined;
-                if (query instanceof InsertQuery) {
-                    activityQuery = this.getInsertActivityTable(query);
-                } else if (query instanceof UpdateQuery) {
-                    activityQuery = await this.getUpdateActivityTable(query);
-                }
-                if (activityQuery) {
-                    await this.formatSqlQuery(activityQuery);
-                    await this.pool.query(activityQuery.query, activityQuery.paramValues);
-                }
-            }
-
-            // Establecer mensajes apropiados según el tipo de consulta
-            if (query instanceof UpdateQuery) {
-                message = res.rowCount > 0 ? `Actualización exitosa, ${res.rowCount} registros afectados` : 'No se actualizó ningún registro';
-            }
-
-            if (query instanceof DeleteQuery) {
-                message = res.rowCount > 0 ? `Eliminación exitosa, ${res.rowCount} registros afectados` : 'No se eliminó ningún registro';
-            }
-
-            if (query instanceof SelectQuery && res.rowCount === 0) {
-                message = `No existen registros`;
+                await this.handleAuditLogging(query);
             }
 
             return {
@@ -229,6 +154,138 @@ export class DataSourceService {
             console.error(error);
             this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
             throw new InternalServerErrorException(`[ERROR] createQuery - ${error}`);
+        }
+    }
+
+    // Helper methods extracted from the main function:
+
+    private prepareBaseQuery(selectQuery: SelectQuery): string {
+        let query = selectQuery.query.trim();
+        if (query.endsWith(';')) {
+            query = query.slice(0, -1);
+        }
+        return `SELECT * FROM (${query}) AS wrapped_query`;
+    }
+
+    private applyFiltersAndOrdering(selectQuery: SelectQuery, baseQuery: string): string {
+        let query = baseQuery;
+
+        // Apply individual filters
+        if (selectQuery.filters?.length > 0) {
+            const filterConditions = selectQuery.filters.map(filter =>
+                filter.operator === 'ILIKE'
+                    ? `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`
+                    : `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`
+            ).join(' AND ');
+            query += ` WHERE ${filterConditions}`;
+        }
+
+        // Apply global filter
+        if (selectQuery.globalFilter) {
+            const globalFilterConditions = selectQuery.globalFilter.columns
+                .map(column => `wrapped_query.${column}::text ILIKE '%${selectQuery.globalFilter.value}%'`)
+                .join(' OR ');
+            query += selectQuery.filters?.length
+                ? ` AND (${globalFilterConditions})`
+                : ` WHERE (${globalFilterConditions})`;
+        }
+
+        // Apply ordering
+        if (selectQuery.orderBy) {
+            const direction = selectQuery.orderBy.direction || 'ASC';
+            query += ` ORDER BY wrapped_query.${selectQuery.orderBy.column} ${direction}`;
+        }
+
+        return query;
+    }
+
+    private async calculateTotalRecords(selectQuery: SelectQuery, finalQuery: string): Promise<number | undefined> {
+        if (!selectQuery.isLazy) return undefined;
+
+        let countQuery: string;
+        if (!selectQuery.filters?.length && !selectQuery.globalFilter) {
+            countQuery = `SELECT COUNT(*) FROM (${selectQuery.query}) AS count_query`;
+        } else {
+            countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
+        }
+
+        const countResult = await this.pool.query(countQuery, selectQuery.params.map(_param => _param.value));
+        return parseInt(countResult.rows[0].count, 10);
+    }
+
+    private applyPagination(selectQuery: SelectQuery, query: string, totalRecords?: number): string {
+        if (!selectQuery.pagination) {
+            return query;
+        }
+
+        // Si lastPage es true y tenemos totalRecords, calculamos la última página
+        if (selectQuery.lastPage && totalRecords !== undefined) {
+            const pageSize = selectQuery.pagination.pageSize;
+            const lastPageIndex = Math.ceil(totalRecords / pageSize) - 1;
+            const lastPageOffset = Math.max(0, lastPageIndex * pageSize);
+
+            // Actualizamos la paginación
+            selectQuery.setPagination(pageSize, lastPageIndex);
+            selectQuery.setTotalPages(Math.ceil(totalRecords / pageSize));
+            selectQuery.setIsNextPage(false);
+            selectQuery.setIsPreviousPage(lastPageIndex > 0);
+
+            return `${query} OFFSET ${lastPageOffset} LIMIT ${pageSize}`;
+        }
+
+        // Comportamiento normal si lastPage es false o no tenemos totalRecords
+        selectQuery.setPagination(
+            selectQuery.pagination.pageSize,
+            selectQuery.pagination.pageIndex
+        );
+        return `${query} OFFSET ${selectQuery.pagination.offset} LIMIT ${selectQuery.pagination.pageSize}`;
+    }
+
+    private async handleSchemaInfo(selectQuery: SelectQuery, ref: any): Promise<[string, any[], string]> {
+        let queryName = this.extractCallerInfo();
+        if (isDefined(ref)) {
+            queryName = `${queryName}.${ref}`;
+        }
+        const res = await this.pool.query(selectQuery.query, selectQuery.params.map(_param => _param.value));
+        const columns = await this.getSchemaQuery(queryName, undefined, res);
+        const primaryKey = columns.length > 0 ? columns[0].name : undefined;
+        return [queryName, columns, primaryKey];
+    }
+
+    private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
+        const totalPages = Math.ceil(totalRecords / selectQuery.pagination.pageSize);
+        selectQuery.setIsPreviousPage(selectQuery.pagination.pageIndex > 1);
+        selectQuery.setIsNextPage(selectQuery.pagination.pageIndex < totalPages);
+        selectQuery.setTotalPages(totalPages);
+    }
+
+    private getResultMessage(query: Query, rowCount: number): string {
+        if (query instanceof UpdateQuery) {
+            return rowCount > 0
+                ? `Actualización exitosa, ${rowCount} registros afectados`
+                : 'No se actualizó ningún registro';
+        }
+        if (query instanceof DeleteQuery) {
+            return rowCount > 0
+                ? `Eliminación exitosa, ${rowCount} registros afectados`
+                : 'No se eliminó ningún registro';
+        }
+        if (query instanceof SelectQuery && rowCount === 0) {
+            return 'No existen registros';
+        }
+        return 'ok';
+    }
+
+    private async handleAuditLogging(query: Query): Promise<void> {
+        let activityQuery: InsertQuery | undefined;
+        if (query instanceof InsertQuery) {
+            activityQuery = this.getInsertActivityTable(query);
+        } else if (query instanceof UpdateQuery) {
+            activityQuery = await this.getUpdateActivityTable(query);
+        }
+        if (activityQuery) {
+            await this.formatSqlQuery(activityQuery);
+            await this.pool.query(activityQuery.query, activityQuery.paramValues);
         }
     }
 
@@ -256,7 +313,7 @@ export class DataSourceService {
 
             for (const currentQuery of listQuery) {
                 await this.formatSqlQuery(currentQuery);
-               //  console.log(currentQuery);
+                //  console.log(currentQuery);
                 const res = await queryRunner.query(currentQuery.query, currentQuery.paramValues);
 
                 // Registra  Actividad Auditoria
@@ -680,7 +737,7 @@ export class DataSourceService {
 
     async clearCacheRedis() {
 
-        const patterns = ['schema:*','table_columns:*','whatsapp_config:*'];
+        const patterns = ['schema:*', 'table_columns:*', 'whatsapp_config:*'];
 
         for (const pattern of patterns) {
             const keys = await this.redisClient.keys(pattern);

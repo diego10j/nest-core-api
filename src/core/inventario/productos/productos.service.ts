@@ -23,6 +23,7 @@ import { SaldoProducto } from './interfaces/productos';
 import { getYear } from 'date-fns';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 
 @Injectable()
@@ -109,7 +110,6 @@ export class ProductosService extends BaseService {
     * @returns 
     */
     async getProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-
         const query = new SelectQuery(`
         SELECT
             ARTICULO.ide_inarti,
@@ -131,7 +131,7 @@ export class ProductosService extends BaseService {
             AND ARTICULO.nivel_inarti = 'HIJO'
             AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY
-            ARTICULO.nombre_inarti;
+            ARTICULO.nombre_inarti
 `, dtoIn);
 
         return await this.dataSource.createQuery(query);
@@ -410,7 +410,7 @@ export class ProductosService extends BaseService {
         query.addParam(2, dtoIn.fechaInicio);
         query.addParam(3, dtoIn.fechaFin);
 
-        query.setAutoPagination(false);
+        query.setLazy(false);
 
         const res = await this.dataSource.createQuery(query);
         const rows = res.rows;
@@ -498,12 +498,13 @@ export class ProductosService extends BaseService {
             uv.porcentaje_utilidad,
             uv.nota_credito,
             uv.fecha_ultima_compra
-        FROM Utilidad_en_Ventas($1,$2,$3) uv
+        FROM f_utilidad_ventas($1,$2,$3,$4) uv
              ${whereCantidad}
-            `, dtoIn);        
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        query.addIntParam(3, dtoIn.ide_inarti);
+            `, dtoIn);
+        query.addParam(1, dtoIn.ideEmpr);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        query.addIntParam(4, dtoIn.ide_inarti);
         const res = await this.dataSource.createQuery(query);
 
         res.row = {
@@ -1717,12 +1718,47 @@ export class ProductosService extends BaseService {
 
     async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
-        SELECT f_generar_config_precios($1, $2, $3)`);
-        query.addParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
+        SELECT f_generar_config_precios($1, $2, $3, $4)`);
+        query.addParam(1, dtoIn.ideEmpr);
+        query.addParam(2, dtoIn.ide_inarti);
+        query.addParam(3, dtoIn.fechaInicio);
+        query.addParam(4, dtoIn.fechaFin);
         await this.dataSource.createSelectQuery(query);
         return { message: 'ok' };
+    }
+
+
+    async getConfigPreciosProducto(dtoIn: IdeDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT
+            ide_incpa,
+            a.ide_inarti,
+            rangos_incpa,
+            rango1_cant_incpa,
+            rango2_cant_incpa,
+            siglas_inuni,
+            precio_fijo_incpa,
+            porcentaje_util_incpa,
+            incluye_iva_incpa,
+            observacion_incpa,
+            activo_incpa,
+            rango_infinito_incpa,
+            autorizado_incpa,
+            nombre_inarti,
+            uuid,
+            a.usuario_ingre,
+            a.hora_ingre,
+            a.usuario_actua,
+            a.usuario_actua
+        FROM
+            inv_conf_precios_articulo a
+            INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
+            LEFT JOIN inv_unidad c ON b.ide_inuni = c.ide_inuni
+        WHERE
+            a.ide_inarti = $1
+        `, dtoIn);
+        query.addParam(1, dtoIn.ide);
+        return await this.dataSource.createQuery(query);
     }
 
 }

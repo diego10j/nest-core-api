@@ -52,6 +52,21 @@ export class FacturasController {
         });
     }
 
+    @Get('getUtilidadVentas')
+    // @Auth()
+    getUtilidadVentas(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: RangoFechasDto
+    ) {
+        return this.service.getUtilidadVentas({
+            ...headersParams,
+            ...dtoIn
+        });
+    }
+
+
+
+
     // ===================================== ANALISIS DE DATOS
 
     @Get('getTotalFacturasPorEstado')
@@ -200,7 +215,7 @@ export class FacturasController {
             ...dtoIn
         });
     }
-    
+
 
     @Get('getTasaCrecimientoMensual')
     // @Auth()
@@ -225,18 +240,18 @@ export class FacturasController {
             ...dtoIn
         });
     }
-    
-   
+
+
     @Get('getResumenVentasPeriodos')
     // @Auth()
     getResumenVentasPeriodos(
         @AppHeaders() headersParams: HeaderParamsDto
     ) {
         return this.service.getResumenVentasPeriodos(headersParams);
-    } 
+    }
 
 
-  
+
     @Get('getVariacionVentasPeriodos')
     // @Auth()
     getVariacionVentasPeriodos(
@@ -247,11 +262,11 @@ export class FacturasController {
             ...headersParams,
             ...dtoIn
         });
-    } 
+    }
 
 
-    
 
-    
+
+
 
 }

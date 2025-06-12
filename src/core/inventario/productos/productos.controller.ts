@@ -16,6 +16,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 
 
@@ -410,6 +411,21 @@ export class ProductosController {
       ...dtoIn
     });
   }
+
+
+
+  @Get('getConfigPreciosProducto')
+  // @Auth()
+  getConfigPreciosProducto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdeDto
+  ) {
+    return this.service.getConfigPreciosProducto({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+  
 
 
 

@@ -1,13 +1,17 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 
 export class FilterDto {
-    @IsString()
-    column: string;
 
     @IsString()
-    operator: string;
+    @IsNotEmpty()
+    @Matches(/^\S*$/, { message: 'column no debe contener espacios' })
+    column: string; 
 
+    @IsString()
     @IsOptional()
+    operator?: string = 'ILIKE';
+
+    @IsNotEmpty()
     value: any;
 }
 

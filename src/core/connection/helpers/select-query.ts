@@ -23,28 +23,33 @@ export class SelectQuery extends Query {
     filters?: FilterDto[];
 
     isSchema?: boolean;
-    isAutoPagination?: boolean;
+    isLazy?: boolean;
 
-    isWrappedQuery?: boolean;
+    lastPage?: boolean;
 
     constructor(query: string, dto?: QueryOptionsDto) {
         super();
         this.isSchema = true;  // Por defecto retorna el esquema de la consulta
-        this.isAutoPagination = true;    // Por defecto autopaginacion calculada
-        this.isWrappedQuery = true;    // Por defecto para paginacion, orden, filtro global
+        this.isLazy = true;    // Por defecto lazy, crea WrappedQuery del query incial para paginacion, orden, filtro
         this.query = query;
+        this.lastPage = false; // para cargar la ultima página
         if (dto) {
             // Asigna valores paginador
-            const { pagination, globalFilter, orderBy, filters } = dto;
+            const { pagination, globalFilter, orderBy, filters, lazy } = dto;
 
-            if (isDefined(pagination)) {
-                this.pagination = {
-                    pageSize: pagination.pageSize,
-                    pageIndex: pagination.pageIndex,
-                    offset: this.calculateOffset(pagination.pageSize, pagination.pageIndex)
-                };
+            if (isDefined(lazy)) {
+                this.isLazy = lazy === 'true';
             }
-
+            if (this.isLazy === true) {
+                if (isDefined(pagination)) {                    
+                    this.pagination = {
+                        pageSize: pagination.pageSize,
+                        pageIndex: pagination.pageIndex,
+                        offset: this.calculateOffset(pagination.pageSize, pagination.pageIndex)
+                    };
+                    this.lastPage = pagination.lastPage ? pagination.lastPage === 'true' : false;
+                }
+            }
             if (isDefined(globalFilter)) {
                 this.globalFilter = globalFilter;
             }
@@ -56,6 +61,7 @@ export class SelectQuery extends Query {
             if (isDefined(filters)) {
                 this.filters = filters;
             }
+
         }
     }
 
@@ -65,36 +71,37 @@ export class SelectQuery extends Query {
     }
 
     getPagination() {
-        if (this.isAutoPagination === true) {
+        if (this.isLazy === true) {
             if (this.pagination.totalPages && this.pagination.totalPages > 1) {
                 return this.pagination;
             }
         }
-
         return undefined;
     }
 
     setPagination(pageSize: number, pageIndex: number) {
-        this.pagination = {
-            pageSize,
-            pageIndex,
-            offset: this.calculateOffset(pageSize, pageIndex)
-        };
+        if (this.isLazy === true) {
+            this.pagination = {
+                pageSize,
+                pageIndex,
+                offset: this.calculateOffset(pageSize, pageIndex)
+            };
+        }
     }
     setIsNextPage(next: boolean) {
-        if (this.pagination) {
+        if (this.isLazy === true && this.pagination) {
             this.pagination.hasNextPage = next;
         }
     }
 
     setIsPreviousPage(previous: boolean) {
-        if (this.pagination) {
+        if (this.isLazy === true && this.pagination) {
             this.pagination.hasPreviousPage = previous;
         }
     }
 
     setTotalPages(totalPages: number) {
-        if (this.pagination) {
+        if (this.isLazy === true && this.pagination) {
             this.pagination.totalPages = totalPages;
         }
     }
@@ -103,13 +110,10 @@ export class SelectQuery extends Query {
         this.isSchema = isSchema;
     }
 
-    setWrappedQuery(isWrappedQuery: boolean) {
-        this.isWrappedQuery = isWrappedQuery;
-    }
 
-    setAutoPagination(isAutoPagination: boolean) {
-        this.isAutoPagination = isAutoPagination;
-        if (isAutoPagination === true) {
+    setLazy(lazy: boolean) {
+        this.isLazy = lazy;
+        if (lazy === false) {
             this.pagination = undefined;
         }
     }

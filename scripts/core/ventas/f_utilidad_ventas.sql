@@ -75,9 +75,19 @@ ON inv_det_comp_inve (ide_inarti);
 CREATE INDEX idx_temp_compras_periodo_inarti
 ON inv_det_comp_inve (ide_inarti);
 
+
+
+
+
+
+
+
+
+
 --- version mejorada para precios de compra    
     
-    CREATE OR REPLACE FUNCTION Utilidad_en_Ventas(
+CREATE OR REPLACE FUNCTION f_utilidad_ventas(
+    id_empresa BIGINT,
     fecha_inicio DATE,
     fecha_fin DATE,
     id_articulo BIGINT DEFAULT NULL  -- Parámetro opcional
@@ -99,7 +109,7 @@ RETURNS TABLE (
     utilidad NUMERIC,
     utilidad_neta NUMERIC,
     porcentaje_utilidad NUMERIC,
-    nota_credito BOOLEAN,
+    nota_credito NUMERIC,
     fecha_ultima_compra DATE
 ) AS $$
 BEGIN
@@ -122,6 +132,7 @@ BEGIN
             AND d.precio_indci > 0
             AND c.ide_intti IN (19, 16, 3025)
             AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
+            AND c.ide_empr = id_empresa
     ),
     ultima_compra_fuera_periodo AS (
         SELECT DISTINCT ON (d.ide_inarti)
@@ -140,6 +151,7 @@ BEGIN
             AND c.ide_intti IN (19, 16, 3025)
             AND c.fecha_trans_incci < (fecha_inicio - INTERVAL '5 days')
             AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
+            AND c.ide_empr = id_empresa
         ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
     ),
     precios_compra AS (
@@ -205,23 +217,25 @@ BEGIN
         LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         WHERE
-            cf.ide_ccefa = 0
+            cf.ide_ccefa = 0 -- 0 ESTADO NORMAL
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
-            AND cf.ide_empr = 0
+            AND cf.ide_empr = id_empresa
             AND (id_articulo IS NULL OR cdf.ide_inarti = id_articulo)
     ),
     facturas_con_nota AS (
         SELECT 
             lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
-            TRUE AS tiene_nota_credito
-        FROM cxc_cabece_factura cf
-        WHERE EXISTS (
-            SELECT 1 
-            FROM cxp_cabecera_nota cn 
-            WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-              AND cn.fecha_emisi_cpcno BETWEEN fecha_inicio AND fecha_fin
-        )
-    )
+            cdn.ide_inarti,
+            SUM(cdn.valor_cpdno) AS valor_nota_credito
+        FROM cxp_cabecera_nota cn
+        JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+        JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+        WHERE cn.fecha_emisi_cpcno BETWEEN fecha_inicio AND fecha_fin
+          AND cn.ide_cpeno = 1  -- 1 ESTADO NORMAL
+          AND (id_articulo IS NULL OR cdn.ide_inarti = id_articulo)
+          AND cn.ide_empr = id_empresa
+        GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
+)
     SELECT
         dc.ide_ccdfa,
         dc.ide_inarti,        
@@ -242,10 +256,11 @@ BEGIN
             WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
             ELSE 0
         END AS porcentaje_utilidad,
-        COALESCE(fn.tiene_nota_credito, FALSE) AS nota_credito,
+        COALESCE(fn.valor_nota_credito, 0) AS nota_credito,
         dc.fecha_ultima_compra
     FROM datos_completos dc
-    LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded
+    LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
+                                   AND dc.ide_inarti = fn.ide_inarti
     ORDER BY dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa;
 END;
 $$ LANGUAGE plpgsql;
@@ -254,6 +269,7 @@ $$ LANGUAGE plpgsql;
 
 
 
---  SELECT * FROM Utilidad_en_Ventas ('2025-04-01', '2025-04-30')
 
---  SELECT * FROM Utilidad_en_Ventas ('2024-09-01', '2025-04-30',1704)
+
+-- SELECT * FROM f_utilidad_ventas (0,'2024-09-01', '2025-04-30',1704)
+-- SELECT * FROM f_utilidad_ventas (0,'2025-01-01', '2025-01-31')

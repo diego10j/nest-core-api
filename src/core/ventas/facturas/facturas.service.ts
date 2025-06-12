@@ -207,7 +207,7 @@ export class FacturasService extends BaseService {
             COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) AS ventas_netas,
             COALESCE(ff.iva, 0) AS iva,
             COALESCE(ff.total, 0) - COALESCE(nc.total_nota_credito, 0) AS total,
-            COALESCE(Utilidad_Mes(gm.ide_gemes::INTEGER, ${dtoIn.periodo}::INTEGER), 0) AS utilidad
+            COALESCE(f_total_utilidad_mes(${dtoIn.ideEmpr},gm.ide_gemes::INTEGER, ${dtoIn.periodo}::INTEGER), 0) AS utilidad
         FROM 
             gen_mes gm
         LEFT JOIN 
@@ -1034,6 +1034,36 @@ export class FacturasService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
+
+
+    async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT 
+            uv.ide_ccdfa,
+            uv.ide_inarti,
+            uv.fecha_emisi_cccfa,
+            uv.secuencial_cccfa,
+            uv.nom_geper,
+            uv.nombre_inarti,
+            uv.cantidad_ccdfa,
+            uv.siglas_inuni,
+            uv.precio_venta,
+            uv.total_ccdfa,
+            uv.nombre_vgven,
+            uv.hace_kardex_inarti,
+            uv.precio_compra,
+            uv.utilidad,
+            uv.utilidad_neta,
+            uv.porcentaje_utilidad,
+            uv.nota_credito,
+            uv.fecha_ultima_compra
+        FROM f_utilidad_ventas($1,$2,$3) uv
+            `, dtoIn);
+        query.addParam(1, dtoIn.ideEmpr);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
 
 }
