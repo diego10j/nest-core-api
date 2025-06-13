@@ -24,6 +24,7 @@ import { getYear } from 'date-fns';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 
 
 @Injectable()
@@ -346,88 +347,125 @@ export class ProductosService extends BaseService {
      * @returns 
      */
     async getTrnProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
-        // 1. Determinar el saldo inicial
-        const saldoProducto = await this.getStock(dtoIn.ide_inarti, addDaysDate(dtoIn.fechaInicio, -1));
-        const saldoInicial = saldoProducto?.saldo || 0;
-        const numDecimales = saldoProducto?.decim_stock_inarti || 2;
-        // 2. Construir consulta con fila de saldo inicial
+
+        const whereClause = dtoIn.ide_inbod ? ` AND dci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+
         const query = new SelectQuery(`
-            -- Fila de saldo inicial
-            SELECT
-                -1 AS ide_indci,
-                ${dtoIn.ide_inarti}::integer AS ide_inarti,
-                NULL AS ide_incci,
-                '${fDate(dtoIn.fechaInicio)}' AS fecha_trans_incci,
-                NULL AS num_documento,
-                'Saldo Inicial al ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
-                'Saldo Inicial' AS nombre_intti,
-                NULL AS precio,
-                NULL AS ingreso,
-                NULL AS egreso,
-                NULL AS movimiento,
-                ${saldoInicial}::numeric AS saldo
-            
-            UNION ALL
-            
+        WITH saldo_inicial AS (
+            SELECT 
+                dci.ide_inarti,
+                f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo
+            FROM
+                inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
+            WHERE
+                dci.ide_inarti = $1
+                AND fecha_trans_incci < $2
+                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                AND dci.ide_empr =  ${dtoIn.ideEmpr}
+                ${whereClause}
+            GROUP BY
+                dci.ide_inarti,decim_stock_inarti
+        ),
+        movimientos AS (
             SELECT
                 dci.ide_indci,
                 dci.ide_inarti,
                 cci.ide_incci,
                 cci.fecha_trans_incci,
+                cci.ide_inbod,
+                bod.nombre_inbod,
                 COALESCE(
-                    (SELECT secuencial_cccfa FROM cxc_cabece_factura WHERE ide_cccfa = dci.ide_cccfa),
-                    (SELECT numero_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = dci.ide_cpcfa)
-                ) AS num_documento,
+                    (
+                        SELECT secuencial_cccfa
+                        FROM cxc_cabece_factura
+                        WHERE ide_cccfa = dci.ide_cccfa
+                    ),
+                    (
+                        SELECT numero_cpcfa
+                        FROM cxp_cabece_factur
+                        WHERE ide_cpcfa = dci.ide_cpcfa
+                    )
+                ) AS NUM_DOCUMENTO,
                 gpe.nom_geper,
                 tti.nombre_intti,
-                dci.precio_indci AS precio,
-                CASE 
-                    WHEN tci.signo_intci = 1 THEN  f_decimales(dci.cantidad_indci, ${numDecimales})::numeric
-                    ELSE NULL 
-                END AS ingreso,
-                CASE 
-                    WHEN tci.signo_intci = -1 THEN f_decimales(dci.cantidad_indci, ${numDecimales})::numeric
-                    ELSE NULL 
-                END AS egreso,
-                dci.cantidad_indci * tci.signo_intci AS movimiento,
-                0 AS saldo
+                dci.precio_indci AS PRECIO,
+                CASE
+                    WHEN signo_intci = 1 THEN cantidad_indci
+                END AS INGRESO,
+                CASE
+                    WHEN signo_intci = -1 THEN cantidad_indci
+                END AS EGRESO,
+                cantidad_indci * signo_intci AS movimiento,
+                decim_stock_inarti
             FROM
                 inv_det_comp_inve dci
                 INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
                 LEFT JOIN gen_persona gpe ON cci.ide_geper = gpe.ide_geper
-                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
                 INNER JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
+                inner join inv_bodega bod on cci.ide_inbod = bod.ide_inbod
             WHERE
-                dci.ide_inarti = $1   
-                AND cci.fecha_trans_incci BETWEEN $2 AND $3
-                AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}       
-            ORDER BY fecha_trans_incci , ide_indci 
+                dci.ide_inarti = $3
+                AND arti.ide_empr = ${dtoIn.ideEmpr}        
+                AND fecha_trans_incci BETWEEN $4 AND $5
+                AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
+                AND dci.ide_sucu =  ${dtoIn.ideSucu}
+                ${whereClause}
+        ),
+        saldo_movimientos AS (
+            SELECT
+                ide_indci AS ide_indci,
+                mov.ide_inarti,
+                ide_incci AS ide_incci,
+                mov.fecha_trans_incci,
+                mov.ide_inbod,
+                mov.nombre_inbod,
+                mov.NUM_DOCUMENTO,
+                mov.nom_geper,
+                mov.nombre_intti,
+                mov.PRECIO,
+                f_decimales(mov.INGRESO, mov.decim_stock_inarti)::numeric as ingreso,
+                f_decimales(mov.EGRESO, mov.decim_stock_inarti)::numeric as egreso,                
+                (COALESCE(saldo_inicial.saldo, 0) + SUM(mov.movimiento) OVER (ORDER BY mov.fecha_trans_incci, mov.ide_indci)) AS SALDO
+            FROM
+                movimientos mov
+                LEFT JOIN saldo_inicial ON mov.ide_inarti = saldo_inicial.ide_inarti
+            UNION ALL
+            SELECT
+                -1 AS ide_indci,
+                saldo_inicial.ide_inarti,
+                NULL AS ide_incci,
+                '${fDate(dtoIn.fechaInicio)}' AS fecha_trans_incci,
+                NULL as ide_inbod,
+                NULL as nombre_inbod,
+                NULL AS NUM_DOCUMENTO,        
+                'SALDO INICIAL AL ${getDateFormatFront(dtoIn.fechaInicio)} ' AS  nom_geper,
+                'Saldo Inicial' AS nombre_intti,
+                NULL AS PRECIO,
+                NULL AS INGRESO,
+                NULL AS EGRESO,
+                saldo_inicial.saldo AS SALDO
+            FROM
+                saldo_inicial
+        )
+        SELECT *
+        FROM saldo_movimientos
+        ORDER BY fecha_trans_incci, ide_indci 
         `, dtoIn);
-
-        // 3. Asignar parámetros
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addParam(4, dtoIn.fechaInicio);
+        query.addParam(5, dtoIn.fechaFin);
 
-        query.setLazy(false);
-
-        const res = await this.dataSource.createQuery(query);
-        const rows = res.rows;
-
-        // 4. Calcular saldos acumulados
-        if (rows.length > 1) {
-            let saldoActual = rows[0].saldo; // Saldo inicial
-
-            // Recorrer en orden cronológico (fecha ASC)
-            for (let i = 1; i < rows.length; i++) {
-                saldoActual += rows[i].movimiento;
-                rows[i].saldo = fNumber(saldoActual, numDecimales);
-            }
-        }
+        return await this.dataSource.createQuery(query);
 
 
-        return res;
     }
 
     /**
@@ -624,6 +662,7 @@ export class ProductosService extends BaseService {
             AND b.ide_empr = ${dtoIn.ideEmpr}  
         GROUP BY 
             a.ide_inarti,
+            decim_stock_inarti,
             b.ide_geper,
             c.nom_geper,
             u.cantidad,
@@ -631,8 +670,7 @@ export class ProductosService extends BaseService {
             u.precio,
             u.total
         ORDER BY 
-            3 DESC;
-        
+            3 DESC
         `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
@@ -644,30 +682,39 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldo(dtoIn: IdProductoDto & HeaderParamsDto) {
+    async getSaldo(dtoIn: GetSaldoProductoDto & HeaderParamsDto) {
+        const whereClause = dtoIn.ide_inarti ? "iart.ide_inarti = $1" : "iart.uuid = $1";
+
         const query = new SelectQuery(`     
-        SELECT 
-            iart.ide_inarti,
-            nombre_inarti,
-            f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo,
-            siglas_inuni,
-            decim_stock_inarti,
-            to_char(now(), 'YYYY-MM-DD HH24:MI:SS') AS fecha
-        FROM
-            inv_det_comp_inve dci
-            inner join inv_cab_comp_inve cci on cci.ide_incci = dci.ide_incci
-            inner join inv_tip_tran_inve tti on tti.ide_intti = cci.ide_intti
-            inner join inv_tip_comp_inve tci on tci.ide_intci = tti.ide_intci
-            inner join inv_articulo iart on iart.ide_inarti = dci.ide_inarti
-            left join inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        WHERE
-            dci.ide_inarti = $1
-            AND ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-            AND cci.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY   
-            iart.ide_inarti,nombre_inarti,siglas_inuni,decim_stock_inarti
-        `);
-        query.addIntParam(1, dtoIn.ide_inarti);
+    SELECT 
+        iart.ide_inarti,
+        nombre_inarti,
+        f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo,
+        siglas_inuni,
+        decim_stock_inarti,
+        to_char(now(), 'YYYY-MM-DD HH24:MI:SS') AS fecha
+    FROM
+        inv_det_comp_inve dci
+        INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+        INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+        INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
+        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+    WHERE
+        ${whereClause}
+        AND ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+        AND cci.ide_empr = ${dtoIn.ideEmpr}
+    GROUP BY   
+        iart.ide_inarti, nombre_inarti, siglas_inuni, decim_stock_inarti
+    `);
+
+        // Asegúrate de que el parámetro existe en dtoIn
+        const paramValue = dtoIn.ide_inarti || dtoIn.uuid;
+        if (!paramValue) {
+            throw new Error("Se requiere ide_inarti o uuid en el DTO de entrada");
+        }
+
+        query.addParam(1, paramValue);
         return await this.dataSource.createSingleQuery(query) as SaldoProducto;
     }
 
@@ -1041,16 +1088,26 @@ export class ProductosService extends BaseService {
     async getClientes(dtoIn: ClientesProductoDto & HeaderParamsDto) {
 
         const sql = `            
+        WITH
+        datos_cliente AS (
             SELECT
                 p.ide_geper,
-                upper(p.nom_geper) as nom_geper,
+                upper(p.nom_geper) AS nom_geper,
                 COUNT(1) AS num_facturas,
                 SUM(cdf.cantidad_ccdfa) AS total_cantidad,
-                siglas_inuni,
+                uni.siglas_inuni,
                 SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
-                max(fecha_emisi_cccfa) as fecha_ultima,
+                MIN(fecha_emisi_cccfa) AS fecha_primer_compra,
+                MAX(fecha_emisi_cccfa) AS fecha_ultima_compra,
                 ven.nombre_vgven,
-                p.uuid
+                p.uuid,
+                ARRAY_AGG(
+                    fecha_emisi_cccfa
+                    ORDER BY
+                        fecha_emisi_cccfa
+                ) AS fechas_compras,
+                AVG(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS valor_promedio_compra,
+                STDDEV(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS desviacion_valor_compra
             FROM
                 cxc_deta_factura cdf
                 INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
@@ -1060,16 +1117,139 @@ export class ProductosService extends BaseService {
                 LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
             WHERE
                 cdf.ide_inarti = $1
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 p.ide_geper,
                 p.nom_geper,
-                p.identificac_geper,
                 uni.siglas_inuni,
-                ven.nombre_vgven
-            order by
-                fecha_ultima DESC
+                ven.nombre_vgven,
+                p.uuid
+        ),
+        avg_valor_compra AS (
+            SELECT
+                AVG(total_valor / num_facturas) AS avg_valor_promedio
+            FROM
+                datos_cliente
+        ),
+        clientes_unicos AS (
+            SELECT
+                dc.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        dc.ide_geper
+                    ORDER BY
+                        dc.fecha_ultima_compra DESC,
+                        dc.total_valor DESC
+                ) AS rn
+            FROM
+                datos_cliente dc
+        ),
+        intervalos_compras AS (
+            SELECT
+                cu.ide_geper,
+                cu.fechas_compras,
+                CASE
+                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN (cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)
+                    ELSE NULL
+                END AS intervalo_promedio_dias,
+                CASE
+                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN cu.fechas_compras[array_length(cu.fechas_compras, 1)] + make_interval(days => ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1))::int)
+                    ELSE NULL
+                END AS fecha_proxima_compra_estimada,
+                CASE
+                    WHEN array_length(cu.fechas_compras, 1) = 1 THEN 'Compra única'
+                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)) <= 30 THEN 'Frecuente'
+                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)) <= 90 THEN 'Ocasional'
+                    ELSE 'Esporádico'
+                END AS frecuencia_compra
+            FROM
+                clientes_unicos cu
+            WHERE
+                cu.rn = 1
+        ),
+        tendencia_ventas AS (
+            SELECT
+                cu.ide_geper,
+                CASE
+                    WHEN cu.num_facturas >= 3 THEN CASE
+                        WHEN (cu.total_valor / cu.num_facturas) > (
+                            SELECT
+                                avg_valor_promedio
+                            FROM
+                                avg_valor_compra
+                        ) * 1.2 THEN 'Alta'
+                        WHEN (cu.total_valor / cu.num_facturas) < (
+                            SELECT
+                                avg_valor_promedio
+                            FROM
+                                avg_valor_compra
+                        ) * 0.8 THEN 'Baja'
+                        ELSE 'Estable'
+                    END
+                    ELSE 'No aplica'
+                END AS tendencia_valor_compra,
+                CASE
+                    WHEN cu.num_facturas >= 3 THEN CASE
+                        WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) < 180
+                        AND cu.num_facturas > 5 THEN 'Creciente'
+                        WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) < 180
+                        AND (((cu.fecha_ultima_compra - cu.fecha_primer_compra)::int / 30.0) / cu.num_facturas) < 0.5 THEN 'Decreciente'
+                        ELSE 'Constante'
+                    END
+                    ELSE 'No aplica'
+                END AS tendencia_frecuencia_compra
+            FROM
+                clientes_unicos cu
+            WHERE
+                cu.rn = 1
+        )
+    SELECT
+        cu.ide_geper,
+        cu.nom_geper,
+        cu.num_facturas,
+        f_decimales (cu.total_cantidad) AS total_cantidad,
+        cu.siglas_inuni,
+        f_redondeo (cu.total_valor, 2) AS total_valor,
+        cu.fecha_primer_compra,
+        cu.fecha_ultima_compra,
+        cu.nombre_vgven,
+        cu.uuid,
+        f_redondeo (cu.valor_promedio_compra, 2) AS valor_promedio_compra,
+        f_redondeo (cu.desviacion_valor_compra, 2) AS desviacion_valor_compra,
+        f_redondeo (ic.intervalo_promedio_dias, 2) AS intervalo_promedio_dias,
+        ic.fecha_proxima_compra_estimada,
+        ic.frecuencia_compra,
+        tt.tendencia_valor_compra,
+        tt.tendencia_frecuencia_compra,
+        CASE
+            WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > 365 THEN 'Inactivo'
+            WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > (ic.intervalo_promedio_dias * 1.5)
+            AND ic.intervalo_promedio_dias IS NOT NULL THEN 'En riesgo'
+            WHEN cu.num_facturas = 1 THEN 'Compra única'
+            ELSE 'Activo'
+        END AS estado_cliente,
+        RANK() OVER (
+            ORDER BY
+                cu.total_valor DESC
+        ) AS ranking_valor_total,
+        RANK() OVER (
+            ORDER BY
+                cu.num_facturas DESC
+        ) AS ranking_frecuencia,
+        PERCENT_RANK() OVER (
+            ORDER BY
+                cu.total_valor
+        ) AS percentil_valor
+    FROM
+        clientes_unicos cu
+        JOIN intervalos_compras ic ON cu.ide_geper = ic.ide_geper
+        JOIN tendencia_ventas tt ON cu.ide_geper = tt.ide_geper
+    WHERE
+        cu.rn = 1
+    ORDER BY
+        cu.fecha_ultima_compra DESC,
+        cu.total_valor DESC
             `;
         const query = new SelectQuery(sql, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);

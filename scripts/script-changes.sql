@@ -1052,3 +1052,34 @@ CREATE INDEX idx_det_comp_inve_arti_cci_precio ON inv_det_comp_inve (ide_inarti,
 
 CREATE INDEX idx_cab_comp_inve_epi_fecha_tipo ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_intti);
 
+
+
+
+
+-- 1. Índice compuesto para filtro por artículo, empresa, estado y fecha de emisión (WHERE)
+CREATE INDEX idx_cxc_factura_filtros 
+ON cxc_cabece_factura (ide_empr, ide_ccefa, fecha_emisi_cccfa, ide_geper, ide_vgven);
+
+-- 2. Índice para JOIN entre detalle y cabecera
+CREATE INDEX idx_ccdfa_ide_cccfa 
+ON cxc_deta_factura (ide_cccfa);
+
+-- 3. Índice para filtro por artículo en cxc_deta_factura
+CREATE INDEX idx_ccdfa_ide_inarti 
+ON cxc_deta_factura (ide_inarti);
+
+-- 4. Índice para cálculo de agregados por ide_geper
+CREATE INDEX idx_geper_nom_uuid 
+ON gen_persona (ide_geper, nom_geper, uuid);
+
+-- 5. Índice para JOIN con unidad de medida
+CREATE INDEX idx_inv_articulo_unidad 
+ON inv_articulo (ide_inarti, ide_inuni);
+
+-- 6. Índice para JOIN con unidad de medida (inv_unidad)
+CREATE INDEX idx_inv_unidad 
+ON inv_unidad (ide_inuni, siglas_inuni);
+
+-- 7. Índice para JOIN con vendedor
+CREATE INDEX idx_ven_vendedor 
+ON ven_vendedor (ide_vgven, nombre_vgven);

@@ -17,6 +17,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 
 
 
@@ -179,7 +180,7 @@ export class ProductosController {
   // @Auth()
   getSaldo(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
+    @Query() dtoIn: GetSaldoProductoDto
   ) {
     return this.service.getSaldo({
       ...headersParams,

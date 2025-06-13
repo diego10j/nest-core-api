@@ -84,6 +84,7 @@ export class DataSourceService {
             let message = 'ok';
             let finalQuery = query.query;
             let totalRecords: number | undefined;
+            let totalFilterRecords: number | undefined;
 
             // Handle SelectQuery specific logic
             if (query instanceof SelectQuery) {
@@ -101,19 +102,19 @@ export class DataSourceService {
                 finalQuery = this.applyFiltersAndOrdering(selectQuery, finalQuery);
 
                 // Calculate total records
-                // Siempre calculamos el total de registros para lazy queries
                 if (selectQuery.isLazy) {
-                    totalRecords = await this.calculateTotalRecords(selectQuery, finalQuery);
+                    // Total sin filtros (totalRecords)
+                    totalRecords = await this.calculateTotalRecordsWithoutFilters(selectQuery);
+
+                    // Total con filtros (totalFilterRecords) solo si hay filtros aplicados
+                    if (selectQuery.filters?.length > 0 || selectQuery.globalFilter) {
+                        totalFilterRecords = await this.calculateTotalRecordsWithFilters(selectQuery, finalQuery);
+                    }
                 }
 
                 // Apply pagination
                 if (selectQuery.isLazy && selectQuery.pagination) {
                     finalQuery = this.applyPagination(selectQuery, finalQuery, totalRecords);
-                }
-
-                // Handle schema information
-                if (selectQuery.isSchema) {
-                    [queryName, columns, primaryKey] = await this.handleSchemaInfo(selectQuery, ref);
                 }
 
                 // Set pagination metadata
@@ -133,6 +134,19 @@ export class DataSourceService {
             // Set appropriate message based on query type
             message = this.getResultMessage(query, res.rowCount);
 
+
+            // Obtener información del esquema si es necesario
+            if (query instanceof SelectQuery && query.isSchema) {
+                queryName = this.extractCallerInfo();
+                if (isDefined(ref)) {
+                    queryName = `${queryName}.${ref}`;
+                }
+                columns = await this.getSchemaQuery(queryName, primaryKey, res);
+                if (columns.length > 0) {
+                    primaryKey = columns[0].name;
+                }
+            }
+
             // Handle audit logging
             if (query.audit) {
                 await this.handleAuditLogging(query);
@@ -140,6 +154,7 @@ export class DataSourceService {
 
             return {
                 totalRecords: query instanceof SelectQuery ? totalRecords : undefined,
+                totalFilterRecords: query instanceof SelectQuery ? totalFilterRecords : undefined,
                 pagination: query instanceof SelectQuery ? query.getPagination() : undefined,
                 rowCount: res.rowCount,
                 rows: query instanceof SelectQuery ? res.rows : undefined,
@@ -199,19 +214,20 @@ export class DataSourceService {
         return query;
     }
 
-    private async calculateTotalRecords(selectQuery: SelectQuery, finalQuery: string): Promise<number | undefined> {
-        if (!selectQuery.isLazy) return undefined;
-
-        let countQuery: string;
-        if (!selectQuery.filters?.length && !selectQuery.globalFilter) {
-            countQuery = `SELECT COUNT(*) FROM (${selectQuery.query}) AS count_query`;
-        } else {
-            countQuery = `SELECT COUNT(*) FROM (${finalQuery}) AS count_query`;
-        }
-
+    // calcular los totales
+    private async calculateTotalRecordsWithoutFilters(selectQuery: SelectQuery): Promise<number> {
+        const countQuery = `SELECT COUNT(*) FROM (${selectQuery.query}) AS count_query`;
         const countResult = await this.pool.query(countQuery, selectQuery.params.map(_param => _param.value));
         return parseInt(countResult.rows[0].count, 10);
     }
+
+    private async calculateTotalRecordsWithFilters(selectQuery: SelectQuery, filteredQuery: string): Promise<number> {
+        const countQuery = `SELECT COUNT(*) FROM (${filteredQuery}) AS count_query`;
+        const countResult = await this.pool.query(countQuery, selectQuery.params.map(_param => _param.value));
+        return parseInt(countResult.rows[0].count, 10);
+    }
+
+
 
     private applyPagination(selectQuery: SelectQuery, query: string, totalRecords?: number): string {
         if (!selectQuery.pagination) {
@@ -241,18 +257,7 @@ export class DataSourceService {
         return `${query} OFFSET ${selectQuery.pagination.offset} LIMIT ${selectQuery.pagination.pageSize}`;
     }
 
-    private async handleSchemaInfo(selectQuery: SelectQuery, ref: any): Promise<[string, any[], string]> {
-        let queryName = this.extractCallerInfo();
-        if (isDefined(ref)) {
-            queryName = `${queryName}.${ref}`;
-        }
-        const res = await this.pool.query(selectQuery.query, selectQuery.params.map(_param => _param.value));
-        const columns = await this.getSchemaQuery(queryName, undefined, res);
-        const primaryKey = columns.length > 0 ? columns[0].name : undefined;
-        return [queryName, columns, primaryKey];
-    }
-
-    private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
+     private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
         const totalPages = Math.ceil(totalRecords / selectQuery.pagination.pageSize);
         selectQuery.setIsPreviousPage(selectQuery.pagination.pageIndex > 1);
         selectQuery.setIsNextPage(selectQuery.pagination.pageIndex < totalPages);

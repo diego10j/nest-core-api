@@ -3,6 +3,7 @@ import { Column } from "./column";
 export interface ResultQuery <T = any> {
     rowCount?: number;
     totalRecords?: number;
+    totalFilterRecords?: number;
     rows?:  T[]; // antes  any[];
     charts?: any[];
     columns?: Column[];

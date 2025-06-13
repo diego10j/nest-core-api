@@ -11,7 +11,7 @@ export class QueryOptionsDto {
 
     @IsIn(['true', 'false']) // Solo permite estos valores
     @IsOptional()
-    lazy?: 'true' | 'false' = 'false';
+    lazy?: 'true' | 'false' = 'true';
 
     @IsOptional()
     @IsNotEmpty()
