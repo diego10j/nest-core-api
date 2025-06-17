@@ -994,16 +994,17 @@ ON inv_det_comp_inve (ide_inarti);
 CREATE TABLE inv_conf_precios_articulo (
 	ide_incpa INT primary KEY ,
 	ide_inarti INT REFERENCES inv_articulo(ide_inarti) ON DELETE RESTRICT,  --articulo
-	rangos_incpa bool default false,
-	rango1_cant_incpa decimal(12,3),
-	rango2_cant_incpa decimal(12,3),
-	rango_infinito_incpa bool DEFAULT false,
-	precio_fijo_incpa  decimal(12,2),
-	porcentaje_util_incpa decimal(12,2),
-	incluye_iva_incpa  bool default false,
-	observacion_incpa VARCHAR(200),
+	ide_cndfp INT REFERENCES con_deta_forma_pago(ide_cndfp) ON DELETE RESTRICT,  --forma de pago
+	rangos_incpa bool default false, -- si maneja rangos,
+	rango1_cant_incpa decimal(12,3), -- en caso que maneje rangos es rango 1
+	rango2_cant_incpa decimal(12,3),  -- en caso que maneje rangos es rango 2
+	rango_infinito_incpa bool DEFAULT false,  -- en caso que quiera establecer rango infinito debe tener rango1
+	precio_fijo_incpa  decimal(12,2),  --si establece precio fijo
+	porcentaje_util_incpa decimal(12,2),  --para manejar porcentaje de utilidad, en este caso no se maneja precio fijo
+	incluye_iva_incpa  bool default false, -- si el precio o utilidad ya contempla iva
+	observacion_incpa VARCHAR(200),  --- observacion
 	activo_incpa bool DEFAULT true, 
-	autorizado_incpa bool DEFAULT false, 
+	autorizado_incpa bool DEFAULT false,   -- en caso que la configuracion este autorizada
 	ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE CASCADE,  
 	ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE CASCADE,  
     usuario_ingre varchar(50),

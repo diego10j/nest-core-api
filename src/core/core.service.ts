@@ -189,17 +189,27 @@ export class CoreService {
         const columns = dtoIn.columns || '*'; // all columns
         const whereClause = `${dtoIn.primaryKey} = ${dtoIn.value}`;
         const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
-        return await this.dataSource.createSingleQuery(query);
+        const res = await this.dataSource.createSingleQuery(query);
+        if (!isDefined(res)) {
+            throw new BadRequestException(`Error no existe el registro con id ${dtoIn.value}`);
+        }
+        return res;
     }
 
     async search(dtoIn: SearchTableDto & HeaderParamsDto) {
         if (dtoIn.value === "") {
             return [];
         }
+
+        // Normalizar el valor de búsqueda (quitar tildes y convertir a minúsculas)
+        const normalizedSearchValue = this.normalizeString(dtoIn.value.trim());
+        const sqlSearchValue = `%${normalizedSearchValue}%`;
+
+
         const selectClause = toStringColumns(dtoIn.columnsReturn);
 
         const whereClause = dtoIn.columnsSearch.map((col, index) =>
-            `unaccent(LOWER(${col})) ILIKE '%' || unaccent(LOWER($${index + 1})) || '%'`
+        `regexp_replace(unaccent(LOWER(${col})), '[^a-z0-9]', '', 'g') LIKE $${index + 1}`
         ).join(' OR ');
 
         const extraCondition = dtoIn.condition ? `AND ${dtoIn.condition} ` : '';
@@ -217,10 +227,20 @@ export class CoreService {
 
         // Añadir parámetros para cada columna de búsqueda (repetir el valor para cada columna)
         for (let i = 0; i < dtoIn.columnsSearch.length; i++) {
-            query.addStringParam(i + 1, dtoIn.value); // $1, $2, etc. con el mismo valor
+            query.addStringParam(i + 1, sqlSearchValue); // $1, $2, etc. con el mismo valor
         }
         return await this.dataSource.createSelectQuery(query);
     }
+
+    // Método para normalizar strings (quitar tildes y caracteres especiales)
+    private normalizeString(str: string): string {
+        return str
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Elimina diacríticos
+            .replace(/[^a-z0-9]/g, "");     // Elimina todo lo que no sea alfanumérico
+    }
+
 
     async getTableColumns(dtoIn: ColumnsTableDto & HeaderParamsDto) {
         return await this.dataSource.getTableColumns(`${dtoIn.module}_${dtoIn.tableName}`);

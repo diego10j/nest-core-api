@@ -142,6 +142,17 @@ export class DataSourceService {
                     queryName = `${queryName}.${ref}`;
                 }
                 columns = await this.getSchemaQuery(queryName, primaryKey, res);
+                if (columns && columns.length > 0) {
+                    // Elimina id duplicados
+                    const seen = new Set();
+                    columns = columns.filter(col => {
+                        if (seen.has(col.name)) {
+                            return false;
+                        }
+                        seen.add(col.name);
+                        return true;
+                    });
+                }
                 if (columns.length > 0) {
                     primaryKey = columns[0].name;
                 }

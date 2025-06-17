@@ -14,7 +14,6 @@ import { formatBarChartData, formatPieChartData } from '../../../util/helpers/ch
 import { UuidDto } from '../../../common/dto/uuid.dto';
 import { fNumber } from 'src/util/helpers/number-util';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
-import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 import { CoreService } from 'src/core/core.service';
 import { CategoriasDto } from './dto/categorias.dto';
 import { isDefined } from 'src/util/helpers/common-util';
@@ -25,7 +24,12 @@ import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
-
+import { SearchDto } from 'src/common/dto/search.dto';
+import { SaveDto } from 'src/common/dto/save.dto';
+import { ObjectQueryDto } from 'src/core/connection/dto';
+import { DeleteQuery } from 'src/core/connection/helpers';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
+import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -168,29 +172,19 @@ export class ProductosService extends BaseService {
 
     }
 
-    async getProductosPorNombre(dtoIn: BusquedaPorNombreDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
-        SELECT
-            ide_inarti,
-            foto_inarti,
-            nombre_inarti,
-            otro_nombre_inarti,
-            uuid
-        FROM
-            inv_articulo
-        WHERE ide_empr = ${dtoIn.ideEmpr} 
-        AND    
-            immutable_unaccent_replace (nombre_inarti)
-            ILIKE immutable_unaccent_replace ($1)
-            OR immutable_unaccent_replace (otro_nombre_inarti)
-            ILIKE immutable_unaccent_replace ($2)
-        ORDER BY nombre_inarti
-        LIMIT ${dtoIn.limit}
-        `
-        );
-        query.addStringParam(1, `%${dtoIn.nombre}%`);
-        query.addStringParam(2, `%${dtoIn.nombre}%`);
-        return await this.dataSource.createSelectQuery(query);
+    async searchProducto(dto: SearchDto & HeaderParamsDto) {
+
+        const dtoIn = {
+            ...dto,
+            module: 'inv',
+            tableName: 'articulo',
+            columnsReturn: ["ide_inarti", "nombre_inarti", "codigo_inarti", "foto_inarti", "otro_nombre_inarti", "uuid"],
+            columnsSearch: ["nombre_inarti", "otro_nombre_inarti", "codigo_inarti"],
+            columnOrder: "nombre_inarti",
+            condition: `ide_empr = ${dto.ideEmpr}`,
+        }
+        return await this.core.search(dtoIn);
+
     }
 
     /**
@@ -1100,6 +1094,9 @@ export class ProductosService extends BaseService {
                 MIN(fecha_emisi_cccfa) AS fecha_primer_compra,
                 MAX(fecha_emisi_cccfa) AS fecha_ultima_compra,
                 ven.nombre_vgven,
+                ven.ide_vgven,
+                p.activo_geper,
+                p.identificac_geper,
                 p.uuid,
                 ARRAY_AGG(
                     fecha_emisi_cccfa
@@ -1124,6 +1121,9 @@ export class ProductosService extends BaseService {
                 p.nom_geper,
                 uni.siglas_inuni,
                 ven.nombre_vgven,
+                ven.ide_vgven,
+                p.activo_geper,
+                p.identificac_geper,
                 p.uuid
         ),
         avg_valor_compra AS (
@@ -1214,6 +1214,9 @@ export class ProductosService extends BaseService {
         cu.fecha_primer_compra,
         cu.fecha_ultima_compra,
         cu.nombre_vgven,
+        cu.ide_vgven,
+        cu.activo_geper,
+        cu.identificac_geper,
         cu.uuid,
         f_redondeo (cu.valor_promedio_compra, 2) AS valor_promedio_compra,
         f_redondeo (cu.desviacion_valor_compra, 2) AS desviacion_valor_compra,
@@ -1882,16 +1885,22 @@ export class ProductosService extends BaseService {
             fecha_ultima_compra,
             porcentaje_utilidad,
             cantidad,
-            precio_venta_sin_iva,	
+            precio_venta_sin_iva,
             porcentaje_iva,
             precio_venta_con_iva,
             valor_total_con_iva,
-            utilidad
+            utilidad,
+            rango_aplicado,
+            forma_pago_config,
+            nombre_cndfp,
+            dias_cndfp
         FROM
-            f_calcula_precio_venta ($1, $2);
+            f_calcula_precio_venta ($1, $2, $3) a
+            LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
         `);
         query.addParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.cantidad);
+        query.addParam(3, dtoIn.ide_cndfp);
         return await this.dataSource.createSelectQuery(query);
     }
 
@@ -1908,7 +1917,10 @@ export class ProductosService extends BaseService {
     }
 
 
-    async getConfigPreciosProducto(dtoIn: IdeDto & HeaderParamsDto) {
+    async getConfigPreciosProducto(dtoIn: GetConfigPrecioProductoDto & HeaderParamsDto) {
+
+        const condition = dtoIn.activos === 'true' ? ` and activo_incpa = true` : "";
+
         const query = new SelectQuery(`
         SELECT
             ide_incpa,
@@ -1925,6 +1937,8 @@ export class ProductosService extends BaseService {
             rango_infinito_incpa,
             autorizado_incpa,
             nombre_inarti,
+            fp.ide_cndfp,
+            fp.nombre_cndfp,
             uuid,
             a.usuario_ingre,
             a.hora_ingre,
@@ -1934,11 +1948,74 @@ export class ProductosService extends BaseService {
             inv_conf_precios_articulo a
             INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
             LEFT JOIN inv_unidad c ON b.ide_inuni = c.ide_inuni
+            LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp = fp.ide_cndfp
         WHERE
             a.ide_inarti = $1
+            ${condition}
+        ORDER BY  ide_cndfp,rangos_incpa, rango1_cant_incpa
         `, dtoIn);
-        query.addParam(1, dtoIn.ide);
+        query.addParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
     }
+
+
+
+    async saveConfigPrecios(dtoIn: SaveDto & HeaderParamsDto) {
+
+        if (dtoIn.isUpdate === true) {
+            // Actualiza
+            const isValid = true; // await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid) {
+                const ide_incpa = dtoIn.data.ide_incpa;
+                const objQuery = {
+                    operation: "update",
+                    module: "inv",
+                    tableName: "conf_precios_articulo",
+                    primaryKey: "ide_incpa",
+                    object: dtoIn.data,
+                    condition: `ide_incpa = ${ide_incpa}`
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: true
+                });
+            }
+        }
+        else {
+            // Crear
+            const isValid = true; // await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid === true) {
+                const objQuery = {
+                    operation: "insert",
+                    module: "inv",
+                    tableName: "conf_precios_articulo",
+                    primaryKey: "ide_incpa",
+                    object: dtoIn.data,
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: true
+                });
+            }
+        }
+
+    }
+
+    async findConfigPreciosById(dtoIn: IdeDto & HeaderParamsDto) {
+        const dto = {
+            module: 'inv',
+            tableName: 'conf_precios_articulo',
+            primaryKey: 'ide_incpa',
+            value: dtoIn.ide
+        }
+        return await this.core.findById({ ...dto, ...dtoIn });
+    }
+
+
+    async deleteConfigPrecios(dtoIn: ArrayIdeDto) {
+        const deleteQuery = new DeleteQuery("inv_conf_precios_articulo");
+        deleteQuery.where = 'ide_incpa = ANY ($1)';
+        deleteQuery.addParam(1, dtoIn.ide);
+        return await this.dataSource.createQuery(deleteQuery);
+    }
+
 
 }

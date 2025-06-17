@@ -1,7 +1,7 @@
 import { IsBoolean, IsNotEmpty } from 'class-validator';
 
 
-export class SaveClienteDto {
+export class SaveDto {
 
     @IsBoolean()
     isUpdate: boolean;

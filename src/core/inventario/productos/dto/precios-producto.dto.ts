@@ -10,7 +10,6 @@ export class PreciosProductoDto extends QueryOptionsDto {
     fechaFin: string;
 
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     @IsInt()

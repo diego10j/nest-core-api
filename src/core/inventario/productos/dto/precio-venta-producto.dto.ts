@@ -1,4 +1,4 @@
-import { IsInt, IsPositive } from 'class-validator';
+import { IsInt, IsOptional, IsPositive } from 'class-validator';
 
 
 export class PrecioVentaProductoDto {
@@ -10,5 +10,9 @@ export class PrecioVentaProductoDto {
     @IsInt()
     @IsPositive()
     cantidad: number;
+
+    @IsInt()
+    @IsOptional()
+    ide_cndfp?: number;
 
 }

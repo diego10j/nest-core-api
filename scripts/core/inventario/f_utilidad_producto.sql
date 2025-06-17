@@ -22,7 +22,10 @@ RETURNS TABLE (
     utilidad_neta NUMERIC,
     porcentaje_utilidad NUMERIC,
     nota_credito NUMERIC,
-    fecha_ultima_compra DATE
+    fecha_ultima_compra DATE,
+    ide_cndfp BIGINT,
+    nombre_cndfp  VARCHAR(50),
+    dias_cndfp BIGINT
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -44,7 +47,10 @@ BEGIN
         uv.utilidad_neta,
         uv.porcentaje_utilidad,
         uv.nota_credito,
-        uv.fecha_ultima_compra
+        uv.fecha_ultima_compra,
+        uv.ide_cndfp,
+        uv.nombre_cndfp,
+        uv.dias_cndfp
     FROM f_utilidad_ventas(id_empresa,fecha_inicio, fecha_fin, id) uv;
 END;
 $$ LANGUAGE plpgsql;

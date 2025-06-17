@@ -1,4 +1,4 @@
-import { Query, Controller, Get, Body, Post } from '@nestjs/common';
+import { Query, Controller, Get, Body, Post, Delete } from '@nestjs/common';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ProductosService } from './productos.service';
@@ -10,7 +10,6 @@ import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
-import { BusquedaPorNombreDto } from './dto/buscar-nombre.dto';
 import { CategoriasDto } from './dto/categorias.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -18,6 +17,10 @@ import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
+import { SaveDto } from 'src/common/dto/save.dto';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
+import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 
 
 
@@ -101,13 +104,13 @@ export class ProductosController {
     });
   }
 
-  @Get('getProductosPorNombre')
+  @Get('searchProducto')
   // @Auth()
-  getProductosPorNombre(
+  searchProducto(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: BusquedaPorNombreDto
+    @Query() dtoIn: SearchDto
   ) {
-    return this.service.getProductosPorNombre({
+    return this.service.searchProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -400,7 +403,7 @@ export class ProductosController {
     });
   }
 
-  
+
   @Post('generarConfigPreciosVenta')
   //@Auth()
   generarConfigPreciosVenta(
@@ -419,15 +422,47 @@ export class ProductosController {
   // @Auth()
   getConfigPreciosProducto(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdeDto
+    @Query() dtoIn: GetConfigPrecioProductoDto
   ) {
     return this.service.getConfigPreciosProducto({
       ...headersParams,
       ...dtoIn
     });
   }
+
+
+  @Post('saveConfigPrecios')
+  // @Auth()
+  saveConfigPrecios(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: SaveDto
+  ) {
+    return this.service.saveConfigPrecios({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
   
+  @Get('findConfigPreciosById')
+  // @Auth()
+  findConfigPreciosById(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdeDto
+  ) {
+    return this.service.findConfigPreciosById({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
 
-
+  @Delete('deleteConfigPrecios')
+  // @Auth()
+  deleteDetailCampaniaById(
+    @AppHeaders() _headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto
+  ) {
+    return this.service.deleteConfigPrecios(dtoIn);
+  }
 
 }

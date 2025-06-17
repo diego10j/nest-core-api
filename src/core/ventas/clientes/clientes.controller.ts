@@ -5,7 +5,7 @@ import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
-import { SaveClienteDto } from './dto/save-cliente.dto';
+import { SaveDto } from '../../../common/dto/save.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -122,7 +122,7 @@ export class ClientesController {
   // @Auth()
   save(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: SaveClienteDto
+    @Body() dtoIn: SaveDto
   ) {
     return this.service.save({
       ...headersParams,

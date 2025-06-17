@@ -11,7 +11,7 @@ import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { validateDataRequiere } from 'src/util/helpers/common-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
-import { SaveClienteDto } from './dto/save-cliente.dto';
+import { SaveDto } from '../../../common/dto/save.dto';
 import { CoreService } from 'src/core/core.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SearchDto } from 'src/common/dto/search.dto';
@@ -484,7 +484,7 @@ export class ClientesService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-    async save(dtoIn: SaveClienteDto & HeaderParamsDto) {
+    async save(dtoIn: SaveDto & HeaderParamsDto) {
 
         if (dtoIn.isUpdate === true) {
             // Actualiza el cliente

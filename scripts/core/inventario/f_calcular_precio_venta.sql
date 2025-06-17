@@ -1,4 +1,8 @@
-CREATE OR REPLACE FUNCTION f_calcula_precio_venta(p_ide_inarti INT, p_cantidad DECIMAL)
+CREATE OR REPLACE FUNCTION f_calcula_precio_venta(
+    p_ide_inarti INT,
+    p_cantidad DECIMAL,
+    p_ide_cndfp INT DEFAULT NULL
+)
 RETURNS TABLE (
     cantidad DECIMAL,
     precio_ultima_compra DECIMAL(12,2),
@@ -9,7 +13,8 @@ RETURNS TABLE (
     porcentaje_iva DECIMAL(5,2),
     utilidad DECIMAL(12,2),
     valor_total_con_iva DECIMAL(12,2),
-    rango_aplicado VARCHAR(100)  -- New column to show which range was applied
+    rango_aplicado VARCHAR(100),
+    forma_pago_config INT
 )
 AS
 $$
@@ -18,27 +23,23 @@ DECLARE
     v_fecha_compra DATE;
     v_iva DECIMAL(5,2);
     v_iva_factor DECIMAL(12,6);
-    v_rango RECORD;
-    v_precio_venta_sin_iva DECIMAL(12,2);
-    v_porcentaje_utilidad DECIMAL(12,2);
-    v_precio_con_iva DECIMAL(12,2);
-    v_utilidad DECIMAL(12,2);
     v_cantidad_aplicada DECIMAL;
     v_min_rango1 DECIMAL;
+    v_rango RECORD;
 BEGIN
-    -- Obtener el porcentaje de IVA vigente
+    -- Obtener IVA actual
     SELECT porcentaje_cnpim * 100
     INTO v_iva
     FROM con_porcen_impues
     WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-      AND activo_cnpim = true
+      AND activo_cnpim = TRUE
     ORDER BY fecha_desde_cnpim DESC
     LIMIT 1;
 
     IF v_iva IS NULL THEN
         RAISE EXCEPTION 'No se encontró porcentaje de IVA activo para la fecha actual';
     END IF;
-    
+
     v_iva_factor := v_iva / 100;
 
     -- Obtener último precio de compra
@@ -51,86 +52,95 @@ BEGIN
       AND c.ide_inepi = 1
       AND c.ide_intti IN (19, 16, 3025)
       AND EXISTS (
-          SELECT 1 FROM inv_tip_tran_inve t 
+          SELECT 1 FROM inv_tip_tran_inve t
           JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
           WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
       )
     ORDER BY c.fecha_trans_incci DESC
     LIMIT 1;
 
-    -- Find the minimum rango1 value for this product
+    -- Obtener cantidad mínima de configuración
     SELECT MIN(rango1_cant_incpa)
     INTO v_min_rango1
     FROM inv_conf_precios_articulo
-    WHERE ide_inarti = p_ide_inarti AND activo_incpa = true;
+    WHERE ide_inarti = p_ide_inarti AND activo_incpa = TRUE;
 
-    -- Determine the quantity to use for price calculation
-    IF p_cantidad < v_min_rango1 THEN
-        v_cantidad_aplicada := v_min_rango1;
-    ELSE
-        v_cantidad_aplicada := p_cantidad;
-    END IF;
+    v_cantidad_aplicada := CASE 
+        WHEN p_cantidad < v_min_rango1 THEN v_min_rango1
+        ELSE p_cantidad
+    END;
 
-    -- Buscar configuración de precio para la cantidad aplicada
-    SELECT *
-    INTO v_rango
-    FROM inv_conf_precios_articulo
-    WHERE ide_inarti = p_ide_inarti
-      AND activo_incpa = true
-      AND (
-          (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL 
-           AND v_cantidad_aplicada >= rango1_cant_incpa AND v_cantidad_aplicada < rango2_cant_incpa)
-          OR (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NULL 
-              AND v_cantidad_aplicada >= rango1_cant_incpa)
-      )
-    ORDER BY rango1_cant_incpa
-    LIMIT 1;
-
-    -- If no range found (shouldn't happen if v_cantidad_aplicada >= min_rango1)
-    IF v_rango IS NULL THEN
-        -- Try to get the highest range (where rango2 is NULL)
+    -- Buscar configuración de precio jerárquica
+    WITH configuraciones AS (
         SELECT *
-        INTO v_rango
         FROM inv_conf_precios_articulo
         WHERE ide_inarti = p_ide_inarti
-          AND activo_incpa = true
-          AND rango1_cant_incpa IS NOT NULL
-          AND rango2_cant_incpa IS NULL
-        ORDER BY rango1_cant_incpa DESC
-        LIMIT 1;
+          AND activo_incpa = TRUE
+          AND (
+              (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL AND v_cantidad_aplicada >= rango1_cant_incpa AND v_cantidad_aplicada < rango2_cant_incpa)
+              OR (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NULL AND v_cantidad_aplicada >= rango1_cant_incpa)
+          )
+          AND (
+              ide_cndfp = p_ide_cndfp
+              OR ide_cndfp IS NULL
+              OR ide_cndfp = 1
+          )
+    ),
+    config_priorizada AS (
+        SELECT *,
+            CASE
+                WHEN ide_cndfp = p_ide_cndfp THEN 1
+                WHEN ide_cndfp IS NULL THEN 2
+                WHEN ide_cndfp = 1 THEN 3
+                ELSE 4
+            END AS prioridad
+        FROM configuraciones
+        ORDER BY prioridad, rango1_cant_incpa
+        LIMIT 1
+    )
+    SELECT * INTO v_rango FROM config_priorizada;
+
+    -- Si no hay configuración, retornar con campos nulos pero IVA, compra y cantidad
+    IF NOT FOUND THEN
+        cantidad := p_cantidad;
+        precio_ultima_compra := v_precio_compra;
+        fecha_ultima_compra := v_fecha_compra;
+        precio_venta_sin_iva := NULL;
+        precio_venta_con_iva := NULL;
+        porcentaje_utilidad := NULL;
+        porcentaje_iva := v_iva;
+        utilidad := NULL;
+        valor_total_con_iva := NULL;
+        rango_aplicado := 'Sin configuración encontrada';
+        forma_pago_config := NULL;
+        RETURN NEXT;
+        RETURN;
     END IF;
 
-    -- Calcular precio de venta sin IVA
+    -- Calcular precios y utilidades
     IF v_rango.precio_fijo_incpa IS NOT NULL THEN
-        v_precio_venta_sin_iva := v_rango.precio_fijo_incpa;
-        v_porcentaje_utilidad := NULL;
+        precio_venta_sin_iva := v_rango.precio_fijo_incpa;
+        porcentaje_utilidad := NULL;
     ELSE
-        v_porcentaje_utilidad := v_rango.porcentaje_util_incpa;
-        v_precio_venta_sin_iva := ROUND(v_precio_compra * (1 + v_porcentaje_utilidad / 100), 2);
+        porcentaje_utilidad := v_rango.porcentaje_util_incpa;
+        precio_venta_sin_iva := ROUND(v_precio_compra * (1 + porcentaje_utilidad / 100), 2);
     END IF;
 
-    -- Calcular utilidad (ganancia)
-    v_utilidad := ROUND((v_precio_venta_sin_iva - v_precio_compra) * p_cantidad, 2);
+    utilidad := ROUND((precio_venta_sin_iva - v_precio_compra) * p_cantidad, 2);
 
-    -- Calcular precio con IVA
     IF v_rango.incluye_iva_incpa = FALSE THEN
-        v_precio_con_iva := ROUND(v_precio_venta_sin_iva * (1 + v_iva_factor), 2);
+        precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
     ELSE
-        v_precio_con_iva := v_precio_venta_sin_iva;
+        precio_venta_con_iva := precio_venta_sin_iva;
     END IF;
 
-    -- Asignar valores a retornar
     cantidad := p_cantidad;
     precio_ultima_compra := v_precio_compra;
     fecha_ultima_compra := v_fecha_compra;
-    precio_venta_sin_iva := v_precio_venta_sin_iva;
-    precio_venta_con_iva := v_precio_con_iva;
-    porcentaje_utilidad := v_porcentaje_utilidad;
     porcentaje_iva := v_iva;
-    utilidad := v_utilidad;
-    valor_total_con_iva := ROUND(p_cantidad * v_precio_con_iva, 2);
-    
-    -- Show which range was applied
+    valor_total_con_iva := ROUND(p_cantidad * precio_venta_con_iva, 2);
+    forma_pago_config := v_rango.ide_cndfp;
+
     IF p_cantidad < v_min_rango1 THEN
         rango_aplicado := 'MIN(' || v_min_rango1 || ')';
     ELSIF v_rango.rango2_cant_incpa IS NULL THEN
@@ -144,6 +154,5 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-
-
 -- SELECT * FROM f_calcula_precio_venta (1704, 25);
+-- SELECT * FROM f_calcula_precio_venta(1704, 220,1);

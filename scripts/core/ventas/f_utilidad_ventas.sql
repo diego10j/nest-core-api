@@ -83,7 +83,6 @@ ON inv_det_comp_inve (ide_inarti);
 
 
 
-
 --- version mejorada para precios de compra    
     
 CREATE OR REPLACE FUNCTION f_utilidad_ventas(
@@ -110,7 +109,10 @@ RETURNS TABLE (
     utilidad_neta NUMERIC,
     porcentaje_utilidad NUMERIC,
     nota_credito NUMERIC,
-    fecha_ultima_compra DATE
+    fecha_ultima_compra DATE,
+    ide_cndfp BIGINT,
+    nombre_cndfp  VARCHAR(50),
+    dias_cndfp BIGINT
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -173,7 +175,9 @@ BEGIN
             cdf.total_ccdfa,
             ven.nombre_vgven,
             iart.hace_kardex_inarti,
-
+            cf.ide_cndfp1 AS ide_cndfp,
+            fp.nombre_cndfp,
+            fp.dias_cndfp,
             -- Precio de compra mixto: primero antes de la venta, luego después si no hay
             COALESCE((
                 SELECT pc.precio_indci
@@ -216,6 +220,8 @@ BEGIN
         JOIN gen_persona per ON cf.ide_geper = per.ide_geper
         LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+        left join con_deta_forma_pago  fp ON cf.ide_cndfp1 = fp.ide_cndfp
+
         WHERE
             cf.ide_ccefa = 0 -- 0 ESTADO NORMAL
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
@@ -257,7 +263,10 @@ BEGIN
             ELSE 0
         END AS porcentaje_utilidad,
         COALESCE(fn.valor_nota_credito, 0) AS nota_credito,
-        dc.fecha_ultima_compra
+        dc.fecha_ultima_compra,
+        dc.ide_cndfp::BIGINT,
+        dc.nombre_cndfp,
+        dc.dias_cndfp::BIGINT
     FROM datos_completos dc
     LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
                                    AND dc.ide_inarti = fn.ide_inarti

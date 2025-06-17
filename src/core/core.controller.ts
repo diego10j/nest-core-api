@@ -105,11 +105,11 @@ export class CoreController {
     }
 
 
-    @Get('getSeqTable')
+    @Post('getSeqTable')
     //@Auth()
     getSeqTable(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Query() dtoIn: SeqTableDto
+        @Body() dtoIn: SeqTableDto
     ) {
         return this.service.getSeqTable({
             ...headersParams,

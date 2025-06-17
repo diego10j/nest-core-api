@@ -1,10 +1,9 @@
-import { IsDateString, IsInt, IsPositive } from 'class-validator';
+import { IsDateString, IsInt } from 'class-validator';
 
 
 export class GeneraConfigPreciosVentaDto {
 
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     @IsDateString()
