@@ -29,7 +29,7 @@ ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
 
 ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Cantidad minima stock
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
-ALTER TABLE inv_articulo ADD COLUMN precio_inarti decimal(12,3); -- % Cuando tiene precio fjo
+ALTER TABLE inv_articulo ADD COLUMN cod_auto_inarti varchar(10);--Codigo generado automaticamente
 
 ALTER TABLE inv_articulo ADD COLUMN decim_stock_inarti int2; -- % Numero de decimales para control de stock 
 UPDATE inv_articulo SET  decim_stock_inarti = 3;  -- por defecto 3 decimales para todos
@@ -1084,3 +1084,18 @@ ON inv_unidad (ide_inuni, siglas_inuni);
 -- 7. Índice para JOIN con vendedor
 CREATE INDEX idx_ven_vendedor 
 ON ven_vendedor (ide_vgven, nombre_vgven);
+
+
+ALTER TABLE con_deta_forma_pago ADD COLUMN activo_cndfp bool DEFAULT true;
+ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE con_deta_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE con_deta_forma_pago ADD COLUMN hora_actua TIMESTAMP;
+
+
+ALTER TABLE con_cabece_forma_pago ADD COLUMN icono_cncfp varchar(50);
+ALTER TABLE con_cabece_forma_pago ADD COLUMN activo_cncfp bool DEFAULT true;
+ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_actua TIMESTAMP;

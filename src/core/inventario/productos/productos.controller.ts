@@ -18,16 +18,18 @@ import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
-import { SaveDto } from 'src/common/dto/save.dto';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
+import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
+import { ConfigPreciosProductosService } from './config-precios.service';
 
 
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
 export class ProductosController {
-  constructor(private readonly service: ProductosService) { }
+  constructor(private readonly productos: ProductosService,
+    private readonly configPrecios: ConfigPreciosProductosService) { }
 
 
 
@@ -37,7 +39,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: UuidDto
   ) {
-    return this.service.getProductoByUuid({
+    return this.productos.getProductoByUuid({
       ...headersParams,
       ...dtoIn
     });
@@ -49,7 +51,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getProductos({
+    return this.productos.getProductos({
       ...headersParams,
       ...dtoIn
     });
@@ -61,7 +63,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getCatalogoProductos({
+    return this.productos.getCatalogoProductos({
       ...headersParams,
       ...dtoIn
     });
@@ -74,7 +76,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: UuidDto
   ) {
-    return this.service.getProducto({
+    return this.productos.getProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -86,7 +88,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: CategoriasDto
   ) {
-    return this.service.getTableQueryCategorias({
+    return this.productos.getTableQueryCategorias({
       ...headersParams,
       ...dtoIn
     });
@@ -98,7 +100,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: CategoriasDto
   ) {
-    return this.service.getTreeModelCategorias({
+    return this.productos.getTreeModelCategorias({
       ...headersParams,
       ...dtoIn
     });
@@ -110,7 +112,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: SearchDto
   ) {
-    return this.service.searchProducto({
+    return this.productos.searchProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -123,7 +125,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: TrnProductoDto
   ) {
-    return this.service.getTrnProducto({
+    return this.productos.getTrnProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -135,7 +137,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: TrnProductoDto
   ) {
-    return this.service.getComprasProducto({
+    return this.productos.getComprasProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -148,7 +150,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: PreciosProductoDto
   ) {
-    return this.service.getVentasProducto({
+    return this.productos.getVentasProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -160,7 +162,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: PreciosProductoDto
   ) {
-    return this.service.getVentasProductoUtilidad({
+    return this.productos.getVentasProductoUtilidad({
       ...headersParams,
       ...dtoIn
     });
@@ -173,7 +175,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdProductoDto
   ) {
-    return this.service.getUltimosPreciosCompras({
+    return this.productos.getUltimosPreciosCompras({
       ...headersParams,
       ...dtoIn
     });
@@ -185,7 +187,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetSaldoProductoDto
   ) {
-    return this.service.getSaldo({
+    return this.productos.getSaldo({
       ...headersParams,
       ...dtoIn
     });
@@ -197,7 +199,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdProductoDto
   ) {
-    return this.service.getSaldoPorBodega({
+    return this.productos.getSaldoPorBodega({
       ...headersParams,
       ...dtoIn
     });
@@ -210,7 +212,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getVentasMensuales({
+    return this.productos.getVentasMensuales({
       ...headersParams,
       ...dtoIn
     });
@@ -222,7 +224,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getComprasMensuales({
+    return this.productos.getComprasMensuales({
       ...headersParams,
       ...dtoIn
     });
@@ -235,7 +237,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getSumatoriaTrnPeriodo({
+    return this.productos.getSumatoriaTrnPeriodo({
       ...headersParams,
       ...dtoIn
     });
@@ -248,7 +250,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdProductoDto
   ) {
-    return this.service.getProveedores({
+    return this.productos.getProveedores({
       ...headersParams,
       ...dtoIn
     });
@@ -260,7 +262,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getTopProveedores({
+    return this.productos.getTopProveedores({
       ...headersParams,
       ...dtoIn
     });
@@ -272,7 +274,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: ClientesProductoDto
   ) {
-    return this.service.getClientes({
+    return this.productos.getClientes({
       ...headersParams,
       ...dtoIn
     });
@@ -284,7 +286,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getTopClientes({
+    return this.productos.getTopClientes({
       ...headersParams,
       ...dtoIn
     });
@@ -296,7 +298,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdProductoDto
   ) {
-    return this.service.chartVariacionPreciosCompras({
+    return this.productos.chartVariacionPreciosCompras({
       ...headersParams,
       ...dtoIn
     });
@@ -308,7 +310,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getVariacionInventario({
+    return this.productos.getVariacionInventario({
       ...headersParams,
       ...dtoIn
     });
@@ -321,7 +323,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdProductoDto
   ) {
-    return this.service.getActividades({
+    return this.productos.getActividades({
       ...headersParams,
       ...dtoIn
     });
@@ -334,7 +336,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.getProformasMensuales({
+    return this.productos.getProformasMensuales({
       ...headersParams,
       ...dtoIn
     });
@@ -346,7 +348,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: VentasMensualesDto
   ) {
-    return this.service.chartVentasPeriodo({
+    return this.productos.chartVentasPeriodo({
       ...headersParams,
       ...dtoIn
     });
@@ -359,7 +361,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getTopProductosVendidos({
+    return this.productos.getTopProductosVendidos({
       ...headersParams,
       ...dtoIn
     });
@@ -371,7 +373,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.getTopProductosFacturados({
+    return this.productos.getTopProductosFacturados({
       ...headersParams,
       ...dtoIn
     });
@@ -383,13 +385,13 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: QueryOptionsDto
   ) {
-    return this.service.chartProductos({
+    return this.productos.chartProductos({
       ...headersParams,
       ...dtoIn
     });
   }
 
-
+ // =========================================CONFIGURACION DE PRECIOS
 
   @Get('getPrecioVentaProducto')
   // @Auth()
@@ -397,7 +399,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: PrecioVentaProductoDto
   ) {
-    return this.service.getPrecioVentaProducto({
+    return this.configPrecios.getPrecioVentaProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -410,7 +412,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: GeneraConfigPreciosVentaDto
   ) {
-    return this.service.generarConfigPreciosVenta({
+    return this.configPrecios.generarConfigPreciosVenta({
       ...headersParams,
       ...dtoIn
     });
@@ -424,7 +426,7 @@ export class ProductosController {
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetConfigPrecioProductoDto
   ) {
-    return this.service.getConfigPreciosProducto({
+    return this.configPrecios.getConfigPreciosProducto({
       ...headersParams,
       ...dtoIn
     });
@@ -435,22 +437,22 @@ export class ProductosController {
   // @Auth()
   saveConfigPrecios(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: SaveDto
+    @Body() dtoIn: SaveConfigPrecioDto
   ) {
-    return this.service.saveConfigPrecios({
+    return this.configPrecios.saveConfigPrecios({
       ...headersParams,
       ...dtoIn
     });
   }
 
-  
+
   @Get('findConfigPreciosById')
   // @Auth()
   findConfigPreciosById(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: IdeDto
   ) {
-    return this.service.findConfigPreciosById({
+    return this.configPrecios.findConfigPreciosById({
       ...headersParams,
       ...dtoIn
     });
@@ -462,7 +464,7 @@ export class ProductosController {
     @AppHeaders() _headersParams: HeaderParamsDto,
     @Body() dtoIn: ArrayIdeDto
   ) {
-    return this.service.deleteConfigPrecios(dtoIn);
+    return this.configPrecios.deleteConfigPrecios(dtoIn);
   }
 
 }

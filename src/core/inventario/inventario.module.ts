@@ -10,10 +10,11 @@ import { BodegasService } from './bodegas/bodegas.service';
 import { ComprobantesInvController } from './comprobantes/comprobantes.controller';
 import { ComprobantesInvService } from './comprobantes/comprobantes.service';
 import { CoreService } from '../core.service';
+import { ConfigPreciosProductosService } from './productos/config-precios.service';
 
 @Module({
     imports: [ErrorsModule],
     controllers: [ProductosController, BodegasController, ComprobantesInvController],
-    providers: [DataSourceService, ProductosService, AuditService, BodegasService, ComprobantesInvService, CoreService]
+    providers: [DataSourceService, ProductosService, AuditService, BodegasService, ComprobantesInvService, CoreService,ConfigPreciosProductosService]
 })
 export class InventarioModule { }

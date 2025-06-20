@@ -1,4 +1,4 @@
-import { fShortDate, fDate, getDateFormatFront, addDaysDate } from 'src/util/helpers/date-util';
+import { fShortDate, fDate, getDateFormatFront } from 'src/util/helpers/date-util';
 import { ResultQuery } from './../../connection/interfaces/resultQuery';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
@@ -20,16 +20,8 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaldoProducto } from './interfaces/productos';
 import { getYear } from 'date-fns';
-import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
-import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
-import { IdeDto } from 'src/common/dto/ide.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
-import { SaveDto } from 'src/common/dto/save.dto';
-import { ObjectQueryDto } from 'src/core/connection/dto';
-import { DeleteQuery } from 'src/core/connection/helpers';
-import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
-import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -151,7 +143,6 @@ export class ProductosService extends BaseService {
         SELECT
             ide_inarti,
             nombre_inarti,
-            precio_inarti,
             foto_inarti,
             a.ide_incate,
             nombre_incate
@@ -1876,146 +1867,5 @@ export class ProductosService extends BaseService {
         `);
         return await this.dataSource.createSelectQuery(query);
     }
-
-
-    async getPrecioVentaProducto(dtoIn: PrecioVentaProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
-        SELECT
-            precio_ultima_compra,
-            fecha_ultima_compra,
-            porcentaje_utilidad,
-            cantidad,
-            precio_venta_sin_iva,
-            porcentaje_iva,
-            precio_venta_con_iva,
-            valor_total_con_iva,
-            utilidad,
-            rango_aplicado,
-            forma_pago_config,
-            nombre_cndfp,
-            dias_cndfp
-        FROM
-            f_calcula_precio_venta ($1, $2, $3) a
-            LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
-        `);
-        query.addParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.cantidad);
-        query.addParam(3, dtoIn.ide_cndfp);
-        return await this.dataSource.createSelectQuery(query);
-    }
-
-
-    async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
-        SELECT f_generar_config_precios($1, $2, $3, $4)`);
-        query.addParam(1, dtoIn.ideEmpr);
-        query.addParam(2, dtoIn.ide_inarti);
-        query.addParam(3, dtoIn.fechaInicio);
-        query.addParam(4, dtoIn.fechaFin);
-        await this.dataSource.createSelectQuery(query);
-        return { message: 'ok' };
-    }
-
-
-    async getConfigPreciosProducto(dtoIn: GetConfigPrecioProductoDto & HeaderParamsDto) {
-
-        const condition = dtoIn.activos === 'true' ? ` and activo_incpa = true` : "";
-
-        const query = new SelectQuery(`
-        SELECT
-            ide_incpa,
-            a.ide_inarti,
-            rangos_incpa,
-            rango1_cant_incpa,
-            rango2_cant_incpa,
-            siglas_inuni,
-            precio_fijo_incpa,
-            porcentaje_util_incpa,
-            incluye_iva_incpa,
-            observacion_incpa,
-            activo_incpa,
-            rango_infinito_incpa,
-            autorizado_incpa,
-            nombre_inarti,
-            fp.ide_cndfp,
-            fp.nombre_cndfp,
-            uuid,
-            a.usuario_ingre,
-            a.hora_ingre,
-            a.usuario_actua,
-            a.usuario_actua
-        FROM
-            inv_conf_precios_articulo a
-            INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
-            LEFT JOIN inv_unidad c ON b.ide_inuni = c.ide_inuni
-            LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp = fp.ide_cndfp
-        WHERE
-            a.ide_inarti = $1
-            ${condition}
-        ORDER BY  ide_cndfp,rangos_incpa, rango1_cant_incpa
-        `, dtoIn);
-        query.addParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
-    }
-
-
-
-    async saveConfigPrecios(dtoIn: SaveDto & HeaderParamsDto) {
-
-        if (dtoIn.isUpdate === true) {
-            // Actualiza
-            const isValid = true; // await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
-            if (isValid) {
-                const ide_incpa = dtoIn.data.ide_incpa;
-                const objQuery = {
-                    operation: "update",
-                    module: "inv",
-                    tableName: "conf_precios_articulo",
-                    primaryKey: "ide_incpa",
-                    object: dtoIn.data,
-                    condition: `ide_incpa = ${ide_incpa}`
-                } as ObjectQueryDto;
-                return await this.core.save({
-                    ...dtoIn, listQuery: [objQuery], audit: true
-                });
-            }
-        }
-        else {
-            // Crear
-            const isValid = true; // await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
-            if (isValid === true) {
-                const objQuery = {
-                    operation: "insert",
-                    module: "inv",
-                    tableName: "conf_precios_articulo",
-                    primaryKey: "ide_incpa",
-                    object: dtoIn.data,
-                } as ObjectQueryDto;
-                return await this.core.save({
-                    ...dtoIn, listQuery: [objQuery], audit: true
-                });
-            }
-        }
-
-    }
-
-    async findConfigPreciosById(dtoIn: IdeDto & HeaderParamsDto) {
-        const dto = {
-            module: 'inv',
-            tableName: 'conf_precios_articulo',
-            primaryKey: 'ide_incpa',
-            value: dtoIn.ide
-        }
-        return await this.core.findById({ ...dto, ...dtoIn });
-    }
-
-
-    async deleteConfigPrecios(dtoIn: ArrayIdeDto) {
-        const deleteQuery = new DeleteQuery("inv_conf_precios_articulo");
-        deleteQuery.where = 'ide_incpa = ANY ($1)';
-        deleteQuery.addParam(1, dtoIn.ide);
-        return await this.dataSource.createQuery(deleteQuery);
-    }
-
 
 }

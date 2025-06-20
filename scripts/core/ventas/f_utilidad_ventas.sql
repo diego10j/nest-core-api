@@ -84,7 +84,7 @@ ON inv_det_comp_inve (ide_inarti);
 
 
 --- version mejorada para precios de compra    
-    
+      
 CREATE OR REPLACE FUNCTION f_utilidad_ventas(
     id_empresa BIGINT,
     fecha_inicio DATE,
@@ -111,7 +111,7 @@ RETURNS TABLE (
     nota_credito NUMERIC,
     fecha_ultima_compra DATE,
     ide_cndfp BIGINT,
-    nombre_cndfp  VARCHAR(50),
+    nombre_cndfp VARCHAR(50),
     dias_cndfp BIGINT
 ) AS $$
 BEGIN
@@ -156,11 +156,6 @@ BEGIN
             AND c.ide_empr = id_empresa
         ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
     ),
-    precios_compra AS (
-        SELECT * FROM compras_periodo
-        UNION
-        SELECT * FROM ultima_compra_fuera_periodo ucx
-    ),
     datos_completos AS (
         SELECT
             cdf.ide_inarti,
@@ -178,40 +173,54 @@ BEGIN
             cf.ide_cndfp1 AS ide_cndfp,
             fp.nombre_cndfp,
             fp.dias_cndfp,
-            -- Precio de compra mixto: primero antes de la venta, luego después si no hay
-            COALESCE((
-                SELECT pc.precio_indci
-                FROM precios_compra pc
-                WHERE pc.ide_inarti = cdf.ide_inarti
-                  AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
-                ORDER BY pc.fecha_trans_incci DESC
-                LIMIT 1
-            ), (
-                SELECT pc.precio_indci
-                FROM precios_compra pc
-                WHERE pc.ide_inarti = cdf.ide_inarti
-                  AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
-                  AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
-                ORDER BY pc.fecha_trans_incci
-                LIMIT 1
-            ), 0) AS precio_compra,
-
-            COALESCE((
-                SELECT pc.fecha_trans_incci
-                FROM precios_compra pc
-                WHERE pc.ide_inarti = cdf.ide_inarti
-                  AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
-                ORDER BY pc.fecha_trans_incci DESC
-                LIMIT 1
-            ), (
-                SELECT pc.fecha_trans_incci
-                FROM precios_compra pc
-                WHERE pc.ide_inarti = cdf.ide_inarti
-                  AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
-                  AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
-                ORDER BY pc.fecha_trans_incci
-                LIMIT 1
-            ), NULL) AS fecha_ultima_compra,
+            -- Lógica mejorada para precio de compra:
+            COALESCE(
+                -- Primero busca compras posteriores cercanas (dentro de 5 días)
+                (SELECT pc.precio_indci
+                 FROM compras_periodo pc
+                 WHERE pc.ide_inarti = cdf.ide_inarti
+                   AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
+                   AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
+                 ORDER BY pc.fecha_trans_incci ASC
+                 LIMIT 1),
+                -- Luego busca compras anteriores (dentro del período extendido)
+                (SELECT pc.precio_indci
+                 FROM compras_periodo pc
+                 WHERE pc.ide_inarti = cdf.ide_inarti
+                   AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
+                 ORDER BY pc.fecha_trans_incci DESC
+                 LIMIT 1),
+                -- Finalmente busca la última compra anterior fuera del período
+                (SELECT uc.precio_indci
+                 FROM ultima_compra_fuera_periodo uc
+                 WHERE uc.ide_inarti = cdf.ide_inarti
+                 LIMIT 1),
+                0
+            ) AS precio_compra,
+            
+            COALESCE(
+                -- Primero busca compras posteriores cercanas (dentro de 5 días)
+                (SELECT pc.fecha_trans_incci
+                 FROM compras_periodo pc
+                 WHERE pc.ide_inarti = cdf.ide_inarti
+                   AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
+                   AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
+                 ORDER BY pc.fecha_trans_incci ASC
+                 LIMIT 1),
+                -- Luego busca compras anteriores (dentro del período extendido)
+                (SELECT pc.fecha_trans_incci
+                 FROM compras_periodo pc
+                 WHERE pc.ide_inarti = cdf.ide_inarti
+                   AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
+                 ORDER BY pc.fecha_trans_incci DESC
+                 LIMIT 1),
+                -- Finalmente busca la última compra anterior fuera del período
+                (SELECT uc.fecha_trans_incci
+                 FROM ultima_compra_fuera_periodo uc
+                 WHERE uc.ide_inarti = cdf.ide_inarti
+                 LIMIT 1),
+                NULL
+            ) AS fecha_ultima_compra,
 
             cf.secuencial_cccfa AS numero_factura
         FROM cxc_deta_factura cdf
@@ -220,8 +229,7 @@ BEGIN
         JOIN gen_persona per ON cf.ide_geper = per.ide_geper
         LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        left join con_deta_forma_pago  fp ON cf.ide_cndfp1 = fp.ide_cndfp
-
+        LEFT JOIN con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
         WHERE
             cf.ide_ccefa = 0 -- 0 ESTADO NORMAL
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
@@ -241,7 +249,7 @@ BEGIN
           AND (id_articulo IS NULL OR cdn.ide_inarti = id_articulo)
           AND cn.ide_empr = id_empresa
         GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
-)
+    )
     SELECT
         dc.ide_ccdfa,
         dc.ide_inarti,        
@@ -270,10 +278,9 @@ BEGIN
     FROM datos_completos dc
     LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
                                    AND dc.ide_inarti = fn.ide_inarti
-    ORDER BY dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa;
+    ORDER BY dc.fecha_emisi_cccfa , dc.secuencial_cccfa;
 END;
 $$ LANGUAGE plpgsql;
-
 
 
 
