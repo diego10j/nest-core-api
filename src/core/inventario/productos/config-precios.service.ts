@@ -13,6 +13,7 @@ import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { validateInsertConfigPrecio, validateUpdateConfigPrecio } from './helpers/validations';
+import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
 
 @Injectable()
 export class ConfigPreciosProductosService extends BaseService {
@@ -46,11 +47,13 @@ export class ConfigPreciosProductosService extends BaseService {
             utilidad,
             rango_aplicado,
             forma_pago_config,
+            nombre_cncfp,
             nombre_cndfp,
             dias_cndfp
         FROM
             f_calcula_precio_venta ($1, $2, $3) a
             LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
+            LEFT JOIN con_cabece_forma_pago cp ON fp.ide_cncfp = cp.ide_cncfp
         `);
         query.addParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.cantidad);
@@ -91,6 +94,8 @@ export class ConfigPreciosProductosService extends BaseService {
             rango_infinito_incpa,
             autorizado_incpa,
             nombre_inarti,
+            a.ide_cncfp,
+            cp.nombre_cncfp,
             fp.ide_cndfp,
             fp.nombre_cndfp,
             uuid,
@@ -103,10 +108,11 @@ export class ConfigPreciosProductosService extends BaseService {
             INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
             LEFT JOIN inv_unidad c ON b.ide_inuni = c.ide_inuni
             LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp = fp.ide_cndfp
+            LEFT JOIN con_cabece_forma_pago cp ON a.ide_cncfp = cp.ide_cncfp
         WHERE
             a.ide_inarti = $1
             ${condition}
-        ORDER BY  ide_cndfp,rangos_incpa, rango1_cant_incpa
+        ORDER BY  nombre_cncfp,nombre_cndfp,rangos_incpa, rango1_cant_incpa
         `, dtoIn);
         query.addParam(1, dtoIn.ide_inarti);
         return await this.dataSource.createQuery(query);
@@ -176,6 +182,15 @@ export class ConfigPreciosProductosService extends BaseService {
     }
 
 
+    async copiarConfigPrecios(dtoIn: CopiarConfigPreciosVentaDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT f_copiar_config_precios($1, ARRAY[${dtoIn.values}]::integer[], $2)
+        `);
+        query.addParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.login);
+        await this.dataSource.createSelectQuery(query);
+        return { message: 'ok' };
+    }
 
 
 

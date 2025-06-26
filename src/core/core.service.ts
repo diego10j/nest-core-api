@@ -4,7 +4,7 @@ import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './con
 import { ColumnsTableDto, TableQueryDto, SaveListDto, UniqueDto, DeleteDto, SeqTableDto, ListDataValuesDto, ObjectQueryDto, FindByUuidDto, FindByIdDto, UpdateColumnsDto } from './connection/dto';
 import { validate } from 'class-validator';
 import { ClassConstructor, plainToClass } from "class-transformer";
-import { toObjectTable, toStringColumns } from '../util/helpers/sql-util';
+import { normalizeString, toObjectTable, toStringColumns } from '../util/helpers/sql-util';
 import { ResultQuery } from './connection/interfaces/resultQuery';
 import { TreeDto } from './connection/dto/tree-dto';
 import { isDefined } from '../util/helpers/common-util';
@@ -202,7 +202,7 @@ export class CoreService {
         }
 
         // Normalizar el valor de búsqueda (quitar tildes y convertir a minúsculas)
-        const normalizedSearchValue = this.normalizeString(dtoIn.value.trim());
+        const normalizedSearchValue = normalizeString(dtoIn.value.trim());
         const sqlSearchValue = `%${normalizedSearchValue}%`;
 
 
@@ -232,14 +232,6 @@ export class CoreService {
         return await this.dataSource.createSelectQuery(query);
     }
 
-    // Método para normalizar strings (quitar tildes y caracteres especiales)
-    private normalizeString(str: string): string {
-        return str
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Elimina diacríticos
-            .replace(/[^a-z0-9]/g, "");     // Elimina todo lo que no sea alfanumérico
-    }
 
 
     async getTableColumns(dtoIn: ColumnsTableDto & HeaderParamsDto) {

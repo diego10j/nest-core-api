@@ -22,6 +22,7 @@ import { SaldoProducto } from './interfaces/productos';
 import { getYear } from 'date-fns';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
+import { normalizeString } from 'src/util/helpers/sql-util';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -107,33 +108,48 @@ export class ProductosService extends BaseService {
     * @returns 
     */
     async getProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = this.getQueryProductos(dtoIn);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+
+    async getAllProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = this.getQueryProductos(dtoIn);
+        query.setLazy(false);
+        return await this.dataSource.createSelectQuery(query);
+    }
+
+
+
+    private getQueryProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
-            ARTICULO.ide_inarti,
-            ARTICULO.uuid,
-            ARTICULO.nombre_inarti,
+            a.ide_inarti,
+            a.uuid,
+            a.nombre_inarti,
             nombre_incate,
-            ARTICULO.codigo_inarti,
-            ARTICULO.foto_inarti,
+            a.codigo_inarti,
+            a.foto_inarti,
             UNIDAD.nombre_inuni,
-            ARTICULO.activo_inarti,
+            a.activo_inarti,
             otro_nombre_inarti,
-            ARTICULO.ide_incate
+            a.ide_incate,
+            siglas_inuni,
+            decim_stock_inarti
         FROM
-            inv_articulo ARTICULO
-            LEFT JOIN inv_unidad UNIDAD ON ARTICULO.ide_inuni = UNIDAD.ide_inuni
-            LEFT JOIN inv_categoria c ON ARTICULO.ide_incate  = c.ide_incate
+            inv_articulo a
+            LEFT JOIN inv_unidad UNIDAD ON a.ide_inuni = UNIDAD.ide_inuni
+            LEFT JOIN inv_categoria c ON a.ide_incate  = c.ide_incate
         WHERE
-            ARTICULO.ide_intpr = 1 -- solo productos
-            AND ARTICULO.nivel_inarti = 'HIJO'
-            AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
+            a.ide_intpr = 1 -- solo productos
+            AND a.nivel_inarti = 'HIJO'
+            AND a.ide_empr = ${dtoIn.ideEmpr}
+            and activo_inarti = true
         ORDER BY
-            ARTICULO.nombre_inarti
-`, dtoIn);
-
-        return await this.dataSource.createQuery(query);
-
-
+            a.nombre_inarti
+        `, dtoIn);
+        return query;
     }
 
 
@@ -165,16 +181,47 @@ export class ProductosService extends BaseService {
 
     async searchProducto(dto: SearchDto & HeaderParamsDto) {
 
-        const dtoIn = {
-            ...dto,
-            module: 'inv',
-            tableName: 'articulo',
-            columnsReturn: ["ide_inarti", "nombre_inarti", "codigo_inarti", "foto_inarti", "otro_nombre_inarti", "uuid"],
-            columnsSearch: ["nombre_inarti", "otro_nombre_inarti", "codigo_inarti"],
-            columnOrder: "nombre_inarti",
-            condition: `ide_empr = ${dto.ideEmpr}`,
-        }
-        return await this.core.search(dtoIn);
+        const normalizedSearchValue = normalizeString(dto.value.trim());
+        const sqlSearchValue = `%${normalizedSearchValue}%`;
+
+        const query = new SelectQuery(`
+        SELECT
+            a.ide_inarti,
+            a.uuid,
+            a.nombre_inarti,
+            c.nombre_incate,
+            a.codigo_inarti,
+            a.foto_inarti,
+            u.nombre_inuni,
+            a.activo_inarti,
+            a.otro_nombre_inarti,
+            a.ide_incate,
+            u.siglas_inuni,
+            a.decim_stock_inarti
+        FROM
+            inv_articulo a
+            LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+            LEFT JOIN inv_categoria c ON a.ide_incate = c.ide_incate
+        WHERE
+            a.ide_intpr = 1 -- solo productos
+            AND a.nivel_inarti = 'HIJO'
+            AND a.ide_empr = ${dto.ideEmpr}
+            AND a.activo_inarti = true
+            AND (
+                regexp_replace(unaccent(LOWER(a.nombre_inarti)), '[^a-z0-9]', '', 'g') LIKE $1
+                OR regexp_replace(unaccent(LOWER(a.otro_nombre_inarti)), '[^a-z0-9]', '', 'g') LIKE $2
+                OR regexp_replace(unaccent(LOWER(a.codigo_inarti)), '[^a-z0-9]', '', 'g') LIKE $3
+            )
+        ORDER BY
+            a.nombre_inarti
+        LIMIT ${dto.limit}
+    `, dto);
+
+        // Añadir parámetros de búsqueda (mismo valor para los tres campos)
+        query.addStringParam(1, sqlSearchValue);
+        query.addStringParam(2, sqlSearchValue);
+        query.addStringParam(3, sqlSearchValue);
+        return await this.dataSource.createSelectQuery(query);
 
     }
 

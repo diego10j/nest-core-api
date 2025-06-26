@@ -994,7 +994,8 @@ ON inv_det_comp_inve (ide_inarti);
 CREATE TABLE inv_conf_precios_articulo (
 	ide_incpa INT primary KEY ,
 	ide_inarti INT REFERENCES inv_articulo(ide_inarti) ON DELETE RESTRICT,  --articulo
-	ide_cndfp INT REFERENCES con_deta_forma_pago(ide_cndfp) ON DELETE RESTRICT,  --forma de pago
+	ide_cncfp INT REFERENCES con_cabece_forma_pago(ide_cncfp) ON DELETE RESTRICT,  --det forma de pago
+	ide_cndfp INT REFERENCES con_deta_forma_pago(ide_cndfp) ON DELETE RESTRICT,  --det forma de pago
 	rangos_incpa bool default false, -- si maneja rangos,
 	rango1_cant_incpa decimal(12,3), -- en caso que maneje rangos es rango 1
 	rango2_cant_incpa decimal(12,3),  -- en caso que maneje rangos es rango 2
@@ -1091,6 +1092,7 @@ ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_ingre varchar(50);
 ALTER TABLE con_deta_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE con_deta_forma_pago ADD COLUMN hora_actua TIMESTAMP;
+ALTER TABLE con_deta_forma_pago ADD COLUMN icono_cndfp  varchar(50);
 
 
 ALTER TABLE con_cabece_forma_pago ADD COLUMN icono_cncfp varchar(50);
@@ -1099,3 +1101,33 @@ ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_ingre varchar(50);
 ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_actua TIMESTAMP;
+
+-- Índice para la condición WHERE principal
+CREATE INDEX idx_articulo_productos_activos ON inv_articulo(ide_intpr, nivel_inarti, ide_empr, activo_inarti);
+
+-- Índice para la unión (JOIN) con categorías
+CREATE INDEX idx_articulo_categoria ON inv_articulo(ide_incate);
+
+CREATE INDEX idx_articulo_filtros ON inv_articulo (
+    ide_empr,
+    ide_intpr,
+    nivel_inarti,
+    activo_inarti,
+    nombre_inarti
+) INCLUDE (
+    ide_inarti,
+    uuid,
+    nombre_inarti,
+    codigo_inarti,
+    foto_inarti,
+    ide_inuni,
+    otro_nombre_inarti,
+    ide_incate,
+    decim_stock_inarti
+);
+
+CREATE INDEX idx_unidad_ide ON inv_unidad (ide_inuni) 
+INCLUDE (nombre_inuni, siglas_inuni);
+
+CREATE INDEX idx_categoria_ide ON inv_categoria (ide_incate) 
+INCLUDE (nombre_incate);

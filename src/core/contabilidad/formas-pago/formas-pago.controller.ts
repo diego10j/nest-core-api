@@ -4,6 +4,7 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { FormasPagoService } from './formas-pago.service';
+import { IdeDto } from 'src/common/dto/ide.dto';
 
 @Controller('contabilidad/formas-pago')
 export class FormasPagoController {
@@ -21,6 +22,19 @@ export class FormasPagoController {
       ...dtoIn
     });
   }
+
+  @Get('getDetalleFormasPago')
+  // @Auth()
+  getDetalleFormasPago(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: IdeDto
+  ) {
+    return this.service.getDetalleFormasPago({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
 
 }
 

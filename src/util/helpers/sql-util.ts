@@ -270,3 +270,12 @@ export function getWhereIdeEmpr(tabla: string, dto: QueryOptionsDto & HeaderPara
 export function toStringColumns(columns: string[]): string {
     return columns.map(col => `${col}`).join(', ');
 }
+
+// Método para normalizar strings (quitar tildes y caracteres especiales)
+export function normalizeString(str: string): string {
+    return str
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Elimina diacríticos
+        .replace(/[^a-z0-9]/g, "");     // Elimina todo lo que no sea alfanumérico
+}

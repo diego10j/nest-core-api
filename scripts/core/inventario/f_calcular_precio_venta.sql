@@ -26,6 +26,8 @@ DECLARE
     v_cantidad_aplicada DECIMAL;
     v_min_rango1 DECIMAL;
     v_rango RECORD;
+    v_ide_cncfp INT; -- Variable para almacenar la cabecera de forma de pago
+    v_config_encontrada BOOLEAN := FALSE;
 BEGIN
     -- Obtener IVA actual
     SELECT porcentaje_cnpim * 100
@@ -70,38 +72,74 @@ BEGIN
         ELSE p_cantidad
     END;
 
-    -- Buscar configuración de precio jerárquica
-    WITH configuraciones AS (
-        SELECT *
+    -- Obtener cabecera de forma de pago si se proporcionó un detalle
+    IF p_ide_cndfp IS NOT NULL THEN
+        SELECT ide_cncfp INTO v_ide_cncfp 
+        FROM con_deta_forma_pago 
+        WHERE ide_cndfp = p_ide_cndfp;
+    END IF;
+
+    -- 1) Busqueda específica por p_ide_cndfp
+    IF p_ide_cndfp IS NOT NULL THEN
+        SELECT * INTO v_rango
         FROM inv_conf_precios_articulo
         WHERE ide_inarti = p_ide_inarti
           AND activo_incpa = TRUE
+          AND ide_cndfp = p_ide_cndfp
           AND (
               (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL AND v_cantidad_aplicada >= rango1_cant_incpa AND v_cantidad_aplicada < rango2_cant_incpa)
               OR (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NULL AND v_cantidad_aplicada >= rango1_cant_incpa)
           )
+        ORDER BY rango1_cant_incpa
+        LIMIT 1;
+
+        v_config_encontrada := FOUND;
+    END IF;
+
+    -- 2) Si no existe, usar v_ide_cncfp para busqueda por cabecera de forma de pago
+    IF NOT v_config_encontrada AND v_ide_cncfp IS NOT NULL THEN
+        SELECT * INTO v_rango
+        FROM inv_conf_precios_articulo
+        WHERE ide_inarti = p_ide_inarti
+          AND activo_incpa = TRUE
+          AND ide_cncfp = v_ide_cncfp
           AND (
-              ide_cndfp = p_ide_cndfp
-              OR ide_cndfp IS NULL
-              OR ide_cndfp = 1
+              (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL AND v_cantidad_aplicada >= rango1_cant_incpa AND v_cantidad_aplicada < rango2_cant_incpa)
+              OR (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NULL AND v_cantidad_aplicada >= rango1_cant_incpa)
           )
-    ),
-    config_priorizada AS (
-        SELECT *,
-            CASE
-                WHEN ide_cndfp = p_ide_cndfp THEN 1
-                WHEN ide_cndfp IS NULL THEN 2
-                WHEN ide_cndfp = 1 THEN 3
-                ELSE 4
-            END AS prioridad
+        ORDER BY rango1_cant_incpa
+        LIMIT 1;
+
+        v_config_encontrada := FOUND;
+    END IF;
+
+    -- 3) Si no existe, buscar configuración solo por rango de p_cantidad, priorizando forma de pago efectivo (ide_cndfp=1 o ide_cncfp=0)
+    IF NOT v_config_encontrada THEN
+        WITH configuraciones AS (
+            SELECT *,
+                CASE
+                    WHEN ide_cndfp = 1 OR ide_cncfp = 0 THEN 1 -- Prioridad máxima a efectivo
+                    WHEN ide_cndfp IS NULL AND ide_cncfp IS NULL THEN 2 -- Configuraciones generales
+                    ELSE 3 -- Otras formas de pago
+                END AS prioridad
+            FROM inv_conf_precios_articulo
+            WHERE ide_inarti = p_ide_inarti
+              AND activo_incpa = TRUE
+              AND (
+                  (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL AND v_cantidad_aplicada >= rango1_cant_incpa AND v_cantidad_aplicada < rango2_cant_incpa)
+                  OR (rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NULL AND v_cantidad_aplicada >= rango1_cant_incpa)
+              )
+        )
+        SELECT * INTO v_rango
         FROM configuraciones
         ORDER BY prioridad, rango1_cant_incpa
-        LIMIT 1
-    )
-    SELECT * INTO v_rango FROM config_priorizada;
+        LIMIT 1;
 
-    -- Si no hay configuración, retornar con campos nulos pero IVA, compra y cantidad
-    IF NOT FOUND THEN
+        v_config_encontrada := FOUND;
+    END IF;
+
+    -- 4) Si no existen configuraciones, retornar null en precio venta y demás valores calculados
+    IF NOT v_config_encontrada THEN
         cantidad := p_cantidad;
         precio_ultima_compra := v_precio_compra;
         fecha_ultima_compra := v_fecha_compra;
@@ -152,7 +190,6 @@ BEGIN
     RETURN NEXT;
 END;
 $$ LANGUAGE plpgsql;
-
 
 -- SELECT * FROM f_calcula_precio_venta (1704, 25);
 -- SELECT * FROM f_calcula_precio_venta(1704, 220,1);

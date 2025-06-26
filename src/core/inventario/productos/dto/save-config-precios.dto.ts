@@ -86,6 +86,10 @@ export class InvConfigPrecioDataDto {
     @IsOptional()
     @IsNumber()
     ide_cndfp?: number;
+
+    @IsOptional()
+    @IsNumber()
+    ide_cncfp?: number;
 }
 
 export class SaveConfigPrecioDto {

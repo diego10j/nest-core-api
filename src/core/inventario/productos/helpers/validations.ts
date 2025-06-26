@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { HeaderParamsDto } from "src/common/dto/common-params.dto";
 import { SaveConfigPrecioDto } from "../dto/save-config-precios.dto";
+import { isDefined } from "src/util/helpers/common-util";
 
 
 export function validateUpdateConfigPrecio(dto: SaveConfigPrecioDto & HeaderParamsDto) {
@@ -33,15 +34,15 @@ export function validateUpdateConfigPrecio(dto: SaveConfigPrecioDto & HeaderPara
         if (configData.rango1_cant_incpa !== undefined &&
             configData.rango2_cant_incpa !== undefined &&
             !configData.rango_infinito_incpa &&
-            configData.rango2_cant_incpa <= configData.rango1_cant_incpa) {
-            errors.push('La cantidad máxima debe ser mayor que la cantidad mínima');
+            configData.rango2_cant_incpa < configData.rango1_cant_incpa) {
+            errors.push('La cantidad máxima debe ser mayor o igual que la cantidad mínima');
         }
 
         if (configData.porcentaje_util_incpa !== undefined && configData.porcentaje_util_incpa < 0) {
             errors.push('El porcentaje de utilidad no puede ser negativo');
         }
 
-        if (configData.precio_fijo_incpa !== undefined) {
+        if (isDefined( configData.precio_fijo_incpa) ) {
             errors.push('No se puede especificar precio fijo en una configuración por rangos');
         }
     } else {
@@ -100,8 +101,8 @@ export function validateInsertConfigPrecio(data: SaveConfigPrecioDto & HeaderPar
             }
             if (configData.rango1_cant_incpa !== undefined &&
                 configData.rango1_cant_incpa !== null &&
-                configData.rango2_cant_incpa <= configData.rango1_cant_incpa) {
-                errors.push('La cantidad máxima debe ser mayor que la cantidad mínima');
+                configData.rango2_cant_incpa < configData.rango1_cant_incpa) {
+                errors.push('La cantidad máxima debe ser mayor o igual que la cantidad mínima');
             }
         }
 
