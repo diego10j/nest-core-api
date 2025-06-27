@@ -1131,3 +1131,15 @@ INCLUDE (nombre_inuni, siglas_inuni);
 
 CREATE INDEX idx_categoria_ide ON inv_categoria (ide_incate) 
 INCLUDE (nombre_incate);
+
+
+
+ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;
+ALTER TABLE sis_parametros ADD COLUMN activo_para bool DEFAULT true;
+ALTER TABLE sis_parametros ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_parametros ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE sis_parametros ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
+
+CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
+CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);

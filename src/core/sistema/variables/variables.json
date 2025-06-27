@@ -1,0 +1,2931 @@
+{
+    "parametros": [
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_RESETEO_CLAVE",
+            "descripcion_para": "Indica cuando se resetea la clave de un usuario",
+            "valor_para": "6",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_ACTIVA_USUARIO",
+            "descripcion_para": "Indica cuando se pone en estado activo a un usuario",
+            "valor_para": "4",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_DESACTIVA_USUARIO",
+            "descripcion_para": "Indica cuando se pone en estado inactivo a un usuario",
+            "valor_para": "3",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_INGRESO_USUARIO",
+            "descripcion_para": "Indica cuando un usuario accede exitosamente al sistema",
+            "valor_para": "0",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_FALLO_INGRESO",
+            "descripcion_para": "Indica cuando no se produce un acceso al sistema por parte de un usuario",
+            "valor_para": "1",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_CADUCO_SESSION",
+            "descripcion_para": "Indica cuando a un usuario se le expira el tiempo de su session",
+            "valor_para": "7",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_SALIO_USUARIO",
+            "descripcion_para": "Indica cuando un usuario sale del sistema",
+            "valor_para": "8",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_CAMBIO_CLAVE",
+            "descripcion_para": "Indica cuando un usuario cambia su clave",
+            "valor_para": "5",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_CREAR_USUARIO",
+            "descripcion_para": "Indica cuando se crea un usuario en el sistema",
+            "valor_para": "9",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_BLOQUEA_USUARIO",
+            "descripcion_para": "Indica cuando se bloqueao a un usuario",
+            "valor_para": "2",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "P_SIS_DESBLOQUEA_USUARIO",
+            "descripcion_para": "Indica cuando se desbloquea a un usuario",
+            "valor_para": "10",
+            "tabla_para": "SIS_ACCION_AUDITORIA",
+            "campo_codigo_para": "IDE_ACAU",
+            "campo_nombre_para": "DESCRIPCION_ACAU",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_superavit_ejercicio_anterior",
+            "descripcion_para": "Indica la configuracion para la cuenta de Superavit del Ejercicio Anterior ",
+            "valor_para": "1496",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_deficit_ejercicio_anterior",
+            "descripcion_para": "Indica la configuracion para la cuenta de Deficit del Ejercicio Anterior ",
+            "valor_para": "1497",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_patrimonio",
+            "descripcion_para": "Indica la configuracion para la cuenta a la que se vamos a sumar el (superavit)  o restar el (Deficit) del Ejercicio Anterior ",
+            "valor_para": "1487",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_superavit_ejercicio_presente",
+            "descripcion_para": "Indica la configuracion para la cuenta de Superavit del Ejercicio Presente ",
+            "valor_para": "1500",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_deficit_ejercicio_presente",
+            "descripcion_para": "Indica la configuracion para la cuenta de Deficit del Ejercicio Presente ",
+            "valor_para": "4481",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_tipo_documento_nota_credito",
+            "descripcion_para": "Comprobante tipo nota de credito ",
+            "valor_para": "0",
+            "tabla_para": "con_tipo_document",
+            "campo_codigo_para": "ide_cntdo",
+            "campo_nombre_para": "nombre_cntdo",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 0,
+            "nom_para": "p_con_usa_presupuesto",
+            "descripcion_para": "Indica si la empresa maneja el módulo de presupuesto",
+            "valor_para": "false",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_servicio",
+            "descripcion_para": "Indica el servicio ",
+            "valor_para": "2",
+            "tabla_para": "inv_articulo",
+            "campo_codigo_para": "ide_inarti",
+            "campo_nombre_para": "nombre_inarti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_articulo_activo_fijo",
+            "descripcion_para": "Indica que un articulo pertenecen al grupo de activos fijos ",
+            "valor_para": "53",
+            "tabla_para": "inv_articulo",
+            "campo_codigo_para": "ide_inarti",
+            "campo_nombre_para": "nombre_inarti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_articulo_bien",
+            "descripcion_para": "Indica que un articulo pertenecen al grupo de bienes ",
+            "valor_para": "46",
+            "tabla_para": "inv_articulo",
+            "campo_codigo_para": "ide_inarti",
+            "campo_nombre_para": "nombre_inarti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_articulo_servicio",
+            "descripcion_para": "Indica que un articulo pertenecen al grupo de servicios ",
+            "valor_para": "2",
+            "tabla_para": "inv_articulo",
+            "campo_codigo_para": "ide_inarti",
+            "campo_nombre_para": "nombre_inarti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_articulo_honorarios",
+            "descripcion_para": "Indica que un articulo pertenecen al grupo de honorarios profesionales ",
+            "valor_para": "47",
+            "tabla_para": "inv_articulo",
+            "campo_codigo_para": "ide_inarti",
+            "campo_nombre_para": "nombre_inarti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_tipo_transaccion_compra",
+            "descripcion_para": "Indica el tipo de transaccion compra de inventario ",
+            "valor_para": "19",
+            "tabla_para": "inv_tip_tran_inve",
+            "campo_codigo_para": "ide_intti",
+            "campo_nombre_para": "nombre_intti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_tipo_transaccion_venta",
+            "descripcion_para": "Indica el tipo de transaccion venta de inventario ",
+            "valor_para": "29",
+            "tabla_para": "inv_tip_tran_inve",
+            "campo_codigo_para": "ide_intti",
+            "campo_nombre_para": "nombre_intti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_estado_normal",
+            "descripcion_para": "Indica el estado normal de comprobante de inventario ",
+            "valor_para": "1",
+            "tabla_para": "inv_est_prev_inve",
+            "campo_codigo_para": "ide_inepi",
+            "campo_nombre_para": "nombre_inepi",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_tipo_transaccion_reversa_mas",
+            "descripcion_para": "Indica que el tipo de transaccion inversa(cuando existe una anulacion)  ",
+            "valor_para": "12",
+            "tabla_para": "inv_tip_tran_inve",
+            "campo_codigo_para": "ide_intti",
+            "campo_nombre_para": "nombre_intti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_tipo_transaccion_reversa_menos",
+            "descripcion_para": "Indica que el tipo de transaccion inversa(cuando existe una anulacion)  ",
+            "valor_para": "13",
+            "tabla_para": "inv_tip_tran_inve",
+            "campo_codigo_para": "ide_intti",
+            "campo_nombre_para": "nombre_intti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
+            "nom_para": "p_inv_tipo_transaccion_consumo",
+            "descripcion_para": "Indica que el tipo de transaccion de consumo ",
+            "valor_para": "27",
+            "tabla_para": "inv_tip_tran_inve",
+            "campo_codigo_para": "ide_intti",
+            "campo_nombre_para": "nombre_intti",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_estado_factura_normal",
+            "descripcion_para": "Indica el estado de la factura (Normal) ",
+            "valor_para": "0",
+            "tabla_para": "cxp_estado_factur",
+            "campo_codigo_para": "ide_cpefa",
+            "campo_nombre_para": "nombre_cpefa",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_factura",
+            "descripcion_para": "Indica que el tipo de transaccion es (Factura) ",
+            "valor_para": "0",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_pago",
+            "descripcion_para": "Indica que el tipo de transaccion (Pago) ",
+            "valor_para": "3",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_pago_con_anticipo",
+            "descripcion_para": "Indica que el tipo de transaccion es de un pago con un anticipo registrado (Pago con Anticipo) ",
+            "valor_para": "17",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_reversa_mas",
+            "descripcion_para": "Indica que el tipo de transaccion inversa(cuando existe una anulacion) ",
+            "valor_para": "9",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_reversa_menos",
+            "descripcion_para": "Indica que el tipo de transaccion inversa(cuando existe una anulacion) ",
+            "valor_para": "10",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_anticipo",
+            "descripcion_para": "Indica que el tipo de transaccion (Pago) ",
+            "valor_para": "7",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_inversion",
+            "descripcion_para": "Indica que el tipo de transaccion (Inversion) ",
+            "valor_para": "15",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_inversion_interes",
+            "descripcion_para": "Indica que el tipo de transaccion de inversion de intereses (Inversion de los interes) ",
+            "valor_para": "18",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_pago_inversion",
+            "descripcion_para": "Indica que el tipo de transaccion pago de inversion (pago Inversion Terminada) ",
+            "valor_para": "16",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_pago_interes_inversion",
+            "descripcion_para": "Indica que el tipo de transaccion pago de intereses de la inversion (Pago de intereses) ",
+            "valor_para": "19",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_renova_interes_reinver",
+            "descripcion_para": "Indica que el tipo de transaccion renovacion de intereses de inversion (Interes de Nueva Renovacion de Inversion) ",
+            "valor_para": "20",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_tipo_trans_retencion",
+            "descripcion_para": "Indica que el tipo de transaccion Retencion ",
+            "valor_para": "21",
+            "tabla_para": "cxp_tipo_transacc",
+            "campo_codigo_para": "ide_cpttr",
+            "campo_nombre_para": "nombre_cpttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_estado_factura_anulada",
+            "descripcion_para": "Indica el estado de la factura (Anulada) ",
+            "valor_para": "1",
+            "tabla_para": "cxp_estado_factur",
+            "campo_codigo_para": "ide_cpefa",
+            "campo_nombre_para": "nombre_cpefa",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 2,
+            "nom_para": "p_cxp_dias_mod_doccxp",
+            "descripcion_para": "Número de días que permite modificar un documento CxP ",
+            "valor_para": "60",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_estado_factura_normal",
+            "descripcion_para": "Indica el estado de la factura (Normal) ",
+            "valor_para": "0",
+            "tabla_para": "cxc_estado_factura",
+            "campo_codigo_para": "ide_ccefa",
+            "campo_nombre_para": "nombre_ccefa",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_factura",
+            "descripcion_para": "Indica que el tipo de transaccion es (Factura) ",
+            "valor_para": "4",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_pago",
+            "descripcion_para": "Indica que el tipo de transaccion es (Pago de cliente) ",
+            "valor_para": "0",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_anticipo",
+            "descripcion_para": "Indica que el tipo de transaccion es (Anticipo de cliente) ",
+            "valor_para": "5",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_reversar_mas",
+            "descripcion_para": "Indica que el tipo de transaccion es para reversar (+) una transaccion ",
+            "valor_para": "15",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_reversar_menos",
+            "descripcion_para": "Indica que el tipo de transaccion es para reversar (-)una transaccion ",
+            "valor_para": "16",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_estado_factura_anulada",
+            "descripcion_para": "Indica el estado de la factura (Anulada) ",
+            "valor_para": "1",
+            "tabla_para": "cxc_estado_factura",
+            "campo_codigo_para": "ide_ccefa",
+            "campo_nombre_para": "nombre_ccefa",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_retencion",
+            "descripcion_para": "Indica que el tipo de transaccion Retencion ",
+            "valor_para": "8",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 3,
+            "nom_para": "p_cxc_tipo_trans_cheque_posfechado",
+            "descripcion_para": "Indica que el tipo de transaccion Cheque Posfechado ",
+            "valor_para": "10",
+            "tabla_para": "cxc_tipo_transacc",
+            "campo_codigo_para": "ide_ccttr",
+            "campo_nombre_para": "nombre_ccttr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 4,
+            "nom_para": "p_act_tipo_activo_fijo",
+            "descripcion_para": "Indica el tipo de activo fijo ",
+            "valor_para": "0",
+            "tabla_para": "inv_tipo_producto",
+            "campo_codigo_para": "ide_intpr",
+            "campo_nombre_para": "nombre_intpr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 4,
+            "nom_para": "p_act_estado_dado_de_baja",
+            "descripcion_para": "Indica el estado dado de baja de un activo ",
+            "valor_para": "4",
+            "tabla_para": "act_estado_activo_fijo",
+            "campo_codigo_para": "ide_aceaf",
+            "campo_nombre_para": "nombre_aceaf",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 5,
+            "nom_para": "p_gen_tipo_identificacion_ruc",
+            "descripcion_para": "Indica el tipo de identificacion que sea RUC ",
+            "valor_para": "1",
+            "tabla_para": "gen_tipo_identifi",
+            "campo_codigo_para": "ide_getid",
+            "campo_nombre_para": "nombre_getid",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 5,
+            "nom_para": "p_gen_tipo_identificacion_cedula",
+            "descripcion_para": "Indica el tipo de identificacion que sea CEDULA ",
+            "valor_para": "0",
+            "tabla_para": "gen_tipo_identifi",
+            "campo_codigo_para": "ide_getid",
+            "campo_nombre_para": "nombre_getid",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 5,
+            "nom_para": "p_com_estado_proveedor",
+            "descripcion_para": "Indica el estado del Proveedor",
+            "valor_para": "0",
+            "tabla_para": "com_estado_provee",
+            "campo_codigo_para": "ide_coepr",
+            "campo_nombre_para": "nombre_coepr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_dias_trabajados",
+            "descripcion_para": "Indica el numero de dias trabajados ",
+            "valor_para": "9",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_acumula_fondos_reserva",
+            "descripcion_para": "Indica el rubro acumula fondos de reserva ",
+            "valor_para": "25",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_rubro_valor_recibir",
+            "descripcion_para": "Indica el rubro valor a recibir ",
+            "valor_para": "37",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_estado_activo_empleado",
+            "descripcion_para": "Indica el estado activo de un  empleado ",
+            "valor_para": "0",
+            "tabla_para": "reh_estado_emplea",
+            "campo_codigo_para": "ide_rheem",
+            "campo_nombre_para": "nombre_rheem",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_si_acumula_fondos",
+            "descripcion_para": "Indica que un empleado si acumula fondos de reserva",
+            "valor_para": "1",
+            "tabla_para": "reh_fondos_reserva",
+            "campo_codigo_para": "ide_rhfre",
+            "campo_nombre_para": "nombre_rhfre",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_valor_acumula_fondo",
+            "descripcion_para": "Indica el rubro acumula fondos de reserva ",
+            "valor_para": "26",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_no_acumula_fondos",
+            "descripcion_para": "Indica que un empleado no acumula fondos de reserva",
+            "valor_para": "0",
+            "tabla_para": "reh_fondos_reserva",
+            "campo_codigo_para": "ide_rhfre",
+            "campo_nombre_para": "nombre_rhfre",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_rubro_valor_recibir",
+            "descripcion_para": "Indica el rubro valor a recibir",
+            "valor_para": "37",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_estado_pre_nomina",
+            "descripcion_para": "Indica el estado pre nomina del rol ",
+            "valor_para": "0",
+            "tabla_para": "reh_estado_rol",
+            "campo_codigo_para": "ide_rhero",
+            "campo_nombre_para": "nombre_rhero",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_reh_estado_cerrada",
+            "descripcion_para": "Indica el estado cerrado del rol ",
+            "valor_para": "2",
+            "tabla_para": "reh_estado_rol",
+            "campo_codigo_para": "ide_rhero",
+            "campo_nombre_para": "nombre_rhero",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_garante_empl_biess",
+            "descripcion_para": "Indica el tipo de garante Empleado del Biess ",
+            "valor_para": "1",
+            "tabla_para": "NRH_TIPO_GARANTE",
+            "campo_codigo_para": "IDE_NRTIG",
+            "campo_nombre_para": "DETALLE_NRTIG",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_escenario",
+            "descripcion_para": "Indica el tipo de nomina NORMAL ",
+            "valor_para": "5",
+            "tabla_para": "NRH_TIPO_NOMINA",
+            "campo_codigo_para": "IDE_NRTIN",
+            "campo_nombre_para": "DETALLE_NRTIN",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_normal",
+            "descripcion_para": "Indica el tipo de nomina NORMAL ",
+            "valor_para": "0",
+            "tabla_para": "NRH_TIPO_NOMINA",
+            "campo_codigo_para": "IDE_NRTIN",
+            "campo_nombre_para": "DETALLE_NRTIN",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_liquidacion",
+            "descripcion_para": "Indica el tipo de nomina LIQUIDACION ",
+            "valor_para": "2",
+            "tabla_para": "NRH_TIPO_NOMINA",
+            "campo_codigo_para": "IDE_NRTIN",
+            "campo_nombre_para": "DETALLE_NRTIN",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_pago_decimos",
+            "descripcion_para": "Indica el tipo de nomina PAGO DE DECIMOS ",
+            "valor_para": "4",
+            "tabla_para": "NRH_TIPO_NOMINA",
+            "campo_codigo_para": "IDE_NRTIN",
+            "campo_nombre_para": "DETALLE_NRTIN",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_para_generar_rol",
+            "descripcion_para": "Indica los tipos de nominas para generar desde rol ",
+            "valor_para": "0,3",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_nomina_para_calcular_renta",
+            "descripcion_para": "Indica los tipos de nominas a los cuales se calcula la renta ",
+            "valor_para": "0",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_estado_nomina_cerrada",
+            "descripcion_para": "Indica la estado de NOMINA CERRADA, en este estado los datos son solo de lectura, no se puede modificar ni eliminar ",
+            "valor_para": "1",
+            "tabla_para": "NRH_ESTADO_ROL",
+            "campo_codigo_para": "IDE_NRESR",
+            "campo_nombre_para": "DETALLE_NRESR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_estado_pre_nomina",
+            "descripcion_para": "Indica la estado PRE-NOMINA, en este estado se pueden leer,modificar y eliminar datos de la nomina",
+            "valor_para": "2",
+            "tabla_para": "NRH_ESTADO_ROL",
+            "campo_codigo_para": "IDE_NRESR",
+            "campo_nombre_para": "DETALLE_NRESR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_estado_nomina_anulada",
+            "descripcion_para": "Indica la estado de NOMINA ANULADA, en este estado los datos son solo de lectura, y nos indica que una nomina generada se encuentra anulada ",
+            "valor_para": "3",
+            "tabla_para": "NRH_ESTADO_ROL",
+            "campo_codigo_para": "IDE_NRESR",
+            "campo_nombre_para": "DETALLE_NRESR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_forma_calculo_formula",
+            "descripcion_para": "Indica la forma de calculo TECLADO del Rubro ",
+            "valor_para": "0",
+            "tabla_para": "NRH_FORMA_CALCULO",
+            "campo_codigo_para": "IDE_NRFOC",
+            "campo_nombre_para": "DETALLE_NRFOC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_forma_calculo_teclado",
+            "descripcion_para": "Indica la forma de calculo TECLADO del Rubro ",
+            "valor_para": "1",
+            "tabla_para": "NRH_FORMA_CALCULO",
+            "campo_codigo_para": "IDE_NRFOC",
+            "campo_nombre_para": "DETALLE_NRFOC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_forma_calculo_importado",
+            "descripcion_para": "Indica la forma de calculo TECLADO del Rubro ",
+            "valor_para": "2",
+            "tabla_para": "NRH_FORMA_CALCULO",
+            "campo_codigo_para": "IDE_NRFOC",
+            "campo_nombre_para": "DETALLE_NRFOC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_forma_calculo_constante",
+            "descripcion_para": "Indica la forma de calculo TECLADO del Rubro ",
+            "valor_para": "3",
+            "tabla_para": "NRH_FORMA_CALCULO",
+            "campo_codigo_para": "IDE_NRFOC",
+            "campo_nombre_para": "DETALLE_NRFOC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_importado",
+            "descripcion_para": "Indica la forma de calculo IMPORTADO del Rubro ",
+            "valor_para": "2",
+            "tabla_para": "NRH_FORMA_CALCULO",
+            "campo_codigo_para": "IDE_NRFOC",
+            "campo_nombre_para": "DETALLE_NRFOC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_vacaciones_liquidacion",
+            "descripcion_para": "Indica el rubro en el cual se va a calcular el valor correspondiente a vacaciones ",
+            "valor_para": "28",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_desc_valores_liquidar",
+            "descripcion_para": "Indica el descuento de valores por liquidar ",
+            "valor_para": "289",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_ajuste_sueldo",
+            "descripcion_para": "Indica el numero de dias para calculo de rol en ajuste de sueldo ",
+            "valor_para": "285",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_ajuste_sueldo",
+            "descripcion_para": "Indica el numero de dias para calculo de rol en ajuste de sueldo ",
+            "valor_para": "287",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_total_ingresos",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "11",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_total_egresos",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "22",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_valor_recibir",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "131",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_subtotal_iess",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "281",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_seguro_social_con_rmu",
+            "descripcion_para": "Indica el rubro Seguro Social calculado solo con la RMU ",
+            "valor_para": "291",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_rmu_cargo_subrogante",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "278",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_subrogados",
+            "descripcion_para": "Indica el rubro Total Ingresos de un empleado ",
+            "valor_para": "279",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_region",
+            "descripcion_para": "Indica el rubro Region, lo cual nos permite saber a que region pertenece el empleado para pago de decimo 4 ",
+            "valor_para": "285",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_pendientes_vacacion",
+            "descripcion_para": "Indica el numero de dias pendientes de vacacion ",
+            "valor_para": "68",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_decimo_cuarto_rol",
+            "descripcion_para": "Indica el rubro Decimo Cuarto Sueldo para el Rol  (Rol) en la fecha de pago configurada para el rubro ",
+            "valor_para": "9",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_decimo_cuarto_rol_p",
+            "descripcion_para": "Indica el rubro Decimo Cuarto Sueldo para el Rol  (Rol) en la fecha de pago configurada para el rubro ",
+            "valor_para": "283",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_trabajados_d4",
+            "descripcion_para": "Este rurbro nos indica el numero de dias para el calculo de decimo cuarto ",
+            "valor_para": "65",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_proviciones_d4",
+            "descripcion_para": "Este rurbro nos indica el numero de dias para el calculo de decimo cuarto ",
+            "valor_para": "121",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_decimo_tercer_rol",
+            "descripcion_para": "Indica el rubro Decimo Tercer Sueldo para el (Rol) ",
+            "valor_para": "12",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_trabajados_d3",
+            "descripcion_para": "Este rurbro nos indica el numero de dias para el calculo de decimo tercero ",
+            "valor_para": "63",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_salario_basico_unificado_vig",
+            "descripcion_para": "Este rurbro nos indica el numero de dias para el Salario basico unificado vigente ",
+            "valor_para": "276",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_proviciones_d3",
+            "descripcion_para": "Este rurbro nos indica el numero de dias para el calculo de decimo cuarto ",
+            "valor_para": "125",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_descuento_decimo_cuarto",
+            "descripcion_para": "Indica el rubro Decimo Tercer Sueldo para el (Rol) ",
+            "valor_para": "273",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_descuento_decimo_tercer",
+            "descripcion_para": "Indica el rubro Decimo Tercer Sueldo para el (Rol) ",
+            "valor_para": "195",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_beneficios_guarderia",
+            "descripcion_para": "Indica el rubro Beneficios Guarderia para el (Rol) ",
+            "valor_para": "144",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_aportes_personales",
+            "descripcion_para": "Indica el rubro aporte_personal para el (Rol) nombre del rubro seguro social ",
+            "valor_para": "44",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_impuesto_renta_mensual",
+            "descripcion_para": "Indica el rubro aporte_personal para el (Rol) ",
+            "valor_para": "41",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_acumula_fondos_reserva",
+            "descripcion_para": "Indica el rubro para saber si un empleado acumula o no los fondos de reserva ",
+            "valor_para": "46",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_valor_fondos_reserva",
+            "descripcion_para": "Indica el rubro con el valor acumulado de los fondos de reserva nomina ",
+            "valor_para": "29",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_valor_provision_fondos_reserva",
+            "descripcion_para": "Indica el rubro con el valor acumulado de los fondos de reserva iess",
+            "valor_para": "120",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_descuento_nomina",
+            "descripcion_para": "Indica el rubro Decimo Tercer Sueldo para el (Rol) ",
+            "valor_para": "48",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_acumula_decimos",
+            "descripcion_para": "Indica el rubro para saber si un empleado acumula los decimos true=acumula, false=no acumula ",
+            "valor_para": "330",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_base_imponible_mes_anterior",
+            "descripcion_para": "Indica el rubro donde se va a importar el sueldo base del mes anterior ",
+            "valor_para": "329",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_imponible_mes_anterior",
+            "descripcion_para": "Indica el rubro para del mes anteriro que se toma para el nuevo rubro ",
+            "valor_para": "329",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_fondreser_acum_ante",
+            "descripcion_para": "Indica el rubro fondos de reserva acumulado a ser importado para la nomina vigente",
+            "valor_para": "136",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_fondreser_nomi_ante",
+            "descripcion_para": "Indica el rubro fondos de reserva pago en nomina a ser importado para la nomina vigente",
+            "valor_para": "29",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_fondreser_acum_pago",
+            "descripcion_para": "Indica el rubro fondos de reserva acumulados con el cual se va a pagar en la nomina vigente",
+            "valor_para": "338",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_fondreser_nomi_pago",
+            "descripcion_para": "Indica el rubro fondos de reserva en nomina con el cual se va a pagar en la nomina vigente",
+            "valor_para": "339",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_trubro_egreso_informativo",
+            "descripcion_para": "Indica el tipo de rubro Egreso Informativo (Tipo Rol) ",
+            "valor_para": "2",
+            "tabla_para": "NRH_TIPO_RUBRO",
+            "campo_codigo_para": "IDE_NRTIR",
+            "campo_nombre_para": "DETALLE_NRTIR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_trubro_ingreso_informativo",
+            "descripcion_para": "Indica el tipo de rubro Ingreso Informativo (Tipo Rol) ",
+            "valor_para": "3",
+            "tabla_para": "NRH_TIPO_RUBRO",
+            "campo_codigo_para": "IDE_NRTIR",
+            "campo_nombre_para": "DETALLE_NRTIR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_trubro_informativo",
+            "descripcion_para": "Indica el tipo de rubro Informativo (Tipo Rol) ",
+            "valor_para": "4",
+            "tabla_para": "NRH_TIPO_RUBRO",
+            "campo_codigo_para": "IDE_NRTIR",
+            "campo_nombre_para": "DETALLE_NRTIR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_remuneracion_unificada",
+            "descripcion_para": "Indica el rubro Remuneracion unificada ",
+            "valor_para": "24",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_remuneracion_unificada_honorarios",
+            "descripcion_para": "Indica el rubro Remuneracion unificada ",
+            "valor_para": "277",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_periodo_nomina",
+            "descripcion_para": "Indica el rubro Decimo Cuarto Sueldo para el Rol  (Rol) en la fecha de pago configurada para el rubro ",
+            "valor_para": "2",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_trabajados",
+            "descripcion_para": "Indica los dias trabajados para la generacion del rol ",
+            "valor_para": "274",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_fondos_reserva",
+            "descripcion_para": "Indica los dias trabajados para la generacion del rol ",
+            "valor_para": "69",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_dias_antiguedad",
+            "descripcion_para": "Indica los dias trabajados para la generacion del rol ",
+            "valor_para": "60",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_gerencia_general_ap",
+            "descripcion_para": "Indica el nombre de la persona encargada de la Gerencia General para el reporte de acciones de personal",
+            "valor_para": "Eco. Roberto. A. Machuca. C",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_gerencia_administrativa_ap",
+            "descripcion_para": "Indica el nombre de la persona encargada de la Gerencia Administrativa para el reporte de acciones de personal",
+            "valor_para": "Ing. Marco V. Egas A.",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_trubro_egreso",
+            "descripcion_para": "Indica el tipo de rubro Egreso (Tipo Rol) ",
+            "valor_para": "1",
+            "tabla_para": "NRH_TIPO_RUBRO",
+            "campo_codigo_para": "IDE_NRTIR",
+            "campo_nombre_para": "DETALLE_NRTIR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_trubro_ingreso",
+            "descripcion_para": "Indica el tipo de rubro Ingreso (Tipo Rol) ",
+            "valor_para": "0",
+            "tabla_para": "NRH_TIPO_RUBRO",
+            "campo_codigo_para": "IDE_NRTIR",
+            "campo_nombre_para": "DETALLE_NRTIR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_cargo_gerencia_general_ap",
+            "descripcion_para": "Indica el nombre del Cargo de la Gerencia General para el reporte de acciones de personal",
+            "valor_para": "GERENTE GENERAL",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_cargo_gerencia_administrativa_ap",
+            "descripcion_para": "Indica el nombre del Cargo de la Gerencia Administrativa para el reporte de acciones de personal",
+            "valor_para": "GERENTE ADMINISTRATIVO",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_liquidacion_elaborado_por",
+            "descripcion_para": "Indica el nombre de la persona encargada de Elaborar la Liquidacion para el reporte de Liquidacion de Haberes",
+            "valor_para": "Ing. Nelly Fabara",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_liquidacion_revisado_por",
+            "descripcion_para": "Indica el nombre de la persona encargada de Revizar la Liquidacion para el reporte de Liquidacion de Haberes",
+            "valor_para": "Ing. Maria Fernanda Reyes",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_liquidacion_aprobado_por",
+            "descripcion_para": "Indica el nombre de la persona encargada de Aprobar la Liquidacion para el reporte de Liquidacion de Haberes",
+            "valor_para": "Ing. Marco Egas",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_rubro_vacaciones_liquidacion",
+            "descripcion_para": "Indica el rubro en el cual se va a calcular el valor correspondiente a vacaciones ",
+            "valor_para": "28",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 6,
+            "nom_para": "p_nrh_tipo_garante",
+            "descripcion_para": "Indica el tipo de garante EMPLEADO DE EMGIRS",
+            "valor_para": "1",
+            "tabla_para": "nrh_tipo_garante",
+            "campo_codigo_para": "ide_nrtig",
+            "campo_nombre_para": "detalle_nrtig",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_num_dias_filtro",
+            "descripcion_para": "Indica el numero de dias para realizar el filtro ",
+            "valor_para": "90",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_cheque",
+            "descripcion_para": "Indica la transaccion se lo realiza con cheque ",
+            "valor_para": "2",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_caja",
+            "descripcion_para": "Indica que el Banco es de tipo Caja ",
+            "valor_para": "3",
+            "tabla_para": "tes_banco",
+            "campo_codigo_para": "ide_teban",
+            "campo_nombre_para": "nombre_teban",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_retiro_caja",
+            "descripcion_para": "Indica la transaccion se lo realiza con caja ",
+            "valor_para": "1",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_deposito_caja",
+            "descripcion_para": "Indica la transaccion se lo realiza con caja ",
+            "valor_para": "8",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_deposito",
+            "descripcion_para": "Indica la transaccion se lo realiza con bancos (deposito) ",
+            "valor_para": "0",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_transferencia_menos",
+            "descripcion_para": "Indica la transaccion se lo realiza con bancos (Transferencia MENOS) ",
+            "valor_para": "9",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_transferencia_mas",
+            "descripcion_para": "Indica la transaccion se lo realiza con bancos (Transferencia MAS) ",
+            "valor_para": "10",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_reversa_mas",
+            "descripcion_para": "Indica la transaccion de reversa con signo + ",
+            "valor_para": "11",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tran_reversa_menos",
+            "descripcion_para": "Indica la transaccion de reversa sin signo - ",
+            "valor_para": "12",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_estado_lib_banco_normal",
+            "descripcion_para": "Indica el estado normal de la transaccion de libro bancos del modulo Tesoreria ",
+            "valor_para": "0",
+            "tabla_para": "tes_estado_libro_banco",
+            "campo_codigo_para": "ide_teelb",
+            "campo_nombre_para": "nombre_teelb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_estado_lib_banco_anulado",
+            "descripcion_para": "Indica el estado anulado de la transaccion de libro bancos del modulo Tesoreria ",
+            "valor_para": "1",
+            "tabla_para": "tes_estado_libro_banco",
+            "campo_codigo_para": "ide_teelb",
+            "campo_nombre_para": "nombre_teelb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_nota_debito",
+            "descripcion_para": "Indica el tipo de la transaccion nota de debito de libro bancos del modulo Tesoreria ",
+            "valor_para": "3",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_nota_credito",
+            "descripcion_para": "Indica el tipo de la transaccion nota de credito de libro bancos del modulo Tesoreria ",
+            "valor_para": "4",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tip_tran_reversar_mas",
+            "descripcion_para": "Indica que se realiza una transaccion inversa (+) ",
+            "valor_para": "10",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tip_tran_reversar_menos",
+            "descripcion_para": "Indica que se realiza una transaccion inversa (-) ",
+            "valor_para": "11",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_tipo_cuenta_banco_virtual",
+            "descripcion_para": "Indica que el tipo de cuenta bancaria virtual (cajas) ",
+            "valor_para": "6",
+            "tabla_para": "tes_tip_cuen_banc",
+            "campo_codigo_para": "ide_tetcb",
+            "campo_nombre_para": "nombre_tetcb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_banco_casas",
+            "descripcion_para": "Indica que el Banco es de tipo casas para pagar por trandsferencia de cuentas contables ",
+            "valor_para": "5",
+            "tabla_para": "tes_banco",
+            "campo_codigo_para": "ide_teban",
+            "campo_nombre_para": "nombre_teban",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_cheque_posfechado",
+            "descripcion_para": "Indica la transaccion cheque posfechado_mas",
+            "valor_para": "13",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
+            "nom_para": "p_tes_cheque_posfechado",
+            "descripcion_para": "Indica la transaccion cheque posfechado_menos",
+            "valor_para": "14",
+            "tabla_para": "tes_tip_tran_banc",
+            "campo_codigo_para": "ide_tettb",
+            "campo_nombre_para": "nombre_tettb",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_activo",
+            "descripcion_para": "Indica que se carga solo las cuentas de nivel de Activo",
+            "valor_para": "0",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "codig_recur_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_pasivo",
+            "descripcion_para": "Indica que se carga solo las cuentas de nivel de Pasivo  ",
+            "valor_para": "4",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "codig_recur_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_estado_normal",
+            "descripcion_para": "Indica el estado normal del prestamo  ",
+            "valor_para": "0",
+            "tabla_para": "iyp_estado_prestamos",
+            "campo_codigo_para": "ide_ipepr",
+            "campo_nombre_para": "nombre_ipepr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_tipo_prestamo",
+            "descripcion_para": "Indica que se carga el tipo de prestamo cuota fija  ",
+            "valor_para": "0",
+            "tabla_para": "iyp_tipo_prestamo",
+            "campo_codigo_para": "ide_iptpr",
+            "campo_nombre_para": "nombre_iptpr",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_serie_factura",
+            "descripcion_para": "Indica la serie a utilizar para facturar el ineters de un pago de prestamo ",
+            "valor_para": "3",
+            "tabla_para": "cxc_datos_fac",
+            "campo_codigo_para": "ide_ccdaf",
+            "campo_nombre_para": "serie_ccdaf",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_cuenta_interes",
+            "descripcion_para": "Indica la cuenta que afecta a los interes de los prestamos de las casas",
+            "valor_para": "1982",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_estado_activo_inversion",
+            "descripcion_para": "Indica el estado activo de la inversión",
+            "valor_para": "0",
+            "tabla_para": "iyp_estado_inversion",
+            "campo_codigo_para": "ide_ipein",
+            "campo_nombre_para": "nombre_ipein",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_estado_cancelado",
+            "descripcion_para": "Indica el estado cancelado de la inversion  ",
+            "valor_para": "1",
+            "tabla_para": "iyp_estado_inversion",
+            "campo_codigo_para": "ide_ipein",
+            "campo_nombre_para": "nombre_ipein",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_estado_anulada",
+            "descripcion_para": "Indica el estado anulada de la inversion  ",
+            "valor_para": "2",
+            "tabla_para": "iyp_estado_inversion",
+            "campo_codigo_para": "ide_ipein",
+            "campo_nombre_para": "nombre_ipein",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 9,
+            "nom_para": "p_iyp_cuenta_interes_pagado",
+            "descripcion_para": "Indica la cuenta que afecta a los interes de los prestamos de de ingreso",
+            "valor_para": "4100",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_tip_sus_tri02",
+            "descripcion_para": "Indica el tipo de sustento tributario de alterno 02 (COSTO O GASTO PARA DECLARACIÓN DE IMP. A LA RENTA (SERVICIOS Y BIENES DISTINTOS DE INVENTARIOS Y ACTIVOS FIJOS )) ",
+            "valor_para": "1",
+            "tabla_para": "sri_tipo_sustento_tributario",
+            "campo_codigo_para": "ide_srtst",
+            "campo_nombre_para": "nombre_srtst",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_local_12%_401",
+            "descripcion_para": "Ventas locales [excluye activos fijos] gravadas tarifa 12%",
+            "valor_para": "401",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_activos_12%_402",
+            "descripcion_para": "Ventas de activos fijos gravadas tarifa 12%",
+            "valor_para": "402",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_local_no_dertri_0%_403",
+            "descripcion_para": "Ventas locales [excluye activos fijos] gravadas tarifa 0% que no dan derecho a crédito tributario",
+            "valor_para": "403",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_activos_0%_no_dertri_404",
+            "descripcion_para": "Ventas de activos fijos gtavadas tarifa 0% que no dan derecho a crédito tributario",
+            "valor_para": "404",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_local_0%_dertri_405",
+            "descripcion_para": "Ventas locales(excluye activos fijos) gravadasde activos fijos gtavadas tarifa 0% que dan derecho a crédito tributario",
+            "valor_para": "405",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_venta_activos_0%_dertri_406",
+            "descripcion_para": "Ventas de activos fijos gravadas tarifa 0% que dan derecho a crédito tributario",
+            "valor_para": "406",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_exportacion_bienes_407",
+            "descripcion_para": "Exportaciones de bienes",
+            "valor_para": "407",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_exportacion_servicios_408",
+            "descripcion_para": "Exportaciones de servicios",
+            "valor_para": "408",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_adqui_pagos_12%_dertri_501",
+            "descripcion_para": "Adquisiciones y pagos [excluye activos fijos] gravados tarifa 12% (con derecho a crédito tributario)",
+            "valor_para": "501",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_adqui_local_12%_dertri_502",
+            "descripcion_para": "Adquisiciones locales de activos fijos gravados tarifa 12% (con derecho a crédito tributario)",
+            "valor_para": "502",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_otra_adqui_pago_12%_no_dertri_503",
+            "descripcion_para": "Otras adquisiones y pagos gravados tarifa 12% (sin derecho a crédito tributario)",
+            "valor_para": "503",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_import_bienes_12%_504",
+            "descripcion_para": "Importaciones de bienes [excluye activos fijos] gravados tarifa 12%",
+            "valor_para": "504",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_import_act_fijos_12%_505",
+            "descripcion_para": "Importaciones de activos fijos  gravados tarifa 12%",
+            "valor_para": "505",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_import_bienes_0%_506",
+            "descripcion_para": "Importaciones de bienes [incluye activos fijos] gravados tarifa 0%",
+            "valor_para": "506",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_adqui_realizadas_rise_518",
+            "descripcion_para": "Adquisiciones realizadas a contribuyente rise",
+            "valor_para": "518",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_trans_no_obj_iva_431",
+            "descripcion_para": "Transferencias no objeto o exentas de IVA",
+            "valor_para": "431",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_adqui_no_obj_iva_531",
+            "descripcion_para": "Adquisiciones no objeto de IVA",
+            "valor_para": "531",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_base_renta",
+            "descripcion_para": "Indica el rubro de la base imponible del impuesto a la renta para formulario 103",
+            "valor_para": "53",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_impuesto_renta",
+            "descripcion_para": "Indica el rubro del valor de impuesto a la renta para formulario 103",
+            "valor_para": "31",
+            "tabla_para": "reh_cab_rubro",
+            "campo_codigo_para": "ide_rhcru",
+            "campo_nombre_para": "nombre_rhcru",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_activa_comp_elect",
+            "descripcion_para": "Activa o desactiva comprobantes electronicos del SRI",
+            "valor_para": "true",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_ambiente_comp_elect",
+            "descripcion_para": "Ambiente de Comprobantes Eléctronicos del SRI",
+            "valor_para": "1",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_moneda_comp_elect",
+            "descripcion_para": "Ambiente de Comprobantes Eléctronicos del SRI",
+            "valor_para": "DOLAR",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_codigoIva_comp_elect",
+            "descripcion_para": "Codigo de Iva para Comprobantes Eléctronicos del SRI",
+            "valor_para": "2",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_codigoPorcentajeIva_comp_elect",
+            "descripcion_para": "Codigo de Iva para Comprobantes Eléctronicos del SRI",
+            "valor_para": "2",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_codigoPorcentajeIva0_comp_elect",
+            "descripcion_para": "Codigo de Iva 0 para Comprobantes Eléctronicos del SRI",
+            "valor_para": "0",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_codigoPorcentajeIvaNoObjeto_comp_elect",
+            "descripcion_para": "Codigo de Iva no Objeto  para Comprobantes Eléctronicos del SRI",
+            "valor_para": "6",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_porcentajeIva_comp_elect",
+            "descripcion_para": "Porcentaje del Iva para Comprobantes Eléctronicos del SRI",
+            "valor_para": "12.00",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_tipo_moneda_spi",
+            "descripcion_para": "Indica el codigo de moneda dolar $ para el archivo SPI",
+            "valor_para": "1",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_tipo_pago_spi",
+            "descripcion_para": "Indica el codigo de tipo de pago via internet para el archivo SPI",
+            "valor_para": "2",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_concepto_spi",
+            "descripcion_para": "Indica el codigo del concepto para el archivo SPI",
+            "valor_para": "2",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_control_spi",
+            "descripcion_para": "Indica el numero de control para el archivo SPI",
+            "valor_para": "11217287915534",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_301_sueldos_y_salarios",
+            "descripcion_para": "Indica el 301 SUELDOS Y SALARIOS para (RUBRO 24) el SRI",
+            "valor_para": "24",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_303_subrogaciones",
+            "descripcion_para": "Indica el 303 SOBRESUELDOS, COMISIONES, BONOS Y OTROS INGRESOS GRAVADOS (RUBRO 27) para el SRI",
+            "valor_para": "27",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_305_participacion_utilidades",
+            "descripcion_para": "Indica el 307 INGRESOS GRAVADOS GENERADOS CON OTROS EMPLEADORES (RUBRO 76) para el SRI",
+            "valor_para": "76",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_307_ing_grav_otro_emp",
+            "descripcion_para": "Indica el 307 INGRESOS GRAVADOS GENERADOS CON OTROS EMPLEADORES (RUBRO 77) para el SRI",
+            "valor_para": "77",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_311_provisiones_decimo_tercero",
+            "descripcion_para": "Indica el 311 DECIMO TERCER SUELDO (RUBRO 125)  provisiones para el SRI",
+            "valor_para": "125",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_313_provisiones_decimo_cuarto",
+            "descripcion_para": "Indica el 313 DECIMO CUARTO SUELDO (RUBRO 121)  provisiones  provisiones para el SRI",
+            "valor_para": "121",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_315_provisiones_fondo_reserva",
+            "descripcion_para": "Indica el 315 FONDO DE RESERVA (RUBRO 120)  provisiones  provisiones para el SRI",
+            "valor_para": "120",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_317_otros_ing_rel_depencia",
+            "descripcion_para": "Indica el 317 OTROS INGRESOS EN RELACION DE DEPENDENCIA QUE NO CONSTITUYEN RENTA GRAVADA para el SRI",
+            "valor_para": "283",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_351_aporte_personal",
+            "descripcion_para": "Indica el 351 (-) APORTE PERSONAL IESS CON ESTE EMPLEADOR para el SRI",
+            "valor_para": "44",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_353_aporte_personal_otros_empl",
+            "descripcion_para": "Indica el 353 (-) APORTE PERSONAL IESS CON OTROS EMPLEADORES para el SRI",
+            "valor_para": "288",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_381_imp_renta_empleador",
+            "descripcion_para": "Indica el 381 IMPUESTO A LA RENTA ASUMIDO POR ESTE EMPLEADOR para el SRI",
+            "valor_para": "257",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_403_impuesto_retenido",
+            "descripcion_para": "Indica el 403 VALOR DEL IMPUESTO RETENIDO Y ASUMIDO POR OTROS EMPL. DURANTE EL PERIODO DECLARADO para el SRI",
+            "valor_para": "258",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_405_impuesto_asumido",
+            "descripcion_para": "Indica el 405 VALOR DEL IMPUESTO ASUMIDO POR ESTE EMPLEADOR para el SRI",
+            "valor_para": "267",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_sri_407_imp_retenido_trabajador",
+            "descripcion_para": "Indica el 407 VALOR DEL IMPUESTO RETENIDO AL TRABAJADOR POR ESTE EMPLEADOR para el SRI",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_salario_ingreso",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL SALARIO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_salario_egreso",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL SALARIO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_sobresueldo_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL SOBRESUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_sobresueldo_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL SOBRESUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_parti_utilidad_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL PARTICIPACION DE UTILIDAD",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_parti_utilidad_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL PARTICIPACION DE UTILIDAD",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_ingr_gravados_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO GRAVADO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_ingr_gravados_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO GRAVADO ",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_empleador_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL IMPUESTO A LA RENTA POR EL EMPLEADOR",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_empleador_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL IMPUESTO A LA RENTA POR EL EMPLEADOR ",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_decimo_tercer_sueldo_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL DECIMO TERCER SUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_decimo_tercer_sueldo_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL DECIMO TERCER SUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_decimo_cuarto_sueldo_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL DECIMO CUARTO SUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_decimo_cuarto_sueldo_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL DECIMO CUARTO SUELDO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_fondo_reserva_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL FONDO DE RESERVA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_fondo_reserva_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL FONDO DE RESERVA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_otros_ingrrelaciondep_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL INGRESO EN RELACION DE DEPENDENCIA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_otros_ingrrelaciondep_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL INGRESO EN RELACION DE DEPENDENCIA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_ingresos_gravaempleado_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL EGRESO GRAVADO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_ingresos_gravaempleado_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL EGRESO GRAVADO",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_aporte_personal_iess_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL APORTE PERSONAL IESS",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_aporte_personal_iess_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL APORTE PERSONAL IESS",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_vivienda_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DE LOS GASTOS PERSONALES POR VIVIENDA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_vivienda_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DE LOS GASTOS PERSONALES POR VIVIENDA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_salud_ing",
+            "descripcion_para": "Indica el VALOR DEL GASTO PERSONAL POR SALUD",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_salud_egr",
+            "descripcion_para": "Indica el VALOR DEL GASTO PERSONAL POR SALUD",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_educa_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL  GASTO PERSONAL POR EDUCACION",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_educa_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL GASTO PERSONAL POR EDUCACION",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_alimenta_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL  GASTO PERSONAL POR ALIMENTACION",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_alimenta_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL GASTO PERSONAL POR ALIMENTACION",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_vestimenta_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL  GASTO PERSONAL POR VESTIMENTA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_gas_persona_vestimenta_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL GASTO PERSONAL POR VESTIMENTA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_baseimponible_gravada_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DE LA BASE IMPONIBLE GRABADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_baseimponible_gravada_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DE LA BASE IMPONIBLE GRABADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_causado_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_causado_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_asumidootr_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_asumidootr_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_asumidoest_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impuesto_renta_asumidoest_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impue_retenido_ing",
+            "descripcion_para": "Indica el VALOR DEL INGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_impue_retenido_egr",
+            "descripcion_para": "Indica el VALOR DEL EGRESO DEL IMPUESTO A LA RENTA GRAVADA",
+            "valor_para": "42",
+            "tabla_para": "NRH_RUBRO",
+            "campo_codigo_para": "IDE_NRRUB",
+            "campo_nombre_para": "DETALLE_NRRUB",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_codigo_establecimiento",
+            "descripcion_para": "Define el codigo del establecimiento",
+            "valor_para": "001",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_pais_tipo_residencia",
+            "descripcion_para": "Define el numero del tipo de residencia",
+            "valor_para": "943",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_aplica_convenio",
+            "descripcion_para": "Define el numero del tipo de residencia",
+            "valor_para": "943",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_pais_residencia",
+            "descripcion_para": "Define el numero del tipo de residencia",
+            "valor_para": "943",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_tipo_identi_discap",
+            "descripcion_para": "Define el numero del tipo de documento de identidad de los discapcitados",
+            "valor_para": "N",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_nro_docume_discap",
+            "descripcion_para": "Define el numero del documento de identidad de los discapcitados",
+            "valor_para": "999",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 10,
+            "nom_para": "p_redep_tipo_sis_salario_neto",
+            "descripcion_para": "Define el tipo de sistema de salario neto",
+            "valor_para": "1",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_iden_ruc",
+            "descripcion_para": "tipo de identificacion RUC",
+            "valor_para": "1",
+            "tabla_para": "gen_tipo_identifi",
+            "campo_codigo_para": "ide_getid",
+            "campo_nombre_para": "nombre_getid",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_iden_cedula",
+            "descripcion_para": "tipo de identificacion CEDULA",
+            "valor_para": "0",
+            "tabla_para": "gen_tipo_identifi",
+            "campo_codigo_para": "ide_getid",
+            "campo_nombre_para": "nombre_getid",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_beneficiario_roles",
+            "descripcion_para": "Identifica al beneficiario en el asiento de roles de pago ",
+            "valor_para": "1438",
+            "tabla_para": "gen_persona",
+            "campo_codigo_para": "ide_geper",
+            "campo_nombre_para": "nom_geper",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_tipo_cobro_factura",
+            "descripcion_para": "Permite definir el tipo de cobro inicial que se mostrará por defecto en la facturación",
+            "valor_para": "4",
+            "tabla_para": "rec_tipo",
+            "campo_codigo_para": "ide_retip",
+            "campo_nombre_para": "detalle_retip",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_terminacion_encargo_posicion",
+            "descripcion_para": "Permite al momento de hacer una terminacion de subrogacion volver a las caracteristicas del contrato que poseia antes de realizar la subrogacion",
+            "valor_para": "46",
+            "tabla_para": "GEN_ACCION_EMPLEADO_DEPA",
+            "campo_codigo_para": "IDE_GEAED",
+            "campo_nombre_para": "DETALLE_GEAED",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_status_stand_by",
+            "descripcion_para": "Indica la categoria estatus stand by",
+            "valor_para": "2",
+            "tabla_para": "GEN_CATEGORIA_ESTATUS",
+            "campo_codigo_para": "IDE_GECAE",
+            "campo_nombre_para": "DETALLE_GECAE",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_accion_empl_comision",
+            "descripcion_para": "Indica la accion de empleado Comision",
+            "valor_para": "51",
+            "tabla_para": "GEN_ACCION_EMPLEADO_DEPA",
+            "campo_codigo_para": "IDE_GEAED",
+            "campo_nombre_para": "DETALLE_GEAED",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_institucion_educativa",
+            "descripcion_para": "Indica el tipo de institucion Educativa",
+            "valor_para": "4",
+            "tabla_para": "GEN_TIPO_INSTITUCION",
+            "campo_codigo_para": "IDE_GETII",
+            "campo_nombre_para": "DETALLE_GETII",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_institucion_aseguradora",
+            "descripcion_para": "Indica el tipo de institucion Aseguradoras",
+            "valor_para": "5",
+            "tabla_para": "GEN_TIPO_INSTITUCION",
+            "campo_codigo_para": "IDE_GETII",
+            "campo_nombre_para": "DETALLE_GETII",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_institucion_financiera",
+            "descripcion_para": "Indica el tipo de institucion Financiera",
+            "valor_para": "2",
+            "tabla_para": "GEN_TIPO_INSTITUCION",
+            "campo_codigo_para": "IDE_GETII",
+            "campo_nombre_para": "DETALLE_GETII",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_encargo_posicion",
+            "descripcion_para": "Permite al momento de hacer una Subrogaciï¿½n desplegar los cargos a ser encargados",
+            "valor_para": "13",
+            "tabla_para": "GEN_ACCION_MOTIVO_EMPLEADO",
+            "campo_codigo_para": "IDE_GEAME",
+            "campo_nombre_para": "IDE_GEAME",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_accion_contratacion",
+            "descripcion_para": "Permite al momento de hacer una contratacion desplegar un dialogo para ingresar el periodo de asistencia ",
+            "valor_para": "1",
+            "tabla_para": "GEN_ACCION_EMPLEADO_DEPA",
+            "campo_codigo_para": "IDE_GEAED",
+            "campo_nombre_para": "IDE_GEAED",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_lugar_aplica_haber",
+            "descripcion_para": "Aplica al haber ",
+            "valor_para": "2",
+            "tabla_para": "GEN_LUGAR_APLICA",
+            "campo_codigo_para": "IDE_GELUA",
+            "campo_nombre_para": "DETALLE_GELUA",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_lugar_aplica_debe",
+            "descripcion_para": "aplica al debe ",
+            "valor_para": "1",
+            "tabla_para": "GEN_LUGAR_APLICA",
+            "campo_codigo_para": "IDE_GELUA",
+            "campo_nombre_para": "DETALLE_GELUA",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_instituciones",
+            "descripcion_para": "Selecciona las instituciones que requiera mostrar (Instituciones Educativas)",
+            "valor_para": "41,43",
+            "tabla_para": "GEN_INSTITUCION",
+            "campo_codigo_para": "IDE_GEINS",
+            "campo_nombre_para": "DETALLE_GEINS",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_casas_comerciales",
+            "descripcion_para": "Selecciona el tipo de institucion casas comerciales  (Casas comerciales )",
+            "valor_para": "2",
+            "tabla_para": "GEN_TIPO_INSTITUCION",
+            "campo_codigo_para": "IDE_GETII",
+            "campo_nombre_para": "DETALLE_GETII",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_estado_activo",
+            "descripcion_para": "Permite conocer tipo de estado (activo)en vacaciones ",
+            "valor_para": "1",
+            "tabla_para": "gen_estados",
+            "campo_codigo_para": "IDE_GEEST",
+            "campo_nombre_para": "detalle_geest",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_estado_inactivo",
+            "descripcion_para": "Permite conocer tipo de estado (inactivo)en vacaciones ",
+            "valor_para": "2",
+            "tabla_para": "gen_estados",
+            "campo_codigo_para": "IDE_GEEST",
+            "campo_nombre_para": "detalle_geest",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_actividad_capacitador",
+            "descripcion_para": "Permite conocer tipo de actividad economica ",
+            "valor_para": "3",
+            "tabla_para": "GTH_TIPO_ACTIVIDAD_ECONOMICA",
+            "campo_codigo_para": "IDE_GTTAE",
+            "campo_nombre_para": "DETALLE_GTTAE",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_firma_resp_solicitud_debito_sd",
+            "descripcion_para": "Permite conocer el cargo de la persona que firma la Solicitud de Anticipo ",
+            "valor_para": "GERENTE ADMINISTRATIVO",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_tipo_institucion_educativa_idiomas",
+            "descripcion_para": "Indica el tipo de institucion Educativa de Idiomas",
+            "valor_para": "4",
+            "tabla_para": "GEN_TIPO_INSTITUCION",
+            "campo_codigo_para": "IDE_GETII",
+            "campo_nombre_para": "DETALLE_GETII",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_gen_responsable_depa_bienestar",
+            "descripcion_para": "Indica el departamento para poder ver el responsable de la entrevista (Talento Humano)",
+            "valor_para": "135",
+            "tabla_para": "GEN_DEPARTAMENTO",
+            "campo_codigo_para": "IDE_GEDEP",
+            "campo_nombre_para": "DETALLE_GEDEP",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_valor_iva",
+            "descripcion_para": "Indica el valor aplicado del iva",
+            "valor_para": "0.12",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_director_adminsitrativo",
+            "descripcion_para": "Indica el titulo y nombre del Director Administrativo",
+            "valor_para": "Ing. Paul Velez",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_jefe_activos_fijos",
+            "descripcion_para": "Indica el titulo y nombre del jefe de Activos Fijos",
+            "valor_para": "Ing. Evelyn Suarez",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_factor_multiplicador_renta_discapacitados",
+            "descripcion_para": "Indica el factor a multiplicar si el empleado es discapacitado o tercera edad para el calculo de la renta",
+            "valor_para": "2",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_num_veces_vmgd",
+            "descripcion_para": "Indica el numero de veces que se aplica a la fraccion basica desgravada para el maximo valor para gastos deducibles ",
+            "valor_para": "1.3",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_porcentaje_tot_ing_grab",
+            "descripcion_para": "El porcentaje que se aplica al total de ingresos gravados del contribuyente para la deduccion total por gastos deducibles",
+            "valor_para": "50",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_minimo_dias_derecho_fondos",
+            "descripcion_para": "Indica el numero de dias minimo para tener derecho a fondos de reserva (a partir del 13avo mes(390 dias))",
+            "valor_para": "390",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_amortizacion_cada",
+            "descripcion_para": "Indica que la amortizacion se la realizara cada 30 dias",
+            "valor_para": "30",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_tasa_interes",
+            "descripcion_para": "Indica la tasa de interes anticipo que se la realizara",
+            "valor_para": "0",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 12,
+            "nom_para": "p_tasa_interes_efectiva",
+            "descripcion_para": "Indica la tasa  efectiva anticipo de interes que se la realizara",
+            "valor_para": "0",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_sindicato",
+            "descripcion_para": "Indica el tipo de sindicato que pertenece",
+            "valor_para": "1",
+            "tabla_para": "gth_tipo_sindicato",
+            "campo_codigo_para": "ide_gttsi",
+            "campo_nombre_para": "detalle_gttsi",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_contrato_nombramiento",
+            "descripcion_para": "Indica el tipo de documento de contrato NOMBRAMIENTO",
+            "valor_para": "0",
+            "tabla_para": "GTH_TIPO_CONTRATO",
+            "campo_codigo_para": "IDE_GTTCO",
+            "campo_nombre_para": "DETALLE_GTTCO",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_sangre",
+            "descripcion_para": "Indica el tipo de sangre del empleado",
+            "valor_para": "11",
+            "tabla_para": "gth_tipo_sangre",
+            "campo_codigo_para": "ide_gttis",
+            "campo_nombre_para": "detalle_gttis",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_nacionalidad",
+            "descripcion_para": "Indica la nacionalidad del empleado",
+            "valor_para": "2",
+            "tabla_para": "gth_nacionalidad",
+            "campo_codigo_para": "ide_gtnac",
+            "campo_nombre_para": "detalle_gtnac",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_documento_cedula",
+            "descripcion_para": "Indica el tipo de documento de identidad CEDULA",
+            "valor_para": "0",
+            "tabla_para": "GTH_TIPO_DOCUMENTO_IDENTIDAD",
+            "campo_codigo_para": "IDE_GTTDI",
+            "campo_nombre_para": "DETALLE_GTTDI",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_documento_ruc",
+            "descripcion_para": "Indica el tipo de documento de identidad RUC",
+            "valor_para": "2",
+            "tabla_para": "GTH_TIPO_DOCUMENTO_IDENTIDAD",
+            "campo_codigo_para": "IDE_GTTDI",
+            "campo_nombre_para": "DETALLE_GTTDI",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_estado_civil_soltero",
+            "descripcion_para": "Indica el estado civil soltero",
+            "valor_para": "0",
+            "tabla_para": "GTH_ESTADO_CIVIL",
+            "campo_codigo_para": "IDE_GTESC",
+            "campo_nombre_para": "DETALLE_GTESC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_estado_civil_union_libre",
+            "descripcion_para": "Indica el estado civil union libre",
+            "valor_para": "2",
+            "tabla_para": "GTH_ESTADO_CIVIL",
+            "campo_codigo_para": "IDE_GTESC",
+            "campo_nombre_para": "DETALLE_GTESC",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_telefono_celular",
+            "descripcion_para": "Indica el tipo de telefono celular",
+            "valor_para": "0",
+            "tabla_para": "GTH_TIPO_TELEFONO",
+            "campo_codigo_para": "IDE_GTTIT",
+            "campo_nombre_para": "DETALLE_GTTIT",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_telefono_fijo",
+            "descripcion_para": "Indica el tipo de telefono fijo",
+            "valor_para": "1",
+            "tabla_para": "GTH_TIPO_TELEFONO",
+            "campo_codigo_para": "IDE_GTTIT",
+            "campo_nombre_para": "DETALLE_GTTIT",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_telefono_oficina",
+            "descripcion_para": "Indica el tipo de telefono de oficina",
+            "valor_para": "3",
+            "tabla_para": "GTH_TIPO_TELEFONO",
+            "campo_codigo_para": "IDE_GTTIT",
+            "campo_nombre_para": "DETALLE_GTTIT",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_tipo_empleado_codigo",
+            "descripcion_para": "Indica el tipo de empleado de codigo de trabajo",
+            "valor_para": "1",
+            "tabla_para": "GTH_TIPO_EMPLEADO",
+            "campo_codigo_para": "IDE_GTTEM",
+            "campo_nombre_para": "DETALLE_GTTEM",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_coordinador_tthh",
+            "descripcion_para": "Indica el nombre del coordinador de talento humano",
+            "valor_para": "Ing. Tania Pantoja",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 13,
+            "nom_para": "p_gth_analista_tthh",
+            "descripcion_para": "Indica el nombre del analista de talento humano",
+            "valor_para": "Ing. Paola",
+            "activo_para": true
+        }
+    ]
+}
