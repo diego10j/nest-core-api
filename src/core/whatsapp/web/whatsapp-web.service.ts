@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Chat, Client, LocalAuth, Location, Message, } from "whatsapp-web.js";
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -111,7 +111,7 @@ export class WhatsappWebService implements OnModuleInit {
             puppeteer: {
                 headless: true,
                 args: WHATSAPP_CONFIG.puppeteerArgs,
-                executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium'
+                executablePath: '/usr/bin/chromium'
             },
             webVersionCache: WEB_VERSION_CACHE
         });
@@ -329,7 +329,7 @@ export class WhatsappWebService implements OnModuleInit {
                 messageId: sentMessage.id._serialized
             };
         } catch (error) {
-            this.logger.error(`Error sending message to ${dto.telefono}:`, error);
+            this.logger.error(`Error sending message to ${dto.telefono}: ${error.message}`, error);
             return {
                 success: false,
                 error: error.message,
@@ -601,7 +601,7 @@ export class WhatsappWebService implements OnModuleInit {
                 location: {
                     lat: msg.location.latitude,
                     lng: msg.location.longitude,
-                    description: msg.location.options?.name
+                    // description: msg.location.options?.name
                 }
             };
         }
@@ -712,6 +712,11 @@ export class WhatsappWebService implements OnModuleInit {
             this.clients.delete(`${dto.ideEmpr}`);
             this.messageQueues.delete(`${dto.ideEmpr}`);
             this.logger.log(`WhatsApp client logged out for company ${dto.ideEmpr}`);
+            this.clearSession(`${dto.ideEmpr}`);
+            return {message:'ok'}
+        }
+        else{
+            throw new BadRequestException(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
     }
 
@@ -719,7 +724,7 @@ export class WhatsappWebService implements OnModuleInit {
     async searchContacto(dto: SearchChatDto & HeaderParamsDto): Promise<any[]> {
         const instance = await this.getClientInstance(`${dto.ideEmpr}`);
         if (instance.status !== 'ready') {
-            throw new Error(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
+            throw new BadRequestException(`WhatsApp client is not ready for company ${dto.ideEmpr}`);
         }
 
         if (dto.texto.trim() === '') {

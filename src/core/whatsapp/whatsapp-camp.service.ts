@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../connection/helpers';
@@ -90,39 +91,44 @@ export class WhatsappCampaniaService {
     dtoIn: EnviarCampaniaDto & HeaderParamsDto
   ) {
     // Validaciones iniciales
-    const detalles = await this.validateCampaign(dtoIn);
-    const media = detalles[0].media_whcenv;
-    const file = await createFileInstanceFromPath(media);
+    const dataCamp = await this.validateCampaign(dtoIn);
+    const media = dataCamp.cabecera.media_whcenv;
+    const file = media ? await createFileInstanceFromPath(media) : undefined;
     // Actualizar estado a "Enviado"
     await this.updateCampaignStatus(dtoIn.ide_whcenv, CAMPAIGN_STATUS.PROCESANDO);
     // Procesar envíos
     const type = file ? 'media' : 'text';
-    const resultados = await this.processMessages(detalles, dtoIn, type, file);
+    const resultados = await this.processMessages(dataCamp.cabecera, dataCamp.detalles, dtoIn, type, file);
     await this.updateCampaignStatus(dtoIn.ide_whcenv, CAMPAIGN_STATUS.ENVIADO);
-    return this.buildResponse(resultados, detalles.length);
+    return this.buildResponse(resultados, dataCamp.detalles.length);
   }
 
   /**
    * Valida una campaña antes de enviar
    */
   private async validateCampaign(dtoIn: EnviarCampaniaDto & HeaderParamsDto) {
-    const detalles = await this.whatsappDB.getCampaniaEnvio(dtoIn);
+    const dataCamp = await this.whatsappDB.getCampaniaById(dtoIn);
 
-    if (!detalles?.length) {
-      throw new BadRequestException('La campaña no tiene detalles');
+    if (isDefined(dataCamp.cabecera) === false) {
+      throw new BadRequestException(`La campaña de id ${dtoIn.ide_whcenv} no existe`);
     }
 
-    if (detalles[0].ide_whesce !== CAMPAIGN_STATUS.PENDIENTE) {
+    if (dataCamp.detalles.length === 0)  {
+      throw new BadRequestException(`La campaña de id ${dtoIn.ide_whcenv} no tiene detalles`);
+    }
+
+    if (dataCamp.cabecera.ide_whesce !== CAMPAIGN_STATUS.PENDIENTE) {
       throw new BadRequestException('La campaña no se encuentra en estado Pendiente');
     }
 
-    return detalles;
+    return dataCamp;
   }
 
   /**
    * Procesa los mensajes en paralelo
    */
   private async processMessages(
+    cabecera:any,
     detalles: any[],
     dtoIn: EnviarCampaniaDto & HeaderParamsDto,
     type: 'text' | 'media',
@@ -134,16 +140,16 @@ export class WhatsappCampaniaService {
           const commonData = {
             telefono: current.telefono_whden,
             emitSocket: false,
-            ...(type === 'text' ? { texto: current.mensaje_whcenv, tipo: 'text' } : { caption: current.mensaje_whcenv })
+            ...(type === 'text' ? { texto: cabecera.mensaje_whcenv, tipo: 'text' } : { caption: cabecera.mensaje_whcenv })
           };
 
           const res = type === 'text'
             ? await this.whatsappWeb.enviarMensajeTexto({
               ...commonData, ...dtoIn,
-              texto: current.mensaje_whcenv,
+              texto: cabecera.mensaje_whcenv,
               tipo: 'text'
             })
-            : await this.whatsappWeb.enviarMensajeMedia({ ...commonData, ...dtoIn, caption: current.mensaje_whcenv }, file);
+            : await this.whatsappWeb.enviarMensajeMedia({ ...commonData, ...dtoIn, caption: cabecera.mensaje_whcenv }, file);
 
           if (res.messageId) {
             await this.updateMessageId(current.ide_whdenv, res.messageId);
@@ -202,13 +208,13 @@ export class WhatsappCampaniaService {
   /**
    * Actualiza el estado de la campaña
    */
-  private async updateCampaignStatus(ide_whcenv: number, status: number) {
+   async updateCampaignStatus(ide_whcenv: number, status: number) {
     const query = new UpdateQuery(CABECERA.tableName, CABECERA.primaryKey);
     query.values.set('ide_whesce', status);
     query.where = 'ide_whcenv = $1';
     query.addNumberParam(1, ide_whcenv);
 
-    await this.whatsappDB.dataSource.createQuery(query);
+    return await this.whatsappDB.dataSource.createQuery(query);
   }
 
   /**

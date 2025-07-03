@@ -28,6 +28,7 @@ import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { FILE_STORAGE_CONSTANTS } from '../sistema/files/file-temp.service';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 
 
 @Controller('whatsapp')
@@ -405,7 +406,6 @@ export class WhatsappController {
       ...headersParams,
       ...dtoIn
     });
-    // return { success: true };
   }
 
 
@@ -509,6 +509,30 @@ export class WhatsappController {
   ) {
     return this.whatsappCamp.deleteDetailCampaniaById(dtoIn.ide);
   }
+
+
+  @Post('updateEstadoCampania')
+  // @Auth()
+  updateEstadoCampania(
+    @AppHeaders() _headersParams: HeaderParamsDto,
+    @Body() dtoIn: UpdateEstadoCampaniaDto
+  ) {
+    return this.whatsappCamp.updateCampaignStatus(dtoIn.ide_whcenv,dtoIn.ide_whesce);
+  }
+  
+  
+  @Get('getCampaniaById')
+  // @Auth()
+  getCampaniaById(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: EnviarCampaniaDto
+  ) {
+    return this.whatsappDbService.getCampaniaById({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
 
 
 }

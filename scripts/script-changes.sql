@@ -864,14 +864,16 @@ CREATE TABLE wha_estado_camp_envio (
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
 );
-INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
-(1, 'PENDIENTE');
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce","color_whesce") VALUES
+(1, 'PENDIENTE', 'warning' );
 
-INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
-(2, 'PROCESANDO');
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce","color_whesce") VALUES
+(2, 'PROCESANDO', 'info');
 
-INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce") VALUES
-(3, 'ENVIADA');
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce","color_whesce") VALUES
+(3, 'ENVIADA', 'success');
+INSERT INTO "public"."wha_estado_camp_envio" ("ide_whesce", "nombre_whesce","color_whesce") VALUES
+(4, 'ANULADA', 'error');
 
 
 

@@ -65,4 +65,8 @@ export class SaveCampaniaDto {
   @IsBoolean()
   @IsOptional()
   limpia: boolean = true;
+
+  @IsBoolean()
+  @IsOptional()
+  isUpdate: boolean = false;
 }

@@ -755,7 +755,7 @@ export class WhatsappDbService {
             wha_tipo_camp_envio t ON cab.ide_whtice = t.ide_whtice
         INNER JOIN 
         wha_estado_camp_envio e ON cab.ide_whesce = e.ide_whesce
-        INNER JOIN 
+        LEFT JOIN 
             sis_usuario u ON cab.ide_usua = u.ide_usua
         INNER JOIN 
             wha_cuenta c ON cab.ide_whcue = c.ide_whcue
@@ -801,29 +801,71 @@ export class WhatsappDbService {
         ORDER BY
             d.hora_ingre`, dto);
         query.addParam(1, dto.ide_whcenv);
-        return await this.dataSource.createQuery(query);
+        return await this.dataSource.createSelectQuery(query);
     }
 
 
-    async getCampaniaEnvio(dto: EnviarCampaniaDto & HeaderParamsDto) {
+    async getCampaniaById(dto: EnviarCampaniaDto & HeaderParamsDto) {
+
         const query = new SelectQuery(`
-        SELECT
-            ide_whdenv,
-            telefono_whden,
-            ide_whesce,
-            mensaje_whcenv,
-            media_whcenv
-        FROM
-            wha_det_camp_envio d
-            LEFT JOIN wha_cab_camp_envio c on d.ide_whcenv = c.ide_whcenv            
-        WHERE
-            c.ide_whcenv = $1
-        AND id_mensaje_whden is NULL
-        AND tiene_whats_whden = true
-        ORDER BY d.hora_ingre
-    `);
+        SELECT 
+            cab.ide_whcenv, 
+            cab.hora_ingre AS fecha, 
+            cab.descripcion_whcenv, 
+            cab.mensaje_whcenv     ,   
+            nombre_whesce,
+            cab.activo_whcenv, 
+            t.nombre_whtice, 
+            u.nom_usua,                         
+            COUNT(det.ide_whdenv) AS total_detalle,
+            SUM(CASE WHEN det.id_mensaje_whden IS NOT NULL THEN 1 ELSE 0 END) AS total_enviados_exito,
+            cab.programado_whcenv, 
+            cab.hora_progra_whcenv, 
+            cab.ide_whesce,
+            color_whesce
+        FROM 
+            wha_cab_camp_envio cab 
+        LEFT JOIN 
+            wha_tipo_camp_envio t ON cab.ide_whtice = t.ide_whtice
+        INNER JOIN 
+        wha_estado_camp_envio e ON cab.ide_whesce = e.ide_whesce
+        LEFT JOIN 
+            sis_usuario u ON cab.ide_usua = u.ide_usua
+        INNER JOIN 
+            wha_cuenta c ON cab.ide_whcue = c.ide_whcue
+        LEFT JOIN 
+            wha_det_camp_envio det ON cab.ide_whcenv = det.ide_whcenv
+        WHERE 
+            cab.ide_whcenv = $1
+            AND c.ide_empr = $2
+            AND c.activo_whcue = TRUE
+        GROUP BY 
+            cab.ide_whcenv, 
+            cab.hora_ingre,
+            cab.descripcion_whcenv, 
+            cab.mensaje_whcenv,  
+            cab.programado_whcenv, 
+            cab.hora_progra_whcenv, 
+            cab.ide_whesce, 
+            nombre_whesce,
+            c.activo_whcue, 
+            t.nombre_whtice, 
+            color_whesce, 
+            u.nom_usua`);
         query.addParam(1, dto.ide_whcenv);
-        return await this.dataSource.createSelectQuery(query);
+        query.addParam(1, dto.ideEmpr);
+        const cabecera = await this.dataSource.createSingleQuery(query);
+
+        // if (isDefined( cabecera) === false) {
+        //     throw new BadRequestException(`La campaña de id ${dto.ide_whcenv} no existe`);
+        // }
+
+
+        const detalles = await this.getDetalleCampania(dto);
+        return {
+            cabecera : cabecera || undefined,
+            detalles : detalles || []
+        };
     }
 }
 

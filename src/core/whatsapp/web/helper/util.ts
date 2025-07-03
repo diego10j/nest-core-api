@@ -161,23 +161,40 @@ export function getMediaOptions(mediaMessage: UploadMediaDto): any {
 
 // --- Utility Methods --- //
 export function formatPhoneNumber(phoneNumber: string): string {
-    // Elimina todo excepto dígitos y "+"
-    const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+    try {
+        // Elimina todo excepto dígitos y "+"
+        const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+        
+        // Validación básica de longitud
+        if (cleaned.length < 9 || cleaned.length > 15) {
+            throw new Error('Longitud de número inválida');
+        }
 
-    // Si empieza con 0 (Ecuador), reemplaza por 593
-    if (cleaned.startsWith('0') && cleaned.length === 10) {
-        return `593${cleaned.substring(1)}@c.us`;
+        // Si empieza con 0 (Ecuador), reemplaza por 593
+        if (cleaned.startsWith('0') && cleaned.length === 10) {
+            return `593${cleaned.substring(1)}@c.us`;
+        }
+        // Si tiene código de país (+593 o 593), limpia el "+"
+        else if (cleaned.startsWith('+593') && cleaned.length === 13) {
+            return `593${cleaned.substring(4)}@c.us`;
+        }
+        else if (cleaned.startsWith('593') && cleaned.length === 12) {
+            return `${cleaned}@c.us`;
+        }
+        // Si es un número internacional (ej: +8698524444)
+        else if (cleaned.startsWith('+')) {
+            return `${cleaned.substring(1)}@c.us`;
+        }
+        // Si es un número sin código de país (asumimos Ecuador)
+        else if (/^\d{9,10}$/.test(cleaned)) {
+            return `593${cleaned.length === 10 ? cleaned.substring(1) : cleaned}@c.us`;
+        }
+        
+        throw new Error('Formato de número no soportado');
+    } catch (error) {
+        console.error('Error formatting phone number:', error);
+        throw new Error(`Invalid phone number format: ${phoneNumber}`);
     }
-    // Si tiene código de país (+593 o 593), limpia el "+"
-    else if (cleaned.startsWith('+593') || cleaned.startsWith('593')) {
-        return `${cleaned.replace('+', '')}@c.us`;
-    }
-    // Si es un número internacional (ej: +8698524444)
-    else if (cleaned.startsWith('+')) {
-        return `${cleaned.replace('+', '')}@c.us`;
-    }
-    // Si no cumple ningún formato esperado
-    throw new Error('Formato de número no soportado');
 }
 
 export function validateCoordinates(latitude: number, longitude: number): void {

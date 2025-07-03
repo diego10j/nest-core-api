@@ -14,14 +14,19 @@ export function validateUpdateConfigPrecio(dto: SaveConfigPrecioDto & HeaderPara
     }
 
     // Campos obligatorios para actualización
-    if (configData.ide_incpa === undefined || configData.ide_incpa === null) {
+    if (isDefined(configData.ide_incpa) === false) {
         errors.push('El ID de configuración (ide_incpa) es requerido para actualización');
     }
 
+    // Validación de campos requeridos para inserción
+    if (isDefined(configData.ide_inarti) === false) {
+        errors.push('El ID de artículo (ide_inarti) es requerido');
+    }
+
     // Validaciones específicas para actualización
-    if (configData.rangos_incpa) {
+    if (isDefined(configData.rangos_incpa)) {
         // Validaciones para configuración por rangos
-        if (configData.rango1_cant_incpa !== undefined && configData.rango1_cant_incpa < 0) {
+        if (isDefined(configData.rango1_cant_incpa) && configData.rango1_cant_incpa < 0) {
             errors.push('La cantidad mínima no puede ser negativa');
         }
 
@@ -37,22 +42,19 @@ export function validateUpdateConfigPrecio(dto: SaveConfigPrecioDto & HeaderPara
             configData.rango2_cant_incpa < configData.rango1_cant_incpa) {
             errors.push('La cantidad máxima debe ser mayor o igual que la cantidad mínima');
         }
-
-        if (configData.porcentaje_util_incpa !== undefined && configData.porcentaje_util_incpa < 0) {
+    }
+    if (isDefined(configData.porcentaje_util_incpa)) {
+        // Validaciones por porcentaje de utilidad
+        if (configData.porcentaje_util_incpa < 0) {
             errors.push('El porcentaje de utilidad no puede ser negativo');
         }
-
-        if (isDefined( configData.precio_fijo_incpa) ) {
-            errors.push('No se puede especificar precio fijo en una configuración por rangos');
-        }
-    } else {
+    }
+    else {
         // Validaciones para precio fijo
-        if (configData.precio_fijo_incpa !== undefined && configData.precio_fijo_incpa < 0) {
+        if (isDefined(configData.precio_fijo_incpa) === false) {
+            errors.push('El precio fijo es requerido para configuraciones sin rangos');
+        } else if (configData.precio_fijo_incpa < 0) {
             errors.push('El precio fijo no puede ser negativo');
-        }
-
-        if (configData.porcentaje_util_incpa !== undefined) {
-            errors.push('No se puede especificar porcentaje de utilidad en una configuración de precio fijo');
         }
     }
 
@@ -81,13 +83,13 @@ export function validateInsertConfigPrecio(data: SaveConfigPrecioDto & HeaderPar
     }
 
     // Validación de campos requeridos para inserción
-    if (configData.ide_inarti === undefined || configData.ide_inarti === null) {
+    if (isDefined(configData.ide_inarti) === false) {
         errors.push('El ID de artículo (ide_inarti) es requerido');
     }
 
     // Validación de rangos
     if (configData.rangos_incpa) {
-        if (configData.rango1_cant_incpa === undefined || configData.rango1_cant_incpa === null) {
+        if (isDefined(configData.rango1_cant_incpa) === false) {
             errors.push('La cantidad mínima es requerida para configuraciones por rango');
         } else if (configData.rango1_cant_incpa < 0) {
             errors.push('La cantidad mínima no puede ser negativa');
@@ -105,25 +107,21 @@ export function validateInsertConfigPrecio(data: SaveConfigPrecioDto & HeaderPar
                 errors.push('La cantidad máxima debe ser mayor o igual que la cantidad mínima');
             }
         }
+    }
 
-        if (configData.porcentaje_util_incpa === undefined || configData.porcentaje_util_incpa === null) {
-            errors.push('El porcentaje de utilidad es requerido para configuraciones por rango');
-        } else if (configData.porcentaje_util_incpa < 0) {
+    if (isDefined(configData.porcentaje_util_incpa)) {
+        // Validaciones por porcentaje de utilidad
+        if (configData.porcentaje_util_incpa < 0) {
             errors.push('El porcentaje de utilidad no puede ser negativo');
         }
-    } else {
-        if (configData.precio_fijo_incpa === undefined || configData.precio_fijo_incpa === null) {
+    }
+    else {
+        if (isDefined(configData.precio_fijo_incpa) === false) {
             errors.push('El precio fijo es requerido para configuraciones sin rangos');
         } else if (configData.precio_fijo_incpa < 0) {
             errors.push('El precio fijo no puede ser negativo');
         }
     }
-
-
-    if (!configData.rangos_incpa && configData.porcentaje_util_incpa !== undefined && configData.porcentaje_util_incpa !== null) {
-        errors.push('No se puede especificar porcentaje de utilidad en una configuración de precio fijo');
-    }
-
 
     // Validación de longitud para observaciones
     if (configData.observacion_incpa && configData.observacion_incpa.length > 200) {
