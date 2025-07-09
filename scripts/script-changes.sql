@@ -11,13 +11,13 @@ UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
 ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
-/**27/04/2023 Cambia de tipo bytea a string el logo de la empresa*/
+/**27/04/2023 aumenta path para logo de la empresa*/
 ALTER TABLE sis_empresa ADD COLUMN logotipo_empr varchar(120);
 
 
 /**15/08/2023 Campos tabla articulo*/
+ALTER TABLE inv_articulo ADD COLUMN activo_inarti BOOLEAN DEFAULT true;
 ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
-ALTER TABLE inv_articulo ADD COLUMN activo_inarti BOOLEAN;
 ALTER TABLE inv_articulo ADD COLUMN foto_inarti varchar(120);
 
 UPDATE inv_articulo SET  activo_inarti = true;
@@ -37,16 +37,17 @@ UPDATE inv_articulo SET  decim_stock_inarti = 3;  -- por defecto 3 decimales par
 CREATE TABLE inv_categoria  ( 
 	ide_incate  	integer NOT NULL,
 	nombre_incate	varchar(150) NULL,
+	prefijo_cod_incate 	varchar(4) NULL,
 	inv_ide_incate 	integer NULL,
 	activo_incate 	boolean NULL,
+	icono_incate 	varchar(80),
+	color_incate 	varchar(50),
 	ide_empr     	integer NULL,
 	ide_sucu     	integer NULL,
-	usuario_ingre	varchar(50) NULL,
-	fecha_ingre  	date NULL,
-	hora_ingre   	time(6) NULL,
-	usuario_actua	varchar(50) NULL,
-	fecha_actua  	date NULL,
-	hora_actua   	time(6) NULL,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
 	CONSTRAINT pk_inv_categoria PRIMARY KEY(ide_incate)
 );
 ALTER TABLE public.inv_categoria
@@ -74,18 +75,24 @@ ALTER TABLE public.inv_articulo
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT ;
 
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(1, 'MATERIA PRIMA', true, 0, 0);
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(2, 'FRAGANCIAS', true, 0, 0);
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(3, 'SABORIZANTES', true, 0, 0);
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(4, 'ENVASES', true, 0, 0);
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(5, 'MATERIAL DE LABORATORIO', true, 0, 0);
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu")
-VALUES(6, 'OTROS', true, 0, 0);
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(1, 'MATERIA PRIMA', true, 0, 0, 'MPR');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(2, 'FRAGANCIAS', true, 0, 0, 'FRA');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(3, 'SABORIZANTES', true, 0, 0, 'SAB');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(4, 'ENVASES', true, 0, 0, 'ENV');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(5, 'MATERIAL DE LABORATORIO', true, 0, 0,'MLA');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(6, 'OTROS', true, 0, 0,'OTR');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(7, 'ACEITES ESENCIALES', true, 0, 0,'AES');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(8, 'COLORANTES', true, 0, 0,'COL');
+INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
+VALUES(9, 'MOLDES', true, 0, 0,'MOL');
 
 /**27-11-2023**/
 ALTER TABLE gen_persona ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
@@ -124,12 +131,10 @@ CREATE TABLE "public"."sis_archivo" (
     "peso_arch" int4,
     "ide_empr" int2,
     "ide_sucu" int2,
-    "usuario_ingre" varchar(50),
-    "fecha_ingre" date,
-    "hora_ingre" time,
-    "usuario_actua" varchar(50),
-    "fecha_actua" date,
-    "hora_actua" time,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
     "sis_ide_arch" int4,
     "public_arch" bool,
     "favorita_arch" bool,
@@ -242,12 +247,10 @@ CREATE TABLE "public"."sis_calendario" (
     "todo_el_dia_cale" bool,
     "color_cale" varchar(50),
     "ide_usua" int4,
-    "usuario_ingre" varchar(50),
-    "fecha_ingre" date,
-    "hora_ingre" time,
-    "usuario_actua" varchar(50),
-    "fecha_actua" date,
-    "hora_actua" time,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP
     "ide_geper" int4,
     "ide_inarti" int4,
     "publico_cale" bool,
@@ -900,6 +903,7 @@ CREATE TABLE wha_cab_camp_envio (
 	ide_whesce  INT REFERENCES wha_estado_camp_envio(ide_whesce) ON DELETE SET NULL,  --estado
 	ide_whcue INT REFERENCES wha_cuenta(ide_whcue) ON DELETE SET NULL,  --cuenta whatsapp
 	ide_usua INT REFERENCES sis_usuario(ide_usua) ON DELETE SET NULL,   	
+	ide_geper INT REFERENCES gen_persona(ide_geper) ON DELETE SET NULL,    -- Asocia a una persona
 	descripcion_whcenv text,
 	mensaje_whcenv TEXT NOT NULL,  
 	media_whcenv VARCHAR(200),
@@ -1145,3 +1149,233 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
+
+-- Índices para la tabla inv_articulo (búsqueda de productos)
+CREATE INDEX idx_inv_articulo_empresa_activo ON inv_articulo(ide_empr, activo_inarti, ide_intpr, nivel_inarti);
+
+-- Índices para el cálculo de saldo (transacciones de inventario)
+CREATE INDEX idx_inv_det_comp_inve_articulo ON inv_det_comp_inve(ide_inarti);
+CREATE INDEX idx_inv_cab_comp_inve_estado_empresa ON inv_cab_comp_inve(ide_inepi, ide_empr);
+CREATE INDEX idx_inv_cab_comp_inve_tipo ON inv_cab_comp_inve(ide_intti);
+
+-- Índices para relaciones frecuentes
+CREATE INDEX idx_inv_articulo_categoria ON inv_articulo(ide_incate);
+CREATE INDEX idx_inv_articulo_unidad ON inv_articulo(ide_inuni);
+
+--- actualiza categorias de productos existentes
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) LIKE 'FRAG%'
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'FRA-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 2
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) LIKE 'SABO%'
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'SAB-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 3
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+	
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) LIKE 'ACEITE%' AND ide_inarti > 1800
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'AES-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 7
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) like 'GALO%'  OR  upper(nombre_inarti) like 'CANE%' OR upper(nombre_inarti) like 'TANQ%' OR upper(nombre_inarti) like 'FUND%' OR upper(nombre_inarti) like 'FRASC%' OR upper(nombre_inarti) like 'ENVAS%'
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'ENV-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 4
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) like 'COLO%'  OR  upper(nombre_inarti) like 'MICA%' 
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'COL-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 8
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			upper(nombre_inarti) like 'MOL%'  
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'MOL-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 9
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+	
+
+WITH
+	numbered_fragrances AS (
+		SELECT
+			ide_inarti,
+			ROW_NUMBER() OVER (
+				ORDER BY
+					ide_inarti
+			) AS row_num
+		FROM
+			inv_articulo
+		WHERE
+			hace_kardex_inarti = TRUE AND nivel_inarti = 'HIJO' and ide_incate IS NULL
+	)
+UPDATE inv_articulo a
+SET
+	cod_auto_inarti = 'MPR-' || LPAD(f.row_num::text, 6, '0'),
+	ide_incate = 1
+FROM
+	numbered_fragrances f
+WHERE
+	a.ide_inarti = f.ide_inarti;
+
+
+CREATE INDEX idx_inv_categoria_id ON inv_categoria(ide_incate);
+CREATE INDEX idx_inv_articulo_categoria_codigo ON inv_articulo(ide_incate, cod_auto_inarti) 
+WHERE cod_auto_inarti IS NOT NULL;
+CREATE INDEX idx_inv_articulo_codigo_pattern ON inv_articulo(ide_incate, cod_auto_inarti text_pattern_ops) 
+WHERE cod_auto_inarti LIKE '%-%';
+CREATE INDEX idx_inv_articulo_categoria_codigo_null ON inv_articulo(ide_incate) 
+WHERE cod_auto_inarti IS NULL;
+
+-- Para búsquedas por nombre de categoría
+CREATE INDEX idx_inv_categoria_nombre ON inv_categoria(nombre_incate);
+
+-- Para búsquedas por prefijo de categoría
+CREATE INDEX idx_inv_categoria_prefijo ON inv_categoria(prefijo_cod_incate) 
+WHERE prefijo_cod_incate IS NOT NULL;
+
+--
+ALTER TABLE "public"."gen_persona"
+ADD COLUMN "whatsapp_geper" varchar(15);
+
+ALTER TABLE "public"."gen_persona"
+ADD COLUMN "fecha_veri_what_geper" timestamp ,
+ADD COLUMN "ide_gepais" int4;
+ALTER TABLE "public"."gen_persona" ADD FOREIGN KEY ("ide_gepais") REFERENCES "public"."gen_pais" ("ide_gepais");
+
+CREATE INDEX idx_gen_persona_whatsapp_geper
+ON gen_persona (whatsapp_geper);
+CREATE INDEX idx_wha_det_camp_envio_telefono_whden
+ON wha_det_camp_envio (telefono_whden);
+
+
+CREATE TABLE "public"."sis_moneda" (
+    "ide_mone" int4,
+    "nombre_mone" varchar(80),
+    "simbolo_arch" varchar(10),
+	"activo_arch" bool,
+	"ide_gepais" int4,
+    "ide_empr" int2,
+    "ide_sucu" int2,
+    usuario_ingre varchar(50),
+    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_actua varchar(50),
+    hora_actua TIMESTAMP,
+    CONSTRAINT pk_sis_moneda PRIMARY KEY(ide_mone)
+);
+ALTER TABLE "public"."sis_moneda" ADD FOREIGN KEY ("ide_gepais") REFERENCES "public"."gen_pais" ("ide_gepais");
+
+INSERT INTO "public"."sis_moneda" ("ide_mone", "nombre_mone", "simbolo_arch", "activo_arch", "ide_gepais", "ide_empr", "ide_sucu") VALUES
+(1, 'DOLARES AMERICANOS', 'USD', 'true', 1, 0, 2);

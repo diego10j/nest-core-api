@@ -12,10 +12,12 @@ import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
 import { ProformasController } from './proformas/proformas.controller';
 import { ProformasService } from './proformas/proformas.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
-    imports: [ErrorsModule],
+    imports: [ErrorsModule,WhatsappModule],
     controllers: [ClientesController, FacturasController, PuntoVentaController, ProformasController],
-    providers: [DataSourceService, ClientesService, AuditService, CoreService, FacturasService, PuntoVentaService, ProformasService]
+    providers: [DataSourceService, ClientesService, AuditService, CoreService, FacturasService, PuntoVentaService, ProformasService, WhatsappService]
 })
 export class VentasModule { }

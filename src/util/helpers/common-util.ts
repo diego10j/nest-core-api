@@ -38,3 +38,16 @@ export function validateDataRequiere(data: any, columns: string[]): string[] {
     });
     return errors;
 }
+
+
+/**
+ * Extrae el mensaje de error de un objeto Error o cualquier valor lanzado
+ * @param error
+ * @returns Mensaje de error formateado
+ */
+ export function extractErrorMessage(error: unknown): string {
+    if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
+      return (error as any).message;
+    }
+    return 'Ocurrió un error inesperado';
+  }

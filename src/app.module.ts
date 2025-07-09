@@ -11,6 +11,7 @@ import { CoreModule } from './core/core.module';
 import { AuthModule } from './core/auth/auth.module';
 import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
+import { WhatsappModule } from './core/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     CoreModule,
     ErrorsModule,
+    WhatsappModule,
     RedisModule,
   ],
 })

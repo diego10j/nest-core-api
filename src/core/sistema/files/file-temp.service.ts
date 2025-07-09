@@ -19,8 +19,8 @@ const constants = fs.constants;
 export const FILE_STORAGE_CONSTANTS = {
     BASE_PATH: PATH_DRIVE(),
     TEMP_DIR: path.join(PATH_DRIVE(), 'temp_media'),  
-    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
-    LARGE_FILE_THRESHOLD :10 * 1024 * 1024 // 10MB
+    MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+    LARGE_FILE_THRESHOLD :50 * 1024 * 1024 // 50MB
 } as const;
 
 

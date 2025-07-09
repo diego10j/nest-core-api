@@ -197,7 +197,17 @@ export class ProductosService extends BaseService {
             a.otro_nombre_inarti,
             a.ide_incate,
             u.siglas_inuni,
-            a.decim_stock_inarti
+            a.decim_stock_inarti,
+            COALESCE((
+                SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+                FROM inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                WHERE dci.ide_inarti = a.ide_inarti
+                AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                AND cci.ide_empr = ${dto.ideEmpr}
+            ), 0) AS saldo
         FROM
             inv_articulo a
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni

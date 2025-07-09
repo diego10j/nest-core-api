@@ -10,6 +10,7 @@ import { SearchDto } from 'src/common/dto/search.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
@@ -194,5 +195,18 @@ export class ClientesController {
   });
   }
 
+
+
+  @Get('validarWhatsAppCliente')
+  // @Auth()
+  validarWhatsAppCliente(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ValidaWhatsAppCliente
+  ) {
+    return this.service.validarWhatsAppCliente({
+      ...headersParams,
+      ...dtoIn
+  });
+  }
 
 }

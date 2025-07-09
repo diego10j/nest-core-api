@@ -181,7 +181,8 @@ export class BodegasService extends BaseService {
             ARTICULO.nombre_inarti,
             nombre_incate,
             ARTICULO.codigo_inarti,
-            COALESCE(existencia_cte.existencia, 0) AS existencia,
+            ARTICULO.decim_stock_inarti,
+            COALESCE(f_redondeo(existencia_cte.existencia, ARTICULO.decim_stock_inarti) , 0) AS saldo,
             UNIDAD.siglas_inuni,            
             -- Calcular detalle_stock
             CASE
@@ -219,7 +220,7 @@ export class BodegasService extends BaseService {
             AND activo_inarti = true
             ${conditionStock} -- Filtro de existencia mayor a 0
         ORDER BY
-            nombre_incate, ARTICULO.nombre_inarti;
+            nombre_incate, ARTICULO.nombre_inarti
         `, dtoIn);
 
         query.addParam(1, fechaCorte);

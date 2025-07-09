@@ -799,7 +799,7 @@ export class WhatsappDbService {
         WHERE
             ide_whcenv = $1
         ORDER BY
-            d.hora_ingre`, dto);
+            d.ide_whdenv`, dto);
         query.addParam(1, dto.ide_whcenv);
         return await this.dataSource.createSelectQuery(query);
     }
@@ -822,7 +822,9 @@ export class WhatsappDbService {
             cab.programado_whcenv, 
             cab.hora_progra_whcenv, 
             cab.ide_whesce,
-            color_whesce
+            color_whesce,
+            cab.ide_whtice,
+            cab.media_whcenv
         FROM 
             wha_cab_camp_envio cab 
         LEFT JOIN 
@@ -867,6 +869,17 @@ export class WhatsappDbService {
             detalles : detalles || []
         };
     }
+
+    
+    async isTelefonoWhatsAppValidado(telefono:string) {
+        const query = new SelectQuery(`
+        SELECT f_existe_telefono_whatsapp($1) AS existe`);
+        query.addParam(1, telefono);
+        const res= await this.dataSource.createSingleQuery(query);
+        return res.existe === true;
+    }
+
+
 }
 
 

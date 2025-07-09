@@ -1,4 +1,4 @@
-import { getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
+import { getCurrentDateTime, getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { SelectQuery } from '../../connection/helpers/select-query';
@@ -17,13 +17,23 @@ import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { UpdateQuery } from 'src/core/connection/helpers';
+import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
+import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
+
+
+const CLIENTE = {
+    tableName: 'gen_persona',
+    primaryKey: 'ide_geper',
+};
 
 @Injectable()
 export class ClientesService extends BaseService {
 
 
     constructor(private readonly dataSource: DataSourceService,
-        private readonly core: CoreService
+        private readonly core: CoreService,
+        private readonly whatsapp: WhatsappService
     ) {
         super();
         // obtiene las variables del sistema para el servicio
@@ -843,12 +853,56 @@ export class ClientesService extends BaseService {
         query.addIntParam(1, dto.ideEmpr);
         const data = await this.dataSource.createSingleQuery(query);
         return {
-            rowCount: data ? 1:0,
+            rowCount: data ? 1 : 0,
             row: {
                 cliente: data,
             },
-            message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado`:'',
+            message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : '',
         } as ResultQuery
     }
+
+
+    async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
+        try {
+            // Validar si el número tiene WhatsApp
+            const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
+    
+            if (!validation?.isValid) {
+                return {
+                    error: true,
+                    message: 'El número proporcionado no está asociado a una cuenta de WhatsApp válida.',
+                };
+            }
+    
+            // Usar el número formateado si está disponible
+            dto.telefono = validation.formattedNumber || dto.telefono;
+    
+            // Actualizar datos del cliente
+            await this.updateWhatsAppCliente(dto);
+    
+            return {
+                error: false,
+                message: 'El número fue validado y actualizado correctamente.',
+            };
+        } catch (error) {
+            console.error('Error al validar el número de WhatsApp:', error);
+            return {
+                error: true,
+                message: 'Ocurrió un error al validar el número de WhatsApp. Intente nuevamente más tarde.',
+            };
+        }
+    }
+    
+
+
+    private async updateWhatsAppCliente(dto: ValidaWhatsAppCliente ) {
+        const query = new UpdateQuery(CLIENTE.tableName, CLIENTE.primaryKey);
+        query.values.set('whatsapp_geper', dto.telefono);
+        query.values.set('fecha_veri_what_geper', getCurrentDateTime());
+        query.where = 'ide_geper = $1';
+        query.addNumberParam(1, dto.ide_geper);
+        await this.dataSource.createQuery(query);
+    }
+
 
 }

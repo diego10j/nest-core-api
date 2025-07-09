@@ -658,27 +658,49 @@ export class WhatsappWebService implements OnModuleInit {
         ideEmpr: number, 
         phoneNumber: string
     ): Promise<{ isValid: boolean; formattedNumber?: string; error?: string }> {
-        const instance = await this.getClientInstance(`${ideEmpr}`);
-        
         try {
-            // Formatea el número (elimina caracteres no numéricos y añade código de país si es necesario)
-            const formattedNumber = formatPhoneNumber(phoneNumber); // Asume que tienes esta función
+            const instance = await this.getClientInstance(`${ideEmpr}`);
             
-            // Verifica si el número está registrado en WhatsApp
+            // Formatea el número de manera segura
+            const formattedNumber = formatPhoneNumber(phoneNumber);
+            if (!formattedNumber) {
+                return {
+                    isValid: false,
+                    error: "Número de teléfono no válido"
+                };
+            }
+    
+            // Extrae la parte del número antes del @ de manera segura
+            const atIndex = formattedNumber.indexOf('@');
+            const tmpFormattedNumber = atIndex === -1 
+                ? formattedNumber 
+                : formattedNumber.substring(0, atIndex);
+    
+            // Verifica si el número ya fue validado previamente
+            const prevValid = await this.whatsappDb.isTelefonoWhatsAppValidado(tmpFormattedNumber);
+            if (prevValid) {
+                return {
+                    isValid: true,
+                    formattedNumber: tmpFormattedNumber
+                };
+            }
+    
+            // Si no está previamente validado, verificar con WhatsApp
             const numberId = await instance.client.getNumberId(formattedNumber);
             
             if (numberId) {
                 return {
                     isValid: true,
-                    formattedNumber: numberId._serialized,
-                };
-            } else {
-                return {
-                    isValid: false,
-                    formattedNumber,
-                    error: "El número no está registrado en WhatsApp.",
+                    formattedNumber: numberId.user
                 };
             }
+    
+            return {
+                isValid: false,
+                formattedNumber: tmpFormattedNumber,
+                error: "El número no está registrado en WhatsApp"
+            };
+    
         } catch (error) {
             this.logger.error(
                 `Error al validar número ${phoneNumber} para empresa ${ideEmpr}:`,
@@ -687,11 +709,10 @@ export class WhatsappWebService implements OnModuleInit {
             
             return {
                 isValid: false,
-                error: "Error al validar el número. Por favor, inténtalo de nuevo.",
+                error: error instanceof Error ? error.message : "Error al validar el número"
             };
         }
     }
-
 
     onEvent(ideEmpr: string, event: WhatsAppEvent, listener: (data: any) => void) {
         if (!this.clients.has(ideEmpr)) {

@@ -17,6 +17,6 @@ import { WhatsappCampaniaService } from './whatsapp-camp.service';
   imports: [ErrorsModule, HttpModule],
   controllers: [WhatsappController, WebhookController],
   providers: [DataSourceService, WhatsappApiService, WhatsappGateway, WhatsappWebService, WhatsappDbService,WhatsappService,FileTempService, WhatsappCampaniaService],
-  exports: [WhatsappService],
+  exports: [WhatsappApiService, WhatsappGateway, WhatsappWebService, WhatsappDbService,WhatsappService,FileTempService, WhatsappCampaniaService],
 })
 export class WhatsappModule { }

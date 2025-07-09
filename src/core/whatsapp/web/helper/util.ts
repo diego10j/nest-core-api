@@ -160,36 +160,46 @@ export function getMediaOptions(mediaMessage: UploadMediaDto): any {
 
 
 // --- Utility Methods --- //
-export function formatPhoneNumber(phoneNumber: string): string {
+export function formatPhoneNumber(
+    phoneNumber: string,
+    defaultCountryCode: string = "593" // Código predeterminado (Ecuador)
+): string {
     try {
         // Elimina todo excepto dígitos y "+"
         const cleaned = phoneNumber.replace(/[^\d+]/g, '');
-        
+
         // Validación básica de longitud
-        if (cleaned.length < 9 || cleaned.length > 15) {
-            throw new Error('Longitud de número inválida');
+        if (cleaned.length < 7 || cleaned.length > 15) {
+            throw new Error('Longitud de número inválida (debe tener entre 7 y 15 dígitos)');
         }
 
-        // Si empieza con 0 (Ecuador), reemplaza por 593
-        if (cleaned.startsWith('0') && cleaned.length === 10) {
-            return `593${cleaned.substring(1)}@c.us`;
+        // Si empieza con + (número internacional)
+        if (cleaned.startsWith('+')) {
+            const countryCode = cleaned.substring(1);
+            if (!/^\d+$/.test(countryCode)) {
+                throw new Error('Formato internacional inválido');
+            }
+            return `${countryCode}@c.us`;
         }
-        // Si tiene código de país (+593 o 593), limpia el "+"
-        else if (cleaned.startsWith('+593') && cleaned.length === 13) {
-            return `593${cleaned.substring(4)}@c.us`;
+        // Si empieza con 00 (formato internacional alternativo)
+        else if (cleaned.startsWith('00')) {
+            const countryCode = cleaned.substring(2);
+            if (!/^\d+$/.test(countryCode)) {
+                throw new Error('Formato internacional inválido');
+            }
+            return `${countryCode}@c.us`;
         }
-        else if (cleaned.startsWith('593') && cleaned.length === 12) {
+        // Si es un número con código de país incluido (sin + o 00)
+        else if (/^[1-9]\d{4,14}$/.test(cleaned)) {
             return `${cleaned}@c.us`;
         }
-        // Si es un número internacional (ej: +8698524444)
-        else if (cleaned.startsWith('+')) {
-            return `${cleaned.substring(1)}@c.us`;
+        // Si es un número local (sin código de país), aplicamos el código predeterminado
+        else if (/^\d{7,10}$/.test(cleaned)) {
+            // Elimina el 0 inicial si es un número de 10 dígitos (ej: 0987654321 → 987654321)
+            const localNumber = cleaned.length === 10 ? cleaned.substring(1) : cleaned;
+            return `${defaultCountryCode}${localNumber}@c.us`;
         }
-        // Si es un número sin código de país (asumimos Ecuador)
-        else if (/^\d{9,10}$/.test(cleaned)) {
-            return `593${cleaned.length === 10 ? cleaned.substring(1) : cleaned}@c.us`;
-        }
-        
+
         throw new Error('Formato de número no soportado');
     } catch (error) {
         console.error('Error formatting phone number:', error);

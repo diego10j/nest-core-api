@@ -17,8 +17,30 @@ CREATE TABLE gen_pais (
 	CONSTRAINT "pk_gen_pais" PRIMARY KEY(ide_gepais)
 );
 
-INSERT INTO "public"."gen_pais" ("ide_gepais", "nombre_gepais", "abreviatura_gepais", "codigo_gepais", "nacionalidad_gepais", "continente_gepais", "cod_movil_gepais", "activo_gepais", "usuario_ingre", "hora_ingre") VALUES
-(1, 'Ecuador', 'ECU', 'EC', 'Ecuatoriana', 'AME', '+593', 'true', 'sa',CURRENT_TIMESTAMP);
+INSERT INTO "public"."gen_pais" (
+    "ide_gepais", "nombre_gepais", "abreviatura_gepais", "codigo_gepais", 
+    "nacionalidad_gepais", "continente_gepais", "cod_movil_gepais", 
+    "activo_gepais", "usuario_ingre", "hora_ingre"
+) VALUES
+(1, 'Ecuador', 'ECU', 'EC', 'Ecuatoriana', 'AME', '+593', true, 'sa', CURRENT_TIMESTAMP),
+(2, 'Colombia', 'COL', 'CO', 'Colombiana', 'AME', '+57', true, 'sa', CURRENT_TIMESTAMP),
+(3, 'Perú', 'PER', 'PE', 'Peruana', 'AME', '+51', true, 'sa', CURRENT_TIMESTAMP),
+(4, 'Chile', 'CHL', 'CL', 'Chilena', 'AME', '+56', true, 'sa', CURRENT_TIMESTAMP),
+(5, 'Argentina', 'ARG', 'AR', 'Argentina', 'AME', '+54', true, 'sa', CURRENT_TIMESTAMP),
+(6, 'Brasil', 'BRA', 'BR', 'Brasileña', 'AME', '+55', true, 'sa', CURRENT_TIMESTAMP),
+(7, 'México', 'MEX', 'MX', 'Mexicana', 'AME', '+52', true, 'sa', CURRENT_TIMESTAMP),
+(8, 'Estados Unidos', 'USA', 'US', 'Estadounidense', 'AME', '+1', true, 'sa', CURRENT_TIMESTAMP),
+(9, 'España', 'ESP', 'ES', 'Española', 'EUR', '+34', true, 'sa', CURRENT_TIMESTAMP),
+(10, 'Alemania', 'DEU', 'DE', 'Alemana', 'EUR', '+49', true, 'sa', CURRENT_TIMESTAMP),
+(11, 'Francia', 'FRA', 'FR', 'Francesa', 'EUR', '+33', true, 'sa', CURRENT_TIMESTAMP),
+(12, 'Italia', 'ITA', 'IT', 'Italiana', 'EUR', '+39', true, 'sa', CURRENT_TIMESTAMP),
+(13, 'Reino Unido', 'GBR', 'GB', 'Británica', 'EUR', '+44', true, 'sa', CURRENT_TIMESTAMP),
+(14, 'China', 'CHN', 'CN', 'China', 'ASI', '+86', true, 'sa', CURRENT_TIMESTAMP),
+(15, 'Japón', 'JPN', 'JP', 'Japonesa', 'ASI', '+81', true, 'sa', CURRENT_TIMESTAMP),
+(16, 'India', 'IND', 'IN', 'India', 'ASI', '+91', true, 'sa', CURRENT_TIMESTAMP),
+(17, 'Australia', 'AUS', 'AU', 'Australiana', 'OCE', '+61', true, 'sa', CURRENT_TIMESTAMP),
+(18, 'Canadá', 'CAN', 'CA', 'Canadiense', 'AME', '+1', true, 'sa', CURRENT_TIMESTAMP);
+
 
 
 CREATE TABLE gen_provincia (
