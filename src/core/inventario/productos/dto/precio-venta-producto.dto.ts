@@ -4,7 +4,6 @@ import { IsInt, IsOptional, IsPositive } from 'class-validator';
 export class PrecioVentaProductoDto {
 
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     @IsInt()

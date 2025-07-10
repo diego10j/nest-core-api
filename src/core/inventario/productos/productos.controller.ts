@@ -23,6 +23,8 @@ import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { ConfigPreciosProductosService } from './config-precios.service';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
+import { GetProductoDto } from './dto/get-productos.dto';
+import { SaveProductoDto } from './dto/save-producto.dto';
 
 
 
@@ -50,7 +52,7 @@ export class ProductosController {
   // @Auth()
   getProductos(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
+    @Query() dtoIn: GetProductoDto
   ) {
     return this.productos.getProductos({
       ...headersParams,
@@ -62,7 +64,7 @@ export class ProductosController {
   // @Auth()
   getAllProductos(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
+    @Query() dtoIn: GetProductoDto
   ) {
     return this.productos.getAllProductos({
       ...headersParams,
@@ -404,6 +406,19 @@ export class ProductosController {
     });
   }
 
+  @Post('saveProducto')
+  // @Auth()
+  saveProducto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: SaveProductoDto
+  ) {
+    return this.productos.saveProducto({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+  
+
   // =========================================CONFIGURACION DE PRECIOS
 
   @Get('getPrecioVentaProducto')
@@ -492,5 +507,7 @@ export class ProductosController {
       ...dtoIn
     });
   }
+
+
 
 }

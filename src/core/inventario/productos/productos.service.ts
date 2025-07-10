@@ -16,13 +16,18 @@ import { fNumber } from 'src/util/helpers/number-util';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CoreService } from 'src/core/core.service';
 import { CategoriasDto } from './dto/categorias.dto';
-import { isDefined } from 'src/util/helpers/common-util';
+import { isDefined, validateDataRequiere } from 'src/util/helpers/common-util';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaldoProducto } from './interfaces/productos';
 import { getYear } from 'date-fns';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { normalizeString } from 'src/util/helpers/sql-util';
+import { GetProductoDto } from './dto/get-productos.dto';
+import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
+import { InsertQuery, Query } from 'src/core/connection/helpers';
+import { ObjectQueryDto } from 'src/core/connection/dto';
+
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -107,14 +112,14 @@ export class ProductosService extends BaseService {
     * Retorna el listado de Productos
     * @returns 
     */
-    async getProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
         const query = this.getQueryProductos(dtoIn);
         return await this.dataSource.createQuery(query);
     }
 
 
 
-    async getAllProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getAllProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
         const query = this.getQueryProductos(dtoIn);
         query.setLazy(false);
         return await this.dataSource.createSelectQuery(query);
@@ -122,7 +127,8 @@ export class ProductosService extends BaseService {
 
 
 
-    private getQueryProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    private getQueryProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
+        const activeClause = dtoIn.activos ? 'and activo_inarti = true' : '';
         const query = new SelectQuery(`
         SELECT
             a.ide_inarti,
@@ -145,9 +151,9 @@ export class ProductosService extends BaseService {
             a.ide_intpr = 1 -- solo productos
             AND a.nivel_inarti = 'HIJO'
             AND a.ide_empr = ${dtoIn.ideEmpr}
-            and activo_inarti = true
+            ${activeClause}
         ORDER BY
-            a.nombre_inarti
+            unaccent(a.nombre_inarti)
         `, dtoIn);
         return query;
     }
@@ -172,7 +178,7 @@ export class ProductosService extends BaseService {
             AND activo_inarti = TRUE
             -- AND a.ide_incate IS NULL
         ORDER BY
-            nombre_inarti
+            unaccent(nombre_inarti)
         `, dtoIn);
 
         return await this.dataSource.createSelectQuery(query);
@@ -223,7 +229,7 @@ export class ProductosService extends BaseService {
                 OR regexp_replace(unaccent(LOWER(a.codigo_inarti)), '[^a-z0-9]', '', 'g') LIKE $3
             )
         ORDER BY
-            a.nombre_inarti
+             unaccent(a.nombre_inarti)
         LIMIT ${dto.limit}
     `, dto);
 
@@ -1925,4 +1931,142 @@ export class ProductosService extends BaseService {
         return await this.dataSource.createSelectQuery(query);
     }
 
+
+    /**
+   * Guarda una producto nueva o actualiza uno existente
+   */
+    async saveProducto(dtoIn: SaveProductoDto & HeaderParamsDto) {
+        if (dtoIn.isUpdate === true) {
+            // Actualiza 
+            const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid) {
+                const ide_inarti = dtoIn.data.ide_inarti;
+                // delete dtoIn.data.ide_inarti;
+                // delete dtoIn.data.uuid;
+                const objQuery = {
+                    operation: "update",
+                    module: "inv",
+                    tableName: "articulo",
+                    primaryKey: "ide_inarti",
+                    object: dtoIn.data,
+                    condition: `ide_inarti = ${ide_inarti}`
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: false
+                });
+            }
+
+        }
+        else {
+            // Inserta 
+            const isValid = await this.validateCreateProducto(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid === true) {
+                const objQuery = {
+                    operation: "insert",
+                    module: "inv",
+                    tableName: "articulo",
+                    primaryKey: "ide_inarti",
+                    object: dtoIn.data,
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn, listQuery: [objQuery], audit: true
+                });
+            }
+        }
+
+    }
+
+    private async validateCreateProducto(data: InvArticulo, ideEmpr: number) {
+
+        const colReq = ['ide_inarti', 'nombre_inarti', 'nivel_inarti', 'activo_inarti', 'ide_incate', 'ide_intpr'];
+
+        const resColReq = validateDataRequiere(data, colReq);
+
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
+
+        // validar que el nombre del producto no exista
+        const queryClie = new SelectQuery(`
+        select
+            1
+        from
+            inv_articulo
+        where
+            nombre_inarti = $1
+        and ide_empr = $2
+        `);
+        queryClie.addParam(1, data.nombre_inarti);
+        queryClie.addParam(2, ideEmpr);
+        const resClie = await this.dataSource.createSelectQuery(queryClie);
+        console.log(resClie);
+        if (resClie.length > 0) {
+            throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
+        }
+
+        return true;
+    }
+
+    private async validateUpdateProducto(data: InvArticulo, ideEmpr: number) {
+
+        const colReq = ['ide_inarti'];
+
+        const resColReq = validateDataRequiere(data, colReq);
+
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
+
+        // Validar que venga al menos un campo además del ID
+        const providedFields = Object.keys(data).filter(key => key !== 'ide_inarti' && data[key] !== undefined && data[key] !== null);
+        if (providedFields.length === 0) {
+            throw new BadRequestException('Debe proporcionar al menos un campo para actualizar además del ID');
+        }
+
+        // validar que el cliente exista
+        const queryClieE = new SelectQuery(`
+        select
+            1
+        from
+            inv_articulo
+        where
+            ide_inarti = $1
+        and ide_empr = $2
+        `);
+        queryClieE.addParam(1, data.ide_inarti);
+        queryClieE.addParam(2, ideEmpr);
+
+        const resClieE = await this.dataSource.createSelectQuery(queryClieE);
+        if (resClieE.length === 0) {
+            throw new BadRequestException(`El producto ${data.ide_inarti} no existe`);
+        }
+
+        if (isDefined(data.nombre_inarti)) {
+
+            // validar que el nombre del producto no exista
+            const queryClie = new SelectQuery(`
+            select
+                1
+            from
+                inv_articulo
+            where
+            nombre_inarti = $1
+            and ide_empr = $2
+            and ide_inarti != $3
+            `);
+            queryClie.addParam(1, data.nombre_inarti);
+            queryClie.addParam(2, ideEmpr);
+            queryClie.addParam(3, data.ide_inarti);
+            const resClie = await this.dataSource.createSelectQuery(queryClie);
+            console.log(resClie);
+            if (resClie.length > 0) {
+                throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
+            }
+
+        }
+
+
+
+        return true;
+    }
 }

@@ -13,7 +13,7 @@ import { DeleteFilesDto } from './dto/delete-files.dto';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { RenameFileDto } from './dto/rename-file.dto';
-import { toDate, FORMAT_DATETIME_DB } from 'src/util/helpers/date-util';
+import { toDate, FORMAT_DATETIME_DB, getCurrentDateTime } from 'src/util/helpers/date-util';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -68,7 +68,7 @@ export class FilesService {
 
         const conditions = [
             { condition: 'public_arch = TRUE', mode: ['files', 'favorites'] },
-            { condition: 'public_arch = FALSE', mode: ['trash'] },
+            { condition: 'papelera_arch = TRUE', mode: ['trash'] },
             { condition: 'favorita_arch = TRUE', mode: ['favorites'] },
             { condition: isDefined(ide_archi) ? `a.sis_ide_arch = ${ide_archi}` : 'a.sis_ide_arch IS NULL', mode: ['files'] },
             { condition: isDefined(ide_inarti) ? `a.ide_inarti = ${ide_inarti}` : 'a.ide_inarti IS NULL', mode: ['files', 'favorites', 'trash'] }
@@ -257,7 +257,8 @@ export class FilesService {
         else {
 
             const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
-            updateQuery.values.set("public_arch", false);
+            updateQuery.values.set("papelera_arch", true);
+            updateQuery.values.set("hora_papelera_arch", getCurrentDateTime());
             updateQuery.where = `uuid = ANY($1)`;
             updateQuery.addParam(1, dto.values);
             await this.dataSource.createQuery(updateQuery)
@@ -411,7 +412,7 @@ export class FilesService {
     async _checkExistFile(name: string, sis_ide_arch?: number,): Promise<boolean> {
 
         const whereClause = `
-            WHERE nombre_arch = $1
+            WHERE nombre_arch = $1 and papelera_arch = false
             ${isDefined(sis_ide_arch) ? 'AND sis_ide_arch = $2' : 'AND sis_ide_arch IS NULL'}
         `;
 

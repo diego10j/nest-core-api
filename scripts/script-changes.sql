@@ -136,9 +136,11 @@ CREATE TABLE "public"."sis_archivo" (
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
     "sis_ide_arch" int4,
-    "public_arch" bool,
+    "public_arch" bool DEFAULT true,
     "favorita_arch" bool,
     "descargable_arch" bool,
+	"papelera_arch" bool DEFAULT false,
+	 hora_papelera_arch TIMESTAMP 
     "comentario_arch" bool,
     "type_arch" varchar(150),
 	"extension_arch" varchar(50),

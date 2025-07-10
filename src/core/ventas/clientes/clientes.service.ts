@@ -723,7 +723,7 @@ export class ClientesService extends BaseService {
         queryClie.addParam(3, data.ide_geper);
         const resClie = await this.dataSource.createSelectQuery(queryClie);
         if (resClie.length > 0) {
-            throw new BadRequestException(`Otro cliente ya existe con el néumro de identificación ${data.identificac_geper}`);
+            throw new BadRequestException(`Otro cliente ya existe con el número de identificación ${data.identificac_geper}`);
         }
 
 
