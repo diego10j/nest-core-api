@@ -15,6 +15,7 @@ import { GptModule } from './gpt/gpt.module';
 import { SriModule } from './sri/sri.module';
 import { IntegrationModule } from './integration/integration.module';
 import { ContabilidadModule } from './contabilidad/contabilidad.module';
+
 @Module({
   imports: [ErrorsModule, AuditModule, WhatsappModule, ChartsModule,
     InventarioModule, SistemaModule, VentasModule, GptModule, SriModule, IntegrationModule, ContabilidadModule],

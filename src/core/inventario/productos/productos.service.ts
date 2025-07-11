@@ -1936,6 +1936,9 @@ export class ProductosService extends BaseService {
    * Guarda una producto nueva o actualiza uno existente
    */
     async saveProducto(dtoIn: SaveProductoDto & HeaderParamsDto) {
+        const module = "inv";
+        const tableName= "articulo";
+        const primaryKey= "ide_inarti";
         if (dtoIn.isUpdate === true) {
             // Actualiza 
             const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);
@@ -1945,9 +1948,9 @@ export class ProductosService extends BaseService {
                 // delete dtoIn.data.uuid;
                 const objQuery = {
                     operation: "update",
-                    module: "inv",
-                    tableName: "articulo",
-                    primaryKey: "ide_inarti",
+                    module,
+                    tableName,
+                    primaryKey,
                     object: dtoIn.data,
                     condition: `ide_inarti = ${ide_inarti}`
                 } as ObjectQueryDto;
@@ -1963,9 +1966,9 @@ export class ProductosService extends BaseService {
             if (isValid === true) {
                 const objQuery = {
                     operation: "insert",
-                    module: "inv",
-                    tableName: "articulo",
-                    primaryKey: "ide_inarti",
+                    module,
+                    tableName,
+                    primaryKey,
                     object: dtoIn.data,
                 } as ObjectQueryDto;
                 return await this.core.save({

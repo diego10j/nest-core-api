@@ -36,17 +36,7 @@ export class ConfigPreciosProductosService extends BaseService {
     async getPrecioVentaProducto(dtoIn: PrecioVentaProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
-            precio_ultima_compra,
-            fecha_ultima_compra,
-            porcentaje_utilidad,
-            cantidad,
-            precio_venta_sin_iva,
-            porcentaje_iva,
-            precio_venta_con_iva,
-            valor_total_con_iva,
-            utilidad,
-            rango_aplicado,
-            forma_pago_config,
+            a.*,
             nombre_cncfp,
             nombre_cndfp,
             dias_cndfp

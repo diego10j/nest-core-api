@@ -959,6 +959,12 @@ CREATE INDEX IF NOT EXISTS idx_inv_articulo_unidad ON inv_articulo(ide_inarti, i
 ALTER TABLE "public"."cxc_cabece_proforma"
 ADD COLUMN "ide_geper" int4;
 
+ALTER TABLE "public"."cxc_cabece_proforma"
+ADD COLUMN "fecha_abre_cccpr" timestamp;
+
+ALTER TABLE "public"."cxc_cabece_proforma"
+ADD COLUMN "usuario_abre_cccpr" varchar(80);
+
 ALTER TABLE public.cxc_cabece_proforma
 	ADD CONSTRAINT cxc_cabece_proforma_ide_geper_fkey
 	FOREIGN KEY(ide_geper)

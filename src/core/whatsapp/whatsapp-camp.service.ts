@@ -60,7 +60,6 @@ export class WhatsappCampaniaService {
     // Procesar detalles
     const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length, dtoIn.login);
     await this.processDetails(dtoIn, seqCabecera, detallesIds, listQuery);
-
     const resultMessage = await this.whatsappDB.dataSource.createListQuery(listQuery);
 
     return {
