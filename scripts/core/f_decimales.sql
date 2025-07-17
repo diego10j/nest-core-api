@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION f_decimales(
     p_numero numeric,
-    p_decimales integer DEFAULT 3
+    p_decimales integer DEFAULT 2
 ) RETURNS text AS $$
 DECLARE
     v_texto text;

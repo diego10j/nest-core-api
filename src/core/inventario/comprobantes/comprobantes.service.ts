@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from '../../connection/datasource.service';
 import { BaseService } from '../../../common/base-service';
 import { SelectQuery } from '../../connection/helpers/select-query';
@@ -7,6 +7,11 @@ import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { CoreService } from '../../core.service';
 import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
+import { UpdateQuery } from 'src/core/connection/helpers';
+import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
+import { getCurrentDate, getCurrentDateTime } from 'src/util/helpers/date-util';
+import { SaveDetInvIngresoDtoDto } from './dto/save-det-inv-ingreso.dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -138,9 +143,105 @@ export class ComprobantesInvService extends BaseService {
             inner join inv_est_prev_inve g on a.ide_inepi = g.ide_inepi
         where
             a.ide_incci = $1
-    `,dtoIn);
+    `, dtoIn);
         query.addIntParam(1, dtoIn.ide_incci);
         return await this.dataSource.createQuery(query);
+    }
+
+
+
+
+    async getIngresosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
+        if (dtoIn.signo !== 1) {
+            throw new BadRequestException('El signo debe ser 1');
+        }
+        return this.getMovimientosPendientes(dtoIn);
+    }
+
+    async getEgresosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
+        if (dtoIn.signo !== -1) {
+            throw new BadRequestException('El signo debe ser -1');
+        }
+        return this.getMovimientosPendientes(dtoIn);
+    }
+
+
+    private async getMovimientosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
+        const condBodega = dtoIn.ide_inbod ? 'AND a.ide_inbod = $3' : '';
+        const nomCol = dtoIn.signo === 1 ? 'ingreso' : 'egreso';
+        const query = new SelectQuery(`
+        select
+            a.ide_incci,
+            a.numero_incci,
+            a.fecha_trans_incci,
+            c.nombre_inbod,
+            d.nombre_intti,
+            g.nombre_inarti,
+            b.cantidad_indci as ${nomCol} ,
+            siglas_inuni,
+            f.nom_geper,
+            a.observacion_incci,
+            a.ide_cnccc,
+            a.usuario_ingre,
+            g.uuid,
+            a.ide_inbod,
+            f.uuid as uuid_per
+        from
+            inv_cab_comp_inve a
+            inner join inv_det_comp_inve b on a.ide_incci = b.ide_incci
+            inner join inv_bodega c on a.ide_inbod = c.ide_inbod
+            inner join inv_tip_tran_inve d on a.ide_intti = d.ide_intti
+            inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
+            inner join gen_persona f on a.ide_geper = f.ide_geper
+            inner join inv_articulo g on b.ide_inarti = g.ide_inarti
+            LEFT JOIN inv_unidad h ON g.ide_inuni = h.ide_inuni
+        where
+            a.ide_inepi = 2  -- variable  p_inv_estado_pendiente 
+            and hace_kardex_inarti = true
+            and a.ide_empr = $1
+            and signo_intci = $2
+            ${condBodega}
+            order by  fecha_trans_incci desc, ide_incci desc
+        `, dtoIn);
+
+        query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.signo);
+        if (dtoIn.ide_inbod) {
+            query.addIntParam(3, dtoIn.ide_inbod);
+        }
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
+        const updateQuery = new UpdateQuery("inv_cab_comp_inve", "ide_incci");
+        updateQuery.values.set("ide_inepi", this.variables.get('p_inv_estado_normal'));
+        updateQuery.values.set("fec_cam_est_incci", getCurrentDate());  // fecha de actualizacion 
+        updateQuery.values.set("sis_ide_usua", dtoIn.ideUsua);  // usuario que actualiza
+        updateQuery.where = 'ide_incci = ANY ($1) and sis_ide_usua is null';
+        updateQuery.addParam(1, dtoIn.ide);
+        return await this.dataSource.createQuery(updateQuery);
+    }
+
+
+
+    async saveDetInvIngreso(dtoIn: SaveDetInvIngresoDtoDto & HeaderParamsDto) {
+        const updateQuery = new UpdateQuery("inv_det_comp_inve", "ide_indci");
+        updateQuery.values.set("lote_indci", dtoIn.data.lote_indci);
+        updateQuery.values.set("fecha_caduca_indci", dtoIn.data.fecha_caduca_indci);
+        updateQuery.values.set("peso_marcado_indci", dtoIn.data.peso_marcado_indci);
+        updateQuery.values.set("peso_tara_indci", dtoIn.data.peso_tara_indci);
+        updateQuery.values.set("peso_real_indci", dtoIn.data.peso_real_indci);
+        updateQuery.values.set("foto_indci", dtoIn.data.peso_tara_indci);
+        updateQuery.values.set("archivo_indci", dtoIn.data.peso_real_indci);
+        if (dtoIn.data.verifica_indci === true) {
+            updateQuery.values.set("fecha_verifica_indci", getCurrentDateTime());
+            updateQuery.values.set("usuario_verifica_indci", dtoIn.login);
+            updateQuery.values.set("verifica_indci", true);
+        }
+        updateQuery.where = 'ide_indci = $1';
+        updateQuery.addParam(1, dtoIn.data.ide_indci);
+        return await this.dataSource.createQuery(updateQuery);
     }
 
 

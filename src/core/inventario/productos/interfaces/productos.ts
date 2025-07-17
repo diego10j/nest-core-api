@@ -5,7 +5,9 @@ export interface SaldoProducto {
     saldo: number;
     siglas_inuni: string;
     decim_stock_inarti: number;
-    fecha: string;
+    detalle_stock:string;
+    stock_minimo?:number;
+    stock_ideal?:number;
 }
 
 

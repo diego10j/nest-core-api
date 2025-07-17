@@ -1,4 +1,4 @@
-import { Query, Controller, Get } from '@nestjs/common';
+import { Query, Controller, Get, Post, Body } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
 import { CabComprobanteInventarioDto } from '../comprobantes/dto/cab-compr-inv.dto';
@@ -7,6 +7,9 @@ import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { QueryOptionsDto } from '../../../common/dto/query-options.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
+import { SaveDetInvIngresoDtoDto } from './dto/save-det-inv-ingreso.dto';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
@@ -51,6 +54,58 @@ export class ComprobantesInvController {
             ...dtoIn
         });
     }
+
+
+    @Get('getIngresosPendientes')
+    // @Auth()
+    getIngresosPendientes(
+      @AppHeaders() headersParams: HeaderParamsDto,
+      @Query() dtoIn: MovimientosPendientesInvDto
+    ) {
+      return this.service.getIngresosPendientes({
+        ...headersParams,
+        ...dtoIn
+      });
+    }
+  
+    @Get('getEgresosPendientes')
+    // @Auth()
+    getEgresosPendientes(
+      @AppHeaders() headersParams: HeaderParamsDto,
+      @Query() dtoIn: MovimientosPendientesInvDto
+    ) {
+      return this.service.getEgresosPendientes({
+        ...headersParams,
+        ...dtoIn
+      });
+    }
+  
+  
+    @Post('setComporbantesVerificados')
+    //@Auth()
+    generarConfigPreciosVenta(
+      @AppHeaders() headersParams: HeaderParamsDto,
+      @Body() dtoIn: ArrayIdeDto
+    ) {
+      return this.service.setComporbantesVerificados({
+        ...headersParams,
+        ...dtoIn
+      });
+    }
+
+
+    @Post('saveDetInvIngreso')
+    //@Auth()
+    saveDetInvIngreso(
+      @AppHeaders() headersParams: HeaderParamsDto,
+      @Body() dtoIn: SaveDetInvIngresoDtoDto
+    ) {
+      return this.service.saveDetInvIngreso({
+        ...headersParams,
+        ...dtoIn
+      });
+    }
+
 
 
     // ==================================ListData==============================

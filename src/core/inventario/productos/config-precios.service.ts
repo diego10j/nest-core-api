@@ -34,6 +34,9 @@ export class ConfigPreciosProductosService extends BaseService {
     }
 
     async getPrecioVentaProducto(dtoIn: PrecioVentaProductoDto & HeaderParamsDto) {
+        if(dtoIn.ide_inarti ===-1  || dtoIn.cantidad === 0 ){
+            return [];
+        }
         const query = new SelectQuery(`
         SELECT
             a.*,
@@ -41,13 +44,14 @@ export class ConfigPreciosProductosService extends BaseService {
             nombre_cndfp,
             dias_cndfp
         FROM
-            f_calcula_precio_venta ($1, $2, $3) a
+            f_calcula_precio_venta ($1, $2, $3, $4) a
             LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
             LEFT JOIN con_cabece_forma_pago cp ON fp.ide_cncfp = cp.ide_cncfp
         `);
         query.addParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.cantidad);
         query.addParam(3, dtoIn.ide_cndfp);
+        query.addParam(4, dtoIn.precio_compra);
         return await this.dataSource.createSelectQuery(query);
     }
 

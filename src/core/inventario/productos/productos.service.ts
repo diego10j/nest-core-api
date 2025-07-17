@@ -668,7 +668,7 @@ export class ProductosService extends BaseService {
     }
 
     /**
-     * Retorna los últimos precios de compra a proveddores de un producto determinado
+     * Retorna los últimos precios de compra a PROVEEDORES de un producto determinado
      * @param dtoIn 
      * @returns 
      */
@@ -730,38 +730,71 @@ export class ProductosService extends BaseService {
      * @param dtoIn 
      * @returns 
      */
-    async getSaldo(dtoIn: GetSaldoProductoDto & HeaderParamsDto) {
-        const whereClause = dtoIn.ide_inarti ? "iart.ide_inarti = $1" : "iart.uuid = $1";
-
-        const query = new SelectQuery(`     
-    SELECT 
-        iart.ide_inarti,
-        nombre_inarti,
-        f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo,
-        siglas_inuni,
-        decim_stock_inarti,
-        to_char(now(), 'YYYY-MM-DD HH24:MI:SS') AS fecha
-    FROM
-        inv_det_comp_inve dci
-        INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-        INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-        INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-        INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
-        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-    WHERE
-        ${whereClause}
-        AND ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-        AND cci.ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY   
-        iart.ide_inarti, nombre_inarti, siglas_inuni, decim_stock_inarti
-    `);
-
-        // Asegúrate de que el parámetro existe en dtoIn
+     async getSaldo(dtoIn: GetSaldoProductoDto & HeaderParamsDto) {
         const paramValue = dtoIn.ide_inarti || dtoIn.uuid;
         if (!paramValue) {
             throw new Error("Se requiere ide_inarti o uuid en el DTO de entrada");
         }
-
+    
+        const whereClause = dtoIn.ide_inarti ? "iart.ide_inarti = $1" : "iart.uuid = $1";
+    
+        const query = new SelectQuery(`     
+            WITH
+            compras_periodo AS (
+                SELECT
+                    d.ide_inarti,
+                    c.fecha_trans_incci,
+                    d.precio_indci
+                FROM inv_det_comp_inve d
+                JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+                JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+                JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+                WHERE
+                    c.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                    AND e.signo_intci = 1
+                    AND d.precio_indci > 0
+                    AND c.ide_intti IN (19, 16, 3025)
+                    AND c.ide_empr = ${dtoIn.ideEmpr}
+                ORDER BY c.fecha_trans_incci DESC
+            )
+            SELECT 
+                iart.ide_inarti,
+                nombre_inarti,
+                f_redondeo(SUM(cantidad_indci * signo_intci), decim_stock_inarti) AS saldo,
+                siglas_inuni,
+                decim_stock_inarti,
+                iart.cant_stock1_inarti AS stock_minimo,
+                iart.cant_stock2_inarti AS stock_ideal,
+                (SELECT cp.fecha_trans_incci FROM compras_periodo cp 
+                 WHERE cp.ide_inarti = iart.ide_inarti LIMIT 1) AS ultima_fecha_compra,
+                (SELECT cp.precio_indci FROM compras_periodo cp 
+                 WHERE cp.ide_inarti = iart.ide_inarti LIMIT 1) AS ultimo_precio_compra,
+                CASE
+                    WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) <= 0 THEN 'SIN STOCK'
+                    WHEN iart.cant_stock1_inarti IS NULL AND iart.cant_stock2_inarti IS NULL THEN 'EN STOCK'
+                    WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) > COALESCE(iart.cant_stock2_inarti, 0) THEN 'STOCK EXTRA'
+                    WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) = COALESCE(iart.cant_stock2_inarti, 0) THEN 'STOCK IDEAL'
+                    WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) BETWEEN 
+                         COALESCE(iart.cant_stock1_inarti, 0) AND COALESCE(iart.cant_stock2_inarti, 0) THEN 'STOCK ÓPTIMO'
+                    WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) < COALESCE(iart.cant_stock1_inarti, 0) THEN 'STOCK BAJO'
+                    ELSE 'EN STOCK'
+                END AS detalle_stock
+            FROM
+                inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
+                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            WHERE
+                ${whereClause}
+                AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                AND cci.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY   
+                iart.ide_inarti, nombre_inarti, siglas_inuni, decim_stock_inarti,
+                iart.cant_stock1_inarti, iart.cant_stock2_inarti
+        `);
+        
         query.addParam(1, paramValue);
         return await this.dataSource.createSingleQuery(query) as SaldoProducto;
     }
@@ -1937,8 +1970,8 @@ export class ProductosService extends BaseService {
    */
     async saveProducto(dtoIn: SaveProductoDto & HeaderParamsDto) {
         const module = "inv";
-        const tableName= "articulo";
-        const primaryKey= "ide_inarti";
+        const tableName = "articulo";
+        const primaryKey = "ide_inarti";
         if (dtoIn.isUpdate === true) {
             // Actualiza 
             const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);

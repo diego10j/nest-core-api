@@ -11,6 +11,7 @@ import { Redis } from 'ioredis';
 import { isDefined } from '../../util/helpers/common-util';
 import { envs } from 'src/config/envs';
 
+
 @Injectable()
 export class DataSourceService {
 
@@ -461,7 +462,8 @@ export class DataSourceService {
         const pq = new SelectQuery(`
             SELECT nom_para,valor_para
             FROM sis_parametros
-            WHERE LOWER(nom_para) = ANY ($1)`);
+            WHERE LOWER(nom_para) = ANY ($1)
+            AND es_empr_para = false`);
         pq.addArrayStringParam(1, lowercaseArray);
         const resp = await this.createSelectQuery(pq);
         const respMap = new Map();

@@ -9,6 +9,7 @@ import { StockProductosDto } from './dto/stock-productos.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
@@ -50,6 +51,8 @@ export class BodegasController {
     });
   }
 
+
+
   @Get('getMovimientosBodega')
   // @Auth()
   getMovimientosBodega(
@@ -61,6 +64,7 @@ export class BodegasController {
       ...dtoIn
     });
   }
+
 
 
   @Get('getStockProductos')

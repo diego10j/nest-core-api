@@ -11,7 +11,7 @@ BEGIN
     SELECT valor_para INTO v_valor_para
     FROM sis_parametros
     WHERE LOWER(nom_para) = LOWER(p_nom_para)
-    AND empresa_para is null;
+    AND es_empr_para = false;
     
     -- Verificar si se encontró el parámetro
     IF NOT FOUND THEN

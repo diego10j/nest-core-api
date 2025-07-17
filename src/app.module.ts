@@ -13,6 +13,7 @@ import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
 import { WhatsappModule } from './core/whatsapp/whatsapp.module';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot(),

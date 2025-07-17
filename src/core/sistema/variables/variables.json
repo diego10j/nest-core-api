@@ -259,6 +259,16 @@
         },
         {
             "ide_modu": 1,
+            "nom_para": "p_inv_estado_pendiente",
+            "descripcion_para": "Indica el estado pendiente de comprobante de inventario ",
+            "valor_para": "2",
+            "tabla_para": "inv_est_prev_inve",
+            "campo_codigo_para": "ide_inepi",
+            "campo_nombre_para": "nombre_inepi",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 1,
             "nom_para": "p_inv_tipo_transaccion_reversa_mas",
             "descripcion_para": "Indica que el tipo de transaccion inversa(cuando existe una anulacion)  ",
             "valor_para": "12",

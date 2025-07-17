@@ -230,8 +230,7 @@ export class BodegasService extends BaseService {
         return await this.dataSource.createQuery(query);
     }
 
-
-
+  
     // ==================================ListData==============================
     /**
     * Retorna las bodegas activas de la empresa

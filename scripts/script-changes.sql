@@ -1147,8 +1147,8 @@ CREATE INDEX idx_categoria_ide ON inv_categoria (ide_incate)
 INCLUDE (nombre_incate);
 
 
-
-ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;
+ALTER TABLE sis_parametros ADD COLUMN es_empr_para bool DEFAULT false;  -- para saber si el parametro se maneja por empresa
+ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;    -- se llena cuando  es_empr_para = true
 ALTER TABLE sis_parametros ADD COLUMN activo_para bool DEFAULT true;
 ALTER TABLE sis_parametros ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE sis_parametros ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
@@ -1387,3 +1387,60 @@ ALTER TABLE "public"."sis_moneda" ADD FOREIGN KEY ("ide_gepais") REFERENCES "pub
 
 INSERT INTO "public"."sis_moneda" ("ide_mone", "nombre_mone", "simbolo_arch", "activo_arch", "ide_gepais", "ide_empr", "ide_sucu") VALUES
 (1, 'DOLARES AMERICANOS', 'USD', 'true', 1, 0, 2);
+
+
+-- Índices para inv_det_comp_inve (dci) - tabla principal de movimientos
+CREATE INDEX IF NOT EXISTS idx_inv_det_comp_inve_articulo_cabecera ON inv_det_comp_inve(ide_inarti, ide_incci);
+
+-- Índices para inv_cab_comp_inve (cci)
+CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_estado ON inv_cab_comp_inve(ide_inepi);
+CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_empresa ON inv_cab_comp_inve(ide_empr);
+
+-- Índices para inv_tip_tran_inve (tti)
+CREATE INDEX IF NOT EXISTS idx_inv_tip_tran_inve_id ON inv_tip_tran_inve(ide_intti);
+
+-- Índice para inv_unidad (uni)
+CREATE INDEX IF NOT EXISTS idx_inv_unidad_id ON inv_unidad(ide_inuni);
+
+-- Índice compuesto para mejorar el GROUP BY
+CREATE INDEX IF NOT EXISTS idx_inv_articulo_grouping ON inv_articulo(
+    ide_inarti, 
+    nombre_inarti, 
+    decim_stock_inarti, 
+    cant_stock1_inarti, 
+    cant_stock2_inarti
+);
+
+
+
+
+
+ALTER TABLE "public"."inv_articulo"
+ADD COLUMN "control_fec_cadu_inarti" bool DEFAULT false,
+ADD COLUMN "control_lote_inarti" bool DEFAULT false,
+ADD COLUMN "control_verifica_inarti" bool DEFAULT true,   -- para nsaber a que productos aplica el control de ingreso de comprobante de inventario
+ADD COLUMN "perm_fact_sin_stock_inarti" bool DEFAULT true;
+
+-- Para registar compras y ventas info adicional 
+ALTER TABLE "public"."inv_det_comp_inve"
+ADD COLUMN "fecha_caduca_indci" DATE,
+ADD COLUMN "lote_indci" varchar(50),   ---- es importante registrar en compras  para luego  saber de que lote se esta vendiendo 
+ADD COLUMN "peso_marcado_indci" numeric(12,3),
+ADD COLUMN "peso_tara_indci" numeric(12,3),
+ADD COLUMN "peso_real_indci" numeric(12,3),    ---  para cuando existen diferencias de precio
+ADD COLUMN "foto_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
+ADD COLUMN "archivo_indci" varchar(250),      -- ejemplo coa/ hoja seguridad   *****
+ADD COLUMN "verifica_indci" bool DEFAULT false,
+ADD COLUMN "fecha_verifica_indci" TIMESTAMP,
+ADD COLUMN "verifica_indci" varchar(25);
+
+ALTER TABLE inv_est_prev_inve ADD COLUMN query_name_tabl varchar(100); 
+ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE inv_est_prev_inve ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE inv_est_prev_inve ADD COLUMN hora_actua TIMESTAMP;
+
+ALTER TABLE "public"."inv_cab_comp_inve" ALTER COLUMN "automatico_incci" SET DEFAULT 'true';
+update inv_cab_comp_inve set  automatico_incci = true
+
+INSERT INTO "public"."inv_est_prev_inve" ("ide_inepi", "ide_sucu", "ide_empr", "nombre_inepi") VALUES (2, 0, 0, 'PENDIENTE');
