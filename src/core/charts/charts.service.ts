@@ -3,7 +3,7 @@ import { BaseService } from '../../common/base-service';
 import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery } from '../connection/helpers/select-query';
 import { RadialBarDto } from './dto/radial-bar.dto';
-import { toTitleCase } from '../../util/helpers/string-util';
+import { f_to_title_case } from '../../util/helpers/string-util';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 
@@ -58,12 +58,12 @@ export class ChartsService extends BaseService {
         const total = result[0].total;
         const empty = result[0].empty;
         const chart = result[0].chart.map(item => ({
-            label: toTitleCase(item.label),
+            label: f_to_title_case(item.label),
             value: item.value,
         }));
         if (Number(empty) > 0) {
             chart.push({
-                label: toTitleCase('No Asignados'),
+                label: f_to_title_case('No Asignados'),
                 value: empty,
             })
         }

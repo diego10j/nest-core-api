@@ -10,7 +10,7 @@ import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { MediaFile } from './api/interface/whatsapp';
-import { FileTempService } from '../sistema/files/file-temp.service';
+import { FileTempService } from '../modules/sistema/files/file-temp.service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()

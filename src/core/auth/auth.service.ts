@@ -5,12 +5,12 @@ import { LoginUserDto } from './dto/login-user.dto';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '../modules/audit/audit.service';
 import { QueryOptionsDto } from '../../common/dto/query-options.dto';
-import { EventAudit } from '../audit/enum/event-audit';
+import { EventAudit } from '../modules/audit/enum/event-audit';
 import { ConfigService } from '@nestjs/config';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
-import { toTitleCase } from '../../util/helpers/string-util';
+import { f_to_title_case } from '../../util/helpers/string-util';
 import { getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
@@ -92,7 +92,7 @@ export class AuthService {
             user: {
                 ide_usua: Number.parseInt(dataUser.ide_usua),
                 id: dataUser.uuid,
-                displayName: toTitleCase(dataPass.nom_usua),
+                displayName: f_to_title_case(dataPass.nom_usua),
                 email: dataPass.mail_usua,
                 login: dataPass.nick_usua,
                 photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataPass.avatar_usua}`,

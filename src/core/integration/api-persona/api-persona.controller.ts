@@ -1,7 +1,7 @@
 import { Query, Controller, Get } from '@nestjs/common';
 import { ApiPersonaService } from './api-persona.service';
-import { RucDto } from '../dto/ruc.dto';
-import { CedulaDto } from '../dto/cedula.dto';
+import { RucDto } from './dto/ruc.dto';
+import { CedulaDto } from './dto/cedula.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 

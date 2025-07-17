@@ -3,7 +3,7 @@ import { UploadMediaDto } from "../../dto/upload-media.dto";
 import * as fs from 'fs';
 import * as path from 'path';
 import { MediaFile } from "../../api/interface/whatsapp";
-import { FILE_STORAGE_CONSTANTS } from "src/core/sistema/files/file-temp.service";
+import { FILE_STORAGE_CONSTANTS } from "src/core/modules/sistema/files/file-temp.service";
 
 // types/mime-types.const.ts
 export const MIME_TYPES = {

@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
 
-import { ErrorsModule } from '../../errors/errors.module';
-import { DataSourceService } from '../connection/datasource.service';
 import { ChartsController } from './charts.controller';
 import { ChartsService } from './charts.service';
 
 @Module({
-    imports: [ErrorsModule],
+    imports: [],
     controllers: [ChartsController],
-    providers: [DataSourceService, ChartsService]
+    providers: [ ChartsService]
 })
 export class ChartsModule { }

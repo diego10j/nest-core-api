@@ -26,7 +26,7 @@ import { TelefonoWebDto } from './web/dto/telefono-web.dto';
 import { ContactIdWebDto } from './web/dto/contact-id-web.dto';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
-import { FILE_STORAGE_CONSTANTS } from '../sistema/files/file-temp.service';
+import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/file-temp.service';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 

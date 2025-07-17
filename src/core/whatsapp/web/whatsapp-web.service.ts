@@ -35,7 +35,7 @@ import {
     validateMediaType
 } from "./helper/util";
 import { UploadMediaDto } from "../dto/upload-media.dto";
-import { FileTempService } from "src/core/sistema/files/file-temp.service";
+import { FileTempService } from "src/core/modules/sistema/files/file-temp.service";
 import { MediaFile } from "../api/interface/whatsapp";
 import { isDefined } from "class-validator";
 import { HttpService } from "@nestjs/axios";

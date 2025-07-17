@@ -22,7 +22,7 @@ import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
 import { GetChatsDto } from '../dto/get-chats.dto';
 import { WhatsappDbService } from '../whatsapp-db.service';
 import { getFileExtension } from '../web/helper/util';
-import { FileTempService } from 'src/core/sistema/files/file-temp.service';
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()

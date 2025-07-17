@@ -1444,3 +1444,13 @@ ALTER TABLE "public"."inv_cab_comp_inve" ALTER COLUMN "automatico_incci" SET DEF
 update inv_cab_comp_inve set  automatico_incci = true
 
 INSERT INTO "public"."inv_est_prev_inve" ("ide_inepi", "ide_sucu", "ide_empr", "nombre_inepi") VALUES (2, 0, 0, 'PENDIENTE');
+
+
+
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para ON sis_parametros (nom_para);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_ide_empr ON sis_parametros (ide_empr);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_ide_modu ON sis_parametros (ide_modu);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_es_empr_para ON sis_parametros (es_empr_para);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_ide_empr ON sis_parametros (nom_para, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_ide_modu ON sis_parametros (nom_para, ide_modu);
+CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_es_empr ON sis_parametros (nom_para, es_empr_para);

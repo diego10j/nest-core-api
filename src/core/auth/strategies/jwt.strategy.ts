@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
-import { toTitleCase } from '../../../util/helpers/string-util';
+import { f_to_title_case } from '../../../util/helpers/string-util';
 import { AuthService } from '../auth.service';
 
 @Injectable()
@@ -41,9 +41,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             // ide_sucu: Number.parseInt(dataUser.ide_sucu),
             // ide_perf: Number.parseInt(dataUser.ide_perf),
             // perm_util_perf: dataUser.perm_util_perf,
-            // nom_perf: toTitleCase(dataUser.nom_perf),
+            // nom_perf: f_to_title_case(dataUser.nom_perf),
             id: dataUser.uuid,
-            displayName: toTitleCase(dataUser.nom_usua),
+            displayName: f_to_title_case(dataUser.nom_usua),
             email: dataUser.mail_usua,
             login: dataUser.nick_usua,
             photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataUser.avatar_usua}`,

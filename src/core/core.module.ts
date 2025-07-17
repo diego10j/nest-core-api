@@ -1,26 +1,35 @@
 import { Module } from '@nestjs/common';
-import { DataSourceService } from './connection/datasource.service';
 import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
-import { ErrorsModule } from '../errors/errors.module';
 
 import { WhatsappModule } from './whatsapp/whatsapp.module';
-import { SistemaModule } from './sistema/sistema.module';
+import { SistemaModule } from './modules/sistema/sistema.module';
 
-import { InventarioModule } from './inventario/inventario.module';
-import { VentasModule } from './ventas/ventas.module';
+import { InventarioModule } from './modules/inventario/inventario.module';
+import { VentasModule } from './modules/ventas/ventas.module';
 import { ChartsModule } from './charts/charts.module';
-import { AuditModule } from './audit/audit.module';
-import { GptModule } from './gpt/gpt.module';
-import { SriModule } from './sri/sri.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { SriModule } from './modules/sri/sri.module';
 import { IntegrationModule } from './integration/integration.module';
-import { ContabilidadModule } from './contabilidad/contabilidad.module';
+import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
+import { VariablesController } from './variables/variables.controller';
 
 @Module({
-  imports: [ErrorsModule, AuditModule, WhatsappModule, ChartsModule,
-    InventarioModule, SistemaModule, VentasModule, GptModule, SriModule, IntegrationModule, ContabilidadModule],
-  providers: [DataSourceService, CoreService],
-  exports: [DataSourceService],
-  controllers: [CoreController],
+  imports: [    
+    AuditModule,
+    WhatsappModule,
+    ChartsModule,
+    InventarioModule,
+    SistemaModule,
+    VentasModule,
+    SriModule,
+    IntegrationModule,
+    ContabilidadModule,
+  ],
+  providers: [
+    CoreService,
+  ],
+
+  controllers: [CoreController, VariablesController],
 })
-export class CoreModule { }
+export class CoreModule {}

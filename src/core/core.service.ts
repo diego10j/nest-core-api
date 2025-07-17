@@ -10,11 +10,17 @@ import { TreeDto } from './connection/dto/tree-dto';
 import { isDefined } from '../util/helpers/common-util';
 import { SearchTableDto } from 'src/common/dto/search-table.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { VariablesService } from './variables/variables.service';
+
 
 @Injectable()
 export class CoreService {
 
-    constructor(private readonly dataSource: DataSourceService) {
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly variables_:VariablesService,
+        ) {
+           
     }
 
     /**

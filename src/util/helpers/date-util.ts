@@ -1,7 +1,7 @@
 import { toString } from './common-util';
 import { parse, format, getTime, addDays, isValid, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { toTitleCase } from './string-util';
+import { f_to_title_case } from './string-util';
 import { envs } from 'src/config/envs';
 
 export const FORMAT_DATE_BD = (): string => envs.formatDateBd;  // yyyy-MM-dd
@@ -21,7 +21,7 @@ type InputValue = Date | string | number | null | undefined;
 export function fDate(date: InputValue, newFormat?: string) {
     const fm = newFormat || 'dd MMM yyyy';  // dd MMM yyyy
 
-    return date ? toTitleCase(format(new Date(date), fm, { locale: es })) : '';
+    return date ? f_to_title_case(format(new Date(date), fm, { locale: es })) : '';
 }
 
 /**
@@ -31,7 +31,7 @@ export function fDate(date: InputValue, newFormat?: string) {
  */
 export function fShortDate(date: InputValue) {
     const fm = 'MMM yyyy';
-    return date ? toTitleCase(format(new Date(date), fm, { locale: es })) : '';
+    return date ? f_to_title_case(format(new Date(date), fm, { locale: es })) : '';
 }
 
 export function fTime(date: InputValue, newFormat?: string) {

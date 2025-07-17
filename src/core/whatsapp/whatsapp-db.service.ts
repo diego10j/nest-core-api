@@ -44,8 +44,8 @@ export class WhatsappDbService {
             nombre_whcue,
             id_telefono_whcue,
             id_aplicacion_whcue,
-            enmascarar_texto (id_cuenta_whcue) AS id_cuenta_whcue,
-            enmascarar_texto (id_token_whcue) AS id_token_whcue,
+            f_enmascarar_texto (id_cuenta_whcue) AS id_cuenta_whcue,
+            f_enmascarar_texto (id_token_whcue) AS id_token_whcue,
             tipo_whcue
         FROM
             wha_cuenta

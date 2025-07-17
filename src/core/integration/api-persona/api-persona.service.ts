@@ -2,8 +2,8 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { BaseService } from '../../../common/base-service';
 import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig } from 'axios';
-import { CedulaDto } from '../dto/cedula.dto';
-import { RucDto } from '../dto/ruc.dto';
+import { CedulaDto } from './dto/cedula.dto';
+import { RucDto } from './dto/ruc.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 

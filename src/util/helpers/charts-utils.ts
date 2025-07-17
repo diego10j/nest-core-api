@@ -1,4 +1,4 @@
-import { toTitleCase } from './string-util';
+import { f_to_title_case } from './string-util';
 
 
 export function formatBarChartData(
@@ -7,7 +7,7 @@ export function formatBarChartData(
     seriesFields: Map<string, string>
 ): { categories: string[]; series: { name: string; data: number[] }[] } {
     // Crear las categorías a partir del campo dado
-    const categories = data.map(item => toTitleCase(item[categoryField]));
+    const categories = data.map(item => f_to_title_case(item[categoryField]));
 
     // Crear las series dinámicamente
     const series = Array.from(seriesFields.entries()).map(([seriesName, fieldName]) => {
@@ -32,7 +32,7 @@ export function formatPieChartData(
     // Crear las series en formato Pie chart
 
     const series = data.map(item => ({
-        label: toTitleCase(item[labelField]),
+        label: f_to_title_case(item[labelField]),
         value: item[valueField]
     }));
 
@@ -50,7 +50,7 @@ export function formatRadialBarChartData(
     // Crear las series en formato Pie chart
 
     const series = data.map(item => ({
-        label: toTitleCase(item[labelField]),
+        label: f_to_title_case(item[labelField]),
         value: item[valueField]
     }));
     const total = series.reduce((sum, item) => sum + item.value, 0);

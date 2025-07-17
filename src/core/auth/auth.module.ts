@@ -6,17 +6,13 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { CoreModule } from '../core.module';
-import { AuditService } from '../audit/audit.service';
-import { ErrorsModule } from '../../errors/errors.module';
-import { DataSourceService } from '../connection/datasource.service';
-
+import { AuditService } from '../modules/audit/audit.service';
 
 @Module({
   controllers: [AuthController],
   imports: [
     ConfigModule,
     CoreModule,
-    ErrorsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -31,7 +27,7 @@ import { DataSourceService } from '../connection/datasource.service';
       }
     })
   ],
-  providers: [DataSourceService, AuthService, JwtStrategy, AuditService],
+  providers: [ AuthService, JwtStrategy, AuditService],
   exports: [PassportModule, JwtStrategy, JwtModule]
 })
 export class AuthModule { }

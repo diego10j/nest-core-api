@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ErrorsModule } from 'src/errors/errors.module';
-import { DataSourceService } from '../connection/datasource.service';
 import { HttpModule } from '@nestjs/axios';
 import { ApiPersonaService } from './api-persona/api-persona.service';
 import { ApiPersonaController } from './api-persona/api-persona.controller';
+import { GptController } from './gpt/gpt.controller';
+import { GptService } from './gpt/gpt.service';
 
 @Module({
-  imports: [ErrorsModule, HttpModule],
-  controllers: [ApiPersonaController],
-  providers: [DataSourceService, ApiPersonaService]
+  imports: [ HttpModule],
+  controllers: [ApiPersonaController, GptController],
+  providers: [ ApiPersonaService, GptService]
 })
 export class IntegrationModule { }
