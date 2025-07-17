@@ -33,7 +33,7 @@ export class ProformasService extends BaseService {
     ) {
         super();
         // obtiene las variables del sistema para el servicio
-        this.dataSource.getVariables([
+        this.core.getVariables([
             'p_cxc_estado_factura_normal', // 0
         ]).then(result => {
             this.variables = result;

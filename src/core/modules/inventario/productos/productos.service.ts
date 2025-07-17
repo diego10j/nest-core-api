@@ -39,7 +39,7 @@ export class ProductosService extends BaseService {
     ) {
         super();
         // obtiene las variables del sistema para el servicio
-        this.dataSource.getVariables([
+        this.core.getVariables([
             'p_inv_estado_normal',  // 1
             'p_cxp_estado_factura_normal', // 0
             'p_cxc_estado_factura_normal'  // 0

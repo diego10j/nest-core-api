@@ -21,7 +21,7 @@ export class BodegasService extends BaseService {
     ) {
         super();
         // obtiene las variables del sistema para el servicio
-        this.dataSource.getVariables([
+        this.core.getVariables([
             'p_inv_estado_normal',  // 1
         ]).then(result => {
             this.variables = result;

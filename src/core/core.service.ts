@@ -18,11 +18,20 @@ export class CoreService {
 
     constructor(
         private readonly dataSource: DataSourceService,
-        private readonly variables_:VariablesService,
+        private readonly variables:VariablesService,
         ) {
            
     }
 
+    /**
+     * Recupera los valores de un listado de variables
+     * @param listVariables 
+     * @returns 
+     */
+     async getVariables(listVariables: string[]) {      
+        return this.variables.getVariables(listVariables);
+    }
+    
     /**
      * Retorna una lista de datos para componentes como Select, Autocomplete
      * @param dto 

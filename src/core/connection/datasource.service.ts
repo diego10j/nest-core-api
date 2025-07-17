@@ -451,32 +451,7 @@ export class DataSourceService {
         }
     }
 
-    /**
-     * Recupera los valores de un listado de variables
-     * @param listVariables 
-     * @returns 
-     */
-    async getVariables(listVariables: string[]) {
-        listVariables = removeEqualsElements(listVariables);
-        const lowercaseArray = listVariables.map(item => item.toLowerCase());
-        const pq = new SelectQuery(`
-            SELECT nom_para,valor_para
-            FROM sis_parametros
-            WHERE LOWER(nom_para) = ANY ($1)
-            AND es_empr_para = false`);
-        pq.addArrayStringParam(1, lowercaseArray);
-        const resp = await this.createSelectQuery(pq);
-        const respMap = new Map();
-        resp.forEach(data => {
-            respMap.set(data.nom_para, data.valor_para);
-        });
-        if (lowercaseArray.length !== respMap.size) {
-            console.error(
-                `No se encontraron todas las variables del sistema`
-            );
-        }
-        return respMap;
-    }
+
 
     // --------------------------- PRIVATE FUNCTIONS  ------------------------------ 
 
