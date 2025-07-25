@@ -25,7 +25,6 @@ import { SearchDto } from 'src/common/dto/search.dto';
 import { normalizeString } from 'src/util/helpers/sql-util';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
-import { InsertQuery, Query } from 'src/core/connection/helpers';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 
 

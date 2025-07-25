@@ -4,10 +4,10 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { removeEqualsElements } from 'src/util/helpers/array-util';
 import { GetVariableDto } from './dto/get-variable.dto';
-import * as fs from 'fs';
-import * as path from 'path';
-import { INVENTARIO_VARS } from './data/1-inventario-var';
+import { INVENTARIO_VARS } from './data/1-inv-var';
 import { Parametro } from './interfaces/parametro.interface';
+import { getModuloDefinition, toModuleID } from './modulos';
+
 
 
 @Injectable()
@@ -122,11 +122,15 @@ export class VariablesService {
         const variables = this.getAllVariables();
 
         if (variables.length === 0) {
-            console.log('No se encontraron variables para actualizar');
-            return;
+            return {
+                message: `No se encontraron variables para actualizar para empresa ${dto.ideEmpr}`
+            }
         }
-        console.log(variables);
+
         try {
+            // validar variables         
+            // console.log(variables);
+            this.validateParameters(variables);
             const query = new SelectQuery(`SELECT f_update_variables($1, $2)`);
             query.addParam(1, dto.ideEmpr);
             query.addParam(2, JSON.stringify(variables));
@@ -250,5 +254,72 @@ export class VariablesService {
             ...INVENTARIO_VARS,
             // Agregar más conjuntos de variables 
         ];
+    }
+
+
+
+    /**
+     * Función de validación principal
+     * @param parameters Array de parámetros a validar
+     * @returns true si todas las validaciones pasan
+     * @throws Error con mensaje descriptivo si alguna validación falla
+     */
+    private validateParameters(parameters: Parametro[]): boolean {
+        const nombresVariables = new Set<string>();
+        const modulePrefixCache = new Map<number, { normal: string; empresa: string }>();
+
+        for (const [index, param] of parameters.entries()) {
+            try {
+                this.validateSingleParameter(param, nombresVariables, modulePrefixCache);
+            } catch (error) {
+                throw this.buildValidationError(param, index, error);
+            }
+        }
+        return true;
+    }
+
+    private validateSingleParameter(
+        param: Parametro,
+        nombresVariables: Set<string>,
+        prefixCache: Map<number, { normal: string; empresa: string }>
+    ): void {
+        // Validación de nombre duplicado
+        if (nombresVariables.has(param.nom_para)) {
+            throw new Error(`Nombre de parámetro duplicado`);
+        }
+        nombresVariables.add(param.nom_para);
+
+        // Validación y obtención del módulo
+        const moduleId = toModuleID(param.ide_modu);
+        const modulo = getModuloDefinition(moduleId);
+
+        // Validación de prefijo (con caché para mejor performance)
+        let prefixes = prefixCache.get(moduleId);
+        if (!prefixes) {
+            prefixes = {
+                normal: `p_${modulo.SIGLAS}_`,
+                empresa: `pe_${modulo.SIGLAS}_`
+            };
+            prefixCache.set(moduleId, prefixes);
+        }
+
+        const prefijoEsperado = param.es_empr_para ? prefixes.empresa : prefixes.normal;
+        if (!param.nom_para.startsWith(prefijoEsperado)) {
+            throw new Error(`El prefijo debe ser '${prefijoEsperado}'`);
+        }
+
+        // Validaciones adicionales podrían ir aquí
+    }
+
+    private buildValidationError(param: Parametro, index: number, error: unknown): Error {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return new Error(
+            `Error en validación de parámetro #${index + 1}:\n` +
+            `- Nombre: ${param.nom_para}\n` +
+            `- Módulo ID: ${param.ide_modu}\n` +
+            `- es_empr_para: ${param.es_empr_para}\n` +
+            `- Descripción: ${param.descripcion_para}\n` +
+            `- Error: ${errorMessage}`
+        );
     }
 }

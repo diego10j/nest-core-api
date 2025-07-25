@@ -13,7 +13,6 @@ import {
   IsUrl, 
   IsObject, 
   IsArray, 
-  IsDateString,
   IsPositive,
   IsInt
 } from "class-validator";
@@ -62,6 +61,7 @@ export class InvArticulo {
   codigo_inarti?: string | null;
 
   @IsNotEmpty()
+  @IsOptional()
   @IsString()
   nombre_inarti: string;
 
@@ -122,9 +122,23 @@ export class InvArticulo {
   @Transform(({ value }) => value || null)
   publicacion_inarti?: string | null;
 
-  @IsOptional()
-  @IsObject()
-  @Transform(({ value }) => value || null)
+ @IsOptional()
+  @IsArray()
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    // Si viene como string JSON
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        return null;
+      }
+    }
+    return value ? [value] : null;
+  })
   tags_inarti?: any | null;
 
   @IsOptional()
@@ -179,9 +193,23 @@ export class InvArticulo {
   total_vistas_inarti?: number | null;
 
   @IsOptional()
-  @IsObject()
-  @Transform(({ value }) => value || null)
-  fotos_inarti?: any | null;
+  @IsArray()
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    // Si viene como string JSON
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        return null;
+      }
+    }
+    return value ? [value] : null;
+  })
+  fotos_inarti?: string[] | null;
 
   @IsOptional()
   @IsObject()
@@ -210,6 +238,22 @@ export class InvArticulo {
   @IsString()
   @Transform(({ value }) => value || null)
   cod_auto_inarti?: string | null;
+
+    @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value ?? null)
+  control_fec_cadu_inarti?: boolean | null;
+  
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value ?? null)
+  control_verifica_inarti?: boolean | null;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value ?? null)
+  perm_fact_sin_stock_inarti?: boolean | null;
 }
 
 export class SaveProductoDto {

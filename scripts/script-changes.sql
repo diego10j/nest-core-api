@@ -1417,7 +1417,6 @@ CREATE INDEX IF NOT EXISTS idx_inv_articulo_grouping ON inv_articulo(
 
 ALTER TABLE "public"."inv_articulo"
 ADD COLUMN "control_fec_cadu_inarti" bool DEFAULT false,
-ADD COLUMN "control_lote_inarti" bool DEFAULT false,
 ADD COLUMN "control_verifica_inarti" bool DEFAULT true,   -- para nsaber a que productos aplica el control de ingreso de comprobante de inventario
 ADD COLUMN "perm_fact_sin_stock_inarti" bool DEFAULT true;
 

@@ -264,9 +264,16 @@ BEGIN
         dc.nombre_vgven,
         dc.hace_kardex_inarti,
         dc.precio_compra,
-        (dc.precio_venta - dc.precio_compra) AS utilidad,
-        ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta,
         CASE
+            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
+            ELSE (dc.precio_venta - dc.precio_compra)
+        END AS utilidad,
+        CASE
+            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
+            ELSE ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2)
+        END AS utilidad_neta,
+        CASE
+            WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
             WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
             ELSE 0
         END AS porcentaje_utilidad,
@@ -278,10 +285,9 @@ BEGIN
     FROM datos_completos dc
     LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
                                    AND dc.ide_inarti = fn.ide_inarti
-    ORDER BY dc.fecha_emisi_cccfa , dc.secuencial_cccfa;
+    ORDER BY dc.fecha_emisi_cccfa, dc.secuencial_cccfa;
 END;
 $$ LANGUAGE plpgsql;
-
 
 
 

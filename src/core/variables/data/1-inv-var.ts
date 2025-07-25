@@ -1,6 +1,10 @@
+import { MODULOS } from "../modulos";
+
+
+
 export const INVENTARIO_VARS =[
     {
-        "ide_modu": 1,
+        "ide_modu": MODULOS.INVENTARIO.ID,
         "nom_para": "p_inv_estado_normal",
         "descripcion_para": "Indica el estado normal de comprobante de inventario ",
         "valor_para": "1",
@@ -11,7 +15,7 @@ export const INVENTARIO_VARS =[
         "es_empr_para": false
     },
     {
-        "ide_modu": 1,
+        "ide_modu": MODULOS.INVENTARIO.ID,
         "nom_para": "p_inv_estado_pendiente",
         "descripcion_para": "Indica el estado pendiente de comprobante de inventario ",
         "valor_para": "2",
