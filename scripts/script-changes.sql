@@ -1453,3 +1453,11 @@ CREATE INDEX IF NOT EXISTS idx_sis_parametros_es_empr_para ON sis_parametros (es
 CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_ide_empr ON sis_parametros (nom_para, ide_empr);
 CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_ide_modu ON sis_parametros (nom_para, ide_modu);
 CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para_es_empr ON sis_parametros (nom_para, es_empr_para);
+
+
+ALTER TABLE sis_perfil_opcion ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_perfil_opcion ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE sis_perfil_opcion ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_perfil_opcion ADD COLUMN hora_actua TIMESTAMP;
+ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
+ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;

@@ -86,7 +86,6 @@ export class DataSourceService {
             let finalQuery = query.query;
             let totalRecords: number | undefined;
             let totalFilterRecords: number | undefined;
-
             // Handle SelectQuery specific logic
             if (query instanceof SelectQuery) {
                 const selectQuery = query as SelectQuery;
@@ -269,7 +268,7 @@ export class DataSourceService {
         return `${query} OFFSET ${selectQuery.pagination.offset} LIMIT ${selectQuery.pagination.pageSize}`;
     }
 
-     private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
+    private setPaginationMetadata(selectQuery: SelectQuery, totalRecords: number): void {
         const totalPages = Math.ceil(totalRecords / selectQuery.pagination.pageSize);
         selectQuery.setIsPreviousPage(selectQuery.pagination.pageIndex > 1);
         selectQuery.setIsNextPage(selectQuery.pagination.pageIndex < totalPages);
@@ -294,12 +293,15 @@ export class DataSourceService {
     }
 
     private async handleAuditLogging(query: Query): Promise<void> {
-        let activityQuery: InsertQuery | undefined;
+        let activityQuery: InsertQuery | UpdateQuery | DeleteQuery;
         if (query instanceof InsertQuery) {
             activityQuery = this.getInsertActivityTable(query);
         } else if (query instanceof UpdateQuery) {
             activityQuery = await this.getUpdateActivityTable(query);
+        } else if (query instanceof DeleteQuery) {
+            activityQuery = this.getDeleteActivityTable(query);
         }
+
         if (activityQuery) {
             await this.formatSqlQuery(activityQuery);
             await this.pool.query(activityQuery.query, activityQuery.paramValues);
@@ -340,6 +342,9 @@ export class DataSourceService {
                         activityQuery = this.getInsertActivityTable(currentQuery);
                     } else if (currentQuery instanceof UpdateQuery) {
                         activityQuery = await this.getUpdateActivityTable(currentQuery);
+                    }
+                    else if (currentQuery instanceof DeleteQuery) {
+                        activityQuery = this.getDeleteActivityTable(currentQuery);
                     }
                     if (activityQuery) {
                         await this.formatSqlQuery(activityQuery);
@@ -749,6 +754,7 @@ export class DataSourceService {
 
     // --------------------------- AUDIT ---------------------------------
     getInsertActivityTable(objInsert: InsertQuery): InsertQuery {
+        const valuesObject = Object.fromEntries(objInsert.values);
         const insertQuery = new InsertQuery('sis_actividad', 'ide_acti');
         insertQuery.values.set('tabla_acti', objInsert.table);
         insertQuery.values.set('valor_pk_acti', objInsert.values.get(objInsert.primaryKey));
@@ -758,7 +764,22 @@ export class DataSourceService {
         insertQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
         insertQuery.values.set('activo_acti', true);
         insertQuery.values.set('usuario_ingre', objInsert.values.get('usuario_ingre'));
+        insertQuery.values.set('historial_acti', JSON.stringify(valuesObject));
         return insertQuery;
+    }
+
+    getDeleteActivityTable(objDelete: DeleteQuery): InsertQuery {
+        console.log('deletetQuery')
+        const deletetQuery = new InsertQuery('sis_actividad', 'ide_acti');
+        deletetQuery.values.set('tabla_acti', objDelete.table);
+        deletetQuery.values.set('valor_pk_acti', objDelete.ide);
+        deletetQuery.values.set('nom_acti', 'Registro Eliminado');
+        deletetQuery.values.set('ide_actti', 3); // Registro eliminado
+        deletetQuery.values.set('ide_actes', 2); // Finalizado
+        deletetQuery.values.set('fecha_actividad_acti', getCurrentDateTime());
+        deletetQuery.values.set('activo_acti', true);
+        deletetQuery.values.set('usuario_ingre', objDelete.header.login);
+        return deletetQuery;
     }
 
     async getUpdateActivityTable(objUpdate: UpdateQuery): Promise<InsertQuery> {

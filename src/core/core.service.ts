@@ -266,92 +266,49 @@ export class CoreService {
     async getTreeModel(dtoIn: TreeDto & HeaderParamsDto) {
         const conditionClause = dtoIn.condition ? `AND ${dtoIn.condition}` : '';
         const orderColumn = dtoIn.orderBy ? dtoIn.orderBy.column : dtoIn.columnName;
-
+    
+        // 1. Primero obtenemos todos los nodos en una sola consulta
         const query = new SelectQuery(`
-    WITH RECURSIVE tree_items AS (
-        -- Nodos raíz
-        SELECT 
-            ${dtoIn.primaryKey} AS id,
-            ${dtoIn.columnName} AS label,
-            ${dtoIn.columnNode} AS parent_id,
-            ${orderColumn} AS order_column,
-            1 AS level
-        FROM 
-            ${dtoIn.module}_${dtoIn.tableName}
-        WHERE 
-            ${dtoIn.columnNode} IS NULL
-            ${conditionClause}
-        
-        UNION ALL
-        
-        -- Nodos hijos
-        SELECT 
-            child.${dtoIn.primaryKey} AS id,
-            child.${dtoIn.columnName} AS label,
-            child.${dtoIn.columnNode} AS parent_id,
-            child.${orderColumn} AS order_column,
-            parent.level + 1
-        FROM 
-            ${dtoIn.module}_${dtoIn.tableName} child
-        JOIN 
-            tree_items parent ON child.${dtoIn.columnNode} = parent.id
-        WHERE 1=1
-            ${conditionClause}
-    ),
-    -- Construcción del árbol JSON
-    tree_json AS (
-        SELECT 
-            id,
-            label,
-            parent_id,
-            order_column,
-            level,
-            json_build_object(
-                'id', id::text,
-                'label', label::text,
-                'children', '[]'::json
-            ) AS json_data
-        FROM tree_items
-    ),
-    -- Unir hijos con padres
-    tree_with_children AS (
-        SELECT 
-            t1.id,
-            t1.label,
-            t1.parent_id,
-            t1.order_column,
-            t1.level,
-            CASE WHEN EXISTS (
-                SELECT 1 FROM tree_json t2 
-                WHERE t2.parent_id = t1.id
-            ) THEN
-                jsonb_set(
-                    t1.json_data::jsonb,
-                    '{children}',
-                    (
-                        SELECT jsonb_agg(t2.json_data ORDER BY t2.order_column)
-                        FROM tree_json t2
-                        WHERE t2.parent_id = t1.id
-                    )
-                )
-            ELSE
-                t1.json_data::jsonb
-            END AS json_data
-        FROM tree_json t1
-    )
-    SELECT json_agg(t.json_data ORDER BY t.order_column) AS tree_view
-    FROM tree_with_children t
-    WHERE t.level = 1;
-    `);
-
-        const data = await this.dataSource.createSingleQuery(query);
-
+            SELECT 
+                ${dtoIn.primaryKey} AS id,
+                ${dtoIn.columnName} AS label,
+                ${dtoIn.columnNode} AS parent_id,
+                ${orderColumn} AS order_column
+            FROM 
+                ${dtoIn.module}_${dtoIn.tableName}
+            WHERE 1=1
+                ${conditionClause}
+            ORDER BY ${orderColumn}
+        `);
+    
+        const flatData = await this.dataSource.createSelectQuery(query);
+    
+        // 2. Construimos el árbol en memoria
+        const buildTree = (items: any[], parentId: string | null = null) => {
+            const result: any[] = [];
+            
+            items
+                .filter(item => item.parent_id === parentId)
+                .sort((a, b) => a.order_column - b.order_column)
+                .forEach(item => {
+                    const children = buildTree(items, item.id);
+                    result.push({
+                        id: item.id.toString(),
+                        label: item.label.toString(),
+                        children: children.length > 0 ? children : []
+                    });
+                });
+            
+            return result;
+        };
+    
+        const treeData = buildTree(flatData, null);
+    
         return {
-            rowCount: 1,
-            rows: data.tree_view || []
+            rowCount: treeData.length,
+            rows: treeData
         } as ResultQuery;
     }
-
 
     /**
      * Actualiza la configuracion de las columnas 

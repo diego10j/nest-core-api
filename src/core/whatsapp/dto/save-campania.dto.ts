@@ -52,7 +52,7 @@ class CabeceraCampaniaDto {
 
 export class SaveCampaniaDto {
   @IsArray({ message: 'Debe ser un array de objetos con teléfonos' })
-  @ArrayMaxSize(100, { message: 'El array no puede contener más de 100 elementos' })
+  @ArrayMaxSize(300, { message: 'El array no puede contener más de 300 elementos' })
   @ValidateNested({ each: true }) // Valida cada objeto en el array
   @Type(() => TelefonoItemDto)   // Convierte cada elemento a TelefonoItemDto
   @UniqueArrayField('telefono') // <-- Valida unicidad en el campo 'telefono'

@@ -5,10 +5,11 @@ import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilDto } from './dto/perfil.dto';
-import { SelectQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
 import { HorarioDto } from './dto/horario.dto';
 import { RucDto } from './dto/ruc.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
 
 @Injectable()
 export class AdminService {
@@ -114,7 +115,90 @@ export class AdminService {
         return await this.dataSource.createQuery(query);
     }
 
+    async getListDataPerfilesSistema(dto: PerfilDto & HeaderParamsDto) {
+        const condition = `ide_sist = ${dto.ide_sist}`;
+        const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', columnLabel: 'nom_perf', condition }
+        return this.core.getListDataValues(dtoIn);
+    }
 
+    async getOpcionesPerfil(dtoIn: PerfilSistemaDto & HeaderParamsDto): Promise<{ opcionesArray: string[]; rows: any[] }> {
+        const query = new SelectQuery(`
+            SELECT o.ide_peop,
+                   o.ide_opci
+            FROM
+                sis_perfil_opcion o
+                INNER JOIN sis_perfil p ON o.ide_perf = p.ide_perf
+            WHERE
+                o.ide_perf = $1
+                AND o.ide_opci IS NOT NULL
+                AND p.ide_sist = $2
+            ORDER BY
+                o.ide_opci
+        `);
+        query.addIntParam(1, dtoIn.ide_perf);
+        query.addIntParam(2, dtoIn.ide_sist);
+
+        const result = await this.dataSource.createSelectQuery(query);
+
+        // Si no hay resultados, retornar objeto con arrays vacíos
+        if (!result || result.length === 0) {
+            return {
+                opcionesArray: [],
+                rows: [],
+            };
+        }
+
+        // Convertir a array de strings únicos
+        const opcionesArray: string[] = [...new Set(result.map(row => row.ide_opci.toString()))];
+
+        return {
+            opcionesArray,
+            rows: result
+        };
+    }
+
+    async saveOpcionesPerfil(dtoIn: PerfilSistemaDto & HeaderParamsDto) {
+
+
+        // Validar que vengan opciones
+        if (!dtoIn.opciones || !Array.isArray(dtoIn.opciones)) {
+            throw new BadRequestException('El campo opciones es requerido y debe ser un array');
+        }
+        // 1. Obtener datos existentes
+        const { opcionesArray: opcionesExistentes, rows } = await this.getOpcionesPerfil(dtoIn);
+
+        // 2. Obtener array de nuevas opciones del DTO
+        const nuevasOpciones = dtoIn.opciones.map(op => op.toString());
+
+        // 3. Encontrar diferencias
+        const opcionesAEliminar = opcionesExistentes.filter(op => !nuevasOpciones.includes(op));
+        const opcionesAInsertar = nuevasOpciones.filter(op => !opcionesExistentes.includes(op));
+
+        // 4. Obtener los IDs a eliminar buscando en los rows
+        const idsAEliminar = rows
+            .filter(row => opcionesAEliminar.includes(row.ide_opci.toString()))
+            .map(row => row.ide_peop);
+
+        const listQuery: Query[] = [];
+        // Elimina 
+        if (opcionesAEliminar.length > 0) {
+            this.buildDeleteOpcionesPerfil(dtoIn, idsAEliminar, listQuery)
+        }
+
+        if (opcionesAInsertar.length > 0) {
+            await this.buildInsertOpcionesPerfil(dtoIn, opcionesAInsertar, listQuery)
+        }
+
+        const resultMessage = await this.dataSource.createListQuery(listQuery);
+        return {
+            success: true,
+            message: 'Opciones guardadas correctamente',
+            data: {
+                totalQueries: listQuery.length,
+                resultMessage
+            }
+        };
+    }
 
 
     // -------------------------------- HORARIOS ---------------------------- //
@@ -131,10 +215,57 @@ export class AdminService {
     }
 
 
-    async getTableQueryHorario(dto: HorarioDto  & HeaderParamsDto) {
+    async getTableQueryHorario(dto: HorarioDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr} and ide_tihor=${dto.ide_tihor}`;
         const dtoIn = { ...dto, module: 'sis', tableName: 'horario', primaryKey: 'ide_hora', condition }
         return this.core.getTableQuery(dtoIn);
+    }
+
+
+
+    // ============ QUERY BUILDERS ============
+
+    private buildDeleteOpcionesPerfil(dto: PerfilSistemaDto & HeaderParamsDto, opcionesAEliminar: any[], listQuery: Query[]) {
+        for (const opcion of opcionesAEliminar) {
+            const deleteQuery = new DeleteQuery('sis_perfil_opcion', dto);
+            deleteQuery.where = `ide_peop =$1`;
+            deleteQuery.addParam(1, opcion);
+            // auditoria
+            deleteQuery.ide = opcion;
+            deleteQuery.audit = true;
+            listQuery.push(deleteQuery);
+
+        }
+    }
+
+
+    private async buildInsertOpcionesPerfil(
+        dtoIn: PerfilSistemaDto & HeaderParamsDto,
+        opcionesAInsertar: string[],
+        listQuery: Query[]
+    ) {
+        let seq = await this.getNextOpcionPerfilId(dtoIn, opcionesAInsertar.length);
+        for (const opcion of opcionesAInsertar) {
+            const insertQuery = new InsertQuery('sis_perfil_opcion', 'ide_peop', dtoIn);
+            insertQuery.values.set('ide_peop', seq);
+            insertQuery.values.set('ide_perf', dtoIn.ide_perf);
+            insertQuery.values.set('ide_sist', dtoIn.ide_sist);
+            insertQuery.values.set('ide_opci', opcion);
+            insertQuery.values.set('lectura_peop', false);
+            insertQuery.audit = true;
+            listQuery.push(insertQuery);
+            seq++;
+        }
+    }
+
+
+    private async getNextOpcionPerfilId(dtoIn: HeaderParamsDto, regitros: number): Promise<number> {
+        return this.dataSource.getSeqTable(
+            'sis_perfil_opcion',
+            'ide_peop',
+            regitros,
+            dtoIn.login,
+        );
     }
 
 }

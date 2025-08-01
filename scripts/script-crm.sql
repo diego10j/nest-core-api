@@ -457,7 +457,8 @@ CREATE TABLE sis_actividad_tipo (
 
 insert into sis_actividad_tipo values(1, 'Registro creado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
 insert into sis_actividad_tipo values(2, 'Registro modificado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into sis_actividad_tipo values(3, 'Otra Actividad',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(3, 'Registro Eliminado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(4, 'Otra Actividad',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
 
 
 -- Esta tabla almacenará los posibles estados de una actividad, como "pendiente", "hecho", "cancelado", etc.

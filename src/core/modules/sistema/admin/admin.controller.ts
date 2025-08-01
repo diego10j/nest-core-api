@@ -7,6 +7,7 @@ import { HorarioDto } from './dto/horario.dto';
 import { RucDto } from './dto/ruc.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
@@ -147,6 +148,43 @@ export class AdminController {
     @Query() dtoIn: PerfilDto
   ) {
     return this.adminService.getPerfilesSistema({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+  @Get('getListDataPerfilesSistema')
+  // @Auth()
+  getListDataPerfilesSistema(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PerfilDto
+  ) {
+    return this.adminService.getListDataPerfilesSistema({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+  @Get('getOpcionesPerfil')
+  // @Auth()
+  getOpcionesPerfil(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: PerfilSistemaDto
+  ) {
+    return this.adminService.getOpcionesPerfil({
+      ...headersParams,
+      ...dtoIn
+    });
+  }
+
+
+  @Post('saveOpcionesPerfil')
+  // @Auth()
+  saveOpcionesPerfil(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: PerfilSistemaDto
+  ) {
+    return this.adminService.saveOpcionesPerfil({
       ...headersParams,
       ...dtoIn
     });
