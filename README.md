@@ -78,3 +78,6 @@ sudo apt-get install -y \
 
 # Instalar Chromium
 sudo apt-get install -y chromium
+
+
+sudo kill -9 $(sudo lsof -t -i:3000 -i:3003)

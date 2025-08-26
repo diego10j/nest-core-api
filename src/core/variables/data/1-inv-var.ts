@@ -16,9 +16,9 @@ export const INVENTARIO_VARS =[
     },
     {
         "ide_modu": MODULOS.INVENTARIO.ID,
-        "nom_para": "p_inv_estado_pendiente",
-        "descripcion_para": "Indica el estado pendiente de comprobante de inventario ",
-        "valor_para": "2",
+        "nom_para": "p_inv_estado_anulado",
+        "descripcion_para": "Indica el estado anulado de comprobante de inventario ",
+        "valor_para": "0",
         "tabla_para": "inv_est_prev_inve",
         "campo_codigo_para": "ide_inepi",
         "campo_nombre_para": "nombre_inepi",

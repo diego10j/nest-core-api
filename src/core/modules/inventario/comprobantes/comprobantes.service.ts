@@ -25,6 +25,7 @@ export class ComprobantesInvService extends BaseService {
         // obtiene las variables del sistema para el servicio
         this.core.getVariables([
             'p_inv_estado_normal',  // 1
+            'p_inv_estado_anulado', //0
         ]).then(result => {
             this.variables = result;
         });
@@ -43,14 +44,16 @@ export class ComprobantesInvService extends BaseService {
         const query = new SelectQuery(`
     select
         a.ide_incci,
-        a.numero_incci,
         a.fecha_trans_incci,
+        a.numero_incci,
+        g.nombre_inepi,
         c.nombre_inbod,
         d.nombre_intti,
         f.nom_geper,
         a.observacion_incci,
         a.ide_cnccc,
-        g.nombre_inepi,
+        g.ide_inepi,
+        c.ide_inbod,
         automatico_incci,
         a.usuario_ingre,
         f.uuid
@@ -97,6 +100,15 @@ export class ComprobantesInvService extends BaseService {
 		valor_indci,
 		b.observacion_indci,
 		referencia_incci,
+        fecha_caduca_indci,
+        lote_indci,
+        peso_marcado_indci,
+        peso_tara_indci,
+        peso_real_indci,
+        foto_indci,
+        archivo_indci,
+        verifica_indci,
+        fecha_verifica_indci,
         g.uuid
     from
         inv_cab_comp_inve a
@@ -133,6 +145,9 @@ export class ComprobantesInvService extends BaseService {
             g.nombre_inepi,
             automatico_incci,
             a.usuario_ingre,
+            verifica_incci,
+            fecha_verifica_incci, 
+            usuario_verifica_incci,
             f.uuid
         from
             inv_cab_comp_inve a
@@ -196,7 +211,7 @@ export class ComprobantesInvService extends BaseService {
             inner join inv_articulo g on b.ide_inarti = g.ide_inarti
             LEFT JOIN inv_unidad h ON g.ide_inuni = h.ide_inuni
         where
-            a.ide_inepi = 2  -- variable  p_inv_estado_pendiente 
+            a.verifica_incci  = false
             and hace_kardex_inarti = true
             and a.ide_empr = $1
             and signo_intci = $2
@@ -215,14 +230,25 @@ export class ComprobantesInvService extends BaseService {
 
     async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
         const updateQuery = new UpdateQuery("inv_cab_comp_inve", "ide_incci");
-        updateQuery.values.set("ide_inepi", this.variables.get('p_inv_estado_normal'));
+        updateQuery.values.set("verifica_incci", true);
         updateQuery.values.set("fec_cam_est_incci", getCurrentDate());  // fecha de actualizacion 
         updateQuery.values.set("sis_ide_usua", dtoIn.ideUsua);  // usuario que actualiza
-        updateQuery.where = 'ide_incci = ANY ($1) and sis_ide_usua is null';
+        updateQuery.where = 'ide_incci = ANY ($1) and verifica_incci = false';
         updateQuery.addParam(1, dtoIn.ide);
         return await this.dataSource.createQuery(updateQuery);
     }
 
+
+    async anularComprobante(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
+        const updateQuery = new UpdateQuery("inv_cab_comp_inve", "ide_incci");
+        updateQuery.values.set("ide_inepi", this.variables.get('p_inv_estado_anulado'));
+        updateQuery.values.set("fecha_anula_incci", getCurrentDate());  // fecha de anulacion        
+        updateQuery.values.set("sis_ide_usua", dtoIn.ideUsua);  // usuario que actualiza
+        updateQuery.where = 'ide_incci = $1 and ide_inepi != $2 ';
+        updateQuery.addParam(1, dtoIn.ide_incci);
+        updateQuery.addParam(2, this.variables.get('p_inv_estado_anulado'));
+        return await this.dataSource.createQuery(updateQuery);
+    }
 
 
     async saveDetInvIngreso(dtoIn: SaveDetInvIngresoDtoDto & HeaderParamsDto) {

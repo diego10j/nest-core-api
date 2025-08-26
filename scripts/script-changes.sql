@@ -1430,8 +1430,7 @@ ADD COLUMN "peso_real_indci" numeric(12,3),    ---  para cuando existen diferenc
 ADD COLUMN "foto_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
 ADD COLUMN "archivo_indci" varchar(250),      -- ejemplo coa/ hoja seguridad   *****
 ADD COLUMN "verifica_indci" bool DEFAULT false,
-ADD COLUMN "fecha_verifica_indci" TIMESTAMP,
-ADD COLUMN "verifica_indci" varchar(25);
+ADD COLUMN "fecha_verifica_indci" TIMESTAMP;
 
 ALTER TABLE inv_est_prev_inve ADD COLUMN query_name_tabl varchar(100); 
 ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_ingre varchar(50); 
@@ -1439,11 +1438,15 @@ ALTER TABLE inv_est_prev_inve ADD COLUMN hora_ingre TIMESTAMP;
 ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE inv_est_prev_inve ADD COLUMN hora_actua TIMESTAMP;
 
-ALTER TABLE "public"."inv_cab_comp_inve" ALTER COLUMN "automatico_incci" SET DEFAULT 'true';
-update inv_cab_comp_inve set  automatico_incci = true
+ALTER TABLE "public"."inv_cab_comp_inve" ALTER COLUMN "automatico_incci" BOOLEAN SET DEFAULT 'true';
+update inv_cab_comp_inve set  automatico_incci = true;
 
-INSERT INTO "public"."inv_est_prev_inve" ("ide_inepi", "ide_sucu", "ide_empr", "nombre_inepi") VALUES (2, 0, 0, 'PENDIENTE');
+ALTER TABLE inv_cab_comp_inve ADD COLUMN fecha_anula_incci TIMESTAMP;
+ALTER TABLE inv_cab_comp_inve ADD COLUMN verifica_incci bool DEFAULT false;
+ALTER TABLE inv_cab_comp_inve ADD COLUMN fecha_verifica_incci TIMESTAMP;
+ALTER TABLE inv_cab_comp_inve ADD COLUMN usuario_verifica_incci VARCHAR(30);
 
+update inv_cab_comp_inve set  verifica_incci = true;
 
 
 CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para ON sis_parametros (nom_para);

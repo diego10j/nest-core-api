@@ -40,9 +40,9 @@ export class FilesService {
      */
     async createFolder(dto: CreateFolderDto & HeaderParamsDto): Promise<ResultQuery> {
         const { folderName, sis_ide_arch, ide_inarti } = dto;
-        if (await this._checkExistFile(folderName, sis_ide_arch)) {
-            throw new BadRequestException(`La carpeta ${folderName} ya existe`);
-        }
+        // if (await this._checkExistFile(folderName, sis_ide_arch)) {
+        //     throw new BadRequestException(`La carpeta ${folderName} ya existe`);
+        // }
         // inserta 
         const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
         insertQuery.values.set('nombre_arch', folderName);
