@@ -158,6 +158,7 @@ export class ComprobantesInvService extends BaseService {
             inner join inv_est_prev_inve g on a.ide_inepi = g.ide_inepi
         where
             a.ide_incci = $1
+            and a.ide_empr = ${dtoIn.ideEmpr}
     `, dtoIn);
         query.addIntParam(1, dtoIn.ide_incci);
         return await this.dataSource.createQuery(query);

@@ -11,6 +11,8 @@ import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
 import { WhatsappModule } from './core/whatsapp/whatsapp.module';
 import { DataSourceModule } from './core/connection/datasource.module';
+import { PrinterModule } from './reports/printer/printer.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -24,7 +26,8 @@ import { DataSourceModule } from './core/connection/datasource.module';
     AuthModule,  
     ErrorsModule,
     WhatsappModule,
-
+    PrinterModule,
+    ReportsModule,
   ],
 })
 export class AppModule { }

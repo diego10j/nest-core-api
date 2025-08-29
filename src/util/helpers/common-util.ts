@@ -40,14 +40,22 @@ export function validateDataRequiere(data: any, columns: string[]): string[] {
 }
 
 
+
+export function fCurrency(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+    }).format(value);
+}
+
 /**
  * Extrae el mensaje de error de un objeto Error o cualquier valor lanzado
  * @param error
  * @returns Mensaje de error formateado
  */
- export function extractErrorMessage(error: unknown): string {
+export function extractErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-      return (error as any).message;
+        return (error as any).message;
     }
     return 'Ocurrió un error inesperado';
-  }
+}

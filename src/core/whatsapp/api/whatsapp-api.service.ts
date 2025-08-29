@@ -7,7 +7,7 @@ import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../..
 import { envs } from 'src/config/envs';
 import { GetMensajesDto } from '../dto/get-mensajes.dto';
 import { EnviarMensajeDto } from '../dto/enviar-mensaje.dto';
-import * as FormData from 'form-data';
+import FormData from 'form-data';
 import { WhatsappGateway } from '../whatsapp.gateway';
 import { ListaChatDto } from './dto/lista-chat.dto';
 import { SearchChatDto } from '../dto/search-chat.dto';
@@ -351,7 +351,7 @@ export class WhatsappApiService {
      * @param dto 
      * @returns 
      */
-    async getListas(dto: QueryOptionsDto  & HeaderParamsDto) {
+    async getListas(dto: QueryOptionsDto & HeaderParamsDto) {
         const data = await this.whatsappDb.getListas(dto);
         data.unshift(
             {

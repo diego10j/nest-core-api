@@ -28,6 +28,10 @@ yarn add sharp
 yarn add form-data --save
 yarn add @nestjs/websockets @nestjs/platform-socket.io socket.io --save
 yarn add cors 
+yarn add pdfmake
+yarn add -D @types/pdfmake
+yarn add @kurkle/color
+
 
 # Debian WhatsApp Web
 https://github.com/remsystemCorporation/auth-nestjs/tree/main
