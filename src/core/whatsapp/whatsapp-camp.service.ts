@@ -3,7 +3,9 @@ import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { extractErrorMessage } from 'src/util/helpers/common-util';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
+
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../connection/helpers';
+
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { createFileInstanceFromPath } from './web/helper/util';
@@ -24,7 +26,7 @@ const DETALLES = {
 const CAMPAIGN_STATUS = {
   PENDIENTE: 1,
   PROCESANDO: 2,
-  ENVIADO: 3
+  ENVIADO: 3,
 };
 
 @Injectable()
@@ -33,9 +35,8 @@ export class WhatsappCampaniaService {
 
   constructor(
     private readonly whatsappWeb: WhatsappWebService,
-    private readonly whatsappDB: WhatsappDbService
-  ) { }
-
+    private readonly whatsappDB: WhatsappDbService,
+  ) {}
 
   /**
    * Guarda una campaña nueva o actualiza una existente
@@ -49,7 +50,7 @@ export class WhatsappCampaniaService {
       listQuery.push(this.buildDeleteDetailsQuery(cabeceraId));
     }
 
-    const seqCabecera = cabeceraId || await this.getNextCabeceraId(dtoIn);
+    const seqCabecera = cabeceraId || (await this.getNextCabeceraId(dtoIn));
 
     // Construir query para cabecera
     const cabeceraQuery = cabeceraId
@@ -68,11 +69,10 @@ export class WhatsappCampaniaService {
       data: {
         ide_whcenv: seqCabecera,
         totalQueries: listQuery.length,
-        resultMessage
-      }
+        resultMessage,
+      },
     };
   }
-
 
   /**
    * Envía una campaña de texto
@@ -81,15 +81,12 @@ export class WhatsappCampaniaService {
     return this.processCampaignSend(dtoIn);
   }
 
-
   // ============ MÉTODOS PRIVADOS ============
 
   /**
    * Procesa el envío de una campaña (común para texto y multimedia)
    */
-  private async processCampaignSend(
-    dtoIn: EnviarCampaniaDto & HeaderParamsDto
-  ) {
+  private async processCampaignSend(dtoIn: EnviarCampaniaDto & HeaderParamsDto) {
     // Validaciones iniciales
     const dataCamp = await this.validateCampaign(dtoIn);
     const media = dataCamp.cabecera.media_whcenv;
@@ -100,12 +97,9 @@ export class WhatsappCampaniaService {
     const type = file ? 'media' : 'text';
     this.processMessages(dataCamp.cabecera, dataCamp.detalles, dtoIn, type, file);
 
-
-
     return {
-      message: "Se Inicia el envio de la campaña",
-    }
-
+      message: 'Se Inicia el envio de la campaña',
+    };
   }
 
   /**
@@ -130,15 +124,13 @@ export class WhatsappCampaniaService {
     const phoneRegex = /^\d{8,15}$/; // Longitud total válida (incluyendo código país)
     const countryCodeRegex = /^\d{1,3}$/; // Códigos de país tienen 1-3 dígitos
 
-    const invalidPhones = dataCamp.detalles.filter(detalle => {
+    const invalidPhones = dataCamp.detalles.filter((detalle) => {
       const phoneStr = detalle.telefono_whden?.toString().trim() || '';
 
       // Verifica que el número tenga código de país y sea válido
       if (phoneStr.startsWith('+')) {
         const parts = phoneStr.substring(1).split(/(?=\d{8,15}$)/);
-        return parts.length !== 2 ||
-          !countryCodeRegex.test(parts[0]) ||
-          !phoneRegex.test(parts[1]);
+        return parts.length !== 2 || !countryCodeRegex.test(parts[0]) || !phoneRegex.test(parts[1]);
       } else {
         // Si no tiene +, verifica que al menos tenga 8-15 dígitos
         return !phoneRegex.test(phoneStr);
@@ -146,30 +138,26 @@ export class WhatsappCampaniaService {
     });
 
     if (invalidPhones.length > 0) {
-      const invalidNumbers = invalidPhones.map(d => d.telefono_whden).join(', ');
+      const invalidNumbers = invalidPhones.map((d) => d.telefono_whden).join(', ');
       throw new BadRequestException(
         `Los siguientes números no tienen formato internacional válido (código de país + número): ${invalidNumbers}. ` +
-        `Ejemplo válido: +593987654321 o 593987654321`
+          `Ejemplo válido: +593987654321 o 593987654321`,
       );
     }
 
     return dataCamp;
   }
 
-
-
   /**
-  * Procesa los mensajes en secuencia respetando la cola interna y actualiza el estado al finalizar
-  */
+   * Procesa los mensajes en secuencia respetando la cola interna y actualiza el estado al finalizar
+   */
   private async processMessages(
     cabecera: any,
     detalles: any[],
     dtoIn: EnviarCampaniaDto & HeaderParamsDto,
     type: 'text' | 'media',
-    file?: Express.Multer.File
+    file?: Express.Multer.File,
   ) {
-
-
     try {
       for (const current of detalles) {
         try {
@@ -177,30 +165,35 @@ export class WhatsappCampaniaService {
           const validation = await this.whatsappWeb.validateWhatsAppNumber(dtoIn.ideEmpr, current.telefono_whden);
 
           if (validation.isValid) {
-            const telefono = validation.formattedNumber || current.telefono
+            const telefono = validation.formattedNumber || current.telefono;
             const commonData = {
               telefono,
               emitSocket: false,
-              ...(type === 'text' ? { texto: cabecera.mensaje_whcenv, tipo: 'text' } : { caption: cabecera.mensaje_whcenv })
+              ...(type === 'text'
+                ? { texto: cabecera.mensaje_whcenv, tipo: 'text' }
+                : { caption: cabecera.mensaje_whcenv }),
             };
 
-            const res = type === 'text'
-              ? await this.whatsappWeb.enviarMensajeTexto({
-                ...commonData, ...dtoIn,
-                texto: cabecera.mensaje_whcenv,
-                tipo: 'text'
-              })
-              : await this.whatsappWeb.enviarMensajeMedia({ ...commonData, ...dtoIn, caption: cabecera.mensaje_whcenv }, file);
+            const res =
+              type === 'text'
+                ? await this.whatsappWeb.enviarMensajeTexto({
+                    ...commonData,
+                    ...dtoIn,
+                    texto: cabecera.mensaje_whcenv,
+                    tipo: 'text',
+                  })
+                : await this.whatsappWeb.enviarMensajeMedia(
+                    { ...commonData, ...dtoIn, caption: cabecera.mensaje_whcenv },
+                    file,
+                  );
 
             if (res.messageId) {
               await this.updateMessageId(current.ide_whdenv, res.messageId, telefono);
             }
-          }
-          else {
-            // actualiza error 
+          } else {
+            // actualiza error
             await this.updateMessageError(current.ide_whdenv, `El número no está registrado en WhatsApp.`);
           }
-
         } catch (error) {
           this.logger.error(`Error enviando mensaje a ${current.telefono_whden}:`, error);
           await this.updateMessageError(current.ide_whdenv, extractErrorMessage(error));
@@ -209,14 +202,11 @@ export class WhatsappCampaniaService {
 
       // Actualizar estado de la campaña después de procesar todos los mensajes
       await this.updateCampaignStatus(dtoIn.ide_whcenv, CAMPAIGN_STATUS.ENVIADO);
-
     } catch (error) {
       this.logger.error('Error general en processMessages:', error);
       throw error;
     }
   }
-
-
 
   /**
    * Actualiza el ID del mensaje en el detalle
@@ -225,7 +215,7 @@ export class WhatsappCampaniaService {
     const query = new UpdateQuery(DETALLES.tableName, DETALLES.primaryKey);
     query.values.set('id_mensaje_whden', messageId);
     query.values.set('telefono_whden', formattedNumber);
-    query.values.set('tiene_whats_whden', true);    
+    query.values.set('tiene_whats_whden', true);
     query.values.set('fecha_envio_whden', getCurrentDateTime());
     query.where = 'ide_whdenv = $1';
     query.addNumberParam(1, ide_whdenv);
@@ -260,7 +250,7 @@ export class WhatsappCampaniaService {
     dtoIn: SaveCampaniaDto & HeaderParamsDto,
     seqCabecera: number,
     seqStart: number,
-    listQuery: Query[]
+    listQuery: Query[],
   ) {
     let seq = seqStart;
 
@@ -274,7 +264,6 @@ export class WhatsappCampaniaService {
       seq++;
     }
   }
-
 
   async deleteDetailCampaniaById(detalleId: number) {
     const deleteQuery = new DeleteQuery(DETALLES.tableName);
@@ -291,8 +280,6 @@ export class WhatsappCampaniaService {
     deleteQuery.addParam(1, cabeceraId);
     return deleteQuery;
   }
-
-
 
   private buildInsertCabeceraQuery(seqCabecera: number, dtoIn: SaveCampaniaDto & HeaderParamsDto): InsertQuery {
     const q = new InsertQuery(CABECERA.tableName, CABECERA.primaryKey, dtoIn);
@@ -334,20 +321,10 @@ export class WhatsappCampaniaService {
   // ============ HELPERS ============
 
   private async getNextCabeceraId(dtoIn: HeaderParamsDto): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(
-      CABECERA.tableName,
-      CABECERA.primaryKey,
-      1,
-      dtoIn.login,
-    );
+    return this.whatsappDB.dataSource.getSeqTable(CABECERA.tableName, CABECERA.primaryKey, 1, dtoIn.login);
   }
 
   private async getNextDetalleIds(length: number, login: string): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(
-      DETALLES.tableName,
-      DETALLES.primaryKey,
-      length,
-      login,
-    );
+    return this.whatsappDB.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
   }
 }

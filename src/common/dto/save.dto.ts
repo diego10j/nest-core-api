@@ -1,12 +1,9 @@
 import { IsBoolean, IsNotEmpty } from 'class-validator';
 
-
 export class SaveDto {
+  @IsBoolean()
+  isUpdate: boolean;
 
-    @IsBoolean()
-    isUpdate: boolean;
-
-    @IsNotEmpty()
-    data: Record<string, any>; 
-
+  @IsNotEmpty()
+  data: Record<string, any>;
 }

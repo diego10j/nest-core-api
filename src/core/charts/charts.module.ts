@@ -4,8 +4,8 @@ import { ChartsController } from './charts.controller';
 import { ChartsService } from './charts.service';
 
 @Module({
-    imports: [],
-    controllers: [ChartsController],
-    providers: [ ChartsService]
+  imports: [],
+  controllers: [ChartsController],
+  providers: [ChartsService],
 })
-export class ChartsModule { }
+export class ChartsModule {}

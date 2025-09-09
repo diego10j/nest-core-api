@@ -4,15 +4,11 @@ import OpenAI from 'openai';
 import { envs } from 'src/config/envs';
 import { downloadImageAsPng } from 'src/util/helpers/download-image-as-png';
 
-
 interface Options {
   baseImage: string;
 }
 
-export const imageVariationUseCase = async (
-  openai: OpenAI,
-  options: Options,
-) => {
+export const imageVariationUseCase = async (openai: OpenAI, options: Options) => {
   const { baseImage } = options;
 
   const pngImagePath = await downloadImageAsPng(baseImage, true);
@@ -29,16 +25,15 @@ export const imageVariationUseCase = async (
     image: fs.createReadStream(pngImagePath),
     n: 1,
     size: '1024x1024',
-    response_format: 'url'
+    response_format: 'url',
   });
 
   const fileName = await downloadImageAsPng(response.data[0].url);
-  const url = `${envs.hostApi}/gpt/image-generation/${fileName}`
-
+  const url = `${envs.hostApi}/gpt/image-generation/${fileName}`;
 
   return {
     url: url,
     openAIUrl: response.data[0].url,
     revised_prompt: response.data[0].revised_prompt,
-  }
+  };
 };

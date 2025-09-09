@@ -1,40 +1,42 @@
 import { Injectable } from '@nestjs/common';
-import { DataSourceService } from '../../../connection/datasource.service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
+import { fDate } from 'src/util/helpers/date-util';
+
 import { BaseService } from '../../../../common/base-service';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
-import { MovimientosInvDto } from './dto/movimientos-inv.dto';
-import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { CoreService } from '../../../core.service';
-import { IdeDto } from 'src/common/dto/ide.dto';
+
+import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
+import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
-import { fDate } from 'src/util/helpers/date-util';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class BodegasService extends BaseService {
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_inv_estado_normal', // 1
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
-
-    constructor(
-        private readonly dataSource: DataSourceService,
-        private readonly core: CoreService
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core.getVariables([
-            'p_inv_estado_normal',  // 1
-        ]).then(result => {
-            this.variables = result;
-        });
-    }
-
-
-    /**
-    * Retorna listado de bodegas de la empresa
-    * @returns 
-    */
-    async getBodegas(dtoIn?: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna listado de bodegas de la empresa
+   * @returns
+   */
+  async getBodegas(dtoIn?: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         select
             ide_inbod,
             nombre_inbod,
@@ -51,30 +53,38 @@ export class BodegasService extends BaseService {
             and ide_empr = $1
         order by
             nombre_inbod
-    `, dtoIn);
-        query.addIntParam(1, dtoIn.ideEmpr);
-        return await this.dataSource.createQuery(query);
-    }
+    `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    return await this.dataSource.createQuery(query);
+  }
 
-    /**
-     * Retorna una bodega
-     * @param dto 
-     * @returns 
-     */
-    async getBodega(dto: IdeDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', condition: `ide_inbod = ${dto.ide}` }
-        return this.core.getTableQuery(dtoIn);
-    }
+  /**
+   * Retorna una bodega
+   * @param dto
+   * @returns
+   */
+  async getBodega(dto: IdeDto & HeaderParamsDto) {
+    const dtoIn = {
+      ...dto,
+      module: 'inv',
+      tableName: 'bodega',
+      primaryKey: 'ide_inbod',
+      condition: `ide_inbod = ${dto.ide}`,
+    };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-
-    /**
-     * Retorna los movimientos de inventario en todas las bodegas en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
-    async getMovimientos(dtoIn: MovimientosInvDto & HeaderParamsDto) {
-        const condBodega = dtoIn.ide_inbod ? 'AND a.ide_inbod = $4' : '';
-        const query = new SelectQuery(`
+  /**
+   * Retorna los movimientos de inventario en todas las bodegas en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getMovimientos(dtoIn: MovimientosInvDto & HeaderParamsDto) {
+    const condBodega = dtoIn.ide_inbod ? 'AND a.ide_inbod = $4' : '';
+    const query = new SelectQuery(
+      `
     select
         a.ide_incci,
         a.numero_incci,
@@ -112,52 +122,51 @@ export class BodegasService extends BaseService {
         and a.ide_empr = $3
         ${condBodega}
         order by  fecha_trans_incci desc, ide_incci desc
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        query.addIntParam(3, dtoIn.ideEmpr);
-        if (dtoIn.ide_inbod) {
-            query.addIntParam(4, dtoIn.ide_inbod);
-        }
-        return await this.dataSource.createQuery(query);
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addIntParam(3, dtoIn.ideEmpr);
+    if (dtoIn.ide_inbod) {
+      query.addIntParam(4, dtoIn.ide_inbod);
     }
+    return await this.dataSource.createQuery(query);
+  }
 
+  /**
+   * Retorna los movimientos de inventario de una bodega en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getMovimientosBodega(dtoIn: MovimientosBodegaDto & HeaderParamsDto) {
+    return await this.getMovimientos(dtoIn);
+  }
 
-    /**
-     * Retorna los movimientos de inventario de una bodega en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
-    async getMovimientosBodega(dtoIn: MovimientosBodegaDto & HeaderParamsDto) {
-        return await this.getMovimientos(dtoIn);
-    }
-
-
-
-    /**
-  * Retorna el listado de Stock de Productos 
-  * @returns 
-  */
-    async getStockProductos(dtoIn: StockProductosDto & HeaderParamsDto) {
-
-        let nombre_inbod = '';
-        // Obtiene nombre de las bodegas consultadas
-        if (dtoIn.ide_inbod) {
-            const queryBod = new SelectQuery(`
+  /**
+   * Retorna el listado de Stock de Productos
+   * @returns
+   */
+  async getStockProductos(dtoIn: StockProductosDto & HeaderParamsDto) {
+    let nombre_inbod = '';
+    // Obtiene nombre de las bodegas consultadas
+    if (dtoIn.ide_inbod) {
+      const queryBod = new SelectQuery(`
             SELECT STRING_AGG(nombre_inbod, ', ') AS nombre_inbod
             FROM inv_bodega bod
             WHERE ide_inbod = ANY ($1)`);
-            queryBod.addParam(1, dtoIn.ide_inbod);
-            const res = await this.dataSource.createSingleQuery(queryBod);
-            nombre_inbod = res.nombre_inbod;
-        }
+      queryBod.addParam(1, dtoIn.ide_inbod);
+      const res = await this.dataSource.createSingleQuery(queryBod);
+      nombre_inbod = res.nombre_inbod;
+    }
 
-        const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
-        const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
-        const conditionBodega = dtoIn.ide_inbod ? `AND cci.ide_inbod = ANY($2)` : '';
+    const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
+    const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
+    const conditionBodega = dtoIn.ide_inbod ? `AND cci.ide_inbod = ANY($2)` : '';
 
-        const query = new SelectQuery(`
+    const query = new SelectQuery(
+      `
         WITH existencia_cte AS (
             SELECT
                 dci.ide_inarti,
@@ -221,54 +230,60 @@ export class BodegasService extends BaseService {
             ${conditionStock} -- Filtro de existencia mayor a 0
         ORDER BY
             nombre_incate, ARTICULO.nombre_inarti
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        query.addParam(1, fechaCorte);
-        if (dtoIn.ide_inbod) {
-            query.addParam(2, dtoIn.ide_inbod);
-        }
-        return await this.dataSource.createQuery(query);
+    query.addParam(1, fechaCorte);
+    if (dtoIn.ide_inbod) {
+      query.addParam(2, dtoIn.ide_inbod);
     }
+    return await this.dataSource.createQuery(query);
+  }
 
-  
-    // ==================================ListData==============================
-    /**
-    * Retorna las bodegas activas de la empresa
-    * @returns 
-    */
-    async getListDataBodegas(dto?: QueryOptionsDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'inv', tableName: 'bodega', primaryKey: 'ide_inbod', columnLabel: 'nombre_inbod', condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true` }
-        return this.core.getListDataValues(dtoIn);
-    }
+  // ==================================ListData==============================
+  /**
+   * Retorna las bodegas activas de la empresa
+   * @returns
+   */
+  async getListDataBodegas(dto?: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = {
+      ...dto,
+      module: 'inv',
+      tableName: 'bodega',
+      primaryKey: 'ide_inbod',
+      columnLabel: 'nombre_inbod',
+      condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true`,
+    };
+    return this.core.getListDataValues(dtoIn);
+  }
 
-
-    async getListDataDetalleStock(_dto?: QueryOptionsDto & HeaderParamsDto) {
-        return [
-            {
-                "value": 1,
-                "label": "EN STOCK"
-            },
-            {
-                "value": 2,
-                "label": "STOCK EXTRA"
-            },
-            {
-                "value": 3,
-                "label": "STOCK IDEAL"
-            },
-            {
-                "value": 4,
-                "label": "STOCK ÓPTIMO"
-            },
-            {
-                "value": 5,
-                "label": "STOCK BAJO"
-            },
-            {
-                "value": 6,
-                "label": "SIN STOCK"
-            }
-        ]
-    }
-
+  async getListDataDetalleStock(_dto?: QueryOptionsDto & HeaderParamsDto) {
+    return [
+      {
+        value: 1,
+        label: 'EN STOCK',
+      },
+      {
+        value: 2,
+        label: 'STOCK EXTRA',
+      },
+      {
+        value: 3,
+        label: 'STOCK IDEAL',
+      },
+      {
+        value: 4,
+        label: 'STOCK ÓPTIMO',
+      },
+      {
+        value: 5,
+        label: 'STOCK BAJO',
+      },
+      {
+        value: 6,
+        label: 'SIN STOCK',
+      },
+    ];
+  }
 }

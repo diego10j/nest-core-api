@@ -1,21 +1,18 @@
 import { Injectable } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
-import { IdeDto } from 'src/common/dto/ide.dto';
 
 @Injectable()
 export class FormasPagoService {
+  constructor(private readonly dataSource: DataSourceService) {}
 
-    constructor(private readonly dataSource: DataSourceService) { }
-
-
-
-    // -------------------------------- Cabecera FORMA PAGO ---------------------------- //
-    async getFormasPago(dto: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  // -------------------------------- Cabecera FORMA PAGO ---------------------------- //
+  async getFormasPago(dto: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
             select 
                 ide_cncfp as value,
                 nombre_cncfp  as label,
@@ -25,16 +22,18 @@ export class FormasPagoService {
             AND ide_cncfp != 3  --- no formas pago SRI
             and ide_empr = $1
             order by  nombre_cncfp
-            `, dto);
-        query.addIntParam(1, dto.ideEmpr);
-        const data: any[] = await this.dataSource.createSelectQuery(query);
-        return data
-    }
+            `,
+      dto,
+    );
+    query.addIntParam(1, dto.ideEmpr);
+    const data: any[] = await this.dataSource.createSelectQuery(query);
+    return data;
+  }
 
-
-    // -------------------------------- Detalles FORMA PAGO ---------------------------- //
-    async getDetalleFormasPago(dto: IdeDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  // -------------------------------- Detalles FORMA PAGO ---------------------------- //
+  async getDetalleFormasPago(dto: IdeDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT 
             a.ide_cndfp as value,
             a.nombre_cndfp as label,
@@ -50,13 +49,12 @@ export class FormasPagoService {
             AND b.ide_empr = $2
         ORDER BY  
             nombre_cndfp
-        `, dto);
-        query.addIntParam(1, dto.ide);
-        query.addIntParam(2, dto.ideEmpr);
-        const data: any[] = await this.dataSource.createSelectQuery(query);
-        return data
-    }
-
-
-
+        `,
+      dto,
+    );
+    query.addIntParam(1, dto.ide);
+    query.addIntParam(2, dto.ideEmpr);
+    const data: any[] = await this.dataSource.createSelectQuery(query);
+    return data;
+  }
 }

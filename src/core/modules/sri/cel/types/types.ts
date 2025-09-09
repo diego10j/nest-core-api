@@ -1,10 +1,9 @@
 export type TipoComprobanteData = {
-    codigo: string;
-    descripcion: string;
+  codigo: string;
+  descripcion: string;
 };
 
-
 export type EstadoComprobanteData = {
-    codigo: number;
-    descripcion: string;
+  codigo: number;
+  descripcion: string;
 };

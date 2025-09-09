@@ -1,4 +1,3 @@
-
 export { ColumnsTableDto } from './columns-table.dto';
 export { DeleteDto } from './detele.dto';
 export { ListDataValuesDto } from './list-data.dto';

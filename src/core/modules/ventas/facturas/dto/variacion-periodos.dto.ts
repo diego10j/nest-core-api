@@ -1,13 +1,11 @@
 import { IsInt, IsPositive } from 'class-validator';
 
-export class VariacionVentasPeriodoDto  {
+export class VariacionVentasPeriodoDto {
+  @IsInt()
+  @IsPositive()
+  periodo: number;
 
-    @IsInt()
-    @IsPositive()
-    periodo: number;
-
-    @IsInt()
-    @IsPositive()
-    periodoCompara: number;
-
+  @IsInt()
+  @IsPositive()
+  periodoCompara: number;
 }

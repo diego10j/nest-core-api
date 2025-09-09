@@ -1,36 +1,37 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
-import { OpcionDto } from './dto/opcion.dto';
-import { PerfilDto } from './dto/perfil.dto';
-import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
+
 import { HorarioDto } from './dto/horario.dto';
-import { RucDto } from './dto/ruc.dto';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
+import { PerfilDto } from './dto/perfil.dto';
+import { RucDto } from './dto/ruc.dto';
 
 @Injectable()
 export class AdminService {
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) { }
 
-    constructor(private readonly dataSource: DataSourceService,
-        private readonly core: CoreService) { }
+  // -------------------------------- EMPRESA ---------------------------- //
+  async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr', columnLabel: 'nom_empr' };
+    return this.core.getListDataValues(dtoIn);
+  }
 
+  async getTableQueryEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr' };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    // -------------------------------- EMPRESA ---------------------------- //
-    async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr', columnLabel: 'nom_empr' }
-        return this.core.getListDataValues(dtoIn);
-    }
-
-    async getTableQueryEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'sis', tableName: 'empresa', primaryKey: 'ide_empr' }
-        return this.core.getTableQuery(dtoIn);
-    }
-
-    async getEmpresaByRuc(dtoIn: RucDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getEmpresaByRuc(dtoIn: RucDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
         select
             ide_empr,
             nom_empr,
@@ -43,62 +44,91 @@ export class AdminService {
         where
             identificacion_empr = $1
             `);
-        query.addStringParam(1, dtoIn.ruc);
-        const res = await this.dataSource.createSingleQuery(query);
-        if (res === null) {
-            throw new BadRequestException(`La empresa no existe`);
-        }
-        return res
+    query.addStringParam(1, dtoIn.ruc);
+    const res = await this.dataSource.createSingleQuery(query);
+    if (res === null) {
+      throw new BadRequestException(`La empresa no existe`);
     }
+    return res;
+  }
 
+  // -------------------------------- SUCURSAL ---------------------------- //
+  async getListDataSucursal(dto: QueryOptionsDto & HeaderParamsDto) {
+    const condition = `ide_empr = ${dto.ideEmpr}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'sucursal',
+      primaryKey: 'ide_sucu',
+      columnLabel: 'nom_sucu',
+      condition,
+    };
+    return this.core.getListDataValues(dtoIn);
+  }
 
-    // -------------------------------- SUCURSAL ---------------------------- //
-    async getListDataSucursal(dto: QueryOptionsDto & HeaderParamsDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'sucursal', primaryKey: 'ide_sucu', columnLabel: 'nom_sucu', condition }
-        return this.core.getListDataValues(dtoIn);
-    }
+  async getTableQuerySucursal(dto: QueryOptionsDto & HeaderParamsDto) {
+    const condition = `ide_empr = ${dto.ideEmpr}`;
+    const dtoIn = { ...dto, module: 'sis', tableName: 'sucursal', primaryKey: 'ide_sucu', condition };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    async getTableQuerySucursal(dto: QueryOptionsDto & HeaderParamsDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'sucursal', primaryKey: 'ide_sucu', condition }
-        return this.core.getTableQuery(dtoIn);
-    }
+  // -------------------------------- SISTEMAS ---------------------------- //
+  async getListDataSistema(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' };
+    return this.core.getListDataValues(dtoIn);
+  }
 
+  async getTableQuerySistema(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist' };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    // -------------------------------- SISTEMAS ---------------------------- //
-    async getListDataSistema(dto: QueryOptionsDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist', columnLabel: 'nombre_sist' }
-        return this.core.getListDataValues(dtoIn);
-    }
+  // -------------------------------- OPCIONES ---------------------------- //
+  async getTableQueryOpcion(dto: OpcionDto & HeaderParamsDto) {
+    const whereClause = `ide_sist = ${dto.ide_sist} AND ${isDefined(dto.sis_ide_opci) === false ? 'sis_ide_opci IS NULL' : `sis_ide_opci = ${dto.sis_ide_opci}`}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'opcion',
+      primaryKey: 'ide_opci',
+      condition: `${whereClause}`,
+      orderBy: { column: 'nom_opci' },
+    };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    async getTableQuerySistema(dto: QueryOptionsDto & HeaderParamsDto) {
-        const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist' }
-        return this.core.getTableQuery(dtoIn);
-    }
+  async getTreeModelOpcion(dto: OpcionDto & HeaderParamsDto) {
+    const whereClause = `ide_sist = ${dto.ide_sist}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'opcion',
+      primaryKey: 'ide_opci',
+      columnName: 'nom_opci',
+      columnNode: 'sis_ide_opci',
+      condition: `${whereClause}`,
+      orderBy: { column: 'nom_opci' },
+    };
+    return this.core.getTreeModel(dtoIn);
+  }
 
-    // -------------------------------- OPCIONES ---------------------------- //
-    async getTableQueryOpcion(dto: OpcionDto & HeaderParamsDto) {
-        const whereClause = `ide_sist = ${dto.ide_sist} AND ${isDefined(dto.sis_ide_opci) === false ? 'sis_ide_opci IS NULL' : `sis_ide_opci = ${dto.sis_ide_opci}`}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
-        return this.core.getTableQuery(dtoIn);
-    }
+  // -------------------------------- PERFILES ---------------------------- //
+  async getTableQueryPerfil(dto: PerfilDto & HeaderParamsDto) {
+    const whereClause = `ide_sist = ${dto.ide_sist}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'perfil',
+      primaryKey: 'ide_perf',
+      condition: `${whereClause}`,
+      orderBy: { column: 'nom_perf' },
+    };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    async getTreeModelOpcion(dto: OpcionDto & HeaderParamsDto) {
-        const whereClause = `ide_sist = ${dto.ide_sist}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'opcion', primaryKey: 'ide_opci', columnName: 'nom_opci', columnNode: 'sis_ide_opci', condition: `${whereClause}`, orderBy: { column: 'nom_opci' }, }
-        return this.core.getTreeModel(dtoIn);
-    }
-
-    // -------------------------------- PERFILES ---------------------------- //
-    async getTableQueryPerfil(dto: PerfilDto & HeaderParamsDto) {
-        const whereClause = `ide_sist = ${dto.ide_sist}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', condition: `${whereClause}`, orderBy: { column: 'nom_perf' } }
-        return this.core.getTableQuery(dtoIn);
-    }
-
-    async getPerfilesSistema(dtoIn: PerfilDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getPerfilesSistema(dtoIn: PerfilDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT
             a.ide_perf,
             nom_perf,
@@ -110,19 +140,30 @@ export class AdminService {
             a.ide_sist = $1
         ORDER BY
             nom_perf
-            `, dtoIn);
-        query.addIntParam(1, dtoIn.ide_sist);
-        return await this.dataSource.createQuery(query);
-    }
+            `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_sist);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getListDataPerfilesSistema(dto: PerfilDto & HeaderParamsDto) {
-        const condition = `ide_sist = ${dto.ide_sist}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'perfil', primaryKey: 'ide_perf', columnLabel: 'nom_perf', condition }
-        return this.core.getListDataValues(dtoIn);
-    }
+  async getListDataPerfilesSistema(dto: PerfilDto & HeaderParamsDto) {
+    const condition = `ide_sist = ${dto.ide_sist}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'perfil',
+      primaryKey: 'ide_perf',
+      columnLabel: 'nom_perf',
+      condition,
+    };
+    return this.core.getListDataValues(dtoIn);
+  }
 
-    async getOpcionesPerfil(dtoIn: PerfilSistemaDto & HeaderParamsDto): Promise<{ opcionesArray: string[]; rows: any[] }> {
-        const query = new SelectQuery(`
+  async getOpcionesPerfil(
+    dtoIn: PerfilSistemaDto & HeaderParamsDto,
+  ): Promise<{ opcionesArray: string[]; rows: any[] }> {
+    const query = new SelectQuery(`
             SELECT o.ide_peop,
                    o.ide_opci
             FROM
@@ -135,137 +176,133 @@ export class AdminService {
             ORDER BY
                 o.ide_opci
         `);
-        query.addIntParam(1, dtoIn.ide_perf);
-        query.addIntParam(2, dtoIn.ide_sist);
+    query.addIntParam(1, dtoIn.ide_perf);
+    query.addIntParam(2, dtoIn.ide_sist);
 
-        const result = await this.dataSource.createSelectQuery(query);
+    const result = await this.dataSource.createSelectQuery(query);
 
-        // Si no hay resultados, retornar objeto con arrays vacíos
-        if (!result || result.length === 0) {
-            return {
-                opcionesArray: [],
-                rows: [],
-            };
-        }
-
-        // Convertir a array de strings únicos
-        const opcionesArray: string[] = [...new Set(result.map(row => row.ide_opci.toString()))];
-
-        return {
-            opcionesArray,
-            rows: result
-        };
+    // Si no hay resultados, retornar objeto con arrays vacíos
+    if (!result || result.length === 0) {
+      return {
+        opcionesArray: [],
+        rows: [],
+      };
     }
 
-    async saveOpcionesPerfil(dtoIn: PerfilSistemaDto & HeaderParamsDto) {
+    // Convertir a array de strings únicos
+    const opcionesArray: string[] = [...new Set(result.map((row) => row.ide_opci.toString()))];
 
+    return {
+      opcionesArray,
+      rows: result,
+    };
+  }
 
-        // Validar que vengan opciones
-        if (!dtoIn.opciones || !Array.isArray(dtoIn.opciones)) {
-            throw new BadRequestException('El campo opciones es requerido y debe ser un array');
-        }
-        // 1. Obtener datos existentes
-        const { opcionesArray: opcionesExistentes, rows } = await this.getOpcionesPerfil(dtoIn);
+  async saveOpcionesPerfil(dtoIn: PerfilSistemaDto & HeaderParamsDto) {
+    // Validar que vengan opciones
+    if (!dtoIn.opciones || !Array.isArray(dtoIn.opciones)) {
+      throw new BadRequestException('El campo opciones es requerido y debe ser un array');
+    }
+    // 1. Obtener datos existentes
+    const { opcionesArray: opcionesExistentes, rows } = await this.getOpcionesPerfil(dtoIn);
 
-        // 2. Obtener array de nuevas opciones del DTO
-        const nuevasOpciones = dtoIn.opciones.map(op => op.toString());
+    // 2. Obtener array de nuevas opciones del DTO
+    const nuevasOpciones = dtoIn.opciones.map((op) => op.toString());
 
-        // 3. Encontrar diferencias
-        const opcionesAEliminar = opcionesExistentes.filter(op => !nuevasOpciones.includes(op));
-        const opcionesAInsertar = nuevasOpciones.filter(op => !opcionesExistentes.includes(op));
+    // 3. Encontrar diferencias
+    const opcionesAEliminar = opcionesExistentes.filter((op) => !nuevasOpciones.includes(op));
+    const opcionesAInsertar = nuevasOpciones.filter((op) => !opcionesExistentes.includes(op));
 
-        // 4. Obtener los IDs a eliminar buscando en los rows
-        const idsAEliminar = rows
-            .filter(row => opcionesAEliminar.includes(row.ide_opci.toString()))
-            .map(row => row.ide_peop);
+    // 4. Obtener los IDs a eliminar buscando en los rows
+    const idsAEliminar = rows
+      .filter((row) => opcionesAEliminar.includes(row.ide_opci.toString()))
+      .map((row) => row.ide_peop);
 
-        const listQuery: Query[] = [];
-        // Elimina 
-        if (opcionesAEliminar.length > 0) {
-            this.buildDeleteOpcionesPerfil(dtoIn, idsAEliminar, listQuery)
-        }
-
-        if (opcionesAInsertar.length > 0) {
-            await this.buildInsertOpcionesPerfil(dtoIn, opcionesAInsertar, listQuery)
-        }
-
-        const resultMessage = await this.dataSource.createListQuery(listQuery);
-        return {
-            success: true,
-            message: 'Opciones guardadas correctamente',
-            data: {
-                totalQueries: listQuery.length,
-                resultMessage
-            }
-        };
+    const listQuery: Query[] = [];
+    // Elimina
+    if (opcionesAEliminar.length > 0) {
+      this.buildDeleteOpcionesPerfil(dtoIn, idsAEliminar, listQuery);
     }
 
-
-    // -------------------------------- HORARIOS ---------------------------- //
-    async getListDataTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'tipo_horario', primaryKey: 'ide_tihor', columnLabel: 'nombre_tihor', condition }
-        return this.core.getListDataValues(dtoIn);
+    if (opcionesAInsertar.length > 0) {
+      await this.buildInsertOpcionesPerfil(dtoIn, opcionesAInsertar, listQuery);
     }
 
-    async getTableQueryTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
-        const condition = `ide_empr = ${dto.ideEmpr}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'tipo_horario', primaryKey: 'ide_tihor', condition }
-        return this.core.getTableQuery(dtoIn);
+    const resultMessage = await this.dataSource.createListQuery(listQuery);
+    return {
+      success: true,
+      message: 'Opciones guardadas correctamente',
+      data: {
+        totalQueries: listQuery.length,
+        resultMessage,
+      },
+    };
+  }
+
+  // -------------------------------- HORARIOS ---------------------------- //
+  async getListDataTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
+    const condition = `ide_empr = ${dto.ideEmpr}`;
+    const dtoIn = {
+      ...dto,
+      module: 'sis',
+      tableName: 'tipo_horario',
+      primaryKey: 'ide_tihor',
+      columnLabel: 'nombre_tihor',
+      condition,
+    };
+    return this.core.getListDataValues(dtoIn);
+  }
+
+  async getTableQueryTiposHorario(dto: QueryOptionsDto & HeaderParamsDto) {
+    const condition = `ide_empr = ${dto.ideEmpr}`;
+    const dtoIn = { ...dto, module: 'sis', tableName: 'tipo_horario', primaryKey: 'ide_tihor', condition };
+    return this.core.getTableQuery(dtoIn);
+  }
+
+  async getTableQueryHorario(dto: HorarioDto & HeaderParamsDto) {
+    const condition = `ide_empr = ${dto.ideEmpr} and ide_tihor=${dto.ide_tihor}`;
+    const dtoIn = { ...dto, module: 'sis', tableName: 'horario', primaryKey: 'ide_hora', condition };
+    return this.core.getTableQuery(dtoIn);
+  }
+
+  // ============ QUERY BUILDERS ============
+
+  private buildDeleteOpcionesPerfil(
+    dto: PerfilSistemaDto & HeaderParamsDto,
+    opcionesAEliminar: any[],
+    listQuery: Query[],
+  ) {
+    for (const opcion of opcionesAEliminar) {
+      const deleteQuery = new DeleteQuery('sis_perfil_opcion', dto);
+      deleteQuery.where = `ide_peop =$1`;
+      deleteQuery.addParam(1, opcion);
+      // auditoria
+      deleteQuery.ide = opcion;
+      deleteQuery.audit = true;
+      listQuery.push(deleteQuery);
     }
+  }
 
-
-    async getTableQueryHorario(dto: HorarioDto & HeaderParamsDto) {
-        const condition = `ide_empr = ${dto.ideEmpr} and ide_tihor=${dto.ide_tihor}`;
-        const dtoIn = { ...dto, module: 'sis', tableName: 'horario', primaryKey: 'ide_hora', condition }
-        return this.core.getTableQuery(dtoIn);
+  private async buildInsertOpcionesPerfil(
+    dtoIn: PerfilSistemaDto & HeaderParamsDto,
+    opcionesAInsertar: string[],
+    listQuery: Query[],
+  ) {
+    let seq = await this.getNextOpcionPerfilId(dtoIn, opcionesAInsertar.length);
+    for (const opcion of opcionesAInsertar) {
+      const insertQuery = new InsertQuery('sis_perfil_opcion', 'ide_peop', dtoIn);
+      insertQuery.values.set('ide_peop', seq);
+      insertQuery.values.set('ide_perf', dtoIn.ide_perf);
+      insertQuery.values.set('ide_sist', dtoIn.ide_sist);
+      insertQuery.values.set('ide_opci', opcion);
+      insertQuery.values.set('lectura_peop', false);
+      insertQuery.audit = true;
+      listQuery.push(insertQuery);
+      seq++;
     }
+  }
 
-
-
-    // ============ QUERY BUILDERS ============
-
-    private buildDeleteOpcionesPerfil(dto: PerfilSistemaDto & HeaderParamsDto, opcionesAEliminar: any[], listQuery: Query[]) {
-        for (const opcion of opcionesAEliminar) {
-            const deleteQuery = new DeleteQuery('sis_perfil_opcion', dto);
-            deleteQuery.where = `ide_peop =$1`;
-            deleteQuery.addParam(1, opcion);
-            // auditoria
-            deleteQuery.ide = opcion;
-            deleteQuery.audit = true;
-            listQuery.push(deleteQuery);
-
-        }
-    }
-
-
-    private async buildInsertOpcionesPerfil(
-        dtoIn: PerfilSistemaDto & HeaderParamsDto,
-        opcionesAInsertar: string[],
-        listQuery: Query[]
-    ) {
-        let seq = await this.getNextOpcionPerfilId(dtoIn, opcionesAInsertar.length);
-        for (const opcion of opcionesAInsertar) {
-            const insertQuery = new InsertQuery('sis_perfil_opcion', 'ide_peop', dtoIn);
-            insertQuery.values.set('ide_peop', seq);
-            insertQuery.values.set('ide_perf', dtoIn.ide_perf);
-            insertQuery.values.set('ide_sist', dtoIn.ide_sist);
-            insertQuery.values.set('ide_opci', opcion);
-            insertQuery.values.set('lectura_peop', false);
-            insertQuery.audit = true;
-            listQuery.push(insertQuery);
-            seq++;
-        }
-    }
-
-
-    private async getNextOpcionPerfilId(dtoIn: HeaderParamsDto, regitros: number): Promise<number> {
-        return this.dataSource.getSeqTable(
-            'sis_perfil_opcion',
-            'ide_peop',
-            regitros,
-            dtoIn.login,
-        );
-    }
-
+  private async getNextOpcionPerfilId(dtoIn: HeaderParamsDto, regitros: number): Promise<number> {
+    return this.dataSource.getSeqTable('sis_perfil_opcion', 'ide_peop', regitros, dtoIn.login);
+  }
 }

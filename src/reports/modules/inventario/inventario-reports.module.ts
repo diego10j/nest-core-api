@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ComprobatesInvReportsService } from './comprobantes/comprobates-rep.service';
+
 import { ComprobatesInvReportsController } from './comprobantes/comprobates-rep.controller';
+import { ComprobatesInvReportsService } from './comprobantes/comprobates-rep.service';
+
 
 @Module({
   controllers: [ComprobatesInvReportsController],
-  providers: [ ComprobatesInvReportsService],
-  imports: [], 
+  providers: [ComprobatesInvReportsService],
+
 })
-export class InventarioReportsModule {}
+export class InventarioReportsModule { }

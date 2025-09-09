@@ -1,27 +1,22 @@
-import { Reflector } from '@nestjs/core';
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
+
 // import { Request } from 'express';
 import { META_ROLES } from '../decorators/role-protected.decorator';
 
 @Injectable()
 export class UserRoleGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
 
-  constructor(
-    private readonly reflector: Reflector
-  ) { }
-
-  canActivate(
-    context: ExecutionContext,
-  ): boolean | Promise<boolean> | Observable<boolean> {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
     //console.log(context.switchToHttp().getRequest().ip);
-    const validRoles: string[] = this.reflector.get(META_ROLES, context.getHandler())
+    const validRoles: string[] = this.reflector.get(META_ROLES, context.getHandler());
     if (!validRoles) return true;
     if (validRoles.length === 0) return true;
 
     const req = context.switchToHttp().getRequest();
     const user = req.user;
-
 
     // 1. Verificar que el usuario esté autenticado
     if (!user) {
@@ -46,11 +41,8 @@ export class UserRoleGuard implements CanActivate {
     // if(!validRoles.includes(user.role.rolName as ValidRoles)){
     //  throw new ForbiddenException("You need one rol");
     // }
-    throw new ForbiddenException(
-      `User ${user.nom_usua} need a valid role: [${validRoles}]`
-    );
+    throw new ForbiddenException(`User ${user.nom_usua} need a valid role: [${validRoles}]`);
   }
-
 
   // private isAccessingOwnResource(request: Request, userId: number): boolean {
   //   const requestedId = request.params.id;
@@ -59,5 +51,4 @@ export class UserRoleGuard implements CanActivate {
   //  Comparar el ID del token con el ID solicitado
   //   return parseInt(requestedId, 10) === userId;
   // }
-
 }

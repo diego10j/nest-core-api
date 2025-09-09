@@ -1,21 +1,10 @@
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 
 import { Injectable, NotFoundException } from '@nestjs/common';
-
 import OpenAI from 'openai';
+import { envs } from 'src/config/envs';
 
-import {
-  audioToTextUseCase,
-  imageGenerationUseCase,
-  imageVariationUseCase,
-  orthographyCheckUseCase,
-  prosConsDicusserStreamUseCase,
-  prosConsDicusserUseCase,
-  textToAudioUseCase,
-  translateUseCase,
-  contentProductUseCase
-} from './use-cases';
 import {
   AudioToTextDto,
   ContentProductDto,
@@ -26,8 +15,17 @@ import {
   TextToAudioDto,
   TranslateDto,
 } from './dtos';
-import { envs } from 'src/config/envs';
-
+import {
+  audioToTextUseCase,
+  imageGenerationUseCase,
+  imageVariationUseCase,
+  orthographyCheckUseCase,
+  prosConsDicusserStreamUseCase,
+  prosConsDicusserUseCase,
+  textToAudioUseCase,
+  translateUseCase,
+  contentProductUseCase,
+} from './use-cases';
 
 @Injectable()
 export class GptService {
@@ -60,11 +58,7 @@ export class GptService {
   }
 
   async textToAudioGetter(fileId: string) {
-    const filePath = path.resolve(
-      __dirname,
-      '../../generated/audios/',
-      `${fileId}.mp3`,
-    );
+    const filePath = path.resolve(__dirname, '../../generated/audios/', `${fileId}.mp3`);
 
     const wasFound = fs.existsSync(filePath);
 
@@ -73,10 +67,7 @@ export class GptService {
     return filePath;
   }
 
-  async audioToText(
-    audioFile: Express.Multer.File,
-    audioToTextDto: AudioToTextDto,
-  ) {
+  async audioToText(audioFile: Express.Multer.File, audioToTextDto: AudioToTextDto) {
     const { prompt } = audioToTextDto;
 
     return await audioToTextUseCase(this.openai, { audioFile, prompt });
@@ -87,10 +78,8 @@ export class GptService {
   }
 
   getGeneratedImage(fileName: string) {
-
     const filePath = path.resolve('./', './generated/images/', fileName);
     const exists = fs.existsSync(filePath);
-
 
     if (!exists) {
       throw new NotFoundException('File not found');
@@ -99,15 +88,11 @@ export class GptService {
     return filePath;
   }
 
-
   async geneateImageVariation({ baseImage }: ImageVariationDto) {
     return imageVariationUseCase(this.openai, { baseImage });
   }
 
-
   async generateContentProduct({ product }: ContentProductDto) {
     return await contentProductUseCase(this.openai, { product });
   }
-
-
 }

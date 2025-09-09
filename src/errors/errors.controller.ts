@@ -1,22 +1,19 @@
-import { Controller, Get, Post } from "@nestjs/common";
-import { ErrorsLoggerService } from "./errors-logger.service";
+import { Controller, Get, Post } from '@nestjs/common';
 
+import { ErrorsLoggerService } from './errors-logger.service';
 
 @Controller('errors')
 export class ErrorsController {
-  constructor(private readonly errorsLoggerService: ErrorsLoggerService) { }
+  constructor(private readonly errorsLoggerService: ErrorsLoggerService) {}
 
-  @Get("getAllErrorLog")
+  @Get('getAllErrorLog')
   getAllErrorLog() {
     const errorList = this.errorsLoggerService.getAllErrorLog();
     return { errorList };
   }
 
-  @Post("clearAllErrorLog")
+  @Post('clearAllErrorLog')
   clearAllErrorLog() {
     return this.errorsLoggerService.clearErrorLog();
   }
 }
-
-
-

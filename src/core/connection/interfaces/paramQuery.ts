@@ -1,4 +1,4 @@
 export interface ParamQuery {
-    index: number;
-    value: any;
+  index: number;
+  value: any;
 }

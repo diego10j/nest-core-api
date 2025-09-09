@@ -1,15 +1,13 @@
-import { IsDateString, IsInt} from 'class-validator';
+import { IsDateString, IsInt } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class TrnClienteDto extends QueryOptionsDto {
+  @IsDateString()
+  fechaInicio: string;
 
-    @IsDateString()
-    fechaInicio: string;
+  @IsDateString()
+  fechaFin: string;
 
-    @IsDateString()
-    fechaFin: string;
-
-    @IsInt()
-    ide_geper: number;
-
+  @IsInt()
+  ide_geper: number;
 }

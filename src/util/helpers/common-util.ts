@@ -1,51 +1,48 @@
-import { envs } from "src/config/envs";
+import { envs } from 'src/config/envs';
 
 export const HOST_API = (): string => envs.hostApi;
 
 export function isEmpty(value: any): boolean {
-    return !isDefined(value) || value === '';
+  return !isDefined(value) || value === '';
 }
 
 export function toString(value: any): string {
-    return (typeof value === "undefined") ? '' : value;
+  return typeof value === 'undefined' ? '' : value;
 }
-
 
 /**
  * Verifica si un valor esta definido
- * @param value 
- * @returns 
+ * @param value
+ * @returns
  */
 export function isDefined(value): boolean {
-    return typeof value !== "undefined" && value !== null;
+  return typeof value !== 'undefined' && value !== null;
 }
 
 /**
- * Valida columnas requeridas de un objeto data 
+ * Valida columnas requeridas de un objeto data
  * @param data  {}
- * @param columns  
- * @returns 
+ * @param columns
+ * @returns
  */
 export function validateDataRequiere(data: any, columns: string[]): string[] {
-    const errors: string[] = [];
-    columns.forEach((column) => {
-        if (column) {
-            const value = data[column];
-            if (value === "" || value === undefined || value === null) {
-                errors.push(`El campo ${column} es requerido.`);
-            }
-        }
-    });
-    return errors;
+  const errors: string[] = [];
+  columns.forEach((column) => {
+    if (column) {
+      const value = data[column];
+      if (value === '' || value === undefined || value === null) {
+        errors.push(`El campo ${column} es requerido.`);
+      }
+    }
+  });
+  return errors;
 }
 
-
-
 export function fCurrency(value: number): string {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-    }).format(value);
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(value);
 }
 
 /**
@@ -54,8 +51,8 @@ export function fCurrency(value: number): string {
  * @returns Mensaje de error formateado
  */
 export function extractErrorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-        return (error as any).message;
-    }
-    return 'Ocurrió un error inesperado';
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
+    return (error as any).message;
+  }
+  return 'Ocurrió un error inesperado';
 }

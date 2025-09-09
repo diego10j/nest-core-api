@@ -1,72 +1,56 @@
 import { Body, Controller, Get, Ip, Post } from '@nestjs/common';
-import { ApiResponse, ApiTags } from '@nestjs/swagger';
-import { AuthService } from './auth.service';
-import { LoginUserDto } from './dto/login-user.dto';
-import { QueryOptionsDto } from '../../common/dto/query-options.dto';
-import { Auth, GetUser } from './decorators';
-import { HorarioLoginDto } from './dto/horario-login.dto';
-import { MenuRolDto } from './dto/menu-rol.dto';
+import { ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+
+import { QueryOptionsDto } from '../../common/dto/query-options.dto';
+
+import { AuthService } from './auth.service';
+import { Auth, GetUser } from './decorators';
+import { HorarioLoginDto } from './dto/horario-login.dto';
+import { LoginUserDto } from './dto/login-user.dto';
+import { MenuRolDto } from './dto/menu-rol.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
-    @Post('login')
-    login(
-        @Body() dtoIn: LoginUserDto, @Ip() ip) {
-        return this.authService.login(dtoIn, ip);
-    }
+  @Post('login')
+  login(@Body() dtoIn: LoginUserDto, @Ip() ip) {
+    return this.authService.login(dtoIn, ip);
+  }
 
+  @Get('me')
+  @Auth()
+  me(@GetUser() user: any) {
+    return this.authService.checkAuthStatus(user);
+  }
 
-    @Get('me')
-    @Auth()
-    me(
-        @GetUser() user: any
-    ) {
-        return this.authService.checkAuthStatus(user);
-    }
+  @Get('check-status')
+  @Auth()
+  checkAuthStatus(@GetUser() user: any) {
+    return this.authService.checkAuthStatus(user);
+  }
 
+  @Post('getMenuByRol')
+  @Auth()
+  getMenu(@Body() dtoIn: MenuRolDto) {
+    return this.authService.getMenuByRol(dtoIn);
+  }
 
-    @Get('check-status')
-    @Auth()
-    checkAuthStatus(
-        @GetUser() user: any
-    ) {
-        return this.authService.checkAuthStatus(user);
-    }
+  @Post('validarHorarioLogin')
+  // @Auth()
+  validarHorarioLogin(@Body() dtoIn: HorarioLoginDto) {
+    return this.authService.validarHorarioLogin(dtoIn);
+  }
 
-    @Post('getMenuByRol')
-    @Auth()
-    getMenu(
-        @Body() dtoIn: MenuRolDto
-    ) {
-        return this.authService.getMenuByRol(dtoIn);
-    }
-
-    @Post('validarHorarioLogin')
-    // @Auth()
-    validarHorarioLogin(
-        @Body() dtoIn: HorarioLoginDto
-    ) {
-        return this.authService.validarHorarioLogin(dtoIn);
-    }
-
-
-
-
-    @Post('logout')
-    @Auth()
-    logout(
-        @AppHeaders() headersParams: HeaderParamsDto,
-        @Body() dtoIn: QueryOptionsDto
-    ) {
-        return this.authService.logout({
-            ...headersParams,
-            ...dtoIn
-        });
-    }
-
+  @Post('logout')
+  @Auth()
+  logout(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: QueryOptionsDto) {
+    return this.authService.logout({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 }

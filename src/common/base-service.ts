@@ -1,5 +1,3 @@
 export class BaseService {
-    protected variables = new Map();
-
+  protected variables = new Map();
 }
-

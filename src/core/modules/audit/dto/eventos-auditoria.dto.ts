@@ -1,15 +1,14 @@
 import { IsDateString, IsInt, IsOptional, IsPositive } from 'class-validator';
 
-export class EventosAuditoriaDto  {
+export class EventosAuditoriaDto {
+  @IsDateString()
+  fechaInicio: string;
 
-    @IsDateString()
-    fechaInicio: string;
+  @IsDateString()
+  fechaFin: string;
 
-    @IsDateString()
-    fechaFin: string;
-
-    @IsInt()
-    @IsPositive()
-    @IsOptional()
-    ide_usua?: number;
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  ide_usua?: number;
 }

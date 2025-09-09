@@ -1,5 +1,5 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Server } from 'socket.io';
 
@@ -17,7 +17,7 @@ async function bootstrap() {
       'http://localhost:8080',
       'http://172.21.50.13:8080',
       'http://devproerpec.site',
-      'https://devproerpec.site'
+      'https://devproerpec.site',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Agregué métodos comunes
     allowedHeaders: [
@@ -29,17 +29,10 @@ async function bootstrap() {
       'X-Ide-Perf',
       'X-Login',
       'X-Ip',
-      'X-Terminal'
+      'X-Terminal',
     ],
-    exposedHeaders: [
-      'Authorization',
-      'X-Ide-Usua',
-      'X-Ide-Empr',
-      'X-Ide-Sucu',
-      'X-Ide-Perf',
-      'X-Login'
-    ],
-    credentials: true
+    exposedHeaders: ['Authorization', 'X-Ide-Usua', 'X-Ide-Empr', 'X-Ide-Sucu', 'X-Ide-Perf', 'X-Login'],
+    credentials: true,
   });
 
   // Configurar el adaptador de WebSockets

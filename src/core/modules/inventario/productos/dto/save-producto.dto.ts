@@ -1,21 +1,18 @@
-import { 
-  Type, 
-  Transform 
-} from "class-transformer";
-import { 
-  ValidateNested, 
-  IsBoolean, 
-  IsNumber, 
-  IsString, 
-  IsOptional, 
-  IsNotEmpty, 
-  IsUUID, 
-  IsUrl, 
-  IsObject, 
-  IsArray, 
+import { Type, Transform } from 'class-transformer';
+import {
+  ValidateNested,
+  IsBoolean,
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsNotEmpty,
+  IsUUID,
+  IsUrl,
+  IsObject,
+  IsArray,
   IsPositive,
-  IsInt
-} from "class-validator";
+  IsInt,
+} from 'class-validator';
 
 export class InvArticulo {
   @IsOptional()
@@ -122,7 +119,7 @@ export class InvArticulo {
   @Transform(({ value }) => value || null)
   publicacion_inarti?: string | null;
 
- @IsOptional()
+  @IsOptional()
   @IsArray()
   @Transform(({ value }) => {
     if (Array.isArray(value)) {
@@ -148,7 +145,6 @@ export class InvArticulo {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 3 })
   cant_stock2_inarti?: number | null;
-
 
   @IsOptional()
   @IsInt()
@@ -239,11 +235,10 @@ export class InvArticulo {
   @Transform(({ value }) => value || null)
   cod_auto_inarti?: string | null;
 
-    @IsOptional()
+  @IsOptional()
   @IsBoolean()
   @Transform(({ value }) => value ?? null)
   control_fec_cadu_inarti?: boolean | null;
-  
 
   @IsOptional()
   @IsBoolean()
@@ -260,8 +255,7 @@ export class SaveProductoDto {
   @ValidateNested()
   @Type(() => InvArticulo)
   data!: InvArticulo;
-  
+
   @IsBoolean()
   isUpdate!: boolean;
 }
-

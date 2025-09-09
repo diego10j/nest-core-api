@@ -1,513 +1,379 @@
 import { Query, Controller, Get, Body, Post, Delete } from '@nestjs/common';
-import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 
-import { ProductosService } from './productos.service';
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
-import { TrnProductoDto } from './dto/trn-producto.dto';
 // import { Auth } from '../../../core/auth/decorators';
-import { IdProductoDto } from './dto/id-producto.dto';
-import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
-import { PreciosProductoDto } from './dto/precios-producto.dto';
-import { UuidDto } from 'src/common/dto/uuid.dto';
-import { ClientesProductoDto } from './dto/clientes-producto.dto';
-import { CategoriasDto } from './dto/categorias.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
-import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
-import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { UuidDto } from 'src/common/dto/uuid.dto';
+
+import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+
 import { ConfigPreciosProductosService } from './config-precios.service';
+import { CategoriasDto } from './dto/categorias.dto';
+import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
+import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
+import { IdProductoDto } from './dto/id-producto.dto';
+import { PreciosProductoDto } from './dto/precios-producto.dto';
+import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { SaveProductoDto } from './dto/save-producto.dto';
-
-
+import { TrnProductoDto } from './dto/trn-producto.dto';
+import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { ProductosService } from './productos.service';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
 export class ProductosController {
-  constructor(private readonly productos: ProductosService,
-    private readonly configPrecios: ConfigPreciosProductosService) { }
-
-
+  constructor(
+    private readonly productos: ProductosService,
+    private readonly configPrecios: ConfigPreciosProductosService,
+  ) {}
 
   @Get('getProductoByUuid')
   // @Auth()
-  getProductoByUuid(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: UuidDto
-  ) {
+  getProductoByUuid(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UuidDto) {
     return this.productos.getProductoByUuid({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getProductos')
   // @Auth()
-  getProductos(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: GetProductoDto
-  ) {
+  getProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
     return this.productos.getProductos({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getAllProductos')
   // @Auth()
-  getAllProductos(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: GetProductoDto
-  ) {
+  getAllProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
     return this.productos.getAllProductos({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getCatalogoProductos')
   // @Auth()
-  getCatalogoProductos(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
-  ) {
+  getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.productos.getCatalogoProductos({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getProducto')
   // @Auth()
-  getProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: UuidDto
-  ) {
+  getProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UuidDto) {
     return this.productos.getProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getTableQueryCategorias')
   // @Auth()
-  getTableQueryCategorias(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: CategoriasDto
-  ) {
+  getTableQueryCategorias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CategoriasDto) {
     return this.productos.getTableQueryCategorias({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getTreeModelCategorias')
   // @Auth()
-  getTreeModelCategorias(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: CategoriasDto
-  ) {
+  getTreeModelCategorias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CategoriasDto) {
     return this.productos.getTreeModelCategorias({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('searchProducto')
   // @Auth()
-  searchProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: SearchDto
-  ) {
+  searchProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDto) {
     return this.productos.searchProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getTrnProducto')
   // @Auth()
-  getTrnProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: TrnProductoDto
-  ) {
+  getTrnProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getTrnProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getComprasProducto')
   // @Auth()
-  getComprasProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: TrnProductoDto
-  ) {
+  getComprasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getComprasProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getVentasProducto')
   // @Auth()
-  getVentasProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: PreciosProductoDto
-  ) {
+  getVentasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PreciosProductoDto) {
     return this.productos.getVentasProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getVentasProductoUtilidad')
   // @Auth()
-  getVentasProductoUtilidad(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: PreciosProductoDto
-  ) {
+  getVentasProductoUtilidad(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PreciosProductoDto) {
     return this.productos.getVentasProductoUtilidad({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getUltimosPreciosCompras')
   // @Auth()
-  getUltimosPreciosCompras(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
-  ) {
+  getUltimosPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getUltimosPreciosCompras({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getSaldo')
   // @Auth()
-  getSaldo(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: GetSaldoProductoDto
-  ) {
+  getSaldo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetSaldoProductoDto) {
     return this.productos.getSaldo({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getSaldoPorBodega')
   // @Auth()
-  getSaldoPorBodega(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
-  ) {
+  getSaldoPorBodega(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getSaldoPorBodega({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getVentasMensuales')
   // @Auth()
-  getVentasMensuales(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getVentasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getVentasMensuales({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getComprasMensuales')
   // @Auth()
-  getComprasMensuales(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getComprasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getComprasMensuales({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
 
   @Get('getSumatoriaTrnPeriodo')
   // @Auth()
-  getSumatoriaTrnPeriodo(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getSumatoriaTrnPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getSumatoriaTrnPeriodo({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getProveedores')
   // @Auth()
-  getProveedores(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
-  ) {
+  getProveedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getProveedores({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getTopProveedores')
   // @Auth()
-  getTopProveedores(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getTopProveedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getTopProveedores({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getClientes')
   // @Auth()
-  getClientes(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: ClientesProductoDto
-  ) {
+  getClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.productos.getClientes({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getTopClientes')
   // @Auth()
-  getTopClientes(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getTopClientes({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('chartVariacionPreciosCompras')
   // @Auth()
-  charVariacionPreciosCompras(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
-  ) {
+  charVariacionPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.chartVariacionPreciosCompras({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getVariacionInventario')
   // @Auth()
-  getVariacionInventario(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getVariacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getVariacionInventario({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
 
   @Get('getActividades')
   // @Auth()
-  getActividades(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdProductoDto
-  ) {
+  getActividades(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getActividades({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getProformasMensuales')
   // @Auth()
-  getProformasMensuales(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  getProformasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getProformasMensuales({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('chartVentasPeriodo')
   // @Auth()
-  chartVentasPeriodo(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: VentasMensualesDto
-  ) {
+  chartVentasPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.chartVentasPeriodo({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('getTopProductosVendidos')
   // @Auth()
-  getTopProductosVendidos(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
-  ) {
+  getTopProductosVendidos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.productos.getTopProductosVendidos({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('getTopProductosFacturados')
   // @Auth()
-  getTopProductosFacturados(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
-  ) {
+  getTopProductosFacturados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.productos.getTopProductosFacturados({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('chartProductos')
   // @Auth()
-  chartProductos(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: QueryOptionsDto
-  ) {
+  chartProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.productos.chartProductos({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Post('saveProducto')
   // @Auth()
-  saveProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: SaveProductoDto
-  ) {
+  saveProducto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveProductoDto) {
     return this.productos.saveProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-  
 
   // =========================================CONFIGURACION DE PRECIOS
 
   @Get('getPrecioVentaProducto')
   // @Auth()
-  getPrecioVentaProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: PrecioVentaProductoDto
-  ) {
+  getPrecioVentaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PrecioVentaProductoDto) {
     return this.configPrecios.getPrecioVentaProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
 
   @Post('generarConfigPreciosVenta')
   //@Auth()
-  generarConfigPreciosVenta(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: GeneraConfigPreciosVentaDto
-  ) {
+  generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConfigPreciosVentaDto) {
     return this.configPrecios.generarConfigPreciosVenta({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
-
 
   @Get('getConfigPreciosProducto')
   // @Auth()
-  getConfigPreciosProducto(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: GetConfigPrecioProductoDto
-  ) {
+  getConfigPreciosProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConfigPrecioProductoDto) {
     return this.configPrecios.getConfigPreciosProducto({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
 
   @Post('saveConfigPrecios')
   // @Auth()
-  saveConfigPrecios(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: SaveConfigPrecioDto
-  ) {
+  saveConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveConfigPrecioDto) {
     return this.configPrecios.saveConfigPrecios({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
-
   @Get('findConfigPreciosById')
   // @Auth()
-  findConfigPreciosById(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: IdeDto
-  ) {
+  findConfigPreciosById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
     return this.configPrecios.findConfigPreciosById({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Delete('deleteConfigPrecios')
   // @Auth()
-  deleteDetailCampaniaById(
-    @AppHeaders() _headersParams: HeaderParamsDto,
-    @Body() dtoIn: ArrayIdeDto
-  ) {
+  deleteDetailCampaniaById(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
     return this.configPrecios.deleteConfigPrecios(dtoIn);
   }
 
-
   @Post('copiarConfigPrecios')
   // @Auth()
-  copiarConfigPrecios(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: CopiarConfigPreciosVentaDto
-  ) {
+  copiarConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CopiarConfigPreciosVentaDto) {
     return this.configPrecios.copiarConfigPrecios({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
-
-
 }

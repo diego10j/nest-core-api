@@ -1,9 +1,11 @@
 import { Query, Controller, Get } from '@nestjs/common';
-import { ApiPersonaService } from './api-persona.service';
-import { RucDto } from './dto/ruc.dto';
-import { CedulaDto } from './dto/cedula.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+
+import { ApiPersonaService } from './api-persona.service';
+
+import { RucDto } from 'src/core/modules/sistema/admin/dto/ruc.dto';
+import { CedulaDto } from 'src/core/modules/sistema/general/dto/cedula.dto';
 
 
 @Controller('integration/api-persona')
@@ -12,27 +14,19 @@ export class ApiPersonaController {
 
   @Get('consultaCedula')
   // @Auth()
-  consultaCedula(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: CedulaDto
-  ) {
+  consultaCedula(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CedulaDto) {
     return this.service.consultaCedula({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
 
   @Get('consultaRUC')
   // @Auth()
-  consultaRUC(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: RucDto
-  ) {
+  consultaRUC(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RucDto) {
     return this.service.consultaRUC({
       ...headersParams,
-      ...dtoIn
+      ...dtoIn,
     });
   }
-
-
 }

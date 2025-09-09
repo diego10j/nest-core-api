@@ -16,7 +16,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
 
-import { GptService } from './gpt.service';
 import {
   AudioToTextDto,
   ContentProductDto,
@@ -27,10 +26,11 @@ import {
   TextToAudioDto,
   TranslateDto,
 } from './dtos';
+import { GptService } from './gpt.service';
 
 @Controller('gpt')
 export class GptController {
-  constructor(private readonly gptService: GptService) { }
+  constructor(private readonly gptService: GptService) {}
 
   @Post('orthography-check')
   orthographyCheck(@Body() orthographyDto: OrthographyDto) {
@@ -43,12 +43,8 @@ export class GptController {
   }
 
   @Post('pros-cons-discusser-stream')
-  async prosConsDicusserStream(
-    @Body() prosConsDiscusserDto: ProsConsDiscusserDto,
-    @Res() res: Response,
-  ) {
-    const stream =
-      await this.gptService.prosConsDicusserStream(prosConsDiscusserDto);
+  async prosConsDicusserStream(@Body() prosConsDiscusserDto: ProsConsDiscusserDto, @Res() res: Response) {
+    const stream = await this.gptService.prosConsDicusserStream(prosConsDiscusserDto);
 
     res.setHeader('Content-Type', 'application/json');
     res.status(HttpStatus.OK);
@@ -68,10 +64,7 @@ export class GptController {
   }
 
   @Get('text-to-audio/:fileId')
-  async textToAudioGetter(
-    @Res() res: Response,
-    @Param('fileId') fileId: string,
-  ) {
+  async textToAudioGetter(@Res() res: Response, @Param('fileId') fileId: string) {
     const filePath = await this.gptService.textToAudioGetter(fileId);
 
     res.setHeader('Content-Type', 'audio/mp3');
@@ -80,10 +73,7 @@ export class GptController {
   }
 
   @Post('text-to-audio')
-  async textToAudio(
-    @Body() textToAudioDto: TextToAudioDto,
-    @Res() res: Response,
-  ) {
+  async textToAudio(@Body() textToAudioDto: TextToAudioDto, @Res() res: Response) {
     const filePath = await this.gptService.textToAudio(textToAudioDto);
 
     res.setHeader('Content-Type', 'audio/mp3');
@@ -134,7 +124,6 @@ export class GptController {
     res.sendFile(filePath);
   }
 
-
   @Post('image-variation')
   async imageVariation(@Body() imageVariationDto: ImageVariationDto) {
     return await this.gptService.geneateImageVariation(imageVariationDto);
@@ -144,6 +133,4 @@ export class GptController {
   generateContentProduct(@Body() contentProductDto: ContentProductDto) {
     return this.gptService.generateContentProduct(contentProductDto);
   }
-
-
 }

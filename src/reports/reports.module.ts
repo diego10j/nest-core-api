@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { InventarioModule } from 'src/core/modules/inventario/inventario.module';
+
 import { InventarioReportsModule } from './modules/inventario/inventario-reports.module';
+import { CommonRepModule } from './common/common-rep.module';
+import { PrinterModule } from './printer/printer.module';
 
 @Module({
-    imports: [        
-        InventarioReportsModule
-    ],
-    providers: [],
-    controllers: [],
+  imports: [PrinterModule, CommonRepModule, InventarioReportsModule],
+  providers: [],
+  exports: [],
+  controllers: [],
 })
 export class ReportsModule { }

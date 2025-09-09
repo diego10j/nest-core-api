@@ -1,13 +1,10 @@
-import * as path from 'path';
 import * as fs from 'fs';
-import sharp from 'sharp';
+import * as path from 'path';
 
 import { InternalServerErrorException } from '@nestjs/common';
+import sharp from 'sharp';
 
-export const downloadImageAsPng = async (
-  url: string,
-  fullPath: boolean = false,
-) => {
+export const downloadImageAsPng = async (url: string, fullPath: boolean = false) => {
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -28,10 +25,7 @@ export const downloadImageAsPng = async (
   return fullPath ? completePath : imageNamePng;
 };
 
-export const downloadBase64ImageAsPng = async (
-  base64Image: string,
-  fullPath: boolean = false,
-) => {
+export const downloadBase64ImageAsPng = async (base64Image: string, fullPath: boolean = false) => {
   // Remover encabezado
   base64Image = base64Image.split(';base64,').pop();
   const imageBuffer = Buffer.from(base64Image, 'base64');
@@ -47,7 +41,6 @@ export const downloadBase64ImageAsPng = async (
 
   return fullPath ? completePath : imageNamePng;
 };
-
 
 export const openInBrowserMimeTypes = [
   'image/jpeg',

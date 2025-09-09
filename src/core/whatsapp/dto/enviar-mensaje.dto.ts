@@ -1,39 +1,35 @@
 import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
 import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
 
 export class EnviarMensajeDto extends TelefonoWebDto {
+  @IsString()
+  texto: string;
 
+  @IsBoolean()
+  @IsOptional()
+  emitSocket?: boolean = true; // true emite mensajes por socket a clientes conectados
 
-    @IsString()
-    texto: string;
+  // API
 
-    @IsBoolean()
-    @IsOptional()
-    emitSocket?: boolean = true;  // true emite mensajes por socket a clientes conectados
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  tipo: string | 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
 
+  @IsString()
+  @IsOptional()
+  idWts?: string;
 
-    // API
+  @IsString()
+  @IsOptional()
+  mediaId?: string;
 
-    @IsString()
-    @IsNotEmpty()
-    @IsOptional()
-    tipo: string | 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'contacts' | 'sticker' = 'text';
+  @IsString()
+  @IsOptional()
+  fileName?: string;
 
-
-    @IsString()
-    @IsOptional()
-    idWts?: string;
-
-    @IsString()
-    @IsOptional()
-    mediaId?: string;
-
-    @IsString()
-    @IsOptional()
-    fileName?: string;
-
-    @IsString()
-    @IsOptional()
-    mimeType?: string;
-
+  @IsString()
+  @IsOptional()
+  mimeType?: string;
 }

@@ -4,8 +4,8 @@ import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
 
 @Module({
-    imports: [],
-    controllers: [AuditController],
-    providers: [ AuditService]
+  imports: [],
+  controllers: [AuditController],
+  providers: [AuditService],
 })
-export class AuditModule { }
+export class AuditModule {}

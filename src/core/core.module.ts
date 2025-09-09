@@ -1,21 +1,20 @@
 import { Module } from '@nestjs/common';
+
+import { ChartsModule } from './charts/charts.module';
 import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
-
-import { WhatsappModule } from './whatsapp/whatsapp.module';
-import { SistemaModule } from './modules/sistema/sistema.module';
-
-import { InventarioModule } from './modules/inventario/inventario.module';
-import { VentasModule } from './modules/ventas/ventas.module';
-import { ChartsModule } from './charts/charts.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { SriModule } from './modules/sri/sri.module';
 import { IntegrationModule } from './integration/integration.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
+import { InventarioModule } from './modules/inventario/inventario.module';
+import { SistemaModule } from './modules/sistema/sistema.module';
+import { SriModule } from './modules/sri/sri.module';
+import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
-  imports: [    
+  imports: [
     AuditModule,
     WhatsappModule,
     ChartsModule,
@@ -26,9 +25,7 @@ import { VariablesController } from './variables/variables.controller';
     IntegrationModule,
     ContabilidadModule,
   ],
-  providers: [
-    CoreService,
-  ],
+  providers: [CoreService],
 
   controllers: [CoreController, VariablesController],
 })

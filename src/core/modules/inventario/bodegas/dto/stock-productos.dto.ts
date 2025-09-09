@@ -2,20 +2,17 @@ import { IsBoolean, IsDateString, ArrayNotEmpty, IsOptional, IsNotEmpty, IsArray
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class StockProductosDto extends QueryOptionsDto {
+  @IsDateString()
+  @IsOptional()
+  fechaCorte?: string;
 
-    @IsDateString()
-    @IsOptional()
-    fechaCorte?: string;
+  @IsOptional()
+  @ArrayNotEmpty()
+  @IsNotEmpty({ each: true })
+  @IsArray()
+  ide_inbod?: number[];
 
-
-    @IsOptional()
-    @ArrayNotEmpty()
-    @IsNotEmpty({ each: true })
-    @IsArray()
-    ide_inbod?: number[];
-
-    @IsBoolean()
-    @IsOptional()
-    onlyStock?: boolean = true;
-
+  @IsBoolean()
+  @IsOptional()
+  onlyStock?: boolean = true;
 }

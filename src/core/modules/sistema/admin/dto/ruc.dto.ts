@@ -1,11 +1,10 @@
-import { IsString, MinLength } from 'class-validator';
-
-
+import { IsString, IsNotEmpty, Matches } from 'class-validator';
 
 export class RucDto {
-
-    @IsString()
-    @MinLength(13)
-    ruc: string;
-
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\d{13}$/g, {
+    message: 'RUC no válido',
+  })
+  ruc: string;
 }

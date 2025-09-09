@@ -1,9 +1,8 @@
-import { IsBoolean, IsInt, IsOptional, IsString, IsDate, IsDateString } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsDateString } from 'class-validator';
 import { IsAfterOrEqualTo, IsBeforeOrEqualTo } from 'src/common/decorators/date-validations.decorator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class EventoDto extends QueryOptionsDto {
-
   @IsInt()
   ide_cale: number;
 
@@ -47,5 +46,4 @@ export class EventoDto extends QueryOptionsDto {
   @IsOptional()
   @IsBoolean()
   notificar_cale?: boolean;
-
 }

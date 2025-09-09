@@ -1,15 +1,12 @@
 import { IsDateString, IsInt } from 'class-validator';
 
-
 export class GeneraConfigPreciosVentaDto {
+  @IsInt()
+  ide_inarti: number;
 
-    @IsInt()
-    ide_inarti: number;
+  @IsDateString()
+  fechaInicio: string;
 
-    @IsDateString()
-    fechaInicio: string;
-
-    @IsDateString()
-    fechaFin: string;
-
+  @IsDateString()
+  fechaFin: string;
 }

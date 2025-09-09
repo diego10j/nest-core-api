@@ -1,11 +1,8 @@
 import { IsOptional, IsString } from 'class-validator';
 
-
 export class ImageGenerationDto {
-
   @IsString()
   readonly prompt: string;
-
 
   @IsString()
   @IsOptional()
@@ -14,6 +11,4 @@ export class ImageGenerationDto {
   @IsString()
   @IsOptional()
   readonly maskImage?: string;
-
-
 }

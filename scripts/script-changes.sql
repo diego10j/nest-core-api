@@ -1422,17 +1422,49 @@ ADD COLUMN "perm_fact_sin_stock_inarti" bool DEFAULT true;
 
 -- Para registar compras y ventas info adicional 
 ALTER TABLE "public"."inv_det_comp_inve"
-ADD COLUMN "fecha_caduca_indci" DATE,
-ADD COLUMN "lote_indci" varchar(50),   ---- es importante registrar en compras  para luego  saber de que lote se esta vendiendo 
-ADD COLUMN "peso_marcado_indci" numeric(12,3),
-ADD COLUMN "peso_tara_indci" numeric(12,3),
-ADD COLUMN "peso_real_indci" numeric(12,3),    ---  para cuando existen diferencias de precio
-ADD COLUMN "foto_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
-ADD COLUMN "archivo_indci" varchar(250),      -- ejemplo coa/ hoja seguridad   *****
+ADD COLUMN "foto_verifica_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
 ADD COLUMN "verifica_indci" bool DEFAULT false,
-ADD COLUMN "fecha_verifica_indci" TIMESTAMP;
+ADD COLUMN "usuario_verifica_indci" bool DEFAULT false,
+ADD COLUMN "observ_verifica_indci" varchar(250),
+ADD COLUMN "peso_verifica_inlot" numeric(12,3),
+ADD COLUMN "fecha_verifica_indci" TIMESTAMP,
+add COLUMN "ide_inlot" int8;      --- Para ventas se registra el lote vendido
 
-ALTER TABLE inv_est_prev_inve ADD COLUMN query_name_tabl varchar(100); 
+-- Actualizar los registros existentes para que tengan verifica_indci = true
+update inv_det_comp_inve set verifica_indci = true;
+
+
+CREATE TABLE inv_lote (
+    ide_inlot int8 PRIMARY KEY,
+    lote_inlot VARCHAR(50) NOT NULL,
+    fecha_ingreso_inlot TIMESTAMP DEFAULT NOW(),
+    fecha_caducidad_inlot DATE,
+	pais_inlot VARCHAR(80),
+	peso_inlot numeric(12,3),
+    peso_tara_inlot numeric(12,3),
+    peso_real_inlot numeric(12,3),    ---  para cuando existen diferencias de peso
+    stock_anterior_inlot NUMERIC(15, 6) NOT NULL,
+    stock_posterior_inlot NUMERIC(15, 6) NOT NULL,
+    ide_indci_ingreso INTEGER,
+	ide_indci_egreso INTEGER,    --- para las ventas
+    es_saldo_inicial BOOLEAN DEFAULT FALSE, -- Para identificar si es saldo inicial
+	saldo_inlot NUMERIC(15, 6) NOT NULL,  -- para llevar control de stock actual 
+    activo_inlot BOOLEAN DEFAULT TRUE,  
+	archivo1_inlot varchar(250),
+	archivo2_inlot varchar(250),
+	archivo3_inlot varchar(250),
+	observacion_inlot varchar(250),
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    FOREIGN KEY (ide_indci_ingreso) REFERENCES inv_det_comp_inve(ide_indci)
+);
+
+
+ALTER TABLE "public"."inv_det_comp_inve" ADD FOREIGN KEY ("ide_inlot") REFERENCES "public"."inv_lote" ("ide_inlot");
+
+
 ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE inv_est_prev_inve ADD COLUMN hora_ingre TIMESTAMP;
 ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_actua varchar(50); 
@@ -1464,3 +1496,4 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE sis_perfil_opcion ADD COLUMN hora_actua TIMESTAMP;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
+

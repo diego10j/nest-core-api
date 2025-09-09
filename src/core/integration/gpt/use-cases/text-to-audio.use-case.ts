@@ -1,5 +1,5 @@
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 
 import OpenAI from 'openai';
 
@@ -8,11 +8,7 @@ interface Options {
   voice?: string;
 }
 
-export const textToAudioUseCase = async (
-  openai: OpenAI,
-  { prompt, voice }: Options,
-) => {
-
+export const textToAudioUseCase = async (openai: OpenAI, { prompt, voice }: Options) => {
   const voices = {
     nova: 'nova',
     alloy: 'alloy',
@@ -36,9 +32,8 @@ export const textToAudioUseCase = async (
     response_format: 'mp3',
   });
 
-  const buffer = Buffer.from( await mp3.arrayBuffer() );
-  fs.writeFileSync( speechFile, buffer );
-
+  const buffer = Buffer.from(await mp3.arrayBuffer());
+  fs.writeFileSync(speechFile, buffer);
 
   return speechFile;
 };

@@ -1,15 +1,12 @@
-import axios from 'axios';
 import colorLib from '@kurkle/color';
+import axios from 'axios';
 
 interface ChartOptions {
   height?: number;
   width?: number;
 }
 
-export const chartJsToImage = async (
-  chartConfig: unknown,
-  options: ChartOptions = {},
-) => {
+export const chartJsToImage = async (chartConfig: unknown, options: ChartOptions = {}) => {
   const params = new URLSearchParams();
 
   if (options.height) params.append('height', options.height.toString());

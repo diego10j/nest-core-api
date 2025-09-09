@@ -1,63 +1,59 @@
 import { f_to_title_case } from './string-util';
 
-
 export function formatBarChartData(
-    data: any[],
-    categoryField: string,
-    seriesFields: Map<string, string>
+  data: any[],
+  categoryField: string,
+  seriesFields: Map<string, string>,
 ): { categories: string[]; series: { name: string; data: number[] }[] } {
-    // Crear las categorías a partir del campo dado
-    const categories = data.map(item => f_to_title_case(item[categoryField]));
+  // Crear las categorías a partir del campo dado
+  const categories = data.map((item) => f_to_title_case(item[categoryField]));
 
-    // Crear las series dinámicamente
-    const series = Array.from(seriesFields.entries()).map(([seriesName, fieldName]) => {
-        return {
-            name: seriesName,
-            data: data.map(item => item[fieldName])
-        };
-    });
-
+  // Crear las series dinámicamente
+  const series = Array.from(seriesFields.entries()).map(([seriesName, fieldName]) => {
     return {
-        categories,
-        series
+      name: seriesName,
+      data: data.map((item) => item[fieldName]),
     };
-}
+  });
 
+  return {
+    categories,
+    series,
+  };
+}
 
 export function formatPieChartData(
-    data: any[],
-    labelField: string,
-    valueField: string
+  data: any[],
+  labelField: string,
+  valueField: string,
 ): { series: { label: string; value: number }[] } {
-    // Crear las series en formato Pie chart
+  // Crear las series en formato Pie chart
 
-    const series = data.map(item => ({
-        label: f_to_title_case(item[labelField]),
-        value: item[valueField]
-    }));
+  const series = data.map((item) => ({
+    label: f_to_title_case(item[labelField]),
+    value: item[valueField],
+  }));
 
-    return {
-        series
-    };
+  return {
+    series,
+  };
 }
 
-
 export function formatRadialBarChartData(
-    data: any[],
-    labelField: string,
-    valueField: string
-): { total: number, series: { label: string; value: number }[] } {
-    // Crear las series en formato Pie chart
+  data: any[],
+  labelField: string,
+  valueField: string,
+): { total: number; series: { label: string; value: number }[] } {
+  // Crear las series en formato Pie chart
 
-    const series = data.map(item => ({
-        label: f_to_title_case(item[labelField]),
-        value: item[valueField]
-    }));
-    const total = series.reduce((sum, item) => sum + item.value, 0);
+  const series = data.map((item) => ({
+    label: f_to_title_case(item[labelField]),
+    value: item[valueField],
+  }));
+  const total = series.reduce((sum, item) => sum + item.value, 0);
 
-
-    return {
-        total,
-        series
-    };
+  return {
+    total,
+    series,
+  };
 }

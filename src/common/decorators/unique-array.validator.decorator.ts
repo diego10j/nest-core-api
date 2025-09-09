@@ -1,11 +1,17 @@
-import { ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments, registerDecorator, ValidationOptions } from 'class-validator';
+import {
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+  registerDecorator,
+  ValidationOptions,
+} from 'class-validator';
 
 @ValidatorConstraint({ name: 'uniqueArray', async: false })
 export class UniqueArrayValidator implements ValidatorConstraintInterface {
   validate(value: any[], args: ValidationArguments) {
     // Si el valor es null/undefined o no es array, dejamos que otras validaciones lo manejen
     if (!Array.isArray(value) || value.length === 0) return true;
-    
+
     const uniqueItems = new Set(value);
     return uniqueItems.size === value.length;
   }
@@ -14,7 +20,6 @@ export class UniqueArrayValidator implements ValidatorConstraintInterface {
     return 'El array contiene elementos duplicados';
   }
 }
-
 
 // Para arrays de objetos
 @ValidatorConstraint({ name: 'UniqueArrayFieldValidator', async: false })
@@ -28,7 +33,7 @@ export class UniqueArrayFieldValidator implements ValidatorConstraintInterface {
 
     for (const item of value) {
       const fieldValue = item[fieldToCheck];
-      
+
       // Si el campo no existe o está vacío, ignoramos (deja que otras validaciones lo manejen)
       if (fieldValue === undefined || fieldValue === null) continue;
 

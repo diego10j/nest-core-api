@@ -1,31 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { DataSourceService } from '../../../connection/datasource.service';
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
-import { SelectQuery } from '../../../connection/helpers/select-query';
-import { InsertQuery } from '../../../connection/helpers/insert-query';
-import { UpdateQuery } from '../../../connection/helpers/update-query';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DeleteQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
+
+import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { DataSourceService } from '../../../connection/datasource.service';
+import { InsertQuery } from '../../../connection/helpers/insert-query';
+import { SelectQuery } from '../../../connection/helpers/select-query';
+import { UpdateQuery } from '../../../connection/helpers/update-query';
+
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEventoDto } from './dto/update-evento.dto';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 @Injectable()
 export class CalendarioService {
+  private tableName = 'sis_calendario';
+  private primaryKey = 'ide_cale';
 
+  constructor(private readonly dataSource: DataSourceService) {}
 
-    private tableName = 'sis_calendario';
-    private primaryKey = 'ide_cale';
-
-    constructor(private readonly dataSource: DataSourceService) { }
-
-    /**
-    * Retorna el listado de Usuarios
-    * @returns 
-    */
-    async getEventos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-
-        const query = new SelectQuery(`
+  /**
+   * Retorna el listado de Usuarios
+   * @returns
+   */
+  async getEventos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
         SELECT
             uuid as id,
             titulo_cale as title,
@@ -45,50 +44,47 @@ export class CalendarioService {
             AND ide_empr = ${dtoIn.ideEmpr}
         ORDER BY fecha_inicio_cale
         `);
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
+  async createEvento(dto: CreateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
+    const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto);
+    insertQuery.values.set('titulo_cale', dto.title);
+    insertQuery.values.set('descripcion_cale', dto.description);
+    insertQuery.values.set('fecha_inicio_cale', dto.start);
+    insertQuery.values.set('fecha_fin_cale', dto.end);
+    insertQuery.values.set('todo_el_dia_cale', dto.allday);
+    insertQuery.values.set('color_cale', dto.color);
+    insertQuery.values.set('ide_usua', dto.ide_usua);
+    insertQuery.values.set('publico_cale', dto.publico_cale);
+    insertQuery.values.set('notificar_cale', dto.notificar_cale);
+    insertQuery.values.set(
+      this.primaryKey,
+      await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login),
+    );
+    return await this.dataSource.createQuery(insertQuery);
+  }
 
-    async createEvento(dto: CreateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
+  async updateEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
+    const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
+    updateQuery.values.set('titulo_cale', dto.title);
+    updateQuery.values.set('descripcion_cale', dto.description);
+    updateQuery.values.set('fecha_inicio_cale', dto.start);
+    updateQuery.values.set('fecha_fin_cale', dto.end);
+    updateQuery.values.set('todo_el_dia_cale', dto.allday);
+    updateQuery.values.set('color_cale', dto.color);
+    updateQuery.values.set('ide_usua', dto.ide_usua);
+    updateQuery.values.set('publico_cale', dto.publico_cale);
+    updateQuery.values.set('notificar_cale', dto.notificar_cale);
+    updateQuery.where = `uuid = $1`;
+    updateQuery.addParam(1, dto.id);
+    return await this.dataSource.createQuery(updateQuery);
+  }
 
-        const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto)
-        insertQuery.values.set('titulo_cale', dto.title);
-        insertQuery.values.set('descripcion_cale', dto.description);
-        insertQuery.values.set('fecha_inicio_cale', dto.start);
-        insertQuery.values.set('fecha_fin_cale', dto.end);
-        insertQuery.values.set('todo_el_dia_cale', dto.allday);
-        insertQuery.values.set('color_cale', dto.color);
-        insertQuery.values.set('ide_usua', dto.ide_usua);
-        insertQuery.values.set('publico_cale', dto.publico_cale);
-        insertQuery.values.set('notificar_cale', dto.notificar_cale);
-        insertQuery.values.set(this.primaryKey, await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login));
-        return await this.dataSource.createQuery(insertQuery);
-    }
-
-
-    async updateEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
-
-        const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto)
-        updateQuery.values.set('titulo_cale', dto.title);
-        updateQuery.values.set('descripcion_cale', dto.description);
-        updateQuery.values.set('fecha_inicio_cale', dto.start);
-        updateQuery.values.set('fecha_fin_cale', dto.end);
-        updateQuery.values.set('todo_el_dia_cale', dto.allday);
-        updateQuery.values.set('color_cale', dto.color);
-        updateQuery.values.set('ide_usua', dto.ide_usua);
-        updateQuery.values.set('publico_cale', dto.publico_cale);
-        updateQuery.values.set('notificar_cale', dto.notificar_cale);
-        updateQuery.where = `uuid = $1`
-        updateQuery.addParam(1, dto.id);
-        return await this.dataSource.createQuery(updateQuery);
-    }
-
-    async deleteEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
-
-        const deleteQuery = new DeleteQuery(this.tableName)
-        deleteQuery.where = `uuid = $1`
-        deleteQuery.addParam(1, dto.id);
-        return await this.dataSource.createQuery(deleteQuery);
-    }
-
+  async deleteEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
+    const deleteQuery = new DeleteQuery(this.tableName);
+    deleteQuery.where = `uuid = $1`;
+    deleteQuery.addParam(1, dto.id);
+    return await this.dataSource.createQuery(deleteQuery);
+  }
 }

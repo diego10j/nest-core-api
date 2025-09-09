@@ -1,20 +1,17 @@
 import OpenAI from 'openai';
 
 interface Options {
-    product: string;
+  product: string;
 }
 
-
-
 export const contentProductUseCase = async (openai: OpenAI, { product }: Options) => {
-
-    try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-                {
-                    role: "system",
-                    content: `
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: `
                 Quiero que actúes como un ingeniero químico experto en formulaciones. Te serán proveídos nombres de productos químicos, fragancias, colorantes, saborizantes, aceites naturales y materias primas para la industria en general.
                 Debes responder en formato JSON, redactando una descripción corta donde se detalle información general y relevante sobre el producto.
                 También debes redactar una descripción extensa en formato HTML que contenga una sección con el título "Especificaciones y Características" donde debes describir y detallar las especificaciones y características generales del producto, tambien crea una sección con el título "Curiosidades" y detalla curiosidades o detalles no conocidos del producto.
@@ -28,31 +25,30 @@ export const contentProductUseCase = async (openai: OpenAI, { product }: Options
                   "otrosNombres": string       // aquí retornas los otros nombres comerciales o químicos del producto, separados por comas
                 }
               `,
-                },
-                { role: "user", content: product },
-            ],
-            temperature: 0.8,
-            max_tokens: 2300,
-        });
-        let descripcion = completion.choices[0].message.content;
+        },
+        { role: 'user', content: product },
+      ],
+      temperature: 0.8,
+      max_tokens: 2300,
+    });
+    let descripcion = completion.choices[0].message.content;
 
-        descripcion = descripcion.replace(/\n|\t/g, "");
-        descripcion = descripcion.replaceAll("<h2>", "<h6>");
-        descripcion = descripcion.replaceAll("</h2>", "</h6>");
-        // descripcion = descripcion.replaceAll("<p>", "<br><p>");
-        //  descripcion = descripcion.replaceAll("<ul>", "<br><ul>");
-        //descripcion = descripcion.replaceAll("</p><h6>", "</p><br><h6>");
+    descripcion = descripcion.replace(/\n|\t/g, '');
+    descripcion = descripcion.replaceAll('<h2>', '<h6>');
+    descripcion = descripcion.replaceAll('</h2>', '</h6>');
+    // descripcion = descripcion.replaceAll("<p>", "<br><p>");
+    //  descripcion = descripcion.replaceAll("<ul>", "<br><ul>");
+    //descripcion = descripcion.replaceAll("</p><h6>", "</p><br><h6>");
 
-        descripcion = descripcion.trim();
+    descripcion = descripcion.trim();
 
-        // Extraemos el contenido del primer mensaje generado
-        const jsonResp = JSON.parse(descripcion);
+    // Extraemos el contenido del primer mensaje generado
+    const jsonResp = JSON.parse(descripcion);
 
-        // Retornamos la descripción generada
-        return jsonResp
-
-    } catch (error) {
-        console.error('Error:', error);
-        throw error;
-    }
-}
+    // Retornamos la descripción generada
+    return jsonResp;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};

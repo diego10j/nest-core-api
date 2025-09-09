@@ -1,13 +1,14 @@
-import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { ApiPersonaService } from './api-persona/api-persona.service';
+import { Module } from '@nestjs/common';
+
 import { ApiPersonaController } from './api-persona/api-persona.controller';
+import { ApiPersonaService } from './api-persona/api-persona.service';
 import { GptController } from './gpt/gpt.controller';
 import { GptService } from './gpt/gpt.service';
 
 @Module({
-  imports: [ HttpModule],
+  imports: [HttpModule],
   controllers: [ApiPersonaController, GptController],
-  providers: [ ApiPersonaService, GptService]
+  providers: [ApiPersonaService, GptService],
 })
-export class IntegrationModule { }
+export class IntegrationModule {}

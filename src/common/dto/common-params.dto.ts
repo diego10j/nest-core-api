@@ -15,16 +15,14 @@ export class HeaderParamsDto {
 
   @IsString({ message: 'x-login must be a string' })
   login: string;
-  
+
   @IsString()
   @MinLength(2)
   @IsOptional()
-  ip?: string = "127.0.0.1";
+  ip?: string = '127.0.0.1';
 
   @IsString()
   @MinLength(2)
   @IsOptional()
   device?: string = 'PC';
-
-
 }

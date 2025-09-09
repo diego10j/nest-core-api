@@ -1,5 +1,5 @@
 import { envs } from 'src/config/envs';
-import { v4 as uuid } from 'uuid'
+import { v4 as uuid } from 'uuid';
 
 export const PATH_DRIVE = (): string => envs.pathDrive;
 
@@ -35,7 +35,7 @@ export const fileNamer = (req: Express.Request, file: Express.Multer.File, callb
   const fileExtension = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
   const fileName = `${uuid()}.${fileExtension}`;
   callback(null, fileName);
-}
+};
 
 export const fileOriginalNamer = (req: Express.Request, file: Express.Multer.File, callback: Function) => {
   if (!file) return callback(new Error('File is empty'), false);
@@ -45,8 +45,7 @@ export const fileOriginalNamer = (req: Express.Request, file: Express.Multer.Fil
   const originalName = file.originalname.split('.')[0];
   const fileName = `${originalName}.${fileExtension}`;
   callback(null, fileName);
-}
-
+};
 
 export const getUuidNameFile = (fileName: string): string => {
   const lastDotIndex = fileName.indexOf('.');
@@ -55,7 +54,7 @@ export const getUuidNameFile = (fileName: string): string => {
     return fileName;
   }
   return fileName.substring(0, lastDotIndex);
-}
+};
 
 export const getExtensionFile = (fileName: string): string => {
   const lastDotIndex = fileName.lastIndexOf('.');
@@ -64,7 +63,7 @@ export const getExtensionFile = (fileName: string): string => {
     return '';
   }
   return fileName.substring(lastDotIndex).replace('.', '');
-}
+};
 
 export const getFileType = (mimetype: string): string => {
   return mimeTypeMap[mimetype] || 'file';

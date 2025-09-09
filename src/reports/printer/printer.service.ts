@@ -1,20 +1,15 @@
+import * as path from 'path';
+
 import { Injectable } from '@nestjs/common';
-import { join } from 'path';
 import PdfPrinter from 'pdfmake';
-import {
-  BufferOptions,
-  CustomTableLayout,
-  TDocumentDefinitions,
-} from 'pdfmake/interfaces';
-
-
+import { BufferOptions, CustomTableLayout, TDocumentDefinitions } from 'pdfmake/interfaces';
 
 const fonts = {
   Roboto: {
-    normal:  join(__dirname, '../../public/assets/fonts','Roboto-Regular.ttf'),
-    bold: join(__dirname, '../../public/assets/fonts','Roboto-Medium.ttf'), 
-    italics: join(__dirname, '../../public/assets/fonts', 'Roboto-Italic.ttf'),  
-    bolditalics: join(__dirname, '../../public/assets/fonts', 'Roboto-MediumItalic.ttf'),  
+    normal: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Regular.ttf'),
+    bold: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Medium.ttf'),
+    italics: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Italic.ttf'),
+    bolditalics: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-MediumItalic.ttf'),
   },
 };
 

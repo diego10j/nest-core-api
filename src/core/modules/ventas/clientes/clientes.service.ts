@@ -1,55 +1,58 @@
-import { getCurrentDateTime, getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
+import { UuidDto } from 'src/common/dto/uuid.dto';
+import { ObjectQueryDto } from 'src/core/connection/dto';
+import { UpdateQuery } from 'src/core/connection/helpers';
+import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
+import { CoreService } from 'src/core/core.service';
+import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
+import { validateDataRequiere } from 'src/util/helpers/common-util';
+import { getCurrentDateTime, getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { BaseService } from '../../../../common/base-service';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
-import { TrnClienteDto } from './dto/trn-cliente.dto';
-import { IdClienteDto } from './dto/id-cliente.dto';
-import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
-import { UuidDto } from 'src/common/dto/uuid.dto';
-import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
-import { validateDataRequiere } from 'src/util/helpers/common-util';
-import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
-import { SaveDto } from '../../../../common/dto/save.dto';
-import { CoreService } from 'src/core/core.service';
-import { ObjectQueryDto } from 'src/core/connection/dto';
-import { SearchDto } from 'src/common/dto/search.dto';
-import { ExistClienteDto } from './dto/exist-client.dto';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { UpdateQuery } from 'src/core/connection/helpers';
-import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
-import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
 
+import { IdClienteDto } from './dto/id-cliente.dto';
+import { TrnClienteDto } from './dto/trn-cliente.dto';
+import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+
+import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
+
+import { SaveDto } from '../../../../common/dto/save.dto';
+
+import { ExistClienteDto } from './dto/exist-client.dto';
+import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 
 const CLIENTE = {
-    tableName: 'gen_persona',
-    primaryKey: 'ide_geper',
+  tableName: 'gen_persona',
+  primaryKey: 'ide_geper',
 };
 
 @Injectable()
 export class ClientesService extends BaseService {
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+    private readonly whatsapp: WhatsappService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_cxc_estado_factura_normal', // 0
+        'p_cxp_estado_factura_normal', // 0
+        'p_gen_tipo_identificacion_ruc', //  1
+        'p_gen_tipo_identificacion_cedula', // 0
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
-
-    constructor(private readonly dataSource: DataSourceService,
-        private readonly core: CoreService,
-        private readonly whatsapp: WhatsappService
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core.getVariables([
-            'p_cxc_estado_factura_normal',// 0 
-            'p_cxp_estado_factura_normal', // 0
-            'p_gen_tipo_identificacion_ruc', //  1
-            'p_gen_tipo_identificacion_cedula'  // 0
-        ]).then(result => {
-            this.variables = result;
-        });
-    }
-
-
-    async getCliente(dtoIn: UuidDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getCliente(dtoIn: UuidDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
         SELECT
             p.ide_geper,
             p.uuid,
@@ -94,43 +97,37 @@ export class ClientesService extends BaseService {
             LEFT JOIN gen_tipo_identifi h ON p.ide_getid = h.ide_getid
             LEFT JOIN con_tipo_contribu i ON p.ide_cntco = i.ide_cntco
         WHERE  
-            uuid = $1`
-        );
-        query.addStringParam(1, dtoIn.uuid);
+            uuid = $1`);
+    query.addStringParam(1, dtoIn.uuid);
 
+    const res = await this.dataSource.createSingleQuery(query);
+    if (res) {
+      const ide_geper = res.ide_geper;
+      // Total
+      const totales = await this.getInfoTotalesCliente(ide_geper);
 
+      return {
+        rowCount: 1,
+        row: {
+          cliente: res,
+        },
+        datos: { totales },
 
-
-        const res = await this.dataSource.createSingleQuery(query);
-        if (res) {
-            const ide_geper = res.ide_geper;
-            // Total 
-            const totales = await this.getInfoTotalesCliente(ide_geper);
-
-            return {
-                rowCount: 1,
-                row: {
-                    cliente: res,
-                },
-                datos: { totales },
-
-                message: 'ok'
-            } as ResultQuery
-
-        }
-        else {
-            throw new BadRequestException(`No existe el cliente`);
-        }
+        message: 'ok',
+      } as ResultQuery;
+    } else {
+      throw new BadRequestException(`No existe el cliente`);
     }
+  }
 
-
-    /**
-    * Retorna el listado de clientes 
-    * @param dtoIn 
-    * @returns 
-    */
-    async getClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el listado de clientes
+   * @param dtoIn
+   * @returns
+   */
+  async getClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT
             p.ide_geper,
             p.uuid,
@@ -156,19 +153,21 @@ export class ClientesService extends BaseService {
             AND P.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY
             p.nom_geper
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Retorna el listado de clientes 
-     * @param dtoIn 
-     * @returns 
-     */
-    async getSaldosClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el listado de clientes
+   * @param dtoIn
+   * @returns
+   */
+  async getSaldosClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         WITH saldo_cte AS (
             SELECT
                 ide_geper,
@@ -212,20 +211,21 @@ export class ClientesService extends BaseService {
             AND COALESCE(s.saldo, 0) != 0
         ORDER BY
             p.nom_geper
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-    * Retorna las transacciones de ingreso/egreso de un cliente en un rango de fechas
-    * @param dtoIn 
-    * @returns 
-    */
-    async getTrnCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
-
-        const query = new SelectQuery(`
+  /**
+   * Retorna las transacciones de ingreso/egreso de un cliente en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getTrnCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
             WITH saldo_inicial AS (
                 SELECT 
                     ide_geper,
@@ -302,23 +302,25 @@ export class ClientesService extends BaseService {
                 CROSS JOIN (SELECT COALESCE(SUM(saldo_inicial), 0) AS saldo_inicial FROM saldo_inicial) saldo_inicial
             ORDER BY 
                 fecha_trans_ccdtr, ide_ccdtr;
-          `, dtoIn);
-        query.addIntParam(1, dtoIn.ide_geper);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addIntParam(3, dtoIn.ide_geper);
-        query.addParam(4, dtoIn.fechaInicio);
-        query.addParam(5, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+          `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addIntParam(3, dtoIn.ide_geper);
+    query.addParam(4, dtoIn.fechaInicio);
+    query.addParam(5, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Retorna el detalle de facturas de ventas del cliente en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
-    async getDetalleVentasCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el detalle de facturas de ventas del cliente en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getDetalleVentasCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT
             cdf.ide_ccdfa,
             cf.fecha_emisi_cccfa,
@@ -347,21 +349,22 @@ export class ClientesService extends BaseService {
             AND cf.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY 
             cf.fecha_emisi_cccfa desc, serie_ccdaf,secuencial_ccdfa
-        `, dtoIn);
-        query.addIntParam(1, dtoIn.ide_geper);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+        `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addParam(3, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Retorna el saldo del cliente
-     * @param dtoIn 
-     * @returns 
-     */
-    async getSaldo(dtoIn: IdClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
+  /**
+   * Retorna el saldo del cliente
+   * @param dtoIn
+   * @returns
+   */
+  async getSaldo(dtoIn: IdClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(`     
             SELECT 
                 ct.ide_geper,
                 COALESCE(SUM(valor_ccdtr* signo_ccttr), 0) AS saldo
@@ -375,19 +378,19 @@ export class ClientesService extends BaseService {
             GROUP BY   
                 ide_geper
             `);
-        query.addIntParam(1, dtoIn.ide_geper);
-        return await this.dataSource.createQuery(query);
-    }
+    query.addIntParam(1, dtoIn.ide_geper);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Reorna los productos que compra el cliente, con ultima fecha de compra,
-     * ultimo precio de venta, cantidad, unidad
-     * @param dtoIn 
-     * @returns 
-     */
-    async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
+  /**
+   * Reorna los productos que compra el cliente, con ultima fecha de compra,
+   * ultimo precio de venta, cantidad, unidad
+   * @param dtoIn
+   * @returns
+   */
+  async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `     
         WITH UltimasVentas AS (
             SELECT 
                 a.ide_inarti, 
@@ -436,26 +439,25 @@ export class ClientesService extends BaseService {
         INNER JOIN inv_articulo c ON uv.ide_inarti = c.ide_inarti
         LEFT JOIN DetallesUltimaVenta dv ON uv.ide_inarti = dv.ide_inarti AND uv.fecha_ultima_venta = dv.fecha_ultima_venta
         ORDER BY c.nombre_inarti
-        `
-            , dtoIn);
-        query.addIntParam(1, dtoIn.ide_geper);
-        query.addIntParam(2, dtoIn.ide_geper);
-        const rows = await this.dataSource.createSelectQuery(query);
-        return {
-            rows,
-            rowCount: rows.length || 0
-        }
-    }
+        `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addIntParam(2, dtoIn.ide_geper);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rows,
+      rowCount: rows.length || 0,
+    };
+  }
 
-
-
-    /**
+  /**
    * Retorna el total de ventas mensuales en un período
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
-    async getVentasMensuales(dtoIn: VentasMensualesClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getVentasMensuales(dtoIn: VentasMensualesClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
         WITH FacturasFiltradas AS (
             SELECT 
                 EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
@@ -488,56 +490,57 @@ export class ClientesService extends BaseService {
         ORDER BY 
             gm.ide_gemes
         `);
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_geper);
-        return await this.dataSource.createQuery(query);
+    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(3, dtoIn.ide_geper);
+    return await this.dataSource.createQuery(query);
+  }
+
+  async save(dtoIn: SaveDto & HeaderParamsDto) {
+    if (dtoIn.isUpdate === true) {
+      // Actualiza el cliente
+      const isValid = await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
+      if (isValid) {
+        const ide_geper = dtoIn.data.ide_geper;
+        // delete dtoIn.data.ide_geper;
+        // delete dtoIn.data.uuid;
+        const objQuery = {
+          operation: 'update',
+          module: 'gen',
+          tableName: 'persona',
+          primaryKey: 'ide_geper',
+          object: dtoIn.data,
+          condition: `ide_geper = ${ide_geper}`,
+        } as ObjectQueryDto;
+        return await this.core.save({
+          ...dtoIn,
+          listQuery: [objQuery],
+          audit: false,
+        });
+      }
+    } else {
+      // Crea el cliente
+      const isValid = await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
+      if (isValid === true) {
+        const objQuery = {
+          operation: 'insert',
+          module: 'gen',
+          tableName: 'persona',
+          primaryKey: 'ide_geper',
+          object: dtoIn.data,
+        } as ObjectQueryDto;
+        return await this.core.save({
+          ...dtoIn,
+          listQuery: [objQuery],
+          audit: true,
+        });
+      }
     }
+  }
 
-    async save(dtoIn: SaveDto & HeaderParamsDto) {
-
-        if (dtoIn.isUpdate === true) {
-            // Actualiza el cliente
-            const isValid = await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
-            if (isValid) {
-                const ide_geper = dtoIn.data.ide_geper;
-                // delete dtoIn.data.ide_geper;
-                // delete dtoIn.data.uuid;
-                const objQuery = {
-                    operation: "update",
-                    module: "gen",
-                    tableName: "persona",
-                    primaryKey: "ide_geper",
-                    object: dtoIn.data,
-                    condition: `ide_geper = ${ide_geper}`
-                } as ObjectQueryDto;
-                return await this.core.save({
-                    ...dtoIn, listQuery: [objQuery], audit: false
-                });
-            }
-        }
-        else {
-            // Crea el cliente
-            const isValid = await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
-            if (isValid === true) {
-                const objQuery = {
-                    operation: "insert",
-                    module: "gen",
-                    tableName: "persona",
-                    primaryKey: "ide_geper",
-                    object: dtoIn.data,
-                } as ObjectQueryDto;
-                return await this.core.save({
-                    ...dtoIn, listQuery: [objQuery], audit: true
-                });
-            }
-        }
-
-    }
-
-    async getVentasConUtilidad(dtoIn: TrnClienteDto & HeaderParamsDto) {
-        // Ajustar el porcentaje según  criterio 30% margen
-        const query = new SelectQuery(`
+  async getVentasConUtilidad(dtoIn: TrnClienteDto & HeaderParamsDto) {
+    // Ajustar el porcentaje según  criterio 30% margen
+    const query = new SelectQuery(`
         WITH precios_compra AS (
             SELECT
                 ide_geper,
@@ -601,48 +604,53 @@ export class ClientesService extends BaseService {
         ORDER BY 
             dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
             `);
-        query.addIntParam(1, dtoIn.ide_geper);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
-        query.addIntParam(4, dtoIn.ide_geper);
-        query.addParam(5, dtoIn.fechaInicio);
-        query.addParam(6, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addParam(3, dtoIn.fechaFin);
+    query.addIntParam(4, dtoIn.ide_geper);
+    query.addParam(5, dtoIn.fechaInicio);
+    query.addParam(6, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
+
+  // -------------------------------- PRIVATE FUNCTIONS ---------------------------- //
+
+  /**
+   * Validación para crear cliente
+   * @param data
+   */
+  private async validateInsertCliente(data: any, ideEmpr: number) {
+    const colReq = [
+      'identificac_geper',
+      'nom_geper',
+      'nombre_compl_geper',
+      'codigo_geper',
+      'ide_getid',
+      'ide_cntco',
+      'direccion_geper',
+      'telefono_geper',
+    ];
+
+    const resColReq = validateDataRequiere(data, colReq);
+
+    if (resColReq.length > 0) {
+      throw new BadRequestException(resColReq);
+    }
+    // Valida identificacion
+    if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+      const valid = validateCedula(data.identificac_geper);
+      if (valid === false) {
+        throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
+      }
+    } else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
+      const result = validateRUC(data.identificac_geper, false);
+      if (result.isValid === false) {
+        throw new BadRequestException(`${result.type} no válido`);
+      }
     }
 
-
-    // -------------------------------- PRIVATE FUNCTIONS ---------------------------- //
-
-    /**
-     * Validación para crear cliente
-     * @param data 
-     */
-    private async validateInsertCliente(data: any, ideEmpr: number) {
-
-        const colReq = ['identificac_geper', 'nom_geper', 'nombre_compl_geper', 'codigo_geper', 'ide_getid', 'ide_cntco', 'direccion_geper',
-            'telefono_geper'];
-
-        const resColReq = validateDataRequiere(data, colReq);
-
-        if (resColReq.length > 0) {
-            throw new BadRequestException(resColReq);
-        }
-        // Valida identificacion
-        if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
-            const valid = validateCedula(data.identificac_geper);
-            if (valid === false) {
-                throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
-            }
-        }
-        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
-            const result = validateRUC(data.identificac_geper, false);
-            if (result.isValid === false) {
-                throw new BadRequestException(`${result.type} no válido`);
-            }
-        }
-
-        // validar que no exista el cliente en la misma empresa
-        const queryClie = new SelectQuery(`
+    // validar que no exista el cliente en la misma empresa
+    const queryClie = new SelectQuery(`
             select
                 1
             from
@@ -651,44 +659,40 @@ export class ClientesService extends BaseService {
                 identificac_geper = $1
             and ide_empr = $2
             `);
-        queryClie.addParam(1, data.identificac_geper);
-        queryClie.addParam(2, ideEmpr);
-        const resClie = await this.dataSource.createSelectQuery(queryClie);
-        if (resClie.length > 0) {
-            throw new BadRequestException(`El cliente ${data.identificac_geper} ya existe`);
-        }
-
-
-        return true;
+    queryClie.addParam(1, data.identificac_geper);
+    queryClie.addParam(2, ideEmpr);
+    const resClie = await this.dataSource.createSelectQuery(queryClie);
+    if (resClie.length > 0) {
+      throw new BadRequestException(`El cliente ${data.identificac_geper} ya existe`);
     }
 
-    private async validateUpdateCliente(data: any, ideEmpr: number) {
+    return true;
+  }
 
-        const colReq = ['ide_geper', 'ide_getid', 'identificac_geper'];
+  private async validateUpdateCliente(data: any, ideEmpr: number) {
+    const colReq = ['ide_geper', 'ide_getid', 'identificac_geper'];
 
-        const resColReq = validateDataRequiere(data, colReq);
+    const resColReq = validateDataRequiere(data, colReq);
 
-        if (resColReq.length > 0) {
-            throw new BadRequestException(resColReq);
-        }
+    if (resColReq.length > 0) {
+      throw new BadRequestException(resColReq);
+    }
 
+    // Valida identificacion
+    if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
+      const valid = validateCedula(data.identificac_geper);
+      if (valid === false) {
+        throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
+      }
+    } else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
+      const result = validateRUC(data.identificac_geper, false);
+      if (result.isValid === false) {
+        throw new BadRequestException(`${result.type} no válido`);
+      }
+    }
 
-        // Valida identificacion
-        if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_cedula')) {
-            const valid = validateCedula(data.identificac_geper);
-            if (valid === false) {
-                throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
-            }
-        }
-        else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
-            const result = validateRUC(data.identificac_geper, false);
-            if (result.isValid === false) {
-                throw new BadRequestException(`${result.type} no válido`);
-            }
-        }
-
-        // validar que el cliente exista
-        const queryClieE = new SelectQuery(`
+    // validar que el cliente exista
+    const queryClieE = new SelectQuery(`
         select
             1
         from
@@ -697,18 +701,16 @@ export class ClientesService extends BaseService {
             identificac_geper = $1
         and ide_empr = $2 and ide_geper = $3
         `);
-        queryClieE.addParam(1, data.identificac_geper);
-        queryClieE.addParam(2, ideEmpr);
-        queryClieE.addParam(3, data.ide_geper);
-        const resClieE = await this.dataSource.createSelectQuery(queryClieE);
-        if (resClieE.length === 0) {
-            throw new BadRequestException(`El cliente ${data.identificac_geper} no existe`);
-        }
+    queryClieE.addParam(1, data.identificac_geper);
+    queryClieE.addParam(2, ideEmpr);
+    queryClieE.addParam(3, data.ide_geper);
+    const resClieE = await this.dataSource.createSelectQuery(queryClieE);
+    if (resClieE.length === 0) {
+      throw new BadRequestException(`El cliente ${data.identificac_geper} no existe`);
+    }
 
-
-
-        // validar que algun otro cliente no tenga la misma identificacion
-        const queryClie = new SelectQuery(`
+    // validar que algun otro cliente no tenga la misma identificacion
+    const queryClie = new SelectQuery(`
             select
                 1
             from
@@ -718,26 +720,25 @@ export class ClientesService extends BaseService {
             and ide_empr = $2
             and ide_geper != $3
             `);
-        queryClie.addParam(1, data.identificac_geper);
-        queryClie.addParam(2, ideEmpr);
-        queryClie.addParam(3, data.ide_geper);
-        const resClie = await this.dataSource.createSelectQuery(queryClie);
-        if (resClie.length > 0) {
-            throw new BadRequestException(`Otro cliente ya existe con el número de identificación ${data.identificac_geper}`);
-        }
-
-
-        return true;
+    queryClie.addParam(1, data.identificac_geper);
+    queryClie.addParam(2, ideEmpr);
+    queryClie.addParam(3, data.ide_geper);
+    const resClie = await this.dataSource.createSelectQuery(queryClie);
+    if (resClie.length > 0) {
+      throw new BadRequestException(`Otro cliente ya existe con el número de identificación ${data.identificac_geper}`);
     }
 
+    return true;
+  }
 
-    /**
-    * Retorna el listado de clientes 
-    * @param dtoIn 
-    * @returns 
-    */
-    async getDireccionesCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el listado de clientes
+   * @param dtoIn
+   * @returns
+   */
+  async getDireccionesCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         select
             a.ide_gedirp,
             a.nombre_dir_gedirp,
@@ -763,19 +764,21 @@ export class ClientesService extends BaseService {
         where a.ide_geper = $1
         and a.ide_getidi is not null
         order by defecto_gedirp desc, activo_gedirp desc
-        `, dtoIn);
-        query.addParam(1, dtoIn.ide_geper);
-        return await this.dataSource.createSelectQuery(query);
-    }
+        `,
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide_geper);
+    return await this.dataSource.createSelectQuery(query);
+  }
 
-
-    /**
-        * Retorna el listado de clientes 
-        * @param dtoIn 
-        * @returns 
-        */
-    async getContactosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el listado de clientes
+   * @param dtoIn
+   * @returns
+   */
+  async getContactosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
     select
         a.ide_gedirp,
         a.nombre_dir_gedirp,
@@ -793,19 +796,20 @@ export class ClientesService extends BaseService {
     where a.ide_geper = $1
     and ide_getidi is null
     order by activo_gedirp desc, nombre_dir_gedirp
-    `, dtoIn);
-        query.addParam(1, dtoIn.ide_geper);
-        return await this.dataSource.createSelectQuery(query);
-    }
+    `,
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide_geper);
+    return await this.dataSource.createSelectQuery(query);
+  }
 
-
-    /**
-     * Retorna información de totales de trn del cliente
-     * @param ide_geper 
-     * @returns 
-     */
-    async getInfoTotalesCliente(ide_geper: number) {
-        const query = new SelectQuery(`     
+  /**
+   * Retorna información de totales de trn del cliente
+   * @param ide_geper
+   * @returns
+   */
+  async getInfoTotalesCliente(ide_geper: number) {
+    const query = new SelectQuery(`     
             SELECT 
                 COUNT(1) AS total_facturas,
                 MAX(fecha_emisi_cccfa) AS ultima_venta,
@@ -817,28 +821,25 @@ export class ClientesService extends BaseService {
                     cf.ide_geper = $1
                     AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 `);
-        query.addIntParam(1, ide_geper);
-        return await this.dataSource.createSingleQuery(query);
+    query.addIntParam(1, ide_geper);
+    return await this.dataSource.createSingleQuery(query);
+  }
 
-    }
+  async searchCliente(dto: SearchDto & HeaderParamsDto) {
+    const dtoIn = {
+      ...dto,
+      module: 'gen',
+      tableName: 'persona',
+      columnsReturn: ['ide_geper', 'identificac_geper', 'nom_geper'],
+      columnsSearch: ['nom_geper', 'identificac_geper', 'correo_geper'],
+      columnOrder: 'nom_geper',
+      condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true and es_cliente_geper = true and nivel_geper = 'HIJO'`,
+    };
+    return await this.core.search(dtoIn);
+  }
 
-
-    async searchCliente(dto: SearchDto & HeaderParamsDto) {
-        const dtoIn = {
-            ...dto,
-            module: 'gen',
-            tableName: 'persona',
-            columnsReturn: ["ide_geper", "identificac_geper", "nom_geper"],
-            columnsSearch: ["nom_geper", "identificac_geper", "correo_geper"],
-            columnOrder: "nom_geper",
-            condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true and es_cliente_geper = true and nivel_geper = 'HIJO'`,
-        }
-        return await this.core.search(dtoIn);
-
-    }
-
-    async existCliente(dto: ExistClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
+  async existCliente(dto: ExistClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(`     
         SELECT 
             ide_geper,
             uuid,
@@ -849,60 +850,55 @@ export class ClientesService extends BaseService {
                 identificac_geper = $1
                 and ide_empr = $2
             `);
-        query.addStringParam(1, dto.identificacion);
-        query.addIntParam(1, dto.ideEmpr);
-        const data = await this.dataSource.createSingleQuery(query);
+    query.addStringParam(1, dto.identificacion);
+    query.addIntParam(1, dto.ideEmpr);
+    const data = await this.dataSource.createSingleQuery(query);
+    return {
+      rowCount: data ? 1 : 0,
+      row: {
+        cliente: data,
+      },
+      message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : '',
+    } as ResultQuery;
+  }
+
+  async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
+    try {
+      // Validar si el número tiene WhatsApp
+      const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
+
+      if (!validation?.isValid) {
         return {
-            rowCount: data ? 1 : 0,
-            row: {
-                cliente: data,
-            },
-            message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : '',
-        } as ResultQuery
+          error: true,
+          message: 'El número proporcionado no está asociado a una cuenta de WhatsApp válida.',
+        };
+      }
+
+      // Usar el número formateado si está disponible
+      dto.telefono = validation.formattedNumber || dto.telefono;
+
+      // Actualizar datos del cliente
+      await this.updateWhatsAppCliente(dto);
+
+      return {
+        error: false,
+        message: 'El número fue validado y actualizado correctamente.',
+      };
+    } catch (error) {
+      console.error('Error al validar el número de WhatsApp:', error);
+      return {
+        error: true,
+        message: 'Ocurrió un error al validar el número de WhatsApp. Intente nuevamente más tarde.',
+      };
     }
+  }
 
-
-    async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
-        try {
-            // Validar si el número tiene WhatsApp
-            const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
-    
-            if (!validation?.isValid) {
-                return {
-                    error: true,
-                    message: 'El número proporcionado no está asociado a una cuenta de WhatsApp válida.',
-                };
-            }
-    
-            // Usar el número formateado si está disponible
-            dto.telefono = validation.formattedNumber || dto.telefono;
-    
-            // Actualizar datos del cliente
-            await this.updateWhatsAppCliente(dto);
-    
-            return {
-                error: false,
-                message: 'El número fue validado y actualizado correctamente.',
-            };
-        } catch (error) {
-            console.error('Error al validar el número de WhatsApp:', error);
-            return {
-                error: true,
-                message: 'Ocurrió un error al validar el número de WhatsApp. Intente nuevamente más tarde.',
-            };
-        }
-    }
-    
-
-
-    private async updateWhatsAppCliente(dto: ValidaWhatsAppCliente ) {
-        const query = new UpdateQuery(CLIENTE.tableName, CLIENTE.primaryKey);
-        query.values.set('whatsapp_geper', dto.telefono);
-        query.values.set('fecha_veri_what_geper', getCurrentDateTime());
-        query.where = 'ide_geper = $1';
-        query.addNumberParam(1, dto.ide_geper);
-        await this.dataSource.createQuery(query);
-    }
-
-
+  private async updateWhatsAppCliente(dto: ValidaWhatsAppCliente) {
+    const query = new UpdateQuery(CLIENTE.tableName, CLIENTE.primaryKey);
+    query.values.set('whatsapp_geper', dto.telefono);
+    query.values.set('fecha_veri_what_geper', getCurrentDateTime());
+    query.where = 'ide_geper = $1';
+    query.addNumberParam(1, dto.ide_geper);
+    await this.dataSource.createQuery(query);
+  }
 }
