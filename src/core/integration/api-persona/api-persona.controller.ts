@@ -7,10 +7,9 @@ import { ApiPersonaService } from './api-persona.service';
 import { RucDto } from 'src/core/modules/sistema/admin/dto/ruc.dto';
 import { CedulaDto } from 'src/core/modules/sistema/general/dto/cedula.dto';
 
-
 @Controller('integration/api-persona')
 export class ApiPersonaController {
-  constructor(private readonly service: ApiPersonaService) { }
+  constructor(private readonly service: ApiPersonaService) {}
 
   @Get('consultaCedula')
   // @Auth()

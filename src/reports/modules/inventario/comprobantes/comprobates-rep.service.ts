@@ -4,7 +4,6 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CabComprobanteInventarioDto } from 'src/core/modules/inventario/comprobantes/dto/cab-compr-inv.dto';
 
-
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { comprobanteInventarioReport } from './comprobante.report';
@@ -17,7 +16,7 @@ export class ComprobatesInvReportsService {
     private readonly printerService: PrinterService,
     private readonly dataSource: DataSourceService,
     private readonly SectionsService: SectionsService,
-  ) { }
+  ) {}
 
   async reportComprobanteInventario(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -60,8 +59,8 @@ export class ComprobatesInvReportsService {
       INNER JOIN gen_persona f ON a.ide_geper = f.ide_geper
       LEFT JOIN inv_est_prev_inve g ON a.ide_inepi = g.ide_inepi
       WHERE a.ide_incci = $1
-          AND a.ide_empr = ${dtoIn.ideEmpr};`
-      , dtoIn,
+          AND a.ide_empr = ${dtoIn.ideEmpr};`,
+      dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_incci);
     const cabecera = await this.dataSource.createSingleQuery(query);
@@ -69,8 +68,6 @@ export class ComprobatesInvReportsService {
     if (!cabecera) {
       throw new NotFoundException(`Comprobante ${dtoIn.ide_incci} no existe`);
     }
-
-
 
     const queryDet = new SelectQuery(
       `

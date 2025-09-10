@@ -8,7 +8,6 @@ import { BaseService } from '../../../common/base-service';
 import { RucDto } from 'src/core/modules/sistema/admin/dto/ruc.dto';
 import { CedulaDto } from 'src/core/modules/sistema/general/dto/cedula.dto';
 
-
 @Injectable()
 export class ApiPersonaService extends BaseService {
   constructor(private readonly httpService: HttpService) {

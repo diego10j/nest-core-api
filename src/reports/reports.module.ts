@@ -10,4 +10,4 @@ import { PrinterModule } from './printer/printer.module';
   exports: [],
   controllers: [],
 })
-export class ReportsModule { }
+export class ReportsModule {}

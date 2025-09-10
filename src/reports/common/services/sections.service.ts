@@ -5,15 +5,9 @@ import { EmpresaRepService } from './empresa-rep.service';
 import { HeaderSection } from '../sections/header.section';
 import { HeaderOptions } from '../interfaces/reportes';
 
-
-
 @Injectable()
 export class SectionsService {
-
-  constructor(
-    private readonly empresaRepService: EmpresaRepService
-  ) { }
-
+  constructor(private readonly empresaRepService: EmpresaRepService) {}
 
   /**
    * Crea un header completo para reportes con título integrado
@@ -37,11 +31,10 @@ export class SectionsService {
             bold: true,
             color: '#2d3748',
             alignment: 'center' as const,
-            margin: [0, 0, 0, 0] as [number, number, number, number]
-          }
+            margin: [0, 0, 0, 0] as [number, number, number, number],
+          },
         },
-      ]
+      ],
     };
   }
 }
-

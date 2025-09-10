@@ -7,4 +7,4 @@ import { PrinterService } from './printer.service';
   providers: [PrinterService],
   exports: [PrinterService],
 })
-export class PrinterModule { }
+export class PrinterModule {}

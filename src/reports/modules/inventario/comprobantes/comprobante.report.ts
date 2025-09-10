@@ -11,78 +11,78 @@ const styles: StyleDictionary = {
     fontSize: 18,
     bold: true,
     margin: [0, 0, 0, 4] as [number, number, number, number],
-    color: '#2d3748'
+    color: '#2d3748',
   },
   subHeader: {
     fontSize: 14,
     bold: true,
     margin: [0, 6, 0, 3] as [number, number, number, number],
-    color: '#4a5568'
+    color: '#4a5568',
   },
   sectionHeader: {
     fontSize: 12,
     bold: true,
     margin: [0, 12, 0, 6] as [number, number, number, number],
-    color: '#2d3748'
+    color: '#2d3748',
   },
   label: {
     bold: true,
     fontSize: 9,
     color: '#718096',
-    margin: [0, 2, 0, 0] as [number, number, number, number]
+    margin: [0, 2, 0, 0] as [number, number, number, number],
   },
   value: {
     fontSize: 10,
     margin: [0, 0, 0, 5] as [number, number, number, number],
-    color: '#2d3748'
+    color: '#2d3748',
   },
   observ: {
     fontSize: 8,
     margin: [0, 0, 0, 5] as [number, number, number, number],
-    color: '#2d3748'
+    color: '#2d3748',
   },
   tableHeader: {
     bold: true,
     fontSize: 9,
     color: '#2d3748',
     fillColor: '#f7fafc',
-    alignment: 'center'
+    alignment: 'center',
   },
   positiveValue: {
     color: '#38a169',
-    bold: true
+    bold: true,
   },
   negativeValue: {
     color: '#e53e3e',
-    bold: true
+    bold: true,
   },
   totalRow: {
     bold: true,
     fontSize: 10,
     fillColor: '#f8f9fa',
-    color: '#2d3748'
+    color: '#2d3748',
   },
   footerText: {
     fontSize: 8,
     color: '#a0aec0',
-    alignment: 'center'
+    alignment: 'center',
   },
   companyText: {
     fontSize: 9,
     color: '#718096',
-    margin: [0, 0, 0, 1] as [number, number, number, number]
+    margin: [0, 0, 0, 1] as [number, number, number, number],
   },
   comprobanteNumber: {
     fontSize: 16,
     bold: true,
     color: '#e53e3e',
-    margin: [0, 0, 0, 0] as [number, number, number, number]
+    margin: [0, 0, 0, 0] as [number, number, number, number],
   },
   badgeLabel: {
     fontSize: 9,
     color: '#718096',
-    margin: [0, 0, 0, 3] as [number, number, number, number]
-  }
+    margin: [0, 0, 0, 3] as [number, number, number, number],
+  },
 };
 
 // Función auxiliar para crear iconos
@@ -90,16 +90,14 @@ const createIcon = (svgString: string, size: number = 12): Content => ({
   svg: svgString,
   width: size,
   height: size,
-  margin: [0, 2, 4, 2] as [number, number, number, number]
+  margin: [0, 2, 4, 2] as [number, number, number, number],
 });
-
-
 
 // Función para crear secciones de encabezado
 const sectionHeader = (text: string): Content => ({
   text,
   style: 'sectionHeader',
-  margin: [0, 12, 0, 6] as [number, number, number, number]
+  margin: [0, 12, 0, 6] as [number, number, number, number],
 });
 
 export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, header: Content): TDocumentDefinitions => {
@@ -121,8 +119,8 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
               bold: true,
               color: '#2d3748',
               margin: [0, 0, 0, 0] as [number, number, number, number],
-              alignment: 'right'
-            }
+              alignment: 'right',
+            },
           },
           {
             width: '40%',
@@ -130,12 +128,12 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             style: 'comprobanteNumber',
             margin: [10, 0, 0, 0] as [number, number, number, number],
             alignment: 'right',
-          }
+          },
         ],
 
-        margin: [0, 0, 0, 10] as [number, number, number, number]
+        margin: [0, 0, 0, 10] as [number, number, number, number],
       },
-    ]
+    ],
   };
 
   // Información del comprobante
@@ -150,13 +148,18 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             stack: [
               {
                 text: 'Fecha:',
-                style: { bold: true, fontSize: 10, color: '#718096', margin: [0, 0, 0, 2] as [number, number, number, number] }
+                style: {
+                  bold: true,
+                  fontSize: 10,
+                  color: '#718096',
+                  margin: [0, 0, 0, 2] as [number, number, number, number],
+                },
               },
               {
                 text: fDate(cabecera.fecha_trans_incci),
-                style: { fontSize: 11, color: '#2d3748', margin: [0, 0, 0, 8] as [number, number, number, number] }
-              }
-            ]
+                style: { fontSize: 11, color: '#2d3748', margin: [0, 0, 0, 8] as [number, number, number, number] },
+              },
+            ],
           },
           // Columna derecha: Estados y badges
           {
@@ -164,19 +167,24 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             stack: [
               {
                 text: 'Bodega:',
-                style: { bold: true, fontSize: 10, color: '#718096', margin: [0, 0, 0, 2] as [number, number, number, number] }
+                style: {
+                  bold: true,
+                  fontSize: 10,
+                  color: '#718096',
+                  margin: [0, 0, 0, 2] as [number, number, number, number],
+                },
               },
               {
                 text: cabecera.nombre_inbod || 'N/A',
-                style: { fontSize: 11, color: '#2d3748', margin: [0, 0, 0, 0] as [number, number, number, number] }
-              }
+                style: { fontSize: 11, color: '#2d3748', margin: [0, 0, 0, 0] as [number, number, number, number] },
+              },
             ],
-            alignment: 'right'
-          }
-        ]
-      }
+            alignment: 'right',
+          },
+        ],
+      },
     ],
-    margin: [0, 0, 0, 5] as [number, number, number, number]
+    margin: [0, 0, 0, 5] as [number, number, number, number],
   };
 
   // Información del cliente/proveedor
@@ -188,10 +196,13 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
           width: '60%',
           stack: [
             { text: 'Nombre', style: 'label' },
-            { text: cabecera.nom_geper || 'N/A', style: { ...styles.value, margin: [0, 0, 0, 8] as [number, number, number, number] } },
+            {
+              text: cabecera.nom_geper || 'N/A',
+              style: { ...styles.value, margin: [0, 0, 0, 8] as [number, number, number, number] },
+            },
             { text: 'Observaciones:', style: 'label' },
-            { text: cabecera.observacion_incci || 'Ninguna', style: { ...styles.value } }
-          ]
+            { text: cabecera.observacion_incci || 'Ninguna', style: { ...styles.value } },
+          ],
         },
         {
           width: '40%',
@@ -200,11 +211,11 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             { text: cabecera.nombre_intti, style: 'value' },
             { text: 'Documento relacionado:', style: 'label' },
             { text: cabecera.num_documento ? `Factura No. ${cabecera.num_documento}` : 'N/A', style: 'value' },
-          ]
-        }
+          ],
+        },
       ],
-      margin: [0, 0, 0, 8] as [number, number, number, number]
-    }
+      margin: [0, 0, 0, 8] as [number, number, number, number],
+    },
   ];
 
   // Detalles de productos
@@ -221,9 +232,9 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             // { text: 'Precio Unit.', style: 'tableHeader' },
             // { text: 'Valor', style: 'tableHeader' },
             { text: 'Verif.', style: 'tableHeader' },
-            { text: 'Observación', style: 'tableHeader' }
+            { text: 'Observación', style: 'tableHeader' },
           ],
-          ...detalles.map(detalle => [
+          ...detalles.map((detalle) => [
             { text: detalle.observacion_indci, style: 'value' },
             { text: `${detalle.cantidad_indci}  ${detalle.siglas_inuni}`, style: 'value', alignment: 'center' },
             // { text: fCurrency(detalle.precio_indci), style: 'value', alignment: 'right' },
@@ -233,25 +244,23 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             //   alignment: 'right'
             // },
             {
-              stack: [
-                createIcon(detalle.verifica_indci ? SVG_Icons.CHECK : SVG_Icons.PENDING, 14),
-              ],
-              alignment: 'center'
+              stack: [createIcon(detalle.verifica_indci ? SVG_Icons.CHECK : SVG_Icons.PENDING, 14)],
+              alignment: 'center',
             },
             { text: detalle.observ_verifica_indci, style: 'observ' },
-          ])
-        ]
+          ]),
+        ],
       },
       layout: {
-        hLineWidth: (i: number) => i === 0 || i === detalles.length + 1 ? 0.7 : 0.3,
+        hLineWidth: (i: number) => (i === 0 || i === detalles.length + 1 ? 0.7 : 0.3),
         vLineWidth: () => 0.3,
-        hLineColor: (i: number) => i === 0 || i === 1 || i === detalles.length + 1 ? '#cbd5e0' : '#e2e8f0',
+        hLineColor: (i: number) => (i === 0 || i === 1 || i === detalles.length + 1 ? '#cbd5e0' : '#e2e8f0'),
         vLineColor: () => '#e2e8f0',
-        paddingTop: (i: number) => i === 0 ? 8 : 5,
-        paddingBottom: (i: number) => i === detalles.length ? 8 : 5,
+        paddingTop: (i: number) => (i === 0 ? 8 : 5),
+        paddingBottom: (i: number) => (i === detalles.length ? 8 : 5),
         paddingLeft: () => 5,
-        paddingRight: () => 5
-      }
+        paddingRight: () => 5,
+      },
     },
   ];
 
@@ -268,9 +277,7 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             { text: cabecera.automatico_incci === true ? 'Si' : 'No', style: 'value' },
             { text: 'Verificaco:', style: 'badgeLabel' },
             { text: cabecera.verifica_incci === true ? 'Si' : 'No', style: 'value' },
-
-
-          ]
+          ],
         },
         // Segunda columna: Información de verificación
         {
@@ -279,8 +286,8 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             { text: 'Verificado por:', style: 'badgeLabel' },
             { text: cabecera.usuario_verifica_incci || 'N/A', style: 'value' },
             { text: 'Fecha verificación:', style: 'badgeLabel' },
-            { text: cabecera.fecha_verifica_incci ? fDate(cabecera.fecha_verifica_incci) : 'N/A', style: 'value' }
-          ]
+            { text: cabecera.fecha_verifica_incci ? fDate(cabecera.fecha_verifica_incci) : 'N/A', style: 'value' },
+          ],
         },
         // Tercera columna: Estados adicionales
         {
@@ -291,22 +298,24 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             { text: 'Fecha creación:', style: 'badgeLabel' },
             {
               text: cabecera.fecha_ingre ? `${fDate(cabecera.fecha_ingre)} ${fTime(cabecera.hora_ingre)}` : 'N/A',
-              style: 'value'
+              style: 'value',
             },
-          ]
-        }
+          ],
+        },
       ],
-      margin: [0, 0, 0, 15] as [number, number, number, number]
-    }
+      margin: [0, 0, 0, 15] as [number, number, number, number],
+    },
   ];
 
   // Mensaje final
-  const mensajeFinal: Content[] = [{
-    text: 'Este documento es un comprobante de movimiento de inventario válido según las normativas internas de la empresa.',
-    style: 'footerText',
-    margin: [0, 20, 0, 0] as [number, number, number, number],
-    italics: true
-  }];
+  const mensajeFinal: Content[] = [
+    {
+      text: 'Este documento es un comprobante de movimiento de inventario válido según las normativas internas de la empresa.',
+      style: 'footerText',
+      margin: [0, 20, 0, 0] as [number, number, number, number],
+      italics: true,
+    },
+  ];
 
   return {
     styles,
@@ -316,21 +325,23 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
       header,
       comprobanteInfo,
       {
-        canvas: [{
-          type: 'line',
-          x1: 0,
-          y1: 5,
-          x2: 515,
-          y2: 5,
-          lineWidth: 1,
-          lineColor: '#e2e8f0'
-        }],
-        margin: [0, 0, 0, 0] as [number, number, number, number]
+        canvas: [
+          {
+            type: 'line',
+            x1: 0,
+            y1: 5,
+            x2: 515,
+            y2: 5,
+            lineWidth: 1,
+            lineColor: '#e2e8f0',
+          },
+        ],
+        margin: [0, 0, 0, 0] as [number, number, number, number],
       },
       ...infoClienteProveedor,
       ...detallesContent,
       ...infoAdicionalContent,
-      ...mensajeFinal
+      ...mensajeFinal,
     ],
   };
 };
