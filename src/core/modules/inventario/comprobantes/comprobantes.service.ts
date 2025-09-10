@@ -63,7 +63,21 @@ export class ComprobantesInvService extends BaseService {
         a.usuario_actua,
         a.fecha_actua,
         a.hora_actua,
-        f.uuid
+        f.uuid,
+          COALESCE(
+              (
+                  SELECT MAX(cccfa.secuencial_cccfa)
+                  FROM cxc_cabece_factura cccfa
+                  INNER JOIN inv_det_comp_inve det ON cccfa.ide_cccfa = det.ide_cccfa
+                  WHERE det.ide_incci = a.ide_incci
+              ),
+              (
+                  SELECT MAX(cpcfa.numero_cpcfa)
+                  FROM cxp_cabece_factur cpcfa
+                  INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
+                  WHERE det.ide_incci = a.ide_incci
+              )
+          ) AS num_documento
     from
         inv_cab_comp_inve a
         inner join inv_bodega c on a.ide_inbod = c.ide_inbod
@@ -173,7 +187,21 @@ export class ComprobantesInvService extends BaseService {
             fecha_verifica_incci, 
             usuario_verifica_incci,
             signo_intci,
-            f.uuid
+            f.uuid,
+              COALESCE(
+              (
+                  SELECT MAX(cccfa.secuencial_cccfa)
+                  FROM cxc_cabece_factura cccfa
+                  INNER JOIN inv_det_comp_inve det ON cccfa.ide_cccfa = det.ide_cccfa
+                  WHERE det.ide_incci = a.ide_incci
+              ),
+              (
+                  SELECT MAX(cpcfa.numero_cpcfa)
+                  FROM cxp_cabece_factur cpcfa
+                  INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
+                  WHERE det.ide_incci = a.ide_incci
+              )
+          ) AS num_documento
         from
             inv_cab_comp_inve a
             inner join inv_bodega c on a.ide_inbod = c.ide_inbod

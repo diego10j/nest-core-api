@@ -1,5 +1,7 @@
 import { Content } from 'pdfmake/interfaces';
 import { fDate } from 'src/util/helpers/date-util';
+import { HeaderOptions } from '../interfaces/reportes';
+import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
 
 // Constantes de diseño
 const DEFAULT_LOGO_PATH = 'public/assets/images/no-image.png';
@@ -18,7 +20,7 @@ export class HeaderSection {
     /**
      * Crea el encabezado del documento
      */
-    static createHeader(empresa: any, options: HeaderOptions = {}): Content {
+    static createHeader(empresa: Empresa, options: HeaderOptions): Content {
         const { title, subTitle, showLogo = true, showDate = false } = options;
 
         // Crear secciones del header
@@ -34,15 +36,15 @@ export class HeaderSection {
     /**
      * Crea un header completo para reportes con título integrado
      */
-    static createReportHeader(empresa: any, options: HeaderOptions & { reportTitle: string }): Content {
-        const { reportTitle, ...headerOptions } = options;
+    static createReportHeader(empresa: Empresa, options: HeaderOptions): Content {
+        const { title, ...headerOptions } = options;
 
         const header = this.createHeader(empresa, headerOptions);
 
         return {
             stack: [
                 header,
-                this.createReportTitleSection(reportTitle)
+                this.createReportTitleSection(title)
             ]
         };
     }
@@ -50,10 +52,10 @@ export class HeaderSection {
     /**
      * Crea la sección del logo
      */
-    private static createLogoSection(showLogo: boolean, empresa: any): Content | null {
+    private static createLogoSection(showLogo: boolean, empresa: Empresa): Content | null {
         if (!showLogo) return null;
 
-        const logoPath = empresa?.logo_path || DEFAULT_LOGO_PATH;
+        const logoPath = empresa?.logotipo_empr || DEFAULT_LOGO_PATH;
 
         return {
             image: logoPath,
@@ -62,6 +64,7 @@ export class HeaderSection {
             margin: DEFAULT_MARGIN,
         };
     }
+
 
     /**
      * Crea la sección de fecha
@@ -81,7 +84,7 @@ export class HeaderSection {
     /**
      * Crea la sección de información de la empresa
      */
-    private static createCompanyInfoSection(empresa: any): Content {
+    private static createCompanyInfoSection(empresa: Empresa): Content {
         const companyInfoStack: Content[] = [
             {
                 text: empresa.nom_empr,
@@ -95,11 +98,9 @@ export class HeaderSection {
         ];
 
         // Dirección completa
-        if (empresa.direccion_empr || empresa.ciudad_empr || empresa.pais_empr) {
+        if (empresa.direccion_empr) {
             const direccionCompleta = [
-                empresa.direccion_empr,
-                empresa.ciudad_empr,
-                empresa.pais_empr
+                empresa.direccion_empr
             ].filter(Boolean).join(', ');
 
             companyInfoStack.push({
@@ -109,9 +110,9 @@ export class HeaderSection {
         }
 
         // RUC
-        if (empresa.ruc_empr) {
+        if (empresa.identificacion_empr) {
             companyInfoStack.push({
-                text: `RUC: ${empresa.ruc_empr}`,
+                text: `RUC: ${empresa.identificacion_empr}`,
                 style: COMPANY_TEXT_STYLE
             });
         }
@@ -125,13 +126,13 @@ export class HeaderSection {
         // }
 
         // Página web
-        if (empresa.pagina_empr) {
-            companyInfoStack.push({
-                text: empresa.pagina_empr,
-                style: COMPANY_TEXT_STYLE,
-                link: empresa.pagina_empr.startsWith('http') ? empresa.pagina_empr : `https://${empresa.pagina_empr}`
-            });
-        }
+        // if (empresa.pagina_empr) {
+        //     companyInfoStack.push({
+        //         text: empresa.pagina_empr,
+        //         style: COMPANY_TEXT_STYLE,
+        //         link: empresa.pagina_empr.startsWith('http') ? empresa.pagina_empr : `https://${empresa.pagina_empr}`
+        //     });
+        // }
 
         return {
             stack: companyInfoStack,
@@ -224,7 +225,7 @@ export class HeaderSection {
 
         const headerContent: Content[] = [{
             columns: headerColumns,
-            margin: [0, 0, 0, 15] as [number, number, number, number]
+            margin: [0, 0, 0, 0] as [number, number, number, number]
         }];
 
         // Agregar título si existe
@@ -236,11 +237,4 @@ export class HeaderSection {
             stack: headerContent
         };
     }
-}
-
-export interface HeaderOptions {
-    title?: string;
-    subTitle?: string;
-    showLogo?: boolean;
-    showDate?: boolean;
 }

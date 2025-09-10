@@ -13,7 +13,7 @@ export class EmpresaRepService {
         private readonly dataSource: DataSourceService,
     ) { }
 
-    async getEmpresaById(ideEmpr: number): Promise<Empresa> {
+    private async fetchAndCacheEmpresa(ideEmpr: number): Promise<Empresa> {
         const query = new SelectQuery(`
           select
               ide_empr,
@@ -35,6 +35,34 @@ export class EmpresaRepService {
         if (res === null) {
             throw new BadRequestException(`La empresa no existe`);
         }
+        // Cache the result
+        const cacheKey = this.getCacheKeyEmpresa(ideEmpr);
+        await this.dataSource.redisClient.set(cacheKey, JSON.stringify(res));
         return res;
+    }
+
+
+    /**
+   * Crea un key de cahce para las empresas
+   * @param ideEmpr
+   * @returns
+   */
+    private getCacheKeyEmpresa(ideEmpr: number): string {
+        return `empresa:${ideEmpr}`;
+    }
+
+
+
+
+    async getEmpresaById(ideEmpr: number): Promise<Empresa> {
+        const cacheKey = this.getCacheKeyEmpresa(ideEmpr);
+
+        // Check cache
+        const empresaData = await this.dataSource.redisClient.get(cacheKey);
+        if (empresaData) {
+            return JSON.parse(empresaData);
+        }
+        // Fetch from database if not cached
+        return this.fetchAndCacheEmpresa(ideEmpr);
     }
 }

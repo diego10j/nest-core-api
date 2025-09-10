@@ -1497,3 +1497,40 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN hora_actua TIMESTAMP;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
 
+
+
+---verificar estos indices
+-- Para inv_cab_comp_inve (tabla principal)
+CREATE INDEX idx_inv_cab_comp_inve_ide ON inv_cab_comp_inve(ide_incci, ide_empr);
+CREATE INDEX idx_inv_cab_comp_inve_empr ON inv_cab_comp_inve(ide_empr, ide_incci);
+
+-- Para las tablas de joins
+CREATE INDEX idx_inv_bodega_ide ON inv_bodega(ide_inbod);
+CREATE INDEX idx_inv_tip_tran_inve_ide ON inv_tip_tran_inve(ide_intti);
+CREATE INDEX idx_inv_tip_comp_inve_ide ON inv_tip_comp_inve(ide_intci);
+CREATE INDEX idx_gen_persona_ide ON gen_persona(ide_geper);
+CREATE INDEX idx_inv_est_prev_inve_ide ON inv_est_prev_inve(ide_inepi);
+
+-- Para cxc_cabece_factura y su relación con inv_det_comp_inve
+CREATE INDEX idx_cxc_cabece_factura_ide ON cxc_cabece_factura(ide_cccfa);
+CREATE INDEX idx_inv_det_comp_inve_cccfa ON inv_det_comp_inve(ide_cccfa, ide_incci);
+CREATE INDEX idx_inv_det_comp_inve_incci_cccfa ON inv_det_comp_inve(ide_incci, ide_cccfa);
+
+-- Para cxp_cabece_factur y su relación con inv_det_comp_inve
+CREATE INDEX idx_cxp_cabece_factur_ide ON cxp_cabece_factur(ide_cpcfa);
+CREATE INDEX idx_inv_det_comp_inve_cpcfa ON inv_det_comp_inve(ide_cpcfa, ide_incci);
+CREATE INDEX idx_inv_det_comp_inve_incci_cpcfa ON inv_det_comp_inve(ide_incci, ide_cpcfa);
+
+-- Índices compuestos para mejor performance en las subconsultas
+CREATE INDEX idx_cxc_cabece_factura_secuencial ON cxc_cabece_factura(ide_cccfa, secuencial_cccfa);
+CREATE INDEX idx_cxp_cabece_factur_numero ON cxp_cabece_factur(ide_cpcfa, numero_cpcfa);
+
+-- Para campos frecuentemente usados en WHERE y ORDER BY
+CREATE INDEX idx_inv_cab_comp_inve_fecha ON inv_cab_comp_inve(fecha_trans_incci);
+CREATE INDEX idx_inv_det_comp_inve_completo ON inv_det_comp_inve(ide_incci, ide_cccfa, ide_cpcfa);
+
+-- Índices para las foreign keys
+CREATE INDEX idx_inv_cab_comp_inve_bodega ON inv_cab_comp_inve(ide_inbod);
+CREATE INDEX idx_inv_cab_comp_inve_tiptran ON inv_cab_comp_inve(ide_intti);
+CREATE INDEX idx_inv_cab_comp_inve_persona ON inv_cab_comp_inve(ide_geper);
+CREATE INDEX idx_inv_cab_comp_inve_estado ON inv_cab_comp_inve(ide_inepi);
