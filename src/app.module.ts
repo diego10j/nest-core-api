@@ -12,6 +12,7 @@ import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
 
 import { ReportsModule } from './reports/reports.module';
+import { MailModule } from './core/email/mail.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ReportsModule } from './reports/reports.module';
     ErrorsModule,
     WhatsappModule,
     ReportsModule,
+    MailModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

@@ -15,7 +15,7 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:8080',
-      'http://172.21.50.13:8080',
+      'http://192.168.56.103:8080',
       'http://devproerpec.site',
       'https://devproerpec.site',
     ],

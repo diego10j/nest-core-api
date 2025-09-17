@@ -1499,7 +1499,6 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
 
 
 
----verificar estos indices
 -- Para inv_cab_comp_inve (tabla principal)
 CREATE INDEX idx_inv_cab_comp_inve_ide ON inv_cab_comp_inve(ide_incci, ide_empr);
 CREATE INDEX idx_inv_cab_comp_inve_empr ON inv_cab_comp_inve(ide_empr, ide_incci);
@@ -1508,7 +1507,6 @@ CREATE INDEX idx_inv_cab_comp_inve_empr ON inv_cab_comp_inve(ide_empr, ide_incci
 CREATE INDEX idx_inv_bodega_ide ON inv_bodega(ide_inbod);
 CREATE INDEX idx_inv_tip_tran_inve_ide ON inv_tip_tran_inve(ide_intti);
 CREATE INDEX idx_inv_tip_comp_inve_ide ON inv_tip_comp_inve(ide_intci);
-CREATE INDEX idx_gen_persona_ide ON gen_persona(ide_geper);
 CREATE INDEX idx_inv_est_prev_inve_ide ON inv_est_prev_inve(ide_inepi);
 
 -- Para cxc_cabece_factura y su relación con inv_det_comp_inve
@@ -1522,15 +1520,171 @@ CREATE INDEX idx_inv_det_comp_inve_cpcfa ON inv_det_comp_inve(ide_cpcfa, ide_inc
 CREATE INDEX idx_inv_det_comp_inve_incci_cpcfa ON inv_det_comp_inve(ide_incci, ide_cpcfa);
 
 -- Índices compuestos para mejor performance en las subconsultas
-CREATE INDEX idx_cxc_cabece_factura_secuencial ON cxc_cabece_factura(ide_cccfa, secuencial_cccfa);
 CREATE INDEX idx_cxp_cabece_factur_numero ON cxp_cabece_factur(ide_cpcfa, numero_cpcfa);
 
 -- Para campos frecuentemente usados en WHERE y ORDER BY
-CREATE INDEX idx_inv_cab_comp_inve_fecha ON inv_cab_comp_inve(fecha_trans_incci);
 CREATE INDEX idx_inv_det_comp_inve_completo ON inv_det_comp_inve(ide_incci, ide_cccfa, ide_cpcfa);
 
 -- Índices para las foreign keys
 CREATE INDEX idx_inv_cab_comp_inve_bodega ON inv_cab_comp_inve(ide_inbod);
 CREATE INDEX idx_inv_cab_comp_inve_tiptran ON inv_cab_comp_inve(ide_intti);
 CREATE INDEX idx_inv_cab_comp_inve_persona ON inv_cab_comp_inve(ide_geper);
-CREATE INDEX idx_inv_cab_comp_inve_estado ON inv_cab_comp_inve(ide_inepi);
+
+
+
+
+
+CREATE TABLE public.sis_correo (
+	ide_corr int4 NOT NULL,
+	alias_corr varchar(50) NULL,
+	smtp_corr varchar(50) NULL,
+	puerto_corr varchar(50) NULL,
+	usuario_corr varchar(50) NULL,
+	correo_corr varchar(50) NULL,
+	nom_correo_corr varchar(50) NULL,
+	clave_corr varchar(50) NULL,
+	secure_corr BOOLEAN DEFAULT TRUE, 
+	activo_corr BOOLEAN DEFAULT TRUE, 
+	observacion_corr varchar(250),
+	ide_sucu int4  NULL,
+	ide_empr int4  NULL,
+	ide_usua int4  NULL,   -- para asociar cuenta a usuario especifico
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+	CONSTRAINT pk_sis_correo PRIMARY KEY (ide_corr)
+);
+
+CREATE TABLE public.sis_conf_correo (
+	ide_ccor int4 NOT NULL,
+	ide_corr int4 NOT NULL,
+	propiedad_corr varchar(50) NULL,
+	valor_corr varchar(50) NULL,
+	activo_corr BOOLEAN DEFAULT TRUE, 
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+	CONSTRAINT pk_sis_conf_correo PRIMARY KEY (ide_ccor)
+);
+ALTER TABLE public.sis_conf_correo ADD CONSTRAINT sis_conf_correo_sis_correo_fk FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr);
+
+
+-- Tabla para plantillas de correo
+CREATE TABLE public.sis_plantilla_correo (
+    ide_plco INT4 NOT NULL,
+    nombre_plco VARCHAR(100) NOT NULL,
+    asunto_plco VARCHAR(255) NOT NULL,
+    contenido_plco TEXT NOT NULL,
+    variables_plco JSONB NULL,
+    estado_plco BOOLEAN DEFAULT TRUE,
+    ide_corr INT4 NULL,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_sis_plantilla_correo PRIMARY KEY (ide_plco),
+    CONSTRAINT fk_plco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
+);
+
+-- Tabla para campañas de correo
+CREATE TABLE public.sis_campania_correo (
+    ide_caco INT4 NOT NULL,
+    nombre_caco VARCHAR(100) NOT NULL,
+    asunto_caco VARCHAR(255) NOT NULL,
+    contenido_caco TEXT NOT NULL,
+    destinatarios_caco TEXT NOT NULL, -- JSON array o lista separada por comas
+    estado_caco VARCHAR(20) DEFAULT 'PENDIENTE', -- PENDIENTE, PROCESANDO, COMPLETADA, ERROR
+    enviados_caco INT4 DEFAULT 0,
+    fallidos_caco INT4 DEFAULT 0,
+    programacion_caco TIMESTAMP NULL,
+    ide_corr INT4 NULL,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_sis_campania_correo PRIMARY KEY (ide_caco),
+    CONSTRAINT fk_caco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
+);
+
+-- Tabla para colas de correo
+CREATE TABLE public.sis_cola_correo (
+    ide_coco INT4 NOT NULL,
+    destinatario_coco VARCHAR(255) NOT NULL,
+    asunto_coco VARCHAR(255) NOT NULL,
+    contenido_coco TEXT NOT NULL,
+    tipo_coco VARCHAR(20) DEFAULT 'INDIVIDUAL', -- INDIVIDUAL, CAMPAÑA
+    estado_coco VARCHAR(20) DEFAULT 'PENDIENTE', -- PENDIENTE, ENVIADO, ERROR, REINTENTANDO
+    intentos_coco INT4 DEFAULT 0,
+    ide_plco INT4 NULL,
+    ide_caco INT4 NULL,
+    ide_corr INT4 NULL,
+    error_coco TEXT NULL,
+    fecha_programada_coco TIMESTAMP DEFAULT NOW(),
+    fecha_envio_coco TIMESTAMP NULL,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_sis_cola_correo PRIMARY KEY (ide_coco),
+    CONSTRAINT fk_coco_plantilla FOREIGN KEY (ide_plco) REFERENCES public.sis_plantilla_correo(ide_plco),
+    CONSTRAINT fk_coco_campania FOREIGN KEY (ide_caco) REFERENCES public.sis_campania_correo(ide_caco),
+    CONSTRAINT fk_coco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
+);
+
+-- Tabla para logs de correos enviados
+CREATE TABLE public.sis_log_correo (
+    ide_loco INT4 NOT NULL,
+    destinatario_loco VARCHAR(255) NOT NULL,
+    asunto_loco VARCHAR(255) NOT NULL,
+    estado_loco VARCHAR(20) NOT NULL, -- ENVIADO, ERROR
+    ide_coco INT4 NULL,
+    ide_plco INT4 NULL,
+    ide_caco INT4 NULL,
+    ide_corr INT4 NULL,
+    error_loco TEXT NULL,
+    mensaje_id_loco VARCHAR(255) NULL, -- ID del mensaje del servidor SMTP
+    fecha_envio_loco TIMESTAMP DEFAULT NOW(),
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT pk_sis_log_correo PRIMARY KEY (ide_loco),
+    CONSTRAINT fk_loco_cola FOREIGN KEY (ide_coco) REFERENCES public.sis_cola_correo(ide_coco),
+    CONSTRAINT fk_loco_plantilla FOREIGN KEY (ide_plco) REFERENCES public.sis_plantilla_correo(ide_plco),
+    CONSTRAINT fk_loco_campania FOREIGN KEY (ide_caco) REFERENCES public.sis_campania_correo(ide_caco),
+    CONSTRAINT fk_loco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
+);
+
+-- Tabla para adjuntos de correo
+CREATE TABLE public.sis_adjunto_correo (
+    ide_adco INT4 NOT NULL,
+    nombre_archivo_adco VARCHAR(255) NOT NULL,
+    tipo_mime_adco VARCHAR(100) NULL,
+    tamano_adco INT4 NULL,
+    ruta_adco VARCHAR(500) NOT NULL,
+    ide_plco INT4 NULL,
+    ide_caco INT4 NULL,
+    ide_coco INT4 NULL,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_sis_adjunto_correo PRIMARY KEY (ide_adco),
+    CONSTRAINT fk_adco_plantilla FOREIGN KEY (ide_plco) REFERENCES public.sis_plantilla_correo(ide_plco),
+    CONSTRAINT fk_adco_campania FOREIGN KEY (ide_caco) REFERENCES public.sis_campania_correo(ide_caco),
+    CONSTRAINT fk_adco_cola FOREIGN KEY (ide_coco) REFERENCES public.sis_cola_correo(ide_coco)
+);
+
+-- Secuencias para las tablas
+--CREATE SEQUENCE public.seq_sis_plantilla_correo_ide_plco;
+--CREATE SEQUENCE public.seq_sis_campania_correo_ide_caco;
+--CREATE SEQUENCE public.seq_sis_cola_correo_ide_coco;
+--CREATE SEQUENCE public.seq_sis_log_correo_ide_loco;
+--CREATE SEQUENCE public.seq_sis_adjunto_correo_ide_adco;
+
+-- Índices para mejorar el rendimiento
+CREATE INDEX idx_sis_cola_correo_estado ON public.sis_cola_correo(estado_coco);
+CREATE INDEX idx_sis_cola_correo_fecha_programada ON public.sis_cola_correo(fecha_programada_coco);
+CREATE INDEX idx_sis_log_correo_fecha_envio ON public.sis_log_correo(fecha_envio_loco);
+CREATE INDEX idx_sis_log_correo_destinatario ON public.sis_log_correo(destinatario_loco);
+CREATE INDEX idx_sis_campania_correo_estado ON public.sis_campania_correo(estado_caco);
