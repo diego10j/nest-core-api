@@ -12,6 +12,8 @@ import { SriModule } from './modules/sri/sri.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { ProformasModule } from './modules/proformas/proformas.module';
+
 
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     SriModule,
     IntegrationModule,
     ContabilidadModule,
+    ProformasModule,
   ],
   providers: [CoreService],
 

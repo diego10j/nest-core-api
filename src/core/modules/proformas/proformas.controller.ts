@@ -9,7 +9,7 @@ import { ProformasMensualesDto } from './dto/proformas-mensuales.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ProformasService } from './proformas.service';
 
-@Controller('ventas/proformas')
+@Controller('proformas')
 export class ProformasController {
   constructor(private readonly service: ProformasService) {}
 
