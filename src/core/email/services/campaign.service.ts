@@ -5,12 +5,14 @@ import {
     Logger,
     NotFoundException,
 } from '@nestjs/common';
-import { isDefined } from 'class-validator';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 
 import { CreateCampaignDto } from '../dto/create-campaign.dto';
 import { MailService } from './mail.service';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { CAMPAIGN_QUEUE } from '../config';
 
 @Injectable()
 export class CampaignService {
@@ -19,10 +21,48 @@ export class CampaignService {
     constructor(
         public readonly dataSource: DataSourceService,
         private readonly mailService: MailService,
+        @InjectQueue(CAMPAIGN_QUEUE) private readonly campaignQueue: Queue,
     ) { }
 
     /**
-     * Crea una nueva campaña de correo
+     * Obtiene una campaña por ID
+     */
+    async getCampaignById(ide_caco: number, ideEmpr: number) {
+        const query = new SelectQuery(`
+            SELECT
+                ide_caco,
+                nombre_caco,
+                asunto_caco,
+                contenido_caco,
+                destinatarios_caco,
+                estado_caco,
+                enviados_caco,
+                fallidos_caco,
+                programacion_caco,
+                ide_corr,
+                usuario_ingre,
+                fecha_ingre,
+                usuario_actua,
+                fecha_actua
+            FROM
+                sis_campania_correo
+            WHERE
+                ide_caco = $1
+                AND ide_empr = $2
+        `);
+        query.addParam(1, ide_caco);
+        query.addParam(2, ideEmpr);
+
+        const campaign = await this.dataSource.createSingleQuery(query);
+        if (!campaign) {
+            throw new NotFoundException(`Campaña con ID ${ide_caco} no encontrada`);
+        }
+
+        return campaign;
+    }
+
+    /**
+     * Crea una nueva campaña de correo y programa su procesamiento
      */
     async createCampaign(createCampaignDto: CreateCampaignDto, ideEmpr: number, ideUsua: number, usuario: string) {
         try {
@@ -30,6 +70,8 @@ export class CampaignService {
             const cuenta = await this.mailService.getCuentaCorreo(ideEmpr, createCampaignDto.ide_corr);
 
             const insertQuery = new InsertQuery('sis_campania_correo', 'ide_caco');
+            const ide_caco = await this.dataSource.getSeqTable('sis_campania_correo', 'ide_caco', 1, usuario);
+            insertQuery.values.set('ide_caco', ide_caco);
             insertQuery.values.set('nombre_caco', createCampaignDto.nombre);
             insertQuery.values.set('asunto_caco', createCampaignDto.asunto);
             insertQuery.values.set('contenido_caco', createCampaignDto.contenido);
@@ -43,8 +85,31 @@ export class CampaignService {
             insertQuery.values.set('fecha_ingre', new Date());
 
             const result = await this.dataSource.createQuery(insertQuery);
-            //  return await this.getCampaignById(result.ide_caco, ideEmpr);
-            return { ok: 'ok' }
+
+            // Programar procesamiento de la campaña
+            const programacionDate = createCampaignDto.programacion
+                ? new Date(createCampaignDto.programacion)
+                : new Date();
+
+            const delay = programacionDate.getTime() - Date.now();
+
+            await this.campaignQueue.add('process-campaign', {
+                ide_caco: ide_caco,
+                ide_empr: ideEmpr
+            }, {
+                delay: delay > 0 ? delay : 0,
+                attempts: 3,
+                backoff: {
+                    type: 'exponential',
+                    delay: 30000
+                }
+            });
+
+            return {
+                success: true,
+                ide_caco: ide_caco,
+                message: 'Campaña creada y programada exitosamente'
+            };
         } catch (error) {
             this.logger.error(`Error createCampaign: ${error.message}`);
             throw new InternalServerErrorException(`Error al crear campaña: ${error.message}`);
@@ -52,75 +117,11 @@ export class CampaignService {
     }
 
     /**
-     * Obtiene una campaña por ID
+     * Procesa una campaña de correo (este método es llamado por el processor)
      */
-    async getCampaignById(ide_caco: number, ideEmpr: number) {
-        const query = new SelectQuery(`
-      SELECT
-        ide_caco,
-        nombre_caco,
-        asunto_caco,
-        contenido_caco,
-        destinatarios_caco,
-        estado_caco,
-        enviados_caco,
-        fallidos_caco,
-        programacion_caco,
-        ide_corr,
-        usuario_ingre,
-        fecha_ingre,
-        usuario_actua,
-        fecha_actua
-      FROM
-        sis_campania_correo
-      WHERE
-        ide_caco = $1
-        AND ide_empr = $2
-    `);
-        query.addParam(1, ide_caco);
-        query.addParam(2, ideEmpr);
-
-        const campaign = await this.dataSource.createSingleQuery(query);
-        if (!campaign) {
-            throw new NotFoundException(`Campaña con ID ${ide_caco} no encontrada`);
-        }
-
-        return campaign;
-    }
-
-    /**
-     * Obtiene todas las campañas de una empresa
-     */
-    async getCampaigns(ideEmpr: number) {
-        const query = new SelectQuery(`
-      SELECT
-        ide_caco,
-        nombre_caco,
-        asunto_caco,
-        estado_caco,
-        enviados_caco,
-        fallidos_caco,
-        programacion_caco,
-        fecha_ingre,
-        usuario_ingre
-      FROM
-        sis_campania_correo
-      WHERE
-        ide_empr = $1
-      ORDER BY
-        fecha_ingre DESC
-    `);
-        query.addParam(1, ideEmpr);
-
-        return await this.dataSource.createSelectQuery(query);
-    }
-
-    /**
-     * Procesa una campaña de correo
-     */
-    async processCampaign(ide_caco: number, ideEmpr: number) {
+    async processCampaign(ide_caco: number, ide_empr: number) {
         try {
-            const campaign = await this.getCampaignById(ide_caco, ideEmpr);
+            const campaign = await this.getCampaignById(ide_caco, ide_empr);
 
             if (campaign.estado_caco !== 'PENDIENTE') {
                 throw new BadRequestException('La campaña ya ha sido procesada');
@@ -136,7 +137,7 @@ export class CampaignService {
             // Procesar cada destinatario
             for (const destinatario of destinatarios) {
                 try {
-                    // Agregar cada correo a la cola individual
+                    // Agregar cada correo a la cola individual de MAIL
                     const sendMailDto = {
                         destinatario: destinatario.email,
                         asunto: campaign.asunto_caco,
@@ -145,7 +146,7 @@ export class CampaignService {
                         variables: destinatario.variables || {}
                     };
 
-                    await this.mailService.sendMail(sendMailDto as any, ideEmpr, 'sistema');
+                    await this.mailService.sendMail(sendMailDto as any, ide_empr, 'sistema');
                     enviados++;
                 } catch (error) {
                     this.logger.error(`Error enviando correo a ${destinatario.email}: ${error.message}`);
@@ -214,30 +215,64 @@ export class CampaignService {
     async scheduleCampaigns() {
         try {
             const query = new SelectQuery(`
-        SELECT
-          ide_caco,
-          ide_empr
-        FROM
-          sis_campania_correo
-        WHERE
-          estado_caco = 'PENDIENTE'
-          AND programacion_caco <= NOW()
-        ORDER BY
-          programacion_caco
-        LIMIT 10
-      `);
+                SELECT
+                    ide_caco,
+                    ide_empr
+                FROM
+                    sis_campania_correo
+                WHERE
+                    estado_caco = 'PENDIENTE'
+                    AND programacion_caco <= NOW()
+                ORDER BY
+                    programacion_caco
+                LIMIT 10
+            `);
 
             const campaigns = await this.dataSource.createSelectQuery(query);
 
             for (const campaign of campaigns) {
                 try {
-                    await this.processCampaign(campaign.ide_caco, campaign.ide_empr);
+                    // Agregar cada campaña pendiente a la cola
+                    await this.campaignQueue.add('process-campaign', {
+                        ide_caco: campaign.ide_caco,
+                        ide_empr: campaign.ide_empr
+                    });
                 } catch (error) {
-                    this.logger.error(`Error procesando campaña ${campaign.ide_caco}: ${error.message}`);
+                    this.logger.error(`Error programando campaña ${campaign.ide_caco}: ${error.message}`);
                 }
             }
+
+            return { scheduled: campaigns.length };
         } catch (error) {
             this.logger.error(`Error scheduleCampaigns: ${error.message}`);
+            throw error;
         }
+    }
+
+    /**
+     * Obtiene todas las campañas de una empresa
+     */
+    async getCampaigns(ideEmpr: number) {
+        const query = new SelectQuery(`
+            SELECT
+                ide_caco,
+                nombre_caco,
+                asunto_caco,
+                estado_caco,
+                enviados_caco,
+                fallidos_caco,
+                programacion_caco,
+                fecha_ingre,
+                usuario_ingre
+            FROM
+                sis_campania_correo
+            WHERE
+                ide_empr = $1
+            ORDER BY
+                fecha_ingre DESC
+        `);
+        query.addParam(1, ideEmpr);
+
+        return await this.dataSource.createSelectQuery(query);
     }
 }

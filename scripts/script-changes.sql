@@ -1621,6 +1621,7 @@ CREATE TABLE public.sis_cola_correo (
     ide_caco INT4 NULL,
     ide_corr INT4 NULL,
     error_coco TEXT NULL,
+	job_id_coco VARCHAR(50),
     fecha_programada_coco TIMESTAMP DEFAULT NOW(),
     fecha_envio_coco TIMESTAMP NULL,
     usuario_ingre VARCHAR(50),
@@ -1633,27 +1634,7 @@ CREATE TABLE public.sis_cola_correo (
     CONSTRAINT fk_coco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
 );
 
--- Tabla para logs de correos enviados
-CREATE TABLE public.sis_log_correo (
-    ide_loco INT4 NOT NULL,
-    destinatario_loco VARCHAR(255) NOT NULL,
-    asunto_loco VARCHAR(255) NOT NULL,
-    estado_loco VARCHAR(20) NOT NULL, -- ENVIADO, ERROR
-    ide_coco INT4 NULL,
-    ide_plco INT4 NULL,
-    ide_caco INT4 NULL,
-    ide_corr INT4 NULL,
-    error_loco TEXT NULL,
-    mensaje_id_loco VARCHAR(255) NULL, -- ID del mensaje del servidor SMTP
-    fecha_envio_loco TIMESTAMP DEFAULT NOW(),
-    usuario_ingre VARCHAR(50),
-    fecha_ingre TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT pk_sis_log_correo PRIMARY KEY (ide_loco),
-    CONSTRAINT fk_loco_cola FOREIGN KEY (ide_coco) REFERENCES public.sis_cola_correo(ide_coco),
-    CONSTRAINT fk_loco_plantilla FOREIGN KEY (ide_plco) REFERENCES public.sis_plantilla_correo(ide_plco),
-    CONSTRAINT fk_loco_campania FOREIGN KEY (ide_caco) REFERENCES public.sis_campania_correo(ide_caco),
-    CONSTRAINT fk_loco_correo FOREIGN KEY (ide_corr) REFERENCES public.sis_correo(ide_corr)
-);
+
 
 -- Tabla para adjuntos de correo
 CREATE TABLE public.sis_adjunto_correo (
@@ -1679,12 +1660,12 @@ CREATE TABLE public.sis_adjunto_correo (
 --CREATE SEQUENCE public.seq_sis_plantilla_correo_ide_plco;
 --CREATE SEQUENCE public.seq_sis_campania_correo_ide_caco;
 --CREATE SEQUENCE public.seq_sis_cola_correo_ide_coco;
---CREATE SEQUENCE public.seq_sis_log_correo_ide_loco;
 --CREATE SEQUENCE public.seq_sis_adjunto_correo_ide_adco;
 
 -- Índices para mejorar el rendimiento
 CREATE INDEX idx_sis_cola_correo_estado ON public.sis_cola_correo(estado_coco);
 CREATE INDEX idx_sis_cola_correo_fecha_programada ON public.sis_cola_correo(fecha_programada_coco);
-CREATE INDEX idx_sis_log_correo_fecha_envio ON public.sis_log_correo(fecha_envio_loco);
-CREATE INDEX idx_sis_log_correo_destinatario ON public.sis_log_correo(destinatario_loco);
 CREATE INDEX idx_sis_campania_correo_estado ON public.sis_campania_correo(estado_caco);
+-- Crea índice para búsquedas más rápidas
+CREATE INDEX IF NOT EXISTS idx_sis_cola_correo_job_id 
+ON sis_cola_correo(job_id_coco);

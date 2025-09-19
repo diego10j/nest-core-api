@@ -43,18 +43,17 @@ export class MailController {
 
 
     @Post('sendTest')
-    async sendTest() {
+    async sendTest(@AppHeaders() headersParams: HeaderParamsDto) {
         // Usar el servicio que automaticamente pone en cola
         await this.mailService.sendMail({
             destinatario: 'diego10j.89@hotmail.com',
             asunto: 'Asunto del correo',
             contenido: '<h1>Contenido HTML</h1><p>Mensaje de prueba</p>',
             ide_corr: 1
-        }, 0, 'sa');
+        }, headersParams.ideEmpr, headersParams.login);
 
         // await this.testService.testMail('diego10j.89@hotmail.com');
-        // Forzar procesamiento de la cola
-        await this.mailService.processMailQueue();
+
         return {
             message: 'Email agregado a la cola de envío',
             status: 'queued'

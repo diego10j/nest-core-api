@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsOptional, IsString, IsEmail, IsArray } from 'class-validator';
+import { AdjuntoCorreoDto } from './adjunto-dto';
 
 export class SendMailDto {
     @IsNotEmpty()
@@ -21,4 +22,9 @@ export class SendMailDto {
 
     @IsOptional()
     variables?: Record<string, any>;
+
+    @IsOptional()
+    @IsArray()
+    adjuntos?: AdjuntoCorreoDto[];
+
 }
