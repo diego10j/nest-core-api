@@ -12,7 +12,7 @@ import { FacturasService } from './facturas.service';
 
 @Controller('ventas/facturas')
 export class FacturasController {
-  constructor(private readonly service: FacturasService) {}
+  constructor(private readonly service: FacturasService) { }
 
   @Get('getPuntosEmisionFacturas')
   // @Auth()
@@ -109,14 +109,6 @@ export class FacturasController {
     });
   }
 
-  @Get('getTopProductos')
-  // @Auth()
-  getTopProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
-    return this.service.getTopProductos({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
 
   @Get('getTotalVentasPorHora')
   // @Auth()

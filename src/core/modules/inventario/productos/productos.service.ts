@@ -945,60 +945,7 @@ export class ProductosService extends BaseService {
     return await this.dataSource.createQuery(query);
   }
 
-  /**
-   * Retorna el total de compras mensuales de un producto en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async getComprasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const query = new SelectQuery(
-      `
-    SELECT
-        gm.nombre_gemes,
-        ${dtoIn.periodo} as periodo,
-        COALESCE(count(cdf.ide_cpcfa), 0) AS num_facturas,
-        COALESCE(sum(cdf.cantidad_cpdfa), 0) AS cantidad,
-        siglas_inuni,
-        COALESCE(sum(cdf.valor_cpdfa), 0) AS total
-    FROM
-        gen_mes gm
-    LEFT JOIN (
-        SELECT
-            EXTRACT(MONTH FROM fecha_emisi_cpcfa) AS mes,
-            cdf.ide_cpcfa,
-            cdf.cantidad_cpdfa,
-            cdf.valor_cpdfa,
-            siglas_inuni
-        FROM
-            cxp_cabece_factur a
-        INNER JOIN
-            cxp_detall_factur cdf ON a.ide_cpcfa = cdf.ide_cpcfa
-        INNER JOIN 
-            inv_articulo d ON cdf.ide_inarti = d.ide_inarti
-        LEFT JOIN 
-            inv_unidad f ON d.ide_inuni = f.ide_inuni 
-        WHERE
-            fecha_emisi_cpcfa  >=  $1 AND a.fecha_emisi_cpcfa <=  $2 
-            AND cdf.ide_inarti = $3
-            AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-            AND a.ide_empr = ${dtoIn.ideEmpr} 
-    ) cdf ON gm.ide_gemes = cdf.mes
-    GROUP BY
-        gm.nombre_gemes, gm.ide_gemes, siglas_inuni
-    ORDER BY
-        gm.ide_gemes       
-        `,
-      dtoIn,
-    );
-    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(3, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
+
 
   /**
    * Retorna la sumatoria de total ventas / compras en un periodo
@@ -1129,52 +1076,7 @@ export class ProductosService extends BaseService {
     return await this.dataSource.createQuery(query);
   }
 
-  /**
-   * Retorna top 10 mejores proveedores en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async getTopProveedores(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const query = new SelectQuery(
-      `
-        SELECT
-            p.ide_geper,
-            upper(p.nom_geper) as nom_geper,
-            COUNT(1) AS num_facturas,
-            SUM(cdf.cantidad_cpdfa) AS total_cantidad,
-            SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
-            siglas_inuni
-        FROM
-            cxp_detall_factur cdf
-            INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
-        WHERE
-            cdf.ide_inarti = $1
-            AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-            AND cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            p.ide_geper,
-            p.nom_geper,
-            siglas_inuni
-        ORDER BY
-            total_valor DESC
-        LIMIT 10
-        `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addStringParam(2, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(3, `${dtoIn.periodo}-12-31`);
 
-    return await this.dataSource.createQuery(query);
-  }
 
   /**
    * Retorna top 10 mejores clientes en un periodo
@@ -1494,72 +1396,7 @@ export class ProductosService extends BaseService {
     } as ResultQuery;
   }
 
-  async getVariacionInventario(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const query = new SelectQuery(
-      `       
-        WITH Meses AS (
-            SELECT
-                gm.nombre_gemes,
-                gm.ide_gemes,
-                TO_DATE('${dtoIn.periodo}-' || LPAD(gm.ide_gemes::text, 2, '0') || '-01', 'YYYY-MM-DD') AS inicio_mes,
-                (TO_DATE('${dtoIn.periodo}-' || LPAD(gm.ide_gemes::text, 2, '0') || '-01', 'YYYY-MM-DD') + INTERVAL '1 MONTH' - INTERVAL '1 DAY') AS fin_mes
-            FROM
-                gen_mes gm
-        ),
-        Transacciones AS (
-            SELECT
-                m.ide_gemes,
-                m.inicio_mes,
-                m.fin_mes,
-                SUM(CASE
-                    WHEN cci.fecha_trans_incci < m.inicio_mes THEN dci.cantidad_indci * tci.signo_intci
-                    ELSE 0
-                END) AS saldo_inicial,
-                SUM(CASE
-                    WHEN cci.fecha_trans_incci <= m.fin_mes THEN dci.cantidad_indci * tci.signo_intci
-                    ELSE 0
-                END) AS saldo_final,
-                SUM(CASE
-                    WHEN cci.fecha_trans_incci BETWEEN m.inicio_mes AND m.fin_mes AND tci.signo_intci = 1 THEN dci.cantidad_indci
-                    ELSE 0
-                END) AS ingresos,
-                SUM(CASE
-                    WHEN cci.fecha_trans_incci BETWEEN m.inicio_mes AND m.fin_mes AND tci.signo_intci = -1 THEN dci.cantidad_indci
-                    ELSE 0
-                END) AS egresos
-            FROM
-                Meses m
-            LEFT JOIN inv_det_comp_inve dci ON dci.ide_inarti = $1
-            INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci AND cci.ide_inepi =  ${this.variables.get('p_inv_estado_normal')} 
-            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-            INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-            where cci.ide_empr = ${dtoIn.ideEmpr} 
-            GROUP BY
-                m.ide_gemes, m.inicio_mes, m.fin_mes
-        )
-        SELECT
-            m.nombre_gemes,
-            COALESCE(t.saldo_inicial, 0) AS saldo_inicial,            
-            COALESCE(t.ingresos, 0) AS ingresos,
-            COALESCE(t.egresos, 0) AS egresos,
-            COALESCE(t.saldo_final, 0) AS saldo_final
-        FROM
-            Meses m
-        LEFT JOIN
-            Transacciones t ON m.ide_gemes = t.ide_gemes
-        ORDER BY
-            m.ide_gemes;
 
-        `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    return await this.dataSource.createSelectQuery(query);
-  }
 
   /**
    * Retrona la actividades/log registradas sobre un producto
@@ -1660,381 +1497,9 @@ export class ProductosService extends BaseService {
     return await this.dataSource.createSingleQuery(query);
   }
 
-  /**
-   * Retorna el total de PROFORMAS mensuales de un producto en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async getProformasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const query = new SelectQuery(
-      `
-        WITH 
-        proformas_mes AS (
-            SELECT
-                EXTRACT(MONTH FROM a.fecha_cccpr) AS mes,
-                COUNT(cdf.ide_ccdpr) AS num_proformas,
-                SUM(cdf.cantidad_ccdpr) AS cantidad_cotizada,
-                SUM(cdf.total_ccdpr) AS total_cotizado,
-                MAX(f.siglas_inuni) AS siglas_inuni
-            FROM
-                cxc_cabece_proforma a
-            INNER JOIN cxc_deta_proforma cdf ON a.ide_cccpr = cdf.ide_cccpr
-            INNER JOIN inv_articulo d ON cdf.ide_inarti = d.ide_inarti
-            LEFT JOIN inv_unidad f ON d.ide_inuni = f.ide_inuni
-            WHERE
-                a.fecha_cccpr BETWEEN $1 AND $2
-                AND cdf.ide_inarti = $3
-                AND a.anulado_cccpr = false
-                AND a.ide_empr = ${dtoIn.ideEmpr} 
-            GROUP BY EXTRACT(MONTH FROM a.fecha_cccpr)
-        ),
-        
-        facturas_efectivas AS (
-            SELECT
-                EXTRACT(MONTH FROM c.fecha_emisi_cccfa) AS mes,
-                COUNT(DISTINCT c.ide_cccfa) AS cotizaciones_efectivas,
-                SUM(d.cantidad_ccdfa) AS cantidad_efectiva
-            FROM
-                cxc_cabece_factura c
-            INNER JOIN cxc_deta_factura d ON c.ide_cccfa = d.ide_cccfa
-            WHERE
-                c.fecha_emisi_cccfa BETWEEN $4 AND $5
-                AND d.ide_inarti = $6
-                AND c.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND c.num_proforma_cccfa IS NOT NULL
-            GROUP BY EXTRACT(MONTH FROM c.fecha_emisi_cccfa)
-        )
-        SELECT
-            gm.nombre_gemes,
-            ${dtoIn.periodo} AS periodo,
-            COALESCE(pm.num_proformas, 0) AS num_proformas,
-            COALESCE(pm.cantidad_cotizada, 0) AS cantidad,
-            COALESCE(pm.siglas_inuni, '') AS siglas_inuni,
-            COALESCE(pm.total_cotizado, 0) AS total,
-            COALESCE(fe.cotizaciones_efectivas, 0) AS cotizaciones_efectivas,
-            COALESCE(fe.cantidad_efectiva, 0) AS cantidad_efectiva,
-            CASE 
-                WHEN COALESCE(pm.cantidad_cotizada, 0) = 0 THEN 0
-                ELSE ROUND(
-                    (COALESCE(fe.cantidad_efectiva, 0)::numeric / 
-                    NULLIF(pm.cantidad_cotizada, 0)::numeric) * 100, 
-                    2
-                )
-            END AS porcentaje_efectividad
-        FROM
-            gen_mes gm
-        LEFT JOIN proformas_mes pm ON gm.ide_gemes = pm.mes
-        LEFT JOIN facturas_efectivas fe ON gm.ide_gemes = fe.mes
-        ORDER BY
-            gm.ide_gemes
-        `,
-      dtoIn,
-    );
-    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(3, dtoIn.ide_inarti);
-    query.addStringParam(4, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(5, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(6, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
-  }
 
-  async getTotalVentasPorFormaPago(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const queryFormaPago = new SelectQuery(`
-        SELECT
-            a.ide_cndfp1,
-            ${dtoIn.periodo} as periodo,
-            c.nombre_cndfp,
-            COUNT(1) AS num_facturas,
-            SUM(b.cantidad_ccdfa) AS cantidad,
-            SUM(a.total_cccfa) AS total
-        FROM
-            cxc_cabece_factura a
-            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
-            inner join con_deta_forma_pago c on a.ide_cndfp1 = c.ide_cndfp
-        WHERE
-            a.fecha_emisi_cccfa >= $1
-            AND a.fecha_emisi_cccfa <= $2
-            AND b.ide_inarti = $3
-            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND a.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            a.ide_cndfp1,
-            nombre_cndfp
-        ORDER BY
-            6 DESC
-        LIMIT  20
-        `);
-    queryFormaPago.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    queryFormaPago.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    queryFormaPago.addIntParam(3, dtoIn.ide_inarti);
 
-    return await this.dataSource.createSelectQuery(queryFormaPago);
-  }
-
-  async getTotalVentasPorIdCliente(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const queryTipoId = new SelectQuery(`
-        SELECT
-            c.ide_getid,
-            ${dtoIn.periodo} as periodo,
-            nombre_getid,
-            COUNT(1) AS num_facturas,
-            SUM(b.cantidad_ccdfa) AS cantidad
-        FROM
-            cxc_cabece_factura a
-            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
-            inner join gen_persona c on a.ide_geper = c.ide_geper
-            inner join gen_tipo_identifi d on c.ide_getid = d.ide_getid
-        WHERE
-            a.fecha_emisi_cccfa >= $1
-            AND a.fecha_emisi_cccfa <= $2
-            AND b.ide_inarti = $3
-            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND a.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            c.ide_getid,
-            nombre_getid    
-        ORDER BY
-            5 DESC    
-        LIMIT
-            20
-        `);
-    queryTipoId.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    queryTipoId.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    queryTipoId.addIntParam(3, dtoIn.ide_inarti);
-
-    return await this.dataSource.createSelectQuery(queryTipoId);
-  }
-
-  async getTotalVentasPorVendedor(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
-    const queryVendedor = new SelectQuery(`
-        SELECT
-            a.ide_vgven,
-            ${dtoIn.periodo} as periodo,
-            nombre_vgven,
-            COUNT(1) AS num_facturas,
-            SUM(b.cantidad_ccdfa) AS cantidad,
-            siglas_inuni
-        FROM
-            cxc_cabece_factura a
-            INNER JOIN cxc_deta_factura b ON a.ide_cccfa = b.ide_cccfa
-            INNER JOIN ven_vendedor c ON a.ide_vgven = c.ide_vgven
-            INNER JOIN inv_articulo d ON b.ide_inarti = d.ide_inarti
-            LEFT JOIN inv_unidad f ON d.ide_inuni = f.ide_inuni 
-        WHERE
-            a.fecha_emisi_cccfa >= $1
-            AND a.fecha_emisi_cccfa <= $2
-            AND b.ide_inarti = $3
-            AND a.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND a.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            a.ide_vgven,
-            nombre_vgven,
-            siglas_inuni
-        ORDER BY
-            5 DESC
-        LIMIT 20     
-        `);
-    queryVendedor.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    queryVendedor.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    queryVendedor.addIntParam(3, dtoIn.ide_inarti);
-    return await this.dataSource.createSelectQuery(queryVendedor);
-  }
-
-  /**
-   * Retorna data para graficos relacionada a las ventas en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async chartVentasPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    // ---------------- POR VENDEDOR
-    const dataTotalVendedor = await this.getTotalVentasPorVendedor(dtoIn);
-    const data = dataTotalVendedor ? dataTotalVendedor[0] : {};
-    const siglas_inuni = data ? data.siglas_inuni : '';
-
-    const categoryField = 'nombre_vgven';
-    const seriesFields = new Map<string, string>([
-      // ["Num. Facturas", "num_facturas"],
-      [`Cantidad (${siglas_inuni})`, 'cantidad'],
-    ]);
-    const barCharVendedor = formatBarChartData(dataTotalVendedor, categoryField, seriesFields);
-
-    const pieChartVendedor = formatPieChartData(dataTotalVendedor, 'nombre_vgven', 'cantidad');
-
-    // ---------------- POR FORMA DE PAGO
-    const dataTotalPorFormaPago = await this.getTotalVentasPorFormaPago(dtoIn);
-    const pieChartFormaPago = formatPieChartData(dataTotalPorFormaPago, 'nombre_cndfp', 'cantidad');
-
-    // ---------------- POR TIPO IDENTIFICACIÓN CLIENTE
-    const dataTotalPorIdClie = await this.getTotalVentasPorIdCliente(dtoIn);
-    const pieChartTipoId = formatPieChartData(dataTotalPorIdClie, 'nombre_getid', 'cantidad');
-
-    // ---------------- VARIACION DE INVENTARIO INGRESOS/EGRESOS POR MES
-    const dataVaria = await this.getVariacionInventario(dtoIn);
-    const seriesFieldsVaria = new Map<string, string>([
-      [`Ingresos (${siglas_inuni})`, 'ingresos'],
-      [`Egresos (${siglas_inuni})`, 'egresos'],
-    ]);
-    const barCharVaria = formatBarChartData(dataVaria, 'nombre_gemes', seriesFieldsVaria);
-
-    // ---------------- COMPRAS VS VENTAS
-    const { rows: dataVentas } = await this.getVentasMensuales(dtoIn);
-    const seriesCantidadV = new Map<string, string>([[`Ventas (${siglas_inuni})`, 'cantidad']]);
-    const barCharVentas = formatBarChartData(dataVentas, 'nombre_gemes', seriesCantidadV);
-
-    const { rows: dataCompras } = await this.getComprasMensuales(dtoIn);
-    const seriesCantidadC = new Map<string, string>([[`Compras (${siglas_inuni})`, 'cantidad']]);
-    const barCharCompras = formatBarChartData(dataCompras, 'nombre_gemes', seriesCantidadC);
-
-    // Unifica series
-    const barCharVentComp = barCharVentas;
-    barCharVentComp.series.push(barCharCompras.series[0]);
-
-    // ---------------- PROFORMAS
-    const { rows: dataProf } = await this.getProformasMensuales(dtoIn);
-    const seriesCantidadP = new Map<string, string>([[`Proformas ${siglas_inuni}`, 'cantidad']]);
-    const barCharProf = formatBarChartData(dataProf, 'nombre_gemes', seriesCantidadP);
-
-    return {
-      rowCount: 7,
-      charts: [
-        barCharVendedor,
-        pieChartVendedor,
-        pieChartFormaPago,
-        pieChartTipoId,
-        barCharVaria,
-        barCharVentComp,
-        barCharProf,
-      ],
-      message: 'ok',
-    } as ResultQuery;
-  }
-
-  /**
-   * Retorna los 10 productos mas vendidos por la cantidad
-   * @param dtoIn
-   * @returns
-   */
-  async getTopProductosVendidos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
-        SELECT
-            iart.ide_inarti,
-            upper(iart.nombre_inarti) as nombre_inarti,
-            SUM(cdf.cantidad_ccdfa) AS total_cantidad,
-            siglas_inuni
-        FROM
-            cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        WHERE
-            cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            iart.ide_inarti,
-            iart.nombre_inarti,
-            siglas_inuni
-        ORDER BY
-            total_cantidad DESC
-        LIMIT 10       
-        `,
-      dtoIn,
-    );
-    return await this.dataSource.createQuery(query);
-  }
-
-  /**
-   * Retorna los productos mas facturados
-   * @param dtoIn
-   * @returns
-   */
-  async getTopProductosFacturados(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
-        SELECT
-            iart.ide_inarti,
-            upper(iart.nombre_inarti) as nombre_inarti,
-            COUNT(1) AS num_facturas
-        FROM
-            cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        WHERE
-            cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            iart.ide_inarti,
-            iart.nombre_inarti
-        ORDER BY
-            num_facturas  DESC
-        LIMIT 10    
-        `,
-      dtoIn,
-    );
-    return await this.dataSource.createQuery(query);
-  }
-
-  /**
-   * Retorna data para graficos relacionada a los productos
-   * @param dtoIn
-   * @returns
-   */
-  async chartProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    // ---------------- POR TIPO CATEGORIA
-    const dataTotalProdCategoria = await this.getTotalProductosPorCategoria(dtoIn);
-
-    const totalProductos = dataTotalProdCategoria.reduce((accumulator, item) => accumulator + item.cantidad, 0);
-    const totalCategorias = dataTotalProdCategoria.length > 0 ? dataTotalProdCategoria.length - 1 : 0;
-
-    const pieChartProdCategoria = formatPieChartData(dataTotalProdCategoria, 'categoria', 'cantidad');
-    return {
-      rowCount: 1,
-      charts: [pieChartProdCategoria],
-      message: 'ok',
-      row: {
-        totalProductos,
-        totalCategorias,
-      },
-    } as ResultQuery;
-  }
-
-  async getTotalProductosPorCategoria(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
-        SELECT 
-            COALESCE(c.nombre_incate, 'SIN CATEGORIA') AS categoria,
-            COUNT(a.ide_inarti) AS cantidad
-        FROM 
-            inv_articulo a
-        LEFT JOIN 
-            inv_categoria c ON a.ide_incate = c.ide_incate
-        WHERE a.ide_empr = ${dtoIn.ideEmpr} 
-        AND ide_intpr = 1
-        AND nivel_inarti = 'HIJO'    
-        GROUP BY 
-            c.nombre_incate
-        order by 2
-        `);
-    return await this.dataSource.createSelectQuery(query);
-  }
 
   /**
    * Guarda una producto nueva o actualiza uno existente
@@ -2173,4 +1638,52 @@ export class ProductosService extends BaseService {
 
     return true;
   }
+
+
+  async getLotesProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
+
+    const query = new SelectQuery(
+      `
+       SELECT 
+            a.ide_inlot,
+                a.lote_inlot,
+                a.fecha_ingreso_inlot,
+                a.fecha_caducidad_inlot,
+                a.pais_inlot,
+                a.peso_inlot,
+                a.peso_tara_inlot,
+                a.diferencia_peso_inlot,
+                b.cantidad_indci,
+                siglas_inuni,
+                a.usuario_verif_inlot,
+                a.fecha_verif_inlot,
+                a.verificado_inlot,
+                a.usuario_ingre,
+                a.observacion_inlot,
+                a.archivo1_inlot,
+                a.archivo2_inlot,
+                a.archivo3_inlot,
+                a.fecha_ingre,
+                a.usuario_actua,
+                a.fecha_actua,
+          e.nom_geper,
+          f.numero_cpcfa,
+          f.ide_cpcfa
+      FROM inv_lote a
+      inner join inv_det_comp_inve b on a.ide_indci_ingreso = b.ide_indci
+      inner join inv_articulo c on b.ide_inarti = c.ide_inarti
+      LEFT JOIN inv_unidad h ON c.ide_inuni = h.ide_inuni
+      inner join inv_cab_comp_inve d on b.ide_incci = d.ide_incci
+      inner join gen_persona e on d.ide_geper = e.ide_geper
+      left join  cxp_cabece_factur f on b.ide_cpcfa = f.ide_cpcfa
+      where b.ide_inarti = $1
+      and a.activo_inlot = true
+      order by fecha_ingreso_inlot desc
+        `,
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide_inarti);
+    return await this.dataSource.createQuery(query);
+  }
+
 }

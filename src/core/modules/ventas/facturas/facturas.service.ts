@@ -15,41 +15,41 @@ import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 
 @Injectable()
 export class FacturasService extends BaseService {
-  constructor(
-    private readonly dataSource: DataSourceService,
-    private readonly core: CoreService,
-  ) {
-    super();
-    // obtiene las variables del sistema para el servicio
-    this.core
-      .getVariables([
-        'p_cxc_estado_factura_normal', // 0
-        'p_con_tipo_documento_factura', // 3
-      ])
-      .then((result) => {
-        this.variables = result;
-      });
-  }
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly core: CoreService,
+    ) {
+        super();
+        // obtiene las variables del sistema para el servicio
+        this.core
+            .getVariables([
+                'p_cxc_estado_factura_normal', // 0
+                'p_con_tipo_documento_factura', // 3
+            ])
+            .then((result) => {
+                this.variables = result;
+            });
+    }
 
-  async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto & HeaderParamsDto) {
-    const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
-    const condition = `ide_empr = ${dto.ideEmpr} 
+    async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto & HeaderParamsDto) {
+        const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
+        const condition = `ide_empr = ${dto.ideEmpr} 
                            AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
                            ${condSucu}`;
-    const dtoIn = {
-      ...dto,
-      module: 'cxc',
-      tableName: 'datos_fac',
-      primaryKey: 'ide_ccdaf',
-      orderBy: { column: 'establecimiento_ccdfa' },
-      condition,
-    };
-    return this.core.getTableQuery(dtoIn);
-  }
+        const dtoIn = {
+            ...dto,
+            module: 'cxc',
+            tableName: 'datos_fac',
+            primaryKey: 'ide_ccdaf',
+            orderBy: { column: 'establecimiento_ccdfa' },
+            condition,
+        };
+        return this.core.getTableQuery(dtoIn);
+    }
 
-  async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto & HeaderParamsDto) {
-    const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';
-    const query = new SelectQuery(`     
+    async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto & HeaderParamsDto) {
+        const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';
+        const query = new SelectQuery(`     
         select
             ide_ccdaf,
             --serie_ccdaf,
@@ -67,18 +67,18 @@ export class FacturasService extends BaseService {
             ${condSucu}
             and a.ide_empr =  ${dtoIn.ideEmpr}
         `);
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
-    const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-    const condEstadoFact = dtoIn.ide_ccefa
-      ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
-      : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
-    const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
+    async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
+        const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
+        const condEstadoFact = dtoIn.ide_ccefa
+            ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
+            : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
+        const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
-    const query = new SelectQuery(
-      `     
+        const query = new SelectQuery(
+            `     
         select
             a.ide_cccfa,
             a.ide_ccdaf,
@@ -128,15 +128,15 @@ export class FacturasService extends BaseService {
             secuencial_cccfa desc,
             ide_cccfa desc
         `,
-      dtoIn,
-    );
-    query.addParam(1, dtoIn.fechaInicio);
-    query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`  
+    async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`  
         SELECT 
             COUNT(a.ide_srcom) AS contador, 
             b.nombre_sresc, 
@@ -158,20 +158,20 @@ export class FacturasService extends BaseService {
             b.icono_sresc,
             b.color_sresc
       `);
-    query.addParam(1, dtoIn.fechaInicio);
-    query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createSelectQuery(query);
-  }
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        return await this.dataSource.createSelectQuery(query);
+    }
 
-  // =================================== ANALISIS DE DATOS
+    // =================================== ANALISIS DE DATOS
 
-  /**
-   * Retorna el total de ventas mensuales en un período
-   * @param dtoIn
-   * @returns
-   */
-  async getTotalVentasPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * Retorna el total de ventas mensuales en un período
+     * @param dtoIn
+     * @returns
+     */
+    async getTotalVentasPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
         WITH FacturasFiltradas AS (
             SELECT 
                 EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
@@ -227,22 +227,22 @@ export class FacturasService extends BaseService {
         ORDER BY 
             gm.ide_gemes
             `);
-    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    query.addStringParam(3, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(4, `${dtoIn.periodo}-12-31`);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addStringParam(3, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(4, `${dtoIn.periodo}-12-31`);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 1. Variación diaria de ventas (últimos 10 días)
-   * @param dtoIn
-   * @returns
-   */
-  async getVariacionDiariaVentas(dtoIn: VentasDiariasDto & HeaderParamsDto) {
-    const fecha = dtoIn.fecha ? `'${dtoIn.fecha}'::date` : 'CURRENT_DATE';
+    /**
+     * 1. Variación diaria de ventas (últimos 30 días)
+     * @param dtoIn
+     * @returns
+     */
+    async getVariacionDiariaVentas(dtoIn: VentasDiariasDto & HeaderParamsDto) {
+        const fecha = dtoIn.fecha ? `'${dtoIn.fecha}'::date` : 'CURRENT_DATE';
 
-    const query = new SelectQuery(`
+        const query = new SelectQuery(`
         WITH fechas_laborables AS (
             SELECT 
                 fecha::date
@@ -304,16 +304,16 @@ export class FacturasService extends BaseService {
             vcf.fecha DESC
         LIMIT 15
             `);
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 2. Tendencias de ventas por día de la semana
-   * @param dtoIn
-   * @returns
-   */
-  async getTendenciaVentasDia(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * 2. Tendencias de ventas por día de la semana
+     * @param dtoIn
+     * @returns
+     */
+    async getTendenciaVentasDia(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
         SELECT 
             EXTRACT(DOW FROM fecha_emisi_cccfa) AS num_dia,
             TO_CHAR(fecha_emisi_cccfa, 'Day') AS dia_semana,
@@ -331,18 +331,18 @@ export class FacturasService extends BaseService {
         ORDER BY 
             num_dia     
             `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 3. Mejores vendedores (top 10)
-   * @param dtoIn
-   * @returns
-   */
-  async getTopVendedores(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * 3. Mejores vendedores (top 10)
+     * @param dtoIn
+     * @returns
+     */
+    async getTopVendedores(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
         WITH ventas_vendedor AS (
             SELECT 
                 v.ide_vgven,
@@ -396,22 +396,22 @@ export class FacturasService extends BaseService {
             total_ventas DESC
         LIMIT 10      
                 `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
-    query.addStringParam(5, dtoIn.fechaInicio);
-    query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(5, dtoIn.fechaInicio);
+        query.addStringParam(6, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 4. Distribución de ventas por forma de pago (gráfico de pastel)
-   * @param dtoIn
-   * @returns
-   */
-  async getTotalVentasPorFormaPago(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * 4. Distribución de ventas por forma de pago (gráfico de pastel)
+     * @param dtoIn
+     * @returns
+     */
+    async getTotalVentasPorFormaPago(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
                 SELECT 
                 fp.ide_cndfp,
                 fp.nombre_cndfp AS forma_pago,
@@ -436,102 +436,22 @@ export class FacturasService extends BaseService {
             ORDER BY 
                 total_ventas DESC
                     `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 5. Productos más vendidos (top 10)
-   * @param dtoIn
-   * @returns
-   */
-  async getTopProductos(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
-        WITH ventas_producto AS (
-            SELECT 
-                iart.ide_inarti,
-                iart.uuid,
-                iart.nombre_inarti AS producto,
-                COUNT(DISTINCT cf.ide_cccfa) AS num_facturas,
-                SUM(cdf.total_ccdfa) AS ventas_brutas,
-                SUM(cdf.total_ccdfa) AS total_bruto
-            FROM 
-                cxc_deta_factura cdf
-            JOIN 
-                inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
-            JOIN 
-                cxc_cabece_factura cf ON cdf.ide_cccfa = cf.ide_cccfa
-            WHERE 
-                cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-                AND iart.hace_kardex_inarti = true
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                iart.ide_inarti, iart.uuid, iart.nombre_inarti
-        ),
-        notas_credito_producto AS (
-            SELECT 
-                cdn.ide_inarti,
-                SUM(cdn.valor_cpdno) AS total_notas_credito
-            FROM 
-                cxp_cabecera_nota cn
-            JOIN 
-                cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-            JOIN 
-                cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-            WHERE 
-                cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                cdn.ide_inarti
-        )
-        SELECT 
-            vp.ide_inarti,
-            vp.uuid,
-            vp.producto,
-            vp.num_facturas,
-            vp.ventas_brutas - COALESCE(nc.total_notas_credito, 0) AS total_ventas,
-            COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
-            ROUND(
-                (vp.total_bruto - COALESCE(nc.total_notas_credito, 0)) * 100.0 / 
-                NULLIF((SELECT SUM(total_ccdfa) 
-                 FROM cxc_deta_factura cdf2
-                 JOIN cxc_cabece_factura cf2 ON cdf2.ide_cccfa = cf2.ide_cccfa
-                 WHERE cf2.fecha_emisi_cccfa BETWEEN $5 AND $6
-                 AND cf2.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-                 AND cf2.ide_empr = ${dtoIn.ideEmpr}), 0), 
-            2) AS porcentaje
-        FROM 
-            ventas_producto vp
-        LEFT JOIN 
-            notas_credito_producto nc ON vp.ide_inarti = nc.ide_inarti
-        ORDER BY 
-            total_ventas DESC
-        LIMIT 10`,
-      dtoIn,
-    );
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
-    query.addStringParam(5, dtoIn.fechaInicio);
-    query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
 
-  /**
-   * 6. Ventas por hora del día
-   * @param dtoIn
-   * @returns
-   */
-  async getTotalVentasPorHora(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
+
+    /**
+     * 6. Ventas por hora del día
+     * @param dtoIn
+     * @returns
+     */
+    async getTotalVentasPorHora(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`   
     SELECT 
         EXTRACT(HOUR FROM c.hora_ingre) AS hora,
         COUNT(ide_cccfa) AS num_facturas,
@@ -546,20 +466,20 @@ export class FacturasService extends BaseService {
         EXTRACT(HOUR FROM c.hora_ingre)
     ORDER BY 
         hora  `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 7. Clientes más frecuentes (top 10)
-   * @param dtoIn
-   * @returns
-   */
-  async getTopClientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `  
+    /**
+     * 7. Clientes más frecuentes (top 10)
+     * @param dtoIn
+     * @returns
+     */
+    async getTopClientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `  
         SELECT 
         p.ide_geper,
         p.uuid,
@@ -605,25 +525,25 @@ export class FacturasService extends BaseService {
     ORDER BY 
         total_ventas_netas DESC
     LIMIT 10 `,
-      dtoIn,
-    );
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
-    query.addStringParam(5, dtoIn.fechaInicio);
-    query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(5, dtoIn.fechaInicio);
+        query.addStringParam(6, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 8. ventas promedio por vendedor
-   * @param dtoIn
-   * @returns
-   */
-  async getPromedioVentasPorVendedor(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `    
+    /**
+     * 8. ventas promedio por vendedor
+     * @param dtoIn
+     * @returns
+     */
+    async getPromedioVentasPorVendedor(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `    
         SELECT 
         v.ide_vgven,
         v.nombre_vgven AS vendedor,
@@ -664,24 +584,24 @@ export class FacturasService extends BaseService {
         v.nombre_vgven
     ORDER BY 
         nombre_vgven`,
-      dtoIn,
-    );
+            dtoIn,
+        );
 
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 9.  Ventas por categoría de producto
-   * @param dtoIn
-   * @returns
-   */
-  async getVentasPorCategoriaProducto(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`    
+    /**
+     * 9.  Ventas por categoría de producto
+     * @param dtoIn
+     * @returns
+     */
+    async getVentasPorCategoriaProducto(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`    
         SELECT 
             COALESCE( art.ide_incate, -1) AS categoria,
             COALESCE(cat.nombre_incate, 'SIN CATEGORÍA') AS categoria,
@@ -704,14 +624,14 @@ export class FacturasService extends BaseService {
             COALESCE(cat.nombre_incate, 'SIN CATEGORÍA')
         ORDER BY 
             total_ventas DESC`);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  async getVentasPorIdCliente(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    async getVentasPorIdCliente(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
         SELECT
             c.ide_getid,
             nombre_getid,
@@ -733,19 +653,19 @@ export class FacturasService extends BaseService {
         ORDER BY
             total_ventas DESC   
         `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 10.  Tasa de crecimiento mensual
-   * @param dtoIn
-   * @returns
-   */
-  async getTasaCrecimientoMensual(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`       
+    /**
+     * 10.  Tasa de crecimiento mensual
+     * @param dtoIn
+     * @returns
+     */
+    async getTasaCrecimientoMensual(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`       
         WITH ventas_mensuales AS (
             SELECT 
                 TO_CHAR(cf.fecha_emisi_cccfa, 'YYYY-MM') AS mes,
@@ -793,18 +713,18 @@ export class FacturasService extends BaseService {
         ORDER BY 
             vn.mes
 `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 11.  Facturas con mayor valor
-   * @param dtoIn
-   * @returns
-   */
-  async getFacturasMayorValor(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`      
+    /**
+     * 11.  Facturas con mayor valor
+     * @param dtoIn
+     * @returns
+     */
+    async getFacturasMayorValor(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`      
       
         SELECT 
         cf.ide_cccfa,
@@ -830,19 +750,19 @@ export class FacturasService extends BaseService {
         cf.total_cccfa DESC
     LIMIT 20;
 `);
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 12.  Resumen Ventas por años
-   * @param dtoIn
-   * @returns
-   */
-  async getResumenVentasPeriodos(dtoIn: HeaderParamsDto) {
-    const query = new SelectQuery(`            
+    /**
+     * 12.  Resumen Ventas por años
+     * @param dtoIn
+     * @returns
+     */
+    async getResumenVentasPeriodos(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`            
         WITH notas_credito_anio AS (
             SELECT 
                 EXTRACT(YEAR FROM fecha_emisi_cpcno) AS anio,
@@ -881,16 +801,16 @@ export class FacturasService extends BaseService {
         ORDER BY 
             anio DESC
 `);
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * 12.  Resumen Ventas por años
-   * @param dtoIn
-   * @returns
-   */
-  async getVariacionVentasPeriodos(dtoIn: VariacionVentasPeriodoDto & HeaderParamsDto) {
-    const query = new SelectQuery(`            
+    /**
+     * 12.  Resumen Ventas por años
+     * @param dtoIn
+     * @returns
+     */
+    async getVariacionVentasPeriodos(dtoIn: VariacionVentasPeriodoDto & HeaderParamsDto) {
+        const query = new SelectQuery(`            
   
    
         WITH VentasPeriodo1 AS (
@@ -1023,16 +943,16 @@ export class FacturasService extends BaseService {
         ORDER BY 
             gm.ide_gemes
 `);
-    query.addParam(1, dtoIn.periodoCompara);
-    query.addParam(2, dtoIn.periodo);
-    query.addParam(3, dtoIn.periodoCompara);
-    query.addParam(4, dtoIn.periodo);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addParam(1, dtoIn.periodoCompara);
+        query.addParam(2, dtoIn.periodo);
+        query.addParam(3, dtoIn.periodoCompara);
+        query.addParam(4, dtoIn.periodo);
+        return await this.dataSource.createQuery(query);
+    }
 
-  async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
         SELECT 
             uv.ide_ccdfa,
             uv.ide_inarti,
@@ -1054,11 +974,11 @@ export class FacturasService extends BaseService {
             uv.fecha_ultima_compra
         FROM f_utilidad_ventas($1,$2,$3) uv
             `,
-      dtoIn,
-    );
-    query.addParam(1, dtoIn.ideEmpr);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addParam(3, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.ideEmpr);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 }

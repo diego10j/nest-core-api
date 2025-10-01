@@ -1,3 +1,8 @@
+import { BadRequestException } from "@nestjs/common";
+import { existsSync } from "fs";
+import { join } from "path";
+import { FILE_STORAGE_CONSTANTS } from "src/core/modules/sistema/files/file-temp.service";
+
 export function detectMimeType(filename?: string): string | undefined {
   if (!filename) return undefined;
 
@@ -52,4 +57,24 @@ export function generateFilename(type?: string): string {
 
   const ext = (type && extensions[type]) || 'bin';
   return `file-${Date.now()}.${ext}`;
+}
+
+
+/**
+ * Retorna el path de una imagen que se subio mediante el files.service
+ */
+export function getStaticImage(imageName: string): string {
+  let path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, imageName);
+  if (!existsSync(path)) path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
+  if (!existsSync(path)) throw new BadRequestException(`No image found with  ${path}`);
+  return path;
+}
+
+/**
+ * Retorna el path de un archivo subido desde file-temp.service
+ */
+export function getTmpFile(fileName: string): string {
+  let path = join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+  if (!existsSync(path)) throw new BadRequestException(`No file found with  ${path}`);
+  return path;
 }

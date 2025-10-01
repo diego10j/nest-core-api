@@ -12,7 +12,7 @@ import {
   IsString,
 } from 'class-validator';
 
-export class IDetInvIngresoDto {
+export class IDetInvEgresoDto {
   @IsInt()
   @IsPositive()
   ide_indci: number;
@@ -34,10 +34,10 @@ export class IDetInvIngresoDto {
   observ_verifica_indci?: string;
 }
 
-export class SaveDetInvIngresoDtoDto {
+export class SaveDetInvEgresoDto {
   @IsNotEmpty()
   @IsObject()
   @ValidateNested()
-  @Type(() => IDetInvIngresoDto)
-  data: IDetInvIngresoDto;
+  @Type(() => IDetInvEgresoDto)
+  data: IDetInvEgresoDto;
 }

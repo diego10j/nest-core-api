@@ -10,11 +10,13 @@ import { ComprobantesInvService } from './comprobantes.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
-import { SaveDetInvIngresoDtoDto } from './dto/save-det-inv-ingreso.dto';
+import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
+import { LoteIngreso } from './dto/lote-ingreso.dto';
+import { SaveLoteDto } from './dto/save-lote.dto';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
-  constructor(private readonly service: ComprobantesInvService) {}
+  constructor(private readonly service: ComprobantesInvService) { }
 
   @Get('getComprobantesInventario')
   // @Auth()
@@ -76,14 +78,26 @@ export class ComprobantesInvController {
     });
   }
 
-  @Post('saveDetInvIngreso')
+  @Post('saveDetInvEgreso')
   //@Auth()
-  saveDetInvIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetInvIngresoDtoDto) {
-    return this.service.saveDetInvIngreso({
+  saveDetInvEgreso(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetInvEgresoDto) {
+    return this.service.saveDetInvEgreso({
       ...headersParams,
       ...dtoIn,
     });
   }
+
+  @Post('saveLoteInv')
+  //@Auth()
+  saveLoteInv(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveLoteDto) {
+    return this.service.saveLoteInv({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
 
   @Post('anularComprobante')
   // @Auth()
@@ -93,6 +107,19 @@ export class ComprobantesInvController {
       ...dtoIn,
     });
   }
+
+
+  @Get('getLoteIngreso')
+  // @Auth()
+  getLoteIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LoteIngreso) {
+    return this.service.getLoteIngreso({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
 
   // ==================================ListData==============================
   @Get('getListDataEstadosComprobantes')

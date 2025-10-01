@@ -2,9 +2,9 @@ import { Content } from 'pdfmake/interfaces';
 import { fDate } from 'src/util/helpers/date-util';
 import { HeaderOptions } from '../interfaces/reportes';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { getStaticImage } from 'src/util/helpers/file-utils';
 
 // Constantes de diseño
-const DEFAULT_LOGO_PATH = 'public/assets/images/no-image.png';
 const DEFAULT_MARGIN: [number, number, number, number] = [0, 0, 0, 15];
 const COMPANY_TEXT_STYLE = {
   fontSize: 9,
@@ -52,7 +52,7 @@ export class HeaderSection {
   private static createLogoSection(showLogo: boolean, empresa: Empresa): Content | null {
     if (!showLogo) return null;
 
-    const logoPath = empresa?.logotipo_empr || DEFAULT_LOGO_PATH;
+    const logoPath = getStaticImage(empresa?.logotipo_empr || 'no-image');
 
     return {
       image: logoPath,

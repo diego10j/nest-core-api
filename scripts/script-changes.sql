@@ -1442,18 +1442,17 @@ CREATE TABLE inv_lote (
 	pais_inlot VARCHAR(80),
 	peso_inlot numeric(12,3),
     peso_tara_inlot numeric(12,3),
-    peso_real_inlot numeric(12,3),    ---  para cuando existen diferencias de peso
-    stock_anterior_inlot NUMERIC(15, 6) NOT NULL,
-    stock_posterior_inlot NUMERIC(15, 6) NOT NULL,
+    diferencia_peso_inlot numeric(12,3),    ---  para cuando existen diferencias de peso
     ide_indci_ingreso INTEGER,
-	ide_indci_egreso INTEGER,    --- para las ventas
     es_saldo_inicial BOOLEAN DEFAULT FALSE, -- Para identificar si es saldo inicial
-	saldo_inlot NUMERIC(15, 6) NOT NULL,  -- para llevar control de stock actual 
     activo_inlot BOOLEAN DEFAULT TRUE,  
 	archivo1_inlot varchar(250),
 	archivo2_inlot varchar(250),
 	archivo3_inlot varchar(250),
 	observacion_inlot varchar(250),
+	usuario_verif_inlot VARCHAR(50),
+	fecha_verif_inlot TIMESTAMP,
+	verificado_inlot BOOLEAN DEFAULT FALSE, 
     usuario_ingre VARCHAR(50),
     fecha_ingre TIMESTAMP DEFAULT NOW(),
     usuario_actua VARCHAR(50),

@@ -34,7 +34,7 @@ export class ProductosController {
   constructor(
     private readonly productos: ProductosService,
     private readonly configPrecios: ConfigPreciosProductosService,
-  ) {}
+  ) { }
 
   @Get('getProductoByUuid')
   // @Auth()
@@ -180,14 +180,6 @@ export class ProductosController {
     });
   }
 
-  @Get('getComprasMensuales')
-  // @Auth()
-  getComprasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.getComprasMensuales({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
 
   @Get('getSumatoriaTrnPeriodo')
   // @Auth()
@@ -207,14 +199,7 @@ export class ProductosController {
     });
   }
 
-  @Get('getTopProveedores')
-  // @Auth()
-  getTopProveedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.getTopProveedores({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
+
 
   @Get('getClientes')
   // @Auth()
@@ -243,14 +228,7 @@ export class ProductosController {
     });
   }
 
-  @Get('getVariacionInventario')
-  // @Auth()
-  getVariacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.getVariacionInventario({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
+
 
   @Get('getActividades')
   // @Auth()
@@ -261,50 +239,6 @@ export class ProductosController {
     });
   }
 
-  @Get('getProformasMensuales')
-  // @Auth()
-  getProformasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.getProformasMensuales({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('chartVentasPeriodo')
-  // @Auth()
-  chartVentasPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.chartVentasPeriodo({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getTopProductosVendidos')
-  // @Auth()
-  getTopProductosVendidos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.productos.getTopProductosVendidos({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getTopProductosFacturados')
-  // @Auth()
-  getTopProductosFacturados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.productos.getTopProductosFacturados({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('chartProductos')
-  // @Auth()
-  chartProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.productos.chartProductos({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
 
   @Post('saveProducto')
   // @Auth()
@@ -372,6 +306,18 @@ export class ProductosController {
   // @Auth()
   copiarConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CopiarConfigPreciosVentaDto) {
     return this.configPrecios.copiarConfigPrecios({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
+
+  @Get('getLotesProducto')
+  // @Auth()
+  getLotesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
+    return this.productos.getLotesProducto({
       ...headersParams,
       ...dtoIn,
     });

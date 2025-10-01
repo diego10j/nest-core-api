@@ -7,13 +7,15 @@ import { BodegasController } from './bodegas/bodegas.controller';
 import { BodegasService } from './bodegas/bodegas.service';
 import { ComprobantesInvController } from './comprobantes/comprobantes.controller';
 import { ComprobantesInvService } from './comprobantes/comprobantes.service';
+import { InventarioBiController } from './data-bi/inventario-bi.controller';
+import { InventarioBiService } from './data-bi/inventario-bi.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [],
-  controllers: [ProductosController, BodegasController, ComprobantesInvController],
+  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController],
   providers: [
     ProductosService,
     AuditService,
@@ -21,6 +23,7 @@ import { ProductosService } from './productos/productos.service';
     ComprobantesInvService,
     CoreService,
     ConfigPreciosProductosService,
+    InventarioBiService
   ],
 })
-export class InventarioModule {}
+export class InventarioModule { }

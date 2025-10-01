@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { UpdateQuery } from 'src/core/connection/helpers';
+import { InsertQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDate, getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { BaseService } from '../../../../common/base-service';
@@ -13,7 +13,10 @@ import { CoreService } from '../../../core.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
-import { SaveDetInvIngresoDtoDto } from './dto/save-det-inv-ingreso.dto';
+import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
+import { LoteIngreso } from './dto/lote-ingreso.dto';
+import { SaveLoteDto } from './dto/save-lote.dto';
+import { ObjectQueryDto } from 'src/core/connection/dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -48,23 +51,9 @@ export class ComprobantesInvService extends BaseService {
         a.ide_incci,
         a.fecha_trans_incci,
         a.numero_incci,
-        g.nombre_inepi,
         c.nombre_inbod,
         d.nombre_intti,
-        f.nom_geper,
-        a.observacion_incci,
-        a.ide_cnccc,
-        g.ide_inepi,
-        c.ide_inbod,
-        automatico_incci,
-        a.usuario_ingre,
-        a.fecha_ingre,
-        a.hora_ingre,
-        a.usuario_actua,
-        a.fecha_actua,
-        a.hora_actua,
-        f.uuid,
-          COALESCE(
+        COALESCE(
               (
                   SELECT MAX(cccfa.secuencial_cccfa)
                   FROM cxc_cabece_factura cccfa
@@ -77,14 +66,37 @@ export class ComprobantesInvService extends BaseService {
                   INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
                   WHERE det.ide_incci = a.ide_incci
               )
-          ) AS num_documento
+        ) AS referencia,
+        f.nom_geper,
+        a.ide_cnccc,
+        a.ide_inepi,
+        c.ide_inbod,
+        verifica_incci,
+        fecha_verifica_incci, 
+        usuario_verifica_incci,
+        automatico_incci,
+            (
+                SELECT COUNT(1) 
+                FROM inv_det_comp_inve d
+                INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti 
+                WHERE d.ide_incci = a.ide_incci
+                    AND art.hace_kardex_inarti = true
+            ) as total_items,
+        a.observacion_incci,
+        a.usuario_ingre,
+        a.fecha_ingre,
+        a.hora_ingre,
+        a.usuario_actua,
+        a.fecha_actua,
+        a.hora_actua,
+        f.uuid,
+        signo_intci
     from
         inv_cab_comp_inve a
         inner join inv_bodega c on a.ide_inbod = c.ide_inbod
         inner join inv_tip_tran_inve d on a.ide_intti = d.ide_intti
         inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
         inner join gen_persona f on a.ide_geper = f.ide_geper
-        inner join inv_est_prev_inve g on a.ide_inepi = g.ide_inepi
     where
         fecha_trans_incci BETWEEN $1  and $2
         and a.ide_empr = $3
@@ -111,14 +123,14 @@ export class ComprobantesInvService extends BaseService {
     const query = new SelectQuery(
       `
     select
-        b.ide_incci,
+        b.ide_indci,
         d.nombre_intti,
         g.nombre_inarti,
         case
-            when signo_intci = 1 THEN b.cantidad_indci
+            when signo_intci = 1 THEN f_decimales(b.cantidad_indci, g.decim_stock_inarti)
         end as INGRESO,
         case
-            when signo_intci = -1 THEN b.cantidad_indci
+            when signo_intci = -1 THEN f_decimales(b.cantidad_indci, g.decim_stock_inarti)
         end as EGRESO,
         precio_indci,
         valor_indci,
@@ -132,6 +144,8 @@ export class ComprobantesInvService extends BaseService {
         fecha_verifica_indci,
         signo_intci,
         b.cantidad_indci,
+        decim_stock_inarti,
+        siglas_inuni,
         g.uuid,
         a.usuario_ingre,
         a.fecha_ingre,
@@ -145,6 +159,7 @@ export class ComprobantesInvService extends BaseService {
         inner join inv_tip_tran_inve d on a.ide_intti = d.ide_intti
         inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
         inner join inv_articulo g on b.ide_inarti = g.ide_inarti
+        inner join inv_unidad h on g.ide_inuni = h.ide_inuni
     where
 		a.ide_incci = $1
         and hace_kardex_inarti = true
@@ -199,7 +214,14 @@ export class ComprobantesInvService extends BaseService {
                   INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
                   WHERE det.ide_incci = a.ide_incci
               )
-          ) AS num_documento
+          ) AS num_documento,
+            (
+                SELECT COUNT(1) 
+                FROM inv_det_comp_inve d
+                INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti 
+                WHERE d.ide_incci = a.ide_incci
+                    AND art.hace_kardex_inarti = true
+            ) as total_items
         from
             inv_cab_comp_inve a
             inner join inv_bodega c on a.ide_inbod = c.ide_inbod
@@ -301,7 +323,7 @@ export class ComprobantesInvService extends BaseService {
     return await this.dataSource.createQuery(updateQuery);
   }
 
-  async saveDetInvIngreso(dtoIn: SaveDetInvIngresoDtoDto & HeaderParamsDto) {
+  async saveDetInvEgreso(dtoIn: SaveDetInvEgresoDto & HeaderParamsDto) {
     const updateQuery = new UpdateQuery('inv_det_comp_inve', 'ide_indci');
     updateQuery.values.set('peso_verifica_inlot', dtoIn.data.peso_verifica_inlot);
     updateQuery.values.set('foto_verifica_indci', dtoIn.data.foto_verifica_indci);
@@ -315,6 +337,70 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.addParam(1, dtoIn.data.ide_indci);
     return await this.dataSource.createQuery(updateQuery);
   }
+
+
+  async saveLoteInv(dtoIn: SaveLoteDto & HeaderParamsDto) {
+    const module = 'inv';
+    const tableName = 'lote';
+    const primaryKey = 'ide_inlot';
+
+    if (dtoIn.isUpdate === true) {
+      // Actualiza
+      const isValid = true; // validaciones cuando se actualiza
+      if (isValid) {
+        const ide_inlot = dtoIn.data.ide_inlot;
+        const objQuery = {
+          operation: 'update',
+          module,
+          tableName,
+          primaryKey,
+          object: dtoIn.data,
+          condition: `${primaryKey} = ${ide_inlot}`,
+        } as ObjectQueryDto;
+        return await this.core.save({
+          ...dtoIn,
+          listQuery: [objQuery],
+          audit: true,
+        });
+      }
+    } else {
+      // Crear
+      const isValid = true; // validaciones para insertar
+      if (isValid === true) {
+        dtoIn.data.ide_inlot = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
+        const objQuery = {
+          operation: 'insert',
+          module,
+          tableName,
+          primaryKey,
+          object: dtoIn.data,
+        } as ObjectQueryDto;
+        return await this.core.save({
+          ...dtoIn,
+          listQuery: [objQuery],
+          audit: true,
+        });
+      }
+    }
+  }
+
+  async getLoteIngreso(dtoIn: LoteIngreso & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+        select
+            *
+        from
+            inv_lote
+        where
+            ide_indci_ingreso = $1
+    `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_indci_ingreso);
+    return await this.dataSource.createSingleQuery(query);
+  }
+
+
 
   // ==================================ListData==============================
   /**
@@ -331,4 +417,8 @@ export class ComprobantesInvService extends BaseService {
     };
     return this.core.getListDataValues(dtoIn);
   }
+
+
+
+
 }

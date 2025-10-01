@@ -22,6 +22,7 @@ import { UploadFileDto } from './dto/upload-file.dto';
 import { PATH_DRIVE, getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
 
 import { FILE_STORAGE_CONSTANTS } from './file-temp.service';
+import { getStaticImage } from 'src/util/helpers/file-utils';
 
 @Injectable()
 export class FilesService {
@@ -430,10 +431,8 @@ export class FilesService {
   //-------------------------------------------------------
 
   getStaticImage(imageName: string) {
-    let path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, imageName);
-    if (!existsSync(path)) path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
-    if (!existsSync(path)) throw new BadRequestException(`No image found with  ${path}`);
-    return path;
+
+    return getStaticImage(imageName);
   }
 
   deleteStaticFile(fileName: string) {
