@@ -1668,3 +1668,32 @@ CREATE INDEX idx_sis_campania_correo_estado ON public.sis_campania_correo(estado
 -- Crea índice para búsquedas más rápidas
 CREATE INDEX IF NOT EXISTS idx_sis_cola_correo_job_id 
 ON sis_cola_correo(job_id_coco);
+
+-------- 
+CREATE INDEX CONCURRENTLY idx_inv_articulo_empresa_stock 
+ON inv_articulo (ide_empr, cant_stock1_inarti, cant_stock2_inarti) 
+WHERE cant_stock1_inarti IS NOT NULL OR cant_stock2_inarti IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_articulo_empresa 
+ON inv_det_comp_inve (ide_inarti, ide_empr, ide_incci);
+
+CREATE INDEX CONCURRENTLY idx_inv_cab_comp_inve_estado_fecha 
+ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_empr);
+
+CREATE INDEX CONCURRENTLY idx_inv_cab_comp_inve_fecha_estado 
+ON inv_cab_comp_inve (fecha_trans_incci, ide_inepi, ide_empr);
+
+CREATE INDEX CONCURRENTLY idx_inv_tip_comp_inve_signo 
+ON inv_tip_comp_inve (signo_intci);
+
+CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_compras 
+ON inv_det_comp_inve (ide_inarti, ide_incci) 
+INCLUDE (precio_indci);
+
+-- Índices secundarios (crear después si es necesario)
+CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_ventas_recientes 
+ON inv_det_comp_inve (ide_inarti, ide_incci) 
+WHERE ide_inarti IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY idx_inv_tip_tran_inve_ide 
+ON inv_tip_tran_inve (ide_intti);

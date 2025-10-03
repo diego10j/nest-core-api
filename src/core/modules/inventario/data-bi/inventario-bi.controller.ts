@@ -5,7 +5,12 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { IdProductoDto } from '../productos/dto/id-producto.dto';
 import { TrnProductoDto } from '../productos/dto/trn-producto.dto';
 import { VentasMensualesDto } from '../productos/dto/ventas-mensuales.dto';
-import { ClientesProductoDto } from './dto/clientes-producto';
+import { ClientesProductoDto } from './dto/clientes-producto.dto';
+import { EvaluacionRotacionProductoDto } from './dto/evalua-rotacion-producto.dto';
+import { ProductosMayorStockDto } from './dto/productos-mayor-stock.dto';
+import { ProductosObsoletosDto } from './dto/productos-obsoletos.dto';
+import { ProductosStockBajoDto } from './dto/productos-stock-bajo.dto';
+import { ReporteInventarioDto } from './dto/reporte-inventario.dto';
 import { TopProductosDto } from './dto/top-productos';
 import { InventarioBiService } from './inventario-bi.service';
 
@@ -210,13 +215,100 @@ export class InventarioBiController {
 
     @Get('getEvaluacionRotacionProducto')
     // @Auth()
-    getEvaluacionRotacionProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
+    getEvaluacionRotacionProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EvaluacionRotacionProductoDto) {
         return this.service.getEvaluacionRotacionProducto({
             ...headersParams,
             ...dtoIn,
         });
     }
 
+    @Get('getProductosStockBajo')
+    // @Auth()
+    getProductosStockBajo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosStockBajoDto) {
+        return this.service.getProductosStockBajo({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getProductosMayorStock')
+    // @Auth()
+    getProductosMayorStock(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosMayorStockDto) {
+        return this.service.getProductosMayorStock({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
+
+
+    @Get('getReporteValorInventarioProducto')
+    // @Auth()
+    getReporteValorInventarioProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
+        return this.service.getReporteValorInventarioProducto({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
+    @Get('getReporteValorInventarioGlobal')
+    // @Auth()
+    getReporteValorInventarioGlobal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+        return this.service.getReporteValorInventarioGlobal({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
+    @Get('getAnalisisABCInventario')
+    // @Auth()
+    getAnalisisABCInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+        return this.service.getAnalisisABCInventario({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
+
+    @Get('getRotacionInventario')
+    // @Auth()
+    getRotacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+        return this.service.getRotacionInventario({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getStockSeguridadReorden')
+    // @Auth()
+    getStockSeguridadReorden(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+        return this.service.getStockSeguridadReorden({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getProductosObsoletos')
+    // @Auth()
+    getProductosObsoletos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosObsoletosDto) {
+        return this.service.getProductosObsoletos({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getTopProductosAjustados')
+    // @Auth()
+    getTopProductosAjustados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
+        return this.service.getTopProductosAjustados({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
 
 
 }
