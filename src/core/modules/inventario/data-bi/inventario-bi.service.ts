@@ -2875,15 +2875,23 @@ export class InventarioBiService extends BaseService {
                     iart.nombre_inarti,
                     STRING_AGG(DISTINCT tti.nombre_intti, ', ') as tipos_transaccion,
                     COUNT(DISTINCT cci.ide_incci) as total_ajustes,
-                    SUM(ABS(dci.cantidad_indci)) as cantidad_ajustada,
-                    CAST(SUM(ABS(dci.cantidad_indci * dci.precio_indci)) AS DECIMAL(10,2)) as valor_ajustado,
-                    COUNT(DISTINCT CASE WHEN dci.cantidad_indci > 0 THEN cci.ide_incci END) as ajustes_positivos,
-                    COUNT(DISTINCT CASE WHEN dci.cantidad_indci < 0 THEN cci.ide_incci END) as ajustes_negativos,
+                    -- ✅ CANTIDADES SEPARADAS: Positiva y Negativa
+                    SUM(CASE WHEN (dci.cantidad_indci * tci.signo_intci) > 0 THEN ABS(dci.cantidad_indci) ELSE 0 END) as cantidad_ajustada_positiva,
+                    SUM(CASE WHEN (dci.cantidad_indci * tci.signo_intci) < 0 THEN ABS(dci.cantidad_indci) ELSE 0 END) as cantidad_ajustada_negativa,
+                    SUM(ABS(dci.cantidad_indci)) as cantidad_ajustada_total,
+                    -- ✅ VALORES SEPARADOS: Positivo y Negativo
+                    CAST(SUM(CASE WHEN (dci.cantidad_indci * tci.signo_intci) > 0 THEN ABS(dci.cantidad_indci * dci.precio_indci) ELSE 0 END) AS DECIMAL(10,2)) as valor_ajustado_positivo,
+                    CAST(SUM(CASE WHEN (dci.cantidad_indci * tci.signo_intci) < 0 THEN ABS(dci.cantidad_indci * dci.precio_indci) ELSE 0 END) AS DECIMAL(10,2)) as valor_ajustado_negativo,
+                    CAST(SUM(ABS(dci.cantidad_indci * dci.precio_indci)) AS DECIMAL(10,2)) as valor_ajustado_total,
+                    -- ✅ CONTADORES DE AJUSTES
+                    COUNT(DISTINCT CASE WHEN (dci.cantidad_indci * tci.signo_intci) > 0 THEN cci.ide_incci END) as ajustes_positivos,
+                    COUNT(DISTINCT CASE WHEN (dci.cantidad_indci * tci.signo_intci) < 0 THEN cci.ide_incci END) as ajustes_negativos,
                     MIN(cci.fecha_trans_incci) as primera_fecha_ajuste,
                     MAX(cci.fecha_trans_incci) as ultima_fecha_ajuste
                 FROM inv_det_comp_inve dci
                 JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
                 JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
                 JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
                 JOIN TiposAjuste ta ON tti.ide_intti = ta.ide_intti
                 WHERE cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
@@ -2909,21 +2917,28 @@ export class InventarioBiService extends BaseService {
                 ap.nombre_inarti,
                 ap.tipos_transaccion,
                 ap.total_ajustes,
-                ap.cantidad_ajustada,
-                ap.valor_ajustado,
+                -- ✅ CANTIDADES DETALLADAS
+                ap.cantidad_ajustada_positiva,
+                ap.cantidad_ajustada_negativa,
+                ap.cantidad_ajustada_total,
+                -- ✅ VALORES DETALLADOS
+                ap.valor_ajustado_positivo,
+                ap.valor_ajustado_negativo,
+                ap.valor_ajustado_total,
+                -- ✅ CONTADORES
                 ap.ajustes_positivos,
                 ap.ajustes_negativos,
                 COALESCE(sa.stock_actual, 0) as stock_actual,
                 ap.primera_fecha_ajuste,
                 ap.ultima_fecha_ajuste,
-                (CURRENT_DATE - ap.ultima_fecha_ajuste) as dias_desde_ultimo_ajuste, -- ✅ simplificado
-                -- Porcentaje de ajuste vs stock
+                (CURRENT_DATE - ap.ultima_fecha_ajuste) as dias_desde_ultimo_ajuste,
+                -- ✅ PORCENTAJES MEJORADOS
                 CASE 
                     WHEN COALESCE(sa.stock_actual, 0) > 0 
-                    THEN CAST((ap.cantidad_ajustada * 100.0 / sa.stock_actual) AS DECIMAL(10,2))
+                    THEN CAST((ap.cantidad_ajustada_total * 100.0 / ABS(sa.stock_actual)) AS DECIMAL(10,2))
                     ELSE 0 
                 END as porcentaje_ajuste_vs_stock,
-                -- Clasificación
+                -- ✅ CLASIFICACIONES MEJORADAS
                 CASE 
                     WHEN ap.total_ajustes >= 10 THEN 'CRÍTICO'
                     WHEN ap.total_ajustes >= 5 THEN 'ALTO'
@@ -2934,18 +2949,25 @@ export class InventarioBiService extends BaseService {
                     WHEN ap.ajustes_positivos > ap.ajustes_negativos THEN 'MÁS INCREMENTOS'
                     WHEN ap.ajustes_negativos > ap.ajustes_positivos THEN 'MÁS DECREMENTOS'
                     ELSE 'BALANCEADO'
-                END as tendencia_ajustes
+                END as tendencia_ajustes,
+                -- ✅ NUEVO: TENDENCIA POR CANTIDAD
+                CASE 
+                    WHEN ap.cantidad_ajustada_positiva > ap.cantidad_ajustada_negativa THEN 'NETO POSITIVO'
+                    WHEN ap.cantidad_ajustada_negativa > ap.cantidad_ajustada_positiva THEN 'NETO NEGATIVO'
+                    ELSE 'EQUILIBRADO'
+                END as tendencia_cantidad,
+                -- ✅ NUEVO: IMPACTO NETO
+                (ap.cantidad_ajustada_positiva - ap.cantidad_ajustada_negativa) as impacto_neto_cantidad,
+                (ap.valor_ajustado_positivo - ap.valor_ajustado_negativo) as impacto_neto_valor
             FROM AjustesProductos ap
             LEFT JOIN StockActual sa ON ap.ide_inarti = sa.ide_inarti
             WHERE ap.total_ajustes > 0
             ORDER BY 
                 ap.total_ajustes DESC, 
-                ap.valor_ajustado DESC
+                ap.valor_ajustado_total DESC
             LIMIT ${dtoIn.limit}
         `, dtoIn);
         return await this.dataSource.createQuery(query);
     }
-
-
 
 }
