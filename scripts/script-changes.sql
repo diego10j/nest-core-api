@@ -34,65 +34,7 @@ ALTER TABLE inv_articulo ADD COLUMN cod_auto_inarti varchar(10);--Codigo generad
 ALTER TABLE inv_articulo ADD COLUMN decim_stock_inarti int2; -- % Numero de decimales para control de stock 
 UPDATE inv_articulo SET  decim_stock_inarti = 3;  -- por defecto 3 decimales para todos
 
-CREATE TABLE inv_categoria  ( 
-	ide_incate  	integer NOT NULL,
-	nombre_incate	varchar(150) NULL,
-	prefijo_cod_incate 	varchar(4) NULL,
-	inv_ide_incate 	integer NULL,
-	activo_incate 	boolean NULL,
-	icono_incate 	varchar(80),
-	color_incate 	varchar(50),
-	ide_empr     	integer NULL,
-	ide_sucu     	integer NULL,
-    usuario_ingre varchar(50),
-    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    usuario_actua varchar(50),
-    hora_actua TIMESTAMP
-	CONSTRAINT pk_inv_categoria PRIMARY KEY(ide_incate)
-);
-ALTER TABLE public.inv_categoria
-	ADD CONSTRAINT inv_categoria_ide_sucu_fkey
-	FOREIGN KEY(ide_sucu)
-	REFERENCES public.sis_sucursal(ide_sucu)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
-ALTER TABLE public.inv_categoria
-	ADD CONSTRAINT inv_categoria_ide_empr_fkey
-	FOREIGN KEY(ide_empr)
-	REFERENCES public.sis_empresa(ide_empr)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
 
-ALTER TABLE inv_articulo ADD COLUMN ide_incate integer; 	  -- % Categoria
-
-ALTER TABLE public.inv_articulo
-	ADD CONSTRAINT inv_categoria_articulo_fkey
-	FOREIGN KEY(ide_incate)
-	REFERENCES public.inv_categoria(ide_incate)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
-
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(1, 'MATERIA PRIMA', true, 0, 0, 'MPR');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(2, 'FRAGANCIAS', true, 0, 0, 'FRA');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(3, 'SABORIZANTES', true, 0, 0, 'SAB');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(4, 'ENVASES', true, 0, 0, 'ENV');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(5, 'MATERIAL DE LABORATORIO', true, 0, 0,'MLA');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(6, 'OTROS', true, 0, 0,'OTR');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(7, 'ACEITES ESENCIALES', true, 0, 0,'AES');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(8, 'COLORANTES', true, 0, 0,'COL');
-INSERT INTO "public"."inv_categoria"("ide_incate", "nombre_incate", "activo_incate", "ide_empr", "ide_sucu","prefijo_cod_incate")
-VALUES(9, 'MOLDES', true, 0, 0,'MOL');
 
 /**27-11-2023**/
 ALTER TABLE gen_persona ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
@@ -134,13 +76,13 @@ CREATE TABLE "public"."sis_archivo" (
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua varchar(50),
-    hora_actua TIMESTAMP
+    hora_actua TIMESTAMP,
     "sis_ide_arch" int4,
     "public_arch" bool DEFAULT true,
     "favorita_arch" bool,
     "descargable_arch" bool,
 	"papelera_arch" bool DEFAULT false,
-	 hora_papelera_arch TIMESTAMP 
+	 hora_papelera_arch TIMESTAMP ,
     "comentario_arch" bool,
     "type_arch" varchar(150),
 	"extension_arch" varchar(50),
@@ -252,7 +194,7 @@ CREATE TABLE "public"."sis_calendario" (
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua varchar(50),
-    hora_actua TIMESTAMP
+    hora_actua TIMESTAMP,
     "ide_geper" int4,
     "ide_inarti" int4,
     "publico_cale" bool,
@@ -1339,20 +1281,7 @@ WHERE
 	a.ide_inarti = f.ide_inarti;
 
 
-CREATE INDEX idx_inv_categoria_id ON inv_categoria(ide_incate);
-CREATE INDEX idx_inv_articulo_categoria_codigo ON inv_articulo(ide_incate, cod_auto_inarti) 
-WHERE cod_auto_inarti IS NOT NULL;
-CREATE INDEX idx_inv_articulo_codigo_pattern ON inv_articulo(ide_incate, cod_auto_inarti text_pattern_ops) 
-WHERE cod_auto_inarti LIKE '%-%';
-CREATE INDEX idx_inv_articulo_categoria_codigo_null ON inv_articulo(ide_incate) 
-WHERE cod_auto_inarti IS NULL;
 
--- Para búsquedas por nombre de categoría
-CREATE INDEX idx_inv_categoria_nombre ON inv_categoria(nombre_incate);
-
--- Para búsquedas por prefijo de categoría
-CREATE INDEX idx_inv_categoria_prefijo ON inv_categoria(prefijo_cod_incate) 
-WHERE prefijo_cod_incate IS NOT NULL;
 
 --
 ALTER TABLE "public"."gen_persona"

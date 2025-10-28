@@ -12,4 +12,10 @@ export class ProductosMayorStockDto extends QueryOptionsDto {
     @IsDateString()
     @IsOptional()
     fechaCorte?: string;
+
+
+    @IsNumber()
+    @IsOptional()
+    limit?: number;
+
 }

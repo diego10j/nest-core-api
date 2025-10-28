@@ -14,4 +14,8 @@ export class EvaluacionRotacionProductoDto extends QueryOptionsDto {
     @IsDateString()
     @IsOptional()
     fechaCorte?: string;
+
+    @IsNumber()
+    @IsOptional()
+    ide_inbod?: number;
 }

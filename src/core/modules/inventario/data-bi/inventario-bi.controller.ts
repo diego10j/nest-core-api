@@ -5,20 +5,23 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { IdProductoDto } from '../productos/dto/id-producto.dto';
 import { TrnProductoDto } from '../productos/dto/trn-producto.dto';
 import { VentasMensualesDto } from '../productos/dto/ventas-mensuales.dto';
+import { AnalisisProductoDto } from './dto/analisis-producto.dto';
+import { AnalisisDto } from './dto/analisis.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { EvaluacionRotacionProductoDto } from './dto/evalua-rotacion-producto.dto';
 import { ProductosMayorStockDto } from './dto/productos-mayor-stock.dto';
 import { ProductosObsoletosDto } from './dto/productos-obsoletos.dto';
 import { ProductosStockBajoDto } from './dto/productos-stock-bajo.dto';
-import { ReporteInventarioDto } from './dto/reporte-inventario.dto';
 import { TopProductosDto } from './dto/top-productos';
 import { InventarioBiService } from './inventario-bi.service';
+import { InventarioProductoBiService } from './inventario-prod-bi.service';
 
 
 
 @Controller('inventario/data-bi')
 export class InventarioBiController {
-    constructor(private readonly service: InventarioBiService) { }
+    constructor(private readonly service: InventarioBiService,
+        private readonly serviceProducto: InventarioProductoBiService) { }
 
     @Get('getTopProductos')
     // @Auth()
@@ -128,10 +131,10 @@ export class InventarioBiController {
 
 
 
-    @Get('getVariacionInventario')
+    @Get('getVariacionInventarioProducto')
     // @Auth()
-    getVariacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-        return this.service.getVariacionInventario({
+    getVariacionInventarioProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
+        return this.service.getVariacionInventarioProducto({
             ...headersParams,
             ...dtoIn,
         });
@@ -174,28 +177,37 @@ export class InventarioBiController {
         });
     }
 
-    @Get('getAnalisisTransaccionesTipo')
+    @Get('getTotalPorTipoTransaccion')
     // @Auth()
-    getAnalisisTransaccionesTipo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
-        return this.service.getAnalisisTransaccionesTipo({
+    getTotalPorTipoTransaccion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
+        return this.service.getTotalPorTipoTransaccion({
             ...headersParams,
             ...dtoIn,
         });
     }
 
-    @Get('getAnalisisRotacionStock')
+    @Get('getTotalPorTipoTransaccionProducto')
     // @Auth()
-    getAnalisisRotacionStock(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
-        return this.service.getAnalisisRotacionStock({
+    getTotalPorTipoTransaccionProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
+        return this.service.getTotalPorTipoTransaccionProducto({
             ...headersParams,
             ...dtoIn,
         });
     }
 
-    @Get('getPrediccionStockMensual')
+    @Get('getAnalisisRotacionStockProducto')
     // @Auth()
-    getPrediccionStockMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
-        return this.service.getPrediccionStockMensual({
+    getAnalisisRotacionStockProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
+        return this.serviceProducto.getAnalisisRotacionStockProducto({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getPrediccionStockMensualProducto')
+    // @Auth()
+    getPrediccionStockMensualProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
+        return this.serviceProducto.getPrediccionStockMensualProducto({
             ...headersParams,
             ...dtoIn,
         });
@@ -216,7 +228,7 @@ export class InventarioBiController {
     @Get('getEvaluacionRotacionProducto')
     // @Auth()
     getEvaluacionRotacionProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EvaluacionRotacionProductoDto) {
-        return this.service.getEvaluacionRotacionProducto({
+        return this.serviceProducto.getEvaluacionRotacionProducto({
             ...headersParams,
             ...dtoIn,
         });
@@ -246,7 +258,7 @@ export class InventarioBiController {
     @Get('getReporteValorInventarioProducto')
     // @Auth()
     getReporteValorInventarioProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-        return this.service.getReporteValorInventarioProducto({
+        return this.serviceProducto.getReporteValorInventarioProducto({
             ...headersParams,
             ...dtoIn,
         });
@@ -255,17 +267,36 @@ export class InventarioBiController {
 
     @Get('getReporteValorInventarioGlobal')
     // @Auth()
-    getReporteValorInventarioGlobal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+    getReporteValorInventarioGlobal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
         return this.service.getReporteValorInventarioGlobal({
             ...headersParams,
             ...dtoIn,
         });
     }
 
+    @Get('getReporteIngresosEgresos')
+    // @Auth()
+    getReporteIngresosEgresos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
+        return this.service.getReporteIngresosEgresos({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getReporteIngresosEgresosProducto')
+    // @Auth()
+    getReporteIngresosEgresosProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
+        return this.service.getReporteIngresosEgresosProducto({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
 
     @Get('getAnalisisABCInventario')
     // @Auth()
-    getAnalisisABCInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+    getAnalisisABCInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
         return this.service.getAnalisisABCInventario({
             ...headersParams,
             ...dtoIn,
@@ -276,7 +307,7 @@ export class InventarioBiController {
 
     @Get('getRotacionInventario')
     // @Auth()
-    getRotacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+    getRotacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
         return this.service.getRotacionInventario({
             ...headersParams,
             ...dtoIn,
@@ -285,7 +316,7 @@ export class InventarioBiController {
 
     @Get('getStockSeguridadReorden')
     // @Auth()
-    getStockSeguridadReorden(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteInventarioDto) {
+    getStockSeguridadReorden(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
         return this.service.getStockSeguridadReorden({
             ...headersParams,
             ...dtoIn,

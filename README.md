@@ -85,3 +85,12 @@ sudo apt-get install -y chromium
 
 
 sudo kill -9 $(sudo lsof -t -i:3000 -i:3003)
+
+
+# Restaurar bdd
+sudo -i -u postgres
+
+psql -U postgres -d sigafi_dbo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+gunzip -c /proerp/sigafi_dbo.gz | psql -d sigafi_dbo
+

@@ -207,7 +207,7 @@ CREATE TABLE public.cxc_pago_orden_pnto_vta (
 ALTER TABLE "public"."inv_categoria"
 ADD COLUMN "nivel_incate" varchar(20);
 
-// 25 dic 2024
+-- 25 dic 2024
 ALTER TABLE "public"."sri_estado_comprobante"
 ADD COLUMN "icono_sresc" varchar(80),
 ADD COLUMN "color_sresc" varchar(50);

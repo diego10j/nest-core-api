@@ -9,6 +9,7 @@ import { ComprobantesInvController } from './comprobantes/comprobantes.controlle
 import { ComprobantesInvService } from './comprobantes/comprobantes.service';
 import { InventarioBiController } from './data-bi/inventario-bi.controller';
 import { InventarioBiService } from './data-bi/inventario-bi.service';
+import { InventarioProductoBiService } from './data-bi/inventario-prod-bi.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
@@ -23,7 +24,8 @@ import { ProductosService } from './productos/productos.service';
     ComprobantesInvService,
     CoreService,
     ConfigPreciosProductosService,
-    InventarioBiService
+    InventarioBiService,
+    InventarioProductoBiService,
   ],
 })
 export class InventarioModule { }

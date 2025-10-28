@@ -292,7 +292,7 @@ export class ProductosService extends BaseService {
             otro_nombre_inarti,
             total_ratings_inarti,
             fotos_inarti,
-            desc_corta_inarti
+            desc_corta_inarti,
             a.usuario_ingre,
             a.fecha_ingre,
             a.hora_ingre,

@@ -23,4 +23,9 @@ export class ProductosStockBajoDto extends QueryOptionsDto {
     @IsOptional()
     incluirSinConfiguracion?: string = 'false';
 
+
+    @IsNumber()
+    @IsOptional()
+    limit?: number;
+
 }

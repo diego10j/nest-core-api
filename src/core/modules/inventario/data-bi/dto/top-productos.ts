@@ -10,5 +10,9 @@ export class TopProductosDto extends QueryOptionsDto {
 
     @IsNumber()
     @IsOptional()
-    limit?: number = 10;
+    limit?: number;
+
+    @IsNumber()
+    @IsOptional()
+    ide_inbod?: number;
 }

@@ -28,7 +28,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly errorsLoggerService: ErrorsLoggerService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   async login(loginUserDto: LoginUserDto, ip: string) {
     const { password, email } = loginUserDto;
