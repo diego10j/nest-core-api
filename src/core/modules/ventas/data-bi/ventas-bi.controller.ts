@@ -5,6 +5,7 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dto';
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
+import { TopClientesDto } from './dto/top-clientes.dto';
 
 
 import { VentasBiService } from './ventas-bi.service';
@@ -72,21 +73,13 @@ export class VentasBiController {
 
     @Get('getTopClientes')
     // @Auth()
-    getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
         return this.service.getTopClientes({
             ...headersParams,
             ...dtoIn,
         });
     }
 
-    @Get('getPromedioVentasPorVendedor')
-    // @Auth()
-    getPromedioVentasPorVendedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
-        return this.service.getPromedioVentasPorVendedor({
-            ...headersParams,
-            ...dtoIn,
-        });
-    }
 
     @Get('getVentasPorCategoriaProducto')
     // @Auth()
@@ -108,7 +101,7 @@ export class VentasBiController {
 
     @Get('getTasaCrecimientoMensual')
     // @Auth()
-    getTasaCrecimientoMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    getTasaCrecimientoMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
         return this.service.getTasaCrecimientoMensual({
             ...headersParams,
             ...dtoIn,
@@ -117,7 +110,7 @@ export class VentasBiController {
 
     @Get('getFacturasMayorValor')
     // @Auth()
-    getFacturasMayorValor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    getFacturasMayorValor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
         return this.service.getFacturasMayorValor({
             ...headersParams,
             ...dtoIn,
@@ -138,4 +131,34 @@ export class VentasBiController {
             ...dtoIn,
         });
     }
+
+    @Get('getVentasPorDiaDelMes')
+    // @Auth()
+    getVentasPorDiaDelMes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.service.getVentasPorDiaDelMes({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getKPIsVentas')
+    // @Auth()
+    getKPIsVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.service.getKPIsVentas({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getProductosMasRentables')
+    // @Auth()
+    getProductosMasRentables(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
+        return this.service.getProductosMasRentables({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+
+
 }

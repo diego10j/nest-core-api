@@ -34,6 +34,7 @@ import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { GetProductoDto } from './dto/get-productos.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
+import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -1685,5 +1686,133 @@ export class ProductosService extends BaseService {
     query.addParam(1, dtoIn.ide_inarti);
     return await this.dataSource.createQuery(query);
   }
+
+
+
+  /**
+   * Obtiene el costo de un producto para una fecha específica
+   * @param dtoIn Contiene ide_inarti, fecha y parámetros de empresa/sucursal
+   * @returns El costo del producto en la fecha especificada
+   */
+  async getCostoProducto(dtoIn: GetCostoProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
+    WITH costos_producto AS (
+      -- Costo promedio ponderado hasta la fecha
+      SELECT 
+        iart.ide_inarti,
+        CASE 
+          WHEN SUM(CASE WHEN tci.signo_intci > 0 THEN dci.cantidad_indci ELSE 0 END) > 0 
+          THEN ROUND(
+            SUM(CASE WHEN tci.signo_intci > 0 THEN dci.precio_indci * dci.cantidad_indci ELSE 0 END) / 
+            SUM(CASE WHEN tci.signo_intci > 0 THEN dci.cantidad_indci ELSE 0 END), 
+            4
+          )
+          ELSE NULL
+        END AS costo_promedio,
+        
+        -- Último costo de compra antes de la fecha
+        (SELECT dci2.precio_indci
+         FROM inv_det_comp_inve dci2
+         INNER JOIN inv_cab_comp_inve cci2 ON cci2.ide_incci = dci2.ide_incci
+         INNER JOIN inv_tip_tran_inve tti2 ON tti2.ide_intti = cci2.ide_intti
+         INNER JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intci
+         WHERE dci2.ide_inarti = iart.ide_inarti 
+           AND tci2.signo_intci > 0
+           AND cci2.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+           AND cci2.fecha_trans_incci <= $1 
+           ${dtoIn.ideEmpr ? ` AND cci2.ide_empr = ${dtoIn.ideEmpr}` : ''}
+         ORDER BY cci2.fecha_trans_incci DESC, dci2.ide_indci DESC
+         LIMIT 1) AS ultimo_costo,
+         
+        -- Costo de la última compra (sin importar la fecha)
+        (SELECT dci2.precio_indci
+         FROM inv_det_comp_inve dci2
+         INNER JOIN inv_cab_comp_inve cci2 ON cci2.ide_incci = dci2.ide_incci
+         INNER JOIN inv_tip_tran_inve tti2 ON tti2.ide_intti = cci2.ide_intti
+         INNER JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intci
+         WHERE dci2.ide_inarti = iart.ide_inarti 
+           AND tci2.signo_intci > 0
+           AND cci2.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+           ${dtoIn.ideEmpr ? ` AND cci2.ide_empr = ${dtoIn.ideEmpr}` : ''}
+         ORDER BY cci2.fecha_trans_incci DESC, dci2.ide_indci DESC
+         LIMIT 1) AS ultimo_costo_historico,
+         
+        -- Costo promedio del período (últimos 30 días desde la fecha)
+        CASE 
+          WHEN SUM(CASE WHEN tci.signo_intci > 0 AND cci.fecha_trans_incci BETWEEN ($2::DATE - INTERVAL '30 days') AND $3 THEN dci.cantidad_indci ELSE 0 END) > 0 
+          THEN ROUND(
+            SUM(CASE WHEN tci.signo_intci > 0 AND cci.fecha_trans_incci BETWEEN ($4::DATE - INTERVAL '30 days') AND $5 THEN dci.precio_indci * dci.cantidad_indci ELSE 0 END) / 
+            SUM(CASE WHEN tci.signo_intci > 0 AND cci.fecha_trans_incci BETWEEN ($6::DATE - INTERVAL '30 days') AND $7 THEN dci.cantidad_indci ELSE 0 END), 
+            4
+          )
+          ELSE NULL
+        END AS costo_promedio_30dias
+      FROM inv_articulo iart
+      LEFT JOIN inv_det_comp_inve dci ON dci.ide_inarti = iart.ide_inarti
+      LEFT JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+      LEFT JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+      LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+      WHERE iart.ide_inarti = $8
+        AND iart.ide_empr = ${dtoIn.ideEmpr}
+        AND (cci.ide_inepi IS NULL OR cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')})
+        AND (cci.fecha_trans_incci IS NULL OR cci.fecha_trans_incci <= $9)
+      GROUP BY iart.ide_inarti
+    )
+    SELECT 
+      ide_inarti,
+      -- Jerarquía de costos: 1. Costo promedio, 2. Último costo en fecha, 3. Último costo histórico, 4. Costo promedio 30 días
+      COALESCE(
+        costo_promedio, 
+        ultimo_costo, 
+        ultimo_costo_historico,
+        costo_promedio_30dias,
+        0
+      ) AS costo_calculado,
+      
+      -- Detalle de cada tipo de costo para debugging/transparencia
+      costo_promedio,
+      ultimo_costo,
+      ultimo_costo_historico,
+      costo_promedio_30dias,
+      
+      -- Indicador de qué tipo de costo se está usando
+      CASE 
+        WHEN costo_promedio IS NOT NULL THEN 'COSTO_PROMEDIO'
+        WHEN ultimo_costo IS NOT NULL THEN 'ULTIMO_COSTO_FECHA'
+        WHEN ultimo_costo_historico IS NOT NULL THEN 'ULTIMO_COSTO_HISTORICO'
+        WHEN costo_promedio_30dias IS NOT NULL THEN 'COSTO_PROMEDIO_30DIAS'
+        ELSE 'SIN_COSTO'
+      END AS tipo_costo_usado
+    FROM costos_producto
+  `);
+
+    query.addParam(1, dtoIn.fecha);
+    query.addParam(2, dtoIn.fecha);
+    query.addParam(3, dtoIn.fecha);
+    query.addParam(4, dtoIn.fecha);
+    query.addParam(5, dtoIn.fecha);
+    query.addParam(6, dtoIn.fecha);
+    query.addParam(7, dtoIn.fecha);
+    query.addIntParam(8, dtoIn.ide_inarti);
+    query.addParam(9, dtoIn.fecha);
+
+
+    const result = await this.dataSource.createQuery(query);
+
+    if (result.rows.length === 0) {
+      return {
+        ide_inarti: dtoIn.ide_inarti,
+        costo_calculado: 0,
+        costo_promedio: null,
+        ultimo_costo: null,
+        ultimo_costo_historico: null,
+        costo_promedio_30dias: null,
+        tipo_costo_usado: 'SIN_COSTO'
+      };
+    }
+
+    return result.rows[0];
+  }
+
 
 }

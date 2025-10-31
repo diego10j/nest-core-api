@@ -27,6 +27,7 @@ import { SaveProductoDto } from './dto/save-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
+import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
@@ -313,6 +314,14 @@ export class ProductosController {
 
 
 
+  @Get('getCostoProducto')
+  // @Auth()
+  getCostoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCostoProductoDto) {
+    return this.productos.getCostoProducto({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 
   @Get('getLotesProducto')
   // @Auth()
@@ -322,4 +331,5 @@ export class ProductosController {
       ...dtoIn,
     });
   }
+
 }

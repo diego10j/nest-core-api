@@ -16,6 +16,7 @@ import { IdProductoDto } from '../../inventario/productos/dto/id-producto.dto';
 import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dto';
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
+import { TopClientesDto } from './dto/top-clientes.dto';
 
 @Injectable()
 export class VentasBiService extends BaseService {
@@ -176,7 +177,7 @@ export class VentasBiService extends BaseService {
         vcf.fecha IN (SELECT fecha FROM fechas_laborables)
     ORDER BY 
         vcf.fecha DESC
-    LIMIT 15
+    LIMIT ${dtoIn.dias}
         `);
         return await this.dataSource.createQuery(query);
     }
@@ -188,25 +189,79 @@ export class VentasBiService extends BaseService {
      */
     async getTendenciaVentasDia(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const query = new SelectQuery(`
-    SELECT 
-        EXTRACT(DOW FROM fecha_emisi_cccfa) AS num_dia,
-        TO_CHAR(fecha_emisi_cccfa, 'Day') AS dia_semana,
-        COUNT(ide_cccfa) AS num_facturas,
-        SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas,
-        AVG(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS promedio_venta
-    FROM 
-        cxc_cabece_factura
-    WHERE 
-        fecha_emisi_cccfa BETWEEN $1 AND $2
-        AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-        AND ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY 
-        TO_CHAR(fecha_emisi_cccfa, 'Day'), EXTRACT(DOW FROM fecha_emisi_cccfa)
-    ORDER BY 
-        num_dia     
-        `);
+        WITH Ventas AS (
+            SELECT 
+                EXTRACT(DOW FROM fecha_emisi_cccfa) AS num_dia,
+                COUNT(ide_cccfa) AS num_facturas,
+                SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_brutas,
+                SUM(base_grabada_cccfa) AS ventas_con_iva,
+                SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas_sin_iva,
+                SUM(valor_iva_cccfa) AS iva,
+                AVG(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS promedio_venta
+            FROM 
+                cxc_cabece_factura
+            WHERE 
+                fecha_emisi_cccfa BETWEEN $1 AND $2
+                AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(DOW FROM fecha_emisi_cccfa)
+        ),
+        NotasCredito AS (
+            SELECT 
+                EXTRACT(DOW FROM fecha_emisi_cpcno) AS num_dia,
+                SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_nota_credito,
+                COUNT(ide_cpcno) AS num_notas_credito
+            FROM 
+                cxp_cabecera_nota
+            WHERE 
+                fecha_emisi_cpcno BETWEEN $3 AND $4
+                AND ide_cpeno = 1
+                AND ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(DOW FROM fecha_emisi_cpcno)
+        ),
+        DiasSemanas AS (
+            SELECT 
+                0 AS num_dia, 'Domingo' AS dia_semana
+            UNION SELECT 1, 'Lunes'
+            UNION SELECT 2, 'Martes'
+            UNION SELECT 3, 'Miércoles'
+            UNION SELECT 4, 'Jueves'
+            UNION SELECT 5, 'Viernes'
+            UNION SELECT 6, 'Sábado'
+        )
+        SELECT 
+            ds.num_dia,
+            ds.dia_semana,
+            COALESCE(v.num_facturas, 0) AS num_facturas,
+            COALESCE(v.total_ventas_brutas, 0) AS total_ventas_brutas,
+            COALESCE(v.ventas_con_iva, 0) AS ventas_con_iva,
+            COALESCE(v.ventas_sin_iva, 0) AS ventas_sin_iva,
+            COALESCE(v.iva, 0) AS iva,
+            COALESCE(v.promedio_venta, 0) AS promedio_venta,
+            COALESCE(nc.total_nota_credito, 0) AS total_nota_credito,
+            COALESCE(nc.num_notas_credito, 0) AS num_notas_credito,
+            COALESCE(v.total_ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) AS total_ventas_netas,
+            CASE 
+                WHEN COALESCE(v.total_ventas_brutas, 0) > 0 
+                THEN ROUND((COALESCE(v.total_ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) / COALESCE(v.total_ventas_brutas, 1) * 100, 2)
+                ELSE 0 
+            END AS porcentaje_eficiencia,
+            RANK() OVER (ORDER BY COALESCE(v.total_ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) DESC) AS ranking_ventas
+        FROM 
+            DiasSemanas ds
+        LEFT JOIN 
+            Ventas v ON ds.num_dia = v.num_dia
+        LEFT JOIN 
+            NotasCredito nc ON ds.num_dia = nc.num_dia
+        ORDER BY 
+            ds.num_dia
+    `);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
 
@@ -217,59 +272,96 @@ export class VentasBiService extends BaseService {
      */
     async getTopVendedores(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const query = new SelectQuery(`
-    WITH ventas_vendedor AS (
+        WITH ventas_vendedor AS (
+            SELECT 
+                v.ide_vgven,
+                v.nombre_vgven,
+                COUNT(cf.ide_cccfa) AS num_facturas,
+                SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas,
+                SUM(cf.base_grabada_cccfa) AS ventas_con_iva,
+                SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_sin_iva,
+                SUM(cf.valor_iva_cccfa) AS iva_recaudado,
+                SUM(cf.total_cccfa) AS total_bruto,
+                AVG(cf.total_cccfa) AS promedio_venta_bruto
+            FROM 
+                cxc_cabece_factura cf
+            JOIN 
+                ven_vendedor v ON cf.ide_vgven = v.ide_vgven
+            WHERE 
+                cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                v.ide_vgven, v.nombre_vgven
+        ),
+        notas_credito_vendedor AS (
+            SELECT 
+                cf.ide_vgven,
+                COUNT(cn.ide_cpcno) AS num_notas_credito,
+                SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito,
+                AVG(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS promedio_nota_credito
+            FROM 
+                cxp_cabecera_nota cn
+            JOIN 
+                cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            WHERE 
+                cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                AND cn.ide_cpeno = 1
+                AND cn.ide_empr = ${dtoIn.ideEmpr}
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                cf.ide_vgven
+        ),
+        total_ventas_empresa AS (
+            SELECT 
+                SUM(total_cccfa) AS venta_total_empresa
+            FROM 
+                cxc_cabece_factura
+            WHERE 
+                fecha_emisi_cccfa BETWEEN $5 AND $6
+                AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND ide_empr = ${dtoIn.ideEmpr}
+        )
         SELECT 
-            v.ide_vgven,
-            v.nombre_vgven,
-            COUNT(cf.ide_cccfa) AS num_facturas,
-            SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas,
-            SUM(cf.total_cccfa) AS total_bruto
+            vv.ide_vgven,
+            vv.nombre_vgven AS vendedor,
+            vv.num_facturas,
+            vv.ventas_brutas AS ventas_brutas,
+            vv.ventas_con_iva,
+            vv.ventas_sin_iva,
+            vv.iva_recaudado,
+            COALESCE(nc.num_notas_credito, 0) AS num_notas_credito,
+            COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
+            COALESCE(nc.promedio_nota_credito, 0) AS promedio_nota_credito,
+            (vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0)) AS ventas_netas,
+            (vv.total_bruto - COALESCE(nc.total_notas_credito, 0)) AS total_neto,
+            CASE 
+                WHEN vv.num_facturas > 0 
+                THEN ROUND((vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0)) / vv.num_facturas, 2)
+                ELSE 0 
+            END AS promedio_venta_neto,
+            CASE 
+                WHEN vv.ventas_brutas > 0 
+                THEN ROUND((COALESCE(nc.total_notas_credito, 0) / vv.ventas_brutas * 100), 2)
+                ELSE 0 
+            END AS porcentaje_devolucion,
+            CASE 
+                WHEN tve.venta_total_empresa > 0 
+                THEN ROUND(((vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0)) / tve.venta_total_empresa * 100), 2)
+                ELSE 0 
+            END AS porcentaje_participacion,
+            RANK() OVER (ORDER BY (vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0)) DESC) AS ranking
         FROM 
-            cxc_cabece_factura cf
-        JOIN 
-            ven_vendedor v ON cf.ide_vgven = v.ide_vgven
-        WHERE 
-            cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND cf.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            v.ide_vgven, v.nombre_vgven
-    ),
-    notas_credito_vendedor AS (
-        SELECT 
-            cf.ide_vgven,
-            SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito
-        FROM 
-            cxp_cabecera_nota cn
-        JOIN 
-            cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-        WHERE 
-            cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-            AND cn.ide_cpeno = 1
-            AND cn.ide_empr = ${dtoIn.ideEmpr}
-            AND cf.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            cf.ide_vgven
-    )
-    SELECT 
-        vv.nombre_vgven AS vendedor,
-        vv.num_facturas,
-        vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0) AS total_ventas,
-        COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
-        ROUND((vv.ventas_brutas - COALESCE(nc.total_notas_credito, 0)) / vv.num_facturas, 2) AS promedio_venta,
-        ROUND((vv.total_bruto - COALESCE(nc.total_notas_credito, 0)) * 100.0 / 
-            (SELECT SUM(total_cccfa) FROM cxc_cabece_factura 
-             WHERE fecha_emisi_cccfa BETWEEN $5 AND $6 
-             AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-             AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
-    FROM 
-        ventas_vendedor vv
-    LEFT JOIN 
-        notas_credito_vendedor nc ON vv.ide_vgven = nc.ide_vgven
-    ORDER BY 
-        total_ventas DESC
-    LIMIT 10      
-            `);
+            ventas_vendedor vv
+        LEFT JOIN 
+            notas_credito_vendedor nc ON vv.ide_vgven = nc.ide_vgven
+        CROSS JOIN
+            total_ventas_empresa tve
+        ORDER BY 
+            ventas_netas DESC
+        LIMIT 10
+    `);
+
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
         query.addStringParam(3, dtoIn.fechaInicio);
@@ -351,54 +443,53 @@ ORDER BY
      * @param dtoIn
      * @returns
      */
-    async getTopClientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `  
-    SELECT 
-    p.ide_geper,
-    p.uuid,
-    p.nom_geper AS cliente,
-    COUNT(cf.ide_cccfa) AS num_facturas,
-    SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa + cf.base_grabada_cccfa) AS total_ventas_brutas,
-    COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
-    SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa + cf.base_grabada_cccfa) - COALESCE(nc.total_notas_credito, 0) AS total_ventas_netas,
-    ROUND(SUM(cf.total_cccfa) * 100.0 / 
-        (SELECT SUM(total_cccfa) 
-         FROM cxc_cabece_factura 
-         WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 
-         AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-         AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
-FROM 
-    cxc_cabece_factura cf
-JOIN 
-    gen_persona p ON cf.ide_geper = p.ide_geper
-LEFT JOIN (
-    SELECT 
-        cf.ide_geper,
-        SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito
-    FROM 
-        cxp_cabecera_nota cn
-    JOIN 
-        cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-    WHERE 
-        cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-        AND cn.ide_cpeno = 1
-        AND cn.ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY 
-        cf.ide_geper
-) nc ON p.ide_geper = nc.ide_geper
-WHERE 
-    cf.fecha_emisi_cccfa BETWEEN $5 AND $6
-    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-    AND cf.ide_empr = ${dtoIn.ideEmpr}
-GROUP BY 
-    p.ide_geper,
-    p.uuid,
-    p.nom_geper,
-    nc.total_notas_credito
-ORDER BY 
-    total_ventas_netas DESC
-LIMIT 10 `,
+    async getTopClientes(dtoIn: TopClientesDto & HeaderParamsDto) {
+        const query = new SelectQuery(`  
+                    SELECT 
+                    p.ide_geper,
+                    p.uuid,
+                    p.nom_geper AS cliente,
+                    COUNT(cf.ide_cccfa) AS num_facturas,
+                    SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa + cf.base_grabada_cccfa) AS total_ventas_brutas,
+                    COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
+                    SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa + cf.base_grabada_cccfa) - COALESCE(nc.total_notas_credito, 0) AS total_ventas_netas,
+                    ROUND(SUM(cf.total_cccfa) * 100.0 / 
+                        (SELECT SUM(total_cccfa) 
+                        FROM cxc_cabece_factura 
+                        WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 
+                        AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                        AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
+                FROM 
+                    cxc_cabece_factura cf
+                JOIN 
+                    gen_persona p ON cf.ide_geper = p.ide_geper
+                LEFT JOIN (
+                    SELECT 
+                        cf.ide_geper,
+                        SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito
+                    FROM 
+                        cxp_cabecera_nota cn
+                    JOIN 
+                        cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    WHERE 
+                        cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                        AND cn.ide_cpeno = 1
+                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                    GROUP BY 
+                        cf.ide_geper
+                ) nc ON p.ide_geper = nc.ide_geper
+                WHERE 
+                    cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+                    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    p.ide_geper,
+                    p.uuid,
+                    p.nom_geper,
+                    nc.total_notas_credito
+                ORDER BY 
+                    total_ventas_netas DESC
+                LIMIT ${dtoIn.limit} `,
             dtoIn,
         );
         query.addStringParam(1, dtoIn.fechaInicio);
@@ -410,64 +501,7 @@ LIMIT 10 `,
         return await this.dataSource.createQuery(query);
     }
 
-    /**
-     * 8. ventas promedio por vendedor
-     * @param dtoIn
-     * @returns
-     */
-    async getPromedioVentasPorVendedor(dtoIn: RangoFechasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `    
-    SELECT 
-    v.ide_vgven,
-    v.nombre_vgven AS vendedor,
-    COUNT(cf.ide_cccfa) AS num_facturas,
-    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa + base_grabada_cccfa) AS total_ventas_bruto,
-    COALESCE(SUM(
-        (SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
-         FROM cxp_cabecera_nota cn 
-         WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-         AND cn.ide_cpeno = 1
-         AND cn.ide_empr = ${dtoIn.ideEmpr})
-    ), 0) AS total_notas_credito,
-    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa + base_grabada_cccfa) - 
-    COALESCE(SUM(
-        (SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
-         FROM cxp_cabecera_nota cn 
-         WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-         AND cn.ide_cpeno = 1
-         AND cn.ide_empr = ${dtoIn.ideEmpr})
-    ), 0) AS total_ventas_neto,
-    ROUND(SUM(cf.total_cccfa) * 100.0 / 
-        (SELECT SUM(total_cccfa) 
-         FROM cxc_cabece_factura 
-         WHERE fecha_emisi_cccfa BETWEEN $1 AND $2 
-         AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-         AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje,
-    PERCENT_RANK() OVER (ORDER BY ROUND(SUM(cf.total_cccfa) / COUNT(cf.ide_cccfa), 2) DESC) AS percentil
-FROM 
-    cxc_cabece_factura cf
-JOIN 
-    ven_vendedor v ON cf.ide_vgven = v.ide_vgven
-WHERE 
-    fecha_emisi_cccfa BETWEEN $3 AND $4
-    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-    AND cf.ide_empr = ${dtoIn.ideEmpr}
-GROUP BY 
-    v.ide_vgven,
-    v.nombre_vgven
-ORDER BY 
-    nombre_vgven`,
-            dtoIn,
-        );
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaInicio);
-        query.addStringParam(4, dtoIn.fechaFin);
-
-        return await this.dataSource.createQuery(query);
-    }
 
     /**
      * 9.  Ventas por categoría de producto
@@ -493,6 +527,7 @@ ORDER BY
         cf.fecha_emisi_cccfa  BETWEEN $1 AND $2
         AND cf.ide_ccefa   = ${this.variables.get('p_cxc_estado_factura_normal')}
         AND cf.ide_empr  = ${dtoIn.ideEmpr}
+        and art.hace_kardex_inarti = true
     GROUP BY 
         art.ide_incate,
         COALESCE(cat.nombre_incate, 'SIN CATEGORÍA')
@@ -538,57 +573,178 @@ ORDER BY
      * @param dtoIn
      * @returns
      */
-    async getTasaCrecimientoMensual(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    async getTasaCrecimientoMensual(dtoIn: VentasMensualesDto & HeaderParamsDto) {
         const query = new SelectQuery(`       
-    WITH ventas_mensuales AS (
+        WITH meses_anios AS (
+            SELECT 
+                gm.ide_gemes AS mes_numero,
+                gm.nombre_gemes AS mes_nombre,
+                anio.anio
+            FROM 
+                gen_mes gm
+            CROSS JOIN 
+                (SELECT ${dtoIn.periodo}::INTEGER AS anio) anio
+        ),
+        ventas_mensuales AS (
+            SELECT 
+                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes_numero,
+                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
+                SUM(cf.total_cccfa) AS total_ventas_bruto,
+                SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas
+            FROM 
+                cxc_cabece_factura cf
+            WHERE 
+                (cf.fecha_emisi_cccfa BETWEEN $1 AND $2)
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa),
+                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa)
+        ),
+        notas_credito_mensual AS (
+            SELECT 
+                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) AS mes_numero,
+                EXTRACT(YEAR FROM cn.fecha_emisi_cpcno) AS anio,
+                SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito,
+                COUNT(cn.ide_cpcno) AS cantidad_notas_credito
+            FROM 
+                cxp_cabecera_nota cn
+            WHERE 
+                (cn.fecha_emisi_cpcno BETWEEN $3 AND $4)
+                AND cn.ide_cpeno = 1
+                AND cn.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno),
+                EXTRACT(YEAR FROM cn.fecha_emisi_cpcno)
+        ),
+        ventas_netas AS (
+            SELECT
+                ma.mes_numero,
+                ma.mes_nombre,
+                ma.anio,
+                COALESCE(vm.total_ventas_bruto, 0) AS total_ventas_bruto,
+                COALESCE(vm.ventas_brutas, 0) AS ventas_brutas,
+                COALESCE(ncm.total_notas_credito, 0) AS total_notas_credito,
+                COALESCE(ncm.cantidad_notas_credito, 0) AS cantidad_notas_credito,
+                (COALESCE(vm.total_ventas_bruto, 0) - COALESCE(ncm.total_notas_credito, 0)) AS ventas_netas
+            FROM
+                meses_anios ma
+            LEFT JOIN
+                ventas_mensuales vm ON ma.mes_numero = vm.mes_numero AND ma.anio = vm.anio
+            LEFT JOIN
+                notas_credito_mensual ncm ON ma.mes_numero = ncm.mes_numero AND ma.anio = ncm.anio
+        ),
+        ventas_anio_anterior AS (
+            -- Datos de diciembre del año anterior para comparar con enero
+            SELECT 
+                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes_numero,
+                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
+                SUM(cf.total_cccfa) AS total_ventas_bruto,
+                SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas,
+                (SUM(cf.total_cccfa) - COALESCE((
+                    SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
+                    FROM cxp_cabecera_nota cn
+                    WHERE EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) = 12
+                    AND EXTRACT(YEAR FROM cn.fecha_emisi_cpcno) = ${dtoIn.periodo - 1}
+                    AND cn.ide_cpeno = 1
+                    AND cn.ide_empr = ${dtoIn.ideEmpr}
+                ), 0)) AS ventas_netas
+            FROM 
+                cxc_cabece_factura cf
+            WHERE 
+                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) = 12
+                AND EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) = ${dtoIn.periodo - 1}
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa),
+                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa)
+        ),
+        ventas_con_mes_anterior AS (
+            SELECT 
+                vn.*,
+                CASE 
+                    -- Para enero, usar diciembre del año anterior
+                    WHEN vn.mes_numero = 1 THEN COALESCE((SELECT ventas_netas FROM ventas_anio_anterior), 0)
+                    -- Para otros meses, usar el mes anterior del mismo año
+                    ELSE LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.anio, vn.mes_numero)
+                END AS ventas_mes_anterior,
+                -- Obtener el nombre del mes anterior para la comparación
+                CASE 
+                    WHEN vn.mes_numero = 1 THEN 'Diciembre'
+                    ELSE LAG(vn.mes_nombre, 1) OVER (ORDER BY vn.anio, vn.mes_numero)
+                END AS nombre_mes_anterior
+            FROM 
+                ventas_netas vn
+        ),
+        ventas_con_crecimiento AS (
+            SELECT 
+                vc.*,
+                CASE 
+                    -- Para enero, comparar con diciembre del año anterior
+                    WHEN vc.mes_numero = 1 THEN 
+                        CASE 
+                            WHEN (SELECT ventas_netas FROM ventas_anio_anterior) IS NULL OR (SELECT ventas_netas FROM ventas_anio_anterior) = 0 THEN 0
+                            ELSE ROUND(
+                                (vc.ventas_netas - (SELECT ventas_netas FROM ventas_anio_anterior)) / 
+                                (SELECT ventas_netas FROM ventas_anio_anterior) * 100, 
+                            2)
+                        END
+                    -- Para otros meses, usar el cálculo normal
+                    ELSE 
+                        CASE 
+                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) IS NULL THEN 0
+                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) = 0 THEN 0
+                            ELSE ROUND(
+                                (vc.ventas_netas - LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero)) / 
+                                LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) * 100, 
+                            2)
+                        END
+                END AS crecimiento_porcentual,
+                CASE 
+                    -- Para enero, comparar con diciembre del año anterior
+                    WHEN vc.mes_numero = 1 THEN 
+                        vc.ventas_netas - COALESCE((SELECT ventas_netas FROM ventas_anio_anterior), 0)
+                    -- Para otros meses, usar el cálculo normal
+                    ELSE 
+                        CASE 
+                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) IS NULL THEN 0
+                            ELSE (vc.ventas_netas - LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero))
+                        END
+                END AS crecimiento_absoluto
+            FROM 
+                ventas_con_mes_anterior vc
+        )
         SELECT 
-            TO_CHAR(cf.fecha_emisi_cccfa, 'YYYY-MM') AS mes,
-            SUM(cf.total_cccfa) AS total_ventas_bruto,
-            COALESCE(
-                SUM(
-                    (SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
-                     FROM cxp_cabecera_nota cn 
-                     WHERE cn.ide_cpeno = 1
-                     AND cn.ide_empr = ${dtoIn.ideEmpr}
-                     AND cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0'))
-                ), 0
-            ) AS total_notas_credito
+            vc.mes_numero,
+            vc.mes_nombre,
+            vc.anio,
+            vc.total_ventas_bruto,
+            vc.ventas_brutas,
+            vc.total_notas_credito,
+            vc.cantidad_notas_credito,
+            vc.ventas_netas,
+            vc.ventas_mes_anterior,
+            vc.crecimiento_porcentual,
+            vc.crecimiento_absoluto,
+            CASE 
+                WHEN vc.crecimiento_porcentual > 0 THEN 'CRECIMIENTO'
+                WHEN vc.crecimiento_porcentual < 0 THEN 'DECRECIMIENTO'
+                ELSE 'ESTABLE'
+            END AS tendencia,
+            CASE 
+                WHEN vc.mes_numero = 1 THEN 'Diciembre ' || (${dtoIn.periodo} - 1)
+                ELSE COALESCE(vc.nombre_mes_anterior, 'N/A') || ' ' || vc.anio
+            END AS comparacion_con
         FROM 
-            cxc_cabece_factura cf
-        WHERE 
-            cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-            AND cf.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            TO_CHAR(cf.fecha_emisi_cccfa, 'YYYY-MM')
-    ),
-    ventas_netas AS (
-        SELECT
-            mes,
-            total_ventas_bruto,
-            total_notas_credito,
-            (total_ventas_bruto - total_notas_credito) AS ventas_netas
-        FROM
-            ventas_mensuales
-    )
-    SELECT 
-        vn.mes,
-        vn.total_ventas_bruto,
-        vn.total_notas_credito,
-        vn.ventas_netas AS total_ventas_netas,
-        LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.mes) AS ventas_mes_anterior,
-        ROUND(
-            (vn.ventas_netas - LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.mes)) / 
-            NULLIF(LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.mes), 0) * 100, 
-        2
-        ) AS crecimiento_porcentual
-    FROM 
-        ventas_netas vn
-    ORDER BY 
-        vn.mes
-`);
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
+            ventas_con_crecimiento vc
+        ORDER BY 
+            vc.anio, vc.mes_numero
+    `);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addStringParam(3, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(4, `${dtoIn.periodo}-12-31`);
         return await this.dataSource.createQuery(query);
     }
 
@@ -597,35 +753,68 @@ ORDER BY
      * @param dtoIn
      * @returns
      */
-    async getFacturasMayorValor(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    async getFacturasMayorValor(dtoIn: TopClientesDto & HeaderParamsDto) {
         const query = new SelectQuery(`      
-  
-    SELECT 
-    cf.ide_cccfa,
-    cf.secuencial_cccfa,
-    p.nom_geper AS cliente,
-    cf.fecha_emisi_cccfa,
-    cf.total_cccfa,
-    v.nombre_vgven AS vendedor,
-    fp.nombre_cndfp AS forma_pago
-FROM 
-    cxc_cabece_factura cf
-JOIN 
-    gen_persona p ON cf.ide_geper = p.ide_geper
-LEFT JOIN 
-    ven_vendedor v ON cf.ide_vgven = v.ide_vgven
-LEFT JOIN 
-    con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
-WHERE 
-    cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-    AND cf.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')}
-    AND cf.ide_empr  = ${dtoIn.ideEmpr}
-ORDER BY 
-    cf.total_cccfa DESC
-LIMIT 20
-`);
+            SELECT 
+                cf.ide_cccfa,
+                cf.secuencial_cccfa,
+                p.nom_geper AS cliente,
+                cf.fecha_emisi_cccfa,
+                cf.total_cccfa AS total_bruto,
+                COALESCE((
+                    SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
+                    FROM cxp_cabecera_nota cn
+                    WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                        AND cn.fecha_emisi_cpcno BETWEEN $1 AND $2
+                        AND cn.ide_cpeno = 1
+                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                ), 0) AS total_nota_credito,
+                (cf.total_cccfa - COALESCE((
+                    SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
+                    FROM cxp_cabecera_nota cn
+                    WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                        AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                        AND cn.ide_cpeno = 1
+                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                ), 0)) AS total_real,
+                v.nombre_vgven AS vendedor,
+                fp.nombre_cndfp AS forma_pago,
+                CASE 
+                    WHEN EXISTS (
+                        SELECT 1 
+                        FROM cxp_cabecera_nota cn 
+                        WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                            AND cn.fecha_emisi_cpcno BETWEEN $5 AND $6
+                            AND cn.ide_cpeno = 1
+                            AND cn.ide_empr = ${dtoIn.ideEmpr}
+                    ) THEN 'CON NOTA CRÉDITO'
+                    ELSE 'SIN NOTA CRÉDITO'
+                END AS estado_nota_credito
+            FROM 
+                cxc_cabece_factura cf
+            JOIN 
+                gen_persona p ON cf.ide_geper = p.ide_geper
+            LEFT JOIN 
+                ven_vendedor v ON cf.ide_vgven = v.ide_vgven
+            LEFT JOIN 
+                con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
+            WHERE 
+                cf.fecha_emisi_cccfa BETWEEN $7 AND $8
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY 
+                total_real DESC
+            LIMIT ${dtoIn.limit}
+        `);
+
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(5, dtoIn.fechaInicio);
+        query.addStringParam(6, dtoIn.fechaFin);
+        query.addStringParam(7, dtoIn.fechaInicio);
+        query.addStringParam(8, dtoIn.fechaFin);
 
         return await this.dataSource.createQuery(query);
     }
@@ -637,44 +826,82 @@ LIMIT 20
      */
     async getResumenVentasPeriodos(dtoIn: HeaderParamsDto) {
         const query = new SelectQuery(`            
-    WITH notas_credito_anio AS (
-        SELECT 
-            EXTRACT(YEAR FROM fecha_emisi_cpcno) AS anio,
-            SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas
-        FROM 
-            cxp_cabecera_nota
-        WHERE 
-            ide_cpeno = 1
-            AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            EXTRACT(YEAR FROM fecha_emisi_cpcno)
-    )
-    
-    SELECT 
-        EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
-        COUNT(cf.ide_cccfa) AS total_facturas,
-        SUM(cf.base_grabada_cccfa) AS base_grabada_cccfa,
-        SUM(cf.valor_iva_cccfa) AS total_iva,
-        SUM(cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_exentas,
-        SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS total_ventas_bruto,
-        COALESCE(nc.total_notas, 0) AS total_notas_credito,
-        SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) - 
-        COALESCE(nc.total_notas, 0) AS total_ventas_neto,
-        COUNT(DISTINCT cf.ide_geper) AS clientes_unicos,
-        COUNT(DISTINCT cf.ide_vgven) AS vendedores_activos
-    FROM 
-        cxc_cabece_factura cf
-    LEFT JOIN 
-        notas_credito_anio nc ON EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) = nc.anio
-    WHERE 
-        cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-        AND cf.ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY 
-        EXTRACT(YEAR FROM cf.fecha_emisi_cccfa),
-        nc.total_notas
-    ORDER BY 
-        anio DESC
-`);
+            WITH ventas_anuales AS (
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa) AS anio,
+                    COUNT(ide_cccfa) AS total_facturas,
+                    SUM(base_grabada_cccfa) AS base_grabada_cccfa,
+                    SUM(valor_iva_cccfa) AS total_iva,
+                    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas_exentas,
+                    SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_bruto,
+                    COUNT(DISTINCT ide_geper) AS clientes_unicos,
+                    COUNT(DISTINCT ide_vgven) AS vendedores_activos
+                FROM 
+                    cxc_cabece_factura
+                WHERE 
+                    ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa)
+            ),
+            notas_credito_anio AS (
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_emisi_cpcno) AS anio,
+                    SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas,
+                    COUNT(ide_cpcno) AS cantidad_notas
+                FROM 
+                    cxp_cabecera_nota
+                WHERE 
+                    ide_cpeno = 1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(YEAR FROM fecha_emisi_cpcno)
+            ),
+            anos_completos AS (
+                SELECT DISTINCT anio
+                FROM (
+                    SELECT EXTRACT(YEAR FROM fecha_emisi_cccfa) AS anio
+                    FROM cxc_cabece_factura
+                    WHERE ide_empr = ${dtoIn.ideEmpr}
+                    UNION
+                    SELECT EXTRACT(YEAR FROM fecha_emisi_cpcno) AS anio
+                    FROM cxp_cabecera_nota
+                    WHERE ide_empr = ${dtoIn.ideEmpr}
+                ) todos_anos
+                WHERE anio IS NOT NULL
+            )
+            SELECT 
+                ac.anio,
+                COALESCE(va.total_facturas, 0) AS total_facturas,
+                COALESCE(va.base_grabada_cccfa, 0) AS base_grabada_cccfa,
+                COALESCE(va.total_iva, 0) AS total_iva,
+                COALESCE(va.ventas_exentas, 0) AS ventas_exentas,
+                COALESCE(va.total_ventas_bruto, 0) AS total_ventas_bruto,
+                COALESCE(nc.total_notas, 0) AS total_notas_credito,
+                COALESCE(nc.cantidad_notas, 0) AS cantidad_notas_credito,
+                COALESCE(va.total_ventas_bruto, 0) - COALESCE(nc.total_notas, 0) AS total_ventas_neto,
+                COALESCE(va.clientes_unicos, 0) AS clientes_unicos,
+                COALESCE(va.vendedores_activos, 0) AS vendedores_activos,
+                CASE 
+                    WHEN COALESCE(va.total_ventas_bruto, 0) > 0 
+                    THEN ROUND((COALESCE(nc.total_notas, 0) / va.total_ventas_bruto * 100), 2)
+                    ELSE 0 
+                END AS porcentaje_devolucion,
+                CASE 
+                    WHEN COALESCE(va.total_facturas, 0) > 0 
+                    THEN ROUND(va.total_ventas_bruto / va.total_facturas, 2)
+                    ELSE 0 
+                END AS promedio_venta_por_factura
+            FROM 
+                anos_completos ac
+            LEFT JOIN 
+                ventas_anuales va ON ac.anio = va.anio
+            LEFT JOIN 
+                notas_credito_anio nc ON ac.anio = nc.anio
+            ORDER BY 
+                ac.anio DESC
+        `);
+
         return await this.dataSource.createQuery(query);
     }
 
@@ -685,145 +912,181 @@ LIMIT 20
      */
     async getVariacionVentasPeriodos(dtoIn: VariacionVentasPeriodoDto & HeaderParamsDto) {
         const query = new SelectQuery(`            
+            WITH VentasPeriodo1 AS (
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+                    COUNT(ide_cccfa) AS facturas_p1,
+                    SUM(total_cccfa) AS ventas_p1,
+                    SUM(base_grabada_cccfa) AS basegrabada_p1,
+                    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p1,
+                    SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_p1,
+                    SUM(valor_iva_cccfa) AS iva_p1
+                FROM 
+                    cxc_cabece_factura
+                WHERE 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa) = $1
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa)
+            ),
+            VentasPeriodo2 AS (
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+                    COUNT(ide_cccfa) AS facturas_p2,
+                    SUM(total_cccfa) AS ventas_p2,
+                    SUM(base_grabada_cccfa) AS basegrabada_p2,
+                    SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p2,
+                    SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_p2,
+                    SUM(valor_iva_cccfa) AS iva_p2
+                FROM 
+                    cxc_cabece_factura
+                WHERE 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa) = $2
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(MONTH FROM fecha_emisi_cccfa)
+            ),
+            NotasCreditoPeriodo1 AS (
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_emisi_cpcno) AS mes,
+                    SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas_credito_p1,
+                    COUNT(ide_cpcno) AS cantidad_notas_p1
+                FROM 
+                    cxp_cabecera_nota
+                WHERE 
+                    EXTRACT(YEAR FROM fecha_emisi_cpcno) = $3
+                    AND ide_cpeno = 1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(MONTH FROM fecha_emisi_cpcno)
+            ),
+            NotasCreditoPeriodo2 AS (
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_emisi_cpcno) AS mes,
+                    SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas_credito_p2,
+                    COUNT(ide_cpcno) AS cantidad_notas_p2
+                FROM 
+                    cxp_cabecera_nota
+                WHERE 
+                    EXTRACT(YEAR FROM fecha_emisi_cpcno) = $4
+                    AND ide_cpeno = 1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(MONTH FROM fecha_emisi_cpcno)
+            )
+            SELECT 
+                gm.ide_gemes,
+                gm.nombre_gemes AS mes,
+                -- Facturas
+                COALESCE(v1.facturas_p1, 0) AS facturas_p1,
+                COALESCE(v2.facturas_p2, 0) AS facturas_p2,
+                CASE 
+                    WHEN COALESCE(v1.facturas_p1, 0) = 0 THEN 
+                        CASE WHEN COALESCE(v2.facturas_p2, 0) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        (COALESCE(v2.facturas_p2, 0) - COALESCE(v1.facturas_p1, 0)) * 100.0 / 
+                        COALESCE(v1.facturas_p1, 1), 2
+                    )
+                END AS variacion_facturas,
+                
+                -- Notas de crédito
+                COALESCE(nc1.cantidad_notas_p1, 0) AS cantidad_notas_p1,
+                COALESCE(nc2.cantidad_notas_p2, 0) AS cantidad_notas_p2,
+                COALESCE(nc1.total_notas_credito_p1, 0) AS total_notas_credito_p1,
+                COALESCE(nc2.total_notas_credito_p2, 0) AS total_notas_credito_p2,
+                
+                -- Ventas netas (totales después de notas de crédito)
+                COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0) AS ventas_netas_p1,
+                COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0) AS ventas_netas_p2,
+                CASE 
+                    WHEN (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0)) = 0 THEN 
+                        CASE WHEN (COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        ((COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) - 
+                         (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0))) * 100.0 / 
+                        (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0)), 2
+                    )
+                END AS variacion_ventas_netas,
+                
+                -- Base 12 (gravada)
+                COALESCE(v1.basegrabada_p1, 0) AS base12_p1,
+                COALESCE(v2.basegrabada_p2, 0) AS base12_p2,
+                CASE 
+                    WHEN COALESCE(v1.basegrabada_p1, 0) = 0 THEN 
+                        CASE WHEN COALESCE(v2.basegrabada_p2, 0) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        (COALESCE(v2.basegrabada_p2, 0) - COALESCE(v1.basegrabada_p1, 0)) * 100.0 / 
+                        COALESCE(v1.basegrabada_p1, 1), 2
+                    )
+                END AS variacion_base12,
+                
+                -- Base 0 (exenta + no objeto)
+                COALESCE(v1.base0_p1, 0) AS base0_p1,
+                COALESCE(v2.base0_p2, 0) AS base0_p2,
+                CASE 
+                    WHEN COALESCE(v1.base0_p1, 0) = 0 THEN 
+                        CASE WHEN COALESCE(v2.base0_p2, 0) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        (COALESCE(v2.base0_p2, 0) - COALESCE(v1.base0_p1, 0)) * 100.0 / 
+                        COALESCE(v1.base0_p1, 1), 2
+                    )
+                END AS variacion_base0,
+                
+                -- IVA
+                COALESCE(v1.iva_p1, 0) AS iva_p1,
+                COALESCE(v2.iva_p2, 0) AS iva_p2,
+                CASE 
+                    WHEN COALESCE(v1.iva_p1, 0) = 0 THEN 
+                        CASE WHEN COALESCE(v2.iva_p2, 0) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        (COALESCE(v2.iva_p2, 0) - COALESCE(v1.iva_p1, 0)) * 100.0 / 
+                        COALESCE(v1.iva_p1, 1), 2
+                    )
+                END AS variacion_iva,
+                
+                -- Ventas brutas (antes de notas de crédito)
+                COALESCE(v1.total_ventas_p1, 0) AS ventas_brutas_p1,
+                COALESCE(v2.total_ventas_p2, 0) AS ventas_brutas_p2,
+                CASE 
+                    WHEN COALESCE(v1.total_ventas_p1, 0) = 0 THEN 
+                        CASE WHEN COALESCE(v2.total_ventas_p2, 0) > 0 THEN 100.00 ELSE 0 END
+                    ELSE ROUND(
+                        (COALESCE(v2.total_ventas_p2, 0) - COALESCE(v1.total_ventas_p1, 0)) * 100.0 / 
+                        COALESCE(v1.total_ventas_p1, 1), 2
+                    )
+                END AS variacion_ventas_brutas,
+                
+                -- Indicadores de tendencia
+                CASE 
+                    WHEN (COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) > 
+                         (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0)) THEN 'CRECIMIENTO'
+                    WHEN (COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) < 
+                         (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0)) THEN 'DECRECIMIENTO'
+                    ELSE 'ESTABLE'
+                END AS tendencia
+                
+            FROM 
+                gen_mes gm
+            LEFT JOIN 
+                VentasPeriodo1 v1 ON gm.ide_gemes = v1.mes
+            LEFT JOIN 
+                VentasPeriodo2 v2 ON gm.ide_gemes = v2.mes
+            LEFT JOIN 
+                NotasCreditoPeriodo1 nc1 ON gm.ide_gemes = nc1.mes
+            LEFT JOIN 
+                NotasCreditoPeriodo2 nc2 ON gm.ide_gemes = nc2.mes
+            ORDER BY 
+                gm.ide_gemes
+        `);
 
-
-    WITH VentasPeriodo1 AS (
-        SELECT 
-            EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
-            COUNT(ide_cccfa) AS facturas_p1,
-            SUM(total_cccfa) AS ventas_p1,
-            SUM(base_grabada_cccfa) AS basegrabada_p1,
-            SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p1,
-            SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_p1,
-            SUM(valor_iva_cccfa) AS iva_p1
-        FROM 
-            cxc_cabece_factura
-        WHERE 
-            EXTRACT(YEAR FROM fecha_emisi_cccfa) = $1
-            AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-            AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            EXTRACT(MONTH FROM fecha_emisi_cccfa)
-    ),
-    VentasPeriodo2 AS (
-        SELECT 
-            EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
-            COUNT(ide_cccfa) AS facturas_p2,
-            SUM(total_cccfa) AS ventas_p2,
-            SUM(base_grabada_cccfa) AS basegrabada_p2,
-            SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS base0_p2,
-            SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS total_ventas_p2,
-            SUM(valor_iva_cccfa) AS iva_p2
-        FROM 
-            cxc_cabece_factura
-        WHERE 
-            EXTRACT(YEAR FROM fecha_emisi_cccfa) = $2
-            AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-            AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            EXTRACT(MONTH FROM fecha_emisi_cccfa)
-    ),
-    NotasCreditoPeriodo1 AS (
-        SELECT 
-            EXTRACT(MONTH FROM fecha_emisi_cpcno) AS mes,
-            SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas_credito_p1
-        FROM 
-            cxp_cabecera_nota cn
-        WHERE 
-            EXTRACT(YEAR FROM fecha_emisi_cpcno) = $3
-            AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            EXTRACT(MONTH FROM fecha_emisi_cpcno)
-    ),
-    NotasCreditoPeriodo2 AS (
-        SELECT 
-            EXTRACT(MONTH FROM fecha_emisi_cpcno) AS mes,
-            SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas_credito_p2
-        FROM 
-            cxp_cabecera_nota cn
-        WHERE 
-            EXTRACT(YEAR FROM fecha_emisi_cpcno) = $4
-            AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            EXTRACT(MONTH FROM fecha_emisi_cpcno)
-    )
-    SELECT 
-        gm.nombre_gemes AS mes,
-        -- Facturas
-        COALESCE(v1.facturas_p1, 0) AS facturas_p1,
-        COALESCE(v2.facturas_p2, 0) AS facturas_p2,
-        CASE 
-            WHEN COALESCE(v1.facturas_p1, 0) = 0 THEN NULL
-            ELSE ROUND((COALESCE(v2.facturas_p2, 0) - COALESCE(v1.facturas_p1, 0)) * 100.0 / 
-                 COALESCE(v1.facturas_p1, 1), 2)
-        END AS variacion_facturas,
-        
-        -- Ventas totales (ya restando notas de crédito)
-        COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0) AS ventas_p1,
-        COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0) AS ventas_p2,
-        CASE 
-            WHEN COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0) = 0 THEN NULL
-            ELSE ROUND(((COALESCE(v2.ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) - 
-                 (COALESCE(v1.ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0))) * 100.0 / 
-                 (COALESCE(v1.ventas_p1, 1) - COALESCE(nc1.total_notas_credito_p1, 0)), 2)
-        END AS variacion_ventas,
-        
-        -- Base 12 (asumo que es basegrabada)
-        COALESCE(v1.basegrabada_p1, 0) AS base12_p1,
-        COALESCE(v2.basegrabada_p2, 0) AS base12_p2,
-        CASE 
-            WHEN COALESCE(v1.basegrabada_p1, 0) = 0 THEN NULL
-            ELSE ROUND((COALESCE(v2.basegrabada_p2, 0) - COALESCE(v1.basegrabada_p1, 0)) * 100.0 / 
-                 COALESCE(v1.basegrabada_p1, 1), 2)
-        END AS variacion_base12,
-        
-        -- Base 0
-        COALESCE(v1.base0_p1, 0) AS base0_p1,
-        COALESCE(v2.base0_p2, 0) AS base0_p2,
-        CASE 
-            WHEN COALESCE(v1.base0_p1, 0) = 0 THEN NULL
-            ELSE ROUND((COALESCE(v2.base0_p2, 0) - COALESCE(v1.base0_p1, 0)) * 100.0 / 
-                 COALESCE(v1.base0_p1, 1), 2)
-        END AS variacion_base0,
-        
-        -- IVA (deberías también restar el IVA de las notas de crédito si lo tienes)
-        COALESCE(v1.iva_p1, 0) AS iva_p1,
-        COALESCE(v2.iva_p2, 0) AS iva_p2,
-        CASE 
-            WHEN COALESCE(v1.iva_p1, 0) = 0 THEN NULL
-            ELSE ROUND((COALESCE(v2.iva_p2, 0) - COALESCE(v1.iva_p1, 0)) * 100.0 / 
-                 COALESCE(v1.iva_p1, 1), 2)
-        END AS variacion_iva,
-        
-        -- Totales ventas netas (ventas - notas de crédito)
-        COALESCE(v1.total_ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0) AS total_ventas_netas_p1,
-        COALESCE(v2.total_ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0) AS total_ventas_netas_p2,
-        CASE 
-            WHEN COALESCE(v1.total_ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0) = 0 THEN NULL
-            ELSE ROUND(((COALESCE(v2.total_ventas_p2, 0) - COALESCE(nc2.total_notas_credito_p2, 0)) - 
-                 (COALESCE(v1.total_ventas_p1, 0) - COALESCE(nc1.total_notas_credito_p1, 0))) * 100.0 / 
-                 (COALESCE(v1.total_ventas_p1, 1) - COALESCE(nc1.total_notas_credito_p1, 0)), 2)
-        END AS variacion_total_ventas_netas
-    FROM 
-        gen_mes gm
-    LEFT JOIN 
-        VentasPeriodo1 v1 ON gm.ide_gemes = v1.mes
-    LEFT JOIN 
-        VentasPeriodo2 v2 ON gm.ide_gemes = v2.mes
-    LEFT JOIN 
-        NotasCreditoPeriodo1 nc1 ON gm.ide_gemes = nc1.mes
-    LEFT JOIN 
-        NotasCreditoPeriodo2 nc2 ON gm.ide_gemes = nc2.mes
-    ORDER BY 
-        gm.ide_gemes
-`);
         query.addParam(1, dtoIn.periodoCompara);
         query.addParam(2, dtoIn.periodo);
         query.addParam(3, dtoIn.periodoCompara);
         query.addParam(4, dtoIn.periodo);
         return await this.dataSource.createQuery(query);
     }
-
 
 
     // ------------------------------------------
@@ -1338,92 +1601,6 @@ LIMIT 20
     }
 
 
-
-    /**
-  * Retorna el total de PROFORMAS mensuales de un producto en un periodo
-  * @param dtoIn
-  * @returns
-  */
-    async getProformasMensualesProducto(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-            dtoIn.ide_inarti = -1;
-        }
-        const query = new SelectQuery(
-            `
-        WITH 
-        proformas_mes AS (
-            SELECT
-                EXTRACT(MONTH FROM a.fecha_cccpr) AS mes,
-                COUNT(cdf.ide_ccdpr) AS num_proformas,
-                SUM(cdf.cantidad_ccdpr) AS cantidad_cotizada,
-                SUM(cdf.total_ccdpr) AS total_cotizado,
-                MAX(f.siglas_inuni) AS siglas_inuni
-            FROM
-                cxc_cabece_proforma a
-            INNER JOIN cxc_deta_proforma cdf ON a.ide_cccpr = cdf.ide_cccpr
-            INNER JOIN inv_articulo d ON cdf.ide_inarti = d.ide_inarti
-            LEFT JOIN inv_unidad f ON d.ide_inuni = f.ide_inuni
-            WHERE
-                a.fecha_cccpr BETWEEN $1 AND $2
-                AND cdf.ide_inarti = $3
-                AND a.anulado_cccpr = false
-                AND a.ide_empr = ${dtoIn.ideEmpr} 
-            GROUP BY EXTRACT(MONTH FROM a.fecha_cccpr)
-        ),
-        
-        facturas_efectivas AS (
-            SELECT
-                EXTRACT(MONTH FROM c.fecha_emisi_cccfa) AS mes,
-                COUNT(DISTINCT c.ide_cccfa) AS cotizaciones_efectivas,
-                SUM(d.cantidad_ccdfa) AS cantidad_efectiva
-            FROM
-                cxc_cabece_factura c
-            INNER JOIN cxc_deta_factura d ON c.ide_cccfa = d.ide_cccfa
-            WHERE
-                c.fecha_emisi_cccfa BETWEEN $4 AND $5
-                AND d.ide_inarti = $6
-                AND c.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND c.num_proforma_cccfa IS NOT NULL
-            GROUP BY EXTRACT(MONTH FROM c.fecha_emisi_cccfa)
-        )
-        SELECT
-            gm.nombre_gemes,
-            ${dtoIn.periodo} AS periodo,
-            COALESCE(pm.num_proformas, 0) AS num_proformas,
-            COALESCE(pm.cantidad_cotizada, 0) AS cantidad,
-            COALESCE(pm.siglas_inuni, '') AS siglas_inuni,
-            COALESCE(pm.total_cotizado, 0) AS total,
-            COALESCE(fe.cotizaciones_efectivas, 0) AS cotizaciones_efectivas,
-            COALESCE(fe.cantidad_efectiva, 0) AS cantidad_efectiva,
-            CASE 
-                WHEN COALESCE(pm.cantidad_cotizada, 0) = 0 THEN 0
-                ELSE ROUND(
-                    (COALESCE(fe.cantidad_efectiva, 0)::numeric / 
-                    NULLIF(pm.cantidad_cotizada, 0)::numeric) * 100, 
-                    2
-                )
-            END AS porcentaje_efectividad
-        FROM
-            gen_mes gm
-        LEFT JOIN proformas_mes pm ON gm.ide_gemes = pm.mes
-        LEFT JOIN facturas_efectivas fe ON gm.ide_gemes = fe.mes
-        ORDER BY
-            gm.ide_gemes
-        `,
-            dtoIn,
-        );
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(6, dtoIn.ide_inarti);
-
-        return await this.dataSource.createQuery(query);
-    }
-
-
     /**
      * Retorna el total de compras mensuales de un producto en un periodo
      * @param dtoIn
@@ -1761,7 +1938,347 @@ LIMIT 20
     }
 
 
+    /**
+     * Retorna el total de ventas por cada dia del mes 
+     * @param dtoIn 
+     * @returns 
+     */
+    async getVentasPorDiaDelMes(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`   
+            WITH DiasDelMes AS (
+                SELECT generate_series(1, 31) AS dia
+            ),
+            VentasPorDia AS (
+                SELECT 
+                    EXTRACT(DAY FROM fecha_emisi_cccfa) AS dia,
+                    COUNT(ide_cccfa) AS num_facturas,
+                    SUM(total_cccfa) AS total_ventas_brutas
+                FROM 
+                    cxc_cabece_factura
+                WHERE 
+                    fecha_emisi_cccfa BETWEEN $1 AND $2
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(DAY FROM fecha_emisi_cccfa)
+            ),
+            NotasCreditoPorDia AS (
+                SELECT 
+                    EXTRACT(DAY FROM fecha_emisi_cpcno) AS dia,
+                    SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_nota_credito
+                FROM 
+                    cxp_cabecera_nota
+                WHERE 
+                    fecha_emisi_cpcno BETWEEN $3 AND $4
+                    AND ide_cpeno = 1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY 
+                    EXTRACT(DAY FROM fecha_emisi_cpcno)
+            )
+            SELECT 
+                dm.dia,
+                COALESCE(v.num_facturas, 0) AS num_facturas,
+                COALESCE(v.total_ventas_brutas, 0) AS total_ventas_brutas,
+                COALESCE(nc.total_nota_credito, 0) AS total_nota_credito,
+                COALESCE(v.total_ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) AS total_ventas_netas,
+                RANK() OVER (ORDER BY COALESCE(v.total_ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) DESC) AS ranking_ventas
+            FROM 
+                DiasDelMes dm
+            LEFT JOIN 
+                VentasPorDia v ON dm.dia = v.dia
+            LEFT JOIN 
+                NotasCreditoPorDia nc ON dm.dia = nc.dia
+            ORDER BY 
+                dm.dia
+        `);
+
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+
+        return await this.dataSource.createQuery(query);
+    }
 
 
 
+    async getKPIsVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            WITH ventas_periodo AS (
+                SELECT 
+                    COUNT(ide_cccfa) AS total_facturas,
+                    SUM(total_cccfa) AS ventas_brutas,
+                    SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas_base,
+                    SUM(valor_iva_cccfa) AS iva_recaudado,
+                    COUNT(DISTINCT ide_geper) AS clientes_activos,
+                    COUNT(DISTINCT ide_vgven) AS vendedores_activos
+                FROM cxc_cabece_factura
+                WHERE fecha_emisi_cccfa BETWEEN $1 AND $2
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+            ),
+            notas_credito_periodo AS (
+                SELECT 
+                    COUNT(ide_cpcno) AS total_notas_credito,
+                    SUM(base_grabada_cpcno + base_tarifa0_cpcno + base_no_objeto_iva_cpcno) AS total_notas_monto
+                FROM cxp_cabecera_nota
+                WHERE fecha_emisi_cpcno BETWEEN $3 AND $4
+                    AND ide_cpeno = 1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+            ),
+            ventas_periodo_anterior AS (
+                SELECT 
+                    SUM(total_cccfa) AS ventas_brutas_anterior,
+                    COUNT(ide_cccfa) AS total_facturas_anterior
+                FROM cxc_cabece_factura
+                WHERE fecha_emisi_cccfa BETWEEN $5 AND $6
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+            )
+            SELECT 
+                -- Ventas actuales
+                vp.total_facturas,
+                vp.ventas_brutas,
+                vp.ventas_base,
+                vp.iva_recaudado,
+                vp.clientes_activos,
+                vp.vendedores_activos,
+                
+                -- Notas de crédito
+                nc.total_notas_credito,
+                nc.total_notas_monto,
+                
+                -- Ventas netas
+                (vp.ventas_brutas - COALESCE(nc.total_notas_monto, 0)) AS ventas_netas,
+                (vp.ventas_base - COALESCE(nc.total_notas_monto, 0)) AS ventas_base_netas,
+                
+                -- Crecimiento vs período anterior
+                vpa.ventas_brutas_anterior,
+                vpa.total_facturas_anterior,
+                CASE 
+                    WHEN vpa.ventas_brutas_anterior > 0 
+                    THEN ROUND((vp.ventas_brutas - vpa.ventas_brutas_anterior) / vpa.ventas_brutas_anterior * 100, 2)
+                    ELSE 0 
+                END AS crecimiento_ventas_porcentual,
+                
+                -- Promedios
+                CASE 
+                    WHEN vp.total_facturas > 0 
+                    THEN ROUND(vp.ventas_brutas / vp.total_facturas, 2)
+                    ELSE 0 
+                END AS ticket_promedio,
+                
+                -- Porcentajes
+                CASE 
+                    WHEN vp.ventas_brutas > 0 
+                    THEN ROUND((nc.total_notas_monto / vp.ventas_brutas * 100), 2)
+                    ELSE 0 
+                END AS tasa_devolucion,
+                
+                CASE 
+                    WHEN vp.clientes_activos > 0 
+                    THEN ROUND(vp.ventas_brutas / vp.clientes_activos, 2)
+                    ELSE 0 
+                END AS venta_por_cliente
+                
+            FROM ventas_periodo vp
+            CROSS JOIN notas_credito_periodo nc
+            CROSS JOIN ventas_periodo_anterior vpa
+        `);
+
+        // Calcular fechas del período anterior CORREGIDO
+        const fechaInicio = new Date(dtoIn.fechaInicio);
+        const fechaFin = new Date(dtoIn.fechaFin);
+
+        // Convertir a timestamps para operaciones aritméticas
+        const timestampInicio = fechaInicio.getTime();
+        const timestampFin = fechaFin.getTime();
+
+        // Calcular diferencia en milisegundos
+        const diffMs = timestampFin - timestampInicio;
+
+        // Calcular fechas del período anterior
+        const fechaInicioAnterior = new Date(timestampInicio - diffMs - (1000 * 60 * 60 * 24));
+        const fechaFinAnterior = new Date(timestampFin - diffMs - (1000 * 60 * 60 * 24));
+
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(5, fechaInicioAnterior.toISOString().split('T')[0]);
+        query.addStringParam(6, fechaFinAnterior.toISOString().split('T')[0]);
+
+        return await this.dataSource.createQuery(query);
+    }
+
+    async getProductosMasRentables(dtoIn: TopClientesDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            WITH ventas_productos AS (
+                SELECT 
+                    art.ide_inarti,
+                    art.nombre_inarti AS producto,
+                    cat.nombre_incate AS categoria,
+                    SUM(df.cantidad_ccdfa) AS cantidad_vendida,
+                    SUM(df.cantidad_ccdfa * df.precio_ccdfa) AS ventas_brutas,
+                    COUNT(DISTINCT cf.ide_cccfa) AS facturas_con_producto,
+                    COUNT(DISTINCT cf.ide_geper) AS clientes_unicos,
+                    CASE 
+                        WHEN SUM(df.cantidad_ccdfa) > 0 
+                        THEN ROUND(SUM(df.cantidad_ccdfa * df.precio_ccdfa) / SUM(df.cantidad_ccdfa), 4)
+                        ELSE 0
+                    END AS precio_venta_promedio
+                FROM cxc_deta_factura df
+                INNER JOIN cxc_cabece_factura cf ON df.ide_cccfa = cf.ide_cccfa
+                INNER JOIN inv_articulo art ON df.ide_inarti = art.ide_inarti
+                LEFT JOIN inv_categoria cat ON art.ide_incate = cat.ide_incate
+                WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+                    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND art.hace_kardex_inarti = true
+                GROUP BY art.ide_inarti, art.nombre_inarti, cat.nombre_incate
+                HAVING SUM(df.cantidad_ccdfa) > 0
+            ),
+            costos_estrategia AS (
+                -- Estrategia 1: Último costo antes del período
+                SELECT DISTINCT ON (dci.ide_inarti)
+                    dci.ide_inarti,
+                    dci.precio_indci AS costo_unitario,
+                    1 AS prioridad
+                FROM inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                WHERE cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                    AND cci.fecha_trans_incci <= $3
+                    AND cci.ide_empr = ${dtoIn.ideEmpr}
+                    AND tci.signo_intci > 0
+                    AND dci.ide_inarti IN (SELECT ide_inarti FROM ventas_productos)
+                ORDER BY dci.ide_inarti, cci.fecha_trans_incci DESC, dci.ide_indci DESC
+            ),
+            costos_estrategia_2 AS (
+                -- Estrategia 2: Costo promedio ponderado histórico
+                SELECT 
+                    dci.ide_inarti,
+                    CASE 
+                        WHEN SUM(dci.cantidad_indci) > 0 
+                        THEN ROUND(SUM(dci.precio_indci * dci.cantidad_indci) / SUM(dci.cantidad_indci), 4)
+                        ELSE NULL
+                    END AS costo_unitario,
+                    2 AS prioridad
+                FROM inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                WHERE cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                    AND cci.fecha_trans_incci <= $4
+                    AND cci.ide_empr = ${dtoIn.ideEmpr}
+                    AND tci.signo_intci > 0
+                    AND dci.ide_inarti IN (SELECT ide_inarti FROM ventas_productos)
+                GROUP BY dci.ide_inarti
+            ),
+            costos_estrategia_3 AS (
+                -- Estrategia 3: Cualquier costo disponible (sin filtro de fecha)
+                SELECT DISTINCT ON (dci.ide_inarti)
+                    dci.ide_inarti,
+                    dci.precio_indci AS costo_unitario,
+                    3 AS prioridad
+                FROM inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                WHERE cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                    AND cci.ide_empr = ${dtoIn.ideEmpr}
+                    AND tci.signo_intci > 0
+                    AND dci.ide_inarti IN (SELECT ide_inarti FROM ventas_productos)
+                ORDER BY dci.ide_inarti, cci.fecha_trans_incci DESC, dci.ide_indci DESC
+            ),
+            costos_combinados AS (
+                -- Combinar todas las estrategias y tomar la de mayor prioridad (menor número)
+                SELECT DISTINCT ON (ide_inarti)
+                    ide_inarti,
+                    costo_unitario,
+                    prioridad
+                FROM (
+                    SELECT * FROM costos_estrategia
+                    UNION ALL
+                    SELECT * FROM costos_estrategia_2 WHERE costo_unitario IS NOT NULL
+                    UNION ALL
+                    SELECT * FROM costos_estrategia_3
+                ) AS todos_costos
+                WHERE costo_unitario IS NOT NULL
+                ORDER BY ide_inarti, prioridad ASC
+            ),
+            productos_con_costos AS (
+                SELECT 
+                    vp.*,
+                    COALESCE(cc.costo_unitario, 0) AS costo_unitario,
+                    (vp.cantidad_vendida * COALESCE(cc.costo_unitario, 0)) AS costo_total_ventas,
+                    (vp.ventas_brutas - (vp.cantidad_vendida * COALESCE(cc.costo_unitario, 0))) AS utilidad_bruta,
+                    CASE 
+                        WHEN vp.ventas_brutas > 0 
+                        THEN (vp.ventas_brutas - (vp.cantidad_vendida * COALESCE(cc.costo_unitario, 0))) / vp.ventas_brutas * 100
+                        ELSE 0 
+                    END AS margen_porcentual,
+                    -- Indicador de qué estrategia se usó para el costo
+                    CASE 
+                        WHEN cc.prioridad = 1 THEN 'ÚLTIMO_COSTO'
+                        WHEN cc.prioridad = 2 THEN 'COSTO_PROMEDIO'
+                        WHEN cc.prioridad = 3 THEN 'COSTO_HISTORICO'
+                        ELSE 'SIN_COSTO'
+                    END AS estrategia_costo
+                FROM ventas_productos vp
+                LEFT JOIN costos_combinados cc ON vp.ide_inarti = cc.ide_inarti
+                WHERE (vp.ventas_brutas - (vp.cantidad_vendida * COALESCE(cc.costo_unitario, 0))) > 0
+            )
+            SELECT 
+                producto,
+                categoria,
+                cantidad_vendida,
+                ventas_brutas,
+                costo_unitario,
+                costo_total_ventas,
+                utilidad_bruta,
+                ROUND(margen_porcentual, 2) AS margen_porcentual,
+                CASE 
+                    WHEN cantidad_vendida > 0 
+                    THEN ROUND(utilidad_bruta / cantidad_vendida, 4)
+                    ELSE 0 
+                END AS utilidad_por_unidad,
+                precio_venta_promedio,
+                facturas_con_producto,
+                clientes_unicos,
+                CASE 
+                    WHEN facturas_con_producto > 0 
+                    THEN ROUND(cantidad_vendida::DECIMAL / facturas_con_producto, 2)
+                    ELSE 0 
+                END AS rotacion_por_factura,
+                CASE 
+                    WHEN clientes_unicos > 0 
+                    THEN ROUND(utilidad_bruta / clientes_unicos, 2)
+                    ELSE 0 
+                END AS utilidad_por_cliente,
+                CASE 
+                    WHEN margen_porcentual > 50 THEN 'MUY ALTA RENTABILIDAD'
+                    WHEN margen_porcentual > 30 THEN 'ALTA RENTABILIDAD'
+                    WHEN margen_porcentual > 15 THEN 'RENTABILIDAD MEDIA'
+                    WHEN margen_porcentual > 5 THEN 'BAJA RENTABILIDAD'
+                    WHEN margen_porcentual > 0 THEN 'MARGEN MÍNIMO'
+                    ELSE 'PÉRDIDA'
+                END AS clasificacion_rentabilidad,
+                estrategia_costo,
+                RANK() OVER (ORDER BY utilidad_bruta DESC) AS ranking_utilidad_total,
+                RANK() OVER (ORDER BY margen_porcentual DESC NULLS LAST) AS ranking_margen,
+                -- Puntaje combinado para ordenamiento final
+                (utilidad_bruta * 0.6 + margen_porcentual * 0.4) AS puntaje_rentabilidad
+            FROM productos_con_costos
+            ORDER BY puntaje_rentabilidad DESC
+            LIMIT ${dtoIn.limit}
+        `);
+
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaFin);
+        query.addStringParam(4, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 }
