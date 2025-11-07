@@ -160,5 +160,27 @@ export class VentasBiController {
     }
 
 
+    @Get('getTotalClientesPorProvincia')
+    // @Auth()
+    getTotalClientesPorProvincia(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getTotalClientesPorProvincia(headersParams);
+    }
+
+
+    @Get('getTopClientesFacturas')
+    // @Auth()
+    getTopClientesFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
+        return this.service.getTopClientesFacturas({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getTotalClientesNuevosPorPeriodo')
+    // @Auth()
+    getTotalClientesNuevosPorPeriodo(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getTotalClientesNuevosPorPeriodo(headersParams);
+    }
+
 
 }

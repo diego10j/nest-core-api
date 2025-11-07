@@ -2,10 +2,8 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
-import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
-import { ProformasMensualesDto } from './dto/proformas-mensuales.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ProformasService } from './proformas.service';
 

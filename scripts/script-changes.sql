@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 
 
 ALTER TABLE sis_usuario ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
@@ -11,16 +9,11 @@ UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
 ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
-/**27/04/2023 aumenta path para logo de la empresa*/
-ALTER TABLE sis_empresa ADD COLUMN logotipo_empr varchar(120);
-
-
 /**15/08/2023 Campos tabla articulo*/
-ALTER TABLE inv_articulo ADD COLUMN activo_inarti BOOLEAN DEFAULT true;
-ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
-ALTER TABLE inv_articulo ADD COLUMN foto_inarti varchar(120);
 
-UPDATE inv_articulo SET  activo_inarti = true;
+ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
+
+
 
 /**18/09/2023 */
 ALTER TABLE inv_articulo ADD COLUMN publicacion_inarti Text;
@@ -31,9 +24,6 @@ ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Can
 ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
 ALTER TABLE inv_articulo ADD COLUMN cod_auto_inarti varchar(10);--Codigo generado automaticamente
 
-ALTER TABLE inv_articulo ADD COLUMN decim_stock_inarti int2; -- % Numero de decimales para control de stock 
-UPDATE inv_articulo SET  decim_stock_inarti = 3;  -- por defecto 3 decimales para todos
-
 
 
 /**27-11-2023**/
@@ -42,85 +32,9 @@ CREATE INDEX idx_uuid_persona ON gen_persona(uuid);
 
 
 /**21/05/22024**/
-CREATE INDEX idx_cxp_detall_factur_ide_cpcfa ON cxp_detall_factur (ide_cpcfa);
-CREATE INDEX idx_cxp_detall_factur_ide_inarti ON cxp_detall_factur (ide_inarti);
-CREATE INDEX idx_cxp_cabece_factur_ide_cpcfa ON cxp_cabece_factur (ide_cpcfa);
-CREATE INDEX idx_cxp_cabece_factur_fecha_emisi_cpcfa ON cxp_cabece_factur (fecha_emisi_cpcfa);
-CREATE INDEX idx_cxp_cabece_factur_ide_cpefa ON cxp_cabece_factur (ide_cpefa);
-
-CREATE INDEX idx_inv_det_comp_inve_ide_inarti ON inv_det_comp_inve (ide_inarti);
-CREATE INDEX idx_inv_cab_comp_inve_ide_inepi ON inv_cab_comp_inve (ide_inepi);
-CREATE INDEX idx_inv_cab_comp_inve_ide_incci ON inv_cab_comp_inve (ide_incci);
-CREATE INDEX idx_inv_tip_tran_inve_ide_intti ON inv_tip_tran_inve (ide_intti);
-
-CREATE INDEX idx_cxc_cabece_factura_fecha_emisi_cccfa ON cxc_cabece_factura (fecha_emisi_cccfa);
-CREATE INDEX idx_cxc_cabece_factura_ide_ccefa ON cxc_cabece_factura (ide_ccefa);
-CREATE INDEX idx_cxc_deta_factura_ide_cccfa ON cxc_deta_factura (ide_cccfa);
-CREATE INDEX idx_cxc_deta_factura_ide_inarti ON cxc_deta_factura (ide_inarti);
-
-CREATE INDEX idx_gen_mes_ide_gemes ON gen_mes (ide_gemes);
-
 ALTER TABLE inv_doc_producto ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_inv_doc_producto ON inv_doc_producto(uuid);
 
-
-CREATE TABLE "public"."sis_archivo" (
-    "ide_arch" int4,
-    "nombre_arch" varchar(200),
-    "nombre2_arch" varchar(80),
-    "url_arch" varchar(200),
-    "carpeta_arch" bool,
-    "peso_arch" int4,
-    "ide_empr" int2,
-    "ide_sucu" int2,
-    usuario_ingre varchar(50),
-    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    usuario_actua varchar(50),
-    hora_actua TIMESTAMP,
-    "sis_ide_arch" int4,
-    "public_arch" bool DEFAULT true,
-    "favorita_arch" bool,
-    "descargable_arch" bool,
-	"papelera_arch" bool DEFAULT false,
-	 hora_papelera_arch TIMESTAMP ,
-    "comentario_arch" bool,
-    "type_arch" varchar(150),
-	"extension_arch" varchar(50),
-	"descargas_arch" int4,
-	"ide_inarti" int4,
-    CONSTRAINT pk_sis_archivo PRIMARY KEY(ide_arch)
-);
-ALTER TABLE public.sis_archivo
-	ADD CONSTRAINT sis_archivo_ide_sucu_fkey
-	FOREIGN KEY(ide_sucu)
-	REFERENCES public.sis_sucursal(ide_sucu)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
-ALTER TABLE public.sis_archivo
-	ADD CONSTRAINT sis_archivo_ide_empr_fkey
-	FOREIGN KEY(ide_empr)
-	REFERENCES public.sis_empresa(ide_empr)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;	
-ALTER TABLE public.sis_archivo
-	ADD CONSTRAINT sis_archivo_ide_arch_sis_fkey
-	FOREIGN KEY(sis_ide_arch)
-	REFERENCES public.sis_archivo(ide_arch)
-	MATCH SIMPLE
-	ON DELETE CASCADE 
-	ON UPDATE CASCADE ;
-ALTER TABLE sis_archivo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
-CREATE INDEX idx_uuid_sis_archivo ON sis_archivo(uuid);
-
-ALTER TABLE public.sis_archivo
-	ADD CONSTRAINT sis_archivo_ide_inarti_fkey
-	FOREIGN KEY(ide_inarti)
-	REFERENCES public.inv_articulo(ide_inarti)
-	MATCH SIMPLE
-	ON DELETE CASCADE 
-	ON UPDATE CASCADE ;
 
 
 /**29/05/22024**/
@@ -128,58 +42,6 @@ ALTER TABLE gen_persona ADD COLUMN activo_geper BOOLEAN;
 UPDATE gen_persona SET  activo_geper = true;
 
 
-CREATE INDEX idx_gen_persona_cliente_identificacion_nivel
-ON gen_persona (es_cliente_geper, identificac_geper, nivel_geper);
-CREATE INDEX idx_gen_persona_ide_cndfp
-ON gen_persona (ide_cndfp);
-CREATE INDEX idx_gen_persona_ide_vgven
-ON gen_persona (ide_vgven);
-CREATE INDEX idx_con_deta_forma_pago_ide_cndfp
-ON con_deta_forma_pago (ide_cndfp);
-CREATE INDEX idx_ven_vendedor_ide_vgven
-ON ven_vendedor (ide_vgven);
-CREATE INDEX idx_cxc_detall_transa_ide_ccctr_ide_ccttr
-ON cxc_detall_transa (ide_ccctr, ide_ccttr);
-CREATE INDEX idx_cxc_cabece_transa_ide_ccctr
-ON cxc_cabece_transa (ide_ccctr);
-CREATE INDEX idx_cxc_tipo_transacc_ide_ccttr
-ON cxc_tipo_transacc (ide_ccttr);
-
-CREATE INDEX idx_sis_auditoria_acceso_optimized ON sis_auditoria_acceso (ide_usua, ide_acau, fin_auac);
-CREATE INDEX idx_sis_auditoria_acceso_ide_acau_fin_auac ON sis_auditoria_acceso(ide_acau, fin_auac);
-CREATE INDEX idx_sis_usuario_ide_usua ON sis_usuario(ide_usua);
-CREATE INDEX idx_sis_usuario_clave_ide_usua ON sis_usuario_clave(ide_usua);
-CREATE INDEX idx_sis_usuario_sucursal_ide_usua ON sis_usuario_sucursal(ide_usua);
-CREATE INDEX idx_sis_auditoria_acceso_ide_usua ON sis_auditoria_acceso(ide_usua);
-CREATE INDEX idx_sis_usuario_ide_perf ON sis_usuario(ide_perf);
-CREATE INDEX idx_sis_perfil_ide_perf ON sis_perfil(ide_perf);
-
--- 1 June 2024 10:14:46 AM
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'UNI' WHERE "ide_inuni" = 0;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'LIB' WHERE "ide_inuni" = 8;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FRA' WHERE "ide_inuni" = 7;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'LT' WHERE "ide_inuni" = 6;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'KG' WHERE "ide_inuni" = 5;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'FUN' WHERE "ide_inuni" = 4;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'CAJ' WHERE "ide_inuni" = 1;
-UPDATE "public"."inv_unidad" SET "siglas_inuni" = 'GAL' WHERE "ide_inuni" = 2;
-
-
-CREATE INDEX idx_ide_geper_cab_transa ON cxc_cabece_transa (ide_geper);
-CREATE INDEX idx_fecha_trans_ccdtr ON cxc_detall_transa (fecha_trans_ccdtr);
-CREATE INDEX idx_ide_sucu ON cxc_detall_transa (ide_sucu);
-CREATE INDEX idx_ide_ccctr ON cxc_cabece_transa (ide_ccctr);
-CREATE INDEX idx_ide_ccttr ON cxc_tipo_transacc (ide_ccttr);
-CREATE INDEX idx_ide_usua ON sis_usuario (ide_usua);
-
--- Índice compuesto en la tabla cxc_cabece_factura
-CREATE INDEX idx_facturas_fecha_geper_ccefa ON cxc_cabece_factura (fecha_emisi_cccfa, ide_geper, ide_ccefa);
-
--- Índice adicional en las columnas ide_geper y ide_ccefa (opcional)
-CREATE INDEX idx_facturas_geper_ccefa ON cxc_cabece_factura (ide_geper, ide_ccefa);
-
--- Índice en la columna fecha_emisi_cccfa (opcional si el índice compuesto no se puede usar)
-CREATE INDEX idx_facturas_fecha ON cxc_cabece_factura (fecha_emisi_cccfa);
 
 -- 07 June 2024 10:14:46 AM
 CREATE TABLE "public"."sis_calendario" (
@@ -379,14 +241,7 @@ ALTER TABLE public.inv_bodega
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT;
 
-CREATE INDEX idx_inv_cab_comp_inve_filter
-ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_empr);
 
-CREATE INDEX idx_inv_articulo_hace_kardex
-ON inv_articulo (hace_kardex_inarti);
-
-CREATE INDEX idx_inv_cab_comp_inve_order
-ON inv_cab_comp_inve (fecha_trans_incci, ide_incci);
 
 ALTER TABLE inv_cab_comp_inve ADD COLUMN automatico_incci bool;
 update inv_cab_comp_inve set automatico_incci=false;
@@ -412,21 +267,13 @@ ALTER TABLE inv_articulo ADD COLUMN notas_inarti TEXT;
 
 ALTER TABLE inv_articulo_carac DROP COLUMN ide_inare;
 
-CREATE INDEX idx_inv_marca_ide_inmar ON inv_marca(ide_inmar);
-CREATE INDEX idx_inv_unidad_ide_inuni ON inv_unidad(ide_inuni);
-CREATE INDEX idx_inv_tipo_producto_ide_intpr ON inv_tipo_producto(ide_intpr);
-CREATE INDEX idx_inv_categoria_ide_incate ON inv_categoria(ide_incate);
-CREATE INDEX idx_inv_bodega_ide_inbod ON inv_bodega(ide_inbod);
-CREATE INDEX idx_inv_fabricante_ide_infab ON inv_fabricante(ide_infab);
+
 
 CREATE INDEX idx_inv_conversion_unidad_ide_inuni ON inv_conversion_unidad(ide_inuni);
 CREATE INDEX idx_inv_conversion_unidad_inv_ide_inuni ON inv_conversion_unidad(inv_ide_inuni);
 CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
 
 // 25 Sep 2024
-
-ALTER TABLE inv_articulo ADD COLUMN otro_nombre_inarti varchar(200);   -- Otros nombres del producto     --contador de vistas 
- 
 
 ALTER TABLE inv_articulo ADD COLUMN total_vistas_inarti int;
 ALTER TABLE inv_articulo ADD COLUMN fotos_inarti JSONB;  
@@ -436,14 +283,9 @@ ALTER TABLE inv_articulo ADD COLUMN publicado_inarti boolean;
 ALTER TABLE inv_articulo ADD COLUMN desc_corta_inarti varchar(500); 
 
 update inv_articulo set publicado_inarti = false, total_vistas_inarti =0, total_ratings_inarti= 0;
+
+
 CREATE EXTENSION IF NOT EXISTS unaccent;
-
-
-CREATE INDEX idx_cdf_ide_inarti ON cxc_deta_factura (ide_inarti);
-CREATE INDEX idx_cf_ide_ccefa ON cxc_cabece_factura (ide_ccefa);
-CREATE INDEX idx_cdp_ide_inarti ON cxp_detall_factur (ide_inarti);
-CREATE INDEX idx_cp_ide_cpefa ON cxp_cabece_factur (ide_cpefa);
-
 CREATE INDEX idx_immutable_unaccent_replace_nombre_inarti
 ON inv_articulo (immutable_unaccent_replace(nombre_inarti));
 
@@ -597,17 +439,9 @@ ALTER TABLE sis_sucursal ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;
 
 
-
 -- 12 Nov 2024
 
-
-CREATE INDEX IF NOT EXISTS idx_cxp_cabece_factur_fecha_estado ON cxp_cabece_factur(ide_cpefa, fecha_emisi_cpcfa, ide_empr);
-CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_inarti_ccdfa ON cxc_deta_factura(ide_cccfa, ide_inarti);
-CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_precio ON cxc_deta_factura(precio_ccdfa, total_ccdfa);
-CREATE INDEX IF NOT EXISTS idx_cxc_cabece_factura_geper_fecha_estado ON cxc_cabece_factura(ide_geper, ide_ccefa, fecha_emisi_cccfa, ide_empr);
 CREATE INDEX IF NOT EXISTS idx_inv_articulo_inarti ON inv_articulo(ide_inarti, uuid);
-CREATE INDEX IF NOT EXISTS idx_inv_unidad_inuni ON inv_unidad(ide_inuni);
-
 
 -- 04-02-2025
 
@@ -897,7 +731,6 @@ CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_articulo ON cxc_deta_factura(ide
 CREATE INDEX IF NOT EXISTS idx_inv_articulo_unidad ON inv_articulo(ide_inarti, ide_inuni);
 
 
-
 ALTER TABLE "public"."cxc_cabece_proforma"
 ADD COLUMN "ide_geper" int4;
 
@@ -914,37 +747,7 @@ ALTER TABLE public.cxc_cabece_proforma
 	MATCH SIMPLE
 	ON DELETE RESTRICT 
 	ON UPDATE RESTRICT ;
-
   
-    -- Índices para mejorar los filtros y joins en inv_cab_comp_inve
-CREATE INDEX idx_cab_fecha_inepi_intti
-ON inv_cab_comp_inve (fecha_trans_incci, ide_inepi, ide_intti);
-
--- Índice para joins en inv_det_comp_inve por ide_incci y búsqueda por artículo
-CREATE INDEX idx_det_incci_inarti_precio
-ON inv_det_comp_inve (ide_incci, ide_inarti, precio_indci);
-
--- Índice para inv_tip_tran_inve para join con ide_intti
-CREATE INDEX idx_tran_intti_intci
-ON inv_tip_tran_inve (ide_intti, ide_intci);
-
--- Índice para inv_tip_comp_inve por signo y clave
-CREATE INDEX idx_tip_comp_intci_signo
-ON inv_tip_comp_inve (ide_intci, signo_intci);
-
--- Opcional: si haces muchos filtros por tipo de transacción específica
-CREATE INDEX idx_cab_intti
-ON inv_cab_comp_inve (ide_intti);
-
--- Si consultas frecuentemente por ide_inarti
-CREATE INDEX idx_det_inarti
-ON inv_det_comp_inve (ide_inarti);
-
--- Para acelerar el NOT IN final con ide_inarti
--- (en compras_periodo CTE)
-CREATE INDEX idx_temp_compras_periodo_inarti
-ON inv_det_comp_inve (ide_inarti);
-
     
 
 CREATE TABLE inv_conf_precios_articulo (
@@ -972,75 +775,10 @@ CREATE TABLE inv_conf_precios_articulo (
     
 
 CREATE INDEX idx_inv_conf_precios_articulo_inarti ON inv_conf_precios_articulo(ide_inarti);
-CREATE INDEX idx_inv_articulo_ide ON inv_articulo(ide_inarti);
-
--- Para compras_periodo y ultima_compra_fuera_periodo
-CREATE INDEX idx_inv_det_comp_inve_ide_inarti ON inv_det_comp_inve(ide_inarti);
-CREATE INDEX idx_inv_cab_comp_inve_fecha_ide ON inv_cab_comp_inve(fecha_trans_incci, ide_incci, ide_intti, ide_inepi);
-CREATE INDEX idx_inv_cab_comp_inve_ide_intti ON inv_cab_comp_inve(ide_intti);
-
--- Para datos_completos
-CREATE INDEX idx_cxc_deta_factura_ide_inarti ON cxc_deta_factura(ide_inarti, ide_cccfa);
-CREATE INDEX idx_cxc_cabece_factura_fecha_emisi ON cxc_cabece_factura(fecha_emisi_cccfa, ide_cccfa, ide_ccefa, ide_empr, ide_geper);
-CREATE INDEX idx_cxc_cabece_factura_secuencial ON cxc_cabece_factura(secuencial_cccfa);
-
--- Para joins frecuentes
-CREATE INDEX idx_inv_articulo_ide ON inv_articulo(ide_inarti, hace_kardex_inarti, ide_inuni);
-CREATE INDEX idx_gen_persona_ide ON gen_persona(ide_geper);
-CREATE INDEX idx_ven_vendedor_ide ON ven_vendedor(ide_vgven);
-CREATE INDEX idx_inv_unidad_ide ON inv_unidad(ide_inuni);
-
--- Índice compuesto para mejorar búsquedas de precios
-CREATE INDEX idx_inv_det_comp_inve_compuesto ON inv_det_comp_inve(ide_inarti, ide_incci, precio_indci);
-
--- Índice para compras (ya existía, pero lo refuerzo con uno compuesto)
-CREATE INDEX IF NOT EXISTS idx_inv_det_comp_inve_arti_fecha ON inv_det_comp_inve(ide_inarti, precio_indci, ide_incci)
-WHERE precio_indci > 0;
-
--- Índice compuesto para cabecera de compras con tipo de transacción
-CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_arti_tipo ON inv_cab_comp_inve(ide_incci, ide_intti, ide_inepi, fecha_trans_incci);
-
--- Índice para detalles de facturación (mejorado)
-CREATE INDEX IF NOT EXISTS idx_cxc_deta_factura_arti_cab ON cxc_deta_factura(ide_inarti, ide_cccfa, cantidad_ccdfa, precio_ccdfa, total_ccdfa);
-
--- Índice para artículos (completo)
-CREATE INDEX IF NOT EXISTS idx_inv_articulo_completo ON inv_articulo(ide_inarti, nombre_inarti, hace_kardex_inarti, ide_inuni);
-
-CREATE INDEX idx_det_comp_inve_arti_cci_precio ON inv_det_comp_inve (ide_inarti, ide_incci, precio_indci);
-
-CREATE INDEX idx_cab_comp_inve_epi_fecha_tipo ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_intti);
-
-
-
-
-
--- 1. Índice compuesto para filtro por artículo, empresa, estado y fecha de emisión (WHERE)
-CREATE INDEX idx_cxc_factura_filtros 
-ON cxc_cabece_factura (ide_empr, ide_ccefa, fecha_emisi_cccfa, ide_geper, ide_vgven);
-
--- 2. Índice para JOIN entre detalle y cabecera
-CREATE INDEX idx_ccdfa_ide_cccfa 
-ON cxc_deta_factura (ide_cccfa);
-
--- 3. Índice para filtro por artículo en cxc_deta_factura
-CREATE INDEX idx_ccdfa_ide_inarti 
-ON cxc_deta_factura (ide_inarti);
 
 -- 4. Índice para cálculo de agregados por ide_geper
 CREATE INDEX idx_geper_nom_uuid 
 ON gen_persona (ide_geper, nom_geper, uuid);
-
--- 5. Índice para JOIN con unidad de medida
-CREATE INDEX idx_inv_articulo_unidad 
-ON inv_articulo (ide_inarti, ide_inuni);
-
--- 6. Índice para JOIN con unidad de medida (inv_unidad)
-CREATE INDEX idx_inv_unidad 
-ON inv_unidad (ide_inuni, siglas_inuni);
-
--- 7. Índice para JOIN con vendedor
-CREATE INDEX idx_ven_vendedor 
-ON ven_vendedor (ide_vgven, nombre_vgven);
 
 
 ALTER TABLE con_deta_forma_pago ADD COLUMN activo_cndfp bool DEFAULT true;
@@ -1058,11 +796,6 @@ ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURREN
 ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_actua TIMESTAMP;
 
--- Índice para la condición WHERE principal
-CREATE INDEX idx_articulo_productos_activos ON inv_articulo(ide_intpr, nivel_inarti, ide_empr, activo_inarti);
-
--- Índice para la unión (JOIN) con categorías
-CREATE INDEX idx_articulo_categoria ON inv_articulo(ide_incate);
 
 CREATE INDEX idx_articulo_filtros ON inv_articulo (
     ide_empr,
@@ -1082,12 +815,6 @@ CREATE INDEX idx_articulo_filtros ON inv_articulo (
     decim_stock_inarti
 );
 
-CREATE INDEX idx_unidad_ide ON inv_unidad (ide_inuni) 
-INCLUDE (nombre_inuni, siglas_inuni);
-
-CREATE INDEX idx_categoria_ide ON inv_categoria (ide_incate) 
-INCLUDE (nombre_incate);
-
 
 ALTER TABLE sis_parametros ADD COLUMN es_empr_para bool DEFAULT false;  -- para saber si el parametro se maneja por empresa
 ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;    -- se llena cuando  es_empr_para = true
@@ -1099,18 +826,6 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
-
--- Índices para la tabla inv_articulo (búsqueda de productos)
-CREATE INDEX idx_inv_articulo_empresa_activo ON inv_articulo(ide_empr, activo_inarti, ide_intpr, nivel_inarti);
-
--- Índices para el cálculo de saldo (transacciones de inventario)
-CREATE INDEX idx_inv_det_comp_inve_articulo ON inv_det_comp_inve(ide_inarti);
-CREATE INDEX idx_inv_cab_comp_inve_estado_empresa ON inv_cab_comp_inve(ide_inepi, ide_empr);
-CREATE INDEX idx_inv_cab_comp_inve_tipo ON inv_cab_comp_inve(ide_intti);
-
--- Índices para relaciones frecuentes
-CREATE INDEX idx_inv_articulo_categoria ON inv_articulo(ide_incate);
-CREATE INDEX idx_inv_articulo_unidad ON inv_articulo(ide_inuni);
 
 --- actualiza categorias de productos existentes
 
@@ -1298,38 +1013,7 @@ CREATE INDEX idx_wha_det_camp_envio_telefono_whden
 ON wha_det_camp_envio (telefono_whden);
 
 
-CREATE TABLE "public"."sis_moneda" (
-    "ide_mone" int4,
-    "nombre_mone" varchar(80),
-    "simbolo_arch" varchar(10),
-	"activo_arch" bool,
-	"ide_gepais" int4,
-    "ide_empr" int2,
-    "ide_sucu" int2,
-    usuario_ingre varchar(50),
-    hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    usuario_actua varchar(50),
-    hora_actua TIMESTAMP,
-    CONSTRAINT pk_sis_moneda PRIMARY KEY(ide_mone)
-);
-ALTER TABLE "public"."sis_moneda" ADD FOREIGN KEY ("ide_gepais") REFERENCES "public"."gen_pais" ("ide_gepais");
 
-INSERT INTO "public"."sis_moneda" ("ide_mone", "nombre_mone", "simbolo_arch", "activo_arch", "ide_gepais", "ide_empr", "ide_sucu") VALUES
-(1, 'DOLARES AMERICANOS', 'USD', 'true', 1, 0, 2);
-
-
--- Índices para inv_det_comp_inve (dci) - tabla principal de movimientos
-CREATE INDEX IF NOT EXISTS idx_inv_det_comp_inve_articulo_cabecera ON inv_det_comp_inve(ide_inarti, ide_incci);
-
--- Índices para inv_cab_comp_inve (cci)
-CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_estado ON inv_cab_comp_inve(ide_inepi);
-CREATE INDEX IF NOT EXISTS idx_inv_cab_comp_inve_empresa ON inv_cab_comp_inve(ide_empr);
-
--- Índices para inv_tip_tran_inve (tti)
-CREATE INDEX IF NOT EXISTS idx_inv_tip_tran_inve_id ON inv_tip_tran_inve(ide_intti);
-
--- Índice para inv_unidad (uni)
-CREATE INDEX IF NOT EXISTS idx_inv_unidad_id ON inv_unidad(ide_inuni);
 
 -- Índice compuesto para mejorar el GROUP BY
 CREATE INDEX IF NOT EXISTS idx_inv_articulo_grouping ON inv_articulo(
@@ -1339,8 +1023,6 @@ CREATE INDEX IF NOT EXISTS idx_inv_articulo_grouping ON inv_articulo(
     cant_stock1_inarti, 
     cant_stock2_inarti
 );
-
-
 
 
 
@@ -1424,41 +1106,6 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE sis_perfil_opcion ADD COLUMN hora_actua TIMESTAMP;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
-
-
-
--- Para inv_cab_comp_inve (tabla principal)
-CREATE INDEX idx_inv_cab_comp_inve_ide ON inv_cab_comp_inve(ide_incci, ide_empr);
-CREATE INDEX idx_inv_cab_comp_inve_empr ON inv_cab_comp_inve(ide_empr, ide_incci);
-
--- Para las tablas de joins
-CREATE INDEX idx_inv_bodega_ide ON inv_bodega(ide_inbod);
-CREATE INDEX idx_inv_tip_tran_inve_ide ON inv_tip_tran_inve(ide_intti);
-CREATE INDEX idx_inv_tip_comp_inve_ide ON inv_tip_comp_inve(ide_intci);
-CREATE INDEX idx_inv_est_prev_inve_ide ON inv_est_prev_inve(ide_inepi);
-
--- Para cxc_cabece_factura y su relación con inv_det_comp_inve
-CREATE INDEX idx_cxc_cabece_factura_ide ON cxc_cabece_factura(ide_cccfa);
-CREATE INDEX idx_inv_det_comp_inve_cccfa ON inv_det_comp_inve(ide_cccfa, ide_incci);
-CREATE INDEX idx_inv_det_comp_inve_incci_cccfa ON inv_det_comp_inve(ide_incci, ide_cccfa);
-
--- Para cxp_cabece_factur y su relación con inv_det_comp_inve
-CREATE INDEX idx_cxp_cabece_factur_ide ON cxp_cabece_factur(ide_cpcfa);
-CREATE INDEX idx_inv_det_comp_inve_cpcfa ON inv_det_comp_inve(ide_cpcfa, ide_incci);
-CREATE INDEX idx_inv_det_comp_inve_incci_cpcfa ON inv_det_comp_inve(ide_incci, ide_cpcfa);
-
--- Índices compuestos para mejor performance en las subconsultas
-CREATE INDEX idx_cxp_cabece_factur_numero ON cxp_cabece_factur(ide_cpcfa, numero_cpcfa);
-
--- Para campos frecuentemente usados en WHERE y ORDER BY
-CREATE INDEX idx_inv_det_comp_inve_completo ON inv_det_comp_inve(ide_incci, ide_cccfa, ide_cpcfa);
-
--- Índices para las foreign keys
-CREATE INDEX idx_inv_cab_comp_inve_bodega ON inv_cab_comp_inve(ide_inbod);
-CREATE INDEX idx_inv_cab_comp_inve_tiptran ON inv_cab_comp_inve(ide_intti);
-CREATE INDEX idx_inv_cab_comp_inve_persona ON inv_cab_comp_inve(ide_geper);
-
-
 
 
 
@@ -1603,26 +1250,4 @@ CREATE INDEX CONCURRENTLY idx_inv_articulo_empresa_stock
 ON inv_articulo (ide_empr, cant_stock1_inarti, cant_stock2_inarti) 
 WHERE cant_stock1_inarti IS NOT NULL OR cant_stock2_inarti IS NOT NULL;
 
-CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_articulo_empresa 
-ON inv_det_comp_inve (ide_inarti, ide_empr, ide_incci);
 
-CREATE INDEX CONCURRENTLY idx_inv_cab_comp_inve_estado_fecha 
-ON inv_cab_comp_inve (ide_inepi, fecha_trans_incci, ide_empr);
-
-CREATE INDEX CONCURRENTLY idx_inv_cab_comp_inve_fecha_estado 
-ON inv_cab_comp_inve (fecha_trans_incci, ide_inepi, ide_empr);
-
-CREATE INDEX CONCURRENTLY idx_inv_tip_comp_inve_signo 
-ON inv_tip_comp_inve (signo_intci);
-
-CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_compras 
-ON inv_det_comp_inve (ide_inarti, ide_incci) 
-INCLUDE (precio_indci);
-
--- Índices secundarios (crear después si es necesario)
-CREATE INDEX CONCURRENTLY idx_inv_det_comp_inve_ventas_recientes 
-ON inv_det_comp_inve (ide_inarti, ide_incci) 
-WHERE ide_inarti IS NOT NULL;
-
-CREATE INDEX CONCURRENTLY idx_inv_tip_tran_inve_ide 
-ON inv_tip_tran_inve (ide_intti);

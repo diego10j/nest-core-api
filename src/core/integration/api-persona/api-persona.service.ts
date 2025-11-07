@@ -14,7 +14,7 @@ export class ApiPersonaService extends BaseService {
     super();
   }
 
-  async consultaCedula(dtoIn: CedulaDto & HeaderParamsDto) {
+  async consultaCedula(dtoIn: CedulaDto) {
     try {
       const URL = `https://si.secap.gob.ec/sisecap/logeo_web/json/busca_persona_registro_civil.php`;
 
@@ -46,7 +46,7 @@ export class ApiPersonaService extends BaseService {
     }
   }
 
-  async consultaRUC(dtoIn: RucDto & HeaderParamsDto) {
+  async consultaRUC(dtoIn: RucDto) {
     try {
       const URL = `https://si.secap.gob.ec/sisecap/ServicioConsultaDatosRUC.php?ruc=${dtoIn.ruc}`;
       const requestConfig: AxiosRequestConfig = {

@@ -2281,4 +2281,78 @@ ORDER BY
         query.addStringParam(4, dtoIn.fechaFin);
         return await this.dataSource.createQuery(query);
     }
+
+
+    async getTotalClientesPorProvincia(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+        SELECT p.ide_geprov,
+        COALESCE(p.nombre_geprov, 'NO ASIGNADA') AS provincia,
+        COUNT(per.ide_geper) AS cantidad_clientes,
+        ROUND(COUNT(per.ide_geper) * 100.0 / (SELECT COUNT(*) FROM public.gen_persona), 2) AS porcentaje
+        FROM public.gen_persona per
+        LEFT JOIN public.gen_provincia p ON per.ide_geprov = p.ide_geprov
+        WHERE per.es_cliente_geper = true
+        AND ide_empr = ${dtoIn.ideEmpr}
+        GROUP BY p.ide_geprov, p.nombre_geprov
+        ORDER BY cantidad_clientes DESC   
+    `);
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    async getTopClientesFacturas(dtoIn: TopClientesDto & HeaderParamsDto) {
+        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+        const query = new SelectQuery(
+            `
+        SELECT
+            g.ide_geper,
+            upper(g.nom_geper) as nom_geper,
+            COUNT(1) AS num_facturas
+        FROM
+            cxc_cabece_factura cf
+            INNER JOIN gen_persona g ON g.ide_geper = cf.ide_geper
+        WHERE
+            cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND cf.ide_empr = ${dtoIn.ideEmpr} 
+        GROUP BY
+            g.ide_geper,
+            g.nom_geper
+        ORDER BY
+            num_facturas  DESC
+        ${limitConfig}`,
+            dtoIn,
+        );
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
+
+    async getTotalClientesNuevosPorPeriodo(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+        WITH clientes_por_anio AS (
+            SELECT 
+                EXTRACT(YEAR FROM fecha_ingre) AS anio,
+                COUNT(ide_geper) AS total_clientes
+            FROM public.gen_persona
+            WHERE fecha_ingre IS NOT NULL
+                AND ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY EXTRACT(YEAR FROM fecha_ingre)
+        )
+        SELECT 
+            anio,
+            total_clientes as total_clientes_nuevos,
+            LAG(total_clientes) OVER (ORDER BY anio) AS clientes_nuevos_anio_anterior,
+            CASE 
+                WHEN LAG(total_clientes) OVER (ORDER BY anio) IS NOT NULL THEN
+                    ROUND(((total_clientes - LAG(total_clientes) OVER (ORDER BY anio)) * 100.0 / LAG(total_clientes) OVER (ORDER BY anio)), 2)
+                ELSE NULL
+            END AS crecimiento_porcentual
+        FROM clientes_por_anio
+        ORDER BY anio DESC        
+      
+    `);
+        return await this.dataSource.createQuery(query);
+    }
+
 }
