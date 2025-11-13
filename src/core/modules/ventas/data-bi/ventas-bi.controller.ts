@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dto';
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
@@ -176,11 +177,29 @@ export class VentasBiController {
         });
     }
 
-    @Get('getTotalClientesNuevosPorPeriodo')
+    @Get('getTotalClientesPorPeriodo')
     // @Auth()
-    getTotalClientesNuevosPorPeriodo(@AppHeaders() headersParams: HeaderParamsDto) {
-        return this.service.getTotalClientesNuevosPorPeriodo(headersParams);
+    getTotalClientesPorPeriodo(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getTotalClientesPorPeriodo(headersParams);
     }
+
+    @Get('getTotalClientesPorPeriodoVendedor')
+    // @Auth()
+    getTotalClientesPorPeriodoVendedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
+        return this.service.getTotalClientesPorPeriodoVendedor({
+            ...headersParams,
+            ...dtoIn,
+        });
+    }
+
+    @Get('getResumenClientesPorVendedor')
+    // @Auth()
+    getResumenClientesPorVendedor(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getResumenClientesPorVendedor(headersParams);
+    }
+
+
+
 
 
 }

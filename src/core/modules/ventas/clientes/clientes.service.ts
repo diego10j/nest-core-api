@@ -3,7 +3,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { UpdateQuery } from 'src/core/connection/helpers';
+import { Query, UpdateQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
 import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
@@ -66,7 +66,7 @@ export class ClientesService extends BaseService {
             p.contacto_geper,
             p.direccion_geper,
             nombre_geprov,
-            nombre_gecan,
+            nombre_gecant,
             p.correo_geper,
             p.telefono_geper,
             p.movil_geper,
@@ -301,7 +301,7 @@ export class ClientesService extends BaseService {
                 movimientos mov
                 CROSS JOIN (SELECT COALESCE(SUM(saldo_inicial), 0) AS saldo_inicial FROM saldo_inicial) saldo_inicial
             ORDER BY 
-                fecha_trans_ccdtr, ide_ccdtr;
+                fecha_trans_ccdtr, ide_ccdtr
           `,
       dtoIn,
     );
@@ -321,6 +321,19 @@ export class ClientesService extends BaseService {
   async getDetalleVentasCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
+        WITH notas_credito_detalle AS (
+            SELECT 
+                cdn.ide_inarti,
+                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                SUM(cdn.valor_cpdno) AS valor_nota_credito
+            FROM cxp_cabecera_nota cn
+            JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
+              AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
+              AND cn.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
+        )
         SELECT
             cdf.ide_ccdfa,
             cf.fecha_emisi_cccfa,
@@ -335,26 +348,33 @@ export class ClientesService extends BaseService {
             uni.siglas_inuni,
             cdf.precio_ccdfa,
             cdf.total_ccdfa,
-            cf.ide_cccfa
+            cf.ide_cccfa,
+            COALESCE(ncd.valor_nota_credito, 0) AS valor_nota_credito,
+            -- Campo calculado para el neto después de nota de crédito
+            (cdf.total_ccdfa - COALESCE(ncd.valor_nota_credito, 0)) AS total_neto
         FROM
             cxc_deta_factura cdf
-            INNER join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
-            INNER join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
-            LEFT join cxc_datos_fac df on cf.ide_ccdaf=df.ide_ccdaf 
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN cxc_datos_fac df ON cf.ide_ccdaf = df.ide_ccdaf 
             LEFT JOIN inv_unidad uni ON cdf.ide_inuni = uni.ide_inuni
+            LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti 
+                AND lpad(cf.secuencial_cccfa::text, 9, '0') = ncd.secuencial_padded
         WHERE
-            cf.ide_geper =  $1
-            AND cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
+            cf.ide_geper = $1
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
             AND cf.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY 
-            cf.fecha_emisi_cccfa desc, serie_ccdaf,secuencial_ccdfa
+            cf.fecha_emisi_cccfa DESC, serie_ccdaf, secuencial_cccfa
         `,
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_geper);
     query.addParam(2, dtoIn.fechaInicio);
     query.addParam(3, dtoIn.fechaFin);
+    query.addParam(4, dtoIn.fechaInicio);
+    query.addParam(5, dtoIn.fechaFin);
     return await this.dataSource.createQuery(query);
   }
 
@@ -391,10 +411,46 @@ export class ClientesService extends BaseService {
   async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `     
-        WITH UltimasVentas AS (
+        WITH compras_periodo AS (
+            SELECT
+                d.ide_inarti,
+                c.fecha_trans_incci,
+                d.precio_indci
+            FROM inv_det_comp_inve d
+            JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+            JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+            JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+            WHERE
+                c.ide_inepi = 1
+                AND e.signo_intci = 1
+                AND d.precio_indci > 0
+                AND c.ide_intti IN (19, 16, 3025)
+                AND c.ide_empr = ${dtoIn.ideEmpr}
+        ),
+        ultima_compra_fuera_periodo AS (
+            SELECT DISTINCT ON (d.ide_inarti)
+                d.ide_inarti,
+                c.fecha_trans_incci,
+                d.precio_indci
+            FROM inv_det_comp_inve d
+            JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+            JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+            JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+            WHERE
+                c.ide_inepi = 1
+                AND e.signo_intci = 1
+                AND d.precio_indci > 0
+                AND c.ide_intti IN (19, 16, 3025)
+                AND c.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
+        ),
+        UltimasVentas AS (
             SELECT 
                 a.ide_inarti, 
-                MAX(b.fecha_emisi_cccfa) AS fecha_ultima_venta
+                MAX(b.fecha_emisi_cccfa) AS fecha_ultima_venta,
+                COUNT(DISTINCT b.ide_cccfa) AS total_compras,
+                SUM(a.cantidad_ccdfa) AS cantidad_total,
+                AVG(a.precio_ccdfa) AS precio_promedio
             FROM cxc_deta_factura a
             INNER JOIN cxc_cabece_factura b ON a.ide_cccfa = b.ide_cccfa
             WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
@@ -411,12 +467,56 @@ export class ClientesService extends BaseService {
                 u.siglas_inuni,
                 b.ide_cccfa,
                 b.secuencial_cccfa,
-                c.serie_ccdaf
+                c.serie_ccdaf,
+                d.ide_ccdfa,
+                iart.hace_kardex_inarti,
+                -- Cálculo de precio de compra usando la lógica de f_utilidad_ventas
+                COALESCE(
+                    (SELECT pc.precio_indci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = d.ide_inarti
+                       AND pc.fecha_trans_incci > b.fecha_emisi_cccfa
+                       AND pc.fecha_trans_incci <= (b.fecha_emisi_cccfa + INTERVAL '5 days')
+                     ORDER BY pc.fecha_trans_incci ASC
+                     LIMIT 1),
+                    (SELECT pc.precio_indci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = d.ide_inarti
+                       AND pc.fecha_trans_incci <= b.fecha_emisi_cccfa
+                     ORDER BY pc.fecha_trans_incci DESC
+                     LIMIT 1),
+                    (SELECT uc.precio_indci
+                     FROM ultima_compra_fuera_periodo uc
+                     WHERE uc.ide_inarti = d.ide_inarti
+                     LIMIT 1),
+                    0
+                ) AS precio_compra,
+                COALESCE(
+                    (SELECT pc.fecha_trans_incci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = d.ide_inarti
+                       AND pc.fecha_trans_incci > b.fecha_emisi_cccfa
+                       AND pc.fecha_trans_incci <= (b.fecha_emisi_cccfa + INTERVAL '5 days')
+                     ORDER BY pc.fecha_trans_incci ASC
+                     LIMIT 1),
+                    (SELECT pc.fecha_trans_incci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = d.ide_inarti
+                       AND pc.fecha_trans_incci <= b.fecha_emisi_cccfa
+                     ORDER BY pc.fecha_trans_incci DESC
+                     LIMIT 1),
+                    (SELECT uc.fecha_trans_incci
+                     FROM ultima_compra_fuera_periodo uc
+                     WHERE uc.ide_inarti = d.ide_inarti
+                     LIMIT 1),
+                    NULL
+                ) AS fecha_ultima_compra
             FROM UltimasVentas uv
             INNER JOIN cxc_deta_factura d ON uv.ide_inarti = d.ide_inarti
             INNER JOIN cxc_cabece_factura b ON d.ide_cccfa = b.ide_cccfa AND b.fecha_emisi_cccfa = uv.fecha_ultima_venta
             INNER JOIN cxc_datos_fac c ON b.ide_ccdaf = c.ide_ccdaf
-            LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni AND b.fecha_emisi_cccfa = uv.fecha_ultima_venta
+            INNER JOIN inv_articulo iart ON d.ide_inarti = iart.ide_inarti
+            LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni
             WHERE b.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
             AND b.ide_geper = $2
             AND b.ide_empr = ${dtoIn.ideEmpr} 
@@ -434,11 +534,50 @@ export class ClientesService extends BaseService {
                 SUBSTRING(dv.serie_ccdaf FROM 1 FOR 3), '-', 
                 SUBSTRING(dv.serie_ccdaf FROM 4 FOR 3), '-', 
                 dv.secuencial_cccfa
-            ) AS secuencial  
+            ) AS secuencial,
+            -- Métricas de compras y utilidad
+            uv.total_compras,
+            uv.cantidad_total,
+            uv.precio_promedio,
+            dv.precio_compra,
+            dv.fecha_ultima_compra,
+            dv.hace_kardex_inarti,
+            -- Cálculos de utilidad
+            CASE
+                WHEN dv.hace_kardex_inarti = false THEN 0
+                ELSE (dv.ultimo_precio - dv.precio_compra)
+            END AS utilidad_unitaria,
+            CASE
+                WHEN dv.hace_kardex_inarti = false THEN 0
+                ELSE ROUND((dv.ultimo_precio - dv.precio_compra) * dv.ultima_cantidad, 2)
+            END AS utilidad_neta,
+            CASE
+                WHEN dv.hace_kardex_inarti = false THEN 0
+                WHEN dv.precio_compra > 0 THEN 
+                    ROUND(((dv.ultimo_precio - dv.precio_compra) / dv.precio_compra) * 100, 2)
+                ELSE 0
+            END AS porcentaje_utilidad,
+            -- Clasificación de margen
+            CASE 
+                WHEN dv.precio_compra > 0 AND dv.hace_kardex_inarti = true THEN
+                    CASE 
+                        WHEN ((dv.ultimo_precio - dv.precio_compra) / dv.precio_compra) * 100 >= 30 THEN 'ALTO'
+                        WHEN ((dv.ultimo_precio - dv.precio_compra) / dv.precio_compra) * 100 >= 15 THEN 'MEDIO'
+                        ELSE 'BAJO'
+                    END
+                WHEN dv.hace_kardex_inarti = false THEN 'SIN_KARDEX'
+                ELSE 'SIN_COSTO'
+            END AS clasificacion_margen,
+            -- Días desde última compra - CORREGIDO Y SIMPLIFICADO
+            CASE 
+                WHEN dv.fecha_ultima_compra IS NOT NULL THEN
+                    (CURRENT_DATE - dv.fecha_ultima_compra)
+                ELSE NULL
+            END AS dias_desde_ultima_compra
         FROM UltimasVentas uv
         INNER JOIN inv_articulo c ON uv.ide_inarti = c.ide_inarti
         LEFT JOIN DetallesUltimaVenta dv ON uv.ide_inarti = dv.ide_inarti AND uv.fecha_ultima_venta = dv.fecha_ultima_venta
-        ORDER BY c.nombre_inarti
+        ORDER BY uv.fecha_ultima_venta DESC, c.nombre_inarti
         `,
       dtoIn,
     );
@@ -464,8 +603,10 @@ export class ClientesService extends BaseService {
                 COUNT(ide_cccfa) AS num_facturas,
                 SUM(base_grabada_cccfa) AS ventas12,
                 SUM(base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas0,
+                SUM(base_grabada_cccfa + base_tarifa0_cccfa + base_no_objeto_iva_cccfa) AS ventas_brutas,
                 SUM(valor_iva_cccfa) AS iva,
-                SUM(total_cccfa) AS total
+                SUM(total_cccfa) AS total,
+                AVG(total_cccfa) AS promedio_venta
             FROM 
                 cxc_cabece_factura
             WHERE 
@@ -475,24 +616,71 @@ export class ClientesService extends BaseService {
                 AND ide_empr = ${dtoIn.ideEmpr}
             GROUP BY 
                 EXTRACT(MONTH FROM fecha_emisi_cccfa)
+        ),
+        NotasCredito AS (
+            SELECT 
+                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) AS mes,
+                COUNT(cn.ide_cpcno) AS num_notas_credito,
+                SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_nota_credito,
+                AVG(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS promedio_nota_credito
+            FROM 
+                cxp_cabecera_nota cn
+            INNER JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            WHERE 
+                cn.fecha_emisi_cpcno BETWEEN $4 AND $5
+                AND cn.ide_cpeno = 1
+                AND cn.ide_empr = ${dtoIn.ideEmpr}
+                AND cf.ide_geper = $6
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY 
+                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
         )
         SELECT 
+            gm.ide_gemes,
             gm.nombre_gemes,
             COALESCE(ff.num_facturas, 0) AS num_facturas,
-            COALESCE(ff.ventas12, 0) AS ventas12,
-            COALESCE(ff.ventas0, 0) AS ventas0,
+            COALESCE(ff.ventas12, 0) AS ventas_con_iva,
+            COALESCE(ff.ventas0, 0) AS ventas_sin_iva,
+            COALESCE(ff.ventas_brutas, 0) AS ventas_brutas,
+            COALESCE(nc.num_notas_credito, 0) AS num_notas_credito,
+            COALESCE(nc.total_nota_credito, 0) AS total_nota_credito,
+            COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) AS ventas_netas,
             COALESCE(ff.iva, 0) AS iva,
-            COALESCE(ff.total, 0) AS total
+            COALESCE(ff.total, 0) - COALESCE(nc.total_nota_credito, 0) AS total_neto,
+            COALESCE(ff.promedio_venta, 0) AS promedio_venta,
+            COALESCE(nc.promedio_nota_credito, 0) AS promedio_nota_credito,
+            -- Métricas adicionales
+            CASE 
+                WHEN COALESCE(ff.ventas_brutas, 0) > 0 THEN
+                    ROUND((COALESCE(nc.total_nota_credito, 0) / ff.ventas_brutas * 100), 2)
+                ELSE 0
+            END AS porcentaje_devolucion,
+            -- Cálculo mes anterior para comparación
+            LAG(COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) OVER (ORDER BY gm.ide_gemes) AS ventas_netas_mes_anterior,
+            CASE 
+                WHEN LAG(COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) OVER (ORDER BY gm.ide_gemes) > 0 THEN
+                    ROUND((((COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) - 
+                           LAG(COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) OVER (ORDER BY gm.ide_gemes)) * 100.0 / 
+                           LAG(COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0)) OVER (ORDER BY gm.ide_gemes)), 2)
+                ELSE NULL
+            END AS crecimiento_porcentual
         FROM 
             gen_mes gm
         LEFT JOIN 
             FacturasFiltradas ff ON gm.ide_gemes = ff.mes
+        LEFT JOIN 
+            NotasCredito nc ON gm.ide_gemes = nc.mes
         ORDER BY 
             gm.ide_gemes
-        `);
+    `);
+
     query.addStringParam(1, `${dtoIn.periodo}-01-01`);
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addIntParam(3, dtoIn.ide_geper);
+    query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(6, dtoIn.ide_geper);
+
     return await this.dataSource.createQuery(query);
   }
 
@@ -539,80 +727,200 @@ export class ClientesService extends BaseService {
   }
 
   async getVentasConUtilidad(dtoIn: TrnClienteDto & HeaderParamsDto) {
-    // Ajustar el porcentaje según  criterio 30% margen
     const query = new SelectQuery(`
-        WITH precios_compra AS (
+        WITH compras_periodo AS (
             SELECT
-                ide_geper,
-                precio_cpdfa,
-                fecha_emisi_cpcfa
-            FROM cxp_detall_factur df
-            INNER JOIN cxp_cabece_factur cf ON df.ide_cpcfa = cf.ide_cpcfa
-            WHERE ide_cpefa  =  ${this.variables.get('p_cxp_estado_factura_normal')} 
-            AND ide_geper = $1
-            AND fecha_emisi_cpcfa BETWEEN $2 AND $3
-            AND cf.ide_empr = ${dtoIn.ideEmpr}
-            ORDER BY fecha_emisi_cpcfa 
+                d.ide_inarti,
+                c.fecha_trans_incci,
+                d.precio_indci
+            FROM inv_det_comp_inve d
+            JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+            JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+            JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+            WHERE
+                c.ide_inepi = 1
+                AND c.fecha_trans_incci BETWEEN ($1::DATE - INTERVAL '5 days') AND ($2::DATE + INTERVAL '5 days')
+                AND e.signo_intci = 1
+                AND d.precio_indci > 0
+                AND c.ide_intti IN (19, 16, 3025)
+                AND c.ide_empr = ${dtoIn.ideEmpr}
+        ),
+        ultima_compra_fuera_periodo AS (
+            SELECT DISTINCT ON (d.ide_inarti)
+                d.ide_inarti,
+                c.fecha_trans_incci,
+                d.precio_indci
+            FROM inv_det_comp_inve d
+            JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+            JOIN inv_tip_tran_inve t ON c.ide_intti = t.ide_intti
+            JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+            WHERE
+                c.ide_inepi = 1
+                AND e.signo_intci = 1
+                AND d.precio_indci > 0
+                AND c.ide_intti IN (19, 16, 3025)
+                AND c.fecha_trans_incci < ($3::DATE - INTERVAL '5 days')
+                AND c.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
         ),
         datos_completos AS (
             SELECT
                 cdf.ide_ccdfa,
+                cdf.ide_inarti,
                 cf.fecha_emisi_cccfa,
-                secuencial_cccfa,
-                nombre_inarti,
+                cf.secuencial_cccfa,
+                per.nom_geper,
+                iart.nombre_inarti,
                 cdf.cantidad_ccdfa,
-                siglas_inuni,
+                uni.siglas_inuni,
                 cdf.precio_ccdfa AS precio_venta,
                 cdf.total_ccdfa,
-                iart.uuid,
-                COALESCE((
-                  SELECT pc.precio_cpdfa 
-                  FROM precios_compra pc
-                  WHERE pc.ide_geper = cf.ide_geper 
-                  AND pc.fecha_emisi_cpcfa <= cf.fecha_emisi_cccfa + INTERVAL '7 days'
-                  ORDER BY pc.fecha_emisi_cpcfa desc
-                  LIMIT 1), 0) AS PRECIO_COMPRA
-            FROM
-                cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+                ven.nombre_vgven,
+                iart.hace_kardex_inarti,
+                cf.ide_cndfp1 AS ide_cndfp,
+                fp.nombre_cndfp,
+                fp.dias_cndfp,
+                -- Lógica mejorada para precio de compra (igual a la función):
+                COALESCE(
+                    -- Primero busca compras posteriores cercanas (dentro de 5 días)
+                    (SELECT pc.precio_indci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = cdf.ide_inarti
+                       AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
+                       AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
+                     ORDER BY pc.fecha_trans_incci ASC
+                     LIMIT 1),
+                    -- Luego busca compras anteriores (dentro del período extendido)
+                    (SELECT pc.precio_indci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = cdf.ide_inarti
+                       AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
+                     ORDER BY pc.fecha_trans_incci DESC
+                     LIMIT 1),
+                    -- Finalmente busca la última compra anterior fuera del período
+                    (SELECT uc.precio_indci
+                     FROM ultima_compra_fuera_periodo uc
+                     WHERE uc.ide_inarti = cdf.ide_inarti
+                     LIMIT 1),
+                    0
+                ) AS precio_compra,
+                
+                COALESCE(
+                    (SELECT pc.fecha_trans_incci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = cdf.ide_inarti
+                       AND pc.fecha_trans_incci > cf.fecha_emisi_cccfa
+                       AND pc.fecha_trans_incci <= (cf.fecha_emisi_cccfa + INTERVAL '5 days')
+                     ORDER BY pc.fecha_trans_incci ASC
+                     LIMIT 1),
+                    (SELECT pc.fecha_trans_incci
+                     FROM compras_periodo pc
+                     WHERE pc.ide_inarti = cdf.ide_inarti
+                       AND pc.fecha_trans_incci <= cf.fecha_emisi_cccfa
+                     ORDER BY pc.fecha_trans_incci DESC
+                     LIMIT 1),
+                    (SELECT uc.fecha_trans_incci
+                     FROM ultima_compra_fuera_periodo uc
+                     WHERE uc.ide_inarti = cdf.ide_inarti
+                     LIMIT 1),
+                    NULL
+                ) AS fecha_ultima_compra,
+
+                cf.secuencial_cccfa AS numero_factura
+            FROM cxc_deta_factura cdf
+            JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            JOIN gen_persona per ON cf.ide_geper = per.ide_geper
+            LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
             LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+            LEFT JOIN con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
             WHERE
-                cf.ide_geper = $4
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                AND cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+                cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                AND cf.fecha_emisi_cccfa BETWEEN $4 AND $5
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cf.ide_geper = $6
+        ),
+        facturas_con_nota AS (
+            SELECT 
+                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                cdn.ide_inarti,
+                SUM(cdn.valor_cpdno) AS valor_nota_credito
+            FROM cxp_cabecera_nota cn
+            JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            WHERE cn.fecha_emisi_cpcno BETWEEN $7 AND $8
+              AND cn.ide_cpeno = 1
+              AND cn.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
         )
         SELECT
             dc.ide_ccdfa,
+            dc.ide_inarti,
             dc.fecha_emisi_cccfa,
             dc.secuencial_cccfa,
+            dc.nom_geper,
             dc.nombre_inarti,
             dc.cantidad_ccdfa,
             dc.siglas_inuni,
             dc.precio_venta,
             dc.total_ccdfa,
-            dc.uuid,
+            dc.nombre_vgven,
+            dc.hace_kardex_inarti,
             dc.precio_compra,
-            ( dc.precio_venta - dc.precio_compra )  as utilidad ,
-            CASE 
+            -- Cálculos de utilidad (igual a la función):
+            CASE
+                WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
+                ELSE (dc.precio_venta - dc.precio_compra)
+            END AS utilidad_unitaria,
+            CASE
+                WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
+                ELSE ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2)
+            END AS utilidad_neta,
+            CASE
+                WHEN dc.hace_kardex_inarti = false OR COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 0
                 WHEN dc.precio_compra > 0 THEN ROUND(((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100, 2)
-                ELSE 0 
+                ELSE 0
             END AS porcentaje_utilidad,
-            ROUND((dc.precio_venta - dc.precio_compra) * dc.cantidad_ccdfa, 2) AS utilidad_neta
+            -- Campos adicionales de la función:
+            COALESCE(fn.valor_nota_credito, 0) AS nota_credito,
+            dc.fecha_ultima_compra,
+            dc.ide_cndfp,
+            dc.nombre_cndfp,
+            dc.dias_cndfp,
+            -- Métricas adicionales:
+            ROUND(dc.precio_venta * dc.cantidad_ccdfa, 2) AS venta_total,
+            ROUND(dc.precio_compra * dc.cantidad_ccdfa, 2) AS costo_total,
+            -- Clasificación de margen:
+            CASE 
+                WHEN dc.precio_compra > 0 AND dc.hace_kardex_inarti = true AND COALESCE(fn.valor_nota_credito, 0) = 0 THEN
+                    CASE 
+                        WHEN ((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100 >= 30 THEN 'ALTO'
+                        WHEN ((dc.precio_venta - dc.precio_compra) / dc.precio_compra) * 100 >= 15 THEN 'MEDIO'
+                        ELSE 'BAJO'
+                    END
+                WHEN dc.hace_kardex_inarti = false THEN 'SIN_KARDEX'
+                WHEN COALESCE(fn.valor_nota_credito, 0) <> 0 THEN 'CON_NOTA_CREDITO'
+                ELSE 'SIN_COSTO'
+            END AS clasificacion_margen
         FROM datos_completos dc
+        LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
+                                       AND dc.ide_inarti = fn.ide_inarti
         ORDER BY 
-            dc.fecha_emisi_cccfa DESC, dc.secuencial_cccfa
-            `);
-    query.addIntParam(1, dtoIn.ide_geper);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addParam(3, dtoIn.fechaFin);
-    query.addIntParam(4, dtoIn.ide_geper);
-    query.addParam(5, dtoIn.fechaInicio);
-    query.addParam(6, dtoIn.fechaFin);
+            dc.fecha_emisi_cccfa DESC, 
+            dc.secuencial_cccfa
+    `);
+
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addParam(3, dtoIn.fechaInicio);
+    query.addParam(4, dtoIn.fechaInicio);
+    query.addParam(5, dtoIn.fechaFin);
+    query.addIntParam(6, dtoIn.ide_geper);
+    query.addParam(7, dtoIn.fechaInicio);
+    query.addParam(8, dtoIn.fechaFin);
+
     return await this.dataSource.createQuery(query);
   }
-
   // -------------------------------- PRIVATE FUNCTIONS ---------------------------- //
 
   /**
@@ -749,7 +1057,7 @@ export class ClientesService extends BaseService {
             a.longitud_gedirp,
             a.latitud_gedirp ,
             b.nombre_geprov ,
-            c.nombre_gecan ,
+            c.nombre_gecant ,
             d.nombre_getidi,
             a.activo_gedirp,
             a.defecto_gedirp
@@ -858,7 +1166,7 @@ export class ClientesService extends BaseService {
       row: {
         cliente: data,
       },
-      message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : '',
+      message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : 'No existe',
     } as ResultQuery;
   }
 
@@ -891,6 +1199,40 @@ export class ClientesService extends BaseService {
         message: 'Ocurrió un error al validar el número de WhatsApp. Intente nuevamente más tarde.',
       };
     }
+  }
+
+
+  async actualizarVendedorClientesInactivos(dtoIn: HeaderParamsDto & { ideVgvenDefault?: number }) {
+    // Validar y determinar el valor
+    let valorAsignacion: string;
+
+    if (dtoIn.ideVgvenDefault !== undefined &&
+      dtoIn.ideVgvenDefault !== null &&
+      Number.isInteger(dtoIn.ideVgvenDefault) &&
+      dtoIn.ideVgvenDefault > 0) {
+      valorAsignacion = dtoIn.ideVgvenDefault.toString();
+    } else {
+      valorAsignacion = 'NULL';
+    }
+
+    const query = new Query();
+    query.query = `
+        UPDATE gen_persona 
+        SET ide_vgven = ${valorAsignacion}
+        WHERE ide_empr = ${dtoIn.ideEmpr}
+            AND es_cliente_geper = true
+            -- AND ide_vgven IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM cxc_cabece_factura cf 
+                WHERE cf.ide_geper = gen_persona.ide_geper 
+                    AND cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months'
+                    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+            )
+    `;
+
+    return await this.dataSource.createQuery(query);
   }
 
   private async updateWhatsAppCliente(dto: ValidaWhatsAppCliente) {

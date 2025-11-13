@@ -13,6 +13,7 @@ import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ProformasModule } from './modules/proformas/proformas.module';
+import { CuentasPorCobrarModule } from './modules/cuentas-por-cobrar/cuentas-por-cobrar.module';
 
 
 @Module({
@@ -27,9 +28,10 @@ import { ProformasModule } from './modules/proformas/proformas.module';
     IntegrationModule,
     ContabilidadModule,
     ProformasModule,
+    CuentasPorCobrarModule,
   ],
   providers: [CoreService],
 
   controllers: [CoreController, VariablesController],
 })
-export class CoreModule {}
+export class CoreModule { }

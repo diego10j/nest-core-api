@@ -14,7 +14,7 @@ export class GeneralLdService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) {}
+  ) { }
 
   /**
    * Retorna los Periodos (years) desde que se usa el sistema, para componentes como Select, Autocomplete
@@ -60,13 +60,13 @@ export class GeneralLdService {
       `
             select
                 ide_gecant as value,
-                nombre_gecan as label
+                nombre_gecant as label
             from
                 gen_canton
             where
                 ide_geprov = $1
             order by
-                nombre_gecan
+                nombre_gecant
             `,
       dtoIn,
     );

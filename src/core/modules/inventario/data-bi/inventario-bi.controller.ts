@@ -61,17 +61,6 @@ export class InventarioBiController {
     }
 
 
-    @Get('getTopClientesProducto')
-    // @Auth()
-    getTopClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
-        return this.service.getTopClientesProducto({
-            ...headersParams,
-            ...dtoIn,
-        });
-    }
-
-
-
 
     @Get('getTotalProductosPorCategoria')
     // @Auth()

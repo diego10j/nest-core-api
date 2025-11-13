@@ -41,6 +41,26 @@ export class FacturasController {
     });
   }
 
+  @Get('getFacturasAnuladas')
+  // @Auth()
+  getFacturasAnuladas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
+    return this.service.getFacturasAnuladas({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getFacturasConNotasCredito')
+  // @Auth()
+  getFacturasConNotasCredito(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
+    return this.service.getFacturasConNotasCredito({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
   @Get('getUtilidadVentas')
   // @Auth()
   getUtilidadVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
@@ -59,6 +79,16 @@ export class FacturasController {
       ...dtoIn,
     });
   }
+
+  @Get('getFacturasPorCobrar')
+  // @Auth()
+  getFacturasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
+    return this.service.getFacturasPorCobrar({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
 
 
 }

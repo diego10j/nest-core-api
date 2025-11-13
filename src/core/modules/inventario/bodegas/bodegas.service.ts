@@ -41,7 +41,7 @@ export class BodegasService extends BaseService {
             ide_inbod,
             nombre_inbod,
             nombre_geprov,
-            nombre_gecan,
+            nombre_gecant,
             activo_inbod,
             a.hora_ingre
         from

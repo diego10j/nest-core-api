@@ -35,6 +35,7 @@ import { normalizeString } from 'src/util/helpers/sql-util';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
+import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -566,6 +567,20 @@ export class ProductosService extends BaseService {
 
     const query = new SelectQuery(
       `
+        WITH notas_credito_detalle AS (
+            SELECT 
+                cdn.ide_inarti,
+                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                SUM(cdn.valor_cpdno) AS valor_nota_credito,
+                SUM(cdn.cantidad_cpdno) AS cantidad_nota_credito
+            FROM cxp_cabecera_nota cn
+            JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
+              AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
+              AND cn.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
+        )
         SELECT
             cdf.ide_ccdfa,
             cf.fecha_emisi_cccfa,
@@ -576,27 +591,56 @@ export class ProductosService extends BaseService {
             cdf.precio_ccdfa,
             cdf.total_ccdfa,
             ven.nombre_vgven,
-            p.uuid
+            p.uuid,
+            -- Valores de nota de crédito
+            COALESCE(ncd.valor_nota_credito, 0) AS valor_nota_credito,
+            COALESCE(ncd.cantidad_nota_credito, 0) AS cantidad_nota_credito,
+            -- Total neto después de nota de crédito
+            (cdf.total_ccdfa - COALESCE(ncd.valor_nota_credito, 0)) AS total_neto,
+            -- Cantidad neta después de nota de crédito
+            (cdf.cantidad_ccdfa - COALESCE(ncd.cantidad_nota_credito, 0)) AS cantidad_neta,
+            -- Porcentaje de nota de crédito
+            CASE 
+                WHEN cdf.total_ccdfa > 0 THEN
+                    ROUND((COALESCE(ncd.valor_nota_credito, 0) / cdf.total_ccdfa * 100), 2)
+                ELSE 0
+            END AS porcentaje_nota_credito,
+            -- Porcentaje de cantidad devuelta
+            CASE 
+                WHEN cdf.cantidad_ccdfa > 0 THEN
+                    ROUND((COALESCE(ncd.cantidad_nota_credito, 0) / cdf.cantidad_ccdfa * 100), 2)
+                ELSE 0
+            END AS porcentaje_cantidad_devuelta,
+            -- Estado de la venta considerando nota de crédito
+            CASE 
+                WHEN COALESCE(ncd.valor_nota_credito, 0) = 0 THEN ''
+                WHEN COALESCE(ncd.valor_nota_credito, 0) = cdf.total_ccdfa THEN 'TOTALMENTE_DEVUELTA'
+                ELSE 'PARCIALMENTE_DEVUELTA'
+            END AS estado_venta
         FROM
             cxc_deta_factura cdf
-        INNER join cxc_cabece_factura cf on cf.ide_cccfa = cdf.ide_cccfa
-        INNER join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
+        INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+        INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        INNER join gen_persona p on cf.ide_geper = p.ide_geper
+        INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
         LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
+        LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti 
+            AND lpad(cf.secuencial_cccfa::text, 9, '0') = ncd.secuencial_padded
         WHERE
             cdf.ide_inarti =  $1
             AND iart.ide_empr = ${dtoIn.ideEmpr}  
-            and cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
-            and cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+            AND cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
             ${whereCantidad}
         ORDER BY 
-            cf.fecha_emisi_cccfa desc, secuencial_cccfa desc`,
+            cf.fecha_emisi_cccfa DESC, secuencial_cccfa DESC`,
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_inarti);
     query.addParam(2, dtoIn.fechaInicio);
     query.addParam(3, dtoIn.fechaFin);
+    query.addParam(4, dtoIn.fechaInicio);
+    query.addParam(5, dtoIn.fechaFin);
     return await this.dataSource.createQuery(query);
   }
 
@@ -898,17 +942,49 @@ export class ProductosService extends BaseService {
       dtoIn.ide_inarti = -1;
     }
 
-    // para filtrar dotos de un cliente
+    // para filtrar datos de un cliente
     const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
+
     const query = new SelectQuery(`
+        WITH notas_credito_mensual AS (
+            SELECT 
+                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) AS mes,
+                SUM(cdn.cantidad_cpdno) AS cantidad_nota_credito,
+                SUM(cdn.valor_cpdno) AS valor_nota_credito
+            FROM cxp_cabecera_nota cn
+            JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa AND cdn.ide_inarti = cdf.ide_inarti
+            WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
+              AND cn.ide_cpeno = 1
+              AND cn.ide_empr = ${dtoIn.ideEmpr}
+              AND cdf.ide_inarti = $6
+              ${dtoIn.ide_geper ? `AND cf.ide_geper = ${dtoIn.ide_geper}` : ''}
+            GROUP BY EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
+        )
         SELECT
             gm.nombre_gemes,
             ${dtoIn.periodo} as periodo,
             COALESCE(count(cdf.ide_ccdfa), 0) AS num_facturas,
             COALESCE(sum(cdf.cantidad_ccdfa), 0) AS cantidad,
+            COALESCE(nc.cantidad_nota_credito, 0) AS cantidad_nota_credito,
+            (COALESCE(sum(cdf.cantidad_ccdfa), 0) - COALESCE(nc.cantidad_nota_credito, 0)) AS cantidad_neta,
             siglas_inuni,
             decim_stock_inarti,
-            COALESCE(sum(cdf.total_ccdfa), 0) AS total
+            COALESCE(sum(cdf.total_ccdfa), 0) AS total,
+            COALESCE(nc.valor_nota_credito, 0) AS valor_nota_credito,
+            (COALESCE(sum(cdf.total_ccdfa), 0) - COALESCE(nc.valor_nota_credito, 0)) AS total_neto,
+            -- Porcentajes de devolución
+            CASE 
+                WHEN COALESCE(sum(cdf.cantidad_ccdfa), 0) > 0 THEN
+                    ROUND((COALESCE(nc.cantidad_nota_credito, 0) / COALESCE(sum(cdf.cantidad_ccdfa), 0) * 100), 2)
+                ELSE 0
+            END AS porcentaje_cantidad_devuelta,
+            CASE 
+                WHEN COALESCE(sum(cdf.total_ccdfa), 0) > 0 THEN
+                    ROUND((COALESCE(nc.valor_nota_credito, 0) / COALESCE(sum(cdf.total_ccdfa), 0) * 100), 2)
+                ELSE 0
+            END AS porcentaje_valor_devuelto
         FROM
             gen_mes gm
         LEFT JOIN (
@@ -934,18 +1010,22 @@ export class ProductosService extends BaseService {
                 AND a.ide_empr = ${dtoIn.ideEmpr} 
                 ${conditionCliente}
         ) cdf ON gm.ide_gemes = cdf.mes
+        LEFT JOIN notas_credito_mensual nc ON gm.ide_gemes = nc.mes
         GROUP BY
-            gm.nombre_gemes, gm.ide_gemes, siglas_inuni,decim_stock_inarti
+            gm.nombre_gemes, gm.ide_gemes, siglas_inuni, decim_stock_inarti, 
+            nc.cantidad_nota_credito, nc.valor_nota_credito
         ORDER BY
             gm.ide_gemes       
         `);
     query.addStringParam(1, `${dtoIn.periodo}-01-01`);
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addIntParam(3, dtoIn.ide_inarti);
+    query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(6, dtoIn.ide_inarti);
 
     return await this.dataSource.createQuery(query);
   }
-
 
 
   /**
@@ -960,6 +1040,26 @@ export class ProductosService extends BaseService {
     }
     const query = new SelectQuery(
       `
+    WITH notas_credito_ventas AS (
+        SELECT
+            ROUND(SUM(cdn.cantidad_cpdno), 0) AS cantidad_notas_credito,
+            ROUND(SUM(cdn.valor_cpdno), 0) AS total_notas_credito,
+            uni.siglas_inuni
+        FROM
+            cxp_cabecera_nota cn
+        JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+        JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+        JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa AND cdn.ide_inarti = cdf.ide_inarti
+        LEFT JOIN inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
+        LEFT JOIN inv_unidad uni ON iart.ide_inuni = uni.ide_inuni
+        WHERE
+            cn.fecha_emisi_cpcno BETWEEN $7 AND $8
+            AND cn.ide_cpeno = 1
+            AND cn.ide_empr = ${dtoIn.ideEmpr}
+            AND cdf.ide_inarti = $9
+        GROUP BY
+            uni.siglas_inuni
+    )
     SELECT
         COALESCE(v.siglas_inuni, c.siglas_inuni) AS unidad,
         COALESCE(v.fact_ventas,0) as fact_ventas,
@@ -968,7 +1068,15 @@ export class ProductosService extends BaseService {
         COALESCE(c.fact_compras,0) as fact_compras,
         COALESCE(c.cantidad_compras,0) as cantidad_compras,
         COALESCE(c.total_compras,0) as total_compras,
-        v.total_ventas -  c.total_compras as margen
+        COALESCE(v.total_ventas,0) - COALESCE(c.total_compras,0) as margen,
+        -- Notas de crédito de ventas
+        COALESCE(nv.cantidad_notas_credito,0) as cantidad_notas_credito,
+        COALESCE(nv.total_notas_credito,0) as total_notas_credito,
+        -- Métricas netas de ventas
+        (COALESCE(v.cantidad_ventas,0) - COALESCE(nv.cantidad_notas_credito,0)) as cantidad_ventas_neta,
+        (COALESCE(v.total_ventas,0) - COALESCE(nv.total_notas_credito,0)) as total_ventas_neto,
+        -- Margen neto (ventas netas - compras)
+        ((COALESCE(v.total_ventas,0) - COALESCE(nv.total_notas_credito,0)) - COALESCE(c.total_compras,0)) as margen_neto
     FROM
         (
             SELECT
@@ -1008,6 +1116,7 @@ export class ProductosService extends BaseService {
             GROUP BY
                 siglas_inuni
         ) c ON v.siglas_inuni = c.siglas_inuni
+        LEFT JOIN notas_credito_ventas nv ON COALESCE(v.siglas_inuni, c.siglas_inuni) = nv.siglas_inuni
         `,
       dtoIn,
     );
@@ -1017,6 +1126,9 @@ export class ProductosService extends BaseService {
     query.addIntParam(4, dtoIn.ide_inarti);
     query.addStringParam(5, `${dtoIn.periodo}-01-01`);
     query.addStringParam(6, `${dtoIn.periodo}-12-31`);
+    query.addStringParam(7, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(8, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
     const data = await this.dataSource.createSelectQuery(query);
     if (data.length === 0) {
@@ -1029,6 +1141,11 @@ export class ProductosService extends BaseService {
         cantidad_compras: '0',
         total_compras: '0',
         margen: '0',
+        cantidad_notas_credito: '0',
+        total_notas_credito: '0',
+        cantidad_ventas_neta: '0',
+        total_ventas_neto: '0',
+        margen_neto: '0'
       });
     }
 
@@ -1038,42 +1155,98 @@ export class ProductosService extends BaseService {
     } as ResultQuery;
   }
 
-  async getProveedores(dtoIn: IdProductoDto & HeaderParamsDto) {
+  async getProveedoresProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
-        SELECT
-            p.ide_geper,
-            p.nom_geper as nom_geper,
-            p.identificac_geper,
-            max(cf.fecha_emisi_cpcfa) as fecha_ultima,
-            COUNT(1) AS num_facturas,
-            SUM(cdf.cantidad_cpdfa) AS total_cantidad,
-            SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS total_valor,
-            siglas_inuni,
-            p.uuid
-        FROM
-            cxp_detall_factur cdf
+        WITH compras_detalladas AS (
+            SELECT
+                cf.ide_geper,
+                cf.ide_cpcfa,
+                cf.fecha_emisi_cpcfa,
+                cdf.cantidad_cpdfa,
+                cdf.cantidad_cpdfa * cdf.precio_cpdfa as valor_factura,
+                p.nom_geper,
+                p.identificac_geper,
+                p.uuid,
+                siglas_inuni
+            FROM
+                cxp_detall_factur cdf
             INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
             INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
             INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
-        WHERE
-            cdf.ide_inarti = $1
-            AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            p.ide_geper,
-            p.nom_geper,
-            p.identificac_geper,
-            siglas_inuni,
-            p.uuid
+            inner join inv_unidad uni on uni.ide_inuni = iart.ide_inuni
+            WHERE
+                cdf.ide_inarti = $1
+                AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                AND cf.ide_empr = ${dtoIn.ideEmpr} 
+                AND cf.ide_cntdo = 3  -- Facturas normales
+        ),
+        notas_credito_proveedores AS (
+            SELECT 
+                cf.ide_geper,
+                SUM(cdf.cantidad_cpdfa) AS cantidad_nota_credito,
+                SUM(cdf.cantidad_cpdfa * cdf.precio_cpdfa) AS valor_nota_credito,
+                COUNT(DISTINCT cf.ide_cpcfa) AS num_notas_credito
+            FROM 
+                cxp_detall_factur cdf
+            INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+            WHERE 
+                cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cf.ide_cntdo = 0  -- Notas de crédito
+                AND cdf.ide_inarti = $2
+            GROUP BY 
+                cf.ide_geper
+        ),
+        compras_proveedores AS (
+            SELECT
+                ide_geper,
+                nom_geper,
+                identificac_geper,
+                (array_agg(uuid))[1] AS uuid,
+                COUNT(DISTINCT ide_cpcfa) AS num_facturas,
+                MIN(fecha_emisi_cpcfa) AS fecha_primer_compra,
+                MAX(fecha_emisi_cpcfa) AS fecha_ultima_compra,
+                SUM(cantidad_cpdfa) AS total_cantidad,
+                SUM(valor_factura) AS total_valor,
+                siglas_inuni
+            FROM
+                compras_detalladas
+            GROUP BY
+                ide_geper, nom_geper, identificac_geper,siglas_inuni
+        )
+        SELECT
+            cp.ide_geper,
+            cp.nom_geper,
+            cp.identificac_geper,
+            cp.fecha_primer_compra,
+            cp.fecha_ultima_compra,
+            cp.uuid,
+            
+            -- Métricas básicas de compra
+            cp.num_facturas,
+            cp.total_cantidad,
+            cp.total_valor,
+            cp.siglas_inuni,
+            -- Notas de crédito
+            COALESCE(ncp.cantidad_nota_credito, 0) AS cantidad_nota_credito,
+            COALESCE(ncp.valor_nota_credito, 0) AS total_nota_credito,
+            COALESCE(ncp.num_notas_credito, 0) AS num_notas_credito,
+            
+            -- Métricas netas (después de notas de crédito)
+            (cp.total_cantidad - COALESCE(ncp.cantidad_nota_credito, 0)) AS cantidad_neta,
+            (cp.total_valor - COALESCE(ncp.valor_nota_credito, 0)) AS total_neto
+
+        FROM
+            compras_proveedores cp
+        LEFT JOIN notas_credito_proveedores ncp ON cp.ide_geper = ncp.ide_geper
         ORDER BY
-            p.nom_geper
+            cp.total_valor DESC
         `,
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_inarti);
-
+    query.addIntParam(2, dtoIn.ide_inarti);
     return await this.dataSource.createQuery(query);
   }
 
@@ -1084,78 +1257,131 @@ export class ProductosService extends BaseService {
    * @param dtoIn
    * @returns
    */
-  async getTopClientes(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
-    }
+
+  /**
+   * Retorna el top N clientes de un producto  en un rango de fechas
+   * @param dtoIn 
+   * @returns 
+   */
+  async getTopClientesProducto(dtoIn: TopClientesProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(
-      `
-        SELECT
-            p.ide_geper,
-            upper(p.nom_geper) as nom_geper,
-            COUNT(1) AS num_facturas,
-            SUM(cdf.cantidad_ccdfa) AS total_cantidad,
-            SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
-            siglas_inuni
-        FROM
-            cxc_deta_factura cdf
-            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-            LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
-        WHERE
-            cdf.ide_inarti = $1
-            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
-        GROUP BY
-            p.ide_geper,
-            p.nom_geper,
-            siglas_inuni
-        ORDER BY
-            total_valor DESC
-        LIMIT 10
-        `,
+      `  
+          SELECT 
+              p.ide_geper,
+          p.uuid,
+          p.nom_geper AS cliente,
+          COUNT(DISTINCT cf.ide_cccfa) AS num_facturas,
+          SUM(cdf.total_ccdfa) AS total_ventas_brutas,
+          COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
+          SUM(cdf.total_ccdfa) - COALESCE(nc.total_notas_credito, 0) AS total_ventas_netas,
+          ROUND(
+              (SUM(cdf.total_ccdfa) - COALESCE(nc.total_notas_credito, 0)) * 100.0 /
+              NULLIF((
+                  SELECT SUM(cdf2.total_ccdfa)
+                      FROM cxc_deta_factura cdf2
+                      JOIN cxc_cabece_factura cf2 ON cdf2.ide_cccfa = cf2.ide_cccfa
+                      WHERE cf2.fecha_emisi_cccfa BETWEEN $1 AND $2
+                      AND cf2.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                      AND cf2.ide_empr = ${dtoIn.ideEmpr}
+                      AND cdf2.ide_inarti = $7
+              ), 0),
+          2) AS porcentaje
+      FROM 
+              cxc_cabece_factura cf
+      JOIN 
+              gen_persona p ON cf.ide_geper = p.ide_geper
+      JOIN
+              cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa
+          LEFT JOIN(
+          SELECT 
+                  cdn.ide_inarti,
+          cf.ide_geper,
+          SUM(cdn.valor_cpdno) AS total_notas_credito
+              FROM 
+                  cxp_cabecera_nota cn
+              JOIN 
+                  cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+              JOIN 
+                  cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa:: text, 9, '0')
+              WHERE 
+                  cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                  AND cn.ide_cpeno = 1
+                  AND cn.ide_empr = ${dtoIn.ideEmpr}
+                  AND cdn.ide_inarti = $8
+              GROUP BY 
+                  cdn.ide_inarti, cf.ide_geper
+      ) nc ON p.ide_geper = nc.ide_geper AND cdf.ide_inarti = nc.ide_inarti
+      WHERE
+      cf.fecha_emisi_cccfa BETWEEN $5 AND $6
+              AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+              AND cf.ide_empr = ${dtoIn.ideEmpr}
+              AND cdf.ide_inarti = $9
+          GROUP BY
+      p.ide_geper,
+          p.uuid,
+          p.nom_geper,
+          nc.total_notas_credito
+          ORDER BY 
+              total_ventas_netas DESC
+          LIMIT ${dtoIn.limit || 10} `,
       dtoIn,
     );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addStringParam(2, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(3, `${dtoIn.periodo}-12-31`);
+
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
+    query.addStringParam(5, dtoIn.fechaInicio);
+    query.addStringParam(6, dtoIn.fechaFin);
+    query.addIntParam(7, dtoIn.ide_inarti);
+    query.addIntParam(8, dtoIn.ide_inarti);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
     return await this.dataSource.createQuery(query);
   }
+
 
   /**
    * Retorna los clientes que han comprado un producto
    * @param dtoIn
    * @returns
    */
-  async getClientes(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+  async getClientesProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
     const sql = `            
         WITH
         datos_cliente AS (
             SELECT
                 p.ide_geper,
                 upper(p.nom_geper) AS nom_geper,
-                COUNT(1) AS num_facturas,
+                COUNT(DISTINCT cf.ide_cccfa) AS num_facturas,
                 SUM(cdf.cantidad_ccdfa) AS total_cantidad,
-                uni.siglas_inuni,
+                MIN(uni.siglas_inuni) AS siglas_inuni,
                 SUM(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS total_valor,
                 MIN(fecha_emisi_cccfa) AS fecha_primer_compra,
                 MAX(fecha_emisi_cccfa) AS fecha_ultima_compra,
-                ven.nombre_vgven,
-                ven.ide_vgven,
-                p.activo_geper,
-                p.identificac_geper,
-                p.uuid,
+                MIN(ven.nombre_vgven) AS nombre_vgven,
+                MIN(ven.ide_vgven) AS ide_vgven,
+                BOOL_OR(p.activo_geper) AS activo_geper,
+                MIN(p.identificac_geper) AS identificac_geper,
+                (array_agg(p.uuid))[1] AS uuid,  -- Corregido: tomar el primer UUID en lugar de MIN()
                 ARRAY_AGG(
-                    fecha_emisi_cccfa
+                    DISTINCT fecha_emisi_cccfa
                     ORDER BY
                         fecha_emisi_cccfa
                 ) AS fechas_compras,
                 AVG(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS valor_promedio_compra,
-                STDDEV(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS desviacion_valor_compra
+                STDDEV(cdf.cantidad_ccdfa * cdf.precio_ccdfa) AS desviacion_valor_compra,
+                COUNT(DISTINCT DATE_TRUNC('month', fecha_emisi_cccfa)) AS meses_con_compras,
+                COALESCE((
+                    SELECT SUM(cdn.valor_cpdno)
+                    FROM cxp_cabecera_nota cn
+                    JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+                    JOIN cxc_cabece_factura cf2 ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf2.secuencial_cccfa::text, 9, '0')
+                    WHERE cf2.ide_geper = p.ide_geper
+                        AND cdn.ide_inarti = cdf.ide_inarti
+                        AND cn.ide_cpeno = 1
+                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                ), 0) AS total_notas_credito
             FROM
                 cxc_deta_factura cdf
                 INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
@@ -1165,23 +1391,19 @@ export class ProductosService extends BaseService {
                 LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
             WHERE
                 cdf.ide_inarti = $1
-                AND cf.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} 
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 AND cf.ide_empr = ${dtoIn.ideEmpr} 
             GROUP BY
                 p.ide_geper,
                 p.nom_geper,
-                uni.siglas_inuni,
-                ven.nombre_vgven,
-                ven.ide_vgven,
-                p.activo_geper,
-                p.identificac_geper,
-                p.uuid
+                cdf.ide_inarti
         ),
         avg_valor_compra AS (
             SELECT
-                AVG(total_valor / num_facturas) AS avg_valor_promedio
+                AVG(total_valor / NULLIF(num_facturas, 0)) AS avg_valor_promedio
             FROM
                 datos_cliente
+            WHERE num_facturas > 0
         ),
         clientes_unicos AS (
             SELECT
@@ -1201,19 +1423,32 @@ export class ProductosService extends BaseService {
                 cu.ide_geper,
                 cu.fechas_compras,
                 CASE
-                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN (cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)
+                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN 
+                        (cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
+                        NULLIF((array_length(cu.fechas_compras, 1) - 1), 0)
                     ELSE NULL
                 END AS intervalo_promedio_dias,
                 CASE
-                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN cu.fechas_compras[array_length(cu.fechas_compras, 1)] + make_interval(days => ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1))::int)
+                    WHEN array_length(cu.fechas_compras, 1) > 1 THEN 
+                        cu.fechas_compras[array_length(cu.fechas_compras, 1)] + 
+                        INTERVAL '1 day' * ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
+                        NULLIF((array_length(cu.fechas_compras, 1) - 1), 0))
                     ELSE NULL
                 END AS fecha_proxima_compra_estimada,
                 CASE
                     WHEN array_length(cu.fechas_compras, 1) = 1 THEN 'Compra única'
-                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)) <= 30 THEN 'Frecuente'
-                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / (array_length(cu.fechas_compras, 1) - 1)) <= 90 THEN 'Ocasional'
+                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
+                         NULLIF((array_length(cu.fechas_compras, 1) - 1), 0)) <= 30 THEN 'Frecuente'
+                    WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
+                         NULLIF((array_length(cu.fechas_compras, 1) - 1), 0)) <= 90 THEN 'Ocasional'
                     ELSE 'Esporádico'
-                END AS frecuencia_compra
+                END AS frecuencia_compra,
+                CASE
+                    WHEN cu.meses_con_compras = 1 THEN 'Compra única'
+                    WHEN cu.meses_con_compras >= 6 THEN 'Muy frecuente'
+                    WHEN cu.meses_con_compras >= 3 THEN 'Frecuente'
+                    ELSE 'Ocasional'
+                END AS frecuencia_mensual
             FROM
                 clientes_unicos cu
             WHERE
@@ -1223,92 +1458,110 @@ export class ProductosService extends BaseService {
             SELECT
                 cu.ide_geper,
                 CASE
-                    WHEN cu.num_facturas >= 3 THEN CASE
-                        WHEN (cu.total_valor / cu.num_facturas) > (
-                            SELECT
-                                avg_valor_promedio
-                            FROM
-                                avg_valor_compra
-                        ) * 1.2 THEN 'Alta'
-                        WHEN (cu.total_valor / cu.num_facturas) < (
-                            SELECT
-                                avg_valor_promedio
-                            FROM
-                                avg_valor_compra
-                        ) * 0.8 THEN 'Baja'
-                        ELSE 'Estable'
-                    END
+                    WHEN cu.num_facturas >= 3 THEN 
+                        CASE
+                            WHEN (cu.total_valor / NULLIF(cu.num_facturas, 0)) > (
+                                SELECT avg_valor_promedio FROM avg_valor_compra
+                            ) * 1.2 THEN 'Alta'
+                            WHEN (cu.total_valor / NULLIF(cu.num_facturas, 0)) < (
+                                SELECT avg_valor_promedio FROM avg_valor_compra
+                            ) * 0.8 THEN 'Baja'
+                            ELSE 'Estable'
+                        END
                     ELSE 'No aplica'
                 END AS tendencia_valor_compra,
                 CASE
-                    WHEN cu.num_facturas >= 3 THEN CASE
-                        WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) < 180
-                        AND cu.num_facturas > 5 THEN 'Creciente'
-                        WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) < 180
-                        AND (((cu.fecha_ultima_compra - cu.fecha_primer_compra)::int / 30.0) / cu.num_facturas) < 0.5 THEN 'Decreciente'
-                        ELSE 'Constante'
-                    END
+                    WHEN cu.num_facturas >= 3 THEN 
+                        CASE
+                            WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) < 180
+                            AND cu.num_facturas > 5 THEN 'Creciente'
+                            WHEN (cu.fecha_ultima_compra - cu.fecha_primer_compra) > 360
+                            AND cu.num_facturas < 3 THEN 'Decreciente'
+                            ELSE 'Constante'
+                        END
                     ELSE 'No aplica'
-                END AS tendencia_frecuencia_compra
+                END AS tendencia_frecuencia_compra,
+                CASE
+                    WHEN cu.num_facturas >= 2 THEN
+                        CASE
+                            WHEN (SELECT COUNT(*) FROM unnest(cu.fechas_compras) AS fecha 
+                                  WHERE fecha >= CURRENT_DATE - INTERVAL '6 months') > 
+                                 (SELECT COUNT(*) FROM unnest(cu.fechas_compras) AS fecha 
+                                  WHERE fecha < CURRENT_DATE - INTERVAL '6 months' 
+                                  AND fecha >= CURRENT_DATE - INTERVAL '12 months') THEN 'Mejorando'
+                            ELSE 'Estable'
+                        END
+                    ELSE 'No aplica'
+                END AS tendencia_reciente
             FROM
                 clientes_unicos cu
             WHERE
                 cu.rn = 1
         )
-    SELECT
-        cu.ide_geper,
-        cu.nom_geper,
-        cu.num_facturas,
-        f_decimales (cu.total_cantidad) AS total_cantidad,
-        cu.siglas_inuni,
-        f_redondeo (cu.total_valor, 2) AS total_valor,
-        cu.fecha_primer_compra,
-        cu.fecha_ultima_compra,
-        cu.nombre_vgven,
-        cu.ide_vgven,
-        cu.activo_geper,
-        cu.identificac_geper,
-        cu.uuid,
-        f_redondeo (cu.valor_promedio_compra, 2) AS valor_promedio_compra,
-        f_redondeo (cu.desviacion_valor_compra, 2) AS desviacion_valor_compra,
-        f_redondeo (ic.intervalo_promedio_dias, 2) AS intervalo_promedio_dias,
-        ic.fecha_proxima_compra_estimada,
-        ic.frecuencia_compra,
-        tt.tendencia_valor_compra,
-        tt.tendencia_frecuencia_compra,
-        CASE
-            WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > 365 THEN 'Inactivo'
-            WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > (ic.intervalo_promedio_dias * 1.5)
-            AND ic.intervalo_promedio_dias IS NOT NULL THEN 'En riesgo'
-            WHEN cu.num_facturas = 1 THEN 'Compra única'
-            ELSE 'Activo'
-        END AS estado_cliente,
-        RANK() OVER (
-            ORDER BY
-                cu.total_valor DESC
-        ) AS ranking_valor_total,
-        RANK() OVER (
-            ORDER BY
-                cu.num_facturas DESC
-        ) AS ranking_frecuencia,
-        PERCENT_RANK() OVER (
-            ORDER BY
-                cu.total_valor
-        ) AS percentil_valor
-    FROM
-        clientes_unicos cu
-        JOIN intervalos_compras ic ON cu.ide_geper = ic.ide_geper
-        JOIN tendencia_ventas tt ON cu.ide_geper = tt.ide_geper
-    WHERE
-        cu.rn = 1
-    ORDER BY
-        cu.fecha_ultima_compra DESC,
-        cu.total_valor DESC
+        SELECT
+            cu.ide_geper,
+            cu.nom_geper,
+            cu.num_facturas,
+            f_decimales(cu.total_cantidad) AS total_cantidad,
+            cu.siglas_inuni,
+            f_redondeo(cu.total_valor, 2) AS total_valor,
+            cu.fecha_primer_compra,
+            cu.fecha_ultima_compra,
+            cu.nombre_vgven,
+            cu.ide_vgven,
+            cu.activo_geper,
+            cu.identificac_geper,
+            cu.uuid,
+            f_redondeo(cu.valor_promedio_compra, 2) AS valor_promedio_compra,
+            f_redondeo(cu.desviacion_valor_compra, 2) AS desviacion_valor_compra,
+            f_redondeo(ic.intervalo_promedio_dias, 2) AS intervalo_promedio_dias,
+            ic.fecha_proxima_compra_estimada,
+            ic.frecuencia_compra,
+            ic.frecuencia_mensual,
+            tt.tendencia_valor_compra,
+            tt.tendencia_frecuencia_compra,
+            tt.tendencia_reciente,
+            CASE
+                WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > 365 THEN 'Inactivo'
+                WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > COALESCE(ic.intervalo_promedio_dias * 2, 180) THEN 'En riesgo alto'
+                WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > COALESCE(ic.intervalo_promedio_dias * 1.5, 120) THEN 'En riesgo'
+                WHEN cu.num_facturas = 1 THEN 'Nuevo'
+                ELSE 'Activo'
+            END AS estado_cliente,
+            (CURRENT_DATE - cu.fecha_ultima_compra) AS dias_desde_ultima_compra,
+            f_redondeo(cu.total_valor - cu.total_notas_credito, 2) AS total_valor_neto,
+            f_redondeo(cu.total_notas_credito, 2) AS total_notas_credito,
+            CASE 
+                WHEN cu.total_valor > 0 THEN
+                    f_redondeo((cu.total_notas_credito / cu.total_valor * 100), 2)
+                ELSE 0
+            END AS porcentaje_devolucion,
+            RANK() OVER (ORDER BY cu.total_valor DESC) AS ranking_valor_total,
+            RANK() OVER (ORDER BY cu.num_facturas DESC) AS ranking_frecuencia,
+            RANK() OVER (ORDER BY (cu.total_valor - cu.total_notas_credito) DESC) AS ranking_valor_neto,
+            PERCENT_RANK() OVER (ORDER BY cu.total_valor) AS percentil_valor,
+            CASE
+                WHEN PERCENT_RANK() OVER (ORDER BY cu.total_valor) >= 0.8 THEN 'A'
+                WHEN PERCENT_RANK() OVER (ORDER BY cu.total_valor) >= 0.5 THEN 'B'
+                WHEN PERCENT_RANK() OVER (ORDER BY cu.total_valor) >= 0.2 THEN 'C'
+                ELSE 'D'
+            END AS segmento_cliente
+        FROM
+            clientes_unicos cu
+            INNER JOIN intervalos_compras ic ON cu.ide_geper = ic.ide_geper
+            INNER JOIN tendencia_ventas tt ON cu.ide_geper = tt.ide_geper
+        WHERE
+            cu.rn = 1
+        ORDER BY
+            cu.total_valor DESC,
+            cu.fecha_ultima_compra DESC
             `;
+
     const query = new SelectQuery(sql, dtoIn);
     query.addIntParam(1, dtoIn.ide_inarti);
     return await this.dataSource.createQuery(query);
   }
+
 
   async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(

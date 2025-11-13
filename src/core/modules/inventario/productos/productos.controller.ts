@@ -28,6 +28,7 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
+import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
@@ -191,10 +192,10 @@ export class ProductosController {
     });
   }
 
-  @Get('getProveedores')
+  @Get('getProveedoresProducto')
   // @Auth()
-  getProveedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
-    return this.productos.getProveedores({
+  getProveedoresProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
+    return this.productos.getProveedoresProducto({
       ...headersParams,
       ...dtoIn,
     });
@@ -202,23 +203,24 @@ export class ProductosController {
 
 
 
-  @Get('getClientes')
+  @Get('getClientesProducto')
   // @Auth()
-  getClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
-    return this.productos.getClientes({
+  getClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
+    return this.productos.getClientesProducto({
       ...headersParams,
       ...dtoIn,
     });
   }
 
-  @Get('getTopClientes')
+  @Get('getTopClientesProducto')
   // @Auth()
-  getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
-    return this.productos.getTopClientes({
+  getTopClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesProductoDto) {
+    return this.productos.getTopClientesProducto({
       ...headersParams,
       ...dtoIn,
     });
   }
+
 
   @Get('chartVariacionPreciosCompras')
   // @Auth()

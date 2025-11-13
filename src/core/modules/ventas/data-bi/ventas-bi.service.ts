@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { Query } from 'src/core/connection/helpers';
 
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
@@ -2328,31 +2330,235 @@ ORDER BY
         return await this.dataSource.createQuery(query);
     }
 
-    async getTotalClientesNuevosPorPeriodo(dtoIn: HeaderParamsDto) {
+    async getTotalClientesPorPeriodo(dtoIn: HeaderParamsDto) {
         const query = new SelectQuery(`
-        WITH clientes_por_anio AS (
+            WITH periodos AS (
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_ingre) AS anio
+                FROM gen_persona 
+                WHERE fecha_ingre IS NOT NULL 
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                    AND es_cliente_geper = true
+                GROUP BY EXTRACT(YEAR FROM fecha_ingre)
+                
+                UNION
+                
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa) AS anio
+                FROM cxc_cabece_factura 
+                WHERE ide_empr = ${dtoIn.ideEmpr}
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                GROUP BY EXTRACT(YEAR FROM fecha_emisi_cccfa)
+            ),
+            clientes_nuevos AS (
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_ingre) AS anio,
+                    COUNT(ide_geper) AS total_nuevos
+                FROM gen_persona
+                WHERE fecha_ingre IS NOT NULL
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                    AND es_cliente_geper = true
+                GROUP BY EXTRACT(YEAR FROM fecha_ingre)
+            ),
+            clientes_activos AS (
+                SELECT 
+                    EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
+                    COUNT(DISTINCT cf.ide_geper) AS total_activos
+                FROM cxc_cabece_factura cf
+                WHERE cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY EXTRACT(YEAR FROM cf.fecha_emisi_cccfa)
+            ),
+            clientes_existentes AS (
+                SELECT 
+                    anio,
+                    COUNT(ide_geper) AS total_existentes
+                FROM (
+                    SELECT 
+                        p.anio,
+                        gp.ide_geper
+                    FROM periodos p
+                    CROSS JOIN gen_persona gp
+                    WHERE gp.fecha_ingre IS NOT NULL
+                        AND gp.ide_empr = ${dtoIn.ideEmpr}
+                        AND gp.fecha_ingre <= MAKE_DATE(p.anio::INTEGER, 12, 31)
+                        AND gp.es_cliente_geper = true
+                    GROUP BY p.anio, gp.ide_geper
+                ) sub
+                GROUP BY anio
+            )
             SELECT 
-                EXTRACT(YEAR FROM fecha_ingre) AS anio,
-                COUNT(ide_geper) AS total_clientes
-            FROM public.gen_persona
-            WHERE fecha_ingre IS NOT NULL
-                AND ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY EXTRACT(YEAR FROM fecha_ingre)
-        )
-        SELECT 
-            anio,
-            total_clientes as total_clientes_nuevos,
-            LAG(total_clientes) OVER (ORDER BY anio) AS clientes_nuevos_anio_anterior,
-            CASE 
-                WHEN LAG(total_clientes) OVER (ORDER BY anio) IS NOT NULL THEN
-                    ROUND(((total_clientes - LAG(total_clientes) OVER (ORDER BY anio)) * 100.0 / LAG(total_clientes) OVER (ORDER BY anio)), 2)
-                ELSE NULL
-            END AS crecimiento_porcentual
-        FROM clientes_por_anio
-        ORDER BY anio DESC        
-      
-    `);
+                p.anio,
+                COALESCE(cn.total_nuevos, 0) AS total_clientes_nuevos,
+                COALESCE(ca.total_activos, 0) AS total_clientes_activos,
+                COALESCE(ce.total_existentes, 0) AS total_clientes_existentes,
+                LAG(cn.total_nuevos) OVER (ORDER BY p.anio) AS clientes_nuevos_anio_anterior,
+                CASE 
+                    WHEN LAG(cn.total_nuevos) OVER (ORDER BY p.anio) IS NOT NULL 
+                        AND LAG(cn.total_nuevos) OVER (ORDER BY p.anio) != 0 THEN
+                        ROUND(((cn.total_nuevos - LAG(cn.total_nuevos) OVER (ORDER BY p.anio)) * 100.0 / 
+                              LAG(cn.total_nuevos) OVER (ORDER BY p.anio)), 2)
+                    ELSE NULL
+                END AS crecimiento_porcentual
+            FROM periodos p
+            LEFT JOIN clientes_nuevos cn ON p.anio = cn.anio
+            LEFT JOIN clientes_activos ca ON p.anio = ca.anio
+            LEFT JOIN clientes_existentes ce ON p.anio = ce.anio
+            ORDER BY p.anio DESC
+        `);
+
         return await this.dataSource.createQuery(query);
     }
+
+
+    async getTotalClientesPorPeriodoVendedor(dtoIn: IdeDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            WITH vendedores AS (
+                SELECT DISTINCT 
+                    v.ide_vgven,
+                    v.nombre_vgven
+                FROM ven_vendedor v
+                WHERE v.ide_empr = ${dtoIn.ideEmpr}
+                AND  v.ide_vgven = ${dtoIn.ide}
+            ),
+            periodos AS (
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_ingre) AS anio
+                FROM gen_persona 
+                WHERE fecha_ingre IS NOT NULL 
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                    AND es_cliente_geper = true
+                GROUP BY EXTRACT(YEAR FROM fecha_ingre)
+                
+                UNION
+                
+                SELECT 
+                    EXTRACT(YEAR FROM fecha_emisi_cccfa) AS anio
+                FROM cxc_cabece_factura 
+                WHERE ide_empr = ${dtoIn.ideEmpr}
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                GROUP BY EXTRACT(YEAR FROM fecha_emisi_cccfa)
+            ),
+            clientes_nuevos_vendedor AS (
+                SELECT 
+                    EXTRACT(YEAR FROM gp.fecha_ingre) AS anio,
+                    gp.ide_vgven,
+                    COUNT(gp.ide_geper) AS total_nuevos
+                FROM gen_persona gp
+                WHERE gp.fecha_ingre IS NOT NULL
+                    AND gp.ide_empr = ${dtoIn.ideEmpr}
+                    AND gp.es_cliente_geper = true
+                GROUP BY EXTRACT(YEAR FROM gp.fecha_ingre), gp.ide_vgven
+            ),
+            clientes_activos_vendedor AS (
+                SELECT 
+                    EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
+                    cf.ide_vgven,
+                    COUNT(DISTINCT cf.ide_geper) AS total_activos
+                FROM cxc_cabece_factura cf
+                WHERE cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY EXTRACT(YEAR FROM cf.fecha_emisi_cccfa), cf.ide_vgven
+            ),
+            clientes_existentes_vendedor AS (
+                SELECT 
+                    p.anio,
+                    gp.ide_vgven,
+                    COUNT(DISTINCT gp.ide_geper) AS total_existentes
+                FROM periodos p
+                CROSS JOIN gen_persona gp
+                WHERE gp.fecha_ingre IS NOT NULL
+                    AND gp.ide_empr = ${dtoIn.ideEmpr}
+                    AND gp.es_cliente_geper = true
+                    AND gp.fecha_ingre <= MAKE_DATE(p.anio::INTEGER, 12, 31)
+                GROUP BY p.anio, gp.ide_vgven
+            ),
+            totales_por_vendedor AS (
+                SELECT 
+                    p.anio,
+                    v.ide_vgven,
+                    v.nombre_vgven,
+                    COALESCE(cnv.total_nuevos, 0) AS total_clientes_nuevos,
+                    COALESCE(cav.total_activos, 0) AS total_clientes_activos,
+                    COALESCE(cev.total_existentes, 0) AS total_clientes_existentes
+                FROM periodos p
+                CROSS JOIN vendedores v
+                LEFT JOIN clientes_nuevos_vendedor cnv ON p.anio = cnv.anio AND v.ide_vgven = cnv.ide_vgven
+                LEFT JOIN clientes_activos_vendedor cav ON p.anio = cav.anio AND v.ide_vgven = cav.ide_vgven
+                LEFT JOIN clientes_existentes_vendedor cev ON p.anio = cev.anio AND v.ide_vgven = cev.ide_vgven
+            )
+            SELECT 
+                anio,
+                ide_vgven,
+                nombre_vgven,
+                total_clientes_nuevos,
+                total_clientes_activos,
+                total_clientes_existentes,
+                LAG(total_clientes_nuevos) OVER (PARTITION BY ide_vgven ORDER BY anio) AS clientes_nuevos_anio_anterior,
+                CASE 
+                    WHEN LAG(total_clientes_nuevos) OVER (PARTITION BY ide_vgven ORDER BY anio) IS NOT NULL 
+                        AND LAG(total_clientes_nuevos) OVER (PARTITION BY ide_vgven ORDER BY anio) != 0 THEN
+                        ROUND(((total_clientes_nuevos - LAG(total_clientes_nuevos) OVER (PARTITION BY ide_vgven ORDER BY anio)) * 100.0 / 
+                              LAG(total_clientes_nuevos) OVER (PARTITION BY ide_vgven ORDER BY anio)), 2)
+                    ELSE NULL
+                END AS crecimiento_porcentual,
+                -- Métricas adicionales de performance
+                CASE 
+                    WHEN total_clientes_existentes > 0 THEN
+                        ROUND((total_clientes_activos * 100.0 / total_clientes_existentes), 2)
+                    ELSE 0
+                END AS tasa_activacion,
+                CASE 
+                    WHEN total_clientes_existentes > 0 THEN
+                        ROUND((total_clientes_nuevos * 100.0 / total_clientes_existentes), 2)
+                    ELSE 0
+                END AS tasa_crecimiento
+            FROM totales_por_vendedor
+            WHERE total_clientes_nuevos > 0 OR total_clientes_activos > 0 OR total_clientes_existentes > 0
+            ORDER BY anio DESC, total_clientes_activos DESC, total_clientes_nuevos DESC
+        `);
+
+        return await this.dataSource.createQuery(query);
+    }
+
+
+    async getResumenClientesPorVendedor(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            WITH clientes_recientes AS (
+                SELECT DISTINCT ide_geper
+                FROM cxc_cabece_factura
+                WHERE fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months'
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+            ),
+            clientes_activos_anio AS (
+                SELECT DISTINCT ide_geper, ide_vgven
+                FROM cxc_cabece_factura
+                WHERE fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '1 year'
+                    AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                    AND ide_empr = ${dtoIn.ideEmpr}
+            )
+            SELECT 
+                COALESCE(v.ide_vgven, 0) as ide_vgven,
+                COALESCE(v.nombre_vgven, 'SIN VENDEDOR') as nombre_vgven,
+                COUNT(gp.ide_geper) AS total_clientes_asignados,
+                COUNT(CASE WHEN gp.fecha_ingre >= CURRENT_DATE - INTERVAL '1 year' THEN 1 END) AS total_clientes_nuevos,
+                COUNT(CASE WHEN ca.ide_geper IS NOT NULL THEN 1 END) AS total_clientes_activos,
+                COUNT(CASE WHEN gp.ide_geper NOT IN (SELECT ide_geper FROM clientes_recientes) THEN 1 END) AS clientes_sin_seguimiento
+            FROM gen_persona gp
+            LEFT JOIN ven_vendedor v ON gp.ide_vgven = v.ide_vgven 
+                AND v.ide_empr = ${dtoIn.ideEmpr}
+            LEFT JOIN clientes_activos_anio ca ON gp.ide_geper = ca.ide_geper 
+                AND (gp.ide_vgven = ca.ide_vgven OR (gp.ide_vgven IS NULL AND ca.ide_vgven IS NULL))
+            WHERE gp.ide_empr = ${dtoIn.ideEmpr}
+                AND gp.es_cliente_geper = true
+            GROUP BY v.ide_vgven, v.nombre_vgven
+            ORDER BY total_clientes_activos DESC
+        `);
+
+        return await this.dataSource.createQuery(query);
+    }
+
+
 
 }
