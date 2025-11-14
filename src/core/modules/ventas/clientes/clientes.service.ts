@@ -1243,4 +1243,448 @@ export class ClientesService extends BaseService {
     query.addNumberParam(1, dto.ide_geper);
     await this.dataSource.createQuery(query);
   }
+
+
+  async getSegumientoClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      WITH clientes_inactivos AS (
+        SELECT 
+            gp.ide_geper,
+            gp.uuid,
+            gp.nombre_compl_geper,
+            gp.identificac_geper,
+            gp.direccion_geper,
+            gp.telefono_geper,
+            gp.correo_geper,
+            gp.ide_vgven,
+            vv.nombre_vgven AS nombre_vendedor_actual,
+            gp.fecha_ingre_geper,
+            gpv.nombre_geprov AS provincia,
+            gct.nombre_gecant AS canton,
+            -- Última compra
+            MAX(cf.fecha_emisi_cccfa) AS ultima_fecha_compra,
+            
+            -- MÉTRICAS DE COMPRAS (Últimos 12 meses)
+            COUNT(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '12 months' 
+                  THEN cf.ide_cccfa END) AS facturas_ultimo_ano,
+            COALESCE(SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '12 months' 
+                  THEN cf.total_cccfa END), 0) AS monto_ultimo_ano,
+            
+            -- MÉTRICAS DE COMPRAS (Últimos 6 meses)
+            COUNT(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' 
+                  THEN cf.ide_cccfa END) AS facturas_ultimo_semestre,
+            COALESCE(SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' 
+                  THEN cf.total_cccfa END), 0) AS monto_ultimo_semestre,
+            
+            -- MÉTRICAS HISTÓRICAS
+            COUNT(cf.ide_cccfa) AS total_facturas_historico,
+            COALESCE(SUM(cf.total_cccfa), 0) AS monto_total_historico,
+            COALESCE(AVG(cf.total_cccfa), 0) AS ticket_promedio_historico,
+            
+            -- FRECUENCIA DE COMPRA CORREGIDA
+            CASE 
+                WHEN COUNT(cf.ide_cccfa) > 0 THEN
+                    (CURRENT_DATE - MIN(cf.fecha_emisi_cccfa))::numeric / COUNT(cf.ide_cccfa)
+                ELSE 0
+            END AS dias_entre_compras_promedio,
+            
+            -- TIEMPO DE INACTIVIDAD CORREGIDO
+            CASE 
+                WHEN MAX(cf.fecha_emisi_cccfa) IS NOT NULL THEN
+                    CURRENT_DATE - MAX(cf.fecha_emisi_cccfa)
+                ELSE
+                    CURRENT_DATE - gp.fecha_ingre_geper
+            END AS dias_inactivo,
+            
+            CASE 
+                WHEN MAX(cf.fecha_emisi_cccfa) IS NOT NULL THEN
+                    (CURRENT_DATE - MAX(cf.fecha_emisi_cccfa))::numeric / 30
+                ELSE
+                    (CURRENT_DATE - gp.fecha_ingre_geper)::numeric / 30
+            END AS meses_inactivo,
+            
+            -- CATEGORIZACIÓN POR VOLUMEN
+            CASE 
+                WHEN COALESCE(SUM(cf.total_cccfa), 0) > 10000 THEN 'A - ALTO VOLUMEN'
+                WHEN COALESCE(SUM(cf.total_cccfa), 0) > 5000 THEN 'B - MEDIO VOLUMEN'
+                WHEN COALESCE(SUM(cf.total_cccfa), 0) > 1000 THEN 'C - BAJO VOLUMEN'
+                ELSE 'D - VOLUMEN MÍNIMO'
+            END AS categoria_cliente,
+            
+            -- TENDENCIA
+            COALESCE(
+                SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' 
+                    THEN cf.total_cccfa END) - 
+                SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '12 months' 
+                         AND cf.fecha_emisi_cccfa < CURRENT_DATE - INTERVAL '6 months' 
+                    THEN cf.total_cccfa END),
+                0
+            ) AS tendencia_monto
+            
+        FROM gen_persona gp
+        LEFT JOIN cxc_cabece_factura cf ON gp.ide_geper = cf.ide_geper 
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+        LEFT JOIN ven_vendedor vv ON gp.ide_vgven = vv.ide_vgven
+        LEFT JOIN gen_provincia gpv ON gp.ide_geprov = gpv.ide_geprov
+        LEFT JOIN gen_canton gct ON gp.ide_gecant = gct.ide_gecant
+        WHERE 
+            gp.es_cliente_geper = true
+            AND gp.nivel_geper = 'HIJO'
+            AND gp.ide_empr = ${dtoIn.ideEmpr}
+            AND gp.activo_geper = true
+        GROUP BY 
+            gp.ide_geper, gp.uuid, gp.nombre_compl_geper, gp.identificac_geper, 
+            gp.direccion_geper, gp.telefono_geper, gp.correo_geper,
+            gp.ide_vgven, vv.nombre_vgven, gp.fecha_ingre_geper, 
+            gpv.nombre_geprov, gct.nombre_gecant
+    ),
+    clientes_priorizados AS (
+        SELECT *,
+            -- PUNTAJE DE PRIORIDAD
+            CASE 
+                WHEN meses_inactivo BETWEEN 3 AND 6 THEN 
+                    CASE categoria_cliente 
+                        WHEN 'A - ALTO VOLUMEN' THEN 100
+                        WHEN 'B - MEDIO VOLUMEN' THEN 80
+                        WHEN 'C - BAJO VOLUMEN' THEN 60
+                        ELSE 40
+                    END
+                WHEN meses_inactivo BETWEEN 7 AND 12 THEN 
+                    CASE categoria_cliente 
+                        WHEN 'A - ALTO VOLUMEN' THEN 90
+                        WHEN 'B - MEDIO VOLUMEN' THEN 70
+                        WHEN 'C - BAJO VOLUMEN' THEN 50
+                        ELSE 30
+                    END
+                WHEN meses_inactivo > 12 THEN 
+                    CASE categoria_cliente 
+                        WHEN 'A - ALTO VOLUMEN' THEN 80
+                        WHEN 'B - MEDIO VOLUMEN' THEN 60
+                        WHEN 'C - BAJO VOLUMEN' THEN 40
+                        ELSE 20
+                    END
+                ELSE 0
+            END * 
+            CASE WHEN monto_ultimo_ano > 0 THEN 1.5 ELSE 1 END *
+            CASE WHEN facturas_ultimo_ano >= 3 THEN 1.3 ELSE 1 END AS puntaje_prioridad,
+            
+            -- RECOMENDACIÓN DE ACCIÓN
+            CASE 
+                WHEN meses_inactivo >= 12 AND categoria_cliente LIKE 'A%' THEN 'CONTACTO URGENTE - CLIENTE ESTRATÉGICO'
+                WHEN meses_inactivo >= 6 AND monto_ultimo_ano > 5000 THEN 'CONTACTO PRIORITARIO - ALTO POTENCIAL'
+                WHEN meses_inactivo >= 3 AND facturas_ultimo_ano > 0 THEN 'CONTACTO PROGRAMADO - CLIENTE RECURRENTE'
+                WHEN meses_inactivo >= 6 THEN 'CONTACTO DE REACTIVACIÓN'
+                WHEN ultima_fecha_compra IS NULL AND fecha_ingre_geper < CURRENT_DATE - INTERVAL '3 months' THEN 'CONTACTO - PROSPECTO ANTIGUO'
+                ELSE 'SEGUIMIENTO NORMAL'
+            END AS accion_recomendada
+            
+        FROM clientes_inactivos
+        WHERE meses_inactivo >= 3 OR ultima_fecha_compra IS NULL
+    )
+    SELECT 
+        ide_geper,
+        uuid,
+        nombre_compl_geper AS nombre_cliente,
+        identificac_geper AS identificacion,
+        direccion_geper AS direccion,
+        telefono_geper AS telefono,
+        correo_geper AS email,
+        provincia,
+        canton,
+        nombre_vendedor_actual AS vendedor_asignado,
+        
+        -- Información de Inactividad
+        ultima_fecha_compra AS ultima_compra,
+        ROUND(meses_inactivo::numeric, 1) AS meses_inactivo,
+        dias_inactivo,
+        
+        -- Métricas Clave
+        categoria_cliente AS categoria,
+        ROUND(monto_total_historico, 2) AS monto_historico,
+        ROUND(monto_ultimo_ano, 2) AS monto_ultimo_ano,
+        ROUND(monto_ultimo_semestre, 2) AS monto_ultimo_semestre,
+        facturas_ultimo_ano,
+        ROUND(ticket_promedio_historico, 2) AS factura_promedio,
+        ROUND(dias_entre_compras_promedio, 1) AS frecuencia_compra_dias,
+        
+        -- Análisis de Tendencia
+        ROUND(tendencia_monto, 2) AS tendencia_monto,
+        CASE 
+            WHEN tendencia_monto > 0 THEN 'CRECIENTE'
+            WHEN tendencia_monto < 0 THEN 'DECRECIENTE'
+            ELSE 'ESTABLE'
+        END AS tendencia,
+        
+        -- Priorización
+        ROUND(puntaje_prioridad::numeric, 1) AS puntaje_prioridad,
+        accion_recomendada
+        
+    FROM clientes_priorizados
+    ORDER BY 
+        puntaje_prioridad DESC,
+        meses_inactivo DESC,
+        monto_total_historico DESC
+      `,
+      dtoIn,
+    );
+
+    return await this.dataSource.createQuery(query);
+  }
+
+
+
+
+  async getClientesAContactar(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      WITH clientes_activos AS (
+        SELECT 
+            gp.ide_geper,
+            gp.uuid,
+            gp.nombre_compl_geper,
+            gp.identificac_geper,
+            gp.direccion_geper,
+            gp.telefono_geper,
+            gp.correo_geper,
+            gp.ide_vgven,
+            vv.nombre_vgven AS nombre_vendedor_actual,
+            gp.movil_geper,
+            gpv.nombre_geprov AS provincia,
+            gct.nombre_gecant AS canton,
+            
+            -- PATRONES DE COMPRA
+            MAX(cf.fecha_emisi_cccfa) AS ultima_compra,
+            MIN(cf.fecha_emisi_cccfa) AS primera_compra,
+            COUNT(cf.ide_cccfa) AS total_facturas,
+            
+            -- FRECUENCIA DE COMPRA
+            CASE 
+                WHEN COUNT(cf.ide_cccfa) > 1 THEN
+                    (MAX(cf.fecha_emisi_cccfa) - MIN(cf.fecha_emisi_cccfa))::numeric / (COUNT(cf.ide_cccfa) - 1)
+                ELSE 0
+            END AS frecuencia_promedio_dias,
+            
+            -- COMPORTAMIENTO RECIENTE
+            COUNT(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '3 months' 
+                  THEN cf.ide_cccfa END) AS facturas_ultimo_trimestre,
+                  
+            COUNT(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' 
+                       AND cf.fecha_emisi_cccfa < CURRENT_DATE - INTERVAL '3 months'
+                  THEN cf.ide_cccfa END) AS facturas_trimestre_anterior,
+            
+            -- MONTOS RECIENTES
+            COALESCE(SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '3 months' 
+                  THEN cf.total_cccfa END), 0) AS monto_ultimo_trimestre,
+                  
+            COALESCE(SUM(CASE WHEN cf.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' 
+                       AND cf.fecha_emiSI_cccfa < CURRENT_DATE - INTERVAL '3 months'
+                  THEN cf.total_cccfa END), 0) AS monto_trimestre_anterior,
+            
+            -- TICKET PROMEDIO
+            COALESCE(AVG(cf.total_cccfa), 0) AS ticket_promedio,
+            
+            -- VARIABLES PARA PREDICCIÓN
+            CURRENT_DATE - MAX(cf.fecha_emisi_cccfa) AS dias_desde_ultima_compra
+            
+        FROM gen_persona gp
+        LEFT JOIN cxc_cabece_factura cf ON gp.ide_geper = cf.ide_geper 
+            AND cf.ide_empr = 0 
+            AND cf.ide_ccefa = 0
+        LEFT JOIN ven_vendedor vv ON gp.ide_vgven = vv.ide_vgven
+        LEFT JOIN gen_provincia gpv ON gp.ide_geprov = gpv.ide_geprov
+        LEFT JOIN gen_canton gct ON gp.ide_gecant = gct.ide_gecant
+        WHERE 
+            gp.es_cliente_geper = true
+            AND gp.nivel_geper = 'HIJO'
+            AND gp.ide_empr = 0
+            AND gp.activo_geper = true
+            AND cf.fecha_emisi_cccfa IS NOT NULL
+        GROUP BY 
+            gp.ide_geper, gp.uuid, gp.nombre_compl_geper, gp.identificac_geper, 
+            gp.direccion_geper, gp.telefono_geper, gp.correo_geper, gp.movil_geper,
+            gp.ide_vgven, vv.nombre_vgven, gpv.nombre_geprov, gct.nombre_gecant
+        HAVING COUNT(cf.ide_cccfa) >= 2
+    ),
+    prediccion_compras AS (
+        SELECT *,
+            -- ALGORITMO DE PREDICCIÓN MEJORADO
+            CASE 
+                -- Cliente que superó su ciclo habitual
+                WHEN frecuencia_promedio_dias > 0 AND dias_desde_ultima_compra >= frecuencia_promedio_dias THEN 100
+                
+                -- Cliente con patrón trimestral sin comprar este período
+                WHEN facturas_trimestre_anterior > 0 AND facturas_ultimo_trimestre = 0 
+                     AND dias_desde_ultima_compra BETWEEN 80 AND 100 THEN 95
+                     
+                -- Cliente con aumento significativo en frecuencia
+                WHEN facturas_ultimo_trimestre > facturas_trimestre_anterior * 1.5 THEN 90
+                
+                -- Cliente con patrón mensual acercándose a su ciclo
+                WHEN frecuencia_promedio_dias BETWEEN 25 AND 35 
+                     AND dias_desde_ultima_compra BETWEEN frecuencia_promedio_dias * 0.8 AND frecuencia_promedio_dias THEN 85
+                     
+                -- Cliente con ticket alto que usualmente compra mensualmente
+                WHEN ticket_promedio > 1000 
+                     AND EXTRACT(MONTH FROM ultima_compra) != EXTRACT(MONTH FROM CURRENT_DATE) THEN 75
+                     
+                ELSE 0
+            END AS probabilidad_compra,
+            
+            -- RAZÓN DE PREDICCIÓN MÁS CORDIAL
+            CASE 
+                WHEN frecuencia_promedio_dias > 0 AND dias_desde_ultima_compra >= frecuencia_promedio_dias THEN
+                    'Es tiempo de tu próxima compra según tu patrón habitual'
+                    
+                WHEN facturas_trimestre_anterior > 0 AND facturas_ultimo_trimestre = 0 THEN
+                    'Sueles comprar cada trimestre y estamos en esa época'
+                    
+                WHEN facturas_ultimo_trimestre > facturas_trimestre_anterior * 1.5 THEN
+                    'Has aumentado tus pedidos recientemente'
+                    
+                WHEN frecuencia_promedio_dias BETWEEN 25 AND 35 
+                     AND dias_desde_ultima_compra BETWEEN frecuencia_promedio_dias * 0.8 AND frecuencia_promedio_dias THEN
+                    'Se acerca la fecha de tu compra mensual habitual'
+                    
+                WHEN ticket_promedio > 1000 
+                     AND EXTRACT(MONTH FROM ultima_compra) != EXTRACT(MONTH FROM CURRENT_DATE) THEN
+                    'Cliente preferencial que suele comprar mensualmente'
+                    
+                ELSE 'Revisar comportamiento de compra'
+            END AS razon_prediccion,
+            
+            -- TIPO DE CONTACTO MÁS AMIGABLE
+            CASE 
+                WHEN frecuencia_promedio_dias > 0 AND dias_desde_ultima_compra >= frecuencia_promedio_dias THEN
+                    'Llamar hoy - Seguimiento oportuno'
+                    
+                WHEN facturas_trimestre_anterior > 0 AND facturas_ultimo_trimestre = 0 THEN
+                    'Contactar esta semana - Cliente trimestral'
+                    
+                WHEN facturas_ultimo_trimestre > facturas_trimestre_anterior * 1.5 THEN
+                    'Contactar pronto - Cliente en crecimiento'
+                    
+                ELSE 'Seguimiento preventivo'
+            END AS tipo_contacto,
+            
+            -- MENSAJES MÁS CORDIALES Y PERSONALES
+            CASE 
+                WHEN frecuencia_promedio_dias > 0 AND dias_desde_ultima_compra >= frecuencia_promedio_dias THEN
+                    'Hola, ¿cómo estás? Queríamos saber si necesitas renovar stock o si hay algún producto que podamos prepararte para tu próximo pedido.'
+                    
+                WHEN facturas_trimestre_anterior > 0 AND facturas_ultimo_trimestre = 0 THEN
+                    'Hola, esperamos que todo vaya bien. Estamos en la época en que normalmente realizas tus compras trimestrales. ¿Hay algo en lo que podamos ayudarte?'
+                    
+                WHEN facturas_ultimo_trimestre > facturas_trimestre_anterior * 1.5 THEN
+                    'Hola, notamos que has estado haciendo más pedidos recientemente. ¿Todo bien? ¿Hay algún producto que necesites en mayor cantidad o frecuencia?'
+                    
+                ELSE 'Hola, queríamos ponernos en contacto para saber si tienes algún proyecto próximo donde podamos apoyarte. Estamos aquí para lo que necesites.'
+            END AS mensaje_sugerido,
+            
+            -- SUGERENCIA DE PRODUCTOS BASADA EN HISTORIAL
+            CASE 
+                WHEN ticket_promedio > 1000 THEN 'Ofrecer productos premium y promociones especiales'
+                WHEN frecuencia_promedio_dias < 30 THEN 'Sugerir compra programada o suscripción'
+                WHEN facturas_ultimo_trimestre > 3 THEN 'Proponer descuento por volumen'
+                ELSE 'Conversar sobre necesidades actuales'
+            END AS estrategia_ventas
+    
+        FROM clientes_activos
+    )
+    SELECT 
+        ide_geper,
+        uuid,
+        nombre_compl_geper AS nombre_cliente,
+        identificac_geper AS identificacion,
+        direccion_geper AS direccion,
+        telefono_geper AS telefono,
+        movil_geper AS celular,
+        correo_geper AS email,
+        provincia,
+        canton,
+        nombre_vendedor_actual AS vendedor_asignado,
+        
+        -- INFORMACIÓN DE COMPRAS
+        ultima_compra,
+        primera_compra,
+        total_facturas,
+        ROUND(ticket_promedio, 2) AS ticket_promedio,
+        ROUND(frecuencia_promedio_dias, 1) AS frecuencia_promedio_dias,
+        dias_desde_ultima_compra,
+        
+        -- COMPORTAMIENTO RECIENTE
+        facturas_ultimo_trimestre,
+        facturas_trimestre_anterior,
+        ROUND(monto_ultimo_trimestre, 2) AS monto_ultimo_trimestre,
+        ROUND(monto_trimestre_anterior, 2) AS monto_trimestre_anterior,
+        
+        -- TENDENCIA
+        CASE 
+            WHEN facturas_ultimo_trimestre > facturas_trimestre_anterior THEN 'CRECIENTE'
+            WHEN facturas_ultimo_trimestre = facturas_trimestre_anterior THEN 'ESTABLE'
+            ELSE 'DECRECIENTE'
+        END AS tendencia_facturas,
+        
+        -- PREDICCIÓN Y SEGUIMIENTO
+        probabilidad_compra,
+        razon_prediccion,
+        tipo_contacto,
+        mensaje_sugerido,
+        estrategia_ventas,
+        
+        -- PRIORIDAD CON EMOJIS PARA MEJOR VISUALIZACIÓN
+        CASE 
+            WHEN probabilidad_compra >= 90 THEN '🔥 ALTA - Contactar hoy'
+            WHEN probabilidad_compra >= 75 THEN '⚠️ MEDIA - Esta semana'
+            ELSE '📞 BAJA - Próximos días'
+        END AS prioridad_contacto,
+        
+        -- INDICADOR DE URGENCIA
+        CASE 
+            WHEN dias_desde_ultima_compra > frecuencia_promedio_dias THEN
+                '🟢 En tiempo - ' || ROUND((dias_desde_ultima_compra / NULLIF(frecuencia_promedio_dias, 0)) * 100, 0) || '% de ciclo'
+            WHEN dias_desde_ultima_compra > frecuencia_promedio_dias * 0.8 THEN
+                '🟡 Por vencer - ' || ROUND((dias_desde_ultima_compra / NULLIF(frecuencia_promedio_dias, 0)) * 100, 0) || '% de ciclo'
+            ELSE
+                '🔵 En plazo - ' || ROUND((dias_desde_ultima_compra / NULLIF(frecuencia_promedio_dias, 0)) * 100, 0) || '% de ciclo'
+        END AS estado_ciclo
+    
+    FROM prediccion_compras
+    WHERE probabilidad_compra > 0
+    ORDER BY 
+        probabilidad_compra DESC,
+        dias_desde_ultima_compra DESC,
+        ticket_promedio DESC
+      `,
+      dtoIn,
+    );
+
+    return await this.dataSource.createQuery(query);
+  }
+
+
+  async getHistoricoVendedoresCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT 
+          gcvh.fecha_ingre AS fecha_cambio,
+          gcvh.usuario_ingre AS usuario_cambio,
+          gcvh.motivo_gepvh AS motivo,
+          vv_antes.nombre_vgven AS vendedor_anterior,
+          vv.nombre_vgven AS vendedor_nuevo
+          
+      FROM gen_cliente_vendedor_his gcvh
+      INNER JOIN ven_vendedor vv ON gcvh.ide_vgven = vv.ide_vgven
+      LEFT JOIN ven_vendedor vv_antes ON gcvh.ide_vgven_antes = vv_antes.ide_vgven
+      WHERE gcvh.ide_geper = $1
+      ORDER BY gcvh.fecha_ingre DESC
+      `,
+      dtoIn
+    );
+
+    query.addParam(1, dtoIn.ide_geper);
+    return await this.dataSource.createQuery(query);
+  }
+
 }

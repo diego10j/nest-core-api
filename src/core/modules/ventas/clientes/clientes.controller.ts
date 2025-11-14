@@ -162,4 +162,36 @@ export class ClientesController {
       ...dtoIn,
     });
   }
+
+
+  @Get('getSegumientoClientes')
+  // @Auth()
+  getSegumientoClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.service.getSegumientoClientes({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getClientesAContactar')
+  // @Auth()
+  getClientesAContactar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.service.getClientesAContactar({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getHistoricoVendedoresCliente')
+  // @Auth()
+  getHistoricoVendedoresCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdClienteDto) {
+    return this.service.getHistoricoVendedoresCliente({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
+
 }

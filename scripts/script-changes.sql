@@ -1251,3 +1251,62 @@ ON inv_articulo (ide_empr, cant_stock1_inarti, cant_stock2_inarti)
 WHERE cant_stock1_inarti IS NOT NULL OR cant_stock2_inarti IS NOT NULL;
 
 
+-----
+-- ÍNDICES PARA OPTIMIZAR CONSULTAS DE CUENTAS POR COBRAR
+
+-- Índices principales para cxc_cabece_factura (tabla más crítica)
+CREATE INDEX IF NOT EXISTS idx_cf_fecha_emisi_ide_empr ON cxc_cabece_factura(fecha_emisi_cccfa, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_cf_ide_geper_fecha ON cxc_cabece_factura(ide_geper, fecha_emisi_cccfa);
+CREATE INDEX IF NOT EXISTS idx_cf_ide_ccefa_dias_credito ON cxc_cabece_factura(ide_ccefa, dias_credito_cccfa);
+CREATE INDEX IF NOT EXISTS idx_cf_ide_cccfa_empr ON cxc_cabece_factura(ide_cccfa, ide_empr);
+
+-- Índices para cxc_cabece_transa
+CREATE INDEX IF NOT EXISTS idx_ct_ide_cccfa ON cxc_cabece_transa(ide_cccfa);
+CREATE INDEX IF NOT EXISTS idx_ct_fecha_trans_empr ON cxc_cabece_transa(fecha_trans_ccctr, ide_empr);
+CREATE INDEX IF NOT EXISTS idx_ct_ide_geper_fecha ON cxc_cabece_transa(ide_geper, fecha_trans_ccctr);
+CREATE INDEX IF NOT EXISTS idx_ct_empr_sucu ON cxc_cabece_transa(ide_empr, ide_sucu);
+
+-- Índices para cxc_detall_transa
+CREATE INDEX IF NOT EXISTS idx_dt_ide_ccctr ON cxc_detall_transa(ide_ccctr);
+CREATE INDEX IF NOT EXISTS idx_dt_ide_ccttr_sucu ON cxc_detall_transa(ide_ccttr, ide_sucu);
+CREATE INDEX IF NOT EXISTS idx_dt_ide_ccttr_excluidos ON cxc_detall_transa(ide_ccttr) WHERE ide_ccttr NOT IN (7, 9);
+
+-- Índices para gen_persona
+CREATE INDEX IF NOT EXISTS idx_gp_ide_geper ON gen_persona(ide_geper);
+CREATE INDEX IF NOT EXISTS idx_gp_identificac ON gen_persona(identificac_geper);
+
+-- Índices para cxc_tipo_transacc
+CREATE INDEX IF NOT EXISTS idx_tt_ide_ccttr_signo ON cxc_tipo_transacc(ide_ccttr, signo_ccttr);
+CREATE INDEX IF NOT EXISTS idx_tt_signo_negativo ON cxc_tipo_transacc(signo_ccttr) WHERE signo_ccttr < 0;
+
+-- Índices para cxc_datos_fac
+CREATE INDEX IF NOT EXISTS idx_df_ide_ccdaf ON cxc_datos_fac(ide_ccdaf);
+
+-- Índices compuestos para consultas específicas
+CREATE INDEX IF NOT EXISTS idx_cf_completo_analitico ON cxc_cabece_factura (
+    ide_empr, 
+    ide_ccefa, 
+    fecha_emisi_cccfa, 
+    dias_credito_cccfa, 
+    ide_geper
+);
+
+CREATE INDEX IF NOT EXISTS idx_ct_completo_analitico ON cxc_cabece_transa (
+    ide_empr,
+    ide_sucu,
+    fecha_trans_ccctr,
+    ide_geper,
+    ide_cccfa
+);
+
+CREATE INDEX IF NOT EXISTS idx_dt_completo_analitico ON cxc_detall_transa (
+    ide_ccctr,
+    ide_ccttr,
+    ide_sucu
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_ct_transacciones_pago ON cxc_cabece_transa (ide_cccfa, fecha_trans_ccctr)
+WHERE ide_cccfa IS NOT NULL;
+
+
