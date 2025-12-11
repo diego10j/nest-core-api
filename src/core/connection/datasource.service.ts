@@ -193,10 +193,10 @@ export class DataSourceService {
         queryName: query instanceof SelectQuery ? queryName : undefined,
       } as ResultQuery;
     } catch (error) {
-      console.error(query);
-      console.error(error);
+      // console.error(query);
+      // console.error(error);
       this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
-      throw new InternalServerErrorException(`[ERROR] createQuery - ${error}`);
+      throw new InternalServerErrorException(`${error}`);
     }
   }
 

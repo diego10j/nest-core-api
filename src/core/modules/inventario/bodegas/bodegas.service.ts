@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { fDate } from 'src/util/helpers/date-util';
 
 import { BaseService } from '../../../../common/base-service';
@@ -8,9 +9,11 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
+import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
+import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
 
 @Injectable()
@@ -286,4 +289,105 @@ export class BodegasService extends BaseService {
       },
     ];
   }
+
+  /**
+   * Genera registros para conteo de inventario
+   * @param dtoIn 
+   * @returns 
+   */
+  async generarConteoInventario(dtoIn: GeneraConteoInvDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+      SELECT * FROM f_genera_conteo_inventario(
+        p_ide_inbod := $1,
+        p_fecha_corte := $2,
+        p_ide_usua := $3,
+        p_observacion := $4
+      )
+        `,
+        dtoIn,
+      );
+
+      query.addParam(1, dtoIn.ide_inbod);
+      query.addParam(2, dtoIn.fechaCorte);
+      query.addIntParam(3, dtoIn.ideUsua);
+      query.addParam(4, dtoIn.observacion);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
+
+
+  async registrarConteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+        SELECT * FROM f_registrar_conteo_fisico(
+          p_ide_indcf := $1,
+          p_cantidad_contada := $2,
+          p_observacion := $3,
+          p_usuario_conteo := $4
+      )
+        `,
+        dtoIn,
+      );
+      query.addParam(1, dtoIn.ide_indcf);
+      query.addParam(2, dtoIn.cantidadContada);
+      query.addParam(3, dtoIn.observacion);
+      query.addParam(4, dtoIn.login);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
+
+
+  async registrarReconteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+        SELECT * FROM f_registrar_reconteo_fisico(
+          p_ide_indcf := $1,
+          p_cantidad_recontada := $2,
+          p_observacion := $3,
+          p_usuario_reconteo := $4
+      )
+        `,
+        dtoIn,
+      );
+      query.addParam(1, dtoIn.ide_indcf);
+      query.addParam(2, dtoIn.cantidadContada);
+      query.addParam(3, dtoIn.observacion);
+      query.addParam(4, dtoIn.login);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
+
+
+
 }

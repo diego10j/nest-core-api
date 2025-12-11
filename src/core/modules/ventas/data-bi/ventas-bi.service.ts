@@ -3,7 +3,6 @@ import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
-import { Query } from 'src/core/connection/helpers';
 
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';

@@ -85,7 +85,7 @@ WHERE nom_geper ILIKE ANY(ARRAY[
   ]);
   
 -----------------------------------------------
-ALTER TABLE gen_persona ADD COLUMN ide_geprov int4;
+
 -- Direccion de persona
 CREATE TABLE "public"."gen_direccion_persona" (
     "ide_gedirp" int4,
@@ -123,6 +123,7 @@ CREATE TABLE sis_actividad_tipo (
     ide_actti int4 PRIMARY KEY,
     nom_actti VARCHAR(100) NOT NULL, 
     icono_actti VARCHAR(50), 
+    nemonico_actti VARCHAR(5),
     activo_gedirp bool,
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -130,10 +131,11 @@ CREATE TABLE sis_actividad_tipo (
     hora_actua TIMESTAMP
 );
 
-insert into sis_actividad_tipo values(1, 'Registro creado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into sis_actividad_tipo values(2, 'Registro modificado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into sis_actividad_tipo values(3, 'Registro Eliminado',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
-insert into sis_actividad_tipo values(4, 'Otra Actividad',null,true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(1, 'Registro creado',null,'I',true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(2, 'Registro modificado',null,'M',true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(3, 'Registro Eliminado',null,'E',true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(4, 'Registro Consultado',null,'C',true, 'sa',CURRENT_TIMESTAMP,null,null);
+insert into sis_actividad_tipo values(5, 'Otra Actividad',null,'O',true, 'sa',CURRENT_TIMESTAMP,null,null);
 
 
 -- Esta tabla almacenará los posibles estados de una actividad, como "pendiente", "hecho", "cancelado", etc.

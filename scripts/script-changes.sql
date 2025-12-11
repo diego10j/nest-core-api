@@ -3,8 +3,9 @@
 ALTER TABLE sis_usuario ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_usuario ON sis_usuario(uuid);
 
+
 ALTER TABLE sis_usuario_clave ALTER COLUMN "clave_uscl" SET DATA TYPE varchar(80);
-/**1234 = $2a$10$YmzXZuCX1sBWIGkw//4rVumKQuXuhY/RR3T4jJSUIOfYu74weKdZu */
+
 UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
 ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
@@ -1310,3 +1311,279 @@ CREATE INDEX IF NOT EXISTS idx_ct_transacciones_pago ON cxc_cabece_transa (ide_c
 WHERE ide_cccfa IS NOT NULL;
 
 
+---CONTEO INVENTARIO 
+
+ALTER TABLE "public"."inv_bodega"
+ADD COLUMN "codigo_inbod " varchar(10);
+
+CREATE TABLE public.inv_estado_conteo (
+    ide_inec INT8 NOT NULL,
+    codigo_inec VARCHAR(20) NOT NULL,
+    nombre_inec VARCHAR(50) NOT NULL,
+    descripcion_inec VARCHAR(200),
+    orden_inec INT DEFAULT 0,
+    permite_modificacion_inec BOOLEAN DEFAULT true,
+    permite_eliminacion_inec BOOLEAN DEFAULT false,
+    activo_inec BOOLEAN DEFAULT true,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_inv_estado_conteo PRIMARY KEY (ide_inec),
+    CONSTRAINT uk_estado_conteo_codigo UNIQUE (codigo_inec)
+);
+
+-- Datos iniciales
+INSERT INTO public.inv_estado_conteo (ide_inec,codigo_inec, nombre_inec, descripcion_inec, orden_inec, permite_modificacion_inec) VALUES
+(1,'PENDIENTE', 'Pendiente', 'Conteo creado pero no iniciado', 1, true),
+(2,'EN_PROCESO', 'En Proceso', 'Conteo en ejecución', 2, true),
+(3,'CONCLUIDO', 'Concluído', 'Conteo finalizado, pendiente de revisión', 3, false),
+(4,'CERRADO', 'Cerrado', 'Conteo cerrado sin ajustes', 4, false),
+(5,'AJUSTADO', 'Ajustado', 'Conteo cerrado con ajustes realizados', 5, false),
+(6,'CANCELADO', 'Cancelado', 'Conteo cancelado', 6, false);
+
+
+CREATE TABLE public.inv_tipo_conteo (
+    ide_intc INT8 NOT NULL,
+    codigo_intc VARCHAR(20) NOT NULL,
+    nombre_intc VARCHAR(50) NOT NULL,
+    descripcion_intc VARCHAR(200),
+    requiere_reconteo_intc BOOLEAN DEFAULT false,
+    ciclico_intc BOOLEAN DEFAULT false,
+    frecuencia_dias_intc INT DEFAULT 0,
+    porcentaje_muestreo_intc NUMERIC(5,2) DEFAULT 100.00,
+    tolerancia_porcentaje_intc NUMERIC(5,2) DEFAULT 2.00,
+    requiere_aprobacion_intc BOOLEAN DEFAULT false,
+    activo_intc BOOLEAN DEFAULT true,
+    usuario_ingre VARCHAR(50),
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    CONSTRAINT pk_inv_tipo_conteo PRIMARY KEY (ide_intc),
+    CONSTRAINT uk_tipo_conteo_codigo UNIQUE (codigo_intc)
+);
+
+-- Datos iniciales
+INSERT INTO public.inv_tipo_conteo (ide_intc,codigo_intc, nombre_intc, descripcion_intc, requiere_reconteo_intc, ciclico_intc, porcentaje_muestreo_intc) VALUES
+(1,'CICLICO', 'Cíclico', 'Conteo por ciclos de productos de alta rotación', true, true, 100.00),
+(2,'TOTAL', 'Total', 'Conteo completo de todos los productos', true, false, 100.00),
+(3,'POR_ZONA', 'Por Zona', 'Conteo por áreas o zonas específicas', false, false, 100.00),
+(4,'ALEATORIO', 'Aleatorio', 'Conteo aleatorio de productos', true, true, 30.00),
+(5,'MUESTREO', 'Muestreo', 'Conteo por muestreo estadístico', true, true, 20.00),
+(6,'ABC', 'Conteo ABC', 'Conteo por clasificación ABC', true, true, 100.00);
+
+
+
+
+-- Tabla cabecera corte_conteo_fisico
+CREATE TABLE public.inv_cab_conteo_fisico (
+    -- Identificador principal
+    ide_inccf INT8 NOT NULL,
+    
+    -- Referencias a otras tablas
+    ide_inbod INT8 NOT NULL,                     -- Bodega
+    ide_usua INT8 NOT NULL,                      -- Responsable del conteo
+    ide_inec INT8 NOT NULL,                      -- Estado del conteo
+    ide_intc INT8 NOT NULL,                      -- Tipo de conteo
+    
+    -- Información básica del conteo
+    secuencial_inccf VARCHAR(12) NOT NULL,       -- Ejemplo: BOD-2025-001
+    mes_inccf INT NOT NULL,                      -- Mes (1-12)
+    anio_inccf INT NOT NULL,                     -- Año (2025)
+    fecha_corte_inccf DATE NOT NULL,             -- Fecha de corte del inventario
+    
+    -- Control de tiempos
+    fecha_ini_conteo_inccf TIMESTAMP,            -- Inicio del conteo
+    fecha_fin_conteo_inccf TIMESTAMP,            -- Fin del conteo
+    fecha_cierre_inccf TIMESTAMP,                -- Fecha de cierre formal
+    fecha_reconteo_inccf DATE,                   -- Fecha de reconteo general
+    
+    -- Información de aprobación
+    ide_usua_aprueba INT8,                       -- Usuario que aprueba
+    fecha_aprobacion_inccf TIMESTAMP,            -- Fecha de aprobación
+    observacion_aprobacion_inccf VARCHAR(200),   -- Observaciones de aprobación
+    
+    -- Estadísticas del conteo
+    productos_estimados_inccf INT DEFAULT 0,     -- Productos estimados a contar
+    productos_contados_inccf INT DEFAULT 0,      -- Productos realmente contados
+    productos_con_diferencia_inccf INT DEFAULT 0,-- Productos con diferencias
+    productos_ajustados_inccf INT DEFAULT 0,     -- Productos ajustados
+    
+    -- Valores monetarios
+    valor_total_corte_inccf NUMERIC(15,3) DEFAULT 0,    -- Valor teórico
+    valor_total_fisico_inccf NUMERIC(15,3) DEFAULT 0,   -- Valor físico
+    valor_total_diferencias_inccf NUMERIC(15,3) DEFAULT 0, -- Valor diferencias
+    
+    -- Métricas de calidad
+    porcentaje_exactitud_inccf NUMERIC(5,2) DEFAULT 0,  -- % de exactitud
+    porcentaje_avance_inccf NUMERIC(5,2) DEFAULT 0,     -- % de avance
+    tolerancia_porcentaje_inccf NUMERIC(5,2) DEFAULT 2.00, -- Tolerancia configurada
+    
+    -- Información general
+    observacion_inccf VARCHAR(500),              -- Observaciones generales
+    motivo_cancelacion_inccf VARCHAR(200),       -- Motivo si se cancela
+    
+    -- Control de flujo
+    conteo_numero_inccf INT DEFAULT 1,           -- Número de conteo (1, 2, 3...)
+    es_reconteo_inccf BOOLEAN DEFAULT false,     -- Indica si es un reconteo
+    ide_inccf_original INT8,                     -- Conteo original si es reconteo
+    
+    -- Auditoría y control
+    activo_inccf BOOLEAN DEFAULT true,
+    usuario_ingre VARCHAR(50) NOT NULL,
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    
+    -- Llaves primarias y foráneas
+    CONSTRAINT pk_inv_cab_conteo_fisico PRIMARY KEY (ide_inccf),
+    CONSTRAINT fk_cab_conteo_bodega FOREIGN KEY (ide_inbod) 
+        REFERENCES public.inv_bodega(ide_inbod),
+    CONSTRAINT fk_cab_conteo_usuario FOREIGN KEY (ide_usua) 
+        REFERENCES public.sis_usuario(ide_usua),
+    CONSTRAINT fk_cab_conteo_estado FOREIGN KEY (ide_inec) 
+        REFERENCES public.inv_estado_conteo(ide_inec),
+    CONSTRAINT fk_cab_conteo_tipo FOREIGN KEY (ide_intc) 
+        REFERENCES public.inv_tipo_conteo(ide_intc),
+    CONSTRAINT fk_cab_conteo_usuario_aprueba FOREIGN KEY (ide_usua_aprueba) 
+        REFERENCES public.sis_usuario(ide_usua),
+    CONSTRAINT fk_cab_conteo_original FOREIGN KEY (ide_inccf_original) 
+        REFERENCES public.inv_cab_conteo_fisico(ide_inccf),
+    
+    -- Restricciones de negocio
+    CONSTRAINT chk_fechas_validas CHECK (
+        fecha_ini_conteo_inccf <= fecha_fin_conteo_inccf AND
+        fecha_corte_inccf <= COALESCE(fecha_cierre_inccf, CURRENT_DATE)
+    ),
+    CONSTRAINT chk_mes_valido CHECK (mes_inccf BETWEEN 1 AND 12),
+    CONSTRAINT chk_anio_valido CHECK (anio_inccf BETWEEN 2000 AND 2100),
+    CONSTRAINT chk_porcentajes_validos CHECK (
+        porcentaje_exactitud_inccf BETWEEN 0 AND 100 AND
+        porcentaje_avance_inccf BETWEEN 0 AND 100
+    )
+);
+
+-- Índices para mejor performance
+CREATE INDEX idx_cab_conteo_bodega ON inv_cab_conteo_fisico(ide_inbod, ide_inec);
+CREATE INDEX idx_cab_conteo_fechas ON inv_cab_conteo_fisico(fecha_corte_inccf, anio_inccf, mes_inccf);
+CREATE INDEX idx_cab_conteo_estado ON inv_cab_conteo_fisico(ide_inec, activo_inccf);
+CREATE INDEX idx_cab_conteo_secuencial ON inv_cab_conteo_fisico(secuencial_inccf);
+CREATE INDEX idx_cab_conteo_usuario ON inv_cab_conteo_fisico(ide_usua, fecha_ingre);
+
+
+
+-- Tabla detalles conteto fisico
+CREATE TABLE public.inv_det_conteo_fisico (
+    -- Identificador principal
+    ide_indcf INT8 NOT NULL,
+    
+    -- Referencias
+    ide_inccf INT8 NOT NULL,                     -- Cabecera del conteo
+    ide_inarti INT8 NOT NULL,                    -- Artículo/producto
+    
+    -- Saldos y cantidades
+    saldo_corte_indcf NUMERIC(12,3) NOT NULL DEFAULT 0,    -- Saldo al corte
+    cantidad_fisica_indcf NUMERIC(12,3) NOT NULL DEFAULT 0, -- Cantidad contada
+    saldo_conteo_indcf NUMERIC(12,3) DEFAULT 0,  -- Saldo al momento del conteo
+    
+    -- Cálculos automáticos (generated columns)
+    diferencia_cantidad_indcf NUMERIC(12,3) 
+        GENERATED ALWAYS AS (cantidad_fisica_indcf - saldo_corte_indcf) STORED,
+    diferencia_porcentaje_indcf NUMERIC(6,2) 
+        GENERATED ALWAYS AS (
+            CASE 
+                WHEN saldo_corte_indcf = 0 THEN 0
+                ELSE (cantidad_fisica_indcf - saldo_corte_indcf) / saldo_corte_indcf * 100
+            END
+        ) STORED,
+    
+    -- Reconteo
+    cantidad_reconteo_indcf NUMERIC(12,3),       -- Cantidad en reconteo
+    fecha_reconteo_indcf TIMESTAMP,              -- Fecha de reconteo
+    usuario_reconteo_indcf VARCHAR(50),          -- Usuario que hace reconteo
+    
+    -- Ajuste de inventario
+    requiere_ajuste_indcf BOOLEAN DEFAULT false, -- Requiere ajuste?
+    aprobado_ajuste_indcf BOOLEAN DEFAULT false, -- Ajuste aprobado?
+    cantidad_ajuste_indcf NUMERIC(12,3),         -- Cantidad a ajustar
+    fecha_ajuste_indcf TIMESTAMP,                -- Fecha del ajuste
+    ide_usua_ajusta INT8,                        -- Usuario que aprueba ajuste
+    saldo_antes_ajuste_indcf NUMERIC(12,3),      -- Saldo antes del ajuste
+    saldo_despues_ajuste_indcf NUMERIC(12,3),    -- Saldo después del ajuste
+    
+    -- Costos y valores
+    costo_unitario_indcf NUMERIC(12,3) DEFAULT 0, -- Costo unitario
+    valor_corte_indcf NUMERIC(15,3)              -- Valor teórico
+        GENERATED ALWAYS AS (saldo_corte_indcf * costo_unitario_indcf) STORED,
+    valor_fisico_indcf NUMERIC(15,3)             -- Valor físico
+        GENERATED ALWAYS AS (cantidad_fisica_indcf * costo_unitario_indcf) STORED,
+    valor_diferencia_indcf NUMERIC(15,3)
+        GENERATED ALWAYS AS (
+            (cantidad_fisica_indcf - saldo_corte_indcf) * costo_unitario_indcf
+        ) STORED,
+
+    
+    -- Información específica del producto
+    lote_indcf VARCHAR(50),                      -- Lote específico
+    serial_indcf VARCHAR(50),                    -- Serial específico
+    fecha_vencimiento_indcf DATE,                -- Fecha de vencimiento
+    ubicacion_indcf VARCHAR(100),                -- Ubicación física
+    
+    -- Control de proceso
+    fecha_conteo_indcf TIMESTAMP  NULL,       -- Fecha del conteo
+    usuario_conteo_indcf VARCHAR(50)  NULL,   -- Usuario que contó
+    equipo_conteo_indcf VARCHAR(50),             -- Equipo/terminal usado
+    
+    -- Estados y validaciones
+    estado_item_indcf VARCHAR(20) DEFAULT 'PENDIENTE', -- PENDIENTE, CONTADO, RECONTADO, AJUSTADO
+    validado_indcf BOOLEAN DEFAULT false,        -- Validado por supervisor?
+    ide_usua_valida INT8,                        -- Usuario que valida
+    
+    -- Observaciones y comentarios
+    observacion_indcf VARCHAR(500),              -- Observaciones del conteo
+    motivo_diferencia_indcf VARCHAR(200),        -- Posible motivo de diferencia
+    
+
+	numero_reconteos_indcf INTEGER NOT NULL DEFAULT 0,
+
+    -- Auditoría y control
+    activo_indcf BOOLEAN DEFAULT true,
+    usuario_ingre VARCHAR(50)  NULL,
+    fecha_ingre TIMESTAMP DEFAULT NOW(),
+    usuario_actua VARCHAR(50),
+    fecha_actua TIMESTAMP,
+    
+    -- Llaves primarias y foráneas
+    CONSTRAINT pk_inv_det_conteo_fisico PRIMARY KEY (ide_indcf),
+    CONSTRAINT fk_det_cab_conteo FOREIGN KEY (ide_inccf) 
+        REFERENCES public.inv_cab_conteo_fisico(ide_inccf) ON DELETE CASCADE,
+    CONSTRAINT fk_det_articulo FOREIGN KEY (ide_inarti) 
+        REFERENCES public.inv_articulo(ide_inarti),
+    CONSTRAINT fk_det_usuario_ajusta FOREIGN KEY (ide_usua_ajusta) 
+        REFERENCES public.sis_usuario(ide_usua),
+    CONSTRAINT fk_det_usuario_valida FOREIGN KEY (ide_usua_valida) 
+        REFERENCES public.sis_usuario(ide_usua),
+    
+    CONSTRAINT chk_estado_item_valido CHECK (
+        estado_item_indcf IN ('PENDIENTE', 'CONTADO', 'RECONTADO', 'AJUSTADO', 'VALIDADO', 'RECHAZADO', 'REVISION','ACTUALIZADO')
+    ),
+    CONSTRAINT un_detalle_articulo_conteo UNIQUE (ide_inccf, ide_inarti, lote_indcf, serial_indcf)
+);
+
+-- Índices para mejor performance
+CREATE INDEX idx_det_conteo_articulo ON inv_det_conteo_fisico(ide_inarti, ide_inccf);
+CREATE INDEX idx_det_conteo_estado ON inv_det_conteo_fisico(estado_item_indcf, activo_indcf);
+CREATE INDEX idx_det_conteo_diferencia ON inv_det_conteo_fisico(diferencia_cantidad_indcf);
+CREATE INDEX idx_det_conteo_fecha ON inv_det_conteo_fisico(fecha_conteo_indcf);
+CREATE INDEX idx_det_conteo_lote ON inv_det_conteo_fisico(lote_indcf, fecha_vencimiento_indcf);
+CREATE INDEX idx_det_conteo_ubicacion ON inv_det_conteo_fisico(ubicacion_indcf);
+
+ALTER TABLE inv_det_conteo_fisico 
+ADD COLUMN ide_incci INT8;
+
+-- Agregar constraint de llave foránea
+ALTER TABLE inv_det_conteo_fisico
+ADD CONSTRAINT fk_det_conteo_comprobante 
+FOREIGN KEY (ide_incci) 
+REFERENCES inv_cab_comp_inve(ide_incci) 
+ON DELETE SET NULL;

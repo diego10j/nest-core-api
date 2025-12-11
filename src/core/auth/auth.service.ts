@@ -53,7 +53,7 @@ export class AuthService {
     //TODO: Verifica que el usuario no este caducado
     //TODO:  Verifica que la clave no haya caducado
     // Verificar contraseña
-    if (!bcrypt.compareSync(password, dataPass.clave_uscl)) {
+    if (!bcrypt.compareSync(password, dataPass.password_uscl)) {
       //Auditoria
       this.audit.saveEventoAuditoria(
         dataUser.ide_usua,
@@ -283,7 +283,7 @@ export class AuthService {
             a.fecha_caduc_usua,
             fecha_vence_uscl,
             a.ide_usua,
-            b.clave_uscl,
+            b.password_uscl,
             a.nom_usua,
             a.mail_usua,
             a.ide_empr,

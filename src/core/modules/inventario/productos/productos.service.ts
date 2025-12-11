@@ -20,7 +20,6 @@ import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 
-import { formatBarChartData, formatPieChartData } from '../../../../util/helpers/charts-utils';
 import { UuidDto } from '../../../../common/dto/uuid.dto';
 
 import { fNumber } from 'src/util/helpers/number-util';

@@ -1,4 +1,4 @@
-import { Query, Controller, Get } from '@nestjs/common';
+import { Query, Controller, Get, Body, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -7,14 +7,16 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { BodegasService } from './bodegas.service';
+import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
+import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
-  constructor(private readonly service: BodegasService) {}
+  constructor(private readonly service: BodegasService) { }
 
   @Get('getBodegas')
   // @Auth()
@@ -78,4 +80,34 @@ export class BodegasController {
       ...dtoIn,
     });
   }
+
+
+  @Post('generarConteoInventario')
+  // @Auth()
+  generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConteoInvDto) {
+    return this.service.generarConteoInventario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('registrarConteoFisico')
+  // @Auth()
+  registrarConteoFisico(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarConteoFisicoDto) {
+    return this.service.registrarConteoFisico({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('registrarReconteoFisico')
+  // @Auth()
+  registrarReconteoFisico(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarConteoFisicoDto) {
+    return this.service.registrarReconteoFisico({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
 }
