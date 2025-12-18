@@ -8,6 +8,8 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { BodegasService } from './bodegas.service';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
+import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
+import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
@@ -104,6 +106,44 @@ export class BodegasController {
   // @Auth()
   registrarReconteoFisico(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarConteoFisicoDto) {
     return this.service.registrarReconteoFisico({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getConteosInventario')
+  // @Auth()
+  getConteosInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
+    return this.service.getConteosInventario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+  @Get('getDetalleConteo')
+  // @Auth()
+  getDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetallesConteoDto) {
+    return this.service.getDetalleConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getEstadisticasConteos')
+  // @Auth()
+  getEstadisticasConteos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
+    return this.service.getEstadisticasConteos({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+  @Get('getListDataEstadosConteo')
+  // @Auth()
+  getListDataEstadosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.service.getListDataEstadosConteo({
       ...headersParams,
       ...dtoIn,
     });

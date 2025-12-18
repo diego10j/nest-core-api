@@ -1390,6 +1390,7 @@ CREATE TABLE public.inv_cab_conteo_fisico (
     secuencial_inccf VARCHAR(12) NOT NULL,       -- Ejemplo: BOD-2025-001
     mes_inccf INT NOT NULL,                      -- Mes (1-12)
     anio_inccf INT NOT NULL,                     -- Año (2025)
+	fecha_corte_desde_inccf  DATE NOT NULL,      -- Fecha inicio para conteo de inventario
     fecha_corte_inccf DATE NOT NULL,             -- Fecha de corte del inventario
     
     -- Control de tiempos
@@ -1434,6 +1435,8 @@ CREATE TABLE public.inv_cab_conteo_fisico (
     fecha_ingre TIMESTAMP DEFAULT NOW(),
     usuario_actua VARCHAR(50),
     fecha_actua TIMESTAMP,
+	ide_empr int2,
+	ide_sucu int2,
     
     -- Llaves primarias y foráneas
     CONSTRAINT pk_inv_cab_conteo_fisico PRIMARY KEY (ide_inccf),
@@ -1463,12 +1466,45 @@ CREATE TABLE public.inv_cab_conteo_fisico (
     )
 );
 
+
+ALTER TABLE public.inv_cab_conteo_fisico
+	ADD CONSTRAINT inv_cab_conteo_fisico_ide_sucu_fkey
+	FOREIGN KEY(ide_sucu)
+	REFERENCES public.sis_sucursal(ide_sucu)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT ;
+ALTER TABLE public.inv_cab_conteo_fisico
+	ADD CONSTRAINT inv_cab_conteo_fisico_ide_empr_fkey
+	FOREIGN KEY(ide_empr)
+	REFERENCES public.sis_empresa(ide_empr)
+	MATCH SIMPLE
+	ON DELETE RESTRICT 
+	ON UPDATE RESTRICT ;
+
 -- Índices para mejor performance
 CREATE INDEX idx_cab_conteo_bodega ON inv_cab_conteo_fisico(ide_inbod, ide_inec);
 CREATE INDEX idx_cab_conteo_fechas ON inv_cab_conteo_fisico(fecha_corte_inccf, anio_inccf, mes_inccf);
 CREATE INDEX idx_cab_conteo_estado ON inv_cab_conteo_fisico(ide_inec, activo_inccf);
 CREATE INDEX idx_cab_conteo_secuencial ON inv_cab_conteo_fisico(secuencial_inccf);
 CREATE INDEX idx_cab_conteo_usuario ON inv_cab_conteo_fisico(ide_usua, fecha_ingre);
+
+
+
+-- Agregar columnas faltantes a la tabla inv_cab_conteo_fisico
+
+
+ALTER TABLE public.inv_cab_conteo_fisico 
+ADD COLUMN IF NOT EXISTS productos_stock_cero_inccf INT DEFAULT 0;
+
+ALTER TABLE public.inv_cab_conteo_fisico 
+ADD COLUMN IF NOT EXISTS productos_stock_negativo_inccf INT DEFAULT 0;
+
+ALTER TABLE public.inv_cab_conteo_fisico 
+ADD COLUMN IF NOT EXISTS conteo_parcial_inccf BOOLEAN DEFAULT false;
+
+ALTER TABLE public.inv_cab_conteo_fisico 
+ADD COLUMN IF NOT EXISTS tiempo_promedio_conteo_inccf NUMERIC(8,2) DEFAULT 0;
 
 
 
@@ -1485,7 +1521,8 @@ CREATE TABLE public.inv_det_conteo_fisico (
     saldo_corte_indcf NUMERIC(12,3) NOT NULL DEFAULT 0,    -- Saldo al corte
     cantidad_fisica_indcf NUMERIC(12,3) NOT NULL DEFAULT 0, -- Cantidad contada
     saldo_conteo_indcf NUMERIC(12,3) DEFAULT 0,  -- Saldo al momento del conteo
-    
+	movimientos_conteo_indcf  INT8,  --- Numero de movimientos en el rango de fechas
+    movimientos_desde_corte_indcf  INT8 DEFAULT 0,
     -- Cálculos automáticos (generated columns)
     diferencia_cantidad_indcf NUMERIC(12,3) 
         GENERATED ALWAYS AS (cantidad_fisica_indcf - saldo_corte_indcf) STORED,
@@ -1569,6 +1606,7 @@ CREATE TABLE public.inv_det_conteo_fisico (
     ),
     CONSTRAINT un_detalle_articulo_conteo UNIQUE (ide_inccf, ide_inarti, lote_indcf, serial_indcf)
 );
+
 
 -- Índices para mejor performance
 CREATE INDEX idx_det_conteo_articulo ON inv_det_conteo_fisico(ide_inarti, ide_inccf);

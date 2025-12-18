@@ -10,6 +10,8 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
+import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
+import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
 
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
@@ -301,18 +303,25 @@ export class BodegasService extends BaseService {
         `
       SELECT * FROM f_genera_conteo_inventario(
         p_ide_inbod := $1,
-        p_fecha_corte := $2,
-        p_ide_usua := $3,
-        p_observacion := $4
+        p_fecha_corte_desde := $2,
+        p_fecha_corte := $3,
+        p_ide_usua := $4,
+        p_ide_empr := $5,
+        p_ide_sucu := $6,
+        p_observacion := $7
       )
         `,
         dtoIn,
       );
 
       query.addParam(1, dtoIn.ide_inbod);
-      query.addParam(2, dtoIn.fechaCorte);
-      query.addIntParam(3, dtoIn.ideUsua);
-      query.addParam(4, dtoIn.observacion);
+      query.addParam(2, dtoIn.fechaInicioCorte);
+      query.addParam(3, dtoIn.fechaCorte);
+      query.addIntParam(4, dtoIn.ideUsua);
+      query.addIntParam(5, dtoIn.ideEmpr);
+      query.addIntParam(6, dtoIn.ideSucu);
+      query.addParam(7, dtoIn.observacion);
+
       const rows = await this.dataSource.createSelectQuery(query);
       return {
         rowCount: rows.length,
@@ -386,6 +395,267 @@ export class BodegasService extends BaseService {
       throw new BadRequestException(`${error.message}`);
     }
 
+  }
+
+
+  /**
+   * Retorna listado de conteos en una bodega en un rango de fechas
+   * @param dtoIn 
+   * @returns 
+   */
+  async getConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
+    // Filtro de estados (array opcional de IDs)
+
+    const conditionBodega = dtoIn.ide_inbod ? `AND cc.ide_inbod = ${dtoIn.ide_inbod}` : '';
+
+    let condEstados = '';
+    if (dtoIn.ide_inec && dtoIn.ide_inec.length > 0) {
+      condEstados = `AND cc.ide_inec = ANY($3)`;
+    }
+
+
+
+    const query = new SelectQuery(
+      `
+      SELECT
+          -- Identificación del conteo
+          cc.ide_inccf,
+          cc.secuencial_inccf,
+          
+          -- Bodega
+          b.nombre_inbod,
+          b.ide_inbod,
+          
+          -- Tipo de conteo
+          tc.nombre_intc,
+          tc.tolerancia_porcentaje_intc,
+          
+          -- Estado del conteo
+          ec.ide_inec,
+          ec.codigo_inec,
+          ec.nombre_inec,
+          
+          -- Fechas importantes
+          cc.fecha_corte_inccf,
+          cc.fecha_ini_conteo_inccf,
+          cc.fecha_fin_conteo_inccf,
+          cc.fecha_cierre_inccf,
+          
+          -- Estadísticas del conteo (de la cabecera)
+          cc.productos_estimados_inccf,
+          cc.productos_contados_inccf,
+          cc.productos_con_diferencia_inccf,
+          cc.productos_ajustados_inccf,
+          cc.valor_total_corte_inccf,
+          cc.valor_total_fisico_inccf,
+          cc.valor_total_diferencias_inccf,
+          cc.porcentaje_exactitud_inccf,
+          cc.porcentaje_avance_inccf,
+          
+          -- Observaciones y motivos
+          cc.observacion_inccf,
+          cc.motivo_cancelacion_inccf,
+          
+          -- Información de reconteo (si aplica)
+          cc.es_reconteo_inccf,
+          cc.conteo_numero_inccf,
+          
+          -- Auditoría
+          cc.usuario_ingre,
+          cc.fecha_ingre,
+          cc.usuario_actua,
+          cc.fecha_actua
+          
+      FROM inv_cab_conteo_fisico cc
+      INNER JOIN inv_bodega b ON cc.ide_inbod = b.ide_inbod
+      INNER JOIN inv_tipo_conteo tc ON cc.ide_intc = tc.ide_intc
+      INNER JOIN inv_estado_conteo ec ON cc.ide_inec = ec.ide_inec
+      
+      WHERE cc.activo_inccf = true
+          AND cc.fecha_corte_inccf BETWEEN $1 AND $2
+          ${conditionBodega}
+          AND cc.ide_empr = ${dtoIn.ideEmpr}
+          ${condEstados}
+          
+      ORDER BY 
+          cc.ide_inbod,
+          cc.fecha_corte_inccf DESC,
+          cc.secuencial_inccf DESC
+      `,
+      dtoIn,
+    );
+
+    // Parámetros base
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+
+    // Parámetros de estados (si existen)
+    if (dtoIn.ide_inec && dtoIn.ide_inec.length > 0) {
+      query.addParam(3, dtoIn.ide_inec);
+    }
+
+    return await this.dataSource.createQuery(query);
+  }
+
+
+
+  async getDetalleConteo(dtoIn: GetDetallesConteoDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT
+          -- Cabecera del conteo
+          cc.ide_inccf,
+          cc.secuencial_inccf,
+          cc.fecha_corte_inccf,
+          cc.fecha_ini_conteo_inccf,
+          cc.fecha_fin_conteo_inccf,
+          cc.fecha_cierre_inccf,
+          cc.observacion_inccf,
+          cc.productos_estimados_inccf,
+          cc.productos_contados_inccf,
+          cc.productos_con_diferencia_inccf,
+          cc.productos_ajustados_inccf,
+          cc.porcentaje_avance_inccf,
+          
+          -- Bodega
+          b.nombre_inbod,
+          
+          -- Tipo de conteo
+          tc.nombre_intc,
+          tc.tolerancia_porcentaje_intc,
+          
+          -- Estado
+          ec.codigo_inec,
+          ec.nombre_inec,
+          
+          -- Detalles de artículos
+          d.ide_indcf,
+          d.ide_inarti,
+          a.codigo_inarti,
+          a.nombre_inarti,
+          u.siglas_inuni,
+          d.saldo_corte_indcf,
+          d.cantidad_fisica_indcf,
+          d.saldo_conteo_indcf,
+          d.fecha_conteo_indcf,
+          d.usuario_conteo_indcf,
+          d.estado_item_indcf,
+          d.requiere_ajuste_indcf,
+          
+          -- Cálculos
+          (d.cantidad_fisica_indcf - d.saldo_corte_indcf) as diferencia_cantidad,
+          CASE 
+              WHEN d.saldo_corte_indcf = 0 THEN 
+                  CASE WHEN d.cantidad_fisica_indcf = 0 THEN 0 ELSE 100 END
+              ELSE 
+                  ABS(d.cantidad_fisica_indcf - d.saldo_corte_indcf) / d.saldo_corte_indcf * 100 
+          END as porcentaje_diferencia,
+          
+          -- Costo y valor
+          d.costo_unitario_indcf,
+          (d.cantidad_fisica_indcf - d.saldo_corte_indcf) * d.costo_unitario_indcf as valor_diferencia_calculado,
+          
+          -- Reconteo (si aplica)
+          d.cantidad_reconteo_indcf,
+          d.numero_reconteos_indcf,
+          d.fecha_reconteo_indcf,
+          d.usuario_reconteo_indcf,
+          d.motivo_diferencia_indcf,
+          d.observacion_indcf
+          
+      FROM inv_cab_conteo_fisico cc
+      INNER JOIN inv_bodega b ON cc.ide_inbod = b.ide_inbod
+      INNER JOIN inv_tipo_conteo tc ON cc.ide_intc = tc.ide_intc
+      INNER JOIN inv_estado_conteo ec ON cc.ide_inec = ec.ide_inec
+      INNER JOIN inv_det_conteo_fisico d ON cc.ide_inccf = d.ide_inccf
+      INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+      LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+      
+      WHERE cc.ide_inccf = $1
+          AND cc.activo_inccf = true
+          AND d.activo_indcf = true
+      
+      ORDER BY 
+          a.nombre_inarti
+      `,
+      dtoIn
+    );
+
+    query.addIntParam(1, dtoIn.ide_inccf);
+
+    return await this.dataSource.createQuery(query);
+  }
+
+
+
+  async getEstadisticasConteos(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
+    const condBodega = dtoIn.ide_inbod ? `AND ide_inbod = ${dtoIn.ide_inbod}` : '';
+
+    const query = new SelectQuery(
+      `
+      WITH conteos_ultimo_mes AS (
+          SELECT 
+              ide_inccf,
+              ide_inec,
+              ide_inbod,
+              productos_contados_inccf,
+              productos_estimados_inccf,
+              productos_con_diferencia_inccf,
+              valor_total_diferencias_inccf,
+              fecha_corte_inccf
+          FROM inv_cab_conteo_fisico
+          WHERE activo_inccf = true
+              AND fecha_corte_inccf BETWEEN $1 AND $2
+              ${condBodega}
+      )
+      
+      SELECT
+          -- Conteos por estado
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE activo_inccf = true  ${condBodega}) as total_conteos,
+          
+          -- Conteos por estado
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE ide_inec = 1 AND activo_inccf = true  ${condBodega}) as conteos_pendientes,
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE ide_inec = 2 AND activo_inccf = true  ${condBodega}) as conteos_en_proceso,
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE ide_inec = 4 AND activo_inccf = true  ${condBodega}) as conteos_cerrados,
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE ide_inec = 5 AND activo_inccf = true  ${condBodega}) as conteos_ajustados,
+          
+          -- Estadísticas del último mes
+          (SELECT COUNT(*) FROM conteos_ultimo_mes) as conteos_ultimo_mes,
+          (SELECT COALESCE(SUM(productos_con_diferencia_inccf), 0) FROM conteos_ultimo_mes) as items_con_diferencia_ultimo_mes,
+          (SELECT COALESCE(SUM(valor_total_diferencias_inccf), 0) FROM conteos_ultimo_mes) as valor_diferencia_ultimo_mes,
+          
+          -- Promedios
+          (SELECT COALESCE(AVG(porcentaje_avance_inccf), 0) FROM inv_cab_conteo_fisico 
+           WHERE ide_inec IN (2,3) AND activo_inccf = true  ${condBodega}) as promedio_avance,
+          
+          -- Reconteos
+          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
+           WHERE es_reconteo_inccf = true AND activo_inccf = true  ${condBodega}) as total_reconteos
+      `,
+    );
+
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+
+    return await this.dataSource.createQuery(query);
+  }
+
+
+  async getListDataEstadosConteo(dto?: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = {
+      ...dto,
+      module: 'inv',
+      tableName: 'estado_conteo',
+      primaryKey: 'ide_inec',
+      columnLabel: 'nombre_inec',
+      condition: `activo_inec = true`,
+    };
+    return this.core.getListDataValues(dtoIn);
   }
 
 

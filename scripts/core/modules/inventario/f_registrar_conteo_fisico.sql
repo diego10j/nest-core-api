@@ -117,9 +117,10 @@ BEGIN
         RAISE EXCEPTION 'El conteo está en estado % y no se puede modificar', v_estado_conteo;
     END IF;
     
-    -- Verificar que el producto no haya sido contado antes (estado PENDIENTE o CONTADO)
-    IF v_estado_item_indcf != 'PENDIENTE' AND v_estado_item_indcf != 'CONTADO' THEN
-        RAISE EXCEPTION 'El producto "%" ya fue contado anteriormente (Estado: %). Use la función de reconteo.', 
+    -- **VALIDACIÓN CORREGIDA: Si ya existe un conteo previo (diferente de PENDIENTE)**
+    -- **lanzar excepción indicando que debe usar función de reconteo**
+    IF v_estado_item_indcf != 'PENDIENTE' THEN
+        RAISE EXCEPTION 'El producto "%" ya tiene un conteo registrado (Estado: %). Debe usar la función de reconteo para actualizar.', 
                         v_nombre_articulo, v_estado_item_indcf;
     END IF;
     
@@ -290,11 +291,11 @@ END;
 $$;
 
 
-
-
+---probar 
 SELECT * FROM f_registrar_conteo_fisico(
     p_ide_indcf := 2,
     p_cantidad_contada := 10,
     p_observacion := 'Primer conteo realizado',
-    p_usuario_conteo := 'edison'
+    p_usuario_conteo := 'edison',
+    p_fecha_conteo := '2025-05-05'
 );
