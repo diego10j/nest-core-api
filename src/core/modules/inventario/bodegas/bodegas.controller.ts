@@ -13,6 +13,7 @@ import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
+import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
 
 @ApiTags('Inventario-Bodegas')
@@ -148,6 +149,18 @@ export class BodegasController {
       ...dtoIn,
     });
   }
+
+
+  @Get('buscarDetalleConteo')
+  // @Auth()
+  buscarDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDetalleConteoDto) {
+    return this.service.buscarDetalleConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
 
 
 }

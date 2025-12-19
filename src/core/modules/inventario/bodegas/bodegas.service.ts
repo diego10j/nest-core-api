@@ -3,6 +3,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { fDate } from 'src/util/helpers/date-util';
+import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
@@ -16,6 +17,7 @@ import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
+import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
 
 @Injectable()
@@ -533,6 +535,7 @@ export class BodegasService extends BaseService {
           d.ide_inarti,
           a.codigo_inarti,
           a.nombre_inarti,
+          a.uuid,
           u.siglas_inuni,
           d.saldo_corte_indcf,
           d.cantidad_fisica_indcf,
@@ -659,5 +662,50 @@ export class BodegasService extends BaseService {
   }
 
 
+  /**
+   * Busca productos por nombre en los detalles de un conteo
+   * @param dtoIn 
+   * @returns 
+   */
+  async buscarDetalleConteo(dtoIn: SearchDetalleConteoDto & HeaderParamsDto) {
+
+    const normalizedSearchValue = normalizeString(dtoIn.value.trim());
+    const sqlSearchValue = `%${normalizedSearchValue}%`;
+    const query = new SelectQuery(
+      `
+      SELECT
+          -- Detalles de artículos
+          d.ide_indcf,
+          d.ide_inarti,
+          a.codigo_inarti,
+          a.nombre_inarti,
+          a.uuid,
+          u.siglas_inuni,
+          d.saldo_corte_indcf,
+          d.cantidad_fisica_indcf,
+          d.saldo_conteo_indcf,
+          d.fecha_conteo_indcf,
+          d.usuario_conteo_indcf,
+          d.estado_item_indcf,
+          d.requiere_ajuste_indcf
+      FROM inv_cab_conteo_fisico cc     
+      INNER JOIN inv_det_conteo_fisico d ON cc.ide_inccf = d.ide_inccf
+      INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+      LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+      
+      WHERE cc.ide_inccf = $1
+          AND cc.activo_inccf = true
+          AND d.activo_indcf = true
+          AND  regexp_replace(unaccent(LOWER(a.nombre_inarti)), '[^a-z0-9]', '', 'g') LIKE $2
+      ORDER BY 
+          a.nombre_inarti
+      `,
+      dtoIn
+    );
+
+    query.addIntParam(1, dtoIn.ide_inccf);
+    query.addStringParam(2, sqlSearchValue);
+    return await this.dataSource.createQuery(query);
+  }
 
 }
