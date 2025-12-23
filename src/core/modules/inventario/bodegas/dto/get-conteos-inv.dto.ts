@@ -17,4 +17,9 @@ export class GetConteosInventarioDto extends QueryOptionsDto {
     @IsNotEmpty({ each: true })
     @IsArray()
     ide_inec?: number[];  // Ahora es un array de IDs (ide_inec)
+
+    @IsInt()
+    @IsOptional()
+    ide_usua?: number;
+
 }

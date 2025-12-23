@@ -160,6 +160,14 @@ export class BodegasController {
     });
   }
 
+  @Get('getMisConteosInventario')
+  // @Auth()
+  getMisConteosInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
+    return this.service.getMisConteosInventario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 
 
 

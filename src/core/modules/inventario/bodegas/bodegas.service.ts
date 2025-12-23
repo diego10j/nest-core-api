@@ -399,13 +399,30 @@ export class BodegasService extends BaseService {
 
   }
 
+  /**
+     * Retorna listado de conteos en una bodega en un rango de fechas
+     * @param dtoIn 
+     * @returns 
+     */
+  async getConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
+    dtoIn.ide_usua = undefined;
+    return this.getSqlConteosInventario(dtoIn);
+  }
 
   /**
-   * Retorna listado de conteos en una bodega en un rango de fechas
+   * Retorna listado de conteos de un usuario en una bodega en un rango de fechas
    * @param dtoIn 
    * @returns 
    */
-  async getConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
+  async getMisConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
+    if (!dtoIn.ide_usua) {
+      throw new BadRequestException('Se requiere ide_usua');
+    }
+    return this.getSqlConteosInventario(dtoIn);
+  }
+
+
+  private async getSqlConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
     // Filtro de estados (array opcional de IDs)
 
     const conditionBodega = dtoIn.ide_inbod ? `AND cc.ide_inbod = ${dtoIn.ide_inbod}` : '';
@@ -415,7 +432,7 @@ export class BodegasService extends BaseService {
       condEstados = `AND cc.ide_inec = ANY($3)`;
     }
 
-
+    const conditionUsuario = dtoIn.ide_usua ? `AND cc.ide_usua = ${dtoIn.ide_usua}` : '';
 
     const query = new SelectQuery(
       `
@@ -427,6 +444,7 @@ export class BodegasService extends BaseService {
           -- Bodega
           b.nombre_inbod,
           b.ide_inbod,
+          u.nom_usua,
           
           -- Tipo de conteo
           tc.nombre_intc,
@@ -472,13 +490,13 @@ export class BodegasService extends BaseService {
       INNER JOIN inv_bodega b ON cc.ide_inbod = b.ide_inbod
       INNER JOIN inv_tipo_conteo tc ON cc.ide_intc = tc.ide_intc
       INNER JOIN inv_estado_conteo ec ON cc.ide_inec = ec.ide_inec
-      
+      INNER JOIN sis_usuario u on cc.ide_usua = u.ide_usua      
       WHERE cc.activo_inccf = true
           AND cc.fecha_corte_inccf BETWEEN $1 AND $2
           ${conditionBodega}
           AND cc.ide_empr = ${dtoIn.ideEmpr}
           ${condEstados}
-          
+          ${conditionUsuario}
       ORDER BY 
           cc.ide_inbod,
           cc.fecha_corte_inccf DESC,

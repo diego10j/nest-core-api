@@ -51,7 +51,7 @@ DECLARE
     v_items_ajustados INT;
     v_items_rechazados INT;
     v_items_pendientes INT;
-    v_codigo_estado VARCHAR;
+    v_codigo_estado VARCHAR;c
     v_ide_inec_ajustado INT8;
 BEGIN
     -- 1. VALIDACIONES INICIALES
