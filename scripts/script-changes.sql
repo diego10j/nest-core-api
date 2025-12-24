@@ -1577,7 +1577,8 @@ CREATE TABLE public.inv_det_conteo_fisico (
     ide_usua_valida INT8,                        -- Usuario que valida
     
     -- Observaciones y comentarios
-    observacion_indcf VARCHAR(500),              -- Observaciones del conteo
+    observacion_indcf VARCHAR(200),              -- Observaciones del conteo
+	observacion_reconteo_indcf VARCHAR(200),              -- Observaciones del conteo
     motivo_diferencia_indcf VARCHAR(200),        -- Posible motivo de diferencia
     
 

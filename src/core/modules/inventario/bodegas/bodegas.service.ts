@@ -727,4 +727,26 @@ export class BodegasService extends BaseService {
     return await this.dataSource.createQuery(query);
   }
 
+  /**
+   * Retorna la ultima fecha de un conteo fisico realizado a un producto
+   * @param dtoIn 
+   * @returns 
+   */
+  async getUltimaFechaConteoProducto(dtoIn?: IdeDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT 
+      MAX(ccf.fecha_corte_inccf) as fecha_ultimo_conteo     
+    FROM inv_det_conteo_fisico dcf
+    INNER JOIN inv_cab_conteo_fisico ccf ON ccf.ide_inccf = dcf.ide_inccf
+    WHERE dcf.ide_inarti = $1
+      AND ccf.activo_inccf = true
+      AND dcf.activo_indcf = true
+    `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide);
+    return await this.dataSource.createSelectQuery(query);
+  }
+
 }

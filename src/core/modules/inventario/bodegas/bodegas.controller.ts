@@ -170,5 +170,15 @@ export class BodegasController {
   }
 
 
+  @Get('getUltimaFechaConteoProducto')
+  // @Auth()
+  getUltimaFechaConteoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
+    return this.service.getUltimaFechaConteoProducto({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
 
 }

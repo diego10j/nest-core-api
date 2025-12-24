@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION public.f_registrar_reconteo_fisico(
     p_ide_indcf INT8,
     p_cantidad_recontada NUMERIC(12,3),
-    p_observacion VARCHAR(500) DEFAULT NULL,
+    p_observacion VARCHAR(200) DEFAULT NULL,
     p_usuario_reconteo VARCHAR(50) DEFAULT CURRENT_USER,
     p_fecha_reconteo TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     p_motivo_reconteo VARCHAR(500) DEFAULT NULL
@@ -34,7 +34,6 @@ DECLARE
     v_saldo_corte_indcf NUMERIC(12,3);
     v_cantidad_fisica_indcf NUMERIC(12,3);
     v_estado_item_indcf VARCHAR(20);
-    v_observacion_indcf VARCHAR(500);
     v_activo_indcf BOOLEAN;
     v_numero_reconteos_indcf INTEGER;
     v_costo_unitario_actual NUMERIC(12,3);
@@ -74,7 +73,6 @@ BEGIN
         d.saldo_corte_indcf,
         d.cantidad_fisica_indcf,
         d.estado_item_indcf,
-        d.observacion_indcf,
         d.activo_indcf,
         d.numero_reconteos_indcf,
         d.costo_unitario_indcf,
@@ -90,7 +88,6 @@ BEGIN
         v_saldo_corte_indcf,
         v_cantidad_fisica_indcf,
         v_estado_item_indcf,
-        v_observacion_indcf,
         v_activo_indcf,
         v_numero_reconteos_indcf,
         v_costo_unitario_actual,
@@ -288,13 +285,8 @@ BEGIN
         -- Actualizar saldo actual (igual que en conteo)
         saldo_conteo_indcf = v_saldo_actual,
         
-        -- Observación: concatenar si hay observación anterior
-        observacion_indcf = CASE 
-            WHEN p_observacion IS NOT NULL 
-            THEN COALESCE(v_observacion_indcf || ' | ', '') || 
-                 'Reconteo #' || v_numero_reconteos || ' (' || p_fecha_reconteo || '): ' || p_observacion
-            ELSE v_observacion_indcf
-        END,
+        -- Observación reconteo
+        observacion_reconteo_indcf = p_observacion,
         
         -- Incrementar contador de reconteos
         numero_reconteos_indcf = v_numero_reconteos,
