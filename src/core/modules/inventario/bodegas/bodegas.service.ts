@@ -319,7 +319,7 @@ export class BodegasService extends BaseService {
       query.addParam(1, dtoIn.ide_inbod);
       query.addParam(2, dtoIn.fechaInicioCorte);
       query.addParam(3, dtoIn.fechaCorte);
-      query.addIntParam(4, dtoIn.ideUsua);
+      query.addIntParam(4, dtoIn.ide_usua);
       query.addIntParam(5, dtoIn.ideEmpr);
       query.addIntParam(6, dtoIn.ideSucu);
       query.addParam(7, dtoIn.observacion);
@@ -536,7 +536,8 @@ export class BodegasService extends BaseService {
           cc.productos_con_diferencia_inccf,
           cc.productos_ajustados_inccf,
           cc.porcentaje_avance_inccf,
-          
+          cc.movimientos_conteo_indcf,
+          cc.movimientos_desde_corte_indcf,
           -- Bodega
           b.nombre_inbod,
           

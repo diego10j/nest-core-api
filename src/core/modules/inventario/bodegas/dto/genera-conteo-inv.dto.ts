@@ -13,6 +13,11 @@ export class GeneraConteoInvDto extends QueryOptionsDto {
     @IsPositive()
     ide_inbod: number;
 
+
+    @IsInt()
+    @IsPositive()
+    ide_usua: number;
+
     @IsOptional()
     @IsString()
     @MaxLength(500)
