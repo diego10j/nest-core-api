@@ -18,7 +18,8 @@ async function bootstrap() {
       'http://192.168.56.103:8080',
       'http://devproerpec.site',
       'https://devproerpec.site',
-      'http://sigafi.com:3000',
+      'http://sigafi.com:18080',
+      'http://144.126.148.120:18080',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Agregué métodos comunes
     allowedHeaders: [

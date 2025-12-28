@@ -7,7 +7,8 @@ export class SocketIoAdapter extends IoAdapter {
   createIOServer(port: number, options?: ServerOptions): Server {
     // Configuración personalizada de CORS (como la que ya tenías)
     const corsOptions = {
-      origin: ['http://localhost:8080', 'http://192.168.56.103:8080', 'http://devproerpec.site', 'http://sigafi.com:3000'],
+      origin: ['http://localhost:8080', 'http://192.168.56.103:8080', 'http://devproerpec.site', 'http://sigafi.com:18080',
+        'http://144.126.148.120:18080',],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Agregué métodos comunes
       allowedHeaders: [
         'Content-Type',
