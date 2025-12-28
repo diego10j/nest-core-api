@@ -8,7 +8,6 @@ export class RegistrarConteoFisicoDto extends QueryOptionsDto {
     ide_indcf: number;
 
     @IsNumber()
-    @IsPositive()
     cantidadContada: number;
 
     @IsOptional()

@@ -536,8 +536,7 @@ export class BodegasService extends BaseService {
           cc.productos_con_diferencia_inccf,
           cc.productos_ajustados_inccf,
           cc.porcentaje_avance_inccf,
-          cc.movimientos_conteo_indcf,
-          cc.movimientos_desde_corte_indcf,
+          
           -- Bodega
           b.nombre_inbod,
           
@@ -563,7 +562,8 @@ export class BodegasService extends BaseService {
           d.usuario_conteo_indcf,
           d.estado_item_indcf,
           d.requiere_ajuste_indcf,
-          
+          d.movimientos_conteo_indcf,
+          d.movimientos_desde_corte_indcf,
           -- Cálculos
           (d.cantidad_fisica_indcf - d.saldo_corte_indcf) as diferencia_cantidad,
           CASE 
@@ -604,7 +604,7 @@ export class BodegasService extends BaseService {
     );
 
     query.addIntParam(1, dtoIn.ide_inccf);
-
+    query.setLazy(false);  //retorna todos los registros sin paginación
     return await this.dataSource.createQuery(query);
   }
 

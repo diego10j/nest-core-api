@@ -36,7 +36,7 @@ export class WhatsappDbService {
   constructor(
     public readonly dataSource: DataSourceService,
     private readonly whatsappGateway: WhatsappGateway,
-  ) {}
+  ) { }
 
   /**
    * Retorna la cuanta de whatsapp configurada para la empresa
@@ -61,11 +61,11 @@ export class WhatsappDbService {
         LIMIT 1
         `);
     query.addParam(1, ideEmpr);
-    const res = await this.dataSource.createSingleQuery(query);
-    if (res) {
-      return res;
-    }
-    throw new NotFoundException('No existe cuenta configurada');
+    return await this.dataSource.createSingleQuery(query);
+    // if (res) {
+    //   return res;
+    // }
+    // throw new NotFoundException('No existe cuenta configurada');
   }
 
   /**
@@ -658,17 +658,17 @@ export class WhatsappDbService {
 
       const mediaInfo = msg.hasMedia
         ? {
-            deprecatedMms3Url: data?.deprecatedMms3Url,
-            mimetype: data?.mimetype,
-            filename: originalName || data?.filename,
-            size: data?.size,
-            mediaKey: data?.mediaKey,
-            // mediaKeyTimestamp: data?.mediaKeyTimestamp,
-            width: data?.width,
-            height: data?.height,
-            isViewOnce: data?.isViewOnce,
-            caption: data?.caption,
-          }
+          deprecatedMms3Url: data?.deprecatedMms3Url,
+          mimetype: data?.mimetype,
+          filename: originalName || data?.filename,
+          size: data?.size,
+          mediaKey: data?.mediaKey,
+          // mediaKeyTimestamp: data?.mediaKeyTimestamp,
+          width: data?.width,
+          height: data?.height,
+          isViewOnce: data?.isViewOnce,
+          caption: data?.caption,
+        }
         : null;
 
       // Guarda mensaje

@@ -1036,7 +1036,7 @@ ADD COLUMN "perm_fact_sin_stock_inarti" bool DEFAULT true;
 ALTER TABLE "public"."inv_det_comp_inve"
 ADD COLUMN "foto_verifica_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
 ADD COLUMN "verifica_indci" bool DEFAULT false,
-ADD COLUMN "usuario_verifica_indci" bool DEFAULT false,
+ADD COLUMN "usuario_verifica_indci" varchar(50),
 ADD COLUMN "observ_verifica_indci" varchar(250),
 ADD COLUMN "peso_verifica_inlot" numeric(12,3),
 ADD COLUMN "fecha_verifica_indci" TIMESTAMP,
@@ -1466,6 +1466,26 @@ CREATE TABLE public.inv_cab_conteo_fisico (
     )
 );
 
+
+-- para guardar comprobante de ajustes positivo y negativo
+ALTER TABLE inv_cab_conteo_fisico 
+ADD COLUMN ide_incci INT8;
+
+ALTER TABLE inv_cab_conteo_fisico 
+ADD COLUMN ide_incci_nega INT8;
+
+-- Agregar constraint de llave foránea
+ALTER TABLE inv_cab_conteo_fisico
+ADD CONSTRAINT fk_cab_conteo_comprobante_posi
+FOREIGN KEY (ide_incci) 
+REFERENCES inv_cab_comp_inve(ide_incci) 
+ON DELETE SET NULL;
+
+ALTER TABLE inv_cab_conteo_fisico
+ADD CONSTRAINT fk_cab_conteo_comprobante_nega
+FOREIGN KEY (ide_incci_nega) 
+REFERENCES inv_cab_comp_inve(ide_incci) 
+ON DELETE SET NULL;
 
 ALTER TABLE public.inv_cab_conteo_fisico
 	ADD CONSTRAINT inv_cab_conteo_fisico_ide_sucu_fkey

@@ -51,8 +51,12 @@ DECLARE
     v_items_ajustados INT;
     v_items_rechazados INT;
     v_items_pendientes INT;
-    v_codigo_estado VARCHAR;c
+    v_codigo_estado VARCHAR;
     v_ide_inec_ajustado INT8;
+    
+    -- Variables para almacenar los conteos únicos
+    v_conteo_positivo INT8;
+    v_conteo_negativo INT8;
 BEGIN
     -- 1. VALIDACIONES INICIALES
     IF array_length(p_ids_detalles, 1) IS NULL THEN
@@ -101,11 +105,15 @@ BEGIN
             RAISE EXCEPTION 'El ítem "%" ya fue ajustado previamente', v_detalle.nombre_inarti;
         END IF;
         
-        -- Determinar tipo de ajuste
+        -- Determinar tipo de ajuste y capturar los conteos
         IF (v_detalle.cantidad_fisica_indcf - v_detalle.saldo_corte_indcf) > 0 THEN
             v_tiene_positivos := TRUE;
+            -- Capturar el conteo para ajuste positivo
+            v_conteo_positivo := v_detalle.ide_inccf;
         ELSE
             v_tiene_negativos := TRUE;
+            -- Capturar el conteo para ajuste negativo
+            v_conteo_negativo := v_detalle.ide_inccf;
         END IF;
     END LOOP;
     
@@ -172,9 +180,11 @@ BEGIN
         FOR v_detalle IN 
             SELECT 
                 d.*,
-                a.nombre_inarti
+                a.nombre_inarti,
+                c.ide_inccf
             FROM inv_det_conteo_fisico d
             JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+            JOIN inv_cab_conteo_fisico c ON d.ide_inccf = c.ide_inccf
             WHERE d.ide_indcf = ANY(p_ids_detalles)
               AND d.activo_indcf = TRUE
               AND (d.cantidad_fisica_indcf - d.saldo_corte_indcf) > 0
@@ -210,10 +220,7 @@ BEGIN
                     observacion_indci,
                     ide_empr,
                     usuario_ingre,
-                    fecha_ingre,
-                    verifica_indci,
-                    fecha_verifica_indci,
-                    usuario_verifica_indci
+                    fecha_ingre
                 ) VALUES (
                     v_detalle_comp_id,
                     v_comprobante_positivo_id,
@@ -227,10 +234,7 @@ BEGIN
                     'Cantidad física: ' || v_detalle.cantidad_fisica_indcf,
                     v_ide_empr,
                     p_usuario_autoriza,
-                    p_fecha_autoriza,
-                    TRUE,
-                    p_fecha_autoriza,
-                    TRUE
+                    p_fecha_autoriza
                 );
                 
                 -- Actualizar el detalle del conteo físico
@@ -267,6 +271,15 @@ BEGIN
                                 ' - Items positivos: ' || v_items_positivos ||
                                 ' - Valor total: ' || ROUND(v_total_positivo, 2)
         WHERE ide_incci = v_comprobante_positivo_id;
+        
+        -- GUARDAR EL ID DEL COMPROBANTE POSITIVO EN LA CABECERA DEL CONTEO
+        IF v_conteo_positivo IS NOT NULL THEN
+            UPDATE inv_cab_conteo_fisico
+            SET ide_incci = v_comprobante_positivo_id,
+                usuario_actua = p_usuario_autoriza,
+                fecha_actua = p_fecha_autoriza
+            WHERE ide_inccf = v_conteo_positivo;
+        END IF;
     END IF;
     
     -- 5. CREAR COMPROBANTE PARA AJUSTES NEGATIVOS (FALTANTES)
@@ -332,9 +345,11 @@ BEGIN
         FOR v_detalle IN 
             SELECT 
                 d.*,
-                a.nombre_inarti
+                a.nombre_inarti,
+                c.ide_inccf
             FROM inv_det_conteo_fisico d
             JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+            JOIN inv_cab_conteo_fisico c ON d.ide_inccf = c.ide_inccf
             WHERE d.ide_indcf = ANY(p_ids_detalles)
               AND d.activo_indcf = TRUE
               AND (d.cantidad_fisica_indcf - d.saldo_corte_indcf) <= 0
@@ -370,10 +385,7 @@ BEGIN
                     observacion_indci,
                     ide_empr,
                     usuario_ingre,
-                    fecha_ingre,
-                    verifica_indci,
-                    fecha_verifica_indci,
-                    usuario_verifica_indci
+                    fecha_ingre
                 ) VALUES (
                     v_detalle_comp_id,
                     v_comprobante_negativo_id,
@@ -387,10 +399,7 @@ BEGIN
                     'Cantidad física: ' || v_detalle.cantidad_fisica_indcf,
                     v_ide_empr,
                     p_usuario_autoriza,
-                    p_fecha_autoriza,
-                    TRUE,
-                    p_fecha_autoriza,
-                    TRUE
+                    p_fecha_autoriza
                 );
                 
                 -- Actualizar el detalle del conteo físico
@@ -400,7 +409,7 @@ BEGIN
                     aprobado_ajuste_indcf = TRUE,
                     cantidad_ajuste_indcf = v_cantidad_ajustada,
                     fecha_ajuste_indcf = p_fecha_autoriza,
-                    ide_usua_ajusta = (SELECT ide_usua FROM sis_usuario WHERE usuario = p_usuario_autoriza LIMIT 1),
+                    ide_usua_ajusta = (SELECT ide_usua FROM sis_usuario WHERE nick_usua = p_usuario_autoriza LIMIT 1),
                     saldo_antes_ajuste_indcf = v_detalle.saldo_corte_indcf,
                     saldo_despues_ajuste_indcf = v_detalle.cantidad_fisica_indcf,
                     ide_incci = v_comprobante_negativo_id,
@@ -427,6 +436,15 @@ BEGIN
                                 ' - Items negativos: ' || v_items_negativos ||
                                 ' - Valor total: ' || ROUND(v_total_negativo, 2)
         WHERE ide_incci = v_comprobante_negativo_id;
+        
+        -- GUARDAR EL ID DEL COMPROBANTE NEGATIVO EN LA CABECERA DEL CONTEO
+        IF v_conteo_negativo IS NOT NULL THEN
+            UPDATE inv_cab_conteo_fisico
+            SET ide_incci_nega = v_comprobante_negativo_id,
+                usuario_actua = p_usuario_autoriza,
+                fecha_actua = p_fecha_autoriza
+            WHERE ide_inccf = v_conteo_negativo;
+        END IF;
     END IF;
     
     -- 6. VERIFICAR Y CERRAR CONTEO SI ES NECESARIO (LÓGICA INTERNA)
@@ -496,7 +514,17 @@ BEGIN
                                        TO_CHAR(p_fecha_autoriza, 'YYYY-MM-DD HH24:MI:SS') ||
                                        '. Items: ' || COALESCE(v_total_items, 0) || 
                                        ', Ajustados: ' || COALESCE(v_items_ajustados, 0) ||
-                                       ', Rechazados: ' || COALESCE(v_items_rechazados, 0)
+                                       ', Rechazados: ' || COALESCE(v_items_rechazados, 0) ||
+                                       -- Agregar información de comprobantes
+                                       CASE 
+                                           WHEN ide_incci IS NOT NULL AND ide_incci_nega IS NOT NULL THEN
+                                               ' | Comprobantes: Positivo=' || ide_incci || ', Negativo=' || ide_incci_nega
+                                           WHEN ide_incci IS NOT NULL THEN
+                                               ' | Comprobante Positivo=' || ide_incci
+                                           WHEN ide_incci_nega IS NOT NULL THEN
+                                               ' | Comprobante Negativo=' || ide_incci_nega
+                                           ELSE ''
+                                       END
                 WHERE ide_inccf = v_conteo;
             END IF;
         END LOOP;
@@ -511,7 +539,10 @@ BEGIN
         total_valor := v_total_positivo;
         items_ajustados := v_descripcion_positivos;
         mensaje := 'Comprobante positivo generado exitosamente para ' || 
-                   v_items_positivos || ' ítem(s)';
+                   v_items_positivos || ' ítem(s). ' ||
+                   CASE WHEN v_conteo_positivo IS NOT NULL THEN 
+                       'Almacenado en conteo ID: ' || v_conteo_positivo 
+                   ELSE '' END;
         exito := TRUE;
         RETURN NEXT;
     END IF;
@@ -524,7 +555,10 @@ BEGIN
         total_valor := v_total_negativo;
         items_ajustados := v_descripcion_negativos;
         mensaje := 'Comprobante negativo generado exitosamente para ' || 
-                   v_items_negativos || ' ítem(s)';
+                   v_items_negativos || ' ítem(s). ' ||
+                   CASE WHEN v_conteo_negativo IS NOT NULL THEN 
+                       'Almacenado en conteo ID: ' || v_conteo_negativo 
+                   ELSE '' END;
         exito := TRUE;
         RETURN NEXT;
     END IF;
