@@ -5,6 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { AdminService } from './admin.service';
+import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
@@ -13,7 +14,7 @@ import { RucDto } from './dto/ruc.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   // -------------------------------- EMPRESA ---------------------------- //
 
@@ -96,6 +97,17 @@ export class AdminController {
   // @Auth()
   getTreeModelOpcion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: OpcionDto) {
     return this.adminService.getTreeModelOpcion({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
+  @Post('generarOpciones')
+  // @Auth()
+  generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
+    return this.adminService.generarOpciones({
       ...headersParams,
       ...dtoIn,
     });

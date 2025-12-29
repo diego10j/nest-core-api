@@ -3,8 +3,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
+import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
+import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
@@ -17,7 +19,7 @@ export class AdminService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) {}
+  ) { }
 
   // -------------------------------- EMPRESA ---------------------------- //
   async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
@@ -110,6 +112,34 @@ export class AdminService {
       orderBy: { column: 'nom_opci' },
     };
     return this.core.getTreeModel(dtoIn);
+  }
+
+  /**
+   * Genera el menu de opciones del sistema ProErp a partir de un json elaborado en el frontend
+   * @param dtoIn 
+   * @returns 
+   */
+  async generarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+        SELECT * FROM f_generar_opciones_proerp($1, $2)
+        `
+      );
+      const jsonString = JSON.stringify(dtoIn.json);
+      query.addParam(1, jsonString);
+      query.addParam(2, dtoIn.login);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
   }
 
   // -------------------------------- PERFILES ---------------------------- //
