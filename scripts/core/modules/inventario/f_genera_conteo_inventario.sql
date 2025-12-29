@@ -72,37 +72,46 @@ BEGIN
     v_secuencial := TO_CHAR(p_fecha_corte,'YYMM') || '-' || LPAD(v_correlativo::TEXT,4,'0');
 
     /* ================= CONTAR ITEMS ================= */
-    WITH base_articulos AS (
+    WITH movimientos_almacen AS (
+        -- Todos los movimientos del almacén
+        SELECT
+            d.ide_inarti,
+            c.fecha_trans_incci,
+            d.cantidad_indci * tci.signo_intci as cantidad,
+            CASE 
+                WHEN c.fecha_trans_incci BETWEEN 
+                    p_fecha_corte_desde::timestamp 
+                    AND (p_fecha_corte + 1)::timestamp 
+                THEN 1 
+                ELSE 0 
+            END as en_rango
+        FROM inv_cab_comp_inve c
+        JOIN inv_det_comp_inve d ON d.ide_incci = c.ide_incci
+        JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
+        JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE c.ide_inbod = p_ide_inbod
+          AND c.ide_inepi = 1
+    ),
+    base_articulos AS (
         SELECT
             a.ide_inarti,
+            a.decim_stock_inarti,
             COALESCE(
                 f_redondeo(
                     SUM(
                         CASE
-                            WHEN c.fecha_trans_incci <= p_fecha_corte::timestamp
-                            THEN d.cantidad_indci * tci.signo_intci
+                            WHEN m.fecha_trans_incci <= p_fecha_corte::timestamp
+                            THEN m.cantidad
                             ELSE 0
                         END
                     ),
                     a.decim_stock_inarti
                 ),0
             ) AS saldo_corte,
-            SUM(
-                CASE
-                    WHEN c.fecha_trans_incci BETWEEN
-                         p_fecha_corte_desde::timestamp
-                     AND (p_fecha_corte + 1)::timestamp
-                    THEN 1 ELSE 0
-                END
-            ) AS movimientos
+            COALESCE(SUM(m.en_rango), 0) AS movimientos
         FROM inv_articulo a
-        JOIN inv_det_comp_inve d ON d.ide_inarti = a.ide_inarti
-        JOIN inv_cab_comp_inve c ON c.ide_incci = d.ide_incci
-        JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
-        JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-        WHERE c.ide_inbod = p_ide_inbod
-          AND c.ide_inepi = 1
-          AND a.nivel_inarti = 'HIJO'
+        LEFT JOIN movimientos_almacen m ON m.ide_inarti = a.ide_inarti
+        WHERE a.nivel_inarti = 'HIJO'
           AND a.hace_kardex_inarti
           AND a.activo_inarti
           AND a.ide_empr = p_ide_empr
@@ -111,10 +120,18 @@ BEGIN
     SELECT COUNT(*)
     INTO v_total_items
     FROM base_articulos
-    WHERE NOT (
-        p_excluir_ceros_sin_movimientos
-        AND saldo_corte = 0
-        AND movimientos = 0
+    WHERE (
+        -- Productos con saldo positivo: SIEMPRE se incluyen
+        saldo_corte > 0
+        
+        -- Productos con saldo negativo: solo si tienen movimientos
+        OR (saldo_corte < 0 AND movimientos > 0)
+        
+        -- Productos con saldo 0: 
+        -- 1) Con movimientos: SIEMPRE se incluyen
+        -- 2) Sin movimientos: depende del parámetro
+        OR (saldo_corte = 0 AND movimientos > 0)
+        OR (saldo_corte = 0 AND movimientos = 0 AND NOT p_excluir_ceros_sin_movimientos)
     );
 
     IF v_total_items = 0 THEN
@@ -152,37 +169,45 @@ BEGIN
     );
 
     /* ================= DETALLE ================= */
-    WITH base_articulos AS (
+    WITH movimientos_almacen AS (
+        SELECT
+            d.ide_inarti,
+            c.fecha_trans_incci,
+            d.cantidad_indci * tci.signo_intci as cantidad,
+            CASE 
+                WHEN c.fecha_trans_incci BETWEEN 
+                    p_fecha_corte_desde::timestamp 
+                    AND (p_fecha_corte + 1)::timestamp 
+                THEN 1 
+                ELSE 0 
+            END as en_rango
+        FROM inv_cab_comp_inve c
+        JOIN inv_det_comp_inve d ON d.ide_incci = c.ide_incci
+        JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
+        JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE c.ide_inbod = p_ide_inbod
+          AND c.ide_inepi = 1
+    ),
+    base_articulos AS (
         SELECT
             a.ide_inarti,
+            a.decim_stock_inarti,
             COALESCE(
                 f_redondeo(
                     SUM(
                         CASE
-                            WHEN c.fecha_trans_incci <= p_fecha_corte::timestamp
-                            THEN d.cantidad_indci * tci.signo_intci
+                            WHEN m.fecha_trans_incci <= p_fecha_corte::timestamp
+                            THEN m.cantidad
                             ELSE 0
                         END
                     ),
                     a.decim_stock_inarti
                 ),0
             ) AS saldo_corte,
-            SUM(
-                CASE
-                    WHEN c.fecha_trans_incci BETWEEN
-                         p_fecha_corte_desde::timestamp
-                     AND (p_fecha_corte + 1)::timestamp
-                    THEN 1 ELSE 0
-                END
-            ) AS movimientos
+            COALESCE(SUM(m.en_rango), 0) AS movimientos
         FROM inv_articulo a
-        JOIN inv_det_comp_inve d ON d.ide_inarti = a.ide_inarti
-        JOIN inv_cab_comp_inve c ON c.ide_incci = d.ide_incci
-        JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
-        JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-        WHERE c.ide_inbod = p_ide_inbod
-          AND c.ide_inepi = 1
-          AND a.nivel_inarti = 'HIJO'
+        LEFT JOIN movimientos_almacen m ON m.ide_inarti = a.ide_inarti
+        WHERE a.nivel_inarti = 'HIJO'
           AND a.hace_kardex_inarti
           AND a.activo_inarti
           AND a.ide_empr = p_ide_empr
@@ -209,10 +234,18 @@ BEGIN
         movimientos,
         true
     FROM base_articulos
-    WHERE NOT (
-        p_excluir_ceros_sin_movimientos
-        AND saldo_corte = 0
-        AND movimientos = 0
+    WHERE (
+        -- Productos con saldo positivo: SIEMPRE se incluyen
+        saldo_corte > 0
+        
+        -- Productos con saldo negativo: solo si tienen movimientos
+        OR (saldo_corte < 0 AND movimientos > 0)
+        
+        -- Productos con saldo 0: 
+        -- 1) Con movimientos: SIEMPRE se incluyen
+        -- 2) Sin movimientos: depende del parámetro
+        OR (saldo_corte = 0 AND movimientos > 0)
+        OR (saldo_corte = 0 AND movimientos = 0 AND NOT p_excluir_ceros_sin_movimientos)
     );
 
     /* ================= RETORNO ================= */
@@ -225,6 +258,7 @@ BEGIN
     RETURN NEXT;
 END;
 $$;
+
 
 
 --- Ejecutar
