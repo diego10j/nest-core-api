@@ -457,6 +457,7 @@ export class BodegasService extends BaseService {
           
           -- Fechas importantes
           cc.fecha_corte_inccf,
+          cc.fecha_corte_desde_inccf,
           cc.fecha_ini_conteo_inccf,
           cc.fecha_fin_conteo_inccf,
           cc.fecha_cierre_inccf,
@@ -527,6 +528,7 @@ export class BodegasService extends BaseService {
           cc.ide_inccf,
           cc.secuencial_inccf,
           cc.fecha_corte_inccf,
+          cc.fecha_corte_desde_inccf,
           cc.fecha_ini_conteo_inccf,
           cc.fecha_fin_conteo_inccf,
           cc.fecha_cierre_inccf,
@@ -554,6 +556,7 @@ export class BodegasService extends BaseService {
           a.codigo_inarti,
           a.nombre_inarti,
           a.uuid,
+          a.decim_stock_inarti,
           u.siglas_inuni,
           d.saldo_corte_indcf,
           d.cantidad_fisica_indcf,
