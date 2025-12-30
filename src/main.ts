@@ -20,6 +20,7 @@ async function bootstrap() {
       'https://devproerpec.site',
       'http://sigafi.com:18080',
       'http://144.126.148.120:18080',
+      'http://144.126.148.120',
       'http://sigafi.com',
       'https://sigafi.com',
     ],
