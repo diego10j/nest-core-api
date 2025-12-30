@@ -5,11 +5,10 @@ echo "=== Iniciando despliegue ==="
 cd /proerp/backend/nest-core-api
 
 echo "1. Actualizando código desde Git..."
-git fetch origin
-git reset --hard origin/main
+git pull
 
 echo "2. Instalando dependencias..."
-yarn install --production=false
+yarn install 
 
 echo "3. Haciendo build..."
 yarn build
