@@ -9,17 +9,15 @@ ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
 /**15/08/2023 Campos tabla articulo*/
 
-ALTER TABLE inv_articulo ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
 
 
 /**18/09/2023 */
 ALTER TABLE inv_articulo ADD COLUMN publicacion_inarti Text;
-CREATE INDEX idx_uuid ON inv_articulo(uuid);
+
 ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
 
-ALTER TABLE inv_articulo ADD COLUMN cant_stock1_inarti decimal(12,3);     -- Cantidad minima stock
-ALTER TABLE inv_articulo ADD COLUMN cant_stock2_inarti decimal(12,3);     -- Cantidad maxima stock
+
 ALTER TABLE inv_articulo ADD COLUMN cod_auto_inarti varchar(10);--Codigo generado automaticamente
 
 
@@ -117,30 +115,6 @@ url_inarti= 'https://produquimic.com.ec/product';
 
 
 
-ALTER TABLE inv_bodega ADD COLUMN usuario_ingre varchar(50); 
-ALTER TABLE inv_bodega ADD COLUMN hora_ingre TIMESTAMP;
-ALTER TABLE inv_bodega ADD COLUMN usuario_actua varchar(50); 
-ALTER TABLE inv_bodega ADD COLUMN hora_actua TIMESTAMP;
-
-ALTER TABLE inv_bodega ADD COLUMN ide_geprov int4;
-ALTER TABLE inv_bodega ADD COLUMN ide_gecant int4;
-ALTER TABLE inv_bodega ADD COLUMN activo_inbod bool;
-
-update inv_bodega set  activo_inbod = true
-
-ALTER TABLE public.inv_bodega
-	ADD CONSTRAINT inv_bodega_ide_geprov_fkey
-	FOREIGN KEY(ide_geprov)
-	REFERENCES public.gen_provincia(ide_geprov)
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT;
-
-ALTER TABLE public.inv_bodega
-	ADD CONSTRAINT inv_bodega_ide_gecant_fkey
-	FOREIGN KEY(ide_gecant)
-	REFERENCES public.gen_canton(ide_gecant)
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT;
 
 
 
@@ -242,16 +216,12 @@ CREATE INDEX idx_geper_nom_uuid
 ON gen_persona (ide_geper, nom_geper, uuid);
 
 
-ALTER TABLE con_deta_forma_pago ADD COLUMN activo_cndfp bool DEFAULT true;
+
 ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE con_deta_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE con_deta_forma_pago ADD COLUMN hora_actua TIMESTAMP;
-ALTER TABLE con_deta_forma_pago ADD COLUMN icono_cndfp  varchar(50);
 
-
-ALTER TABLE con_cabece_forma_pago ADD COLUMN icono_cncfp varchar(50);
-ALTER TABLE con_cabece_forma_pago ADD COLUMN activo_cncfp bool DEFAULT true;
 ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_actua varchar(50); 

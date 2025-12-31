@@ -8,8 +8,8 @@ export class SocketIoAdapter extends IoAdapter {
     // Configuración personalizada de CORS (como la que ya tenías)
     const corsOptions = {
       origin: [
-        'http://localhost:8080',
-        'http://192.168.56.103:8080',
+        'http://localhost:18080',
+        'http://192.168.56.103:18080',
         'http://devproerpec.site',
         'https://devproerpec.site',
         'http://sigafi.com:18080',

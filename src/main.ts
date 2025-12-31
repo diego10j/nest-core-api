@@ -14,8 +14,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: [
-      'http://localhost:8080',
-      'http://192.168.56.103:8080',
+      'http://localhost:18080',
+      'http://192.168.56.103:18080',
       'http://devproerpec.site',
       'https://devproerpec.site',
       'http://sigafi.com:18080',

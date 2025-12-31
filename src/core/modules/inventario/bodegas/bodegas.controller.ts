@@ -1,12 +1,14 @@
 import { Query, Controller, Get, Body, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { BodegasService } from './bodegas.service';
+import { AgregaProductoConteoDto } from './dto/agrega-producto-conteo.dto';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
 import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
@@ -111,6 +113,28 @@ export class BodegasController {
       ...dtoIn,
     });
   }
+
+
+
+  @Post('eliminarProductosConteo')
+  // @Auth()
+  eliminarProductosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
+    return this.service.eliminarProductosConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('agregarProductoConteo')
+  // @Auth()
+  agregarProductoConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AgregaProductoConteoDto) {
+    return this.service.agregarProductoConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
 
   @Get('getConteosInventario')
   // @Auth()

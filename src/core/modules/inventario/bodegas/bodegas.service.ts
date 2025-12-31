@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
@@ -10,6 +11,7 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
+import { AgregaProductoConteoDto } from './dto/agrega-producto-conteo.dto';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
 import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
@@ -745,11 +747,66 @@ export class BodegasService extends BaseService {
     WHERE dcf.ide_inarti = $1
       AND ccf.activo_inccf = true
       AND dcf.activo_indcf = true
-    `,
-      dtoIn,
+    `
     );
     query.addIntParam(1, dtoIn.ide);
     return await this.dataSource.createSelectQuery(query);
+  }
+
+
+
+  async eliminarProductosConteo(dtoIn: ArrayIdeDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+      SELECT * FROM f_eliminar_producto_conteo(
+        p_ide_indcf_array := $1
+      )
+        `
+      );
+
+      query.addParam(1, dtoIn.ide);
+
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
+
+
+
+  async agregarProductoConteo(dtoIn: AgregaProductoConteoDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+      SELECT * FROM f_agregar_producto_conteo(
+        p_ide_inccf := $1,
+        p_ide_inarti := $2,
+        p_usuario_agrega := $3
+      )
+        `
+      );
+      query.addParam(1, dtoIn.ide_inccf);
+      query.addParam(2, dtoIn.ide_inarti);
+      query.addParam(3, dtoIn.login);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
   }
 
 }
