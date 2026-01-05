@@ -1,5 +1,3 @@
-
-
 CREATE OR REPLACE FUNCTION public.f_generar_opciones_proerp(
     p_json_text TEXT,  -- Cambiar a TEXT
     p_usuario VARCHAR DEFAULT current_user
@@ -33,6 +31,7 @@ DECLARE
     v_full_path VARCHAR(55);
     v_title VARCHAR(50);
     v_path VARCHAR(255);
+    v_icon VARCHAR(255);  -- Nueva variable para el icono
     v_children JSONB;
     v_j INTEGER;
     
@@ -110,6 +109,7 @@ BEGIN
         -- Extraer datos del item
         v_title := COALESCE(v_current_item->>'subheader', v_current_item->>'title');
         v_path := v_current_item->>'path';
+        v_icon := v_current_item->>'icon';  -- Extraer el icono del JSON
         
         -- Determinar el path completo
         IF v_current_nivel = 0 AND v_current_item->>'subheader' IS NOT NULL THEN
@@ -135,7 +135,8 @@ BEGIN
             SET activo_opci = TRUE,
                 refe_opci = NULL,
                 fecha_actua = CURRENT_TIMESTAMP,
-                usuario_actua = v_seq_login
+                usuario_actua = v_seq_login,
+                icono_opci = v_icon  -- Actualizar el icono
             WHERE ide_opci = v_item_id;
             
             v_updated_count := v_updated_count + 1;
@@ -163,7 +164,8 @@ BEGIN
                 usuario_ingre,
                 fecha_ingre,
                 usuario_actua,
-                fecha_actua
+                fecha_actua,
+                icono_opci  -- Nueva columna
             ) VALUES (
                 v_item_id,
                 v_current_parent,
@@ -178,7 +180,8 @@ BEGIN
                 v_seq_login,
                 CURRENT_TIMESTAMP,
                 v_seq_login,
-                CURRENT_TIMESTAMP
+                CURRENT_TIMESTAMP,
+                v_icon  -- Valor del icono
             );
             
             v_inserted_count := v_inserted_count + 1;
@@ -264,7 +267,6 @@ EXCEPTION
         RETURN NEXT;
 END;
 $$;
-
 
 
 

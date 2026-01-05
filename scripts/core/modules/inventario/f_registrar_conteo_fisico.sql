@@ -20,7 +20,8 @@ RETURNS TABLE (
     valor_diferencia NUMERIC(15,3),
     porcentaje_avance NUMERIC(5,2),
     productos_contados INT,
-    movimientos_desde_corte INT
+    movimientos_desde_corte INT,
+    productos_con_diferencia INT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -59,6 +60,7 @@ DECLARE
     v_movimientos_desde_corte INT := 0;
     v_productos_contados INT;
     v_porcentaje_avance NUMERIC(5,2);
+    v_productos_con_diferencia INT;
 
     -- Control
     v_estado_anterior VARCHAR(20);
@@ -214,21 +216,37 @@ BEGIN
        6. ESTADÍSTICAS CABECERA
     ===================================================== */
 
+    -- Primero contamos productos con diferencia
+    SELECT COUNT(*)
+    INTO v_productos_con_diferencia
+    FROM inv_det_conteo_fisico
+    WHERE ide_inccf = v_ide_inccf
+      AND requiere_ajuste_indcf = true
+      AND activo_indcf;
+
+    -- Actualizar todas las estadísticas de la cabecera en una sola operación
     UPDATE inv_cab_conteo_fisico c
     SET productos_contados_inccf = x.contados,
-        porcentaje_avance_inccf  =
-            CASE WHEN v_total_productos > 0
-                 THEN ROUND((x.contados::NUMERIC / v_total_productos) * 100, 2)
-                 ELSE 0 END
+        porcentaje_avance_inccf  = CASE 
+                                    WHEN v_total_productos > 0
+                                    THEN ROUND((x.contados::NUMERIC / v_total_productos) * 100, 2)
+                                    ELSE 0 
+                                   END,
+        productos_con_diferencia_inccf = v_productos_con_diferencia
     FROM (
         SELECT COUNT(*) contados
         FROM inv_det_conteo_fisico
         WHERE ide_inccf = v_ide_inccf
           AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO')
+          AND activo_indcf
     ) x
     WHERE c.ide_inccf = v_ide_inccf
-    RETURNING porcentaje_avance_inccf, productos_contados_inccf
-    INTO v_porcentaje_avance, v_productos_contados;
+    RETURNING 
+        porcentaje_avance_inccf, 
+        productos_contados_inccf
+    INTO 
+        v_porcentaje_avance, 
+        v_productos_contados;
 
     /* =====================================================
        7. RETORNO
@@ -248,14 +266,15 @@ BEGIN
     porcentaje_avance := v_porcentaje_avance;
     productos_contados := v_productos_contados;
     movimientos_desde_corte := v_movimientos_desde_corte;
+    productos_con_diferencia := v_productos_con_diferencia;
 
     mensaje := 'Conteo registrado para "' || v_nombre_articulo ||
-               '" - Avance: ' || ROUND(v_porcentaje_avance,2) || '%';
+               '" - Avance: ' || ROUND(v_porcentaje_avance,2) || '%' ||
+               ' - Diferencias: ' || v_productos_con_diferencia;
 
     RETURN NEXT;
 END;
 $$;
-
 
 ---probar 
 SELECT * FROM f_registrar_conteo_fisico(

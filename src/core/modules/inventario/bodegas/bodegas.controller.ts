@@ -17,6 +17,7 @@ import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
+import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
@@ -135,6 +136,14 @@ export class BodegasController {
   }
 
 
+  @Post('validarDetallesConteo')
+  // @Auth()
+  validarDetallesConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ValidarDetallesConteoDto) {
+    return this.service.validarDetallesConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 
   @Get('getConteosInventario')
   // @Auth()

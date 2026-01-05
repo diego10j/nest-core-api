@@ -233,3 +233,266 @@ $$ LANGUAGE plpgsql;
 
 -- Ver los resultados
 --SELECT * FROM inv_conf_precios_articulo WHERE ide_inarti = 1704 ORDER BY rango1_cant_incpa;
+
+
+CREATE OR REPLACE FUNCTION f_calcula_precio_venta(
+    p_ide_inarti INT,
+    p_cantidad DECIMAL,
+    p_ide_cndfp INT DEFAULT NULL,
+    p_precio_compra DECIMAL(12,2) DEFAULT NULL
+)
+RETURNS TABLE (
+    cantidad DECIMAL,
+    precio_ultima_compra DECIMAL(12,2),
+    fecha_ultima_compra DATE,
+    precio_venta_sin_iva DECIMAL(12,2),
+    precio_venta_con_iva DECIMAL(12,2),
+    porcentaje_utilidad DECIMAL(12,2),
+    porcentaje_iva DECIMAL(5,2),
+    utilidad DECIMAL(12,2),
+    valor_total_con_iva DECIMAL(12,2),
+    rango_aplicado VARCHAR(100),
+    forma_pago_config INT,
+    utilidad_neta DECIMAL(12,2),
+    porcentaje_utilidad_real DECIMAL(12,2),
+    configuracion_prioridad INT,
+    tipo_configuracion VARCHAR(20)
+AS $$
+DECLARE
+    v_precio_compra DECIMAL(12,2) := 0;
+    v_fecha_compra DATE;
+    v_iva DECIMAL(5,2);
+    v_iva_factor DECIMAL(12,6);
+    v_cantidad_aplicada DECIMAL;
+    v_min_rango1 DECIMAL;
+    v_ide_cncfp INT;
+    v_config RECORD;
+    v_rango RECORD;
+BEGIN
+    -- Obtener IVA actual
+    SELECT porcentaje_cnpim * 100
+    INTO v_iva
+    FROM con_porcen_impues
+    WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+      AND activo_cnpim = TRUE
+    ORDER BY fecha_desde_cnpim DESC
+    LIMIT 1;
+
+    IF v_iva IS NULL THEN
+        RAISE EXCEPTION 'No se encontró porcentaje de IVA activo para la fecha actual';
+    END IF;
+
+    v_iva_factor := v_iva / 100;
+
+    -- Obtener último precio de compra solo si no se proporcionó
+    IF p_precio_compra IS NULL THEN
+        SELECT d.precio_indci, c.fecha_trans_incci
+        INTO v_precio_compra, v_fecha_compra
+        FROM inv_det_comp_inve d
+        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+        WHERE d.ide_inarti = p_ide_inarti
+          AND d.precio_indci > 0
+          AND c.ide_inepi = 1
+          AND c.ide_intti IN (19, 16, 3025)
+          AND EXISTS (
+              SELECT 1 FROM inv_tip_tran_inve t
+              JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+              WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
+          )
+        ORDER BY c.fecha_trans_incci DESC
+        LIMIT 1;
+    ELSE
+        v_precio_compra := p_precio_compra;
+        v_fecha_compra := NULL;
+    END IF;
+
+    -- Obtener cabecera de forma de pago si se proporcionó un detalle
+    IF p_ide_cndfp IS NOT NULL THEN
+        SELECT ide_cncfp INTO v_ide_cncfp 
+        FROM con_deta_forma_pago 
+        WHERE ide_cndfp = p_ide_cndfp;
+    END IF;
+
+    -- Crear tabla temporal para almacenar configuraciones con prioridad
+    CREATE TEMP TABLE temp_configuraciones AS
+    WITH configs AS (
+        SELECT 
+            ide_incpa,
+            ide_inarti,
+            ide_cncfp,
+            ide_cndfp,
+            rangos_incpa,
+            rango1_cant_incpa,
+            rango2_cant_incpa,
+            porcentaje_util_incpa,
+            precio_fijo_incpa,
+            incluye_iva_incpa,
+            activo_incpa,
+            -- Tipo de configuración
+            CASE
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NOT NULL THEN 'PRECIO_FIJO_CANT_ESPECIFICA'
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 'PRECIO_FIJO_TODAS'
+                WHEN precio_fijo_incpa IS NOT NULL AND rangos_incpa THEN 'PRECIO_FIJO_RANGO'
+                WHEN porcentaje_util_incpa IS NOT NULL AND rangos_incpa THEN 'PORCENTAJE_RANGO'
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NOT NULL THEN 'PORCENTAJE_CANT_ESPECIFICA'
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 'PORCENTAJE_TODAS'
+            END AS tipo_config,
+            -- Prioridad 1: Configuración exacta para la cantidad (precio fijo específico)
+            CASE
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad THEN 1
+                -- Prioridad 2: Configuración exacta para la cantidad (% específico)
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad THEN 2
+                -- Prioridad 3: Configuración por rango que incluye la cantidad (precio fijo)
+                WHEN precio_fijo_incpa IS NOT NULL AND rangos_incpa AND 
+                     p_cantidad >= rango1_cant_incpa AND (rango2_cant_incpa IS NULL OR p_cantidad < rango2_cant_incpa) THEN 3
+                -- Prioridad 4: Configuración por rango que incluye la cantidad (%)
+                WHEN porcentaje_util_incpa IS NOT NULL AND rangos_incpa AND 
+                     p_cantidad >= rango1_cant_incpa AND (rango2_cant_incpa IS NULL OR p_cantidad < rango2_cant_incpa) THEN 4
+                -- Prioridad 5: Configuración para todas las cantidades (precio fijo)
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 5
+                -- Prioridad 6: Configuración para todas las cantidades (%)
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 6
+                ELSE 99
+            END AS prioridad,
+            -- Orden secundario: precios fijos primero, luego rangos más específicos
+            CASE
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad THEN 0 -- Exact match
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad THEN 1 -- Exact match
+                WHEN precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 2 -- Precio fijo para todas
+                WHEN porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL THEN 3 -- % para todas
+                WHEN rango1_cant_incpa IS NOT NULL AND rango2_cant_incpa IS NOT NULL THEN rango2_cant_incpa - rango1_cant_incpa -- Rangos más específicos primero
+                ELSE 9999
+            END AS orden_secundario
+        FROM inv_conf_precios_articulo
+        WHERE ide_inarti = p_ide_inarti
+          AND activo_incpa = TRUE
+          AND (
+              -- Precios fijos específicos por cantidad exacta
+              (precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad) OR
+              -- Precios fijos para todas las cantidades
+              (precio_fijo_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL) OR
+              -- Precios fijos para rangos
+              (precio_fijo_incpa IS NOT NULL AND rangos_incpa AND 
+               p_cantidad >= rango1_cant_incpa AND (rango2_cant_incpa IS NULL OR p_cantidad < rango2_cant_incpa)) OR
+              -- Porcentajes específicos por cantidad exacta
+              (porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa = p_cantidad) OR
+              -- Porcentajes para todas las cantidades
+              (porcentaje_util_incpa IS NOT NULL AND NOT rangos_incpa AND rango1_cant_incpa IS NULL) OR
+              -- Porcentajes para rangos
+              (porcentaje_util_incpa IS NOT NULL AND rangos_incpa AND 
+               p_cantidad >= rango1_cant_incpa AND (rango2_cant_incpa IS NULL OR p_cantidad < rango2_cant_incpa))
+          )
+          AND (
+              p_ide_cndfp IS NULL 
+              OR ide_cndfp = p_ide_cndfp 
+              OR (v_ide_cncfp IS NOT NULL AND ide_cncfp = v_ide_cncfp)
+              OR (ide_cndfp IS NULL AND ide_cncfp IS NULL)
+          )
+    )
+    SELECT * FROM configs
+    WHERE prioridad < 99
+    ORDER BY prioridad, orden_secundario;
+
+    -- Si no hay configuraciones, retornar valores nulos
+    IF NOT EXISTS (SELECT 1 FROM temp_configuraciones) THEN
+        DROP TABLE temp_configuraciones;
+        
+        cantidad := p_cantidad;
+        precio_ultima_compra := v_precio_compra;
+        fecha_ultima_compra := v_fecha_compra;
+        precio_venta_sin_iva := NULL;
+        precio_venta_con_iva := NULL;
+        porcentaje_utilidad := NULL;
+        porcentaje_iva := v_iva;
+        utilidad := NULL;
+        valor_total_con_iva := NULL;
+        rango_aplicado := 'Sin configuración encontrada';
+        forma_pago_config := NULL;
+        utilidad_neta := NULL;
+        porcentaje_utilidad_real := NULL;
+        configuracion_prioridad := NULL;
+        tipo_configuracion := NULL;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Retornar todas las configuraciones encontradas, ordenadas por prioridad
+    FOR v_rango IN SELECT * FROM temp_configuraciones LOOP
+        -- Calcular precios y utilidades
+        IF v_rango.precio_fijo_incpa IS NOT NULL THEN
+            -- Para precios fijos específicos por cantidad
+            IF v_rango.tipo_config = 'PRECIO_FIJO_CANT_ESPECIFICA' THEN
+                IF v_rango.incluye_iva_incpa THEN
+                    -- Precio configurado incluye IVA (ejemplo: 0.050g = $2.88 con IVA)
+                    precio_venta_con_iva := v_rango.precio_fijo_incpa / v_rango.rango1_cant_incpa;
+                    precio_venta_sin_iva := ROUND(precio_venta_con_iva / (1 + v_iva_factor), 2);
+                ELSE
+                    -- Precio configurado no incluye IVA
+                    precio_venta_sin_iva := v_rango.precio_fijo_incpa / v_rango.rango1_cant_incpa;
+                    precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
+                END IF;
+            ELSE
+                -- Para otros tipos de precio fijo (rangos o todas las cantidades)
+                precio_venta_sin_iva := v_rango.precio_fijo_incpa;
+                IF v_rango.incluye_iva_incpa THEN
+                    precio_venta_con_iva := precio_venta_sin_iva;
+                ELSE
+                    precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
+                END IF;
+            END IF;
+            
+            porcentaje_utilidad := NULL;
+            porcentaje_utilidad_real := CASE 
+                WHEN v_precio_compra > 0 THEN ROUND(((precio_venta_sin_iva - v_precio_compra) / v_precio_compra * 100, 2)
+                ELSE NULL
+            END;
+        ELSE
+            -- Cálculo para porcentajes de utilidad
+            porcentaje_utilidad := v_rango.porcentaje_util_incpa;
+            precio_venta_sin_iva := ROUND(v_precio_compra * (1 + porcentaje_utilidad / 100), 2);
+            porcentaje_utilidad_real := porcentaje_utilidad;
+            
+            IF v_rango.incluye_iva_incpa THEN
+                precio_venta_con_iva := precio_venta_sin_iva;
+            ELSE
+                precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
+            END IF;
+        END IF;
+
+        -- Calcular valores derivados
+        utilidad := ROUND(precio_venta_sin_iva - v_precio_compra, 2);
+        utilidad_neta := ROUND(utilidad * p_cantidad, 2);
+        valor_total_con_iva := ROUND(p_cantidad * precio_venta_con_iva, 2);
+
+        -- Asignar valores a devolver
+        cantidad := p_cantidad;
+        precio_ultima_compra := v_precio_compra;
+        fecha_ultima_compra := v_fecha_compra;
+        porcentaje_iva := v_iva;
+        forma_pago_config := v_rango.ide_cndfp;
+        configuracion_prioridad := v_rango.prioridad;
+        tipo_configuracion := v_rango.tipo_config;
+
+        -- Determinar el rango aplicado para mostrar
+        IF v_rango.tipo_config = 'PRECIO_FIJO_CANT_ESPECIFICA' THEN
+            rango_aplicado := 'PRECIO_FIJO_CANT=' || v_rango.rango1_cant_incpa;
+        ELSIF v_rango.tipo_config = 'PRECIO_FIJO_TODAS' THEN
+            rango_aplicado := 'PRECIO_FIJO_TODAS_CANT';
+        ELSIF v_rango.tipo_config = 'PRECIO_FIJO_RANGO' THEN
+            rango_aplicado := 'PRECIO_FIJO_' || 
+                CASE WHEN v_rango.rango2_cant_incpa IS NULL THEN '≥' || v_rango.rango1_cant_incpa
+                     ELSE v_rango.rango1_cant_incpa || '≤x<' || v_rango.rango2_cant_incpa END;
+        ELSIF v_rango.tipo_config = 'PORCENTAJE_CANT_ESPECIFICA' THEN
+            rango_aplicado := 'PORCENTAJE_CANT=' || v_rango.rango1_cant_incpa;
+        ELSIF v_rango.tipo_config = 'PORCENTAJE_TODAS' THEN
+            rango_aplicado := 'PORCENTAJE_TODAS_CANT';
+        ELSIF v_rango.tipo_config = 'PORCENTAJE_RANGO' THEN
+            rango_aplicado := v_rango.rango1_cant_incpa || '≤x<' || v_rango.rango2_cant_incpa;
+        END IF;
+
+        RETURN NEXT;
+    END LOOP;
+
+    DROP TABLE temp_configuraciones;
+END;
+$$ LANGUAGE plpgsql;

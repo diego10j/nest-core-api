@@ -21,6 +21,7 @@ import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
+import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
 
 @Injectable()
 export class BodegasService extends BaseService {
@@ -540,7 +541,6 @@ export class BodegasService extends BaseService {
           cc.productos_con_diferencia_inccf,
           cc.productos_ajustados_inccf,
           cc.porcentaje_avance_inccf,
-          
           -- Bodega
           b.nombre_inbod,
           
@@ -588,7 +588,14 @@ export class BodegasService extends BaseService {
           d.fecha_reconteo_indcf,
           d.usuario_reconteo_indcf,
           d.motivo_diferencia_indcf,
-          d.observacion_indcf
+          d.observacion_indcf,
+          d.requiere_ajuste_indcf,
+          d.aprobado_ajuste_indcf,
+          d.cantidad_ajuste_indcf,
+          d.fecha_ajuste_indcf,
+          us.nick_usua,
+          d.saldo_antes_ajuste_indcf,
+          d.saldo_despues_ajuste_indcf
           
       FROM inv_cab_conteo_fisico cc
       INNER JOIN inv_bodega b ON cc.ide_inbod = b.ide_inbod
@@ -597,7 +604,7 @@ export class BodegasService extends BaseService {
       INNER JOIN inv_det_conteo_fisico d ON cc.ide_inccf = d.ide_inccf
       INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
-      
+      left join sis_usuario us on d.ide_usua_ajusta = us.ide_usua
       WHERE cc.ide_inccf = $1
           AND cc.activo_inccf = true
           AND d.activo_indcf = true
@@ -809,4 +816,27 @@ export class BodegasService extends BaseService {
 
   }
 
+
+  async validarDetallesConteo(dtoIn: ValidarDetallesConteoDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+        SELECT * FROM f_validar_detalles_conteo($1, $2)
+        `
+      );
+      const jsonString = JSON.stringify(dtoIn.detalles);
+      query.addParam(1, jsonString);
+      query.addParam(2, dtoIn.ideUsua);
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
 }

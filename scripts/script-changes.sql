@@ -538,13 +538,15 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN fecha_actua TIMESTAMP;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
 
-
+ALTER TABLE sis_opcion ADD COLUMN icono_opci varchar(80); 
 ALTER TABLE sis_opcion ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE sis_opcion ADD COLUMN fecha_ingre TIMESTAMP;
 ALTER TABLE sis_opcion ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE sis_opcion ADD COLUMN fecha_actua TIMESTAMP;
-
-
+ALTER TABLE "public"."sis_usuario_perfil"
+ADD COLUMN "ide_sist" int2;
+ALTER TABLE "public"."sis_opcion"
+ADD COLUMN "orden_opci" int2;
 
 -------- 
 CREATE INDEX CONCURRENTLY idx_inv_articulo_empresa_stock 

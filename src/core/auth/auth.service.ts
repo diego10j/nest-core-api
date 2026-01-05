@@ -164,79 +164,123 @@ export class AuthService {
   }
 
   async getMenuByRol(dtoIn: MenuRolDto) {
-    // 1. Consulta única no recursiva para obtener todos los elementos del menú
+    // Consulta simple sin joins innecesarios
     const selectQueryMenu = new SelectQuery(`
-            SELECT
-                o.ide_opci,
-                o.nom_opci,
-                o.sis_ide_opci,
-                o.paquete_opci,
-                o.tipo_opci,
-                o.uuid,
-                COUNT(child.ide_opci) AS num_nodos
-            FROM
-                sis_opcion o
-            LEFT JOIN
-                sis_perfil_opcion p ON o.ide_opci = p.ide_opci
-            LEFT JOIN
-                sis_opcion child ON child.sis_ide_opci = o.ide_opci
-            WHERE
-                p.ide_perf = $1
-                AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
-            GROUP BY
-                o.ide_opci, o.nom_opci, o.sis_ide_opci, o.paquete_opci, o.tipo_opci, o.uuid
-            ORDER BY
-                COALESCE(o.sis_ide_opci, 0), o.nom_opci
-        `);
+      SELECT 
+        ide_opci,
+        nom_opci,
+        sis_ide_opci,
+        tipo_opci,
+        icono_opci,
+        orden_opci
+      FROM sis_opcion o
+      WHERE ide_opci IN (
+        SELECT p.ide_opci 
+        FROM sis_perfil_opcion p 
+        WHERE p.ide_perf = $1
+      )
+        AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
+      ORDER BY 
+        CASE 
+          WHEN sis_ide_opci IS NULL THEN 1
+          ELSE 2
+        END,
+        orden_opci
+    `);
 
     selectQueryMenu.addNumberParam(1, dtoIn.ide_perf);
-    const data = await this.dataSource.createSelectQuery(selectQueryMenu);
+    const menuData = await this.dataSource.createSelectQuery(selectQueryMenu);
 
-    // 2. Construcción del árbol en memoria (versión optimizada)
-    const buildMenuTree = (items: any[]) => {
+    // Uso correcto de itemMap para estructura jerárquica
+    const buildHierarchicalMenu = () => {
       const itemMap = new Map<number, any>();
       const rootItems: any[] = [];
 
-      // Primera pasada: crear todos los nodos
-      items.forEach((row) => {
+      // Paso 1: Crear todos los items en el mapa
+      menuData.forEach(item => {
         const menuItem = {
-          title: row.nom_opci,
-          path: row.tipo_opci || null,
-          children: row.num_nodos > 0 ? [] : undefined,
-          data: row.ide_opci.toString(),
-          package: row.paquete_opci,
-          node: row.sis_ide_opci?.toString() || null,
-          uuid: row.uuid,
-          totalNodes: row.num_nodos,
+          ide_opci: item.ide_opci,
+          title: item.nom_opci,
+          path: item.tipo_opci || null,
+          icon: item.icono_opci || null,
+          parentId: item.sis_ide_opci,
+          children: []
         };
-        itemMap.set(row.ide_opci, menuItem);
+        itemMap.set(item.ide_opci, menuItem);
       });
 
-      // Segunda pasada: construir la jerarquía
-      items.forEach((row) => {
-        const menuItem = itemMap.get(row.ide_opci);
-        if (row.sis_ide_opci) {
-          const parent = itemMap.get(row.sis_ide_opci);
-          if (parent) {
-            parent.children.push(menuItem);
-          }
+      // Paso 2: Construir jerarquía
+      itemMap.forEach(item => {
+        if (item.parentId === null) {
+          rootItems.push(item);
         } else {
-          rootItems.push(menuItem);
+          const parent = itemMap.get(item.parentId);
+          if (parent) {
+            parent.children.push(item);
+          }
         }
       });
 
-      return rootItems;
+      // Paso 3: Procesar estructura final
+      const sections = [];
+
+      // Buscar sección General
+      const generalSection = rootItems.find(item => item.title === 'General');
+      if (generalSection && generalSection.children.length > 0) {
+        sections.push({
+          subheader: 'General',
+          items: generalSection.children.map(child => ({
+            title: child.title,
+            path: child.path,
+            icon: child.icon
+          }))
+        });
+      }
+
+      // Buscar sección Módulos
+      const modulosSection = rootItems.find(item => item.title === 'Módulos');
+      if (modulosSection && modulosSection.children.length > 0) {
+        sections.push({
+          subheader: 'Módulos',
+          items: modulosSection.children.map(module => {
+            const resultItem: any = {
+              title: module.title,
+              path: module.path,
+              icon: module.icon
+            };
+
+            // Procesar hijos recursivamente
+            if (module.children.length > 0) {
+              const processChildren = (children: any[]): any[] => {
+                return children.map(child => {
+                  const childItem: any = {
+                    title: child.title,
+                    path: child.path
+                  };
+
+                  if (child.children.length > 0) {
+                    childItem.children = processChildren(child.children);
+                  }
+
+                  return childItem;
+                });
+              };
+
+              resultItem.children = processChildren(module.children);
+            }
+
+            return resultItem;
+          })
+        });
+      }
+
+      return sections;
     };
 
-    const menuTree = buildMenuTree(data);
-
-    return [
-      {
-        subheader: 'Menu general',
-        items: menuTree,
-      },
-    ];
+    return buildHierarchicalMenu();
   }
+
+
 
   async checkAuthStatus(user: any) {
     return {
@@ -336,6 +380,7 @@ export class AuthService {
             activo_perf = true
             AND activo_usper = true
             and a.ide_usua = $1
+            and b.ide_sist = 2
         `);
     queryPerf.addIntParam(1, ide_usua);
     return await this.dataSource.createSelectQuery(queryPerf);
@@ -368,106 +413,5 @@ export class AuthService {
     return token;
   }
 
-  private getMenuApp() {
-    return [
-      {
-        subheader: 'General',
-        items: [
-          {
-            title: 'App',
-            path: '/dashboard',
-            icon: 'carbon:dashboard',
-          },
-          {
-            title: 'Drive',
-            path: '/dashboard/file-manager',
-            icon: 'solar:flash-drive-linear',
-          },
-          {
-            title: 'Calendario',
-            path: '/dashboard/calendar',
-            icon: 'mdi:calendar-month-outline',
-          },
-        ],
-      },
-      {
-        subheader: 'Módulos',
-        items: [
-          {
-            title: 'Administración',
-            path: '/dashboard/sistema',
-            icon: 'clarity:administrator-solid',
-            children: [
-              {
-                title: 'Empresa',
-                path: '/dashboard/sistema/empresa',
-              },
-              {
-                title: 'Sucursales',
-                path: '/dashboard/sistema/sucursal',
-              },
-              {
-                title: 'Usuarios',
-                path: '/dashboard/usuarios/list',
-              },
-              {
-                title: 'Sistemas',
-                path: '/dashboard/sistema/sistemas',
-              },
-              {
-                title: 'Opciones',
-                path: '/dashboard/sistema/opciones',
-              },
-            ],
-          },
-          {
-            title: 'Seguridad',
-            path: '/dashboard/seguridad',
-            icon: 'mage:security-shield-fill',
-            children: [
-              {
-                title: 'Tipos de Horarios',
-                path: '/dashboard/seguridad/tipo-horario',
-              },
-              {
-                title: 'Horarios',
-                path: '/dashboard/seguridad/horarios',
-              },
-              {
-                title: 'Perfiles',
-                path: '/dashboard/seguridad/perfiles',
-              },
-              {
-                title: 'Opciones Perfil',
-                path: '/dashboard/seguridad/perfil-opcion',
-              },
-            ],
-          },
-          {
-            title: 'Inventario',
-            path: '/dashboard/inventario',
-            icon: 'fluent-mdl2:product-variant',
-            children: [
-              {
-                title: 'Productos',
-                path: '/dashboard/productos/list',
-              },
-              {
-                title: 'Bodegas',
-                path: '/dashboard/bodegas/list',
-              },
-              {
-                title: 'Movimientos',
-                path: '/dashboard/bodegas/trn',
-              },
-              {
-                title: 'Stock',
-                path: '/dashboard/bodegas/stock',
-              },
-            ],
-          },
-        ],
-      },
-    ];
-  }
+
 }
