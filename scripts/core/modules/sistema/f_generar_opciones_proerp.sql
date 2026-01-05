@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION public.f_generar_opciones_proerp(
-    p_json_text TEXT,  -- Cambiar a TEXT
+    p_json_text TEXT,
     p_usuario VARCHAR DEFAULT current_user
 )
 RETURNS TABLE(
@@ -13,7 +13,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    p_json JSONB;  -- Variable interna como JSONB
+    p_json JSONB;
     v_item JSONB;
     v_subheader JSONB;
     v_i INTEGER;
@@ -31,7 +31,7 @@ DECLARE
     v_full_path VARCHAR(55);
     v_title VARCHAR(50);
     v_path VARCHAR(255);
-    v_icon VARCHAR(255);  -- Nueva variable para el icono
+    v_icon VARCHAR(255);
     v_children JSONB;
     v_j INTEGER;
     
@@ -109,7 +109,7 @@ BEGIN
         -- Extraer datos del item
         v_title := COALESCE(v_current_item->>'subheader', v_current_item->>'title');
         v_path := v_current_item->>'path';
-        v_icon := v_current_item->>'icon';  -- Extraer el icono del JSON
+        v_icon := v_current_item->>'icon';
         
         -- Determinar el path completo
         IF v_current_nivel = 0 AND v_current_item->>'subheader' IS NOT NULL THEN
@@ -118,73 +118,108 @@ BEGIN
             v_full_path := v_path;
         END IF;
         
-        -- Buscar si la opción ya existe
+        -- Buscar si la opción ya existe por path (tipo_opci) y padre
         SELECT ide_opci INTO v_existing_id
         FROM sis_opcion 
-        WHERE nom_opci = v_title 
-          AND (tipo_opci IS NOT DISTINCT FROM v_full_path)
+        WHERE (tipo_opci IS NOT DISTINCT FROM v_full_path)
           AND (sis_ide_opci IS NOT DISTINCT FROM v_current_parent)
           AND ide_sist = 2
         LIMIT 1;
         
         IF v_existing_id IS NOT NULL THEN
-            -- La opción ya existe, actualizarla
+            -- La opción ya existe por el mismo path, actualizarla
             v_item_id := v_existing_id;
             
             UPDATE sis_opcion 
-            SET activo_opci = TRUE,
+            SET 
+                nom_opci = v_title,  -- Actualizar el nombre aunque haya cambiado
+                activo_opci = TRUE,
                 refe_opci = NULL,
                 fecha_actua = CURRENT_TIMESTAMP,
                 usuario_actua = v_seq_login,
-                icono_opci = v_icon  -- Actualizar el icono
+                icono_opci = v_icon
             WHERE ide_opci = v_item_id;
             
             v_updated_count := v_updated_count + 1;
             
         ELSE
-            -- La opción no existe, insertarla
-            SELECT get_seq_table(
-                table_name := 'sis_opcion',
-                primary_key := 'ide_opci',
-                number_rows_added := 1,
-                login := v_seq_login
-            ) INTO v_item_id;
+            -- Si no existe por path, buscar por nombre para subheaders (solo nivel 0)
+            IF v_current_nivel = 0 AND v_current_item->>'subheader' IS NOT NULL THEN
+                SELECT ide_opci INTO v_existing_id
+                FROM sis_opcion 
+                WHERE nom_opci = v_title
+                  AND (sis_ide_opci IS NOT DISTINCT FROM v_current_parent)
+                  AND ide_sist = 2
+                  AND tipo_opci IS NULL  -- Solo subheaders sin path
+                LIMIT 1;
+                
+                IF v_existing_id IS NOT NULL THEN
+                    -- Subheader existe por nombre, actualizarlo
+                    v_item_id := v_existing_id;
+                    
+                    UPDATE sis_opcion 
+                    SET 
+                        activo_opci = TRUE,
+                        refe_opci = NULL,
+                        fecha_actua = CURRENT_TIMESTAMP,
+                        usuario_actua = v_seq_login,
+                        icono_opci = v_icon
+                    WHERE ide_opci = v_item_id;
+                    
+                    v_updated_count := v_updated_count + 1;
+                ELSE
+                    -- Crear nuevo subheader
+                    v_item_id := NULL;
+                END IF;
+            ELSE
+                v_item_id := NULL;
+            END IF;
             
-            INSERT INTO sis_opcion (
-                ide_opci,
-                sis_ide_opci,
-                nom_opci,
-                tipo_opci,
-                paquete_opci,
-                auditoria_opci,
-                manual_opci,
-                ide_sist,
-                refe_opci,
-                activo_opci,
-                usuario_ingre,
-                fecha_ingre,
-                usuario_actua,
-                fecha_actua,
-                icono_opci  -- Nueva columna
-            ) VALUES (
-                v_item_id,
-                v_current_parent,
-                v_title,
-                v_full_path,
-                NULL,
-                FALSE,
-                NULL,
-                2,
-                NULL,
-                TRUE,
-                v_seq_login,
-                CURRENT_TIMESTAMP,
-                v_seq_login,
-                CURRENT_TIMESTAMP,
-                v_icon  -- Valor del icono
-            );
-            
-            v_inserted_count := v_inserted_count + 1;
+            -- Si no se encontró por ningún criterio, crear nueva opción
+            IF v_item_id IS NULL THEN
+                SELECT get_seq_table(
+                    table_name := 'sis_opcion',
+                    primary_key := 'ide_opci',
+                    number_rows_added := 1,
+                    login := v_seq_login
+                ) INTO v_item_id;
+                
+                INSERT INTO sis_opcion (
+                    ide_opci,
+                    sis_ide_opci,
+                    nom_opci,
+                    tipo_opci,
+                    paquete_opci,
+                    auditoria_opci,
+                    manual_opci,
+                    ide_sist,
+                    refe_opci,
+                    activo_opci,
+                    usuario_ingre,
+                    fecha_ingre,
+                    usuario_actua,
+                    fecha_actua,
+                    icono_opci
+                ) VALUES (
+                    v_item_id,
+                    v_current_parent,
+                    v_title,
+                    v_full_path,
+                    NULL,
+                    FALSE,
+                    NULL,
+                    2,
+                    NULL,
+                    TRUE,
+                    v_seq_login,
+                    CURRENT_TIMESTAMP,
+                    v_seq_login,
+                    CURRENT_TIMESTAMP,
+                    v_icon
+                );
+                
+                v_inserted_count := v_inserted_count + 1;
+            END IF;
         END IF;
         
         -- Registrar el ID para luego no desactivar esta opción
@@ -267,8 +302,6 @@ EXCEPTION
         RETURN NEXT;
 END;
 $$;
-
-
 
 
 SELECT * FROM f_generar_opciones_proerp(

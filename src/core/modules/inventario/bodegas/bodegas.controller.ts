@@ -9,6 +9,7 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { BodegasService } from './bodegas.service';
 import { AgregaProductoConteoDto } from './dto/agrega-producto-conteo.dto';
+import { AutorizaAjustesConteoDto } from './dto/autoriza-ajustes.dto';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
 import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
@@ -144,6 +145,16 @@ export class BodegasController {
       ...dtoIn,
     });
   }
+
+  @Post('autorizarAjustesConteo')
+  // @Auth()
+  autorizarAjustesConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AutorizaAjustesConteoDto) {
+    return this.service.autorizarAjustesConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
 
   @Get('getConteosInventario')
   // @Auth()

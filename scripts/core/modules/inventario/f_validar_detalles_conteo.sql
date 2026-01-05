@@ -108,8 +108,8 @@ BEGIN
                 CONTINUE;
             END IF;
 
-            -- Validar que el detalle esté en un estado válido para validar (CONTADO, REVISION o VALIDADO)
-            IF v_estado_actual NOT IN ('CONTADO', 'REVISION', 'VALIDADO') THEN
+            -- Validar que el detalle esté en un estado válido para validar (CONTADO, REVISION ,RECONTADO ,VALIDADO)
+            IF v_estado_actual NOT IN ('CONTADO', 'REVISION', 'VALIDADO', 'RECONTADO') THEN
                 v_contador_errores := v_contador_errores + 1;
                 CONTINUE;
             END IF;
@@ -169,20 +169,20 @@ BEGIN
 
     /* ================= VALIDAR RESULTADOS ================= */
     IF v_contador_procesados = 0 THEN
-        RAISE EXCEPTION 'No se pudo procesar ningún detalle. Verifique: 1) IDs de detalles existen, 2) Estados sean CONTADO, REVISION o VALIDADO, 3) Fecha de corte no sea futura';
+        RAISE EXCEPTION 'No se pudo procesar ningún detalle. Verifique: 1) IDs de detalles existen, 2) Estados sean CONTADO, REVISION, RECONTADO, VALIDADO, 3) Fecha de corte no sea futura';
     END IF;
 
-    /* ================= ACTUALIZAR CABECERAS SI TODOS LOS DETALLES ESTÁN EN ESTADO VALIDADO O CONTADO ================= */
+    /* ================= ACTUALIZAR CABECERAS SI TODOS LOS DETALLES ESTÁN EN ESTADO VALIDADO O CONTADO , RECONTADO================= */
     IF array_length(v_conteos_actualizar, 1) > 0 THEN
         FOR i IN 1..array_length(v_conteos_actualizar, 1)
         LOOP
             v_ide_inccf := v_conteos_actualizar[i];
             
-            -- Verificar si todos los detalles de este conteo están en estado VALIDADO o CONTADO
+            -- Verificar si todos los detalles de este conteo están en estado VALIDADO o CONTADO o RECONTADO
             WITH conteo_detalles AS (
                 SELECT 
                     COUNT(*) as total_detalles,
-                    SUM(CASE WHEN estado_item_indcf IN ('VALIDADO', 'CONTADO') THEN 1 ELSE 0 END) as detalles_validados_contados
+                    SUM(CASE WHEN estado_item_indcf IN ('VALIDADO', 'CONTADO', 'RECONTADO') THEN 1 ELSE 0 END) as detalles_validados_contados
                 FROM inv_det_conteo_fisico
                 WHERE ide_inccf = v_ide_inccf
             )
@@ -224,7 +224,7 @@ SELECT * FROM f_validar_detalles_conteo(
         {
             "ide_indcf": 629,
             "aprobado_ajuste_indcf": true,
-            "cantidad_ajuste_indcf": '2,
+            "cantidad_ajuste_indcf": 2,
             "motivo_diferencia_indcf": "Producto dañado"
         }
     ]',

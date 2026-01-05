@@ -12,6 +12,7 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
 import { AgregaProductoConteoDto } from './dto/agrega-producto-conteo.dto';
+import { AutorizaAjustesConteoDto } from './dto/autoriza-ajustes.dto';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
 import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
@@ -594,6 +595,7 @@ export class BodegasService extends BaseService {
           d.cantidad_ajuste_indcf,
           d.fecha_ajuste_indcf,
           us.nick_usua,
+          usa.nick_usua as usuario_ajusta,
           d.saldo_antes_ajuste_indcf,
           d.saldo_despues_ajuste_indcf
           
@@ -604,7 +606,8 @@ export class BodegasService extends BaseService {
       INNER JOIN inv_det_conteo_fisico d ON cc.ide_inccf = d.ide_inccf
       INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
-      left join sis_usuario us on d.ide_usua_ajusta = us.ide_usua
+      left join sis_usuario us on d.ide_usua_valida = us.ide_usua
+      left join sis_usuario usa on d.ide_usua_ajusta = usa.ide_usua
       WHERE cc.ide_inccf = $1
           AND cc.activo_inccf = true
           AND d.activo_indcf = true
@@ -839,4 +842,30 @@ export class BodegasService extends BaseService {
     }
 
   }
+
+
+  async autorizarAjustesConteo(dtoIn: AutorizaAjustesConteoDto & HeaderParamsDto) {
+    try {
+      const query = new SelectQuery(
+        `
+        SELECT * FROM f_autorizar_ajustes_conteo($1, $2, $3)
+        `
+      );
+      query.addParam(1, dtoIn.ide_inccf);
+      query.addParam(2, dtoIn.ideUsua);
+      query.addParam(2, dtoIn.observacion);
+
+      const rows = await this.dataSource.createSelectQuery(query);
+      return {
+        rowCount: rows.length,
+        data: rows,
+        message: 'ok',
+      } as ResultQuery;
+    } catch (error) {
+      console.log(error.message);
+      throw new BadRequestException(`${error.message}`);
+    }
+
+  }
+
 }
