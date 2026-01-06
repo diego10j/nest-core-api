@@ -284,7 +284,6 @@ export class ProductosService extends BaseService {
             url_inarti,
             se_vende_inarti,
             se_compra_inarti,
-            nombre_inbod,
             nombre_infab,
             cod_barras_inarti,
             notas_inarti,
@@ -306,7 +305,6 @@ export class ProductosService extends BaseService {
             left join inv_unidad c on a.ide_inuni = c.ide_inuni
             left join inv_tipo_producto d on a.ide_intpr = d.ide_intpr
             left join inv_categoria e on a.ide_incate = e.ide_incate
-            left join inv_bodega f on a.ide_inbod = f.ide_inbod
             left join inv_fabricante g on a.ide_infab = g.ide_infab
         where
             uuid = $1`);

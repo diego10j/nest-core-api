@@ -165,9 +165,6 @@ export class InvArticulo {
   @Transform(({ value }) => value ?? null)
   se_compra_inarti?: boolean | null;
 
-  @IsOptional()
-  @IsInt()
-  ide_inbod?: number | null;
 
   @IsOptional()
   @IsString()
@@ -210,7 +207,7 @@ export class InvArticulo {
   @IsOptional()
   @IsObject()
   @Transform(({ value }) => value || null)
-  ratings_inaerti?: any | null;
+  ratings_inarti?: any | null;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

@@ -23,6 +23,7 @@ DECLARE
     v_ide_empr INT8; -- Empresa principal
     v_ide_sucu INT8; -- Sucursal principal
     v_ide_inepi INT8 := 1; -- Estado previo del inventario (PENDIENTE)
+    v_ide_geper INT8 := 1556; --PRODUQUIMIC  
     
     -- Variables para comprobante positivo
     v_comprobante_positivo_id INT8;
@@ -128,21 +129,21 @@ BEGIN
     END IF;
     
     -- 6. OBTENER BODEGA, EMPRESA Y SUCURSAL DE LA CABECERA
-    SELECT ide_inbod, ide_empr, ide_sucu
+    SELECT c.ide_inbod, c.ide_empr, c.ide_sucu
     INTO v_bodega_comun, v_ide_empr, v_ide_sucu
-    FROM inv_cab_conteo_fisico
-    WHERE ide_inccf = p_ide_inccf;
+    FROM inv_cab_conteo_fisico c
+    WHERE c.ide_inccf = p_ide_inccf;
     
     IF v_bodega_comun IS NULL THEN
         RAISE EXCEPTION 'No se pudo determinar la bodega del conteo';
     END IF;
-   
-    IF v_ide_empr IS NULL OR v_ide_empr <= 0 THEN
-        RAISE EXCEPTION 'No se pudo determinar la empresa del conteo';
+    
+    IF v_ide_sucu IS NULL OR v_ide_sucu < 0 THEN
+        RAISE EXCEPTION 'No se pudo determinar la sucursal del conteo';
     END IF;
     
-    IF v_ide_sucu IS NULL OR v_ide_sucu <= 0 THEN
-        RAISE EXCEPTION 'No se pudo determinar la sucursal del conteo';
+     IF v_ide_empr IS NULL OR v_ide_empr < 0 THEN
+        RAISE EXCEPTION 'No se pudo determinar la empresa del conteo';
     END IF;
     
     -- 7. OBTENER DETALLES VÁLIDOS PARA AJUSTE
@@ -188,17 +189,8 @@ BEGIN
             login := v_usuario_login
         ) INTO v_comprobante_positivo_id;
         
-        -- Generar número de comprobante
-        v_numero_positivo := 'AJ+' || LPAD(CAST(v_comprobante_positivo_id AS VARCHAR), 6, '0');
-        
-        -- Ajustar si excede 10 caracteres
-        IF LENGTH(v_numero_positivo) > 10 THEN
-            v_numero_positivo := 'AJ+' || LPAD(CAST(v_comprobante_positivo_id AS VARCHAR), 5, '0');
-        END IF;
-        
-        IF LENGTH(v_numero_positivo) > 10 THEN
-            v_numero_positivo := SUBSTRING('AJ+' || CAST(v_comprobante_positivo_id AS VARCHAR), 1, 10);
-        END IF;
+      -- Obtener número de comprobante usando la función específica para inventarios
+        v_numero_positivo := f_get_sec_comprobante_inv(v_bodega_comun);
         
         -- Insertar cabecera del comprobante positivo
         INSERT INTO inv_cab_comp_inve (
@@ -208,14 +200,17 @@ BEGIN
             ide_inbod,
             ide_intti,
             ide_inepi,
+            ide_geper,
+            ide_usua,
             observacion_incci,
             ide_empr,
             ide_sucu,
             usuario_ingre,
             fecha_ingre,
             verifica_incci,
-            fecha_verifica_incci,
-            usuario_verifica_incci,
+            fecha_siste_incci,
+            hora_ingre,
+            hora_sistem_incci,
             automatico_incci
         ) VALUES (
             v_comprobante_positivo_id,
@@ -224,6 +219,8 @@ BEGIN
             v_bodega_comun,
             v_tipo_transaccion_positiva,
             v_ide_inepi,
+            v_ide_geper,
+            p_ide_usua_aprueba,
             COALESCE(p_observacion_aprobacion, 'Ajuste positivo por conteo físico') || 
             ' - Conteo: ' || p_ide_inccf,
             v_ide_empr,
@@ -232,7 +229,8 @@ BEGIN
             CURRENT_TIMESTAMP,
             TRUE,
             CURRENT_TIMESTAMP,
-            v_usuario_login,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP,
             TRUE
         );
         
@@ -285,8 +283,10 @@ BEGIN
                     valor_indci,
                     observacion_indci,
                     ide_empr,
+                    ide_sucu,
                     usuario_ingre,
-                    fecha_ingre
+                    fecha_ingre,
+                    hora_ingre
                 ) VALUES (
                     v_detalle_comp_id,
                     v_comprobante_positivo_id,
@@ -300,7 +300,9 @@ BEGIN
                     'Ajuste: +' || v_cantidad_ajustada || ', ' ||
                     'Saldo después: ' || v_saldo_despues,
                     v_ide_empr,
+                    v_ide_sucu,
                     v_usuario_login,
+                    CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
                 );
                 
@@ -347,17 +349,8 @@ BEGIN
             login := v_usuario_login
         ) INTO v_comprobante_negativo_id;
         
-        -- Generar número de comprobante
-        v_numero_negativo := 'AJ-' || LPAD(CAST(v_comprobante_negativo_id AS VARCHAR), 6, '0');
-        
-        -- Ajustar si excede 10 caracteres
-        IF LENGTH(v_numero_negativo) > 10 THEN
-            v_numero_negativo := 'AJ-' || LPAD(CAST(v_comprobante_negativo_id AS VARCHAR), 5, '0');
-        END IF;
-        
-        IF LENGTH(v_numero_negativo) > 10 THEN
-            v_numero_negativo := SUBSTRING('AJ-' || CAST(v_comprobante_negativo_id AS VARCHAR), 1, 10);
-        END IF;
+          -- Obtener número de comprobante usando la función específica para inventarios
+          v_numero_negativo := f_get_sec_comprobante_inv(v_bodega_comun);
         
         -- Insertar cabecera del comprobante negativo
         INSERT INTO inv_cab_comp_inve (
@@ -367,14 +360,17 @@ BEGIN
             ide_inbod,
             ide_intti,
             ide_inepi,
+            ide_geper,
+            ide_usua,
             observacion_incci,
             ide_empr,
             ide_sucu,
             usuario_ingre,
             fecha_ingre,
             verifica_incci,
-            fecha_verifica_incci,
-            usuario_verifica_incci,
+            fecha_siste_incci,
+            hora_ingre,
+            hora_sistem_incci,
             automatico_incci
         ) VALUES (
             v_comprobante_negativo_id,
@@ -383,6 +379,8 @@ BEGIN
             v_bodega_comun,
             v_tipo_transaccion_negativa,
             v_ide_inepi,
+            v_ide_geper,
+            p_ide_usua_aprueba,
             COALESCE(p_observacion_aprobacion, 'Ajuste negativo por conteo físico') || 
             ' - Conteo: ' || p_ide_inccf,
             v_ide_empr,
@@ -391,7 +389,8 @@ BEGIN
             CURRENT_TIMESTAMP,
             TRUE,
             CURRENT_TIMESTAMP,
-            v_usuario_login,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP,
             TRUE
         );
         
@@ -445,8 +444,10 @@ BEGIN
                     valor_indci,
                     observacion_indci,
                     ide_empr,
+                    ide_sucu,
                     usuario_ingre,
-                    fecha_ingre
+                    fecha_ingre,
+                    hora_ingre
                 ) VALUES (
                     v_detalle_comp_id,
                     v_comprobante_negativo_id,
@@ -460,7 +461,9 @@ BEGIN
                     'Ajuste: -' || v_cantidad_ajustada || ', ' ||
                     'Saldo después: ' || v_saldo_despues,
                     v_ide_empr,
+                    v_ide_sucu,
                     v_usuario_login,
+                    CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
                 );
                 
@@ -583,6 +586,8 @@ EXCEPTION
         RAISE EXCEPTION 'Error en f_autorizar_ajustes_conteo: %', SQLERRM;
 END;
 $$;
+
+
 
 ---prueba
 select * from f_autorizar_ajustes_conteo(

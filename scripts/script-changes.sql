@@ -12,10 +12,7 @@ ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
 
 
-/**18/09/2023 */
-ALTER TABLE inv_articulo ADD COLUMN publicacion_inarti Text;
-ALTER TABLE inv_articulo ADD COLUMN tags_inarti json;
-ALTER TABLE inv_articulo ADD COLUMN cod_auto_inarti varchar(10);--Codigo generado automaticamente
+
 
 
 
@@ -90,25 +87,7 @@ ALTER TABLE sis_campo ADD COLUMN component_camp varchar(80);
 ALTER TABLE sis_campo ADD COLUMN size_camp int4; 
 ALTER TABLE sis_campo ADD COLUMN align_camp varchar(50); 
 
--- 24 Ago 2024
-ALTER TABLE "public"."inv_articulo"
-ADD COLUMN "url_inarti" varchar(200),
-ADD COLUMN "se_vende_inarti" bool,
-ADD COLUMN "se_compra_inarti" bool,
-ADD COLUMN "ide_inbod" int4,
-ADD COLUMN "cod_barras_inarti" varchar(50);
 
-ALTER TABLE public.inv_articulo
-	ADD CONSTRAINT inv_articulo_ide_inbod_fkey
-	FOREIGN KEY(ide_inbod)
-	REFERENCES public.inv_bodega(ide_inbod)
-	MATCH SIMPLE
-	ON DELETE CASCADE 
-	ON UPDATE CASCADE ;
-
-
-update inv_articulo set se_vende_inarti = true, se_compra_inarti = true,  ide_inbod = 2,
-url_inarti= 'https://produquimic.com.ec/product';
 
 
 
@@ -135,34 +114,16 @@ ALTER TABLE inv_caracteristica ADD COLUMN hora_actua TIMESTAMP;
 ALTER TABLE inv_caracteristica ADD COLUMN ide_empr int;
 ALTER TABLE inv_caracteristica ADD COLUMN ide_sucu int;
 
-ALTER TABLE inv_articulo ADD COLUMN notas_inarti TEXT;
 
-ALTER TABLE inv_articulo_carac DROP COLUMN ide_inare;
 
 
 
 CREATE INDEX idx_inv_conversion_unidad_ide_inuni ON inv_conversion_unidad(ide_inuni);
 CREATE INDEX idx_inv_conversion_unidad_inv_ide_inuni ON inv_conversion_unidad(inv_ide_inuni);
-CREATE INDEX idx_inv_articulo_uuid ON inv_articulo(uuid);
-
-// 25 Sep 2024
-
-ALTER TABLE inv_articulo ADD COLUMN total_vistas_inarti int;
-ALTER TABLE inv_articulo ADD COLUMN fotos_inarti JSONB;  
-ALTER TABLE inv_articulo ADD COLUMN ratings_inaerti JSON;   
-ALTER TABLE inv_articulo ADD COLUMN total_ratings_inarti decimal(12,2);
-ALTER TABLE inv_articulo ADD COLUMN publicado_inarti boolean; 
-ALTER TABLE inv_articulo ADD COLUMN desc_corta_inarti varchar(500); 
-
-update inv_articulo set publicado_inarti = false, total_vistas_inarti =0, total_ratings_inarti= 0;
 
 
-CREATE EXTENSION IF NOT EXISTS unaccent;
-CREATE INDEX idx_immutable_unaccent_replace_nombre_inarti
-ON inv_articulo (immutable_unaccent_replace(nombre_inarti));
 
-CREATE INDEX idx_immutable_unaccent_replace_otro_nombre_inarti
-ON inv_articulo (immutable_unaccent_replace(otro_nombre_inarti));
+
 
 
 
@@ -183,7 +144,7 @@ ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;
 
 -- 12 Nov 2024
 
-CREATE INDEX IF NOT EXISTS idx_inv_articulo_inarti ON inv_articulo(ide_inarti, uuid);
+
 
 -- 04-02-2025
 
@@ -225,23 +186,7 @@ ALTER TABLE con_cabece_forma_pago ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_actua TIMESTAMP;
 
 
-CREATE INDEX idx_articulo_filtros ON inv_articulo (
-    ide_empr,
-    ide_intpr,
-    nivel_inarti,
-    activo_inarti,
-    nombre_inarti
-) INCLUDE (
-    ide_inarti,
-    uuid,
-    nombre_inarti,
-    codigo_inarti,
-    foto_inarti,
-    ide_inuni,
-    otro_nombre_inarti,
-    ide_incate,
-    decim_stock_inarti
-);
+
 
 
 ALTER TABLE sis_parametros ADD COLUMN es_empr_para bool DEFAULT false;  -- para saber si el parametro se maneja por empresa
@@ -443,21 +388,8 @@ ON wha_det_camp_envio (telefono_whden);
 
 
 
--- Índice compuesto para mejorar el GROUP BY
-CREATE INDEX IF NOT EXISTS idx_inv_articulo_grouping ON inv_articulo(
-    ide_inarti, 
-    nombre_inarti, 
-    decim_stock_inarti, 
-    cant_stock1_inarti, 
-    cant_stock2_inarti
-);
 
 
-
-ALTER TABLE "public"."inv_articulo"
-ADD COLUMN "control_fec_cadu_inarti" bool DEFAULT false,
-ADD COLUMN "control_verifica_inarti" bool DEFAULT true,   -- para nsaber a que productos aplica el control de ingreso de comprobante de inventario
-ADD COLUMN "perm_fact_sin_stock_inarti" bool DEFAULT true;
 
 -- Para registar compras y ventas info adicional 
 ALTER TABLE "public"."inv_det_comp_inve"
@@ -537,9 +469,7 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
 
 
 -------- 
-CREATE INDEX CONCURRENTLY idx_inv_articulo_empresa_stock 
-ON inv_articulo (ide_empr, cant_stock1_inarti, cant_stock2_inarti) 
-WHERE cant_stock1_inarti IS NOT NULL OR cant_stock2_inarti IS NOT NULL;
+
 
 
 -----
