@@ -5,20 +5,12 @@
 
 UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
-ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
+// ALTER TABLE sis_opcion ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 
 /**15/08/2023 Campos tabla articulo*/
 
 
 
-
-
-
-
-
-/**27-11-2023**/
-ALTER TABLE gen_persona ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
-CREATE INDEX idx_uuid_persona ON gen_persona(uuid);
 
 
 /**21/05/22024**/

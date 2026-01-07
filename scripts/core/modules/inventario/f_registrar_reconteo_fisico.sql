@@ -128,9 +128,10 @@ BEGIN
         RAISE EXCEPTION 'El conteo está en estado % y no puede modificarse', v_estado_conteo;
     END IF;
 
-    IF v_estado_item_indcf = 'AJUSTADO' THEN
-        RAISE EXCEPTION 'El ítem ya fue ajustado y no puede modificarse';
+    IF v_estado_item_indcf in ('PENDIENTE', 'AJUSTADO', 'VALIDADO' , 'REVISION' ) THEN
+        RAISE EXCEPTION 'El ítem no puede modificarse';
     END IF;
+  
 
     IF p_cantidad_recontada < 0 THEN
         RAISE EXCEPTION 'La cantidad recontada no puede ser negativa';
@@ -306,7 +307,7 @@ BEGIN
         SELECT COUNT(*) contados
         FROM inv_det_conteo_fisico
         WHERE ide_inccf = v_ide_inccf
-          AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO')
+          AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO','VALIDADO', 'RECONTADO')
           AND activo_indcf
     ) x
     WHERE c.ide_inccf = v_ide_inccf

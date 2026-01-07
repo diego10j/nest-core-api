@@ -167,7 +167,7 @@ BEGIN
     INTO v_productos_contados_actual
     FROM inv_det_conteo_fisico
     WHERE ide_inccf = v_ide_inccf
-      AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO');
+      AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO','VALIDADO','RECONTADO');
     
     /* =====================================================
        9. CALCULAR PORCENTAJE DE AVANCE ACTUAL

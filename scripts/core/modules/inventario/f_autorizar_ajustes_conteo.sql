@@ -24,7 +24,9 @@ DECLARE
     v_ide_sucu INT8; -- Sucursal principal
     v_ide_inepi INT8 := 1; -- Estado previo del inventario (PENDIENTE)
     v_ide_geper INT8 := 1556; --PRODUQUIMIC  
-    
+    v_fecha_ini_conteo TIMESTAMP;
+    v_fecha_fin_conteo TIMESTAMP;
+
     -- Variables para comprobante positivo
     v_comprobante_positivo_id INT8;
     v_numero_positivo VARCHAR(10);
@@ -529,6 +531,24 @@ BEGIN
     -- 13. PREPARAR OBSERVACIÓN DE APROBACIÓN
     v_observacion_aprobacion_inccf := COALESCE(p_observacion_aprobacion, 'Ajuste autorizado') || 
                                      ' - Productos ajustados: ' || v_productos_ajustados;
+
+
+    -- Fecha inicio de conteo: mínima fecha_ingre del detalle
+    SELECT MIN(fecha_ingre)
+    INTO v_fecha_ini_conteo
+    FROM inv_det_conteo_fisico
+    WHERE ide_inccf = p_ide_inccf
+    AND activo_indcf = TRUE;
+
+    -- Fecha fin de conteo: máximo entre fecha_conteo y fecha_reconteo
+    SELECT MAX(GREATEST(
+            COALESCE(fecha_conteo_indcf, '1900-01-01'::timestamp),
+            COALESCE(fecha_reconteo_indcf, '1900-01-01'::timestamp)
+        ))
+    INTO v_fecha_fin_conteo
+    FROM inv_det_conteo_fisico
+    WHERE ide_inccf = p_ide_inccf
+    AND activo_indcf = TRUE;
     
     -- 14. ACTUALIZAR CABECERA DEL CONTEO
     UPDATE inv_cab_conteo_fisico
@@ -542,6 +562,9 @@ BEGIN
         fecha_actua = CURRENT_TIMESTAMP,
         usuario_actua = v_usuario_login,
         ide_inec = v_ide_inec_ajustado, -- Actualizar a estado AJUSTADO (ID = 5)
+        porcentaje_avance_inccf = 100,
+        fecha_ini_conteo_inccf = v_fecha_ini_conteo,
+        fecha_fin_conteo_inccf = v_fecha_fin_conteo,
         -- Almacenar IDs de comprobantes según corresponda
         ide_incci = CASE 
                        WHEN v_tiene_positivos THEN v_comprobante_positivo_id 

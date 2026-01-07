@@ -277,7 +277,7 @@ BEGIN
     FROM inv_det_conteo_fisico
     WHERE ide_inccf = p_ide_inccf
       AND activo_indcf
-      AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO');
+      AND estado_item_indcf IN ('CONTADO','REVISION','AJUSTADO', 'VALIDADO','RECONTADO');
     
     -- Calcular nuevo porcentaje de avance
     IF v_total_productos_actual > 0 THEN

@@ -70,6 +70,9 @@ export class AuthService {
     if (dataPerf.length === 0) {
       throw new UnauthorizedException('El usuario no tiene perfiles asignados');
     }
+    const roles = dataPerf
+      .map(perf => perf.ide_perf?.toString())
+      .filter(id => id != null);
     // sucursales
     const dataSucu = await this.getSucursalesUsuario(dataUser.ide_usua);
     if (dataSucu.length === 0) {
@@ -109,7 +112,7 @@ export class AuthService {
         city: 'San Francisco',
         zipCode: '94116',
         about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
-        role: 'admin',
+        // role: 'admin',
         isPublic: true,
         lastAccess: dataPass.fecha_auac,
         ip,
@@ -123,7 +126,7 @@ export class AuthService {
             identificacion_empr: dataPass.identificacion_empr,
           },
         ],
-        roles: ['user'],
+        roles
       },
     };
   }
@@ -166,27 +169,26 @@ export class AuthService {
   async getMenuByRol(dtoIn: MenuRolDto) {
     // Consulta simple sin joins innecesarios
     const selectQueryMenu = new SelectQuery(`
-      SELECT 
+    SELECT 
         ide_opci,
         nom_opci,
         sis_ide_opci,
         tipo_opci,
-        icono_opci,
-        orden_opci
-      FROM sis_opcion o
-      WHERE ide_opci IN (
+        icono_opci
+    FROM sis_opcion o
+    WHERE ide_opci IN (
         SELECT p.ide_opci 
         FROM sis_perfil_opcion p 
         WHERE p.ide_perf = $1
-      )
-        AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
-      ORDER BY 
+    )
+    AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
+    ORDER BY 
         CASE 
-          WHEN sis_ide_opci IS NULL THEN 1
-          ELSE 2
+            WHEN sis_ide_opci IS NULL THEN 1
+            ELSE 2
         END,
         orden_opci
-    `);
+`);
 
     selectQueryMenu.addNumberParam(1, dtoIn.ide_perf);
     const menuData = await this.dataSource.createSelectQuery(selectQueryMenu);
@@ -198,12 +200,14 @@ export class AuthService {
 
       // Paso 1: Crear todos los items en el mapa
       menuData.forEach(item => {
+        const perfilesArray = [`${dtoIn.ide_perf}`];
         const menuItem = {
           ide_opci: item.ide_opci,
           title: item.nom_opci,
           path: item.tipo_opci || null,
           icon: item.icono_opci || null,
           parentId: item.sis_ide_opci,
+          roles: perfilesArray, // Usamos los perfiles obtenidos
           children: []
         };
         itemMap.set(item.ide_opci, menuItem);
@@ -232,7 +236,10 @@ export class AuthService {
           items: generalSection.children.map(child => ({
             title: child.title,
             path: child.path,
-            icon: child.icon
+            icon: child.icon,
+            ide_opci: child.ide_opci,
+            allowedRoles: child.roles // Incluimos roles
+
           }))
         });
       }
@@ -246,7 +253,9 @@ export class AuthService {
             const resultItem: any = {
               title: module.title,
               path: module.path,
-              icon: module.icon
+              icon: module.icon,
+              ide_opci: module.ide_opci,
+              allowedRoles: module.roles // Incluimos roles
             };
 
             // Procesar hijos recursivamente
@@ -255,7 +264,10 @@ export class AuthService {
                 return children.map(child => {
                   const childItem: any = {
                     title: child.title,
-                    path: child.path
+                    path: child.path,
+                    ide_opci: child.ide_opci,
+                    allowedRoles: child.roles // Incluimos roles
+
                   };
 
                   if (child.children.length > 0) {
