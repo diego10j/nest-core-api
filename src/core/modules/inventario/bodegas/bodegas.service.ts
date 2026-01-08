@@ -499,7 +499,7 @@ export class BodegasService extends BaseService {
       INNER JOIN inv_tipo_conteo tc ON cc.ide_intc = tc.ide_intc
       INNER JOIN inv_estado_conteo ec ON cc.ide_inec = ec.ide_inec
       INNER JOIN sis_usuario u on cc.ide_usua = u.ide_usua      
-      INNER JOIN sis_usuario ua on cc.ide_usua_aprueba = ua.ide_usua  
+      LEFT JOIN sis_usuario ua on cc.ide_usua_aprueba = ua.ide_usua  
       WHERE cc.activo_inccf = true
           AND cc.fecha_corte_inccf BETWEEN $1 AND $2
           ${conditionBodega}
