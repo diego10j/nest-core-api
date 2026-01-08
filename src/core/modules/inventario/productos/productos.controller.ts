@@ -203,7 +203,7 @@ export class ProductosController {
 
 
 
-  @Get('getClientesProducto')
+  @Get('getClientes')
   // @Auth()
   getClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.productos.getClientesProducto({

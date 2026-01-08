@@ -463,7 +463,7 @@ export class ProductosService extends BaseService {
                 END AS EGRESO,
                 cantidad_indci * signo_intci AS movimiento,
                 decim_stock_inarti,
-                verifica_indci,
+                -- verifica_indci,    
                 dci.usuario_ingre,
                 dci.fecha_ingre,
                 dci.hora_ingre,
@@ -501,7 +501,7 @@ export class ProductosService extends BaseService {
                 f_decimales(mov.INGRESO, mov.decim_stock_inarti)::numeric as ingreso,
                 f_decimales(mov.EGRESO, mov.decim_stock_inarti)::numeric as egreso,                
                 (COALESCE(saldo_inicial.saldo, 0) + SUM(mov.movimiento) OVER (ORDER BY mov.fecha_trans_incci, mov.ide_indci)) AS SALDO,
-                mov.verifica_indci,
+               -- mov.verifica_indci,
                 mov.usuario_ingre,
                 mov.fecha_ingre,
                 mov.hora_ingre,
@@ -526,7 +526,7 @@ export class ProductosService extends BaseService {
                 NULL AS INGRESO,
                 NULL AS EGRESO,
                 saldo_inicial.saldo AS SALDO,
-                false as verifica_indci,
+               -- false as verifica_indci,
                 null as usuario_ingre,
                 null as fecha_ingre,
                 null as hora_ingre,
@@ -726,31 +726,36 @@ export class ProductosService extends BaseService {
   async getComprasProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
-    SELECT
-        cdf.ide_cpdfa,
-        cf.fecha_emisi_cpcfa,
-        numero_cpcfa,
-        nom_geper,
-        f_decimales(cdf.cantidad_cpdfa, iart.decim_stock_inarti)::numeric as cantidad_cpdfa,
-        siglas_inuni,
-        cdf.precio_cpdfa,
-        cdf.valor_cpdfa,
-        p.uuid
-    FROM
-        cxp_detall_factur cdf
-        left join cxp_cabece_factur cf on cf.ide_cpcfa = cdf.ide_cpcfa
-        left join inv_articulo iart on iart.ide_inarti = cdf.ide_inarti
-        LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-        left join gen_persona p on cf.ide_geper = p.ide_geper
-    WHERE
-        cdf.ide_inarti =  $1
-        AND iart.ide_empr = ${dtoIn.ideEmpr} 
-        and cf.ide_cpefa =  ${this.variables.get('p_cxp_estado_factura_normal')} 
-        and cf.fecha_emisi_cpcfa BETWEEN $2 AND $3
-    ORDER BY 
-        cf.fecha_emisi_cpcfa desc, numero_cpcfa`,
+      SELECT
+          dci.ide_indci AS ide_cpdfa,
+          cci.fecha_trans_incci AS fecha_emisi_cpcfa,
+          cci.numero_incci AS numero_cpcfa,
+          p.nom_geper,
+          f_decimales(dci.cantidad_indci, art.decim_stock_inarti)::numeric AS cantidad_cpdfa,
+          uni.siglas_inuni,
+          dci.precio_indci AS precio_cpdfa,
+          COALESCE(dci.valor_indci, dci.cantidad_indci * dci.precio_indci) AS valor_cpdfa,
+          p.uuid
+      FROM
+          inv_det_comp_inve dci
+          INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+          INNER JOIN inv_articulo art ON art.ide_inarti = dci.ide_inarti
+          LEFT JOIN inv_unidad uni ON uni.ide_inuni = art.ide_inuni
+          LEFT JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+          INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+          INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+      WHERE
+          dci.ide_inarti = $1
+          AND art.ide_empr = ${dtoIn.ideEmpr}
+          AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+          AND tci.signo_intci = 1  -- Solo comprobantes de ingreso (compras)
+          AND cci.fecha_trans_incci BETWEEN $2 AND $3
+          AND dci.precio_indci > 0
+      ORDER BY 
+          cci.fecha_trans_incci DESC, cci.numero_incci DESC`,
       dtoIn,
     );
+
     query.addIntParam(1, dtoIn.ide_inarti);
     query.addParam(2, dtoIn.fechaInicio);
     query.addParam(3, dtoIn.fechaFin);
