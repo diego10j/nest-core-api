@@ -27,6 +27,9 @@ DECLARE
     v_fecha_ini_conteo TIMESTAMP;
     v_fecha_fin_conteo TIMESTAMP;
 
+    v_valor_ajuste_positivo NUMERIC(15,3) := 0;  -- Para acumular valor total ajuste positivo
+    v_valor_ajuste_negativo NUMERIC(15,3) := 0;  -- Para acumular valor total ajuste negativo
+
     -- Variables para comprobante positivo
     v_comprobante_positivo_id INT8;
     v_numero_positivo VARCHAR(10);
@@ -267,6 +270,9 @@ BEGIN
                 -- Calcular saldo después del ajuste (saldo actual + ajuste positivo)
                 v_saldo_despues := v_detalle.saldo_antes_ajuste_indcf + v_cantidad_ajustada;
                 
+                -- Acumular valor total de ajuste positivo
+                v_valor_ajuste_positivo := v_valor_ajuste_positivo + v_valor_ajuste;
+                
                 -- Obtener ID para detalle del comprobante
                 SELECT get_seq_table(
                     table_name := 'inv_det_comp_inve',
@@ -341,6 +347,8 @@ BEGIN
     
     -- 10. CREAR COMPROBANTE PARA AJUSTES NEGATIVOS (FALTANTES)
     IF v_tiene_negativos THEN
+
+
         -- Obtener próximo ID para cabecera
         SELECT get_seq_table(
             table_name := 'inv_cab_comp_inve',
@@ -425,6 +433,9 @@ BEGIN
                 
                 -- Calcular saldo después del ajuste (saldo actual - ajuste negativo)
                 v_saldo_despues := v_detalle.saldo_antes_ajuste_indcf - v_cantidad_ajustada;
+
+                -- Acumular valor total de ajuste negativo
+                v_valor_ajuste_negativo := v_valor_ajuste_negativo + v_valor_ajuste;
                 
                 -- Obtener ID para detalle del comprobante
                 SELECT get_seq_table(
@@ -569,7 +580,9 @@ BEGIN
         ide_incci_nega = CASE 
                             WHEN v_tiene_negativos THEN v_comprobante_negativo_id 
                             ELSE ide_incci_nega 
-                         END
+                         END,
+        valor_ajuste_inccf = v_valor_ajuste_positivo,          -- Valor total ajuste positivo
+        valor_ajuste_nega_inccf = v_valor_ajuste_negativo      -- Valor total ajuste negativo
     WHERE ide_inccf = p_ide_inccf;
     
     -- 15. RETORNAR RESULTADOS (solo si todo fue exitoso)
