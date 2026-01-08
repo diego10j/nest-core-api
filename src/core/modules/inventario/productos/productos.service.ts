@@ -1568,63 +1568,68 @@ export class ProductosService extends BaseService {
   async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
-        WITH compras AS (
-            SELECT
-                cf.fecha_emisi_cpcfa AS fecha,
-                cdf.cantidad_cpdfa AS cantidad,
-                cdf.precio_cpdfa AS precio,
-                p.ide_geper,
-                p.nom_geper
-            FROM
-                cxp_detall_factur cdf
-                INNER JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
-                INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
-                LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-                INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
-            WHERE
-                cdf.ide_inarti = $1
-                AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} 
-                AND cf.ide_empr = ${dtoIn.ideEmpr} 
-            ORDER BY fecha_emisi_cpcfa desc
-            LIMIT 12
-        )
-        SELECT
-            fecha,
-            cantidad,
-            ide_geper,
-            nom_geper,
-            precio,
-            LAG(precio) OVER (ORDER BY fecha) AS precio_anterior,
-            ROUND(
-                CASE 
-                    WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
-                    ELSE ((precio - LAG(precio) OVER (ORDER BY fecha)) / LAG(precio) OVER (ORDER BY fecha)) * 100 
-                END, 
-                2
-            ) AS porcentaje_variacion,
-            CASE
-                WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
-                WHEN precio > LAG(precio) OVER (ORDER BY fecha) THEN '+'
-                WHEN precio < LAG(precio) OVER (ORDER BY fecha) THEN '-'
-                ELSE '='
-            END AS variacion
-        FROM
-            compras
-        ORDER BY
-            fecha
-
-        `,
+      WITH compras AS (
+          SELECT
+              cci.fecha_trans_incci AS fecha,
+              dci.cantidad_indci AS cantidad,
+              dci.precio_indci AS precio,
+              p.ide_geper,
+              p.nom_geper
+          FROM
+              inv_det_comp_inve dci
+              INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+              INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
+              LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+              INNER JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+              INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+              INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+          WHERE
+              dci.ide_inarti = $1
+              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND cci.ide_empr = ${dtoIn.ideEmpr}
+              AND tci.signo_intci = 1  -- Solo comprobantes de ingreso (compras)
+              AND dci.precio_indci > 0
+          ORDER BY cci.fecha_trans_incci DESC
+          LIMIT 12
+      )
+      SELECT
+          fecha,
+          cantidad,
+          ide_geper,
+          nom_geper,
+          precio,
+          LAG(precio) OVER (ORDER BY fecha) AS precio_anterior,
+          ROUND(
+              CASE 
+                  WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
+                  ELSE ((precio - LAG(precio) OVER (ORDER BY fecha)) / LAG(precio) OVER (ORDER BY fecha)) * 100 
+              END, 
+              2
+          ) AS porcentaje_variacion,
+          CASE
+              WHEN LAG(precio) OVER (ORDER BY fecha) IS NULL THEN NULL
+              WHEN precio > LAG(precio) OVER (ORDER BY fecha) THEN '+'
+              WHEN precio < LAG(precio) OVER (ORDER BY fecha) THEN '-'
+              ELSE '='
+          END AS variacion
+      FROM
+          compras
+      ORDER BY
+          fecha
+      `,
       dtoIn,
     );
+
     query.addIntParam(1, dtoIn.ide_inarti);
     const res = await this.dataSource.createSelectQuery(query);
     let charts = [];
+
     if (res) {
       // Obtener el total (precio del último registro)
-      const total = res[res.length - 1].precio;
+      const total = res[res.length - 1]?.precio || 0;
 
       // Obtener el percent (porcentaje_variacion del último registro)
-      const percent = res[res.length - 1].porcentaje_variacion;
+      const percent = res[res.length - 1]?.porcentaje_variacion || 0;
 
       // Formatear las fechas para las categorías en el formato 'Ene 2023'
       const categories = res.map((row) => fShortDate(row.fecha));
@@ -1635,6 +1640,7 @@ export class ProductosService extends BaseService {
           data: res.map((row) => row.precio),
         },
       ];
+
       charts = [
         {
           total,

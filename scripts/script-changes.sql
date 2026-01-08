@@ -20,8 +20,6 @@ CREATE INDEX idx_uuid_inv_doc_producto ON inv_doc_producto(uuid);
 
 
 /**29/05/22024**/
-ALTER TABLE gen_persona ADD COLUMN activo_geper BOOLEAN;
-UPDATE gen_persona SET  activo_geper = true;
 
 
 
