@@ -205,7 +205,7 @@ export class AuthService {
           ide_opci: item.ide_opci,
           title: item.nom_opci,
           path: item.tipo_opci || null,
-          // icon: item.icono_opci || null,
+          icon: item.icono_opci || null,
           parentId: item.sis_ide_opci,
           roles: perfilesArray, // Usamos los perfiles obtenidos
           children: []
