@@ -18,6 +18,8 @@ import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
+import { UpdateEstadoConteoDto } from './dto/update-estado-conteo.dto';
+import { UpdateEstadoDetalleConteoDto } from './dto/update-estado-deta-conteo.dto';
 import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
 
 @ApiTags('Inventario-Bodegas')
@@ -155,6 +157,33 @@ export class BodegasController {
     });
   }
 
+  @Post('updateEstadoConteo')
+  // @Auth()
+  updateEstadoConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoConteoDto) {
+    return this.service.updateEstadoConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('updateEstadoDetalleConteo')
+  // @Auth()
+  updateEstadoDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoDetalleConteoDto) {
+    return this.service.updateEstadoDetalleConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getListDataEstadosDetalleConteo')
+  // @Auth()
+  getListDataEstadosDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.service.getListDataEstadosDetalleConteo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
 
   @Get('getConteosInventario')
   // @Auth()
@@ -170,15 +199,6 @@ export class BodegasController {
   // @Auth()
   getDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetallesConteoDto) {
     return this.service.getDetalleConteo({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getEstadisticasConteos')
-  // @Auth()
-  getEstadisticasConteos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
-    return this.service.getEstadisticasConteos({
       ...headersParams,
       ...dtoIn,
     });

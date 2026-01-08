@@ -316,8 +316,6 @@ BEGIN
                     ide_usua_ajusta = p_ide_usua_aprueba,
                     saldo_despues_ajuste_indcf = v_saldo_despues,
                     ide_incci = v_comprobante_positivo_id,
-                    observacion_indcf = COALESCE(observacion_indcf || ' | ', '') || 
-                                       'Ajuste positivo autorizado. Comprobante: ' || v_numero_positivo,
                     fecha_actua = CURRENT_TIMESTAMP,
                     usuario_actua = v_usuario_login
                 WHERE ide_indcf = v_detalle.ide_indcf;
@@ -477,8 +475,6 @@ BEGIN
                     ide_usua_ajusta = p_ide_usua_aprueba,
                     saldo_despues_ajuste_indcf = v_saldo_despues,
                     ide_incci = v_comprobante_negativo_id,
-                    observacion_indcf = COALESCE(observacion_indcf || ' | ', '') || 
-                                       'Ajuste negativo autorizado. Comprobante: ' || v_numero_negativo,
                     fecha_actua = CURRENT_TIMESTAMP,
                     usuario_actua = v_usuario_login
                 WHERE ide_indcf = v_detalle.ide_indcf;

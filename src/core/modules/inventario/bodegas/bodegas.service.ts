@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { UpdateQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { fDate } from 'src/util/helpers/date-util';
 import { normalizeString } from 'src/util/helpers/sql-util';
@@ -22,6 +23,8 @@ import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
 import { SearchDetalleConteoDto } from './dto/search-detalle-conteo.dto';
 import { StockProductosDto } from './dto/stock-productos.dto';
+import { UpdateEstadoConteoDto } from './dto/update-estado-conteo.dto';
+import { EstadoItem, UpdateEstadoDetalleConteoDto } from './dto/update-estado-deta-conteo.dto';
 import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
 
 @Injectable()
@@ -471,19 +474,19 @@ export class BodegasService extends BaseService {
           cc.productos_contados_inccf,
           cc.productos_con_diferencia_inccf,
           cc.productos_ajustados_inccf,
-          cc.valor_total_corte_inccf,
-          cc.valor_total_fisico_inccf,
-          cc.valor_total_diferencias_inccf,
-          cc.porcentaje_exactitud_inccf,
+          cc.valor_ajuste_inccf,
+          cc.valor_ajuste_nega_inccf,
           cc.porcentaje_avance_inccf,
+          cc.ide_incci,
+          cc.ide_incci_nega,
+          ua.nom_usua as usuario_ajusta,
+          cc.fecha_aprobacion_inccf,
+          cc.observacion_aprobacion_inccf,
           
           -- Observaciones y motivos
           cc.observacion_inccf,
           cc.motivo_cancelacion_inccf,
           
-          -- Información de reconteo (si aplica)
-          cc.es_reconteo_inccf,
-          cc.conteo_numero_inccf,
           
           -- Auditoría
           cc.usuario_ingre,
@@ -496,6 +499,7 @@ export class BodegasService extends BaseService {
       INNER JOIN inv_tipo_conteo tc ON cc.ide_intc = tc.ide_intc
       INNER JOIN inv_estado_conteo ec ON cc.ide_inec = ec.ide_inec
       INNER JOIN sis_usuario u on cc.ide_usua = u.ide_usua      
+      INNER JOIN sis_usuario ua on cc.ide_usua_aprueba = ua.ide_usua  
       WHERE cc.activo_inccf = true
           AND cc.fecha_corte_inccf BETWEEN $1 AND $2
           ${conditionBodega}
@@ -624,63 +628,6 @@ export class BodegasService extends BaseService {
   }
 
 
-
-  async getEstadisticasConteos(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
-    const condBodega = dtoIn.ide_inbod ? `AND ide_inbod = ${dtoIn.ide_inbod}` : '';
-
-    const query = new SelectQuery(
-      `
-      WITH conteos_ultimo_mes AS (
-          SELECT 
-              ide_inccf,
-              ide_inec,
-              ide_inbod,
-              productos_contados_inccf,
-              productos_estimados_inccf,
-              productos_con_diferencia_inccf,
-              valor_total_diferencias_inccf,
-              fecha_corte_inccf
-          FROM inv_cab_conteo_fisico
-          WHERE activo_inccf = true
-              AND fecha_corte_inccf BETWEEN $1 AND $2
-              ${condBodega}
-      )
-      
-      SELECT
-          -- Conteos por estado
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE activo_inccf = true  ${condBodega}) as total_conteos,
-          
-          -- Conteos por estado
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE ide_inec = 1 AND activo_inccf = true  ${condBodega}) as conteos_pendientes,
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE ide_inec = 2 AND activo_inccf = true  ${condBodega}) as conteos_en_proceso,
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE ide_inec = 4 AND activo_inccf = true  ${condBodega}) as conteos_cerrados,
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE ide_inec = 5 AND activo_inccf = true  ${condBodega}) as conteos_ajustados,
-          
-          -- Estadísticas del último mes
-          (SELECT COUNT(*) FROM conteos_ultimo_mes) as conteos_ultimo_mes,
-          (SELECT COALESCE(SUM(productos_con_diferencia_inccf), 0) FROM conteos_ultimo_mes) as items_con_diferencia_ultimo_mes,
-          (SELECT COALESCE(SUM(valor_total_diferencias_inccf), 0) FROM conteos_ultimo_mes) as valor_diferencia_ultimo_mes,
-          
-          -- Promedios
-          (SELECT COALESCE(AVG(porcentaje_avance_inccf), 0) FROM inv_cab_conteo_fisico 
-           WHERE ide_inec IN (2,3) AND activo_inccf = true  ${condBodega}) as promedio_avance,
-          
-          -- Reconteos
-          (SELECT COUNT(*) FROM inv_cab_conteo_fisico 
-           WHERE es_reconteo_inccf = true AND activo_inccf = true  ${condBodega}) as total_reconteos
-      `,
-    );
-
-    query.addParam(1, dtoIn.fechaInicio);
-    query.addParam(2, dtoIn.fechaFin);
-
-    return await this.dataSource.createQuery(query);
-  }
 
 
   async getListDataEstadosConteo(dto?: QueryOptionsDto & HeaderParamsDto) {
@@ -868,4 +815,27 @@ export class BodegasService extends BaseService {
 
   }
 
+  async updateEstadoConteo(dto: UpdateEstadoConteoDto) {
+    const updateQuery = new UpdateQuery('inv_cab_conteo_fisico', 'ide_inccf');
+    updateQuery.values.set('ide_inec', dto.ide_inec);
+    updateQuery.where = 'ide_inccf = $1';
+    updateQuery.addParam(1, dto.ide_inccf);
+    return await this.dataSource.createQuery(updateQuery);
+  }
+
+
+  async updateEstadoDetalleConteo(dto: UpdateEstadoDetalleConteoDto) {
+    const updateQuery = new UpdateQuery('inv_det_conteo_fisico', 'ide_indcf');
+    updateQuery.values.set('estado_item_indcf', dto.estado_item_indcf);
+    updateQuery.where = 'ide_indcf = $1';
+    updateQuery.addParam(1, dto.ide_indcf);
+    return await this.dataSource.createQuery(updateQuery);
+  }
+
+  async getListDataEstadosDetalleConteo(_dto?: QueryOptionsDto & HeaderParamsDto) {
+    return Object.entries(EstadoItem).map(([_key, value], index) => ({
+      value: index + 1,
+      label: value,
+    }));
+  }
 }
