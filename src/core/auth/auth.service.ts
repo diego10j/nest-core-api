@@ -205,7 +205,7 @@ export class AuthService {
           ide_opci: item.ide_opci,
           title: item.nom_opci,
           path: item.tipo_opci || null,
-          icon: item.icono_opci || null,
+          // icon: item.icono_opci || null,
           parentId: item.sis_ide_opci,
           roles: perfilesArray, // Usamos los perfiles obtenidos
           children: []
@@ -237,8 +237,8 @@ export class AuthService {
             title: child.title,
             path: child.path,
             icon: child.icon,
-            ide_opci: child.ide_opci,
-            allowedRoles: child.roles // Incluimos roles
+            // ide_opci: child.ide_opci,
+            // allowedRoles: child.roles // Incluimos roles
 
           }))
         });
@@ -254,8 +254,8 @@ export class AuthService {
               title: module.title,
               path: module.path,
               icon: module.icon,
-              ide_opci: module.ide_opci,
-              allowedRoles: module.roles // Incluimos roles
+              // ide_opci: module.ide_opci,
+              // allowedRoles: module.roles // Incluimos roles
             };
 
             // Procesar hijos recursivamente
@@ -265,8 +265,8 @@ export class AuthService {
                   const childItem: any = {
                     title: child.title,
                     path: child.path,
-                    ide_opci: child.ide_opci,
-                    allowedRoles: child.roles // Incluimos roles
+                    // ide_opci: child.ide_opci,
+                    // allowedRoles: child.roles // Incluimos roles
 
                   };
 

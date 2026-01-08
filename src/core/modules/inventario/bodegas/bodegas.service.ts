@@ -546,6 +546,7 @@ export class BodegasService extends BaseService {
           cc.productos_con_diferencia_inccf,
           cc.productos_ajustados_inccf,
           cc.porcentaje_avance_inccf,
+          
           -- Bodega
           b.nombre_inbod,
           
@@ -601,7 +602,12 @@ export class BodegasService extends BaseService {
           us.nick_usua,
           usa.nick_usua as usuario_ajusta,
           d.saldo_antes_ajuste_indcf,
-          d.saldo_despues_ajuste_indcf
+          d.saldo_despues_ajuste_indcf,
+          cc.valor_ajuste_inccf,
+          cc.valor_ajuste_nega_inccf,
+          cc.observacion_aprobacion_inccf,
+          cc.ide_incci,
+          cc.ide_incci_nega
           
       FROM inv_cab_conteo_fisico cc
       INNER JOIN inv_bodega b ON cc.ide_inbod = b.ide_inbod
