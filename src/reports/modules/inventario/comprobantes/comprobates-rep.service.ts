@@ -16,7 +16,7 @@ export class ComprobatesInvReportsService {
     private readonly printerService: PrinterService,
     private readonly dataSource: DataSourceService,
     private readonly SectionsService: SectionsService,
-  ) {}
+  ) { }
 
   async reportComprobanteInventario(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -36,7 +36,7 @@ export class ComprobatesInvReportsService {
           a.hora_ingre,
           e.signo_intci,
           a.verifica_incci,
-          a.fecha_verifica_incci, 
+          a.fec_cam_est_incci, 
           a.usuario_verifica_incci,
           COALESCE(
               (

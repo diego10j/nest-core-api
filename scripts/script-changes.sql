@@ -84,8 +84,9 @@ ALTER TABLE sis_campo ADD COLUMN align_camp varchar(50);
 
 
 
-ALTER TABLE inv_cab_comp_inve ADD COLUMN automatico_incci bool;
-update inv_cab_comp_inve set automatico_incci=false;
+
+
+
 
 // 30 Ago 2024
 
@@ -381,18 +382,6 @@ ON wha_det_camp_envio (telefono_whden);
 
 
 
--- Para registar compras y ventas info adicional 
-ALTER TABLE "public"."inv_det_comp_inve"
-ADD COLUMN "foto_verifica_indci" varchar(250),   --- path foto del producto que recibimos / facturado  *****
-ADD COLUMN "verifica_indci" bool DEFAULT false,
-ADD COLUMN "usuario_verifica_indci" varchar(50),
-ADD COLUMN "observ_verifica_indci" varchar(250),
-ADD COLUMN "peso_verifica_inlot" numeric(12,3),
-ADD COLUMN "fecha_verifica_indci" TIMESTAMP,
-add COLUMN "ide_inlot" int8;      --- Para ventas se registra el lote vendido
-
--- Actualizar los registros existentes para que tengan verifica_indci = true
-update inv_det_comp_inve set verifica_indci = true;
 
 
 CREATE TABLE inv_lote (
@@ -430,15 +419,7 @@ ALTER TABLE inv_est_prev_inve ADD COLUMN hora_ingre TIMESTAMP;
 ALTER TABLE inv_est_prev_inve ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE inv_est_prev_inve ADD COLUMN hora_actua TIMESTAMP;
 
-ALTER TABLE "public"."inv_cab_comp_inve" ALTER COLUMN "automatico_incci" BOOLEAN SET DEFAULT 'true';
-update inv_cab_comp_inve set  automatico_incci = true;
 
-ALTER TABLE inv_cab_comp_inve ADD COLUMN fecha_anula_incci TIMESTAMP;
-ALTER TABLE inv_cab_comp_inve ADD COLUMN verifica_incci bool DEFAULT false;
-ALTER TABLE inv_cab_comp_inve ADD COLUMN fecha_verifica_incci TIMESTAMP;
-ALTER TABLE inv_cab_comp_inve ADD COLUMN usuario_verifica_incci VARCHAR(30);
-
-update inv_cab_comp_inve set  verifica_incci = true;
 
 
 CREATE INDEX IF NOT EXISTS idx_sis_parametros_nom_para ON sis_parametros (nom_para);

@@ -72,7 +72,7 @@ export class ComprobantesInvService extends BaseService {
         a.ide_inepi,
         c.ide_inbod,
         verifica_incci,
-        fecha_verifica_incci, 
+        fec_cam_est_incci, 
         usuario_verifica_incci,
         automatico_incci,
             (
@@ -197,7 +197,7 @@ export class ComprobantesInvService extends BaseService {
             a.fecha_actua,
             a.hora_actua,
             verifica_incci,
-            fecha_verifica_incci, 
+            fec_cam_est_incci, 
             usuario_verifica_incci,
             signo_intci,
             f.uuid,
@@ -315,7 +315,7 @@ export class ComprobantesInvService extends BaseService {
   async anularComprobante(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
     const updateQuery = new UpdateQuery('inv_cab_comp_inve', 'ide_incci');
     updateQuery.values.set('ide_inepi', this.variables.get('p_inv_estado_anulado'));
-    updateQuery.values.set('fecha_anula_incci', getCurrentDate()); // fecha de anulacion
+    updateQuery.values.set('fec_cam_est_incci', getCurrentDate()); // fecha de anulacion
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
     updateQuery.where = 'ide_incci = $1 and ide_inepi != $2 ';
     updateQuery.addParam(1, dtoIn.ide_incci);

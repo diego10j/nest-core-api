@@ -212,11 +212,11 @@ BEGIN
             ide_sucu,
             usuario_ingre,
             fecha_ingre,
-            verifica_incci,
+           -- verifica_incci,
             fecha_siste_incci,
             hora_ingre,
-            hora_sistem_incci,
-            automatico_incci
+            hora_sistem_incci
+           -- automatico_incci
         ) VALUES (
             v_comprobante_positivo_id,
             v_numero_positivo,
@@ -232,11 +232,11 @@ BEGIN
             v_ide_sucu,
             v_usuario_login,
             CURRENT_TIMESTAMP,
-            TRUE,
+           -- TRUE,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP,
-            TRUE
+            CURRENT_TIMESTAMP
+           -- TRUE
         );
         
         -- Procesar cada detalle positivo
@@ -375,11 +375,11 @@ BEGIN
             ide_sucu,
             usuario_ingre,
             fecha_ingre,
-            verifica_incci,
+           -- verifica_incci,
             fecha_siste_incci,
             hora_ingre,
-            hora_sistem_incci,
-            automatico_incci
+            hora_sistem_incci
+           -- automatico_incci
         ) VALUES (
             v_comprobante_negativo_id,
             v_numero_negativo,
@@ -395,11 +395,11 @@ BEGIN
             v_ide_sucu,
             v_usuario_login,
             CURRENT_TIMESTAMP,
-            TRUE,
+           -- TRUE,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP,
-            TRUE
+            CURRENT_TIMESTAMP
+           -- TRUE
         );
         
         -- Procesar cada detalle negativo

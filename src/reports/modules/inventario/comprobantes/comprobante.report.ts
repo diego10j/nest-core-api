@@ -286,7 +286,7 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
             { text: 'Verificado por:', style: 'badgeLabel' },
             { text: cabecera.usuario_verifica_incci || 'N/A', style: 'value' },
             { text: 'Fecha verificación:', style: 'badgeLabel' },
-            { text: cabecera.fecha_verifica_incci ? fDate(cabecera.fecha_verifica_incci) : 'N/A', style: 'value' },
+            { text: cabecera.fec_cam_est_incci ? fDate(cabecera.fec_cam_est_incci) : 'N/A', style: 'value' },
           ],
         },
         // Tercera columna: Estados adicionales

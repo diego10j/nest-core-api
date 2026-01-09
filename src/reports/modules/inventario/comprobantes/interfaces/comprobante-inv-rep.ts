@@ -12,7 +12,7 @@ interface Cabecera {
   fecha_ingre?: Date;
   hora_ingre?: string;
   verifica_incci: boolean;
-  fecha_verifica_incci?: Date;
+  fec_cam_est_incci?: Date;
   usuario_verifica_incci?: string;
   signo_intci: number;
   num_documento?: string;
