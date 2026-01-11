@@ -53,8 +53,8 @@ export function fTimestamp(date: InputValue) {
 export function fToNow(date: InputValue) {
   return date
     ? formatDistanceToNow(new Date(date), {
-        addSuffix: true,
-      })
+      addSuffix: true,
+    })
     : '';
 }
 
@@ -121,8 +121,18 @@ export function getDateFormat(date: InputValue, newFormat?: string): string {
   return date ? format(new Date(date), fm) : '';
 }
 
-export function getDateFormatFront(date: InputValue): string {
-  return getDateFormat(date, FORMAT_DATE_FRONT());
+export function getDateFormatFront(date: InputValue, forSQL: boolean = false): string {
+  if (!date) return '';
+
+  const dateObj = new Date(date);
+
+  if (forSQL) {
+    // Para SQL: formato YYYY-MM-DD
+    return dateObj.toISOString().split('T')[0];
+  } else {
+    // Para frontend: formato dd/MM/yyyy
+    return getDateFormat(date, FORMAT_DATE_FRONT());
+  }
 }
 
 /**
