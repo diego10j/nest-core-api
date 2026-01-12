@@ -1,6 +1,7 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { Server } from 'socket.io';
 
 import { AppModule } from './app.module';
@@ -32,13 +33,17 @@ async function bootstrap() {
       'X-Ip',
       'X-Terminal',
     ],
-    exposedHeaders: ['Authorization', 'X-Ide-Usua', 'X-Ide-Empr', 'X-Ide-Sucu', 'X-Ide-Perf', 'X-Login'],
+    exposedHeaders: ['Content-Disposition', 'Authorization', 'X-Ide-Usua', 'X-Ide-Empr', 'X-Ide-Sucu', 'X-Ide-Perf', 'X-Login'],
     credentials: true,
   });
 
   // Configurar el adaptador de WebSockets
   const socketIoAdapter = new SocketIoAdapter(app);
   app.useWebSocketAdapter(socketIoAdapter);
+
+  // Increase payload size limit
+  app.use(json({ limit: '100mb' }));
+  app.use(urlencoded({ extended: true, limit: '100mb' }));
 
   app.useGlobalPipes(
     new ValidationPipe({

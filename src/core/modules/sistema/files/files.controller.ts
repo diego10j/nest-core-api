@@ -34,7 +34,7 @@ export class FilesController {
   constructor(
     private readonly filesService: FilesService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Get('image/:imageName')
   getStaticImage(@Res() res: Response, @Param('imageName') imageName: string) {
@@ -114,7 +114,9 @@ export class FilesController {
   @Post('uploadFile')
   @UseInterceptors(
     FileInterceptor('file', {
-      // limits: { fileSize: 1000 }
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB in bytes
+      },
       storage: diskStorage({
         destination: (req, file, cb) => {
           const folderPath = PATH_DRIVE();
@@ -129,6 +131,9 @@ export class FilesController {
     @UploadedFile() file: Express.Multer.File,
     @Body() dtoIn: UploadFileDto,
   ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded or file is too large');
+    }
     return this.filesService.uploadFile(
       {
         ...headersParams,

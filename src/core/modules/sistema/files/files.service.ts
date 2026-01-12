@@ -124,6 +124,7 @@ export class FilesService {
         LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
         WHERE ${whereClause}
               AND ide_empr = ${dto.ideEmpr}
+               ${mode !== 'trash' ? `AND papelera_arch = FALSE` : ''}
         ORDER BY
             carpeta_arch desc, nombre_arch
         `);

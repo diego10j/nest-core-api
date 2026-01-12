@@ -748,7 +748,8 @@ export class ProductosService extends BaseService {
           dci.ide_inarti = $1
           AND art.ide_empr = ${dtoIn.ideEmpr}
           AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-          AND tci.signo_intci = 1  -- Solo comprobantes de ingreso (compras)
+          AND tci.signo_intci = 1   -- Solo comprobantes de ingreso (compras)
+          AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
           AND cci.fecha_trans_incci BETWEEN $2 AND $3
           AND dci.precio_indci > 0
       ORDER BY 
@@ -770,51 +771,61 @@ export class ProductosService extends BaseService {
   async getUltimosPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
-        WITH UltimaVenta AS (
+        WITH UltimaCompra AS (
             SELECT
-                ide_geper,
-                ide_inarti,
-                cantidad_cpdfa AS cantidad,
-                precio_cpdfa AS precio,
-                valor_cpdfa AS total,
-                ROW_NUMBER() OVER (PARTITION BY ide_geper ORDER BY fecha_emisi_cpcfa DESC) AS rn
+                cci.ide_geper,
+                dci.ide_inarti,
+                dci.cantidad_indci AS cantidad,
+                dci.precio_indci AS precio,
+                COALESCE(dci.valor_indci, dci.cantidad_indci * dci.precio_indci) AS total,
+                ROW_NUMBER() OVER (PARTITION BY cci.ide_geper ORDER BY cci.fecha_trans_incci DESC) AS rn
             FROM 
-                cxp_detall_factur
-            INNER JOIN cxp_cabece_factur ON cxp_detall_factur.ide_cpcfa = cxp_cabece_factur.ide_cpcfa
+                inv_det_comp_inve dci
+                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
             WHERE 
-                ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
-                AND ide_inarti = $1
+                cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+                AND tci.signo_intci = 1   -- Solo comprobantes de ingreso (compras)
+                AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
+                AND dci.ide_inarti = $1
+                AND dci.precio_indci > 0
         )
         SELECT
-            b.ide_geper,
-            c.nom_geper,
-            MAX(b.fecha_emisi_cpcfa) AS fecha_ultima_venta,
-            f_decimales(u.cantidad, iart.decim_stock_inarti)::numeric as cantidad,
-            siglas_inuni,
-            u.precio,
-            u.total
+            c.ide_geper,
+            p.nom_geper,
+            MAX(c.fecha_trans_incci) AS fecha_ultima_compra,
+            f_decimales(uc.cantidad, art.decim_stock_inarti)::numeric as cantidad,
+            uni.siglas_inuni,
+            uc.precio,
+            uc.total
         FROM 
-            cxp_detall_factur a
-            INNER JOIN cxp_cabece_factur b ON a.ide_cpcfa = b.ide_cpcfa
-            INNER JOIN gen_persona c ON b.ide_geper = c.ide_geper
-            left join inv_articulo iart on a.ide_inarti = iart.ide_inarti
-            LEFT JOIN inv_unidad uni ON iart.ide_inuni = uni.ide_inuni
-            LEFT JOIN UltimaVenta u ON u.ide_geper = b.ide_geper AND u.rn = 1
+            inv_det_comp_inve dci
+            INNER JOIN inv_cab_comp_inve c ON c.ide_incci = dci.ide_incci
+            INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
+            INNER JOIN inv_articulo art ON dci.ide_inarti = art.ide_inarti
+            LEFT JOIN inv_unidad uni ON art.ide_inuni = uni.ide_inuni
+            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
+            INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            LEFT JOIN UltimaCompra uc ON uc.ide_geper = c.ide_geper AND uc.rn = 1
         WHERE
-            b.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
-            AND a.ide_inarti = $2
-            AND b.ide_empr = ${dtoIn.ideEmpr}  
+            c.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+            AND tci.signo_intci = 1
+            AND c.ide_intti IN (19, 16, 3025)
+            AND dci.ide_inarti = $2
+            AND dci.precio_indci > 0
+            AND art.ide_empr = ${dtoIn.ideEmpr}
         GROUP BY 
-            a.ide_inarti,
-            decim_stock_inarti,
-            b.ide_geper,
-            c.nom_geper,
-            u.cantidad,
-            siglas_inuni,
-            u.precio,
-            u.total
+            art.ide_inarti,
+            art.decim_stock_inarti,
+            c.ide_geper,
+            p.nom_geper,
+            uc.cantidad,
+            uni.siglas_inuni,
+            uc.precio,
+            uc.total
         ORDER BY 
-            3 DESC
+            fecha_ultima_compra DESC
         `,
       dtoIn,
     );
@@ -1587,6 +1598,7 @@ export class ProductosService extends BaseService {
               dci.ide_inarti = $1
               AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
               AND cci.ide_empr = ${dtoIn.ideEmpr}
+              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
               AND tci.signo_intci = 1  -- Solo comprobantes de ingreso (compras)
               AND dci.precio_indci > 0
           ORDER BY cci.fecha_trans_incci DESC
