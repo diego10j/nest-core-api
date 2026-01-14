@@ -1,6 +1,8 @@
 import { Injectable, InternalServerErrorException, Inject, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { Pool, types } from 'pg';
+import { AsyncLocalStorage } from 'async_hooks';
+import { createHash } from 'crypto';
 import { envs } from 'src/config/envs';
 
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
@@ -33,6 +35,8 @@ import { ResultQuery } from './interfaces/resultQuery';
 @Injectable()
 export class DataSourceService {
   private readonly logger = new Logger(DataSourceService.name);
+  private static asyncLocalStorage = new AsyncLocalStorage<{ callerName?: string }>();
+  
   public pool = new Pool({
     // user: envs.dbUsername,
     // host: envs.dbHost,
@@ -77,12 +81,13 @@ export class DataSourceService {
   /**
    * Retorna la data de una consulta en la base de datos, no retorna esquema y no hace autopaginacion
    * @param Query
+   * @param queryName nombre explícito de la query (opcional)
    * @returns Array data
    */
-  async createSelectQuery(query: SelectQuery): Promise<any[]> {
+  async createSelectQuery(query: SelectQuery, queryName: string = undefined): Promise<any[]> {
     query.isLazy = false;
     query.isSchema = false;
-    const result = await this.createQuery(query);
+    const result = await this.createQuery(query, undefined, queryName);
     return result.rows || [];
   }
 
@@ -90,15 +95,16 @@ export class DataSourceService {
    * Retorna la data de una consulta en la base de datos mediante el Pool pg
    * @param Query
    * @param ref referencia cuando se utiliza una función getTableQuery para poder identificarla
+   * @param queryName nombre explícito de la query (opcional)
    * @returns Array data
    */
-  async createQuery(query: Query, ref = undefined): Promise<ResultQuery> {
+  async createQuery(query: Query, ref = undefined, queryName: string = undefined): Promise<ResultQuery> {
     await this.formatSqlQuery(query);
 
     try {
       let primaryKey: string | undefined;
       let columns: any[] | undefined;
-      let queryName: string | undefined;
+      let finalQueryName: string | undefined;
       let message = 'ok';
       let finalQuery = query.query;
       let totalRecords: number | undefined;
@@ -156,11 +162,19 @@ export class DataSourceService {
 
       // Obtener información del esquema si es necesario
       if (query instanceof SelectQuery && query.isSchema) {
-        queryName = this.extractCallerInfo();
-        if (isDefined(ref)) {
-          queryName = `${queryName}.${ref}`;
+        // Usar el queryName proporcionado, o extraerlo del stack, o generar uno basado en la query
+        finalQueryName = queryName || this.extractCallerInfo();
+        
+        // Si no se pudo extraer, generar un hash único basado en la query SQL
+        if (finalQueryName === 'UnknownService') {
+          finalQueryName = this.generateQueryNameFromSQL(query.query);
+          console.log(`[createQuery] Usando queryName generado: "${finalQueryName}"`);
         }
-        columns = await this.getSchemaQuery(queryName, primaryKey, res);
+        
+        if (isDefined(ref)) {
+          finalQueryName = `${finalQueryName}.${ref}`;
+        }
+        columns = await this.getSchemaQuery(finalQueryName, primaryKey, res);
         if (columns && columns.length > 0) {
           // Elimina id duplicados
           const seen = new Set();
@@ -191,7 +205,7 @@ export class DataSourceService {
         message,
         columns: query instanceof SelectQuery ? columns : undefined,
         key: query instanceof SelectQuery ? primaryKey : undefined,
-        queryName: query instanceof SelectQuery ? queryName : undefined,
+        queryName: query instanceof SelectQuery ? finalQueryName : undefined,
       } as ResultQuery;
     } catch (error) {
       // console.error(query);
@@ -328,10 +342,11 @@ export class DataSourceService {
   /**
    * Retorna el primer registro de una consulta en la base de datos
    * @query SelectQuery
+   * @param queryName nombre explícito de la query (opcional)
    * @returns Object data
    */
-  async createSingleQuery(query: SelectQuery): Promise<any> {
-    const data = await this.createSelectQuery(query);
+  async createSingleQuery(query: SelectQuery, queryName: string = undefined): Promise<any> {
+    const data = await this.createSelectQuery(query, queryName);
     return data.length > 0 ? data[0] : null;
   }
 
@@ -478,32 +493,114 @@ export class DataSourceService {
   // --------------------------- PRIVATE FUNCTIONS  ------------------------------
 
   /**
+   * Genera un nombre único para la query basado en su contenido SQL
+   * Usa un hash corto del SQL para identificación en cache
+   * @param sqlQuery 
+   * @returns 
+   */
+  private generateQueryNameFromSQL(sqlQuery: string): string {
+    // Normalizar la query: quitar espacios extras, saltos de línea
+    const normalized = sqlQuery
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    
+    // Generar hash corto (primeros 8 caracteres)
+    const hash = createHash('md5').update(normalized).digest('hex').substring(0, 8);
+    
+    // Intentar extraer nombre de tabla principal
+    const tableMatch = normalized.match(/from\s+([a-z_]+)/);
+    const tableName = tableMatch ? tableMatch[1] : 'query';
+    
+    return `${tableName}_${hash}`;
+  }
+
+  /**
    * Retorna el nombre de la función que lo invoca
+   * Usa AsyncLocalStorage y análisis profundo de stack trace
    * @returns
    */
   private extractCallerInfo(): string {
-    const err = new Error();
-    const stackTrace = err.stack?.split('\n');
-
-    if (stackTrace && stackTrace.length > 4) {
-      const callerLine = stackTrace[4]; // Línea que contiene la información del llamador
-
-      // Expresión regular mejorada para capturar el nombre de la función
-      const match = callerLine.match(/at\s+(?:async\s+)?([^\s(]+)/);
-
-      if (match && match[1]) {
-        // Eliminamos el prefijo "async " si existe y devolvemos solo el nombre
-        return match[1].trim();
-      } else {
-        // Log y excepción si no se puede extraer el nombre
-        this.errorsLoggerService.createErrorLog(`[ERROR] No se pudo extraer el nombre del servicio: ${callerLine}`);
-        throw new InternalServerErrorException(`[ERROR] No se pudo extraer el nombre del servicio`);
-      }
+    // Primero intentar obtener del contexto async
+    const store = DataSourceService.asyncLocalStorage.getStore();
+    if (store?.callerName) {
+      console.log(`[extractCallerInfo] ✅ From AsyncLocalStorage: "${store.callerName}"`);
+      return store.callerName;
     }
 
-    // Log y excepción si no hay suficiente información en el stack trace
-    this.errorsLoggerService.createErrorLog(`[ERROR] Stack trace insuficiente para obtener el nombre del servicio`);
-    throw new InternalServerErrorException(`[ERROR] Stack trace insuficiente para obtener el nombre del servicio`);
+    // Intentar extraer del stack trace con análisis más profundo
+    try {
+      // Preparar un stack trace más completo
+      const originalStackTraceLimit = Error.stackTraceLimit;
+      Error.stackTraceLimit = 50; // Aumentar el límite
+      
+      const stack = new Error().stack || '';
+      Error.stackTraceLimit = originalStackTraceLimit;
+      
+      if (!stack) return 'UnknownService';
+
+      const lines = stack.split('\n');
+      
+      // Buscar la primera línea que:
+      // 1. NO sea datasource.service.ts
+      // 2. NO sea node_modules
+      // 3. NO sea node:internal
+      // 4. Contenga .service.ts, .controller.ts o archivos de usuario
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Saltar datasource y archivos internos
+        if (line.includes('datasource.service.ts') || 
+            line.includes('node_modules') || 
+            line.includes('node:internal')) {
+          continue;
+        }
+        
+        // Buscar archivos de servicio o controller
+        const serviceMatch = line.match(/\/([^\/]+)\.(service|controller)\.ts/);
+        if (serviceMatch) {
+          const fileName = serviceMatch[1];
+          const serviceName = fileName
+            .split('-')
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join('');
+          
+          // Extraer nombre de función
+          const functionMatch = line.match(/at\s+(?:[\w$]+\.)?(\w+)/);
+          const functionName = functionMatch?.[1] || 'query';
+          
+          const result = `${serviceName}Service.${functionName}`;
+          console.log(`[extractCallerInfo] ✅ From stack: "${result}"`);
+          return result;
+        }
+        
+        // Si no es archivo de servicio, intentar extraer cualquier función válida
+        if (line.includes('.ts:') && !line.includes('datasource')) {
+          const functionMatch = line.match(/at\s+(?:async\s+)?(?:[\w$]+\.)?(\w+)/);
+          if (functionMatch && functionMatch[1]) {
+            const funcName = functionMatch[1];
+            if (funcName !== 'Object' && 
+                !['processTicksAndRejections', 'call', 'apply', 'bind'].includes(funcName)) {
+              console.log(`[extractCallerInfo] ✅ From generic .ts file: "${funcName}"`);
+              return funcName;
+            }
+          }
+        }
+      }
+      
+      return 'UnknownService';
+    } catch (e) {
+      console.log('[extractCallerInfo] ❌ Exception:', e);
+      return 'UnknownService';
+    }
+  }
+
+  /**
+   * Helper para establecer el nombre del caller en el contexto async
+   * Usar en servicios: DataSourceService.setCallerContext('ServiceName.methodName', () => { ... })
+   */
+  static runWithCallerContext<T>(callerName: string, fn: () => T): T {
+    return DataSourceService.asyncLocalStorage.run({ callerName }, fn);
   }
 
   /**
