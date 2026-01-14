@@ -20,7 +20,7 @@ export class AdminService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) {}
+  ) { }
 
   // -------------------------------- EMPRESA ---------------------------- //
   async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {

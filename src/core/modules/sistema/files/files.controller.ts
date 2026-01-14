@@ -34,7 +34,7 @@ export class FilesController {
   constructor(
     private readonly filesService: FilesService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Get('image/:imageName')
   getStaticImage(@Res() res: Response, @Param('imageName') imageName: string) {

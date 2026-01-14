@@ -146,7 +146,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
 
     try {
       const files = await readdir(FILE_STORAGE_CONSTANTS.TEMP_DIR);
-      await Promise.all(files.map((file) => unlink(path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, file)).catch(() => {})));
+      await Promise.all(files.map((file) => unlink(path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, file)).catch(() => { })));
       this.logger.log(`Deleted all ${files.length} temporary files on shutdown`);
     } catch (error) {
       this.logger.error(`Error during final cleanup: ${error.message}`);

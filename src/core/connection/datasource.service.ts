@@ -36,7 +36,7 @@ import { ResultQuery } from './interfaces/resultQuery';
 export class DataSourceService {
   private readonly logger = new Logger(DataSourceService.name);
   private static asyncLocalStorage = new AsyncLocalStorage<{ callerName?: string }>();
-  
+
   public pool = new Pool({
     // user: envs.dbUsername,
     // host: envs.dbHost,
@@ -164,13 +164,13 @@ export class DataSourceService {
       if (query instanceof SelectQuery && query.isSchema) {
         // Usar el queryName proporcionado, o extraerlo del stack, o generar uno basado en la query
         finalQueryName = queryName || this.extractCallerInfo();
-        
+
         // Si no se pudo extraer, generar un hash único basado en la query SQL
         if (finalQueryName === 'UnknownService') {
           finalQueryName = this.generateQueryNameFromSQL(query.query);
           console.log(`[createQuery] Usando queryName generado: "${finalQueryName}"`);
         }
-        
+
         if (isDefined(ref)) {
           finalQueryName = `${finalQueryName}.${ref}`;
         }
@@ -504,14 +504,14 @@ export class DataSourceService {
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
-    
+
     // Generar hash corto (primeros 8 caracteres)
     const hash = createHash('md5').update(normalized).digest('hex').substring(0, 8);
-    
+
     // Intentar extraer nombre de tabla principal
     const tableMatch = normalized.match(/from\s+([a-z_]+)/);
     const tableName = tableMatch ? tableMatch[1] : 'query';
-    
+
     return `${tableName}_${hash}`;
   }
 
@@ -533,14 +533,14 @@ export class DataSourceService {
       // Preparar un stack trace más completo
       const originalStackTraceLimit = Error.stackTraceLimit;
       Error.stackTraceLimit = 50; // Aumentar el límite
-      
+
       const stack = new Error().stack || '';
       Error.stackTraceLimit = originalStackTraceLimit;
-      
+
       if (!stack) return 'UnknownService';
 
       const lines = stack.split('\n');
-      
+
       // Buscar la primera línea que:
       // 1. NO sea datasource.service.ts
       // 2. NO sea node_modules
@@ -548,14 +548,14 @@ export class DataSourceService {
       // 4. Contenga .service.ts, .controller.ts o archivos de usuario
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        
+
         // Saltar datasource y archivos internos
-        if (line.includes('datasource.service.ts') || 
-            line.includes('node_modules') || 
-            line.includes('node:internal')) {
+        if (line.includes('datasource.service.ts') ||
+          line.includes('node_modules') ||
+          line.includes('node:internal')) {
           continue;
         }
-        
+
         // Buscar archivos de servicio o controller
         const serviceMatch = line.match(/\/([^\/]+)\.(service|controller)\.ts/);
         if (serviceMatch) {
@@ -564,30 +564,30 @@ export class DataSourceService {
             .split('-')
             .map(part => part.charAt(0).toUpperCase() + part.slice(1))
             .join('');
-          
+
           // Extraer nombre de función
           const functionMatch = line.match(/at\s+(?:[\w$]+\.)?(\w+)/);
           const functionName = functionMatch?.[1] || 'query';
-          
+
           const result = `${serviceName}Service.${functionName}`;
           console.log(`[extractCallerInfo] ✅ From stack: "${result}"`);
           return result;
         }
-        
+
         // Si no es archivo de servicio, intentar extraer cualquier función válida
         if (line.includes('.ts:') && !line.includes('datasource')) {
           const functionMatch = line.match(/at\s+(?:async\s+)?(?:[\w$]+\.)?(\w+)/);
           if (functionMatch && functionMatch[1]) {
             const funcName = functionMatch[1];
-            if (funcName !== 'Object' && 
-                !['processTicksAndRejections', 'call', 'apply', 'bind'].includes(funcName)) {
+            if (funcName !== 'Object' &&
+              !['processTicksAndRejections', 'call', 'apply', 'bind'].includes(funcName)) {
               console.log(`[extractCallerInfo] ✅ From generic .ts file: "${funcName}"`);
               return funcName;
             }
           }
         }
       }
-      
+
       return 'UnknownService';
     } catch (e) {
       console.log('[extractCallerInfo] ❌ Exception:', e);

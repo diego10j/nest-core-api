@@ -11,7 +11,7 @@ export class AdjuntoCorreoController {
   constructor(
     private readonly adjuntoService: AdjuntoCorreoService,
     private readonly mailService: MailService,
-  ) {}
+  ) { }
 
   @Post('upload')
   @UseInterceptors(

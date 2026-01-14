@@ -54,7 +54,7 @@ async function bootstrap() {
   // Importante: multer maneja los límites de forma independiente en FileInterceptor
   app.use(json({ limit: '100mb' }));
   app.use(urlencoded({ extended: true, limit: '100mb' }));
-  
+
   // Nota: Para archivos muy grandes (>100MB), considera implementar:
   // - Chunked uploads en el cliente React
   // - Streaming en el servidor
