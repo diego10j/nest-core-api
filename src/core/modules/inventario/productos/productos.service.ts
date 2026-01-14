@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
@@ -32,6 +32,7 @@ import { SaldoProducto } from './interfaces/productos';
 
 @Injectable()
 export class ProductosService extends BaseService {
+    private readonly logger = new Logger(ProductosService.name);
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly audit: AuditService,
@@ -1852,7 +1853,7 @@ export class ProductosService extends BaseService {
         queryClie.addParam(1, data.nombre_inarti);
         queryClie.addParam(2, ideEmpr);
         const resClie = await this.dataSource.createSelectQuery(queryClie);
-        console.log(resClie);
+        this.logger.debug(`Verificación de producto existente: ${resClie.length} resultados`);
         if (resClie.length > 0) {
             throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
         }
@@ -1911,7 +1912,7 @@ export class ProductosService extends BaseService {
             queryClie.addParam(2, ideEmpr);
             queryClie.addParam(3, data.ide_inarti);
             const resClie = await this.dataSource.createSelectQuery(queryClie);
-            console.log(resClie);
+            this.logger.debug(`Verificación de producto existente (update): ${resClie.length} resultados`);
             if (resClie.length > 0) {
                 throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
             }

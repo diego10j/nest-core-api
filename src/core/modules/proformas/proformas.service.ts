@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
@@ -22,6 +22,7 @@ const DETALLES = {
 
 @Injectable()
 export class ProformasService extends BaseService {
+  private readonly logger = new Logger(ProformasService.name);
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
@@ -259,7 +260,7 @@ export class ProformasService extends BaseService {
     query.values.set('usuario_abre_cccpr', login);
     query.where = 'ide_cccpr = $1 and fecha_abre_cccpr is null and usuario_abre_cccpr is null';
     query.addNumberParam(1, ide_cccpr);
-    console.log(query);
+    this.logger.debug(`Abriendo proforma: ${JSON.stringify(query)}`);
     return this.dataSource.createQuery(query);
   }
 }

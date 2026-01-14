@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Inject } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Inject, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { Pool, types } from 'pg';
 import { envs } from 'src/config/envs';
@@ -32,6 +32,7 @@ import { ResultQuery } from './interfaces/resultQuery';
 
 @Injectable()
 export class DataSourceService {
+  private readonly logger = new Logger(DataSourceService.name);
   public pool = new Pool({
     // user: envs.dbUsername,
     // host: envs.dbHost,
@@ -780,7 +781,7 @@ export class DataSourceService {
   }
 
   getDeleteActivityTable(objDelete: DeleteQuery): InsertQuery {
-    console.log('deletetQuery');
+    this.logger.debug('Generando query de actividad para eliminación');
     const deletetQuery = new InsertQuery('sis_actividad', 'ide_acti');
     deletetQuery.values.set('tabla_acti', objDelete.table);
     deletetQuery.values.set('valor_pk_acti', objDelete.ide);

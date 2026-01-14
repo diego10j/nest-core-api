@@ -518,7 +518,7 @@ export class WhatsappApiService {
         resp,
       };
     } catch (error) {
-      console.log(error);
+      this.logger.error(`Error enviando mensaje media: ${error.message}`);
       throw new InternalServerErrorException(`[ERROR]: enviarMensajeMedia ${error}`);
     }
   }

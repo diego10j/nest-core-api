@@ -10,6 +10,7 @@ import {
   BadRequestException,
   NotFoundException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { MediaFile } from 'src/core/whatsapp/api/interface/whatsapp';
@@ -43,6 +44,7 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
   private readonly fileLifetime = 15 * 24 * 3600 * 1000; // 15 días
   private readonly cleanupInterval = 3600 * 1000; // 1 hora entre limpiezas
   private cleanupTimer: NodeJS.Timeout;
+  private readonly logger = new Logger(FileTempService.name);
 
   constructor() {
     this.ensureTempDirExists();
@@ -123,10 +125,10 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
       await Promise.all(deletionPromises);
 
       if (deletionPromises.length > 0) {
-        console.log(`Deleted ${deletionPromises.length} old temporary files`);
+        this.logger.log(`Deleted ${deletionPromises.length} old temporary files`);
       }
     } catch (error) {
-      console.error('Error during temp files cleanup:', error);
+      this.logger.error(`Error during temp files cleanup: ${error.message}`);
     }
   }
 
@@ -145,9 +147,9 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
     try {
       const files = await readdir(FILE_STORAGE_CONSTANTS.TEMP_DIR);
       await Promise.all(files.map((file) => unlink(path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, file)).catch(() => {})));
-      console.log(`Deleted all ${files.length} temporary files on shutdown`);
+      this.logger.log(`Deleted all ${files.length} temporary files on shutdown`);
     } catch (error) {
-      console.error('Error during final cleanup:', error);
+      this.logger.error(`Error during final cleanup: ${error.message}`);
     }
   }
 
