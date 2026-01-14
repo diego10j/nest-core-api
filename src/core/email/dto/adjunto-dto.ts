@@ -1,20 +1,20 @@
-import { IsNumber, IsOptional, IsString } from "class-validator";
+import { IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class AdjuntoCorreoDto {
-    @IsString()
-    nombre: string;
+  @IsString()
+  nombre: string;
 
-    @IsString()
-    @IsOptional()
-    tipoMime?: string;
+  @IsString()
+  @IsOptional()
+  tipoMime?: string;
 
-    @IsNumber()
-    tamano: number;
+  @IsNumber()
+  tamano: number;
 
-    @IsString()
-    ruta: string;
+  @IsString()
+  ruta: string;
 
-    @IsString()
-    @IsOptional()
-    contenidoBase64?: string; // Para adjuntos en base64
+  @IsString()
+  @IsOptional()
+  contenidoBase64?: string; // Para adjuntos en base64
 }

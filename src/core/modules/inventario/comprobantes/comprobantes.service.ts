@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { InsertQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { ObjectQueryDto } from 'src/core/connection/dto';
+import { UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDate, getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { BaseService } from '../../../../common/base-service';
@@ -12,11 +13,10 @@ import { CoreService } from '../../../core.service';
 
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
+import { LoteIngreso } from './dto/lote-ingreso.dto';
 import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
-import { LoteIngreso } from './dto/lote-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
-import { ObjectQueryDto } from 'src/core/connection/dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -338,7 +338,6 @@ export class ComprobantesInvService extends BaseService {
     return await this.dataSource.createQuery(updateQuery);
   }
 
-
   async saveLoteInv(dtoIn: SaveLoteDto & HeaderParamsDto) {
     const module = 'inv';
     const tableName = 'lote';
@@ -400,8 +399,6 @@ export class ComprobantesInvService extends BaseService {
     return await this.dataSource.createSingleQuery(query);
   }
 
-
-
   // ==================================ListData==============================
   /**
    * Retorna las estados de los comprobantes de inventario
@@ -417,8 +414,4 @@ export class ComprobantesInvService extends BaseService {
     };
     return this.core.getListDataValues(dtoIn);
   }
-
-
-
-
 }

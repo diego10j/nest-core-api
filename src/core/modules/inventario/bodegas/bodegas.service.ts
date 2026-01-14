@@ -12,12 +12,12 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
+
 import { AgregaProductoConteoDto } from './dto/agrega-producto-conteo.dto';
 import { AutorizaAjustesConteoDto } from './dto/autoriza-ajustes.dto';
 import { GeneraConteoInvDto } from './dto/genera-conteo-inv.dto';
 import { GetConteosInventarioDto } from './dto/get-conteos-inv.dto';
 import { GetDetallesConteoDto } from './dto/get-detalles-conteo.dto';
-
 import { MovimientosBodegaDto } from './dto/mov-bodega.dto';
 import { MovimientosInvDto } from './dto/movimientos-inv.dto';
 import { RegistrarConteoFisicoDto } from './dto/registrar-conteo.dto';
@@ -303,8 +303,8 @@ export class BodegasService extends BaseService {
 
   /**
    * Genera registros para conteo de inventario
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
   async generarConteoInventario(dtoIn: GeneraConteoInvDto & HeaderParamsDto) {
     try {
@@ -341,9 +341,7 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
-
 
   async registrarConteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
     try {
@@ -372,9 +370,7 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
-
 
   async registrarReconteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
     try {
@@ -403,14 +399,13 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
 
   /**
-     * Retorna listado de conteos en una bodega en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
+   * Retorna listado de conteos en una bodega en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
   async getConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
     dtoIn.ide_usua = undefined;
     return this.getSqlConteosInventario(dtoIn);
@@ -418,8 +413,8 @@ export class BodegasService extends BaseService {
 
   /**
    * Retorna listado de conteos de un usuario en una bodega en un rango de fechas
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
   async getMisConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
     if (!dtoIn.ide_usua) {
@@ -427,7 +422,6 @@ export class BodegasService extends BaseService {
     }
     return this.getSqlConteosInventario(dtoIn);
   }
-
 
   private async getSqlConteosInventario(dtoIn: GetConteosInventarioDto & HeaderParamsDto) {
     // Filtro de estados (array opcional de IDs)
@@ -526,8 +520,6 @@ export class BodegasService extends BaseService {
     return await this.dataSource.createQuery(query);
   }
 
-
-
   async getDetalleConteo(dtoIn: GetDetallesConteoDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
@@ -625,16 +617,13 @@ export class BodegasService extends BaseService {
       ORDER BY 
           a.nombre_inarti
       `,
-      dtoIn
+      dtoIn,
     );
 
     query.addIntParam(1, dtoIn.ide_inccf);
-    query.setLazy(false);  //retorna todos los registros sin paginación
+    query.setLazy(false); //retorna todos los registros sin paginación
     return await this.dataSource.createQuery(query);
   }
-
-
-
 
   async getListDataEstadosConteo(dto?: QueryOptionsDto & HeaderParamsDto) {
     const dtoIn = {
@@ -648,14 +637,12 @@ export class BodegasService extends BaseService {
     return this.core.getListDataValues(dtoIn);
   }
 
-
   /**
    * Busca productos por nombre en los detalles de un conteo
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
   async buscarDetalleConteo(dtoIn: SearchDetalleConteoDto & HeaderParamsDto) {
-
     const normalizedSearchValue = normalizeString(dtoIn.value.trim());
     const sqlSearchValue = `%${normalizedSearchValue}%`;
     const query = new SelectQuery(
@@ -687,7 +674,7 @@ export class BodegasService extends BaseService {
       ORDER BY 
           a.nombre_inarti
       `,
-      dtoIn
+      dtoIn,
     );
 
     query.addIntParam(1, dtoIn.ide_inccf);
@@ -697,8 +684,8 @@ export class BodegasService extends BaseService {
 
   /**
    * Retorna la ultima fecha de un conteo fisico realizado a un producto
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
   async getUltimaFechaConteoProducto(dtoIn?: IdeDto & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -710,13 +697,11 @@ export class BodegasService extends BaseService {
     WHERE dcf.ide_inarti = $1
       AND ccf.activo_inccf = true
       AND dcf.activo_indcf = true
-    `
+    `,
     );
     query.addIntParam(1, dtoIn.ide);
     return await this.dataSource.createSelectQuery(query);
   }
-
-
 
   async eliminarProductosConteo(dtoIn: ArrayIdeDto & HeaderParamsDto) {
     try {
@@ -725,7 +710,7 @@ export class BodegasService extends BaseService {
       SELECT * FROM f_eliminar_producto_conteo(
         p_ide_indcf_array := $1
       )
-        `
+        `,
       );
 
       query.addParam(1, dtoIn.ide);
@@ -740,10 +725,7 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
-
-
 
   async agregarProductoConteo(dtoIn: AgregaProductoConteoDto & HeaderParamsDto) {
     try {
@@ -754,7 +736,7 @@ export class BodegasService extends BaseService {
         p_ide_inarti := $2,
         p_usuario_agrega := $3
       )
-        `
+        `,
       );
       query.addParam(1, dtoIn.ide_inccf);
       query.addParam(2, dtoIn.ide_inarti);
@@ -769,16 +751,14 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
-
 
   async validarDetallesConteo(dtoIn: ValidarDetallesConteoDto & HeaderParamsDto) {
     try {
       const query = new SelectQuery(
         `
         SELECT * FROM f_validar_detalles_conteo($1, $2)
-        `
+        `,
       );
       const jsonString = JSON.stringify(dtoIn.detalles);
       query.addParam(1, jsonString);
@@ -793,16 +773,14 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
-
 
   async autorizarAjustesConteo(dtoIn: AutorizaAjustesConteoDto & HeaderParamsDto) {
     try {
       const query = new SelectQuery(
         `
         SELECT * FROM f_autorizar_ajustes_conteo($1, $2, $3)
-        `
+        `,
       );
       query.addParam(1, dtoIn.ide_inccf);
       query.addParam(2, dtoIn.ideUsua);
@@ -818,7 +796,6 @@ export class BodegasService extends BaseService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
 
   async updateEstadoConteo(dto: UpdateEstadoConteoDto) {
@@ -828,7 +805,6 @@ export class BodegasService extends BaseService {
     updateQuery.addParam(1, dto.ide_inccf);
     return await this.dataSource.createQuery(updateQuery);
   }
-
 
   async updateEstadoDetalleConteo(dto: UpdateEstadoDetalleConteoDto) {
     const updateQuery = new UpdateQuery('inv_det_conteo_fisico', 'ide_indcf');

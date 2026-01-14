@@ -2,20 +2,18 @@ import { IsDateString, IsInt, IsNumber, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class EvaluacionRotacionProductoDto extends QueryOptionsDto {
+  @IsInt()
+  ide_inarti: number;
 
-    @IsInt()
-    ide_inarti: number;
+  @IsNumber()
+  @IsOptional()
+  diasAnalisis?: number = 90;
 
-    @IsNumber()
-    @IsOptional()
-    diasAnalisis?: number = 90;
+  @IsDateString()
+  @IsOptional()
+  fechaCorte?: string;
 
-
-    @IsDateString()
-    @IsOptional()
-    fechaCorte?: string;
-
-    @IsNumber()
-    @IsOptional()
-    ide_inbod?: number;
+  @IsNumber()
+  @IsOptional()
+  ide_inbod?: number;
 }

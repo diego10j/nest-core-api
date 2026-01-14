@@ -1,22 +1,18 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
+import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bull';
-
-import { SendMailDto } from '../dto/send-mail.dto';
-import { TemplateService } from './template.service';
-import { DataSourceService } from 'src/core/connection/datasource.service';
-import { DeleteQuery, InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { ColaCorreo, ConfigCuentaCorreo } from '../interfaces/email';
+import { DataSourceService } from 'src/core/connection/datasource.service';
+import { DeleteQuery, InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { detectMimeType } from 'src/util/helpers/file-utils';
+
 import { MAIL_QUEUE } from '../config';
 import { AdjuntoCorreoDto } from '../dto/adjunto-dto';
-import { detectMimeType } from 'src/util/helpers/file-utils';
+import { SendMailDto } from '../dto/send-mail.dto';
+import { ColaCorreo } from '../interfaces/email';
+
+import { TemplateService } from './template.service';
 
 @Injectable()
 export class MailService {
@@ -26,7 +22,7 @@ export class MailService {
     public readonly dataSource: DataSourceService,
     private readonly templateService: TemplateService,
     @InjectQueue(MAIL_QUEUE) private readonly mailQueue: Queue,
-  ) { }
+  ) {}
 
   /**
    * Obtiene los correos configurados de una empresa
@@ -118,21 +114,25 @@ export class MailService {
       let { contenido, asunto } = await this.procesarPlantilla(sendMailDto, ideEmpr);
 
       // Agregar automáticamente a la cola de Bull
-      const job = await this.mailQueue.add('send-mail', {
-        destinatario: this.formatDestinatarios(sendMailDto.destinatario),
-        asunto,
-        contenido,
-        ide_corr: cuenta.ide_corr,
-        variables: sendMailDto.variables || {},
-        usuario,
-        ide_empr: ideEmpr,
-        adjuntos: sendMailDto.adjuntos || [] // ← Agregar adjuntos al job
-      }, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-        removeOnComplete: true,
-        removeOnFail: false
-      });
+      const job = await this.mailQueue.add(
+        'send-mail',
+        {
+          destinatario: this.formatDestinatarios(sendMailDto.destinatario),
+          asunto,
+          contenido,
+          ide_corr: cuenta.ide_corr,
+          variables: sendMailDto.variables || {},
+          usuario,
+          ide_empr: ideEmpr,
+          adjuntos: sendMailDto.adjuntos || [], // ← Agregar adjuntos al job
+        },
+        {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
 
       // Guardar en BD para tracking
       const ide_coco = await this.guardarEnColaBD({
@@ -142,7 +142,7 @@ export class MailService {
         contenido,
         ide_plco: sendMailDto.ide_plco,
         ide_corr: cuenta.ide_corr,
-        usuario
+        usuario,
       });
 
       // Guardar adjuntos si existen
@@ -150,14 +150,14 @@ export class MailService {
         await this.guardarAdjuntos(sendMailDto.adjuntos, {
           ide_plco: sendMailDto.ide_plco,
           ide_coco: ide_coco,
-          usuario
+          usuario,
         });
       }
 
       return {
         message: 'Correo agregado a la cola de envío automático',
         jobId: job.id,
-        queueStatus: 'PENDING'
+        queueStatus: 'PENDING',
       };
     } catch (error) {
       this.logger.error(`Error sendMail: ${error.message}`);
@@ -167,7 +167,7 @@ export class MailService {
 
   private async guardarAdjuntos(
     adjuntos: AdjuntoCorreoDto[],
-    referencias: { ide_plco?: number; ide_caco?: number; ide_coco?: number; usuario: string }
+    referencias: { ide_plco?: number; ide_caco?: number; ide_coco?: number; usuario: string },
   ) {
     for (const adjunto of adjuntos) {
       const insertQuery = new InsertQuery('sis_adjunto_correo', 'ide_adco');
@@ -203,10 +203,9 @@ export class MailService {
     return { contenido, asunto };
   }
 
-
   /**
-  * Guarda el correo en la cola de la base de datos y retorna el ID
-  */
+   * Guarda el correo en la cola de la base de datos y retorna el ID
+   */
   private async guardarEnColaBD(params: ColaCorreo): Promise<number> {
     const insertQuery = new InsertQuery('sis_cola_correo', 'ide_coco');
 
@@ -246,10 +245,12 @@ export class MailService {
         this.mailQueue.getActiveCount(),
         this.mailQueue.getCompletedCount(),
         this.mailQueue.getFailedCount(),
-        this.mailQueue.getDelayedCount()
+        this.mailQueue.getDelayedCount(),
       ]);
 
-      this.logger.log(`📊 Estado de cola: Waiting: ${waiting}, Active: ${active}, Completed: ${completed}, Failed: ${failed}, Delayed: ${delayed}`);
+      this.logger.log(
+        `📊 Estado de cola: Waiting: ${waiting}, Active: ${active}, Completed: ${completed}, Failed: ${failed}, Delayed: ${delayed}`,
+      );
 
       return { waiting, active, completed, failed, delayed, total: waiting + active + completed + failed + delayed };
     } catch (error) {
@@ -281,7 +282,6 @@ export class MailService {
       updateQuery.addParam(1, jobId);
 
       await this.dataSource.createQuery(updateQuery);
-
     } catch (error) {
       this.logger.error(`Error updateJobStatus: ${error.message}`);
     }
@@ -349,19 +349,18 @@ export class MailService {
   parseDestinatarios(destinatarios: string): string | string[] {
     if (!destinatarios) return '';
     if (destinatarios.includes(',')) {
-      return destinatarios.split(',').map(d => d.trim()).filter(d => d);
+      return destinatarios
+        .split(',')
+        .map((d) => d.trim())
+        .filter((d) => d);
     }
     return destinatarios;
   }
 
-
   /**
- * Obtiene adjuntos por referencia
- */
-  async getAdjuntosPorReferencia(
-    tipo: 'plantilla' | 'campania' | 'cola',
-    ide_referencia: number
-  ): Promise<any[]> {
+   * Obtiene adjuntos por referencia
+   */
+  async getAdjuntosPorReferencia(tipo: 'plantilla' | 'campania' | 'cola', ide_referencia: number): Promise<any[]> {
     let campo: string;
 
     switch (tipo) {
@@ -407,5 +406,4 @@ export class MailService {
 
     await this.dataSource.createQuery(deleteQuery);
   }
-
 }

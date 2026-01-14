@@ -165,7 +165,6 @@ export class InvArticulo {
   @Transform(({ value }) => value ?? null)
   se_compra_inarti?: boolean | null;
 
-
   @IsOptional()
   @IsString()
   @Transform(({ value }) => value || null)

@@ -6,140 +6,134 @@ import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
 import { isDefined, validateDataRequiere } from 'src/util/helpers/common-util';
 import { fShortDate, fDate, getDateFormatFront } from 'src/util/helpers/date-util';
+import { fNumber } from 'src/util/helpers/number-util';
+import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
-import { DataSourceService } from '../../../connection/datasource.service';
-import { ResultQuery } from '../../../connection/interfaces/resultQuery';
-import { SelectQuery } from '../../../connection/helpers/select-query';
-
-import { AuditService } from '../../audit/audit.service';
-import { IdProductoDto } from './dto/id-producto.dto';
-import { TrnProductoDto } from './dto/trn-producto.dto';
-
-import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
-import { PreciosProductoDto } from './dto/precios-producto.dto';
-
 import { UuidDto } from '../../../../common/dto/uuid.dto';
+import { DataSourceService } from '../../../connection/datasource.service';
+import { SelectQuery } from '../../../connection/helpers/select-query';
+import { ResultQuery } from '../../../connection/interfaces/resultQuery';
+import { AuditService } from '../../audit/audit.service';
 
-import { fNumber } from 'src/util/helpers/number-util';
-
-import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CategoriasDto } from './dto/categorias.dto';
-import { SaldoProducto } from './interfaces/productos';
-import { GetSaldoProductoDto } from './dto/get-saldo.dto';
-
-import { normalizeString } from 'src/util/helpers/sql-util';
-
-import { GetProductoDto } from './dto/get-productos.dto';
-import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
+import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
+import { GetProductoDto } from './dto/get-productos.dto';
+import { GetSaldoProductoDto } from './dto/get-saldo.dto';
+import { IdProductoDto } from './dto/id-producto.dto';
+import { PreciosProductoDto } from './dto/precios-producto.dto';
+import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
 import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
+import { TrnProductoDto } from './dto/trn-producto.dto';
+import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
+import { SaldoProducto } from './interfaces/productos';
 
 @Injectable()
 export class ProductosService extends BaseService {
-  constructor(
-    private readonly dataSource: DataSourceService,
-    private readonly audit: AuditService,
-    private readonly core: CoreService,
-  ) {
-    super();
-    // obtiene las variables del sistema para el servicio
-    this.core
-      .getVariables([
-        'p_inv_estado_normal', // 1
-        'p_cxp_estado_factura_normal', // 0
-        'p_cxc_estado_factura_normal', // 0
-      ])
-      .then((result) => {
-        this.variables = result;
-      });
-  }
-
-  // -------------------------------- CATEGORIAS ---------------------------- //
-  async getTableQueryCategorias(dto: CategoriasDto & HeaderParamsDto) {
-    const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
-      ? `inv_ide_incate = ${dto.inv_ide_incate}`
-      : 'inv_ide_incate IS NULL';
-
-    const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
-    const dtoIn = {
-      ...dto,
-      module: 'inv',
-      tableName: 'categoria',
-      primaryKey: 'ide_incate',
-      orderBy: { column: 'nombre_incate' },
-      condition,
-    };
-
-    return this.core.getTableQuery(dtoIn);
-  }
-
-  async getTreeModelCategorias(dto: CategoriasDto & HeaderParamsDto) {
-    const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
-      ? `inv_ide_incate = ${dto.inv_ide_incate}`
-      : 'inv_ide_incate IS NULL';
-
-    const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
-
-    const dtoIn = {
-      ...dto,
-      module: 'inv',
-      tableName: 'categoria',
-      primaryKey: 'ide_incate',
-      columnName: 'nombre_incate',
-      columnNode: 'inv_ide_incate',
-      condition: `${condition}`,
-      orderBy: { column: 'nombre_incate' },
-    };
-    return this.core.getTreeModel(dtoIn);
-  }
-
-  // -------------------------------- PRODUCTOS ---------------------------- //
-
-  async getProductoByUuid(dtoIn: UuidDto & HeaderParamsDto) {
-    let whereClause = `ide_inarti = -1`;
-    if (dtoIn.uuid) {
-      whereClause = `uuid = $1`;
-    }
-    const query = new SelectQuery(`SELECT * FROM inv_articulo WHERE ${whereClause}`);
-    if (dtoIn.uuid) {
-      query.addStringParam(1, dtoIn.uuid);
-    }
-    const res = await this.dataSource.createQuery(query);
-
-    if (dtoIn.uuid) {
-      if (res.rowCount !== 1) {
-        throw new BadRequestException(`No existe el producto`);
-      }
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly audit: AuditService,
+        private readonly core: CoreService,
+    ) {
+        super();
+        // obtiene las variables del sistema para el servicio
+        this.core
+            .getVariables([
+                'p_inv_estado_normal', // 1
+                'p_cxp_estado_factura_normal', // 0
+                'p_cxc_estado_factura_normal', // 0
+            ])
+            .then((result) => {
+                this.variables = result;
+            });
     }
 
-    return {
-      row: res.rows[0],
-      columns: res.columns,
-      key: res.key,
-    };
-  }
+    // -------------------------------- CATEGORIAS ---------------------------- //
+    async getTableQueryCategorias(dto: CategoriasDto & HeaderParamsDto) {
+        const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
+            ? `inv_ide_incate = ${dto.inv_ide_incate}`
+            : 'inv_ide_incate IS NULL';
 
-  /**
-   * Retorna el listado de Productos
-   * @returns
-   */
-  async getProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
-    const query = this.getQueryProductos(dtoIn);
-    return await this.dataSource.createQuery(query);
-  }
+        const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
+        const dtoIn = {
+            ...dto,
+            module: 'inv',
+            tableName: 'categoria',
+            primaryKey: 'ide_incate',
+            orderBy: { column: 'nombre_incate' },
+            condition,
+        };
 
-  async getAllProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
-    const query = this.getQueryProductos(dtoIn);
-    query.setLazy(false);
-    return await this.dataSource.createSelectQuery(query);
-  }
+        return this.core.getTableQuery(dtoIn);
+    }
 
-  private getQueryProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
-    const activeClause = dtoIn.activos ? 'and activo_inarti = true' : '';
-    const query = new SelectQuery(
-      `
+    async getTreeModelCategorias(dto: CategoriasDto & HeaderParamsDto) {
+        const invIdeIncateCondition = isDefined(dto.inv_ide_incate)
+            ? `inv_ide_incate = ${dto.inv_ide_incate}`
+            : 'inv_ide_incate IS NULL';
+
+        const condition = `ide_empr = ${dto.ideEmpr} AND ${invIdeIncateCondition}`;
+
+        const dtoIn = {
+            ...dto,
+            module: 'inv',
+            tableName: 'categoria',
+            primaryKey: 'ide_incate',
+            columnName: 'nombre_incate',
+            columnNode: 'inv_ide_incate',
+            condition: `${condition}`,
+            orderBy: { column: 'nombre_incate' },
+        };
+        return this.core.getTreeModel(dtoIn);
+    }
+
+    // -------------------------------- PRODUCTOS ---------------------------- //
+
+    async getProductoByUuid(dtoIn: UuidDto & HeaderParamsDto) {
+        let whereClause = `ide_inarti = -1`;
+        if (dtoIn.uuid) {
+            whereClause = `uuid = $1`;
+        }
+        const query = new SelectQuery(`SELECT * FROM inv_articulo WHERE ${whereClause}`);
+        if (dtoIn.uuid) {
+            query.addStringParam(1, dtoIn.uuid);
+        }
+        const res = await this.dataSource.createQuery(query);
+
+        if (dtoIn.uuid) {
+            if (res.rowCount !== 1) {
+                throw new BadRequestException(`No existe el producto`);
+            }
+        }
+
+        return {
+            row: res.rows[0],
+            columns: res.columns,
+            key: res.key,
+        };
+    }
+
+    /**
+     * Retorna el listado de Productos
+     * @returns
+     */
+    async getProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
+        const query = this.getQueryProductos(dtoIn);
+        return await this.dataSource.createQuery(query);
+    }
+
+    async getAllProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
+        const query = this.getQueryProductos(dtoIn);
+        query.setLazy(false);
+        return await this.dataSource.createSelectQuery(query);
+    }
+
+    private getQueryProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
+        const activeClause = dtoIn.activos ? 'and activo_inarti = true' : '';
+        const query = new SelectQuery(
+            `
         SELECT
             a.ide_inarti,
             a.uuid,
@@ -165,14 +159,14 @@ export class ProductosService extends BaseService {
         ORDER BY
             unaccent(a.nombre_inarti)
         `,
-      dtoIn,
-    );
-    return query;
-  }
+            dtoIn,
+        );
+        return query;
+    }
 
-  async getCatalogoProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    async getCatalogoProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
         SELECT
             ide_inarti,
             nombre_inarti,
@@ -191,18 +185,18 @@ export class ProductosService extends BaseService {
         ORDER BY
             unaccent(nombre_inarti)
         `,
-      dtoIn,
-    );
+            dtoIn,
+        );
 
-    return await this.dataSource.createSelectQuery(query);
-  }
+        return await this.dataSource.createSelectQuery(query);
+    }
 
-  async searchProducto(dto: SearchDto & HeaderParamsDto) {
-    const normalizedSearchValue = normalizeString(dto.value.trim());
-    const sqlSearchValue = `%${normalizedSearchValue}%`;
+    async searchProducto(dto: SearchDto & HeaderParamsDto) {
+        const normalizedSearchValue = normalizeString(dto.value.trim());
+        const sqlSearchValue = `%${normalizedSearchValue}%`;
 
-    const query = new SelectQuery(
-      `
+        const query = new SelectQuery(
+            `
         SELECT
             a.ide_inarti,
             a.uuid,
@@ -244,23 +238,23 @@ export class ProductosService extends BaseService {
              unaccent(a.nombre_inarti)
         LIMIT ${dto.limit}
     `,
-      dto,
-    );
+            dto,
+        );
 
-    // Añadir parámetros de búsqueda (mismo valor para los tres campos)
-    query.addStringParam(1, sqlSearchValue);
-    query.addStringParam(2, sqlSearchValue);
-    query.addStringParam(3, sqlSearchValue);
-    return await this.dataSource.createSelectQuery(query);
-  }
+        // Añadir parámetros de búsqueda (mismo valor para los tres campos)
+        query.addStringParam(1, sqlSearchValue);
+        query.addStringParam(2, sqlSearchValue);
+        query.addStringParam(3, sqlSearchValue);
+        return await this.dataSource.createSelectQuery(query);
+    }
 
-  /**
-   * Retorna la información de un producto
-   * @param dtoIn
-   * @returns
-   */
-  async getProducto(dtoIn: UuidDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * Retorna la información de un producto
+     * @param dtoIn
+     * @returns
+     */
+    async getProducto(dtoIn: UuidDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
         SELECT
             a.ide_inarti,
             uuid,
@@ -308,12 +302,12 @@ export class ProductosService extends BaseService {
             left join inv_fabricante g on a.ide_infab = g.ide_infab
         where
             uuid = $1`);
-    query.addStringParam(1, dtoIn.uuid);
+        query.addStringParam(1, dtoIn.uuid);
 
-    const res = await this.dataSource.createSingleQuery(query);
-    if (res) {
-      const ide_inarti = res.ide_inarti;
-      const queryCarac = new SelectQuery(`
+        const res = await this.dataSource.createSingleQuery(query);
+        if (res) {
+            const ide_inarti = res.ide_inarti;
+            const queryCarac = new SelectQuery(`
             select
                 a.ide_inarc,
                 nombre_incar,
@@ -325,10 +319,10 @@ export class ProductosService extends BaseService {
             where
                 uuid = $1
             `);
-      queryCarac.addStringParam(1, dtoIn.uuid);
-      const resCarac = await this.dataSource.createSelectQuery(queryCarac);
+            queryCarac.addStringParam(1, dtoIn.uuid);
+            const resCarac = await this.dataSource.createSelectQuery(queryCarac);
 
-      const queryConve = new SelectQuery(`
+            const queryConve = new SelectQuery(`
             select
                 a.ide_incon,
                 cantidad_incon,
@@ -345,74 +339,74 @@ export class ProductosService extends BaseService {
             where
                 uuid = $1
             `);
-      queryConve.addStringParam(1, dtoIn.uuid);
-      const resConve = await this.dataSource.createSelectQuery(queryConve);
+            queryConve.addStringParam(1, dtoIn.uuid);
+            const resConve = await this.dataSource.createSelectQuery(queryConve);
 
-      // Stock
-      const saldoProducto = await this.getStock(ide_inarti);
-      const stock = saldoProducto?.saldo || 0;
-      const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : null;
-      const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : null;
+            // Stock
+            const saldoProducto = await this.getStock(ide_inarti);
+            const stock = saldoProducto?.saldo || 0;
+            const stockMinimo = res.cant_stock1_inarti ? Number(res.cant_stock1_inarti) : null;
+            const stockIdeal = res.cant_stock2_inarti ? Number(res.cant_stock2_inarti) : null;
 
-      let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
-      let color_stock = stock > 0 ? 'success.main' : 'error.main';
+            let detalle_stock = stock > 0 ? 'EN STOCK' : 'SIN STOCK';
+            let color_stock = stock > 0 ? 'success.main' : 'error.main';
 
-      // Si hay valores definidos para stockMinimo o stockIdeal, se procede con las validaciones
-      if (stockMinimo !== null || stockIdeal !== null) {
-        if (stockMinimo !== null && stock < stockMinimo) {
-          detalle_stock = 'STOCK BAJO';
-          color_stock = 'warning.main';
+            // Si hay valores definidos para stockMinimo o stockIdeal, se procede con las validaciones
+            if (stockMinimo !== null || stockIdeal !== null) {
+                if (stockMinimo !== null && stock < stockMinimo) {
+                    detalle_stock = 'STOCK BAJO';
+                    color_stock = 'warning.main';
+                }
+
+                if (stockIdeal !== null) {
+                    color_stock = 'success.main';
+                    if (stock > stockIdeal) {
+                        detalle_stock = 'STOCK EXTRA';
+                    } else if (stock === stockIdeal) {
+                        detalle_stock = 'STOCK IDEAL';
+                    } else if (stock > stockMinimo && stock < stockIdeal) {
+                        detalle_stock = 'STOCK ÓPTIMO';
+                    }
+                }
+            }
+
+            // Total clientes
+            const total_clientes = await this.getTotalClientesProducto(ide_inarti);
+
+            // Ultima Trn
+
+            const resUltimaVentaCompra = await this.getUltimaVentaCompra(ide_inarti, saldoProducto?.decim_stock_inarti);
+
+            return {
+                rowCount: 1,
+                row: {
+                    producto: res,
+                    caracteristicas: resCarac,
+                    conversion: resConve,
+                    stock: {
+                        stock,
+                        detalle_stock,
+                        color_stock,
+                    },
+                    datos: { total_clientes, ...resUltimaVentaCompra },
+                },
+                message: 'ok',
+            } as ResultQuery;
+        } else {
+            throw new BadRequestException(`No existe el producto`);
         }
-
-        if (stockIdeal !== null) {
-          color_stock = 'success.main';
-          if (stock > stockIdeal) {
-            detalle_stock = 'STOCK EXTRA';
-          } else if (stock === stockIdeal) {
-            detalle_stock = 'STOCK IDEAL';
-          } else if (stock > stockMinimo && stock < stockIdeal) {
-            detalle_stock = 'STOCK ÓPTIMO';
-          }
-        }
-      }
-
-      // Total clientes
-      const total_clientes = await this.getTotalClientesProducto(ide_inarti);
-
-      // Ultima Trn
-
-      const resUltimaVentaCompra = await this.getUltimaVentaCompra(ide_inarti, saldoProducto?.decim_stock_inarti);
-
-      return {
-        rowCount: 1,
-        row: {
-          producto: res,
-          caracteristicas: resCarac,
-          conversion: resConve,
-          stock: {
-            stock,
-            detalle_stock,
-            color_stock,
-          },
-          datos: { total_clientes, ...resUltimaVentaCompra },
-        },
-        message: 'ok',
-      } as ResultQuery;
-    } else {
-      throw new BadRequestException(`No existe el producto`);
     }
-  }
 
-  /**
-   * Retorna las transacciones de ingreso/egreso de un producto en un rango de fechas
-   * @param dtoIn
-   * @returns
-   */
-  async getTrnProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
-    const whereClause = dtoIn.ide_inbod ? ` AND dci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    /**
+     * Retorna las transacciones de ingreso/egreso de un producto en un rango de fechas
+     * @param dtoIn
+     * @returns
+     */
+    async getTrnProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
+        const whereClause = dtoIn.ide_inbod ? ` AND dci.ide_inbod = ${dtoIn.ide_inbod}` : '';
 
-    const query = new SelectQuery(
-      `
+        const query = new SelectQuery(
+            `
         WITH saldo_inicial AS (
             SELECT 
                 dci.ide_inarti,
@@ -540,30 +534,30 @@ export class ProductosService extends BaseService {
         FROM saldo_movimientos
         ORDER BY fecha_trans_incci, ide_indci 
         `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addIntParam(3, dtoIn.ide_inarti);
-    query.addParam(4, dtoIn.fechaInicio);
-    query.addParam(5, dtoIn.fechaFin);
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addParam(4, dtoIn.fechaInicio);
+        query.addParam(5, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * Retorna las facturas de ventas de un producto determinado en un rango de fechas
-   * @param dtoIn
-   * @returns
-   */
-  async getVentasProducto(dtoIn: PreciosProductoDto & HeaderParamsDto) {
-    // Ajustar el porcentaje según  criterio 30% margen
-    const whereCantidad = dtoIn.cantidad
-      ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} `
-      : '';
+    /**
+     * Retorna las facturas de ventas de un producto determinado en un rango de fechas
+     * @param dtoIn
+     * @returns
+     */
+    async getVentasProducto(dtoIn: PreciosProductoDto & HeaderParamsDto) {
+        // Ajustar el porcentaje según  criterio 30% margen
+        const whereCantidad = dtoIn.cantidad
+            ? `AND ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} `
+            : '';
 
-    const query = new SelectQuery(
-      `
+        const query = new SelectQuery(
+            `
         WITH notas_credito_detalle AS (
             SELECT 
                 cdn.ide_inarti,
@@ -631,24 +625,24 @@ export class ProductosService extends BaseService {
             ${whereCantidad}
         ORDER BY 
             cf.fecha_emisi_cccfa DESC, secuencial_cccfa DESC`,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addParam(3, dtoIn.fechaFin);
-    query.addParam(4, dtoIn.fechaInicio);
-    query.addParam(5, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        query.addParam(4, dtoIn.fechaInicio);
+        query.addParam(5, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
-    // Ajustar el porcentaje según  criterio 30% margen
-    const whereCantidad = dtoIn.cantidad
-      ? `WHERE ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} `
-      : '';
+    async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
+        // Ajustar el porcentaje según  criterio 30% margen
+        const whereCantidad = dtoIn.cantidad
+            ? `WHERE ABS(cantidad_ccdfa - ${dtoIn.cantidad}) <= 0.3 * ${dtoIn.cantidad} `
+            : '';
 
-    const query = new SelectQuery(
-      `
+        const query = new SelectQuery(
+            `
         SELECT 
             uv.ide_ccdfa,
             uv.ide_inarti,
@@ -671,61 +665,61 @@ export class ProductosService extends BaseService {
         FROM f_utilidad_ventas($1,$2,$3,$4) uv
              ${whereCantidad}
             `,
-      dtoIn,
-    );
-    query.addParam(1, dtoIn.ideEmpr);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addParam(3, dtoIn.fechaFin);
-    query.addIntParam(4, dtoIn.ide_inarti);
-    const res = await this.dataSource.createQuery(query);
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.ideEmpr);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        query.addIntParam(4, dtoIn.ide_inarti);
+        const res = await this.dataSource.createQuery(query);
 
-    res.row = {
-      precio_minimo_venta: 0,
-      precio_maximo_venta: 0,
-      promedio_precio: 0,
-      precio_sugerido: 0,
-    };
-    // Filtrar los datos por cantidad
-    const margin = 0.2; // 20% de margen
-    if (res.rowCount > 0 && dtoIn.cantidad) {
-      const filteredSales = res.rows.filter(
-        (sale) => Math.abs(sale.cantidad_ccdfa - dtoIn.cantidad) <= margin * dtoIn.cantidad,
-      );
+        res.row = {
+            precio_minimo_venta: 0,
+            precio_maximo_venta: 0,
+            promedio_precio: 0,
+            precio_sugerido: 0,
+        };
+        // Filtrar los datos por cantidad
+        const margin = 0.2; // 20% de margen
+        if (res.rowCount > 0 && dtoIn.cantidad) {
+            const filteredSales = res.rows.filter(
+                (sale) => Math.abs(sale.cantidad_ccdfa - dtoIn.cantidad) <= margin * dtoIn.cantidad,
+            );
 
-      // Encontrar precios minimos y maximos
-      const precios_venta = filteredSales.map((sale) => sale.precio_venta);
-      const precio_minimo_venta = Math.min(...precios_venta);
-      const precio_maximo_venta = Math.max(...precios_venta);
+            // Encontrar precios minimos y maximos
+            const precios_venta = filteredSales.map((sale) => sale.precio_venta);
+            const precio_minimo_venta = Math.min(...precios_venta);
+            const precio_maximo_venta = Math.max(...precios_venta);
 
-      // Calcular el promedio
-      const promedio_precio = precios_venta.reduce((a, b) => a + b, 0) / precios_venta.length;
+            // Calcular el promedio
+            const promedio_precio = precios_venta.reduce((a, b) => a + b, 0) / precios_venta.length;
 
-      // Sugestión de precio
-      let precio_sugerido;
-      if (precio_minimo_venta && precio_maximo_venta) {
-        precio_sugerido = (precio_minimo_venta + precio_maximo_venta) / 2;
-      } else {
-        precio_sugerido = promedio_precio;
-      }
-      res.row = {
-        precio_minimo_venta,
-        precio_maximo_venta,
-        promedio_precio: Number(fNumber(promedio_precio)),
-        precio_sugerido: Number(fNumber(precio_sugerido)),
-      };
+            // Sugestión de precio
+            let precio_sugerido;
+            if (precio_minimo_venta && precio_maximo_venta) {
+                precio_sugerido = (precio_minimo_venta + precio_maximo_venta) / 2;
+            } else {
+                precio_sugerido = promedio_precio;
+            }
+            res.row = {
+                precio_minimo_venta,
+                precio_maximo_venta,
+                promedio_precio: Number(fNumber(promedio_precio)),
+                precio_sugerido: Number(fNumber(precio_sugerido)),
+            };
+        }
+
+        return res;
     }
 
-    return res;
-  }
-
-  /**
-   * Retorna las facturas de compras de un producto determinado en un rango de fechas
-   * @param dtoIn
-   * @returns
-   */
-  async getComprasProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    /**
+     * Retorna las facturas de compras de un producto determinado en un rango de fechas
+     * @param dtoIn
+     * @returns
+     */
+    async getComprasProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
       SELECT
           dci.ide_indci AS ide_cpdfa,
           cci.fecha_trans_incci AS fecha_emisi_cpcfa,
@@ -754,23 +748,23 @@ export class ProductosService extends BaseService {
           AND dci.precio_indci > 0
       ORDER BY 
           cci.fecha_trans_incci DESC, cci.numero_incci DESC`,
-      dtoIn,
-    );
+            dtoIn,
+        );
 
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addParam(2, dtoIn.fechaInicio);
-    query.addParam(3, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
-  }
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return await this.dataSource.createQuery(query);
+    }
 
-  /**
-   * Retorna los últimos precios de compra a PROVEEDORES de un producto determinado
-   * @param dtoIn
-   * @returns
-   */
-  async getUltimosPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    /**
+     * Retorna los últimos precios de compra a PROVEEDORES de un producto determinado
+     * @param dtoIn
+     * @returns
+     */
+    async getUltimosPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
         WITH UltimaCompra AS (
             SELECT
                 cci.ide_geper,
@@ -827,27 +821,27 @@ export class ProductosService extends BaseService {
         ORDER BY 
             fecha_ultima_compra DESC
         `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addIntParam(2, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
-
-  /**
-   * Retorna el saldo de un producto
-   * @param dtoIn
-   * @returns
-   */
-  async getSaldo(dtoIn: GetSaldoProductoDto & HeaderParamsDto) {
-    const paramValue = dtoIn.ide_inarti || dtoIn.uuid;
-    if (!paramValue) {
-      throw new Error('Se requiere ide_inarti o uuid en el DTO de entrada');
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addIntParam(2, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
     }
 
-    const whereClause = dtoIn.ide_inarti ? 'iart.ide_inarti = $1' : 'iart.uuid = $1';
+    /**
+     * Retorna el saldo de un producto
+     * @param dtoIn
+     * @returns
+     */
+    async getSaldo(dtoIn: GetSaldoProductoDto & HeaderParamsDto) {
+        const paramValue = dtoIn.ide_inarti || dtoIn.uuid;
+        if (!paramValue) {
+            throw new Error('Se requiere ide_inarti o uuid en el DTO de entrada');
+        }
 
-    const query = new SelectQuery(`     
+        const whereClause = dtoIn.ide_inarti ? 'iart.ide_inarti = $1' : 'iart.uuid = $1';
+
+        const query = new SelectQuery(`     
             WITH
             compras_periodo AS (
                 SELECT
@@ -904,18 +898,18 @@ export class ProductosService extends BaseService {
                 iart.cant_stock1_inarti, iart.cant_stock2_inarti
         `);
 
-    query.addParam(1, paramValue);
-    return (await this.dataSource.createSingleQuery(query)) as SaldoProducto;
-  }
+        query.addParam(1, paramValue);
+        return (await this.dataSource.createSingleQuery(query)) as SaldoProducto;
+    }
 
-  /**
-   * Retorna el saldo de un producto por bodega
-   * @param dtoIn
-   * @returns
-   */
-  async getSaldoPorBodega(dtoIn: IdProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `     
+    /**
+     * Retorna el saldo de un producto por bodega
+     * @param dtoIn
+     * @returns
+     */
+    async getSaldoPorBodega(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `     
         SELECT 
             cci.ide_inbod,
             nombre_inbod,
@@ -938,27 +932,27 @@ export class ProductosService extends BaseService {
         GROUP BY   
             cci.ide_inbod,nombre_inbod,nombre_inarti,siglas_inuni,decim_stock_inarti
         `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
-
-  /**
-   * Retorna el total de ventas mensuales de un producto en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async getVentasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
     }
 
-    // para filtrar datos de un cliente
-    const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
+    /**
+     * Retorna el total de ventas mensuales de un producto en un periodo
+     * @param dtoIn
+     * @returns
+     */
+    async getVentasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
 
-    const query = new SelectQuery(`
+        // para filtrar datos de un cliente
+        const conditionCliente = dtoIn.ide_geper ? `AND a.ide_geper = ${dtoIn.ide_geper}` : '';
+
+        const query = new SelectQuery(`
         WITH notas_credito_mensual AS (
             SELECT 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) AS mes,
@@ -1030,29 +1024,28 @@ export class ProductosService extends BaseService {
         ORDER BY
             gm.ide_gemes       
         `);
-    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(3, dtoIn.ide_inarti);
-    query.addStringParam(4, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(5, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(6, dtoIn.ide_inarti);
+        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(6, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
-  }
-
-
-  /**
-   * Retorna la sumatoria de total ventas / compras en un periodo
-   * @param dtoIn
-   * @returns
-   */
-  async getSumatoriaTrnPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-    if (dtoIn.periodo === 0) {
-      dtoIn.periodo = getYear(new Date());
-      dtoIn.ide_inarti = -1;
+        return await this.dataSource.createQuery(query);
     }
-    const query = new SelectQuery(
-      `
+
+    /**
+     * Retorna la sumatoria de total ventas / compras en un periodo
+     * @param dtoIn
+     * @returns
+     */
+    async getSumatoriaTrnPeriodo(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+        if (dtoIn.periodo === 0) {
+            dtoIn.periodo = getYear(new Date());
+            dtoIn.ide_inarti = -1;
+        }
+        const query = new SelectQuery(
+            `
     WITH notas_credito_ventas AS (
         SELECT
             ROUND(SUM(cdn.cantidad_cpdno), 0) AS cantidad_notas_credito,
@@ -1131,46 +1124,46 @@ export class ProductosService extends BaseService {
         ) c ON v.siglas_inuni = c.siglas_inuni
         LEFT JOIN notas_credito_ventas nv ON COALESCE(v.siglas_inuni, c.siglas_inuni) = nv.siglas_inuni
         `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addStringParam(2, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(3, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(4, dtoIn.ide_inarti);
-    query.addStringParam(5, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(6, `${dtoIn.periodo}-12-31`);
-    query.addStringParam(7, `${dtoIn.periodo}-01-01`);
-    query.addStringParam(8, `${dtoIn.periodo}-12-31`);
-    query.addIntParam(9, dtoIn.ide_inarti);
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addStringParam(2, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(3, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(4, dtoIn.ide_inarti);
+        query.addStringParam(5, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(6, `${dtoIn.periodo}-12-31`);
+        query.addStringParam(7, `${dtoIn.periodo}-01-01`);
+        query.addStringParam(8, `${dtoIn.periodo}-12-31`);
+        query.addIntParam(9, dtoIn.ide_inarti);
 
-    const data = await this.dataSource.createSelectQuery(query);
-    if (data.length === 0) {
-      data.push({
-        unidad: '',
-        fact_ventas: '0',
-        cantidad_ventas: '0',
-        total_ventas: '0',
-        fact_compras: '0',
-        cantidad_compras: '0',
-        total_compras: '0',
-        margen: '0',
-        cantidad_notas_credito: '0',
-        total_notas_credito: '0',
-        cantidad_ventas_neta: '0',
-        total_ventas_neto: '0',
-        margen_neto: '0'
-      });
+        const data = await this.dataSource.createSelectQuery(query);
+        if (data.length === 0) {
+            data.push({
+                unidad: '',
+                fact_ventas: '0',
+                cantidad_ventas: '0',
+                total_ventas: '0',
+                fact_compras: '0',
+                cantidad_compras: '0',
+                total_compras: '0',
+                margen: '0',
+                cantidad_notas_credito: '0',
+                total_notas_credito: '0',
+                cantidad_ventas_neta: '0',
+                total_ventas_neto: '0',
+                margen_neto: '0',
+            });
+        }
+
+        return {
+            rows: data,
+            rowCount: data.length,
+        } as ResultQuery;
     }
 
-    return {
-      rows: data,
-      rowCount: data.length,
-    } as ResultQuery;
-  }
-
-  async getProveedoresProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    async getProveedoresProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
         WITH compras_detalladas AS (
             SELECT
                 cf.ide_geper,
@@ -1256,29 +1249,27 @@ export class ProductosService extends BaseService {
         ORDER BY
             cp.total_valor DESC
         `,
-      dtoIn,
-    );
-    query.addIntParam(1, dtoIn.ide_inarti);
-    query.addIntParam(2, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addIntParam(2, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
+    }
 
+    /**
+     * Retorna top 10 mejores clientes en un periodo
+     * @param dtoIn
+     * @returns
+     */
 
-
-  /**
-   * Retorna top 10 mejores clientes en un periodo
-   * @param dtoIn
-   * @returns
-   */
-
-  /**
-   * Retorna el top N clientes de un producto  en un rango de fechas
-   * @param dtoIn 
-   * @returns 
-   */
-  async getTopClientesProducto(dtoIn: TopClientesProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `  
+    /**
+     * Retorna el top N clientes de un producto  en un rango de fechas
+     * @param dtoIn
+     * @returns
+     */
+    async getTopClientesProducto(dtoIn: TopClientesProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `  
           SELECT 
               p.ide_geper,
           p.uuid,
@@ -1337,30 +1328,29 @@ export class ProductosService extends BaseService {
           ORDER BY 
               total_ventas_netas DESC
           LIMIT ${dtoIn.limit || 10} `,
-      dtoIn,
-    );
+            dtoIn,
+        );
 
-    query.addStringParam(1, dtoIn.fechaInicio);
-    query.addStringParam(2, dtoIn.fechaFin);
-    query.addStringParam(3, dtoIn.fechaInicio);
-    query.addStringParam(4, dtoIn.fechaFin);
-    query.addStringParam(5, dtoIn.fechaInicio);
-    query.addStringParam(6, dtoIn.fechaFin);
-    query.addIntParam(7, dtoIn.ide_inarti);
-    query.addIntParam(8, dtoIn.ide_inarti);
-    query.addIntParam(9, dtoIn.ide_inarti);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        query.addStringParam(5, dtoIn.fechaInicio);
+        query.addStringParam(6, dtoIn.fechaFin);
+        query.addIntParam(7, dtoIn.ide_inarti);
+        query.addIntParam(8, dtoIn.ide_inarti);
+        query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
-  }
+        return await this.dataSource.createQuery(query);
+    }
 
-
-  /**
-   * Retorna los clientes que han comprado un producto
-   * @param dtoIn
-   * @returns
-   */
-  async getClientesProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-    const sql = `            
+    /**
+     * Retorna los clientes que han comprado un producto
+     * @param dtoIn
+     * @returns
+     */
+    async getClientesProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+        const sql = `            
         WITH
         datos_cliente AS (
             SELECT
@@ -1570,15 +1560,14 @@ export class ProductosService extends BaseService {
             cu.fecha_ultima_compra DESC
             `;
 
-    const query = new SelectQuery(sql, dtoIn);
-    query.addIntParam(1, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
+        const query = new SelectQuery(sql, dtoIn);
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
+    }
 
-
-  async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(
-      `
+    async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
       WITH compras AS (
           SELECT
               cci.fecha_trans_incci AS fecha,
@@ -1629,70 +1618,68 @@ export class ProductosService extends BaseService {
       ORDER BY
           fecha
       `,
-      dtoIn,
-    );
+            dtoIn,
+        );
 
-    query.addIntParam(1, dtoIn.ide_inarti);
-    const res = await this.dataSource.createSelectQuery(query);
-    let charts = [];
+        query.addIntParam(1, dtoIn.ide_inarti);
+        const res = await this.dataSource.createSelectQuery(query);
+        let charts = [];
 
-    if (res) {
-      // Obtener el total (precio del último registro)
-      const total = res[res.length - 1]?.precio || 0;
+        if (res) {
+            // Obtener el total (precio del último registro)
+            const total = res[res.length - 1]?.precio || 0;
 
-      // Obtener el percent (porcentaje_variacion del último registro)
-      const percent = res[res.length - 1]?.porcentaje_variacion || 0;
+            // Obtener el percent (porcentaje_variacion del último registro)
+            const percent = res[res.length - 1]?.porcentaje_variacion || 0;
 
-      // Formatear las fechas para las categorías en el formato 'Ene 2023'
-      const categories = res.map((row) => fShortDate(row.fecha));
+            // Formatear las fechas para las categorías en el formato 'Ene 2023'
+            const categories = res.map((row) => fShortDate(row.fecha));
 
-      // Obtener los precios para la serie
-      const series = [
-        {
-          data: res.map((row) => row.precio),
-        },
-      ];
+            // Obtener los precios para la serie
+            const series = [
+                {
+                    data: res.map((row) => row.precio),
+                },
+            ];
 
-      charts = [
-        {
-          total,
-          percent,
-          categories,
-          series,
-        },
-      ];
+            charts = [
+                {
+                    total,
+                    percent,
+                    categories,
+                    series,
+                },
+            ];
+        }
+
+        return {
+            rowCount: charts.length,
+            charts,
+            message: 'ok',
+        } as ResultQuery;
     }
 
-    return {
-      rowCount: charts.length,
-      charts,
-      message: 'ok',
-    } as ResultQuery;
-  }
+    /**
+     * Retrona la actividades/log registradas sobre un producto
+     * @param dtoIn
+     * @returns
+     */
+    async getActividades(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
+    }
 
+    // =====================================================================
 
-
-  /**
-   * Retrona la actividades/log registradas sobre un producto
-   * @param dtoIn
-   * @returns
-   */
-  async getActividades(dtoIn: IdProductoDto & HeaderParamsDto) {
-    const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
-
-  // =====================================================================
-
-  /**
-   * Retorna saldo inicial de un producto a una determinada fecha de corte
-   * @param ide_inarti
-   * @param fechaCorte
-   * @returns
-   */
-  async getStock(ide_inarti: number, fechaCorte?: Date): Promise<SaldoProducto> {
-    const fecha = fechaCorte ? fechaCorte : new Date();
-    const querySaldoInicial = new SelectQuery(`     
+    /**
+     * Retorna saldo inicial de un producto a una determinada fecha de corte
+     * @param ide_inarti
+     * @param fechaCorte
+     * @returns
+     */
+    async getStock(ide_inarti: number, fechaCorte?: Date): Promise<SaldoProducto> {
+        const fecha = fechaCorte ? fechaCorte : new Date();
+        const querySaldoInicial = new SelectQuery(`     
         SELECT 
             iart.ide_inarti,
             nombre_inarti,
@@ -1714,126 +1701,146 @@ export class ProductosService extends BaseService {
         GROUP BY   
             iart.ide_inarti,nombre_inarti,siglas_inuni,decim_stock_inarti `);
 
-    querySaldoInicial.addIntParam(1, ide_inarti);
-    querySaldoInicial.addParam(2, fecha);
+        querySaldoInicial.addIntParam(1, ide_inarti);
+        querySaldoInicial.addParam(2, fecha);
 
-    return (await this.dataSource.createSingleQuery(querySaldoInicial)) as SaldoProducto;
-  }
+        return (await this.dataSource.createSingleQuery(querySaldoInicial)) as SaldoProducto;
+    }
 
-  /**
-   * Retorna el total de clientes de un producto
-   * @param ide_inarti
-   * @returns
-   */
-  async getTotalClientesProducto(ide_inarti: number): Promise<number> {
-    let totalClientes = 0;
+    /**
+     * Retorna el total de clientes de un producto
+     * @param ide_inarti
+     * @returns
+     */
+    async getTotalClientesProducto(ide_inarti: number): Promise<number> {
+        let totalClientes = 0;
 
-    const query = new SelectQuery(`     
+        const query = new SelectQuery(`     
         SELECT COUNT(DISTINCT cf.ide_geper) AS total_clientes
         FROM cxc_cabece_factura cf
         INNER JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa
         WHERE cdf.ide_inarti = $1
         AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
             `);
-    query.addIntParam(1, ide_inarti);
-    const data = await this.dataSource.createSingleQuery(query);
-    if (data) {
-      totalClientes = Number(data.total_clientes);
+        query.addIntParam(1, ide_inarti);
+        const data = await this.dataSource.createSingleQuery(query);
+        if (data) {
+            totalClientes = Number(data.total_clientes);
+        }
+        return totalClientes;
     }
-    return totalClientes;
-  }
 
-  async getUltimaVentaCompra(ide_inarti: number, decim_stock_inarti: number = 3) {
-    const query = new SelectQuery(`
+    async getUltimaVentaCompra(ide_inarti: number, decim_stock_inarti: number = 3) {
+        const query = new SelectQuery(`
+    WITH ventas AS (
         SELECT
-            -- Datos de ventas
+            cdf.ide_inarti,
             COUNT(DISTINCT cf.ide_cccfa) AS total_facturas,
             f_decimales(MAX(cdf.cantidad_ccdfa), ${decim_stock_inarti})::numeric AS max_cantidad_venta,
             f_decimales(MIN(cdf.cantidad_ccdfa), ${decim_stock_inarti})::numeric AS min_cantidad_venta,
             MIN(cf.fecha_emisi_cccfa) AS primera_fecha_venta,
-            MAX(cf.fecha_emisi_cccfa) AS ultima_fecha_venta,
-            -- Datos de compras
-            f_decimales(MAX(cdp.cantidad_cpdfa), ${decim_stock_inarti})::numeric AS max_cantidad_compra,
-            f_decimales(MIN(cdp.cantidad_cpdfa), ${decim_stock_inarti})::numeric AS min_cantidad_compra
+            MAX(cf.fecha_emisi_cccfa) AS ultima_fecha_venta
         FROM
             cxc_deta_factura cdf
             INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
-            LEFT JOIN cxp_detall_factur cdp ON cdp.ide_inarti = cdf.ide_inarti
-            LEFT JOIN cxp_cabece_factur cp ON cp.ide_cpcfa = cdp.ide_cpcfa
         WHERE
             cdf.ide_inarti = $1
             AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-            AND (cp.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')} OR cp.ide_cpefa IS NULL)
-        GROUP BY
-            cdf.ide_inarti
-        `);
-    query.addIntParam(1, ide_inarti);
-    return await this.dataSource.createSingleQuery(query);
-  }
-
-
-
-
-
-  /**
-   * Guarda una producto nueva o actualiza uno existente
-   */
-  async saveProducto(dtoIn: SaveProductoDto & HeaderParamsDto) {
-    const module = 'inv';
-    const tableName = 'articulo';
-    const primaryKey = 'ide_inarti';
-    if (dtoIn.isUpdate === true) {
-      // Actualiza
-      const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);
-      if (isValid) {
-        const ide_inarti = dtoIn.data.ide_inarti;
-        // delete dtoIn.data.ide_inarti;
-        // delete dtoIn.data.uuid;
-        const objQuery = {
-          operation: 'update',
-          module,
-          tableName,
-          primaryKey,
-          object: dtoIn.data,
-          condition: `ide_inarti = ${ide_inarti}`,
-        } as ObjectQueryDto;
-        return await this.core.save({
-          ...dtoIn,
-          listQuery: [objQuery],
-          audit: false,
-        });
-      }
-    } else {
-      // Inserta
-      const isValid = await this.validateCreateProducto(dtoIn.data, dtoIn.ideEmpr);
-      if (isValid === true) {
-        const objQuery = {
-          operation: 'insert',
-          module,
-          tableName,
-          primaryKey,
-          object: dtoIn.data,
-        } as ObjectQueryDto;
-        return await this.core.save({
-          ...dtoIn,
-          listQuery: [objQuery],
-          audit: true,
-        });
-      }
-    }
-  }
-
-  private async validateCreateProducto(data: InvArticulo, ideEmpr: number) {
-    const colReq = ['ide_inarti', 'nombre_inarti', 'nivel_inarti', 'activo_inarti', 'ide_incate', 'ide_intpr'];
-
-    const resColReq = validateDataRequiere(data, colReq);
-
-    if (resColReq.length > 0) {
-      throw new BadRequestException(resColReq);
+        GROUP BY cdf.ide_inarti
+    ),
+    compras AS (
+        SELECT
+            dci.ide_inarti,
+            f_decimales(MAX(dci.cantidad_indci), ${decim_stock_inarti})::numeric AS max_cantidad_compra,
+            f_decimales(MIN(dci.cantidad_indci), ${decim_stock_inarti})::numeric AS min_cantidad_compra
+        FROM
+            inv_det_comp_inve dci
+            INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE
+            dci.ide_inarti = $2
+            AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+            AND tci.signo_intci = 1   -- Solo comprobantes de ingreso (compras)
+            AND cci.ide_intti IN (19, 16, 3025) -- Solo facturas de compra, importaciones
+        GROUP BY dci.ide_inarti
+    )
+    SELECT
+        COALESCE(v.total_facturas, 0) AS total_facturas,
+        COALESCE(v.max_cantidad_venta, 0) AS max_cantidad_venta,
+        COALESCE(v.min_cantidad_venta, 0) AS min_cantidad_venta,
+        v.primera_fecha_venta,
+        v.ultima_fecha_venta,
+        COALESCE(c.max_cantidad_compra, 0) AS max_cantidad_compra,
+        COALESCE(c.min_cantidad_compra, 0) AS min_cantidad_compra
+    FROM
+        ventas v
+        LEFT JOIN compras c ON c.ide_inarti = v.ide_inarti
+    `);
+        query.addIntParam(1, ide_inarti);
+        query.addIntParam(2, ide_inarti);
+        return await this.dataSource.createSingleQuery(query);
     }
 
-    // validar que el nombre del producto no exista
-    const queryClie = new SelectQuery(`
+    /**
+     * Guarda una producto nueva o actualiza uno existente
+     */
+    async saveProducto(dtoIn: SaveProductoDto & HeaderParamsDto) {
+        const module = 'inv';
+        const tableName = 'articulo';
+        const primaryKey = 'ide_inarti';
+        if (dtoIn.isUpdate === true) {
+            // Actualiza
+            const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid) {
+                const ide_inarti = dtoIn.data.ide_inarti;
+                // delete dtoIn.data.ide_inarti;
+                // delete dtoIn.data.uuid;
+                const objQuery = {
+                    operation: 'update',
+                    module,
+                    tableName,
+                    primaryKey,
+                    object: dtoIn.data,
+                    condition: `ide_inarti = ${ide_inarti}`,
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn,
+                    listQuery: [objQuery],
+                    audit: false,
+                });
+            }
+        } else {
+            // Inserta
+            const isValid = await this.validateCreateProducto(dtoIn.data, dtoIn.ideEmpr);
+            if (isValid === true) {
+                const objQuery = {
+                    operation: 'insert',
+                    module,
+                    tableName,
+                    primaryKey,
+                    object: dtoIn.data,
+                } as ObjectQueryDto;
+                return await this.core.save({
+                    ...dtoIn,
+                    listQuery: [objQuery],
+                    audit: true,
+                });
+            }
+        }
+    }
+
+    private async validateCreateProducto(data: InvArticulo, ideEmpr: number) {
+        const colReq = ['ide_inarti', 'nombre_inarti', 'nivel_inarti', 'activo_inarti', 'ide_incate', 'ide_intpr'];
+
+        const resColReq = validateDataRequiere(data, colReq);
+
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
+
+        // validar que el nombre del producto no exista
+        const queryClie = new SelectQuery(`
         select
             1
         from
@@ -1842,36 +1849,36 @@ export class ProductosService extends BaseService {
             nombre_inarti = $1
         and ide_empr = $2
         `);
-    queryClie.addParam(1, data.nombre_inarti);
-    queryClie.addParam(2, ideEmpr);
-    const resClie = await this.dataSource.createSelectQuery(queryClie);
-    console.log(resClie);
-    if (resClie.length > 0) {
-      throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
+        queryClie.addParam(1, data.nombre_inarti);
+        queryClie.addParam(2, ideEmpr);
+        const resClie = await this.dataSource.createSelectQuery(queryClie);
+        console.log(resClie);
+        if (resClie.length > 0) {
+            throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
+        }
+
+        return true;
     }
 
-    return true;
-  }
+    private async validateUpdateProducto(data: InvArticulo, ideEmpr: number) {
+        const colReq = ['ide_inarti'];
 
-  private async validateUpdateProducto(data: InvArticulo, ideEmpr: number) {
-    const colReq = ['ide_inarti'];
+        const resColReq = validateDataRequiere(data, colReq);
 
-    const resColReq = validateDataRequiere(data, colReq);
+        if (resColReq.length > 0) {
+            throw new BadRequestException(resColReq);
+        }
 
-    if (resColReq.length > 0) {
-      throw new BadRequestException(resColReq);
-    }
+        // Validar que venga al menos un campo además del ID
+        const providedFields = Object.keys(data).filter(
+            (key) => key !== 'ide_inarti' && data[key] !== undefined && data[key] !== null,
+        );
+        if (providedFields.length === 0) {
+            throw new BadRequestException('Debe proporcionar al menos un campo para actualizar además del ID');
+        }
 
-    // Validar que venga al menos un campo además del ID
-    const providedFields = Object.keys(data).filter(
-      (key) => key !== 'ide_inarti' && data[key] !== undefined && data[key] !== null,
-    );
-    if (providedFields.length === 0) {
-      throw new BadRequestException('Debe proporcionar al menos un campo para actualizar además del ID');
-    }
-
-    // validar que el cliente exista
-    const queryClieE = new SelectQuery(`
+        // validar que el cliente exista
+        const queryClieE = new SelectQuery(`
         select
             1
         from
@@ -1880,17 +1887,17 @@ export class ProductosService extends BaseService {
             ide_inarti = $1
         and ide_empr = $2
         `);
-    queryClieE.addParam(1, data.ide_inarti);
-    queryClieE.addParam(2, ideEmpr);
+        queryClieE.addParam(1, data.ide_inarti);
+        queryClieE.addParam(2, ideEmpr);
 
-    const resClieE = await this.dataSource.createSelectQuery(queryClieE);
-    if (resClieE.length === 0) {
-      throw new BadRequestException(`El producto ${data.ide_inarti} no existe`);
-    }
+        const resClieE = await this.dataSource.createSelectQuery(queryClieE);
+        if (resClieE.length === 0) {
+            throw new BadRequestException(`El producto ${data.ide_inarti} no existe`);
+        }
 
-    if (isDefined(data.nombre_inarti)) {
-      // validar que el nombre del producto no exista
-      const queryClie = new SelectQuery(`
+        if (isDefined(data.nombre_inarti)) {
+            // validar que el nombre del producto no exista
+            const queryClie = new SelectQuery(`
             select
                 1
             from
@@ -1900,24 +1907,22 @@ export class ProductosService extends BaseService {
             and ide_empr = $2
             and ide_inarti != $3
             `);
-      queryClie.addParam(1, data.nombre_inarti);
-      queryClie.addParam(2, ideEmpr);
-      queryClie.addParam(3, data.ide_inarti);
-      const resClie = await this.dataSource.createSelectQuery(queryClie);
-      console.log(resClie);
-      if (resClie.length > 0) {
-        throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
-      }
+            queryClie.addParam(1, data.nombre_inarti);
+            queryClie.addParam(2, ideEmpr);
+            queryClie.addParam(3, data.ide_inarti);
+            const resClie = await this.dataSource.createSelectQuery(queryClie);
+            console.log(resClie);
+            if (resClie.length > 0) {
+                throw new BadRequestException(`Otro producto ya existe con el nombre ${data.nombre_inarti}`);
+            }
+        }
+
+        return true;
     }
 
-    return true;
-  }
-
-
-  async getLotesProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
-
-    const query = new SelectQuery(
-      `
+    async getLotesProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
        SELECT 
             a.ide_inlot,
                 a.lote_inlot,
@@ -1954,21 +1959,19 @@ export class ProductosService extends BaseService {
       and a.activo_inlot = true
       order by fecha_ingreso_inlot desc
         `,
-      dtoIn,
-    );
-    query.addParam(1, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
-  }
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.ide_inarti);
+        return await this.dataSource.createQuery(query);
+    }
 
-
-
-  /**
-   * Obtiene el costo de un producto para una fecha específica
-   * @param dtoIn Contiene ide_inarti, fecha y parámetros de empresa/sucursal
-   * @returns El costo del producto en la fecha especificada
-   */
-  async getCostoProducto(dtoIn: GetCostoProductoDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+    /**
+     * Obtiene el costo de un producto para una fecha específica
+     * @param dtoIn Contiene ide_inarti, fecha y parámetros de empresa/sucursal
+     * @returns El costo del producto en la fecha especificada
+     */
+    async getCostoProducto(dtoIn: GetCostoProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
     WITH costos_producto AS (
       -- Costo promedio ponderado hasta la fecha
       SELECT 
@@ -2059,33 +2062,30 @@ export class ProductosService extends BaseService {
     FROM costos_producto
   `);
 
-    query.addParam(1, dtoIn.fecha);
-    query.addParam(2, dtoIn.fecha);
-    query.addParam(3, dtoIn.fecha);
-    query.addParam(4, dtoIn.fecha);
-    query.addParam(5, dtoIn.fecha);
-    query.addParam(6, dtoIn.fecha);
-    query.addParam(7, dtoIn.fecha);
-    query.addIntParam(8, dtoIn.ide_inarti);
-    query.addParam(9, dtoIn.fecha);
+        query.addParam(1, dtoIn.fecha);
+        query.addParam(2, dtoIn.fecha);
+        query.addParam(3, dtoIn.fecha);
+        query.addParam(4, dtoIn.fecha);
+        query.addParam(5, dtoIn.fecha);
+        query.addParam(6, dtoIn.fecha);
+        query.addParam(7, dtoIn.fecha);
+        query.addIntParam(8, dtoIn.ide_inarti);
+        query.addParam(9, dtoIn.fecha);
 
+        const result = await this.dataSource.createQuery(query);
 
-    const result = await this.dataSource.createQuery(query);
+        if (result.rows.length === 0) {
+            return {
+                ide_inarti: dtoIn.ide_inarti,
+                costo_calculado: 0,
+                costo_promedio: null,
+                ultimo_costo: null,
+                ultimo_costo_historico: null,
+                costo_promedio_30dias: null,
+                tipo_costo_usado: 'SIN_COSTO',
+            };
+        }
 
-    if (result.rows.length === 0) {
-      return {
-        ide_inarti: dtoIn.ide_inarti,
-        costo_calculado: 0,
-        costo_promedio: null,
-        ultimo_costo: null,
-        ultimo_costo_historico: null,
-        costo_promedio_30dias: null,
-        tipo_costo_usado: 'SIN_COSTO'
-      };
+        return result.rows[0];
     }
-
-    return result.rows[0];
-  }
-
-
 }

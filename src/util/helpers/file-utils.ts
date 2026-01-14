@@ -1,7 +1,8 @@
-import { BadRequestException } from "@nestjs/common";
-import { existsSync } from "fs";
-import { join } from "path";
-import { FILE_STORAGE_CONSTANTS } from "src/core/modules/sistema/files/file-temp.service";
+import { existsSync } from 'fs';
+import { join } from 'path';
+
+import { BadRequestException } from '@nestjs/common';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/file-temp.service';
 
 export function detectMimeType(filename?: string): string | undefined {
   if (!filename) return undefined;
@@ -58,7 +59,6 @@ export function generateFilename(type?: string): string {
   const ext = (type && extensions[type]) || 'bin';
   return `file-${Date.now()}.${ext}`;
 }
-
 
 /**
  * Retorna el path de una imagen que se subio mediante el files.service

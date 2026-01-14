@@ -28,4 +28,4 @@ import { ProductosService } from './productos/productos.service';
     InventarioProductoBiService,
   ],
 })
-export class InventarioModule { }
+export class InventarioModule {}

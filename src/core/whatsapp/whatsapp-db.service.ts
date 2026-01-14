@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
@@ -21,13 +15,12 @@ import { ListaChatDto } from './api/dto/lista-chat.dto';
 import { CacheConfig, WhatsAppConfig } from './api/interface/whatsapp';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
+import { GetChatsDto } from './dto/get-chats.dto';
+import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
+import { GetMensajesDto } from './dto/get-mensajes.dto';
+import { SearchChatDto } from './dto/search-chat.dto';
 import { getStatusMessage } from './web/helper/util';
 import { WhatsappGateway } from './whatsapp.gateway';
-
-import { GetChatsDto } from './dto/get-chats.dto';
-import { SearchChatDto } from './dto/search-chat.dto';
-import { GetMensajesDto } from './dto/get-mensajes.dto';
-import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 
 @Injectable()
 export class WhatsappDbService {
@@ -36,7 +29,7 @@ export class WhatsappDbService {
   constructor(
     public readonly dataSource: DataSourceService,
     private readonly whatsappGateway: WhatsappGateway,
-  ) { }
+  ) {}
 
   /**
    * Retorna la cuanta de whatsapp configurada para la empresa
@@ -658,17 +651,17 @@ export class WhatsappDbService {
 
       const mediaInfo = msg.hasMedia
         ? {
-          deprecatedMms3Url: data?.deprecatedMms3Url,
-          mimetype: data?.mimetype,
-          filename: originalName || data?.filename,
-          size: data?.size,
-          mediaKey: data?.mediaKey,
-          // mediaKeyTimestamp: data?.mediaKeyTimestamp,
-          width: data?.width,
-          height: data?.height,
-          isViewOnce: data?.isViewOnce,
-          caption: data?.caption,
-        }
+            deprecatedMms3Url: data?.deprecatedMms3Url,
+            mimetype: data?.mimetype,
+            filename: originalName || data?.filename,
+            size: data?.size,
+            mediaKey: data?.mediaKey,
+            // mediaKeyTimestamp: data?.mediaKeyTimestamp,
+            width: data?.width,
+            height: data?.height,
+            isViewOnce: data?.isViewOnce,
+            caption: data?.caption,
+          }
         : null;
 
       // Guarda mensaje

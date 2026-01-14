@@ -15,34 +15,35 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-
-import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
-import { ListContactDto } from './api/dto/list-contact.dto';
-import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
-import { GetChatsDto } from './dto/get-chats.dto';
 import { ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
-import { EnviarUbicacionDto } from './web/dto/send-location.dto';
-import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
-import { WhatsappCampaniaService } from './whatsapp-camp.service';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { TelefonoWebDto } from './web/dto/telefono-web.dto';
-import { ContactIdWebDto } from './web/dto/contact-id-web.dto';
-import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
-import { SaveCampaniaDto } from './dto/save-campania.dto';
-import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/file-temp.service';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+
+import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/file-temp.service';
+
+import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
+import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
+import { ListContactDto } from './api/dto/list-contact.dto';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
 import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
+import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
+import { GetChatsDto } from './dto/get-chats.dto';
+import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
+import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
+import { ContactIdWebDto } from './web/dto/contact-id-web.dto';
+import { EnviarUbicacionDto } from './web/dto/send-location.dto';
+import { TelefonoWebDto } from './web/dto/telefono-web.dto';
+import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
 

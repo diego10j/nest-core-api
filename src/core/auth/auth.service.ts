@@ -6,19 +6,18 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { QueryOptionsDto } from '../../common/dto/query-options.dto';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
-import { getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
+import { getCurrentDateTime, getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
 import { f_to_title_case } from '../../util/helpers/string-util';
 import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery, UpdateQuery } from '../connection/helpers';
 import { AuditService } from '../modules/audit/audit.service';
-
 import { EventAudit } from '../modules/audit/enum/event-audit';
-import { LoginUserDto } from './dto/login-user.dto';
 
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { HorarioLoginDto } from './dto/horario-login.dto';
+import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
 import { JwtPayload } from './interfaces';
-
-import { HorarioLoginDto } from './dto/horario-login.dto';
 
 @Injectable()
 export class AuthService {
@@ -33,7 +32,7 @@ export class AuthService {
   async login(loginUserDto: LoginUserDto, ip: string) {
     const { password, email } = loginUserDto;
     const queryUser = new SelectQuery(
-      'SELECT ide_usua,uuid FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true',
+      'SELECT ide_usua,uuid,cambia_clave_usua FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true',
     );
     queryUser.addStringParam(1, email);
     const dataUser = await this.dataSource.createSingleQuery(queryUser);
@@ -70,9 +69,7 @@ export class AuthService {
     if (dataPerf.length === 0) {
       throw new UnauthorizedException('El usuario no tiene perfiles asignados');
     }
-    const roles = dataPerf
-      .map(perf => perf.ide_perf?.toString())
-      .filter(id => id != null);
+    const roles = dataPerf.map((perf) => perf.ide_perf?.toString()).filter((id) => id != null);
     // sucursales
     const dataSucu = await this.getSucursalesUsuario(dataUser.ide_usua);
     if (dataSucu.length === 0) {
@@ -113,9 +110,10 @@ export class AuthService {
         zipCode: '94116',
         about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
         // role: 'admin',
-        isPublic: true,
+        isPublic: dataUser.cambia_clave_usua,
         lastAccess: dataPass.fecha_auac,
         ip,
+        requireChange: dataUser.cambia_clave_usua,
         perfiles: dataPerf,
         sucursales: dataSucu,
         empresas: [
@@ -126,7 +124,7 @@ export class AuthService {
             identificacion_empr: dataPass.identificacion_empr,
           },
         ],
-        roles
+        roles,
       },
     };
   }
@@ -199,7 +197,7 @@ export class AuthService {
       const rootItems: any[] = [];
 
       // Paso 1: Crear todos los items en el mapa
-      menuData.forEach(item => {
+      menuData.forEach((item) => {
         const perfilesArray = [`${dtoIn.ide_perf}`];
         const menuItem = {
           ide_opci: item.ide_opci,
@@ -208,13 +206,13 @@ export class AuthService {
           icon: item.icono_opci || null,
           parentId: item.sis_ide_opci,
           roles: perfilesArray, // Usamos los perfiles obtenidos
-          children: []
+          children: [],
         };
         itemMap.set(item.ide_opci, menuItem);
       });
 
       // Paso 2: Construir jerarquía
-      itemMap.forEach(item => {
+      itemMap.forEach((item) => {
         if (item.parentId === null) {
           rootItems.push(item);
         } else {
@@ -229,27 +227,26 @@ export class AuthService {
       const sections = [];
 
       // Buscar sección General
-      const generalSection = rootItems.find(item => item.title === 'General');
+      const generalSection = rootItems.find((item) => item.title === 'General');
       if (generalSection && generalSection.children.length > 0) {
         sections.push({
           subheader: 'General',
-          items: generalSection.children.map(child => ({
+          items: generalSection.children.map((child) => ({
             title: child.title,
             path: child.path,
             icon: child.icon,
             // ide_opci: child.ide_opci,
             // allowedRoles: child.roles // Incluimos roles
-
-          }))
+          })),
         });
       }
 
       // Buscar sección Módulos
-      const modulosSection = rootItems.find(item => item.title === 'Módulos');
+      const modulosSection = rootItems.find((item) => item.title === 'Módulos');
       if (modulosSection && modulosSection.children.length > 0) {
         sections.push({
           subheader: 'Módulos',
-          items: modulosSection.children.map(module => {
+          items: modulosSection.children.map((module) => {
             const resultItem: any = {
               title: module.title,
               path: module.path,
@@ -261,13 +258,12 @@ export class AuthService {
             // Procesar hijos recursivamente
             if (module.children.length > 0) {
               const processChildren = (children: any[]): any[] => {
-                return children.map(child => {
+                return children.map((child) => {
                   const childItem: any = {
                     title: child.title,
                     path: child.path,
                     // ide_opci: child.ide_opci,
                     // allowedRoles: child.roles // Incluimos roles
-
                   };
 
                   if (child.children.length > 0) {
@@ -282,7 +278,7 @@ export class AuthService {
             }
 
             return resultItem;
-          })
+          }),
         });
       }
 
@@ -291,8 +287,6 @@ export class AuthService {
 
     return buildHierarchicalMenu();
   }
-
-
 
   async checkAuthStatus(user: any) {
     return {
@@ -324,6 +318,65 @@ export class AuthService {
     );
     return {
       message: 'ok',
+    };
+  }
+
+  /**
+   * Cambia la contraseña del usuario
+   * @param changePasswordDto
+   */
+  async changePassword(changePasswordDto: ChangePasswordDto) {
+    const { ide_usua, currentPassword, newPassword } = changePasswordDto;
+
+    // Obtener el usuario y su contraseña actual
+    const queryUser = new SelectQuery(
+      'SELECT uuid FROM sis_usuario WHERE ide_usua = $1 AND activo_usua = true',
+    );
+    queryUser.addNumberParam(1, ide_usua);
+    const dataUser = await this.dataSource.createSingleQuery(queryUser);
+
+    if (!dataUser) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    // Obtener la contraseña almacenada
+    const dataPass = await this.getPwUsuario(dataUser.uuid);
+    if (!dataPass) {
+      throw new UnauthorizedException('No se pudo verificar la contraseña actual');
+    }
+
+    // Verificar que la contraseña actual sea correcta
+    if (!bcrypt.compareSync(currentPassword, dataPass.password_uscl)) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta');
+    }
+
+    // Verificar que la nueva contraseña no sea igual a la actual
+    if (currentPassword === newPassword) {
+      throw new UnauthorizedException('La nueva contraseña debe ser diferente a la actual');
+    }
+
+    // Encriptar la nueva contraseña
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+
+    // Actualizar la contraseña en la base de datos
+    const updateQuery = new UpdateQuery('sis_usuario_clave', 'ide_uscl');
+    updateQuery.values.set('password_uscl', hashedPassword);
+    updateQuery.values.set('fecha_vence_uscl', null); // Resetear fecha de vencimiento si aplica
+    updateQuery.values.set('hora_actua', getCurrentDateTime());
+    updateQuery.where = 'ide_usua = $1 AND activo_uscl = true';
+    updateQuery.addNumberParam(1, ide_usua);
+    await this.dataSource.createQuery(updateQuery);
+
+    // Actualizar flag de cambio de contraseña si estaba activo
+    const updateUserQuery = new UpdateQuery('sis_usuario', 'ide_usua');
+    updateUserQuery.values.set('cambia_clave_usua', false);
+    updateQuery.values.set('hora_actua', getCurrentDateTime());
+    updateUserQuery.where = 'ide_usua = $1';
+    updateUserQuery.addNumberParam(1, ide_usua);
+    await this.dataSource.createQuery(updateUserQuery);
+
+    return {
+      message: 'Contraseña actualizada correctamente',
     };
   }
 
@@ -424,6 +477,4 @@ export class AuthService {
     const token = this.jwtService.sign(payload);
     return token;
   }
-
-
 }

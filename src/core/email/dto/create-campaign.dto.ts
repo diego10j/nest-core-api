@@ -1,28 +1,28 @@
-import { IsNotEmpty, IsOptional, IsString, IsArray, IsDate } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
 
 export class CreateCampaignDto {
-    @IsNotEmpty()
-    @IsString()
-    nombre: string;
+  @IsNotEmpty()
+  @IsString()
+  nombre: string;
 
-    @IsNotEmpty()
-    @IsString()
-    asunto: string;
+  @IsNotEmpty()
+  @IsString()
+  asunto: string;
 
-    @IsNotEmpty()
-    @IsString()
-    contenido: string;
+  @IsNotEmpty()
+  @IsString()
+  contenido: string;
 
-    @IsNotEmpty()
-    @IsArray()
-    destinatarios: Array<{
-        email: string;
-        variables?: Record<string, any>;
-    }>;
+  @IsNotEmpty()
+  @IsArray()
+  destinatarios: Array<{
+    email: string;
+    variables?: Record<string, any>;
+  }>;
 
-    @IsOptional()
-    programacion?: Date;
+  @IsOptional()
+  programacion?: Date;
 
-    @IsOptional()
-    ide_corr?: number;
+  @IsOptional()
+  ide_corr?: number;
 }

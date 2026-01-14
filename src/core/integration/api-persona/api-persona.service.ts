@@ -1,12 +1,10 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { AxiosRequestConfig } from 'axios';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-
-import { BaseService } from '../../../common/base-service';
-
 import { RucDto } from 'src/core/modules/sistema/admin/dto/ruc.dto';
 import { CedulaDto } from 'src/core/modules/sistema/general/dto/cedula.dto';
+
+import { BaseService } from '../../../common/base-service';
 
 @Injectable()
 export class ApiPersonaService extends BaseService {

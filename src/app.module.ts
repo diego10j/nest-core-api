@@ -7,12 +7,11 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AuthModule } from './core/auth/auth.module';
 import { DataSourceModule } from './core/connection/datasource.module';
 import { CoreModule } from './core/core.module';
+import { MailModule } from './core/email/mail.module';
 import { WhatsappModule } from './core/whatsapp/whatsapp.module';
 import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
-
 import { ReportsModule } from './reports/reports.module';
-import { MailModule } from './core/email/mail.module';
 
 @Module({
   imports: [
@@ -30,4 +29,4 @@ import { MailModule } from './core/email/mail.module';
     MailModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}

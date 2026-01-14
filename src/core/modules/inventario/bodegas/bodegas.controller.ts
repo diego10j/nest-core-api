@@ -25,7 +25,7 @@ import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
-  constructor(private readonly service: BodegasService) { }
+  constructor(private readonly service: BodegasService) {}
 
   @Get('getBodegas')
   // @Auth()
@@ -90,7 +90,6 @@ export class BodegasController {
     });
   }
 
-
   @Post('generarConteoInventario')
   // @Auth()
   generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConteoInvDto) {
@@ -118,8 +117,6 @@ export class BodegasController {
     });
   }
 
-
-
   @Post('eliminarProductosConteo')
   // @Auth()
   eliminarProductosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
@@ -137,7 +134,6 @@ export class BodegasController {
       ...dtoIn,
     });
   }
-
 
   @Post('validarDetallesConteo')
   // @Auth()
@@ -184,7 +180,6 @@ export class BodegasController {
     });
   }
 
-
   @Get('getConteosInventario')
   // @Auth()
   getConteosInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
@@ -193,7 +188,6 @@ export class BodegasController {
       ...dtoIn,
     });
   }
-
 
   @Get('getDetalleConteo')
   // @Auth()
@@ -204,7 +198,6 @@ export class BodegasController {
     });
   }
 
-
   @Get('getListDataEstadosConteo')
   // @Auth()
   getListDataEstadosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
@@ -213,7 +206,6 @@ export class BodegasController {
       ...dtoIn,
     });
   }
-
 
   @Get('buscarDetalleConteo')
   // @Auth()
@@ -233,7 +225,6 @@ export class BodegasController {
     });
   }
 
-
   @Get('getUltimaFechaConteoProducto')
   // @Auth()
   getUltimaFechaConteoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
@@ -242,7 +233,4 @@ export class BodegasController {
       ...dtoIn,
     });
   }
-
-
-
 }

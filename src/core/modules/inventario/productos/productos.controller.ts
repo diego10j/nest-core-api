@@ -1,15 +1,10 @@
 import { Query, Controller, Get, Body, Post, Delete } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-
-// import { Auth } from '../../../core/auth/decorators';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
-import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
-import { IdeDto } from 'src/common/dto/ide.dto';
-import { GetSaldoProductoDto } from './dto/get-saldo.dto';
-import { SearchDto } from 'src/common/dto/search.dto';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { IdeDto } from 'src/common/dto/ide.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
@@ -18,17 +13,20 @@ import { ConfigPreciosProductosService } from './config-precios.service';
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
+import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
+import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
+import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
+import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { SaveProductoDto } from './dto/save-producto.dto';
+import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
-import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
-import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
@@ -182,7 +180,6 @@ export class ProductosController {
     });
   }
 
-
   @Get('getSumatoriaTrnPeriodo')
   // @Auth()
   getSumatoriaTrnPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
@@ -200,8 +197,6 @@ export class ProductosController {
       ...dtoIn,
     });
   }
-
-
 
   @Get('getClientes')
   // @Auth()
@@ -221,7 +216,6 @@ export class ProductosController {
     });
   }
 
-
   @Get('chartVariacionPreciosCompras')
   // @Auth()
   charVariacionPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
@@ -231,8 +225,6 @@ export class ProductosController {
     });
   }
 
-
-
   @Get('getActividades')
   // @Auth()
   getActividades(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
@@ -241,7 +233,6 @@ export class ProductosController {
       ...dtoIn,
     });
   }
-
 
   @Post('saveProducto')
   // @Auth()
@@ -314,8 +305,6 @@ export class ProductosController {
     });
   }
 
-
-
   @Get('getCostoProducto')
   // @Auth()
   getCostoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCostoProductoDto) {
@@ -333,5 +322,4 @@ export class ProductosController {
       ...dtoIn,
     });
   }
-
 }

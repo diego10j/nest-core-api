@@ -9,29 +9,22 @@ import { FileTempService } from 'src/core/modules/sistema/files/file-temp.servic
 import { isDefined } from 'src/util/helpers/common-util';
 
 import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../../connection/helpers';
-import { GetMensajesDto } from '../dto/get-mensajes.dto';
-
-import { WhatsappGateway } from '../whatsapp.gateway';
-import { MensajeChatDto } from './dto/mensaje-chat.dto';
-
 import { EnviarMensajeDto } from '../dto/enviar-mensaje.dto';
-
-import { ListaChatDto } from './dto/lista-chat.dto';
-
+import { GetChatsDto } from '../dto/get-chats.dto';
+import { GetMensajesDto } from '../dto/get-mensajes.dto';
 import { SearchChatDto } from '../dto/search-chat.dto';
-
-import { CacheConfig, MediaFile, WhatsAppConfig } from './interface/whatsapp';
-
 import { UploadMediaDto } from '../dto/upload-media.dto';
+import { getFileExtension } from '../web/helper/util';
+import { WhatsappDbService } from '../whatsapp-db.service';
+import { WhatsappGateway } from '../whatsapp.gateway';
 
+import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
 import { ListContactDto } from './dto/list-contact.dto';
-import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
-
-import { GetChatsDto } from '../dto/get-chats.dto';
-import { WhatsappDbService } from '../whatsapp-db.service';
-import { getFileExtension } from '../web/helper/util';
+import { ListaChatDto } from './dto/lista-chat.dto';
+import { MensajeChatDto } from './dto/mensaje-chat.dto';
+import { CacheConfig, MediaFile, WhatsAppConfig } from './interface/whatsapp';
 
 @Injectable()
 export class WhatsappApiService {

@@ -1,8 +1,9 @@
 import { Content } from 'pdfmake/interfaces';
-import { fDate } from 'src/util/helpers/date-util';
-import { HeaderOptions } from '../interfaces/reportes';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { fDate } from 'src/util/helpers/date-util';
 import { getStaticImage } from 'src/util/helpers/file-utils';
+
+import { HeaderOptions } from '../interfaces/reportes';
 
 // Constantes de diseño
 const DEFAULT_MARGIN: [number, number, number, number] = [0, 0, 0, 15];

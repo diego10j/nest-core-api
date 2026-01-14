@@ -1,9 +1,9 @@
 import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { footerSection } from 'src/reports/common/sections/footer.section';
-import { fCurrency } from 'src/util/helpers/common-util';
-import { fDate, fTime } from 'src/util/helpers/date-util';
-import { ComprobanteInvRep } from './interfaces/comprobante-inv-rep';
 import { SVG_Icons } from 'src/reports/common/icons/svg-icons';
+import { footerSection } from 'src/reports/common/sections/footer.section';
+import { fDate, fTime } from 'src/util/helpers/date-util';
+
+import { ComprobanteInvRep } from './interfaces/comprobante-inv-rep';
 
 // Definición de estilos
 const styles: StyleDictionary = {

@@ -61,8 +61,8 @@ export class FacturaService extends BaseService {
 
       let xml = '';
       xml = `
-            <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-            <factura id=\"comprobante\" version=\"1.1.0\">
+            <?xml version="1.0" encoding="UTF-8"?>\n")
+            <factura id="comprobante" version="1.1.0">
                <infoTributaria>
                    <ambiente>${emisor.ambiente}</ambiente>
                    <tipoEmision>${comprobante.tipoemision}</tipoEmision>

@@ -10,44 +10,43 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 import { FacturasDto } from './dto/facturas.dto';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 
-
 @Injectable()
 export class FacturasService extends BaseService {
-    constructor(
-        private readonly dataSource: DataSourceService,
-        private readonly core: CoreService,
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core
-            .getVariables([
-                'p_cxc_estado_factura_normal', // 0
-                'p_con_tipo_documento_factura', // 3
-            ])
-            .then((result) => {
-                this.variables = result;
-            });
-    }
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_cxc_estado_factura_normal', // 0
+        'p_con_tipo_documento_factura', // 3
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
-    async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto & HeaderParamsDto) {
-        const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
-        const condition = `ide_empr = ${dto.ideEmpr} 
+  async getTableQueryPuntosEmisionFacturas(dto: PuntosEmisionFacturasDto & HeaderParamsDto) {
+    const condSucu = dto.filterSucu === true ? `and ide_sucu =  ${dto.ideSucu}` : '';
+    const condition = `ide_empr = ${dto.ideEmpr} 
                            AND ide_cntdoc = ${this.variables.get('p_con_tipo_documento_factura')} 
                            ${condSucu}`;
-        const dtoIn = {
-            ...dto,
-            module: 'cxc',
-            tableName: 'datos_fac',
-            primaryKey: 'ide_ccdaf',
-            orderBy: { column: 'establecimiento_ccdfa' },
-            condition,
-        };
-        return this.core.getTableQuery(dtoIn);
-    }
+    const dtoIn = {
+      ...dto,
+      module: 'cxc',
+      tableName: 'datos_fac',
+      primaryKey: 'ide_ccdaf',
+      orderBy: { column: 'establecimiento_ccdfa' },
+      condition,
+    };
+    return this.core.getTableQuery(dtoIn);
+  }
 
-    async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto & HeaderParamsDto) {
-        const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';
-        const query = new SelectQuery(`     
+  async getPuntosEmisionFacturas(dtoIn: PuntosEmisionFacturasDto & HeaderParamsDto) {
+    const condSucu = dtoIn.filterSucu === true ? `and a.ide_sucu =  ${dtoIn.ideSucu}` : '';
+    const query = new SelectQuery(`     
         select
             ide_ccdaf,
             --serie_ccdaf,
@@ -65,24 +64,23 @@ export class FacturasService extends BaseService {
             ${condSucu}
             and a.ide_empr =  ${dtoIn.ideEmpr}
         `);
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
+  async getFacturasAnuladas(dtoIn: FacturasDto & HeaderParamsDto) {
+    dtoIn.ide_ccefa = 1;
+    return this.getFacturas(dtoIn);
+  }
 
-    async getFacturasAnuladas(dtoIn: FacturasDto & HeaderParamsDto) {
-        dtoIn.ide_ccefa = 1;
-        return this.getFacturas(dtoIn);
-    }
+  async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
+    const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
+    const condEstadoFact = dtoIn.ide_ccefa
+      ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
+      : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
+    const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
-    async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
-        const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoFact = dtoIn.ide_ccefa
-            ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
-            : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
-        const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
-
-        const query = new SelectQuery(
-            `     
+    const query = new SelectQuery(
+      `     
         select
             a.ide_cccfa,
             a.ide_ccdaf,
@@ -132,23 +130,22 @@ export class FacturasService extends BaseService {
             secuencial_cccfa desc,
             ide_cccfa desc
         `,
-            dtoIn,
-        );
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
+  async getFacturasConNotasCredito(dtoIn: FacturasDto & HeaderParamsDto) {
+    const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
+    const condEstadoFact = dtoIn.ide_ccefa
+      ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
+      : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
+    const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
-    async getFacturasConNotasCredito(dtoIn: FacturasDto & HeaderParamsDto) {
-        const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoFact = dtoIn.ide_ccefa
-            ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
-            : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
-        const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
-
-        const query = new SelectQuery(
-            `     
+    const query = new SelectQuery(
+      `     
             SELECT 
                 a.ide_cccfa,
                 a.ide_ccdaf,
@@ -229,15 +226,15 @@ export class FacturasService extends BaseService {
                 total_notas_credito DESC,
                 secuencial_cccfa DESC
             `,
-            dtoIn,
-        );
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
-        const query = new SelectQuery(`  
+  async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
+    const query = new SelectQuery(`  
         SELECT 
             COUNT(a.ide_srcom) AS contador, 
             b.nombre_sresc, 
@@ -259,17 +256,14 @@ export class FacturasService extends BaseService {
             b.icono_sresc,
             b.color_sresc
       `);
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createSelectQuery(query);
-    }
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    return await this.dataSource.createSelectQuery(query);
+  }
 
-
-
-
-    async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
     SELECT 
         uv.ide_ccdfa,
         uv.ide_inarti,
@@ -291,17 +285,17 @@ export class FacturasService extends BaseService {
         uv.fecha_ultima_compra
     FROM f_utilidad_ventas($1,$2,$3) uv
         `,
-            dtoIn,
-        );
-        query.addParam(1, dtoIn.ideEmpr);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ideEmpr);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addParam(3, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getFacturasPorCobrar(dtoIn: FacturasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  async getFacturasPorCobrar(dtoIn: FacturasDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
             WITH facturas_base AS (
                 SELECT 
                     cf.ide_cccfa,
@@ -469,18 +463,15 @@ export class FacturasService extends BaseService {
                 fecha ASC,
                 fb.ide_ccctr ASC
             `,
-            dtoIn
-        );
+      dtoIn,
+    );
 
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        query.addParam(3, dtoIn.fechaInicio);
-        query.addParam(4, dtoIn.fechaFin);
-        query.addParam(5, dtoIn.ideSucu);
-        query.addParam(6, dtoIn.ideEmpr);
-        return await this.dataSource.createQuery(query);
-    }
-
-
-
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addParam(3, dtoIn.fechaInicio);
+    query.addParam(4, dtoIn.fechaFin);
+    query.addParam(5, dtoIn.ideSucu);
+    query.addParam(6, dtoIn.ideEmpr);
+    return await this.dataSource.createQuery(query);
+  }
 }

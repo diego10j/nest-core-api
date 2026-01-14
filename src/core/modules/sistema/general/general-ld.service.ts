@@ -14,7 +14,7 @@ export class GeneralLdService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) { }
+  ) {}
 
   /**
    * Retorna los Periodos (years) desde que se usa el sistema, para componentes como Select, Autocomplete

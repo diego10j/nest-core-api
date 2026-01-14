@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ClassConstructor, plainToClass } from 'class-transformer';
+import { validate } from 'class-validator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { SearchTableDto } from 'src/common/dto/search-table.dto';
+
+import { isDefined } from '../util/helpers/common-util';
+import { normalizeString, toObjectTable, toStringColumns } from '../util/helpers/sql-util';
+
 import { DataSourceService } from './connection/datasource.service';
-import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
 import {
   ColumnsTableDto,
   TableQueryDto,
@@ -14,15 +21,9 @@ import {
   FindByIdDto,
   UpdateColumnsDto,
 } from './connection/dto';
-import { validate } from 'class-validator';
-import { ClassConstructor, plainToClass } from 'class-transformer';
-import { normalizeString, toObjectTable, toStringColumns, getComponentColumn } from '../util/helpers/sql-util';
-import { ResultQuery } from './connection/interfaces/resultQuery';
-
 import { TreeDto } from './connection/dto/tree-dto';
-import { isDefined } from '../util/helpers/common-util';
-import { SearchTableDto } from 'src/common/dto/search-table.dto';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
+import { ResultQuery } from './connection/interfaces/resultQuery';
 import { VariablesService } from './variables/variables.service';
 
 @Injectable()

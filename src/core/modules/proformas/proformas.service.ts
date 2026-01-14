@@ -1,49 +1,44 @@
 import { Injectable } from '@nestjs/common';
-import { getYear } from 'date-fns';
+import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
-import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/util/helpers/date-util';
 
-
-
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
-import { ProformasMensualesDto } from './dto/proformas-mensuales.dto';
 import { ProformasDto } from './dto/proformas.dto';
-import { BaseService } from 'src/common/base-service';
-import { DataSourceService } from 'src/core/connection/datasource.service';
 
 const SOLICITUD = {
-    tableName: 'cxc_cabece_proforma',
-    primaryKey: 'ide_cccpr',
+  tableName: 'cxc_cabece_proforma',
+  primaryKey: 'ide_cccpr',
 };
 
 const DETALLES = {
-    tableName: 'cxc_deta_proforma',
-    primaryKey: 'ide_ccdpr',
+  tableName: 'cxc_deta_proforma',
+  primaryKey: 'ide_ccdpr',
 };
 
 @Injectable()
 export class ProformasService extends BaseService {
-    constructor(
-        private readonly dataSource: DataSourceService,
-        private readonly core: CoreService,
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core
-            .getVariables([
-                'p_cxc_estado_factura_normal', // 0
-            ])
-            .then((result) => {
-                this.variables = result;
-            });
-    }
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_cxc_estado_factura_normal', // 0
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
-    async getProformas(dtoIn: ProformasDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
+  async getProformas(dtoIn: ProformasDto & HeaderParamsDto) {
+    const query = new SelectQuery(`     
         select
             a.ide_cccpr,
             a.secuencial_cccpr,
@@ -76,13 +71,13 @@ export class ProformasService extends BaseService {
         order by
             a.secuencial_cccpr desc
         `);
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getCabProforma(dtoIn: IdeDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
+  async getCabProforma(dtoIn: IdeDto & HeaderParamsDto) {
+    const query = new SelectQuery(`     
         select 
             c.ide_cccpr,
             c.secuencial_cccpr,
@@ -141,13 +136,13 @@ export class ProformasService extends BaseService {
         where c.ide_cccpr =  $1
         and c.ide_empr = ${dtoIn.ideEmpr}
         `);
-        query.addParam(1, dtoIn.ide);
-        return await this.dataSource.createQuery(query);
-    }
+    query.addParam(1, dtoIn.ide);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getDetallesProforma(dtoIn: IdeDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `     
+  async getDetallesProforma(dtoIn: IdeDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `     
     select 
         d.ide_ccdpr,
         d.ide_inarti,
@@ -177,97 +172,94 @@ export class ProformasService extends BaseService {
         and d.ide_empr =  ${dtoIn.ideEmpr}
         order by observacion_ccdpr
         `,
-            dtoIn,
-        );
-        query.addParam(1, dtoIn.ide);
-        return await this.dataSource.createQuery(query);
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide);
+    return await this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Guarda una proforma proveniente de una canal externo como pagina web
+   */
+  async createProformaWeb(dtoIn: CreateProformaWebDto) {
+    const listQuery: Query[] = [];
+    const solicitudId = await this.asyncgetNextSolicitudId();
+    // Construir query para cabecera
+    const cabeceraQuery = this.buildInsertSolicitudQuery(solicitudId, dtoIn);
+    listQuery.push(cabeceraQuery);
+
+    // Procesar detalles
+    const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length);
+    await this.processDetails(dtoIn, solicitudId, detallesIds, listQuery);
+
+    const resultMessage = await this.dataSource.createListQuery(listQuery);
+
+    return {
+      success: true,
+      message: 'Campaña guardada correctamente',
+      data: {
+        ide_cccpr: solicitudId,
+        totalQueries: listQuery.length,
+        resultMessage,
+      },
+    };
+  }
+
+  private asyncgetNextSolicitudId(login: string = 'sa'): Promise<number> {
+    return this.dataSource.getSeqTable(SOLICITUD.tableName, SOLICITUD.primaryKey, 1, login);
+  }
+
+  private async getNextDetalleIds(length: number, login: string = 'sa'): Promise<number> {
+    return this.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
+  }
+
+  private buildInsertSolicitudQuery(seqCabecera: number, dtoIn: CreateProformaWebDto): InsertQuery {
+    const q = new InsertQuery(SOLICITUD.tableName, SOLICITUD.primaryKey, dtoIn);
+
+    q.values.set(SOLICITUD.primaryKey, seqCabecera);
+    q.values.set('fecha_cccpr', dtoIn.solicitante.fecha);
+    q.values.set('solicitante_cccpr', dtoIn.solicitante.nombres);
+    q.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
+    q.values.set('correo_cccpr', dtoIn.solicitante.correo);
+    q.values.set('secuencial_cccpr', '');
+    q.values.set('observacion_cccpr', dtoIn.solicitante.observacion);
+    q.values.set('telefono_cccpr', dtoIn.solicitante.telefono);
+    q.values.set('direccion_cccpr', dtoIn.solicitante.direccion);
+    q.values.set('fecha_ingre', getCurrentDate());
+    q.values.set('hora_actua', getCurrentTime());
+    q.values.set('ide_cctpr', 2); // 2 == Pagina web
+
+    return q;
+  }
+
+  /**
+   * Procesa los detalles de la campaña
+   */
+  private async processDetails(dtoIn: CreateProformaWebDto, seqCabecera: number, seqStart: number, listQuery: Query[]) {
+    let seq = seqStart;
+
+    for (const detalle of dtoIn.detalles) {
+      const insertQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey, dtoIn);
+      insertQuery.values.set(DETALLES.primaryKey, seq);
+      insertQuery.values.set(SOLICITUD.primaryKey, seqCabecera);
+      insertQuery.values.set('cantidad_ccdpr', detalle.cantidad);
+      insertQuery.values.set('observacion_ccdpr', detalle.producto);
+      insertQuery.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
+      insertQuery.values.set('hora_actua', getCurrentTime());
+      insertQuery.values.set('fecha_ingre', getCurrentDate());
+
+      listQuery.push(insertQuery);
+      seq++;
     }
+  }
 
-    /**
-     * Guarda una proforma proveniente de una canal externo como pagina web
-     */
-    async createProformaWeb(dtoIn: CreateProformaWebDto) {
-        const listQuery: Query[] = [];
-        const solicitudId = await this.asyncgetNextSolicitudId();
-        // Construir query para cabecera
-        const cabeceraQuery = this.buildInsertSolicitudQuery(solicitudId, dtoIn);
-        listQuery.push(cabeceraQuery);
-
-        // Procesar detalles
-        const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length);
-        await this.processDetails(dtoIn, solicitudId, detallesIds, listQuery);
-
-        const resultMessage = await this.dataSource.createListQuery(listQuery);
-
-        return {
-            success: true,
-            message: 'Campaña guardada correctamente',
-            data: {
-                ide_cccpr: solicitudId,
-                totalQueries: listQuery.length,
-                resultMessage,
-            },
-        };
-    }
-
-    private asyncgetNextSolicitudId(login: string = 'sa'): Promise<number> {
-        return this.dataSource.getSeqTable(SOLICITUD.tableName, SOLICITUD.primaryKey, 1, login);
-    }
-
-    private async getNextDetalleIds(length: number, login: string = 'sa'): Promise<number> {
-        return this.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
-    }
-
-    private buildInsertSolicitudQuery(seqCabecera: number, dtoIn: CreateProformaWebDto): InsertQuery {
-        const q = new InsertQuery(SOLICITUD.tableName, SOLICITUD.primaryKey, dtoIn);
-
-        q.values.set(SOLICITUD.primaryKey, seqCabecera);
-        q.values.set('fecha_cccpr', dtoIn.solicitante.fecha);
-        q.values.set('solicitante_cccpr', dtoIn.solicitante.nombres);
-        q.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
-        q.values.set('correo_cccpr', dtoIn.solicitante.correo);
-        q.values.set('secuencial_cccpr', '');
-        q.values.set('observacion_cccpr', dtoIn.solicitante.observacion);
-        q.values.set('telefono_cccpr', dtoIn.solicitante.telefono);
-        q.values.set('direccion_cccpr', dtoIn.solicitante.direccion);
-        q.values.set('fecha_ingre', getCurrentDate());
-        q.values.set('hora_actua', getCurrentTime());
-        q.values.set('ide_cctpr', 2); // 2 == Pagina web
-
-        return q;
-    }
-
-    /**
-     * Procesa los detalles de la campaña
-     */
-    private async processDetails(dtoIn: CreateProformaWebDto, seqCabecera: number, seqStart: number, listQuery: Query[]) {
-        let seq = seqStart;
-
-        for (const detalle of dtoIn.detalles) {
-            const insertQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey, dtoIn);
-            insertQuery.values.set(DETALLES.primaryKey, seq);
-            insertQuery.values.set(SOLICITUD.primaryKey, seqCabecera);
-            insertQuery.values.set('cantidad_ccdpr', detalle.cantidad);
-            insertQuery.values.set('observacion_ccdpr', detalle.producto);
-            insertQuery.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
-            insertQuery.values.set('hora_actua', getCurrentTime());
-            insertQuery.values.set('fecha_ingre', getCurrentDate());
-
-            listQuery.push(insertQuery);
-            seq++;
-        }
-    }
-
-    async updateOpenSolicitud(ide_cccpr: number, login: string) {
-        const query = new UpdateQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
-        query.values.set('fecha_abre_cccpr', getCurrentDateTime());
-        query.values.set('usuario_abre_cccpr', login);
-        query.where = 'ide_cccpr = $1 and fecha_abre_cccpr is null and usuario_abre_cccpr is null';
-        query.addNumberParam(1, ide_cccpr);
-        console.log(query);
-        return await this.dataSource.createQuery(query);
-    }
-
-
-
+  async updateOpenSolicitud(ide_cccpr: number, login: string) {
+    const query = new UpdateQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
+    query.values.set('fecha_abre_cccpr', getCurrentDateTime());
+    query.values.set('usuario_abre_cccpr', login);
+    query.where = 'ide_cccpr = $1 and fecha_abre_cccpr is null and usuario_abre_cccpr is null';
+    query.addNumberParam(1, ide_cccpr);
+    console.log(query);
+    return await this.dataSource.createQuery(query);
+  }
 }

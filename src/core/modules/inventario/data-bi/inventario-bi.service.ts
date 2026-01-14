@@ -11,50 +11,45 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 import { IdProductoDto } from '../productos/dto/id-producto.dto';
 import { TrnProductoDto } from '../productos/dto/trn-producto.dto';
 import { VentasMensualesDto } from '../productos/dto/ventas-mensuales.dto';
+
 import { AnalisisProductoDto } from './dto/analisis-producto.dto';
 import { AnalisisDto } from './dto/analisis.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
-import { EvaluacionRotacionProductoDto } from './dto/evalua-rotacion-producto.dto';
 import { ProductosMayorStockDto } from './dto/productos-mayor-stock.dto';
 import { ProductosObsoletosDto } from './dto/productos-obsoletos.dto';
 import { ProductosStockBajoDto } from './dto/productos-stock-bajo.dto';
 import { TopProductosDto } from './dto/top-productos';
 
-
-
-
 @Injectable()
 export class InventarioBiService extends BaseService {
-    constructor(
-        private readonly dataSource: DataSourceService,
-        private readonly core: CoreService,
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core
-            .getVariables([
-                'p_cxc_estado_factura_normal', // 0
-                'p_con_tipo_documento_factura', // 3
-                'p_inv_estado_normal', // 1
-                'p_cxp_estado_factura_normal', //0
-            ])
-            .then((result) => {
-                this.variables = result;
-            });
-    }
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_cxc_estado_factura_normal', // 0
+        'p_con_tipo_documento_factura', // 3
+        'p_inv_estado_normal', // 1
+        'p_cxp_estado_factura_normal', //0
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
+  /**
+   * Retorna el top N de productos mas vendidos en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getTopProductos(dtoIn: TopProductosDto & HeaderParamsDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
 
-    /**
-     * Retorna el top N de productos mas vendidos en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
-    async getTopProductos(dtoIn: TopProductosDto & HeaderParamsDto) {
-
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-
-        const query = new SelectQuery(
-            `
+    const query = new SelectQuery(
+      `
           WITH ventas_producto AS (
               SELECT 
                   iart.ide_inarti,
@@ -118,28 +113,26 @@ export class InventarioBiService extends BaseService {
           ORDER BY 
               total_ventas DESC
          ${limitConfig}`,
-            dtoIn,
-        );
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaInicio);
-        query.addStringParam(4, dtoIn.fechaFin);
-        query.addStringParam(5, dtoIn.fechaInicio);
-        query.addStringParam(6, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
+    query.addStringParam(5, dtoIn.fechaInicio);
+    query.addStringParam(6, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-
-    /**
-     * Retorna los N productos mas vendidos por la cantidad en un rango de fechas
-     * @param dtoIn
-     * @returns
-     */
-    async getTopProductosVendidos(dtoIn: TopProductosDto & HeaderParamsDto) {
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna los N productos mas vendidos por la cantidad en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  async getTopProductosVendidos(dtoIn: TopProductosDto & HeaderParamsDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+    const query = new SelectQuery(
+      `
         WITH ventas_producto AS (
             SELECT 
                 iart.ide_inarti,
@@ -194,27 +187,26 @@ export class InventarioBiService extends BaseService {
         ORDER BY 
             total_cantidad DESC
          ${limitConfig}`,
-            dtoIn,
-        );
+      dtoIn,
+    );
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaInicio);
-        query.addStringParam(4, dtoIn.fechaFin);
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Retorna los productos mas facturados
-     * @param dtoIn
-     * @returns
-     */
-    async getTopProductosFacturados(dtoIn: TopProductosDto & HeaderParamsDto) {
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna los productos mas facturados
+   * @param dtoIn
+   * @returns
+   */
+  async getTopProductosFacturados(dtoIn: TopProductosDto & HeaderParamsDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+    const query = new SelectQuery(
+      `
         SELECT
             iart.ide_inarti,
             upper(iart.nombre_inarti) as nombre_inarti,
@@ -235,16 +227,17 @@ export class InventarioBiService extends BaseService {
         ORDER BY
             num_facturas  DESC
         ${limitConfig}`,
-            dtoIn,
-        );
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getTopProductosMayorRotacion(dtoIn: TopProductosDto & HeaderParamsDto) {
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-        const query = new SelectQuery(`
+  async getTopProductosMayorRotacion(dtoIn: TopProductosDto & HeaderParamsDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+    const query = new SelectQuery(
+      `
             WITH movimientos_periodo AS (
                 SELECT 
                     art.ide_inarti,
@@ -431,24 +424,26 @@ export class InventarioBiService extends BaseService {
                 score_rotacion DESC NULLS LAST,
                 egresos_periodo DESC
             ${limitConfig}
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaFin);
-        query.addStringParam(4, dtoIn.fechaInicio);
-        query.addStringParam(5, dtoIn.fechaFin);
-        query.addStringParam(6, dtoIn.fechaInicio);
-        return await this.dataSource.createQuery(query);
-    }
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaFin);
+    query.addStringParam(4, dtoIn.fechaInicio);
+    query.addStringParam(5, dtoIn.fechaFin);
+    query.addStringParam(6, dtoIn.fechaInicio);
+    return await this.dataSource.createQuery(query);
+  }
 
-    /**
-     * Total de productos por categoria
-     * @param dtoIn 
-     * @returns 
-     */
-    async getTotalProductosPorCategoria(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Total de productos por categoria
+   * @param dtoIn
+   * @returns
+   */
+  async getTotalProductosPorCategoria(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
             SELECT 
                 COALESCE(c.nombre_incate, 'SIN CATEGORIA') AS categoria,
             COUNT(a.ide_inarti) AS cantidad
@@ -465,21 +460,17 @@ export class InventarioBiService extends BaseService {
                 c.nombre_incate
             order by 2
             `);
-        return await this.dataSource.createSelectQuery(query);
-    }
+    return await this.dataSource.createSelectQuery(query);
+  }
 
-
-
-
-    /**
-  * Retorna top 10 mejores proveedores en un periodo
-  * @param dtoIn
-  * @returns
-  */
-    async getTopProveedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna top 10 mejores proveedores en un periodo
+   * @param dtoIn
+   * @returns
+   */
+  async getTopProveedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT
             p.ide_geper,
             upper(p.nom_geper) as nom_geper,
@@ -505,17 +496,17 @@ export class InventarioBiService extends BaseService {
         ORDER BY
             total_valor DESC
             LIMIT ${dtoIn.limit || 10} `,
-            dtoIn,
-        );
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addStringParam(2, dtoIn.fechaInicio);
-        query.addStringParam(3, dtoIn.fechaFin);
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_inarti);
+    query.addStringParam(2, dtoIn.fechaInicio);
+    query.addStringParam(3, dtoIn.fechaFin);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getTotalVentasProductoPorFormaPago(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getTotalVentasProductoPorFormaPago(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
             WITH ventas_producto_forma_pago AS (
                 SELECT 
                     fp.ide_cndfp,
@@ -590,23 +581,21 @@ export class InventarioBiService extends BaseService {
                 total_ventas_netas DESC
         `);
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaInicio);
-        query.addStringParam(4, dtoIn.fechaFin);
-        query.addIntParam(5, dtoIn.ide_inarti);
-        query.addIntParam(6, dtoIn.ide_inarti);
-        query.addStringParam(7, dtoIn.fechaInicio);
-        query.addStringParam(8, dtoIn.fechaFin);
-        query.addIntParam(9, dtoIn.ide_inarti);
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
+    query.addIntParam(5, dtoIn.ide_inarti);
+    query.addIntParam(6, dtoIn.ide_inarti);
+    query.addStringParam(7, dtoIn.fechaInicio);
+    query.addStringParam(8, dtoIn.fechaFin);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-
-    async getTopVendedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getTopVendedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
             WITH ventas_vendedor_producto AS (
                 SELECT 
                     v.ide_vgven,
@@ -679,23 +668,21 @@ export class InventarioBiService extends BaseService {
             LIMIT ${dtoIn.limit || 10}
         `);
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addStringParam(3, dtoIn.fechaInicio);
-        query.addStringParam(4, dtoIn.fechaFin);
-        query.addStringParam(5, dtoIn.fechaInicio);
-        query.addStringParam(6, dtoIn.fechaFin);
-        query.addIntParam(7, dtoIn.ide_inarti);
-        query.addIntParam(8, dtoIn.ide_inarti);
-        query.addIntParam(9, dtoIn.ide_inarti);
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
+    query.addStringParam(5, dtoIn.fechaInicio);
+    query.addStringParam(6, dtoIn.fechaFin);
+    query.addIntParam(7, dtoIn.ide_inarti);
+    query.addIntParam(8, dtoIn.ide_inarti);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-
-    async getTotalVentasProductoPorIdCliente(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getTotalVentasProductoPorIdCliente(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
             WITH ventas_tipo_identificacion AS (
                 SELECT
                     d.ide_getid,
@@ -770,29 +757,28 @@ export class InventarioBiService extends BaseService {
             LIMIT ${dtoIn.limit || 20}
         `);
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addStringParam(4, dtoIn.fechaInicio);
-        query.addStringParam(5, dtoIn.fechaFin);
-        query.addIntParam(6, dtoIn.ide_inarti);
-        query.addStringParam(7, dtoIn.fechaInicio);
-        query.addStringParam(8, dtoIn.fechaFin);
-        query.addIntParam(9, dtoIn.ide_inarti);
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    query.addStringParam(4, dtoIn.fechaInicio);
+    query.addStringParam(5, dtoIn.fechaFin);
+    query.addIntParam(6, dtoIn.ide_inarti);
+    query.addStringParam(7, dtoIn.fechaInicio);
+    query.addStringParam(8, dtoIn.fechaFin);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createSelectQuery(query);
+    return await this.dataSource.createSelectQuery(query);
+  }
+
+  async getVariacionInventarioProducto(dtoIn: AnalisisProductoDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
+      dtoIn.ide_inarti = -1;
     }
 
-
-    async getVariacionInventarioProducto(dtoIn: AnalisisProductoDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-            dtoIn.ide_inarti = -1;
-        }
-
-        const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-        const query = new SelectQuery(
-            `       
+    const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    const query = new SelectQuery(
+      `       
             WITH Meses AS (
                 SELECT
                     gm.nombre_gemes,
@@ -913,28 +899,28 @@ export class InventarioBiService extends BaseService {
             ORDER BY
                 m.ide_gemes
             `,
-            dtoIn,
-        );
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addIntParam(2, dtoIn.ide_inarti);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addIntParam(4, dtoIn.ide_inarti);
-        query.addIntParam(5, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_inarti);
+    query.addIntParam(2, dtoIn.ide_inarti);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    query.addIntParam(4, dtoIn.ide_inarti);
+    query.addIntParam(5, dtoIn.ide_inarti);
+    return await this.dataSource.createQuery(query);
+  }
 
-    /**
-  * Retorna el total de PROFORMAS mensuales de un producto en un periodo
-  * @param dtoIn
-  * @returns
-  */
-    async getProformasMensualesProducto(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-            dtoIn.ide_inarti = -1;
-        }
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna el total de PROFORMAS mensuales de un producto en un periodo
+   * @param dtoIn
+   * @returns
+   */
+  async getProformasMensualesProducto(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
+      dtoIn.ide_inarti = -1;
+    }
+    const query = new SelectQuery(
+      `
         WITH 
         proformas_mes AS (
             SELECT
@@ -995,31 +981,30 @@ export class InventarioBiService extends BaseService {
         ORDER BY
             gm.ide_gemes
         `,
-            dtoIn,
-        );
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addStringParam(4, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(5, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(6, dtoIn.ide_inarti);
+      dtoIn,
+    );
+    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    query.addStringParam(4, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(5, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(6, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
+    return await this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Retorna el total de compras mensuales de un producto en un periodo
+   * @param dtoIn
+   * @returns
+   */
+  async getComprasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
+      dtoIn.ide_inarti = -1;
     }
-
-
-    /**
-     * Retorna el total de compras mensuales de un producto en un periodo
-     * @param dtoIn
-     * @returns
-     */
-    async getComprasMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-            dtoIn.ide_inarti = -1;
-        }
-        const query = new SelectQuery(
-            `
+    const query = new SelectQuery(
+      `
     SELECT
         gm.nombre_gemes,
         ${dtoIn.periodo} as periodo,
@@ -1055,22 +1040,21 @@ export class InventarioBiService extends BaseService {
     ORDER BY
         gm.ide_gemes       
         `,
-            dtoIn,
-        );
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
-    }
+      dtoIn,
+    );
+    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
- * Retorna el total de ventas mensuales de un producto específico en un período
- * @param dtoIn
- * @returns
- */
-    async getTotalVentasMensualesProducto(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  /**
+   * Retorna el total de ventas mensuales de un producto específico en un período
+   * @param dtoIn
+   * @returns
+   */
+  async getTotalVentasMensualesProducto(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
         WITH FacturasFiltradas AS (
             SELECT 
                 EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes,
@@ -1151,22 +1135,21 @@ export class InventarioBiService extends BaseService {
             gm.ide_gemes
     `);
 
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
-        query.addStringParam(3, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(4, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(5, dtoIn.ide_inarti);
-        query.addIntParam(6, dtoIn.ide_inarti);
-        query.addStringParam(7, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(8, `${dtoIn.periodo}-12-31`);
-        query.addIntParam(9, dtoIn.ide_inarti);
+    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+    query.addStringParam(3, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(4, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(5, dtoIn.ide_inarti);
+    query.addIntParam(6, dtoIn.ide_inarti);
+    query.addStringParam(7, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(8, `${dtoIn.periodo}-12-31`);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    async getTendenciaVentasDiaProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getTendenciaVentasDiaProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
             WITH ventas_dia_semana AS (
                 SELECT 
                     EXTRACT(DOW FROM cf.fecha_emisi_cccfa) AS num_dia,
@@ -1238,22 +1221,21 @@ export class InventarioBiService extends BaseService {
                 vd.num_dia
         `);
 
-        query.addStringParam(1, dtoIn.fechaInicio);
-        query.addStringParam(2, dtoIn.fechaFin);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addStringParam(4, dtoIn.fechaInicio);
-        query.addStringParam(5, dtoIn.fechaFin);
-        query.addIntParam(6, dtoIn.ide_inarti);
-        query.addStringParam(7, dtoIn.fechaInicio);
-        query.addStringParam(8, dtoIn.fechaFin);
-        query.addIntParam(9, dtoIn.ide_inarti);
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addStringParam(2, dtoIn.fechaFin);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    query.addStringParam(4, dtoIn.fechaInicio);
+    query.addStringParam(5, dtoIn.fechaFin);
+    query.addIntParam(6, dtoIn.ide_inarti);
+    query.addStringParam(7, dtoIn.fechaInicio);
+    query.addStringParam(8, dtoIn.fechaFin);
+    query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    async getResumenVentasPeriodosProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`            
+  async getResumenVentasPeriodosProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(`            
             WITH ventas_anio_producto AS (
                 SELECT 
                     EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
@@ -1336,39 +1318,37 @@ export class InventarioBiService extends BaseService {
                 vp.anio DESC
         `);
 
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addIntParam(2, dtoIn.ide_inarti);
-        query.addIntParam(3, dtoIn.ide_inarti);
-        query.addIntParam(4, dtoIn.ide_inarti);
+    query.addIntParam(1, dtoIn.ide_inarti);
+    query.addIntParam(2, dtoIn.ide_inarti);
+    query.addIntParam(3, dtoIn.ide_inarti);
+    query.addIntParam(4, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
+    return await this.dataSource.createQuery(query);
+  }
+
+  //==============
+
+  async getTotalPorTipoTransaccion(dtoIn: AnalisisDto & HeaderParamsDto) {
+    return await this.queryTotalPorTipoTransaccion(dtoIn);
+  }
+
+  async getTotalPorTipoTransaccionProducto(dtoIn: AnalisisDto & HeaderParamsDto) {
+    if (!dtoIn.ide_inarti) {
+      throw new BadRequestException('ide_inarti es obligatorio.');
     }
+    return await this.queryTotalPorTipoTransaccion(dtoIn);
+  }
 
-
-
-    //==============
-
-
-    async getTotalPorTipoTransaccion(dtoIn: AnalisisDto & HeaderParamsDto) {
-        return await this.queryTotalPorTipoTransaccion(dtoIn);
-    }
-
-    async getTotalPorTipoTransaccionProducto(dtoIn: AnalisisDto & HeaderParamsDto) {
-        if (!dtoIn.ide_inarti) {
-            throw new BadRequestException('ide_inarti es obligatorio.');
-        }
-        return await this.queryTotalPorTipoTransaccion(dtoIn);
-    }
-
-    /**
-     * Obtiene el total de tipo de transaccion de inventario en un rango de fechas
-     * @param dtoIn 
-     * @returns 
-     */
-    private async queryTotalPorTipoTransaccion(dtoIn: AnalisisDto & HeaderParamsDto) {
-        let whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-        whereClause += dtoIn.ide_inarti ? ` AND dci.ide_inarti = ${dtoIn.ide_inarti}` : '';
-        const query = new SelectQuery(`
+  /**
+   * Obtiene el total de tipo de transaccion de inventario en un rango de fechas
+   * @param dtoIn
+   * @returns
+   */
+  private async queryTotalPorTipoTransaccion(dtoIn: AnalisisDto & HeaderParamsDto) {
+    let whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    whereClause += dtoIn.ide_inarti ? ` AND dci.ide_inarti = ${dtoIn.ide_inarti}` : '';
+    const query = new SelectQuery(
+      `
             SELECT 
                 tti.ide_intti,
                 tti.nombre_intti AS tipo_movimiento,
@@ -1402,19 +1382,19 @@ export class InventarioBiService extends BaseService {
             ORDER BY 
                 num_trn DESC,
                 porcentaje DESC
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        query.addStringParam(1, `${dtoIn.periodo}-01-01`);
-        query.addStringParam(2, `${dtoIn.periodo}-12-31`);
+    query.addStringParam(1, `${dtoIn.periodo}-01-01`);
+    query.addStringParam(2, `${dtoIn.periodo}-12-31`);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-
-
-    async getAnalisisBodegasMensual(dtoIn: TrnProductoDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+  async getAnalisisBodegasMensual(dtoIn: TrnProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
             WITH movimientos_bodega AS (
                 SELECT 
                     EXTRACT(YEAR FROM cci.fecha_trans_incci) AS anio,
@@ -1501,26 +1481,27 @@ export class InventarioBiService extends BaseService {
                 ranking_bodegas
             ORDER BY 
                 anio DESC, mes DESC, ranking_saldo_mensual ASC
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
+    query.addIntParam(1, dtoIn.ide_inarti);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addParam(3, dtoIn.fechaFin);
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
+  async getProductosStockBajo(dtoIn: HeaderParamsDto & ProductosStockBajoDto) {
+    const diasAnalisis = dtoIn.diasAnalisis || 90;
+    const fechaCorte = dtoIn.fechaCorte ? `'${dtoIn.fechaCorte}'::date` : 'CURRENT_DATE';
+    const diasAlertas = dtoIn.diasAlertas || 7;
+    const incluirSinConfiguracion = dtoIn.incluirSinConfiguracion === 'false';
 
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
 
-    async getProductosStockBajo(dtoIn: HeaderParamsDto & ProductosStockBajoDto) {
-        const diasAnalisis = dtoIn.diasAnalisis || 90;
-        const fechaCorte = dtoIn.fechaCorte ? `'${dtoIn.fechaCorte}'::date` : 'CURRENT_DATE';
-        const diasAlertas = dtoIn.diasAlertas || 7;
-        const incluirSinConfiguracion = dtoIn.incluirSinConfiguracion === 'false';
-
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-
-        const query = new SelectQuery(`
+    const query = new SelectQuery(
+      `
             WITH productos_stock_bajo AS (
                 SELECT 
                     iart.ide_inarti,
@@ -1569,14 +1550,15 @@ export class InventarioBiService extends BaseService {
                     iart.cant_stock1_inarti, iart.cant_stock2_inarti
                 HAVING 
                     -- Cuando incluirSinConfiguracion es TRUE: solo productos CON configuración
-                    ${incluirSinConfiguracion
-                ? `(iart.cant_stock1_inarti IS NOT NULL OR iart.cant_stock2_inarti IS NOT NULL)
+                    ${
+                      incluirSinConfiguracion
+                        ? `(iart.cant_stock1_inarti IS NOT NULL OR iart.cant_stock2_inarti IS NOT NULL)
                            AND (
                                SUM(dci.cantidad_indci * tci.signo_intci) <= 0
                                OR (iart.cant_stock1_inarti IS NOT NULL AND SUM(dci.cantidad_indci * tci.signo_intci) < iart.cant_stock1_inarti)
                                OR (iart.cant_stock2_inarti IS NOT NULL AND SUM(dci.cantidad_indci * tci.signo_intci) < iart.cant_stock2_inarti)
                            )`
-                : `-- Cuando es FALSE: buscar TODOS los productos con stock bajo
+                        : `-- Cuando es FALSE: buscar TODOS los productos con stock bajo
                            (
                                -- Productos sin stock
                                SUM(dci.cantidad_indci * tci.signo_intci) <= 0
@@ -1586,7 +1568,7 @@ export class InventarioBiService extends BaseService {
                                -- Productos sin configuración y stock bajo (menos de 10 unidades)
                                OR (iart.cant_stock1_inarti IS NULL AND iart.cant_stock2_inarti IS NULL AND SUM(dci.cantidad_indci * tci.signo_intci) <= 10)
                            )`
-            }
+                    }
             )
             SELECT 
                 psb.ide_inarti,
@@ -1707,17 +1689,20 @@ export class InventarioBiService extends BaseService {
                 dias_stock_restante ASC,
                 promedio_venta_diario DESC
             ${limitConfig}
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getProductosMayorStock(dtoIn: HeaderParamsDto & ProductosMayorStockDto) {
-        const diasAnalisis = dtoIn.diasAnalisis || 90;
-        const fechaCorte = dtoIn.fechaCorte ? `'${dtoIn.fechaCorte}'::date` : 'CURRENT_DATE';
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+  async getProductosMayorStock(dtoIn: HeaderParamsDto & ProductosMayorStockDto) {
+    const diasAnalisis = dtoIn.diasAnalisis || 90;
+    const fechaCorte = dtoIn.fechaCorte ? `'${dtoIn.fechaCorte}'::date` : 'CURRENT_DATE';
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
 
-        const query = new SelectQuery(`
+    const query = new SelectQuery(
+      `
         WITH productos_con_stock AS (
             SELECT 
                 iart.ide_inarti,
@@ -1871,29 +1856,27 @@ export class InventarioBiService extends BaseService {
             pcs.saldo_actual DESC,
             dias_sin_movimiento DESC
         ${limitConfig}
-    `, dtoIn);
+    `,
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
+    return await this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Retorna el stock de todos los productos por mes (inicio y fin de mes)  Costo Promedio Mensual
+   * @param dtoIn
+   * @returns
+   */
+  async getReporteValorInventarioGlobal(dtoIn: AnalisisDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
     }
 
+    const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
 
-
-
-
-    /**
-      * Retorna el stock de todos los productos por mes (inicio y fin de mes)  Costo Promedio Mensual
-      * @param dtoIn
-      * @returns
-      */
-    async getReporteValorInventarioGlobal(dtoIn: AnalisisDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-        }
-
-        const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-
-        const query = new SelectQuery(
-            `
+    const query = new SelectQuery(
+      `
         WITH Meses AS (
             SELECT
                 gm.nombre_gemes,
@@ -1973,31 +1956,31 @@ export class InventarioBiService extends BaseService {
         LEFT JOIN ValorInventario vi ON m.ide_gemes = vi.ide_gemes
         ORDER BY m.ide_gemes
         `,
-            dtoIn,
-        );
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
-    async getReporteIngresosEgresos(dtoIn: AnalisisDto & HeaderParamsDto) {
-        dtoIn.ide_inarti = undefined;
-        return this.queryReporteIngresosEgresos(dtoIn);
-    }
+    return await this.dataSource.createQuery(query);
+  }
+  async getReporteIngresosEgresos(dtoIn: AnalisisDto & HeaderParamsDto) {
+    dtoIn.ide_inarti = undefined;
+    return this.queryReporteIngresosEgresos(dtoIn);
+  }
 
-    async getReporteIngresosEgresosProducto(dtoIn: AnalisisDto & HeaderParamsDto) {
-        if (!dtoIn.ide_inarti) {
-            throw new BadRequestException('ide_inarti es obligatorio.');
-        }
-        return this.queryReporteIngresosEgresos(dtoIn);
+  async getReporteIngresosEgresosProducto(dtoIn: AnalisisDto & HeaderParamsDto) {
+    if (!dtoIn.ide_inarti) {
+      throw new BadRequestException('ide_inarti es obligatorio.');
     }
+    return this.queryReporteIngresosEgresos(dtoIn);
+  }
 
-    private async queryReporteIngresosEgresos(dtoIn: AnalisisDto & HeaderParamsDto) {
-        if (dtoIn.periodo === 0) {
-            dtoIn.periodo = getYear(new Date());
-        }
-        let whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-        whereClause += dtoIn.ide_inarti ? ` AND dci.ide_inarti = ${dtoIn.ide_inarti}` : '';
-        const query = new SelectQuery(
-            `
+  private async queryReporteIngresosEgresos(dtoIn: AnalisisDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
+    }
+    let whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    whereClause += dtoIn.ide_inarti ? ` AND dci.ide_inarti = ${dtoIn.ide_inarti}` : '';
+    const query = new SelectQuery(
+      `
             WITH Meses AS (
                 SELECT
                     gm.nombre_gemes,
@@ -2045,18 +2028,19 @@ export class InventarioBiService extends BaseService {
             LEFT JOIN MovimientosMensuales mm ON m.ide_gemes = mm.mes
             ORDER BY m.ide_gemes
             `,
-            dtoIn,
-        );
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-    /**
-     * Clasificación ABC para enfoque en productos importantes
-     */
-    async getAnalisisABCInventario(dtoIn: HeaderParamsDto & AnalisisDto) {
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
-        const query = new SelectQuery(`
+  /**
+   * Clasificación ABC para enfoque en productos importantes
+   */
+  async getAnalisisABCInventario(dtoIn: HeaderParamsDto & AnalisisDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+    const query = new SelectQuery(
+      `
             WITH ValorInventario AS (
                 SELECT 
                     iart.ide_inarti,
@@ -2114,16 +2098,17 @@ export class InventarioBiService extends BaseService {
             SELECT * FROM RankingABC
             ORDER BY valor_inventario DESC
             ${limitConfig}
-        `, dtoIn);
+        `,
+      dtoIn,
+    );
 
-        return await this.dataSource.createQuery(query);
-    }
+    return await this.dataSource.createQuery(query);
+  }
 
-
-
-    async getRotacionInventario(dtoIn: HeaderParamsDto & AnalisisDto) {
-        const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-        const query = new SelectQuery(`
+  async getRotacionInventario(dtoIn: HeaderParamsDto & AnalisisDto) {
+    const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    const query = new SelectQuery(
+      `
         WITH MovimientosMensuales AS (
             SELECT 
                 iart.ide_inarti,
@@ -2208,20 +2193,23 @@ export class InventarioBiService extends BaseService {
             END,
             rotacion_anual ASC,
             dias_inventario DESC
-    `, dtoIn);
-        return await this.dataSource.createQuery(query);
-    }
+    `,
+      dtoIn,
+    );
+    return await this.dataSource.createQuery(query);
+  }
 
-    /**
-     * Productos con alerta de reorden y recomendación de cuántas unidades pedir.
-     * ¿CUÁNDO debo hacer un pedido? (Punto de Reorden)
-     * ¿CUÁNTO stock de seguridad necesito? (Stock Seguridad)
-     * @param dtoIn 
-     * @returns 
-     */
-    async getStockSeguridadReorden(dtoIn: HeaderParamsDto & AnalisisDto) {
-        const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-        const query = new SelectQuery(`
+  /**
+   * Productos con alerta de reorden y recomendación de cuántas unidades pedir.
+   * ¿CUÁNDO debo hacer un pedido? (Punto de Reorden)
+   * ¿CUÁNTO stock de seguridad necesito? (Stock Seguridad)
+   * @param dtoIn
+   * @returns
+   */
+  async getStockSeguridadReorden(dtoIn: HeaderParamsDto & AnalisisDto) {
+    const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+    const query = new SelectQuery(
+      `
             WITH VentasMensuales AS (
                 SELECT 
                     cdf.ide_inarti,
@@ -2306,18 +2294,20 @@ export class InventarioBiService extends BaseService {
             FROM CalculosBase
             WHERE demanda_promedio_mensual > 0
             ORDER BY estado_inventario, stock_seguridad DESC
-        `, dtoIn);
-        return await this.dataSource.createQuery(query);
-    }
+        `,
+      dtoIn,
+    );
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    /**
-     * Identificar productos que NO se venden y representan dinero inmovilizado en el inventario.
-     * @param dtoIn 
-     * @returns 
-     */
-    async getProductosObsoletos(dtoIn: HeaderParamsDto & ProductosObsoletosDto) {
-        const query = new SelectQuery(`
+  /**
+   * Identificar productos que NO se venden y representan dinero inmovilizado en el inventario.
+   * @param dtoIn
+   * @returns
+   */
+  async getProductosObsoletos(dtoIn: HeaderParamsDto & ProductosObsoletosDto) {
+    const query = new SelectQuery(
+      `
         WITH MovimientosRecientes AS (
             SELECT 
                 dci.ide_inarti,
@@ -2410,17 +2400,19 @@ export class InventarioBiService extends BaseService {
                 ELSE 3 
             END,
             COALESCE(sa.stock_actual * cp.costo_promedio, 0) DESC
-      `, dtoIn);
-        return await this.dataSource.createQuery(query);
-    }
+      `,
+      dtoIn,
+    );
+    return await this.dataSource.createQuery(query);
+  }
 
-    async getTopProductosAjustados(dtoIn: HeaderParamsDto & TopProductosDto) {
+  async getTopProductosAjustados(dtoIn: HeaderParamsDto & TopProductosDto) {
+    const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
 
-        const limitConfig = isDefined(dtoIn.limit) ? `LIMIT ${dtoIn.limit}` : '';
+    const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
 
-        const whereClause = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
-
-        const query = new SelectQuery(`
+    const query = new SelectQuery(
+      `
             WITH TiposAjuste AS (
                 SELECT ide_intti 
                 FROM inv_tip_tran_inve 
@@ -2530,8 +2522,9 @@ export class InventarioBiService extends BaseService {
                 ap.total_ajustes DESC, 
                 ap.valor_ajustado_total DESC
             ${limitConfig}
-        `, dtoIn);
-        return await this.dataSource.createQuery(query);
-    }
-
+        `,
+      dtoIn,
+    );
+    return await this.dataSource.createQuery(query);
+  }
 }

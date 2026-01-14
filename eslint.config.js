@@ -12,7 +12,9 @@ export default [
       'dist/**',
       'node_modules/**',
       '*.js',
-      'eslint.config.js'
+      'eslint.config.js',
+      'generated/**',
+      'coverage/**'
     ]
   },
   {
@@ -24,7 +26,32 @@ export default [
         tsconfigRootDir: import.meta.dirname,
         sourceType: 'module'
       },
-      ecmaVersion: 'latest'
+      ecmaVersion: 'latest',
+      globals: {
+        NodeJS: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        require: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setImmediate: 'readonly',
+        clearImmediate: 'readonly',
+        Express: 'readonly',
+        PDFKit: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly'
+      }
     },
     plugins: {
       '@typescript-eslint': typescriptEslint,
@@ -36,10 +63,14 @@ export default [
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { 
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_'
+      }],
+      'no-unused-vars': 'off',
       
-      'import/no-unresolved': 'error',
-      'import/no-duplicates': 'error',
+      'import/no-unresolved': 'warn',
+      'import/no-duplicates': 'warn',
       'import/order': [
         'error',
         {
@@ -58,7 +89,7 @@ export default [
       
       'unused-imports/no-unused-imports': 'error',
       'unused-imports/no-unused-vars': [
-        'error',
+        'warn',
         {
           vars: 'all',
           varsIgnorePattern: '^_',

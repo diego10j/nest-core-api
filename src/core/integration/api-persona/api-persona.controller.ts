@@ -1,27 +1,22 @@
-import { Query, Controller, Get, Body, Post } from '@nestjs/common';
-
-import { ApiPersonaService } from './api-persona.service';
-
+import { Controller, Body, Post } from '@nestjs/common';
 import { RucDto } from 'src/core/modules/sistema/admin/dto/ruc.dto';
 import { CedulaDto } from 'src/core/modules/sistema/general/dto/cedula.dto';
 
+import { ApiPersonaService } from './api-persona.service';
+
 @Controller('integration/api-persona')
 export class ApiPersonaController {
-  constructor(private readonly service: ApiPersonaService) { }
-
+  constructor(private readonly service: ApiPersonaService) {}
 
   @Post('consultaCedula')
   // @Auth()
   consultaCedula(@Body() dtoIn: CedulaDto) {
-    return this.service.consultaCedula(
-      dtoIn);
+    return this.service.consultaCedula(dtoIn);
   }
-
 
   @Post('consultaRUC')
   // @Auth()
   consultaRUC(@Body() dtoIn: RucDto) {
-    return this.service.consultaRUC(
-      dtoIn);
+    return this.service.consultaRUC(dtoIn);
   }
 }

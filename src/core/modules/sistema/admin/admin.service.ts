@@ -6,8 +6,8 @@ import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connectio
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
-import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 
+import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
@@ -20,7 +20,7 @@ export class AdminService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) { }
+  ) {}
 
   // -------------------------------- EMPRESA ---------------------------- //
   async getListDataEmpresa(dto: QueryOptionsDto & HeaderParamsDto) {
@@ -117,15 +117,15 @@ export class AdminService {
 
   /**
    * Genera el menu de opciones del sistema ProErp a partir de un json elaborado en el frontend
-   * @param dtoIn 
-   * @returns 
+   * @param dtoIn
+   * @returns
    */
   async generarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
     try {
       const query = new SelectQuery(
         `
         SELECT * FROM f_generar_opciones_proerp($1, $2)
-        `
+        `,
       );
       const jsonString = JSON.stringify(dtoIn.json);
       query.addParam(1, jsonString);
@@ -140,7 +140,6 @@ export class AdminService {
       console.log(error.message);
       throw new BadRequestException(`${error.message}`);
     }
-
   }
 
   // -------------------------------- PERFILES ---------------------------- //
@@ -296,9 +295,7 @@ export class AdminService {
     return this.core.getTableQuery(dtoIn);
   }
 
-
   async getTableQueryPerfilesUsuario(dto: PerfilUsuarioDto & HeaderParamsDto) {
-
     if (dto.uuid) {
       const query = new SelectQuery(
         `
@@ -313,9 +310,7 @@ export class AdminService {
       query.addParam(1, dto.uuid);
       const res = await this.dataSource.createSingleQuery(query);
       if (!res) {
-        throw new NotFoundException(
-          `Usuario con uuid '${dto.uuid}' no encontrado`
-        );
+        throw new NotFoundException(`Usuario con uuid '${dto.uuid}' no encontrado`);
       }
       dto.ide_usua = res.ide_usua;
     }
@@ -336,8 +331,6 @@ export class AdminService {
     };
     return this.core.getTableQuery(dtoIn);
   }
-
-
 
   // ============ QUERY BUILDERS ============
 
@@ -379,6 +372,4 @@ export class AdminService {
   private async getNextOpcionPerfilId(dtoIn: HeaderParamsDto, regitros: number): Promise<number> {
     return this.dataSource.getSeqTable('sis_perfil_opcion', 'ide_peop', regitros, dtoIn.login);
   }
-
-
 }

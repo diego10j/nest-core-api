@@ -8,7 +8,10 @@ import { isDefined } from 'class-validator';
 import { Response } from 'express';
 import PQueue from 'p-queue';
 import * as qrcode from 'qrcode-terminal';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
+import { fTimestampToISODate } from 'src/util/helpers/date-util';
 import { v4 as uuidv4 } from 'uuid';
 import { Chat, Client, LocalAuth, Location, Message } from 'whatsapp-web.js';
 
@@ -16,24 +19,13 @@ import { MediaFile } from '../api/interface/whatsapp';
 import { EnviarMensajeDto } from '../dto/enviar-mensaje.dto';
 import { GetChatsDto } from '../dto/get-chats.dto';
 import { GetMensajesDto } from '../dto/get-mensajes.dto';
-import { WhatsappDbService } from '../whatsapp-db.service';
-
-import { WhatsappGateway } from '../whatsapp.gateway';
-import { WHATSAPP_CONFIG, WEB_VERSION_CACHE } from './config';
-import {
-  WhatsAppEvent,
-  MessageData,
-  StatusResponse,
-  SendMessageResponse,
-  WhatsAppClientInstance,
-  AccountConfig,
-} from './interface/whatsapp-web.interface';
-import { fTimestampToISODate } from 'src/util/helpers/date-util';
-
-import { EnviarUbicacionDto } from './dto/send-location.dto';
-
 import { SearchChatDto } from '../dto/search-chat.dto';
+import { UploadMediaDto } from '../dto/upload-media.dto';
+import { WhatsappDbService } from '../whatsapp-db.service';
+import { WhatsappGateway } from '../whatsapp.gateway';
 
+import { WHATSAPP_CONFIG, WEB_VERSION_CACHE } from './config';
+import { EnviarUbicacionDto } from './dto/send-location.dto';
 import {
   createMediaInstance,
   formatPhoneNumber,
@@ -44,11 +36,14 @@ import {
   validateCoordinates,
   validateMediaType,
 } from './helper/util';
-
-import { UploadMediaDto } from '../dto/upload-media.dto';
-
-import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import {
+  WhatsAppEvent,
+  MessageData,
+  StatusResponse,
+  SendMessageResponse,
+  WhatsAppClientInstance,
+  AccountConfig,
+} from './interface/whatsapp-web.interface';
 
 @Injectable()
 export class WhatsappWebService implements OnModuleInit {

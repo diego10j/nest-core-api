@@ -6,32 +6,31 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
-
 @Injectable()
 export class CuentasPorCobrarService extends BaseService {
-    constructor(
-        private readonly dataSource: DataSourceService,
-        private readonly core: CoreService,
-    ) {
-        super();
-        // obtiene las variables del sistema para el servicio
-        this.core
-            .getVariables([
-                'p_cxc_estado_factura_normal', // 0
-                'p_con_tipo_documento_factura', // 3
-            ])
-            .then((result) => {
-                this.variables = result;
-            });
-    }
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly core: CoreService,
+  ) {
+    super();
+    // obtiene las variables del sistema para el servicio
+    this.core
+      .getVariables([
+        'p_cxc_estado_factura_normal', // 0
+        'p_con_tipo_documento_factura', // 3
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
+  }
 
-    /**
-     * Valida cédula
-     * @returns
-     */
-    async getCuentasPorCobrar(dtoIn: RangoFechasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  /**
+   * Valida cédula
+   * @returns
+   */
+  async getCuentasPorCobrar(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
         SELECT 
             dt.ide_ccctr,
             dt.ide_cccfa,
@@ -200,22 +199,21 @@ export class CuentasPorCobrarService extends BaseService {
             saldo_x_pagar DESC,
             fecha ASC
         `,
-            dtoIn
-        );
+      dtoIn,
+    );
 
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        query.addParam(3, dtoIn.fechaInicio);
-        query.addParam(4, dtoIn.fechaFin);
-        query.addParam(5, dtoIn.ideSucu);
-        query.addParam(6, dtoIn.ideEmpr);
-        return await this.dataSource.createQuery(query);
-    }
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addParam(3, dtoIn.fechaInicio);
+    query.addParam(4, dtoIn.fechaFin);
+    query.addParam(5, dtoIn.ideSucu);
+    query.addParam(6, dtoIn.ideEmpr);
+    return await this.dataSource.createQuery(query);
+  }
 
-
-    async getClientesPagoDestiempo(dtoIn: RangoFechasDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  async getClientesPagoDestiempo(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
             WITH facturas_base AS (
                 SELECT 
                     cf.ide_cccfa,
@@ -482,15 +480,14 @@ export class CuentasPorCobrarService extends BaseService {
                 mp.porcentaje_facturas_vencidas DESC,
                 mp.max_dias_retraso DESC
             `,
-            dtoIn
-        );
+      dtoIn,
+    );
 
-        query.addParam(1, dtoIn.fechaInicio);
-        query.addParam(2, dtoIn.fechaFin);
-        query.addParam(3, dtoIn.ideEmpr);
-        query.addParam(4, dtoIn.fechaInicio);
-        query.addParam(5, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
-    }
-
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addParam(3, dtoIn.ideEmpr);
+    query.addParam(4, dtoIn.fechaInicio);
+    query.addParam(5, dtoIn.fechaFin);
+    return await this.dataSource.createQuery(query);
+  }
 }

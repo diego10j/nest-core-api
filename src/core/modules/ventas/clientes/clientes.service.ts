@@ -9,21 +9,19 @@ import { CoreService } from 'src/core/core.service';
 import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
 import { validateDataRequiere } from 'src/util/helpers/common-util';
 import { getCurrentDateTime, getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
-import { DataSourceService } from '../../../connection/datasource.service';
-import { SelectQuery } from '../../../connection/helpers/select-query';
-import { BaseService } from '../../../../common/base-service';
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
-
-import { IdClienteDto } from './dto/id-cliente.dto';
-import { TrnClienteDto } from './dto/trn-cliente.dto';
-import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
-
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
+import { BaseService } from '../../../../common/base-service';
+import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { SaveDto } from '../../../../common/dto/save.dto';
+import { DataSourceService } from '../../../connection/datasource.service';
+import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
+import { IdClienteDto } from './dto/id-cliente.dto';
+import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
+import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 
 const CLIENTE = {
   tableName: 'gen_persona',
@@ -1201,15 +1199,16 @@ export class ClientesService extends BaseService {
     }
   }
 
-
   async actualizarVendedorClientesInactivos(dtoIn: HeaderParamsDto & { ideVgvenDefault?: number }) {
     // Validar y determinar el valor
     let valorAsignacion: string;
 
-    if (dtoIn.ideVgvenDefault !== undefined &&
+    if (
+      dtoIn.ideVgvenDefault !== undefined &&
       dtoIn.ideVgvenDefault !== null &&
       Number.isInteger(dtoIn.ideVgvenDefault) &&
-      dtoIn.ideVgvenDefault > 0) {
+      dtoIn.ideVgvenDefault > 0
+    ) {
       valorAsignacion = dtoIn.ideVgvenDefault.toString();
     } else {
       valorAsignacion = 'NULL';
@@ -1243,7 +1242,6 @@ export class ClientesService extends BaseService {
     query.addNumberParam(1, dto.ide_geper);
     await this.dataSource.createQuery(query);
   }
-
 
   async getSegumientoClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -1432,9 +1430,6 @@ export class ClientesService extends BaseService {
 
     return await this.dataSource.createQuery(query);
   }
-
-
-
 
   async getClientesAContactar(dtoIn: QueryOptionsDto & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -1663,7 +1658,6 @@ export class ClientesService extends BaseService {
     return await this.dataSource.createQuery(query);
   }
 
-
   async getHistoricoVendedoresCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
@@ -1680,11 +1674,10 @@ export class ClientesService extends BaseService {
       WHERE gcvh.ide_geper = $1
       ORDER BY gcvh.fecha_ingre DESC
       `,
-      dtoIn
+      dtoIn,
     );
 
     query.addParam(1, dtoIn.ide_geper);
     return await this.dataSource.createQuery(query);
   }
-
 }

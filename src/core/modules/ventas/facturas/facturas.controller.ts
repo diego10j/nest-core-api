@@ -9,7 +9,7 @@ import { FacturasService } from './facturas.service';
 
 @Controller('ventas/facturas')
 export class FacturasController {
-  constructor(private readonly service: FacturasService) { }
+  constructor(private readonly service: FacturasService) {}
 
   @Get('getPuntosEmisionFacturas')
   // @Auth()
@@ -59,8 +59,6 @@ export class FacturasController {
     });
   }
 
-
-
   @Get('getUtilidadVentas')
   // @Auth()
   getUtilidadVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
@@ -69,7 +67,6 @@ export class FacturasController {
       ...dtoIn,
     });
   }
-
 
   @Get('getTotalFacturasPorEstado')
   // @Auth()
@@ -88,7 +85,4 @@ export class FacturasController {
       ...dtoIn,
     });
   }
-
-
-
 }

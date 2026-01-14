@@ -3,12 +3,11 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CabComprobanteInventarioDto } from 'src/core/modules/inventario/comprobantes/dto/cab-compr-inv.dto';
-
+import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { comprobanteInventarioReport } from './comprobante.report';
 import { ComprobanteInvRep } from './interfaces/comprobante-inv-rep';
-import { SectionsService } from 'src/reports/common/services/sections.service';
 
 @Injectable()
 export class ComprobatesInvReportsService {
@@ -16,7 +15,7 @@ export class ComprobatesInvReportsService {
     private readonly printerService: PrinterService,
     private readonly dataSource: DataSourceService,
     private readonly SectionsService: SectionsService,
-  ) { }
+  ) {}
 
   async reportComprobanteInventario(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
     const query = new SelectQuery(

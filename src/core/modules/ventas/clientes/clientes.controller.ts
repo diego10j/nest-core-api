@@ -16,7 +16,7 @@ import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) { }
+  constructor(private readonly service: ClientesService) {}
 
   @Get('getCliente')
   // @Auth()
@@ -153,16 +153,17 @@ export class ClientesController {
     });
   }
 
-
   @Post('actualizarVendedorClientesInactivos')
   // @Auth()
-  actualizarVendedorClientesInactivos(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: { ideVgvenDefault?: number }) {
+  actualizarVendedorClientesInactivos(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: { ideVgvenDefault?: number },
+  ) {
     return this.service.actualizarVendedorClientesInactivos({
       ...headersParams,
       ...dtoIn,
     });
   }
-
 
   @Get('getSegumientoClientes')
   // @Auth()
@@ -190,8 +191,4 @@ export class ClientesController {
       ...dtoIn,
     });
   }
-
-
-
-
 }

@@ -10,19 +10,17 @@ import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
 import { HOST_API, isDefined } from 'src/util/helpers/common-util';
 import { toDate, FORMAT_DATETIME_DB, getCurrentDateTime } from 'src/util/helpers/date-util';
+import { getStaticImage } from 'src/util/helpers/file-utils';
 
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { GetFilesDto } from './dto/get-files.dto';
-
 import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
-import { PATH_DRIVE, getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
-
 import { FILE_STORAGE_CONSTANTS } from './file-temp.service';
-import { getStaticImage } from 'src/util/helpers/file-utils';
+import { getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
 
 @Injectable()
 export class FilesService {
@@ -432,7 +430,6 @@ export class FilesService {
   //-------------------------------------------------------
 
   getStaticImage(imageName: string) {
-
     return getStaticImage(imageName);
   }
 

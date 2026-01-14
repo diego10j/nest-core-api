@@ -7,6 +7,7 @@ import { QueryOptionsDto } from '../../common/dto/query-options.dto';
 
 import { AuthService } from './auth.service';
 import { Auth, GetUser } from './decorators';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
@@ -14,7 +15,7 @@ import { MenuRolDto } from './dto/menu-rol.dto';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   login(@Body() dtoIn: LoginUserDto, @Ip() ip) {
@@ -52,5 +53,11 @@ export class AuthController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Post('changePassword')
+  @Auth()
+  changePassword(@Body() dtoIn: ChangePasswordDto) {
+    return this.authService.changePassword(dtoIn);
   }
 }

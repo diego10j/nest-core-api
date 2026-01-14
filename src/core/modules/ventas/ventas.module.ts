@@ -27,4 +27,4 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
     WhatsappService,
   ],
 })
-export class VentasModule { }
+export class VentasModule {}

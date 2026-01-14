@@ -15,7 +15,7 @@ import { RucDto } from './dto/ruc.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) { }
+  constructor(private readonly adminService: AdminService) {}
 
   // -------------------------------- EMPRESA ---------------------------- //
 
@@ -103,8 +103,6 @@ export class AdminController {
     });
   }
 
-
-
   @Post('generarOpciones')
   // @Auth()
   generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
@@ -113,7 +111,6 @@ export class AdminController {
       ...dtoIn,
     });
   }
-
 
   @Get('getTableQueryPerfilesUsuario')
   // @Auth()

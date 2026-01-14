@@ -9,7 +9,7 @@ import { ProformasService } from './proformas.service';
 
 @Controller('proformas')
 export class ProformasController {
-  constructor(private readonly service: ProformasService) { }
+  constructor(private readonly service: ProformasService) {}
 
   @Get('getProformas')
   // @Auth()
@@ -50,6 +50,4 @@ export class ProformasController {
   updateOpenSolicitud(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
     return this.service.updateOpenSolicitud(dtoIn.ide, headersParams.login);
   }
-
-
 }

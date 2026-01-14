@@ -9,14 +9,14 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { ComprobantesInvService } from './comprobantes.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
+import { LoteIngreso } from './dto/lote-ingreso.dto';
 import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
-import { LoteIngreso } from './dto/lote-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
-  constructor(private readonly service: ComprobantesInvService) { }
+  constructor(private readonly service: ComprobantesInvService) {}
 
   @Get('getComprobantesInventario')
   // @Auth()
@@ -96,9 +96,6 @@ export class ComprobantesInvController {
     });
   }
 
-
-
-
   @Post('anularComprobante')
   // @Auth()
   anularComprobante(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
@@ -108,7 +105,6 @@ export class ComprobantesInvController {
     });
   }
 
-
   @Get('getLoteIngreso')
   // @Auth()
   getLoteIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LoteIngreso) {
@@ -117,9 +113,6 @@ export class ComprobantesInvController {
       ...dtoIn,
     });
   }
-
-
-
 
   // ==================================ListData==============================
   @Get('getListDataEstadosComprobantes')

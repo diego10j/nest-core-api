@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-
 import { Content } from 'pdfmake/interfaces';
-import { EmpresaRepService } from './empresa-rep.service';
-import { HeaderSection } from '../sections/header.section';
+
 import { HeaderOptions } from '../interfaces/reportes';
+import { HeaderSection } from '../sections/header.section';
+
+import { EmpresaRepService } from './empresa-rep.service';
 
 @Injectable()
 export class SectionsService {

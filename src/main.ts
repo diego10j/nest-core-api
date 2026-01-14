@@ -33,7 +33,15 @@ async function bootstrap() {
       'X-Ip',
       'X-Terminal',
     ],
-    exposedHeaders: ['Content-Disposition', 'Authorization', 'X-Ide-Usua', 'X-Ide-Empr', 'X-Ide-Sucu', 'X-Ide-Perf', 'X-Login'],
+    exposedHeaders: [
+      'Content-Disposition',
+      'Authorization',
+      'X-Ide-Usua',
+      'X-Ide-Empr',
+      'X-Ide-Sucu',
+      'X-Ide-Perf',
+      'X-Login',
+    ],
     credentials: true,
   });
 
