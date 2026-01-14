@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors, ParseFilePipe, MaxFileSizeValidator } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -14,9 +14,22 @@ export class AdjuntoCorreoController {
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('archivo'))
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB
+      },
+    }),
+  )
   async uploadAdjunto(
-    @UploadedFile() archivo: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }), // 100MB
+        ],
+      }),
+    )
+    archivo: Express.Multer.File,
     @Body() body: { ide_plco?: number; ide_caco?: number; ide_coco?: number },
     @AppHeaders() headersParams: HeaderParamsDto,
   ) {

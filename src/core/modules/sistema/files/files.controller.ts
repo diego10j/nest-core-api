@@ -97,7 +97,9 @@ export class FilesController {
   @Post('uploadOriginalFile')
   @UseInterceptors(
     FileInterceptor('file', {
-      // limits: { fileSize: 1000 }
+      limits: {
+        fileSize: 500 * 1024 * 1024, // 500MB en bytes
+      },
       storage: diskStorage({
         destination: (req, file, cb) => {
           const folderPath = PATH_DRIVE();
@@ -115,7 +117,7 @@ export class FilesController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB in bytes
+        fileSize: 500 * 1024 * 1024, // 500MB en bytes
       },
       storage: diskStorage({
         destination: (req, file, cb) => {

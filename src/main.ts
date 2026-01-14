@@ -49,9 +49,16 @@ async function bootstrap() {
   const socketIoAdapter = new SocketIoAdapter(app);
   app.useWebSocketAdapter(socketIoAdapter);
 
-  // Increase payload size limit
+  // Increase payload size limit for file uploads
+  // Configurar límites ANTES de cualquier middleware que procese el body
+  // Importante: multer maneja los límites de forma independiente en FileInterceptor
   app.use(json({ limit: '100mb' }));
   app.use(urlencoded({ extended: true, limit: '100mb' }));
+  
+  // Nota: Para archivos muy grandes (>100MB), considera implementar:
+  // - Chunked uploads en el cliente React
+  // - Streaming en el servidor
+  // - S3 o CDN para almacenamiento
 
   app.useGlobalPipes(
     new ValidationPipe({
