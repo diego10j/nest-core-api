@@ -1169,34 +1169,26 @@ export class ClientesService extends BaseService {
   }
 
   async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
-    try {
-      // Validar si el número tiene WhatsApp
-      const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
+    // Validar si el número tiene WhatsApp
+    const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
 
-      if (!validation?.isValid) {
-        return {
-          error: true,
-          message: 'El número proporcionado no está asociado a una cuenta de WhatsApp válida.',
-        };
-      }
-
-      // Usar el número formateado si está disponible
-      dto.telefono = validation.formattedNumber || dto.telefono;
-
-      // Actualizar datos del cliente
-      await this.updateWhatsAppCliente(dto);
-
-      return {
-        error: false,
-        message: 'El número fue validado y actualizado correctamente.',
-      };
-    } catch (error) {
-      console.error('Error al validar el número de WhatsApp:', error);
+    if (!validation?.isValid) {
       return {
         error: true,
-        message: 'Ocurrió un error al validar el número de WhatsApp. Intente nuevamente más tarde.',
+        message: 'El número proporcionado no está asociado a una cuenta de WhatsApp válida.',
       };
     }
+
+    // Usar el número formateado si está disponible
+    dto.telefono = validation.formattedNumber || dto.telefono;
+
+    // Actualizar datos del cliente
+    await this.updateWhatsAppCliente(dto);
+
+    return {
+      error: false,
+      message: 'El número fue validado y actualizado correctamente.',
+    };
   }
 
   async actualizarVendedorClientesInactivos(dtoIn: HeaderParamsDto & { ideVgvenDefault?: number }) {
@@ -1240,7 +1232,7 @@ export class ClientesService extends BaseService {
     query.values.set('fecha_veri_what_geper', getCurrentDateTime());
     query.where = 'ide_geper = $1';
     query.addNumberParam(1, dto.ide_geper);
-    await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getSegumientoClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {

@@ -121,25 +121,20 @@ export class AdminService {
    * @returns
    */
   async generarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
-        SELECT * FROM f_generar_opciones_proerp($1, $2)
-        `,
-      );
-      const jsonString = JSON.stringify(dtoIn.json);
-      query.addParam(1, jsonString);
-      query.addParam(2, dtoIn.login);
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+    const query = new SelectQuery(
+      `
+      SELECT * FROM f_generar_opciones_proerp($1, $2)
+      `,
+    );
+    const jsonString = JSON.stringify(dtoIn.json);
+    query.addParam(1, jsonString);
+    query.addParam(2, dtoIn.login);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   // -------------------------------- PERFILES ---------------------------- //

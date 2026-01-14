@@ -12,44 +12,44 @@ import { ErrorsLoggerService } from '../../../errors/errors-logger.service';
  */
 @Injectable()
 export class UpdateQueryBuilder implements IQueryBuilder {
-  constructor(
-    @Inject('DATABASE_POOL') private readonly pool: Pool,
-    private readonly queryValidator: QueryValidatorService,
-    private readonly errorsLogger: ErrorsLoggerService,
-  ) {}
+    constructor(
+        @Inject('DATABASE_POOL') private readonly pool: Pool,
+        private readonly queryValidator: QueryValidatorService,
+        private readonly errorsLogger: ErrorsLoggerService,
+    ) { }
 
-  /**
-   * Valida un UpdateQuery
-   */
-  validate(query: UpdateQuery): void {
-    this.queryValidator.validateUpdateQuery(query);
-  }
-
-  /**
-   * Construye y ejecuta un UpdateQuery
-   */
-  async build(query: UpdateQuery): Promise<ResultQuery> {
-    try {
-      // Ejecutar query
-      const result = await this.pool.query(query.query, query.paramValues);
-
-      return {
-        rowCount: result.rowCount,
-        message: this.getResultMessage(result.rowCount),
-      };
-    } catch (error) {
-      this.errorsLogger.createErrorLog('[UpdateQueryBuilder]', error);
-      throw error;
+    /**
+     * Valida un UpdateQuery
+     */
+    validate(query: UpdateQuery): void {
+        this.queryValidator.validateUpdateQuery(query);
     }
-  }
 
-  /**
-   * Mensaje según el número de registros actualizados
-   */
-  private getResultMessage(rowCount: number): string {
-    if (rowCount > 0) {
-      return `Actualización exitosa, ${rowCount} registro(s) afectado(s)`;
+    /**
+     * Construye y ejecuta un UpdateQuery
+     */
+    async build(query: UpdateQuery): Promise<ResultQuery> {
+        try {
+            // Ejecutar query
+            const result = await this.pool.query(query.query, query.paramValues);
+
+            return {
+                rowCount: result.rowCount,
+                message: this.getResultMessage(result.rowCount),
+            };
+        } catch (error) {
+            this.errorsLogger.createErrorLog('[UpdateQueryBuilder]', error);
+            throw error;
+        }
     }
-    return 'No se actualizó ningún registro';
-  }
+
+    /**
+     * Mensaje según el número de registros actualizados
+     */
+    private getResultMessage(rowCount: number): string {
+        if (rowCount > 0) {
+            return `Actualización exitosa, ${rowCount} registro(s) afectado(s)`;
+        }
+        return 'No se actualizó ningún registro';
+    }
 }

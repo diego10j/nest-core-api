@@ -104,7 +104,7 @@ export class VentasBiService extends BaseService {
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addStringParam(3, `${dtoIn.periodo}-01-01`);
     query.addStringParam(4, `${dtoIn.periodo}-12-31`);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -177,7 +177,7 @@ export class VentasBiService extends BaseService {
         vcf.fecha DESC
     LIMIT ${dtoIn.dias}
         `);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -260,7 +260,7 @@ export class VentasBiService extends BaseService {
     query.addStringParam(2, dtoIn.fechaFin);
     query.addStringParam(3, dtoIn.fechaInicio);
     query.addStringParam(4, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -366,7 +366,7 @@ export class VentasBiService extends BaseService {
     query.addStringParam(4, dtoIn.fechaFin);
     query.addStringParam(5, dtoIn.fechaInicio);
     query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -404,7 +404,7 @@ export class VentasBiService extends BaseService {
     query.addStringParam(2, dtoIn.fechaFin);
     query.addStringParam(3, dtoIn.fechaInicio);
     query.addStringParam(4, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -431,7 +431,7 @@ ORDER BY
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -495,7 +495,7 @@ ORDER BY
     query.addStringParam(4, dtoIn.fechaFin);
     query.addStringParam(5, dtoIn.fechaInicio);
     query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -531,7 +531,7 @@ ORDER BY
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getVentasPorIdCliente(dtoIn: RangoFechasDto & HeaderParamsDto) {
@@ -560,7 +560,7 @@ ORDER BY
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -740,7 +740,7 @@ ORDER BY
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addStringParam(3, `${dtoIn.periodo}-01-01`);
     query.addStringParam(4, `${dtoIn.periodo}-12-31`);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -811,7 +811,7 @@ ORDER BY
     query.addStringParam(7, dtoIn.fechaInicio);
     query.addStringParam(8, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -897,7 +897,7 @@ ORDER BY
                 ac.anio DESC
         `);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1080,7 +1080,7 @@ ORDER BY
     query.addParam(2, dtoIn.periodo);
     query.addParam(3, dtoIn.periodoCompara);
     query.addParam(4, dtoIn.periodo);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // ------------------------------------------
@@ -1156,7 +1156,7 @@ ORDER BY
     query.addStringParam(3, dtoIn.fechaInicio);
     query.addStringParam(4, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1192,7 +1192,7 @@ ORDER BY
     );
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1274,7 +1274,7 @@ ORDER BY
     query.addIntParam(8, dtoIn.ide_inarti);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1316,7 +1316,7 @@ ORDER BY
     query.addStringParam(2, dtoIn.fechaInicio);
     query.addStringParam(3, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalVentasProductoPorFormaPago(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -1405,7 +1405,7 @@ ORDER BY
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTopVendedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -1492,7 +1492,7 @@ ORDER BY
     query.addIntParam(8, dtoIn.ide_inarti);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalVentasProductoPorIdCliente(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -1636,7 +1636,7 @@ ORDER BY
     query.addStringParam(1, `${dtoIn.periodo}-01-01`);
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addIntParam(3, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1736,7 +1736,7 @@ ORDER BY
     query.addStringParam(8, `${dtoIn.periodo}-12-31`);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTendenciaVentasDiaProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -1822,7 +1822,7 @@ ORDER BY
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getResumenVentasPeriodosProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
@@ -1914,7 +1914,7 @@ ORDER BY
     query.addIntParam(3, dtoIn.ide_inarti);
     query.addIntParam(4, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1976,7 +1976,7 @@ ORDER BY
     query.addStringParam(3, dtoIn.fechaInicio);
     query.addStringParam(4, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getKPIsVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
@@ -2085,7 +2085,7 @@ ORDER BY
     query.addStringParam(5, fechaInicioAnterior.toISOString().split('T')[0]);
     query.addStringParam(6, fechaFinAnterior.toISOString().split('T')[0]);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getProductosMasRentables(dtoIn: TopClientesDto & HeaderParamsDto) {
@@ -2256,7 +2256,7 @@ ORDER BY
     query.addStringParam(2, dtoIn.fechaFin);
     query.addStringParam(3, dtoIn.fechaFin);
     query.addStringParam(4, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalClientesPorProvincia(dtoIn: HeaderParamsDto) {
@@ -2272,7 +2272,7 @@ ORDER BY
         GROUP BY p.ide_geprov, p.nombre_geprov
         ORDER BY cantidad_clientes DESC   
     `);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTopClientesFacturas(dtoIn: TopClientesDto & HeaderParamsDto) {
@@ -2300,7 +2300,7 @@ ORDER BY
     );
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalClientesPorPeriodo(dtoIn: HeaderParamsDto) {
@@ -2380,7 +2380,7 @@ ORDER BY
             ORDER BY p.anio DESC
         `);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalClientesPorPeriodoVendedor(dtoIn: IdeDto & HeaderParamsDto) {
@@ -2490,7 +2490,7 @@ ORDER BY
             ORDER BY anio DESC, total_clientes_activos DESC, total_clientes_nuevos DESC
         `);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getResumenClientesPorVendedor(dtoIn: HeaderParamsDto) {
@@ -2527,6 +2527,6 @@ ORDER BY
             ORDER BY total_clientes_activos DESC
         `);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }
