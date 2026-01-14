@@ -51,27 +51,26 @@ export class BodegasService extends BaseService {
   async getBodegas(dtoIn?: QueryOptionsDto & HeaderParamsDto) {
     const query = new SelectQuery(
       `
-        select
+        SELECT
             ide_inbod,
             nombre_inbod,
             nombre_geprov,
             nombre_gecant,
-            activo_inbod,
-            a.hora_ingre
-        from
+            activo_inbod
+        FROM
             inv_bodega a
-            left join gen_provincia b on a.ide_geprov = b.ide_geprov
-            left join gen_canton c on a.ide_gecant = c.ide_gecant
-        where
+            LEFT JOIN gen_provincia b ON a.ide_geprov = b.ide_geprov
+            LEFT JOIN gen_canton c ON a.ide_gecant = c.ide_gecant
+        WHERE
             nivel_inbod = 'HIJO'
-            and ide_empr = $1
-        order by
+            AND ide_empr = $1
+        ORDER BY
             nombre_inbod
     `,
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ideEmpr);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -146,7 +145,7 @@ export class BodegasService extends BaseService {
     if (dtoIn.ide_inbod) {
       query.addIntParam(4, dtoIn.ide_inbod);
     }
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -252,7 +251,7 @@ export class BodegasService extends BaseService {
     if (dtoIn.ide_inbod) {
       query.addParam(2, dtoIn.ide_inbod);
     }
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // ==================================ListData==============================
@@ -307,9 +306,8 @@ export class BodegasService extends BaseService {
    * @returns
    */
   async generarConteoInventario(dtoIn: GeneraConteoInvDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
+    const query = new SelectQuery(
+      `
       SELECT * FROM f_genera_conteo_inventario(
         p_ide_inbod := $1,
         p_fecha_corte_desde := $2,
@@ -319,86 +317,72 @@ export class BodegasService extends BaseService {
         p_ide_sucu := $6,
         p_observacion := $7
       )
-        `,
-        dtoIn,
-      );
+      `,
+      dtoIn,
+    );
 
-      query.addParam(1, dtoIn.ide_inbod);
-      query.addParam(2, dtoIn.fechaInicioCorte);
-      query.addParam(3, dtoIn.fechaCorte);
-      query.addIntParam(4, dtoIn.ide_usua);
-      query.addIntParam(5, dtoIn.ideEmpr);
-      query.addIntParam(6, dtoIn.ideSucu);
-      query.addParam(7, dtoIn.observacion);
+    query.addParam(1, dtoIn.ide_inbod);
+    query.addParam(2, dtoIn.fechaInicioCorte);
+    query.addParam(3, dtoIn.fechaCorte);
+    query.addIntParam(4, dtoIn.ide_usua);
+    query.addIntParam(5, dtoIn.ideEmpr);
+    query.addIntParam(6, dtoIn.ideSucu);
+    query.addParam(7, dtoIn.observacion);
 
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async registrarConteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
-        SELECT * FROM f_registrar_conteo_fisico(
-          p_ide_indcf := $1,
-          p_cantidad_contada := $2,
-          p_observacion := $3,
-          p_usuario_conteo := $4
+    const query = new SelectQuery(
+      `
+      SELECT * FROM f_registrar_conteo_fisico(
+        p_ide_indcf := $1,
+        p_cantidad_contada := $2,
+        p_observacion := $3,
+        p_usuario_conteo := $4
       )
-        `,
-        dtoIn,
-      );
-      query.addParam(1, dtoIn.ide_indcf);
-      query.addParam(2, dtoIn.cantidadContada);
-      query.addParam(3, dtoIn.observacion);
-      query.addParam(4, dtoIn.login);
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+      `,
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide_indcf);
+    query.addParam(2, dtoIn.cantidadContada);
+    query.addParam(3, dtoIn.observacion);
+    query.addParam(4, dtoIn.login);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async registrarReconteoFisico(dtoIn: RegistrarConteoFisicoDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
-        SELECT * FROM f_registrar_reconteo_fisico(
-          p_ide_indcf := $1,
-          p_cantidad_recontada := $2,
-          p_observacion := $3,
-          p_usuario_reconteo := $4
+    const query = new SelectQuery(
+      `
+      SELECT * FROM f_registrar_reconteo_fisico(
+        p_ide_indcf := $1,
+        p_cantidad_recontada := $2,
+        p_observacion := $3,
+        p_usuario_reconteo := $4
       )
-        `,
-        dtoIn,
-      );
-      query.addParam(1, dtoIn.ide_indcf);
-      query.addParam(2, dtoIn.cantidadContada);
-      query.addParam(3, dtoIn.observacion);
-      query.addParam(4, dtoIn.login);
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+      `,
+      dtoIn,
+    );
+    query.addParam(1, dtoIn.ide_indcf);
+    query.addParam(2, dtoIn.cantidadContada);
+    query.addParam(3, dtoIn.observacion);
+    query.addParam(4, dtoIn.login);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   /**
@@ -517,7 +501,7 @@ export class BodegasService extends BaseService {
       query.addParam(3, dtoIn.ide_inec);
     }
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getDetalleConteo(dtoIn: GetDetallesConteoDto & HeaderParamsDto) {
@@ -621,8 +605,8 @@ export class BodegasService extends BaseService {
     );
 
     query.addIntParam(1, dtoIn.ide_inccf);
-    query.setLazy(false); //retorna todos los registros sin paginación
-    return await this.dataSource.createQuery(query);
+    query.setLazy(false); // Retorna todos los registros sin paginación
+    return this.dataSource.createQuery(query);
   }
 
   async getListDataEstadosConteo(dto?: QueryOptionsDto & HeaderParamsDto) {
@@ -679,7 +663,7 @@ export class BodegasService extends BaseService {
 
     query.addIntParam(1, dtoIn.ide_inccf);
     query.addStringParam(2, sqlSearchValue);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -704,98 +688,78 @@ export class BodegasService extends BaseService {
   }
 
   async eliminarProductosConteo(dtoIn: ArrayIdeDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
+    const query = new SelectQuery(
+      `
       SELECT * FROM f_eliminar_producto_conteo(
         p_ide_indcf_array := $1
       )
-        `,
-      );
+      `,
+    );
 
-      query.addParam(1, dtoIn.ide);
+    query.addParam(1, dtoIn.ide);
 
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async agregarProductoConteo(dtoIn: AgregaProductoConteoDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
+    const query = new SelectQuery(
+      `
       SELECT * FROM f_agregar_producto_conteo(
         p_ide_inccf := $1,
         p_ide_inarti := $2,
         p_usuario_agrega := $3
       )
-        `,
-      );
-      query.addParam(1, dtoIn.ide_inccf);
-      query.addParam(2, dtoIn.ide_inarti);
-      query.addParam(3, dtoIn.login);
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+      `,
+    );
+    query.addParam(1, dtoIn.ide_inccf);
+    query.addParam(2, dtoIn.ide_inarti);
+    query.addParam(3, dtoIn.login);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async validarDetallesConteo(dtoIn: ValidarDetallesConteoDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
-        SELECT * FROM f_validar_detalles_conteo($1, $2)
-        `,
-      );
-      const jsonString = JSON.stringify(dtoIn.detalles);
-      query.addParam(1, jsonString);
-      query.addParam(2, dtoIn.ideUsua);
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+    const query = new SelectQuery(
+      `
+      SELECT * FROM f_validar_detalles_conteo($1, $2)
+      `,
+    );
+    const jsonString = JSON.stringify(dtoIn.detalles);
+    query.addParam(1, jsonString);
+    query.addParam(2, dtoIn.ideUsua);
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async autorizarAjustesConteo(dtoIn: AutorizaAjustesConteoDto & HeaderParamsDto) {
-    try {
-      const query = new SelectQuery(
-        `
-        SELECT * FROM f_autorizar_ajustes_conteo($1, $2, $3)
-        `,
-      );
-      query.addParam(1, dtoIn.ide_inccf);
-      query.addParam(2, dtoIn.ideUsua);
-      query.addParam(2, dtoIn.observacion);
+    const query = new SelectQuery(
+      `
+      SELECT * FROM f_autorizar_ajustes_conteo($1, $2, $3)
+      `,
+    );
+    query.addParam(1, dtoIn.ide_inccf);
+    query.addParam(2, dtoIn.ideUsua);
+    query.addParam(3, dtoIn.observacion);
 
-      const rows = await this.dataSource.createSelectQuery(query);
-      return {
-        rowCount: rows.length,
-        data: rows,
-        message: 'ok',
-      } as ResultQuery;
-    } catch (error) {
-      console.log(error.message);
-      throw new BadRequestException(`${error.message}`);
-    }
+    const rows = await this.dataSource.createSelectQuery(query);
+    return {
+      rowCount: rows.length,
+      data: rows,
+      message: 'ok',
+    } as ResultQuery;
   }
 
   async updateEstadoConteo(dto: UpdateEstadoConteoDto) {
@@ -803,7 +767,7 @@ export class BodegasService extends BaseService {
     updateQuery.values.set('ide_inec', dto.ide_inec);
     updateQuery.where = 'ide_inccf = $1';
     updateQuery.addParam(1, dto.ide_inccf);
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async updateEstadoDetalleConteo(dto: UpdateEstadoDetalleConteoDto) {
@@ -811,7 +775,7 @@ export class BodegasService extends BaseService {
     updateQuery.values.set('estado_item_indcf', dto.estado_item_indcf);
     updateQuery.where = 'ide_indcf = $1';
     updateQuery.addParam(1, dto.ide_indcf);
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async getListDataEstadosDetalleConteo(_dto?: QueryOptionsDto & HeaderParamsDto) {
