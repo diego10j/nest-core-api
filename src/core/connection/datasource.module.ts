@@ -1,7 +1,9 @@
 // src/core/connection/datasource.module.ts
 import { Global, Module } from '@nestjs/common';
+import { Pool } from 'pg';
 import { ErrorsModule } from 'src/errors/errors.module';
 import { RedisModule } from 'src/redis/redis.module';
+import { envs } from 'src/config/envs';
 
 import { VariablesService } from '../variables/variables.service';
 import { AuditLoggerService } from '../audit/audit-logger.service';
@@ -23,6 +25,14 @@ import { ICacheProvider } from '../cache/cache.interface';
 @Module({
   imports: [RedisModule, ErrorsModule], // Importa RedisModule para tener acceso al cliente Redis
   providers: [
+    // Database Pool
+    {
+      provide: 'DATABASE_POOL',
+      useValue: new Pool({
+        connectionString: envs.bdUrlPool,
+      }),
+    },
+
     // Servicios de Type Parsing
     TypeParserService,
 
