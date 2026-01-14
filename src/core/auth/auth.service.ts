@@ -18,6 +18,9 @@ import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
 import { JwtPayload } from './interfaces';
+import { PasswordService } from './password.service';
+import { PASSWORD_MESSAGES } from './constants/password.constants';
+import { UserNotFoundException } from './exceptions/user-not-found.exception';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +30,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly errorsLoggerService: ErrorsLoggerService,
     private readonly jwtService: JwtService,
+    private readonly passwordService: PasswordService,
   ) { }
 
   async login(loginUserDto: LoginUserDto, ip: string) {
@@ -51,19 +55,8 @@ export class AuthService {
 
     //TODO: Verifica que el usuario no este caducado
     //TODO:  Verifica que la clave no haya caducado
-    // Verificar contraseña
-    if (!bcrypt.compareSync(password, dataPass.password_uscl)) {
-      //Auditoria
-      this.audit.saveEventoAuditoria(
-        dataUser.ide_usua,
-        EventAudit.LOGIN_ERROR,
-        ip,
-        'Contraseña incorrecta',
-        '', // device
-      );
-      this.errorsLoggerService.createErrorLog(`Contraseña incorrecta usuario ${dataPass.nick_usua}`);
-      throw new UnauthorizedException('Credenciales no válidas, Contraseña incorrecta');
-    }
+
+    await this.validateLoginPassword(password, dataPass, dataUser.ide_usua, ip);
     // perfiles - roles
     const dataPerf = await this.getPerfilesUsuario(dataUser.ide_usua);
     if (dataPerf.length === 0) {
@@ -328,56 +321,75 @@ export class AuthService {
   async changePassword(changePasswordDto: ChangePasswordDto) {
     const { ide_usua, currentPassword, newPassword } = changePasswordDto;
 
-    // Obtener el usuario y su contraseña actual
-    const queryUser = new SelectQuery(
-      'SELECT uuid FROM sis_usuario WHERE ide_usua = $1 AND activo_usua = true',
-    );
-    queryUser.addNumberParam(1, ide_usua);
-    const dataUser = await this.dataSource.createSingleQuery(queryUser);
+    const user = await this.fetchUserById(ide_usua);
+    const userPassword = await this.fetchUserPasswordData(user.uuid);
 
-    if (!dataUser) {
-      throw new UnauthorizedException('Usuario no encontrado');
-    }
+    await this.passwordService.validatePassword(currentPassword, userPassword.password_uscl);
+    this.passwordService.validatePasswordsDiffer(currentPassword, newPassword);
 
-    // Obtener la contraseña almacenada
-    const dataPass = await this.getPwUsuario(dataUser.uuid);
-    if (!dataPass) {
-      throw new UnauthorizedException('No se pudo verificar la contraseña actual');
-    }
+    const hashedPassword = await this.passwordService.hashPassword(newPassword);
 
-    // Verificar que la contraseña actual sea correcta
-    if (!bcrypt.compareSync(currentPassword, dataPass.password_uscl)) {
-      throw new UnauthorizedException('La contraseña actual es incorrecta');
-    }
-
-    // Verificar que la nueva contraseña no sea igual a la actual
-    if (currentPassword === newPassword) {
-      throw new UnauthorizedException('La nueva contraseña debe ser diferente a la actual');
-    }
-
-    // Encriptar la nueva contraseña
-    const hashedPassword = bcrypt.hashSync(newPassword, 10);
-
-    // Actualizar la contraseña en la base de datos
-    const updateQuery = new UpdateQuery('sis_usuario_clave', 'ide_uscl');
-    updateQuery.values.set('password_uscl', hashedPassword);
-    updateQuery.values.set('fecha_vence_uscl', null); // Resetear fecha de vencimiento si aplica
-    updateQuery.values.set('hora_actua', getCurrentDateTime());
-    updateQuery.where = 'ide_usua = $1 AND activo_uscl = true';
-    updateQuery.addNumberParam(1, ide_usua);
-    await this.dataSource.createQuery(updateQuery);
-
-    // Actualizar flag de cambio de contraseña si estaba activo
-    const updateUserQuery = new UpdateQuery('sis_usuario', 'ide_usua');
-    updateUserQuery.values.set('cambia_clave_usua', false);
-    updateQuery.values.set('hora_actua', getCurrentDateTime());
-    updateUserQuery.where = 'ide_usua = $1';
-    updateUserQuery.addNumberParam(1, ide_usua);
-    await this.dataSource.createQuery(updateUserQuery);
+    await this.updateUserPasswordInDatabase(ide_usua, hashedPassword);
+    await this.clearPasswordChangeFlag(ide_usua);
 
     return {
-      message: 'Contraseña actualizada correctamente',
+      message: PASSWORD_MESSAGES.UPDATE_SUCCESS,
     };
+  }
+
+  /**
+   * Obtiene el usuario por ID
+   */
+  private async fetchUserById(ideUsua: number) {
+    const query = new SelectQuery(
+      'SELECT uuid FROM sis_usuario WHERE ide_usua = $1 AND activo_usua = true',
+    );
+    query.addNumberParam(1, ideUsua);
+    const user = await this.dataSource.createSingleQuery(query);
+
+    if (!user) {
+      throw new UserNotFoundException(PASSWORD_MESSAGES.USER_NOT_FOUND);
+    }
+
+    return user;
+  }
+
+  /**
+   * Obtiene los datos de contraseña del usuario
+   */
+  private async fetchUserPasswordData(uuid: string) {
+    const userPassword = await this.getPwUsuario(uuid);
+
+    if (!userPassword) {
+      throw new UnauthorizedException(PASSWORD_MESSAGES.PASSWORD_VERIFICATION_FAILED);
+    }
+
+    return userPassword;
+  }
+
+  /**
+   * Actualiza la contraseña del usuario en la base de datos
+   */
+  private async updateUserPasswordInDatabase(ideUsua: number, hashedPassword: string) {
+    const updateQuery = new UpdateQuery('sis_usuario_clave', 'ide_uscl');
+    updateQuery.values.set('password_uscl', hashedPassword);
+    updateQuery.values.set('fecha_vence_uscl', null);
+    updateQuery.values.set('hora_actua', getCurrentDateTime());
+    updateQuery.where = 'ide_usua = $1 AND activo_uscl = true';
+    updateQuery.addNumberParam(1, ideUsua);
+    await this.dataSource.createQuery(updateQuery);
+  }
+
+  /**
+   * Limpia el flag de cambio de contraseña del usuario
+   */
+  private async clearPasswordChangeFlag(ideUsua: number) {
+    const updateQuery = new UpdateQuery('sis_usuario', 'ide_usua');
+    updateQuery.values.set('cambia_clave_usua', false);
+    updateQuery.values.set('hora_actua', getCurrentDateTime());
+    updateQuery.where = 'ide_usua = $1';
+    updateQuery.addNumberParam(1, ideUsua);
+    await this.dataSource.createQuery(updateQuery);
   }
 
   /**
@@ -476,5 +488,29 @@ export class AuthService {
   private getJwtToken(payload: JwtPayload) {
     const token = this.jwtService.sign(payload);
     return token;
+  }
+
+  /**
+   * Valida la contraseña durante el login
+   */
+  private async validateLoginPassword(
+    rawPassword: string,
+    userPassword: any,
+    userId: number,
+    ip: string,
+  ) {
+    const isValidPassword = await bcrypt.compare(rawPassword, userPassword.password_uscl);
+
+    if (!isValidPassword) {
+      this.audit.saveEventoAuditoria(
+        userId,
+        EventAudit.LOGIN_ERROR,
+        ip,
+        'Contraseña incorrecta',
+        '',
+      );
+      this.errorsLoggerService.createErrorLog(`Contraseña incorrecta usuario ${userPassword.nick_usua}`);
+      throw new UnauthorizedException('Credenciales no válidas, Contraseña incorrecta');
+    }
   }
 }

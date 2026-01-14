@@ -9,6 +9,7 @@ import { AuditService } from '../modules/audit/audit.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { PasswordService } from './password.service';
 
 @Module({
   controllers: [AuthController],
@@ -29,7 +30,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       },
     }),
   ],
-  providers: [AuthService, JwtStrategy, AuditService],
+  providers: [AuthService, JwtStrategy, AuditService, PasswordService],
   exports: [PassportModule, JwtStrategy, JwtModule],
 })
-export class AuthModule {}
+export class AuthModule { }
