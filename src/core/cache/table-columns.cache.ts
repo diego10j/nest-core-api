@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ICacheProvider } from './cache.interface';
 
 /**
@@ -10,7 +10,7 @@ export class TableColumnsCacheService {
   private readonly CACHE_KEY_PREFIX = 'table_columns';
   private readonly CACHE_TTL = 3600; // 1 hora
 
-  constructor(private readonly cacheProvider: ICacheProvider) {}
+  constructor(@Inject('ICacheProvider') private readonly cacheProvider: ICacheProvider) {}
 
   /**
    * Obtiene las columnas en caché de una tabla

@@ -17,6 +17,7 @@ import { UpdateQueryBuilder } from './query-builder/update-query.builder';
 import { DeleteQueryBuilder } from './query-builder/delete-query.builder';
 import { RedisCacheProvider } from '../cache/redis-cache.provider';
 import { TableColumnsCacheService } from '../cache/table-columns.cache';
+import { ICacheProvider } from '../cache/cache.interface';
 
 @Global() //  Hace que este módulo y sus exports sean globales
 @Module({
@@ -34,6 +35,10 @@ import { TableColumnsCacheService } from '../cache/table-columns.cache';
 
     // Servicios de Caché
     RedisCacheProvider,
+    {
+      provide: 'ICacheProvider',
+      useExisting: RedisCacheProvider,
+    },
     TableColumnsCacheService,
 
     // QueryBuilders

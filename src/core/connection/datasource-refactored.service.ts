@@ -76,7 +76,7 @@ export class DataSourceService {
     private readonly deleteQueryBuilder: DeleteQueryBuilder,
     private readonly auditLogger: AuditLoggerService,
     private readonly errorsLoggerService: ErrorsLoggerService,
-    private readonly cacheProvider: ICacheProvider,
+    @Inject('ICacheProvider') private readonly cacheProvider: ICacheProvider,
     private readonly tableColumnsCacheService: TableColumnsCacheService,
     @Inject('REDIS_CLIENT') public readonly redisClient: Redis,
   ) {
