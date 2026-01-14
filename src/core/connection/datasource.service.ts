@@ -168,7 +168,7 @@ export class DataSourceService {
         // Si no se pudo extraer, generar un hash único basado en la query SQL
         if (finalQueryName === 'UnknownService') {
           finalQueryName = this.generateQueryNameFromSQL(query.query);
-          console.log(`[createQuery] Usando queryName generado: "${finalQueryName}"`);
+          // console.log(`[createQuery] Usando queryName generado: "${finalQueryName}"`);
         }
 
         if (isDefined(ref)) {

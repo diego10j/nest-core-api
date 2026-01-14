@@ -14,7 +14,7 @@ export class UsuariosService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
-  ) {}
+  ) { }
 
   // -------------------------------- USUARIO ---------------------------- //
   async getListDataUsuario(dto: QueryOptionsDto & HeaderParamsDto) {
@@ -41,7 +41,7 @@ export class UsuariosService {
   }
 
   /**
-   * Retorna el listado de Usuarios
+   * Retorna el listado de Usuarios con sus perfiles
    * @returns
    */
   async getUsuarios(dtoIn?: QueryOptionsDto & HeaderParamsDto) {
@@ -49,22 +49,28 @@ export class UsuariosService {
       `
     SELECT
         a.uuid,
-        ide_usua,
-        nom_usua,
-        nick_usua,
-        activo_usua,
-        nom_perf,
-        avatar_usua,
-        bloqueado_usua,
-        fecha_reg_usua,
-        mail_usua
+        a.ide_usua,
+        a.nom_usua,
+        a.nick_usua,
+        a.activo_usua,
+        a.avatar_usua,
+        a.bloqueado_usua,
+        a.fecha_reg_usua,
+        a.mail_usua,
+        COALESCE(
+          json_agg(c.nom_perf) FILTER (WHERE c.ide_perf IS NOT NULL),
+          '[]'::json
+        ) as perfiles
     FROM
         sis_usuario a
-        inner join sis_perfil b on a.ide_perf = b.ide_perf
+        LEFT JOIN sis_usuario_perfil b ON a.ide_usua = b.ide_usua AND b.activo_usper = true
+        LEFT JOIN sis_perfil c ON b.ide_perf = c.ide_perf AND c.activo_perf = true AND c.ide_sist = 2
     WHERE
-        ide_empr = ${dtoIn.ideEmpr}
+        a.ide_empr = ${dtoIn.ideEmpr}
+    GROUP BY
+        a.uuid, a.ide_usua, a.nom_usua, a.nick_usua, a.activo_usua, a.avatar_usua, a.bloqueado_usua, a.fecha_reg_usua, a.mail_usua
     ORDER BY
-        nom_usua`,
+        a.nom_usua`,
       dtoIn,
     );
     return this.dataSource.createQuery(query);

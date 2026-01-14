@@ -14,5 +14,5 @@ INSERT INTO "public"."sis_usuario_sucursal" ("ide_ussu", "ide_sucu", "ide_usua",
 INSERT INTO "public"."sis_usuario_clave" ("ide_uscl", "ide_usua", "fecha_registro_uscl", "password_uscl", "activo_uscl") VALUES
 (40, 110, '2024-10-29', '$2a$10$YmzXZuCX1sBWIGkw//4rVumKQuXuhY/RR3T4jJSUIOfYu74weKdZu', 'TRUE');
 -- perfil admin a usuario
-INSERT INTO "public"."sis_usuario_perfil" ("ide_usper", "ide_usua", "ide_perf", "ide_tihor", "activo_usper", "ide_empr", "ide_sucu", "extra_util_usper") VALUES
-(10, 110, 0, 1, 'TRUE', 3, 100, 'TRUE');
+INSERT INTO "public"."sis_usuario_perfil" ("ide_usper", "ide_usua", "ide_perf", "ide_tihor", "activo_usper", "ide_empr", "ide_sucu") VALUES
+(10, 110, 0, 1, 'TRUE', 3, 100);

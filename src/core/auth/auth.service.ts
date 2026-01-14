@@ -21,6 +21,7 @@ import { JwtPayload } from './interfaces';
 import { PasswordService } from './password.service';
 import { PASSWORD_MESSAGES } from './constants/password.constants';
 import { UserNotFoundException } from './exceptions/user-not-found.exception';
+import { is } from 'date-fns/locale';
 
 @Injectable()
 export class AuthService {
@@ -36,7 +37,7 @@ export class AuthService {
   async login(loginUserDto: LoginUserDto, ip: string) {
     const { password, email } = loginUserDto;
     const queryUser = new SelectQuery(
-      'SELECT ide_usua,uuid,cambia_clave_usua FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true',
+      'SELECT ide_usua,uuid,cambia_clave_usua,admin_usua FROM sis_usuario WHERE mail_usua = $1 AND activo_usua=true',
     );
     queryUser.addStringParam(1, email);
     const dataUser = await this.dataSource.createSingleQuery(queryUser);
@@ -107,6 +108,7 @@ export class AuthService {
         lastAccess: dataPass.fecha_auac,
         ip,
         requireChange: dataUser.cambia_clave_usua,
+        isSuperUser: dataUser.admin_usua,
         perfiles: dataPerf,
         sucursales: dataSucu,
         empresas: [
@@ -448,8 +450,7 @@ export class AuthService {
     const queryPerf = new SelectQuery(`
         SELECT
             a.ide_perf,
-            nom_perf,
-            extra_util_usper
+            nom_perf
         FROM
             sis_usuario_perfil a
             INNER JOIN sis_perfil b on a.ide_perf = b.ide_perf
