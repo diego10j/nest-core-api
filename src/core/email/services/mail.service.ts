@@ -340,7 +340,7 @@ export class MailService {
     `);
     query.addParam(1, ideEmpr);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -393,7 +393,7 @@ export class MailService {
 
     query.addParam(1, ide_referencia);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**

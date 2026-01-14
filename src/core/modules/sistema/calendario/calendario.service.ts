@@ -44,7 +44,7 @@ export class CalendarioService {
             AND ide_empr = ${dtoIn.ideEmpr}
         ORDER BY fecha_inicio_cale
         `);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async createEvento(dto: CreateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
@@ -62,7 +62,7 @@ export class CalendarioService {
       this.primaryKey,
       await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login),
     );
-    return await this.dataSource.createQuery(insertQuery);
+    return this.dataSource.createQuery(insertQuery);
   }
 
   async updateEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
@@ -78,13 +78,13 @@ export class CalendarioService {
     updateQuery.values.set('notificar_cale', dto.notificar_cale);
     updateQuery.where = `uuid = $1`;
     updateQuery.addParam(1, dto.id);
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async deleteEvento(dto: UpdateEventoDto & HeaderParamsDto): Promise<ResultQuery> {
     const deleteQuery = new DeleteQuery(this.tableName);
     deleteQuery.where = `uuid = $1`;
     deleteQuery.addParam(1, dto.id);
-    return await this.dataSource.createQuery(deleteQuery);
+    return this.dataSource.createQuery(deleteQuery);
   }
 }

@@ -436,7 +436,7 @@ export class AuthService {
             AND b.activo_uscl = true   
         `);
     queryPass.addParam(1, uuid);
-    return await this.dataSource.createSingleQuery(queryPass);
+    return this.dataSource.createSingleQuery(queryPass);
   }
 
   /**
@@ -460,7 +460,7 @@ export class AuthService {
             and b.ide_sist = 2
         `);
     queryPerf.addIntParam(1, ide_usua);
-    return await this.dataSource.createSelectQuery(queryPerf);
+    return this.dataSource.createSelectQuery(queryPerf);
   }
 
   /**
@@ -482,7 +482,7 @@ export class AuthService {
                 and a.ide_usua = $1
             `);
     querySucu.addIntParam(1, ide_usua);
-    return await this.dataSource.createSelectQuery(querySucu);
+    return this.dataSource.createSelectQuery(querySucu);
   }
 
   private getJwtToken(payload: JwtPayload) {

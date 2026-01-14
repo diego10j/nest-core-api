@@ -258,7 +258,7 @@ export class FacturasService extends BaseService {
       `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {

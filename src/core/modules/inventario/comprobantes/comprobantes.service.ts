@@ -111,7 +111,7 @@ export class ComprobantesInvService extends BaseService {
     query.addParam(2, dtoIn.fechaFin);
     query.addIntParam(3, dtoIn.ideEmpr);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -168,7 +168,7 @@ export class ComprobantesInvService extends BaseService {
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_incci);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -236,7 +236,7 @@ export class ComprobantesInvService extends BaseService {
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_incci);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getIngresosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
@@ -299,7 +299,7 @@ export class ComprobantesInvService extends BaseService {
     if (dtoIn.ide_inbod) {
       query.addIntParam(3, dtoIn.ide_inbod);
     }
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
@@ -309,7 +309,7 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
     updateQuery.where = 'ide_incci = ANY ($1) and verifica_incci = false';
     updateQuery.addParam(1, dtoIn.ide);
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async anularComprobante(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
@@ -320,7 +320,7 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.where = 'ide_incci = $1 and ide_inepi != $2 ';
     updateQuery.addParam(1, dtoIn.ide_incci);
     updateQuery.addParam(2, this.variables.get('p_inv_estado_anulado'));
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async saveDetInvEgreso(dtoIn: SaveDetInvEgresoDto & HeaderParamsDto) {
@@ -335,7 +335,7 @@ export class ComprobantesInvService extends BaseService {
     }
     updateQuery.where = 'ide_indci = $1';
     updateQuery.addParam(1, dtoIn.data.ide_indci);
-    return await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateQuery);
   }
 
   async saveLoteInv(dtoIn: SaveLoteDto & HeaderParamsDto) {
@@ -396,7 +396,7 @@ export class ComprobantesInvService extends BaseService {
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_indci_ingreso);
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
   }
 
   // ==================================ListData==============================

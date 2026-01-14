@@ -121,13 +121,13 @@ export class ProductosService extends BaseService {
      */
     async getProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
         const query = this.getQueryProductos(dtoIn);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     async getAllProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
         const query = this.getQueryProductos(dtoIn);
         query.setLazy(false);
-        return await this.dataSource.createSelectQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     private getQueryProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
@@ -188,7 +188,7 @@ export class ProductosService extends BaseService {
             dtoIn,
         );
 
-        return await this.dataSource.createSelectQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async searchProducto(dto: SearchDto & HeaderParamsDto) {
@@ -245,7 +245,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(1, sqlSearchValue);
         query.addStringParam(2, sqlSearchValue);
         query.addStringParam(3, sqlSearchValue);
-        return await this.dataSource.createSelectQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -542,7 +542,7 @@ export class ProductosService extends BaseService {
         query.addParam(4, dtoIn.fechaInicio);
         query.addParam(5, dtoIn.fechaFin);
 
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -632,7 +632,7 @@ export class ProductosService extends BaseService {
         query.addParam(3, dtoIn.fechaFin);
         query.addParam(4, dtoIn.fechaInicio);
         query.addParam(5, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     async getVentasProductoUtilidad(dtoIn: PreciosProductoDto & HeaderParamsDto) {
@@ -754,7 +754,7 @@ export class ProductosService extends BaseService {
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addParam(2, dtoIn.fechaInicio);
         query.addParam(3, dtoIn.fechaFin);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -825,7 +825,7 @@ export class ProductosService extends BaseService {
         );
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -935,7 +935,7 @@ export class ProductosService extends BaseService {
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -1031,7 +1031,7 @@ export class ProductosService extends BaseService {
         query.addStringParam(5, `${dtoIn.periodo}-12-31`);
         query.addIntParam(6, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -1253,7 +1253,7 @@ export class ProductosService extends BaseService {
         );
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -1341,7 +1341,7 @@ export class ProductosService extends BaseService {
         query.addIntParam(8, dtoIn.ide_inarti);
         query.addIntParam(9, dtoIn.ide_inarti);
 
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -1562,7 +1562,7 @@ export class ProductosService extends BaseService {
 
         const query = new SelectQuery(sql, dtoIn);
         query.addIntParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
@@ -1666,7 +1666,7 @@ export class ProductosService extends BaseService {
      */
     async getActividades(dtoIn: IdProductoDto & HeaderParamsDto) {
         const query = this.audit.getQueryActividadesPorTabla('inv_articulo', dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     // =====================================================================
@@ -1779,7 +1779,7 @@ export class ProductosService extends BaseService {
     `);
         query.addIntParam(1, ide_inarti);
         query.addIntParam(2, ide_inarti);
-        return await this.dataSource.createSingleQuery(query);
+        return this.dataSource.createSingleQuery(query);
     }
 
     /**
@@ -1962,7 +1962,7 @@ export class ProductosService extends BaseService {
             dtoIn,
         );
         query.addParam(1, dtoIn.ide_inarti);
-        return await this.dataSource.createQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**

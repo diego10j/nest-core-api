@@ -208,7 +208,7 @@ export class CuentasPorCobrarService extends BaseService {
     query.addParam(4, dtoIn.fechaFin);
     query.addParam(5, dtoIn.ideSucu);
     query.addParam(6, dtoIn.ideEmpr);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getClientesPagoDestiempo(dtoIn: RangoFechasDto & HeaderParamsDto) {
@@ -488,6 +488,6 @@ export class CuentasPorCobrarService extends BaseService {
     query.addParam(3, dtoIn.ideEmpr);
     query.addParam(4, dtoIn.fechaInicio);
     query.addParam(5, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }

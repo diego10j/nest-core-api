@@ -54,7 +54,7 @@ export class WhatsappDbService {
         LIMIT 1
         `);
     query.addParam(1, ideEmpr);
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
     // if (res) {
     //   return res;
     // }
@@ -261,7 +261,7 @@ export class WhatsappDbService {
       dto,
     );
     query.addParam(1, dto.ideEmpr);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -293,7 +293,7 @@ export class WhatsappDbService {
       dto,
     );
     query.addParam(1, dto.ideEmpr);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -316,7 +316,7 @@ export class WhatsappDbService {
         `);
     query.addStringParam(1, config.WHATSAPP_API_ID);
     query.addParam(2, dto.telefono);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -487,7 +487,7 @@ export class WhatsappDbService {
         LIMIT 1        
         `);
     query.addParam(1, ideEmpr);
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
   }
 
   /**
@@ -512,7 +512,7 @@ export class WhatsappDbService {
                 attachment_id_whmem = $1
         `);
     queryFile.addStringParam(1, id);
-    return await this.dataSource.createSingleQuery(queryFile);
+    return this.dataSource.createSingleQuery(queryFile);
   }
 
   /**
@@ -638,7 +638,7 @@ export class WhatsappDbService {
         `);
     query.addParam(1, true);
     query.addParam(2, 'WEB');
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -781,7 +781,7 @@ export class WhatsappDbService {
       dto,
     );
     query.addParam(1, dto.ide_whcenv);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async getCampaniaById(dto: EnviarCampaniaDto & HeaderParamsDto) {

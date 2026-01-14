@@ -51,7 +51,7 @@ export class ChartsService extends BaseService {
         ) as subquery
         `);
 
-    const result: any = await this.dataSource.createSelectQuery(query);
+    const result: any = this.dataSource.createSelectQuery(query);
     const total = result[0].total;
     const empty = result[0].empty;
     const chart = result[0].chart.map((item) => ({

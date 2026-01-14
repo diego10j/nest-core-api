@@ -55,7 +55,7 @@ export class ConfigPreciosProductosService extends BaseService {
     query.addParam(2, dtoIn.cantidad);
     query.addParam(3, dtoIn.ide_cndfp);
     query.addParam(4, dtoIn.precio_compra);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async generarConfigPreciosVenta(dtoIn: GeneraConfigPreciosVentaDto & HeaderParamsDto) {
@@ -112,7 +112,7 @@ export class ConfigPreciosProductosService extends BaseService {
       dtoIn,
     );
     query.addParam(1, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async saveConfigPrecios(dtoIn: SaveConfigPrecioDto & HeaderParamsDto) {
@@ -174,7 +174,7 @@ export class ConfigPreciosProductosService extends BaseService {
     const deleteQuery = new DeleteQuery('inv_conf_precios_articulo');
     deleteQuery.where = 'ide_incpa = ANY ($1)';
     deleteQuery.addParam(1, dtoIn.ide);
-    return await this.dataSource.createQuery(deleteQuery);
+    return this.dataSource.createQuery(deleteQuery);
   }
 
   async copiarConfigPrecios(dtoIn: CopiarConfigPreciosVentaDto & HeaderParamsDto) {

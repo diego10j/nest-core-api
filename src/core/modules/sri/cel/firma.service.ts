@@ -64,7 +64,7 @@ export class FirmaService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async clearCacheFirma(_dtoIn: QueryOptionsDto & HeaderParamsDto) {

@@ -99,7 +99,7 @@ export class ProformasBiService extends BaseService {
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addStringParam(3, `${dtoIn.periodo}-01-01`);
     query.addStringParam(4, `${dtoIn.periodo}-12-31`);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 1. Productos más cotizados (Top 10)
@@ -133,7 +133,7 @@ export class ProformasBiService extends BaseService {
         `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 2. Productos con mayor utilidad
@@ -163,7 +163,7 @@ export class ProformasBiService extends BaseService {
         `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 3. Efectividad por vendedor (Gráfico de pastel)
@@ -198,7 +198,7 @@ export class ProformasBiService extends BaseService {
         `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 4. Tendencia diaria de cotizaciones
@@ -221,7 +221,7 @@ export class ProformasBiService extends BaseService {
     `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   //5. Clientes que más cotizan (Top 10)
@@ -249,7 +249,7 @@ export class ProformasBiService extends BaseService {
     `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 6. Tiempo promedio de conversión (cotización a factura)
@@ -269,7 +269,7 @@ export class ProformasBiService extends BaseService {
     `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   // 7. Estado de cotizaciones (resumen ejecutivo)
@@ -291,7 +291,7 @@ export class ProformasBiService extends BaseService {
 `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   // 8. Variación mensual de cotizaciones
@@ -326,7 +326,7 @@ export class ProformasBiService extends BaseService {
     ORDER BY 
         año, mes
 `);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   //1. Segmentación de Clientes por Comportamiento
@@ -373,7 +373,7 @@ export class ProformasBiService extends BaseService {
     );
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // Cotizaciones Pendientes de Seguimiento (no convertidas)
@@ -408,7 +408,7 @@ export class ProformasBiService extends BaseService {
     dias_pendientes DESC`);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 3. Análisis de Pérdidas (Cotizaciones no Convertidas)
@@ -450,7 +450,7 @@ export class ProformasBiService extends BaseService {
     query.addParam(2, dtoIn.fechaFin);
     query.addParam(3, dtoIn.fechaInicio);
     query.addParam(4, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // - 4. Efectividad por Tipo de Cotizacion
@@ -480,7 +480,7 @@ export class ProformasBiService extends BaseService {
         tasa_conversion DESC`);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   // 5. Histórico de Conversión por Cliente
@@ -514,7 +514,7 @@ export class ProformasBiService extends BaseService {
     );
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -598,6 +598,6 @@ export class ProformasBiService extends BaseService {
     query.addStringParam(5, `${dtoIn.periodo}-12-31`);
     query.addIntParam(6, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }

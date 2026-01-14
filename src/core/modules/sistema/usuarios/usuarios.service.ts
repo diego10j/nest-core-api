@@ -67,6 +67,6 @@ export class UsuariosService {
         nom_usua`,
       dtoIn,
     );
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }

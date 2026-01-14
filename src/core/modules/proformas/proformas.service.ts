@@ -73,7 +73,7 @@ export class ProformasService extends BaseService {
         `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getCabProforma(dtoIn: IdeDto & HeaderParamsDto) {
@@ -137,7 +137,7 @@ export class ProformasService extends BaseService {
         and c.ide_empr = ${dtoIn.ideEmpr}
         `);
     query.addParam(1, dtoIn.ide);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getDetallesProforma(dtoIn: IdeDto & HeaderParamsDto) {
@@ -175,7 +175,7 @@ export class ProformasService extends BaseService {
       dtoIn,
     );
     query.addParam(1, dtoIn.ide);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -260,6 +260,6 @@ export class ProformasService extends BaseService {
     query.where = 'ide_cccpr = $1 and fecha_abre_cccpr is null and usuario_abre_cccpr is null';
     query.addNumberParam(1, ide_cccpr);
     console.log(query);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }

@@ -282,6 +282,6 @@ export class CampaignService {
         `);
     query.addParam(1, ideEmpr);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 }

@@ -209,7 +209,7 @@ export class CoreService {
       whereClause = `${dtoIn.primaryKey} = -1`;
     }
     const query = new SelectQuery(`SELECT ${columns} FROM ${dtoIn.module}_${dtoIn.tableName} WHERE ${whereClause}`);
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
   }
 
   async findById(dtoIn: FindByIdDto & HeaderParamsDto) {
@@ -258,7 +258,7 @@ export class CoreService {
     for (let i = 0; i < dtoIn.columnsSearch.length; i++) {
       query.addStringParam(i + 1, sqlSearchValue); // $1, $2, etc. con el mismo valor
     }
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async getTableColumns(dtoIn: ColumnsTableDto & HeaderParamsDto) {

@@ -121,7 +121,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(4, dtoIn.fechaFin);
     query.addStringParam(5, dtoIn.fechaInicio);
     query.addStringParam(6, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -195,7 +195,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(3, dtoIn.fechaInicio);
     query.addStringParam(4, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -231,7 +231,7 @@ export class InventarioBiService extends BaseService {
     );
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTopProductosMayorRotacion(dtoIn: TopProductosDto & HeaderParamsDto) {
@@ -434,7 +434,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(4, dtoIn.fechaInicio);
     query.addStringParam(5, dtoIn.fechaFin);
     query.addStringParam(6, dtoIn.fechaInicio);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -460,7 +460,7 @@ export class InventarioBiService extends BaseService {
                 c.nombre_incate
             order by 2
             `);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -502,7 +502,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(2, dtoIn.fechaInicio);
     query.addStringParam(3, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalVentasProductoPorFormaPago(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -591,7 +591,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTopVendedoresProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -678,7 +678,7 @@ export class InventarioBiService extends BaseService {
     query.addIntParam(8, dtoIn.ide_inarti);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTotalVentasProductoPorIdCliente(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -767,7 +767,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async getVariacionInventarioProducto(dtoIn: AnalisisProductoDto & HeaderParamsDto) {
@@ -906,7 +906,7 @@ export class InventarioBiService extends BaseService {
     query.addIntParam(3, dtoIn.ide_inarti);
     query.addIntParam(4, dtoIn.ide_inarti);
     query.addIntParam(5, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -990,7 +990,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(5, `${dtoIn.periodo}-12-31`);
     query.addIntParam(6, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1045,7 +1045,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(1, `${dtoIn.periodo}-01-01`);
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
     query.addIntParam(3, dtoIn.ide_inarti);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1145,7 +1145,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(8, `${dtoIn.periodo}-12-31`);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTendenciaVentasDiaProducto(dtoIn: ClientesProductoDto & HeaderParamsDto) {
@@ -1231,7 +1231,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getResumenVentasPeriodosProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
@@ -1323,7 +1323,7 @@ export class InventarioBiService extends BaseService {
     query.addIntParam(3, dtoIn.ide_inarti);
     query.addIntParam(4, dtoIn.ide_inarti);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   //==============
@@ -1389,7 +1389,7 @@ export class InventarioBiService extends BaseService {
     query.addStringParam(1, `${dtoIn.periodo}-01-01`);
     query.addStringParam(2, `${dtoIn.periodo}-12-31`);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getAnalisisBodegasMensual(dtoIn: TrnProductoDto & HeaderParamsDto) {
@@ -1489,7 +1489,7 @@ export class InventarioBiService extends BaseService {
     query.addParam(2, dtoIn.fechaInicio);
     query.addParam(3, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getProductosStockBajo(dtoIn: HeaderParamsDto & ProductosStockBajoDto) {
@@ -1693,7 +1693,7 @@ export class InventarioBiService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getProductosMayorStock(dtoIn: HeaderParamsDto & ProductosMayorStockDto) {
@@ -1860,7 +1860,7 @@ export class InventarioBiService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -1959,7 +1959,7 @@ export class InventarioBiService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
   async getReporteIngresosEgresos(dtoIn: AnalisisDto & HeaderParamsDto) {
     dtoIn.ide_inarti = undefined;
@@ -2031,7 +2031,7 @@ export class InventarioBiService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -2102,7 +2102,7 @@ export class InventarioBiService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getRotacionInventario(dtoIn: HeaderParamsDto & AnalisisDto) {
@@ -2196,7 +2196,7 @@ export class InventarioBiService extends BaseService {
     `,
       dtoIn,
     );
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -2297,7 +2297,7 @@ export class InventarioBiService extends BaseService {
         `,
       dtoIn,
     );
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -2403,7 +2403,7 @@ export class InventarioBiService extends BaseService {
       `,
       dtoIn,
     );
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getTopProductosAjustados(dtoIn: HeaderParamsDto & TopProductosDto) {
@@ -2525,6 +2525,6 @@ export class InventarioBiService extends BaseService {
         `,
       dtoIn,
     );
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }

@@ -70,7 +70,7 @@ export class TemplateService {
     `);
     query.addParam(1, ideEmpr);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -134,7 +134,7 @@ export class TemplateService {
     query.addStringParam(1, nombre);
     query.addParam(2, ideEmpr);
 
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
   }
 
   /**

@@ -122,7 +122,7 @@ export class AuditLoggerService {
             `SELECT ${keysString} FROM ${query.table} WHERE ${query.primaryKey} = ${query.valuePrimaryKey}`,
         );
 
-        return await this.dataSource.createSingleQuery(selectQuery);
+        return this.dataSource.createSingleQuery(selectQuery);
     }
 
     /**

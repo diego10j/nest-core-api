@@ -169,7 +169,7 @@ export class AdminService {
       dtoIn,
     );
     query.addIntParam(1, dtoIn.ide_sist);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getListDataPerfilesSistema(dto: PerfilDto & HeaderParamsDto) {

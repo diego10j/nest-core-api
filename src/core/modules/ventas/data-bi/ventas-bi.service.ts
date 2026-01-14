@@ -1581,7 +1581,7 @@ ORDER BY
     query.addStringParam(8, dtoIn.fechaFin);
     query.addIntParam(9, dtoIn.ide_inarti);
 
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**

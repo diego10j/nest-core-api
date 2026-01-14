@@ -684,7 +684,7 @@ export class BodegasService extends BaseService {
     `,
     );
     query.addIntParam(1, dtoIn.ide);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   async eliminarProductosConteo(dtoIn: ArrayIdeDto & HeaderParamsDto) {

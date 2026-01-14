@@ -155,7 +155,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -213,7 +213,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -308,7 +308,7 @@ export class ClientesService extends BaseService {
     query.addIntParam(3, dtoIn.ide_geper);
     query.addParam(4, dtoIn.fechaInicio);
     query.addParam(5, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -373,7 +373,7 @@ export class ClientesService extends BaseService {
     query.addParam(3, dtoIn.fechaFin);
     query.addParam(4, dtoIn.fechaInicio);
     query.addParam(5, dtoIn.fechaFin);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -397,7 +397,7 @@ export class ClientesService extends BaseService {
                 ide_geper
             `);
     query.addIntParam(1, dtoIn.ide_geper);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   /**
@@ -679,7 +679,7 @@ export class ClientesService extends BaseService {
     query.addStringParam(5, `${dtoIn.periodo}-12-31`);
     query.addIntParam(6, dtoIn.ide_geper);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async save(dtoIn: SaveDto & HeaderParamsDto) {
@@ -917,7 +917,7 @@ export class ClientesService extends BaseService {
     query.addParam(7, dtoIn.fechaInicio);
     query.addParam(8, dtoIn.fechaFin);
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
   // -------------------------------- PRIVATE FUNCTIONS ---------------------------- //
 
@@ -1074,7 +1074,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
     query.addParam(1, dtoIn.ide_geper);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -1106,7 +1106,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
     query.addParam(1, dtoIn.ide_geper);
-    return await this.dataSource.createSelectQuery(query);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -1128,7 +1128,7 @@ export class ClientesService extends BaseService {
                     AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
                 `);
     query.addIntParam(1, ide_geper);
-    return await this.dataSource.createSingleQuery(query);
+    return this.dataSource.createSingleQuery(query);
   }
 
   async searchCliente(dto: SearchDto & HeaderParamsDto) {
@@ -1223,7 +1223,7 @@ export class ClientesService extends BaseService {
             )
     `;
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   private async updateWhatsAppCliente(dto: ValidaWhatsAppCliente) {
@@ -1420,7 +1420,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getClientesAContactar(dtoIn: QueryOptionsDto & HeaderParamsDto) {
@@ -1647,7 +1647,7 @@ export class ClientesService extends BaseService {
       dtoIn,
     );
 
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 
   async getHistoricoVendedoresCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
@@ -1670,6 +1670,6 @@ export class ClientesService extends BaseService {
     );
 
     query.addParam(1, dtoIn.ide_geper);
-    return await this.dataSource.createQuery(query);
+    return this.dataSource.createQuery(query);
   }
 }
