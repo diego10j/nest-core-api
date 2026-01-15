@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
-import { f_to_title_case } from '../../../util/helpers/string-util';
+import { fToTitleCase } from '../../../util/helpers/string-util';
 import { AuthService } from '../auth.service';
-import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { JwtPayload, AuthUser } from '../interfaces';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -20,46 +20,48 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<any> {
+  async validate(payload: JwtPayload): Promise<AuthUser> {
     const { id } = payload;
 
     const dataUser = await this.auth.getPwUsuario(id);
 
-    const user = {
+    if (!dataUser) {
+      throw new UnauthorizedException('Token no válido');
+    }
+
+    if (dataUser.bloqueado_usua) {
+      throw new UnauthorizedException('Usuario bloqueado, contactese con el administrador del sistema.');
+    }
+
+    // Obtener perfiles y sucursales del usuario
+    const dataPerf = await this.auth.getPerfilesUsuario(dataUser.ide_usua);
+    const dataSucu = await this.auth.getSucursalesUsuario(dataUser.ide_usua);
+    const roles = dataPerf.map((perf) => perf.ide_perf?.toString()).filter((id) => id != null);
+
+    const user: AuthUser = {
       ide_usua: Number.parseInt(dataUser.ide_usua),
+      id: dataUser.uuid,
+      displayName: fToTitleCase(dataUser.nom_usua),
+      email: dataUser.mail_usua,
+      login: dataUser.nick_usua,
+      photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataUser.avatar_usua}`,
+      isPublic: dataUser.cambia_clave_usua,
+      lastAccess: dataUser.fecha_auac,
+      ip: dataUser.ip_auac,
+      requireChange: dataUser.cambia_clave_usua,
+      isSuperUser: dataUser.admin_usua,
+      perfiles: dataPerf,
+      sucursales: dataSucu,
       empresas: [
         {
           ide_empr: Number.parseInt(dataUser.ide_empr),
           nom_empr: dataUser.nom_empr,
           logo_empr: dataUser.logotipo_empr,
+          identificacion_empr: dataUser.identificacion_empr,
         },
       ],
-      // ide_sucu: Number.parseInt(dataUser.ide_sucu),
-      // ide_perf: Number.parseInt(dataUser.ide_perf),
-      // perm_util_perf: dataUser.perm_util_perf,
-      // nom_perf: f_to_title_case(dataUser.nom_perf),
-      id: dataUser.uuid,
-      displayName: f_to_title_case(dataUser.nom_usua),
-      email: dataUser.mail_usua,
-      login: dataUser.nick_usua,
-      photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataUser.avatar_usua}`,
-      phoneNumber: '0983113543',
-      country: 'Ecuador',
-      address: '90210 Broadway Blvd',
-      state: 'California',
-      city: 'San Francisco',
-      zipCode: '94116',
-      about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
-      role: 'admin',
-      isPublic: true,
-      lastAccess: dataUser.fecha_auac,
-      ip: dataUser.ip_auac,
-      roles: ['user'],
+      roles,
     };
-
-    if (!dataUser) throw new UnauthorizedException('Token no válido');
-    else if (dataUser.bloqueado_usua)
-      throw new UnauthorizedException('Usuario bloqueado, contactese con el administrador del sistema.');
 
     return user;
   }

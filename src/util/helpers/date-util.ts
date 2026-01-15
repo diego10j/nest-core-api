@@ -3,7 +3,7 @@ import { es } from 'date-fns/locale';
 import { envs } from 'src/config/envs';
 
 import { toString } from './common-util';
-import { f_to_title_case } from './string-util';
+import { fToTitleCase } from './string-util';
 
 export const FORMAT_DATE_BD = (): string => envs.formatDateBd; // yyyy-MM-dd
 export const FORMAT_TIME_BD = (): string => envs.formatTimeBd;
@@ -21,7 +21,7 @@ type InputValue = Date | string | number | null | undefined;
 export function fDate(date: InputValue, newFormat?: string) {
   const fm = newFormat || 'dd MMM yyyy'; // dd MMM yyyy
 
-  return date ? f_to_title_case(format(new Date(date), fm, { locale: es })) : '';
+  return date ? fToTitleCase(format(new Date(date), fm, { locale: es })) : '';
 }
 
 /**
@@ -31,7 +31,7 @@ export function fDate(date: InputValue, newFormat?: string) {
  */
 export function fShortDate(date: InputValue) {
   const fm = 'MMM yyyy';
-  return date ? f_to_title_case(format(new Date(date), fm, { locale: es })) : '';
+  return date ? fToTitleCase(format(new Date(date), fm, { locale: es })) : '';
 }
 
 export function fTime(date: InputValue, newFormat?: string) {
@@ -53,8 +53,8 @@ export function fTimestamp(date: InputValue) {
 export function fToNow(date: InputValue) {
   return date
     ? formatDistanceToNow(new Date(date), {
-        addSuffix: true,
-      })
+      addSuffix: true,
+    })
     : '';
 }
 

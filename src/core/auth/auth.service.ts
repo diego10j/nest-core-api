@@ -7,7 +7,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from '../../common/dto/query-options.dto';
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
 import { getCurrentDateTime, getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
-import { f_to_title_case } from '../../util/helpers/string-util';
+import { fToTitleCase } from '../../util/helpers/string-util';
 import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery, UpdateQuery } from '../connection/helpers';
 import { AuditService } from '../modules/audit/audit.service';
@@ -17,11 +17,10 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
-import { JwtPayload } from './interfaces';
+import { JwtPayload, AuthUser } from './interfaces';
 import { PasswordService } from './password.service';
 import { PASSWORD_MESSAGES } from './constants/password.constants';
 import { UserNotFoundException } from './exceptions/user-not-found.exception';
-import { is } from 'date-fns/locale';
 
 @Injectable()
 export class AuthService {
@@ -92,17 +91,17 @@ export class AuthService {
       user: {
         ide_usua: Number.parseInt(dataUser.ide_usua),
         id: dataUser.uuid,
-        displayName: f_to_title_case(dataPass.nom_usua),
+        displayName: fToTitleCase(dataPass.nom_usua),
         email: dataPass.mail_usua,
         login: dataPass.nick_usua,
         photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${dataPass.avatar_usua}`,
-        phoneNumber: '0983113543',
-        country: 'Ecuador',
-        address: '90210 Broadway Blvd',
-        state: 'California',
-        city: 'San Francisco',
-        zipCode: '94116',
-        about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
+        // phoneNumber: '0983113543',
+        // country: 'Ecuador',
+        // address: '90210 Broadway Blvd',
+        // state: 'California',
+        // city: 'San Francisco',
+        // zipCode: '94116',
+        // about: 'Praesent turpis. Phasellus viverra nulla ut metus varius laoreet. Phasellus tempus.',
         // role: 'admin',
         isPublic: dataUser.cambia_clave_usua,
         lastAccess: dataPass.fecha_auac,
@@ -149,7 +148,7 @@ export class AuthService {
     query.addParam(1, dtoIn.ide_usua);
     query.addParam(2, dtoIn.ide_perf);
     query.addParam(3, getDayNumber());
-    query.addParam(3, getCurrentTime());
+    query.addParam(4, getCurrentTime());
     const data = await this.dataSource.createSingleQuery(query);
 
     if (data) {
@@ -283,10 +282,10 @@ export class AuthService {
     return buildHierarchicalMenu();
   }
 
-  async checkAuthStatus(user: any) {
+  async checkAuthStatus(user: AuthUser) {
     return {
       user,
-      accessToken: this.getJwtToken({ id: user.uuid }),
+      accessToken: this.getJwtToken({ id: user.id }),
     };
   }
 
@@ -412,6 +411,8 @@ export class AuthService {
             a.ide_empr,
             a.avatar_usua,
             a.nick_usua,
+            a.admin_usua,
+            a.cambia_clave_usua,
             e.nom_empr,
             e.identificacion_empr,
             e.logotipo_empr,
@@ -446,7 +447,7 @@ export class AuthService {
    * @param ide_usua
    * @returns
    */
-  private async getPerfilesUsuario(ide_usua: number) {
+  async getPerfilesUsuario(ide_usua: number) {
     const queryPerf = new SelectQuery(`
         SELECT
             a.ide_perf,
@@ -465,11 +466,11 @@ export class AuthService {
   }
 
   /**
-   * Retorna Roles/Perfiles del usuario
+   * Retorna Sucursales del usuario
    * @param ide_usua
    * @returns
    */
-  private async getSucursalesUsuario(ide_usua: number) {
+  async getSucursalesUsuario(ide_usua: number) {
     const querySucu = new SelectQuery(`
             SELECT
                 b.ide_sucu,

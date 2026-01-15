@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { BaseService } from '../../common/base-service';
-import { f_to_title_case } from '../../util/helpers/string-util';
+import { fToTitleCase } from '../../util/helpers/string-util';
 import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery } from '../connection/helpers/select-query';
 
@@ -55,12 +55,12 @@ export class ChartsService extends BaseService {
     const total = result[0].total;
     const empty = result[0].empty;
     const chart = result[0].chart.map((item) => ({
-      label: f_to_title_case(item.label),
+      label: fToTitleCase(item.label),
       value: item.value,
     }));
     if (Number(empty) > 0) {
       chart.push({
-        label: f_to_title_case('No Asignados'),
+        label: fToTitleCase('No Asignados'),
         value: empty,
       });
     }

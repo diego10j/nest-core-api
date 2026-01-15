@@ -17,7 +17,7 @@ export function getCountStringInText(stringSearch: string, mainText: string): nu
  * @param text
  * @returns
  */
-export function f_to_title_case(text: string): string {
+export function fToTitleCase(text: string): string {
   return text.replace(/\w\S*/g, function (txt) {
     return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
   });

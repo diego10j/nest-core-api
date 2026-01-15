@@ -11,6 +11,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
+import { AuthUser } from './interfaces';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -24,13 +25,13 @@ export class AuthController {
 
   @Get('me')
   @Auth()
-  me(@GetUser() user: any) {
+  me(@GetUser() user: AuthUser) {
     return this.authService.checkAuthStatus(user);
   }
 
   @Get('check-status')
   @Auth()
-  checkAuthStatus(@GetUser() user: any) {
+  checkAuthStatus(@GetUser() user: AuthUser) {
     return this.authService.checkAuthStatus(user);
   }
 
