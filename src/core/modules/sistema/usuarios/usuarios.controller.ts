@@ -1,4 +1,4 @@
-import { Query, Controller, Get } from '@nestjs/common';
+import { Query, Controller, Get, Post, Body } from '@nestjs/common';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
@@ -6,10 +6,12 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { UsuarioDto } from './dto/usuario.dto';
 import { UsuariosService } from './usuarios.service';
+import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
+import { ConfigPasswordDto } from './dto/config-password.dto';
 
 @Controller('sistema/usuarios')
 export class UsuariosController {
-  constructor(private readonly service: UsuariosService) {}
+  constructor(private readonly service: UsuariosService) { }
 
   @Get('getUsuarios')
   // @Auth()
@@ -37,4 +39,43 @@ export class UsuariosController {
       ...dtoIn,
     });
   }
+
+
+  @Get('getTableQueryPerfilesUsuario')
+  // @Auth()
+  getTableQueryPerfilesUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
+    return this.service.getTableQueryPerfilesUsuario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getTableQuerySucursalesUsuario')
+  // @Auth()
+  getTableQuerySucursalesUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
+    return this.service.getTableQuerySucursalesUsuario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getConfigPassword')
+  // @Auth()
+  getConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
+    return this.service.getConfigPassword({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('saveConfigPassword')
+  // @Auth()
+  saveConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ConfigPasswordDto) {
+    return this.service.saveConfigPassword({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
 }

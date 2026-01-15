@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -11,7 +11,6 @@ import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
-import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { RucDto } from './dto/ruc.dto';
 
@@ -81,9 +80,15 @@ export class AdminService {
     return this.core.getListDataValues(dtoIn);
   }
 
+
   async getTableQuerySistema(dto: QueryOptionsDto & HeaderParamsDto) {
     const dtoIn = { ...dto, module: 'sis', tableName: 'sistema', primaryKey: 'ide_sist' };
     return this.core.getTableQuery(dtoIn);
+  }
+
+  async getListDataPeriodoClave(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = { ...dto, module: 'sis', tableName: 'periodo_clave', primaryKey: 'ide_pecl', columnLabel: 'nom_pecl' };
+    return this.core.getListDataValues(dtoIn);
   }
 
   // -------------------------------- OPCIONES ---------------------------- //
@@ -290,42 +295,6 @@ export class AdminService {
     return this.core.getTableQuery(dtoIn);
   }
 
-  async getTableQueryPerfilesUsuario(dto: PerfilUsuarioDto & HeaderParamsDto) {
-    if (dto.uuid) {
-      const query = new SelectQuery(
-        `
-          SELECT
-              ide_usua
-          FROM
-              sis_usuario
-          WHERE
-              uuid = $1
-              `,
-      );
-      query.addParam(1, dto.uuid);
-      const res = await this.dataSource.createSingleQuery(query);
-      if (!res) {
-        throw new NotFoundException(`Usuario con uuid '${dto.uuid}' no encontrado`);
-      }
-      dto.ide_usua = res.ide_usua;
-    }
-
-    // Validar que ahora tenemos ide_usua
-    if (isDefined(dto.ide_usua) === false) {
-      throw new BadRequestException('No se pudo determinar el ID de usuario');
-    }
-
-    const whereClause = `ide_sist = ${dto.ide_sist} AND ide_usua = ${dto.ide_usua}`;
-    const dtoIn = {
-      ...dto,
-      module: 'sis',
-      tableName: 'usuario_perfil',
-      primaryKey: 'ide_usper',
-      condition: `${whereClause}`,
-      orderBy: { column: 'ide_perf' },
-    };
-    return this.core.getTableQuery(dtoIn);
-  }
 
   // ============ QUERY BUILDERS ============
 

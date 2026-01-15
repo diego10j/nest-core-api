@@ -9,13 +9,12 @@ import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
-import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { RucDto } from './dto/ruc.dto';
 
 @Controller('sistema/admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   // -------------------------------- EMPRESA ---------------------------- //
 
@@ -112,14 +111,7 @@ export class AdminController {
     });
   }
 
-  @Get('getTableQueryPerfilesUsuario')
-  // @Auth()
-  getTableQueryPerfilesUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
-    return this.adminService.getTableQueryPerfilesUsuario({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
+
   // -------------------------------- PERFILES ---------------------------- //
 
   @Get('getTableQueryPerfil')
@@ -148,6 +140,16 @@ export class AdminController {
       ...dtoIn,
     });
   }
+
+  @Get('getListDataPeriodoClave')
+  // @Auth()
+  getListDataPeriodoClave(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.adminService.getListDataPeriodoClave({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
 
   @Get('getOpcionesPerfil')
   // @Auth()

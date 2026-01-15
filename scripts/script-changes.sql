@@ -11,7 +11,7 @@ UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
 
 
-
+--password_uscl   Temporal1  $2b$10$XrWLZEH0n2F8tL75ZY9iEefsuiQwxMkKjncj2Th5F4CF4cwIfkOz.
 
 /**21/05/22024**/
 ALTER TABLE inv_doc_producto ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
