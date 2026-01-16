@@ -12,7 +12,7 @@ export class MailController {
   constructor(
     private readonly mailService: MailService,
     private readonly testService: TestMailService,
-  ) {}
+  ) { }
 
   @Post('send')
   // @Auth()
@@ -26,16 +26,16 @@ export class MailController {
     return await this.mailService.processMailQueue();
   }
 
-  @Get('getCuentaCorreo')
-  // @Auth()
-  async getCuentaCorreo(@AppHeaders() headersParams: HeaderParamsDto) {
-    return await this.mailService.getCuentaCorreo(headersParams.ideEmpr);
-  }
-
   @Get('getCuentasCorreo')
   // @Auth()
   getCuentasCorreo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.mailService.getCuentasCorreo(headersParams);
+  }
+
+  @Get('getCuentaCorreoPorDefecto')
+  // @Auth()
+  async getCuentaCorreoPorDefecto(@AppHeaders() headersParams: HeaderParamsDto) {
+    return await this.mailService.getCuentaCorreoPorDefecto(headersParams);
   }
 
   @Post('sendTest')

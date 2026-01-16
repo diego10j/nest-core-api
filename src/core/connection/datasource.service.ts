@@ -623,10 +623,24 @@ export class DataSourceService {
       throw new InternalServerErrorException(error);
     }
     //Valida que exista el mismo numero de $ con los valores de los parámetros
-    const countParams = getCountStringInText('$', query.query);
-    if (countParams !== query.paramValues.length) {
+    // Permite reusar el mismo parámetro múltiples veces (ej: $1 aparece 2 veces)
+    const parameterMatches = query.query.match(/\$(\d+)/g);
+
+    if (parameterMatches) {
+      // Obtener índices únicos (puede haber $1 repetido múltiples veces)
+      const uniqueIndices = new Set(
+        parameterMatches.map(param => parseInt(param.substring(1)))
+      );
+
+      if (uniqueIndices.size !== query.paramValues.length) {
+        console.error(query);
+        throw new InternalServerErrorException(
+          `[ERROR] Query espera ${uniqueIndices.size} parámetros únicos pero se proporcionaron ${query.paramValues.length}`
+        );
+      }
+    } else if (query.paramValues.length > 0) {
       console.error(query);
-      throw new InternalServerErrorException('[ERROR] Número de parámetros es diferente a la cantidad $ en el query');
+      throw new InternalServerErrorException('[ERROR] Query no contiene parámetros pero se proporcionaron valores');
     }
   }
 

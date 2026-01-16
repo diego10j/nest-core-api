@@ -14,6 +14,11 @@ export interface IUserRepository {
     findByEmail(email: Email): Promise<User | null>;
 
     /**
+     * Busca un usuario por email o login (nick_usua)
+     */
+    findByEmailOrLogin(identifier: string): Promise<User | null>;
+
+    /**
      * Busca un usuario por UUID
      */
     findById(id: UserId): Promise<User | null>;

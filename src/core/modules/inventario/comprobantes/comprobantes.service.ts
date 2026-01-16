@@ -17,6 +17,8 @@ import { LoteIngreso } from './dto/lote-ingreso.dto';
 import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
+import { LoteEgreso } from './dto/lote-egreso.dto';
+import { LotesProductoDto } from './dto/lotes-producto.dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -338,50 +340,6 @@ export class ComprobantesInvService extends BaseService {
     return this.dataSource.createQuery(updateQuery);
   }
 
-  async saveLoteInv(dtoIn: SaveLoteDto & HeaderParamsDto) {
-    const module = 'inv';
-    const tableName = 'lote';
-    const primaryKey = 'ide_inlot';
-
-    if (dtoIn.isUpdate === true) {
-      // Actualiza
-      const isValid = true; // validaciones cuando se actualiza
-      if (isValid) {
-        const ide_inlot = dtoIn.data.ide_inlot;
-        const objQuery = {
-          operation: 'update',
-          module,
-          tableName,
-          primaryKey,
-          object: dtoIn.data,
-          condition: `${primaryKey} = ${ide_inlot}`,
-        } as ObjectQueryDto;
-        return await this.core.save({
-          ...dtoIn,
-          listQuery: [objQuery],
-          audit: true,
-        });
-      }
-    } else {
-      // Crear
-      const isValid = true; // validaciones para insertar
-      if (isValid === true) {
-        dtoIn.data.ide_inlot = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
-        const objQuery = {
-          operation: 'insert',
-          module,
-          tableName,
-          primaryKey,
-          object: dtoIn.data,
-        } as ObjectQueryDto;
-        return await this.core.save({
-          ...dtoIn,
-          listQuery: [objQuery],
-          audit: true,
-        });
-      }
-    }
-  }
 
   async getLoteIngreso(dtoIn: LoteIngreso & HeaderParamsDto) {
     const query = new SelectQuery(
@@ -399,6 +357,321 @@ export class ComprobantesInvService extends BaseService {
     return this.dataSource.createSingleQuery(query);
   }
 
+  async getLoteEgreso(dtoIn: LoteEgreso & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+        select
+            *
+        from
+            inv_lote
+        where
+            ide_indci_egreso = $1
+    `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_indci_egreso);
+    return this.dataSource.createSingleQuery(query);
+  }
+
+  /**
+   * Guarda la verificación de un ingreso de inventario
+   * Si ide_inlot es undefined: crea un nuevo registro en inv_lote
+   * Si ide_inlot existe: actualiza el registro existente
+   * @param dtoIn - Datos de verificación del ingreso con ide_indci_ingreso
+   * @returns Resultado de la operación
+   */
+  async saveLoteIngreso(dtoIn: SaveLoteDto & HeaderParamsDto) {
+    const module = 'inv';
+    const tableName = 'lote';
+    const primaryKey = 'ide_inlot';
+
+    let ide_inlot: number;
+    let objQuery: ObjectQueryDto;
+
+    if (dtoIn.data.ide_inlot === undefined) {
+      // CREAR nuevo registro en inv_lote
+      ide_inlot = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
+
+      const loteData = {
+        ide_inlot,
+        ide_indci_ingreso: dtoIn.data.ide_indci_ingreso,
+        lote_inlot: dtoIn.data.lote_inlot,
+        fecha_ingreso_inlot: dtoIn.data.fecha_ingreso_inlot,
+        fecha_caducidad_inlot: dtoIn.data.fecha_caducidad_inlot,
+        pais_inlot: dtoIn.data.pais_inlot,
+        peso_inlot: dtoIn.data.peso_inlot,
+        peso_verifica_inlot: dtoIn.data.peso_verifica_inlot,
+        peso_tara_inlot: dtoIn.data.peso_tara_inlot,
+        diferencia_peso_inlot: dtoIn.data.diferencia_peso_inlot,
+        activo_inlot: dtoIn.data.activo_inlot,
+        archivo1_inlot: dtoIn.data.archivo1_inlot,
+        archivo2_inlot: dtoIn.data.archivo2_inlot,
+        archivo3_inlot: dtoIn.data.archivo3_inlot,
+        observacion_inlot: dtoIn.data.observacion_inlot,
+        verificado_inlot: dtoIn.data.verificado_inlot,
+        usuario_verif_inlot: dtoIn.data.verificado_inlot ? dtoIn.login : null,
+        fecha_verif_inlot: dtoIn.data.verificado_inlot ? getCurrentDateTime() : null,
+        usuario_ingre: dtoIn.login,
+        fecha_ingre: getCurrentDateTime(),
+      };
+
+      objQuery = {
+        operation: 'insert',
+        module,
+        tableName,
+        primaryKey,
+        object: loteData,
+      } as ObjectQueryDto;
+    } else {
+      // ACTUALIZAR registro existente en inv_lote
+      ide_inlot = dtoIn.data.ide_inlot;
+
+      const loteData: any = {};
+
+      // Solo actualiza campos que no sean undefined
+      if (dtoIn.data.lote_inlot !== undefined) {
+        loteData.lote_inlot = dtoIn.data.lote_inlot;
+      }
+      if (dtoIn.data.fecha_ingreso_inlot !== undefined) {
+        loteData.fecha_ingreso_inlot = dtoIn.data.fecha_ingreso_inlot;
+      }
+      if (dtoIn.data.fecha_caducidad_inlot !== undefined) {
+        loteData.fecha_caducidad_inlot = dtoIn.data.fecha_caducidad_inlot;
+      }
+      if (dtoIn.data.pais_inlot !== undefined) {
+        loteData.pais_inlot = dtoIn.data.pais_inlot;
+      }
+      if (dtoIn.data.peso_inlot !== undefined) {
+        loteData.peso_inlot = dtoIn.data.peso_inlot;
+      }
+      if (dtoIn.data.peso_tara_inlot !== undefined) {
+        loteData.peso_tara_inlot = dtoIn.data.peso_tara_inlot;
+      }
+      if (dtoIn.data.diferencia_peso_inlot !== undefined) {
+        loteData.diferencia_peso_inlot = dtoIn.data.diferencia_peso_inlot;
+      }
+      if (dtoIn.data.activo_inlot !== undefined) {
+        loteData.activo_inlot = dtoIn.data.activo_inlot;
+      }
+      if (dtoIn.data.archivo1_inlot !== undefined) {
+        loteData.archivo1_inlot = dtoIn.data.archivo1_inlot;
+      }
+      if (dtoIn.data.archivo2_inlot !== undefined) {
+        loteData.archivo2_inlot = dtoIn.data.archivo2_inlot;
+      }
+      if (dtoIn.data.archivo3_inlot !== undefined) {
+        loteData.archivo3_inlot = dtoIn.data.archivo3_inlot;
+      }
+      if (dtoIn.data.observacion_inlot !== undefined) {
+        loteData.observacion_inlot = dtoIn.data.observacion_inlot;
+      }
+      if (dtoIn.data.peso_verifica_inlot !== undefined) {
+        loteData.peso_verifica_inlot = dtoIn.data.peso_verifica_inlot;
+      }
+
+
+      // Si se verifica, actualiza campos de verificación
+      if (dtoIn.data.verificado_inlot === true) {
+        loteData.verificado_inlot = true;
+        loteData.usuario_verif_inlot = dtoIn.login;
+        loteData.fecha_verif_inlot = getCurrentDateTime();
+      }
+      loteData.usuario_actua = dtoIn.login;
+      loteData.fecha_actua = getCurrentDateTime();
+
+      objQuery = {
+        operation: 'update',
+        module,
+        tableName,
+        primaryKey,
+        object: loteData,
+        condition: `${primaryKey} = ${ide_inlot}`,
+      } as ObjectQueryDto;
+    }
+
+    // Actualiza la tabla inv_det_comp_inve (detalle del comprobante)
+    const updateDetQuery = new UpdateQuery('inv_det_comp_inve', 'ide_indci', dtoIn);
+
+    // Vincula el lote al detalle del comprobante
+    updateDetQuery.values.set('ide_inlot', ide_inlot);
+
+    // Si se verifica, marca el detalle como verificado
+
+    updateDetQuery.values.set('verifica_indci', dtoIn.data.verificado_inlot);
+
+    updateDetQuery.where = 'ide_indci = $1';
+    updateDetQuery.addParam(1, dtoIn.data.ide_indci_ingreso);
+
+    // Ejecuta la operación del lote y la actualización del detalle
+    const saveResult = await this.core.save({
+      ...dtoIn,
+      listQuery: [objQuery],
+      audit: false,
+    });
+
+    // Actualiza el detalle
+    await this.dataSource.createQuery(updateDetQuery);
+
+    return saveResult;
+  }
+
+  /**
+   * Guarda la verificación de un egreso de inventario (ventas, salidas)
+   * Si ide_inlot es undefined: crea un nuevo registro en inv_lote
+   * Si ide_inlot existe: actualiza el registro existente en inv_lote
+   * Actualiza inv_det_comp_inve con los datos de verificación del egreso
+   * @param dtoIn - Datos de verificación del egreso
+   * @returns Resultado de la operación
+   */
+  async saveLoteEgreso(dtoIn: SaveLoteDto & HeaderParamsDto) {
+    const module = 'inv';
+    const tableName = 'lote';
+    const primaryKey = 'ide_inlot';
+
+    let ide_inlot: number;
+    let objQuery: ObjectQueryDto | null = null;
+
+    if (dtoIn.data.ide_inlot === undefined) {
+      // CREAR nuevo registro en inv_lote para el egreso
+      ide_inlot = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
+
+      const loteData = {
+        ide_inlot,
+        ide_indci_egreso: dtoIn.data.ide_indci_egreso,
+        fecha_ingreso_inlot: dtoIn.data.fecha_ingreso_inlot,
+        peso_inlot: dtoIn.data.peso_inlot,
+        peso_tara_inlot: dtoIn.data.peso_tara_inlot,
+        peso_verifica_inlot: dtoIn.data.peso_verifica_inlot,
+        diferencia_peso_inlot: dtoIn.data.diferencia_peso_inlot,
+        activo_inlot: dtoIn.data.activo_inlot,
+        observacion_inlot: dtoIn.data.observacion_inlot,
+        verificado_inlot: dtoIn.data.verificado_inlot,
+        usuario_verif_inlot: dtoIn.data.verificado_inlot ? dtoIn.login : null,
+        fecha_verif_inlot: dtoIn.data.verificado_inlot ? getCurrentDateTime() : null,
+        inv_ide_inlot: dtoIn.data.inv_ide_inlot,
+        usuario_ingre: dtoIn.login,
+        fecha_ingre: getCurrentDateTime(),
+      };
+
+      objQuery = {
+        operation: 'insert',
+        module,
+        tableName,
+        primaryKey,
+        object: loteData,
+      } as ObjectQueryDto;
+    } else {
+      // ACTUALIZAR registro existente en inv_lote
+      ide_inlot = dtoIn.data.ide_inlot;
+
+      const loteData: any = {};
+
+      // Solo actualiza campos que no sean undefined
+      if (dtoIn.data.lote_inlot !== undefined) {
+        loteData.lote_inlot = dtoIn.data.lote_inlot;
+      }
+      if (dtoIn.data.fecha_ingreso_inlot !== undefined) {
+        loteData.fecha_ingreso_inlot = dtoIn.data.fecha_ingreso_inlot;
+      }
+      if (dtoIn.data.fecha_caducidad_inlot !== undefined) {
+        loteData.fecha_caducidad_inlot = dtoIn.data.fecha_caducidad_inlot;
+      }
+      if (dtoIn.data.pais_inlot !== undefined) {
+        loteData.pais_inlot = dtoIn.data.pais_inlot;
+      }
+      if (dtoIn.data.peso_inlot !== undefined) {
+        loteData.peso_inlot = dtoIn.data.peso_inlot;
+      }
+      if (dtoIn.data.peso_verifica_inlot !== undefined) {
+        loteData.peso_inlot = dtoIn.data.peso_verifica_inlot;
+      }
+      if (dtoIn.data.peso_tara_inlot !== undefined) {
+        loteData.peso_tara_inlot = dtoIn.data.peso_tara_inlot;
+      }
+      if (dtoIn.data.diferencia_peso_inlot !== undefined) {
+        loteData.diferencia_peso_inlot = dtoIn.data.diferencia_peso_inlot;
+      }
+      if (dtoIn.data.es_saldo_inicial !== undefined) {
+        loteData.es_saldo_inicial = dtoIn.data.es_saldo_inicial;
+      }
+      if (dtoIn.data.activo_inlot !== undefined) {
+        loteData.activo_inlot = dtoIn.data.activo_inlot;
+      }
+      if (dtoIn.data.observacion_inlot !== undefined) {
+        loteData.observacion_inlot = dtoIn.data.observacion_inlot;
+      }
+
+      if (dtoIn.data.inv_ide_inlot !== undefined) {
+        loteData.inv_ide_inlot = dtoIn.data.inv_ide_inlot;
+      }
+      // Si se verifica, actualiza campos de verificación
+      if (dtoIn.data.verificado_inlot === true) {
+        loteData.verificado_inlot = true;
+        loteData.usuario_verif_inlot = dtoIn.login;
+        loteData.fecha_verif_inlot = getCurrentDateTime();
+      }
+
+      loteData.usuario_actua = dtoIn.login;
+      loteData.fecha_actua = getCurrentDateTime();
+
+      objQuery = {
+        operation: 'update',
+        module,
+        tableName,
+        primaryKey,
+        object: loteData,
+        condition: `${primaryKey} = ${ide_inlot}`,
+      } as ObjectQueryDto;
+    }
+
+    // Actualiza la tabla inv_det_comp_inve (detalle del comprobante)
+    const updateQuery = new UpdateQuery('inv_det_comp_inve', 'ide_indci', dtoIn);
+
+    // Vincula el lote al detalle del comprobante
+    updateQuery.values.set('ide_inlot', ide_inlot);
+
+    // Actualiza campos adicionales si se proporcionan
+    if (dtoIn.data.peso_verifica_inlot !== undefined) {
+      updateQuery.values.set('peso_verifica_inlot', dtoIn.data.peso_verifica_inlot);
+    }
+    if (dtoIn.data.archivo1_inlot !== undefined) {
+      updateQuery.values.set('foto_verifica_indci', dtoIn.data.archivo1_inlot);
+    }
+    if (dtoIn.data.observacion_inlot !== undefined) {
+      updateQuery.values.set('observ_verifica_indci', dtoIn.data.observacion_inlot);
+    }
+
+    // Si se verifica, actualiza la fecha y usuario de verificación
+    if (dtoIn.data.verificado_inlot === true) {
+      updateQuery.values.set('fecha_verifica_indci', getCurrentDateTime());
+      updateQuery.values.set('usuario_verifica_indci', dtoIn.login);
+      updateQuery.values.set('verifica_indci', true);
+    }
+
+    updateQuery.where = 'ide_indci = $1';
+    updateQuery.addParam(1, dtoIn.data.ide_indci_egreso);
+
+    // Ejecuta la operación del lote (si hay) y la actualización del detalle
+    let saveResult;
+    if (objQuery) {
+      saveResult = await this.core.save({
+        ...dtoIn,
+        listQuery: [objQuery],
+        audit: false,
+      });
+    }
+
+    // Actualiza el detalle
+    await this.dataSource.createQuery(updateQuery);
+
+    return saveResult || { message: 'Verificación actualizada correctamente' };
+  }
+
+
+
+
+
+
   // ==================================ListData==============================
   /**
    * Retorna las estados de los comprobantes de inventario
@@ -413,5 +686,42 @@ export class ComprobantesInvService extends BaseService {
       columnLabel: 'nombre_inepi',
     };
     return this.core.getListDataValues(dtoIn);
+  }
+
+  /**
+   * Retorna los lotes de ingreso activos de un producto con información básica
+   * @param dtoIn - DTO con ide_inarti del producto
+   * @returns Lista de lotes con columnas reales
+   */
+  async getLotesIngresoProducto(dtoIn: LotesProductoDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+        SELECT 
+          l.ide_inlot,
+          l.lote_inlot,
+          l.fecha_ingreso_inlot,
+          l.fecha_caducidad_inlot,
+          l.pais_inlot,
+          l.peso_inlot,
+          l.peso_tara_inlot,
+          l.diferencia_peso_inlot,
+          p.nom_geper as proveedor
+        FROM 
+          inv_lote l
+          INNER JOIN inv_det_comp_inve dci ON l.ide_indci_ingreso = dci.ide_indci
+          INNER JOIN inv_cab_comp_inve cci ON dci.ide_incci = cci.ide_incci
+          LEFT JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+        WHERE 
+          l.activo_inlot = true
+          AND dci.ide_inarti = $1
+          AND cci.ide_empr = ${dtoIn.ideEmpr}
+        ORDER BY 
+          l.fecha_ingreso_inlot DESC, l.ide_inlot DESC
+      `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_inarti);
+    const data: any[] = await this.dataSource.createSelectQuery(query);
+    return data;
   }
 }

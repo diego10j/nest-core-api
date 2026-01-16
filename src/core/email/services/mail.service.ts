@@ -22,7 +22,7 @@ export class MailService {
     public readonly dataSource: DataSourceService,
     private readonly templateService: TemplateService,
     @InjectQueue(MAIL_QUEUE) private readonly mailQueue: Queue,
-  ) {}
+  ) { }
 
   /**
    * Obtiene los correos configurados de una empresa
@@ -51,10 +51,36 @@ export class MailService {
     return await this.dataSource.createQuery(query);
   }
 
+  async getCuentaCorreoPorDefecto(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    const queryStr = `
+      SELECT
+        ide_corr,
+        alias_corr,
+        smtp_corr,
+        puerto_corr,
+        usuario_corr,
+        correo_corr,
+        f_enmascarar_texto(clave_corr) AS clave_corr,
+        secure_corr,
+        ide_sucu,
+        ide_empr,
+        ide_usua
+      FROM sis_correo
+      WHERE ide_empr = $1
+      AND alias_corr = 'default'
+      ORDER BY ide_corr 
+    `;
+
+    const query = new SelectQuery(queryStr, dtoIn);
+    query.addParam(1, dtoIn.ideEmpr);
+    return await this.dataSource.createQuery(query);
+  }
+
+
   /**
    * Obtiene una cuenta de correo configurada
    */
-  async getCuentaCorreo(ideEmpr: number, ide_corr?: number) {
+  async getCuentaCorreo(ide_corr: number) {
     let queryStr = `
       SELECT
         ide_corr,
@@ -69,21 +95,11 @@ export class MailService {
         ide_empr,
         ide_usua
       FROM sis_correo
-      WHERE ide_empr = $1
+      WHERE ide_corr = $1
     `;
 
-    if (ide_corr) {
-      queryStr += ' AND ide_corr = $2';
-    } else {
-      queryStr += ' ORDER BY ide_corr LIMIT 1';
-    }
-
     const query = new SelectQuery(queryStr);
-    query.addParam(1, ideEmpr);
-
-    if (ide_corr) {
-      query.addParam(2, ide_corr);
-    }
+    query.addParam(1, ide_corr);
 
     const cuenta = await this.dataSource.createSingleQuery(query);
     if (!cuenta) {
@@ -109,7 +125,7 @@ export class MailService {
    */
   async sendMail(sendMailDto: SendMailDto, ideEmpr: number, usuario: string) {
     try {
-      const cuenta = await this.getCuentaCorreo(ideEmpr, sendMailDto.ide_corr);
+      const cuenta = await this.getCuentaCorreo(sendMailDto.ide_corr);
 
       let { contenido, asunto } = await this.procesarPlantilla(sendMailDto, ideEmpr);
 

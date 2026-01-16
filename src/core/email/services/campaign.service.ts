@@ -23,7 +23,7 @@ export class CampaignService {
     public readonly dataSource: DataSourceService,
     private readonly mailService: MailService,
     @InjectQueue(CAMPAIGN_QUEUE) private readonly campaignQueue: Queue,
-  ) {}
+  ) { }
 
   /**
    * Obtiene una campaña por ID
@@ -68,7 +68,7 @@ export class CampaignService {
   async createCampaign(createCampaignDto: CreateCampaignDto, ideEmpr: number, ideUsua: number, usuario: string) {
     try {
       // Obtener cuenta de correo
-      const cuenta = await this.mailService.getCuentaCorreo(ideEmpr, createCampaignDto.ide_corr);
+      const cuenta = await this.mailService.getCuentaCorreo(createCampaignDto.ide_corr);
 
       const insertQuery = new InsertQuery('sis_campania_correo', 'ide_caco');
       const ide_caco = await this.dataSource.getSeqTable('sis_campania_correo', 'ide_caco', 1, usuario);

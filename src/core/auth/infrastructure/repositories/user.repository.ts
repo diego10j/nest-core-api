@@ -49,6 +49,34 @@ export class UserRepository implements IUserRepository {
     return this.mapToEntity(data);
   }
 
+  async findByEmailOrLogin(identifier: string): Promise<User | null> {
+    const query = new SelectQuery(`
+      SELECT 
+        ide_usua,
+        uuid,
+        cambia_clave_usua,
+        admin_usua,
+        nom_usua,
+        mail_usua,
+        nick_usua,
+        avatar_usua,
+        bloqueado_usua,
+        activo_usua
+      FROM sis_usuario 
+      WHERE (LOWER(mail_usua) = LOWER($1) OR LOWER(nick_usua) = LOWER($1))
+      AND activo_usua = true
+    `);
+    query.addStringParam(1, identifier);
+
+    const data = await this.dataSource.createSingleQuery(query);
+
+    if (!data) {
+      return null;
+    }
+
+    return this.mapToEntity(data);
+  }
+
   async findById(id: UserId): Promise<User | null> {
     const query = new SelectQuery(`
       SELECT 

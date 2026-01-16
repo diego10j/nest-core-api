@@ -12,15 +12,51 @@ import { getCountStringInText } from '../../../util/helpers/string-util';
 export class QueryValidatorService {
     /**
      * Valida que el número de parámetros en el query coincida
-     * con los valores proporcionados
+     * con los valores proporcionados.
+     * Permite reusar el mismo parámetro múltiples veces (ej: $1 aparece 2 veces)
      */
     validateParameters(query: Query): void {
-        const countParams = getCountStringInText('$', query.query);
+        // Extraer todos los índices únicos de parámetros del query (ej: $1, $2, $3)
+        const parameterMatches = query.query.match(/\$(\d+)/g);
+
+        if (!parameterMatches && query.paramValues.length === 0) {
+            // Query sin parámetros es válido
+            return;
+        }
+
+        if (!parameterMatches && query.paramValues.length > 0) {
+            throw new InvalidQueryParametersException(
+                `Query no contiene parámetros pero se proporcionaron ${query.paramValues.length}`,
+            );
+        }
+
+        if (parameterMatches && query.paramValues.length === 0) {
+            throw new InvalidQueryParametersException(
+                `Query contiene parámetros pero no se proporcionaron valores`,
+            );
+        }
+
+        // Obtener índices únicos (puede haber $1 repetido múltiples veces)
+        const uniqueIndices = new Set(
+            parameterMatches.map(param => parseInt(param.substring(1)))
+        );
+
+        const maxIndex = Math.max(...Array.from(uniqueIndices));
         const providedParams = query.paramValues.length;
 
-        if (countParams !== providedParams) {
+        // Validar que todos los índices desde 1 hasta maxIndex estén presentes
+        for (let i = 1; i <= maxIndex; i++) {
+            if (!uniqueIndices.has(i)) {
+                throw new InvalidQueryParametersException(
+                    `Query tiene parámetros no consecutivos. Falta $${i}`,
+                );
+            }
+        }
+
+        // Validar que se proporcionen exactamente los parámetros necesarios
+        if (uniqueIndices.size !== providedParams) {
             throw new InvalidQueryParametersException(
-                `Query espera ${countParams} parámetros pero se proporcionaron ${providedParams}`,
+                `Query espera ${uniqueIndices.size} parámetros únicos pero se proporcionaron ${providedParams}`,
             );
         }
     }

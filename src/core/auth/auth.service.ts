@@ -56,17 +56,18 @@ export class AuthService {
    * Login - Orquesta el proceso de autenticación con protección contra fuerza bruta
    */
   async login(loginUserDto: LoginUserDto, ip: string) {
-    const { password, email } = loginUserDto;
+    const { password } = loginUserDto;
+    const identifier = loginUserDto.getIdentifier();
 
     try {
       // 1. Verificar si la cuenta está bloqueada
-      await this.loginAttemptsService.checkIfLocked(email);
+      await this.loginAttemptsService.checkIfLocked(identifier);
 
       // 2. Validar credenciales (Use Case)
-      const validatedUser = await this.validateCredentialsUseCase.execute(email, password);
+      const validatedUser = await this.validateCredentialsUseCase.execute(identifier, password);
 
       // 3. Resetear intentos fallidos después de login exitoso
-      await this.loginAttemptsService.resetFailedAttempts(email);
+      await this.loginAttemptsService.resetFailedAttempts(identifier);
 
       // 4. Obtener datos completos del usuario (Use Case)
       const empresaData = await this.getEmpresaData(validatedUser.uuid);
@@ -90,7 +91,7 @@ export class AuthService {
         expirationTime
       );
 
-      this.logger.log(`Login exitoso: ${email} desde ${ip}`);
+      this.logger.log(`Login exitoso: ${identifier} desde ${ip}`);
 
       return {
         accessToken,
@@ -99,11 +100,11 @@ export class AuthService {
     } catch (error) {
       // Registrar intento fallido si es error de autenticación
       if (error instanceof UnauthorizedException) {
-        const attempts = await this.loginAttemptsService.recordFailedAttempt(email);
+        const attempts = await this.loginAttemptsService.recordFailedAttempt(identifier);
         const remaining = 5 - attempts;
 
         this.logger.warn(
-          `Intento de login fallido: ${email} desde ${ip}. Intentos: ${attempts}/5`
+          `Intento de login fallido: ${identifier} desde ${ip}. Intentos: ${attempts}/5`
         );
 
         if (remaining > 0 && attempts < 5) {

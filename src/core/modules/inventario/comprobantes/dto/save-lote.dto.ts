@@ -4,7 +4,6 @@ import {
   IsNumber,
   IsBoolean,
   IsOptional,
-  IsDate,
   IsDateString,
   Min,
   MaxLength,
@@ -16,18 +15,19 @@ import {
 } from 'class-validator';
 
 export class LoteDto {
-  @IsNumber()
   @IsOptional()
+  @IsInt()
+  @IsPositive()
   ide_inlot?: number;
 
+  @IsOptional()
   @IsString()
   @MaxLength(50)
-  lote_inlot: string;
+  lote_inlot?: string;
 
   @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  fecha_ingreso_inlot?: Date;
+  @IsDateString()
+  fecha_ingreso_inlot?: string;
 
   @IsOptional()
   @IsDateString()
@@ -50,22 +50,17 @@ export class LoteDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
   diferencia_peso_inlot?: number;
 
-  @IsNumber()
-  @Min(0)
   @IsOptional()
-  stock_anterior_inlot?: number;
-
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  stock_posterior_inlot?: number;
-
   @IsInt()
   @IsPositive()
-  ide_indci_ingreso: number;
+  ide_indci_ingreso?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  ide_indci_egreso?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -98,22 +93,25 @@ export class LoteDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  usuario_ingre?: string;
+  usuario_verif_inlot?: string;
 
   @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  fecha_ingre?: Date;
+  @IsDateString()
+  fecha_verif_inlot?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  usuario_actua?: string;
+  @IsBoolean()
+  verificado_inlot?: boolean;
+
 
   @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  fecha_actua?: Date;
+  @IsNumber()
+  @Min(0)
+  peso_verifica_inlot?: number;
+
+  @IsOptional()
+  @IsNumber()
+  inv_ide_inlot?: number;
 }
 
 export class SaveLoteDto {

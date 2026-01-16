@@ -19,18 +19,17 @@ export class ValidateUserCredentialsUseCase {
 
     /**
      * Ejecuta la validación de credenciales
-     * @param email Email del usuario
-     * @param password Contraseña en texto plano
+     * @param identifier Email o login del usuario
+     * @param rawPassword Contraseña en texto plano
      * @returns Usuario si las credenciales son válidas
      * @throws UnauthorizedException si las credenciales son inválidas
      */
-    async execute(email: string, rawPassword: string): Promise<{ ideUsua: number; uuid: string; requireChange: boolean; isSuperUser: boolean }> {
-        // Crear value objects
-        const emailVO = Email.create(email);
+    async execute(identifier: string, rawPassword: string): Promise<{ ideUsua: number; uuid: string; requireChange: boolean; isSuperUser: boolean }> {
+        // Crear value object de password
         const passwordVO = Password.create(rawPassword);
 
-        // Buscar usuario por email
-        const user = await this.userRepository.findByEmail(emailVO);
+        // Buscar usuario por email o login
+        const user = await this.userRepository.findByEmailOrLogin(identifier);
         if (!user) {
             throw new UnauthorizedException('Credenciales no válidas, usuario incorrecto');
         }

@@ -11,15 +11,16 @@ UPDATE sis_usuario SET avatar_usua = 'avatar_default.jpg'
 
 
 
---password_uscl   Temporal1  $2b$10$XrWLZEH0n2F8tL75ZY9iEefsuiQwxMkKjncj2Th5F4CF4cwIfkOz.
+--password_uscl   Temporal1  $2b$10$btZwt2iPr4lk7h02bKyShePvKXca4B9WT4cKAX7OzYSnOiInzfaRu
 
 /**21/05/22024**/
 ALTER TABLE inv_doc_producto ADD COLUMN uuid UUID DEFAULT (uuid_generate_v4());
 CREATE INDEX idx_uuid_inv_doc_producto ON inv_doc_producto(uuid);
 
 
-
-/**29/05/22024**/
+--- correo defecto
+INSERT INTO "public"."sis_correo" ("ide_corr", "alias_corr", "smtp_corr", "puerto_corr", "usuario_corr", "correo_corr", "nom_correo_corr", "clave_corr", "secure_corr", "activo_corr", "observacion_corr", "ide_sucu", "ide_empr") VALUES
+(1, 'default', 'mail.produquimic.com.ec ', '465', 'Notificaciones', 'notificacion@produquimic.com.ec', 'notificacion@produquimic.com.ec', 'xxxxxxxx', 't', 't', 'Cuenta de Correo por defecto', 2, 0);
 
 
 
@@ -386,7 +387,7 @@ ON wha_det_camp_envio (telefono_whden);
 
 CREATE TABLE inv_lote (
     ide_inlot int8 PRIMARY KEY,
-    lote_inlot VARCHAR(50) NOT NULL,
+    lote_inlot VARCHAR(50) NULL,
     fecha_ingreso_inlot TIMESTAMP DEFAULT NOW(),
     fecha_caducidad_inlot DATE,
 	pais_inlot VARCHAR(80),
@@ -437,6 +438,29 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE sis_perfil_opcion ADD COLUMN fecha_actua TIMESTAMP;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_empr int;
 ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
+
+
+ALTER TABLE "public"."inv_lote"
+ADD COLUMN "peso_verifica_inlot" numeric(12,3),
+ADD COLUMN "ide_indci_egreso" int4;
+
+ALTER TABLE "public"."inv_lote" ADD FOREIGN KEY ("ide_indci_egreso") REFERENCES "public"."inv_det_comp_inve" ("ide_indci") ON DELETE RESTRICT;
+
+
+ALTER TABLE public.inv_lote
+ADD COLUMN inv_ide_inlot BIGINT;
+
+ALTER TABLE public.inv_lote
+ADD CONSTRAINT fk_inv_lote_origen
+FOREIGN KEY (inv_ide_inlot)
+REFERENCES public.inv_lote (ide_inlot)
+ON DELETE RESTRICT;
+
+
+CREATE INDEX idx_inv_lote_inv_ide_inlot
+ON public.inv_lote (inv_ide_inlot);
+
+
 
 
 -------- 

@@ -12,7 +12,7 @@ import { MailService } from '../services/mail.service';
 export class MailProcessor {
   private readonly logger = new Logger(MailProcessor.name);
 
-  constructor(private readonly mailService: MailService) {}
+  constructor(private readonly mailService: MailService) { }
 
   @Process('send-mail')
   async handleSendMail(job: Job) {
@@ -85,25 +85,16 @@ export class MailProcessor {
       const transporter = nodemailer.createTransport({
         host: cuenta.smtp_corr,
         port: cuenta.puerto_corr,
-        secure: cuenta.secure_corr,
+        secure: true, // true for 465, false for other ports
         auth: {
           user: cuenta.usuario_corr || cuenta.correo_corr,
           pass: cuenta.clave_corr,
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        logger: false,
-        debug: false,
         tls: {
+          minVersion: "TLSv1.3", // para mail.produquimic.com.ec
           rejectUnauthorized: false,
         },
       });
-
-      // Verificar conexión
-      this.logger.log('Verificando conexión SMTP...');
-      await transporter.verify();
-      this.logger.log('✓ Conexión SMTP verificada exitosamente');
 
       // Preparar adjuntos
       const attachments = await this.prepararAdjuntos(correoData.adjuntos || []);
