@@ -1813,6 +1813,7 @@ export class ProductosService extends BaseService {
             }
         } else {
             // Inserta
+            dtoIn.data.ide_inarti = await this.dataSource.getSeqTable("inv_articulo", "ide_inarti");
             const isValid = await this.validateCreateProducto(dtoIn.data, dtoIn.ideEmpr);
             if (isValid === true) {
                 const objQuery = {
