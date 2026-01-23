@@ -1813,8 +1813,9 @@ export class ProductosService extends BaseService {
             }
         } else {
             // Inserta
-            dtoIn.data.ide_inarti = await this.dataSource.getSeqTable("inv_articulo", "ide_inarti");
+
             const isValid = await this.validateCreateProducto(dtoIn.data, dtoIn.ideEmpr);
+            dtoIn.data.ide_inarti = await this.dataSource.getSeqTable("inv_articulo", "ide_inarti");
             if (isValid === true) {
                 const objQuery = {
                     operation: 'insert',
@@ -1833,7 +1834,7 @@ export class ProductosService extends BaseService {
     }
 
     private async validateCreateProducto(data: InvArticulo, ideEmpr: number) {
-        const colReq = ['ide_inarti', 'nombre_inarti', 'nivel_inarti', 'activo_inarti', 'ide_incate', 'ide_intpr'];
+        const colReq = ['nombre_inarti', 'nivel_inarti', 'activo_inarti', 'ide_incate', 'ide_intpr'];
 
         const resColReq = validateDataRequiere(data, colReq);
 

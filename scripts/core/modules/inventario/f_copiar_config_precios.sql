@@ -28,13 +28,6 @@ BEGIN
     WHERE ide_inarti = p_ide_inarti_origen 
     LIMIT 1;
     
-    -- Desactivar configuraciones existentes en los artículos destino
-    UPDATE inv_conf_precios_articulo
-    SET activo_incpa = false,
-        usuario_actua = p_login,
-        hora_actua = CURRENT_TIMESTAMP
-    WHERE ide_inarti = ANY(p_ide_inarti_destino);
-    -- AND autorizado_incpa = false;
     
     -- Copiar configuraciones para cada artículo destino
     FOR i IN 1..array_length(p_ide_inarti_destino, 1) LOOP
@@ -45,7 +38,7 @@ BEGIN
             CONTINUE;
         END IF;
         
-        -- Copiar cada configuración del artículo origen al artículo destino
+        -- Copiar cada configuración del artículo origen al artículo destino Activo y Autorizado
         FOR v_config IN 
             SELECT 
                 rangos_incpa, rango1_cant_incpa, rango2_cant_incpa,
@@ -54,6 +47,7 @@ BEGIN
             FROM inv_conf_precios_articulo
             WHERE ide_inarti = p_ide_inarti_origen
             AND activo_incpa = true
+            AND autorizado_incpa = true
         LOOP
             v_seq_id := get_seq_table('inv_conf_precios_articulo', 'ide_incpa', 1, p_login);
             
@@ -61,14 +55,14 @@ BEGIN
                 ide_incpa, ide_inarti, rangos_incpa, rango1_cant_incpa, rango2_cant_incpa, ide_empr,
                 porcentaje_util_incpa, precio_fijo_incpa, incluye_iva_incpa, activo_incpa, 
                 rango_infinito_incpa, usuario_ingre, hora_ingre, observacion_incpa, 
-                ide_cndfp, ide_cncfp
+                ide_cndfp, ide_cncfp, autorizado_incpa
             ) VALUES (
                 v_seq_id, p_ide_inarti_destino[i], v_config.rangos_incpa, v_config.rango1_cant_incpa, 
                 v_config.rango2_cant_incpa, v_empresa, v_config.porcentaje_util_incpa, 
                 v_config.precio_fijo_incpa, v_config.incluye_iva_incpa, true, 
                 v_config.rango_infinito_incpa, p_login, CURRENT_TIMESTAMP, 
                 'Configuración copiada del producto ' || p_ide_inarti_origen || ' - ' || v_nombre_articulo,
-                v_config.ide_cndfp, v_config.ide_cncfp
+                v_config.ide_cndfp, v_config.ide_cncfp, true
             );
         END LOOP;
         

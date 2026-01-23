@@ -167,6 +167,8 @@ ON gen_persona (ide_geper, nom_geper, uuid);
 
 
 
+
+
 ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_ingre varchar(50); 
 ALTER TABLE con_deta_forma_pago ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE con_deta_forma_pago ADD COLUMN usuario_actua varchar(50); 
@@ -442,7 +444,11 @@ ALTER TABLE sis_perfil_opcion ADD COLUMN ide_sucu int;
 
 ALTER TABLE "public"."inv_lote"
 ADD COLUMN "peso_verifica_inlot" numeric(12,3),
+ADD COLUMN "ide_inpres" int4,
+ADD COLUMN "ide_inuni" int4
+ADD COLUMN "presenta_peso_inlot" numeric(12,3),
 ADD COLUMN "ide_indci_egreso" int4;
+
 
 ALTER TABLE "public"."inv_lote" ADD FOREIGN KEY ("ide_indci_egreso") REFERENCES "public"."inv_det_comp_inve" ("ide_indci") ON DELETE RESTRICT;
 
@@ -456,6 +462,18 @@ FOREIGN KEY (inv_ide_inlot)
 REFERENCES public.inv_lote (ide_inlot)
 ON DELETE RESTRICT;
 
+
+ALTER TABLE public.inv_lote
+ADD CONSTRAINT fk_inv_presentacion_lote
+FOREIGN KEY (ide_inpres)
+REFERENCES public.inv_presentacion (ide_inpres)
+ON DELETE RESTRICT;
+
+ALTER TABLE public.inv_lote
+ADD CONSTRAINT fk_inv_unidad_lote
+FOREIGN KEY (ide_inuni)
+REFERENCES public.inv_unidad (ide_inuni)
+ON DELETE RESTRICT;
 
 CREATE INDEX idx_inv_lote_inv_ide_inlot
 ON public.inv_lote (inv_ide_inlot);

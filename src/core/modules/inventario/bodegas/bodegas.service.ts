@@ -175,7 +175,7 @@ export class BodegasService extends BaseService {
     }
 
     const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
-    const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) > 0 ' : '';
+    const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) <> 0 ' : '';
     const conditionBodega = dtoIn.ide_inbod ? `AND cci.ide_inbod = ANY($2)` : '';
 
     const query = new SelectQuery(

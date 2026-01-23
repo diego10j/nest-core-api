@@ -24,7 +24,7 @@ import { ReportsModule } from './reports/reports.module';
     // Rate Limiting - Protección contra fuerza bruta
     ThrottlerModule.forRoot([{
       ttl: 60000, // 1 minuto
-      limit: 30,  // 30 peticiones por minuto (general)
+      limit: 300,  // 300 peticiones por minuto (general)
     }]),
     RedisModule,
     DataSourceModule,
