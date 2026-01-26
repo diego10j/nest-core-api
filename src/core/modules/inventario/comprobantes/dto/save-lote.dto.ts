@@ -112,6 +112,20 @@ export class LoteDto {
   @IsOptional()
   @IsNumber()
   inv_ide_inlot?: number;
+
+  @IsOptional()
+  @IsNumber()
+  ide_inpres ?: number;
+
+  @IsOptional()
+  @IsNumber()
+  ide_inuni ?: number;
+
+  @IsOptional()
+  @IsNumber()
+  presenta_peso_inlot ?: number;
+  
+  
 }
 
 export class SaveLoteDto {

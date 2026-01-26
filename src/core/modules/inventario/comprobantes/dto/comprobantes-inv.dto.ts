@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsOptional, IsPositive } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class ComprobantesInvDto extends QueryOptionsDto {
@@ -17,4 +17,9 @@ export class ComprobantesInvDto extends QueryOptionsDto {
   @IsPositive()
   @IsOptional()
   ide_inepi?: number; // estado
+
+  @IsInt()
+  @IsOptional()
+  @IsIn([1, -1])
+  signo?: number; // puede ser undefined, 1, -1
 }

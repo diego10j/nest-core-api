@@ -10,7 +10,6 @@ import { ComprobantesInvService } from './comprobantes.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { LoteIngreso } from './dto/lote-ingreso.dto';
-import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 import { LoteEgreso } from './dto/lote-egreso.dto';
@@ -28,6 +27,26 @@ export class ComprobantesInvController {
       ...dtoIn,
     });
   }
+
+  @Get('getComprobantesIngresoPendientes')
+  // @Auth()
+  getComprobantesIngresoPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprobantesInvDto) {
+    return this.service.getComprobantesIngresoPendientes({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+  @Get('getComprobantesEgresoPendientes')
+  // @Auth()
+  getComprobantesEgresoPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprobantesInvDto) {
+    return this.service.getComprobantesEgresoPendientes({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
 
   @Get('getDetComprobanteInventario')
   // @Auth()
@@ -53,23 +72,6 @@ export class ComprobantesInvController {
     });
   }
 
-  @Get('getIngresosPendientes')
-  // @Auth()
-  getIngresosPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: MovimientosPendientesInvDto) {
-    return this.service.getIngresosPendientes({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getEgresosPendientes')
-  // @Auth()
-  getEgresosPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: MovimientosPendientesInvDto) {
-    return this.service.getEgresosPendientes({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
 
   @Post('setComporbantesVerificados')
   //@Auth()
@@ -148,6 +150,18 @@ export class ComprobantesInvController {
       ...dtoIn,
     });
   }
+
+  @Get('getListDataPresentacion')
+  // @Auth()
+  getListDataPresentacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.service.getListDataPresentacion({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+
+
 
   @Get('getLotesIngresoProducto')
   // @Auth()

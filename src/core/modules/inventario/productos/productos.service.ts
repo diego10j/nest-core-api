@@ -293,7 +293,8 @@ export class ProductosService extends BaseService {
             a.hora_ingre,
             a.usuario_actua,
             a.fecha_actua,
-            a.hora_actua
+            a.hora_actua,
+            decim_stock_inarti
         FROM
             inv_articulo a
             left join inv_marca b on a.ide_inmar = b.ide_inmar
@@ -502,7 +503,8 @@ export class ProductosService extends BaseService {
                 mov.hora_ingre,
                 mov.usuario_actua,
                 mov.fecha_actua,
-                mov.hora_actua
+                mov.hora_actua,
+                mov.decim_stock_inarti
             FROM
                 movimientos mov
                 LEFT JOIN saldo_inicial ON mov.ide_inarti = saldo_inicial.ide_inarti
@@ -527,7 +529,8 @@ export class ProductosService extends BaseService {
                 null as hora_ingre,
                 null as usuario_actua,
                 null as fecha_actua,
-                null as hora_actua
+                null as hora_actua,
+                0 as decim_stock_inarti
             FROM
                 saldo_inicial
         )

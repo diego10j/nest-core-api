@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
@@ -14,7 +14,6 @@ import { CoreService } from '../../../core.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
 import { LoteIngreso } from './dto/lote-ingreso.dto';
-import { MovimientosPendientesInvDto } from './dto/mov-pendientes-inv.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 import { LoteEgreso } from './dto/lote-egreso.dto';
@@ -37,74 +36,88 @@ export class ComprobantesInvService extends BaseService {
         this.variables = result;
       });
   }
-
   /**
-   * Retorna los comprovantes de inventario en todas las bodegas en un rango de fechas
-   * @param dtoIn
-   * @returns
+   * Retorna los comprobantes de inventario según el tipo especificado
+   * @param dtoIn - Parámetros de consulta incluyendo el tipo de comprobante
+   * @returns Query con los comprobantes filtrados
    */
   async getComprobantesInventario(dtoIn: ComprobantesInvDto & HeaderParamsDto) {
     const condBodega = dtoIn.ide_inbod ? `AND a.ide_inbod = ${dtoIn.ide_inbod}` : '';
-
     const condEstado = dtoIn.ide_inepi ? `AND a.ide_inepi = ${dtoIn.ide_inepi}` : '';
+
+    // Determinar condición según el tipo de comprobante
+    let condTipoComprobante = '';
+    const signo = dtoIn.signo;
+
+    if (signo) {
+      condTipoComprobante = `AND e.signo_intci = ${signo} AND (a.verifica_incci = false OR a.verifica_incci IS NULL)`;
+    }
+
+
     const query = new SelectQuery(
       `
-    select
-        a.ide_incci,
-        a.fecha_trans_incci,
-        a.numero_incci,
-        c.nombre_inbod,
-        d.nombre_intti,
-        COALESCE(
-              (
-                  SELECT MAX(cccfa.secuencial_cccfa)
-                  FROM cxc_cabece_factura cccfa
-                  INNER JOIN inv_det_comp_inve det ON cccfa.ide_cccfa = det.ide_cccfa
-                  WHERE det.ide_incci = a.ide_incci
-              ),
-              (
-                  SELECT MAX(cpcfa.numero_cpcfa)
-                  FROM cxp_cabece_factur cpcfa
-                  INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
-                  WHERE det.ide_incci = a.ide_incci
-              )
-        ) AS referencia,
-        f.nom_geper,
-        a.ide_cnccc,
-        a.ide_inepi,
-        c.ide_inbod,
-        verifica_incci,
-        fec_cam_est_incci, 
-        usuario_verifica_incci,
-        automatico_incci,
-            (
-                SELECT COUNT(1) 
-                FROM inv_det_comp_inve d
-                INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti 
-                WHERE d.ide_incci = a.ide_incci
-                    AND art.hace_kardex_inarti = true
-            ) as total_items,
-        a.observacion_incci,
-        a.usuario_ingre,
-        a.fecha_ingre,
-        a.hora_ingre,
-        a.usuario_actua,
-        a.fecha_actua,
-        a.hora_actua,
-        f.uuid,
-        signo_intci
-    from
-        inv_cab_comp_inve a
-        inner join inv_bodega c on a.ide_inbod = c.ide_inbod
-        inner join inv_tip_tran_inve d on a.ide_intti = d.ide_intti
-        inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
-        inner join gen_persona f on a.ide_geper = f.ide_geper
-    where
-        fecha_trans_incci BETWEEN $1  and $2
-        and a.ide_empr = $3
-        ${condBodega}
-        ${condEstado}
-        order by  fecha_trans_incci desc, ide_incci desc
+    SELECT
+      a.ide_incci,
+      a.fecha_trans_incci,
+      a.numero_incci,
+      c.nombre_inbod,
+      d.nombre_intti,
+      COALESCE(
+      (
+        SELECT 'Fact. ' || MAX(cccfa.secuencial_cccfa)
+        FROM cxc_cabece_factura cccfa
+        INNER JOIN inv_det_comp_inve det ON cccfa.ide_cccfa = det.ide_cccfa
+        WHERE det.ide_incci = a.ide_incci
+      ),
+      (
+        SELECT 'Fact. ' || MAX(cpcfa.numero_cpcfa)
+        FROM cxp_cabece_factur cpcfa
+        INNER JOIN inv_det_comp_inve det ON cpcfa.ide_cpcfa = det.ide_cpcfa
+        WHERE det.ide_incci = a.ide_incci
+      ),
+      (
+        SELECT MAX(det2.referencia_indci)
+        FROM inv_det_comp_inve det2
+        WHERE det2.ide_incci = a.ide_incci
+      )
+      ) AS referencia,
+      f.nom_geper,
+      a.ide_cnccc,
+      a.ide_inepi,
+      c.ide_inbod,
+      a.verifica_incci,
+      a.fec_cam_est_incci, 
+      a.usuario_verifica_incci,
+      a.automatico_incci,
+      (
+      SELECT COUNT(1) 
+      FROM inv_det_comp_inve d
+      INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti 
+      WHERE d.ide_incci = a.ide_incci
+        AND art.hace_kardex_inarti = true
+      ) AS total_items,
+      a.observacion_incci,
+      a.usuario_ingre,
+      a.fecha_ingre,
+      a.hora_ingre,
+      a.usuario_actua,
+      a.fecha_actua,
+      a.hora_actua,
+      f.uuid,
+      e.signo_intci
+    FROM
+      inv_cab_comp_inve a
+      INNER JOIN inv_bodega c ON a.ide_inbod = c.ide_inbod
+      INNER JOIN inv_tip_tran_inve d ON a.ide_intti = d.ide_intti
+      INNER JOIN inv_tip_comp_inve e ON d.ide_intci = e.ide_intci
+      INNER JOIN gen_persona f ON a.ide_geper = f.ide_geper
+    WHERE
+      a.fecha_trans_incci BETWEEN $1 AND $2
+      AND a.ide_empr = $3
+      ${condBodega}
+      ${condEstado}
+      ${condTipoComprobante}
+    ORDER BY a.fecha_trans_incci DESC, a.ide_incci DESC
     `,
       dtoIn,
     );
@@ -116,6 +129,20 @@ export class ComprobantesInvService extends BaseService {
     return this.dataSource.createQuery(query);
   }
 
+  // Métodos wrapper para mantener compatibilidad con código existente
+  async getComprobantesIngresoPendientes(dtoIn: ComprobantesInvDto & HeaderParamsDto) {
+    dtoIn.signo = 1;
+    return this.getComprobantesInventario({
+      ...dtoIn
+    });
+  }
+
+  async getComprobantesEgresoPendientes(dtoIn: ComprobantesInvDto & HeaderParamsDto) {
+    dtoIn.signo = -1;
+    return this.getComprobantesInventario({
+      ...dtoIn,
+    });
+  }
   /**
    * Retorna el detalle de productos de un comprobante de inventario
    * @param dtoIn
@@ -241,77 +268,130 @@ export class ComprobantesInvService extends BaseService {
     return this.dataSource.createQuery(query);
   }
 
-  async getIngresosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
-    if (dtoIn.signo !== 1) {
-      throw new BadRequestException('El signo debe ser 1');
-    }
-    return this.getMovimientosPendientes(dtoIn);
-  }
+  async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
 
-  async getEgresosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
-    if (dtoIn.signo !== -1) {
-      throw new BadRequestException('El signo debe ser -1');
-    }
-    return this.getMovimientosPendientes(dtoIn);
-  }
-
-  private async getMovimientosPendientes(dtoIn: MovimientosPendientesInvDto & HeaderParamsDto) {
-    const condBodega = dtoIn.ide_inbod ? 'AND a.ide_inbod = $3' : '';
-    const nomCol = dtoIn.signo === 1 ? 'ingreso' : 'egreso';
-    const query = new SelectQuery(
+    // Crea lote de ingreso / egreso según el tipo de comprobante, con valores por defecto 
+    // Consultar tipo de comprobante (ingreso o egreso) para cada ide_incci
+    const comprobantesQuery = new SelectQuery(
       `
-        select
-            a.ide_incci,
-            a.numero_incci,
-            a.fecha_trans_incci,
-            c.nombre_inbod,
-            d.nombre_intti,
-            g.nombre_inarti,
-            b.cantidad_indci as ${nomCol} ,
-            siglas_inuni,
-            f.nom_geper,
-            a.observacion_incci,
-            a.ide_cnccc,
-            a.usuario_ingre,
-            g.uuid,
-            a.ide_inbod,
-            f.uuid as uuid_per
-        from
-            inv_cab_comp_inve a
-            inner join inv_det_comp_inve b on a.ide_incci = b.ide_incci
-            inner join inv_bodega c on a.ide_inbod = c.ide_inbod
-            inner join inv_tip_tran_inve d on a.ide_intti = d.ide_intti
-            inner join inv_tip_comp_inve e on d.ide_intci = e.ide_intci
-            inner join gen_persona f on a.ide_geper = f.ide_geper
-            inner join inv_articulo g on b.ide_inarti = g.ide_inarti
-            LEFT JOIN inv_unidad h ON g.ide_inuni = h.ide_inuni
-        where
-            a.verifica_incci  = false
-            and hace_kardex_inarti = true
-            and a.ide_empr = $1
-            and signo_intci = $2
-            ${condBodega}
-            order by  fecha_trans_incci desc, ide_incci desc
-        `,
+        SELECT a.ide_incci, e.signo_intci
+        FROM inv_cab_comp_inve a
+        INNER JOIN inv_tip_tran_inve d ON a.ide_intti = d.ide_intti
+        INNER JOIN inv_tip_comp_inve e ON d.ide_intci = e.ide_intci
+        WHERE a.ide_incci = ANY ($1)
+      `,
       dtoIn,
     );
+    comprobantesQuery.addParam(1, dtoIn.ide);
 
-    query.addIntParam(1, dtoIn.ideEmpr);
-    query.addIntParam(2, dtoIn.signo);
-    if (dtoIn.ide_inbod) {
-      query.addIntParam(3, dtoIn.ide_inbod);
+    const comprobantes: { ide_incci: number; signo_intci: number }[] = await this.dataSource.createSelectQuery(comprobantesQuery);
+
+    for (const comprobante of comprobantes) {
+      // Obtener detalles del comprobante
+      const detallesQuery = new SelectQuery(
+        `
+          SELECT ide_indci
+          FROM inv_det_comp_inve
+          WHERE ide_incci = $1
+        `,
+        dtoIn,
+      );
+      detallesQuery.addIntParam(1, comprobante.ide_incci);
+      const detalles: { ide_indci: number }[] = await this.dataSource.createSelectQuery(detallesQuery);
+
+      for (const detalle of detalles) {
+        // Verifica si ya existe un lote para este detalle
+        const loteExisteQuery = new SelectQuery(
+          `
+            SELECT 1 FROM inv_lote
+            WHERE ${comprobante.signo_intci === 1 ? 'ide_indci_ingreso' : 'ide_indci_egreso'} = $1
+            LIMIT 1
+          `,
+          dtoIn,
+        );
+        loteExisteQuery.addIntParam(1, detalle.ide_indci);
+        const loteExiste = await this.dataSource.createSingleQuery(loteExisteQuery);
+
+        if (!loteExiste) {
+          // Crear lote con valores por defecto
+          const module = 'inv';
+          const tableName = 'lote';
+          const primaryKey = 'ide_inlot';
+          const ide_inlot = await this.dataSource.getSeqTable(`${module}_${tableName}`, primaryKey, 1, dtoIn.login);
+
+          const loteData: any = {
+            ide_inlot,
+            activo_inlot: true,
+            usuario_ingre: dtoIn.login,
+            fecha_ingre: getCurrentDateTime(),
+          };
+          if (comprobante.signo_intci === 1) {
+            loteData.ide_indci_ingreso = detalle.ide_indci;
+          } else if (comprobante.signo_intci === -1) {
+            loteData.ide_indci_egreso = detalle.ide_indci;
+          }
+
+          const objQuery: ObjectQueryDto = {
+            operation: 'insert',
+            module,
+            tableName,
+            primaryKey,
+            object: loteData,
+          };
+          await this.core.save({
+            ...dtoIn,
+            listQuery: [objQuery],
+            audit: false,
+          });
+        }
+        else {
+          // El lote ya existe, actualizar con valores por defecto
+          const updateLoteQuery = new UpdateQuery('inv_lote', 'ide_inlot');
+          updateLoteQuery.values.set('activo_inlot', true);
+          updateLoteQuery.values.set('usuario_actua', dtoIn.login);
+          updateLoteQuery.values.set('fecha_actua', getCurrentDateTime());
+          // Buscar el ide_inlot correspondiente
+          const loteIdQuery = new SelectQuery(
+            `
+              SELECT ide_inlot FROM inv_lote
+              WHERE ${comprobante.signo_intci === 1 ? 'ide_indci_ingreso' : 'ide_indci_egreso'} = $1
+              LIMIT 1
+            `,
+            dtoIn,
+          );
+          loteIdQuery.addIntParam(1, detalle.ide_indci);
+          const loteRow = await this.dataSource.createSingleQuery(loteIdQuery);
+          if (loteRow && loteRow.ide_inlot) {
+            updateLoteQuery.where = 'ide_inlot = $1';
+            updateLoteQuery.addIntParam(1, loteRow.ide_inlot);
+            await this.dataSource.createQuery(updateLoteQuery);
+          }
+
+        }
+      }
     }
-    return this.dataSource.createQuery(query);
-  }
 
-  async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
+    // Actualiza cabecera
     const updateQuery = new UpdateQuery('inv_cab_comp_inve', 'ide_incci');
     updateQuery.values.set('verifica_incci', true);
     updateQuery.values.set('fec_cam_est_incci', getCurrentDate()); // fecha de actualizacion
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
     updateQuery.where = 'ide_incci = ANY ($1) and verifica_incci = false';
     updateQuery.addParam(1, dtoIn.ide);
-    return this.dataSource.createQuery(updateQuery);
+
+    // Actualiza detalles relacionados
+    const updateDetQuery = new UpdateQuery('inv_det_comp_inve', 'ide_indci');
+    updateDetQuery.values.set('verifica_indci', true);
+    updateDetQuery.values.set('fecha_verifica_indci', getCurrentDateTime());
+    updateDetQuery.values.set('usuario_verifica_indci', dtoIn.login); // usuario que actualiza
+    updateDetQuery.where = 'ide_incci = ANY ($1) and (verifica_indci = false OR verifica_indci IS NULL)';
+    updateDetQuery.addParam(1, dtoIn.ide);
+
+
+
+    // Ejecuta ambas actualizaciones
+    await this.dataSource.createQuery(updateQuery);
+    return this.dataSource.createQuery(updateDetQuery);
   }
 
   async anularComprobante(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
@@ -684,6 +764,17 @@ export class ComprobantesInvService extends BaseService {
       tableName: 'est_prev_inve',
       primaryKey: 'ide_inepi',
       columnLabel: 'nombre_inepi',
+    };
+    return this.core.getListDataValues(dtoIn);
+  }
+
+  async getListDataPresentacion(dto: QueryOptionsDto & HeaderParamsDto) {
+    const dtoIn = {
+      ...dto,
+      module: 'inv',
+      tableName: 'presentacion',
+      primaryKey: 'ide_inpres',
+      columnLabel: 'nombre_inpres',
     };
     return this.core.getListDataValues(dtoIn);
   }
