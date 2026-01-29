@@ -189,7 +189,6 @@ export class ConfigPreciosProductosService extends BaseService {
   }
 
   async getAllProductosConfigPrecios(dtoIn: GetProductoDto & HeaderParamsDto) {
-    const activeClause = dtoIn.activos ? 'and a.activo_inarti = true' : '';
     const query = new SelectQuery(
       `
       SELECT
@@ -220,7 +219,7 @@ export class ConfigPreciosProductosService extends BaseService {
         a.ide_intpr = 1 -- solo productos
         AND a.nivel_inarti = 'HIJO'
         AND a.ide_empr = ${dtoIn.ideEmpr}
-        ${activeClause}
+        and a.activo_inarti = true
       ORDER BY
         unaccent(a.nombre_inarti)
       `,
