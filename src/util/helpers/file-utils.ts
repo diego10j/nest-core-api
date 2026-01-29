@@ -2,7 +2,8 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 import { BadRequestException } from '@nestjs/common';
-import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/file-temp.service';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
+
 
 export function detectMimeType(filename?: string): string | undefined {
   if (!filename) return undefined;

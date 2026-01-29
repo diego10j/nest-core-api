@@ -10,7 +10,7 @@ import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
 import { HOST_API, isDefined } from 'src/util/helpers/common-util';
 import { toDate, FORMAT_DATETIME_DB, getCurrentDateTime } from 'src/util/helpers/date-util';
-import { getStaticImage } from 'src/util/helpers/file-utils';
+import { detectMimeType, getStaticImage } from 'src/util/helpers/file-utils';
 
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
@@ -19,8 +19,9 @@ import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { GetFilesDto } from './dto/get-files.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
-import { FILE_STORAGE_CONSTANTS } from './file-temp.service';
+import { FileTempService } from './file-temp.service';
 import { getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
+import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 
 @Injectable()
 export class FilesService {
@@ -30,6 +31,7 @@ export class FilesService {
   constructor(
     private readonly errorLog: ErrorsLoggerService,
     private readonly dataSource: DataSourceService,
+    private readonly tempFilesService: FileTempService,
   ) {
     if (!existsSync(FILE_STORAGE_CONSTANTS.BASE_PATH)) {
       mkdirSync(FILE_STORAGE_CONSTANTS.BASE_PATH, { recursive: true });
@@ -446,5 +448,43 @@ export class FilesService {
     return {
       message: 'Archivo eliminado',
     };
+  }
+
+  // ------------------------------------------------------- Temp Files
+  async uploadTmpFile(file: Express.Multer.File) {
+    const result = await this.tempFilesService.saveTempFile(
+      file.buffer, // Buffer del archivo
+      file.originalname.split('.').pop(), // Extensión del archivo
+    );
+    return { fileName: result.fileName };
+  }
+
+
+  async downloadTmpFile(fileName: string, res: Response) {
+
+    const filePath = join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+    if (!existsSync(filePath)) {
+      throw new BadRequestException(`El archivo ${fileName} no existe`);
+    }
+
+    const fileStream = createReadStream(filePath);
+    fileStream.on('error', (err) => {
+      throw new BadRequestException(`Error al leer el archivo: ${err.message}`);
+    });
+    const fileStat = statSync(filePath);
+    // Determina el mimetype a partir del nombre del archivo
+    const mimetype = detectMimeType(fileName) || 'application/octet-stream';
+    // Check file type and handle accordingly
+    const fileType = getFileType(mimetype);
+    if (fileType === 'image' || fileType === 'pdf' || fileType === 'video') {
+      res.setHeader('Content-Type', mimetype);
+      res.setHeader('Content-Length', fileStat.size);
+      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    } else {
+      res.setHeader('Content-Type', mimetype);
+      res.setHeader('Content-Length', fileStat.size);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    }
+    fileStream.pipe(res);
   }
 }

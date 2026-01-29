@@ -16,6 +16,7 @@ import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { validateInsertConfigPrecio, validateUpdateConfigPrecio } from './helpers/validations';
+import { GetProductoDto } from './dto/get-productos.dto';
 
 @Injectable()
 export class ConfigPreciosProductosService extends BaseService {
@@ -185,5 +186,47 @@ export class ConfigPreciosProductosService extends BaseService {
     query.addParam(2, dtoIn.login);
     await this.dataSource.createSelectQuery(query);
     return { message: 'ok' };
+  }
+
+  async getAllProductosConfigPrecios(dtoIn: GetProductoDto & HeaderParamsDto) {
+    const activeClause = dtoIn.activos ? 'and a.activo_inarti = true' : '';
+    const query = new SelectQuery(
+      `
+      SELECT
+        a.ide_inarti,
+        a.uuid,
+        a.nombre_inarti,
+        nombre_incate,
+        a.codigo_inarti,
+        a.foto_inarti,
+        UNIDAD.nombre_inuni,
+        a.activo_inarti,
+        otro_nombre_inarti,
+        a.ide_incate,
+        siglas_inuni,
+        decim_stock_inarti,
+        (
+          SELECT COUNT(1)
+          FROM inv_conf_precios_articulo cp
+          WHERE cp.ide_inarti = a.ide_inarti
+            AND cp.activo_incpa = true
+            AND cp.autorizado_incpa = true
+        ) AS total_config_precios
+      FROM
+        inv_articulo a
+        LEFT JOIN inv_unidad UNIDAD ON a.ide_inuni = UNIDAD.ide_inuni
+        LEFT JOIN inv_categoria c ON a.ide_incate = c.ide_incate
+      WHERE
+        a.ide_intpr = 1 -- solo productos
+        AND a.nivel_inarti = 'HIJO'
+        AND a.ide_empr = ${dtoIn.ideEmpr}
+        ${activeClause}
+      ORDER BY
+        unaccent(a.nombre_inarti)
+      `,
+      dtoIn,
+    );
+    query.setLazy(false);
+    return this.dataSource.createSelectQuery(query);
   }
 }

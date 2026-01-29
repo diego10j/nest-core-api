@@ -19,7 +19,7 @@ export class WhatsappService {
     public readonly whatsappApi: WhatsappApiService,
     public readonly fileTempService: FileTempService,
     public readonly whatsappWeb: WhatsappWebService,
-  ) {}
+  ) { }
 
   /**
    * Retorna los mensajes de un chat

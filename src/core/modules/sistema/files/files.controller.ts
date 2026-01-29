@@ -14,7 +14,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
@@ -27,13 +27,15 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FilesService } from './files.service';
 import { fileNamer } from './helpers';
-import { fileOriginalNamer, PATH_DRIVE } from './helpers/fileNamer.helper';
+import { fileOriginalNamer } from './helpers/fileNamer.helper';
+
+import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 
 @Controller('sistema/files')
 export class FilesController {
   constructor(
     private readonly filesService: FilesService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) { }
 
   @Get('image/:imageName')
@@ -54,7 +56,7 @@ export class FilesController {
       // limits: { fileSize: 1000 }
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const folderPath = PATH_DRIVE();
+          const folderPath = FILE_STORAGE_CONSTANTS.BASE_PATH
           cb(null, folderPath);
         },
         filename: fileNamer,
@@ -102,7 +104,7 @@ export class FilesController {
       },
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const folderPath = PATH_DRIVE();
+          const folderPath = FILE_STORAGE_CONSTANTS.BASE_PATH
           cb(null, folderPath);
         },
         filename: fileOriginalNamer,
@@ -121,7 +123,7 @@ export class FilesController {
       },
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const folderPath = PATH_DRIVE();
+          const folderPath = FILE_STORAGE_CONSTANTS.BASE_PATH
           cb(null, folderPath);
         },
         filename: fileNamer,
@@ -181,4 +183,29 @@ export class FilesController {
   moveItem(@Body('sourcePath') sourcePath: string, @Body('destinationPath') destinationPath: string) {
     return this.filesService.moveItem(sourcePath, destinationPath);
   }
+
+  // Temporales
+
+  @Post('uploadTmpFile')
+  // @Auth()
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(), // Usa memoryStorage importado directamente
+      limits: {
+        fileSize: FILE_STORAGE_CONSTANTS.MAX_FILE_SIZE,
+        files: 1,
+      },
+    }),
+  )
+  uploadMedia(@AppHeaders() _headersParams: HeaderParamsDto, @UploadedFile() file: Express.Multer.File) {
+    return this.filesService.uploadTmpFile(file);
+  }
+
+  @Get('downloadTmpFile/:fileName')
+  downloadTmpFile(@Res() res: Response, @Param('fileName') fileName: string) {
+    return this.filesService.downloadTmpFile(fileName, res);
+  }
+
+
+
 }

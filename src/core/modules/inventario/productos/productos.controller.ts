@@ -305,6 +305,15 @@ export class ProductosController {
     });
   }
 
+  @Get('getAllProductosConfigPrecios')
+  // @Auth()
+  getAllProductosConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
+    return this.configPrecios.getAllProductosConfigPrecios({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getCostoProducto')
   // @Auth()
   getCostoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCostoProductoDto) {
@@ -322,4 +331,7 @@ export class ProductosController {
       ...dtoIn,
     });
   }
+
+
+
 }

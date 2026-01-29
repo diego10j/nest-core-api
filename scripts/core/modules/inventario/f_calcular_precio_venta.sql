@@ -1,6 +1,5 @@
 -- VERSIÓN f_calcula_precio_venta CORREGIDA
 -- Corrección completa de lógica de búsqueda y validaciones
-
 CREATE OR REPLACE FUNCTION f_calcula_precio_venta(
     p_ide_inarti INT,
     p_cantidad DECIMAL,
@@ -101,17 +100,19 @@ BEGIN
       AND rangos_incpa = FALSE 
       AND rango1_cant_incpa = p_cantidad 
       AND rango2_cant_incpa IS NULL
-      -- Si se especifica forma de pago, buscar primero esa, sino buscar genéricas
+      -- Filtro de forma de pago CORREGIDO
       AND (
-          (p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp) OR
-          (p_ide_cndfp IS NULL AND ide_cndfp IS NULL) OR
-          ide_cndfp IS NULL
+          -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          OR
+          -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
+          (p_ide_cndfp IS NULL)
       )
     ORDER BY 
         CASE 
-            WHEN ide_cndfp = p_ide_cndfp THEN 0 
-            WHEN ide_cndfp IS NULL THEN 1 
-            ELSE 2 
+            WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
+            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
+            ELSE 2                                                             -- Otras formas de pago
         END
     LIMIT 1;
 
@@ -165,18 +166,20 @@ BEGIN
           -- Rango cerrado: desde rango1 hasta rango2 (inclusivo en ambos extremos)
           (rango2_cant_incpa IS NOT NULL AND p_cantidad >= rango1_cant_incpa AND p_cantidad <= rango2_cant_incpa)
       )
-      -- Filtro de forma de pago
+      -- Filtro de forma de pago CORREGIDO
       AND (
-          (p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp) OR
-          (p_ide_cndfp IS NULL AND ide_cndfp IS NULL) OR
-          ide_cndfp IS NULL
+          -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          OR
+          -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
+          (p_ide_cndfp IS NULL)
       )
     ORDER BY 
-        -- Priorizar forma de pago específica
+        -- Priorizar forma de pago específica sobre genérica
         CASE 
-            WHEN ide_cndfp = p_ide_cndfp THEN 0 
-            WHEN ide_cndfp IS NULL THEN 1 
-            ELSE 2 
+            WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
+            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
+            ELSE 2                                                             -- Otras formas de pago
         END,
         -- Priorizar el rango más ajustado (menor límite inferior)
         rango1_cant_incpa DESC
@@ -243,18 +246,20 @@ BEGIN
       AND rango1_cant_incpa IS NOT NULL
       AND precio_fijo_incpa IS NOT NULL
       AND precio_fijo_incpa > 0
-      -- Filtro de forma de pago
+      -- Filtro de forma de pago CORREGIDO
       AND (
-          (p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp) OR
-          (p_ide_cndfp IS NULL AND ide_cndfp IS NULL) OR
-          ide_cndfp IS NULL
+          -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          OR
+          -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
+          (p_ide_cndfp IS NULL)
       )
     ORDER BY 
-        -- Priorizar forma de pago específica
+        -- Priorizar forma de pago específica sobre genérica
         CASE 
-            WHEN ide_cndfp = p_ide_cndfp THEN 0 
-            WHEN ide_cndfp IS NULL THEN 1 
-            ELSE 2 
+            WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
+            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
+            ELSE 2                                                             -- Otras formas de pago
         END,
         -- Buscar la cantidad más cercana
         ABS(p_cantidad - rango1_cant_incpa)
@@ -298,18 +303,20 @@ BEGIN
       AND rangos_incpa = TRUE 
       AND rango1_cant_incpa IS NOT NULL 
       AND porcentaje_util_incpa IS NOT NULL
-      -- Filtro de forma de pago
+      -- Filtro de forma de pago CORREGIDO
       AND (
-          (p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp) OR
-          (p_ide_cndfp IS NULL AND ide_cndfp IS NULL) OR
-          ide_cndfp IS NULL
+          -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
+          (p_ide_cndfp IS NOT NULL AND (ide_cndfp = p_ide_cndfp OR ide_cndfp IS NULL))
+          OR
+          -- Si NO se especifica forma de pago, aceptar CUALQUIER configuración
+          (p_ide_cndfp IS NULL)
       )
     ORDER BY 
-        -- Priorizar forma de pago específica
+        -- Priorizar forma de pago específica sobre genérica
         CASE 
-            WHEN ide_cndfp = p_ide_cndfp THEN 0 
-            WHEN ide_cndfp IS NULL THEN 1 
-            ELSE 2 
+            WHEN p_ide_cndfp IS NOT NULL AND ide_cndfp = p_ide_cndfp THEN 0  -- Forma de pago exacta
+            WHEN ide_cndfp IS NULL THEN 1                                      -- Forma de pago genérica
+            ELSE 2                                                             -- Otras formas de pago
         END,
         -- Buscar el rango más cercano
         ABS(p_cantidad - rango1_cant_incpa)

@@ -14,6 +14,7 @@ import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 import { LoteEgreso } from './dto/lote-egreso.dto';
 import { LotesProductoDto } from './dto/lotes-producto.dto';
+import { LotesProductoProveedorDto } from './dto/lotes-producto-proveedor.dto';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
@@ -102,6 +103,15 @@ export class ComprobantesInvController {
     });
   }
 
+  @Post('verificarComprobante')
+  // @Auth()
+  verificarComprobante(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
+    return this.service.verificarComprobante({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getLoteIngreso')
   // @Auth()
   getLoteIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LoteIngreso) {
@@ -139,7 +149,26 @@ export class ComprobantesInvController {
     });
   }
 
+  @Post('validarDetallesVerificados')
+  //@Auth()
+  validarDetallesVerificados(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
+    return this.service.validarDetallesVerificados({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 
+
+
+  // getLotesProductoProveedor  
+  @Get('getLotePorProductoProveedor')
+  // @Auth()
+  getLotePorProductoProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LotesProductoProveedorDto) {
+    return this.service.getLotePorProductoProveedor({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 
   // ==================================ListData==============================
   @Get('getListDataEstadosComprobantes')
@@ -171,4 +200,7 @@ export class ComprobantesInvController {
       ...dtoIn,
     });
   }
+
+
+
 }
