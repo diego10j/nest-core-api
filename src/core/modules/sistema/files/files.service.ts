@@ -435,6 +435,11 @@ export class FilesService {
     return getStaticImage(imageName);
   }
 
+
+  getStaticTmpImage(imageName: string) {
+    return getStaticImage(imageName, true);
+  }
+
   deleteStaticFile(fileName: string) {
     const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, fileName);
     try {

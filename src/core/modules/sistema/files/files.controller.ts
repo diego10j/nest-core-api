@@ -206,6 +206,10 @@ export class FilesController {
     return this.filesService.downloadTmpFile(fileName, res);
   }
 
-
+  @Get('imageTmp/:imageName')
+  getStaticImageTmp(@Res() res: Response, @Param('imageName') imageName: string) {
+    const path = this.filesService.getStaticTmpImage(imageName);
+    res.sendFile(path);
+  }
 
 }

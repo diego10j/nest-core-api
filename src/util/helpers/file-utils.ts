@@ -64,18 +64,11 @@ export function generateFilename(type?: string): string {
 /**
  * Retorna el path de una imagen que se subio mediante el files.service
  */
-export function getStaticImage(imageName: string): string {
-  let path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, imageName);
+export function getStaticImage(imageName: string, isTmp: boolean = false): string {
+  const basePath = isTmp ? FILE_STORAGE_CONSTANTS.TEMP_DIR : FILE_STORAGE_CONSTANTS.BASE_PATH;
+  let path = join(basePath, imageName);
   if (!existsSync(path)) path = join(FILE_STORAGE_CONSTANTS.BASE_PATH, 'no-image.png'); // path = join(__dirname, '../../../../public/assets/images', 'no-image.png');
   if (!existsSync(path)) throw new BadRequestException(`No image found with  ${path}`);
   return path;
 }
 
-/**
- * Retorna el path de un archivo subido desde file-temp.service
- */
-export function getTmpFile(fileName: string): string {
-  let path = join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
-  if (!existsSync(path)) throw new BadRequestException(`No file found with  ${path}`);
-  return path;
-}
