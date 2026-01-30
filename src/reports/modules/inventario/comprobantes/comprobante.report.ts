@@ -307,20 +307,12 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
     },
   ];
 
-  // Mensaje final
-  const mensajeFinal: Content[] = [
-    {
-      text: 'Este documento es un comprobante de movimiento de inventario válido según las normativas internas de la empresa.',
-      style: 'footerText',
-      margin: [0, 20, 0, 0] as [number, number, number, number],
-      italics: true,
-    },
-  ];
+
 
   return {
     styles,
     pageMargins: [40, 20, 40, 20] as [number, number, number, number],
-    footer: footerSection,
+    footer: (currentPage: number, pageCount: number) => footerSection(currentPage, pageCount, true),
     content: [
       header,
       comprobanteInfo,
@@ -341,7 +333,6 @@ export const comprobanteInventarioReport = (comprobante: ComprobanteInvRep, head
       ...infoClienteProveedor,
       ...detallesContent,
       ...infoAdicionalContent,
-      ...mensajeFinal,
     ],
   };
 };

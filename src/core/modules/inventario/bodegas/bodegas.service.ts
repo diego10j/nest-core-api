@@ -539,6 +539,8 @@ export class BodegasService extends BaseService {
           d.ide_inarti,
           a.codigo_inarti,
           a.nombre_inarti,
+          ca.ide_incate,
+          ca.nombre_incate,
           a.uuid,
           a.decim_stock_inarti,
           u.siglas_inuni,
@@ -594,6 +596,7 @@ export class BodegasService extends BaseService {
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
       left join sis_usuario us on d.ide_usua_valida = us.ide_usua
       left join sis_usuario usa on d.ide_usua_ajusta = usa.ide_usua
+      LEFT JOIN inv_categoria ca ON a.ide_incate = ca.ide_incate
       WHERE cc.ide_inccf = $1
           AND cc.activo_inccf = true
           AND d.activo_indcf = true

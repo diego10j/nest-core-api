@@ -8,7 +8,7 @@ import { ComprobatesInvReportsService } from './comprobates-rep.service';
 
 @Controller('reports/inventario/comprobantes')
 export class ComprobatesInvReportsController {
-  constructor(private readonly comprobatesInvReportsService: ComprobatesInvReportsService) {}
+  constructor(private readonly comprobatesInvReportsService: ComprobatesInvReportsService) { }
 
   @Get('reportComprobanteInventario')
   async getOrderReport(
@@ -22,7 +22,7 @@ export class ComprobatesInvReportsController {
     });
 
     response.setHeader('Content-Type', 'application/pdf');
-    pdfDoc.info.Title = 'Order-Report';
+    pdfDoc.info.Title = 'Reporte de Comprobante de Inventario';
     pdfDoc.pipe(response);
     pdfDoc.end();
   }
