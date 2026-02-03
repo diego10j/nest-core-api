@@ -2,8 +2,9 @@ import { Controller, Get, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { BodegaInvReportsService } from './bodega-rep.services';
 import { GetDetallesConteoDto } from 'src/core/modules/inventario/bodegas/dto/get-detalles-conteo.dto';
+
+import { BodegaInvReportsService } from './bodega-rep.services';
 
 
 

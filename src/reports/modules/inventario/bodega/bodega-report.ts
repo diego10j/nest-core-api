@@ -1,7 +1,8 @@
 import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { ConteoFisicoInvRep } from './interfcaes/bodega-inv-rep';
 import { footerSection } from 'src/reports/common/sections/footer.section';
 import { fDate, fDateTime } from 'src/util/helpers/date-util';
+
+import { ConteoFisicoInvRep } from './interfcaes/bodega-inv-rep';
 
 // Definición de estilos para el reporte de conteo físico
 const styles: StyleDictionary = {

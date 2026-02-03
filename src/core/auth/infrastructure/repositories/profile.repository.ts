@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { IProfileRepository } from '../../domain/repositories/profile.repository.interface';
-import { PerfilAuth } from '../../interfaces/auth-user.interface';
+
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers';
+import { IProfileRepository } from '../../domain/repositories/profile.repository.interface';
+import { PerfilAuth } from '../../interfaces/auth-user.interface';
 
 /**
  * Implementación del repositorio de perfiles

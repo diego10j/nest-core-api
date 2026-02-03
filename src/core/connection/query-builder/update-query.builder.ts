@@ -1,10 +1,12 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
+
+import { ErrorsLoggerService } from '../../../errors/errors-logger.service';
 import { UpdateQuery } from '../helpers';
 import { ResultQuery } from '../interfaces/resultQuery';
-import { IQueryBuilder } from './query-builder.interface';
 import { QueryValidatorService } from '../validator/query-validator.service';
-import { ErrorsLoggerService } from '../../../errors/errors-logger.service';
+
+import { IQueryBuilder } from './query-builder.interface';
 
 /**
  * QueryBuilder para UPDATE queries

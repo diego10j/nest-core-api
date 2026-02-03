@@ -1,7 +1,6 @@
 import { Query, Controller, Get, Post, Body } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
@@ -9,12 +8,13 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { ComprobantesInvService } from './comprobantes.service';
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
+import { LoteEgreso } from './dto/lote-egreso.dto';
 import { LoteIngreso } from './dto/lote-ingreso.dto';
+import { LotesProductoProveedorDto } from './dto/lotes-producto-proveedor.dto';
+import { LotesProductoDto } from './dto/lotes-producto.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
-import { LoteEgreso } from './dto/lote-egreso.dto';
-import { LotesProductoDto } from './dto/lotes-producto.dto';
-import { LotesProductoProveedorDto } from './dto/lotes-producto-proveedor.dto';
+import { SetComporbantesVerificadosDto } from './dto/set-compro-verificado.dto';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
@@ -76,7 +76,7 @@ export class ComprobantesInvController {
 
   @Post('setComporbantesVerificados')
   //@Auth()
-  generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
+  generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetComporbantesVerificadosDto) {
     return this.service.setComporbantesVerificados({
       ...headersParams,
       ...dtoIn,

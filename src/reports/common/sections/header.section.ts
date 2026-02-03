@@ -57,8 +57,8 @@ export class HeaderSection {
 
     return {
       image: logoPath,
-      height: 50,
-      width: 70,
+      height: 60,
+      width: 120,
       margin: DEFAULT_MARGIN,
     };
   }

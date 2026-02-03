@@ -18,6 +18,7 @@ import { diskStorage, memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
@@ -29,7 +30,6 @@ import { FilesService } from './files.service';
 import { fileNamer } from './helpers';
 import { fileOriginalNamer } from './helpers/fileNamer.helper';
 
-import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 
 @Controller('sistema/files')
 export class FilesController {

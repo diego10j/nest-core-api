@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsNumber, IsString, MaxLength, MinLength, Matches } from 'class-validator';
+
 import { PASSWORD_CONFIG } from '../constants/password.constants';
 
 export class ChangePasswordDto {

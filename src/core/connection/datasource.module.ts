@@ -1,25 +1,25 @@
 // src/core/connection/datasource.module.ts
 import { Global, Module } from '@nestjs/common';
 import { Pool } from 'pg';
+import { envs } from 'src/config/envs';
 import { ErrorsModule } from 'src/errors/errors.module';
 import { RedisModule } from 'src/redis/redis.module';
-import { envs } from 'src/config/envs';
 
-import { VariablesService } from '../variables/variables.service';
 import { AuditLoggerService } from '../audit/audit-logger.service';
-
-import { DataSourceService } from './datasource.service';
-import { TypeParserService } from './type-parser/type-parser.service';
-import { QueryValidatorService } from './validator/query-validator.service';
-import { PaginationService } from './pagination/pagination.service';
-import { FilterService } from './filter/filter.service';
-import { SelectQueryBuilder } from './query-builder/select-query.builder';
-import { InsertQueryBuilder } from './query-builder/insert-query.builder';
-import { UpdateQueryBuilder } from './query-builder/update-query.builder';
-import { DeleteQueryBuilder } from './query-builder/delete-query.builder';
 import { RedisCacheProvider } from '../cache/redis-cache.provider';
 import { TableColumnsCacheService } from '../cache/table-columns.cache';
-import { ICacheProvider } from '../cache/cache.interface';
+import { VariablesService } from '../variables/variables.service';
+
+import { DataSourceService } from './datasource.service';
+import { FilterService } from './filter/filter.service';
+import { PaginationService } from './pagination/pagination.service';
+import { DeleteQueryBuilder } from './query-builder/delete-query.builder';
+import { InsertQueryBuilder } from './query-builder/insert-query.builder';
+import { SelectQueryBuilder } from './query-builder/select-query.builder';
+import { UpdateQueryBuilder } from './query-builder/update-query.builder';
+import { TypeParserService } from './type-parser/type-parser.service';
+import { QueryValidatorService } from './validator/query-validator.service';
+
 
 @Global() //  Hace que este módulo y sus exports sean globales
 @Module({

@@ -3,41 +3,41 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
-import { CoreModule } from '../core.module';
 import { RedisModule } from '../../redis/redis.module';
+import { CoreModule } from '../core.module';
 import { AuditService } from '../modules/audit/audit.service';
 
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { PasswordService } from './password.service';
-
-// Use Cases
+import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService } from './application/services';
 import {
   ValidateUserCredentialsUseCase,
   BuildAuthUserUseCase,
   ChangePasswordUseCase,
   ResetPasswordUseCase,
 } from './application/use-cases';
-
-// Services
-import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService } from './application/services';
-
-// Repositories
-import {
-  UserRepository,
-  ProfileRepository,
-  BranchRepository,
-  SessionRepository,
-} from './infrastructure/repositories';
-
-// Repository Interfaces (Dependency Injection Tokens)
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
 import {
   USER_REPOSITORY,
   PROFILE_REPOSITORY,
   BRANCH_REPOSITORY,
   SESSION_REPOSITORY,
 } from './domain/repositories';
+import {
+  UserRepository,
+  ProfileRepository,
+  BranchRepository,
+  SessionRepository,
+} from './infrastructure/repositories';
+import { PasswordService } from './password.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
+// Use Cases
+
+// Services
+
+// Repositories
+
+// Repository Interfaces (Dependency Injection Tokens)
 
 /**
  * AuthModule - Refactorizado con Clean Architecture, DDD y SOLID

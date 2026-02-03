@@ -1,7 +1,8 @@
+import { createHash } from 'crypto';
+
 import { Injectable, InternalServerErrorException, Inject, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { Pool, types } from 'pg';
-import { createHash } from 'crypto';
 import { envs } from 'src/config/envs';
 
 import { ErrorsLoggerService } from '../../errors/errors-logger.service';
@@ -26,7 +27,6 @@ import {
   getSqlDelete,
   getTypeFilterColumn,
 } from '../../util/helpers/sql-util';
-import { getCountStringInText } from '../../util/helpers/string-util';
 import { Query, UpdateQuery, InsertQuery, DeleteQuery, SelectQuery, DataStore } from '../connection/helpers';
 
 import { ResultQuery } from './interfaces/resultQuery';

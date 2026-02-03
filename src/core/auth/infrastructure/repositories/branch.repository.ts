@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { IBranchRepository } from '../../domain/repositories/branch.repository.interface';
-import { SucursalAuth } from '../../interfaces/auth-user.interface';
+
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers';
+import { IBranchRepository } from '../../domain/repositories/branch.repository.interface';
+import { SucursalAuth } from '../../interfaces/auth-user.interface';
 
 /**
  * Implementación del repositorio de sucursales

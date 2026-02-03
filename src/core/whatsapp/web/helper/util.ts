@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { MessageAck, MessageMedia } from 'whatsapp-web.js';
 
 import { MediaFile } from '../../api/interface/whatsapp';
 import { UploadMediaDto } from '../../dto/upload-media.dto';
-import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 
 // types/mime-types.const.ts
 export const MIME_TYPES = {

@@ -438,15 +438,16 @@ export class ProductosService extends BaseService {
                 bod.nombre_inbod,
                 COALESCE(
                     (
-                        SELECT secuencial_cccfa
+                        SELECT 'Fact. ' || secuencial_cccfa
                         FROM cxc_cabece_factura
                         WHERE ide_cccfa = dci.ide_cccfa
                     ),
                     (
-                        SELECT numero_cpcfa
+                        SELECT 'Fact. ' || numero_cpcfa
                         FROM cxp_cabece_factur
                         WHERE ide_cpcfa = dci.ide_cpcfa
-                    )
+                    ),
+                    (referencia_indci)
                 ) AS NUM_DOCUMENTO,
                 gpe.nom_geper,
                 tti.nombre_intti,

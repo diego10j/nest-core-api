@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { IUserRepository } from '../../domain/repositories/user.repository.interface';
-import { User } from '../../domain/entities/user.entity';
-import { Email } from '../../domain/value-objects/email.vo';
-import { UserId } from '../../domain/value-objects/user-id.vo';
+import { ConfigService } from '@nestjs/config';
+
+import { getCurrentDateTime } from '../../../../util/helpers/date-util';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery, UpdateQuery } from '../../../connection/helpers';
-import { fToTitleCase } from '../../../../util/helpers/string-util';
-import { getCurrentDateTime } from '../../../../util/helpers/date-util';
 import { EventAudit } from '../../../modules/audit/enum/event-audit';
-import { ConfigService } from '@nestjs/config';
+import { User } from '../../domain/entities/user.entity';
+import { IUserRepository } from '../../domain/repositories/user.repository.interface';
+import { Email } from '../../domain/value-objects/email.vo';
+import { UserId } from '../../domain/value-objects/user-id.vo';
+
 
 /**
  * Implementación del repositorio de usuarios usando PostgreSQL

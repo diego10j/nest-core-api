@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ISessionRepository, SESSION_REPOSITORY } from '../../domain/repositories';
+
 import { AuditService } from '../../../modules/audit/audit.service';
 import { EventAudit } from '../../../modules/audit/enum/event-audit';
+import { ISessionRepository, SESSION_REPOSITORY } from '../../domain/repositories';
 
 /**
  * Session Service - Responsabilidad Única: Manejo de sesiones

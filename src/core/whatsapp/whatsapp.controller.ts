@@ -24,6 +24,8 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 
+import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
+
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
@@ -45,7 +47,6 @@ import { TelefonoWebDto } from './web/dto/telefono-web.dto';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
-import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
 
 @Controller('whatsapp')
 export class WhatsappController {

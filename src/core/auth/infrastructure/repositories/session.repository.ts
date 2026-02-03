@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { ISessionRepository } from '../../domain/repositories/session.repository.interface';
+
 import { DataSourceService } from '../../../connection/datasource.service';
 import { UpdateQuery } from '../../../connection/helpers';
+import { ISessionRepository } from '../../domain/repositories/session.repository.interface';
 
 /**
  * Implementación del repositorio de sesiones

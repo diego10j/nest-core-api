@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { GetDetallesConteoDto } from 'src/core/modules/inventario/bodegas/dto/get-detalles-conteo.dto';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 
-import { GetDetallesConteoDto } from 'src/core/modules/inventario/bodegas/dto/get-detalles-conteo.dto';
-import { ConteoFisicoInvRep } from './interfcaes/bodega-inv-rep';
 import { conteoFisicoReport } from './bodega-report';
+import { ConteoFisicoInvRep } from './interfcaes/bodega-inv-rep';
 
 @Injectable()
 export class BodegaInvReportsService {

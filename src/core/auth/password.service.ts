@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+
 import { PASSWORD_CONFIG, PASSWORD_MESSAGES } from './constants/password.constants';
 import { InvalidPasswordException } from './exceptions/invalid-password.exception';
 

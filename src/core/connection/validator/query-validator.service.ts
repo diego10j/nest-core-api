@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Query, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery } from '../helpers';
-import { InvalidQueryException } from '../exceptions/invalid-query.exception';
+
 import { InvalidQueryParametersException } from '../exceptions/invalid-parameters.exception';
-import { getCountStringInText } from '../../../util/helpers/string-util';
+import { InvalidQueryException } from '../exceptions/invalid-query.exception';
+import { Query, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery } from '../helpers';
 
 /**
  * Servicio responsable de validar la integridad de los queries

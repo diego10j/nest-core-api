@@ -1,14 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Pool, QueryResult } from 'pg';
-import { SelectQuery } from '../helpers';
-import { ResultQuery } from '../interfaces/resultQuery';
-import { IQueryBuilder } from './query-builder.interface';
-import { PaginationService } from '../pagination/pagination.service';
-import { FilterService } from '../filter/filter.service';
-import { QueryValidatorService } from '../validator/query-validator.service';
+
 import { ErrorsLoggerService } from '../../../errors/errors-logger.service';
-import { removeEqualsElements } from '../../../util/helpers/array-util';
-import { isDefined } from '../../../util/helpers/common-util';
 import {
     getTypeCoreColumn,
     getAlignCoreColumn,
@@ -18,6 +11,13 @@ import {
     getVisibleCoreColumn,
     getTypeFilterColumn,
 } from '../../../util/helpers/sql-util';
+import { FilterService } from '../filter/filter.service';
+import { SelectQuery } from '../helpers';
+import { ResultQuery } from '../interfaces/resultQuery';
+import { PaginationService } from '../pagination/pagination.service';
+import { QueryValidatorService } from '../validator/query-validator.service';
+
+import { IQueryBuilder } from './query-builder.interface';
 
 /**
  * QueryBuilder para SELECT queries

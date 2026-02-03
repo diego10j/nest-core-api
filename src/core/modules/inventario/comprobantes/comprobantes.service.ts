@@ -1,6 +1,5 @@
 
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { UpdateQuery } from 'src/core/connection/helpers';
@@ -14,12 +13,13 @@ import { CoreService } from '../../../core.service';
 
 import { CabComprobanteInventarioDto } from './dto/cab-compr-inv.dto';
 import { ComprobantesInvDto } from './dto/comprobantes-inv.dto';
+import { LoteEgreso } from './dto/lote-egreso.dto';
 import { LoteIngreso } from './dto/lote-ingreso.dto';
+import { LotesProductoProveedorDto } from './dto/lotes-producto-proveedor.dto';
+import { LotesProductoDto } from './dto/lotes-producto.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
-import { LoteEgreso } from './dto/lote-egreso.dto';
-import { LotesProductoDto } from './dto/lotes-producto.dto';
-import { LotesProductoProveedorDto } from './dto/lotes-producto-proveedor.dto';
+import { SetComporbantesVerificadosDto } from './dto/set-compro-verificado.dto';
 
 @Injectable()
 export class ComprobantesInvService extends BaseService {
@@ -119,6 +119,13 @@ export class ComprobantesInvService extends BaseService {
       ${condBodega}
       ${condEstado}
       ${condTipoComprobante}
+      AND (
+      SELECT COUNT(1) 
+      FROM inv_det_comp_inve d
+      INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti 
+      WHERE d.ide_incci = a.ide_incci
+        AND art.hace_kardex_inarti = true
+      ) > 0
     ORDER BY a.fecha_trans_incci DESC, a.ide_incci DESC
     `,
       dtoIn,
@@ -274,7 +281,7 @@ export class ComprobantesInvService extends BaseService {
     return this.dataSource.createQuery(query);
   }
 
-  async setComporbantesVerificados(dtoIn: ArrayIdeDto & HeaderParamsDto) {
+  async setComporbantesVerificados(dtoIn: SetComporbantesVerificadosDto & HeaderParamsDto) {
 
     // Crea lote de ingreso / egreso según el tipo de comprobante, con valores por defecto 
     // Consultar tipo de comprobante (ingreso o egreso) para cada ide_incci
@@ -285,25 +292,24 @@ export class ComprobantesInvService extends BaseService {
         INNER JOIN inv_tip_tran_inve d ON a.ide_intti = d.ide_intti
         INNER JOIN inv_tip_comp_inve e ON d.ide_intci = e.ide_intci
         WHERE a.ide_incci = ANY ($1)
-      `,
-      dtoIn,
+      `
     );
-    comprobantesQuery.addParam(1, dtoIn.ide);
+    comprobantesQuery.addParam(1, dtoIn.ide_incci);
 
     const comprobantes: { ide_incci: number; signo_intci: number }[] = await this.dataSource.createSelectQuery(comprobantesQuery);
 
     for (const comprobante of comprobantes) {
-      // Obtener detalles del comprobante
+      // Obtener detalles del comprobante no verificados
       const detallesQuery = new SelectQuery(
         `
-          SELECT ide_indci
+          SELECT ide_indci,cantidad_indci
           FROM inv_det_comp_inve
           WHERE ide_incci = $1
-        `,
-        dtoIn,
+            AND (verifica_indci = false OR verifica_indci IS NULL)
+        `
       );
       detallesQuery.addIntParam(1, comprobante.ide_incci);
-      const detalles: { ide_indci: number }[] = await this.dataSource.createSelectQuery(detallesQuery);
+      const detalles: { ide_indci: number, cantidad_indci: number }[] = await this.dataSource.createSelectQuery(detallesQuery);
 
       for (const detalle of detalles) {
         // Verifica si ya existe un lote para este detalle
@@ -313,7 +319,6 @@ export class ComprobantesInvService extends BaseService {
             WHERE ${comprobante.signo_intci === 1 ? 'ide_indci_ingreso' : 'ide_indci_egreso'} = $1
             LIMIT 1
           `,
-          dtoIn,
         );
         loteExisteQuery.addIntParam(1, detalle.ide_indci);
         const loteExiste = await this.dataSource.createSingleQuery(loteExisteQuery);
@@ -330,6 +335,11 @@ export class ComprobantesInvService extends BaseService {
             activo_inlot: true,
             usuario_ingre: dtoIn.login,
             fecha_ingre: getCurrentDateTime(),
+            observacion_inlot: dtoIn.observacion + ' - Verificado automáticamente',
+            verificado_inlot: true,
+            fecha_ingreso_inlot: getCurrentDate(),
+            usuario_verif_inlot: dtoIn.login,
+            peso_inlot: detalle.cantidad_indci,
           };
           if (comprobante.signo_intci === 1) {
             loteData.ide_indci_ingreso = detalle.ide_indci;
@@ -356,6 +366,11 @@ export class ComprobantesInvService extends BaseService {
           updateLoteQuery.values.set('activo_inlot', true);
           updateLoteQuery.values.set('usuario_actua', dtoIn.login);
           updateLoteQuery.values.set('fecha_actua', getCurrentDateTime());
+          updateLoteQuery.values.set('observacion_inlot', dtoIn.observacion + ' - Verificado automáticamente');
+          updateLoteQuery.values.set('verificado_inlot', true);
+          updateLoteQuery.values.set('fecha_verif_inlot', getCurrentDateTime());
+          updateLoteQuery.values.set('usuario_verif_inlot', dtoIn.login);
+
           // Buscar el ide_inlot correspondiente
           const loteIdQuery = new SelectQuery(
             `
@@ -363,7 +378,6 @@ export class ComprobantesInvService extends BaseService {
               WHERE ${comprobante.signo_intci === 1 ? 'ide_indci_ingreso' : 'ide_indci_egreso'} = $1
               LIMIT 1
             `,
-            dtoIn,
           );
           loteIdQuery.addIntParam(1, detalle.ide_indci);
           const loteRow = await this.dataSource.createSingleQuery(loteIdQuery);
@@ -382,16 +396,18 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.values.set('verifica_incci', true);
     updateQuery.values.set('fec_cam_est_incci', getCurrentDate()); // fecha de actualizacion
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
-    updateQuery.where = 'ide_incci = ANY ($1) and verifica_incci = false';
-    updateQuery.addParam(1, dtoIn.ide);
+    updateQuery.values.set('usuario_verifica_incci', dtoIn.login);
+    updateQuery.where = 'ide_incci = ANY ($1) and (verifica_incci = false OR verifica_incci IS NULL)';
+    updateQuery.addParam(1, dtoIn.ide_incci);
 
     // Actualiza detalles relacionados
     const updateDetQuery = new UpdateQuery('inv_det_comp_inve', 'ide_indci');
     updateDetQuery.values.set('verifica_indci', true);
     updateDetQuery.values.set('fecha_verifica_indci', getCurrentDateTime());
     updateDetQuery.values.set('usuario_verifica_indci', dtoIn.login); // usuario que actualiza
+    updateDetQuery.values.set('observ_verifica_indci', 'Verificado automáticamente');
     updateDetQuery.where = 'ide_incci = ANY ($1) and (verifica_indci = false OR verifica_indci IS NULL)';
-    updateDetQuery.addParam(1, dtoIn.ide);
+    updateDetQuery.addParam(1, dtoIn.ide_incci);
 
 
 
@@ -405,6 +421,7 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.values.set('ide_inepi', this.variables.get('p_inv_estado_anulado'));
     updateQuery.values.set('fec_cam_est_incci', getCurrentDate()); // fecha de anulacion
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
+    updateQuery.values.set('usuario_verifica_incci', dtoIn.login);
     updateQuery.where = 'ide_incci = $1 and ide_inepi != $2 ';
     updateQuery.addParam(1, dtoIn.ide_incci);
     updateQuery.addParam(2, this.variables.get('p_inv_estado_anulado'));
@@ -414,28 +431,12 @@ export class ComprobantesInvService extends BaseService {
 
   async verificarComprobante(dtoIn: CabComprobanteInventarioDto & HeaderParamsDto) {
 
-    //VALIDA QUE NO TENGA DETALLES validados en estado false
-    const detallesNoVerificadosQuery = new SelectQuery(
-      `
-        SELECT COUNT(1) AS no_verificados
-        FROM inv_det_comp_inve
-        WHERE ide_incci = $1 AND (verifica_indci = false OR verifica_indci IS NULL)
-      `,
-      dtoIn,
-    );
-    detallesNoVerificadosQuery.addIntParam(1, dtoIn.ide_incci);
-    const detallesNoVerificados = await this.dataSource.createSingleQuery(detallesNoVerificadosQuery);
-
-    if (detallesNoVerificados?.no_verificados > 0) {
-      throw new BadRequestException('No se puede verificar el comprobante: existen detalles no verificados.');
-    }
-
     //VALIDA que exista la cabecera comprobante y este en validado false
     const cabeceraQuery = new SelectQuery(
       `
       SELECT 1
       FROM inv_cab_comp_inve
-      WHERE ide_incci = $1 AND verifica_incci = false
+      WHERE ide_incci = $1 AND (verifica_incci = false OR verifica_incci IS NULL)
       LIMIT 1
       `,
       dtoIn,
@@ -451,7 +452,8 @@ export class ComprobantesInvService extends BaseService {
     updateQuery.values.set('verifica_incci', true);
     updateQuery.values.set('fec_cam_est_incci', getCurrentDate()); // fecha de verificacion
     updateQuery.values.set('sis_ide_usua', dtoIn.ideUsua); // usuario que actualiza
-    updateQuery.where = 'ide_incci = $1 and verifica_incci = false ';
+    updateQuery.values.set('usuario_verifica_incci', dtoIn.login);
+    updateQuery.where = 'ide_incci = $1 and (verifica_incci = false or verifica_incci IS NULL) ';
     updateQuery.addParam(1, dtoIn.ide_incci);
     return this.dataSource.createQuery(updateQuery);
   }
@@ -687,6 +689,7 @@ export class ComprobantesInvService extends BaseService {
         peso_verifica_inlot: dtoIn.data.peso_verifica_inlot,
         diferencia_peso_inlot: dtoIn.data.diferencia_peso_inlot,
         activo_inlot: dtoIn.data.activo_inlot,
+        archivo1_inlot: dtoIn.data.archivo1_inlot,
         observacion_inlot: dtoIn.data.observacion_inlot,
         verificado_inlot: dtoIn.data.verificado_inlot,
         usuario_verif_inlot: dtoIn.data.verificado_inlot ? dtoIn.login : null,
@@ -743,7 +746,9 @@ export class ComprobantesInvService extends BaseService {
       if (dtoIn.data.observacion_inlot !== undefined) {
         loteData.observacion_inlot = dtoIn.data.observacion_inlot;
       }
-
+      if (dtoIn.data.archivo1_inlot !== undefined) {
+        loteData.archivo1_inlot = dtoIn.data.archivo1_inlot;
+      }
       if (dtoIn.data.inv_ide_inlot !== undefined) {
         loteData.inv_ide_inlot = dtoIn.data.inv_ide_inlot;
       }
@@ -859,12 +864,17 @@ export class ComprobantesInvService extends BaseService {
           l.peso_inlot,
           l.peso_tara_inlot,
           l.diferencia_peso_inlot,
-          p.nom_geper as proveedor
+          p.nom_geper as proveedor,
+          pr.nombre_inpres,
+          u.siglas_inuni,
+          l.presenta_peso_inlot
         FROM 
           inv_lote l
           INNER JOIN inv_det_comp_inve dci ON l.ide_indci_ingreso = dci.ide_indci
           INNER JOIN inv_cab_comp_inve cci ON dci.ide_incci = cci.ide_incci
           LEFT JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+          LEFT JOIN inv_presentacion pr ON l.ide_inpres = pr.ide_inpres
+          left join inv_unidad u on l.ide_inuni = u.ide_inuni
         WHERE 
           l.activo_inlot = true
           AND dci.ide_inarti = $1
@@ -890,7 +900,8 @@ export class ComprobantesInvService extends BaseService {
       `
         SELECT
           COUNT(1) AS total_detalles,
-          SUM(CASE WHEN verifica_indci = true THEN 1 ELSE 0 END) AS detalles_verificados
+          SUM(CASE WHEN verifica_indci = true THEN 1 ELSE 0 END) AS detalles_verificados,
+          (Select verifica_incci from inv_cab_comp_inve where ide_incci = $1) as cab_verificado
         FROM inv_det_comp_inve
         WHERE ide_incci = $1
       `,
@@ -904,6 +915,7 @@ export class ComprobantesInvService extends BaseService {
       verificado: total > 0 && total === verificados ? true : false,
       detalles_verificados: verificados,
       total_detalles: total,
+      cab_verificado: result?.cab_verificado || false,
     };
   }
 

@@ -1,4 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+import { fToTitleCase } from '../../../../util/helpers/string-util';
 import {
     IUserRepository,
     USER_REPOSITORY,
@@ -9,8 +12,6 @@ import {
 } from '../../domain/repositories';
 import { UserId } from '../../domain/value-objects';
 import { AuthUser, EmpresaAuth } from '../../interfaces/auth-user.interface';
-import { ConfigService } from '@nestjs/config';
-import { fToTitleCase } from '../../../../util/helpers/string-util';
 
 /**
  * Use Case: Construir Datos del Usuario Autenticado

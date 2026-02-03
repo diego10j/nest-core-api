@@ -1,5 +1,5 @@
+import { Query } from '../helpers';
 import { ResultQuery } from '../interfaces/resultQuery';
-import { Query, SelectQuery, InsertQuery, UpdateQuery, DeleteQuery } from '../helpers';
 
 /**
  * Interfaz que define el contrato para todos los QueryBuilders

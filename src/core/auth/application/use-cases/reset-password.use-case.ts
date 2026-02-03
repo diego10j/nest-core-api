@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories';
-import { PasswordService } from '../../password.service';
+
 import { PASSWORD_CONFIG, PASSWORD_MESSAGES } from '../../constants/password.constants';
+import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories';
 import { UserNotFoundException } from '../../exceptions/user-not-found.exception';
+import { PasswordService } from '../../password.service';
 
 /**
  * Use Case: Resetear Contraseña de Usuario

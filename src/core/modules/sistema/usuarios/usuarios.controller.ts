@@ -4,10 +4,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
+import { ConfigPasswordDto } from './dto/config-password.dto';
+import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
 import { UsuarioDto } from './dto/usuario.dto';
 import { UsuariosService } from './usuarios.service';
-import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
-import { ConfigPasswordDto } from './dto/config-password.dto';
 
 @Controller('sistema/usuarios')
 export class UsuariosController {

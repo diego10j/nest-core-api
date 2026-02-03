@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+
+import { PASSWORD_MESSAGES } from '../../constants/password.constants';
 import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories';
 import { Password } from '../../domain/value-objects';
-import { PasswordService } from '../../password.service';
-import { PASSWORD_MESSAGES } from '../../constants/password.constants';
-import { UserNotFoundException } from '../../exceptions/user-not-found.exception';
 import { InvalidPasswordException } from '../../exceptions/invalid-password.exception';
-import { UserId } from '../../domain/value-objects/user-id.vo';
+import { UserNotFoundException } from '../../exceptions/user-not-found.exception';
+import { PasswordService } from '../../password.service';
 
 /**
  * Use Case: Cambiar Contraseña de Usuario

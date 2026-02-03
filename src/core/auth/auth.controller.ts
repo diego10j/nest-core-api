@@ -7,10 +7,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AuthService } from './auth.service';
 import { Auth, GetUser } from './decorators';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthUser } from './interfaces';
 
 /**

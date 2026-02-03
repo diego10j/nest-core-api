@@ -1,8 +1,8 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+
 import { IUserRepository, USER_REPOSITORY } from '../../domain/repositories';
-import { Email, Password } from '../../domain/value-objects';
+import { Password } from '../../domain/value-objects';
 import { PasswordService } from '../../password.service';
-import { AuthUser } from '../../interfaces/auth-user.interface';
 
 /**
  * Use Case: Validar Credenciales de Usuario

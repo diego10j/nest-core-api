@@ -13,10 +13,10 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
+import { GetProductoDto } from './dto/get-productos.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
 import { validateInsertConfigPrecio, validateUpdateConfigPrecio } from './helpers/validations';
-import { GetProductoDto } from './dto/get-productos.dto';
 
 @Injectable()
 export class ConfigPreciosProductosService extends BaseService {

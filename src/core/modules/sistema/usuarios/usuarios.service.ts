@@ -1,17 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { isDefined } from 'src/util/helpers/common-util';
-import { getCurrentDate, getCurrentDateTime } from 'src/util/helpers/date-util';
-import * as bcrypt from 'bcrypt';
+import { getCurrentDate } from 'src/util/helpers/date-util';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery, InsertQuery, UpdateQuery } from '../../../connection/helpers';
 import { CoreService } from '../../../core.service';
 
-import { UsuarioDto } from './dto/usuario.dto';
-import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
 import { ConfigPasswordDto } from './dto/config-password.dto';
+import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
+import { UsuarioDto } from './dto/usuario.dto';
 
 @Injectable()
 export class UsuariosService {
