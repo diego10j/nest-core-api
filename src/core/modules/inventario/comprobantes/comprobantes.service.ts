@@ -548,7 +548,7 @@ export class ComprobantesInvService extends BaseService {
         fecha_ingre: getCurrentDateTime(),
         ide_inpres: dtoIn.data.ide_inpres,
         ide_inuni: dtoIn.data.ide_inuni,
-        presenta_peso_inlot: dtoIn.data.peso_inlot,
+        presenta_peso_inlot: dtoIn.data.presenta_peso_inlot,
       };
 
       objQuery = {
@@ -610,8 +610,8 @@ export class ComprobantesInvService extends BaseService {
       if (dtoIn.data.ide_inuni !== undefined) {
         loteData.ide_inuni = dtoIn.data.ide_inuni;
       }
-      if (dtoIn.data.peso_inlot !== undefined) {
-        loteData.presenta_peso_inlot = dtoIn.data.peso_inlot;
+      if (dtoIn.data.presenta_peso_inlot !== undefined) {
+        loteData.presenta_peso_inlot = dtoIn.data.presenta_peso_inlot;
       }
 
 
@@ -877,7 +877,7 @@ export class ComprobantesInvService extends BaseService {
           left join inv_unidad u on l.ide_inuni = u.ide_inuni
         WHERE 
           l.activo_inlot = true
-          AND dci.ide_inarti = $1
+          -- AND dci.ide_inarti = $1
           AND cci.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY 
           l.fecha_ingreso_inlot DESC, l.ide_inlot DESC
