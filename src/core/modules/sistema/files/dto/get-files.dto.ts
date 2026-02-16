@@ -12,7 +12,6 @@ export class GetFilesDto extends QueryOptionsDto {
   ide_archi?: number;
 
   @IsInt()
-  @IsPositive()
   @IsOptional()
   ide_inarti?: number; // para filtrar contenido del producto
 }

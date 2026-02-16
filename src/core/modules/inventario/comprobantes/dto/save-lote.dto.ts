@@ -72,18 +72,30 @@ export class LoteDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(250)
+  @MaxLength(120)
   archivo1_inlot?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(250)
+  @MaxLength(120)
   archivo2_inlot?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(250)
+  @MaxLength(200)
+  nom_archivo2_inlot?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   archivo3_inlot?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  nom_archivo3_inlot?: string;
+
+
 
   @IsOptional()
   @IsString()
@@ -115,17 +127,17 @@ export class LoteDto {
 
   @IsOptional()
   @IsNumber()
-  ide_inpres ?: number;
+  ide_inpres?: number;
 
   @IsOptional()
   @IsNumber()
-  ide_inuni ?: number;
+  ide_inuni?: number;
 
   @IsOptional()
   @IsNumber()
-  presenta_peso_inlot ?: number;
-  
-  
+  presenta_peso_inlot?: number;
+
+
 }
 
 export class SaveLoteDto {

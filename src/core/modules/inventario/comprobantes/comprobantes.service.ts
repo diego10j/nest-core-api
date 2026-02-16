@@ -539,7 +539,9 @@ export class ComprobantesInvService extends BaseService {
         activo_inlot: dtoIn.data.activo_inlot,
         archivo1_inlot: dtoIn.data.archivo1_inlot,
         archivo2_inlot: dtoIn.data.archivo2_inlot,
+        nom_archivo2_inlot: dtoIn.data.nom_archivo2_inlot,
         archivo3_inlot: dtoIn.data.archivo3_inlot,
+        nom_archivo3_inlot: dtoIn.data.nom_archivo3_inlot,
         observacion_inlot: dtoIn.data.observacion_inlot,
         verificado_inlot: dtoIn.data.verificado_inlot,
         usuario_verif_inlot: dtoIn.data.verificado_inlot ? dtoIn.login : null,
@@ -613,6 +615,13 @@ export class ComprobantesInvService extends BaseService {
       if (dtoIn.data.presenta_peso_inlot !== undefined) {
         loteData.presenta_peso_inlot = dtoIn.data.presenta_peso_inlot;
       }
+      if (dtoIn.data.nom_archivo2_inlot !== undefined) {
+        loteData.nom_archivo2_inlot = dtoIn.data.nom_archivo2_inlot;
+      }
+      if (dtoIn.data.nom_archivo3_inlot !== undefined) {
+        loteData.nom_archivo3_inlot = dtoIn.data.nom_archivo3_inlot;
+      }
+
 
 
       // Si se verifica, actualiza campos de verificación
@@ -877,7 +886,7 @@ export class ComprobantesInvService extends BaseService {
           left join inv_unidad u on l.ide_inuni = u.ide_inuni
         WHERE 
           l.activo_inlot = true
-          -- AND dci.ide_inarti = $1
+          AND dci.ide_inarti = $1
           AND cci.ide_empr = ${dtoIn.ideEmpr}
         ORDER BY 
           l.fecha_ingreso_inlot DESC, l.ide_inlot DESC

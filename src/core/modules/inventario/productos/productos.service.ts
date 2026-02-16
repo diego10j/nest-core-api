@@ -4,8 +4,8 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
-import { isDefined, validateDataRequiere } from 'src/util/helpers/common-util';
-import { fShortDate, fDate, getDateFormatFront } from 'src/util/helpers/date-util';
+import { HOST_API, isDefined, validateDataRequiere } from 'src/util/helpers/common-util';
+import { fShortDate, fDate, getDateFormatFront, FORMAT_DATETIME_DB, toDate } from 'src/util/helpers/date-util';
 import { fNumber } from 'src/util/helpers/number-util';
 import { normalizeString } from 'src/util/helpers/sql-util';
 
@@ -29,6 +29,8 @@ import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { SaldoProducto } from './interfaces/productos';
+import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
+import { getExtensionFile } from '../../sistema/files/helpers/fileNamer.helper';
 
 @Injectable()
 export class ProductosService extends BaseService {
@@ -1948,7 +1950,9 @@ export class ProductosService extends BaseService {
                 a.observacion_inlot,
                 a.archivo1_inlot,
                 a.archivo2_inlot,
+                a.nom_archivo2_inlot,
                 a.archivo3_inlot,
+                a.nom_archivo3_inlot,
                 a.fecha_ingre,
                 a.usuario_actua,
                 a.fecha_actua,
@@ -2095,4 +2099,154 @@ export class ProductosService extends BaseService {
 
         return result.rows[0];
     }
+
+
+
+    /**
+     * Retorna los archivos de productos con directorio virtual
+     * Si ide_inarti no está definido, muestra las carpetas virtuales de productos que tienen archivos
+     * Si ide_inarti está definido, funciona igual que getFiles
+     * @param dto
+     * @returns
+     */
+    async getFilesProductos(dto: GetFilesDto & HeaderParamsDto): Promise<ResultQuery> {
+        const { ide_archi, ide_inarti, mode } = dto;
+
+        // Si ide_inarti está definido, comportarse como getFiles normal
+        if (isDefined(ide_inarti)) {
+            const conditions = [
+                { condition: 'public_arch = TRUE', mode: ['files', 'favorites'] },
+                { condition: 'papelera_arch = TRUE', mode: ['trash'] },
+                { condition: 'favorita_arch = TRUE', mode: ['favorites'] },
+                { condition: isDefined(ide_archi) ? `a.sis_ide_arch = ${ide_archi}` : 'a.sis_ide_arch IS NULL', mode: ['files'] },
+                {
+                    condition: `a.ide_inarti = ${ide_inarti}`,
+                    mode: ['files', 'favorites', 'trash'],
+                },
+            ];
+
+            const whereClause = conditions
+                .filter((cond) => cond.mode.includes(mode))
+                .map((cond) => cond.condition)
+                .join(' AND ');
+
+            const query = new SelectQuery(`
+            WITH archivo_aggregates AS (
+                SELECT
+                    sis_ide_arch,
+                    COUNT(*) AS num_arch,
+                    SUM(peso_arch) AS sum_peso_arch
+                FROM
+                    sis_archivo
+                WHERE
+                    public_arch = TRUE
+                GROUP BY
+                    sis_ide_arch
+            )
+            SELECT
+                a.ide_arch,
+                a.nombre_arch AS name,
+                a.extension_arch AS url,
+                a.carpeta_arch,
+                a.peso_arch AS size,
+                a.usuario_ingre,
+                a.fecha_ingre || ' ' || a.hora_ingre AS fecha_ingre,
+                a.fecha_actua || ' ' || a.hora_actua AS fecha_actua,
+                a.sis_ide_arch,
+                a.uuid AS id,
+                a.usuario_ingre,
+                a.favorita_arch,
+                a.descargas_arch AS descargas,
+                COALESCE(agg.num_arch, 0) AS num_arch,
+                COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch,
+                a.ide_inarti
+            FROM
+                sis_archivo a
+            LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
+            WHERE ${whereClause}
+                  AND ide_empr = ${dto.ideEmpr}
+                   ${mode !== 'trash' ? `AND papelera_arch = FALSE` : ''}
+            ORDER BY
+                carpeta_arch desc, nombre_arch
+            `);
+
+            const data = await this.dataSource.createSelectQuery(query);
+            data.map(function (obj) {
+                if (obj.carpeta_arch === true) {
+                    obj.type = 'folder';
+                    obj.size = Number(obj.sum_peso_arch);
+                    obj.totalFiles = Number(obj.num_arch);
+                } else {
+                    obj.type = getExtensionFile(obj.name); // getFileType(obj.type_arch);
+                    obj.url = `${HOST_API()}/api/sistema/files/downloadFile/${obj.id}.${obj.type}`;
+                }
+                obj.tags = [];
+                obj.shared = [];
+                obj.isFavorited = obj.favorita_arch;
+                obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
+                obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
+                obj.ide_inarti = obj.ide_inarti;
+                delete obj.fecha_ingre;
+                delete obj.fecha_actua;
+                delete obj.sum_peso_arch;
+                delete obj.num_arch;
+                delete obj.favorita_arch;
+                delete obj.carpeta_arch;
+                return obj;
+            });
+            return {
+                rowCount: data.length,
+                rows: data,
+            } as ResultQuery;
+        }
+
+        // Si ide_inarti NO está definido, mostrar directorio virtual de productos con archivos
+        const query = new SelectQuery(`
+          SELECT
+              art.ide_inarti,
+              art.nombre_inarti AS name,
+              COUNT(DISTINCT a.ide_arch) AS num_arch,
+              COALESCE(SUM(a.peso_arch), 0) AS sum_peso_arch,
+              MIN(a.fecha_ingre || ' ' || a.hora_ingre) AS fecha_ingre,
+              MAX(a.fecha_actua || ' ' || a.hora_actua) AS fecha_actua
+          FROM
+              inv_articulo art
+          INNER JOIN sis_archivo a ON art.ide_inarti = a.ide_inarti
+          WHERE
+              a.ide_empr = ${dto.ideEmpr}
+              AND a.sis_ide_arch IS NULL
+              AND a.papelera_arch = FALSE
+          GROUP BY
+              art.ide_inarti, art.nombre_inarti
+          ORDER BY
+              art.nombre_inarti
+        `);
+
+        const data = await this.dataSource.createSelectQuery(query);
+        data.map(function (obj) {
+            // Generar UUID virtual para la carpeta del producto
+            obj.ide_arch = null;
+            obj.type = 'folder';
+            obj.size = Number(obj.sum_peso_arch);
+            obj.totalFiles = Number(obj.num_arch);
+            obj.tags = [];
+            obj.shared = [];
+            obj.isFavorited = false;
+            obj.carpeta_arch = true;
+            obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
+            obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
+            obj.id = `virtual-${obj.ide_inarti}`;
+            delete obj.fecha_ingre;
+            delete obj.fecha_actua;
+            delete obj.sum_peso_arch;
+            delete obj.num_arch;
+            return obj;
+        });
+
+        return {
+            rowCount: data.length,
+            rows: data,
+        } as ResultQuery;
+    }
+
 }
