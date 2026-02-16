@@ -57,12 +57,17 @@ export const getUuidNameFile = (fileName: string): string => {
 };
 
 export const getExtensionFile = (fileName: string): string => {
+  // Validar que fileName no sea undefined, null o vacío
+  if (!fileName || typeof fileName !== 'string') {
+    return '';
+  }
   const lastDotIndex = fileName.lastIndexOf('.');
   // Si no hay un punto en el nombre del archivo, devolver una cadena vacía como extensión
   if (lastDotIndex === -1) {
     return '';
   }
-  return fileName.substring(lastDotIndex).replace('.', '');
+  // Retornar la extensión en minúsculas sin el punto
+  return fileName.substring(lastDotIndex + 1).toLowerCase();
 };
 
 export const getFileType = (mimetype: string): string => {

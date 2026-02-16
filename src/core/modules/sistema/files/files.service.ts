@@ -167,13 +167,18 @@ export class FilesService {
    */
   async uploadFile(dto: UploadFileDto & HeaderParamsDto, file: Express.Multer.File): Promise<ResultQuery> {
     const { sis_ide_arch, ide_inarti } = dto;
-    const exist = await this._checkExistFile(file.originalname, sis_ide_arch ? Number(sis_ide_arch) : undefined);
+
+    // Normalizar el nombre del archivo con extensión en minúsculas
+    const extension = getExtensionFile(file.originalname);
+    const fileNameWithoutExt = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+    const normalizedFileName = extension ? `${fileNameWithoutExt}.${extension}` : file.originalname;
+
+    const exist = await this._checkExistFile(normalizedFileName, sis_ide_arch ? Number(sis_ide_arch) : undefined);
     if (exist === false) {
       const name = getUuidNameFile(file.filename);
-      const extension = getExtensionFile(file.originalname);
       // inserta
       const insertQuery = new InsertQuery(this.tableName, this.primaryKey, dto);
-      insertQuery.values.set('nombre_arch', file.originalname);
+      insertQuery.values.set('nombre_arch', normalizedFileName);
       insertQuery.values.set('nombre2_arch', `${name}.${extension}`);
       insertQuery.values.set('peso_arch', file.size);
       insertQuery.values.set('carpeta_arch', false);
@@ -195,16 +200,16 @@ export class FilesService {
     } else {
       const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
       const whereClause = `nombre_arch = $1 AND ${isDefined(sis_ide_arch) ? 'sis_ide_arch = $2' : 'sis_ide_arch IS NULL'}`;
-      updateQuery.values.set('nombre_arch', file.originalname);
+      updateQuery.values.set('nombre_arch', normalizedFileName);
       updateQuery.where = whereClause;
-      updateQuery.addParam(1, file.originalname);
+      updateQuery.addParam(1, normalizedFileName);
       if (sis_ide_arch) {
         updateQuery.addParam(2, Number(sis_ide_arch));
       }
       await this.dataSource.createQuery(updateQuery);
     }
     return {
-      message: `Archivo ${file.originalname} creado exitosamente`,
+      message: `Archivo ${normalizedFileName} creado exitosamente`,
     } as ResultQuery;
   }
 
