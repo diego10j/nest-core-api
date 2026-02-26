@@ -9,6 +9,8 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { FacturasDto } from './dto/facturas.dto';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
+import { GetFacturaDto } from './dto/get-factura.dto';
+import { isDefined } from 'src/util/helpers/common-util';
 
 @Injectable()
 export class FacturasService extends BaseService {
@@ -64,20 +66,27 @@ export class FacturasService extends BaseService {
             ${condSucu}
             and a.ide_empr =  ${dtoIn.ideEmpr}
         `);
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async getFacturasAnuladas(dtoIn: FacturasDto & HeaderParamsDto) {
-        dtoIn.ide_ccefa = 1;
+        dtoIn.ide_sresc = 0;
         return this.getFacturas(dtoIn);
     }
 
     async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
         const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoFact = dtoIn.ide_ccefa
-            ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
-            : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
-        const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
+
+        if (isDefined(dtoIn.ide_sresc) && Number(dtoIn.ide_sresc === 0)) {
+            // estado anulado
+            dtoIn.ide_ccefa = 1;
+        }
+        else {
+            // normal 
+            dtoIn.ide_ccefa = Number(this.variables.get('p_cxc_estado_factura_normal'))
+        }
+        const condEstadoFact = `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`;
+        const condEstadoComp = isDefined(dtoIn.ide_sresc) ? `and d.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
         const query = new SelectQuery(
             `     
@@ -122,7 +131,7 @@ export class FacturasService extends BaseService {
             left join con_deta_forma_pago x on a.ide_cndfp1 = x.ide_cndfp
         where
             fecha_emisi_cccfa BETWEEN $1 AND $2
-            AND a.ide_empr = ${dtoIn.ideEmpr}
+            AND a.ide_sucu = ${dtoIn.ideSucu}
             ${condPtoEmision}
             ${condEstadoFact}
             ${condEstadoComp}            
@@ -138,11 +147,11 @@ export class FacturasService extends BaseService {
     }
 
     async getFacturasConNotasCredito(dtoIn: FacturasDto & HeaderParamsDto) {
-        const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoFact = dtoIn.ide_ccefa
+        const condPtoEmision = isDefined(dtoIn.ide_ccdaf) ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
+        const condEstadoFact = isDefined(dtoIn.ide_ccefa)
             ? `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`
             : `and a.ide_ccefa =  ${this.variables.get('p_cxc_estado_factura_normal')} `;
-        const condEstadoComp = dtoIn.ide_sresc ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
+        const condEstadoComp = isDefined(dtoIn.ide_sresc) ? `and a.ide_sresc =  ${dtoIn.ide_sresc}` : '';
 
         const query = new SelectQuery(
             `     
@@ -234,30 +243,82 @@ export class FacturasService extends BaseService {
     }
 
     async getTotalFacturasPorEstado(dtoIn: FacturasDto & HeaderParamsDto) {
-        const query = new SelectQuery(`  
+        const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf = ${dtoIn.ide_ccdaf}` : '';
+        const ideEstadoNormal = Number(this.variables.get('p_cxc_estado_factura_normal'));
+
+        const query = new SelectQuery(`
         SELECT 
-            COUNT(a.ide_srcom) AS contador, 
-            b.nombre_sresc, 
-            b.ide_sresc,
-            b.icono_sresc,
-            b.color_sresc
-        FROM 
-            sri_estado_comprobante b
-        LEFT JOIN 
-            sri_comprobante a 
-        ON 
-            a.ide_sresc = b.ide_sresc
-            AND a.coddoc_srcom = '01'
-            AND a.fechaemision_srcom BETWEEN $1 AND $2
-            AND a.ide_sucu = ${dtoIn.ideSucu}
-        GROUP BY 
-            b.nombre_sresc, 
-            b.ide_sresc,
-            b.icono_sresc,
-            b.color_sresc
-      `);
+            ide_sresc,
+            contador,
+            nombre_sresc,
+            icono_sresc,
+            color_sresc
+        FROM (
+            -- Un registro por cada estado sri que tenga facturas normales
+            SELECT 
+                f.ide_sresc,
+                COUNT(a.ide_cccfa) AS contador, 
+                f.nombre_sresc,             
+                f.icono_sresc,
+                f.color_sresc,
+                f.orden_sresc   
+            FROM 
+                sri_estado_comprobante f
+            LEFT JOIN sri_comprobante d ON d.ide_sresc = f.ide_sresc
+            LEFT JOIN cxc_cabece_factura a ON a.ide_srcom = d.ide_srcom
+                AND a.fecha_emisi_cccfa BETWEEN $1 AND $2
+                AND a.ide_sucu = $3
+                AND a.ide_ccefa = ${ideEstadoNormal}
+                ${condPtoEmision}
+            GROUP BY 
+                f.orden_sresc, 
+                f.ide_sresc,
+                f.icono_sresc,
+                f.color_sresc,
+                f.nombre_sresc
+
+            UNION ALL
+
+            -- Fila anuladas (ide_ccefa = 1)
+            SELECT 
+                0 AS ide_sresc,
+                COUNT(a.ide_cccfa) AS contador,
+                'ANULADAS' AS nombre_sresc,
+                'fluent:document-dismiss-24-regular' AS icono_sresc,
+                'error' AS color_sresc,
+                999 AS orden_sresc
+            FROM 
+                cxc_cabece_factura a
+            WHERE 
+                a.fecha_emisi_cccfa BETWEEN $1 AND $2
+                AND a.ide_sucu = $3
+                AND a.ide_ccefa = 1
+                ${condPtoEmision}
+
+            UNION ALL
+
+            -- Fila total general (normales solamente, igual que el detallado por defecto)
+            SELECT 
+                100 AS ide_sresc,
+                COUNT(a.ide_cccfa) AS contador,
+                'TODAS' AS nombre_sresc,
+                'fluent:document-text-24-regular' AS icono_sresc,  
+                'default' AS color_sresc,                 
+                -1 AS orden_sresc                        
+            FROM 
+                cxc_cabece_factura a
+            WHERE 
+                a.fecha_emisi_cccfa BETWEEN $1 AND $2
+                AND a.ide_sucu = $3
+                AND a.ide_ccefa = ${ideEstadoNormal}
+                ${condPtoEmision}
+
+        ) AS combined
+        ORDER BY orden_sresc
+    `);
         query.addParam(1, dtoIn.fechaInicio);
         query.addParam(2, dtoIn.fechaFin);
+        query.addParam(3, dtoIn.ideSucu);
         return this.dataSource.createSelectQuery(query);
     }
 
@@ -474,4 +535,315 @@ export class FacturasService extends BaseService {
         query.addParam(6, dtoIn.ideEmpr);
         return this.dataSource.createQuery(query);
     }
+
+    async getFacturaById(dtoIn: GetFacturaDto & HeaderParamsDto) {
+        // Consulta para obtener la cabecera de la factura con todos los joins
+        const queryCabecera = new SelectQuery(
+            `
+            SELECT
+                a.ide_cccfa,
+                a.ide_ccdaf,
+                a.ide_geper,
+                a.ide_vgven,
+                a.ide_cndfp1,
+                a.ide_cnccc,
+                a.ide_cncre,
+                a.ide_ccefa,
+                a.ide_srcom,
+                a.fecha_emisi_cccfa,
+                a.secuencial_cccfa,
+                a.dias_credito_cccfa,
+                a.observacion_cccfa,
+                a.base_grabada_cccfa,
+                a.base_tarifa0_cccfa,
+                a.base_no_objeto_iva_cccfa,
+                a.valor_iva_cccfa,
+                a.tarifa_iva_cccfa,
+                a.total_cccfa,
+                a.fecha_trans_cccfa,
+                a.usuario_ingre,
+                a.fecha_ingre,
+                a.hora_ingre,
+                
+                -- Datos del punto de emisión
+                c.serie_ccdaf,
+                c.establecimiento_ccdfa,
+                c.pto_emision_ccdfa,
+                c.observacion_ccdaf,
+                
+                -- Datos del cliente
+                b.nom_geper,
+                b.identificac_geper,
+                b.direccion_geper,
+                b.telefono_geper,
+                b.correo_geper,
+                b.uuid as uuid_geper,
+                
+                -- Datos del comprobante electrónico
+                d.claveacceso_srcom,
+                d.autorizacion_srcomn,
+                d.fechaautoriza_srcom,
+                d.ide_sresc,
+                
+                -- Estado del comprobante
+                f.nombre_sresc,
+                f.icono_sresc,
+                f.color_sresc,
+                
+                -- Datos del vendedor
+                v.nombre_vgven,
+                v.ide_vgven,
+                -- Forma de pago
+                x.nombre_cndfp,
+  
+                
+                -- Número de retención si existe
+                (
+                    SELECT numero_cncre
+                    FROM con_cabece_retenc
+                    WHERE ide_cncre = a.ide_cncre
+                ) as numero_retencion
+                
+            FROM
+                cxc_cabece_factura a
+                INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
+                INNER JOIN cxc_datos_fac c ON a.ide_ccdaf = c.ide_ccdaf
+                LEFT JOIN sri_comprobante d ON a.ide_srcom = d.ide_srcom
+                LEFT JOIN sri_estado_comprobante f ON d.ide_sresc = f.ide_sresc
+                LEFT JOIN ven_vendedor v ON a.ide_vgven = v.ide_vgven
+                LEFT JOIN con_deta_forma_pago x ON a.ide_cndfp1 = x.ide_cndfp
+            WHERE
+                a.ide_cccfa = $1
+                AND a.ide_empr = ${dtoIn.ideEmpr}
+            `,
+        );
+        queryCabecera.addIntParam(1, dtoIn.ide_cccfa);
+
+        // Consulta para obtener los detalles de la factura
+        const queryDetalles = new SelectQuery(
+            `
+            SELECT
+                d.ide_ccdfa,
+                d.ide_inarti,
+                d.cantidad_ccdfa,
+                d.precio_ccdfa,
+                d.total_ccdfa,
+                d.observacion_ccdfa,
+                d.iva_inarti_ccdfa,
+                
+                -- Datos del producto
+                p.codigo_inarti,
+                p.nombre_inarti,
+                p.foto_inarti,
+                p.uuid as uuid_inarti,
+                p.otro_nombre_inarti,
+                p.decim_stock_inarti,
+                
+                -- Unidad del producto
+                u.nombre_inuni,
+                u.siglas_inuni,
+                
+                -- Categoría del producto
+                cat.nombre_incate
+                
+            FROM
+                cxc_deta_factura d
+                INNER JOIN inv_articulo p ON d.ide_inarti = p.ide_inarti
+                LEFT JOIN inv_unidad u ON p.ide_inuni = u.ide_inuni
+                LEFT JOIN inv_categoria cat ON p.ide_incate = cat.ide_incate
+            WHERE
+                d.ide_cccfa = $1
+            ORDER BY
+                d.ide_ccdfa
+            `,
+        );
+        queryDetalles.addIntParam(1, dtoIn.ide_cccfa);
+
+        // Ejecutar ambas consultas
+        const resCabecera = await this.dataSource.createSingleQuery(queryCabecera);
+        const resDetalles = await this.dataSource.createSelectQuery(queryDetalles);
+
+        if (!resCabecera) {
+            throw new Error(`No se encontró la factura con ide_cccfa: ${dtoIn.ide_cccfa}`);
+        }
+
+        // Pagos asociados a la factura
+        const queryPagos = new SelectQuery(
+            `
+            SELECT
+            a.ide_ccdtr,
+            a.fecha_trans_ccdtr,
+            a.docum_relac_ccdtr,
+            nombre_tettb,
+            a.valor_ccdtr,
+            e.nombre_teban,
+            d.nombre_tecba as cuenta,
+            a.observacion_ccdtr AS observacion,
+            c.ide_tecba,
+            'PAGO' AS tipo_transaccion,
+            a.usuario_ingre,
+            a.fecha_ingre,
+            a.hora_ingre,
+            a.usuario_actua,
+            a.fecha_actua,
+            a.hora_actua,
+            SUM(a.valor_ccdtr) OVER () AS totalpagos
+            FROM
+            cxc_detall_transa a
+            LEFT JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
+            LEFT JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
+            LEFT JOIN tes_cuenta_banco d ON c.ide_tecba = d.ide_tecba
+            LEFT JOIN tes_banco e ON d.ide_teban = e.ide_teban
+            LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb = f.ide_tettb
+            WHERE
+            a.numero_pago_ccdtr > 0
+            AND a.ide_cccfa = $1
+            ORDER BY
+            a.fecha_trans_ccdtr
+            `,
+        );
+        queryPagos.addIntParam(1, dtoIn.ide_cccfa);
+        const resPagos = await this.dataSource.createSelectQuery(queryPagos);
+
+        const totalPagos = resPagos && resPagos.length > 0 ? parseFloat(resPagos[0].totalpagos) || 0 : 0;
+
+        // retencion asociada a la factura
+        const queryRetencion = new SelectQuery(
+            `
+            SELECT
+                a.ide_cncre,
+                a.fecha_emisi_cncre,
+                a.numero_cncre,
+                a.observacion_cncre,
+                a.autorizacion_cncre,
+                a.correo_cncre,
+                a.usuario_ingre,
+                a.fecha_ingre,
+                a.hora_ingre,
+                a.usuario_actua,
+                a.fecha_actua,
+                a.hora_actua
+            FROM
+                con_cabece_retenc a
+            WHERE
+                a.ide_cncre = $1
+            `,
+        );
+        queryRetencion.addParam(1, resCabecera.ide_cncre);
+
+        const queryRetencionDetalles = new SelectQuery(
+            `
+            SELECT
+                a.ide_cndre,
+                b.nombre_cncim,
+                b.casillero_cncim,
+                a.porcentaje_cndre,
+                a.base_cndre,
+                a.valor_cndre,
+                SUM(a.valor_cndre) OVER () AS totalretencion
+            FROM
+                con_detall_retenc a
+                INNER JOIN con_cabece_impues b ON a.ide_cncim = b.ide_cncim
+            WHERE
+                a.ide_cncre = $1
+            `,
+        );
+        queryRetencionDetalles.addParam(1, resCabecera.ide_cncre);
+
+        const resRetencionCabecera = await this.dataSource.createSingleQuery(queryRetencion);
+        const resRetencionDetalles = await this.dataSource.createSelectQuery(queryRetencionDetalles);
+
+        const totalRetencion = resRetencionDetalles && resRetencionDetalles.length > 0
+            ? parseFloat(resRetencionDetalles[0].totalretencion) || 0
+            : 0;
+
+        // Verifica si la factura se enecuntra pagada en su totalidad
+        const totalFactura = parseFloat(resCabecera.total_cccfa) || 0;
+
+
+        const saldoFinal = totalFactura - totalPagos - totalRetencion;
+        const estaPagada = saldoFinal <= 0;
+        const colorEstado = estaPagada ? 'success' : 'warning';
+        const estadoPago = (() => {
+            const totalAplicado = totalPagos + totalRetencion;
+
+            if (totalAplicado === 0) {
+                return 'POR PAGAR';
+            }
+
+            if (saldoFinal <= 0) {
+                return 'PAGADA';
+            }
+
+            if (totalAplicado < totalFactura) {
+                return 'PAGADO PARCIAL';
+            }
+
+            if (totalAplicado > totalFactura) {
+                return 'PAGADO EN EXCESO';
+            }
+        })();
+
+        // guia de remision asociada a la factura
+        // guia de remision asociada a la factura
+        const queryGuiaRemision = new SelectQuery(
+            `
+            SELECT
+            g.ide_ccgui,
+            cdf.establecimiento_ccdfa,
+            cdf.pto_emision_ccdfa,
+            g.numero_ccgui,
+            g.fecha_emision_ccgui,
+            g.fecha_ini_trasla_ccgui,
+            g.punto_partida_ccgui,
+            g.punto_llegada_ccgui,
+            g.placa_gecam,
+            t.nombre_cctgi,
+            c.descripcion_gecam,
+            p.nom_geper,
+            p.identificac_geper,
+            d.claveacceso_srcom,
+            d.autorizacion_srcomn,
+            d.fechaautoriza_srcom,
+            d.ide_sresc,
+            e.nombre_sresc
+            FROM
+            cxc_guia g
+            INNER JOIN cxc_tipo_guia t ON g.ide_cctgi = t.ide_cctgi
+            INNER JOIN gen_camion c ON g.placa_gecam = c.placa_gecam
+            INNER JOIN gen_persona p ON g.gen_ide_geper = p.ide_geper
+            INNER JOIN sri_comprobante d ON g.ide_srcom = d.ide_srcom
+            INNER JOIN sri_estado_comprobante e ON d.ide_sresc = e.ide_sresc
+            INNER JOIN cxc_datos_fac cdf ON g.ide_ccdaf = cdf.ide_ccdaf
+            WHERE
+            g.ide_cccfa = $1
+            `,
+        );
+        queryGuiaRemision.addIntParam(1, dtoIn.ide_cccfa);
+        const resGuiaRemision = await this.dataSource.createSelectQuery(queryGuiaRemision);
+
+        // Retornar 
+        return {
+            rowCount: 1,
+            row: {
+                cabecera: resCabecera,
+                detalles: resDetalles,
+                pagos: {
+                    pagada: estaPagada,
+                    estado: estadoPago,
+                    color: colorEstado,
+                    detalles: resPagos,
+                    total: totalPagos
+                },
+                retencion: resRetencionCabecera ? {
+                    cabecera: resRetencionCabecera,
+                    detalles: resRetencionDetalles,
+                    total: totalRetencion
+                } : null,
+                guiaremision: resGuiaRemision && resGuiaRemision.length > 0 ? resGuiaRemision[0] : null
+            },
+            message: 'ok',
+        };
+    }
 }
+

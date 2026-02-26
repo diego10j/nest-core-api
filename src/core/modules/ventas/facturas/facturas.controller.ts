@@ -6,10 +6,11 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { FacturasDto } from './dto/facturas.dto';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasService } from './facturas.service';
+import { GetFacturaDto } from './dto/get-factura.dto';
 
 @Controller('ventas/facturas')
 export class FacturasController {
-  constructor(private readonly service: FacturasService) {}
+  constructor(private readonly service: FacturasService) { }
 
   @Get('getPuntosEmisionFacturas')
   // @Auth()
@@ -85,4 +86,14 @@ export class FacturasController {
       ...dtoIn,
     });
   }
-}
+
+  @Get('getFacturaById')
+  // @Auth()
+  getFacturaById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetFacturaDto) {
+    return this.service.getFacturaById({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+}   
