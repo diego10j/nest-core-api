@@ -5,10 +5,12 @@ import { AuditService } from '../audit/audit.service';
 
 import { FormasPagoController } from './formas-pago/formas-pago.controller';
 import { FormasPagoService } from './formas-pago/formas-pago.service';
+import { PlanCuentasController } from './plan-cuentas/plan-cuentas.controller';
+import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
 
 @Module({
   imports: [],
-  controllers: [FormasPagoController],
-  providers: [AuditService, CoreService, FormasPagoService],
+  controllers: [FormasPagoController, PlanCuentasController],
+  providers: [AuditService, CoreService, FormasPagoService, PlanCuentasService],
 })
-export class ContabilidadModule {}
+export class ContabilidadModule { }
