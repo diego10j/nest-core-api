@@ -266,7 +266,7 @@ export class BodegasService extends BaseService {
       tableName: 'bodega',
       primaryKey: 'ide_inbod',
       columnLabel: 'nombre_inbod',
-      condition: `ide_empr = ${dto.ideEmpr} and activo_inbod = true`,
+      condition: `ide_empr = ${dto.ideEmpr} and ide_sucu = ${dto.ideSucu} and activo_inbod = true`,
     };
     return this.core.getListDataValues(dtoIn);
   }

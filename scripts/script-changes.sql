@@ -91,11 +91,6 @@ ALTER TABLE sis_campo ADD COLUMN align_camp varchar(50);
 
 // 30 Ago 2024
 
-ALTER TABLE cxc_datos_fac ADD COLUMN establecimiento_ccdfa varchar(3); 
-ALTER TABLE cxc_datos_fac ADD COLUMN pto_emision_ccdfa varchar(3); 
-ALTER TABLE cxc_datos_fac ADD COLUMN num_actual_ccdfa TIMESTAMP;
-ALTER TABLE cxc_datos_fac ADD COLUMN usuario_ingre varchar(50); 
-ALTER TABLE cxc_datos_fac ADD COLUMN hora_ingre TIMESTAMP;
 
 // 12 Sep 2024
 
