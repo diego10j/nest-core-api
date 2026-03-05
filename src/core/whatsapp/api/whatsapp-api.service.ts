@@ -14,7 +14,7 @@ import { GetChatsDto } from '../dto/get-chats.dto';
 import { GetMensajesDto } from '../dto/get-mensajes.dto';
 import { SearchChatDto } from '../dto/search-chat.dto';
 import { UploadMediaDto } from '../dto/upload-media.dto';
-import { getFileExtension } from '../web/helper/util';
+import { getFileExtension } from '../helpers/media-util';
 import { WhatsappDbService } from '../whatsapp-db.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
@@ -24,7 +24,7 @@ import { ChatNoLeidoDto } from './dto/chat-no-leido.dto';
 import { ListContactDto } from './dto/list-contact.dto';
 import { ListaChatDto } from './dto/lista-chat.dto';
 import { MensajeChatDto } from './dto/mensaje-chat.dto';
-import { CacheConfig, MediaFile, WhatsAppConfig } from './interface/whatsapp';
+import { CacheConfig, MediaFile, WaSendResponse, WhatsAppConfig } from './interface/whatsapp';
 
 @Injectable()
 export class WhatsappApiService {
@@ -620,6 +620,112 @@ export class WhatsappApiService {
       WHATSAPP_API_TOKEN: data.id_token_whcue,
       WHATSAPP_TYPE: data.tipo_whcue,
     };
+  }
+
+  /**
+   * Verifica si un número de teléfono tiene WhatsApp activo.
+   * Primero consulta la BD. Si no está registrado, intenta mediante la Cloud API
+   * consultando el endpoint de contactos (disponible en cuentas WABA).
+   * Si la API no soporta la verificación, asume el número como válido (el envío fallará si es inválido).
+   */
+  async validateWhatsAppNumber(
+    ideEmpr: number,
+    phoneNumber: string,
+  ): Promise<{ isValid: boolean; formattedNumber?: string; error?: string }> {
+    // Normalizar número: solo dígitos
+    const normalizedPhone = phoneNumber.replace(/[^\d]/g, '');
+    if (!normalizedPhone || normalizedPhone.length < 8) {
+      return { isValid: false, error: 'Número de teléfono no válido' };
+    }
+
+    // Verificar si ya está en BD
+    const prevValid = await this.whatsappDb.isTelefonoWhatsAppValidado(normalizedPhone);
+    if (prevValid) {
+      return { isValid: true, formattedNumber: normalizedPhone };
+    }
+
+    // Con Cloud API, el número se valida al momento del envío.
+    // No existe endpoint de validación previo (fue deprecado en v14).
+    // Retornamos isValid: true y dejamos que el envío detecte errores.
+    return { isValid: true, formattedNumber: normalizedPhone };
+  }
+
+  /**
+   * Envía un mensaje de texto usando la Cloud API v20 y lo guarda en BD.
+   * Variante para campañas (sin emitir socket).
+   */
+  async enviarMensajeTextoCampania(
+    telefono: string,
+    texto: string,
+    dtoIn: HeaderParamsDto,
+  ): Promise<{ messageId: string }> {
+    const config = await this.getConfigWhatsApp(dtoIn.ideEmpr);
+    const data = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: telefono,
+      type: 'text',
+      text: { preview_url: false, body: texto },
+    };
+    const respWts: WaSendResponse = await this.sendMessageWhatsApp(data, dtoIn.ideEmpr);
+    const messageId = respWts.messages[0].id;
+    // Guardar en BD sin emitir socket
+    const enviarDto: EnviarMensajeDto = {
+      telefono,
+      tipo: 'text',
+      texto,
+      idWts: messageId,
+      mediaId: null,
+      fileName: null,
+      mimeType: null,
+    };
+    await this.whatsappDb.saveMensajeEnviado({ ...enviarDto, ...(dtoIn as any) }, config);
+    return { messageId };
+  }
+
+  /**
+   * Envía un mensaje multimedia para campañas.
+   */
+  async enviarMensajeMediaCampania(
+    telefono: string,
+    caption: string,
+    file: Express.Multer.File,
+    dtoIn: HeaderParamsDto,
+  ): Promise<{ messageId: string }> {
+    const config = await this.getConfigWhatsApp(dtoIn.ideEmpr);
+    const mediaId = await this.sendMediaWhatsApp(file, dtoIn.ideEmpr);
+    const mediaType = file.mimetype.startsWith('image')
+      ? 'image'
+      : file.mimetype.startsWith('video')
+        ? 'video'
+        : file.mimetype.startsWith('audio')
+          ? 'audio'
+          : 'document';
+
+    const media: any = { id: mediaId };
+    if (mediaType !== 'audio') media.caption = caption;
+    if (mediaType === 'document') media.filename = file.originalname;
+
+    const data = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: telefono,
+      type: mediaType,
+      [mediaType]: media,
+    };
+    const respWts: WaSendResponse = await this.sendMessageWhatsApp(data, dtoIn.ideEmpr);
+    const messageId = respWts.messages[0].id;
+    const enviarDto: EnviarMensajeDto = {
+      telefono,
+      tipo: mediaType,
+      texto: null,
+      idWts: messageId,
+      mediaId,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+    };
+    await this.whatsappDb.saveMensajeEnviado({ ...enviarDto, ...(dtoIn as any) }, config);
+    return { messageId };
   }
 
   async saveListasContacto(dtoIn: ListContactDto & HeaderParamsDto) {

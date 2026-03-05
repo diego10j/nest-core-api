@@ -1170,7 +1170,7 @@ export class ClientesService extends BaseService {
 
     async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
         // Validar si el número tiene WhatsApp
-        const validation = await this.whatsapp.whatsappWeb.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
+        const validation = await this.whatsapp.whatsappApi.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
 
         if (!validation?.isValid) {
             return {

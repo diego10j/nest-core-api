@@ -1,8 +1,8 @@
 import { IsNumber } from 'class-validator';
 
-import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
+import { TelefonoDto } from '../../dto/telefono.dto';
 
-export class ChatEtiquetaDto extends TelefonoWebDto {
+export class ChatEtiquetaDto extends TelefonoDto {
   @IsNumber()
   etiqueta: boolean;
 }

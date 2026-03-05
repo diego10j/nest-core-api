@@ -1,8 +1,8 @@
 import { IsBoolean } from 'class-validator';
 
-import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
+import { TelefonoDto } from '../../dto/telefono.dto';
 
-export class ChatFavoritoDto extends TelefonoWebDto {
+export class ChatFavoritoDto extends TelefonoDto {
   @IsBoolean()
   favorito: boolean;
 }

@@ -13,43 +13,38 @@ const COMPANY_TEXT_STYLE = {
   margin: [0, 0, 0, 1] as [number, number, number, number],
 };
 
-/**
- * Clase de utilidad para crear headers - Solo diseño
- * No es un servicio de NestJS, solo funciones puras
- */
 export class HeaderSection {
-  /**
-   * Crea el encabezado del documento
-   */
   static createHeader(empresa: Empresa, options: HeaderOptions): Content {
     const { title, subTitle, showLogo = true, showDate = false } = options;
 
-    // Crear secciones del header
     const logoSection = this.createLogoSection(showLogo, empresa);
     const dateSection = this.createDateSection(showDate);
     const companyInfoSection = this.createCompanyInfoSection(empresa);
     const titleSection = this.createTitleSection(title, subTitle);
 
-    // Construir el layout del header
     return this.buildHeaderLayout(logoSection, companyInfoSection, dateSection, titleSection);
   }
 
   /**
-   * Crea un header completo para reportes con título integrado
+   * Crea un header completo para reportes con título integrado.
+   * El título se renderiza UNA SOLA VEZ mediante createReportTitleSection.
+   * Se excluye de createHeader para evitar duplicados.
    */
   static createReportHeader(empresa: Empresa, options: HeaderOptions): Content {
-    const { title, ...headerOptions } = options;
+    // Extraemos title y subTitle para que createHeader NO los pase a createTitleSection
+    const { title, subTitle, ...headerOptions } = options;
 
+    // createHeader recibe opciones sin title → createTitleSection retorna null → sin duplicado
     const header = this.createHeader(empresa, headerOptions);
 
     return {
-      stack: [header, this.createReportTitleSection(title)],
+      stack: [
+        header,
+        this.createReportTitleSection(title),
+      ],
     };
   }
 
-  /**
-   * Crea la sección del logo
-   */
   private static createLogoSection(showLogo: boolean, empresa: Empresa): Content | null {
     if (!showLogo) return null;
 
@@ -63,9 +58,6 @@ export class HeaderSection {
     };
   }
 
-  /**
-   * Crea la sección de fecha
-   */
   private static createDateSection(showDate: boolean): Content | null {
     if (!showDate) return null;
 
@@ -78,9 +70,6 @@ export class HeaderSection {
     };
   }
 
-  /**
-   * Crea la sección de información de la empresa
-   */
   private static createCompanyInfoSection(empresa: Empresa): Content {
     const companyInfoStack: Content[] = [
       {
@@ -94,17 +83,14 @@ export class HeaderSection {
       },
     ];
 
-    // Dirección completa
     if (empresa.direccion_empr) {
       const direccionCompleta = [empresa.direccion_empr].filter(Boolean).join(', ');
-
       companyInfoStack.push({
         text: direccionCompleta,
         style: COMPANY_TEXT_STYLE,
       });
     }
 
-    // RUC
     if (empresa.identificacion_empr) {
       companyInfoStack.push({
         text: `RUC: ${empresa.identificacion_empr}`,
@@ -112,32 +98,12 @@ export class HeaderSection {
       });
     }
 
-    // Teléfono
-    // if (empresa.telefono_empr) {
-    //     companyInfoStack.push({
-    //         text: `Tel: ${empresa.telefono_empr}`,
-    //         style: COMPANY_TEXT_STYLE
-    //     });
-    // }
-
-    // Página web
-    // if (empresa.pagina_empr) {
-    //     companyInfoStack.push({
-    //         text: empresa.pagina_empr,
-    //         style: COMPANY_TEXT_STYLE,
-    //         link: empresa.pagina_empr.startsWith('http') ? empresa.pagina_empr : `https://${empresa.pagina_empr}`
-    //     });
-    // }
-
     return {
       stack: companyInfoStack,
       alignment: 'right' as const,
     };
   }
 
-  /**
-   * Crea la sección del título
-   */
   private static createTitleSection(title?: string, subTitle?: string): Content | null {
     if (!title) return null;
 
@@ -172,9 +138,6 @@ export class HeaderSection {
     };
   }
 
-  /**
-   * Crea la sección de título para reportes
-   */
   private static createReportTitleSection(reportTitle: string): Content {
     return {
       text: reportTitle,
@@ -188,9 +151,6 @@ export class HeaderSection {
     };
   }
 
-  /**
-   * Construye el layout final del header
-   */
   private static buildHeaderLayout(
     logo: Content | null,
     companyInfo: Content,
@@ -199,7 +159,6 @@ export class HeaderSection {
   ): Content {
     const headerColumns: Content[] = [];
 
-    // Columna del logo (si existe)
     if (logo) {
       headerColumns.push({
         width: 120,
@@ -208,14 +167,12 @@ export class HeaderSection {
       });
     }
 
-    // Columna de información de la empresa y fecha
     const companyStack: Content[] = [companyInfo];
     if (date) {
       companyStack.push(date);
     }
 
     headerColumns.push({
-      // width: logo ? '*' : 'auto',
       stack: companyStack,
       alignment: 'right' as const,
     });
@@ -227,7 +184,6 @@ export class HeaderSection {
       },
     ];
 
-    // Agregar título si existe
     if (title) {
       headerContent.push(title);
     }

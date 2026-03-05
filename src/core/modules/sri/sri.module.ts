@@ -9,10 +9,12 @@ import { EmisorController } from './cel/emisor.controller';
 import { EmisorService } from './cel/emisor.service';
 import { FirmaController } from './cel/firma.controller';
 import { FirmaService } from './cel/firma.service';
+import { SriFacturaService } from './cel/sri-factura.service';
 
 @Module({
   imports: [],
   controllers: [ComprobantesElecController, FirmaController, EmisorController],
-  providers: [AuditService, CoreService, ComprobantesElecService, FirmaService, EmisorService],
+  providers: [AuditService, CoreService, ComprobantesElecService, FirmaService, EmisorService, SriFacturaService],
+  exports: [SriFacturaService],
 })
-export class SriModule {}
+export class SriModule { }

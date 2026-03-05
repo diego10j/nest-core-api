@@ -6,10 +6,10 @@ import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../connection/helpers';
 
+import { WhatsappApiService } from './api/whatsapp-api.service';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
-import { createFileInstanceFromPath } from './web/helper/util';
-import { WhatsappWebService } from './web/whatsapp-web.service';
+import { createFileFromTempPath } from './helpers/media-util';
 import { WhatsappDbService } from './whatsapp-db.service';
 
 const CABECERA = {
@@ -34,9 +34,9 @@ export class WhatsappCampaniaService {
   private readonly logger = new Logger(WhatsappCampaniaService.name);
 
   constructor(
-    private readonly whatsappWeb: WhatsappWebService,
+    private readonly whatsappApi: WhatsappApiService,
     private readonly whatsappDB: WhatsappDbService,
-  ) {}
+  ) { }
 
   /**
    * Guarda una campaña nueva o actualiza una existente
@@ -89,16 +89,16 @@ export class WhatsappCampaniaService {
   private async processCampaignSend(dtoIn: EnviarCampaniaDto & HeaderParamsDto) {
     // Validaciones iniciales
     const dataCamp = await this.validateCampaign(dtoIn);
-    const media = dataCamp.cabecera.media_whcenv;
-    const file = media ? await createFileInstanceFromPath(media) : undefined;
-    // Actualizar estado a "Enviado"
+    const mediaFileName = dataCamp.cabecera.media_whcenv;
+    const file = mediaFileName ? await createFileFromTempPath(mediaFileName) : undefined;
+    // Actualizar estado a "Procesando"
     await this.updateCampaignStatus(dtoIn.ide_whcenv, CAMPAIGN_STATUS.PROCESANDO);
-    // Procesar envíos
+    // Procesar envíos en segundo plano (no bloquea la respuesta HTTP)
     const type = file ? 'media' : 'text';
     this.processMessages(dataCamp.cabecera, dataCamp.detalles, dtoIn, type, file);
 
     return {
-      message: 'Se Inicia el envio de la campaña',
+      message: 'Se inicia el envío de la campaña',
     };
   }
 
@@ -141,7 +141,7 @@ export class WhatsappCampaniaService {
       const invalidNumbers = invalidPhones.map((d) => d.telefono_whden).join(', ');
       throw new BadRequestException(
         `Los siguientes números no tienen formato internacional válido (código de país + número): ${invalidNumbers}. ` +
-          `Ejemplo válido: +593987654321 o 593987654321`,
+        `Ejemplo válido: +593987654321 o 593987654321`,
       );
     }
 
@@ -161,38 +161,33 @@ export class WhatsappCampaniaService {
     try {
       for (const current of detalles) {
         try {
-          // primero validamos que el numero tenga whatsapp
-          const validation = await this.whatsappWeb.validateWhatsAppNumber(dtoIn.ideEmpr, current.telefono_whden);
+          // Validar número (consulta BD; Cloud API valida al momento del envío)
+          const validation = await this.whatsappApi.validateWhatsAppNumber(dtoIn.ideEmpr, current.telefono_whden);
 
           if (validation.isValid) {
-            const telefono = validation.formattedNumber || current.telefono;
-            const commonData = {
-              telefono,
-              emitSocket: false,
-              ...(type === 'text'
-                ? { texto: cabecera.mensaje_whcenv, tipo: 'text' }
-                : { caption: cabecera.mensaje_whcenv }),
-            };
+            const telefono = validation.formattedNumber || current.telefono_whden;
 
-            const res =
-              type === 'text'
-                ? await this.whatsappWeb.enviarMensajeTexto({
-                    ...commonData,
-                    ...dtoIn,
-                    texto: cabecera.mensaje_whcenv,
-                    tipo: 'text',
-                  })
-                : await this.whatsappWeb.enviarMensajeMedia(
-                    { ...commonData, ...dtoIn, caption: cabecera.mensaje_whcenv },
-                    file,
-                  );
+            let res: { messageId: string };
+            if (type === 'text') {
+              res = await this.whatsappApi.enviarMensajeTextoCampania(
+                telefono,
+                cabecera.mensaje_whcenv,
+                dtoIn,
+              );
+            } else {
+              res = await this.whatsappApi.enviarMensajeMediaCampania(
+                telefono,
+                cabecera.mensaje_whcenv,
+                file,
+                dtoIn,
+              );
+            }
 
-            if (res.messageId) {
+            if (res?.messageId) {
               await this.updateMessageId(current.ide_whdenv, res.messageId, telefono);
             }
           } else {
-            // actualiza error
-            await this.updateMessageError(current.ide_whdenv, `El número no está registrado en WhatsApp.`);
+            await this.updateMessageError(current.ide_whdenv, validation.error || 'Número no válido');
           }
         } catch (error) {
           this.logger.error(`Error enviando mensaje a ${current.telefono_whden}:`, error);
@@ -200,7 +195,7 @@ export class WhatsappCampaniaService {
         }
       }
 
-      // Actualizar estado de la campaña después de procesar todos los mensajes
+      // Marcar campaña como Enviada
       await this.updateCampaignStatus(dtoIn.ide_whcenv, CAMPAIGN_STATUS.ENVIADO);
     } catch (error) {
       this.logger.error('Error general en processMessages:', error);

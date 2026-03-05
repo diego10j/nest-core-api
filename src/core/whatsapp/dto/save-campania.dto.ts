@@ -11,9 +11,9 @@ import {
 } from 'class-validator';
 import { UniqueArrayField } from 'src/common/decorators/unique-array.validator.decorator';
 
-import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
+import { TelefonoDto } from './telefono.dto';
 
-class TelefonoItemDto extends TelefonoWebDto {
+class TelefonoItemDto extends TelefonoDto {
   @IsString()
   @IsOptional()
   observacion: string = ''; // Valor por defecto: cadena vacía

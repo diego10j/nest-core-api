@@ -1,8 +1,8 @@
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
-import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
+import { TelefonoDto } from './telefono.dto';
 
-export class UploadMediaDto extends TelefonoWebDto {
+export class UploadMediaDto extends TelefonoDto {
   @IsBoolean()
   @IsOptional()
   emitSocket: boolean = true; // true emite mensajes por socket a clientes conectados

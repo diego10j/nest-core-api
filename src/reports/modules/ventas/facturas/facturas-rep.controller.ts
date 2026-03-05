@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
+import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 
 import { FacturasRepService } from './facturas-rep.service';
 
@@ -26,4 +27,22 @@ export class FacturasRepController {
         pdfDoc.pipe(response);
         pdfDoc.end();
     }
+
+    @Get('reportResumenDiarioFacturas')
+    async getReportResumenDiarioFacturas(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ResumenDiarioFacturasDto,
+    ) {
+        const pdfDoc = await this.facturasRepService.reportResumenDiarioFacturas({
+            ...headersParams,
+            ...dtoIn,
+        });
+
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = 'Resumen Diario de Ventas';
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
 }
+

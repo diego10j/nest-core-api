@@ -33,7 +33,7 @@ export class PlanCuentasService extends BaseService {
      * Lanza BadRequestException si no existe ningún plan activo.
      */
     private async getIdePlanActivo(ideSucu: number): Promise<number> {
-        if (!ideSucu) {
+        if (ideSucu === null || ideSucu === undefined) {
             throw new BadRequestException('La sucursal (ide_sucu) es requerida para obtener el plan de cuentas activo');
         }
         try {
@@ -80,9 +80,7 @@ export class PlanCuentasService extends BaseService {
         fecha_final_cncpc,
         observacion_cncpc,
         mascara_cncpc,
-        activo_cncpc,
-        ide_sucu,
-        s.nombre_sucu
+        activo_cncpc
       FROM  con_cab_plan_cuen c
       LEFT JOIN sis_sucursal s USING (ide_sucu)
       WHERE c.ide_empr = $1
@@ -159,7 +157,7 @@ export class PlanCuentasService extends BaseService {
     async saveCabPlanCuentas(dtoIn: SaveCabPlanCuenDto & HeaderParamsDto) {
         try {
             if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
-            if (dtoIn.isUpdate && !dtoIn.data.ide_cncpc) {
+            if (dtoIn.isUpdate && (dtoIn.data.ide_cncpc === null || dtoIn.data.ide_cncpc === undefined)) {
                 throw new BadRequestException('El campo ide_cncpc es requerido para actualizar');
             }
 
@@ -242,8 +240,7 @@ export class PlanCuentasService extends BaseService {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Retorna todas las cuentas del plan activo de la sucursal en un listado plano.
-     * Equivalente a getSqlCuentas() del sistema anterior.
+     * Retorna todas las cuentas del plan activo de la empresa en un listado plano.
      */
     async getPlanCuentas(dtoIn: GetDetPlanCuentaDto & HeaderParamsDto) {
         try {
@@ -265,14 +262,15 @@ export class PlanCuentasService extends BaseService {
       LEFT JOIN con_nivel_cuenta nc USING (ide_cnncu)
       WHERE d.ide_cncpc = $1
         AND d.ide_empr  = $2
-        AND d.ide_sucu  = $3
+
       ORDER BY d.codig_recur_cndpc
       `,
                 dtoIn,
             );
             query.addIntParam(1, idePlan);
             query.addIntParam(2, dtoIn.ideEmpr);
-            query.addIntParam(3, dtoIn.ideSucu);
+
+            query.setLazy(false);
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;

@@ -30,7 +30,8 @@ export class ConCabPlanCuenDataDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(30)
-    nombre_cncpc: string;
+    @IsOptional()
+    nombre_cncpc?: string;
 
     @IsDateString()
     @IsOptional()

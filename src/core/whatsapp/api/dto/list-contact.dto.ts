@@ -1,8 +1,8 @@
 import { IsArray } from 'class-validator';
 
-import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
+import { TelefonoDto } from '../../dto/telefono.dto';
 
-export class ListContactDto extends TelefonoWebDto {
+export class ListContactDto extends TelefonoDto {
   @IsArray()
   listas: number[];
 }

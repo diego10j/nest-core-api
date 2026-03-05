@@ -5,7 +5,6 @@ import { FileTempService } from '../modules/sistema/files/file-temp.service';
 
 import { WebhookController } from './api/webhook.controller';
 import { WhatsappApiService } from './api/whatsapp-api.service';
-import { WhatsappWebService } from './web/whatsapp-web.service';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
@@ -18,7 +17,6 @@ import { WhatsappService } from './whatsapp.service';
   providers: [
     WhatsappApiService,
     WhatsappGateway,
-    WhatsappWebService,
     WhatsappDbService,
     WhatsappService,
     FileTempService,
@@ -27,11 +25,10 @@ import { WhatsappService } from './whatsapp.service';
   exports: [
     WhatsappApiService,
     WhatsappGateway,
-    WhatsappWebService,
     WhatsappDbService,
     WhatsappService,
     FileTempService,
     WhatsappCampaniaService,
   ],
 })
-export class WhatsappModule {}
+export class WhatsappModule { }

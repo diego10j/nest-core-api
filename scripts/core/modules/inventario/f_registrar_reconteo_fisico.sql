@@ -128,7 +128,7 @@ BEGIN
         RAISE EXCEPTION 'El conteo está en estado % y no puede modificarse', v_estado_conteo;
     END IF;
 
-    IF v_estado_item_indcf in ('PENDIENTE', 'AJUSTADO', 'VALIDADO' , 'REVISION' ) THEN
+    IF v_estado_item_indcf in ('PENDIENTE', 'AJUSTADO', 'VALIDADO'  ) THEN
         RAISE EXCEPTION 'El ítem no puede modificarse';
     END IF;
   

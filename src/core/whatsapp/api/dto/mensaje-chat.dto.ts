@@ -1,8 +1,8 @@
 import { IsOptional, IsString } from 'class-validator';
 
-import { TelefonoWebDto } from '../../web/dto/telefono-web.dto';
+import { TelefonoDto } from '../../dto/telefono.dto';
 
-export class MensajeChatDto extends TelefonoWebDto {
+export class MensajeChatDto extends TelefonoDto {
   @IsString()
   @IsOptional()
   mensaje?: string;

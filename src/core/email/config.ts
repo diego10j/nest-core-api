@@ -1,7 +1,4 @@
-export const MAIL_QUEUE = 'mail-queue';
-export const CAMPAIGN_QUEUE = 'campaign-queue';
-
-// Estados de cola de correos
+// Estados de auditoría de correos (sis_cola_correo.estado_coco)
 export const EMAIL_QUEUE_STATUS = {
   PENDING: 'PENDIENTE',
   PROCESSING: 'PROCESANDO',

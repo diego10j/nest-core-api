@@ -489,3 +489,9 @@ ON public.inv_lote (inv_ide_inlot);
 
 
 ---CONTEO INVENTARIO 
+ALTER TABLE "public"."sis_campania_correo"
+ADD COLUMN "ide_empr" int;
+
+
+INSERT INTO "public"."sis_correo" ("ide_corr", "alias_corr", "clave_corr", "ide_sucu", "ide_empr", "correo_corr") VALUES
+(1, 'default', 're_RyvYeSUf_Fh8iMkLx3ugsG1e4kSNovMwg', 2, 0, 'admin@produquimic.com.ec');

@@ -1,8 +1,8 @@
 import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
 
-import { TelefonoWebDto } from '../web/dto/telefono-web.dto';
+import { TelefonoDto } from './telefono.dto';
 
-export class GetMensajesDto extends TelefonoWebDto {
+export class GetMensajesDto extends TelefonoDto {
   // WEB
   @IsString()
   @IsNotEmpty()

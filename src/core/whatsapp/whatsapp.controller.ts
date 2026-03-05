@@ -41,9 +41,6 @@ import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
-import { ContactIdWebDto } from './web/dto/contact-id-web.dto';
-import { EnviarUbicacionDto } from './web/dto/send-location.dto';
-import { TelefonoWebDto } from './web/dto/telefono-web.dto';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
@@ -296,71 +293,17 @@ export class WhatsappController {
     });
   }
 
-  // ---------------------------- WEB
-
-  @Get('getStatus')
-  @ApiOperation({ summary: 'Get WhatsApp connection status' })
-  getStatus(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappWeb.getStatus({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getQr')
-  @ApiOperation({ summary: 'Get current QR code for authentication' })
-  async getQr(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappWeb.getQrCode({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
   @Get('validateWhatsAppNumber')
-  @ApiOperation({ summary: 'Get validateWhatsAppNumber' })
-  async validateWhatsAppNumber(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TelefonoWebDto) {
-    return this.service.whatsappWeb.validateWhatsAppNumber(headersParams.ideEmpr, dtoIn.telefono);
-  }
-
-  @Get('getContactInfo')
-  @ApiOperation({ summary: 'Get getContactInfo' })
-  async getContactInfo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ContactIdWebDto) {
-    return this.service.whatsappWeb.getContactInfo(headersParams.ideEmpr, dtoIn.contactId);
-  }
-
-  @Post('logout')
-  @ApiOperation({ summary: 'Logout from WhatsApp' })
-  async logout(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappWeb.logout({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Post('enviarUbicacion')
-  @ApiOperation({ summary: 'Send location' })
-  async enviarUbicacio(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EnviarUbicacionDto) {
-    return this.service.whatsappWeb.enviarUbicacion({
-      ...headersParams,
-      ...dtoIn,
-    });
+  @ApiOperation({ summary: 'Valida si un número tiene WhatsApp activo (Cloud API)' })
+  async validateWhatsAppNumber(@AppHeaders() headersParams: HeaderParamsDto, @Query('telefono') telefono: string) {
+    return this.service.whatsappApi.validateWhatsAppNumber(headersParams.ideEmpr, telefono);
   }
 
   @Get('getServeFile/:filename')
   @Header('Cache-Control', 'public, max-age=3600')
+  @ApiOperation({ summary: 'Descarga un archivo temporal del servidor' })
   async getServeFile(@Param('filename') filename: string, @Res() response: Response) {
     return this.service.fileTempService.downloadFile(response, filename);
-  }
-
-  @Get('getProfilePicture/:ideEmpr/:contactId')
-  @Header('Cache-Control', 'public, max-age=3600')
-  async getProfilePicture(
-    @AppHeaders() _headersParams: HeaderParamsDto,
-    @Param('ideEmpr') ideEmpr: string, // Quitar *******
-    @Param('contactId') contactId: string,
-    @Res() response: Response,
-  ) {
-    return this.service.whatsappWeb.getOrCreateProfilePicture(ideEmpr, contactId, response);
   }
 
   // ---------------------------- CAMPAÑAS

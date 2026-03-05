@@ -3,24 +3,31 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
+import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
+import { FacturasService } from 'src/core/modules/ventas/facturas/facturas.service';
+import { SectionsService } from 'src/reports/common/services/sections.service';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 import * as bwipjs from 'bwip-js';
 
 import { facturaElectronicaReport } from './factura.report';
+import { resumenDiarioFacturasReport } from './resumen-diario.report';
 import { FacturaCabecera, FacturaDetalle, FacturaPago, FacturaRep } from './interfaces/factura-rep';
+import { ResumenDiarioRep } from './interfaces/resumen-diario-rep';
 
 @Injectable()
 export class FacturasRepService {
-    constructor(
-        private readonly printerService: PrinterService,
-        private readonly dataSource: DataSourceService,
-        private readonly empresaRepService: EmpresaRepService,
-    ) { }
+  constructor(
+    private readonly printerService: PrinterService,
+    private readonly dataSource: DataSourceService,
+    private readonly empresaRepService: EmpresaRepService,
+    private readonly facturasService: FacturasService,
+    private readonly sectionsService: SectionsService,
+  ) { }
 
-    async reportFacturaElectronica(dtoIn: GetFacturaDto & HeaderParamsDto) {
-        // ── Cabecera de la factura ────────────────────────────────────────────
-        const queryCabecera = new SelectQuery(`
+  async reportFacturaElectronica(dtoIn: GetFacturaDto & HeaderParamsDto) {
+    // ── Cabecera de la factura ────────────────────────────────────────────
+    const queryCabecera = new SelectQuery(`
       SELECT
         a.ide_cccfa,
         a.ide_ccdaf,
@@ -83,15 +90,15 @@ export class FacturasRepService {
       WHERE a.ide_cccfa = $1
         AND a.ide_empr = ${dtoIn.ideEmpr}
     `);
-        queryCabecera.addIntParam(1, dtoIn.ide_cccfa);
-        const cabecera = (await this.dataSource.createSingleQuery(queryCabecera)) as FacturaCabecera;
+    queryCabecera.addIntParam(1, dtoIn.ide_cccfa);
+    const cabecera = (await this.dataSource.createSingleQuery(queryCabecera)) as FacturaCabecera;
 
-        if (!cabecera) {
-            throw new NotFoundException(`Factura ${dtoIn.ide_cccfa} no encontrada`);
-        }
+    if (!cabecera) {
+      throw new NotFoundException(`Factura ${dtoIn.ide_cccfa} no encontrada`);
+    }
 
-        // ── Detalles de la factura ────────────────────────────────────────────
-        const queryDetalles = new SelectQuery(`
+    // ── Detalles de la factura ────────────────────────────────────────────
+    const queryDetalles = new SelectQuery(`
       SELECT
         d.ide_ccdfa,
         d.ide_inarti,
@@ -112,11 +119,11 @@ export class FacturasRepService {
       WHERE d.ide_cccfa = $1
       ORDER BY d.ide_ccdfa
     `);
-        queryDetalles.addIntParam(1, dtoIn.ide_cccfa);
-        const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as FacturaDetalle[];
+    queryDetalles.addIntParam(1, dtoIn.ide_cccfa);
+    const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as FacturaDetalle[];
 
-        // ── Pagos asociados ───────────────────────────────────────────────────
-        const queryPagos = new SelectQuery(`
+    // ── Pagos asociados ───────────────────────────────────────────────────
+    const queryPagos = new SelectQuery(`
       SELECT
         a.ide_ccdtr,
         a.fecha_trans_ccdtr,
@@ -137,24 +144,24 @@ export class FacturasRepService {
         AND a.ide_cccfa = $1
       ORDER BY a.fecha_trans_ccdtr
     `);
-        queryPagos.addIntParam(1, dtoIn.ide_cccfa);
-        const resPagos = await this.dataSource.createSelectQuery(queryPagos);
+    queryPagos.addIntParam(1, dtoIn.ide_cccfa);
+    const resPagos = await this.dataSource.createSelectQuery(queryPagos);
 
-        const totalPagos =
-            resPagos && resPagos.length > 0 ? parseFloat(resPagos[0].totalpagos) || 0 : 0;
+    const totalPagos =
+      resPagos && resPagos.length > 0 ? parseFloat(resPagos[0].totalpagos) || 0 : 0;
 
-        // ── Retención ─────────────────────────────────────────────────────────
-        let retencData: FacturaRep['retencion'] = null;
-        if (cabecera.ide_cncre) {
-            const queryRetCab = new SelectQuery(`
+    // ── Retención ─────────────────────────────────────────────────────────
+    let retencData: FacturaRep['retencion'] = null;
+    if (cabecera.ide_cncre) {
+      const queryRetCab = new SelectQuery(`
         SELECT
           ide_cncre, fecha_emisi_cncre, numero_cncre, observacion_cncre, autorizacion_cncre
         FROM con_cabece_retenc
         WHERE ide_cncre = $1
       `);
-            queryRetCab.addParam(1, cabecera.ide_cncre);
+      queryRetCab.addParam(1, cabecera.ide_cncre);
 
-            const queryRetDet = new SelectQuery(`
+      const queryRetDet = new SelectQuery(`
         SELECT
           b.nombre_cncim, b.casillero_cncim,
           a.porcentaje_cndre, a.base_cndre, a.valor_cndre,
@@ -163,68 +170,107 @@ export class FacturasRepService {
           INNER JOIN con_cabece_impues b ON a.ide_cncim = b.ide_cncim
         WHERE a.ide_cncre = $1
       `);
-            queryRetDet.addParam(1, cabecera.ide_cncre);
+      queryRetDet.addParam(1, cabecera.ide_cncre);
 
-            const retCab = await this.dataSource.createSingleQuery(queryRetCab);
-            const retDet = await this.dataSource.createSelectQuery(queryRetDet);
-            const totalRetencion =
-                retDet && retDet.length > 0 ? parseFloat(retDet[0].totalretencion) || 0 : 0;
+      const retCab = await this.dataSource.createSingleQuery(queryRetCab);
+      const retDet = await this.dataSource.createSelectQuery(queryRetDet);
+      const totalRetencion =
+        retDet && retDet.length > 0 ? parseFloat(retDet[0].totalretencion) || 0 : 0;
 
-            if (retCab) {
-                retencData = { cabecera: retCab, detalles: retDet ?? [], total: totalRetencion };
-            }
-        }
-
-        // ── Estado de pago ────────────────────────────────────────────────────
-        const totalFactura = parseFloat(String(cabecera.total_cccfa)) || 0;
-        const totalRetencionAplicada = retencData?.total ?? 0;
-        const saldoFinal = totalFactura - totalPagos - totalRetencionAplicada;
-        const estaPagada = saldoFinal <= 0;
-        const estadoPago = (() => {
-            const totalAplicado = totalPagos + totalRetencionAplicada;
-            if (totalAplicado === 0) return 'POR PAGAR';
-            if (saldoFinal <= 0) return 'PAGADA';
-            if (totalAplicado < totalFactura) return 'PAGADO PARCIAL';
-            return 'PAGADO EN EXCESO';
-        })();
-
-        const pagos: FacturaPago = {
-            pagada: estaPagada,
-            estado: estadoPago,
-            color: estaPagada ? 'success' : 'warning',
-            detalles: resPagos ?? [],
-            total: totalPagos,
-        };
-
-        // ── Datos de empresa ──────────────────────────────────────────────────
-        const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-
-        // ── Código de barras Code128 de la clave de acceso ────────────────────
-        let barcodeDataUrl: string | undefined;
-        if (cabecera.claveacceso_srcom) {
-            try {
-                const pngBuffer = await bwipjs.toBuffer({
-                    bcid: 'code128',
-                    text: cabecera.claveacceso_srcom,
-                    scale: 2,
-                    height: 10,
-                    includetext: false,
-                });
-                barcodeDataUrl = `data:image/png;base64,${Buffer.from(pngBuffer).toString('base64')}`;
-            } catch (_) {
-                // Si falla, se omite el barcode sin interrumpir el reporte
-            }
-        }
-
-        // ── Construir objeto reporte ──────────────────────────────────────────
-        const facturaRep: FacturaRep = {
-            cabecera,
-            detalles: detalles ?? [],
-            pagos,
-            retencion: retencData,
-        };
-
-        const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl);
-        return this.printerService.createPdf(docDefinition);
+      if (retCab) {
+        retencData = { cabecera: retCab, detalles: retDet ?? [], total: totalRetencion };
+      }
     }
+
+    // ── Estado de pago ────────────────────────────────────────────────────
+    const totalFactura = parseFloat(String(cabecera.total_cccfa)) || 0;
+    const totalRetencionAplicada = retencData?.total ?? 0;
+    const saldoFinal = totalFactura - totalPagos - totalRetencionAplicada;
+    const estaPagada = saldoFinal <= 0;
+    const estadoPago = (() => {
+      const totalAplicado = totalPagos + totalRetencionAplicada;
+      if (totalAplicado === 0) return 'POR PAGAR';
+      if (saldoFinal <= 0) return 'PAGADA';
+      if (totalAplicado < totalFactura) return 'PAGADO PARCIAL';
+      return 'PAGADO EN EXCESO';
+    })();
+
+    const pagos: FacturaPago = {
+      pagada: estaPagada,
+      estado: estadoPago,
+      color: estaPagada ? 'success' : 'warning',
+      detalles: resPagos ?? [],
+      total: totalPagos,
+    };
+
+    // ── Datos de empresa ──────────────────────────────────────────────────
+    const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+
+    // ── Código de barras Code128 de la clave de acceso ────────────────────
+    let barcodeDataUrl: string | undefined;
+    if (cabecera.claveacceso_srcom) {
+      try {
+        const pngBuffer = await bwipjs.toBuffer({
+          bcid: 'code128',
+          text: cabecera.claveacceso_srcom,
+          scale: 2,
+          height: 10,
+          includetext: false,
+        });
+        barcodeDataUrl = `data:image/png;base64,${Buffer.from(pngBuffer).toString('base64')}`;
+      } catch (_) {
+        // Si falla, se omite el barcode sin interrumpir el reporte
+      }
+    }
+
+    // ── Construir objeto reporte ──────────────────────────────────────────
+    const facturaRep: FacturaRep = {
+      cabecera,
+      detalles: detalles ?? [],
+      pagos,
+      retencion: retencData,
+    };
+
+    const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl);
+    return this.printerService.createPdf(docDefinition);
+  }
+
+  /**
+   * Obtiene los datos del resumen diario sin generar PDF.
+   * Permite al frontend actualizar dinámicamente sin regenerar documento.
+   */
+  async getResumenDiarioFacturasData(dtoIn: ResumenDiarioFacturasDto & HeaderParamsDto) {
+    const response = await this.facturasService.getResumenDiarioFacturas(dtoIn);
+
+    if (!response || !response.row) {
+      throw new NotFoundException('No se encontraron datos para el resumen diario');
+    }
+
+    return response;
+  }
+
+  /**
+   * Genera el reporte PDF del resumen diario de facturas.
+   * Usa el método getResumenDiarioFacturas del FacturasService.
+   */
+  async reportResumenDiarioFacturas(dtoIn: ResumenDiarioFacturasDto & HeaderParamsDto) {
+    // Obtener datos del resumen usando el servicio principal
+    const response = await this.facturasService.getResumenDiarioFacturas(dtoIn);
+
+    if (!response || !response.row) {
+      throw new NotFoundException('No se encontraron datos para el resumen diario');
+    }
+
+    const resumenData: ResumenDiarioRep = response.row;
+
+    // Crear cabecera con logo usando SectionsService
+    const header = await this.sectionsService.createReportHeader({
+      // title: 'Resumen Diario de Ventas',
+      ideEmpr: dtoIn.ideEmpr,
+    });
+
+    // Generar el documento PDF
+    const docDefinition = resumenDiarioFacturasReport(resumenData, header);
+    return this.printerService.createPdf(docDefinition);
+  }
 }
