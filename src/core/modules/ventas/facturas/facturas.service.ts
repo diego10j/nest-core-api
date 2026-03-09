@@ -403,6 +403,20 @@ export class FacturasService extends BaseService {
             FROM con_detall_retenc dr
             INNER JOIN con_cabece_retenc cr ON dr.ide_cncre = cr.ide_cncre
             GROUP BY cr.ide_cncre
+        ),
+        notas_credito_agrupadas AS (
+            SELECT
+                cf.ide_cccfa,
+                SUM(nc.total_cpcno) AS total_nc
+            FROM cxc_cabece_factura cf
+            INNER JOIN cxp_cabecera_nota nc ON (
+                nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                AND nc.ide_cpeno = 1
+                AND nc.ide_empr  = cf.ide_empr
+            )
+            WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+              AND cf.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY cf.ide_cccfa
         )
         SELECT
             a.ide_cccfa,
@@ -428,6 +442,9 @@ export class FacturasService extends BaseService {
             a.ide_geper,
             a.ide_cnccc,
             a.usuario_ingre,
+
+            -- Nota de crédito (NULL si no tiene)
+            nca.total_nc AS total_nota_credito,
 
             -- Totales de pago y retención
             COALESCE(pa.total_pagado, 0)     AS total_pagado,
@@ -461,15 +478,16 @@ export class FacturasService extends BaseService {
 
         FROM
             cxc_cabece_factura a
-            INNER JOIN gen_persona b       ON a.ide_geper  = b.ide_geper
-            INNER JOIN cxc_datos_fac c     ON a.ide_ccdaf  = c.ide_ccdaf
-            LEFT  JOIN sri_comprobante d   ON a.ide_srcom  = d.ide_srcom
-            LEFT  JOIN sri_estado_comprobante f ON d.ide_sresc = f.ide_sresc
-            LEFT  JOIN ven_vendedor v      ON a.ide_vgven  = v.ide_vgven
-            LEFT  JOIN con_deta_forma_pago x ON a.ide_cndfp1 = x.ide_cndfp
-            LEFT  JOIN con_cabece_retenc cr  ON a.ide_cncre  = cr.ide_cncre
-            LEFT  JOIN pagos_agrupados pa    ON a.ide_cccfa  = pa.ide_cccfa
-            LEFT  JOIN retenciones_agrupadas re ON a.ide_cncre = re.ide_cncre
+            INNER JOIN gen_persona b           ON a.ide_geper  = b.ide_geper
+            INNER JOIN cxc_datos_fac c         ON a.ide_ccdaf  = c.ide_ccdaf
+            LEFT  JOIN sri_comprobante d        ON a.ide_srcom  = d.ide_srcom
+            LEFT  JOIN sri_estado_comprobante f ON d.ide_sresc  = f.ide_sresc
+            LEFT  JOIN ven_vendedor v           ON a.ide_vgven  = v.ide_vgven
+            LEFT  JOIN con_deta_forma_pago x    ON a.ide_cndfp1 = x.ide_cndfp
+            LEFT  JOIN con_cabece_retenc cr     ON a.ide_cncre  = cr.ide_cncre
+            LEFT  JOIN pagos_agrupados pa       ON a.ide_cccfa  = pa.ide_cccfa
+            LEFT  JOIN retenciones_agrupadas re ON a.ide_cncre  = re.ide_cncre
+            LEFT  JOIN notas_credito_agrupadas nca ON a.ide_cccfa = nca.ide_cccfa
         WHERE
             fecha_emisi_cccfa BETWEEN $1 AND $2
             AND a.ide_sucu = ${dtoIn.ideSucu}
@@ -1163,7 +1181,70 @@ export class FacturasService extends BaseService {
         queryGuiaRemision.addIntParam(1, dtoIn.ide_cccfa);
         const resGuiaRemision = await this.dataSource.createSelectQuery(queryGuiaRemision);
 
+        // notas de crédito asociadas a la factura
+        const queryNotasCredito = new SelectQuery(
+            `
+            SELECT
+                nc.ide_cpcno,
+                nc.numero_cpcno,
+                nc.fecha_emisi_cpcno,
+                nc.total_cpcno,
+                nc.valor_iva_cpcno,
+                nc.base_grabada_cpcno,
+                nc.base_tarifa0_cpcno,
+                nc.base_no_objeto_iva_cpcno,
+                nc.observacion_cpcno,
+                nc.num_doc_mod_cpcno,
+                d.claveacceso_srcom,
+                d.autorizacion_srcomn,
+                d.fechaautoriza_srcom,
+                e.nombre_sresc,
+                e.color_sresc,
+                e.icono_sresc,
+                nc.usuario_ingre,
+                nc.fecha_ingre
+            FROM cxp_cabecera_nota nc
+            LEFT JOIN sri_comprobante d        ON nc.ide_srcom  = d.ide_srcom
+            LEFT JOIN sri_estado_comprobante e ON d.ide_sresc   = e.ide_sresc
+            WHERE nc.num_doc_mod_cpcno LIKE '%' || lpad($1::text, 9, '0')
+              AND nc.ide_cpeno = 1
+              AND nc.ide_empr  = ${dtoIn.ideEmpr}
+            ORDER BY nc.fecha_emisi_cpcno
+            `,
+        );
+        queryNotasCredito.addParam(1, resCabecera.secuencial_cccfa);
+        const resNotasCreditoCabecera = await this.dataSource.createSingleQuery(queryNotasCredito);
 
+        const totalNotasCredito = resNotasCreditoCabecera
+            ? (resNotasCreditoCabecera?.total_cpcno || 0)
+            : 0;
+
+        // detalles de notas de crédito (líneas de productos)
+        const queryNotasCreditoDetalles = new SelectQuery(
+            `
+            SELECT
+                det.ide_cpdno,
+                det.ide_cpcno,
+                det.ide_inarti,
+                det.cantidad_cpdno,
+                det.precio_cpdno,
+                det.valor_cpdno,
+                p.codigo_inarti,
+                p.nombre_inarti,
+                p.uuid        AS uuid_inarti,
+                u.siglas_inuni
+            FROM cxp_detalle_nota det
+            INNER JOIN cxp_cabecera_nota nc ON det.ide_cpcno = nc.ide_cpcno
+            INNER JOIN inv_articulo       p  ON det.ide_inarti = p.ide_inarti
+            LEFT  JOIN inv_unidad         u  ON p.ide_inuni   = u.ide_inuni
+            WHERE nc.num_doc_mod_cpcno LIKE '%' || lpad($1::text, 9, '0')
+              AND nc.ide_cpeno = 1
+              AND nc.ide_empr  = ${dtoIn.ideEmpr}
+            ORDER BY det.ide_cpcno, det.ide_cpdno
+            `,
+        );
+        queryNotasCreditoDetalles.addParam(1, resCabecera.secuencial_cccfa);
+        const resNotasCreditoDetalles = await this.dataSource.createSelectQuery(queryNotasCreditoDetalles);
 
         // crea el query de datos empresa
         const queryEmpresa = new SelectQuery(`
@@ -1204,6 +1285,11 @@ export class FacturasService extends BaseService {
                     total: totalRetencion
                 } : null,
                 guiaremision: resGuiaRemision && resGuiaRemision.length > 0 ? resGuiaRemision[0] : null,
+                notascredito: resNotasCreditoCabecera ? {
+                    cabecera: resNotasCreditoCabecera,
+                    detalles: resNotasCreditoDetalles,
+                    total: totalNotasCredito,
+                } : null,
                 empresa,
             },
             message: 'ok',
