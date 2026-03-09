@@ -495,3 +495,12 @@ ADD COLUMN "ide_empr" int;
 
 INSERT INTO "public"."sis_correo" ("ide_corr", "alias_corr", "clave_corr", "ide_sucu", "ide_empr", "correo_corr") VALUES
 (1, 'default', 're_RyvYeSUf_Fh8iMkLx3ugsG1e4kSNovMwg', 2, 0, 'admin@produquimic.com.ec');
+
+
+ALTER TABLE "public"."tes_cuenta_banco"
+ADD COLUMN "imagen_tecba" varchar(200);
+
+ALTER TABLE tes_cuenta_banco ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE tes_cuenta_banco ADD COLUMN hora_ingre TIMESTAMP;
+ALTER TABLE tes_cuenta_banco ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE tes_cuenta_banco ADD COLUMN hora_actua TIMESTAMP;

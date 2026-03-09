@@ -1163,6 +1163,27 @@ export class FacturasService extends BaseService {
         queryGuiaRemision.addIntParam(1, dtoIn.ide_cccfa);
         const resGuiaRemision = await this.dataSource.createSelectQuery(queryGuiaRemision);
 
+
+
+        // crea el query de datos empresa
+        const queryEmpresa = new SelectQuery(`
+            SELECT
+                a.ide_empr,
+                a.nom_empr,
+                a.mail_empr,
+                a.pagina_empr,
+                a.identificacion_empr,
+                a.direccion_empr,
+                a.telefono_empr,
+                a.obligadocontabilidad_empr,
+                a.logotipo_empr,
+                'REGIMEN GENERAL' AS nombre_cntco
+            FROM sis_empresa a
+            --LEFT JOIN con_tipo_contribuyente b ON a.ide_cntco = b.ide_cntco
+            WHERE a.ide_empr = $1
+        `);
+        queryEmpresa.addIntParam(1, dtoIn.ideEmpr);
+        const empresa = await this.dataSource.createSingleQuery(queryEmpresa);
         // Retornar 
         return {
             rowCount: 1,
@@ -1174,14 +1195,16 @@ export class FacturasService extends BaseService {
                     estado: estadoPago,
                     color: colorEstado,
                     detalles: resPagos,
-                    total: totalPagos
+                    total: totalPagos,
+
                 },
                 retencion: resRetencionCabecera ? {
                     cabecera: resRetencionCabecera,
                     detalles: resRetencionDetalles,
                     total: totalRetencion
                 } : null,
-                guiaremision: resGuiaRemision && resGuiaRemision.length > 0 ? resGuiaRemision[0] : null
+                guiaremision: resGuiaRemision && resGuiaRemision.length > 0 ? resGuiaRemision[0] : null,
+                empresa,
             },
             message: 'ok',
         };
@@ -1236,6 +1259,17 @@ export class FacturasService extends BaseService {
                 WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
                   AND cf.ide_cncre IS NOT NULL
                 GROUP BY cf.ide_cccfa
+            ),
+            notas_credito AS (
+                SELECT cf.ide_cccfa, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
+                FROM cxc_cabece_factura cf
+                INNER JOIN cxp_cabecera_nota nc ON (
+                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    AND nc.ide_cpeno = 1
+                    AND nc.ide_empr  = cf.ide_empr
+                )
+                WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
+                GROUP BY cf.ide_cccfa
             )
             SELECT
                 -- Totales generales
@@ -1266,6 +1300,11 @@ export class FacturasService extends BaseService {
                 -- Con retención
                 COUNT(CASE WHEN b.ide_cncre IS NOT NULL THEN 1 END)                         AS facturas_con_retencion,
 
+                -- Notas de crédito del día
+                COUNT(CASE WHEN nc.total_nc > 0 THEN 1 END)                                 AS facturas_con_nota_credito,
+                COALESCE(SUM(nc.total_nc), 0)                                               AS monto_notas_credito,
+                COALESCE(SUM(b.total_cccfa), 0) - COALESCE(SUM(nc.total_nc), 0)            AS ventas_netas,
+
                 -- Anuladas del mismo día
                 (
                     SELECT COUNT(*)
@@ -1278,8 +1317,9 @@ export class FacturasService extends BaseService {
                 )                                                                           AS facturas_anuladas
 
             FROM base b
-            LEFT JOIN pagos       p ON b.ide_cccfa = p.ide_cccfa
-            LEFT JOIN retenciones r ON b.ide_cccfa = r.ide_cccfa
+            LEFT JOIN pagos          p  ON b.ide_cccfa = p.ide_cccfa
+            LEFT JOIN retenciones    r  ON b.ide_cccfa = r.ide_cccfa
+            LEFT JOIN notas_credito  nc ON b.ide_cccfa = nc.ide_cccfa
         `);
         queryMetricas.addParam(1, dtoIn.fecha);
         queryMetricas.addIntParam(2, dtoIn.ideEmpr);
@@ -1350,21 +1390,39 @@ export class FacturasService extends BaseService {
 
         // ── 5. Top 10 clientes ────────────────────────────────────────────────
         const queryTopClientes = new SelectQuery(`
+            WITH nc_por_cliente AS (
+                SELECT cf.ide_geper, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
+                FROM cxc_cabece_factura cf
+                INNER JOIN cxp_cabecera_nota nc ON (
+                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    AND nc.ide_cpeno = 1
+                    AND nc.ide_empr  = cf.ide_empr
+                )
+                WHERE cf.fecha_emisi_cccfa = $1
+                  AND cf.ide_empr          = $2
+                  AND cf.ide_sucu          = $3
+                  AND cf.ide_ccefa         = ${ideEstadoNormal}
+                  ${condPto}
+                GROUP BY cf.ide_geper
+            )
             SELECT
                 b.nom_geper,
                 b.identificac_geper,
                 b.uuid,
-                COUNT(a.ide_cccfa)              AS cantidad_facturas,
-                COALESCE(SUM(a.total_cccfa), 0) AS total
+                COUNT(a.ide_cccfa)                                              AS cantidad_facturas,
+                COALESCE(SUM(a.total_cccfa), 0)                                 AS total,
+                COALESCE(nc_cli.total_nc, 0)                                    AS total_notas_credito,
+                COALESCE(SUM(a.total_cccfa), 0) - COALESCE(nc_cli.total_nc, 0) AS total_neto
             FROM cxc_cabece_factura a
-            INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
+            INNER JOIN gen_persona   b      ON a.ide_geper  = b.ide_geper
+            LEFT  JOIN nc_por_cliente nc_cli ON a.ide_geper  = nc_cli.ide_geper
             WHERE a.fecha_emisi_cccfa = $1
               AND a.ide_empr          = $2
               AND a.ide_sucu          = $3
               AND a.ide_ccefa         = ${ideEstadoNormal}
               ${condPto}
-            GROUP BY b.nom_geper, b.identificac_geper, b.uuid
-            ORDER BY total DESC
+            GROUP BY b.nom_geper, b.identificac_geper, b.uuid, nc_cli.total_nc
+            ORDER BY total_neto DESC
             LIMIT 10
         `);
         queryTopClientes.addParam(1, dtoIn.fecha);
@@ -1373,24 +1431,43 @@ export class FacturasService extends BaseService {
 
         // ── 6. Top 10 artículos ───────────────────────────────────────────────
         const queryTopArticulos = new SelectQuery(`
+            WITH nc_por_articulo AS (
+                SELECT cdn.ide_inarti, COALESCE(SUM(cdn.valor_cpdno), 0) AS total_nc
+                FROM cxc_cabece_factura cf
+                INNER JOIN cxp_cabecera_nota  cn  ON (
+                    cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    AND cn.ide_cpeno = 1
+                    AND cn.ide_empr  = cf.ide_empr
+                )
+                INNER JOIN cxp_detalle_nota   cdn ON cn.ide_cpcno = cdn.ide_cpcno
+                WHERE cf.fecha_emisi_cccfa = $1
+                  AND cf.ide_empr          = $2
+                  AND cf.ide_sucu          = $3
+                  AND cf.ide_ccefa         = ${ideEstadoNormal}
+                  ${condPto}
+                GROUP BY cdn.ide_inarti
+            )
             SELECT
                 p.codigo_inarti,
                 p.nombre_inarti,
-                p.uuid                             AS uuid_inarti,
+                p.uuid                                                          AS uuid_inarti,
                 u.siglas_inuni,
-                SUM(d.cantidad_ccdfa)              AS cantidad_vendida,
-                COALESCE(SUM(d.total_ccdfa), 0)    AS total
+                SUM(d.cantidad_ccdfa)                                           AS cantidad_vendida,
+                COALESCE(SUM(d.total_ccdfa), 0)                                 AS total,
+                COALESCE(nc_art.total_nc, 0)                                    AS total_notas_credito,
+                COALESCE(SUM(d.total_ccdfa), 0) - COALESCE(nc_art.total_nc, 0) AS total_neto
             FROM cxc_deta_factura d
-            INNER JOIN cxc_cabece_factura a ON d.ide_cccfa  = a.ide_cccfa
-            INNER JOIN inv_articulo       p ON d.ide_inarti = p.ide_inarti
-            LEFT  JOIN inv_unidad         u ON p.ide_inuni  = u.ide_inuni
+            INNER JOIN cxc_cabece_factura a   ON d.ide_cccfa  = a.ide_cccfa
+            INNER JOIN inv_articulo       p   ON d.ide_inarti = p.ide_inarti
+            LEFT  JOIN inv_unidad         u   ON p.ide_inuni  = u.ide_inuni
+            LEFT  JOIN nc_por_articulo nc_art ON p.ide_inarti = nc_art.ide_inarti
             WHERE a.fecha_emisi_cccfa = $1
               AND a.ide_empr          = $2
               AND a.ide_sucu          = $3
               AND a.ide_ccefa         = ${ideEstadoNormal}
               ${condPto}
-            GROUP BY p.codigo_inarti, p.nombre_inarti, p.uuid, u.siglas_inuni
-            ORDER BY total DESC
+            GROUP BY p.codigo_inarti, p.nombre_inarti, p.uuid, u.siglas_inuni, nc_art.total_nc
+            ORDER BY total_neto DESC
             LIMIT 10
         `);
         queryTopArticulos.addParam(1, dtoIn.fecha);
@@ -1410,6 +1487,26 @@ export class FacturasService extends BaseService {
                 FROM cxc_cabece_factura cf
                 INNER JOIN con_detall_retenc dr ON dr.ide_cncre = cf.ide_cncre
                 WHERE cf.ide_cncre IS NOT NULL
+                GROUP BY cf.ide_cccfa
+            ),
+            notas_credito_agrupadas AS (
+                SELECT
+                    cf.ide_cccfa,
+                    COUNT(nc.ide_cpcno)                      AS cantidad_nc,
+                    COALESCE(SUM(nc.total_cpcno), 0)         AS total_nc,
+                    STRING_AGG(nc.numero_cpcno, ', '
+                               ORDER BY nc.numero_cpcno)     AS numeros_nc
+                FROM cxc_cabece_factura cf
+                INNER JOIN cxp_cabecera_nota nc ON (
+                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    AND nc.ide_cpeno = 1
+                    AND nc.ide_empr  = cf.ide_empr
+                )
+                WHERE cf.fecha_emisi_cccfa = $1
+                  AND cf.ide_empr          = $2
+                  AND cf.ide_sucu          = $3
+                  AND cf.ide_ccefa         = ${ideEstadoNormal}
+                  ${condPto}
                 GROUP BY cf.ide_cccfa
             )
             SELECT
@@ -1438,6 +1535,12 @@ export class FacturasService extends BaseService {
                     - COALESCE(pa.total_pagado,    0)
                     - COALESCE(re.total_retencion, 0))           AS saldo,
 
+                -- Notas de crédito de la factura
+                COALESCE(nc.cantidad_nc,  0)                     AS cantidad_notas_credito,
+                COALESCE(nc.total_nc,     0)                     AS total_notas_credito,
+                nc.numeros_nc                                    AS numeros_notas_credito,
+                (a.total_cccfa - COALESCE(nc.total_nc, 0))      AS total_neto,
+
                 CASE
                     WHEN (COALESCE(pa.total_pagado, 0) + COALESCE(re.total_retencion, 0)) = 0
                         THEN 'POR PAGAR'
@@ -1460,14 +1563,15 @@ export class FacturasService extends BaseService {
                 END                                              AS color_estado
 
             FROM cxc_cabece_factura a
-            INNER JOIN gen_persona           b ON a.ide_geper  = b.ide_geper
-            INNER JOIN cxc_datos_fac         c ON a.ide_ccdaf  = c.ide_ccdaf
-            LEFT  JOIN sri_comprobante       d ON a.ide_srcom  = d.ide_srcom
-            LEFT  JOIN sri_estado_comprobante f ON d.ide_sresc = f.ide_sresc
-            LEFT  JOIN ven_vendedor          v ON a.ide_vgven  = v.ide_vgven
-            LEFT  JOIN con_deta_forma_pago   x ON a.ide_cndfp1 = x.ide_cndfp
-            LEFT  JOIN pagos_agrupados      pa ON a.ide_cccfa  = pa.ide_cccfa
-            LEFT  JOIN retenciones_agrupadas re ON a.ide_cccfa = re.ide_cccfa
+            INNER JOIN gen_persona              b  ON a.ide_geper  = b.ide_geper
+            INNER JOIN cxc_datos_fac            c  ON a.ide_ccdaf  = c.ide_ccdaf
+            LEFT  JOIN sri_comprobante          d  ON a.ide_srcom  = d.ide_srcom
+            LEFT  JOIN sri_estado_comprobante   f  ON d.ide_sresc  = f.ide_sresc
+            LEFT  JOIN ven_vendedor             v  ON a.ide_vgven  = v.ide_vgven
+            LEFT  JOIN con_deta_forma_pago      x  ON a.ide_cndfp1 = x.ide_cndfp
+            LEFT  JOIN pagos_agrupados         pa  ON a.ide_cccfa  = pa.ide_cccfa
+            LEFT  JOIN retenciones_agrupadas   re  ON a.ide_cccfa  = re.ide_cccfa
+            LEFT  JOIN notas_credito_agrupadas nc  ON a.ide_cccfa  = nc.ide_cccfa
             WHERE a.fecha_emisi_cccfa = $1
               AND a.ide_empr          = $2
               AND a.ide_sucu          = $3
