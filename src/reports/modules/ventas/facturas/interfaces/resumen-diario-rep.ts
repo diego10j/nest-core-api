@@ -1,6 +1,7 @@
 export interface ResumenDiarioRep {
     fecha: string;
     metricas: MetricasResumenDiario;
+    utilidad: UtilidadDiaria;
     graficas: {
         por_estado_sri: EstadoSriItem[];
         por_forma_pago: FormaPagoItem[];
@@ -24,6 +25,12 @@ export interface MetricasResumenDiario {
     total_pendiente: number;
     facturas_con_retencion: number;
     facturas_anuladas: number;
+}
+
+export interface UtilidadDiaria {
+    total_items: number;
+    items_sin_precio_compra: number;
+    total_utilidad: number;
 }
 
 export interface EstadoSriItem {

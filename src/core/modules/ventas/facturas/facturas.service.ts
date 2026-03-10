@@ -1323,6 +1323,10 @@ export class FacturasService extends BaseService {
                     a.ide_cncre,
                     a.ide_cndfp1,
                     a.total_cccfa,
+                    a.base_grabada_cccfa ,
+                    a.base_tarifa0_cccfa ,
+                    a.base_no_objeto_iva_cccfa,                    
+                    a.valor_iva_cccfa,
                     a.dias_credito_cccfa
                 FROM cxc_cabece_factura a
                 WHERE a.fecha_emisi_cccfa = $1
@@ -1361,6 +1365,10 @@ export class FacturasService extends BaseService {
                 -- Totales generales
                 COUNT(b.ide_cccfa)                                                          AS total_facturas,
                 COALESCE(SUM(b.total_cccfa), 0)                                             AS total_facturado,
+                COALESCE(SUM(b.base_grabada_cccfa), 0)                                      AS total_base_grabada,
+                COALESCE(SUM(b.base_tarifa0_cccfa + b.base_no_objeto_iva_cccfa), 0)         AS total_base0,
+                COALESCE(SUM(b.base_grabada_cccfa + b.base_tarifa0_cccfa + b.base_no_objeto_iva_cccfa), 0) AS total_ventas_netas,
+                COALESCE(SUM(b.valor_iva_cccfa), 0)                                            AS total_iva,
                 CASE WHEN COUNT(b.ide_cccfa) > 0
                      THEN ROUND(SUM(b.total_cccfa) / COUNT(b.ide_cccfa), 2)
                      ELSE 0 END                                                             AS ticket_promedio,
@@ -1551,6 +1559,7 @@ export class FacturasService extends BaseService {
               AND a.ide_empr          = $2
               AND a.ide_sucu          = $3
               AND a.ide_ccefa         = ${ideEstadoNormal}
+              AND p.hace_kardex_inarti = true
               ${condPto}
             GROUP BY p.codigo_inarti, p.nombre_inarti, p.uuid, u.siglas_inuni, nc_art.total_nc
             ORDER BY total_neto DESC
@@ -1560,7 +1569,22 @@ export class FacturasService extends BaseService {
         queryTopArticulos.addIntParam(2, dtoIn.ideEmpr);
         queryTopArticulos.addIntParam(3, dtoIn.ideSucu);
 
-        // ── 7. Detalle facturas del día con estado de pago ────────────────────
+        // ── 7. Utilidad del día ────────────────────────────────────────────────
+        // Llama directamente a f_utilidad_ventas con el mismo día como inicio y fin
+        const queryUtilidadDia = new SelectQuery(`
+            SELECT
+                COUNT(*)                                                                                       AS total_items,
+                COUNT(*) FILTER (WHERE hace_kardex_inarti = true AND precio_compra = 0)                        AS items_sin_precio_compra,
+                COALESCE(SUM(utilidad_neta), 0)                                                                AS total_utilidad
+            FROM f_utilidad_ventas($1::BIGINT, $2::DATE, $3::DATE)
+             WHERE nota_credito = 0
+            AND hace_kardex_inarti = true
+        `);
+        queryUtilidadDia.addIntParam(1, dtoIn.ideEmpr);
+        queryUtilidadDia.addParam(2, dtoIn.fecha);
+        queryUtilidadDia.addParam(3, dtoIn.fecha);
+
+        // ── 8. Detalle facturas del día con estado de pago ────────────────────
         const queryDetalle = new SelectQuery(`
             WITH pagos_agrupados AS (
                 SELECT ide_cccfa, SUM(valor_ccdtr) AS total_pagado
@@ -1677,6 +1701,7 @@ export class FacturasService extends BaseService {
             porHora,
             topClientes,
             topArticulos,
+            utilidadDia,
             facturas,
         ] = await Promise.all([
             this.dataSource.createSingleQuery(queryMetricas),
@@ -1685,6 +1710,7 @@ export class FacturasService extends BaseService {
             this.dataSource.createSelectQuery(queryPorHora),
             this.dataSource.createSelectQuery(queryTopClientes),
             this.dataSource.createSelectQuery(queryTopArticulos),
+            this.dataSource.createSingleQuery(queryUtilidadDia),
             this.dataSource.createSelectQuery(queryDetalle),
         ]);
 
@@ -1693,6 +1719,7 @@ export class FacturasService extends BaseService {
             row: {
                 fecha: dtoIn.fecha,
                 metricas,
+                utilidad: utilidadDia,
                 graficas: {
                     por_estado_sri: porEstadoSri,
                     por_forma_pago: porFormaPago,
