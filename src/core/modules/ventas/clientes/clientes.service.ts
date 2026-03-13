@@ -22,6 +22,7 @@ import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { GetClientesDto } from './dto/get-clientes.dto';
 
 const CLIENTE = {
     tableName: 'gen_persona',
@@ -102,7 +103,7 @@ export class ClientesService extends BaseService {
         if (res) {
             const ide_geper = res.ide_geper;
             // Total
-            const totales = await this.getInfoTotalesCliente(ide_geper);
+            const totales = await this.getInfoTotalesCliente(ide_geper, dtoIn.ideEmpr);
 
             return {
                 rowCount: 1,
@@ -123,7 +124,8 @@ export class ClientesService extends BaseService {
      * @param dtoIn
      * @returns
      */
-    async getClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getClientes(dtoIn: GetClientesDto & HeaderParamsDto) {
+        const activeClause = dtoIn.activos ? 'and activo_geper = true' : '';
         const query = new SelectQuery(
             `
         SELECT
@@ -132,6 +134,7 @@ export class ClientesService extends BaseService {
             p.nom_geper,
             nombre_getid,
             p.identificac_geper,
+            p.ide_getip,
             detalle_getip,
             p.correo_geper,
             p.fecha_ingre_geper,
@@ -149,6 +152,7 @@ export class ClientesService extends BaseService {
             AND p.identificac_geper IS NOT NULL
             AND p.nivel_geper = 'HIJO'
             AND P.ide_empr = ${dtoIn.ideEmpr}
+            ${activeClause}
         ORDER BY
             p.nom_geper
         `,
@@ -1114,20 +1118,144 @@ export class ClientesService extends BaseService {
      * @param ide_geper
      * @returns
      */
-    async getInfoTotalesCliente(ide_geper: number) {
-        const query = new SelectQuery(`     
-            SELECT 
-                COUNT(1) AS total_facturas,
-                MAX(fecha_emisi_cccfa) AS ultima_venta,
-                MIN(fecha_emisi_cccfa) AS primera_venta,
-                SUM(total_cccfa) AS total_ventas
-            FROM 
-                cxc_cabece_factura cf
-            WHERE 
-                    cf.ide_geper = $1
-                    AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-                `);
+    async getInfoTotalesCliente(ide_geper: number, ideEmpr: number) {
+        const ideEstadoNormal = Number(this.variables.get('p_cxc_estado_factura_normal'));
+        const query = new SelectQuery(`
+        WITH facturas_base AS (
+            SELECT
+                cf.ide_cccfa,
+                cf.ide_cncre,
+                cf.ide_cndfp1,
+                cf.fecha_emisi_cccfa,
+                cf.total_cccfa,
+                cf.base_grabada_cccfa,
+                cf.base_tarifa0_cccfa,
+                cf.base_no_objeto_iva_cccfa,
+                cf.valor_iva_cccfa,
+                cf.dias_credito_cccfa,
+                cf.secuencial_cccfa,
+                cf.ide_empr
+            FROM cxc_cabece_factura cf
+            WHERE cf.ide_geper = $1
+              AND cf.ide_ccefa  = ${ideEstadoNormal}
+              AND cf.ide_empr   = $2
+        ),
+        pagos AS (
+            SELECT dt.ide_cccfa, SUM(dt.valor_ccdtr) AS total_pagado
+            FROM cxc_detall_transa dt
+            WHERE dt.numero_pago_ccdtr > 0
+              AND dt.ide_cccfa IN (SELECT ide_cccfa FROM facturas_base)
+            GROUP BY dt.ide_cccfa
+        ),
+        retenciones AS (
+            SELECT fb.ide_cccfa, SUM(dr.valor_cndre) AS total_retencion
+            FROM facturas_base fb
+            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fb.ide_cncre
+            WHERE fb.ide_cncre IS NOT NULL
+            GROUP BY fb.ide_cccfa
+        ),
+        notas_credito AS (
+            SELECT fb.ide_cccfa, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
+            FROM facturas_base fb
+            INNER JOIN cxp_cabecera_nota nc ON (
+                nc.num_doc_mod_cpcno LIKE '%' || lpad(fb.secuencial_cccfa::text, 9, '0')
+                AND nc.ide_cpeno = 1
+                AND nc.ide_empr  = fb.ide_empr
+            )
+            GROUP BY fb.ide_cccfa
+        ),
+        saldos AS (
+            SELECT
+                fb.ide_cccfa,
+                fb.total_cccfa,
+                fb.dias_credito_cccfa,
+                fb.fecha_emisi_cccfa,
+                COALESCE(p.total_pagado,    0) AS total_pagado,
+                COALESCE(r.total_retencion, 0) AS total_retencion,
+                COALESCE(nc.total_nc,       0) AS total_nc,
+                (fb.total_cccfa
+                    - COALESCE(p.total_pagado,    0)
+                    - COALESCE(r.total_retencion, 0)) AS saldo
+            FROM facturas_base fb
+            LEFT JOIN pagos     p  ON fb.ide_cccfa = p.ide_cccfa
+            LEFT JOIN retenciones r ON fb.ide_cccfa = r.ide_cccfa
+            LEFT JOIN notas_credito nc ON fb.ide_cccfa = nc.ide_cccfa
+        )
+        SELECT
+            -- ── Volumen ──────────────────────────────────────────────────────
+            COUNT(fb.ide_cccfa)                                                              AS total_facturas,
+            MAX(fb.fecha_emisi_cccfa)                                                        AS ultima_venta,
+            MIN(fb.fecha_emisi_cccfa)                                                        AS primera_venta,
+
+            -- ── Montos facturados ─────────────────────────────────────────────
+            COALESCE(SUM(fb.total_cccfa), 0)                                                AS total_ventas,
+            COALESCE(SUM(fb.base_grabada_cccfa), 0)                                         AS total_base_grabada,
+            COALESCE(SUM(fb.base_tarifa0_cccfa + fb.base_no_objeto_iva_cccfa), 0)           AS total_base0,
+            COALESCE(SUM(fb.valor_iva_cccfa), 0)                                            AS total_iva,
+
+            -- ── Ticket promedio ───────────────────────────────────────────────
+            CASE WHEN COUNT(fb.ide_cccfa) > 0
+                 THEN ROUND(SUM(fb.total_cccfa) / COUNT(fb.ide_cccfa), 2)
+                 ELSE 0 END                                                                 AS ticket_promedio,
+
+            -- ── Crédito vs contado ────────────────────────────────────────────
+            COUNT(CASE WHEN fb.dias_credito_cccfa > 0 THEN 1 END)                          AS facturas_credito,
+            COUNT(CASE WHEN fb.dias_credito_cccfa = 0 THEN 1 END)                          AS facturas_contado,
+            COALESCE(SUM(CASE WHEN fb.dias_credito_cccfa > 0 THEN fb.total_cccfa ELSE 0 END), 0) AS total_credito,
+            COALESCE(SUM(CASE WHEN fb.dias_credito_cccfa = 0 THEN fb.total_cccfa ELSE 0 END), 0) AS total_contado,
+
+            -- ── Cobros ────────────────────────────────────────────────────────
+            COALESCE(SUM(s.total_pagado),    0)                                             AS total_cobrado,
+            COALESCE(SUM(s.total_retencion), 0)                                             AS total_retenciones,
+            COALESCE(SUM(s.saldo),           0)                                             AS total_pendiente,
+
+            -- ── Estado de pago (cantidad) ─────────────────────────────────────
+            COUNT(CASE WHEN s.saldo <= 0                               THEN 1 END)          AS facturas_pagadas,
+            COUNT(CASE WHEN s.saldo > 0
+                            AND (s.total_pagado + s.total_retencion) > 0 THEN 1 END)        AS facturas_pago_parcial,
+            COUNT(CASE WHEN s.total_pagado = 0
+                            AND s.total_retencion = 0                   THEN 1 END)         AS facturas_por_pagar,
+
+            -- ── Mora (facturas vencidas con saldo > 0) ────────────────────────
+            COUNT(CASE WHEN s.saldo > 0
+                            AND CURRENT_DATE > (s.fecha_emisi_cccfa + s.dias_credito_cccfa * INTERVAL '1 day')
+                       THEN 1 END)                                                          AS facturas_vencidas,
+            COALESCE(SUM(CASE WHEN s.saldo > 0
+                               AND CURRENT_DATE > (s.fecha_emisi_cccfa + s.dias_credito_cccfa * INTERVAL '1 day')
+                              THEN s.saldo ELSE 0 END), 0)                                  AS monto_vencido,
+
+            -- ── Notas de crédito ─────────────────────────────────────────────
+            COUNT(CASE WHEN s.total_nc > 0 THEN 1 END)                                     AS facturas_con_nota_credito,
+            COALESCE(SUM(s.total_nc), 0)                                                    AS total_notas_credito,
+
+            -- ── Con retención ────────────────────────────────────────────────
+            COUNT(CASE WHEN fb.ide_cncre IS NOT NULL THEN 1 END)                            AS facturas_con_retencion,
+
+            -- ── Última transacción de cobro ───────────────────────────────────
+            (SELECT MAX(ct.fecha_trans_ccctr)
+             FROM cxc_cabece_transa ct
+             WHERE ct.ide_geper = $1
+               AND ct.ide_empr  = $2)                                                       AS ultima_transaccion,
+
+            -- ── Actividad reciente ────────────────────────────────────────────
+            COUNT(CASE WHEN fb.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '30 days'  THEN 1 END) AS facturas_ultimo_mes,
+            COUNT(CASE WHEN fb.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '6 months' THEN 1 END) AS facturas_ultimo_semestre,
+            COUNT(CASE WHEN fb.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '12 months' THEN 1 END) AS facturas_ultimo_ano,
+            COALESCE(SUM(CASE WHEN fb.fecha_emisi_cccfa >= CURRENT_DATE - INTERVAL '12 months' THEN fb.total_cccfa ELSE 0 END), 0) AS ventas_ultimo_ano,
+
+            -- ── Anuladas (informativo) ────────────────────────────────────────
+            (SELECT COUNT(*)
+             FROM cxc_cabece_factura x
+             WHERE x.ide_geper = $1
+               AND x.ide_empr  = $2
+               AND x.ide_ccefa = 1)                                                         AS facturas_anuladas
+
+        FROM facturas_base fb
+        LEFT JOIN saldos s ON fb.ide_cccfa = s.ide_cccfa
+    `);
         query.addIntParam(1, ide_geper);
+        query.addIntParam(2, ideEmpr);
+
         return this.dataSource.createSingleQuery(query);
     }
 

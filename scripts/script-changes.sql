@@ -504,3 +504,11 @@ ALTER TABLE tes_cuenta_banco ADD COLUMN usuario_ingre varchar(50);
 ALTER TABLE tes_cuenta_banco ADD COLUMN hora_ingre TIMESTAMP;
 ALTER TABLE tes_cuenta_banco ADD COLUMN usuario_actua varchar(50); 
 ALTER TABLE tes_cuenta_banco ADD COLUMN hora_actua TIMESTAMP;
+
+
+
+ALTER TABLE "public"."sis_sucursal"
+ADD COLUMN "pagina_sucu" varchar(80);
+
+ALTER TABLE "public"."sis_sucursal"
+ADD COLUMN "logotipo_sucu" varchar(120);

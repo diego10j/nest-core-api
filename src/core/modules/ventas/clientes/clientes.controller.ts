@@ -13,10 +13,11 @@ import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
+import { GetClientesDto } from './dto/get-clientes.dto';
 
 @Controller('ventas/clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) {}
+  constructor(private readonly service: ClientesService) { }
 
   @Get('getCliente')
   // @Auth()
@@ -29,7 +30,7 @@ export class ClientesController {
 
   @Get('getClientes')
   // @Auth()
-  getClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+  getClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetClientesDto) {
     return this.service.getClientes({
       ...headersParams,
       ...dtoIn,

@@ -14,34 +14,27 @@ ALTER TABLE public.gen_persona
 	ON UPDATE RESTRICT;
 update gen_persona set es_contacto_geper = true, requiere_actua_geper = true; --valores por defecto
 
-INSERT INTO "public"."gen_tipo_persona" ("ide_getip", "detalle_getip", "activo_getip") VALUES
-(1, 'PERSONA', 'TRUE');
 
-INSERT INTO "public"."gen_tipo_persona" ("ide_getip", "detalle_getip", "activo_getip") VALUES
-(2, 'EMPRESA', 'TRUE');
 
-ALTER TABLE gen_persona ADD COLUMN ide_getip int4;  
- ALTER TABLE public.gen_persona
-	ADD CONSTRAINT gen_persona_ide_getip_fkey
-	FOREIGN KEY(ide_getip)
-	REFERENCES public.gen_tipo_persona(ide_getip)
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT;
 
-update gen_persona set ide_getip = 1 ;  -- por defecto todos tipo persona
-update gen_persona
-set ide_getip = 2   -- tipo empresa
-WHERE nom_geper ILIKE ANY(ARRAY[
-      '%LTDA.',
-      '%LTDA',
-      '%S.A',
-      '%S.A.',
-      '%S.A.S.',
-      '%S.A.S',
-      '%C.A',
-      '%C.A.'
-  ]);
-  
+
+SELECT nom_geper, ide_getip
+FROM gen_persona
+WHERE nom_geper ~* 
+    '\m(LTDA\.?|S\.A\.S\.?|S\.A\.?|C\.A\.?|B\.I\.C\.?|BIC|S\.C\.C\.?|SCC|N\.C\.?|NC|S\.E\.M\.?|SEM)\s*$'
+ORDER BY nom_geper;
+
+
+-- Por defecto todos tipo persona
+UPDATE gen_persona SET ide_getip = 1;
+
+-- Tipo empresa - siglas al final con o sin punto final y posibles espacios
+UPDATE gen_persona
+SET ide_getip = 2
+WHERE nom_geper ~* 
+    '\m(LTDA\.?|S\.A\.S\.?|S\.A\.?|C\.A\.?|B\.I\.C\.?|BIC|S\.C\.C\.?|SCC|N\.C\.?|NC|S\.E\.M\.?|SEM)\s*$';
+
+
 -----------------------------------------------
 
 -- Direccion de persona

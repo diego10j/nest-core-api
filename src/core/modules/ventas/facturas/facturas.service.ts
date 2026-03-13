@@ -989,6 +989,7 @@ export class FacturasService extends BaseService {
                 d.total_ccdfa,
                 d.observacion_ccdfa,
                 d.iva_inarti_ccdfa,
+                p.hace_kardex_inarti,
                 
                 -- Datos del producto
                 p.codigo_inarti,
@@ -1246,25 +1247,70 @@ export class FacturasService extends BaseService {
         queryNotasCreditoDetalles.addParam(1, resCabecera.secuencial_cccfa);
         const resNotasCreditoDetalles = await this.dataSource.createSelectQuery(queryNotasCreditoDetalles);
 
+        // comprobante de inventario asociado a la factura
+        const queryComprobanteInv = new SelectQuery(
+            `
+            SELECT
+                a.ide_incci,
+                a.numero_incci,
+                a.fecha_trans_incci,
+                b.nombre_inbod,
+                c.nombre_intti,
+                e.nombre_intci,
+                g.nombre_inepi,
+                a.verifica_incci,
+                a.fec_cam_est_incci,
+                a.usuario_verifica_incci,
+                a.automatico_incci,
+                (
+                    SELECT COUNT(1)
+                    FROM inv_det_comp_inve det2
+                    INNER JOIN inv_articulo art ON det2.ide_inarti = art.ide_inarti
+                    WHERE det2.ide_incci = a.ide_incci
+                      AND art.hace_kardex_inarti = true
+                ) AS total_items,
+                a.usuario_ingre,
+                a.fecha_ingre
+            FROM inv_cab_comp_inve a
+            INNER JOIN inv_bodega b ON a.ide_inbod = b.ide_inbod
+            INNER JOIN inv_tip_tran_inve c ON a.ide_intti = c.ide_intti
+            INNER JOIN inv_tip_comp_inve e ON c.ide_intci = e.ide_intci
+            LEFT JOIN inv_est_prev_inve g ON a.ide_inepi = g.ide_inepi
+            WHERE EXISTS (
+                SELECT 1 FROM inv_det_comp_inve det
+                WHERE det.ide_incci = a.ide_incci
+                  AND det.ide_cccfa = $1
+            )
+            LIMIT 1
+            `,
+        );
+        queryComprobanteInv.addIntParam(1, dtoIn.ide_cccfa);
+        const resComprobanteInv = await this.dataSource.createSingleQuery(queryComprobanteInv);
+
         // crea el query de datos empresa
         const queryEmpresa = new SelectQuery(`
             SELECT
-                a.ide_empr,
-                a.nom_empr,
-                a.mail_empr,
-                a.pagina_empr,
-                a.identificacion_empr,
-                a.direccion_empr,
-                a.telefono_empr,
-                a.obligadocontabilidad_empr,
-                a.logotipo_empr,
-                'REGIMEN GENERAL' AS nombre_cntco
-            FROM sis_empresa a
+            a.ide_empr,
+            a.nom_sucu as nom_empr,
+            a.correo_sucu as mail_empr,
+            a.pagina_sucu as pagina_empr,
+            a.identicicacion_sucu as identificacion_empr,
+            a.direccion_sucu as direccion_empr,
+            a.telefonos_sucu as telefono_empr,
+            a.obligadocontabilidad_sucu as obligadocontabilidad_empr,
+            a.logotipo_sucu as logotipo_empr,
+            a.agente_ret_sucu as agente_ret_empr,
+            'REGIMEN GENERAL' AS nombre_cntco
+            FROM
+            sis_sucursal a
             --LEFT JOIN con_tipo_contribuyente b ON a.ide_cntco = b.ide_cntco
-            WHERE a.ide_empr = $1
+            WHERE
+            a.ide_sucu = $1
         `);
-        queryEmpresa.addIntParam(1, dtoIn.ideEmpr);
+        queryEmpresa.addIntParam(1, dtoIn.ideSucu);
         const empresa = await this.dataSource.createSingleQuery(queryEmpresa);
+
+
         // Retornar 
         return {
             rowCount: 1,
@@ -1291,6 +1337,7 @@ export class FacturasService extends BaseService {
                     total: totalNotasCredito,
                 } : null,
                 empresa,
+                inventario: resComprobanteInv ?? null,
             },
             message: 'ok',
         };
