@@ -11,5 +11,6 @@ import { ProformasService } from './proformas.service';
   imports: [],
   controllers: [ProformasController, ProformasBiController],
   providers: [ProformasService, ProformasBiService, CoreService],
+  exports: [ProformasService],
 })
-export class ProformasModule {}
+export class ProformasModule { }

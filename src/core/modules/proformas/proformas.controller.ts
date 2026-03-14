@@ -4,12 +4,14 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
+import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
+import { SaveProformaDto } from './dto/save-proforma.dto';
 import { ProformasService } from './proformas.service';
 
 @Controller('proformas')
 export class ProformasController {
-  constructor(private readonly service: ProformasService) {}
+  constructor(private readonly service: ProformasService) { }
 
   @Get('getProformas')
   // @Auth()
@@ -20,19 +22,19 @@ export class ProformasController {
     });
   }
 
-  @Get('getCabProforma')
+  @Get('getProformaByID')
   // @Auth()
-  getCabProforma(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
-    return this.service.getCabProforma({
+  getProformaByID(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProformaDto) {
+    return this.service.getProformaByID({
       ...headersParams,
       ...dtoIn,
     });
   }
 
-  @Get('getDetallesProforma')
+  @Post('saveProforma')
   // @Auth()
-  getDetallesProforma(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
-    return this.service.getDetallesProforma({
+  saveProforma(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveProformaDto) {
+    return this.service.saveProforma({
       ...headersParams,
       ...dtoIn,
     });
