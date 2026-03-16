@@ -213,6 +213,7 @@ export class ProductosService extends BaseService {
             a.ide_incate,
             u.siglas_inuni,
             a.decim_stock_inarti,
+            a.ide_inuni,
             COALESCE((
                 SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
                 FROM inv_det_comp_inve dci

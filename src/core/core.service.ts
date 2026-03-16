@@ -31,7 +31,7 @@ export class CoreService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly variables: VariablesService,
-  ) {}
+  ) { }
 
   /**
    * Recupera los valores de un listado de variables
@@ -471,4 +471,5 @@ export class CoreService {
       return deleteQuery;
     }
   }
+
 }

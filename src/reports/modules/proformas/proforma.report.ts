@@ -1,425 +1,430 @@
 import type { Content, ContentTable, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { footerSection } from 'src/reports/common/sections/footer.section';
 import { fCurrency } from 'src/util/helpers/common-util';
-import { fDate, fDateTime } from 'src/util/helpers/date-util';
+import { fDate } from 'src/util/helpers/date-util';
 
 import { ProformaRep, ProformaRepDetalle } from './interfaces/proforma-rep';
+import { fNumber } from 'src/util/helpers/number-util';
 
-const COLORS = {
-    navy: '#16324f',
-    ocean: '#1f6f8b',
-    mint: '#dff3f4',
-    sand: '#f6f8fb',
-    ink: '#1f2937',
-    slate: '#64748b',
-    line: '#d6dee8',
-    successBg: '#e7f7ef',
-    successText: '#16794d',
-    warningBg: '#fff4dd',
-    warningText: '#9a6700',
-    dangerBg: '#fde8e8',
-    dangerText: '#b42318',
-    neutralBg: '#edf2f7',
-    neutralText: '#475467',
+// ─── Paleta neutral y profesional ────────────────────────────────────────────
+const C = {
+    // Estructura
+    black: '#0f1117',
+    ink: '#1a1d27',
+    body: '#374151',
+    muted: '#6b7280',
+    placeholder: '#9ca3af',
+    rule: '#e5e7eb',
+    bg: '#f9fafb',
     white: '#ffffff',
+
+    // Acento único: un azul oscuro sobrio
+    accent: '#1e3a5f',
+    accentMid: '#2d5282',
+    accentSoft: '#ebf0f7',
+
+    // Estados (solo texto, sin fondos llamativos)
+    success: '#166534',
+    warning: '#92400e',
+    danger: '#991b1b',
 };
 
+// ─── Estilos ──────────────────────────────────────────────────────────────────
 const styles: StyleDictionary = {
-    heroEyebrow: {
-        fontSize: 9,
+    // Encabezado hero
+    eyebrow: {
+        fontSize: 8,
         bold: true,
-        color: '#cfe6ff',
-        characterSpacing: 1.2,
+        color: C.muted,
+        characterSpacing: 1.5,
     },
-    heroTitle: {
-        fontSize: 24,
-        bold: true,
-        color: COLORS.white,
-    },
-    heroSubTitle: {
-        fontSize: 10,
-        color: '#dbe7f3',
-    },
-    amountLabel: {
-        fontSize: 9,
-        color: '#dbe7f3',
-        alignment: 'right',
-    },
-    amountValue: {
+    docTitle: {
         fontSize: 22,
         bold: true,
-        color: COLORS.white,
-        alignment: 'right',
+        color: C.accent,
     },
-    chip: {
+    docSubtitle: {
+        fontSize: 9,
+        color: C.muted,
+    },
+    // Secciones
+    sectionTitle: {
         fontSize: 9,
         bold: true,
-        color: COLORS.white,
-        alignment: 'center',
+        color: C.accent,
+        characterSpacing: 0.8,
     },
-    sectionTitle: {
-        fontSize: 11,
-        bold: true,
-        color: COLORS.navy,
-        margin: [0, 0, 0, 8] as [number, number, number, number],
-    },
+    // Campos
     label: {
-        fontSize: 8,
+        fontSize: 7.5,
+        color: C.placeholder,
         bold: true,
-        color: COLORS.slate,
-        margin: [0, 0, 0, 2] as [number, number, number, number],
+        characterSpacing: 0.5,
     },
     value: {
-        fontSize: 10,
-        color: COLORS.ink,
-        margin: [0, 0, 0, 8] as [number, number, number, number],
+        fontSize: 9,
+        color: C.body,
     },
     valueStrong: {
-        fontSize: 10,
-        bold: true,
-        color: COLORS.ink,
-        margin: [0, 0, 0, 8] as [number, number, number, number],
-    },
-    tableHeader: {
         fontSize: 9,
         bold: true,
-        color: COLORS.navy,
-        fillColor: '#edf4fb',
-        alignment: 'center',
+        color: C.ink,
+    },
+    // Tabla
+    tableHeader: {
+        fontSize: 8,
+        bold: true,
+        color: C.accent,
     },
     tableCell: {
-        fontSize: 9,
-        color: COLORS.ink,
+        fontSize: 8.5,
+        color: C.body,
     },
-    noteText: {
-        fontSize: 9,
-        color: COLORS.ink,
-        lineHeight: 1.2,
+    tableCellMuted: {
+        fontSize: 8,
+        color: C.muted,
     },
-    summaryLabel: {
+    // Totales
+    totalLabel: {
         fontSize: 9,
-        color: COLORS.slate,
+        color: C.muted,
     },
-    summaryValue: {
-        fontSize: 10,
-        bold: true,
-        color: COLORS.ink,
+    totalValue: {
+        fontSize: 9,
+        color: C.body,
         alignment: 'right',
     },
-    grandTotalLabel: {
+    grandLabel: {
         fontSize: 10,
         bold: true,
-        color: COLORS.navy,
+        color: C.accent,
     },
-    grandTotalValue: {
+    grandValue: {
         fontSize: 13,
         bold: true,
-        color: COLORS.ocean,
+        color: C.accent,
         alignment: 'right',
     },
-    metaText: {
+    // Notas
+    noteText: {
+        fontSize: 8.5,
+        color: C.body,
+        lineHeight: 1.4,
+    },
+    // Badge inline
+    badge: {
         fontSize: 8,
-        color: COLORS.slate,
+        bold: true,
     },
 };
 
-const safeText = (value: unknown, fallback: string = 'No registrado'): string => {
-    if (value === null || value === undefined) {
-        return fallback;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const safeText = (value: unknown, fallback = '—'): string => {
+    if (value === null || value === undefined) return fallback;
+    const t = String(value).trim();
+    return t === '' ? fallback : t;
+};
+
+const money = (v: unknown) => fCurrency(Number(v || 0));
+const pct = (v: unknown) => `${Number(v || 0).toFixed(0)}%`;
+
+const unitPrice = (v: unknown): string => {
+    const n = Number(v || 0);
+    if (!Number.isFinite(n)) return '0.00';
+
+    // Base en 4 decimales para preservar precisión de BDD.
+    const rounded4 = n.toFixed(4);
+    const decimals = rounded4.split('.')[1] || '0000';
+
+    // Si los últimos dos decimales son 00, mostrar solo 2 decimales.
+    if (decimals.endsWith('00')) {
+        return n.toFixed(2);
     }
 
-    const text = String(value).trim();
-    return text === '' ? fallback : text;
+    return rounded4;
 };
 
-const money = (value: unknown): string => fCurrency(Number(value || 0));
-
-const percent = (value: unknown): string => `${Number(value || 0).toFixed(0)}%`;
-
-const createBadge = (text: string, variant: 'success' | 'warning' | 'danger' | 'neutral'): Content => {
-    const palette = {
-        success: { bg: COLORS.successBg, text: COLORS.successText },
-        warning: { bg: COLORS.warningBg, text: COLORS.warningText },
-        danger: { bg: COLORS.dangerBg, text: COLORS.dangerText },
-        neutral: { bg: COLORS.neutralBg, text: COLORS.neutralText },
-    }[variant];
-
-    return {
-        table: {
-            widths: ['auto'],
-            body: [[{
-                text,
-                style: 'chip',
-                color: palette.text,
-                fillColor: palette.bg,
-                border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                margin: [10, 5, 10, 5] as [number, number, number, number],
-            }]],
-        },
-        layout: 'noBorders',
-    };
-};
-
-const card = (content: Content, fillColor: string = COLORS.white): Content => ({
-    table: {
-        widths: ['*'],
-        body: [[{
-            stack: Array.isArray(content) ? content : [content],
-            fillColor,
-            border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: [COLORS.line, COLORS.line, COLORS.line, COLORS.line] as [string, string, string, string],
-            margin: [14, 12, 14, 12] as [number, number, number, number],
-        }]],
-    },
-    layout: {
-        hLineWidth: () => 0.8,
-        vLineWidth: () => 0.8,
-        hLineColor: () => COLORS.line,
-        vLineColor: () => COLORS.line,
-        paddingBottom: () => 0,
-        paddingLeft: () => 0,
-        paddingRight: () => 0,
-        paddingTop: () => 0,
-    },
+/** Línea divisora horizontal */
+const divider = (margin: [number, number, number, number] = [0, 8, 0, 8]): Content => ({
+    canvas: [{ type: 'line', x1: 0, y1: 0, x2: 527, y2: 0, lineWidth: 0.5, lineColor: C.rule }],
+    margin,
 });
 
-const infoField = (label: string, value: unknown, strong = false): Content => ({
+/** Pequeña etiqueta de estado solo con color de texto */
+const statusBadge = (text: string, color: string): Content => ({
+    text,
+    style: 'badge',
+    color,
+});
+
+/** Campo label + valor */
+const field = (label: string, value: unknown, strong = false): Content => ({
     stack: [
-        { text: label, style: 'label' },
-        { text: safeText(value), style: strong ? 'valueStrong' : 'value' },
+        { text: label.toUpperCase(), style: 'label', margin: [0, 0, 0, 1] as [number, number, number, number] },
+        { text: safeText(value), style: strong ? 'valueStrong' : 'value', margin: [0, 0, 0, 0] as [number, number, number, number] },
+    ],
+    margin: [0, 0, 0, 10] as [number, number, number, number],
+});
+
+/** Título de sección con línea abajo */
+const sectionHeading = (title: string): Content => ({
+    stack: [
+        { text: title.toUpperCase(), style: 'sectionTitle', margin: [0, 0, 0, 6] as [number, number, number, number] },
+        {
+            canvas: [{ type: 'line', x1: 0, y1: 0, x2: 527, y2: 0, lineWidth: 1, lineColor: C.accentSoft }],
+            margin: [0, 0, 0, 10] as [number, number, number, number],
+        },
     ],
 });
 
-const buildDetailDescription = (detalle: ProformaRepDetalle): string => {
-    const lines = [safeText(detalle.nombre_inarti, ''), safeText(detalle.observacion_ccdpr, '')].filter(Boolean);
-    return lines.join('\n');
+/** Descripción de línea de detalle */
+const buildDesc = (d: ProformaRepDetalle): string =>
+    [safeText(d.observacion_ccdpr, '')]
+        .filter(Boolean)
+        .join('\n');
+
+const qtyWithUnit = (d: ProformaRepDetalle): string => {
+    const raw = d.cantidad_ccdpr;
+    const unit = safeText(d.siglas_inuni, '').trim();
+
+    if (raw === null || raw === undefined) {
+        return unit ? `0 ${unit}` : '0';
+    }
+
+    const text = String(raw).trim();
+    if (text === '') {
+        return unit ? `0 ${unit}` : '0';
+    }
+
+    // Si ya viene como "1 kg" desde backend, se respeta tal cual.
+    if (/[a-zA-Z]/.test(text)) {
+        return text;
+    }
+
+    return unit ? `${text} ${unit}` : text;
 };
 
+// ─── Tabla de detalles ────────────────────────────────────────────────────────
 const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => ({
     table: {
         headerRows: 1,
-        widths: [58, '*', 42, 45, 60, 65, 38],
+        widths: ['*', 72, 72, 72],
         body: [
+            // Cabeceras
             [
-                { text: 'Código', style: 'tableHeader' },
-                { text: 'Descripción', style: 'tableHeader' },
-                { text: 'Und.', style: 'tableHeader' },
-                { text: 'Cant.', style: 'tableHeader' },
-                { text: 'Precio', style: 'tableHeader' },
-                { text: 'Subtotal', style: 'tableHeader' },
-                { text: 'IVA', style: 'tableHeader' },
+                { text: 'Descripción', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number] },
+                { text: 'Cantidad', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'left' },
+                { text: 'P. Unit.', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'right' },
+                { text: 'Subtotal', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'right' },
             ],
-            ...detalles.map((detalle, index) => {
-                const fillColor = index % 2 === 0 ? COLORS.white : COLORS.sand;
+            // Filas
+            ...detalles.map((d, i) => {
+                const fill = i % 2 === 0 ? C.white : C.bg;
+                const cell = (
+                    text: string,
+                    style: string = 'tableCell',
+                    alignment: string = 'left',
+                    extra: object = {},
+                ) => ({
+                    text,
+                    style,
+                    alignment,
+                    fillColor: fill,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 5, 0, 5] as [number, number, number, number],
+                    ...extra,
+                });
                 return [
-                    { text: safeText(detalle.codigo_inarti, '---'), style: 'tableCell', fillColor, alignment: 'center' },
-                    { text: buildDetailDescription(detalle), style: 'tableCell', fillColor },
-                    { text: safeText(detalle.siglas_inuni, '---'), style: 'tableCell', fillColor, alignment: 'center' },
-                    { text: Number(detalle.cantidad_ccdpr || 0).toFixed(2), style: 'tableCell', fillColor, alignment: 'right' },
-                    { text: money(detalle.precio_ccdpr), style: 'tableCell', fillColor, alignment: 'right' },
-                    { text: money(detalle.total_ccdpr), style: 'tableCell', fillColor, alignment: 'right' },
-                    {
-                        text: detalle.iva_inarti_ccdpr > 0 ? percent(detalle.iva_inarti_ccdpr) : '0%',
-                        style: 'tableCell',
-                        fillColor,
-                        alignment: 'center',
-                    },
+                    cell(buildDesc(d), 'tableCell', 'left'),
+                    cell(qtyWithUnit(d), 'tableCell', 'left'),
+                    cell(unitPrice(d.precio_ccdpr), 'tableCell', 'right'),
+                    cell(money(d.total_ccdpr), 'tableCell', 'right', { bold: true, color: C.ink }),
                 ];
             }),
         ],
     },
     layout: {
-        hLineWidth: (i: number) => (i === 0 || i === 1 ? 0.9 : 0.5),
-        vLineWidth: () => 0.5,
-        hLineColor: () => COLORS.line,
-        vLineColor: () => COLORS.line,
-        paddingBottom: () => 6,
-        paddingTop: () => 6,
-        paddingLeft: () => 6,
-        paddingRight: () => 6,
+        hLineWidth: () => 0,
+        vLineWidth: () => 0,
+        paddingBottom: () => 0,
+        paddingTop: () => 0,
+        paddingLeft: () => 5,
+        paddingRight: () => 5,
     },
 });
 
+// ─── Documento principal ──────────────────────────────────────────────────────
 export const proformaReport = (proforma: ProformaRep, header: Content): TDocumentDefinitions => {
-    const { cabecera, detalles, factura } = proforma;
-    const totalItems = detalles.length;
-    const totalCantidad = detalles.reduce((acc, item) => acc + Number(item.cantidad_ccdpr || 0), 0);
+    const { cabecera, detalles } = proforma;
+
     const subtotal = Number(cabecera.base_grabada_cccpr || 0) + Number(cabecera.base_tarifa0_cccpr || 0);
 
-    const estadoPrincipal = cabecera.anulado_cccpr
-        ? createBadge('ANULADA', 'danger')
-        : cabecera.enviado_cccpr
-            ? createBadge('ENVIADA', 'success')
-            : createBadge('BORRADOR', 'warning');
+    // Estado como texto con color
+    const estadoColor = cabecera.anulado_cccpr ? C.danger : cabecera.enviado_cccpr ? C.success : C.warning;
+    const estadoText = '';  // cabecera.anulado_cccpr ? 'ANULADA' : cabecera.enviado_cccpr ? 'VIGENTE' : 'BORRADOR';
 
+    // ── Hero / Cabecera del documento ─────────────────────────────────────────
     const heroSection: Content = {
-        table: {
-            widths: ['68%', '32%'],
-            body: [[
-                {
-                    stack: [
-                        { text: 'PROPUESTA COMERCIAL', style: 'heroEyebrow' },
-                        { text: `Proforma #${safeText(cabecera.secuencial_cccpr, 'S/N')}`, style: 'heroTitle', margin: [0, 6, 0, 6] as [number, number, number, number] },
-                        {
-                            text: `${safeText(cabecera.nombre_cctpr, 'Proforma')} • Emisión ${fDate(cabecera.fecha_cccpr)}`,
-                            style: 'heroSubTitle',
-                        },
-                        {
-                            columns: [
-                                { width: 'auto', stack: [estadoPrincipal] },
-                                factura
-                                    ? { width: 'auto', stack: [createBadge(`FACTURADA ${safeText(factura.secuencial_cccfa, '')}`, 'neutral')], margin: [8, 0, 0, 0] as [number, number, number, number] }
-                                    : { text: '' },
-                            ],
-                            margin: [0, 14, 0, 0] as [number, number, number, number],
-                        },
-                    ],
-                    fillColor: COLORS.navy,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [18, 18, 18, 18] as [number, number, number, number],
-                },
-                {
-                    stack: [
-                        { text: 'Valor total', style: 'amountLabel', margin: [0, 6, 0, 8] as [number, number, number, number] },
-                        { text: money(cabecera.total_cccpr), style: 'amountValue' },
-                        {
-                            canvas: [{ type: 'line', x1: 0, y1: 10, x2: 120, y2: 10, lineWidth: 1, lineColor: '#d8edf1' }],
-                            margin: [0, 10, 0, 10] as [number, number, number, number],
-                        },
-                        { text: `Items: ${totalItems}`, style: 'heroSubTitle', alignment: 'right' },
-                        { text: `Cantidad total: ${totalCantidad.toFixed(2)}`, style: 'heroSubTitle', alignment: 'right', margin: [0, 4, 0, 0] as [number, number, number, number] },
-                        { text: `IVA aplicado: ${percent(cabecera.tarifa_iva_cccpr)}`, style: 'heroSubTitle', alignment: 'right', margin: [0, 4, 0, 0] as [number, number, number, number] },
-                    ],
-                    fillColor: COLORS.ocean,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [18, 18, 18, 18] as [number, number, number, number],
-                },
-            ]],
-        },
-        layout: {
-            hLineWidth: () => 0,
-            vLineWidth: () => 0,
-            paddingBottom: () => 0,
-            paddingLeft: () => 0,
-            paddingRight: () => 0,
-            paddingTop: () => 0,
-        },
+        columns: [
+            {
+                width: '*',
+                stack: [
+                    { text: 'PROPUESTA COMERCIAL', style: 'eyebrow', margin: [0, 0, 0, 4] as [number, number, number, number] },
+                    { text: `Proforma N.° ${safeText(cabecera.secuencial_cccpr, 'S/N')}`, style: 'docTitle', margin: [0, 0, 0, 4] as [number, number, number, number] },
+                    {
+                        columns: [
+                            { text: `Fecha de emisión: ${fDate(cabecera.fecha_cccpr)}`, style: 'docSubtitle', width: 'auto' },
+                            { text: '  ·  ', style: 'docSubtitle', width: 'auto', color: C.rule },
+                            { text: safeText(cabecera.nombre_cctpr, ''), style: 'docSubtitle', width: 'auto' },
+                            { text: '  ·  ', style: 'docSubtitle', width: 'auto', color: C.rule },
+                            statusBadge(estadoText, estadoColor),
+                        ],
+                    },
+                ],
+            },
+            {
+                width: 'auto',
+                stack: [
+                    { text: 'TOTAL', style: 'eyebrow', alignment: 'right', margin: [0, 0, 0, 4] as [number, number, number, number] },
+                    { text: money(cabecera.total_cccpr), fontSize: 20, bold: true, color: C.accent, alignment: 'right' },
+                    { text: `IVA incluido (${pct(cabecera.tarifa_iva_cccpr)})`, style: 'docSubtitle', alignment: 'right', margin: [0, 3, 0, 0] as [number, number, number, number] },
+                ],
+                alignment: 'right',
+            },
+        ],
+        columnGap: 20,
+        margin: [0, 0, 0, 0] as [number, number, number, number],
+    };
+
+    // ── Cliente ───────────────────────────────────────────────────────────────
+    const clienteSection: Content = {
+        stack: [
+            sectionHeading('Datos del cliente'),
+            {
+                columns: [
+                    { width: '33%', stack: [field('Razón social / Nombre', cabecera.solicitante_cccpr, true)] },
+                    { width: '33%', stack: [field('Identificación', `${safeText(cabecera.nombre_getid, '')} ${safeText(cabecera.identificac_cccpr, '—')}`.trim())] },
+                    { width: '34%', stack: [field('Dirección', cabecera.direccion_cccpr)] },
+                ],
+                columnGap: 16,
+            },
+            {
+                columns: [
+                    { width: '33%', stack: [field('Contacto', cabecera.contacto_cccpr)] },
+                    { width: '33%', stack: [field('Teléfono', cabecera.telefono_cccpr)] },
+                    { width: '34%', stack: [field('Correo electrónico', cabecera.correo_cccpr)] },
+                ],
+                columnGap: 16,
+            },
+        ],
         margin: [0, 0, 0, 14] as [number, number, number, number],
     };
 
-    const clienteSection = card([
-        { text: 'Cliente y contacto', style: 'sectionTitle' },
-        {
-            columns: [
-                { width: '34%', stack: [infoField('Solicitante', cabecera.solicitante_cccpr, true), infoField('Documento', `${safeText(cabecera.nombre_getid, '')} ${safeText(cabecera.identificac_cccpr, 'No registrado')}`.trim())] },
-                { width: '33%', stack: [infoField('Contacto', cabecera.contacto_cccpr), infoField('Teléfono', cabecera.telefono_cccpr)] },
-                { width: '33%', stack: [infoField('Correo', cabecera.correo_cccpr), infoField('Dirección', cabecera.direccion_cccpr)] },
-            ],
-            columnGap: 14,
-        },
-    ], COLORS.white);
-
-    const condicionesSection = card([
-        { text: 'Condiciones comerciales', style: 'sectionTitle' },
-        {
-            columns: [
-                { width: '34%', stack: [infoField('Vendedor', cabecera.nombre_vgven, true), infoField('Validez', cabecera.nombre_ccvap)] },
-                { width: '33%', stack: [infoField('Tiempo de entrega', cabecera.nombre_ccten), infoField('Referencia', cabecera.referencia_cccpr)] },
-                { width: '33%', stack: [infoField('Usuario registro', cabecera.nom_usua), infoField('Utilidad estimada', money(cabecera.utilidad_cccpr), true)] },
-            ],
-            columnGap: 14,
-        },
-    ], COLORS.white);
-
-    const facturaSection = factura
-        ? card([
-            { text: 'Documento relacionado', style: 'sectionTitle' },
+    // ── Condiciones comerciales ───────────────────────────────────────────────
+    const condicionesSection: Content = {
+        stack: [
+            sectionHeading('Condiciones comerciales'),
             {
                 columns: [
-                    { width: '40%', stack: [infoField('Factura', safeText(factura.secuencial_cccfa), true), infoField('Fecha emisión', fDate(factura.fecha_emision_cccfa))] },
-                    { width: '35%', stack: [infoField('Cliente facturado', factura.cliente), infoField('Identificación', factura.identificacion_cliente)] },
-                    { width: '25%', stack: [infoField('Total factura', money(factura.total_cccfa), true)] },
+                    { width: '33%', stack: [field('Asesor comercial', cabecera.nombre_vgven, true)] },
+                    { width: '33%', stack: [field('Validez de la oferta', cabecera.nombre_ccvap)] },
+                    { width: '34%', stack: [field('Tiempo de entrega', cabecera.nombre_ccten)] },
                 ],
-                columnGap: 14,
+                columnGap: 16,
             },
-        ], '#f9fcff')
-        : card([
-            { text: 'Documento relacionado', style: 'sectionTitle' },
-            { text: 'Esta proforma todavía no tiene una factura emitida asociada.', style: 'noteText' },
-        ], '#f9fcff');
+        ],
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+    };
 
-    const detalleSection = card([
-        { text: 'Detalle valorizado', style: 'sectionTitle' },
-        detailTable(detalles),
-    ], COLORS.white);
+    // ── Detalle ───────────────────────────────────────────────────────────────
+    const detalleSection: Content = {
+        stack: [
+            sectionHeading('Detalle de productos / servicios'),
+            detailTable(detalles),
+        ],
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+    };
 
-    const observaciones = card([
-        { text: 'Observaciones y alcance', style: 'sectionTitle' },
-        { text: safeText(cabecera.observacion_cccpr, 'Sin observaciones registradas.'), style: 'noteText' },
-    ], COLORS.mint);
-
-    const resumenTotales = card([
-        { text: 'Resumen económico', style: 'sectionTitle' },
-        {
-            table: {
-                widths: ['*', 110],
-                body: [
-                    [{ text: 'Subtotal', style: 'summaryLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }, { text: money(subtotal), style: 'summaryValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }],
-                    [{ text: 'Base tarifa 0%', style: 'summaryLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }, { text: money(cabecera.base_tarifa0_cccpr), style: 'summaryValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }],
-                    [{ text: `Base gravada ${percent(cabecera.tarifa_iva_cccpr)}`, style: 'summaryLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }, { text: money(cabecera.base_grabada_cccpr), style: 'summaryValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }],
-                    [{ text: `IVA ${percent(cabecera.tarifa_iva_cccpr)}`, style: 'summaryLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }, { text: money(cabecera.valor_iva_cccpr), style: 'summaryValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] }],
-                    [{ text: 'Total proforma', style: 'grandTotalLabel', border: [false, true, false, false] as [boolean, boolean, boolean, boolean], borderColor: [COLORS.white, COLORS.line, COLORS.white, COLORS.white] as [string, string, string, string], margin: [0, 8, 0, 0] as [number, number, number, number] }, { text: money(cabecera.total_cccpr), style: 'grandTotalValue', border: [false, true, false, false] as [boolean, boolean, boolean, boolean], borderColor: [COLORS.white, COLORS.line, COLORS.white, COLORS.white] as [string, string, string, string], margin: [0, 8, 0, 0] as [number, number, number, number] }],
-                ],
+    // ── Totales + Observaciones (dos columnas) ────────────────────────────────
+    const totalesBlock: Content = {
+        stack: [
+            sectionHeading('Resumen'),
+            {
+                table: {
+                    widths: ['*', 90],
+                    body: [
+                        [
+                            { text: 'Base tarifa 0%', style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                            { text: money(cabecera.base_tarifa0_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                        ],
+                        [
+                            { text: `Base gravada ${pct(cabecera.tarifa_iva_cccpr)}`, style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                            { text: money(cabecera.base_grabada_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                        ],
+                        [
+                            { text: `IVA ${pct(cabecera.tarifa_iva_cccpr)}`, style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                            { text: money(cabecera.valor_iva_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                        ],
+                        [
+                            {
+                                text: 'TOTAL',
+                                style: 'grandLabel',
+                                border: [false, true, false, false] as [boolean, boolean, boolean, boolean],
+                                borderColor: ['', '', C.rule, ''] as [string, string, string, string],
+                                margin: [0, 8, 0, 0] as [number, number, number, number],
+                            },
+                            {
+                                text: money(cabecera.total_cccpr),
+                                style: 'grandValue',
+                                border: [false, true, false, false] as [boolean, boolean, boolean, boolean],
+                                borderColor: ['', '', C.rule, ''] as [string, string, string, string],
+                                margin: [0, 8, 0, 0] as [number, number, number, number],
+                            },
+                        ],
+                    ],
+                },
+                layout: 'noBorders',
             },
-            layout: 'noBorders',
-        },
-    ], COLORS.white);
+        ],
+    };
 
-    const auditoria = card([
-        { text: 'Trazabilidad', style: 'sectionTitle' },
-        {
-            columns: [
-                { width: '33%', stack: [{ text: `Creado por: ${safeText(cabecera.usuario_ingre || cabecera.nom_usua)}`, style: 'metaText' }, { text: `Fecha creación: ${cabecera.fecha_ingre ? fDateTime(cabecera.fecha_ingre) : 'No registrada'}`, style: 'metaText', margin: [0, 4, 0, 0] as [number, number, number, number] }] },
-                { width: '33%', stack: [{ text: `Actualizado por: ${safeText(cabecera.usuario_actua)}`, style: 'metaText' }, { text: `Fecha actualización: ${cabecera.fecha_actua ? fDateTime(cabecera.fecha_actua) : 'No registrada'}`, style: 'metaText', margin: [0, 4, 0, 0] as [number, number, number, number] }] },
-                { width: '34%', stack: [{ text: `Emitida: ${fDate(cabecera.fecha_cccpr)}`, style: 'metaText' }, { text: `Generado: ${fDateTime(new Date())}`, style: 'metaText', margin: [0, 4, 0, 0] as [number, number, number, number] }] },
-            ],
-            columnGap: 14,
-        },
-    ], COLORS.white);
+    const observacionesBlock: Content = {
+        stack: [
+            sectionHeading('Observaciones'),
+            { text: safeText(cabecera.observacion_cccpr, 'Sin observaciones adicionales.'), style: 'noteText' },
+        ],
+    };
 
+    const bottomRow: Content = {
+        columns: [
+            { width: '55%', stack: [observacionesBlock] },
+            { width: '45%', stack: [totalesBlock] },
+        ],
+        columnGap: 20,
+        margin: [0, 0, 0, 0] as [number, number, number, number],
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
     return {
         styles,
         pageSize: 'A4',
-        pageMargins: [34, 22, 34, 28] as [number, number, number, number],
+        pageMargins: [38, 22, 38, 30] as [number, number, number, number],
+
         watermark: cabecera.anulado_cccpr
-            ? {
-                text: 'ANULADA',
-                color: '#d92d20',
-                opacity: 0.08,
-                bold: true,
-            }
+            ? { text: 'ANULADA', color: C.danger, opacity: 0.06, bold: true }
             : undefined,
-        footer: (currentPage: number, pageCount: number) => footerSection(currentPage, pageCount, true),
+
+        footer: (currentPage: number, pageCount: number) =>
+            footerSection(currentPage, pageCount, true),
+
         content: [
             header,
             heroSection,
-            {
-                columns: [
-                    { width: '62%', stack: [clienteSection, { text: '', margin: [0, 10, 0, 0] as [number, number, number, number] }, observaciones] },
-                    { width: '38%', stack: [condicionesSection, { text: '', margin: [0, 10, 0, 0] as [number, number, number, number] }, facturaSection] },
-                ],
-                columnGap: 12,
-                margin: [0, 0, 0, 12] as [number, number, number, number],
-            },
+            divider([0, 14, 0, 16]),
+            clienteSection,
+            condicionesSection,
             detalleSection,
-            {
-                columns: [
-                    { width: '56%', stack: [auditoria] },
-                    { width: '44%', stack: [resumenTotales] },
-                ],
-                columnGap: 12,
-                margin: [0, 12, 0, 0] as [number, number, number, number],
-            },
+            bottomRow,
         ],
     };
 };

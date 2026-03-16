@@ -9,6 +9,7 @@ import { CoreService } from 'src/core/core.service';
 import { WhatsappService } from 'src/core/whatsapp/whatsapp.service';
 import { validateDataRequiere } from 'src/util/helpers/common-util';
 import { getCurrentDateTime, getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
+import { normalizeString } from 'src/util/helpers/sql-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
 import { BaseService } from '../../../../common/base-service';
@@ -1260,16 +1261,54 @@ export class ClientesService extends BaseService {
     }
 
     async searchCliente(dto: SearchDto & HeaderParamsDto) {
-        const dtoIn = {
-            ...dto,
-            module: 'gen',
-            tableName: 'persona',
-            columnsReturn: ['ide_geper', 'identificac_geper', 'nom_geper'],
-            columnsSearch: ['nom_geper', 'identificac_geper', 'correo_geper'],
-            columnOrder: 'nom_geper',
-            condition: `ide_empr = ${dto.ideEmpr} and activo_geper = true and es_cliente_geper = true and nivel_geper = 'HIJO'`,
-        };
-        return await this.core.search(dtoIn);
+        if (dto.value === '') {
+            return [];
+        }
+
+        const normalizedSearchValue = normalizeString(dto.value.trim());
+        const sqlSearchValue = `%${normalizedSearchValue}%`;
+
+        const query = new SelectQuery(
+            `
+        SELECT
+            p.ide_geper,
+            p.uuid,
+            p.identificac_geper,
+            p.nom_geper,
+            p.correo_geper,
+            CASE
+                WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%cedula%' THEN 'CEDULA'
+                WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%ruc%' THEN 'RUC'
+                WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%pasaporte%' THEN 'PASAPORTE'
+                ELSE COALESCE(ti.nombre_getid, '')
+            END AS tipo_identificacion,
+            COALESCE(tp.detalle_getip, '') AS tipo_persona,
+            p.ide_getid,
+            p.ide_getip
+        FROM
+            gen_persona p
+            LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
+            LEFT JOIN gen_tipo_persona tp ON p.ide_getip = tp.ide_getip
+        WHERE
+            (
+                regexp_replace(unaccent(LOWER(p.nom_geper)), '[^a-z0-9]', '', 'g') LIKE $1
+                OR regexp_replace(unaccent(LOWER(p.identificac_geper)), '[^a-z0-9]', '', 'g') LIKE $2
+                OR regexp_replace(unaccent(LOWER(p.correo_geper)), '[^a-z0-9]', '', 'g') LIKE $3
+            )
+            AND p.ide_empr = ${dto.ideEmpr}
+            AND p.activo_geper = true
+            AND p.es_cliente_geper = true
+            AND p.nivel_geper = 'HIJO'
+        ORDER BY
+            p.nom_geper
+        LIMIT ${dto.limit}
+        `,
+            dto,
+        );
+        query.addStringParam(1, sqlSearchValue);
+        query.addStringParam(2, sqlSearchValue);
+        query.addStringParam(3, sqlSearchValue);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async existCliente(dto: ExistClienteDto & HeaderParamsDto) {

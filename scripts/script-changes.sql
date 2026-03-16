@@ -137,23 +137,6 @@ ALTER TABLE sis_sucursal ADD COLUMN hora_actua TIMESTAMP ;
 
 
 
-ALTER TABLE "public"."cxc_cabece_proforma"
-ADD COLUMN "ide_geper" int4;
-
-ALTER TABLE "public"."cxc_cabece_proforma"
-ADD COLUMN "fecha_abre_cccpr" timestamp;
-
-ALTER TABLE "public"."cxc_cabece_proforma"
-ADD COLUMN "usuario_abre_cccpr" varchar(80);
-
-ALTER TABLE public.cxc_cabece_proforma
-	ADD CONSTRAINT cxc_cabece_proforma_ide_geper_fkey
-	FOREIGN KEY(ide_geper)
-	REFERENCES public.gen_persona(ide_geper)
-	MATCH SIMPLE
-	ON DELETE RESTRICT 
-	ON UPDATE RESTRICT ;
-  
     
 
 -- 4. Índice para cálculo de agregados por ide_geper
@@ -507,8 +490,4 @@ ALTER TABLE tes_cuenta_banco ADD COLUMN hora_actua TIMESTAMP;
 
 
 
-ALTER TABLE "public"."sis_sucursal"
-ADD COLUMN "pagina_sucu" varchar(80);
 
-ALTER TABLE "public"."sis_sucursal"
-ADD COLUMN "logotipo_sucu" varchar(120);

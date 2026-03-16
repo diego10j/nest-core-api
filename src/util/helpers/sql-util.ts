@@ -3,6 +3,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { UpdateQuery, InsertQuery, DeleteQuery, SelectQuery } from 'src/core/connection/helpers';
 
 import { QueryOptionsDto } from '../../common/dto/query-options.dto';
+import { isDefined } from './common-util';
 
 /**
  * Retorna la sentencia SQL del objeto UpdateQuery
@@ -280,4 +281,15 @@ export function normalizeString(str: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Elimina diacríticos
     .replace(/[^a-z0-9]/g, ''); // Elimina todo lo que no sea alfanumérico
+}
+
+
+/**
+ * Copia del objeto fuente al destino solo las claves indicadas que estén definidas.
+ * Evita repetir bloques if (isDefined(...)) para cada campo opcional.
+ */
+export function assignIfDefined(target: Record<string, any>, source: Record<string, any>, keys: string[]): void {
+  for (const key of keys) {
+    if (isDefined(source[key])) target[key] = source[key];
+  }
 }

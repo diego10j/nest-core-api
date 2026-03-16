@@ -2,10 +2,12 @@ import { Type } from 'class-transformer';
 import {
     ArrayMinSize,
     IsArray,
+    IsBoolean,
     IsDateString,
     IsInt,
     IsNotEmpty,
     IsNumber,
+    IsObject,
     IsOptional,
     IsString,
     MaxLength,
@@ -55,9 +57,17 @@ export class DetaProformaDto {
     @IsNumber()
     @IsOptional()
     utilidad_ccdpr?: number;
+
+    @IsNumber()
+    @IsOptional()
+    precio_sugerido_ccdpr?: number;
 }
 
-export class SaveProformaDto {
+export class CabProformaDto {
+    @IsInt()
+    @IsOptional()
+    ide_cccpr?: number;
+
     @IsDateString()
     fecha_cccpr: string;
 
@@ -71,6 +81,9 @@ export class SaveProformaDto {
 
     @IsInt()
     ide_cctpr: number;
+
+    @IsInt()
+    ide_usua: number;
 
     @IsNumber()
     @IsOptional()
@@ -86,6 +99,12 @@ export class SaveProformaDto {
     @IsOptional()
     @MaxLength(50)
     referencia_cccpr?: string;
+
+    @IsInt()
+    @IsOptional()
+    ide_cndfp?: number;
+
+
 
     @IsString()
     @IsOptional()
@@ -127,10 +146,35 @@ export class SaveProformaDto {
     @IsOptional()
     ide_geprov?: number;
 
+
+    @IsInt()
+    @IsOptional()
+    ide_geper?: number;
+
+    @IsDateString()
+    @IsOptional()
+    fecha_abre_cccpr?: string;
+
+    @IsString()
+    @IsOptional()
+    usuario_abre_cccpr?: string;
+
+
     @IsArray()
     @ArrayMinSize(1)
     @ValidateNested({ each: true })
     @Type(() => DetaProformaDto)
     @IsNotEmpty()
     detalles: DetaProformaDto[];
+}
+
+export class SaveProformaDto {
+    @IsBoolean()
+    isUpdate: boolean;
+
+    @IsNotEmpty()
+    @IsObject()
+    @ValidateNested()
+    @Type(() => CabProformaDto)
+    data: CabProformaDto;
 }
