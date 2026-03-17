@@ -21,7 +21,7 @@ export class ProformasRepService {
 
         const header = await this.sectionsService.createReportHeader({
             ideEmpr: dtoIn.ideEmpr,
-            showDate: true,
+            showDate: false,
         });
 
         const docDefinition = proformaReport(proforma, header);

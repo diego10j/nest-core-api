@@ -22,6 +22,8 @@ const C = {
     accent: '#1e3a5f',
     accentMid: '#2d5282',
     accentSoft: '#ebf0f7',
+    accentLine: '#d8e2ef',
+    accentSurface: '#f5f8fc',
 
     // Estados (solo texto, sin fondos llamativos)
     success: '#166534',
@@ -72,13 +74,15 @@ const styles: StyleDictionary = {
     },
     // Tabla
     tableHeader: {
-        fontSize: 8,
+        fontSize: 8.5,
         bold: true,
         color: C.accent,
+        characterSpacing: 0.3,
     },
     tableCell: {
         fontSize: 8.5,
         color: C.body,
+        lineHeight: 1.18,
     },
     tableCellMuted: {
         fontSize: 8,
@@ -210,16 +214,41 @@ const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => ({
         headerRows: 1,
         widths: ['*', 72, 72, 72],
         body: [
-            // Cabeceras
+            // ── Cabeceras ────────────────────────────────────────────────────
             [
-                { text: 'Descripción', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number] },
-                { text: 'Cantidad', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'left' },
-                { text: 'P. Unit.', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'right' },
-                { text: 'Subtotal', style: 'tableHeader', border: [false, false, false, true] as [boolean, boolean, boolean, boolean], borderColor: ['', '', '', C.accentSoft] as [string, string, string, string], margin: [0, 0, 0, 5] as [number, number, number, number], alignment: 'right' },
+                {
+                    text: 'Descripción', style: 'tableHeader',
+                    color: C.accent,
+                    fillColor: C.accentSurface,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 8, 0, 8] as [number, number, number, number],
+                },
+                {
+                    text: 'Cantidad', style: 'tableHeader', alignment: 'left',
+                    color: C.accent,
+                    fillColor: C.accentSurface,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 8, 0, 8] as [number, number, number, number],
+                },
+                {
+                    text: 'P. Unit.', style: 'tableHeader', alignment: 'right',
+                    color: C.accent,
+                    fillColor: C.accentSurface,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 8, 0, 8] as [number, number, number, number],
+                },
+                {
+                    text: 'Subtotal', style: 'tableHeader', alignment: 'right',
+                    color: C.accent,
+                    fillColor: C.accentSurface,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 8, 0, 8] as [number, number, number, number],
+                },
             ],
-            // Filas
+
+            // ── Filas ────────────────────────────────────────────────────────
             ...detalles.map((d, i) => {
-                const fill = i % 2 === 0 ? C.white : C.bg;
+                const isEvenRow = i % 2 === 0;
                 const cell = (
                     text: string,
                     style: string = 'tableCell',
@@ -229,9 +258,9 @@ const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => ({
                     text,
                     style,
                     alignment,
-                    fillColor: fill,
+                    fillColor: isEvenRow ? C.white : C.bg,
                     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 5, 0, 5] as [number, number, number, number],
+                    margin: [0, 7, 0, 7] as [number, number, number, number],
                     ...extra,
                 });
                 return [
@@ -244,17 +273,26 @@ const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => ({
         ],
     },
     layout: {
-        hLineWidth: () => 0,
+        hLineWidth: (index: number, node: { table: { body: unknown[] } }) => {
+            if (index === node.table.body.length) return 0;
+            if (index === 0) return 0.6;
+            return index === 1 ? 1 : 0.45;
+        },
+        hLineColor: (index: number) => (index <= 1 ? C.accentLine : C.rule),
         vLineWidth: () => 0,
-        paddingBottom: () => 0,
-        paddingTop: () => 0,
-        paddingLeft: () => 5,
-        paddingRight: () => 5,
+        paddingBottom: (index: number) => (index === 0 ? 2 : 1),
+        paddingTop: (index: number) => (index === 0 ? 2 : 1),
+        paddingLeft: () => 8,
+        paddingRight: () => 8,
     },
 });
 
 // ─── Documento principal ──────────────────────────────────────────────────────
-export const proformaReport = (proforma: ProformaRep, header: Content): TDocumentDefinitions => {
+export const proformaReport = (
+    proforma: ProformaRep,
+    header: Content,
+    background?: NonNullable<TDocumentDefinitions['background']>,
+): TDocumentDefinitions => {
     const { cabecera, detalles } = proforma;
 
     const subtotal = Number(cabecera.base_grabada_cccpr || 0) + Number(cabecera.base_tarifa0_cccpr || 0);
@@ -274,8 +312,6 @@ export const proformaReport = (proforma: ProformaRep, header: Content): TDocumen
                     {
                         columns: [
                             { text: `Fecha de emisión: ${fDate(cabecera.fecha_cccpr)}`, style: 'docSubtitle', width: 'auto' },
-                            { text: '  ·  ', style: 'docSubtitle', width: 'auto', color: C.rule },
-                            { text: safeText(cabecera.nombre_cctpr, ''), style: 'docSubtitle', width: 'auto' },
                             { text: '  ·  ', style: 'docSubtitle', width: 'auto', color: C.rule },
                             statusBadge(estadoText, estadoColor),
                         ],
@@ -369,16 +405,18 @@ export const proformaReport = (proforma: ProformaRep, header: Content): TDocumen
                             {
                                 text: 'TOTAL',
                                 style: 'grandLabel',
-                                border: [false, true, false, false] as [boolean, boolean, boolean, boolean],
-                                borderColor: ['', '', C.rule, ''] as [string, string, string, string],
-                                margin: [0, 8, 0, 0] as [number, number, number, number],
+                                fillColor: C.accentSurface,
+                                color: C.accent,
+                                border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                                margin: [0, 2, 0, 2] as [number, number, number, number],
                             },
                             {
                                 text: money(cabecera.total_cccpr),
                                 style: 'grandValue',
-                                border: [false, true, false, false] as [boolean, boolean, boolean, boolean],
-                                borderColor: ['', '', C.rule, ''] as [string, string, string, string],
-                                margin: [0, 8, 0, 0] as [number, number, number, number],
+                                fillColor: C.accentSurface,
+                                color: C.accent,
+                                border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                                margin: [0, 2, 0, 2] as [number, number, number, number],
                             },
                         ],
                     ],
@@ -406,9 +444,11 @@ export const proformaReport = (proforma: ProformaRep, header: Content): TDocumen
 
     // ─────────────────────────────────────────────────────────────────────────
     return {
+        defaultStyle: { font: 'Inter' },
         styles,
         pageSize: 'A4',
         pageMargins: [38, 22, 38, 30] as [number, number, number, number],
+        background,
 
         watermark: cabecera.anulado_cccpr
             ? { text: 'ANULADA', color: C.danger, opacity: 0.06, bold: true }

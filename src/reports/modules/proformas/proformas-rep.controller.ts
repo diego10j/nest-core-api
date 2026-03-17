@@ -21,8 +21,12 @@ export class ProformasRepController {
             ...dtoIn,
         });
 
+        const filename = `proforma-${dtoIn.ide_cccpr ?? '_proforma'}.pdf`;
+
         response.setHeader('Content-Type', 'application/pdf');
-        pdfDoc.info.Title = 'Reporte de Proforma';
+        response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        pdfDoc.info.Title = 'Proforma';
         pdfDoc.pipe(response);
         pdfDoc.end();
     }

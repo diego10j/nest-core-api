@@ -847,7 +847,7 @@ export const resumenDiarioFacturasReport = (
         styles,
 
         defaultStyle: {
-            font: 'Roboto',
+            font: 'Inter',
             fontSize: 8,
             color: NAVY_LIGHT,
         },

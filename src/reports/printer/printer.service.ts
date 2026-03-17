@@ -1,15 +1,47 @@
 import * as path from 'path';
+import * as fs from 'fs';
 
 import { Injectable } from '@nestjs/common';
 import PdfPrinter from 'pdfmake';
 import { BufferOptions, CustomTableLayout, TDocumentDefinitions } from 'pdfmake/interfaces';
 
+const INTER_FONT_SOURCES = [
+  {
+    url: 'https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Regular.ttf',
+    name: 'Inter-Regular.ttf',
+  },
+  {
+    url: 'https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Medium.ttf',
+    name: 'Inter-Medium.ttf',
+  },
+  {
+    url: 'https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Bold.ttf',
+    name: 'Inter-Bold.ttf',
+  },
+];
+
+const REQUIRED_INTER_LOCAL_FILES = [
+  'Inter-Regular.ttf',
+  'Inter-Medium.ttf',
+  'Inter-Bold.ttf',
+  'Inter-Italic-Variable.ttf',
+];
+
+const fontsDir = path.join(process.cwd(), 'public/assets/fonts');
+
 const fonts = {
   Roboto: {
-    normal: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Regular.ttf'),
-    bold: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Medium.ttf'),
-    italics: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-Italic.ttf'),
-    bolditalics: path.join(process.cwd(), 'public/assets/fonts', 'Roboto-MediumItalic.ttf'),
+    normal: path.join(fontsDir, 'Roboto-Regular.ttf'),
+    bold: path.join(fontsDir, 'Roboto-Medium.ttf'),
+    italics: path.join(fontsDir, 'Roboto-Italic.ttf'),
+    bolditalics: path.join(fontsDir, 'Roboto-MediumItalic.ttf'),
+  },
+  Inter: {
+    normal: path.join(fontsDir, 'Inter-Regular.ttf'),
+    bold: path.join(fontsDir, 'Inter-Bold.ttf'),
+    // pdfmake exige variantes italic y bolditalic en la familia.
+    italics: path.join(fontsDir, 'Inter-Italic-Variable.ttf'),
+    bolditalics: path.join(fontsDir, 'Inter-Italic-Variable.ttf'),
   },
 };
 
@@ -49,6 +81,19 @@ const customTableLayouts: Record<string, CustomTableLayout> = {
 @Injectable()
 export class PrinterService {
   private printer = new PdfPrinter(fonts);
+
+  constructor() {
+    const missingInterFonts = REQUIRED_INTER_LOCAL_FILES.filter(
+      (fontName) => !fs.existsSync(path.join(fontsDir, fontName)),
+    );
+
+    if (missingInterFonts.length > 0) {
+      const sourceList = INTER_FONT_SOURCES
+        .map((font) => `${font.name}: ${font.url}`)
+        .join(' | ');
+      console.warn(`[PrinterService] Faltan fuentes Inter locales. Descargue: ${sourceList}`);
+    }
+  }
 
   createPdf(
     docDefinition: TDocumentDefinitions,

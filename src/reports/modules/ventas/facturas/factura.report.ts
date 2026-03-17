@@ -577,7 +577,7 @@ export const facturaElectronicaReport = (
         pageMargins: [35, 20, 35, 35] as [number, number, number, number],
         styles,
         defaultStyle: {
-            font: 'Roboto',
+            font: 'Inter',
             fontSize: 9,
             color: NEGRO,
         },

@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { Content } from 'pdfmake/interfaces';
+import { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 
 import { HeaderOptions } from '../interfaces/reportes';
 import { HeaderSection } from '../sections/header.section';
+import { logoWatermarkSection } from '../sections/logo-watermark.section';
 
 import { EmpresaRepService } from './empresa-rep.service';
 
 @Injectable()
 export class SectionsService {
-  constructor(private readonly empresaRepService: EmpresaRepService) {}
+  constructor(private readonly empresaRepService: EmpresaRepService) { }
 
   /**
    * Crea un header completo para reportes con título integrado
@@ -37,5 +38,10 @@ export class SectionsService {
         },
       ],
     };
+  }
+
+  async createLogoWatermark(ideEmpr: number): Promise<NonNullable<TDocumentDefinitions['background']>> {
+    const empresa = await this.empresaRepService.getEmpresaById(ideEmpr);
+    return logoWatermarkSection(empresa?.logotipo_empr);
   }
 }
