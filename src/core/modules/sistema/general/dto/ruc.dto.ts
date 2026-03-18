@@ -6,7 +6,4 @@ export class RucDto extends QueryOptionsDto {
   @Length(13, 13, { message: 'El RUC debe tener 13 caracteres.' })
   ruc: string;
 
-  @IsBoolean()
-  @IsOptional()
-  isSas?: boolean = false;
 }

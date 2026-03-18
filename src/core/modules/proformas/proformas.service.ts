@@ -551,12 +551,30 @@ ORDER BY prof.secuencial_cccpr DESC
 
   // ==================================Precios==============================
   async calcularPreciosCliente(dtoIn: GetPrecioClienteDto & HeaderParamsDto) {
-    const { ide_inarti, cantidad, ide_geper, ide_cndfp } = dtoIn;
+    const { ide_inarti, cantidad, identificacion, ide_cndfp } = dtoIn;
 
-    const fechaFin = getCurrentDate();
-    const fechaInicioDate = new Date();
-    fechaInicioDate.setFullYear(fechaInicioDate.getFullYear() - 1);
-    const fechaInicio = fechaInicioDate.toISOString().split('T')[0];
+    // Consulta ide_geper de gen_persona por identificacion
+    // si no se encuentra no se filtra por cliente en las consultas de ventas anteriores
+    let ide_geper: number = null;
+
+    if (identificacion) {
+      const qCliente = new SelectQuery(`
+        SELECT ide_geper
+        FROM gen_persona
+        WHERE identificac_geper = $1
+          AND ide_empr = ${dtoIn.ideEmpr}
+          AND es_cliente_geper = true
+        LIMIT 1
+      `);
+      qCliente.addParam(1, identificacion);
+      const cliente = await this.dataSource.createSingleQuery(qCliente);
+      if (cliente) {
+        ide_geper = cliente.ide_geper;
+      }
+    }
+    console.log('ide_geper encontrado:', ide_geper);
+
+
 
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
     const estadoNormal = this.variables.get('p_inv_estado_normal');
@@ -582,7 +600,8 @@ ORDER BY prof.secuencial_cccpr DESC
     qConfigPrecios.addParam(2, cantidad ?? 1);
     qConfigPrecios.addParam(3, ide_cndfp ?? null);
 
-    const qVentasCliente = isDefined(ide_geper)
+    // Facturas del cliente filtradas por ide_geper
+    const qVentasCliente = (ide_geper)
       ? new SelectQuery(`
           SELECT
             cf.fecha_emisi_cccfa,
@@ -600,22 +619,22 @@ ORDER BY prof.secuencial_cccpr DESC
           WHERE cdf.ide_inarti = $1
             AND cf.ide_geper = $2
             AND cf.ide_ccefa = ${estadoFacturaNormal}
-            AND cf.fecha_emisi_cccfa BETWEEN $3 AND $4
             AND cf.ide_empr = ${dtoIn.ideEmpr}
           ORDER BY cf.fecha_emisi_cccfa DESC
+          LIMIT 10
         `)
       : null;
 
     if (qVentasCliente) {
       qVentasCliente.addIntParam(1, ide_inarti);
       qVentasCliente.addIntParam(2, ide_geper);
-      qVentasCliente.addParam(3, fechaInicio);
-      qVentasCliente.addParam(4, fechaFin);
     }
-    // excluye cliente y DIQUIMEC
+
+    // Excluye cliente y DIQUIMEC
     const whereExcluirCliente = isDefined(ide_geper)
       ? `AND cf.ide_geper <> ${ide_geper} AND cf.ide_geper <> 16477`
       : 'AND cf.ide_geper <> 16477';
+
     const qVentasOtros = new SelectQuery(`
       SELECT
         cf.fecha_emisi_cccfa,
@@ -632,16 +651,13 @@ ORDER BY prof.secuencial_cccpr DESC
       INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
       WHERE cdf.ide_inarti = $1
         AND cf.ide_ccefa = ${estadoFacturaNormal}
-        AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
         AND cf.ide_empr = ${dtoIn.ideEmpr}
         ${whereExcluirCliente}
         ${whereCantidadVentas}
       ORDER BY cf.fecha_emisi_cccfa DESC
-      LIMIT 100
+      LIMIT 50
     `);
     qVentasOtros.addIntParam(1, ide_inarti);
-    qVentasOtros.addParam(2, fechaInicio);
-    qVentasOtros.addParam(3, fechaFin);
 
     const qCotizaciones = new SelectQuery(`
       SELECT
@@ -661,15 +677,41 @@ ORDER BY prof.secuencial_cccpr DESC
       LEFT  JOIN gen_persona gp ON cpr.ide_geper = gp.ide_geper
       WHERE dep.ide_inarti = $1
         AND cpr.ide_empr = ${dtoIn.ideEmpr}
-        AND cpr.fecha_cccpr BETWEEN $2 AND $3
         AND COALESCE(cpr.anulado_cccpr, false) = false
         ${whereCantidadCotizaciones}
       ORDER BY cpr.fecha_cccpr DESC
-      LIMIT 100
+      LIMIT 50
     `);
     qCotizaciones.addIntParam(1, ide_inarti);
-    qCotizaciones.addParam(2, fechaInicio);
-    qCotizaciones.addParam(3, fechaFin);
+
+
+    // Cotizaciones del cliente - identificacion es obligatorio
+    const qCotizacionesCliente = new SelectQuery(`
+      SELECT
+        cpr.ide_cccpr,
+        cpr.secuencial_cccpr,
+        cpr.fecha_cccpr,
+        cpr.solicitante_cccpr,
+        gp.nom_geper AS cliente_cotizacion,
+        f_decimales(dep.cantidad_ccdpr, iart.decim_stock_inarti)::numeric AS cantidad_ccdpr,
+        dep.precio_ccdpr,
+        dep.total_ccdpr,
+        uni.siglas_inuni
+      FROM cxc_deta_proforma dep
+      INNER JOIN cxc_cabece_proforma cpr ON dep.ide_cccpr = cpr.ide_cccpr
+      INNER JOIN inv_articulo iart ON dep.ide_inarti = iart.ide_inarti
+      LEFT  JOIN inv_unidad uni ON iart.ide_inuni = uni.ide_inuni
+      LEFT  JOIN gen_persona gp ON cpr.ide_geper = gp.ide_geper
+      WHERE dep.ide_inarti = $1
+        AND cpr.identificac_cccpr = $2
+        AND cpr.ide_empr = ${dtoIn.ideEmpr}
+        AND COALESCE(cpr.anulado_cccpr, false) = false
+      ORDER BY cpr.fecha_cccpr DESC
+      LIMIT 10
+    `);
+    qCotizacionesCliente.addIntParam(1, ide_inarti);
+    qCotizacionesCliente.addParam(2, identificacion);
+
 
     const qUltimaCompra = new SelectQuery(`
       SELECT
@@ -692,17 +734,87 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     qUltimaCompra.addIntParam(1, ide_inarti);
 
-    const [configPrecios, ventasCliente, ventasOtros, cotizaciones, ultimaCompra] = await Promise.all([
+    // Últimos 10 precios de compra por proveedor
+    const qUltimosPreciosCompra = new SelectQuery(
+      `
+      WITH UltimaCompra AS (
+        SELECT
+          cci.ide_geper,
+          dci.ide_inarti,
+          dci.cantidad_indci AS cantidad,
+          dci.precio_indci AS precio,
+          COALESCE(dci.valor_indci, dci.cantidad_indci * dci.precio_indci) AS total,
+          ROW_NUMBER() OVER (PARTITION BY cci.ide_geper ORDER BY cci.fecha_trans_incci DESC) AS rn
+        FROM inv_det_comp_inve dci
+        INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+        INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+        INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE cci.ide_inepi = ${estadoNormal}
+          AND tci.signo_intci = 1
+          AND cci.ide_intti IN (19, 16, 3025)
+          AND dci.ide_inarti = $1
+          AND dci.precio_indci > 0
+      )
+      SELECT
+        c.ide_geper,
+        p.nom_geper,
+        MAX(c.fecha_trans_incci) AS fecha_ultima_compra,
+        f_decimales(uc.cantidad, art.decim_stock_inarti)::numeric AS cantidad,
+        uni.siglas_inuni,
+        uc.precio,
+        uc.total
+      FROM inv_det_comp_inve dci
+      INNER JOIN inv_cab_comp_inve c ON c.ide_incci = dci.ide_incci
+      INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
+      INNER JOIN inv_articulo art ON dci.ide_inarti = art.ide_inarti
+      LEFT  JOIN inv_unidad uni ON art.ide_inuni = uni.ide_inuni
+      INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
+      INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+      LEFT  JOIN UltimaCompra uc ON uc.ide_geper = c.ide_geper AND uc.rn = 1
+      WHERE c.ide_inepi = ${estadoNormal}
+        AND tci.signo_intci = 1
+        AND c.ide_intti IN (19, 16, 3025)
+        AND dci.ide_inarti = $2
+        AND dci.precio_indci > 0
+        AND art.ide_empr = ${dtoIn.ideEmpr}
+      GROUP BY
+        art.ide_inarti,
+        art.decim_stock_inarti,
+        c.ide_geper,
+        p.nom_geper,
+        uc.cantidad,
+        uni.siglas_inuni,
+        uc.precio,
+        uc.total
+      ORDER BY fecha_ultima_compra DESC
+      LIMIT 10
+    `,
+      dtoIn,
+    );
+    qUltimosPreciosCompra.addIntParam(1, ide_inarti);
+    qUltimosPreciosCompra.addIntParam(2, ide_inarti);
+
+    //  7 promesas → 7 variables desestructuradas
+    const [
+      configPrecios,
+      ventasCliente,
+      ventasOtros,
+      cotizaciones,
+      cotizacionesCliente,
+      ultimaCompra,
+      ultimosPreciosCompra,
+    ] = await Promise.all([
       this.dataSource.createSelectQuery(qConfigPrecios),
       qVentasCliente
         ? this.dataSource.createSelectQuery(qVentasCliente)
         : Promise.resolve([] as any[]),
       this.dataSource.createSelectQuery(qVentasOtros),
       this.dataSource.createSelectQuery(qCotizaciones),
+      this.dataSource.createSelectQuery(qCotizacionesCliente),
       this.dataSource.createSingleQuery(qUltimaCompra),
+      this.dataSource.createSelectQuery(qUltimosPreciosCompra),
     ]);
 
-    // ✅ CORRECCIÓN: config activa solo si realmente produjo un precio calculado
     const tiene_config_precio = configPrecios.some(
       (c: any) => c.precio_venta_con_iva != null || c.precio_venta_sin_iva != null
     );
@@ -736,7 +848,6 @@ ORDER BY prof.secuencial_cccpr DESC
         total_registros_analizados: todosLosPrecios.length,
       };
 
-      // ✅ CORRECCIÓN: sugerir precio cuando la config no produjo un precio válido
       if (!tiene_config_precio) {
         precio_sugerido = Number(fNumber((precio_minimo + precio_maximo) / 2));
       }
@@ -748,13 +859,17 @@ ORDER BY prof.secuencial_cccpr DESC
       ventas_cliente: isDefined(ide_geper) ? ventasCliente : null,
       ventas_otros_clientes: ventasOtros,
       cotizaciones,
+      cotizaciones_cliente: cotizacionesCliente,
       ultima_precio_compra: ultimaCompra?.ultima_precio_compra ?? null,
       ultima_fecha_compra: ultimaCompra?.ultima_fecha_compra ?? null,
       proveedor_ultima_compra: ultimaCompra?.proveedor ?? null,
+      ultimos_precios_compra: ultimosPreciosCompra,   // ✅ nuevo campo
       metricas,
       precio_sugerido,
     };
   }
+
+
   // ==================================ListData==============================
   async getListDataTipoProforma(dto?: QueryOptionsDto & HeaderParamsDto) {
     const dtoIn = {

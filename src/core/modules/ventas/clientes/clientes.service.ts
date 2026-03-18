@@ -954,7 +954,7 @@ export class ClientesService extends BaseService {
                 throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
             }
         } else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
-            const result = validateRUC(data.identificac_geper, false);
+            const result = validateRUC(data.identificac_geper);
             if (result.isValid === false) {
                 throw new BadRequestException(`${result.type} no válido`);
             }
@@ -996,7 +996,7 @@ export class ClientesService extends BaseService {
                 throw new BadRequestException(`Cédula ${data.identificac_geper} no válida`);
             }
         } else if (data.ide_getid == this.variables.get('p_gen_tipo_identificacion_ruc')) {
-            const result = validateRUC(data.identificac_geper, false);
+            const result = validateRUC(data.identificac_geper);
             if (result.isValid === false) {
                 throw new BadRequestException(`${result.type} no válido`);
             }
@@ -1284,11 +1284,19 @@ export class ClientesService extends BaseService {
             END AS tipo_identificacion,
             COALESCE(tp.detalle_getip, '') AS tipo_persona,
             p.ide_getid,
-            p.ide_getip
+            p.ide_getip,
+            prov.ide_geprov,
+            prov.nombre_geprov,
+            p.direccion_geper,
+            p.telefono_geper,
+            p.fecha_ingre_geper,
+            p.ide_cndfp,
+            p.ide_vgven
         FROM
             gen_persona p
             LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
             LEFT JOIN gen_tipo_persona tp ON p.ide_getip = tp.ide_getip
+            LEFT JOIN gen_provincia prov ON p.ide_geprov = prov.ide_geprov
         WHERE
             (
                 regexp_replace(unaccent(LOWER(p.nom_geper)), '[^a-z0-9]', '', 'g') LIKE $1

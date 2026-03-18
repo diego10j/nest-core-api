@@ -5,7 +5,7 @@ import { RucDto } from './dto/ruc.dto';
 
 @Injectable()
 export class GeneralService {
-  constructor() {}
+  constructor() { }
 
   /**
    * Valida cédula
@@ -25,7 +25,7 @@ export class GeneralService {
    * @returns
    */
   validateRuc(dtoIn: RucDto) {
-    const result = validateRUC(dtoIn.ruc, dtoIn.isSas);
+    const result = validateRUC(dtoIn.ruc);
     const message = result.isValid === true ? `${result.type} válido` : 'RUC no válido';
     return {
       valid: result.isValid,
