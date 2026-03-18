@@ -602,7 +602,6 @@ ORDER BY prof.secuencial_cccpr DESC
             AND cf.ide_ccefa = ${estadoFacturaNormal}
             AND cf.fecha_emisi_cccfa BETWEEN $3 AND $4
             AND cf.ide_empr = ${dtoIn.ideEmpr}
-            ${whereCantidadVentas}
           ORDER BY cf.fecha_emisi_cccfa DESC
         `)
       : null;
@@ -613,8 +612,10 @@ ORDER BY prof.secuencial_cccpr DESC
       qVentasCliente.addParam(3, fechaInicio);
       qVentasCliente.addParam(4, fechaFin);
     }
-
-    const whereExcluirCliente = isDefined(ide_geper) ? `AND cf.ide_geper <> ${ide_geper}` : '';
+    // excluye cliente y DIQUIMEC
+    const whereExcluirCliente = isDefined(ide_geper)
+      ? `AND cf.ide_geper <> ${ide_geper} AND cf.ide_geper <> 16477`
+      : 'AND cf.ide_geper <> 16477';
     const qVentasOtros = new SelectQuery(`
       SELECT
         cf.fecha_emisi_cccfa,
