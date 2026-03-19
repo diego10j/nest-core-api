@@ -17,14 +17,15 @@ export class ProformasRepService {
     ) { }
 
     async reportProforma(dtoIn: GetProformaDto & HeaderParamsDto) {
-        const proforma = await this.proformasService.getProformaByID(dtoIn) as ProformaRep;
+        const [proforma, header] = await Promise.all([
+            this.proformasService.getProformaByID(dtoIn),
+            this.sectionsService.createReportHeader({
+                ideEmpr: dtoIn.ideEmpr,
+                showDate: false,
+            }),
+        ]);
 
-        const header = await this.sectionsService.createReportHeader({
-            ideEmpr: dtoIn.ideEmpr,
-            showDate: false,
-        });
-
-        const docDefinition = proformaReport(proforma, header);
+        const docDefinition = proformaReport(proforma as ProformaRep, header);
 
         return this.printerService.createPdf(docDefinition);
     }
