@@ -59,85 +59,104 @@ export class ProformasService extends BaseService {
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
 
     const query = new SelectQuery(`
-WITH items_proforma AS (
+WITH
+-- CTE base: filtra PRIMERO las proformas del período
+proformas_periodo AS MATERIALIZED (
   SELECT
-    ide_cccpr,
-    COUNT(1) AS total_items
+    ide_cccpr, secuencial_cccpr, fecha_cccpr, solicitante_cccpr,
+    correo_cccpr, ide_cctpr, ide_vgven, ide_usua,
+    total_cccpr, utilidad_cccpr, anulado_cccpr, enviado_cccpr
+  FROM cxc_cabece_proforma
+  WHERE fecha_cccpr BETWEEN $1 AND $2
+    AND ide_empr = ${dtoIn.ideEmpr}
+),
+
+-- Solo cuenta ítems de LAS proformas del período (no toda la tabla)
+items_proforma AS (
+  SELECT ide_cccpr, COUNT(1) AS total_items
   FROM cxc_deta_proforma
+  WHERE ide_cccpr IN (SELECT ide_cccpr FROM proformas_periodo)
   GROUP BY ide_cccpr
 ),
-items_facturados AS (
+
+-- Facturas vinculadas al período (reduce el JOIN posterior)
+facturas_vinculadas AS (
   SELECT
-    det.ide_cccfa,
-    COUNT(1) AS total_items
+    f.ide_cccfa, f.num_proforma_cccfa, f.secuencial_cccfa,
+    f.fecha_emisi_cccfa, f.total_cccfa, f.ide_geper, f.ide_ccdaf
+  FROM cxc_cabece_factura f
+  WHERE f.num_proforma_cccfa IN (SELECT secuencial_cccpr FROM proformas_periodo)
+    AND f.ide_ccefa = ${estadoFacturaNormal}
+),
+
+-- Solo cuenta ítems de LAS facturas vinculadas (no toda inv_det_comp_inve)
+items_facturados AS (
+  SELECT det.ide_cccfa, COUNT(1) AS total_items
   FROM inv_det_comp_inve det
   INNER JOIN inv_articulo art ON det.ide_inarti = art.ide_inarti
-  WHERE art.hace_kardex_inarti = TRUE
+  WHERE det.ide_cccfa IN (SELECT ide_cccfa FROM facturas_vinculadas)
+    AND art.hace_kardex_inarti = TRUE
   GROUP BY det.ide_cccfa
 )
+
 SELECT
   -- Identificadores
   prof.ide_cccpr,
-  prof.secuencial_cccpr                                         AS numero_proforma,
+  prof.secuencial_cccpr                                          AS numero_proforma,
 
   -- Datos de la proforma
-  prof.fecha_cccpr                                              AS fecha_proforma,
-  prof.solicitante_cccpr                                        AS solicitante,
-  prof.correo_cccpr                                             AS correo_contacto,
-  tipo.nombre_cctpr                                             AS tipo_proforma,
-  vend.nombre_vgven                                             AS vendedor,
-  usua.nom_usua                                                 AS usuario_registro,
+  prof.fecha_cccpr                                               AS fecha_proforma,
+  prof.solicitante_cccpr                                         AS solicitante,
+  prof.correo_cccpr                                              AS correo_contacto,
+  tipo.nombre_cctpr                                              AS tipo_proforma,
+  vend.nombre_vgven                                              AS vendedor,
+  usua.nom_usua                                                  AS usuario_registro,
 
   -- Totales proforma
-  prof.total_cccpr                                              AS total_proforma,
-  prof.utilidad_cccpr                                           AS utilidad_proforma,
+  prof.total_cccpr                                               AS total_proforma,
+  prof.utilidad_cccpr                                            AS utilidad_proforma,
 
-  -- Conteo de ítems de la proforma
-  COALESCE(ip.total_items, 0)                                   AS total_items_proforma,
+  -- Conteo ítems
+  COALESCE(ip.total_items, 0)                                    AS total_items_proforma,
 
-  -- Estado de la proforma
-  prof.anulado_cccpr                                            AS esta_anulada,
-  prof.enviado_cccpr                                            AS fue_enviada,
+  -- Estado
+  prof.anulado_cccpr                                             AS esta_anulada,
+  prof.enviado_cccpr                                             AS fue_enviada,
 
-  -- Datos de la factura vinculada
-  fact.ide_cccfa                                                AS ide_factura,
-  fact.secuencial_cccfa                                         AS numero_factura,
-  fact.fecha_emisi_cccfa                                        AS fecha_factura,
-  dfac.establecimiento_ccdfa                                    AS establecimiento_factura,
-  dfac.pto_emision_ccdfa                                        AS punto_emision_factura,
-  fact.total_cccfa                                              AS total_factura,
+  -- Factura vinculada
+  fv.ide_cccfa                                                   AS ide_factura,
+  fv.secuencial_cccfa                                            AS numero_factura,
+  fv.fecha_emisi_cccfa                                           AS fecha_factura,
+  dfac.establecimiento_ccdfa                                     AS establecimiento_factura,
+  dfac.pto_emision_ccdfa                                         AS punto_emision_factura,
+  fv.total_cccfa                                                 AS total_factura,
 
-  -- Ítems facturados
-  COALESCE(ifc.total_items, 0)                                  AS total_items_facturados,
+  COALESCE(ifc.total_items, 0)                                   AS total_items_facturados,
 
-  -- Cliente de la factura
-  fact.ide_geper,
-  pers.nom_geper                                                AS nombre_cliente,
-  pers.identificac_geper                                        AS identificacion_cliente,
-  pers.uuid                                                     AS uuid_cliente,
+  -- Cliente
+  fv.ide_geper,
+  pers.nom_geper                                                 AS nombre_cliente,
+  pers.identificac_geper                                         AS identificacion_cliente,
+  pers.uuid                                                      AS uuid_cliente,
 
-  -- Análisis comparativo proforma vs factura
-  COALESCE(fact.total_cccfa, 0) - COALESCE(prof.total_cccpr, 0) AS diferencia_proforma_factura,
+  -- Análisis comparativo
+  COALESCE(fv.total_cccfa, 0) - prof.total_cccpr                 AS diferencia_proforma_factura,
   CASE
-    WHEN fact.ide_cccfa IS NULL                                              THEN 'SIN_FACTURA'
-    WHEN fact.total_cccfa = prof.total_cccpr                                 THEN 'TOTALES_IGUALES'
-    WHEN fact.total_cccfa > prof.total_cccpr                                 THEN 'FACTURA_MAYOR'
-    ELSE                                                                          'PROFORMA_MAYOR'
-  END                                                           AS estado_comparativo
+    WHEN fv.ide_cccfa IS NULL              THEN 'SIN_FACTURA'
+    WHEN fv.total_cccfa = prof.total_cccpr THEN 'TOTALES_IGUALES'
+    WHEN fv.total_cccfa > prof.total_cccpr THEN 'FACTURA_MAYOR'
+    ELSE                                        'PROFORMA_MAYOR'
+  END                                                            AS estado_comparativo
 
-FROM cxc_cabece_proforma          prof
-INNER JOIN sis_usuario             usua ON prof.ide_usua        = usua.ide_usua
-LEFT  JOIN cxc_tipo_proforma       tipo ON prof.ide_cctpr       = tipo.ide_cctpr
-LEFT  JOIN ven_vendedor            vend ON prof.ide_vgven        = vend.ide_vgven
-LEFT  JOIN items_proforma          ip   ON ip.ide_cccpr         = prof.ide_cccpr
-LEFT  JOIN cxc_cabece_factura      fact ON prof.secuencial_cccpr = fact.num_proforma_cccfa
-                                       AND fact.ide_ccefa        = ${estadoFacturaNormal}
-LEFT  JOIN cxc_datos_fac           dfac ON fact.ide_ccdaf        = dfac.ide_ccdaf
-LEFT  JOIN gen_persona             pers ON fact.ide_geper         = pers.ide_geper
-LEFT  JOIN items_facturados        ifc  ON ifc.ide_cccfa         = fact.ide_cccfa
-
-WHERE prof.fecha_cccpr  BETWEEN $1 AND $2
-  AND prof.ide_empr     = ${dtoIn.ideEmpr}
+FROM proformas_periodo              prof
+INNER JOIN sis_usuario              usua ON prof.ide_usua   = usua.ide_usua
+LEFT  JOIN cxc_tipo_proforma        tipo ON prof.ide_cctpr  = tipo.ide_cctpr
+LEFT  JOIN ven_vendedor             vend ON prof.ide_vgven  = vend.ide_vgven
+LEFT  JOIN items_proforma           ip   ON ip.ide_cccpr    = prof.ide_cccpr
+LEFT  JOIN facturas_vinculadas      fv   ON fv.num_proforma_cccfa = prof.secuencial_cccpr
+LEFT  JOIN cxc_datos_fac            dfac ON dfac.ide_ccdaf  = fv.ide_ccdaf
+LEFT  JOIN gen_persona              pers ON pers.ide_geper  = fv.ide_geper
+LEFT  JOIN items_facturados         ifc  ON ifc.ide_cccfa   = fv.ide_cccfa
 
 ORDER BY prof.secuencial_cccpr DESC
   `, dtoIn);
@@ -147,7 +166,6 @@ ORDER BY prof.secuencial_cccpr DESC
 
     return this.dataSource.createQuery(query);
   }
-
 
   async getProformaByID(dtoIn: GetProformaDto & HeaderParamsDto) {
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');

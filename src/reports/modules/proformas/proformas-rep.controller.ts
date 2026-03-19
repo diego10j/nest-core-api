@@ -16,7 +16,7 @@ export class ProformasRepController {
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: GetProformaDto,
     ) {
-        const pdfDoc = await this.proformasRepService.reportProforma({
+        const buffer = await this.proformasRepService.reportProforma({
             ...headersParams,
             ...dtoIn,
         });
@@ -25,9 +25,7 @@ export class ProformasRepController {
 
         response.setHeader('Content-Type', 'application/pdf');
         response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-        pdfDoc.info.Title = 'Proforma';
-        pdfDoc.pipe(response);
-        pdfDoc.end();
+        response.setHeader('Content-Length', buffer.length);
+        response.end(buffer);
     }
 }

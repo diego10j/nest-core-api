@@ -60,6 +60,7 @@
     "passport-local": "^1.0.0",
     "pdfmake": "^0.2.20",
     "pg": "^8.16.3",
+    "piscina": "^5.1.4",
     "preview-email": "^3.1.0",
     "pug": "^3.0.3",
     "qrcode-terminal": "^0.12.0",
