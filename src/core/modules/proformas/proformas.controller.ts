@@ -8,6 +8,7 @@ import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
 import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
+import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { SaveProformaDto } from './dto/save-proforma.dto';
 import { ProformasService } from './proformas.service';
 
@@ -100,5 +101,14 @@ export class ProformasController {
   // @Auth()
   updateOpenSolicitud(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
     return this.service.updateOpenSolicitud(dtoIn.ide, headersParams.login);
+  }
+
+  @Get('getResumenDiarioProformas')
+  // @Auth()
+  getResumenDiarioProformas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ResumenDiarioProformasDto) {
+    return this.service.getResumenDiarioProformas({
+      ...headersParams,
+      ...dtoIn,
+    });
   }
 }

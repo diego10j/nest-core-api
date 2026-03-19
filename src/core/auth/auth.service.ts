@@ -373,25 +373,27 @@ export class AuthService {
    */
   async getMenuByRol(dtoIn: MenuRolDto) {
     const selectQueryMenu = new SelectQuery(`
-      SELECT 
-        ide_opci,
-        nom_opci,
-        sis_ide_opci,
-        tipo_opci,
-        icono_opci
-      FROM sis_opcion o
-      WHERE ide_opci IN (
-        SELECT p.ide_opci 
-        FROM sis_perfil_opcion p 
-        WHERE p.ide_perf = $1
-      )
-      AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
-      ORDER BY 
-        CASE 
-          WHEN sis_ide_opci IS NULL THEN 1
-          ELSE 2
-        END,
-        orden_opci
+WITH RECURSIVE ancestros AS (
+  SELECT o.ide_opci, o.nom_opci, o.sis_ide_opci, o.tipo_opci, o.icono_opci
+  FROM sis_opcion o
+  WHERE o.ide_opci IN (
+    SELECT p.ide_opci FROM sis_perfil_opcion p WHERE p.ide_perf = $1
+  )
+  AND o.ide_sist = ${this.configService.get('ID_SISTEMA')}
+
+  UNION
+
+  SELECT parent.ide_opci, parent.nom_opci, parent.sis_ide_opci, parent.tipo_opci, parent.icono_opci
+  FROM sis_opcion parent
+  INNER JOIN ancestros child ON child.sis_ide_opci = parent.ide_opci
+  WHERE parent.ide_sist = ${this.configService.get('ID_SISTEMA')}
+)
+SELECT * FROM (
+  SELECT DISTINCT * FROM ancestros
+) sub
+ORDER BY
+  CASE WHEN sis_ide_opci IS NULL THEN 1 ELSE 2 END,
+  ide_opci
     `);
 
     selectQueryMenu.addNumberParam(1, dtoIn.ide_perf);

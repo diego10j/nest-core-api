@@ -14,6 +14,7 @@ import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
 import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
+import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { CabProformaDto, DetaProformaDto, SaveProformaDto } from './dto/save-proforma.dto';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 import { ca } from 'zod/v4/locales';
@@ -1019,6 +1020,390 @@ ORDER BY prof.secuencial_cccpr DESC
     query.addNumberParam(1, ide_cccpr);
     this.logger.debug(`Abriendo proforma: ${JSON.stringify(query)}`);
     return this.dataSource.createQuery(query);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RESUMEN DIARIO
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retorna métricas completas de las proformas emitidas en un día:
+   *  - KPIs: total cotizado, utilidad potencial, tasa de conversión, ticket promedio, etc.
+   *  - Distribución por vendedor                → gráfico de barras
+   *  - Distribución por usuario responsable     → gráfico de barras
+   *  - Distribución por tipo de proforma        → gráfico de torta
+   *  - Proformas por hora                       → gráfico de línea
+   *  - Top 10 solicitantes                      → gráfico de barras horizontal
+   *  - Top 10 artículos cotizados               → gráfico de barras horizontal
+   *  - Cotizaciones efectivas (con factura)     → tabla de conversión
+   *  - Detalle de proformas del día
+   */
+  async getResumenDiarioProformas(dtoIn: ResumenDiarioProformasDto & HeaderParamsDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
+
+    // ── 1. KPIs / métricas generales ─────────────────────────────────────────
+    const queryMetricas = new SelectQuery(`
+      WITH base AS (
+        SELECT
+          c.ide_cccpr,
+          c.secuencial_cccpr,
+          c.total_cccpr,
+          c.utilidad_cccpr,
+          c.base_grabada_cccpr,
+          c.base_tarifa0_cccpr,
+          c.valor_iva_cccpr,
+          COALESCE(c.anulado_cccpr, false) AS anulado_cccpr,
+          COALESCE(c.enviado_cccpr, false) AS enviado_cccpr
+        FROM cxc_cabece_proforma c
+        WHERE c.fecha_cccpr = $1
+          AND c.ide_empr = $2
+      ),
+      convertidas AS (
+        SELECT f.num_proforma_cccfa
+        FROM cxc_cabece_factura f
+        WHERE f.num_proforma_cccfa IN (SELECT secuencial_cccpr FROM base)
+          AND f.ide_ccefa = ${estadoFacturaNormal}
+          AND f.ide_empr = $2
+      )
+      SELECT
+        -- Totales generales
+        COUNT(*)                                                                         AS total_proformas,
+        COUNT(*) FILTER (WHERE NOT anulado_cccpr)                                        AS proformas_activas,
+        COUNT(*) FILTER (WHERE anulado_cccpr)                                            AS proformas_anuladas,
+        COUNT(*) FILTER (WHERE enviado_cccpr AND NOT anulado_cccpr)                      AS proformas_enviadas,
+
+        -- Conversión a factura
+        COUNT(*) FILTER (WHERE NOT anulado_cccpr
+                           AND secuencial_cccpr IN (SELECT num_proforma_cccfa FROM convertidas)) AS proformas_convertidas,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE NOT anulado_cccpr) > 0 THEN
+            ROUND(
+              COUNT(*) FILTER (WHERE NOT anulado_cccpr
+                                 AND secuencial_cccpr IN (SELECT num_proforma_cccfa FROM convertidas))::numeric
+              / COUNT(*) FILTER (WHERE NOT anulado_cccpr) * 100, 2
+            )
+          ELSE 0
+        END                                                                              AS tasa_conversion,
+
+        -- Montos
+        COALESCE(SUM(total_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)                 AS total_cotizado,
+        COALESCE(SUM(utilidad_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)              AS utilidad_potencial,
+        COALESCE(SUM(base_grabada_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)          AS total_base_grabada,
+        COALESCE(SUM(base_tarifa0_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)          AS total_base0,
+        COALESCE(SUM(valor_iva_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)             AS total_iva,
+
+        -- Ticket promedio (solo activas)
+        CASE
+          WHEN COUNT(*) FILTER (WHERE NOT anulado_cccpr) > 0 THEN
+            ROUND(SUM(total_cccpr) FILTER (WHERE NOT anulado_cccpr)
+                  / COUNT(*) FILTER (WHERE NOT anulado_cccpr), 2)
+          ELSE 0
+        END                                                                              AS ticket_promedio,
+
+        -- Monto efectivamente facturado del día
+        COALESCE((
+          SELECT SUM(f.total_cccfa)
+          FROM cxc_cabece_factura f
+          WHERE f.num_proforma_cccfa IN (SELECT num_proforma_cccfa FROM convertidas)
+            AND f.ide_ccefa = ${estadoFacturaNormal}
+            AND f.ide_empr = $2
+        ), 0)                                                                            AS total_facturado_convertido
+
+      FROM base
+    `);
+    queryMetricas.addParam(1, dtoIn.fecha);
+    queryMetricas.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 2. Distribución por vendedor ─────────────────────────────────────────
+    const queryPorVendedor = new SelectQuery(`
+      SELECT
+        COALESCE(v.nombre_vgven, 'SIN VENDEDOR')              AS vendedor,
+        COUNT(c.ide_cccpr)                                     AS total_proformas,
+        COUNT(c.ide_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false) AS activas,
+        COUNT(c.ide_cccpr) FILTER (
+          WHERE COALESCE(c.anulado_cccpr, false) = false
+            AND c.secuencial_cccpr IN (
+              SELECT f.num_proforma_cccfa
+              FROM cxc_cabece_factura f
+              WHERE f.ide_ccefa = ${estadoFacturaNormal}
+                AND f.ide_empr = $2
+                AND f.num_proforma_cccfa IS NOT NULL
+            )
+        )                                                      AS convertidas,
+        COALESCE(SUM(c.total_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false), 0) AS total_cotizado,
+        COALESCE(SUM(c.utilidad_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false), 0) AS utilidad_potencial
+      FROM cxc_cabece_proforma c
+      LEFT JOIN ven_vendedor v ON c.ide_vgven = v.ide_vgven
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr = $2
+      GROUP BY v.nombre_vgven
+      ORDER BY total_cotizado DESC
+    `);
+    queryPorVendedor.addParam(1, dtoIn.fecha);
+    queryPorVendedor.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 3. Distribución por usuario responsable ───────────────────────────────
+    const queryPorUsuario = new SelectQuery(`
+      SELECT
+        u.nom_usua                                             AS usuario,
+        COUNT(c.ide_cccpr)                                     AS total_proformas,
+        COUNT(c.ide_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false) AS activas,
+        COUNT(c.ide_cccpr) FILTER (
+          WHERE COALESCE(c.anulado_cccpr, false) = false
+            AND c.secuencial_cccpr IN (
+              SELECT f.num_proforma_cccfa
+              FROM cxc_cabece_factura f
+              WHERE f.ide_ccefa = ${estadoFacturaNormal}
+                AND f.ide_empr = $2
+                AND f.num_proforma_cccfa IS NOT NULL
+            )
+        )                                                      AS convertidas,
+        COALESCE(SUM(c.total_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false), 0) AS total_cotizado,
+        COALESCE(SUM(c.utilidad_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false), 0) AS utilidad_potencial,
+        CASE
+          WHEN COUNT(c.ide_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false) > 0 THEN
+            ROUND(
+              COUNT(c.ide_cccpr) FILTER (
+                WHERE COALESCE(c.anulado_cccpr, false) = false
+                  AND c.secuencial_cccpr IN (
+                    SELECT f.num_proforma_cccfa
+                    FROM cxc_cabece_factura f
+                    WHERE f.ide_ccefa = ${estadoFacturaNormal}
+                      AND f.ide_empr = $2
+                  )
+              )::numeric
+              / COUNT(c.ide_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false) * 100, 1
+            )
+          ELSE 0
+        END                                                    AS tasa_conversion
+      FROM cxc_cabece_proforma c
+      INNER JOIN sis_usuario u ON c.ide_usua = u.ide_usua
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr = $2
+      GROUP BY u.nom_usua
+      ORDER BY total_cotizado DESC
+    `);
+    queryPorUsuario.addParam(1, dtoIn.fecha);
+    queryPorUsuario.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 4. Distribución por tipo de proforma ─────────────────────────────────
+    const queryPorTipo = new SelectQuery(`
+      SELECT
+        COALESCE(t.nombre_cctpr, 'SIN TIPO')       AS tipo,
+        COUNT(c.ide_cccpr)                          AS cantidad,
+        COALESCE(SUM(c.total_cccpr) FILTER (WHERE COALESCE(c.anulado_cccpr, false) = false), 0) AS total
+      FROM cxc_cabece_proforma c
+      LEFT JOIN cxc_tipo_proforma t ON c.ide_cctpr = t.ide_cctpr
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr = $2
+        AND COALESCE(c.anulado_cccpr, false) = false
+      GROUP BY t.nombre_cctpr
+      ORDER BY total DESC
+    `);
+    queryPorTipo.addParam(1, dtoIn.fecha);
+    queryPorTipo.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 5. Proformas por hora ─────────────────────────────────────────────────
+    const queryPorHora = new SelectQuery(`
+      SELECT
+        EXTRACT(HOUR FROM hora_ingre)::int              AS hora,
+        TO_CHAR(hora_ingre, 'HH12:MI AM')               AS etiqueta,
+        COUNT(ide_cccpr)                                AS cantidad,
+        COALESCE(SUM(total_cccpr), 0)                   AS total
+      FROM cxc_cabece_proforma
+      WHERE fecha_cccpr = $1
+        AND ide_empr    = $2
+        AND COALESCE(anulado_cccpr, false) = false
+      GROUP BY hora, etiqueta
+      ORDER BY hora
+    `);
+    queryPorHora.addParam(1, dtoIn.fecha);
+    queryPorHora.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 6. Top 10 solicitantes ────────────────────────────────────────────────
+    const queryTopSolicitantes = new SelectQuery(`
+      SELECT
+        COALESCE(c.solicitante_cccpr, 'SIN NOMBRE')    AS solicitante,
+        c.correo_cccpr,
+        COUNT(c.ide_cccpr)                              AS cantidad_proformas,
+        COALESCE(SUM(c.total_cccpr), 0)                AS total_cotizado,
+        COUNT(c.ide_cccpr) FILTER (
+          WHERE c.secuencial_cccpr IN (
+            SELECT f.num_proforma_cccfa
+            FROM cxc_cabece_factura f
+            WHERE f.ide_ccefa = ${estadoFacturaNormal}
+              AND f.ide_empr = $2
+              AND f.num_proforma_cccfa IS NOT NULL
+          )
+        )                                              AS convertidas
+      FROM cxc_cabece_proforma c
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr = $2
+        AND COALESCE(c.anulado_cccpr, false) = false
+      GROUP BY c.solicitante_cccpr, c.correo_cccpr
+      ORDER BY total_cotizado DESC
+      LIMIT 10
+    `);
+    queryTopSolicitantes.addParam(1, dtoIn.fecha);
+    queryTopSolicitantes.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 7. Top 10 artículos cotizados ─────────────────────────────────────────
+    const queryTopArticulos = new SelectQuery(`
+      SELECT
+        a.codigo_inarti,
+        a.nombre_inarti,
+        a.uuid                                         AS uuid_inarti,
+        u.siglas_inuni,
+        COUNT(DISTINCT d.ide_cccpr)                    AS en_proformas,
+        SUM(d.cantidad_ccdpr)                          AS cantidad_cotizada,
+        COALESCE(SUM(d.total_ccdpr), 0)               AS total_cotizado,
+        ROUND(AVG(d.precio_ccdpr)::numeric, 4)        AS precio_promedio
+      FROM cxc_deta_proforma d
+      INNER JOIN cxc_cabece_proforma c ON d.ide_cccpr = c.ide_cccpr
+      INNER JOIN inv_articulo a        ON d.ide_inarti = a.ide_inarti
+      LEFT  JOIN inv_unidad u          ON a.ide_inuni  = u.ide_inuni
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr = $2
+        AND COALESCE(c.anulado_cccpr, false) = false
+      GROUP BY a.codigo_inarti, a.nombre_inarti, a.uuid, u.siglas_inuni
+      ORDER BY total_cotizado DESC
+      LIMIT 10
+    `);
+    queryTopArticulos.addParam(1, dtoIn.fecha);
+    queryTopArticulos.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 8. Cotizaciones efectivas (proformas convertidas a factura) ───────────
+    const queryCotizacionesEfectivas = new SelectQuery(`
+      SELECT
+        c.ide_cccpr,
+        c.secuencial_cccpr              AS numero_proforma,
+        c.fecha_cccpr,
+        c.solicitante_cccpr,
+        c.total_cccpr                   AS total_proforma,
+        c.utilidad_cccpr               AS utilidad_proforma,
+        v.nombre_vgven                  AS vendedor,
+        u.nom_usua                      AS usuario,
+        f.ide_cccfa,
+        f.secuencial_cccfa              AS numero_factura,
+        f.fecha_emisi_cccfa,
+        f.total_cccfa                   AS total_factura,
+        (f.total_cccfa - c.total_cccpr) AS diferencia,
+        CASE
+          WHEN f.total_cccfa = c.total_cccpr THEN 'EXACTA'
+          WHEN f.total_cccfa > c.total_cccpr THEN 'FACTURA_MAYOR'
+          ELSE                                    'PROFORMA_MAYOR'
+        END                             AS estado_comparativo
+      FROM cxc_cabece_proforma c
+      INNER JOIN cxc_cabece_factura f
+        ON f.num_proforma_cccfa = c.secuencial_cccpr
+       AND f.ide_ccefa          = ${estadoFacturaNormal}
+       AND f.ide_empr           = $2
+      LEFT  JOIN ven_vendedor v ON c.ide_vgven = v.ide_vgven
+      INNER JOIN sis_usuario  u ON c.ide_usua  = u.ide_usua
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr    = $2
+        AND COALESCE(c.anulado_cccpr, false) = false
+      ORDER BY c.secuencial_cccpr DESC
+    `);
+    queryCotizacionesEfectivas.addParam(1, dtoIn.fecha);
+    queryCotizacionesEfectivas.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 9. Detalle de proformas del día ───────────────────────────────────────
+    const queryDetalle = new SelectQuery(`
+      SELECT
+        c.ide_cccpr,
+        c.secuencial_cccpr,
+        c.solicitante_cccpr,
+        c.correo_cccpr,
+        c.total_cccpr,
+        c.utilidad_cccpr,
+        c.base_grabada_cccpr,
+        c.base_tarifa0_cccpr,
+        c.valor_iva_cccpr,
+        c.tarifa_iva_cccpr,
+        c.observacion_cccpr,
+        COALESCE(c.anulado_cccpr, false)  AS anulado_cccpr,
+        COALESCE(c.enviado_cccpr, false)  AS enviado_cccpr,
+        c.hora_ingre,
+        t.nombre_cctpr                    AS tipo_proforma,
+        v.nombre_vgven                    AS vendedor,
+        u.nom_usua                        AS usuario,
+        vp.nombre_ccvap                   AS validez,
+        te.nombre_ccten                   AS tiempo_entrega,
+        -- ¿Tiene factura?
+        f.ide_cccfa                       AS ide_factura,
+        f.secuencial_cccfa                AS numero_factura,
+        f.total_cccfa                     AS total_factura,
+        CASE
+          WHEN c.anulado_cccpr = true          THEN 'ANULADA'
+          WHEN f.ide_cccfa IS NOT NULL         THEN 'CONVERTIDA'
+          WHEN c.enviado_cccpr = true          THEN 'ENVIADA'
+          ELSE                                      'PENDIENTE'
+        END                               AS estado,
+        CASE
+          WHEN c.anulado_cccpr = true          THEN 'error'
+          WHEN f.ide_cccfa IS NOT NULL         THEN 'success'
+          WHEN c.enviado_cccpr = true          THEN 'primary'
+          ELSE                                      'warning'
+        END                               AS color_estado
+      FROM cxc_cabece_proforma c
+      LEFT  JOIN cxc_tipo_proforma t ON c.ide_cctpr  = t.ide_cctpr
+      LEFT  JOIN ven_vendedor      v ON c.ide_vgven  = v.ide_vgven
+      INNER JOIN sis_usuario       u ON c.ide_usua   = u.ide_usua
+      LEFT  JOIN cxc_validez_prof  vp ON c.ide_ccvap  = vp.ide_ccvap
+      LEFT  JOIN cxc_tiempo_entrega te ON c.ide_ccten = te.ide_ccten
+      LEFT  JOIN cxc_cabece_factura f
+        ON f.num_proforma_cccfa = c.secuencial_cccpr
+       AND f.ide_ccefa          = ${estadoFacturaNormal}
+       AND f.ide_empr           = $2
+      WHERE c.fecha_cccpr = $1
+        AND c.ide_empr    = $2
+      ORDER BY c.hora_ingre, c.ide_cccpr
+    `);
+    queryDetalle.addParam(1, dtoIn.fecha);
+    queryDetalle.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── Ejecutar todo en paralelo ─────────────────────────────────────────────
+    const [
+      metricas,
+      porVendedor,
+      porUsuario,
+      porTipo,
+      porHora,
+      topSolicitantes,
+      topArticulos,
+      cotizacionesEfectivas,
+      proformas,
+    ] = await Promise.all([
+      this.dataSource.createSingleQuery(queryMetricas),
+      this.dataSource.createSelectQuery(queryPorVendedor),
+      this.dataSource.createSelectQuery(queryPorUsuario),
+      this.dataSource.createSelectQuery(queryPorTipo),
+      this.dataSource.createSelectQuery(queryPorHora),
+      this.dataSource.createSelectQuery(queryTopSolicitantes),
+      this.dataSource.createSelectQuery(queryTopArticulos),
+      this.dataSource.createSelectQuery(queryCotizacionesEfectivas),
+      this.dataSource.createSelectQuery(queryDetalle),
+    ]);
+
+    return {
+      rowCount: 1,
+      row: {
+        fecha: dtoIn.fecha,
+        metricas,
+        graficas: {
+          por_vendedor: porVendedor,
+          por_usuario: porUsuario,
+          por_tipo: porTipo,
+          por_hora: porHora,
+          top_solicitantes: topSolicitantes,
+          top_articulos: topArticulos,
+        },
+        cotizaciones_efectivas: cotizacionesEfectivas,
+        proformas,
+      },
+      message: 'ok',
+    };
   }
 
 
