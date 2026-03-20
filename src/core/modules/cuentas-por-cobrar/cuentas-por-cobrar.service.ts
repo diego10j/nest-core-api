@@ -174,6 +174,137 @@ export class CuentasPorCobrarService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
+    /**
+     * Retorna métricas totalizadas de cuentas por cobrar para el rango de fechas.
+     * Usa exactamente los mismos filtros que getCuentasPorCobrar pero sin paginación,
+     * permitiendo mostrar KPIs globales al usuario independientemente de la página actual.
+     */
+    async getMetricasCuentasPorCobrar(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const query = new SelectQuery(
+            `
+    WITH base AS (
+        SELECT
+            dt.ide_ccctr,
+            dt.ide_cccfa,
+            ct.ide_geper,
+            cf.total_cccfa,
+            SUM(dt.valor_ccdtr * tt.signo_ccttr)                                       AS saldo_x_pagar,
+            cf.total_cccfa - COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0)         AS abonado,
+            cf.dias_credito_cccfa,
+            cf.fecha_emisi_cccfa,
+            -- Estado de la obligación
+            CASE
+                WHEN cf.dias_credito_cccfa = 0 OR cf.dias_credito_cccfa IS NULL        THEN 'CONTADO'
+                WHEN cf.fecha_emisi_cccfa IS NULL                                       THEN 'SIN FECHA'
+                WHEN CURRENT_DATE > (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa)     THEN 'VENCIDA'
+                ELSE                                                                         'POR VENCER'
+            END                                                                         AS estado_obligacion,
+            -- Días vencido
+            CASE
+                WHEN cf.fecha_emisi_cccfa IS NOT NULL AND cf.dias_credito_cccfa > 0
+                    THEN GREATEST(0, (CURRENT_DATE - (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa))::integer)
+                ELSE 0
+            END                                                                         AS dias_vencido,
+            -- Antigüedad
+            CASE
+                WHEN cf.fecha_emisi_cccfa IS NULL                              THEN 'SIN FECHA'
+                WHEN (CURRENT_DATE - cf.fecha_emisi_cccfa) <= 30               THEN '0-30 DIAS'
+                WHEN (CURRENT_DATE - cf.fecha_emisi_cccfa) <= 60               THEN '31-60 DIAS'
+                WHEN (CURRENT_DATE - cf.fecha_emisi_cccfa) <= 90               THEN '61-90 DIAS'
+                WHEN (CURRENT_DATE - cf.fecha_emisi_cccfa) <= 180              THEN '91-180 DIAS'
+                ELSE                                                                 'MAS DE 180 DIAS'
+            END                                                                         AS antiguedad,
+            -- Rango mora
+            CASE
+                WHEN cf.fecha_emisi_cccfa IS NULL OR cf.dias_credito_cccfa <= 0                                           THEN 'AL DIA'
+                WHEN CURRENT_DATE <= (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa)                                        THEN 'AL DIA'
+                WHEN (CURRENT_DATE - (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa)) <= 30                                 THEN 'MORA 1-30 DIAS'
+                WHEN (CURRENT_DATE - (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa)) <= 60                                 THEN 'MORA 31-60 DIAS'
+                WHEN (CURRENT_DATE - (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa)) <= 90                                 THEN 'MORA 61-90 DIAS'
+                ELSE                                                                                                             'MORA MAS DE 90 DIAS'
+            END                                                                         AS rango_mora
+        FROM cxc_detall_transa dt
+        LEFT JOIN cxc_cabece_transa  ct ON dt.ide_ccctr = ct.ide_ccctr
+        LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+                                       AND cf.ide_ccefa = ${estadoFacturaNormal}
+        LEFT JOIN cxc_tipo_transacc  tt ON tt.ide_ccttr = dt.ide_ccttr
+        WHERE
+            (
+                cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+                OR ct.fecha_trans_ccctr BETWEEN $1 AND $2
+            )
+            AND dt.ide_sucu = $3
+            AND ct.ide_empr = $4
+            AND dt.ide_ccttr NOT IN (7, 9)
+        GROUP BY
+            dt.ide_ccctr,
+            dt.ide_cccfa,
+            ct.ide_geper,
+            cf.fecha_emisi_cccfa,
+            cf.total_cccfa,
+            cf.dias_credito_cccfa
+        HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) > 0
+    )
+    SELECT
+        -- Totales generales
+        COUNT(*)                                                                AS total_registros,
+        COUNT(DISTINCT ide_geper)                                               AS total_clientes,
+        ROUND(SUM(total_cccfa)::numeric,   2)                                  AS total_facturado,
+        ROUND(SUM(saldo_x_pagar)::numeric, 2)                                  AS total_saldo_por_cobrar,
+        ROUND(SUM(abonado)::numeric,       2)                                  AS total_abonado,
+        ROUND(AVG(total_cccfa)::numeric,   2)                                  AS ticket_promedio,
+
+        -- Por estado de obligación
+        COUNT(*) FILTER (WHERE estado_obligacion = 'VENCIDA')                  AS facturas_vencidas,
+        COUNT(*) FILTER (WHERE estado_obligacion = 'POR VENCER')               AS facturas_por_vencer,
+        COUNT(*) FILTER (WHERE estado_obligacion = 'CONTADO')                  AS facturas_contado,
+        ROUND(SUM(saldo_x_pagar) FILTER (WHERE estado_obligacion = 'VENCIDA')::numeric,    2) AS saldo_vencido,
+        ROUND(SUM(saldo_x_pagar) FILTER (WHERE estado_obligacion = 'POR VENCER')::numeric, 2) AS saldo_por_vencer,
+        ROUND(SUM(saldo_x_pagar) FILTER (WHERE estado_obligacion = 'CONTADO')::numeric,    2) AS saldo_contado,
+
+        -- Días vencido
+        ROUND(AVG(dias_vencido) FILTER (WHERE dias_vencido > 0)::numeric, 1)   AS dias_vencido_promedio,
+        MAX(dias_vencido)                                                       AS dias_vencido_maximo,
+
+        -- Distribución por antigüedad (saldo)
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE antiguedad = '0-30 DIAS'),       0)::numeric, 2) AS saldo_0_30_dias,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE antiguedad = '31-60 DIAS'),      0)::numeric, 2) AS saldo_31_60_dias,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE antiguedad = '61-90 DIAS'),      0)::numeric, 2) AS saldo_61_90_dias,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE antiguedad = '91-180 DIAS'),     0)::numeric, 2) AS saldo_91_180_dias,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE antiguedad = 'MAS DE 180 DIAS'), 0)::numeric, 2) AS saldo_mas_180_dias,
+
+        -- Distribución por rango mora (conteo + saldo)
+        COUNT(*) FILTER (WHERE rango_mora = 'AL DIA')                          AS cantidad_al_dia,
+        COUNT(*) FILTER (WHERE rango_mora = 'MORA 1-30 DIAS')                  AS cantidad_mora_1_30,
+        COUNT(*) FILTER (WHERE rango_mora = 'MORA 31-60 DIAS')                 AS cantidad_mora_31_60,
+        COUNT(*) FILTER (WHERE rango_mora = 'MORA 61-90 DIAS')                 AS cantidad_mora_61_90,
+        COUNT(*) FILTER (WHERE rango_mora = 'MORA MAS DE 90 DIAS')             AS cantidad_mora_mas_90,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE rango_mora = 'MORA 1-30 DIAS'),     0)::numeric, 2) AS saldo_mora_1_30,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE rango_mora = 'MORA 31-60 DIAS'),    0)::numeric, 2) AS saldo_mora_31_60,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE rango_mora = 'MORA 61-90 DIAS'),    0)::numeric, 2) AS saldo_mora_61_90,
+        ROUND(COALESCE(SUM(saldo_x_pagar) FILTER (WHERE rango_mora = 'MORA MAS DE 90 DIAS'),0)::numeric, 2) AS saldo_mora_mas_90,
+
+        -- Porcentajes clave
+        ROUND(
+            COALESCE(SUM(saldo_x_pagar) FILTER (WHERE estado_obligacion = 'VENCIDA'), 0)
+            / NULLIF(SUM(saldo_x_pagar), 0) * 100, 2
+        )                                                                       AS porcentaje_saldo_vencido,
+        ROUND(
+            COUNT(*) FILTER (WHERE estado_obligacion = 'VENCIDA') * 100.0
+            / NULLIF(COUNT(*), 0), 2
+        )                                                                       AS porcentaje_facturas_vencidas
+
+    FROM base
+    `,
+        );
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        query.addIntParam(3, dtoIn.ideSucu);
+        query.addIntParam(4, dtoIn.ideEmpr);
+        return this.dataSource.createSingleQuery(query);
+    }
+
     async getClientesPagoDestiempo(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
         const query = new SelectQuery(

@@ -18,6 +18,15 @@ export class CuentasPorCobrarController {
     });
   }
 
+  @Get('getMetricasCuentasPorCobrar')
+  // @Auth()
+  getMetricasCuentasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getMetricasCuentasPorCobrar({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getClientesPagoDestiempo')
   // @Auth()
   getClientesPagoDestiempo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
