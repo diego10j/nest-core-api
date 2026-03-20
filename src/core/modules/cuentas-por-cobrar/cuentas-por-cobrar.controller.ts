@@ -7,7 +7,7 @@ import { CuentasPorCobrarService } from './cuentas-por-cobrar.service';
 
 @Controller('cuentas-por-cobrar')
 export class CuentasPorCobrarController {
-  constructor(private readonly service: CuentasPorCobrarService) {}
+  constructor(private readonly service: CuentasPorCobrarService) { }
 
   @Get('getCuentasPorCobrar')
   // @Auth()
@@ -22,6 +22,15 @@ export class CuentasPorCobrarController {
   // @Auth()
   getClientesPagoDestiempo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getClientesPagoDestiempo({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getResumenCuentasPorCobrar')
+  // @Auth()
+  getResumenCuentasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getResumenCuentasPorCobrar({
       ...headersParams,
       ...dtoIn,
     });

@@ -591,9 +591,6 @@ ORDER BY prof.secuencial_cccpr DESC
         ide_geper = cliente.ide_geper;
       }
     }
-    console.log('ide_geper encontrado:', ide_geper);
-
-
 
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
     const estadoNormal = this.variables.get('p_inv_estado_normal');
