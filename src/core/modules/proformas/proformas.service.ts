@@ -1038,12 +1038,11 @@ ORDER BY prof.secuencial_cccpr DESC
   async getResumenDiarioProformas(dtoIn: ResumenDiarioProformasDto & HeaderParamsDto) {
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
 
-    // ── 1. KPIs / métricas generales ─────────────────────────────────────────
+    // ── 1. KPIs / métricas generales de cotización ────────────────────────────
     const queryMetricas = new SelectQuery(`
       WITH base AS (
         SELECT
           c.ide_cccpr,
-          c.secuencial_cccpr,
           c.total_cccpr,
           c.utilidad_cccpr,
           c.base_grabada_cccpr,
@@ -1054,40 +1053,20 @@ ORDER BY prof.secuencial_cccpr DESC
         FROM cxc_cabece_proforma c
         WHERE c.fecha_cccpr = $1
           AND c.ide_empr = $2
-      ),
-      convertidas AS (
-        SELECT f.num_proforma_cccfa
-        FROM cxc_cabece_factura f
-        WHERE f.num_proforma_cccfa IN (SELECT secuencial_cccpr FROM base)
-          AND f.ide_ccefa = ${estadoFacturaNormal}
-          AND f.ide_empr = $2
       )
       SELECT
         -- Totales generales
-        COUNT(*)                                                                         AS total_proformas,
-        COUNT(*) FILTER (WHERE NOT anulado_cccpr)                                        AS proformas_activas,
-        COUNT(*) FILTER (WHERE anulado_cccpr)                                            AS proformas_anuladas,
-        COUNT(*) FILTER (WHERE enviado_cccpr AND NOT anulado_cccpr)                      AS proformas_enviadas,
-
-        -- Conversión a factura
-        COUNT(*) FILTER (WHERE NOT anulado_cccpr
-                           AND secuencial_cccpr IN (SELECT num_proforma_cccfa FROM convertidas)) AS proformas_convertidas,
-        CASE
-          WHEN COUNT(*) FILTER (WHERE NOT anulado_cccpr) > 0 THEN
-            ROUND(
-              COUNT(*) FILTER (WHERE NOT anulado_cccpr
-                                 AND secuencial_cccpr IN (SELECT num_proforma_cccfa FROM convertidas))::numeric
-              / COUNT(*) FILTER (WHERE NOT anulado_cccpr) * 100, 2
-            )
-          ELSE 0
-        END                                                                              AS tasa_conversion,
+        COUNT(*)                                                              AS total_proformas,
+        COUNT(*) FILTER (WHERE NOT anulado_cccpr)                             AS proformas_activas,
+        COUNT(*) FILTER (WHERE anulado_cccpr)                                 AS proformas_anuladas,
+        COUNT(*) FILTER (WHERE enviado_cccpr AND NOT anulado_cccpr)           AS proformas_enviadas,
 
         -- Montos
-        COALESCE(SUM(total_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)                 AS total_cotizado,
-        COALESCE(SUM(utilidad_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)              AS utilidad_potencial,
-        COALESCE(SUM(base_grabada_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)          AS total_base_grabada,
-        COALESCE(SUM(base_tarifa0_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)          AS total_base0,
-        COALESCE(SUM(valor_iva_cccpr) FILTER (WHERE NOT anulado_cccpr), 0)             AS total_iva,
+        COALESCE(SUM(total_cccpr)        FILTER (WHERE NOT anulado_cccpr), 0) AS total_cotizado,
+        COALESCE(SUM(utilidad_cccpr)     FILTER (WHERE NOT anulado_cccpr), 0) AS utilidad_potencial,
+        COALESCE(SUM(base_grabada_cccpr) FILTER (WHERE NOT anulado_cccpr), 0) AS total_base_grabada,
+        COALESCE(SUM(base_tarifa0_cccpr) FILTER (WHERE NOT anulado_cccpr), 0) AS total_base0,
+        COALESCE(SUM(valor_iva_cccpr)    FILTER (WHERE NOT anulado_cccpr), 0) AS total_iva,
 
         -- Ticket promedio (solo activas)
         CASE
@@ -1095,21 +1074,78 @@ ORDER BY prof.secuencial_cccpr DESC
             ROUND(SUM(total_cccpr) FILTER (WHERE NOT anulado_cccpr)
                   / COUNT(*) FILTER (WHERE NOT anulado_cccpr), 2)
           ELSE 0
-        END                                                                              AS ticket_promedio,
-
-        -- Monto efectivamente facturado del día
-        COALESCE((
-          SELECT SUM(f.total_cccfa)
-          FROM cxc_cabece_factura f
-          WHERE f.num_proforma_cccfa IN (SELECT num_proforma_cccfa FROM convertidas)
-            AND f.ide_ccefa = ${estadoFacturaNormal}
-            AND f.ide_empr = $2
-        ), 0)                                                                            AS total_facturado_convertido
+        END                                                                   AS ticket_promedio
 
       FROM base
     `);
     queryMetricas.addParam(1, dtoIn.fecha);
     queryMetricas.addIntParam(2, dtoIn.ideEmpr);
+
+    // ── 10. Métricas de facturación (sección independiente) ───────────────────
+    const queryMetricasFacturacion = new SelectQuery(`
+      WITH proformas_dia AS (
+        SELECT
+          c.ide_cccpr,
+          c.secuencial_cccpr,
+          c.total_cccpr,
+          c.utilidad_cccpr
+        FROM cxc_cabece_proforma c
+        WHERE c.fecha_cccpr = $1
+          AND c.ide_empr    = $2
+          AND COALESCE(c.anulado_cccpr, false) = false
+      ),
+      facturas AS (
+        SELECT
+          f.ide_cccfa,
+          f.num_proforma_cccfa,
+          f.total_cccfa
+        FROM cxc_cabece_factura f
+        WHERE f.num_proforma_cccfa IN (SELECT secuencial_cccpr FROM proformas_dia)
+          AND f.ide_ccefa = ${estadoFacturaNormal}
+          AND f.ide_empr  = $2
+      )
+      SELECT
+        -- Comparativa cotizaciones vs facturas
+        (SELECT COUNT(*) FROM proformas_dia)                                   AS cotizaciones_activas,
+        COUNT(DISTINCT f.ide_cccfa)                                            AS facturas_realizadas,
+        COUNT(DISTINCT p.ide_cccpr)                                            AS proformas_convertidas,
+        CASE
+          WHEN (SELECT COUNT(*) FROM proformas_dia) > 0 THEN
+            ROUND(
+              COUNT(DISTINCT p.ide_cccpr)::numeric
+              / (SELECT COUNT(*) FROM proformas_dia) * 100, 2
+            )
+          ELSE 0
+        END                                                                    AS tasa_conversion,
+        CASE
+          WHEN (SELECT COUNT(*) FROM proformas_dia) > 0 THEN
+            (SELECT COUNT(*) FROM proformas_dia) - COUNT(DISTINCT p.ide_cccpr)
+          ELSE 0
+        END                                                                    AS proformas_pendientes_convertir,
+
+        -- Montos comparativos
+        COALESCE(SUM(p.total_cccpr), 0)                                       AS total_cotizado_convertido,
+        COALESCE(SUM(f.total_cccfa), 0)                                       AS total_facturado_convertido,
+        COALESCE(SUM(f.total_cccfa) - SUM(p.total_cccpr), 0)                 AS diferencia_facturado_cotizado,
+        COALESCE(SUM(p.utilidad_cccpr), 0)                                    AS utilidad_facturada,
+
+        -- Promedios por factura
+        CASE
+          WHEN COUNT(DISTINCT f.ide_cccfa) > 0 THEN
+            ROUND(SUM(f.total_cccfa) / COUNT(DISTINCT f.ide_cccfa), 2)
+          ELSE 0
+        END                                                                    AS ticket_promedio_factura,
+        CASE
+          WHEN COUNT(DISTINCT p.ide_cccpr) > 0 THEN
+            ROUND(SUM(p.total_cccpr) / COUNT(DISTINCT p.ide_cccpr), 2)
+          ELSE 0
+        END                                                                    AS ticket_promedio_cotizado_convertido
+
+      FROM proformas_dia p
+      INNER JOIN facturas f ON f.num_proforma_cccfa = p.secuencial_cccpr
+    `);
+    queryMetricasFacturacion.addParam(1, dtoIn.fecha);
+    queryMetricasFacturacion.addIntParam(2, dtoIn.ideEmpr);
 
     // ── 2. Distribución por vendedor ─────────────────────────────────────────
     const queryPorVendedor = new SelectQuery(`
@@ -1342,9 +1378,11 @@ ORDER BY prof.secuencial_cccpr DESC
           WHEN f.ide_cccfa IS NOT NULL         THEN 'success'
           WHEN c.enviado_cccpr = true          THEN 'primary'
           ELSE                                      'warning'
-        END                               AS color_estado
+        END                               AS color_estado,
+        nombre_cndfp                        AS forma_pago
       FROM cxc_cabece_proforma c
       LEFT  JOIN cxc_tipo_proforma t ON c.ide_cctpr  = t.ide_cctpr
+      LEFT JOIN con_deta_forma_pago fp ON c.ide_cndfp = fp.ide_cndfp
       LEFT  JOIN ven_vendedor      v ON c.ide_vgven  = v.ide_vgven
       INNER JOIN sis_usuario       u ON c.ide_usua   = u.ide_usua
       LEFT  JOIN cxc_validez_prof  vp ON c.ide_ccvap  = vp.ide_ccvap
@@ -1363,6 +1401,7 @@ ORDER BY prof.secuencial_cccpr DESC
     // ── Ejecutar todo en paralelo ─────────────────────────────────────────────
     const [
       metricas,
+      metricasFacturacion,
       porVendedor,
       porUsuario,
       porTipo,
@@ -1373,6 +1412,7 @@ ORDER BY prof.secuencial_cccpr DESC
       proformas,
     ] = await Promise.all([
       this.dataSource.createSingleQuery(queryMetricas),
+      this.dataSource.createSingleQuery(queryMetricasFacturacion),
       this.dataSource.createSelectQuery(queryPorVendedor),
       this.dataSource.createSelectQuery(queryPorUsuario),
       this.dataSource.createSelectQuery(queryPorTipo),
@@ -1388,6 +1428,7 @@ ORDER BY prof.secuencial_cccpr DESC
       row: {
         fecha: dtoIn.fecha,
         metricas,
+        metricas_facturacion: metricasFacturacion,
         graficas: {
           por_vendedor: porVendedor,
           por_usuario: porUsuario,
