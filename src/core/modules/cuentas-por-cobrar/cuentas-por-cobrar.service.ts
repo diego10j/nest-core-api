@@ -106,8 +106,6 @@ export class CuentasPorCobrarService extends BaseService {
             ELSE 'CRITICA'
         END AS prioridad_cobro,
         COALESCE(cf.observacion_cccfa, ct.observacion_ccctr, '') AS observacion,
-        tt.nombre_ccttr AS tipo_transaccion,
-        tt.signo_ccttr,
         ct.usuario_ingre,
         ct.fecha_ingre,
         ct.ide_empr,
@@ -130,7 +128,6 @@ export class CuentasPorCobrarService extends BaseService {
         )
         AND dt.ide_sucu = $3
         AND ct.ide_empr = $4
-        AND dt.ide_ccttr NOT IN (7, 9)
         
     GROUP BY 
         dt.ide_ccctr,
@@ -149,8 +146,6 @@ export class CuentasPorCobrarService extends BaseService {
         df.pto_emision_ccdfa,
         df.serie_ccdaf,
         cf.dias_credito_cccfa,
-        tt.nombre_ccttr,
-        tt.signo_ccttr,
         ct.usuario_ingre,
         ct.fecha_ingre,
         ct.ide_empr,
@@ -236,7 +231,6 @@ export class CuentasPorCobrarService extends BaseService {
             )
             AND dt.ide_sucu = $3
             AND ct.ide_empr = $4
-            AND dt.ide_ccttr NOT IN (7, 9)
         GROUP BY
             dt.ide_ccctr,
             dt.ide_cccfa,
@@ -351,7 +345,7 @@ export class CuentasPorCobrarService extends BaseService {
                 GREATEST(
                     ROUND(
                         SUM(
-                            CASE WHEN tt.signo_ccttr < 0 AND dt.ide_ccttr NOT IN (7, 9)
+                            CASE WHEN tt.signo_ccttr < 0
                                  THEN ABS(dt.valor_ccdtr)
                                  ELSE 0
                             END
@@ -486,7 +480,6 @@ export class CuentasPorCobrarService extends BaseService {
             JOIN cxc_tipo_transacc tt ON dt.ide_ccttr = tt.ide_ccttr
             WHERE 
                 tt.signo_ccttr < 0
-                AND dt.ide_ccttr NOT IN (7, 9)
             GROUP BY ct.ide_geper
         )
         SELECT 
@@ -693,7 +686,6 @@ export class CuentasPorCobrarService extends BaseService {
           )
           AND dt.ide_sucu   = $5
           AND ct.ide_empr   = $6
-          AND dt.ide_ccttr NOT IN (7, 9)
         GROUP BY
           ct.ide_geper, p.nom_geper, p.identificac_geper, p.uuid, p.correo_geper,
           cf.ide_cccfa, cf.secuencial_cccfa, cf.total_cccfa, cf.dias_credito_cccfa,
