@@ -11,7 +11,8 @@ CREATE OR REPLACE FUNCTION f_utilidad_ventas(
     id_empresa BIGINT,
     fecha_inicio DATE,
     fecha_fin DATE,
-    id_articulo BIGINT DEFAULT NULL  -- Parámetro opcional
+    id_articulo BIGINT DEFAULT NULL,  -- Parámetro opcional
+    id_sucursal BIGINT DEFAULT NULL  -- Parámetro opcional
 )
 RETURNS TABLE (
     ide_ccdfa BIGINT,
@@ -34,7 +35,8 @@ RETURNS TABLE (
     fecha_ultima_compra DATE,
     ide_cndfp BIGINT,
     nombre_cndfp VARCHAR(50),
-    dias_cndfp BIGINT
+    dias_cndfp BIGINT,
+    ide_sucu BIGINT
 ) AS $$
 DECLARE
     fecha_inicio_ext DATE := fecha_inicio - INTERVAL '5 days';
@@ -59,6 +61,7 @@ BEGIN
             AND c.ide_intti IN (19, 16, 3025)
             AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
             AND c.ide_empr = id_empresa
+            AND (id_sucursal IS NULL OR c.ide_sucu = id_sucursal)
     ),
     ultima_compra_fuera_periodo AS (
         SELECT 
@@ -83,6 +86,7 @@ BEGIN
                 AND c.fecha_trans_incci < fecha_inicio_ext
                 AND (id_articulo IS NULL OR d.ide_inarti = id_articulo)
                 AND c.ide_empr = id_empresa
+                AND (id_sucursal IS NULL OR c.ide_sucu = id_sucursal)
         ) ranked
         WHERE rn = 1
     ),
@@ -145,12 +149,14 @@ BEGIN
             cf.ide_ccefa = 0
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
             AND cf.ide_empr = id_empresa
+            AND (id_sucursal IS NULL OR cf.ide_sucu = id_sucursal)
             AND (id_articulo IS NULL OR cdf.ide_inarti = id_articulo)
     ),
     datos_completos AS (
         SELECT
             cdf.ide_inarti,
             cdf.ide_ccdfa,
+            cf.ide_sucu,
             cf.fecha_emisi_cccfa,
             cf.secuencial_cccfa,
             per.nom_geper,
@@ -178,6 +184,7 @@ BEGIN
             cf.ide_ccefa = 0
             AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
             AND cf.ide_empr = id_empresa
+            AND (id_sucursal IS NULL OR cf.ide_sucu = id_sucursal)
             AND (id_articulo IS NULL OR cdf.ide_inarti = id_articulo)
     ),
     facturas_con_nota AS (
@@ -192,11 +199,12 @@ BEGIN
           AND cn.ide_cpeno = 1
           AND (id_articulo IS NULL OR cdn.ide_inarti = id_articulo)
           AND cn.ide_empr = id_empresa
+                    AND (id_sucursal IS NULL OR cn.ide_sucu = id_sucursal)
         GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
     )
     SELECT
         dc.ide_ccdfa,
-        dc.ide_inarti,        
+        dc.ide_inarti,
         dc.fecha_emisi_cccfa,
         dc.secuencial_cccfa,
         dc.nom_geper,
@@ -225,7 +233,8 @@ BEGIN
         dc.fecha_ultima_compra,
         dc.ide_cndfp::BIGINT,
         dc.nombre_cndfp,
-        dc.dias_cndfp::BIGINT
+        dc.dias_cndfp::BIGINT,
+        dc.ide_sucu
     FROM datos_completos dc
     LEFT JOIN facturas_con_nota fn ON lpad(dc.secuencial_cccfa::text, 9, '0') = fn.secuencial_padded 
                                    AND dc.ide_inarti = fn.ide_inarti
