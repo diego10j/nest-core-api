@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 import { FacturasDto } from './dto/facturas.dto';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
@@ -9,6 +8,7 @@ import { FacturasService } from './facturas.service';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { SaveFacturaDto } from './dto/save-factura.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
+import { UtilidadVentasDto } from './dto/get-util-ventas';
 
 @Controller('ventas/facturas')
 export class FacturasController {
@@ -64,7 +64,7 @@ export class FacturasController {
 
   @Get('getUtilidadVentas')
   // @Auth()
-  getUtilidadVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+  getUtilidadVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UtilidadVentasDto) {
     return this.service.getUtilidadVentas({
       ...headersParams,
       ...dtoIn,

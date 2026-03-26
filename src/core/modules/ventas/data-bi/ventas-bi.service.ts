@@ -82,10 +82,129 @@ export class VentasBiService extends BaseService {
             fecha_emisi_cpcno BETWEEN $3 AND $4
             AND cn.ide_cpeno = 1
             AND cn.ide_empr = ${dtoIn.ideEmpr}
-                ${whereSucursal}
+            ${whereSucursal}
         GROUP BY 
             EXTRACT(MONTH FROM fecha_emisi_cpcno),
             EXTRACT(YEAR FROM fecha_emisi_cpcno)
+    ),
+    -- ═══ UTILIDAD: Compras del período extendido ±5 días (1 scan anual) ═══
+    compras_anual AS MATERIALIZED (
+        SELECT d.ide_inarti, c.fecha_trans_incci AS fecha_compra, d.precio_indci AS precio
+        FROM inv_det_comp_inve d
+        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+        WHERE c.ide_empr = ${dtoIn.ideEmpr}
+            AND c.ide_inepi = 1
+            AND c.fecha_trans_incci BETWEEN ($1::DATE - INTERVAL '5 days') AND ($2::DATE + INTERVAL '5 days')
+            AND c.ide_intti IN (19, 16, 3025)
+            AND d.precio_indci > 0
+            ${whereSucursal.replace(/ide_sucu/g, 'c.ide_sucu')}
+            AND EXISTS (
+                SELECT 1 FROM inv_tip_tran_inve t
+                JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+                WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
+            )
+    ),
+    -- ═══ UTILIDAD: Última compra histórica por artículo (fallback) ═══
+    ultima_compra AS MATERIALIZED (
+        SELECT DISTINCT ON (d.ide_inarti)
+            d.ide_inarti, d.precio_indci AS precio
+        FROM inv_det_comp_inve d
+        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
+        WHERE c.ide_empr = ${dtoIn.ideEmpr}
+            AND c.ide_inepi = 1
+            AND c.fecha_trans_incci < ($1::DATE - INTERVAL '5 days')
+            AND c.ide_intti IN (19, 16, 3025)
+            AND d.precio_indci > 0
+            ${whereSucursal.replace(/ide_sucu/g, 'c.ide_sucu')}
+            AND EXISTS (
+                SELECT 1 FROM inv_tip_tran_inve t
+                JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
+                WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
+            )
+        ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
+    ),
+    -- ═══ UTILIDAD: Notas de crédito para exclusión (mismo mes nota=factura) ═══
+    facturas_con_nota AS MATERIALIZED (
+        SELECT lpad(cf.secuencial_cccfa::text, 9, '0') AS fn_secuencial_pad,
+            cdn.ide_inarti AS fn_ide_inarti,
+            EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS fn_mes
+        FROM cxp_cabecera_nota cn
+        JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
+        JOIN cxc_cabece_factura cf
+          ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+         AND cf.ide_empr = ${dtoIn.ideEmpr}
+         AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+         AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+         ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
+        WHERE cn.ide_empr = ${dtoIn.ideEmpr}
+            AND cn.ide_cpeno = 1
+            AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+            AND EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) = EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
+            ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
+        GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti, EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
+        HAVING SUM(cdn.valor_cpdno) <> 0
+    ),
+    -- ═══ UTILIDAD: Ventas del año (solo kardex, sin nota crédito en mismo mes) ═══
+    ventas_detalle AS MATERIALIZED (
+        SELECT cdf.ide_inarti,
+            cf.fecha_emisi_cccfa AS fecha_venta,
+            cdf.precio_ccdfa AS precio_venta,
+            cdf.cantidad_ccdfa AS cantidad,
+            EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes
+        FROM cxc_deta_factura cdf
+        JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+        JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+        WHERE cf.ide_empr = ${dtoIn.ideEmpr}
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
+            AND iart.hace_kardex_inarti = true
+            ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
+            AND NOT EXISTS (
+                SELECT 1 FROM facturas_con_nota fn
+                WHERE fn.fn_secuencial_pad = lpad(cf.secuencial_cccfa::text, 9, '0')
+                  AND fn.fn_ide_inarti = cdf.ide_inarti
+                  AND fn.fn_mes = EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
+            )
+    ),
+    -- ═══ Pares únicos (artículo, fecha) para resolver precios en batch ═══
+    fechas_unicas AS (
+        SELECT DISTINCT ide_inarti, fecha_venta FROM ventas_detalle
+    ),
+    -- ═══ Precio Prioridad 1: compra futura más cercana (≤5 días) ═══
+    precio_futuro AS (
+        SELECT DISTINCT ON (fu.ide_inarti, fu.fecha_venta)
+            fu.ide_inarti, fu.fecha_venta, ca.precio
+        FROM fechas_unicas fu
+        JOIN compras_anual ca ON ca.ide_inarti = fu.ide_inarti
+            AND ca.fecha_compra > fu.fecha_venta
+            AND ca.fecha_compra <= (fu.fecha_venta + INTERVAL '5 days')
+        ORDER BY fu.ide_inarti, fu.fecha_venta, ca.fecha_compra ASC
+    ),
+    -- ═══ Precio Prioridad 2: compra pasada más reciente ═══
+    precio_pasado AS (
+        SELECT DISTINCT ON (fu.ide_inarti, fu.fecha_venta)
+            fu.ide_inarti, fu.fecha_venta, ca.precio
+        FROM fechas_unicas fu
+        JOIN compras_anual ca ON ca.ide_inarti = fu.ide_inarti
+            AND ca.fecha_compra <= fu.fecha_venta
+        ORDER BY fu.ide_inarti, fu.fecha_venta, ca.fecha_compra DESC
+    ),
+    -- ═══ Precios resueltos: COALESCE de 3 prioridades ═══
+    precios_resueltos AS (
+        SELECT fu.ide_inarti, fu.fecha_venta,
+            COALESCE(pf.precio, pp.precio, uc.precio, 0) AS precio_compra
+        FROM fechas_unicas fu
+        LEFT JOIN precio_futuro pf ON pf.ide_inarti = fu.ide_inarti AND pf.fecha_venta = fu.fecha_venta
+        LEFT JOIN precio_pasado pp ON pp.ide_inarti = fu.ide_inarti AND pp.fecha_venta = fu.fecha_venta
+        LEFT JOIN ultima_compra uc ON uc.ide_inarti = fu.ide_inarti
+    ),
+    -- ═══ Utilidad mensual: SUM directo agrupado por mes ═══
+    utilidad_mensual AS (
+        SELECT vd.mes,
+            COALESCE(SUM(ROUND((vd.precio_venta - pr.precio_compra) * vd.cantidad, 2)), 0) AS utilidad
+        FROM ventas_detalle vd
+        JOIN precios_resueltos pr ON pr.ide_inarti = vd.ide_inarti AND pr.fecha_venta = vd.fecha_venta
+        GROUP BY vd.mes
     )
     SELECT 
         gm.ide_gemes,
@@ -97,13 +216,15 @@ export class VentasBiService extends BaseService {
         COALESCE(ff.ventas_brutas, 0) - COALESCE(nc.total_nota_credito, 0) AS ventas_netas,
         COALESCE(ff.iva, 0) AS iva,
         COALESCE(ff.total, 0) - COALESCE(nc.total_nota_credito, 0) AS total,
-        COALESCE(f_total_utilidad_mes(${dtoIn.ideEmpr},gm.ide_gemes::INTEGER, ${dtoIn.periodo}::INTEGER), 0) AS utilidad
+        COALESCE(um.utilidad, 0) AS utilidad
     FROM 
         gen_mes gm
     LEFT JOIN 
         FacturasFiltradas ff ON gm.ide_gemes = ff.mes
     LEFT JOIN 
         NotasCredito nc ON gm.ide_gemes = nc.mes AND (ff.anio = nc.anio OR ff.anio IS NULL)
+    LEFT JOIN
+        utilidad_mensual um ON gm.ide_gemes = um.mes
     ORDER BY 
         gm.ide_gemes
         `);
@@ -582,48 +703,59 @@ ORDER BY
      * @returns
      */
     async getTasaCrecimientoMensual(dtoIn: VentasMensualesDto & HeaderParamsDto) {
-        const query = new SelectQuery(`       
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
         WITH meses_anios AS (
-            SELECT 
-                gm.ide_gemes AS mes_numero,
-                gm.nombre_gemes AS mes_nombre,
-                anio.anio
-            FROM 
-                gen_mes gm
-            CROSS JOIN 
-                (SELECT ${dtoIn.periodo}::INTEGER AS anio) anio
+            SELECT
+                ide_gemes AS mes_numero,
+                nombre_gemes AS mes_nombre,
+                ${dtoIn.periodo}::INTEGER AS anio
+            FROM gen_mes
         ),
         ventas_mensuales AS (
-            SELECT 
+            SELECT
                 EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes_numero,
-                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
                 SUM(cf.total_cccfa) AS total_ventas_bruto,
                 SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas
-            FROM 
-                cxc_cabece_factura cf
-            WHERE 
-                (cf.fecha_emisi_cccfa BETWEEN $1 AND $2)
+            FROM cxc_cabece_factura cf
+            WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
                 AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa),
-                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa)
+                ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
+            GROUP BY EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
         ),
         notas_credito_mensual AS (
-            SELECT 
+            SELECT
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) AS mes_numero,
-                EXTRACT(YEAR FROM cn.fecha_emisi_cpcno) AS anio,
                 SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS total_notas_credito,
                 COUNT(cn.ide_cpcno) AS cantidad_notas_credito
-            FROM 
-                cxp_cabecera_nota cn
-            WHERE 
-                (cn.fecha_emisi_cpcno BETWEEN $3 AND $4)
+            FROM cxp_cabecera_nota cn
+            WHERE cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
                 AND cn.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                EXTRACT(MONTH FROM cn.fecha_emisi_cpcno),
-                EXTRACT(YEAR FROM cn.fecha_emisi_cpcno)
+                ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
+            GROUP BY EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
+        ),
+        -- Ventas netas de diciembre del año anterior (escalar para comparar con enero)
+        dic_anterior AS MATERIALIZED (
+            SELECT
+                COALESCE(SUM(cf.total_cccfa), 0)
+                - COALESCE((
+                    SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
+                    FROM cxp_cabecera_nota cn
+                    WHERE cn.fecha_emisi_cpcno BETWEEN '${dtoIn.periodo - 1}-12-01'::DATE AND '${dtoIn.periodo - 1}-12-31'::DATE
+                        AND cn.ide_cpeno = 1
+                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                        ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
+                ), 0) AS ventas_netas_dic
+            FROM cxc_cabece_factura cf
+            WHERE cf.fecha_emisi_cccfa BETWEEN '${dtoIn.periodo - 1}-12-01'::DATE AND '${dtoIn.periodo - 1}-12-31'::DATE
+                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
         ),
         ventas_netas AS (
             SELECT
@@ -634,121 +766,60 @@ ORDER BY
                 COALESCE(vm.ventas_brutas, 0) AS ventas_brutas,
                 COALESCE(ncm.total_notas_credito, 0) AS total_notas_credito,
                 COALESCE(ncm.cantidad_notas_credito, 0) AS cantidad_notas_credito,
-                (COALESCE(vm.total_ventas_bruto, 0) - COALESCE(ncm.total_notas_credito, 0)) AS ventas_netas
-            FROM
-                meses_anios ma
-            LEFT JOIN
-                ventas_mensuales vm ON ma.mes_numero = vm.mes_numero AND ma.anio = vm.anio
-            LEFT JOIN
-                notas_credito_mensual ncm ON ma.mes_numero = ncm.mes_numero AND ma.anio = ncm.anio
+                COALESCE(vm.total_ventas_bruto, 0) - COALESCE(ncm.total_notas_credito, 0) AS ventas_netas
+            FROM meses_anios ma
+            LEFT JOIN ventas_mensuales   vm  ON vm.mes_numero  = ma.mes_numero
+            LEFT JOIN notas_credito_mensual ncm ON ncm.mes_numero = ma.mes_numero
         ),
-        ventas_anio_anterior AS (
-            -- Datos de diciembre del año anterior para comparar con enero
-            SELECT 
-                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes_numero,
-                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) AS anio,
-                SUM(cf.total_cccfa) AS total_ventas_bruto,
-                SUM(cf.base_grabada_cccfa + cf.base_tarifa0_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_brutas,
-                (SUM(cf.total_cccfa) - COALESCE((
-                    SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
-                    FROM cxp_cabecera_nota cn
-                    WHERE EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) = 12
-                    AND EXTRACT(YEAR FROM cn.fecha_emisi_cpcno) = ${dtoIn.periodo - 1}
-                    AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                ), 0)) AS ventas_netas
-            FROM 
-                cxc_cabece_factura cf
-            WHERE 
-                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) = 12
-                AND EXTRACT(YEAR FROM cf.fecha_emisi_cccfa) = ${dtoIn.periodo - 1}
-                AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
-                EXTRACT(MONTH FROM cf.fecha_emisi_cccfa),
-                EXTRACT(YEAR FROM cf.fecha_emisi_cccfa)
-        ),
-        ventas_con_mes_anterior AS (
-            SELECT 
+        -- Agrega mes anterior y crecimiento (un único pase de LAG, sin repetición)
+        ventas_calculadas AS (
+            SELECT
                 vn.*,
-                CASE 
-                    -- Para enero, usar diciembre del año anterior
-                    WHEN vn.mes_numero = 1 THEN COALESCE((SELECT ventas_netas FROM ventas_anio_anterior), 0)
-                    -- Para otros meses, usar el mes anterior del mismo año
-                    ELSE LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.anio, vn.mes_numero)
-                END AS ventas_mes_anterior,
-                -- Obtener el nombre del mes anterior para la comparación
-                CASE 
-                    WHEN vn.mes_numero = 1 THEN 'Diciembre'
-                    ELSE LAG(vn.mes_nombre, 1) OVER (ORDER BY vn.anio, vn.mes_numero)
+                COALESCE(
+                    CASE WHEN vn.mes_numero = 1
+                         THEN (SELECT ventas_netas_dic FROM dic_anterior)
+                         ELSE LAG(vn.ventas_netas, 1) OVER (ORDER BY vn.mes_numero)
+                    END,
+                0) AS ventas_mes_anterior,
+                CASE WHEN vn.mes_numero = 1 THEN 'Diciembre'
+                     ELSE LAG(vn.mes_nombre, 1) OVER (ORDER BY vn.mes_numero)
                 END AS nombre_mes_anterior
-            FROM 
-                ventas_netas vn
+            FROM ventas_netas vn
         ),
-        ventas_con_crecimiento AS (
-            SELECT 
+        crecimiento AS (
+            SELECT
                 vc.*,
-                CASE 
-                    -- Para enero, comparar con diciembre del año anterior
-                    WHEN vc.mes_numero = 1 THEN 
-                        CASE 
-                            WHEN (SELECT ventas_netas FROM ventas_anio_anterior) IS NULL OR (SELECT ventas_netas FROM ventas_anio_anterior) = 0 THEN 0
-                            ELSE ROUND(
-                                (vc.ventas_netas - (SELECT ventas_netas FROM ventas_anio_anterior)) / 
-                                (SELECT ventas_netas FROM ventas_anio_anterior) * 100, 
-                            2)
-                        END
-                    -- Para otros meses, usar el cálculo normal
-                    ELSE 
-                        CASE 
-                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) IS NULL THEN 0
-                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) = 0 THEN 0
-                            ELSE ROUND(
-                                (vc.ventas_netas - LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero)) / 
-                                LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) * 100, 
-                            2)
-                        END
-                END AS crecimiento_porcentual,
-                CASE 
-                    -- Para enero, comparar con diciembre del año anterior
-                    WHEN vc.mes_numero = 1 THEN 
-                        vc.ventas_netas - COALESCE((SELECT ventas_netas FROM ventas_anio_anterior), 0)
-                    -- Para otros meses, usar el cálculo normal
-                    ELSE 
-                        CASE 
-                            WHEN LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero) IS NULL THEN 0
-                            ELSE (vc.ventas_netas - LAG(vc.ventas_netas, 1) OVER (ORDER BY vc.anio, vc.mes_numero))
-                        END
-                END AS crecimiento_absoluto
-            FROM 
-                ventas_con_mes_anterior vc
+                COALESCE(ROUND(
+                    (vc.ventas_netas - vc.ventas_mes_anterior) /
+                    NULLIF(vc.ventas_mes_anterior, 0) * 100,
+                2), 0) AS crecimiento_porcentual,
+                vc.ventas_netas - vc.ventas_mes_anterior AS crecimiento_absoluto
+            FROM ventas_calculadas vc
         )
-        SELECT 
-            vc.mes_numero,
-            vc.mes_nombre,
-            vc.anio,
-            vc.total_ventas_bruto,
-            vc.ventas_brutas,
-            vc.total_notas_credito,
-            vc.cantidad_notas_credito,
-            vc.ventas_netas,
-            vc.ventas_mes_anterior,
-            vc.crecimiento_porcentual,
-            vc.crecimiento_absoluto,
-            CASE 
-                WHEN vc.crecimiento_porcentual > 0 THEN 'CRECIMIENTO'
-                WHEN vc.crecimiento_porcentual < 0 THEN 'DECRECIMIENTO'
+        SELECT
+            cr.mes_numero,
+            cr.mes_nombre,
+            cr.anio,
+            cr.total_ventas_bruto,
+            cr.ventas_brutas,
+            cr.total_notas_credito,
+            cr.cantidad_notas_credito,
+            cr.ventas_netas,
+            cr.ventas_mes_anterior,
+            cr.crecimiento_porcentual,
+            cr.crecimiento_absoluto,
+            CASE
+                WHEN cr.crecimiento_porcentual > 0 THEN 'CRECIMIENTO'
+                WHEN cr.crecimiento_porcentual < 0 THEN 'DECRECIMIENTO'
                 ELSE 'ESTABLE'
             END AS tendencia,
-            CASE 
-                WHEN vc.mes_numero = 1 THEN 'Diciembre ' || (${dtoIn.periodo} - 1)
-                ELSE COALESCE(vc.nombre_mes_anterior, 'N/A') || ' ' || vc.anio
+            CASE
+                WHEN cr.mes_numero = 1 THEN 'Diciembre ' || ${dtoIn.periodo - 1}
+                ELSE COALESCE(cr.nombre_mes_anterior, 'N/A') || ' ' || cr.anio
             END AS comparacion_con
-        FROM 
-            ventas_con_crecimiento vc
-        ORDER BY 
-            vc.anio, vc.mes_numero
-    `);
+        FROM crecimiento cr
+        ORDER BY cr.mes_numero
+        `);
         query.addStringParam(1, `${dtoIn.periodo}-01-01`);
         query.addStringParam(2, `${dtoIn.periodo}-12-31`);
         query.addStringParam(3, `${dtoIn.periodo}-01-01`);

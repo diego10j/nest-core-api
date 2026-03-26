@@ -14,6 +14,7 @@ import { GetFacturaDto } from './dto/get-factura.dto';
 import { SaveFacturaDto, DetaFacturaDto } from './dto/save-factura.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 import { isDefined } from 'src/util/helpers/common-util';
+import { UtilidadVentasDto } from './dto/get-util-ventas';
 
 @Injectable()
 export class FacturasService extends BaseService {
@@ -681,7 +682,7 @@ export class FacturasService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getUtilidadVentas(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    async getUtilidadVentas(dtoIn: UtilidadVentasDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `
     SELECT 
@@ -702,14 +703,19 @@ export class FacturasService extends BaseService {
         uv.utilidad_neta,
         uv.porcentaje_utilidad,
         uv.nota_credito,
-        uv.fecha_ultima_compra
-    FROM f_utilidad_ventas($1,$2,$3) uv
+        uv.fecha_ultima_compra,
+        uv.nombre_cndfp,
+        uv.dias_cndfp,
+        uv.ide_sucu
+    FROM f_utilidad_ventas($1,$2,$3,null,$4) uv
         `,
             dtoIn,
         );
         query.addParam(1, dtoIn.ideEmpr);
         query.addParam(2, dtoIn.fechaInicio);
         query.addParam(3, dtoIn.fechaFin);
+        query.addParam(4, dtoIn.ide_sucu);
+        query.isLazy = false;
         return this.dataSource.createQuery(query);
     }
 
