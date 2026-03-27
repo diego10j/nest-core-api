@@ -453,6 +453,92 @@ export class MenudeoSaveService extends BaseService {
             throw new BadRequestException('Debe incluir al menos una presentación en el detalle');
         }
 
+        // ─── UPDATE ───────────────────────────────────────────────────────
+        if (dtoIn.isUpdate) {
+            if (!data.ide_incmen) {
+                throw new BadRequestException('Se requiere ide_incmen para actualizar el comprobante');
+            }
+
+            // Verificar que el comprobante existe y está activo
+            const checkQ = new SelectQuery(`
+                SELECT ide_incmen, estado_incmen
+                FROM inv_cab_menudeo
+                WHERE ide_incmen = $1 AND ide_empr = $2
+            `);
+            checkQ.addIntParam(1, data.ide_incmen);
+            checkQ.addIntParam(2, dtoIn.ideEmpr);
+            const existing = await this.dataSource.createSingleQuery(checkQ);
+
+            if (!existing) {
+                throw new BadRequestException(`El comprobante ${data.ide_incmen} no existe`);
+            }
+            if (Number(existing.estado_incmen) === 0) {
+                throw new BadRequestException('No se puede editar un comprobante anulado');
+            }
+
+            // Obtener info del tipo de transacción
+            const tipoTranUp = await this.getTipoTranInfo(data.ide_inmtt);
+            if (!tipoTranUp) {
+                throw new BadRequestException(`Tipo de transacción ${data.ide_inmtt} no encontrado`);
+            }
+
+            // Validar que las presentaciones pertenezcan al mismo producto base
+            await this.validarPresentaciones(data.ide_inarti, detalle, dtoIn.ideEmpr);
+
+            // Para egresos, verificar stock
+            if (Number(tipoTranUp.signo_inmtc) === -1) {
+                await this.validarStockMenudeo(detalle);
+            }
+
+            // Actualizar cabecera
+            const updateQuery = new UpdateQuery('inv_cab_menudeo', 'ide_incmen');
+            updateQuery.values.set('ide_inmtt', data.ide_inmtt);
+            updateQuery.values.set('fecha_incmen', data.fecha_incmen);
+            updateQuery.values.set('observacion_incmen', data.observacion_incmen ?? null);
+            updateQuery.values.set('usuario_actua', dtoIn.login);
+            updateQuery.values.set('fecha_actua', getCurrentDate());
+            updateQuery.values.set('hora_actua', getCurrentTime());
+            updateQuery.where = 'ide_incmen = $1';
+            updateQuery.addIntParam(1, data.ide_incmen);
+            await this.dataSource.createQuery(updateQuery);
+
+            // Eliminar detalle existente y reinsertar
+            await this.dataSource.pool.query(
+                `DELETE FROM inv_det_menudeo WHERE ide_incmen = $1`,
+                [data.ide_incmen],
+            );
+
+            for (const det of detalle) {
+                const ide_indmen = await this.dataSource.getSeqTable(
+                    'inv_det_menudeo',
+                    'ide_indmen',
+                    1,
+                    dtoIn.login,
+                );
+                const detQuery: ObjectQueryDto = {
+                    operation: 'insert',
+                    module: 'inv',
+                    tableName: 'det_menudeo',
+                    primaryKey: 'ide_indmen',
+                    object: {
+                        ide_indmen,
+                        ide_incmen: data.ide_incmen,
+                        ide_inmpre: det.ide_inmpre,
+                        cantidad_indmen: det.cantidad_indmen,
+                        cant_base_indmen: det.cant_base_indmen,
+                        observacion_indmen: det.observacion_indmen ?? null,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                };
+                await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            }
+
+            return { message: 'ok', rowCount: 1, ide_incmen: data.ide_incmen };
+        }
+        // ─── INSERT (flujo original) ──────────────────────────────────────
+
         // 1. Obtener info del tipo de transacción
         const tipoTran = await this.getTipoTranInfo(data.ide_inmtt);
         if (!tipoTran) {

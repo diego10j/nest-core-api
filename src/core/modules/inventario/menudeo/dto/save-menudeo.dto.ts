@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
     IsArray,
+    IsBoolean,
     IsDateString,
     IsInt,
     IsNotEmpty,
@@ -32,6 +33,12 @@ export class IDetMenudeo {
 }
 
 export class ICabMenudeo {
+    /** ID del comprobante — solo para UPDATE */
+    @IsOptional()
+    @IsInt()
+    @IsPositive()
+    ide_incmen?: number;
+
     @IsInt()
     @IsPositive()
     ide_inarti: number;
@@ -68,6 +75,11 @@ export class ICabMenudeo {
 }
 
 export class SaveMenudeoDto {
+    /** true = actualizar comprobante existente */
+    @IsOptional()
+    @IsBoolean()
+    isUpdate?: boolean;
+
     @IsNotEmpty()
     @IsObject()
     @ValidateNested()
