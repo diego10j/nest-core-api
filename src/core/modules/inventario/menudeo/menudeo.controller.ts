@@ -15,6 +15,8 @@ import { IdTipoTranDto } from './dto/id-tipo-tran.dto';
 import { SaveFormaDto } from './dto/save-forma.dto';
 import { SaveMenudeoDto } from './dto/save-menudeo.dto';
 import { SavePresentacionDto } from './dto/save-presentacion.dto';
+import { SaveAjusteMenudeoDto } from './dto/save-ajuste-menudeo.dto';
+import { SaveSaldoInicialMenudeoDto } from './dto/save-saldo-inicial-menudeo.dto';
 import { CopiarPresentacionDto } from './dto/copiar-presentacion.dto';
 import { SaveTipoCompDto, SaveTipoTranDto } from './dto/save-tipo.dto';
 import { TrnMenudeoDto } from './dto/trn-menudeo.dto';
@@ -364,6 +366,33 @@ export class MenudeoController {
         @Body() dtoIn: CopiarPresentacionDto,
     ) {
         return this.saveService.copiarPresentacion({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Crea saldos iniciales de menudeo de forma masiva.
+     * Agrupa los ítems por producto y genera un comprobante por cada uno.
+     * El tipo de transacción Saldo Inicial (SI) se resuelve automáticamente.
+     */
+    @Post('saveSaldoInicialMenudeo')
+    saveSaldoInicialMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: SaveSaldoInicialMenudeoDto,
+    ) {
+        return this.saveService.saveSaldoInicialMenudeo({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Ajusta el stock de menudeo a un saldo final deseado.
+     * Calcula automáticamente la diferencia y genera Ajuste Ingreso o Ajuste Egreso
+     * según corresponda. Ítems con saldo_final igual al actual se omiten.
+     * Se crea un comprobante por cada combinación (producto, tipo de ajuste).
+     */
+    @Post('saveAjusteMenudeo')
+    saveAjusteMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: SaveAjusteMenudeoDto,
+    ) {
+        return this.saveService.saveAjusteMenudeo({ ...headersParams, ...dtoIn });
     }
 
     // ─────────────────────────────────────────────────────────────

@@ -947,6 +947,69 @@ export class ProductosService extends BaseService {
     }
 
     /**
+     * Retorna el stock de menudeo (fraccionamiento) de un producto:
+     * por cada presentación (forma) asignada muestra el saldo actual en unidades
+     * de presentación, la cantidad en unidades base que representa, los umbrales
+     * de stock mínimo e ideal configurados y el nivel de alerta.
+     */
+    async getStockMenudeoProducto(dtoIn: IdProductoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+            SELECT
+                p.ide_inmpre,
+                p.ide_inmfor,
+                f.nombre_inmfor,
+                COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva,
+                u.siglas_inuni       AS siglas_forma,
+                ub.siglas_inuni      AS siglas_base,
+                COALESCE(
+                    f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 2), 0
+                )                    AS saldo_presentacion,
+                COALESCE(
+                    f_redondeo(SUM(d.cant_base_indmen * tc.signo_inmtc), 6), 0
+                )                    AS saldo_base_consumida,
+                p.stock_minimo_inmpre,
+                p.stock_ideal_inmpre,
+                CASE
+                    WHEN COALESCE(f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 2), 0) <= 0
+                         THEN 'CRITICO'
+                    WHEN p.stock_minimo_inmpre > 0
+                     AND COALESCE(f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 2), 0)
+                         < p.stock_minimo_inmpre
+                         THEN 'BAJO'
+                    WHEN p.stock_ideal_inmpre > 0
+                     AND COALESCE(f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 2), 0)
+                         < p.stock_ideal_inmpre
+                         THEN 'IDEAL'
+                    ELSE 'OK'
+                END                  AS nivel_alerta,
+                p.activo_inmpre
+            FROM inv_men_presentacion p
+            INNER JOIN inv_men_forma    f  ON f.ide_inmfor  = p.ide_inmfor
+            INNER JOIN inv_articulo     a  ON a.ide_inarti  = p.ide_inarti
+            LEFT  JOIN inv_det_menudeo  d  ON d.ide_inmpre  = p.ide_inmpre
+            LEFT  JOIN inv_cab_menudeo  c  ON c.ide_incmen  = d.ide_incmen
+                                          AND c.estado_incmen = 1
+            LEFT  JOIN inv_men_tipo_tran tt ON tt.ide_inmtt  = c.ide_inmtt
+            LEFT  JOIN inv_men_tipo_comp tc ON tc.ide_inmtc  = tt.ide_inmtc
+            LEFT  JOIN inv_unidad        u  ON u.ide_inuni   = f.ide_inuni
+            LEFT  JOIN inv_unidad        ub ON ub.ide_inuni  = a.ide_inuni
+            WHERE p.ide_inarti = $1
+              AND p.ide_empr   = ${dtoIn.ideEmpr}
+            GROUP BY
+                p.ide_inmpre, p.ide_inmfor, f.nombre_inmfor,
+                p.cant_base_inmpre, f.cant_base_inmfor,
+                p.stock_minimo_inmpre, p.stock_ideal_inmpre,
+                u.siglas_inuni, ub.siglas_inuni, p.activo_inmpre
+            ORDER BY p.activo_inmpre DESC, f.nombre_inmfor
+            `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
      * Retorna el total de ventas mensuales de un producto en un periodo
      * @param dtoIn
      * @returns

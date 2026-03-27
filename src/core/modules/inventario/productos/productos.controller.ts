@@ -172,6 +172,15 @@ export class ProductosController {
     });
   }
 
+  @Get('getStockMenudeoProducto')
+  // @Auth()
+  getStockMenudeoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
+    return this.productos.getStockMenudeoProducto({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getVentasMensuales')
   // @Auth()
   getVentasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {

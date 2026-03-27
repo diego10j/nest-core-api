@@ -16,8 +16,10 @@ import { IdTipoCompDto } from './dto/id-tipo-comp.dto';
 import { IdTipoTranDto } from './dto/id-tipo-tran.dto';
 import { SaveFormaDto } from './dto/save-forma.dto';
 import { CopiarPresentacionDto } from './dto/copiar-presentacion.dto';
+import { SaveAjusteMenudeoDto } from './dto/save-ajuste-menudeo.dto';
 import { SaveMenudeoDto } from './dto/save-menudeo.dto';
 import { SavePresentacionDto } from './dto/save-presentacion.dto';
+import { SaveSaldoInicialMenudeoDto } from './dto/save-saldo-inicial-menudeo.dto';
 import { SaveTipoCompDto, SaveTipoTranDto } from './dto/save-tipo.dto';
 
 @Injectable()
@@ -583,6 +585,347 @@ export class MenudeoSaveService extends BaseService {
             message: 'Comprobante anulado correctamente',
             rowCount: 1,
             ide_incci_insumos: cab.ide_incci ?? null,
+        };
+    }
+
+    /**
+     * Crea saldos iniciales de menudeo de forma masiva.
+     *
+     * Flujo:
+     *  1. Busca el tipo de transacción "Saldo Inicial" (sigla SI) de la empresa.
+     *  2. Agrupa los ítems por producto (ide_inarti).
+     *  3. Por cada producto valida que las presentaciones le pertenezcan.
+     *  4. Crea un comprobante de menudeo (cab + detalle) por cada producto.
+     * Retorna la lista de comprobantes generados.
+     */
+    async saveSaldoInicialMenudeo(dtoIn: SaveSaldoInicialMenudeoDto & HeaderParamsDto) {
+        const { items, fecha_incmen, observacion_incmen } = dtoIn;
+
+        if (!items || items.length === 0) {
+            throw new BadRequestException('Debe incluir al menos un ítem de saldo inicial');
+        }
+
+        // 1. Obtener el tipo de transacción Saldo Inicial
+        const tipoTranQuery = new SelectQuery(`
+            SELECT tt.ide_inmtt, tc.signo_inmtc
+            FROM inv_men_tipo_tran tt
+            INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
+            WHERE tt.sigla_inmtt = 'SI'
+              AND tt.activo_inmtt = true
+              AND (tc.ide_empr = $1 OR tc.ide_empr = 0)
+            ORDER BY tc.ide_empr DESC
+            LIMIT 1
+        `);
+        tipoTranQuery.addIntParam(1, dtoIn.ideEmpr);
+        const tipoTran = await this.dataSource.createSingleQuery(tipoTranQuery);
+        if (!tipoTran) {
+            throw new BadRequestException(
+                'No se encontró un tipo de transacción de Saldo Inicial (SI) activo para esta empresa',
+            );
+        }
+        if (Number(tipoTran.signo_inmtc) !== 1) {
+            throw new BadRequestException(
+                'El tipo de transacción Saldo Inicial debe ser de tipo Ingreso (signo +1)',
+            );
+        }
+        const ide_inmtt = Number(tipoTran.ide_inmtt);
+
+        // 2. Agrupar ítems por ide_inarti
+        const grupos = new Map<number, (typeof items)[number][]>();
+        for (const item of items) {
+            if (!grupos.has(item.ide_inarti)) {
+                grupos.set(item.ide_inarti, []);
+            }
+            grupos.get(item.ide_inarti)!.push(item);
+        }
+
+        const comprobantesCreados: number[] = [];
+
+        for (const [ide_inarti, lineas] of grupos) {
+            // 3. Validar que las presentaciones pertenezcan al producto
+            await this.validarPresentaciones(
+                ide_inarti,
+                lineas.map((l) => ({
+                    ide_inmpre: l.ide_inmpre,
+                    cantidad_indmen: l.cantidad_indmen,
+                    cant_base_indmen: l.cant_base_indmen,
+                })),
+                dtoIn.ideEmpr,
+            );
+
+            // 4. Insertar cabecera
+            const ide_incmen = await this.dataSource.getSeqTable(
+                'inv_cab_menudeo',
+                'ide_incmen',
+                1,
+                dtoIn.login,
+            );
+            const cabQuery: ObjectQueryDto = {
+                operation: 'insert',
+                module: 'inv',
+                tableName: 'cab_menudeo',
+                primaryKey: 'ide_incmen',
+                object: {
+                    ide_incmen,
+                    ide_inarti,
+                    ide_inmtt,
+                    ide_empr: dtoIn.ideEmpr,
+                    ide_sucu: dtoIn.ideSucu,
+                    numero_incmen: String(ide_incmen).padStart(10, '0'),
+                    fecha_incmen,
+                    observacion_incmen: observacion_incmen ?? 'Saldo inicial menudeo',
+                    estado_incmen: 1,
+                    ide_incci: null,
+                    ide_cccfa: null,
+                    ide_incmen_ref: null,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
+                },
+            };
+            await this.core.save({ ...dtoIn, listQuery: [cabQuery], audit: false });
+
+            // 5. Insertar líneas de detalle
+            for (const linea of lineas) {
+                const ide_indmen = await this.dataSource.getSeqTable(
+                    'inv_det_menudeo',
+                    'ide_indmen',
+                    1,
+                    dtoIn.login,
+                );
+                const detQuery: ObjectQueryDto = {
+                    operation: 'insert',
+                    module: 'inv',
+                    tableName: 'det_menudeo',
+                    primaryKey: 'ide_indmen',
+                    object: {
+                        ide_indmen,
+                        ide_incmen,
+                        ide_inmpre: linea.ide_inmpre,
+                        cantidad_indmen: linea.cantidad_indmen,
+                        cant_base_indmen: linea.cant_base_indmen,
+                        observacion_indmen: linea.observacion_indmen ?? null,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                };
+                await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            }
+
+            comprobantesCreados.push(ide_incmen);
+        }
+
+        return {
+            message: 'ok',
+            total_comprobantes: comprobantesCreados.length,
+            comprobantes: comprobantesCreados,
+        };
+    }
+
+    /**
+     * Ajusta el stock de menudeo para que cada presentación quede con el saldo_final indicado.
+     *
+     * Flujo:
+     *  1. Consulta en batch el saldo actual y cant_base_efectiva de cada presentación.
+     *  2. Calcula diferencia = saldo_final - saldo_actual.
+     *     - diferencia > 0 → Ajuste Ingreso (+)
+     *     - diferencia < 0 → Ajuste Egreso  (-)
+     *     - diferencia = 0 → se omite el ítem
+     *  3. Agrupa por (ide_inarti, signo) y genera un comprobante por grupo.
+     * Retorna los comprobantes creados con su detalle de ajustes.
+     */
+    async saveAjusteMenudeo(dtoIn: SaveAjusteMenudeoDto & HeaderParamsDto) {
+        const { items, fecha_incmen, observacion_incmen } = dtoIn;
+
+        if (!items || items.length === 0) {
+            throw new BadRequestException('Debe incluir al menos un ítem de ajuste');
+        }
+
+        // 1. Consultar saldo actual y factor de conversión de cada presentación en una sola query
+        const ids = items.map((i) => i.ide_inmpre);
+        const saldosQuery = new SelectQuery(`
+            SELECT
+                p.ide_inmpre,
+                p.ide_inarti,
+                COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva,
+                COALESCE(
+                    f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 3), 0
+                ) AS saldo_actual
+            FROM inv_men_presentacion p
+            INNER JOIN inv_men_forma f ON f.ide_inmfor = p.ide_inmfor
+            LEFT JOIN inv_det_menudeo d ON d.ide_inmpre = p.ide_inmpre
+            LEFT JOIN inv_cab_menudeo c ON c.ide_incmen = d.ide_incmen
+                                       AND c.estado_incmen = 1
+            LEFT JOIN inv_men_tipo_tran tt ON tt.ide_inmtt = c.ide_inmtt
+            LEFT JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
+            WHERE p.ide_inmpre = ANY($1)
+              AND p.ide_empr   = $2
+            GROUP BY p.ide_inmpre, p.ide_inarti, p.cant_base_inmpre, f.cant_base_inmfor
+        `);
+        saldosQuery.addParam(1, ids);
+        saldosQuery.addIntParam(2, dtoIn.ideEmpr);
+        const saldosRows = await this.dataSource.createSelectQuery(saldosQuery);
+
+        if (saldosRows.length === 0) {
+            throw new BadRequestException(
+                'Ninguna presentación fue encontrada en la empresa indicada',
+            );
+        }
+
+        // Indexar por ide_inmpre para acceso rápido
+        const saldoMap = new Map<number, { saldo_actual: number; cant_base_efectiva: number; ide_inarti: number }>();
+        for (const row of saldosRows) {
+            saldoMap.set(Number(row.ide_inmpre), {
+                saldo_actual: Number(row.saldo_actual),
+                cant_base_efectiva: Number(row.cant_base_efectiva),
+                ide_inarti: Number(row.ide_inarti),
+            });
+        }
+
+        // 2. Calcular diferencias y separar en ingresos/egresos por producto
+        // Clave del grupo: `${ide_inarti}_${signo}` (+1 ingreso, -1 egreso)
+        type GrupoKey = string;
+        type LineaAjuste = {
+            ide_inmpre: number;
+            cantidad_indmen: number;
+            cant_base_indmen: number;
+            observacion_indmen?: string;
+            diferencia: number;
+        };
+        const grupos = new Map<GrupoKey, { ide_inarti: number; signo: number; lineas: LineaAjuste[] }>();
+
+        for (const item of items) {
+            const info = saldoMap.get(item.ide_inmpre);
+            if (!info) {
+                throw new BadRequestException(
+                    `La presentación ${item.ide_inmpre} no existe o no pertenece a la empresa`,
+                );
+            }
+            if (info.ide_inarti !== item.ide_inarti) {
+                throw new BadRequestException(
+                    `La presentación ${item.ide_inmpre} no pertenece al producto ${item.ide_inarti}`,
+                );
+            }
+
+            const diferencia = parseFloat((item.saldo_final - info.saldo_actual).toFixed(3));
+            if (diferencia === 0) continue; // ya está en el saldo correcto, se omite
+
+            const signo = diferencia > 0 ? 1 : -1;
+            const cantAjuste = Math.abs(diferencia);
+            const cantBase = parseFloat((cantAjuste * info.cant_base_efectiva).toFixed(6));
+
+            const key: GrupoKey = `${item.ide_inarti}_${signo}`;
+            if (!grupos.has(key)) {
+                grupos.set(key, { ide_inarti: item.ide_inarti, signo, lineas: [] });
+            }
+            grupos.get(key)!.lineas.push({
+                ide_inmpre: item.ide_inmpre,
+                cantidad_indmen: cantAjuste,
+                cant_base_indmen: cantBase,
+                observacion_indmen: item.observacion_indmen,
+                diferencia,
+            });
+        }
+
+        if (grupos.size === 0) {
+            return { message: 'ok', total_comprobantes: 0, comprobantes: [], detalle_ajustes: [] };
+        }
+
+        // 3. Buscar tipos de transacción de ajuste (+1 y -1) una sola vez
+        const tipoAjusteQuery = new SelectQuery(`
+            SELECT tt.ide_inmtt, tc.signo_inmtc
+            FROM inv_men_tipo_tran tt
+            INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
+            WHERE tt.sigla_inmtt = 'AJU'
+              AND tt.activo_inmtt = true
+              AND (tc.ide_empr = $1 OR tc.ide_empr = 0)
+            ORDER BY tc.ide_empr DESC, tt.ide_inmtt
+        `);
+        tipoAjusteQuery.addIntParam(1, dtoIn.ideEmpr);
+        const tiposAjuste = await this.dataSource.createSelectQuery(tipoAjusteQuery);
+
+        const tipoIngreso = tiposAjuste.find((t) => Number(t.signo_inmtc) === 1);
+        const tipoEgreso = tiposAjuste.find((t) => Number(t.signo_inmtc) === -1);
+
+        if (!tipoIngreso) {
+            throw new BadRequestException('No se encontró un tipo de transacción Ajuste Ingreso (AJU) activo');
+        }
+        if (!tipoEgreso) {
+            throw new BadRequestException('No se encontró un tipo de transacción Ajuste Egreso (AJU) activo');
+        }
+
+        // 4. Crear un comprobante por cada grupo
+        const comprobantesCreados: { ide_incmen: number; ide_inarti: number; tipo: string; lineas: number }[] = [];
+
+        for (const [, grupo] of grupos) {
+            const ide_inmtt = grupo.signo === 1 ? Number(tipoIngreso.ide_inmtt) : Number(tipoEgreso.ide_inmtt);
+            const tipoLabel = grupo.signo === 1 ? 'Ajuste Ingreso' : 'Ajuste Egreso';
+
+            const ide_incmen = await this.dataSource.getSeqTable(
+                'inv_cab_menudeo', 'ide_incmen', 1, dtoIn.login,
+            );
+            const cabQuery: ObjectQueryDto = {
+                operation: 'insert',
+                module: 'inv',
+                tableName: 'cab_menudeo',
+                primaryKey: 'ide_incmen',
+                object: {
+                    ide_incmen,
+                    ide_inarti: grupo.ide_inarti,
+                    ide_inmtt,
+                    ide_empr: dtoIn.ideEmpr,
+                    ide_sucu: dtoIn.ideSucu,
+                    numero_incmen: String(ide_incmen).padStart(10, '0'),
+                    fecha_incmen,
+                    observacion_incmen: observacion_incmen ?? `${tipoLabel} de stock`,
+                    estado_incmen: 1,
+                    ide_incci: null,
+                    ide_cccfa: null,
+                    ide_incmen_ref: null,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
+                },
+            };
+            await this.core.save({ ...dtoIn, listQuery: [cabQuery], audit: false });
+
+            for (const linea of grupo.lineas) {
+                const ide_indmen = await this.dataSource.getSeqTable(
+                    'inv_det_menudeo', 'ide_indmen', 1, dtoIn.login,
+                );
+                const detQuery: ObjectQueryDto = {
+                    operation: 'insert',
+                    module: 'inv',
+                    tableName: 'det_menudeo',
+                    primaryKey: 'ide_indmen',
+                    object: {
+                        ide_indmen,
+                        ide_incmen,
+                        ide_inmpre: linea.ide_inmpre,
+                        cantidad_indmen: linea.cantidad_indmen,
+                        cant_base_indmen: linea.cant_base_indmen,
+                        observacion_indmen: linea.observacion_indmen ?? null,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                };
+                await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            }
+
+            comprobantesCreados.push({
+                ide_incmen,
+                ide_inarti: grupo.ide_inarti,
+                tipo: tipoLabel,
+                lineas: grupo.lineas.length,
+            });
+        }
+
+        return {
+            message: 'ok',
+            total_comprobantes: comprobantesCreados.length,
+            comprobantes: comprobantesCreados,
         };
     }
 
