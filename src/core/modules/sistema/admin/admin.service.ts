@@ -121,17 +121,18 @@ export class AdminService {
   }
 
   /**
-   * Genera el menu de opciones del sistema ProErp a partir de un json elaborado en el frontend
-   * @param dtoIn
-   * @returns
+   * Genera el menu de opciones del sistema ProErp a partir de un json elaborado en el frontend.
+   * Antes de llamar a la función SQL se eliminan paths duplicados del árbol para evitar
+   * que el mismo path aparezca en distintas secciones del menú.
    */
   async generarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
+    const jsonDedup = this.deduplicarMenuPaths(dtoIn.json);
     const query = new SelectQuery(
       `
       SELECT * FROM f_generar_opciones_proerp($1, $2)
       `,
     );
-    const jsonString = JSON.stringify(dtoIn.json);
+    const jsonString = JSON.stringify(jsonDedup);
     query.addParam(1, jsonString);
     query.addParam(2, dtoIn.login);
     const rows = await this.dataSource.createSelectQuery(query);
@@ -140,6 +141,39 @@ export class AdminService {
       data: rows,
       message: 'ok',
     } as ResultQuery;
+  }
+
+  /**
+   * Recorre el árbol de menú y elimina cualquier item cuyo `path` ya fue visto,
+   * conservando siempre la primera aparición.
+   * Garantiza que el JSON enviado a la BD nunca tenga el mismo path dos veces.
+   */
+  private deduplicarMenuPaths(items: any[]): any[] {
+    const seenPaths = new Set<string>();
+
+    const procesarItem = (item: any): any | null => {
+      const path: string | undefined = item.path?.trim();
+
+      // Si el item tiene path y ya fue visto → descartar
+      if (path) {
+        if (seenPaths.has(path)) return null;
+        seenPaths.add(path);
+      }
+
+      const result: any = { ...item };
+
+      // Procesar hijos recursivamente: usa 'children' si existe, sino 'items'
+      const childKey = 'children' in item ? 'children' : 'items' in item ? 'items' : null;
+      if (childKey) {
+        result[childKey] = (item[childKey] as any[])
+          .map(procesarItem)
+          .filter((i): i is any => i !== null);
+      }
+
+      return result;
+    };
+
+    return items.map(procesarItem).filter((i): i is any => i !== null);
   }
 
   // -------------------------------- PERFILES ---------------------------- //

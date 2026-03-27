@@ -107,20 +107,22 @@ BEGIN
         -- Para subheaders (sin path): buscar por nombre + padre + ide_sist
         -- ─────────────────────────────────────────────
         IF v_full_path IS NOT NULL THEN
-            -- Buscar por path único dentro del sistema
+            -- Buscar por path único dentro del sistema.
+            -- Se usa TRIM para tolerar espacios accidentales en alguno de los dos lados.
             SELECT ide_opci INTO v_existing_id
             FROM sis_opcion
-            WHERE tipo_opci = v_full_path
+            WHERE TRIM(tipo_opci) = TRIM(v_full_path)
               AND ide_sist = 2
             LIMIT 1;
         ELSE
-            -- Subheader: buscar por nombre + mismo padre + sin path
+            -- Subheader: buscar por nombre dentro del sistema, SIN restricción de padre.
+            -- Si el subheader cambió de posición en el árbol, se lo encontrará igualmente
+            -- y se actualizará su padre (sis_ide_opci) en el UPDATE.
             SELECT ide_opci INTO v_existing_id
             FROM sis_opcion
             WHERE nom_opci = v_title
               AND ide_sist = 2
               AND tipo_opci IS NULL
-              AND (sis_ide_opci IS NOT DISTINCT FROM v_current_parent)
             LIMIT 1;
         END IF;
 
@@ -173,22 +175,23 @@ BEGIN
         VALUES (v_item_id)
         ON CONFLICT (ide_opci) DO NOTHING;
 
-        -- Encolar children (menús anidados, máx nivel 5)
-        IF v_current_nivel < 5 AND v_current_item ? 'children' THEN
-            v_children := v_current_item->'children';
-            FOR v_j IN 0..jsonb_array_length(v_children) - 1 LOOP
-                INSERT INTO temp_stack (item, parent_id, nivel)
-                VALUES (v_children->v_j, v_item_id, v_current_nivel + 1);
-            END LOOP;
-        END IF;
+        -- Encolar hijos: se usa 'children' si existe, sino 'items', nunca ambos.
+        -- Esto evita que un nodo con ambas claves procese sus hijos dos veces.
+        IF v_current_nivel < 5 THEN
+            IF v_current_item ? 'children' THEN
+                v_children := v_current_item->'children';
+            ELSIF v_current_item ? 'items' THEN
+                v_children := v_current_item->'items';
+            ELSE
+                v_children := NULL;
+            END IF;
 
-        -- Encolar items (solo para subheaders nivel 0)
-        IF v_current_nivel = 0 AND v_current_item ? 'items' THEN
-            v_children := v_current_item->'items';
-            FOR v_j IN 0..jsonb_array_length(v_children) - 1 LOOP
-                INSERT INTO temp_stack (item, parent_id, nivel)
-                VALUES (v_children->v_j, v_item_id, v_current_nivel + 1);
-            END LOOP;
+            IF v_children IS NOT NULL AND jsonb_array_length(v_children) > 0 THEN
+                FOR v_j IN 0..jsonb_array_length(v_children) - 1 LOOP
+                    INSERT INTO temp_stack (item, parent_id, nivel)
+                    VALUES (v_children->v_j, v_item_id, v_current_nivel + 1);
+                END LOOP;
+            END IF;
         END IF;
 
     END LOOP;
