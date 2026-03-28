@@ -16,19 +16,15 @@ import {
 export class InvMenPresentacion {
     @IsOptional()
     @IsInt()
-    @IsPositive()
     ide_inmpre?: number;
 
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     @IsInt()
-    @IsPositive()
     ide_inmfor: number;
 
     @IsInt()
-    @IsPositive()
     ide_empr: number;
 
     /** Override de cant_base de la forma; NULL = usa valor por defecto */

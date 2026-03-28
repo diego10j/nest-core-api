@@ -16,16 +16,13 @@ import {
 export class InvMenForma {
     @IsOptional()
     @IsInt()
-    @IsPositive()
     ide_inmfor?: number;
 
     @IsInt()
-    @IsPositive()
     ide_empr: number;
 
     @IsOptional()
     @IsInt()
-    @IsPositive()
     ide_inuni?: number;
 
     @IsNotEmpty()
@@ -48,15 +45,12 @@ export class InvMenForma {
 export class InvMenFormaInsumo {
     @IsOptional()
     @IsInt()
-    @IsPositive()
     ide_inmfin?: number;
 
     @IsInt()
-    @IsPositive()
     ide_inmfor: number;
 
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     @IsNumber({ maxDecimalPlaces: 4 })

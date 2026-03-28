@@ -15,12 +15,10 @@ import {
 export class IAjusteItem {
     /** Producto base al que pertenece la presentación */
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     /** Presentación (vínculo producto ↔ forma) que se va a ajustar */
     @IsInt()
-    @IsPositive()
     ide_inmpre: number;
 
     /**

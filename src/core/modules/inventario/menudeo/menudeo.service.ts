@@ -795,12 +795,90 @@ export class MenudeoService extends BaseService {
     }
 
     /**
+     * Retorna todos los productos de la empresa y una bandera booleana que indica
+     * si tienen presentaciones de menudeo configuradas.
+     */
+    async getProductosEstadoMenudeo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+            SELECT
+                a.ide_inarti,
+                a.uuid,
+                a.nombre_inarti,
+                a.codigo_inarti,
+                a.foto_inarti,
+                u.siglas_inuni,
+                u.nombre_inuni,
+                a.decim_stock_inarti,
+                a.activo_inarti,
+                COUNT(p.ide_inmpre) AS total_presentaciones
+            FROM inv_articulo a
+            LEFT JOIN inv_unidad u ON u.ide_inuni = a.ide_inuni
+            LEFT JOIN inv_men_presentacion p
+                ON p.ide_inarti = a.ide_inarti
+               AND p.ide_empr = ${dtoIn.ideEmpr}
+            WHERE a.ide_empr = ${dtoIn.ideEmpr}
+              AND a.ide_intpr = 1
+              AND a.nivel_inarti = 'HIJO'
+            GROUP BY
+                a.ide_inarti, a.uuid, a.nombre_inarti, a.codigo_inarti,
+                a.foto_inarti, u.siglas_inuni, u.nombre_inuni,
+                a.decim_stock_inarti, a.activo_inarti
+            ORDER BY unaccent(a.nombre_inarti)
+            `,
+            dtoIn,
+        );
+        query.isLazy = false; // para evitar paginación automática y retornar todos los productos
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Retorna productos que tienen presentaciones de menudeo configuradas
+     * pero ningún comprobante de menudeo registrado (inv_cab_menudeo).
+     * Son los únicos elegibles para crear un Saldo Inicial.
+     */
+    async getProductosSinComprobantesMenudeo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+            SELECT
+                a.ide_inarti,
+                a.uuid,
+                a.nombre_inarti,
+                a.codigo_inarti,
+                a.foto_inarti,
+                u.siglas_inuni,
+                u.nombre_inuni,
+                a.decim_stock_inarti,
+                COUNT(p.ide_inmpre)  AS total_presentaciones,
+                a.activo_inarti
+            FROM inv_men_presentacion p
+            INNER JOIN inv_articulo a ON a.ide_inarti = p.ide_inarti
+            LEFT  JOIN inv_unidad  u ON u.ide_inuni  = a.ide_inuni
+            WHERE p.ide_empr  = ${dtoIn.ideEmpr}
+              AND a.activo_inarti = true
+              AND NOT EXISTS (
+                  SELECT 1 FROM inv_cab_menudeo c
+                  WHERE c.ide_inarti = a.ide_inarti
+                    AND c.ide_empr   = ${dtoIn.ideEmpr}
+              )
+            GROUP BY
+                a.ide_inarti, a.uuid, a.nombre_inarti, a.codigo_inarti,
+                a.foto_inarti, u.siglas_inuni, u.nombre_inuni,
+                a.decim_stock_inarti, a.activo_inarti
+            ORDER BY unaccent(a.nombre_inarti)
+            `,
+            dtoIn,
+        );
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
      * Retorna los productos que tienen presentaciones de menudeo configuradas en la empresa
      */
     async getProductosConMenudeo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `
-            SELECT DISTINCT
+            SELECT
                 a.ide_inarti,
                 a.uuid,
                 a.nombre_inarti,
@@ -832,29 +910,30 @@ export class MenudeoService extends BaseService {
 
     /** inv_men_forma – tabla completa */
     async getTableQueryMenForma(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        return this.getFormas(dtoIn);
+        const condition = `ide_empr = ${dtoIn.ideEmpr}`;
+        const dto = { ...dtoIn, module: 'inv', tableName: 'men_forma', primaryKey: 'ide_inmfor', condition };
+        return this.core.getTableQuery(dto);
     }
 
     /** inv_men_forma – lista { value, label } para combos */
     async getListDataMenForma(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
-            SELECT
-                f.ide_inmfor  AS value,
-                f.nombre_inmfor AS label
-            FROM inv_men_forma f
-            WHERE f.ide_empr      = ${dtoIn.ideEmpr}
-              AND f.activo_inmfor = true
-            ORDER BY f.nombre_inmfor
-            `,
-            dtoIn,
-        );
-        return this.dataSource.createQuery(query);
+        const condition = `ide_empr = ${dtoIn.ideEmpr} and activo_inmfor = true`;
+        const dto = {
+            ...dtoIn,
+            module: 'inv',
+            tableName: 'men_forma',
+            primaryKey: 'ide_inmfor',
+            columnLabel: 'nombre_inmfor',
+            condition,
+        };
+        return this.core.getListDataValues(dto);
     }
 
     /** inv_men_forma_insumo – tabla completa (requiere ide_inmfor) */
     async getTableQueryMenFormaInsumo(dtoIn: IdFormaDto & HeaderParamsDto) {
-        return this.getInsumosForma(dtoIn);
+        const condition = `ide_inmfor = ${dtoIn.ide_inmfor}`;
+        const dto = { ...dtoIn, module: 'inv', tableName: 'men_forma_insumo', primaryKey: 'ide_inmfin', condition };
+        return this.core.getTableQuery(dto);
     }
 
     /** inv_men_forma_insumo – lista { value, label } para combos */
@@ -862,7 +941,7 @@ export class MenudeoService extends BaseService {
         const query = new SelectQuery(
             `
             SELECT
-                fi.ide_inmfin AS value,
+                CAST(fi.ide_inmfin AS VARCHAR) AS value,
                 a.nombre_inarti AS label
             FROM inv_men_forma_insumo fi
             INNER JOIN inv_articulo a ON a.ide_inarti = fi.ide_inarti
@@ -872,61 +951,59 @@ export class MenudeoService extends BaseService {
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ide_inmfor);
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /** inv_men_tipo_comp – tabla completa */
     async getTableQueryMenTipoComp(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        return this.getTipoCompMenudeo(dtoIn);
+        const condition = `ide_empr = ${dtoIn.ideEmpr}`;
+        const dto = { ...dtoIn, module: 'inv', tableName: 'men_tipo_comp', primaryKey: 'ide_inmtc', condition };
+        return this.core.getTableQuery(dto);
     }
 
     /** inv_men_tipo_comp – lista { value, label } para combos */
     async getListDataMenTipoComp(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
-            SELECT
-                tc.ide_inmtc    AS value,
-                tc.nombre_inmtc AS label
-            FROM inv_men_tipo_comp tc
-            WHERE tc.ide_empr     = ${dtoIn.ideEmpr}
-              AND tc.activo_inmtc = true
-            ORDER BY tc.signo_inmtc DESC, tc.nombre_inmtc
-            `,
-            dtoIn,
-        );
-        return this.dataSource.createQuery(query);
+        const condition = `ide_empr = ${dtoIn.ideEmpr} and activo_inmtc = true`;
+        const dto = {
+            ...dtoIn,
+            module: 'inv',
+            tableName: 'men_tipo_comp',
+            primaryKey: 'ide_inmtc',
+            columnLabel: 'nombre_inmtc',
+            condition,
+            columnOrder: 'signo_inmtc DESC, nombre_inmtc',
+        };
+        return this.core.getListDataValues(dto);
     }
 
     /** inv_men_tipo_tran – tabla completa */
     async getTableQueryMenTipoTran(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        return this.getTipoTranMenudeo(dtoIn);
+        const condition = `ide_empr = ${dtoIn.ideEmpr}`;
+        const dto = { ...dtoIn, module: 'inv', tableName: 'men_tipo_tran', primaryKey: 'ide_inmtt', condition };
+        return this.core.getTableQuery(dto);
     }
 
     /** inv_men_tipo_tran – lista { value, label } filtrable por ide_inmtc */
     async getListDataMenTipoTran(dtoIn: IdTipoCompDto & HeaderParamsDto) {
-        const whereComp = dtoIn.ide_inmtc ? `AND tt.ide_inmtc = $1` : '';
-        const query = new SelectQuery(
-            `
-            SELECT
-                tt.ide_inmtt    AS value,
-                tt.nombre_inmtt AS label
-            FROM inv_men_tipo_tran tt
-            WHERE tt.ide_empr     = ${dtoIn.ideEmpr}
-              AND tt.activo_inmtt = true
-              ${whereComp}
-            ORDER BY tt.nombre_inmtt
-            `,
-            dtoIn,
-        );
-        if (dtoIn.ide_inmtc) {
-            query.addIntParam(1, dtoIn.ide_inmtc);
-        }
-        return this.dataSource.createQuery(query);
+        const condition = dtoIn.ide_inmtc
+            ? `ide_empr = ${dtoIn.ideEmpr} and activo_inmtt = true and ide_inmtc = ${dtoIn.ide_inmtc}`
+            : `ide_empr = ${dtoIn.ideEmpr} and activo_inmtt = true`;
+        const dto = {
+            ...dtoIn,
+            module: 'inv',
+            tableName: 'men_tipo_tran',
+            primaryKey: 'ide_inmtt',
+            columnLabel: 'nombre_inmtt',
+            condition,
+        };
+        return this.core.getListDataValues(dto);
     }
 
     /** inv_men_presentacion – tabla completa (requiere ide_inarti) */
     async getTableQueryMenPresentacion(dtoIn: IdProductoMenudeoDto & HeaderParamsDto) {
-        return this.getPresentacionesProducto(dtoIn);
+        const condition = `ide_empr = ${dtoIn.ideEmpr} and ide_inarti = ${dtoIn.ide_inarti}`;
+        const dto = { ...dtoIn, module: 'inv', tableName: 'men_presentacion', primaryKey: 'ide_inmpre', condition };
+        return this.core.getTableQuery(dto);
     }
 
     /** inv_men_presentacion – lista { value, label } para combos */
@@ -934,18 +1011,18 @@ export class MenudeoService extends BaseService {
         const query = new SelectQuery(
             `
             SELECT
-                p.ide_inmpre    AS value,
+                CAST(p.ide_inmpre AS VARCHAR) AS value,
                 f.nombre_inmfor AS label
             FROM inv_men_presentacion p
             INNER JOIN inv_men_forma f ON f.ide_inmfor = p.ide_inmfor
-            WHERE p.ide_inarti   = $1
-              AND p.ide_empr     = ${dtoIn.ideEmpr}
+            WHERE p.ide_inarti    = $1
+              AND p.ide_empr      = ${dtoIn.ideEmpr}
               AND p.activo_inmpre = true
             ORDER BY f.nombre_inmfor
             `,
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ide_inarti);
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 }

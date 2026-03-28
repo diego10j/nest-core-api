@@ -133,6 +133,31 @@ export class MenudeoController {
         return this.service.getProductosConMenudeo({ ...headersParams, ...dtoIn });
     }
 
+    /**
+     * Lista todos los productos y marca con una bandera si tienen
+     * presentaciones de menudeo configuradas.
+     */
+    @Get('getProductosEstadoMenudeo')
+    getProductosEstadoMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getProductosEstadoMenudeo({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Retorna productos que tienen presentaciones configuradas pero ningún comprobante
+     * de menudeo registrado.
+     * Son los únicos elegibles para crear un Saldo Inicial de menudeo.
+     */
+    @Get('getProductosSinComprobantesMenudeo')
+    getProductosSinComprobantesMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getProductosSinComprobantesMenudeo({ ...headersParams, ...dtoIn });
+    }
+
     // ─────────────────────────────────────────────────────────────
     // STOCK DE MENUDEO
     // ─────────────────────────────────────────────────────────────

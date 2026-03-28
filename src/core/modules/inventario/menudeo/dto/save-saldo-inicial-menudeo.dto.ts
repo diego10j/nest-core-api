@@ -15,12 +15,10 @@ import {
 export class ISaldoInicialItem {
     /** Producto base */
     @IsInt()
-    @IsPositive()
     ide_inarti: number;
 
     /** Presentación (vínculo producto ↔ forma) */
     @IsInt()
-    @IsPositive()
     ide_inmpre: number;
 
     /** Cantidad en unidades de la presentación (ej: botellas, fundas) */
