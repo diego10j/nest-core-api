@@ -429,4 +429,88 @@ export class MenudeoController {
     ) {
         return this.saveService.anularMenudeo({ ...headersParams, ...dtoIn });
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // TABLE QUERY / LIST DATA – CATÁLOGOS MENUDEO
+    // ─────────────────────────────────────────────────────────────
+
+    @Get('getTableQueryMenForma')
+    getTableQueryMenForma(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getTableQueryMenForma({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getListDataMenForma')
+    getListDataMenForma(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getListDataMenForma({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTableQueryMenFormaInsumo')
+    getTableQueryMenFormaInsumo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdFormaDto,
+    ) {
+        return this.service.getTableQueryMenFormaInsumo({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getListDataMenFormaInsumo')
+    getListDataMenFormaInsumo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdFormaDto,
+    ) {
+        return this.service.getListDataMenFormaInsumo({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTableQueryMenTipoComp')
+    getTableQueryMenTipoComp(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getTableQueryMenTipoComp({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getListDataMenTipoComp')
+    getListDataMenTipoComp(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getListDataMenTipoComp({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTableQueryMenTipoTran')
+    getTableQueryMenTipoTran(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto,
+    ) {
+        return this.service.getTableQueryMenTipoTran({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getListDataMenTipoTran')
+    getListDataMenTipoTran(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdTipoCompDto,
+    ) {
+        return this.service.getListDataMenTipoTran({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTableQueryMenPresentacion')
+    getTableQueryMenPresentacion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdProductoMenudeoDto,
+    ) {
+        return this.service.getTableQueryMenPresentacion({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getListDataMenPresentacion')
+    getListDataMenPresentacion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: IdProductoMenudeoDto,
+    ) {
+        return this.service.getListDataMenPresentacion({ ...headersParams, ...dtoIn });
+    }
 }
