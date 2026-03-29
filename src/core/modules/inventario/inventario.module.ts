@@ -13,13 +13,16 @@ import { InventarioProductoBiService } from './data-bi/inventario-prod-bi.servic
 import { MenudeoController } from './menudeo/menudeo.controller';
 import { MenudeoSaveService } from './menudeo/menudeo-save.service';
 import { MenudeoService } from './menudeo/menudeo.service';
+import { EtiquetasController } from './etiquetas/etiquetas.controller';
+import { EtiquetasSaveService } from './etiquetas/etiquetas-save.service';
+import { EtiquetasService } from './etiquetas/etiquetas.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [],
-  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController],
+  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController],
   providers: [
     ProductosService,
     AuditService,
@@ -31,6 +34,8 @@ import { ProductosService } from './productos/productos.service';
     InventarioProductoBiService,
     MenudeoService,
     MenudeoSaveService,
+    EtiquetasService,
+    EtiquetasSaveService,
   ],
 })
 export class InventarioModule { }
