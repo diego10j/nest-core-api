@@ -55,6 +55,11 @@ export class InvEtiqueta {
     @IsString()
     @Transform(({ value }) => value || null)
     fecha_vence_ineta?: string;
+
+    @IsOptional()
+    @IsString()
+    @Transform(({ value }) => value || null)
+    notas_ineta?: string;
 }
 
 export class SaveEtiquetaDto {

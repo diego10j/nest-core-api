@@ -25,7 +25,8 @@ CREATE TABLE "public"."inv_etiqueta" (
     "unidad_medida_ineta"     varchar(50),             -- Unidad de medida del peso (kg, g, lb, etc.)
     "lote_ineta"              varchar(50),             -- Número o código de lote
     "fecha_elaboracion_ineta" date,                    -- Fecha de elaboración del producto
-    "fecha_vence_ineta"       date,                    -- Fecha de vencimiento del producto
+    "fecha_vence_ineta"       date,       
+    "notas_ineta"             varchar(255),             -- Notas adicionales de la etiqueta
     "usuario_ingre"           varchar(50),
     "fecha_ingre"             date,
     "hora_ingre"              time,
