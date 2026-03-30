@@ -66,3 +66,8 @@ CREATE INDEX "idx_inv_etiqueta_inarti_tipo"
 -- Consulta por producto y lote
 CREATE INDEX "idx_inv_etiqueta_inarti_lote"
     ON "public"."inv_etiqueta" ("ide_inarti", "lote_ineta");
+
+
+
+ALTER TABLE "public"."inv_etiqueta"
+ADD COLUMN "contador_ineta" int DEFAULT 0;

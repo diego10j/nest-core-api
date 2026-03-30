@@ -45,6 +45,7 @@ export class EtiquetasService extends BaseService {
                 e.lote_ineta,
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
+                e.contador_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -80,12 +81,13 @@ export class EtiquetasService extends BaseService {
                 e.lote_ineta,
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
+                e.contador_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
                 e.usuario_actua,
                 e.fecha_actua,
-                e.hora_actua
+                e.hora_actua,
             FROM inv_etiqueta e
             INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
             WHERE a.ide_empr = ${dtoIn.ideEmpr}
@@ -118,6 +120,7 @@ export class EtiquetasService extends BaseService {
                 e.lote_ineta,
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
+                e.contador_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -156,6 +159,7 @@ export class EtiquetasService extends BaseService {
                 e.lote_ineta,
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
+                e.contador_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,

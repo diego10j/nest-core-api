@@ -11,6 +11,7 @@ import { IdProductoDto } from './dto/id-producto.dto';
 import { IdProductoEtiquetaDto } from './dto/id-producto-etiqueta.dto';
 import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
 import { SaveEtiquetaDto } from './dto/save-etiqueta.dto';
+import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
 
 @ApiTags('Inventario-Etiquetas')
 @Controller('inventario/etiquetas')
@@ -108,5 +109,16 @@ export class EtiquetasController {
         @Query() dtoIn: IdEtiquetaDto,
     ) {
         return this.saveService.deleteEtiqueta({ ...headersParams, ...dtoIn });
+    }
+    /**
+     * Confirma la impresión de una etiqueta y actualiza el contador de impresiones.
+     * Body: ide_inarti, tipo_ineta
+     */
+    @Post('confirmarImpresion')
+    confirmarImpresion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ConfirmarImpresionDto,
+    ) {
+        return this.saveService.confirmarImpresion({ ...headersParams, ...dtoIn });
     }
 }

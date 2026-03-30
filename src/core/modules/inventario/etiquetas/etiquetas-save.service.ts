@@ -10,6 +10,7 @@ import { CoreService } from '../../../core.service';
 
 import { IdEtiquetaDto } from './dto/id-etiqueta.dto';
 import { SaveEtiquetaDto } from './dto/save-etiqueta.dto';
+import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
 
 @Injectable()
 export class EtiquetasSaveService extends BaseService {
@@ -107,5 +108,19 @@ export class EtiquetasSaveService extends BaseService {
             [dtoIn.ide_ineta],
         );
         return { message: 'ok', rowCount: 1 };
+    }
+    /**
+     * Confirma la impresión de una etiqueta sumando 1 al contador_ineta.
+     */
+    async confirmarImpresion(dtoIn: ConfirmarImpresionDto & HeaderParamsDto) {
+        // Usa la cantidad proporcionada o 1 por defecto
+        const cantidad = dtoIn.cantidad && Number.isInteger(dtoIn.cantidad) ? dtoIn.cantidad : 1;
+        const result = await this.dataSource.pool.query(
+            `UPDATE inv_etiqueta
+             SET contador_ineta = COALESCE(contador_ineta, 0) + $3
+             WHERE ide_inarti = $1 AND tipo_ineta = $2`,
+            [dtoIn.ide_inarti, dtoIn.tipo_ineta, cantidad]
+        );
+        return { message: 'ok', rowCount: result.rowCount };
     }
 }
