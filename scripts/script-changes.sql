@@ -490,4 +490,10 @@ ALTER TABLE tes_cuenta_banco ADD COLUMN hora_actua TIMESTAMP;
 
 
 
+ALTER TABLE "public"."sis_sucursal"
+ADD COLUMN "color_sucu" varchar(30);
 
+
+UPDATE "public"."sis_sucursal" SET "color_sucu" = '#0C68E9' WHERE "ide_sucu" = 0;
+
+UPDATE "public"."sis_sucursal" SET "color_sucu" = '#00A76F' WHERE "ide_sucu" = 2;

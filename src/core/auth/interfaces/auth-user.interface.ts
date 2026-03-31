@@ -14,6 +14,7 @@ export interface SucursalAuth {
     ide_sucu: number;
     nom_sucu: string;
     logo_sucu: string;
+    color_sucu: string;
 }
 
 export interface AuthUser {

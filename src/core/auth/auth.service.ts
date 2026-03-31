@@ -273,7 +273,8 @@ export class AuthService {
       SELECT
         b.ide_sucu,
         nom_sucu,
-        '' as logo_sucu
+        '' as logo_sucu,
+        color_sucu
       FROM
         sis_usuario_sucursal a
         INNER JOIN sis_sucursal b on a.sis_ide_sucu = b.ide_sucu
