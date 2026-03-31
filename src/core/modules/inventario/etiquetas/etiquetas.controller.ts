@@ -12,6 +12,7 @@ import { IdProductoEtiquetaDto } from './dto/id-producto-etiqueta.dto';
 import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
 import { SaveEtiquetaDto } from './dto/save-etiqueta.dto';
 import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
+import { PorExpirarDto } from './dto/por-expriar.dto';
 
 @ApiTags('Inventario-Etiquetas')
 @Controller('inventario/etiquetas')
@@ -120,5 +121,21 @@ export class EtiquetasController {
         @Body() dtoIn: ConfirmarImpresionDto,
     ) {
         return this.saveService.confirmarImpresion({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getMetricasEtiquetas')
+    getMetricasEtiquetas(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: QueryOptionsDto & { limitTop?: number },
+    ) {
+        return this.service.getMetricasEtiquetas({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getEtiquetasPorExpiracionMeses')
+    getEtiquetasPorExpiracionMeses(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: PorExpirarDto & HeaderParamsDto,
+    ) {
+        return this.service.getEtiquetasPorExpiracionMeses({ ...headersParams, ...dtoIn });
     }
 }
