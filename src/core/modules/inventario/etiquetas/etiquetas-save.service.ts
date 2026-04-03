@@ -117,7 +117,8 @@ export class EtiquetasSaveService extends BaseService {
         const cantidad = dtoIn.cantidad && Number.isInteger(dtoIn.cantidad) ? dtoIn.cantidad : 1;
         const result = await this.dataSource.pool.query(
             `UPDATE inv_etiqueta
-             SET contador_ineta = COALESCE(contador_ineta, 0) + $3
+             SET contador_ineta = COALESCE(contador_ineta, 0) + $3,
+                 fecha_impr_ineta = NOW()
              WHERE ide_inarti = $1 AND tipo_ineta = $2`,
             [dtoIn.ide_inarti, dtoIn.tipo_ineta, cantidad]
         );

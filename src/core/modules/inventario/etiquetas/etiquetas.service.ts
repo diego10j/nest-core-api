@@ -47,6 +47,8 @@ export class EtiquetasService extends BaseService {
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
+                e.notas_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -83,12 +85,14 @@ export class EtiquetasService extends BaseService {
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
                 e.contador_ineta,
+                e.notas_ineta,
+                e.fecha_impr_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
                 e.usuario_actua,
                 e.fecha_actua,
-                e.hora_actua,
+                e.hora_actua
             FROM inv_etiqueta e
             INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
             WHERE a.ide_empr = ${dtoIn.ideEmpr}
@@ -122,6 +126,7 @@ export class EtiquetasService extends BaseService {
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -161,6 +166,7 @@ export class EtiquetasService extends BaseService {
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -232,6 +238,7 @@ export class EtiquetasService extends BaseService {
                 e.nombre_ineta,
                 e.tipo_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
                 a.nombre_inarti
             FROM inv_etiqueta e
             INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
@@ -245,6 +252,7 @@ export class EtiquetasService extends BaseService {
                 e.nombre_ineta,
                 e.tipo_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
                 a.nombre_inarti
             FROM inv_etiqueta e
             INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
@@ -308,6 +316,25 @@ export class EtiquetasService extends BaseService {
             GROUP BY a.ide_inarti, a.nombre_inarti
             ORDER BY total_etiquetas DESC
             LIMIT 1
+        ),
+        total_impresiones AS (
+            SELECT COALESCE(SUM(e.contador_ineta), 0) AS total
+            FROM inv_etiqueta e
+            INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
+            WHERE a.ide_empr = ${ideEmpr}
+        ),
+        etiquetas_nunca_impresas AS (
+            SELECT COUNT(*) AS total
+            FROM inv_etiqueta e
+            INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
+            WHERE a.ide_empr = ${ideEmpr}
+              AND e.contador_ineta = 0
+        ),
+        ultima_impresion AS (
+            SELECT MAX(e.fecha_impr_ineta) AS fecha
+            FROM inv_etiqueta e
+            INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
+            WHERE a.ide_empr = ${ideEmpr}
         )
         SELECT
             (SELECT total FROM total_etiquetas) AS total_etiquetas,
@@ -316,10 +343,13 @@ export class EtiquetasService extends BaseService {
             (SELECT json_agg(row_to_json(mni)) FROM menos_impresas mni) AS menos_impresas,
             (SELECT row_to_json(em) FROM expiracion_meses em) AS expiracion_meses,
             (SELECT total FROM expiradas) AS expiradas,
-            (SELECT promedio FROM promedio_impresiones) AS promedio_impresiones,
+            (SELECT ROUND(promedio, 2) FROM promedio_impresiones) AS promedio_impresiones,
             (SELECT total FROM sin_vencimiento) AS sin_fecha_vencimiento,
             (SELECT total FROM productos_con_etiquetas) AS productos_con_etiquetas,
-            (SELECT row_to_json(pcme) FROM producto_con_mas_etiquetas pcme) AS producto_con_mas_etiquetas
+            (SELECT row_to_json(pcme) FROM producto_con_mas_etiquetas pcme) AS producto_con_mas_etiquetas,
+            (SELECT total FROM total_impresiones) AS total_impresiones,
+            (SELECT total FROM etiquetas_nunca_impresas) AS etiquetas_nunca_impresas,
+            (SELECT fecha FROM ultima_impresion) AS ultima_impresion
         `,
             dtoIn
         );
@@ -379,13 +409,6 @@ export class EtiquetasService extends BaseService {
 
         const query = new SelectQuery(
             `
-        WITH total AS (
-            SELECT COUNT(*) as total
-            FROM inv_etiqueta e
-            INNER JOIN inv_articulo a ON a.ide_inarti = e.ide_inarti
-            WHERE ${whereClause}
-        ),
-        datos AS (
             SELECT
                 e.ide_ineta,
                 e.ide_inarti,
@@ -399,6 +422,8 @@ export class EtiquetasService extends BaseService {
                 e.fecha_elaboracion_ineta,
                 e.fecha_vence_ineta,
                 e.contador_ineta,
+                e.fecha_impr_ineta,
+                e.notas_ineta,
                 e.usuario_ingre,
                 e.fecha_ingre,
                 e.hora_ingre,
@@ -426,10 +451,6 @@ export class EtiquetasService extends BaseService {
                     WHEN e.fecha_vence_ineta >= CURRENT_DATE THEN e.fecha_vence_ineta
                     ELSE e.fecha_vence_ineta
                 END ASC
-        )
-        SELECT
-            (SELECT total FROM total) AS total,
-            (SELECT json_agg(row_to_json(d)) FROM datos d) AS data
         `,
             dtoIn
         );
@@ -438,7 +459,7 @@ export class EtiquetasService extends BaseService {
             query.addParam(idx + 1, param);
         });
 
-        return this.dataSource.createSingleQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
 }

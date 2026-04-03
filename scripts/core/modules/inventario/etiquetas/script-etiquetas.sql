@@ -71,3 +71,6 @@ CREATE INDEX "idx_inv_etiqueta_inarti_lote"
 
 ALTER TABLE "public"."inv_etiqueta"
 ADD COLUMN "contador_ineta" int DEFAULT 0;
+
+ALTER TABLE "public"."inv_etiqueta"
+ADD COLUMN "fecha_impr_ineta" TIMESTAMP;
