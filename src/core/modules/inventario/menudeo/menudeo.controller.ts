@@ -17,6 +17,7 @@ import { SaveMenudeoDto } from './dto/save-menudeo.dto';
 import { SavePresentacionDto } from './dto/save-presentacion.dto';
 import { SaveAjusteMenudeoDto } from './dto/save-ajuste-menudeo.dto';
 import { SaveSaldoInicialMenudeoDto } from './dto/save-saldo-inicial-menudeo.dto';
+import { CrearMenudeoDto } from './dto/crear-menudeo.dto';
 import { CopiarPresentacionDto } from './dto/copiar-presentacion.dto';
 import { SaveTipoCompDto, SaveTipoTranDto } from './dto/save-tipo.dto';
 import { TrnMenudeoDto } from './dto/trn-menudeo.dto';
@@ -441,6 +442,19 @@ export class MenudeoController {
         @Body() dtoIn: SaveMenudeoDto,
     ) {
         return this.saveService.saveMenudeo({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Crea un comprobante de Menudeo/Fraccionamiento de forma simplificada.
+     * El tipo de transacción (MEN), ide_inarti y cant_base_indmen se resuelven automáticamente.
+     * El numero_incmen se genera como YYYYMM + secuencial mensual (ej: 20260300001).
+     */
+    @Post('crearMenudeo')
+    crearMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: CrearMenudeoDto,
+    ) {
+        return this.saveService.crearMenudeo({ ...headersParams, ...dtoIn });
     }
 
     /**

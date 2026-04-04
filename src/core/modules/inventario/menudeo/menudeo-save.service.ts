@@ -21,6 +21,7 @@ import { SaveMenudeoDto } from './dto/save-menudeo.dto';
 import { SavePresentacionDto } from './dto/save-presentacion.dto';
 import { SaveSaldoInicialMenudeoDto } from './dto/save-saldo-inicial-menudeo.dto';
 import { SaveTipoCompDto, SaveTipoTranDto } from './dto/save-tipo.dto';
+import { CrearMenudeoDto } from './dto/crear-menudeo.dto';
 
 @Injectable()
 export class MenudeoSaveService extends BaseService {
@@ -586,7 +587,6 @@ export class MenudeoSaveService extends BaseService {
             primaryKey: 'ide_incmen',
             object: {
                 ide_incmen,
-                ide_inarti: data.ide_inarti,
                 ide_inmtt: data.ide_inmtt,
                 ide_empr: dtoIn.ideEmpr,
                 ide_sucu: dtoIn.ideSucu,
@@ -753,7 +753,6 @@ export class MenudeoSaveService extends BaseService {
                 primaryKey: 'ide_incmen',
                 object: {
                     ide_incmen,
-                    ide_inarti,
                     ide_inmtt,
                     ide_empr: dtoIn.ideEmpr,
                     ide_sucu: dtoIn.ideSucu,
@@ -958,7 +957,6 @@ export class MenudeoSaveService extends BaseService {
                 primaryKey: 'ide_incmen',
                 object: {
                     ide_incmen,
-                    ide_inarti: grupo.ide_inarti,
                     ide_inmtt,
                     ide_empr: dtoIn.ideEmpr,
                     ide_sucu: dtoIn.ideSucu,
@@ -1272,5 +1270,181 @@ export class MenudeoSaveService extends BaseService {
         await this.core.save({ ...dtoIn, listQuery: [detInvQuery], audit: false });
 
         return ide_incci;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // COMPROBANTE DE MENUDEO SIMPLIFICADO
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Genera el número secuencial del comprobante de menudeo.
+     * Formato: YYYYMM + secuencial de 5 dígitos, se reinicia cada mes por empresa.
+     * Ejemplo: 20260300001 (año 2026, mes 03, secuencial 1).
+     */
+    private async getNumeroSecuencialMenudeo(fecha: string, ideEmpr: number): Promise<string> {
+        const d = new Date(fecha);
+        const anio = d.getFullYear();
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const prefijo = `${anio}${mes}`;
+
+        const resQuery = new SelectQuery(`
+            SELECT COALESCE(
+                MAX(CAST(SUBSTRING(numero_incmen FROM 7 FOR 5) AS INTEGER)), 0
+            ) + 1 AS siguiente
+            FROM inv_cab_menudeo
+            WHERE ide_empr = $1
+              AND numero_incmen LIKE $2
+        `);
+        resQuery.addIntParam(1, ideEmpr);
+        resQuery.addStringParam(2, `${prefijo}%`);
+        const res = await this.dataSource.createSingleQuery(resQuery);
+        const siguiente = Number(res?.siguiente ?? 1);
+        return `${prefijo}${String(siguiente).padStart(5, '0')}`;
+    }
+
+    /**
+     * Crea un comprobante de Menudeo/Fraccionamiento de forma simplificada.
+     *
+     * - El tipo de transacción se resuelve automáticamente a Menudeo/Fraccionamiento (sigla 'MEN').
+     * - La cant_base_indmen se calcula automáticamente desde la presentación
+     *   (usa cant_base_inmpre si existe, sino cant_base_inmfor de la forma).
+     * - El numero_incmen se genera como YYYYMM + secuencial de 5 dígitos (resetea cada mes).
+     * - Todas las presentaciones del detalle deben pertenecer al mismo producto base.
+     */
+    async crearMenudeo(dtoIn: CrearMenudeoDto & HeaderParamsDto) {
+        const { fecha_incmen, observacion_incmen, detalle } = dtoIn;
+
+        if (!detalle || detalle.length === 0) {
+            throw new BadRequestException('Debe incluir al menos una presentación en el detalle');
+        }
+
+        // 1. Obtener tipo de transacción Menudeo/Fraccionamiento (MEN)
+        const tipoTranQuery = new SelectQuery(`
+            SELECT tt.ide_inmtt, tc.signo_inmtc,
+                   tt.genera_egreso_base_inmtt, tt.genera_egreso_insumo_inmtt, tt.ide_intti
+            FROM inv_men_tipo_tran tt
+            INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
+            WHERE tt.sigla_inmtt = 'MEN'
+              AND tt.activo_inmtt = true
+              AND (tt.ide_empr = $1 OR tt.ide_empr = 0)
+            ORDER BY tt.ide_empr DESC
+            LIMIT 1
+        `);
+        tipoTranQuery.addIntParam(1, dtoIn.ideEmpr);
+        const tipoTran = await this.dataSource.createSingleQuery(tipoTranQuery);
+        if (!tipoTran) {
+            throw new BadRequestException(
+                'No se encontró un tipo de transacción Menudeo/Fraccionamiento (MEN) activo para esta empresa',
+            );
+        }
+        const ide_inmtt = Number(tipoTran.ide_inmtt);
+
+        // 2. Obtener datos de las presentaciones: ide_inarti y cant_base_efectiva
+        const ids = detalle.map((d) => d.ide_inmpre);
+        const presQuery = new SelectQuery(`
+            SELECT
+                p.ide_inmpre,
+                p.ide_inarti,
+                COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva
+            FROM inv_men_presentacion p
+            INNER JOIN inv_men_forma f ON f.ide_inmfor = p.ide_inmfor
+            WHERE p.ide_inmpre = ANY($1)
+              AND p.ide_empr   = $2
+              AND p.activo_inmpre = true
+        `);
+        presQuery.addParam(1, ids);
+        presQuery.addIntParam(2, dtoIn.ideEmpr);
+        const presRows = await this.dataSource.createSelectQuery(presQuery);
+
+        if (presRows.length !== ids.length) {
+            throw new BadRequestException(
+                'Una o más presentaciones no existen, están inactivas o no pertenecen a la empresa',
+            );
+        }
+
+        // 3. Validar que todas las presentaciones pertenezcan al mismo producto base
+        const articulosUnicos = new Set(presRows.map((r) => Number(r.ide_inarti)));
+        if (articulosUnicos.size > 1) {
+            throw new BadRequestException(
+                'Todas las presentaciones deben pertenecer al mismo producto base',
+            );
+        }
+        const ide_inarti = Number(presRows[0].ide_inarti);
+
+        // Indexar por ide_inmpre para calcular cant_base_indmen por línea
+        const presMap = new Map<number, { cant_base_efectiva: number }>();
+        for (const row of presRows) {
+            presMap.set(Number(row.ide_inmpre), {
+                cant_base_efectiva: Number(row.cant_base_efectiva),
+            });
+        }
+
+        // 4. Generar número secuencial mensual
+        const numero_incmen = await this.getNumeroSecuencialMenudeo(fecha_incmen, dtoIn.ideEmpr);
+
+        // 5. Insertar cabecera usando getSeqTable
+        const ide_incmen = await this.dataSource.getSeqTable(
+            'inv_cab_menudeo',
+            'ide_incmen',
+            1,
+            dtoIn.login,
+        );
+        const cabQuery: ObjectQueryDto = {
+            operation: 'insert',
+            module: 'inv',
+            tableName: 'cab_menudeo',
+            primaryKey: 'ide_incmen',
+            object: {
+                ide_incmen,
+                ide_inmtt,
+                ide_empr: dtoIn.ideEmpr,
+                ide_sucu: dtoIn.ideSucu,
+                numero_incmen,
+                fecha_incmen,
+                observacion_incmen: observacion_incmen ?? null,
+                estado_incmen: 1,
+                ide_incci: null,
+                ide_cccfa: null,
+                ide_incmen_ref: null,
+                usuario_ingre: dtoIn.login,
+                fecha_ingre: getCurrentDate(),
+                hora_ingre: getCurrentTime(),
+            },
+        };
+        await this.core.save({ ...dtoIn, listQuery: [cabQuery], audit: false });
+
+        // 6. Insertar detalle usando getSeqTable por cada línea
+        for (const det of detalle) {
+            const info = presMap.get(det.ide_inmpre)!;
+            const cant_base_indmen = parseFloat(
+                (det.cantidad_indmen * info.cant_base_efectiva).toFixed(6),
+            );
+            const ide_indmen = await this.dataSource.getSeqTable(
+                'inv_det_menudeo',
+                'ide_indmen',
+                1,
+                dtoIn.login,
+            );
+            const detQuery: ObjectQueryDto = {
+                operation: 'insert',
+                module: 'inv',
+                tableName: 'det_menudeo',
+                primaryKey: 'ide_indmen',
+                object: {
+                    ide_indmen,
+                    ide_incmen,
+                    ide_inmpre: det.ide_inmpre,
+                    cantidad_indmen: det.cantidad_indmen,
+                    cant_base_indmen,
+                    observacion_indmen: det.observacion_indmen ?? null,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
+                },
+            };
+            await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+        }
+
+        return { message: 'ok', rowCount: 1, ide_incmen, numero_incmen };
     }
 }

@@ -216,7 +216,7 @@ export class MenudeoService extends BaseService {
                 p.ide_inmfor,
                 f.nombre_inmfor,
                 COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva,
-                p.cant_base_inmpre       AS cant_base_override,
+                p.cant_base_inmpre,
                 f.cant_base_inmfor       AS cant_base_forma,
                 u.nombre_inuni           AS nombre_unidad_forma,
                 u.siglas_inuni           AS siglas_unidad_forma,
@@ -228,7 +228,9 @@ export class MenudeoService extends BaseService {
                 p.hora_ingre,
                 p.usuario_actua,
                 p.fecha_actua,
-                p.hora_actua
+                p.hora_actua,
+                stock_minimo_inmpre,
+                stock_ideal_inmpre
             FROM inv_men_presentacion p
             INNER JOIN inv_men_forma f   ON f.ide_inmfor = p.ide_inmfor
             INNER JOIN inv_articulo  a   ON a.ide_inarti = p.ide_inarti
@@ -491,9 +493,16 @@ export class MenudeoService extends BaseService {
             FROM inv_cab_menudeo c
             INNER JOIN inv_men_tipo_tran tt ON tt.ide_inmtt = c.ide_inmtt
             INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
-            INNER JOIN inv_articulo      a  ON a.ide_inarti = c.ide_inarti
+            LEFT JOIN LATERAL (
+                SELECT p.ide_inarti
+                FROM inv_det_menudeo dl
+                INNER JOIN inv_men_presentacion p ON p.ide_inmpre = dl.ide_inmpre
+                WHERE dl.ide_incmen = c.ide_incmen
+                LIMIT 1
+            ) AS cab_art ON true
+            INNER JOIN inv_articulo      a  ON a.ide_inarti = cab_art.ide_inarti
             LEFT  JOIN inv_unidad        u  ON u.ide_inuni  = a.ide_inuni
-            WHERE c.ide_inarti  = $1
+            WHERE cab_art.ide_inarti = $1
               AND c.ide_empr    = ${dtoIn.ideEmpr}
               AND c.fecha_incmen BETWEEN $2 AND $3
               ${condPresentacion}
@@ -527,7 +536,7 @@ export class MenudeoService extends BaseService {
                 c.ide_incci,
                 c.ide_cccfa,
                 c.ide_incmen_ref,
-                c.ide_inarti,
+                cab_art.ide_inarti,
                 a.nombre_inarti,
                 a.codigo_inarti,
                 u.siglas_inuni  AS siglas_base,
@@ -540,7 +549,14 @@ export class MenudeoService extends BaseService {
             FROM inv_cab_menudeo c
             INNER JOIN inv_men_tipo_tran tt ON tt.ide_inmtt = c.ide_inmtt
             INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
-            INNER JOIN inv_articulo      a  ON a.ide_inarti = c.ide_inarti
+            LEFT JOIN LATERAL (
+                SELECT p.ide_inarti
+                FROM inv_det_menudeo dl
+                INNER JOIN inv_men_presentacion p ON p.ide_inmpre = dl.ide_inmpre
+                WHERE dl.ide_incmen = c.ide_incmen
+                LIMIT 1
+            ) AS cab_art ON true
+            INNER JOIN inv_articulo      a  ON a.ide_inarti = cab_art.ide_inarti
             LEFT  JOIN inv_unidad        u  ON u.ide_inuni  = a.ide_inuni
             WHERE c.ide_incmen = $1
             `,
@@ -1025,4 +1041,7 @@ export class MenudeoService extends BaseService {
         query.addIntParam(1, dtoIn.ide_inarti);
         return this.dataSource.createSelectQuery(query);
     }
+
+
+
 }

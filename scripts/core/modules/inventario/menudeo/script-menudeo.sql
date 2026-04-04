@@ -206,7 +206,6 @@ COMMENT ON COLUMN "public"."inv_men_presentacion"."stock_ideal_inmpre"  IS 'Stoc
 -- ============================================================
 CREATE TABLE "public"."inv_cab_menudeo" (
     "ide_incmen"         int8         NOT NULL,
-    "ide_inarti"         int8         NOT NULL,    -- Producto base fraccionado
     "ide_inmtt"          int8         NOT NULL,    -- FK → tipo transacción menudeo (determina signo y comportamiento)
     "ide_empr"           int8         NOT NULL,
     "ide_sucu"           int8,
