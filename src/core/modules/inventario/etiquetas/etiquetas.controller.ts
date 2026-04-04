@@ -102,12 +102,12 @@ export class EtiquetasController {
 
     /**
      * Elimina una etiqueta.
-     * Query param: ide_ineta
+     * Body: ide_ineta
      */
-    @Delete('deleteEtiqueta')
+    @Post('deleteEtiqueta')
     deleteEtiqueta(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Query() dtoIn: IdEtiquetaDto,
+        @Body() dtoIn: IdEtiquetaDto,
     ) {
         return this.saveService.deleteEtiqueta({ ...headersParams, ...dtoIn });
     }
