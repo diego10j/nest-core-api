@@ -6,12 +6,14 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
+import { fDate } from 'src/util/helpers/date-util';
 
 import { IdFormaDto } from './dto/id-forma.dto';
 import { IdMenudeoDto } from './dto/id-menudeo.dto';
 import { IdPresentacionDto } from './dto/id-presentacion.dto';
 import { IdProductoMenudeoDto } from './dto/id-producto-menudeo.dto';
 import { IdTipoCompDto } from './dto/id-tipo-comp.dto';
+import { StockMenudeoDto } from './dto/stock-menudeo.dto';
 import { TrnMenudeoDto } from './dto/trn-menudeo.dto';
 
 @Injectable()
@@ -43,28 +45,15 @@ export class MenudeoService extends BaseService {
         const query = new SelectQuery(
             `
             SELECT
-                tc.ide_inmtc,
-                tc.nombre_inmtc,
-                tc.signo_inmtc,
-                tc.activo_inmtc,
-                (
-                    SELECT COUNT(1)
-                    FROM inv_men_tipo_tran tt
-                    WHERE tt.ide_inmtc = tc.ide_inmtc
-                )                            AS total_tipos_tran,
-                tc.usuario_ingre,
-                tc.fecha_ingre,
-                tc.hora_ingre,
-                tc.usuario_actua,
-                tc.fecha_actua,
-                tc.hora_actua
+                tc.ide_inmtc as value, 
+                tc.nombre_inmtc as label
             FROM inv_men_tipo_comp tc
             WHERE tc.ide_empr = ${dtoIn.ideEmpr}
             ORDER BY tc.signo_inmtc DESC, tc.nombre_inmtc
             `,
             dtoIn,
         );
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -109,13 +98,8 @@ export class MenudeoService extends BaseService {
         const query = new SelectQuery(
             `
             SELECT
-                tt.ide_inmtt,
-                tt.nombre_inmtt,
-                tt.sigla_inmtt,
-                tc.signo_inmtc,
-                tt.genera_egreso_base_inmtt,
-                tt.genera_egreso_insumo_inmtt,
-                tt.activo_inmtt
+                tt.ide_inmtt as value ,
+                tt.nombre_inmtt as label
             FROM inv_men_tipo_tran tt
             INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
             WHERE tt.ide_inmtc = $1
@@ -125,7 +109,7 @@ export class MenudeoService extends BaseService {
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ide_inmtc);
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -284,15 +268,15 @@ export class MenudeoService extends BaseService {
      * Incluye nivel de alerta: CRITICO (saldo=0), BAJO (saldo < minimo), IDEAL (saldo < ideal)
      */
     async getAlertasStockMenudeo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
-            WITH saldos AS (
+        // CTE base compartida: calcula el saldo actual de TODAS las presentaciones activas
+        const cteBase = `
+            saldos_base AS (
                 SELECT
                     p.ide_inmpre,
                     p.ide_inarti,
                     p.ide_inmfor,
-                    p.stock_minimo_inmpre,
-                    p.stock_ideal_inmpre,
+                    COALESCE(p.stock_minimo_inmpre, 0) AS stock_minimo,
+                    COALESCE(p.stock_ideal_inmpre,  0) AS stock_ideal,
                     COALESCE(
                         f_redondeo(SUM(d.cantidad_indmen * tc.signo_inmtc), 2), 0
                     ) AS saldo_actual
@@ -302,50 +286,233 @@ export class MenudeoService extends BaseService {
                                               AND c.estado_incmen = 1
                 LEFT JOIN inv_men_tipo_tran tt ON tt.ide_inmtt   = c.ide_inmtt
                 LEFT JOIN inv_men_tipo_comp tc ON tc.ide_inmtc   = tt.ide_inmtc
-                WHERE p.ide_empr       = ${dtoIn.ideEmpr}
-                  AND p.activo_inmpre  = true
-                  AND p.stock_minimo_inmpre > 0
+                WHERE p.ide_empr      = ${dtoIn.ideEmpr}
+                  AND p.activo_inmpre = true
                 GROUP BY
                     p.ide_inmpre, p.ide_inarti, p.ide_inmfor,
                     p.stock_minimo_inmpre, p.stock_ideal_inmpre
+            )`;
+
+        // ── Métricas agregadas sobre TODAS las presentaciones activas ──────
+        const metricsQuery = new SelectQuery(`
+            WITH ${cteBase}
+            SELECT
+                COUNT(*)::int AS total_presentaciones,
+                COUNT(*) FILTER (WHERE saldo_actual >  0)::int                                    AS con_stock,
+                COUNT(*) FILTER (WHERE saldo_actual <= 0)::int                                    AS sin_stock,
+                COUNT(*) FILTER (WHERE saldo_actual <= 0
+                                   AND stock_minimo  > 0)::int                                    AS alerta_critica,
+                COUNT(*) FILTER (WHERE saldo_actual >  0
+                                   AND stock_minimo  > 0
+                                   AND saldo_actual  < stock_minimo)::int                         AS alerta_baja,
+                COUNT(*) FILTER (WHERE saldo_actual >= stock_minimo
+                                   AND stock_minimo  > 0
+                                   AND stock_ideal   > 0
+                                   AND saldo_actual  < stock_ideal)::int                          AS por_reponer,
+                COUNT(*) FILTER (WHERE (stock_ideal  > 0 AND saldo_actual >= stock_ideal)
+                                    OR (stock_minimo > 0 AND stock_ideal = 0
+                                        AND saldo_actual >= stock_minimo))::int                   AS stock_ok,
+                COUNT(*) FILTER (WHERE stock_minimo = 0 AND stock_ideal = 0)::int                 AS sin_configurar,
+                COUNT(*) FILTER (WHERE saldo_actual < NULLIF(stock_ideal, 0)
+                                    OR (stock_ideal = 0
+                                        AND stock_minimo > 0
+                                        AND saldo_actual < stock_minimo))::int                    AS necesitan_producir,
+                COALESCE(f_redondeo(SUM(saldo_actual), 2), 0)                                     AS total_unidades,
+                COALESCE(f_redondeo(
+                    SUM(GREATEST(
+                        CASE
+                            WHEN stock_ideal  > 0 THEN stock_ideal  - saldo_actual
+                            WHEN stock_minimo > 0 THEN stock_minimo - saldo_actual
+                            ELSE 0
+                        END, 0)
+                    ) FILTER (
+                        WHERE (stock_ideal > 0 AND saldo_actual < stock_ideal)
+                           OR (stock_ideal = 0 AND stock_minimo > 0
+                               AND saldo_actual < stock_minimo)
+                    ), 2
+                ), 0)                                                                              AS total_unidades_a_producir,
+                CASE
+                    WHEN COUNT(*) = 0 THEN 0::numeric
+                    ELSE ROUND(
+                        COUNT(*) FILTER (
+                            WHERE saldo_actual <= 0
+                               OR (saldo_actual > 0 AND stock_minimo > 0
+                                   AND saldo_actual < stock_minimo)
+                        )::numeric / COUNT(*) * 100, 1)
+                END AS porcentaje_alertas,
+                CASE
+                    WHEN COUNT(*) = 0 THEN 0::numeric
+                    ELSE ROUND(
+                        COUNT(*) FILTER (
+                            WHERE (stock_ideal  > 0 AND saldo_actual >= stock_ideal)
+                               OR (stock_minimo > 0 AND stock_ideal = 0
+                                   AND saldo_actual >= stock_minimo)
+                               OR (stock_minimo = 0 AND stock_ideal = 0
+                                   AND saldo_actual > 0)
+                        )::numeric / COUNT(*) * 100, 1)
+                END AS porcentaje_saludable
+            FROM saldos_base
+        `);
+
+        // ── Detalle: presentaciones que requieren atención ────────────────
+        const query = new SelectQuery(
+            `
+            WITH ${cteBase},
+            clasificados AS (
+                SELECT
+                    s.*,
+                    CASE
+                        WHEN s.saldo_actual <= 0 AND s.stock_minimo > 0  THEN 1
+                        WHEN s.saldo_actual <= 0                         THEN 2
+                        WHEN s.saldo_actual <  s.stock_minimo            THEN 3
+                        ELSE                                                  4
+                    END AS prioridad,
+                    CASE
+                        WHEN s.saldo_actual <= 0 AND s.stock_minimo > 0  THEN 'CRITICO'
+                        WHEN s.saldo_actual <= 0                         THEN 'SIN STOCK'
+                        WHEN s.saldo_actual <  s.stock_minimo            THEN 'BAJO'
+                        ELSE                                                  'POR REPONER'
+                    END AS nivel_alerta,
+                    CASE
+                        WHEN s.saldo_actual <= 0                         THEN 'error.main'
+                        WHEN s.saldo_actual <  s.stock_minimo            THEN 'warning.main'
+                        ELSE                                                  'info.main'
+                    END AS color_alerta,
+                    CASE
+                        WHEN s.stock_ideal  > 0 THEN GREATEST(s.stock_ideal  - s.saldo_actual, 0)
+                        WHEN s.stock_minimo > 0 THEN GREATEST(s.stock_minimo - s.saldo_actual, 0)
+                        ELSE 0
+                    END AS cantidad_a_producir,
+                    CASE
+                        WHEN s.stock_ideal  > 0 THEN ROUND(s.saldo_actual / s.stock_ideal  * 100, 1)
+                        ELSE NULL
+                    END AS porcentaje_cobertura_ideal,
+                    CASE
+                        WHEN s.stock_minimo > 0 THEN ROUND(s.saldo_actual / s.stock_minimo * 100, 1)
+                        ELSE NULL
+                    END AS porcentaje_vs_minimo
+                FROM saldos_base s
+                WHERE s.saldo_actual <= 0
+                   OR s.saldo_actual  < s.stock_minimo
+                   OR (s.stock_ideal  > 0 AND s.saldo_actual < s.stock_ideal)
             )
             SELECT
-                s.ide_inmpre,
-                s.ide_inarti,
+                c.ide_inmpre,
+                c.ide_inarti,
+                a.uuid,
                 a.codigo_inarti,
                 a.nombre_inarti,
-                s.ide_inmfor,
+                c.ide_inmfor,
                 f.nombre_inmfor,
-                uf.siglas_inuni          AS siglas_forma,
-                ub.siglas_inuni          AS siglas_base,
-                s.saldo_actual,
-                s.stock_minimo_inmpre,
-                s.stock_ideal_inmpre,
-                s.stock_ideal_inmpre - s.saldo_actual AS cantidad_a_producir,
-                CASE
-                    WHEN s.saldo_actual <= 0                            THEN 'CRITICO'
-                    WHEN s.saldo_actual <  s.stock_minimo_inmpre        THEN 'BAJO'
-                    WHEN s.stock_ideal_inmpre > 0
-                     AND s.saldo_actual <  s.stock_ideal_inmpre         THEN 'IDEAL'
-                    ELSE NULL
-                END                      AS nivel_alerta
-            FROM saldos s
-            INNER JOIN inv_articulo a  ON a.ide_inarti = s.ide_inarti
-            INNER JOIN inv_men_forma f ON f.ide_inmfor  = s.ide_inmfor
+                uf.siglas_inuni                AS siglas_forma,
+                ub.siglas_inuni                AS siglas_base,
+                c.saldo_actual,
+                c.stock_minimo                 AS stock_minimo_inmpre,
+                c.stock_ideal                  AS stock_ideal_inmpre,
+                c.cantidad_a_producir,
+                c.porcentaje_cobertura_ideal,
+                c.porcentaje_vs_minimo,
+                c.nivel_alerta,
+                c.color_alerta,
+                c.prioridad,
+                decim_stock_inarti
+            FROM clasificados c
+            INNER JOIN inv_articulo a  ON a.ide_inarti = c.ide_inarti
+            INNER JOIN inv_men_forma f ON f.ide_inmfor  = c.ide_inmfor
             LEFT  JOIN inv_unidad   uf ON uf.ide_inuni  = f.ide_inuni
             LEFT  JOIN inv_unidad   ub ON ub.ide_inuni  = a.ide_inuni
-            WHERE s.saldo_actual < s.stock_minimo_inmpre
-               OR (s.stock_ideal_inmpre > 0 AND s.saldo_actual < s.stock_ideal_inmpre)
-            ORDER BY
-                CASE
-                    WHEN s.saldo_actual <= 0                     THEN 1
-                    WHEN s.saldo_actual < s.stock_minimo_inmpre  THEN 2
-                    ELSE 3
-                END,
-                unaccent(a.nombre_inarti), f.nombre_inmfor
+            where activo_inarti = true
+            ORDER BY c.prioridad, unaccent(a.nombre_inarti), f.nombre_inmfor
             `,
             dtoIn,
         );
+        query.isLazy = false;
+        const [result, metrics] = await Promise.all([
+            this.dataSource.createQuery(query),
+            this.dataSource.createSingleQuery(metricsQuery),
+        ]);
+
+        return { ...result, row: metrics };
+    }
+
+    /**
+     * Retorna stock de menudeo a una fecha de corte para todas las presentaciones activas.
+     * Similar a getStockProductos pero usando la estructura de menudeo.
+     * Incluye niveles de stock y alertas por presentación.
+     * @param dtoIn.fechaCorte  Fecha de corte (por defecto hoy)
+     * @param dtoIn.ide_inbod   Bodega para filtrar movimientos (opcional)
+     */
+    async getStockMenudeo(dtoIn: StockMenudeoDto & HeaderParamsDto) {
+        const fechaCorte = dtoIn.fechaCorte ? new Date(dtoIn.fechaCorte) : new Date();
+        const conditionBodega = dtoIn.ide_inbod ? `AND c.ide_inbod = $2` : '';
+
+        const query = new SelectQuery(
+            `
+            WITH existencia_cte AS (
+                SELECT
+                    d.ide_inmpre,
+                    SUM(d.cantidad_indmen * tc.signo_inmtc) AS existencia
+                FROM inv_det_menudeo d
+                INNER JOIN inv_cab_menudeo   c  ON c.ide_incmen = d.ide_incmen
+                INNER JOIN inv_men_tipo_tran tt ON tt.ide_inmtt  = c.ide_inmtt
+                INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc  = tt.ide_inmtc
+                WHERE c.estado_incmen = 1
+                  AND c.ide_empr      = ${dtoIn.ideEmpr}
+                  AND c.fecha_incmen <= $1
+                  ${conditionBodega}
+                GROUP BY d.ide_inmpre
+            )
+            SELECT
+                p.ide_inmpre,
+                p.ide_inarti,
+                a.uuid,
+                a.nombre_inarti,
+                a.codigo_inarti,
+                f.ide_inmfor,
+                f.nombre_inmfor,
+                uf.siglas_inuni                                       AS siglas_forma,
+                ub.siglas_inuni                                       AS siglas_base,
+                COALESCE(p.cant_base_inmpre, f.cant_base_inmfor)      AS cant_base_efectiva,
+                COALESCE(f_redondeo(existencia_cte.existencia, 2), 0) AS saldo,
+                p.stock_minimo_inmpre,
+                p.stock_ideal_inmpre,
+                -- detalle_stock
+                CASE
+                    WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'SIN STOCK'
+                    WHEN p.stock_minimo_inmpre IS NULL AND p.stock_ideal_inmpre IS NULL THEN 'EN STOCK'
+                    WHEN COALESCE(existencia_cte.existencia, 0) > COALESCE(p.stock_ideal_inmpre, 0) THEN 'STOCK EXTRA'
+                    WHEN COALESCE(existencia_cte.existencia, 0) = COALESCE(p.stock_ideal_inmpre, 0) THEN 'STOCK IDEAL'
+                    WHEN COALESCE(existencia_cte.existencia, 0) BETWEEN COALESCE(p.stock_minimo_inmpre, 0)
+                        AND COALESCE(p.stock_ideal_inmpre, 0) THEN 'STOCK ÓPTIMO'
+                    WHEN COALESCE(existencia_cte.existencia, 0) < COALESCE(p.stock_minimo_inmpre, 0) THEN 'STOCK BAJO'
+                    ELSE 'EN STOCK'
+                END AS detalle_stock,
+                -- color_stock
+                CASE
+                    WHEN COALESCE(existencia_cte.existencia, 0) <= 0 THEN 'error.main'
+                    WHEN p.stock_minimo_inmpre IS NOT NULL
+                     AND COALESCE(existencia_cte.existencia, 0) < p.stock_minimo_inmpre THEN 'warning.main'
+                    ELSE 'success.main'
+                END AS color_stock,
+                '${fDate(fechaCorte)}' AS fecha_corte
+            FROM inv_men_presentacion p
+            INNER JOIN inv_men_forma f   ON f.ide_inmfor = p.ide_inmfor
+            INNER JOIN inv_articulo  a   ON a.ide_inarti = p.ide_inarti
+            LEFT  JOIN inv_unidad    uf  ON uf.ide_inuni = f.ide_inuni
+            LEFT  JOIN inv_unidad    ub  ON ub.ide_inuni = a.ide_inuni
+            LEFT  JOIN existencia_cte   ON existencia_cte.ide_inmpre = p.ide_inmpre
+            WHERE p.ide_empr        = ${dtoIn.ideEmpr}
+              AND p.activo_inmpre   = true
+              AND a.activo_inarti   = true
+            ORDER BY unaccent(a.nombre_inarti), f.nombre_inmfor
+            `,
+            dtoIn,
+        );
+
+        query.addParam(1, fechaCorte);
+        if (dtoIn.ide_inbod) {
+            query.addIntParam(2, dtoIn.ide_inbod);
+        }
         return this.dataSource.createQuery(query);
     }
 
@@ -471,19 +638,13 @@ export class MenudeoService extends BaseService {
                 c.ide_incci,
                 c.ide_cccfa,
                 c.ide_incmen_ref,
-                a.nombre_inarti,
-                a.codigo_inarti,
-                u.siglas_inuni                  AS siglas_base,
+                c.ide_inbod,
+                b.nombre_inbod,
                 (
-                    SELECT SUM(d.cantidad_indmen)
+                    SELECT SUM(1)
                     FROM inv_det_menudeo d
                     WHERE d.ide_incmen = c.ide_incmen
-                )                               AS total_unidades,
-                (
-                    SELECT SUM(d.cant_base_indmen)
-                    FROM inv_det_menudeo d
-                    WHERE d.ide_incmen = c.ide_incmen
-                )                               AS total_base_consumida,
+                )                               AS items,
                 c.usuario_ingre,
                 c.fecha_ingre,
                 c.hora_ingre,
@@ -493,26 +654,16 @@ export class MenudeoService extends BaseService {
             FROM inv_cab_menudeo c
             INNER JOIN inv_men_tipo_tran tt ON tt.ide_inmtt = c.ide_inmtt
             INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
-            LEFT JOIN LATERAL (
-                SELECT p.ide_inarti
-                FROM inv_det_menudeo dl
-                INNER JOIN inv_men_presentacion p ON p.ide_inmpre = dl.ide_inmpre
-                WHERE dl.ide_incmen = c.ide_incmen
-                LIMIT 1
-            ) AS cab_art ON true
-            INNER JOIN inv_articulo      a  ON a.ide_inarti = cab_art.ide_inarti
-            LEFT  JOIN inv_unidad        u  ON u.ide_inuni  = a.ide_inuni
-            WHERE cab_art.ide_inarti = $1
-              AND c.ide_empr    = ${dtoIn.ideEmpr}
-              AND c.fecha_incmen BETWEEN $2 AND $3
+            LEFT  JOIN inv_bodega        b  ON b.ide_inbod  = c.ide_inbod
+            WHERE c.ide_empr    = ${dtoIn.ideEmpr}
+              AND c.fecha_incmen BETWEEN $1 AND $2
               ${condPresentacion}
             ORDER BY c.fecha_incmen DESC, c.ide_incmen DESC
             `,
             dtoIn,
         );
-        query.addIntParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
         return this.dataSource.createQuery(query);
     }
 
@@ -536,10 +687,8 @@ export class MenudeoService extends BaseService {
                 c.ide_incci,
                 c.ide_cccfa,
                 c.ide_incmen_ref,
-                cab_art.ide_inarti,
-                a.nombre_inarti,
-                a.codigo_inarti,
-                u.siglas_inuni  AS siglas_base,
+                c.ide_inbod,
+                b.nombre_inbod,
                 c.usuario_ingre,
                 c.fecha_ingre,
                 c.hora_ingre,
@@ -549,15 +698,7 @@ export class MenudeoService extends BaseService {
             FROM inv_cab_menudeo c
             INNER JOIN inv_men_tipo_tran tt ON tt.ide_inmtt = c.ide_inmtt
             INNER JOIN inv_men_tipo_comp tc ON tc.ide_inmtc = tt.ide_inmtc
-            LEFT JOIN LATERAL (
-                SELECT p.ide_inarti
-                FROM inv_det_menudeo dl
-                INNER JOIN inv_men_presentacion p ON p.ide_inmpre = dl.ide_inmpre
-                WHERE dl.ide_incmen = c.ide_incmen
-                LIMIT 1
-            ) AS cab_art ON true
-            INNER JOIN inv_articulo      a  ON a.ide_inarti = cab_art.ide_inarti
-            LEFT  JOIN inv_unidad        u  ON u.ide_inuni  = a.ide_inuni
+            LEFT  JOIN inv_bodega        b  ON b.ide_inbod  = c.ide_inbod
             WHERE c.ide_incmen = $1
             `,
         );
@@ -575,10 +716,14 @@ export class MenudeoService extends BaseService {
                 d.ide_indmen,
                 d.ide_incmen,
                 d.ide_inmpre,
+                a.ide_inarti,
+                a.nombre_inarti,
+                a.decim_stock_inarti,
                 f.nombre_inmfor,
                 COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva,
                 d.cantidad_indmen,
                 d.cant_base_indmen,
+                p.cant_base_inmpre,
                 u.siglas_inuni  AS siglas_forma,
                 ub.siglas_inuni AS siglas_base,
                 d.observacion_indmen,
@@ -836,6 +981,7 @@ export class MenudeoService extends BaseService {
             WHERE a.ide_empr = ${dtoIn.ideEmpr}
               AND a.ide_intpr = 1
               AND a.nivel_inarti = 'HIJO'
+              AND a.activo_inarti = true
             GROUP BY
                 a.ide_inarti, a.uuid, a.nombre_inarti, a.codigo_inarti,
                 a.foto_inarti, u.siglas_inuni, u.nombre_inuni,
@@ -908,7 +1054,7 @@ export class MenudeoService extends BaseService {
             FROM inv_men_presentacion p
             INNER JOIN inv_articulo a ON a.ide_inarti = p.ide_inarti
             LEFT  JOIN inv_unidad  u ON u.ide_inuni  = a.ide_inuni
-            WHERE p.ide_empr  = ${dtoIn.ideEmpr}
+            WHERE p.ide_empr  = ${dtoIn.ideEmpr} and activo_inarti = true
             GROUP BY
                 a.ide_inarti, a.uuid, a.nombre_inarti, a.codigo_inarti,
                 a.foto_inarti, u.siglas_inuni, u.nombre_inuni,

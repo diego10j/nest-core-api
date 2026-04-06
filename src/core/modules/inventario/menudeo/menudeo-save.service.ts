@@ -496,6 +496,7 @@ export class MenudeoSaveService extends BaseService {
             // Actualizar cabecera
             const updateQuery = new UpdateQuery('inv_cab_menudeo', 'ide_incmen');
             updateQuery.values.set('ide_inmtt', data.ide_inmtt);
+            updateQuery.values.set('ide_inbod', data.ide_inbod ?? null);
             updateQuery.values.set('fecha_incmen', data.fecha_incmen);
             updateQuery.values.set('observacion_incmen', data.observacion_incmen ?? null);
             updateQuery.values.set('usuario_actua', dtoIn.login);
@@ -590,6 +591,7 @@ export class MenudeoSaveService extends BaseService {
                 ide_inmtt: data.ide_inmtt,
                 ide_empr: dtoIn.ideEmpr,
                 ide_sucu: dtoIn.ideSucu,
+                ide_inbod: data.ide_inbod ?? null,
                 numero_incmen: String(ide_incmen).padStart(10, '0'),
                 fecha_incmen: data.fecha_incmen,
                 observacion_incmen: data.observacion_incmen ?? null,
@@ -1339,12 +1341,11 @@ export class MenudeoSaveService extends BaseService {
         }
         const ide_inmtt = Number(tipoTran.ide_inmtt);
 
-        // 2. Obtener datos de las presentaciones: ide_inarti y cant_base_efectiva
+        // 2. Obtener cant_base_efectiva de cada presentación (pueden ser de distintos productos)
         const ids = detalle.map((d) => d.ide_inmpre);
         const presQuery = new SelectQuery(`
             SELECT
                 p.ide_inmpre,
-                p.ide_inarti,
                 COALESCE(p.cant_base_inmpre, f.cant_base_inmfor) AS cant_base_efectiva
             FROM inv_men_presentacion p
             INNER JOIN inv_men_forma f ON f.ide_inmfor = p.ide_inmfor
@@ -1361,15 +1362,6 @@ export class MenudeoSaveService extends BaseService {
                 'Una o más presentaciones no existen, están inactivas o no pertenecen a la empresa',
             );
         }
-
-        // 3. Validar que todas las presentaciones pertenezcan al mismo producto base
-        const articulosUnicos = new Set(presRows.map((r) => Number(r.ide_inarti)));
-        if (articulosUnicos.size > 1) {
-            throw new BadRequestException(
-                'Todas las presentaciones deben pertenecer al mismo producto base',
-            );
-        }
-        const ide_inarti = Number(presRows[0].ide_inarti);
 
         // Indexar por ide_inmpre para calcular cant_base_indmen por línea
         const presMap = new Map<number, { cant_base_efectiva: number }>();
@@ -1399,6 +1391,7 @@ export class MenudeoSaveService extends BaseService {
                 ide_inmtt,
                 ide_empr: dtoIn.ideEmpr,
                 ide_sucu: dtoIn.ideSucu,
+                ide_inbod: dtoIn.ide_inbod,
                 numero_incmen,
                 fecha_incmen,
                 observacion_incmen: observacion_incmen ?? null,

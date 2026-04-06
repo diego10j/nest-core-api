@@ -21,6 +21,7 @@ import { CrearMenudeoDto } from './dto/crear-menudeo.dto';
 import { CopiarPresentacionDto } from './dto/copiar-presentacion.dto';
 import { SaveTipoCompDto, SaveTipoTranDto } from './dto/save-tipo.dto';
 import { TrnMenudeoDto } from './dto/trn-menudeo.dto';
+import { StockMenudeoDto } from './dto/stock-menudeo.dto';
 
 @ApiTags('Inventario-Menudeo')
 @Controller('inventario/menudeo')
@@ -174,6 +175,19 @@ export class MenudeoController {
         @Query() dtoIn: QueryOptionsDto,
     ) {
         return this.service.getAlertasStockMenudeo({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Stock de menudeo a una fecha de corte para todas las presentaciones activas.
+     * Incluye saldo, estado de stock y alertas por presentación.
+     * Query params: [fechaCorte] (por defecto hoy), [ide_inbod] (bodega, opcional)
+     */
+    @Get('getStockMenudeo')
+    getStockMenudeo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: StockMenudeoDto,
+    ) {
+        return this.service.getStockMenudeo({ ...headersParams, ...dtoIn });
     }
 
     /**

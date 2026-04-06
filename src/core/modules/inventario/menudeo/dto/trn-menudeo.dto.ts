@@ -2,8 +2,7 @@ import { IsDateString, IsInt, IsOptional, } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class TrnMenudeoDto extends QueryOptionsDto {
-    @IsInt()
-    ide_inarti: number;
+
 
     @IsDateString()
     fechaInicio: string;

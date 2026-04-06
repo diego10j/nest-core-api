@@ -213,6 +213,7 @@ CREATE TABLE "public"."inv_cab_menudeo" (
     "fecha_incmen"       date         NOT NULL,
     "observacion_incmen" varchar(300),
     "estado_incmen"      int2         NOT NULL DEFAULT 1, -- 1=Activo, 0=Anulado
+    "ide_inbod"          int8,                     -- FK → Bodega donde se realiza el menudeo
     "ide_incci"          int8,                     -- FK → Comprobante inventario generado (egreso base o insumos)
     "ide_cccfa"          int8,                     -- FK → Factura que originó el movimiento (nullable, solo tipo FAC)
     "ide_incmen_ref"     int8,                     -- Self-FK → Comprobante menudeo de referencia (para reversos)
@@ -225,6 +226,9 @@ CREATE TABLE "public"."inv_cab_menudeo" (
     CONSTRAINT "inv_cab_menudeo_pkey"          PRIMARY KEY ("ide_incmen"),
     CONSTRAINT "inv_cab_menudeo_ide_inarti_fkey"
         FOREIGN KEY ("ide_inarti") REFERENCES "public"."inv_articulo"("ide_inarti")
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT "inv_cab_menudeo_ide_inbod_fkey"
+        FOREIGN KEY ("ide_inbod") REFERENCES "public"."inv_bodega"("ide_inbod")
         ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT "inv_cab_menudeo_ide_inmtt_fkey"
         FOREIGN KEY ("ide_inmtt") REFERENCES "public"."inv_men_tipo_tran"("ide_inmtt")
@@ -247,6 +251,7 @@ CREATE TABLE "public"."inv_cab_menudeo" (
 );
 COMMENT ON TABLE  "public"."inv_cab_menudeo" IS 'Cabecera de comprobantes de menudeo/fraccionamiento de productos';
 COMMENT ON COLUMN "public"."inv_cab_menudeo"."ide_inmtt"      IS 'Tipo de transacción: Saldo Inicial, Menudeo, Factura, Reverso, Ajuste. Determina signo y comportamiento.';
+COMMENT ON COLUMN "public"."inv_cab_menudeo"."ide_inbod"      IS 'Bodega donde se realiza la operación de menudeo/fraccionamiento';
 COMMENT ON COLUMN "public"."inv_cab_menudeo"."estado_incmen"  IS '1=Activo, 0=Anulado';
 COMMENT ON COLUMN "public"."inv_cab_menudeo"."ide_incci"      IS 'Comprobante de inventario generado automáticamente (egreso de producto base o de insumos/envases)';
 COMMENT ON COLUMN "public"."inv_cab_menudeo"."ide_cccfa"      IS 'Factura de venta que originó este movimiento (solo para tipo FAC)';
@@ -292,6 +297,7 @@ CREATE INDEX "idx_inv_men_tipo_tran_empr"       ON "public"."inv_men_tipo_tran" 
 CREATE INDEX "idx_inv_men_presentacion_inarti"  ON "public"."inv_men_presentacion"   ("ide_inarti");
 CREATE INDEX "idx_inv_men_presentacion_inmfor"  ON "public"."inv_men_presentacion"   ("ide_inmfor");
 CREATE INDEX "idx_inv_cab_menudeo_inarti"       ON "public"."inv_cab_menudeo"        ("ide_inarti","ide_empr");
+CREATE INDEX "idx_inv_cab_menudeo_inbod"        ON "public"."inv_cab_menudeo"        ("ide_inbod");
 CREATE INDEX "idx_inv_cab_menudeo_fecha"        ON "public"."inv_cab_menudeo"        ("fecha_incmen");
 CREATE INDEX "idx_inv_cab_menudeo_inmtt"        ON "public"."inv_cab_menudeo"        ("ide_inmtt");
 CREATE INDEX "idx_inv_cab_menudeo_cccfa"        ON "public"."inv_cab_menudeo"        ("ide_cccfa");
@@ -414,3 +420,19 @@ END;
 $$ LANGUAGE plpgsql;
 
    (7, 2, 0, NULL, 'Ajuste Egreso',             'AJU', false, false, true);
+-- ============================================================
+-- MIGRACION: Agrega ide_inbod a inv_cab_menudeo (para BDs existentes)
+-- ============================================================
+ALTER TABLE "public"."inv_cab_menudeo"
+    ADD COLUMN IF NOT EXISTS "ide_inbod" int8;
+
+ALTER TABLE "public"."inv_cab_menudeo"
+    ADD CONSTRAINT "inv_cab_menudeo_ide_inbod_fkey"
+        FOREIGN KEY ("ide_inbod") REFERENCES "public"."inv_bodega"("ide_inbod")
+        ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+CREATE INDEX IF NOT EXISTS "idx_inv_cab_menudeo_inbod"
+    ON "public"."inv_cab_menudeo" ("ide_inbod");
+
+COMMENT ON COLUMN "public"."inv_cab_menudeo"."ide_inbod"
+    IS 'Bodega donde se realiza la operación de menudeo/fraccionamiento';

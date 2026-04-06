@@ -31,6 +31,10 @@ export class CrearMenudeoDto {
     @IsDateString()
     fecha_incmen: string;
 
+    /** Bodega de origen para los movimientos de menudeo */
+    @IsInt()
+    ide_inbod: number;
+
     @IsOptional()
     @IsString()
     observacion_incmen?: string;
