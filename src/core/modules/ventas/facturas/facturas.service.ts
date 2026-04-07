@@ -414,6 +414,7 @@ export class FacturasService extends BaseService {
                 nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                 AND nc.ide_cpeno = 1
                 AND nc.ide_empr  = cf.ide_empr
+                AND nc.ide_sucu  = cf.ide_sucu
             )
             WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
               AND cf.ide_empr = ${dtoIn.ideEmpr}
@@ -569,7 +570,8 @@ export class FacturasService extends BaseService {
                 LEFT JOIN cxp_cabecera_nota nc ON (
                     nc.num_doc_mod_cpcno LIKE '%' || lpad(a.secuencial_cccfa::text, 9, '0') AND
                     nc.ide_cpeno = 1 AND
-                    nc.ide_empr = ${dtoIn.ideEmpr}
+                    nc.ide_empr = a.ide_empr
+                    AND nc.ide_sucu  = a.ide_sucu
                 )
                 
             WHERE
@@ -1410,6 +1412,7 @@ export class FacturasService extends BaseService {
                     nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                     AND nc.ide_cpeno = 1
                     AND nc.ide_empr  = cf.ide_empr
+                    AND nc.ide_sucu  = cf.ide_sucu
                 )
                 WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
                 GROUP BY cf.ide_cccfa
@@ -1544,6 +1547,7 @@ export class FacturasService extends BaseService {
                     nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                     AND nc.ide_cpeno = 1
                     AND nc.ide_empr  = cf.ide_empr
+                    AND nc.ide_sucu  = cf.ide_sucu
                 )
                 WHERE cf.fecha_emisi_cccfa = $1
                   AND cf.ide_empr          = $2
@@ -1585,6 +1589,7 @@ export class FacturasService extends BaseService {
                     cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                     AND cn.ide_cpeno = 1
                     AND cn.ide_empr  = cf.ide_empr
+                    AND cn.ide_sucu  = cf.ide_sucu
                 )
                 INNER JOIN cxp_detalle_nota   cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 WHERE cf.fecha_emisi_cccfa = $1
@@ -1664,6 +1669,8 @@ export class FacturasService extends BaseService {
                     nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                     AND nc.ide_cpeno = 1
                     AND nc.ide_empr  = cf.ide_empr
+                    AND nc.ide_sucu  = cf.ide_sucu
+
                 )
                 WHERE cf.fecha_emisi_cccfa = $1
                   AND cf.ide_empr          = $2
