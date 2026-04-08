@@ -180,7 +180,8 @@ BEGIN
         WHERE cn.fecha_emisi_cpcno BETWEEN p_fecha_inicio AND p_fecha_fin
           AND cn.ide_cpeno = 1
           AND cdn.ide_inarti = p_ide_inarti
-          AND cn.ide_empr = id_empresa
+          AND cn.ide_empr = cf.ide_empr
+          AND cn.ide_sucu = cf.ide_sucu
         GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
     )
     SELECT

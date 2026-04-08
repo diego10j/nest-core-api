@@ -577,7 +577,8 @@ export class ProductosService extends BaseService {
             JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
-              AND cn.ide_empr = ${dtoIn.ideEmpr}
+              AND cn.ide_empr = cdf.ide_empr
+              AND cn.ide_sucu = cdf.ide_sucu
             GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
         )
         SELECT
@@ -1035,7 +1036,8 @@ export class ProductosService extends BaseService {
             JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa AND cdn.ide_inarti = cdf.ide_inarti
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1
-              AND cn.ide_empr = ${dtoIn.ideEmpr}
+              AND cn.ide_empr = cf.ide_empr
+              AND cn.ide_sucu = cf.ide_sucu
               AND cdf.ide_inarti = $6
               ${dtoIn.ide_geper ? `AND cf.ide_geper = ${dtoIn.ide_geper}` : ''}
             GROUP BY EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
@@ -1132,7 +1134,8 @@ export class ProductosService extends BaseService {
         WHERE
             cn.fecha_emisi_cpcno BETWEEN $7 AND $8
             AND cn.ide_cpeno = 1
-            AND cn.ide_empr = ${dtoIn.ideEmpr}
+            AND cn.ide_empr = cf.ide_empr
+            AND cn.ide_sucu = cf.ide_sucu
             AND cdf.ide_inarti = $9
         GROUP BY
             uni.siglas_inuni
@@ -1381,7 +1384,8 @@ export class ProductosService extends BaseService {
               WHERE 
                   cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                   AND cn.ide_cpeno = 1
-                  AND cn.ide_empr = ${dtoIn.ideEmpr}
+                  AND cn.ide_empr = cf.ide_empr
+                  AND cn.ide_sucu = cf.ide_sucu
                   AND cdn.ide_inarti = $8
               GROUP BY 
                   cdn.ide_inarti, cf.ide_geper

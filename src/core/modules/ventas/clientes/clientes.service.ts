@@ -334,7 +334,8 @@ export class ClientesService extends BaseService {
             JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
-              AND cn.ide_empr = ${dtoIn.ideEmpr}
+              AND cn.ide_empr = cdf.ide_empr
+                AND cn.ide_sucu = cdf.ide_sucu
             GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
         )
         SELECT
@@ -632,9 +633,9 @@ export class ClientesService extends BaseService {
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $4 AND $5
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
                 AND cf.ide_geper = $6
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
             GROUP BY 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
         )
@@ -853,7 +854,8 @@ export class ClientesService extends BaseService {
             JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
             WHERE cn.fecha_emisi_cpcno BETWEEN $7 AND $8
               AND cn.ide_cpeno = 1
-              AND cn.ide_empr = ${dtoIn.ideEmpr}
+              AND cn.ide_empr = cf.ide_empr
+              AND cn.ide_sucu = cf.ide_sucu
             GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
         )
         SELECT

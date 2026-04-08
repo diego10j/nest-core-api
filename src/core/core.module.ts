@@ -14,6 +14,7 @@ import { SriModule } from './modules/sri/sri.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-pagar.module';
 
 @Module({
   imports: [
@@ -28,9 +29,10 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     ContabilidadModule,
     ProformasModule,
     CuentasPorCobrarModule,
+    CuentasPorPagarModule,
   ],
   providers: [CoreService],
 
   controllers: [CoreController, VariablesController],
 })
-export class CoreModule {}
+export class CoreModule { }

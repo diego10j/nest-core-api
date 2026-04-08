@@ -166,7 +166,8 @@ BEGIN
         JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
         JOIN cxc_cabece_factura cf
           ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-         AND cf.ide_empr = id_empresa
+         AND cf.ide_empr = cn.ide_empr
+         AND cf.ide_sucu = cn.ide_sucu
          AND cf.ide_ccefa = 0
          AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
          AND (id_sucursal IS NULL OR cf.ide_sucu = id_sucursal)

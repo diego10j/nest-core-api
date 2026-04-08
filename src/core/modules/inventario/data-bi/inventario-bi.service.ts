@@ -90,8 +90,8 @@ export class InventarioBiService extends BaseService {
               WHERE 
                   cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                   AND cn.ide_cpeno = 1
-                  AND cn.ide_empr = ${dtoIn.ideEmpr}
-                  AND cf.ide_empr = ${dtoIn.ideEmpr}
+                  AND cn.ide_empr = cf.ide_empr
+                  AND cf.ide_sucu = cn.ide_sucu
                   ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
               GROUP BY 
                   cdn.ide_inarti
@@ -179,8 +179,8 @@ export class InventarioBiService extends BaseService {
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
                 ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
             GROUP BY 
                 cdn.ide_inarti
@@ -565,8 +565,8 @@ export class InventarioBiService extends BaseService {
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     fp.ide_cndfp
@@ -652,8 +652,8 @@ export class InventarioBiService extends BaseService {
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $8
                 GROUP BY 
                     cf.ide_vgven
@@ -1113,8 +1113,8 @@ export class InventarioBiService extends BaseService {
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
                 AND cdn.ide_inarti = $6
             GROUP BY 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno),
@@ -1204,8 +1204,8 @@ export class InventarioBiService extends BaseService {
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $4 AND $5
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     EXTRACT(DOW FROM cn.fecha_emisi_cpcno)
@@ -1289,8 +1289,8 @@ export class InventarioBiService extends BaseService {
                     cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                 WHERE 
                     cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $2
                 GROUP BY 
                     EXTRACT(YEAR FROM cn.fecha_emisi_cpcno)

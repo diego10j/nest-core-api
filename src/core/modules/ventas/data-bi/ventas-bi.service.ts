@@ -132,7 +132,8 @@ export class VentasBiService extends BaseService {
         JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
         JOIN cxc_cabece_factura cf
           ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-         AND cf.ide_empr = ${dtoIn.ideEmpr}
+         AND cf.ide_empr = cn.ide_empr
+         AND cf.ide_sucu = cn.ide_sucu
          AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
          AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
          ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
@@ -439,8 +440,8 @@ export class VentasBiService extends BaseService {
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
             GROUP BY 
                 cf.ide_vgven
         ),
@@ -605,7 +606,8 @@ ORDER BY
                     WHERE 
                         cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                         AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                        AND cn.ide_empr = cf.ide_empr
+                        AND cn.ide_sucu = cf.ide_sucu
                     GROUP BY 
                         cf.ide_geper
                 ) nc ON p.ide_geper = nc.ide_geper
@@ -846,7 +848,8 @@ ORDER BY
                     WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                         AND cn.fecha_emisi_cpcno BETWEEN $1 AND $2
                         AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                        AND cn.ide_empr = cf.ide_empr
+                        AND cn.ide_sucu = cf.ide_sucu
                 ), 0) AS total_nota_credito,
                 (cf.total_cccfa - COALESCE((
                     SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
@@ -854,7 +857,8 @@ ORDER BY
                     WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                         AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                         AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = ${dtoIn.ideEmpr}
+                        AND cn.ide_empr = cf.ide_empr
+                        AND cn.ide_sucu = cf.ide_sucu
                 ), 0)) AS total_real,
                 v.nombre_vgven AS vendedor,
                 fp.nombre_cndfp AS forma_pago,
@@ -865,7 +869,8 @@ ORDER BY
                         WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                             AND cn.fecha_emisi_cpcno BETWEEN $5 AND $6
                             AND cn.ide_cpeno = 1
-                            AND cn.ide_empr = ${dtoIn.ideEmpr}
+                            AND cn.ide_empr = cf.ide_empr
+                            AND cn.ide_sucu = cf.ide_sucu
                     ) THEN 'CON NOTA CRÉDITO'
                     ELSE 'SIN NOTA CRÉDITO'
                 END AS estado_nota_credito
@@ -1213,8 +1218,8 @@ ORDER BY
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
             GROUP BY 
                 cdn.ide_inarti
         )
@@ -1327,7 +1332,8 @@ ORDER BY
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $8
                 GROUP BY 
                     cdn.ide_inarti, cf.ide_geper
@@ -1443,8 +1449,8 @@ ORDER BY
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     fp.ide_cndfp
@@ -1530,8 +1536,8 @@ ORDER BY
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $8
                 GROUP BY 
                     cf.ide_vgven
@@ -1768,8 +1774,8 @@ ORDER BY
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = ${dtoIn.ideEmpr}
-                AND cf.ide_empr = ${dtoIn.ideEmpr}
+                AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
                 AND cdn.ide_inarti = $6
             GROUP BY 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno),
@@ -1859,8 +1865,8 @@ ORDER BY
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $4 AND $5
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     EXTRACT(DOW FROM cn.fecha_emisi_cpcno)
@@ -1944,8 +1950,8 @@ ORDER BY
                     cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                 WHERE 
                     cn.ide_cpeno = 1
-                    AND cn.ide_empr = ${dtoIn.ideEmpr}
-                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    AND cn.ide_empr = cf.ide_empr
+                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $2
                 GROUP BY 
                     EXTRACT(YEAR FROM cn.fecha_emisi_cpcno)
