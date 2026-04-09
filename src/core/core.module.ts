@@ -15,6 +15,7 @@ import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-pagar.module';
+import { TesoreriaModule } from './modules/tesoreria/tesoreria.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-p
     ProformasModule,
     CuentasPorCobrarModule,
     CuentasPorPagarModule,
+    TesoreriaModule,
   ],
   providers: [CoreService],
 
