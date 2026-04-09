@@ -5,10 +5,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
-import { getCurrentTime } from 'src/util/helpers/date-util';
+import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 import { CoreService } from 'src/core/core.service';
 
-import { SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { SaveDetalleOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
 
@@ -29,6 +29,40 @@ export class CuentasPorPagarSaveService extends BaseService {
      */
     async saveOrdenPago(dtoIn: SaveOrdenPagoDto & HeaderParamsDto) {
         const { data, detalles } = dtoIn;
+
+        // Validar que ningún ide_cpctr de los detalles ya exista en otra orden de pago activa
+        if (detalles && detalles.length > 0) {
+            for (const det of detalles) {
+                const exclusion = dtoIn.isUpdate && data.ide_cpcop
+                    ? `AND cab.ide_cpcop != ${data.ide_cpcop}`
+                    : '';
+                const dupQuery = new SelectQuery(`
+                    SELECT cab.secuencial_cpcop,
+                           p.nom_geper            AS nombre_proveedor,
+                           cf.numero_cpcfa        AS num_documento,
+                           cf.total_cpcfa         AS valor
+                    FROM cxp_det_orden_pago det2
+                    JOIN cxp_cab_orden_pago   cab ON cab.ide_cpcop  = det2.ide_cpcop
+                    JOIN cxp_cabece_transa     ct ON ct.ide_cpctr   = det2.ide_cpctr
+                    LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa   = ct.ide_cpcfa
+                    LEFT JOIN gen_persona        p  ON p.ide_geper    = ct.ide_geper
+                    WHERE det2.ide_cpctr = $1
+                      AND cab.ide_cpeo != 4
+                      AND cab.ide_empr = ${dtoIn.ideEmpr}
+                      ${exclusion}
+                `);
+                dupQuery.addIntParam(1, det.ide_cpctr);
+                const duplicate = await this.dataSource.createSingleQuery(dupQuery);
+                if (duplicate) {
+                    throw new BadRequestException(
+                        `La transacción ya está registrada en la orden ${duplicate.secuencial_cpcop ?? ''} — ` +
+                        `Proveedor: ${duplicate.nombre_proveedor ?? '-'}, ` +
+                        `Documento: ${duplicate.num_documento ?? '-'}, ` +
+                        `Valor: ${duplicate.valor ?? '-'}`,
+                    );
+                }
+            }
+        }
 
         // ─── UPDATE ─────────────────────────────────────────────────────────
         if (dtoIn.isUpdate) {
@@ -141,6 +175,7 @@ export class CuentasPorPagarSaveService extends BaseService {
                 await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
             }
         }
+
 
         return { message: 'ok', rowCount: 1, ide_cpcop };
     }
@@ -292,14 +327,96 @@ export class CuentasPorPagarSaveService extends BaseService {
         updQuery.values.set('ide_cpeo', dtoIn.ide_cpeo);
         updQuery.values.set('usuario_actua', dtoIn.login);
         updQuery.values.set('hora_actua', getCurrentTime());
+
+        if (dtoIn.ide_cpeo === 4) { // Si el nuevo estado es ANULADA, también seteamos fecha_pago_cpcop a null
+            updQuery.values.set('activo_cpcop', false); // Además, inactivamos la orden
+        }
+        else if (dtoIn.ide_cpeo === 1) { // Si el nuevo estado es PENDIENTE, aseguramos que la orden esté activa
+            updQuery.values.set('activo_cpcop', true);
+        }
         updQuery.where = 'ide_cpcop = $1 AND ide_empr = $2';
-        updQuery.addIntParam(1, dtoIn.ide_cpcop);
-        updQuery.addIntParam(2, dtoIn.ideEmpr);
+        updQuery.addParam(1, dtoIn.ide_cpcop);
+        updQuery.addParam(2, dtoIn.ideEmpr);
         const result = await this.dataSource.createQuery(updQuery);
         if (!result || result.rowCount === 0) {
             throw new BadRequestException(`Orden de pago ${dtoIn.ide_cpcop} no encontrada`);
         }
         return { message: 'ok', rowCount: 1 };
+    }
+
+    /**
+     * Actualiza un único detalle de orden de pago con los datos de pago.
+     * Campos obligatorios: ide_cpcdop, ide_cpctr, ide_tecba, ide_tettb,
+     * fecha_pago_cpcdop, num_comprobante_cpcdop, valor_pagado_banco_cpcdop, foto_cpcdop.
+     * Tras actualizar, verifica si todos los detalles están pagados y cierra la cabecera.
+     */
+    async saveDetalleOrden(dtoIn: SaveDetalleOrdenDto & HeaderParamsDto) {
+        // Obtener ide_cpcop del detalle para verificar existencia y obtener la cabecera
+        const checkQuery = new SelectQuery(`
+            SELECT ide_cpcdop, ide_cpcop
+            FROM cxp_det_orden_pago
+            WHERE ide_cpcdop = $1
+        `);
+        checkQuery.addIntParam(1, dtoIn.ide_cpcdop);
+        const detalle = await this.dataSource.createSingleQuery(checkQuery);
+        if (!detalle) {
+            throw new BadRequestException(`Detalle ${dtoIn.ide_cpcdop} no encontrado`);
+        }
+        const ide_cpcop: number = detalle.ide_cpcop;
+
+        // Actualizar el detalle con estado PAGADA (3)
+        const detQuery: ObjectQueryDto = {
+            operation: 'update',
+            module: 'cxp',
+            tableName: 'det_orden_pago',
+            primaryKey: 'ide_cpcdop',
+            object: {
+                ide_cpcdop: dtoIn.ide_cpcdop,
+                ide_cpctr: dtoIn.ide_cpctr,
+                ide_cpeo: 3,
+                ide_tecba: dtoIn.ide_tecba,
+                ide_tettb: dtoIn.ide_tettb,
+                fecha_pago_cpcdop: dtoIn.fecha_pago_cpcdop,
+                num_comprobante_cpcdop: dtoIn.num_comprobante_cpcdop,
+                valor_pagado_banco_cpcdop: dtoIn.valor_pagado_banco_cpcdop,
+                foto_cpcdop: dtoIn.foto_cpcdop,
+                valor_pagado_cpcdop: dtoIn.valor_pagado_cpcdop ?? null,
+                saldo_pendiente_cpcdop: dtoIn.saldo_pendiente_cpcdop ?? null,
+                documento_referencia_cpcdop: dtoIn.documento_referencia_cpcdop ?? null,
+                notifica_cpcdop: dtoIn.notifica_cpcdop ?? false,
+                observacion_cpcdop: dtoIn.observacion_cpcdop ?? null,
+            },
+        };
+        await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+
+        // Verificar si todos los detalles activos de la orden están pagados
+        const pendientesQuery = new SelectQuery(`
+            SELECT COUNT(*) AS total_pendientes
+            FROM cxp_det_orden_pago
+            WHERE ide_cpcop = $1
+              AND activo_cpcdop = true
+              AND ide_cpeo != 3
+        `);
+        pendientesQuery.addIntParam(1, ide_cpcop);
+        const resumen = await this.dataSource.createSingleQuery(pendientesQuery);
+        const totalPendientes = parseInt(resumen?.total_pendientes ?? '1', 10);
+
+        let cerrada = false;
+        if (totalPendientes === 0) {
+            const cabUpd = new UpdateQuery('cxp_cab_orden_pago', 'ide_cpcop');
+            cabUpd.values.set('ide_cpeo', 3);
+            cabUpd.values.set('usuario_actua', dtoIn.login);
+            cabUpd.values.set('hora_actua', getCurrentTime());
+            cabUpd.values.set('fecha_pago_cpcop', getCurrentDate());
+            cabUpd.values.set('fecha_efectiva_pago_cpcop', dtoIn.fecha_pago_cpcdop);
+            cabUpd.where = 'ide_cpcop = $1 AND ide_empr = $2';
+            cabUpd.addIntParam(1, ide_cpcop);
+            cabUpd.addIntParam(2, dtoIn.ideEmpr);
+            await this.dataSource.createQuery(cabUpd);
+            cerrada = true;
+        }
+
+        return { message: 'ok', rowCount: 1, cerrada };
     }
 
     // ─── PRIVADOS ─────────────────────────────────────────────────────────────
@@ -309,46 +426,69 @@ export class CuentasPorPagarSaveService extends BaseService {
         detalles: SaveOrdenPagoDto['detalles'],
         dtoIn: HeaderParamsDto,
     ) {
-        await this.dataSource.pool.query(
-            `DELETE FROM cxp_det_orden_pago WHERE ide_cpcop = $1`,
-            [ide_cpcop],
-        );
-
         if (!detalles || detalles.length === 0) return;
 
         for (const det of detalles) {
-            const ide_cpcdop = await this.dataSource.getSeqTable(
-                'cxp_det_orden_pago',
-                'ide_cpcdop',
-                1,
-                dtoIn.login,
-            );
-            const detQuery: ObjectQueryDto = {
-                operation: 'insert',
-                module: 'cxp',
-                tableName: 'det_orden_pago',
-                primaryKey: 'ide_cpcdop',
-                object: {
-                    ide_cpcdop,
-                    ide_cpcop,
-                    ide_cpctr: det.ide_cpctr,
-                    ide_cpeo: det.ide_cpeo,
-                    fecha_pago_cpcdop: det.fecha_pago_cpcdop ?? null,
-                    num_comprobante_cpcdop: det.num_comprobante_cpcdop ?? null,
-                    valor_pagado_cpcdop: det.valor_pagado_cpcdop ?? null,
-                    saldo_pendiente_cpcdop: det.saldo_pendiente_cpcdop ?? null,
-                    documento_referencia_cpcdop: det.documento_referencia_cpcdop ?? null,
-                    notifica_cpcdop: det.notifica_cpcdop ?? false,
-                    activo_cpcdop: det.activo_cpcdop ?? true,
-                    valor_pagado_banco_cpcdop: det.valor_pagado_banco_cpcdop ?? null,
-                    ide_tecba: det.ide_tecba ?? null,
-                    ide_tettb: det.ide_tettb ?? null,
-                    observacion_cpcdop: det.observacion_cpcdop ?? null,
-                    usuario_ingre: dtoIn.login,
-                    hora_ingre: getCurrentTime(),
-                },
-            };
-            await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            if (det.ide_cpcdop) {
+                // UPDATE: actualizar registro existente — estado forzado a PAGADA (3)
+                const detQuery: ObjectQueryDto = {
+                    operation: 'update',
+                    module: 'cxp',
+                    tableName: 'det_orden_pago',
+                    primaryKey: 'ide_cpcdop',
+                    object: {
+                        ide_cpcdop: det.ide_cpcdop,
+                        ide_cpctr: det.ide_cpctr,
+                        ide_cpeo: 3,
+                        fecha_pago_cpcdop: det.fecha_pago_cpcdop ?? null,
+                        num_comprobante_cpcdop: det.num_comprobante_cpcdop ?? null,
+                        valor_pagado_cpcdop: det.valor_pagado_cpcdop ?? null,
+                        saldo_pendiente_cpcdop: det.saldo_pendiente_cpcdop ?? null,
+                        documento_referencia_cpcdop: det.documento_referencia_cpcdop ?? null,
+                        notifica_cpcdop: det.notifica_cpcdop ?? false,
+                        activo_cpcdop: det.activo_cpcdop ?? true,
+                        valor_pagado_banco_cpcdop: det.valor_pagado_banco_cpcdop ?? null,
+                        ide_tecba: det.ide_tecba ?? null,
+                        ide_tettb: det.ide_tettb ?? null,
+                        observacion_cpcdop: det.observacion_cpcdop ?? null,
+                    },
+                };
+                await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            } else {
+                // INSERT: nuevo detalle — estado forzado a GENERADA (1)
+                const ide_cpcdop = await this.dataSource.getSeqTable(
+                    'cxp_det_orden_pago',
+                    'ide_cpcdop',
+                    1,
+                    dtoIn.login,
+                );
+                const detQuery: ObjectQueryDto = {
+                    operation: 'insert',
+                    module: 'cxp',
+                    tableName: 'det_orden_pago',
+                    primaryKey: 'ide_cpcdop',
+                    object: {
+                        ide_cpcdop,
+                        ide_cpcop,
+                        ide_cpctr: det.ide_cpctr,
+                        ide_cpeo: 1,
+                        fecha_pago_cpcdop: det.fecha_pago_cpcdop ?? null,
+                        num_comprobante_cpcdop: det.num_comprobante_cpcdop ?? null,
+                        valor_pagado_cpcdop: det.valor_pagado_cpcdop ?? null,
+                        saldo_pendiente_cpcdop: det.saldo_pendiente_cpcdop ?? null,
+                        documento_referencia_cpcdop: det.documento_referencia_cpcdop ?? null,
+                        notifica_cpcdop: det.notifica_cpcdop ?? false,
+                        activo_cpcdop: det.activo_cpcdop ?? true,
+                        valor_pagado_banco_cpcdop: det.valor_pagado_banco_cpcdop ?? null,
+                        ide_tecba: det.ide_tecba ?? null,
+                        ide_tettb: det.ide_tettb ?? null,
+                        observacion_cpcdop: det.observacion_cpcdop ?? null,
+                        usuario_ingre: dtoIn.login,
+                        hora_ingre: getCurrentTime(),
+                    },
+                };
+                await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+            }
         }
     }
 }

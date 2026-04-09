@@ -45,6 +45,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN cxp_det_orden_pago det  ON det.ide_cpcop = cab.ide_cpcop
             WHERE cab.fecha_genera_cpcop BETWEEN $1 AND $2
               AND cab.ide_empr = ${dtoIn.ideEmpr}
+                AND cab.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 cab.ide_cpcop,
                 cab.secuencial_cpcop,
@@ -97,6 +98,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN sis_usuario u      ON u.ide_usua   = cab.ide_usua
             WHERE cab.ide_cpcop = $1
               AND cab.ide_empr  = ${dtoIn.ideEmpr}
+              AND cab.ide_sucu  = ${dtoIn.ideSucu}
         `);
         cabQuery.addIntParam(1, dtoIn.ide_cpcop);
         const cabecera = await this.dataSource.createSingleQuery(cabQuery);
@@ -136,6 +138,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 det.ide_tettb,
                 ttb.nombre_tettb                    AS tipo_transaccion_banco,
                 det.observacion_cpcdop,
+                det.foto_cpcdop,
                 det.usuario_ingre,
                 det.hora_ingre,
                 det.usuario_actua,
@@ -164,7 +167,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
      *   3. pagos_por_mes     — total pagado por mes (para gráfico de barras)
      *   4. distribucion_estado — conteo y monto por estado de orden
      */
-    async resumenOrdenesPago(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    async getResumenOrdenesPago(dtoIn: RangoFechasDto & HeaderParamsDto) {
         const [resumen_general, pagos_por_semana, pagos_por_mes, distribucion_estado] = await Promise.all([
             this.getResumenGeneral(dtoIn),
             this.getPagosPorSemana(dtoIn),
@@ -197,6 +200,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN cxp_det_orden_pago det ON det.ide_cpcop = cab.ide_cpcop
             WHERE cab.fecha_genera_cpcop BETWEEN $1 AND $2
               AND cab.ide_empr = ${dtoIn.ideEmpr}
+                AND cab.ide_sucu = ${dtoIn.ideSucu}
         `);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
@@ -225,6 +229,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
                     ON gm.ide_gemes = EXTRACT(MONTH FROM cab.fecha_efectiva_pago_cpcop)::int
                 WHERE cab.fecha_efectiva_pago_cpcop BETWEEN $1 AND $2
                   AND cab.ide_empr = ${dtoIn.ideEmpr}
+                  AND cab.ide_sucu = ${dtoIn.ideSucu}
                 GROUP BY
                     anio, mes, gm.nombre_gemes,
                     semana_del_mes, semana_inicio
@@ -264,6 +269,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 ON gm.ide_gemes = EXTRACT(MONTH FROM cab.fecha_efectiva_pago_cpcop)::int
             WHERE cab.fecha_efectiva_pago_cpcop BETWEEN $1 AND $2
               AND cab.ide_empr = ${dtoIn.ideEmpr}
+              AND cab.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 gm.ide_gemes, gm.nombre_gemes,
                 EXTRACT(YEAR FROM cab.fecha_efectiva_pago_cpcop)::int
@@ -290,6 +296,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN cxp_det_orden_pago det  ON det.ide_cpcop = cab.ide_cpcop
             WHERE cab.fecha_genera_cpcop BETWEEN $1 AND $2
               AND cab.ide_empr = ${dtoIn.ideEmpr}
+              AND cab.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY est.ide_cpeo, est.nombre_cpeo, est.color_cpeo
             ORDER BY total_pagado DESC
         `);
@@ -310,6 +317,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             ) AS secuencial
             FROM cxp_cab_orden_pago
             WHERE ide_empr = ${dtoIn.ideEmpr}
+            AND ide_sucu = ${dtoIn.ideSucu}
         `);
         const result = await this.dataSource.createSingleQuery(query);
         return { secuencial: result?.secuencial ?? '00000001' };

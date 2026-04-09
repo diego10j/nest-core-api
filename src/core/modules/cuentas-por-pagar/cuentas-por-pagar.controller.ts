@@ -5,8 +5,9 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
+import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
-import { SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { SaveDetalleOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
@@ -41,6 +42,11 @@ export class CuentasPorPagarController {
         return this.service.getPagosProveedores({ ...headersParams, ...dtoIn });
     }
 
+    @Get('getTopCuentasPorPagar')
+    getTopCuentasPorPagar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopCuentasPorPagarDto) {
+        return this.service.getTopCuentasPorPagar({ ...headersParams, ...dtoIn });
+    }
+
     // ─── ÓRDENES DE PAGO — CONSULTAS ─────────────────────────────────────────
 
     @Get('getSecuencialOrden')
@@ -58,9 +64,10 @@ export class CuentasPorPagarController {
         return this.ordenService.getOrdenPagoById({ ...headersParams, ...dtoIn });
     }
 
-    @Get('resumenOrdenesPago')
-    resumenOrdenesPago(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
-        return this.ordenService.resumenOrdenesPago({ ...headersParams, ...dtoIn });
+    // Pendiente en el front pantalla
+    @Get('getResumenOrdenesPago')
+    getResumenOrdenesPago(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.ordenService.getResumenOrdenesPago({ ...headersParams, ...dtoIn });
     }
 
     // ─── ÓRDENES DE PAGO — PERSISTENCIA ──────────────────────────────────────
@@ -75,10 +82,10 @@ export class CuentasPorPagarController {
         return this.saveService.activarDesactivarOrdenPago({ ...headersParams, ...dtoIn });
     }
 
-    @Patch('cambiarEstadoOrdenPago')
+    @Post('cambiarEstadoOrdenPago')
     cambiarEstadoOrdenPago(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Query() dtoIn: { ide_cpcop: number; ide_cpeo: number },
+        @Body() dtoIn: { ide_cpcop: number; ide_cpeo: number },
     ) {
         return this.saveService.cambiarEstadoOrdenPago({ ...headersParams, ...dtoIn });
     }
@@ -91,8 +98,8 @@ export class CuentasPorPagarController {
         return this.saveService.agregarDetallesOrdenPago({ ...headersParams, ...dtoIn });
     }
 
-    @Delete('eliminarDetallesOrdenPago')
-    eliminarDetallesOrdenPago(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdsDetalleOrdenPagoDto) {
+    @Post('eliminarDetallesOrdenPago')
+    eliminarDetallesOrdenPago(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdsDetalleOrdenPagoDto) {
         return this.saveService.eliminarDetallesOrdenPago({ ...headersParams, ...dtoIn });
     }
 
@@ -102,6 +109,11 @@ export class CuentasPorPagarController {
         @Query() dtoIn: IdsDetalleOrdenPagoDto,
     ) {
         return this.saveService.activarDesactivarDetallesOrdenPago({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('saveDetalleOrden')
+    saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetalleOrdenDto) {
+        return this.saveService.saveDetalleOrden({ ...headersParams, ...dtoIn });
     }
 }
 

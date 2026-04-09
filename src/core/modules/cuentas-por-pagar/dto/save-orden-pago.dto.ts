@@ -111,6 +111,11 @@ export class DetOrdenPagoDataDto {
     @IsOptional()
     @MaxLength(250)
     observacion_cpcdop?: string;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    foto_cpcdop?: string;
 }
 
 export class SaveOrdenPagoDto extends SaveDto {
@@ -124,4 +129,69 @@ export class SaveOrdenPagoDto extends SaveDto {
     @Type(() => DetOrdenPagoDataDto)
     @IsOptional()
     detalles?: DetOrdenPagoDataDto[];
+}
+
+/**
+ * DTO para actualizar un único detalle de orden de pago.
+ * Todos los campos de pago son obligatorios.
+ */
+export class SaveDetalleOrdenDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cpcdop: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_cpctr: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_tecba: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_tettb: number;
+
+    @IsDateString()
+    @IsNotEmpty()
+    fecha_pago_cpcdop: string;
+
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(50)
+    num_comprobante_cpcdop: string;
+
+    @IsNumber()
+    @Min(0)
+    @IsNotEmpty()
+    valor_pagado_banco_cpcdop: number;
+
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(200)
+    foto_cpcdop: string;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    valor_pagado_cpcdop?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    saldo_pendiente_cpcdop?: number;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(100)
+    documento_referencia_cpcdop?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    notifica_cpcdop?: boolean;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(250)
+    observacion_cpcdop?: string;
 }

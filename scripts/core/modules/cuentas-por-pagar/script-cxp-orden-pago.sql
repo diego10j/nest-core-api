@@ -82,6 +82,7 @@ CREATE TABLE public.cxp_det_orden_pago (
     ide_tecba                   INT NULL REFERENCES public.tes_cuenta_banco(ide_tecba),           -- Cuenta bancaria de pago
     ide_tettb                   INT NULL REFERENCES public.tes_tip_tran_banc(ide_tettb),          -- Tipo de transacción bancaria (transferencia, cheque, etc.)
     observacion_cpcdop          VARCHAR(250),                                                     -- Observaciones del pago
+    foto_cpcdop                 VARCHAR(200),                                                     -- Nombre del archivo (imagen/PDF) del comprobante de transferencia
     usuario_ingre               VARCHAR(50),
     hora_ingre                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua               VARCHAR(50),

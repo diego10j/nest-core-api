@@ -4,6 +4,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
+import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
@@ -647,6 +648,7 @@ export class CuentasPorPagarService extends BaseService {
         AND ct.ide_empr  = $3
 
     GROUP BY
+        ct.ide_cpctr,
         cf.ide_cpcfa,
         ct.ide_geper,
         p.nom_geper,
@@ -673,6 +675,213 @@ export class CuentasPorPagarService extends BaseService {
     query.addParam(2, dtoIn.ideSucu);
     query.addParam(3, dtoIn.ideEmpr);
     query.addIntParam(4, diasAlerta);
+    return this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Top N proveedores con mayor saldo de cuentas por pagar.
+   * Incluye métricas de aging, calendario de vencimientos futuros,
+   * tiempo de vida de deuda y score de urgencia de pago.
+   */
+  async getTopCuentasPorPagar(dtoIn: TopCuentasPorPagarDto & HeaderParamsDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const limit = dtoIn.limit ?? 10;
+
+    const query = new SelectQuery(`
+      WITH cuentas_base AS (
+          -- Una fila por factura con saldo pendiente
+          SELECT
+              ct.ide_geper,
+              cf.ide_cpcfa,
+              cf.numero_cpcfa,
+              cf.fecha_emisi_cpcfa,
+              cf.total_cpcfa,
+              cf.dias_credito_cpcfa,
+              (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa * INTERVAL '1 day')::date  AS fecha_vence,
+              MAX(ct.fecha_trans_cpctr)                                                AS fecha_ultima_trans,
+              ROUND(SUM(dt.valor_cpdtr * tt.signo_cpttr)::numeric, 2)                AS saldo_x_pagar,
+              ROUND((cf.total_cpcfa - COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0))::numeric, 2) AS abonado
+          FROM cxp_detall_transa dt
+          INNER JOIN cxp_cabece_transa ct  ON ct.ide_cpctr  = dt.ide_cpctr
+          INNER JOIN cxp_cabece_factur cf  ON cf.ide_cpcfa  = ct.ide_cpcfa
+                                         AND cf.ide_cpefa  = ${estadoFacturaNormal}
+          INNER JOIN cxp_tipo_transacc tt  ON tt.ide_cpttr  = dt.ide_cpttr
+          WHERE ct.ide_empr  = $1
+            AND dt.ide_sucu  = $2
+            AND cf.fecha_emisi_cpcfa IS NOT NULL
+            AND cf.dias_credito_cpcfa > 0
+          GROUP BY
+              ct.ide_geper,
+              cf.ide_cpcfa,
+              cf.numero_cpcfa,
+              cf.fecha_emisi_cpcfa,
+              cf.total_cpcfa,
+              cf.dias_credito_cpcfa
+          HAVING ROUND(SUM(dt.valor_cpdtr * tt.signo_cpttr)::numeric, 2) > 0
+      ),
+      proveedor_metricas AS (
+          SELECT
+              ide_geper,
+
+              -- ── TOTALES ───────────────────────────────────────────────────
+              COUNT(ide_cpcfa)::integer                                                                    AS num_facturas_pendientes,
+              ROUND(SUM(saldo_x_pagar)::numeric, 2)                                                       AS saldo_total,
+              ROUND(SUM(abonado)::numeric, 2)                                                             AS total_abonado,
+              ROUND(SUM(total_cpcfa)::numeric, 2)                                                         AS total_facturado_pendiente,
+              ROUND(AVG(saldo_x_pagar)::numeric, 2)                                                       AS saldo_promedio_por_factura,
+              ROUND(COALESCE(SUM(abonado) / NULLIF(SUM(total_cpcfa), 0) * 100, 0)::numeric, 2)           AS porcentaje_pagado_global,
+
+              -- ── FECHAS CLAVE ──────────────────────────────────────────────
+              MIN(fecha_emisi_cpcfa)                                                                      AS fecha_primera_factura_pendiente,
+              MAX(fecha_emisi_cpcfa)                                                                      AS fecha_ultima_factura,
+              MAX(fecha_ultima_trans)                                                                     AS fecha_ultima_transaccion,
+              MIN(fecha_vence)                                                                            AS proxima_fecha_vencimiento,
+
+              -- ── MÉTRICAS DE TIEMPO (vida de la deuda) ────────────────────
+              (CURRENT_DATE - MIN(fecha_emisi_cpcfa))::integer                                            AS dias_deuda_mas_antigua,
+              ROUND(AVG((CURRENT_DATE - fecha_emisi_cpcfa))::numeric, 0)::integer                        AS dias_promedio_deuda,
+              (CURRENT_DATE - MAX(fecha_ultima_trans)::date)::integer                                     AS dias_desde_ultima_transaccion,
+
+              -- ── VENCIDO ───────────────────────────────────────────────────
+              COUNT(CASE WHEN fecha_vence < CURRENT_DATE THEN 1 END)::integer                             AS num_facturas_vencidas,
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS saldo_vencido,
+              MAX(CASE WHEN fecha_vence < CURRENT_DATE THEN (CURRENT_DATE - fecha_vence)::integer ELSE 0 END) AS max_dias_vencido,
+              ROUND(COALESCE(AVG(CASE WHEN fecha_vence < CURRENT_DATE THEN
+                  (CURRENT_DATE - fecha_vence)::integer END), 0)::numeric, 0)::integer                   AS promedio_dias_vencido,
+
+              -- Aging vencido (cubos)
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE
+                  AND (CURRENT_DATE - fecha_vence) <= 30          THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vencido_1_30_dias,
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE
+                  AND (CURRENT_DATE - fecha_vence) BETWEEN 31 AND 60  THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vencido_31_60_dias,
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE
+                  AND (CURRENT_DATE - fecha_vence) BETWEEN 61 AND 90  THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vencido_61_90_dias,
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE
+                  AND (CURRENT_DATE - fecha_vence) BETWEEN 91 AND 180 THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vencido_91_180_dias,
+              ROUND(SUM(CASE WHEN fecha_vence < CURRENT_DATE
+                  AND (CURRENT_DATE - fecha_vence) > 180             THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vencido_mas_180_dias,
+
+              -- ── CALENDARIO DE VENCIMIENTOS FUTUROS ───────────────────────
+              COUNT(CASE WHEN fecha_vence >= CURRENT_DATE THEN 1 END)::integer                            AS num_facturas_por_vencer,
+              ROUND(SUM(CASE WHEN fecha_vence >= CURRENT_DATE THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS saldo_por_vencer,
+
+              -- Vence en los próximos 30 días
+              ROUND(SUM(CASE WHEN fecha_vence BETWEEN CURRENT_DATE
+                  AND (CURRENT_DATE + INTERVAL '30 days')      THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vence_proximo_30_dias,
+              COUNT(CASE WHEN fecha_vence BETWEEN CURRENT_DATE
+                  AND (CURRENT_DATE + INTERVAL '30 days') THEN 1 END)::integer                            AS num_facturas_vence_30_dias,
+
+              -- Vence entre 31 y 60 días
+              ROUND(SUM(CASE WHEN fecha_vence BETWEEN (CURRENT_DATE + INTERVAL '31 days')
+                  AND (CURRENT_DATE + INTERVAL '60 days')      THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vence_31_60_dias,
+              COUNT(CASE WHEN fecha_vence BETWEEN (CURRENT_DATE + INTERVAL '31 days')
+                  AND (CURRENT_DATE + INTERVAL '60 days') THEN 1 END)::integer                            AS num_facturas_vence_31_60_dias,
+
+              -- Vence entre 61 y 90 días
+              ROUND(SUM(CASE WHEN fecha_vence BETWEEN (CURRENT_DATE + INTERVAL '61 days')
+                  AND (CURRENT_DATE + INTERVAL '90 days')      THEN saldo_x_pagar ELSE 0 END)::numeric, 2) AS vence_61_90_dias,
+              COUNT(CASE WHEN fecha_vence BETWEEN (CURRENT_DATE + INTERVAL '61 days')
+                  AND (CURRENT_DATE + INTERVAL '90 days') THEN 1 END)::integer                            AS num_facturas_vence_61_90_dias,
+
+              -- Vence en más de 90 días
+              ROUND(SUM(CASE WHEN fecha_vence > (CURRENT_DATE + INTERVAL '90 days')
+                  THEN saldo_x_pagar ELSE 0 END)::numeric, 2)                                             AS vence_mas_90_dias,
+
+              -- ── SCORE URGENCIA (pondera vencido x3, próximo x1) ──────────
+              ROUND((
+                  SUM(CASE WHEN fecha_vence < CURRENT_DATE THEN saldo_x_pagar * 3.0 ELSE saldo_x_pagar END)
+              )::numeric, 2)                                                                              AS score_urgencia
+          FROM cuentas_base
+          GROUP BY ide_geper
+      )
+      SELECT
+          pm.ide_geper,
+          p.nom_geper                                      AS nombre_proveedor,
+          p.identificac_geper,
+          p.uuid,
+
+          -- Totales
+          pm.num_facturas_pendientes,
+          pm.saldo_total,
+          pm.total_abonado,
+          pm.total_facturado_pendiente,
+          pm.saldo_promedio_por_factura,
+          pm.porcentaje_pagado_global,
+
+          -- Fechas clave
+          TO_CHAR(pm.fecha_primera_factura_pendiente, 'YYYY-MM-DD') AS fecha_primera_factura_pendiente,
+          TO_CHAR(pm.fecha_ultima_factura,            'YYYY-MM-DD') AS fecha_ultima_factura,
+          TO_CHAR(pm.fecha_ultima_transaccion,        'YYYY-MM-DD') AS fecha_ultima_transaccion,
+          TO_CHAR(pm.proxima_fecha_vencimiento,       'YYYY-MM-DD') AS proxima_fecha_vencimiento,
+
+          -- Métricas de tiempo de vida
+          pm.dias_deuda_mas_antigua,
+          pm.dias_promedio_deuda,
+          pm.dias_desde_ultima_transaccion,
+
+          -- Vencido — resumen
+          pm.num_facturas_vencidas,
+          pm.saldo_vencido,
+          pm.max_dias_vencido,
+          pm.promedio_dias_vencido,
+
+          -- Vencido — aging buckets
+          pm.vencido_1_30_dias,
+          pm.vencido_31_60_dias,
+          pm.vencido_61_90_dias,
+          pm.vencido_91_180_dias,
+          pm.vencido_mas_180_dias,
+
+          -- Por vencer — resumen
+          pm.num_facturas_por_vencer,
+          pm.saldo_por_vencer,
+
+          -- Calendario de vencimientos futuros
+          pm.vence_proximo_30_dias,
+          pm.num_facturas_vence_30_dias,
+          pm.vence_31_60_dias,
+          pm.num_facturas_vence_31_60_dias,
+          pm.vence_61_90_dias,
+          pm.num_facturas_vence_61_90_dias,
+          pm.vence_mas_90_dias,
+
+          -- Análisis de riesgo crediticio
+          CASE
+              WHEN pm.max_dias_vencido > 90                          THEN 'CRÍTICO'
+              WHEN pm.max_dias_vencido > 60                          THEN 'ALTO'
+              WHEN pm.max_dias_vencido > 30                          THEN 'MEDIO'
+              WHEN pm.saldo_vencido > 0                              THEN 'BAJO'
+              ELSE 'SIN VENCIMIENTOS'
+          END AS nivel_riesgo,
+
+          -- Acción sugerida
+          CASE
+              WHEN pm.max_dias_vencido > 90  THEN 'PAGO INMEDIATO — RIESGO SUSPENSIÓN CRÉDITO'
+              WHEN pm.max_dias_vencido > 60  THEN 'GESTIONAR PAGO ESTA SEMANA'
+              WHEN pm.max_dias_vencido > 30  THEN 'PROGRAMAR PAGO A CORTO PLAZO'
+              WHEN pm.saldo_vencido > 0      THEN 'INCLUIR EN PRÓXIMA ORDEN DE PAGO'
+              WHEN pm.vence_proximo_30_dias > 0 THEN 'PLANIFICAR PAGO — VENCE EN 30 DÍAS'
+              ELSE 'MONITOREAR VENCIMIENTOS'
+          END AS accion_sugerida,
+
+          -- Salud de pago (qué tan al día está el proveedor)
+          CASE
+              WHEN pm.porcentaje_pagado_global >= 80 THEN 'EXCELENTE'
+              WHEN pm.porcentaje_pagado_global >= 60 THEN 'BUENA'
+              WHEN pm.porcentaje_pagado_global >= 40 THEN 'REGULAR'
+              WHEN pm.porcentaje_pagado_global >= 20 THEN 'DEFICIENTE'
+              ELSE 'CRÍTICA'
+          END AS salud_pago,
+
+          pm.score_urgencia
+      FROM proveedor_metricas pm
+      INNER JOIN gen_persona p ON p.ide_geper = pm.ide_geper
+      ORDER BY pm.saldo_total DESC, pm.score_urgencia DESC
+      LIMIT ${limit}
+    `);
+
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
     return this.dataSource.createQuery(query);
   }
 }
