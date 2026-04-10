@@ -23,6 +23,11 @@ export class TesoreriaController {
         return this.service.getCuentasBanco(headersParams);
     }
 
+    @Get('getCuentasBancoCheques')
+    getCuentasBancoCheques(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getCuentasBancoCheques(headersParams);
+    }
+
     // ─── TIPOS DE TRANSACCIÓN BANCARIA ────────────────────────────────────────
 
     @Get('getListDataTiposTranBanc')

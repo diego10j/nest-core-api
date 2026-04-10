@@ -7,7 +7,7 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
 import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
-import { SaveDetalleOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { SaveDetalleOrdenDto, SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
@@ -112,7 +112,7 @@ export class CuentasPorPagarController {
     }
 
     @Post('saveDetalleOrden')
-    saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetalleOrdenDto) {
+    saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetallesOrdenDto) {
         return this.saveService.saveDetalleOrden({ ...headersParams, ...dtoIn });
     }
 }

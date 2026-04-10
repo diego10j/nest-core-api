@@ -8,9 +8,10 @@ import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 import { CoreService } from 'src/core/core.service';
 
-import { SaveDetalleOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { SaveDetalleOrdenDto, SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
+import { TransaccionesTesoreriaService } from '../tesoreria/tesoreria-transacciones.service';
 
 @Injectable()
 export class CuentasPorPagarSaveService extends BaseService {
@@ -18,6 +19,7 @@ export class CuentasPorPagarSaveService extends BaseService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
         private readonly ordenService: CuentasPorPagarOrdenService,
+        private readonly transaccionesTesoreria: TransaccionesTesoreriaService,
     ) {
         super();
     }
@@ -350,44 +352,36 @@ export class CuentasPorPagarSaveService extends BaseService {
      * fecha_pago_cpcdop, num_comprobante_cpcdop, valor_pagado_banco_cpcdop, foto_cpcdop.
      * Tras actualizar, verifica si todos los detalles están pagados y cierra la cabecera.
      */
-    async saveDetalleOrden(dtoIn: SaveDetalleOrdenDto & HeaderParamsDto) {
-        // Obtener ide_cpcop del detalle para verificar existencia y obtener la cabecera
-        const checkQuery = new SelectQuery(`
-            SELECT ide_cpcdop, ide_cpcop
-            FROM cxp_det_orden_pago
-            WHERE ide_cpcdop = $1
-        `);
-        checkQuery.addIntParam(1, dtoIn.ide_cpcdop);
-        const detalle = await this.dataSource.createSingleQuery(checkQuery);
-        if (!detalle) {
-            throw new BadRequestException(`Detalle ${dtoIn.ide_cpcdop} no encontrado`);
-        }
-        const ide_cpcop: number = detalle.ide_cpcop;
+    async saveDetalleOrden(dtoIn: SaveDetallesOrdenDto & HeaderParamsDto) {
+        const { ide_cpcop, detalles } = dtoIn;
 
-        // Actualizar el detalle con estado PAGADA (3)
-        const detQuery: ObjectQueryDto = {
-            operation: 'update',
-            module: 'cxp',
-            tableName: 'det_orden_pago',
-            primaryKey: 'ide_cpcdop',
-            object: {
-                ide_cpcdop: dtoIn.ide_cpcdop,
-                ide_cpctr: dtoIn.ide_cpctr,
-                ide_cpeo: 3,
-                ide_tecba: dtoIn.ide_tecba,
-                ide_tettb: dtoIn.ide_tettb,
-                fecha_pago_cpcdop: dtoIn.fecha_pago_cpcdop,
-                num_comprobante_cpcdop: dtoIn.num_comprobante_cpcdop,
-                valor_pagado_banco_cpcdop: dtoIn.valor_pagado_banco_cpcdop,
-                foto_cpcdop: dtoIn.foto_cpcdop,
-                valor_pagado_cpcdop: dtoIn.valor_pagado_cpcdop ?? null,
-                saldo_pendiente_cpcdop: dtoIn.saldo_pendiente_cpcdop ?? null,
-                documento_referencia_cpcdop: dtoIn.documento_referencia_cpcdop ?? null,
-                notifica_cpcdop: dtoIn.notifica_cpcdop ?? false,
-                observacion_cpcdop: dtoIn.observacion_cpcdop ?? null,
-            },
-        };
-        await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+        // Actualizar cada detalle con estado PAGADA (3)
+        for (const det of detalles) {
+            const detQuery: ObjectQueryDto = {
+                operation: 'update',
+                module: 'cxp',
+                tableName: 'det_orden_pago',
+                primaryKey: 'ide_cpcdop',
+                object: {
+                    ide_cpcdop: det.ide_cpcdop,
+                    ide_cpctr: det.ide_cpctr,
+                    ide_cpeo: 3,
+                    ide_tecba: det.ide_tecba,
+                    ide_tettb: det.ide_tettb,
+                    fecha_pago_cpcdop: det.fecha_pago_cpcdop,
+                    num_comprobante_cpcdop: det.num_comprobante_cpcdop,
+                    valor_pagado_banco_cpcdop: det.valor_pagado_banco_cpcdop,
+                    foto_cpcdop: det.foto_cpcdop,
+                    valor_pagado_cpcdop: det.valor_pagado_cpcdop ?? null,
+                    saldo_pendiente_cpcdop: det.saldo_pendiente_cpcdop ?? null,
+                    documento_referencia_cpcdop: det.documento_referencia_cpcdop ?? null,
+                    notifica_cpcdop: det.notifica_cpcdop ?? false,
+                    observacion_cpcdop: det.observacion_cpcdop ?? null,
+                    fecha_cheque_cpcdop: det.fecha_cheque_cpcdop ?? null,
+                },
+            };
+            await this.core.save({ ...dtoIn, listQuery: [detQuery], audit: false });
+        }
 
         // Verificar si todos los detalles activos de la orden están pagados
         const pendientesQuery = new SelectQuery(`
@@ -403,12 +397,13 @@ export class CuentasPorPagarSaveService extends BaseService {
 
         let cerrada = false;
         if (totalPendientes === 0) {
+            const ultimaFecha = detalles[detalles.length - 1].fecha_pago_cpcdop;
             const cabUpd = new UpdateQuery('cxp_cab_orden_pago', 'ide_cpcop');
             cabUpd.values.set('ide_cpeo', 3);
             cabUpd.values.set('usuario_actua', dtoIn.login);
             cabUpd.values.set('hora_actua', getCurrentTime());
             cabUpd.values.set('fecha_pago_cpcop', getCurrentDate());
-            cabUpd.values.set('fecha_efectiva_pago_cpcop', dtoIn.fecha_pago_cpcdop);
+            cabUpd.values.set('fecha_efectiva_pago_cpcop', ultimaFecha);
             cabUpd.where = 'ide_cpcop = $1 AND ide_empr = $2';
             cabUpd.addIntParam(1, ide_cpcop);
             cabUpd.addIntParam(2, dtoIn.ideEmpr);
@@ -416,7 +411,10 @@ export class CuentasPorPagarSaveService extends BaseService {
             cerrada = true;
         }
 
-        return { message: 'ok', rowCount: 1, cerrada };
+        // Guardar/actualizar movimiento bancario y transacción CxP en tesorería
+        await this.transaccionesTesoreria.saveTransaccionOrdenPagoCxP({ ...dtoIn, ide_cpcop });
+
+        return { message: 'ok', rowCount: detalles.length, cerrada };
     }
 
     // ─── PRIVADOS ─────────────────────────────────────────────────────────────

@@ -132,9 +132,11 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 det.notifica_cpcdop,
                 det.activo_cpcdop,
                 det.valor_pagado_banco_cpcdop,
+                det.fecha_cheque_cpcdop,
                 -- Banco
                 det.ide_tecba,
-                ban.nombre_tecba                    AS nombre_banco,
+                b.nombre_teban                        AS nombre_banco,
+                ban.nombre_tecba                    AS cuenta_banco,
                 det.ide_tettb,
                 ttb.nombre_tettb                    AS tipo_transaccion_banco,
                 det.observacion_cpcdop,
@@ -150,12 +152,12 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN gen_persona          p  ON p.ide_geper   = ct.ide_geper
             LEFT JOIN tes_cuenta_banco   ban  ON ban.ide_tecba = det.ide_tecba
             LEFT JOIN tes_tip_tran_banc  ttb  ON ttb.ide_tettb = det.ide_tettb
+            LEFT JOIN tes_banco             b   ON b.ide_teban   = ban.ide_teban
             WHERE det.ide_cpcop = $1
             ORDER BY det.ide_cpcdop
         `);
         detQuery.addIntParam(1, dtoIn.ide_cpcop);
         const detalles = await this.dataSource.createSelectQuery(detQuery);
-
         return { cabecera, detalles };
     }
 

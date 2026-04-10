@@ -1,6 +1,7 @@
 // tabla: cxp_cab_orden_pago / cxp_det_orden_pago
 import { Type } from 'class-transformer';
 import {
+    IsArray,
     IsBoolean,
     IsDateString,
     IsInt,
@@ -194,4 +195,23 @@ export class SaveDetalleOrdenDto {
     @IsOptional()
     @MaxLength(250)
     observacion_cpcdop?: string;
+
+    @IsDateString()
+    @IsOptional()
+    fecha_cheque_cpcdop?: string;
+}
+
+/**
+ * DTO para guardar múltiples detalles de una misma orden de pago.
+ */
+export class SaveDetallesOrdenDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cpcop: number;
+
+    @IsArray()
+    @IsNotEmpty()
+    @ValidateNested({ each: true })
+    @Type(() => SaveDetalleOrdenDto)
+    detalles: SaveDetalleOrdenDto[];
 }

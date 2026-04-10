@@ -6,17 +6,17 @@ import { SelectQuery } from 'src/core/connection/helpers';
 
 @Injectable()
 export class TesoreriaService extends BaseService {
-    constructor(private readonly dataSource: DataSourceService) {
-        super();
-    }
+  constructor(private readonly dataSource: DataSourceService) {
+    super();
+  }
 
-    /**
-     * Retorna las cuentas bancarias habilitadas para pagos
-     * (hace_pagos_tecba = true)
-     */
-    async getCuentasBancoPagos(dtoIn: HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna las cuentas bancarias habilitadas para pagos
+   * (hace_pagos_tecba = true)
+   */
+  async getCuentasBancoPagos(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
       SELECT
         cb.ide_tecba,
         cb.nombre_tecba,
@@ -29,20 +29,21 @@ export class TesoreriaService extends BaseService {
         AND cb.ide_empr = $1
         AND cb.ide_sucu = $2
         AND activo_tecba = true
+        AND es_caja_teban = false
       ORDER BY cb.nombre_tecba
       `,
-        );
-        query.addIntParam(1, dtoIn.ideEmpr);
-        query.addIntParam(2, dtoIn.ideSucu);
-        return this.dataSource.createSelectQuery(query);
-    }
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
 
-    /**
-     * Retorna todas las cuentas bancarias sin filtro de pagos
-     */
-    async getCuentasBanco(dtoIn: HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
+  /**
+   * Retorna todas las cuentas bancarias sin filtro de pagos
+   */
+  async getCuentasBanco(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
       SELECT
         cb.ide_tecba,
         cb.nombre_tecba,
@@ -54,11 +55,37 @@ export class TesoreriaService extends BaseService {
       WHERE cb.ide_empr = $1
         AND cb.ide_sucu = $2
         AND activo_tecba = true
+        AND es_caja_teban = false
       ORDER BY cb.nombre_tecba
       `,
-        );
-        query.addIntParam(1, dtoIn.ideEmpr);
-        query.addIntParam(2, dtoIn.ideSucu);
-        return this.dataSource.createSelectQuery(query);
-    }
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+
+  async getCuentasBancoCheques(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT
+        cb.ide_tecba,
+        cb.nombre_tecba,
+        b.nombre_teban,
+        b.foto_teban,
+        color_teban
+      FROM tes_cuenta_banco cb
+      LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+      WHERE cb.hace_cheque_tecba = true
+        AND cb.ide_empr = $1
+        AND cb.ide_sucu = $2
+        AND activo_tecba = true
+        AND es_caja_teban = false
+      ORDER BY cb.nombre_tecba
+      `,
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
 }
