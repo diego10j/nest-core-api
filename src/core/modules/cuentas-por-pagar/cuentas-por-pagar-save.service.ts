@@ -330,8 +330,10 @@ export class CuentasPorPagarSaveService extends BaseService {
         updQuery.values.set('usuario_actua', dtoIn.login);
         updQuery.values.set('hora_actua', getCurrentTime());
 
-        if (dtoIn.ide_cpeo === 4) { // Si el nuevo estado es ANULADA, también seteamos fecha_pago_cpcop a null
-            updQuery.values.set('activo_cpcop', false); // Además, inactivamos la orden
+        if (dtoIn.ide_cpeo === 4) { // Si el nuevo estado es ANULADA
+            // Verificar y revertir transacciones bancarias/CxP de detalles pagados
+            await this.transaccionesTesoreria.anularTransaccionesOrdenPagoCxP(dtoIn.ide_cpcop, dtoIn.login);
+            updQuery.values.set('activo_cpcop', false);
         }
         else if (dtoIn.ide_cpeo === 1) { // Si el nuevo estado es PENDIENTE, aseguramos que la orden esté activa
             updQuery.values.set('activo_cpcop', true);
@@ -412,7 +414,8 @@ export class CuentasPorPagarSaveService extends BaseService {
         }
 
         // Guardar/actualizar movimiento bancario y transacción CxP en tesorería
-        await this.transaccionesTesoreria.saveTransaccionOrdenPagoCxP({ ...dtoIn, ide_cpcop });
+        const ide_cpcdop_list = detalles.map((d) => d.ide_cpcdop);
+        await this.transaccionesTesoreria.saveTransaccionOrdenPagoCxP({ ...dtoIn, ide_cpcop, ide_cpcdop_list });
 
         return { message: 'ok', rowCount: detalles.length, cerrada };
     }

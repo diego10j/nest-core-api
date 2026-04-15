@@ -334,8 +334,8 @@ export class ClientesService extends BaseService {
             JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
-              AND cn.ide_empr = cdf.ide_empr
-                AND cn.ide_sucu = cdf.ide_sucu
+              AND cn.ide_empr = cf.ide_empr
+                AND cn.ide_sucu = cf.ide_sucu
             GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
         )
         SELECT

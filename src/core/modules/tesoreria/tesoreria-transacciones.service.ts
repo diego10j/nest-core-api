@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -37,15 +37,15 @@ export class TransaccionesTesoreriaService extends BaseService {
      * una orden de pago.
      * - Si el registro ya existe en cxp_detall_transa → actualiza ambas tablas.
      * - Si no existe → inserta en tes_cab_libr_banc y luego en cxp_detall_transa.
-     * @param dtoIn ide_cpcop + parámetros de cabecera (empresa, sucursal, usuario)
+     * @param dtoIn ide_cpcop + ide_cpcdop_list (ids de detalles pagados) + parámetros de cabecera
      */
     async saveTransaccionOrdenPagoCxP(
-        dtoIn: { ide_cpcop: number } & HeaderParamsDto,
+        dtoIn: { ide_cpcop: number; ide_cpcdop_list: number[] } & HeaderParamsDto,
     ) {
         const ide_teelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
         const ide_cpttr_pago = Number(this.variables.get('p_cxp_tipo_trans_pago'));
 
-        // Obtiene los detalles activos de la orden con la info necesaria del proveedor/factura
+        // Obtiene solo los detalles que se están pagando en esta solicitud
         const detallesQuery = new SelectQuery(`
             SELECT
                 det.ide_cpcdop,
@@ -66,8 +66,10 @@ export class TransaccionesTesoreriaService extends BaseService {
             LEFT JOIN gen_persona        p  ON p.ide_geper   = ct.ide_geper
             WHERE det.ide_cpcop     = $1
               AND det.activo_cpcdop = true
+              AND det.ide_cpcdop    = ANY($2)
         `);
         detallesQuery.addIntParam(1, dtoIn.ide_cpcop);
+        detallesQuery.addArrayNumberParam(2, dtoIn.ide_cpcdop_list);
         const detalles = await this.dataSource.createSelectQuery(detallesQuery);
 
         const results: Array<{
@@ -264,6 +266,94 @@ export class TransaccionesTesoreriaService extends BaseService {
         }
         console.log('Resultados de transacciones guardadas/actualizadas:', results);
         return { message: 'ok', rowCount: results.length, results };
+    }
+
+    /**
+     * Revierte las transacciones bancarias (tes_cab_libr_banc) y de CxP (cxp_detall_transa)
+     * de todos los detalles PAGADOS de una orden de pago al anularla.
+     * Lanza excepción si algún movimiento bancario ya fue contabilizado (tiene ide_cnccc).
+     */
+    async anularTransaccionesOrdenPagoCxP(ide_cpcop: number, login: string): Promise<void> {
+        // 1. Obtener detalles pagados (ide_cpeo = 3) de la orden
+        const pagadosQuery = new SelectQuery(`
+            SELECT ide_cpctr
+            FROM   cxp_det_orden_pago
+            WHERE  ide_cpcop = $1
+              AND  ide_cpeo  = 3
+        `);
+        pagadosQuery.addIntParam(1, ide_cpcop);
+        const pagados = await this.dataSource.createSelectQuery(pagadosQuery);
+
+        if (pagados.length === 0) return;
+
+        // 2. Para cada detalle pagado, localizar el registro de pago en cxp_detall_transa
+        const transacciones: Array<{ ide_cpdtr: number; ide_teclb: number | null }> = [];
+
+        for (const det of pagados) {
+            const transQuery = new SelectQuery(`
+                SELECT ide_cpdtr, ide_teclb
+                FROM   cxp_detall_transa
+                WHERE  ide_cpctr         = $1
+                  AND  numero_pago_cpdtr = 1
+                LIMIT  1
+            `);
+            transQuery.addIntParam(1, det.ide_cpctr);
+            const trans = await this.dataSource.createSingleQuery(transQuery);
+            if (trans) {
+                transacciones.push({ ide_cpdtr: trans.ide_cpdtr, ide_teclb: trans.ide_teclb });
+            }
+        }
+
+        // 3. Verificar PRIMERO que ningún movimiento bancario haya sido contabilizado
+        for (const t of transacciones) {
+            if (!t.ide_teclb) continue;
+            const libroQuery = new SelectQuery(`
+                SELECT ide_cnccc
+                FROM   tes_cab_libr_banc
+                WHERE  ide_teclb = $1
+            `);
+            libroQuery.addIntParam(1, t.ide_teclb);
+            const libro = await this.dataSource.createSingleQuery(libroQuery);
+            if (libro?.ide_cnccc) {
+                throw new BadRequestException(
+                    'La orden de pago tiene detalles que han sido contabilizados y no se puede anular',
+                );
+            }
+        }
+
+        // 4. Eliminar: primero cxp_detall_transa (FK → tes_cab_libr_banc), luego tes_cab_libr_banc
+        for (const t of transacciones) {
+            await this.dataSource.pool.query(
+                `DELETE FROM cxp_detall_transa WHERE ide_cpdtr = $1`,
+                [t.ide_cpdtr],
+            );
+            if (t.ide_teclb) {
+                await this.dataSource.pool.query(
+                    `DELETE FROM tes_cab_libr_banc WHERE ide_teclb = $1`,
+                    [t.ide_teclb],
+                );
+            }
+        }
+
+        // 5. Limpiar los campos de pago en TODOS los detalles de la orden y
+        //    restablecer el estado a GENERADA (1)
+        await this.dataSource.pool.query(
+            `UPDATE cxp_det_orden_pago
+             SET    ide_cpeo                  = 1,
+                    ide_tecba                 = NULL,
+                    ide_tettb                 = NULL,
+                    valor_pagado_banco_cpcdop = NULL,
+                    saldo_pendiente_cpcdop    = NULL,
+                    num_comprobante_cpcdop    = NULL,
+                    fecha_pago_cpcdop         = NULL,
+                    fecha_cheque_cpcdop       = NULL,
+                    observacion_cpcdop        = NULL,
+                    foto_cpcdop               = NULL,
+                    usuario_actua             = $2,
+                    hora_actua                = NOW()
+             WHERE  ide_cpcop = $1`,
+            [ide_cpcop, login],
+        );
     }
 
 }
