@@ -40,18 +40,3 @@ ALTER TABLE inv_kardex_ppmp
     ADD CONSTRAINT uq_kardex_ppmp 
     UNIQUE (ide_empr, ide_sucu, ide_inarti, ide_incci, ide_indci);
 
-
-
-
-
-    ALTER TABLE "public"."cxc_cabece_factura"
-ADD COLUMN "ide_cnccc_costo" int;
-
-
-    ALTER TABLE "public"."cxc_cabece_factura"
-ADD COLUMN "ide_cnccc_costo" int;
-
-      ALTER TABLE "public"."cxp_cabecera_nota"
-ADD COLUMN "ide_cnccc_costo" int;
-
----falt FK referencias a cab comprobante contabilidad
