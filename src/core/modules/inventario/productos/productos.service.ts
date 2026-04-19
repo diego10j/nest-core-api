@@ -427,6 +427,7 @@ export class ProductosService extends BaseService {
                 AND fecha_trans_incci < $2
                 AND ide_inepi = ${this.variables.get('p_inv_estado_normal')} 
                 AND dci.ide_empr =  ${dtoIn.ideEmpr}
+                AND dci.ide_sucu =  ${dtoIn.ideSucu}
                 ${whereClause}
             GROUP BY
                 dci.ide_inarti,decim_stock_inarti
