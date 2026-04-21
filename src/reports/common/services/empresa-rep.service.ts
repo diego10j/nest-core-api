@@ -5,14 +5,14 @@ import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
 
 @Injectable()
 export class EmpresaRepService {
-  constructor(private readonly dataSource: DataSourceService) {}
+  constructor(private readonly dataSource: DataSourceService) { }
 
   private async fetchAndCacheEmpresa(ideEmpr: number): Promise<Empresa> {
     const query = new SelectQuery(`
           select
               ide_empr,
               nom_empr,
-              identificacion_empr,
+              '1793234926001' asidentificacion_empr,
               nom_corto_empr,
               mail_empr,
               logotipo_empr,
