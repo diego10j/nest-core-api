@@ -12,7 +12,7 @@ export class EmpresaRepService {
           select
               ide_empr,
               nom_empr,
-              '1793234926001' asidentificacion_empr,
+              identificacion_empr,
               nom_corto_empr,
               mail_empr,
               logotipo_empr,
