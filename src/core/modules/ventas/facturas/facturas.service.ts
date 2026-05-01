@@ -1217,7 +1217,9 @@ export class FacturasService extends BaseService {
             LEFT JOIN sri_estado_comprobante e ON d.ide_sresc   = e.ide_sresc
             WHERE nc.num_doc_mod_cpcno LIKE '%' || lpad($1::text, 9, '0')
               AND nc.ide_cpeno = 1
-              AND nc.ide_empr  = ${dtoIn.ideEmpr}
+              AND nc.ide_empr  = d.ide_empr
+              AND nc.ide_sucu  = d.ide_sucu
+              
             ORDER BY nc.fecha_emisi_cpcno
             `,
         );
