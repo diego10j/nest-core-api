@@ -97,7 +97,7 @@ export class ContabilidadService extends BaseService {
                 FROM   con_periodo
                 WHERE  $1::date BETWEEN fecha_inicio_cnper AND fecha_fin_cnper
                   AND  ide_empr       = $2
-                  AND  activo_cnper   = true
+                AND  estado_cnper   = true
             ),
             saldo_ini AS (
                 SELECT COALESCE(SUM(dcc.valor_cndcc * sc.signo_cnscu), 0) AS saldo
@@ -161,34 +161,36 @@ export class ContabilidadService extends BaseService {
                 FROM movs
             )
             -- Fila saldo inicial (solo si saldo != 0) + movimientos
-            SELECT
-                $1::date         AS fecha_trans_cnccc,
-                NULL::int        AS ide_cnccc,
-                NULL::text       AS numero_cnccc,
-                ''               AS beneficiario,
-                NULL::int        AS ide_cnlap,
-                0::numeric       AS debe,
-                0::numeric       AS haber,
-                'SALDO INICIAL AL ' || $1  AS observacion,
-                NULL::int        AS ide_cneco,
-                (SELECT saldo FROM saldo_ini) AS saldo
-            FROM saldo_ini
-            WHERE saldo_ini.saldo <> 0
+            SELECT * FROM (
+                SELECT
+                    $1::date         AS fecha_trans_cnccc,
+                    NULL::int        AS ide_cnccc,
+                    NULL::text       AS numero_cnccc,
+                    ''               AS beneficiario,
+                    NULL::int        AS ide_cnlap,
+                    0::numeric       AS debe,
+                    0::numeric       AS haber,
+                    'SALDO INICIAL AL ' || $1  AS observacion,
+                    NULL::int        AS ide_cneco,
+                    (SELECT saldo FROM saldo_ini) AS saldo
+                FROM saldo_ini
+                WHERE saldo_ini.saldo <> 0
 
-            UNION ALL
+                UNION ALL
 
-            SELECT
-                fecha_trans_cnccc,
-                ide_cnccc,
-                numero_cnccc::text,
-                beneficiario,
-                ide_cnlap,
-                debe,
-                haber,
-                observacion,
-                ide_cneco,
-                saldo
-            FROM movs_saldo
+                SELECT
+                    fecha_trans_cnccc,
+                    ide_cnccc,
+                    numero_cnccc::text,
+                    beneficiario,
+                    ide_cnlap,
+                    debe,
+                    haber,
+                    observacion,
+                    ide_cneco,
+                    saldo
+                FROM movs_saldo
+            ) AS combined
             ORDER BY
                 CASE WHEN ide_cnccc IS NULL THEN 0 ELSE 1 END,
                 fecha_trans_cnccc,
@@ -209,7 +211,7 @@ export class ContabilidadService extends BaseService {
                 FROM   con_periodo
                 WHERE  $1::date BETWEEN fecha_inicio_cnper AND fecha_fin_cnper
                   AND  ide_empr     = $2
-                  AND  activo_cnper = true
+                AND  estado_cnper = true
             ),
             saldo_ini AS (
                 SELECT COALESCE(SUM(dcc.valor_cndcc * sc.signo_cnscu), 0) AS saldo
@@ -266,16 +268,14 @@ export class ContabilidadService extends BaseService {
             this.dataSource.createSingleQuery(queryTotales),
         ]);
 
-        return {
-            movimientos: filas,
-            totales: {
-                debe: Number(totalesRow?.total_debe) || 0,
-                haber: Number(totalesRow?.total_haber) || 0,
-                saldo: Number(totalesRow?.saldo_final) || 0,
-                saldoInicial: Number(totalesRow?.saldo_inicial) || 0,
-            },
-            isEmpty: (filas.rowCount ?? 0) === 0,
+        filas.row = {
+            debe: Number(totalesRow?.total_debe) || 0,
+            haber: Number(totalesRow?.total_haber) || 0,
+            saldo: Number(totalesRow?.saldo_final) || 0,
+            saldoInicial: Number(totalesRow?.saldo_inicial) || 0,
         };
+
+        return filas;
     }
 
     /**
