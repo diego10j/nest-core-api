@@ -7,7 +7,7 @@ import { RedisModule } from '../../redis/redis.module';
 import { CoreModule } from '../core.module';
 import { AuditService } from '../modules/audit/audit.service';
 
-import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService } from './application/services';
+import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService, RefreshTokenService } from './application/services';
 import {
   ValidateUserCredentialsUseCase,
   BuildAuthUserUseCase,
@@ -30,6 +30,7 @@ import {
 } from './infrastructure/repositories';
 import { PasswordService } from './password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 
 // Use Cases
 
@@ -73,6 +74,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthService,
     PasswordService,
     JwtStrategy,
+    JwtRefreshStrategy,
     AuditService,
 
     // ========== Use Cases (Application Layer) ==========
@@ -85,6 +87,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TokenService,
     SessionService,
     TokenBlacklistService,
+    RefreshTokenService,
     LoginAttemptsService,
 
     // ========== Repository Implementations (Infrastructure Layer) ==========
@@ -109,11 +112,13 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   exports: [
     PassportModule,
     JwtStrategy,
+    JwtRefreshStrategy,
     JwtModule,
     AuthService,
     TokenService,
     SessionService,
     TokenBlacklistService,
+    RefreshTokenService,
     LoginAttemptsService,
   ],
 })

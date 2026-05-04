@@ -97,6 +97,12 @@ export class PlanCuentasController {
         return this.service.searchCuentas({ ...headersParams, ...dtoIn });
     }
 
+    /** Búsqueda de cuentas contables del plan activo por código o nombre */
+    @Get('searchCuentaContable')
+    searchCuentaContable(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDto) {
+        return this.service.searchCuentaContable({ ...headersParams, ...dtoIn });
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // CATÁLOGOS
     // ─────────────────────────────────────────────────────────────────

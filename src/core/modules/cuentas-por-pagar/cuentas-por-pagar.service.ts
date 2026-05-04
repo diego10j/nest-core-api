@@ -7,6 +7,7 @@ import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
 import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
 
 // Tablas CXP:
 //   cxp_cabece_factur  (pk: ide_cpcfa, estado: ide_cpefa)
@@ -32,7 +33,9 @@ export class CuentasPorPagarService extends BaseService {
       });
   }
 
-  async getCuentasPorPagar(dtoIn: RangoFechasDto & HeaderParamsDto) {
+  async getCuentasPorPagar(dtoIn: CuentasPorPagarDto & HeaderParamsDto) {
+
+    const soloPendientes = dtoIn.activos ? 'having saldo_x_pagar > 0' : '';
     const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
     const query = new SelectQuery(
       `
@@ -138,7 +141,7 @@ export class CuentasPorPagarService extends BaseService {
         ct.ide_empr,
         ct.ide_sucu
 
-    HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) > 0
+    ${soloPendientes}
 
     ORDER BY
         dias_vencido DESC,
@@ -882,6 +885,140 @@ export class CuentasPorPagarService extends BaseService {
 
     query.addIntParam(1, dtoIn.ideEmpr);
     query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Reporte detallado de cuentas por pagar con rangos de antigüedad.
+   * Retorna todas las facturas con su saldo distribuido en rangos:
+   * Actual (no vencido), 1-30 días, 31-60 días, 61-90 días, y más de 90 días.
+   */
+  /**
+   * Reporte detallado de cuentas por pagar con rangos de antigüedad.
+   * Retorna todas las facturas con su saldo distribuido en rangos:
+   * Actual (no vencido), 1-30 días, 31-60 días, 61-90 días, y más de 90 días.
+   */
+  async getReporteCxPDetallado(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const query = new SelectQuery(
+      `
+  WITH saldos_factura AS (
+      SELECT
+          dt.ide_cpctr,
+          dt.ide_cpcfa,
+          ct.ide_geper,
+          cf.fecha_emisi_cpcfa,
+          cf.numero_cpcfa,
+          cf.total_cpcfa,
+          cf.dias_credito_cpcfa,
+          CASE 
+              WHEN cf.dias_credito_cpcfa > 0 
+              THEN (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa * INTERVAL '1 day')::date
+              ELSE cf.fecha_emisi_cpcfa::date
+          END AS fecha_vencimiento,
+          COALESCE(cf.observacion_cpcfa, ct.observacion_cpctr, '') AS observacion,
+          p.identificac_geper,
+          p.nom_geper,
+          -- Cálculo correcto del saldo
+        COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0)                         AS saldo_total,  
+        cf.total_cpcfa - COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0)        AS total_pagado, 
+  
+          CASE 
+              WHEN cf.dias_credito_cpcfa > 0 
+              THEN GREATEST(0, (CURRENT_DATE - (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa))::integer)
+              ELSE 0
+          END AS dias_vencido
+      FROM cxp_detall_transa dt
+      LEFT JOIN cxp_cabece_transa ct  ON dt.ide_cpctr = ct.ide_cpctr
+      LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa 
+          AND cf.ide_cpefa = ${estadoFacturaNormal}
+      LEFT JOIN cxp_tipo_transacc  tt ON tt.ide_cpttr = dt.ide_cpttr
+      LEFT JOIN gen_persona         p  ON ct.ide_geper = p.ide_geper
+      WHERE 
+          (
+              cf.fecha_emisi_cpcfa BETWEEN $1 AND $2 
+              OR 
+              ct.fecha_trans_cpctr BETWEEN $1 AND $2
+          )
+          AND dt.ide_sucu = $3
+          AND ct.ide_empr = $4
+      GROUP BY 
+          dt.ide_cpctr,
+          dt.ide_cpcfa,
+          ct.ide_geper,
+          cf.fecha_emisi_cpcfa,
+          cf.numero_cpcfa,
+          cf.total_cpcfa,
+          cf.dias_credito_cpcfa,
+          cf.observacion_cpcfa,
+          ct.observacion_cpctr,
+          p.identificac_geper,
+          p.nom_geper
+  )
+  SELECT 
+      sf.ide_cpctr,
+      'FACTURA' AS tipo_doc,
+      sf.identificac_geper AS num_doc,
+      sf.ide_geper AS cod_proveedor,
+      sf.nom_geper AS nombre,
+      sf.numero_cpcfa AS num_factura,
+      sf.fecha_emisi_cpcfa AS fecha_factura,
+      sf.fecha_vencimiento AS fecha_vto,
+      sf.observacion AS observaciones,
+      ROUND(sf.total_cpcfa::numeric, 2) AS importe_original,
+      ROUND(sf.total_pagado::numeric, 2) AS total_pagado,
+      ROUND(sf.saldo_total::numeric, 2) AS saldo,
+      -- Estado de pago
+      CASE 
+          WHEN sf.saldo_total <= 0 THEN 'PAGADO'
+          WHEN sf.total_pagado > 0 AND sf.saldo_total > 0 THEN 'PARCIAL'
+          ELSE 'PENDIENTE'
+      END AS estado_pago,
+      -- Porcentaje de pago
+    CASE 
+        WHEN sf.total_cpcfa > 0 
+        THEN ROUND(((sf.total_cpcfa - sf.saldo_total) / sf.total_cpcfa * 100)::numeric, 2)
+        ELSE 0
+    END AS porcentaje_pagado,
+      -- Saldo Actual (no vencido o al día)
+      CASE 
+          WHEN sf.dias_vencido = 0 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+          ELSE 0
+      END AS actual,
+      -- Rango 1-30 días
+      CASE 
+          WHEN sf.dias_vencido BETWEEN 1 AND 30 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+          ELSE 0
+      END AS rango_1_30,
+      -- Rango 31-60 días
+      CASE 
+          WHEN sf.dias_vencido BETWEEN 31 AND 60 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+          ELSE 0
+      END AS rango_31_60,
+      -- Rango 61-90 días
+      CASE 
+          WHEN sf.dias_vencido BETWEEN 61 AND 90 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+          ELSE 0
+      END AS rango_61_90,
+      -- Rango más de 90 días
+      CASE 
+          WHEN sf.dias_vencido > 90 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+          ELSE 0
+      END AS rango_mas_90,
+      sf.dias_vencido
+  FROM saldos_factura sf
+  ORDER BY 
+      sf.nom_geper,
+      sf.fecha_emisi_cpcfa,
+      sf.dias_vencido DESC
+  `,
+      dtoIn,
+    );
+
+    query.addParam(1, dtoIn.fechaInicio);
+    query.addParam(2, dtoIn.fechaFin);
+    query.addParam(3, dtoIn.ideSucu);
+    query.addParam(4, dtoIn.ideEmpr);
     return this.dataSource.createQuery(query);
   }
 }

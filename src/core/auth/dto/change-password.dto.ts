@@ -1,12 +1,8 @@
-import { IsNotEmpty, IsNumber, IsString, MaxLength, MinLength, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength, MinLength, Matches } from 'class-validator';
 
 import { PASSWORD_CONFIG } from '../constants/password.constants';
 
 export class ChangePasswordDto {
-    @IsNumber({}, { message: 'El identificador de usuario debe ser un número' })
-    @IsNotEmpty({ message: 'El identificador de usuario es obligatorio' })
-    ide_usua: number;
-
     @IsString({ message: 'La contraseña actual debe ser texto' })
     @IsNotEmpty({ message: 'La contraseña actual es obligatoria' })
     @MinLength(PASSWORD_CONFIG.MIN_LENGTH, {

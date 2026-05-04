@@ -894,4 +894,145 @@ export class CuentasPorCobrarService extends BaseService {
             message: 'ok',
         };
     }
+
+    /**
+     * Reporte detallado de cuentas por cobrar con rangos de antigüedad.
+     * Retorna todas las facturas con su saldo distribuido en rangos:
+     * Actual (no vencido), 1-30 días, 31-60 días, 61-90 días, y más de 90 días.
+     */
+    async getReporteCxCDetallado(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const query = new SelectQuery(
+            `
+    WITH saldos_factura AS (
+        SELECT
+            dt.ide_ccctr,
+            dt.ide_cccfa,
+            ct.ide_geper,
+            cf.fecha_emisi_cccfa,
+            cf.secuencial_cccfa,
+            cf.total_cccfa,
+            cf.dias_credito_cccfa,
+            CASE 
+                WHEN cf.dias_credito_cccfa > 0 
+                THEN (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa * INTERVAL '1 day')::date
+                ELSE cf.fecha_emisi_cccfa::date
+            END AS fecha_vencimiento,
+            COALESCE(cf.observacion_cccfa, ct.observacion_ccctr, '') AS observacion,
+            p.identificac_geper,
+            p.nom_geper,
+            df.establecimiento_ccdfa,
+            df.pto_emision_ccdfa,
+            df.serie_ccdaf,
+            COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0)                              AS saldo_total,
+            cf.total_cccfa - COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0)             AS total_pagado,
+            CASE 
+                WHEN cf.dias_credito_cccfa > 0 
+                THEN GREATEST(0, (CURRENT_DATE - (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa))::integer)
+                ELSE 0
+            END AS dias_vencido
+        FROM cxc_detall_transa dt
+        LEFT JOIN cxc_cabece_transa ct  ON dt.ide_ccctr = ct.ide_ccctr
+        LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa 
+            AND cf.ide_ccefa = ${estadoFacturaNormal}
+        LEFT JOIN cxc_tipo_transacc  tt ON tt.ide_ccttr = dt.ide_ccttr
+        LEFT JOIN gen_persona         p  ON ct.ide_geper = p.ide_geper
+        LEFT JOIN cxc_datos_fac      df  ON cf.ide_ccdaf = df.ide_ccdaf
+        WHERE 
+            (
+                cf.fecha_emisi_cccfa BETWEEN $1 AND $2 
+                OR 
+                ct.fecha_trans_ccctr BETWEEN $1 AND $2
+            )
+            AND dt.ide_sucu = $3
+            AND ct.ide_empr = $4
+        GROUP BY 
+            dt.ide_ccctr,
+            dt.ide_cccfa,
+            ct.ide_geper,
+            cf.fecha_emisi_cccfa,
+            cf.secuencial_cccfa,
+            cf.total_cccfa,
+            cf.dias_credito_cccfa,
+            cf.observacion_cccfa,
+            ct.observacion_ccctr,
+            p.identificac_geper,
+            p.nom_geper,
+            df.establecimiento_ccdfa,
+            df.pto_emision_ccdfa,
+            df.serie_ccdaf
+       -- HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) > 0
+    )
+    SELECT 
+        sf.ide_ccctr,
+        'FACTURA' AS tipo_doc,
+        sf.identificac_geper AS num_doc,
+        sf.ide_geper AS cod_cliente,
+        sf.nom_geper AS nombre,
+        CONCAT(
+            COALESCE(sf.establecimiento_ccdfa, ''), 
+            '-', 
+            COALESCE(sf.pto_emision_ccdfa, ''), 
+            '-', 
+            COALESCE(sf.secuencial_cccfa, '')
+        ) AS num_factura,
+        sf.fecha_emisi_cccfa AS fecha_factura,
+        sf.fecha_vencimiento AS fecha_vto,
+        sf.observacion AS observaciones,
+        ROUND(sf.total_cccfa::numeric, 2) AS importe_original,
+        ROUND(sf.total_pagado::numeric, 2) AS total_pagado,
+        ROUND(sf.saldo_total::numeric, 2) AS saldo,
+        -- Estado de pago
+        CASE 
+            WHEN sf.saldo_total <= 0 THEN 'PAGADO'
+            WHEN sf.total_pagado > 0 AND sf.saldo_total > 0 THEN 'PARCIAL'
+            ELSE 'PENDIENTE'
+        END AS estado_pago,
+        -- Porcentaje de pago
+        CASE 
+            WHEN sf.total_cccfa > 0 
+            THEN ROUND(((sf.total_cccfa - sf.saldo_total) / sf.total_cccfa * 100)::numeric, 2)
+            ELSE 0
+        END AS porcentaje_pagado,
+        -- Saldo Actual (no vencido o al día)
+        CASE 
+            WHEN sf.dias_vencido = 0 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+            ELSE 0
+        END AS actual,
+        -- Rango 1-30 días
+        CASE 
+            WHEN sf.dias_vencido BETWEEN 1 AND 30 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+            ELSE 0
+        END AS rango_1_30,
+        -- Rango 31-60 días
+        CASE 
+            WHEN sf.dias_vencido BETWEEN 31 AND 60 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+            ELSE 0
+        END AS rango_31_60,
+        -- Rango 61-90 días
+        CASE 
+            WHEN sf.dias_vencido BETWEEN 61 AND 90 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+            ELSE 0
+        END AS rango_61_90,
+        -- Rango más de 90 días
+        CASE 
+            WHEN sf.dias_vencido > 90 AND sf.saldo_total > 0 THEN ROUND(sf.saldo_total::numeric, 2)
+            ELSE 0
+        END AS rango_mas_90,
+        sf.dias_vencido
+    FROM saldos_factura sf
+    ORDER BY 
+        sf.nom_geper,
+        sf.fecha_emisi_cccfa,
+        sf.dias_vencido DESC
+    `,
+            dtoIn,
+        );
+
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        query.addParam(3, dtoIn.ideSucu);
+        query.addParam(4, dtoIn.ideEmpr);
+        return this.dataSource.createQuery(query);
+    }
 }

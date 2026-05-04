@@ -11,6 +11,7 @@ import { SaveDetalleOrdenDto, SaveDetallesOrdenDto, SaveOrdenPagoDto } from './d
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
+import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
 
 @Controller('cuentas-por-pagar')
 export class CuentasPorPagarController {
@@ -23,7 +24,7 @@ export class CuentasPorPagarController {
     // ─── CONSULTAS CXP ────────────────────────────────────────────────────────
 
     @Get('getCuentasPorPagar')
-    getCuentasPorPagar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    getCuentasPorPagar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CuentasPorPagarDto) {
         return this.service.getCuentasPorPagar({ ...headersParams, ...dtoIn });
     }
 
@@ -114,6 +115,11 @@ export class CuentasPorPagarController {
     @Post('saveDetalleOrden')
     saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetallesOrdenDto) {
         return this.saveService.saveDetalleOrden({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getReporteCxPDetallado')
+    getReporteCxPDetallado(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.service.getReporteCxPDetallado({ ...headersParams, ...dtoIn });
     }
 }
 

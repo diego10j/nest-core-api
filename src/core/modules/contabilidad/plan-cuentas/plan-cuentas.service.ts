@@ -450,6 +450,48 @@ export class PlanCuentasService extends BaseService {
     }
 
     /**
+     * Búsqueda de cuentas contables del plan activo por código o nombre.
+     * Similar a searchProducto, busca en con_det_plan_cuen por codig_recur_cndpc y nombre_cndpc.
+     */
+    async searchCuentaContable(dtoIn: SearchDto & HeaderParamsDto) {
+        if (!dtoIn.value) throw new BadRequestException('El parámetro value es requerido para la búsqueda');
+        try {
+            const idePlan = await this.getIdePlanActivo(dtoIn.ideSucu);
+            const query = new SelectQuery(`
+      SELECT
+        ide_cndpc,
+        codig_recur_cndpc,
+        nombre_cndpc,
+        nivel_cndpc,
+        con_ide_cndpc,
+        ide_cntcu,
+        ide_cnncu,
+        codig_recur_cndpc || ' - ' || nombre_cndpc AS descripcion
+      FROM  con_det_plan_cuen
+      WHERE ide_cncpc = $1
+        AND ide_empr  = $2
+        AND ide_sucu  = $3
+        AND (
+          unaccent(nombre_cndpc)     ILIKE unaccent($4)
+          OR codig_recur_cndpc       ILIKE $4
+        )
+      ORDER BY codig_recur_cndpc
+      LIMIT $5
+    `);
+            query.addIntParam(1, idePlan);
+            query.addIntParam(2, dtoIn.ideEmpr);
+            query.addIntParam(3, dtoIn.ideSucu);
+            query.addStringParam(4, `%${dtoIn.value}%`);
+            query.addIntParam(5, dtoIn.limit ?? 25);
+            query.setLazy(false);
+            return this.dataSource.createSelectQuery(query);
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            throw new InternalServerErrorException(`Error al buscar cuenta contable: ${error?.message ?? error}`);
+        }
+    }
+
+    /**
      * Retorna los niveles del plan de cuentas para la empresa.
      * Equivalente a getSqlNivelesPlandeCuentas() del sistema anterior.
      */
@@ -635,4 +677,6 @@ export class PlanCuentasService extends BaseService {
             throw new InternalServerErrorException(`Error al eliminar la cuenta contable: ${error?.message ?? error}`);
         }
     }
+
+
 }

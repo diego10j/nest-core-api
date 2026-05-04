@@ -1,5 +1,6 @@
 export interface JwtPayload {
   id: string;
-  exp?: number; // Timestamp de expiración (agregado por JWT automáticamente)
-  iat?: number; // Timestamp de emisión (agregado por JWT automáticamente)
+  jti?: string; // JWT ID — requerido en refresh tokens para rotación y revocación
+  exp?: number;
+  iat?: number;
 }

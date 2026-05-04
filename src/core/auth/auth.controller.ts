@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Post, Headers } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Post, Headers, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
@@ -9,39 +9,40 @@ import { Auth, GetUser } from './decorators';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { MenuRolDto } from './dto/menu-rol.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { AuthUser } from './interfaces';
 
-/**
- * Auth Controller - Implementa Clean Architecture con SOLID
- * 
- * ✅ Refactorizado aplicando principios SOLID
- * ✅ Usa AuthService que orquesta Use Cases
- * ✅ Endpoints optimizados y documentados
- * ✅ Rate limiting implementado
- * ✅ Protección contra fuerza bruta
- */
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-  ) { }
+  constructor(private readonly authService: AuthService) { }
 
   @Post('login')
-  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 intentos por minuto
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Login de usuario' })
-  @ApiResponse({ status: 200, description: 'Login exitoso' })
+  @ApiResponse({ status: 200, description: 'Login exitoso — retorna accessToken (15m) y refreshToken (7d)' })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiResponse({ status: 429, description: 'Demasiados intentos. Intente más tarde' })
   login(@Body() dtoIn: LoginUserDto, @Ip() ip: string) {
     return this.authService.login(dtoIn, ip);
   }
 
+  @Post('refresh')
+  @UseGuards(JwtRefreshGuard)
+  @ApiOperation({ summary: 'Renovar access token usando refresh token (rotación)' })
+  @ApiResponse({ status: 200, description: 'Nuevos accessToken y refreshToken emitidos' })
+  @ApiResponse({ status: 401, description: 'Refresh token inválido, expirado o reutilizado' })
+  refresh(@Req() req: any) {
+    const { id: userId, jti } = req.user as { id: string; jti: string };
+    return this.authService.refreshTokens(userId, jti);
+  }
+
   @Get('me')
   @Auth()
-  @ApiOperation({ summary: 'Obtener usuario actual' })
+  @ApiOperation({ summary: 'Obtener datos del usuario autenticado' })
   me(@GetUser() user: AuthUser) {
     return this.authService.checkAuthStatus(user);
   }
@@ -68,31 +69,31 @@ export class AuthController {
 
   @Post('logout')
   @Auth()
-  @ApiOperation({ summary: 'Cerrar sesión' })
+  @ApiOperation({ summary: 'Cerrar sesión — invalida access token y revoca refresh token' })
   @ApiResponse({ status: 200, description: 'Sesión cerrada exitosamente' })
   logout(
     @Headers('authorization') authorization: string,
     @AppHeaders() headersParams: HeaderParamsDto,
-    @GetUser() user: AuthUser
+    @GetUser() user: AuthUser,
+    @Body() body: LogoutDto,
   ) {
-    // Extraer token del header Authorization
-    const token = authorization?.replace('Bearer ', '') || '';
-
+    const accessToken = authorization?.replace('Bearer ', '') || '';
     return this.authService.logout(
       user.ide_usua,
       headersParams.ip,
-      token,
+      accessToken,
+      body.refreshToken,
       headersParams.device,
     );
   }
 
   @Post('changePassword')
   @Auth()
-  @ApiOperation({ summary: 'Cambiar contraseña' })
+  @ApiOperation({ summary: 'Cambiar contraseña — invalida todos los tokens activos' })
   @ApiResponse({ status: 200, description: 'Contraseña cambiada exitosamente' })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
-  changePassword(@Body() dtoIn: ChangePasswordDto, @GetUser('id') userId: string) {
-    return this.authService.changePassword(dtoIn, userId);
+  changePassword(@Body() dtoIn: ChangePasswordDto, @GetUser() user: AuthUser) {
+    return this.authService.changePassword(dtoIn, user.ide_usua, user.id);
   }
 
   @Post('resetPassword')

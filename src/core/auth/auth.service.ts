@@ -6,6 +6,7 @@ import { DataSourceService } from '../connection/datasource.service';
 import { SelectQuery } from '../connection/helpers';
 
 import { LoginAttemptsService } from './application/services/login-attempts.service';
+import { RefreshTokenService } from './application/services/refresh-token.service';
 import { SessionService } from './application/services/session.service';
 import { TokenBlacklistService } from './application/services/token-blacklist.service';
 import { TokenService } from './application/services/token.service';
@@ -48,6 +49,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
     private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly refreshTokenService: RefreshTokenService,
     private readonly loginAttemptsService: LoginAttemptsService,
     private readonly dataSource: DataSourceService,
     private readonly configService: ConfigService,
@@ -81,21 +83,28 @@ export class AuthService {
       // 5. Registrar sesión y auditoría (Service)
       await this.sessionService.recordLoginSuccess(validatedUser.ideUsua, ip);
 
-      // 6. Generar token (Service)
+      // 6. Generar access token + refresh token
       const accessToken = this.tokenService.generateAccessToken(validatedUser.uuid);
+      const refreshToken = this.tokenService.generateRefreshToken(validatedUser.uuid);
 
-      // 7. Registrar token activo para posible invalidación
-      const expirationTime = this.getTokenExpirationSeconds();
+      // 7. Registrar access token activo (para invalidación masiva)
+      const accessTtl = this.getExpirationSeconds('JWT_SECRET_EXPIRES_TIME', 900);
       await this.tokenBlacklistService.registerUserToken(
         validatedUser.uuid,
         accessToken,
-        expirationTime
+        accessTtl,
       );
+
+      // 8. Almacenar refresh token en Redis
+      const refreshPayload = this.tokenService.decodeToken(refreshToken);
+      const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
+      await this.refreshTokenService.store(refreshPayload.jti, validatedUser.uuid, refreshTtl);
 
       this.logger.log(`Login exitoso: ${identifier} desde ${ip}`);
 
       return {
         accessToken,
+        refreshToken,
         user: authUser,
       };
     } catch (error) {
@@ -120,37 +129,40 @@ export class AuthService {
   }
 
   /**
-   * Verifica el estado de autenticación
+   * Verifica el estado de autenticación — devuelve solo los datos del usuario
    */
   async checkAuthStatus(user: AuthUser) {
-    return {
-      user,
-      accessToken: this.tokenService.generateAccessToken(user.id),
-    };
+    return { user };
   }
 
   /**
-   * Cierra la sesión del usuario e invalida el token
+   * Cierra la sesión del usuario: invalida el access token y revoca el refresh token.
    */
-  async logout(ideUsua: number, ip: string, token: string, device: string = '') {
+  async logout(ideUsua: number, ip: string, accessToken: string, refreshToken?: string, device: string = '') {
     try {
-      // 1. Agregar token a blacklist
-      const decoded = this.tokenService.decodeToken(token);
-      if (decoded && decoded.exp) {
+      // 1. Blacklist del access token
+      const decoded = this.tokenService.decodeToken(accessToken);
+      if (decoded?.exp) {
         const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
         if (expiresIn > 0) {
-          await this.tokenBlacklistService.blacklistToken(token, expiresIn);
+          await this.tokenBlacklistService.blacklistToken(accessToken, expiresIn);
         }
       }
 
-      // 2. Registrar logout en base de datos
+      // 2. Revocar refresh token si fue enviado
+      if (refreshToken) {
+        const refreshDecoded = this.tokenService.decodeToken(refreshToken);
+        if (refreshDecoded?.jti) {
+          await this.refreshTokenService.revoke(refreshDecoded.jti, refreshDecoded.id);
+        }
+      }
+
+      // 3. Registrar logout en base de datos
       await this.sessionService.recordLogout(ideUsua, ip, device);
 
       this.logger.log(`Logout exitoso: Usuario ${ideUsua} desde ${ip}`);
 
-      return {
-        message: 'Sesión cerrada exitosamente',
-      };
+      return { message: 'Sesión cerrada exitosamente' };
     } catch (error) {
       this.logger.error(`Error en logout: ${error.message}`);
       throw error;
@@ -158,19 +170,48 @@ export class AuthService {
   }
 
   /**
-   * Cambia la contraseña del usuario e invalida todos sus tokens
+   * Rota el refresh token: invalida el anterior y emite un nuevo par de tokens.
+   * El JTI del token anterior es validado y revocado por JwtRefreshStrategy antes de llegar aquí.
    */
-  async changePassword(changePasswordDto: ChangePasswordDto, userId: string) {
-    const { ide_usua, currentPassword, newPassword } = changePasswordDto;
+  async refreshTokens(userId: string, oldJti: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // Revocar el refresh token usado
+    await this.refreshTokenService.revoke(oldJti, userId);
+
+    // Generar nuevo par de tokens
+    const accessToken = this.tokenService.generateAccessToken(userId);
+    const newRefreshToken = this.tokenService.generateRefreshToken(userId);
+
+    // Registrar el nuevo access token
+    const accessTtl = this.getExpirationSeconds('JWT_SECRET_EXPIRES_TIME', 900);
+    await this.tokenBlacklistService.registerUserToken(userId, accessToken, accessTtl);
+
+    // Almacenar el nuevo refresh token
+    const newPayload = this.tokenService.decodeToken(newRefreshToken);
+    const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
+    await this.refreshTokenService.store(newPayload.jti, userId, refreshTtl);
+
+    this.logger.log(`Tokens rotados para usuario ${userId}`);
+
+    return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  /**
+   * Cambia la contraseña e invalida todos los tokens (access + refresh) del usuario.
+   * El ide_usua y userId provienen del token JWT, no del body de la petición.
+   */
+  async changePassword(changePasswordDto: ChangePasswordDto, ideUsua: number, userId: string) {
+    const { currentPassword, newPassword } = changePasswordDto;
 
     try {
-      // 1. Cambiar contraseña
-      const result = await this.changePasswordUseCase.execute(ide_usua, currentPassword, newPassword);
+      const result = await this.changePasswordUseCase.execute(ideUsua, currentPassword, newPassword);
 
-      // 2. Invalidar todos los tokens del usuario
-      await this.tokenBlacklistService.blacklistAllUserTokens(userId);
+      // Invalidar todos los access tokens y refresh tokens activos
+      await Promise.all([
+        this.tokenBlacklistService.blacklistAllUserTokens(userId),
+        this.refreshTokenService.revokeAllForUser(userId),
+      ]);
 
-      this.logger.log(`Contraseña cambiada: Usuario ${ide_usua}`);
+      this.logger.log(`Contraseña cambiada: Usuario ${ideUsua}`);
 
       return result;
     } catch (error) {
@@ -198,25 +239,17 @@ export class AuthService {
     }
   }
 
-  /**
-   * Obtiene el tiempo de expiración del token en segundos
-   */
-  private getTokenExpirationSeconds(): number {
-    const expiresIn = this.configService.get('JWT_SECRET_EXPIRES_TIME') || '8h';
-
-    // Convertir formato (ej: "8h", "15m") a segundos
-    const unit = expiresIn.slice(-1);
-    const value = parseInt(expiresIn.slice(0, -1));
-
+  private getExpirationSeconds(envKey: string, defaultSeconds: number): number {
+    const raw = this.configService.get<string>(envKey) || '';
+    const unit = raw.slice(-1);
+    const value = parseInt(raw.slice(0, -1), 10);
+    if (isNaN(value)) return defaultSeconds;
     switch (unit) {
-      case 'h':
-        return value * 3600;
-      case 'm':
-        return value * 60;
-      case 's':
-        return value;
-      default:
-        return 28800; // 8 horas por defecto
+      case 'd': return value * 86400;
+      case 'h': return value * 3600;
+      case 'm': return value * 60;
+      case 's': return value;
+      default:  return defaultSeconds;
     }
   }
 

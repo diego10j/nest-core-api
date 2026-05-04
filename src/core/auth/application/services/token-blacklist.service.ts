@@ -40,18 +40,25 @@ export class TokenBlacklistService {
     }
 
     /**
-     * Invalida todos los tokens de un usuario
-     * Útil cuando se cambia la contraseña o se bloquea el usuario
+     * Invalida todos los tokens activos de un usuario.
+     * Agrega cada token a la blacklist antes de eliminar el registro de seguimiento.
+     * Útil cuando se cambia la contraseña o se bloquea el usuario.
      */
     async blacklistAllUserTokens(userId: string): Promise<void> {
-        const pattern = `user:tokens:${userId}:*`;
-        const keys = await this.redis.keys(pattern);
+        const prefix = `user:tokens:${userId}:`;
+        const keys = await this.redis.keys(`${prefix}*`);
+        if (keys.length === 0) return;
 
-        if (keys.length > 0) {
-            const pipeline = this.redis.pipeline();
-            keys.forEach(key => pipeline.del(key));
-            await pipeline.exec();
+        const pipeline = this.redis.pipeline();
+        for (const key of keys) {
+            const token = key.substring(prefix.length);
+            const ttl = await this.redis.ttl(key);
+            if (ttl > 0) {
+                pipeline.set(`blacklist:${token}`, '1', 'EX', ttl);
+            }
+            pipeline.del(key);
         }
+        await pipeline.exec();
     }
 
     /**

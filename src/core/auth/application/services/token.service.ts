@@ -1,35 +1,45 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 /**
- * Token Service - Responsabilidad Única: Manejo de JWT
- * SRP: Solo se encarga de generar y validar tokens
+ * TokenService — Generación y verificación de tokens JWT.
+ * Access token: corta duración, firmado con JWT_SECRET.
+ * Refresh token: larga duración, firmado con JWT_REFRESH_SECRET, incluye JTI único.
  */
 @Injectable()
 export class TokenService {
-    constructor(private readonly jwtService: JwtService) { }
+    constructor(
+        private readonly jwtService: JwtService,
+        private readonly configService: ConfigService,
+    ) { }
 
-    /**
-     * Genera un token JWT para el usuario
-     */
     generateAccessToken(userId: string): string {
         const payload: JwtPayload = { id: userId };
         return this.jwtService.sign(payload);
     }
 
-    /**
-     * Verifica y decodifica un token JWT
-     */
+    generateRefreshToken(userId: string): string {
+        const payload: JwtPayload = { id: userId, jti: randomUUID() };
+        return this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+            expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_TIME'),
+        });
+    }
+
     verifyToken(token: string): JwtPayload {
         return this.jwtService.verify<JwtPayload>(token);
     }
 
-    /**
-     * Decodifica un token sin verificar su firma
-     * Útil para debugging o logs
-     */
+    verifyRefreshToken(token: string): JwtPayload {
+        return this.jwtService.verify<JwtPayload>(token, {
+            secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        });
+    }
+
     decodeToken(token: string): JwtPayload | null {
         return this.jwtService.decode(token) as JwtPayload;
     }

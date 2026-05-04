@@ -44,4 +44,13 @@ export class CuentasPorCobrarController {
       ...dtoIn,
     });
   }
+
+  @Get('getReporteCxCDetallado')
+  // @Auth()
+  getReporteCxCDetallado(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getReporteCxCDetallado({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 }

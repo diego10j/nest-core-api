@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 import { Server } from 'socket.io';
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { envs } from './config/envs';
@@ -13,6 +14,12 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   app.setGlobalPrefix('api');
+
+  // Headers de seguridad HTTP — debe ir antes de cualquier middleware de rutas
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Permite assets desde otros orígenes
+  }));
+
   app.enableCors({
     origin: [
       'http://localhost:18080',
@@ -21,7 +28,7 @@ async function bootstrap() {
       'https://devproerpec.site',
       'https://proerp.sigafi.com',
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Agregué métodos comunes
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',

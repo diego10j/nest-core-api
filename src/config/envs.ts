@@ -19,6 +19,8 @@ interface EnvVars {
 
   JWT_SECRET: string;
   JWT_SECRET_EXPIRES_TIME: string;
+  JWT_REFRESH_SECRET: string;
+  JWT_REFRESH_EXPIRES_TIME: string;
 
   FORMAT_DATE_BD: string;
   FORMAT_TIME_BD: string;
@@ -65,6 +67,8 @@ const envsSchema = z
 
     JWT_SECRET: z.string(),
     JWT_SECRET_EXPIRES_TIME: z.string(),
+    JWT_REFRESH_SECRET: z.string().optional().default('refresh_secret_change_me'),
+    JWT_REFRESH_EXPIRES_TIME: z.string().optional().default('7d'),
 
     FORMAT_DATE_BD: z.string(),
     FORMAT_TIME_BD: z.string(),
@@ -110,6 +114,8 @@ export const envs = {
 
   jwtSecret: envVars.JWT_SECRET,
   jwtSecretExpiresTime: envVars.JWT_SECRET_EXPIRES_TIME,
+  jwtRefreshSecret: envVars.JWT_REFRESH_SECRET,
+  jwtRefreshExpiresTime: envVars.JWT_REFRESH_EXPIRES_TIME,
 
   formatDateBd: envVars.FORMAT_DATE_BD,
   formatTimeBd: envVars.FORMAT_TIME_BD,
