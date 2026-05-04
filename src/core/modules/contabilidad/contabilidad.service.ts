@@ -116,8 +116,8 @@ export class ContabilidadService extends BaseService {
             ),
             movs AS (
                 SELECT
-                    cab.fecha_trans_cnccc,
                     cab.ide_cnccc,
+                    cab.fecha_trans_cnccc,                    
                     cab.numero_cnccc,
                     COALESCE(per.nom_geper, '')                         AS beneficiario,
                     det.ide_cnlap,
@@ -144,8 +144,8 @@ export class ContabilidadService extends BaseService {
             ),
             movs_saldo AS (
                 SELECT
-                    fecha_trans_cnccc,
                     ide_cnccc,
+                    fecha_trans_cnccc,                    
                     numero_cnccc,
                     beneficiario,
                     ide_cnlap,
@@ -163,8 +163,8 @@ export class ContabilidadService extends BaseService {
             -- Fila saldo inicial (solo si saldo != 0) + movimientos
             SELECT * FROM (
                 SELECT
-                    $1::date         AS fecha_trans_cnccc,
                     NULL::int        AS ide_cnccc,
+                    $1::date         AS fecha_trans_cnccc,                    
                     NULL::text       AS numero_cnccc,
                     ''               AS beneficiario,
                     NULL::int        AS ide_cnlap,
@@ -179,8 +179,8 @@ export class ContabilidadService extends BaseService {
                 UNION ALL
 
                 SELECT
-                    fecha_trans_cnccc,
                     ide_cnccc,
+                    fecha_trans_cnccc,
                     numero_cnccc::text,
                     beneficiario,
                     ide_cnlap,
@@ -192,10 +192,9 @@ export class ContabilidadService extends BaseService {
                 FROM movs_saldo
             ) AS combined
             ORDER BY
-                CASE WHEN ide_cnccc IS NULL THEN 0 ELSE 1 END,
                 fecha_trans_cnccc,
                 ide_cneco DESC,
-                ide_cnccc ASC
+                ide_cnccc
         `);
 
         query.addStringParam(1, dto.fechaInicio);

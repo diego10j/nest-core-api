@@ -9,7 +9,6 @@ export class TrnProductoDto extends QueryOptionsDto {
   fechaFin: string;
 
   @IsInt()
-  @IsPositive()
   ide_inarti: number;
 
   @IsInt()

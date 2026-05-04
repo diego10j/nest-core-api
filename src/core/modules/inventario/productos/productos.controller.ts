@@ -118,6 +118,15 @@ export class ProductosController {
     });
   }
 
+  @Get('getKardexPrecioPromedio')
+  // @Auth()
+  getKardexPrecioPromedio(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
+    return this.productos.getKardexPrecioPromedio({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getComprasProducto')
   // @Auth()
   getComprasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {

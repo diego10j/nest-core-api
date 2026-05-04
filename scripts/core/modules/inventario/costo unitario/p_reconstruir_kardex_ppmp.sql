@@ -80,10 +80,11 @@ BEGIN
                 -- real asignado). Si se acumula normal, el CPP se infla catastroficamente.
                 -- Solución: valorar SOLO las unidades que quedan en stock al precio
                 -- de esta compra y fijar CPP = precio compra.
-                IF v_saldo_cant < 0 AND (v_saldo_cant + v_mov.cantidad) > 0 THEN
+                -- ✅ CORRECCIÓN — cubre cruce exacto a cero también
+                IF v_saldo_cant < 0 AND (v_saldo_cant + v_mov.cantidad) >= 0 THEN
                     v_saldo_cant  := ROUND(v_saldo_cant + v_mov.cantidad, 6);
-                    v_saldo_valor := ROUND(v_saldo_cant * v_precio, 6);  -- solo unidades en stock
-                    v_costo_prom  := v_precio;                            -- CPP = precio de compra
+                    v_saldo_valor := ROUND(v_saldo_cant * v_precio, 6);  -- 0 * precio = 0, correcto
+                    v_costo_prom  := v_precio;                            -- CPP = precio de esta compra                         -- CPP = precio de compra
                 ELSE
                     -- Ingreso normal (stock positivo, o ingreso que no alcanza a cubrir el negativo)
                     v_saldo_cant  := ROUND(v_saldo_cant + v_mov.cantidad, 6);

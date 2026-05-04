@@ -26,8 +26,8 @@ DECLARE
     v_costo_prom    NUMERIC := 0;
     v_orden         BIGINT  := 0;
     v_precio        NUMERIC := 0;
-    v_cpp_calc      NUMERIC;                           -- temporal para CPP sin overflow
-    c_max_val       CONSTANT NUMERIC := 999999999999;  -- límite NUMERIC(18,6): 10^12 - 1
+    v_cpp_calc      NUMERIC;
+    c_max_val       CONSTANT NUMERIC := 999999999999;
 BEGIN
     SELECT saldo_cantidad, saldo_valor, costo_promedio, orden_mov
       INTO v_prev
@@ -73,28 +73,18 @@ BEGIN
           AND d.ide_inarti           = p_ide_inarti
           AND c.fecha_trans_incci   >= p_fecha
           AND d.cantidad_indci       > 0
-        -- Orden: fecha → ingresos antes que egresos en el mismo día (signo DESC: 1 antes que -1)
-        -- → permite que la compra del mismo día preceda a la venta en el kardex
-        -- → si el egreso fue registrado primero (id menor), el saldo puede quedar
-        --   negativo momentáneamente; el siguiente ingreso lo corrige automáticamente.
         ORDER BY c.fecha_trans_incci, e.signo_intci DESC, c.ide_incci, d.ide_indci
     LOOP
         v_orden  := v_orden + 1;
         v_precio := v_mov.precio_compra;
 
         IF v_mov.signo = 1 THEN
-            -- ── INGRESO ──────────────────────────────────────────────────────────────
-            -- Cruce de cero: cuando el stock pasa de NEGATIVO a POSITIVO el saldo_valor
-            -- acumulado ya no es válido (representó unidades que ya salieron sin costo
-            -- real asignado). Si se acumula normal, el CPP se infla catastroficamente.
-            -- Solución: valorar SOLO las unidades que quedan en stock al precio
-            -- de esta compra y fijar CPP = precio compra.
-            IF v_saldo_cant < 0 AND (v_saldo_cant + v_mov.cantidad) > 0 THEN
+            -- ✅ >= 0 cubre cruce exacto a cero además del paso a positivo
+            IF v_saldo_cant < 0 AND (v_saldo_cant + v_mov.cantidad) >= 0 THEN
                 v_saldo_cant  := ROUND(v_saldo_cant + v_mov.cantidad, 6);
-                v_saldo_valor := ROUND(v_saldo_cant * v_precio, 6);  -- solo unidades en stock
-                v_costo_prom  := v_precio;                            -- CPP = precio de compra
+                v_saldo_valor := ROUND(v_saldo_cant * v_precio, 6);
+                v_costo_prom  := v_precio;
             ELSE
-                -- Ingreso normal (stock positivo, o ingreso que no alcanza a cubrir el negativo)
                 v_saldo_cant  := ROUND(v_saldo_cant + v_mov.cantidad, 6);
                 v_saldo_valor := ROUND(v_saldo_valor + ROUND(v_mov.cantidad * v_precio, 6), 6);
                 IF v_saldo_cant >= 0.000001 THEN
@@ -102,27 +92,20 @@ BEGIN
                     IF ABS(v_cpp_calc) <= c_max_val THEN
                         v_costo_prom := ROUND(v_cpp_calc, 6);
                     ELSE
-                        RAISE WARNING 'Kardex PPMP: CPP fuera de rango (art=%, incci=%, cpp~%), CPP anterior conservado',
+                        RAISE WARNING 'Kardex PPMP: CPP fuera de rango (art=%, incci=%, cpp~%)',
                             p_ide_inarti, v_mov.ide_incci, ROUND(v_cpp_calc, 2);
                     END IF;
                 END IF;
             END IF;
         ELSE
-            -- ── EGRESO ───────────────────────────────────────────────────────────────
-            -- Invariante: saldo_valor = saldo_cant × cpp debe mantenerse siempre.
-            -- Si el stock queda en 0 o negativo se fuerza la invariante para evitar
-            -- que saldo_valor acumule valores que luego inflen el CPP en el
-            -- siguiente ingreso (origen del overflow de -1.4 billones).
             v_saldo_cant := ROUND(v_saldo_cant - v_mov.cantidad, 6);
             IF v_saldo_cant <= 0 THEN
-                -- Forzar invariante: saldo_valor proporcionado al saldo actual
                 v_saldo_valor := ROUND(v_saldo_cant * v_costo_prom, 6);
             ELSE
                 v_saldo_valor := ROUND(v_saldo_valor - ROUND(v_mov.cantidad * v_costo_prom, 6), 6);
             END IF;
         END IF;
 
-        -- Guardia de seguridad residual (no deberia activarse con la logica anterior).
         IF ABS(v_saldo_cant) > c_max_val THEN
             RAISE WARNING 'Kardex PPMP: saldo_cant desborda (art=%, incci=%, val=%)',
                 p_ide_inarti, v_mov.ide_incci, v_saldo_cant;
@@ -135,17 +118,17 @@ BEGIN
         END IF;
 
         INSERT INTO inv_kardex_ppmp (
-            ide_empr,       ide_sucu,       ide_inarti,
-            ide_incci,      ide_indci,
-            fecha_mov,      orden_mov,      signo,
-            cantidad,       precio_compra,
-            saldo_cantidad, saldo_valor,    costo_promedio
+            ide_empr, ide_sucu, ide_inarti,
+            ide_incci, ide_indci,
+            fecha_mov, orden_mov, signo,
+            cantidad, precio_compra,
+            saldo_cantidad, saldo_valor, costo_promedio
         ) VALUES (
-            p_ide_empr,         p_ide_sucu,         p_ide_inarti,
-            v_mov.ide_incci,    v_mov.ide_indci,
-            v_mov.fecha_mov,    v_orden,             v_mov.signo,
-            v_mov.cantidad,     v_precio,
-            v_saldo_cant,       v_saldo_valor,       v_costo_prom
+            p_ide_empr, p_ide_sucu, p_ide_inarti,
+            v_mov.ide_incci, v_mov.ide_indci,
+            v_mov.fecha_mov, v_orden, v_mov.signo,
+            v_mov.cantidad, v_precio,
+            v_saldo_cant, v_saldo_valor, v_costo_prom
         );
     END LOOP;
 END;

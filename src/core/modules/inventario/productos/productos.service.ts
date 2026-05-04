@@ -555,6 +555,67 @@ export class ProductosService extends BaseService {
     }
 
     /**
+     * Retorna el kardex con precio promedio ponderado de un producto en un rango de fechas
+     * @param dtoIn
+     * @returns
+     */
+    async getKardexPrecioPromedio(dtoIn: TrnProductoDto & HeaderParamsDto) {
+        // La bodega es opcional
+        const whereClauseBodega = dtoIn.ide_inbod ? ` AND cci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+
+        const query = new SelectQuery(
+            `
+        SELECT
+            dci.ide_indci,
+            k.ide_incci,
+            k.fecha_mov AS fecha_trans_incci,
+            gpe.nom_geper,
+            COALESCE(
+                (SELECT secuencial_cccfa::text FROM cxc_cabece_factura WHERE ide_cccfa = dci.ide_cccfa),
+                (SELECT numero_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = dci.ide_cpcfa),
+                dci.referencia_indci
+            ) AS factura,
+            -- Entrada (signo = 1)
+            CASE WHEN k.signo = 1 THEN k.cantidad END AS entrada_cant,
+            CASE WHEN k.signo = 1 THEN k.precio_compra END AS entrada_costo_unit,
+            CASE WHEN k.signo = 1 THEN ROUND(k.cantidad * k.precio_compra, 6) END AS total_entrada,
+            -- Salida (signo = -1)
+            CASE WHEN k.signo = -1 THEN k.cantidad END AS salida_cant,
+            CASE WHEN k.signo = -1 THEN k.costo_promedio END AS salida_costo_unit,
+            CASE WHEN k.signo = -1 THEN ROUND(k.cantidad * k.costo_promedio, 6) END AS total_salida,
+            -- Saldo acumulado
+            k.saldo_cantidad AS saldo_cant,
+            k.costo_promedio AS costo_prom,
+            k.saldo_valor AS total_saldo,
+            -- Auditoría
+            CASE WHEN dci.fecha_ingre IS NOT NULL OR dci.hora_ingre IS NOT NULL
+                 THEN CONCAT(dci.fecha_ingre, ' ', COALESCE(dci.hora_ingre, '00:00:00'))
+                 ELSE NULL END AS fecha_hora_ingre,
+            CASE WHEN dci.fecha_actua IS NOT NULL OR dci.hora_actua IS NOT NULL
+                 THEN CONCAT(dci.fecha_actua, ' ', COALESCE(dci.hora_actua, '00:00:00'))
+                 ELSE NULL END AS fecha_hora_actua
+        FROM inv_kardex_ppmp k
+        JOIN inv_det_comp_inve dci ON dci.ide_indci = k.ide_indci
+        JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+        LEFT JOIN gen_persona gpe ON gpe.ide_geper = cci.ide_geper
+        WHERE k.ide_empr = ${dtoIn.ideEmpr}
+          AND k.ide_sucu = ${dtoIn.ideSucu}
+          AND k.ide_inarti = $1
+          AND k.fecha_mov BETWEEN $2 AND $3
+          ${whereClauseBodega}
+        ORDER BY k.fecha_mov ASC, k.orden_mov ASC
+        `,
+            dtoIn,
+        );
+
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
      * Retorna las facturas de ventas de un producto determinado en un rango de fechas
      * @param dtoIn
      * @returns
@@ -2317,5 +2378,8 @@ export class ProductosService extends BaseService {
             rows: data,
         } as ResultQuery;
     }
+
+
+
 
 }
