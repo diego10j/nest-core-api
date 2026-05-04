@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { AppHeaders } from '../../common/decorators/header-params.decorator';
+import { HeaderParamsDto } from '../../common/dto/common-params.dto';
 
 import { ChartsService } from './charts.service';
 import { RadialBarDto } from './dto/radial-bar.dto';
@@ -9,7 +9,7 @@ import { RadialBarDto } from './dto/radial-bar.dto';
 @ApiTags('Charts')
 @Controller('charts')
 export class ChartsController {
-  constructor(private readonly service: ChartsService) {}
+  constructor(private readonly service: ChartsService) { }
 
   @Post('radialBar')
   // @Auth()
