@@ -2,7 +2,7 @@
 set -e
 
 echo "=== Iniciando despliegue ==="
-cd /proerp/backend/nest-core-api
+cd /proerp/nest-core-api/nest-core-api
 
 echo "1. Actualizando código desde Git..."
 git pull
