@@ -2,7 +2,7 @@
 set -e
 
 echo "=== Iniciando despliegue ==="
-cd /proerp/nest-core-api/nest-core-api
+cd /proerp/backend/nest-core-api
 
 echo "1. Actualizando código desde Git..."
 git pull
@@ -14,11 +14,9 @@ echo "3. Haciendo build..."
 yarn build
 
 echo "4. Reiniciando aplicación..."
-# Si usas PM2
-pm2 restart nest-core-api
-
-# Si usas systemd
-# sudo systemctl restart nest-core-api
+pm2 delete nest-core-api 2>/dev/null || true
+pm2 start npm --name "nest-core-api" -- run start:prod
+pm2 save
 
 echo "5. Verificando estado..."
 sleep 3

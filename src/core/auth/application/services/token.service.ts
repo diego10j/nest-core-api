@@ -26,7 +26,7 @@ export class TokenService {
         const payload: JwtPayload = { id: userId, jti: randomUUID() };
         return this.jwtService.sign(payload, {
             secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-            expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_TIME'),
+            expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_TIME') as unknown as number,
         });
     }
 
