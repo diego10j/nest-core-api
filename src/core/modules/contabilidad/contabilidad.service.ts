@@ -76,7 +76,7 @@ export class ContabilidadService extends BaseService {
                 CCC.ide_cneco          DESC,
                 CCC.numero_cnccc       DESC,
                 DCC.ide_cnlap          DESC
-        `);
+        `, dto);
 
         query.addIntParam(1, dto.ideSucu);
         query.addStringParam(2, dto.fechaInicio);
@@ -202,7 +202,7 @@ export class ContabilidadService extends BaseService {
                 fecha_trans_cnccc,
                 ide_cneco DESC,
                 ide_cnccc
-        `);
+        `, dto);
 
         query.addStringParam(1, dto.fechaInicio);
         query.addIntParam(2, dto.ideEmpr);
