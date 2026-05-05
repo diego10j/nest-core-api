@@ -7,6 +7,7 @@ import { CoreService } from 'src/core/core.service';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
+import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 
 @Injectable()
 export class ContabilidadService extends BaseService {
@@ -19,8 +20,14 @@ export class ContabilidadService extends BaseService {
             .getVariables([
                 'p_con_estado_comprobante_normal', // 0
                 'p_con_estado_comp_inicial',        // 1
-                'p_con_estado_comp_final',          // 2
-                'p_con_lugar_debe',                 // 3
+                'p_con_estado_comp_final',
+                'p_con_lugar_debe',
+                'p_con_tipo_cuenta_activo',
+                'p_con_tipo_cuenta_pasivo',
+                'p_con_tipo_cuenta_patrimonio',
+                'p_con_tipo_cuenta_ingresos',
+                'p_con_tipo_cuenta_gastos',
+                'p_con_tipo_cuenta_costos',
             ])
             .then((result) => {
                 this.variables = result;
@@ -333,4 +340,248 @@ export class ContabilidadService extends BaseService {
         query.addIntParam(2, dto.ideSucu);
         return this.dataSource.createSingleQuery(query);
     }
+
+
+
+    /**
+     * Balance General: Activo + Pasivo + Patrimonio.
+     * Devuelve el árbol de cuentas con saldos acumulados y
+     * totales por tipo de cuenta (activo, pasivo, patrimonio).
+     */
+    async getBalanceGeneral(dto: HeaderParamsDto & EstadosFinancierosDto) {
+        const tipos = [
+            this.variables.get('p_con_tipo_cuenta_activo'),
+            this.variables.get('p_con_tipo_cuenta_pasivo'),
+            this.variables.get('p_con_tipo_cuenta_patrimonio'),
+        ].join(',');
+
+        const query = this.buildBalanceQuery(
+            dto.fechaInicio,
+            dto.fechaFin,
+            tipos,
+            dto.ideSucu,
+            dto.nivelPlan,
+        );
+
+        // Totales por tipo de cuenta (una sola pasada adicional)
+        const estados = this.estadosComprobantes;
+        const queryTotales = new SelectQuery(`
+        SELECT
+            dpc.ide_cntcu,
+            tc.nombre_cntcu,
+            ROUND(SUM(dcc.valor_cndcc * sc.signo_cnscu)::numeric, 2) AS total
+        FROM con_cab_comp_cont   ccc
+        JOIN con_det_comp_cont   dcc ON ccc.ide_cnccc = dcc.ide_cnccc
+        JOIN con_det_plan_cuen   dpc ON dpc.ide_cndpc = dcc.ide_cndpc
+        JOIN con_tipo_cuenta     tc  ON dpc.ide_cntcu = tc.ide_cntcu
+        JOIN con_signo_cuenta    sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                                   AND dcc.ide_cnlap  = sc.ide_cnlap
+        WHERE ccc.fecha_trans_cnccc BETWEEN $1 AND $2
+          AND ccc.ide_cneco IN (${estados})
+          AND ccc.ide_sucu  = $3
+          AND dpc.ide_cntcu IN (${tipos})
+        GROUP BY dpc.ide_cntcu, tc.nombre_cntcu
+    `);
+        queryTotales.addStringParam(1, dto.fechaInicio);
+        queryTotales.addStringParam(2, dto.fechaFin);
+        queryTotales.addIntParam(3, dto.ideSucu);
+
+        const [filas, totales] = await Promise.all([
+            this.dataSource.createQuery(query),
+            this.dataSource.createQuery(queryTotales),
+        ]);
+
+        filas.row = { totalesPorTipo: totales.rows ?? totales };
+        return filas;
+    }
+
+    /**
+     * Estado de Resultados: Ingresos + Costos + Gastos.
+     * Devuelve el árbol con saldos acumulados y
+     * totales por tipo + utilidad/pérdida neta.
+     */
+    async getEstadoResultados(dto: HeaderParamsDto & EstadosFinancierosDto) {
+        const pIngresos = this.variables.get('p_con_tipo_cuenta_ingresos');
+        const pCostos = this.variables.get('p_con_tipo_cuenta_costos');
+        const pGastos = this.variables.get('p_con_tipo_cuenta_gastos');
+        const tipos = [pIngresos, pCostos, pGastos].join(',');
+
+        const query = this.buildBalanceQuery(
+            dto.fechaInicio,
+            dto.fechaFin,
+            tipos,
+            dto.ideSucu,
+            dto.nivelPlan,
+        );
+
+        const estados = this.estadosComprobantes;
+        const queryTotales = new SelectQuery(`
+        SELECT
+            dpc.ide_cntcu,
+            tc.nombre_cntcu,
+            ROUND(SUM(dcc.valor_cndcc * sc.signo_cnscu)::numeric, 2) AS total
+        FROM con_cab_comp_cont   ccc
+        JOIN con_det_comp_cont   dcc ON ccc.ide_cnccc = dcc.ide_cnccc
+        JOIN con_det_plan_cuen   dpc ON dpc.ide_cndpc = dcc.ide_cndpc
+        JOIN con_tipo_cuenta     tc  ON dpc.ide_cntcu = tc.ide_cntcu
+        JOIN con_signo_cuenta    sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                                   AND dcc.ide_cnlap  = sc.ide_cnlap
+        WHERE ccc.fecha_trans_cnccc BETWEEN $1 AND $2
+          AND ccc.ide_cneco IN (${estados})
+          AND ccc.ide_sucu  = $3
+          AND dpc.ide_cntcu IN (${tipos})
+        GROUP BY dpc.ide_cntcu, tc.nombre_cntcu
+    `);
+        queryTotales.addStringParam(1, dto.fechaInicio);
+        queryTotales.addStringParam(2, dto.fechaFin);
+        queryTotales.addIntParam(3, dto.ideSucu);
+
+        const [filas, totalesRows] = await Promise.all([
+            this.dataSource.createQuery(query),
+            this.dataSource.createQuery(queryTotales),
+        ]);
+
+        const totales = (totalesRows.rows ?? totalesRows) as Array<{
+            ide_cntcu: number;
+            nombre_cntcu: string;
+            total: string | number;
+        }>;
+
+        // Comparar como Number en ambos lados para evitar string vs number
+        const getTotal = (ide: string): number => {
+            const found = totales.find((r) => Number(r.ide_cntcu) === Number(ide));
+            return Number(found?.total ?? 0);
+        };
+
+        const totalIngresos = getTotal(pIngresos);
+        const totalCostos = getTotal(pCostos);
+        const totalGastos = getTotal(pGastos);
+        const utilidadNeta = Math.round((totalIngresos - totalCostos - totalGastos) * 100) / 100;
+
+        filas.row = {
+            totalesPorTipo: totales,
+            totalIngresos,
+            totalCostos,
+            totalGastos,
+            utilidadNeta,
+        };
+
+        return filas;
+    }
+
+
+    // ─── Helper privado ──────────────────────────────────────────────────────────
+    /**
+     * Query base de balances con CTE recursiva que:
+     *  1. Obtiene movimientos reales de cuentas hoja (nivel más bajo).
+     *  2. Propaga los saldos hacia los padres con recursive CTE.
+     *  3. Filtra por nivelTope si se indica.
+     *  4. Elimina cuentas con saldo 0.
+     */
+    private buildBalanceQuery(
+        fechaInicio: string,
+        fechaFin: string,
+        tiposCuenta: string,
+        ideSucu: number,
+        nivelTope?: number,
+    ): SelectQuery {
+        const estados = this.estadosComprobantes;
+        const nivelFilter = nivelTope ? `AND t.nivel <= ${nivelTope}` : '';
+
+        const query = new SelectQuery(`
+        WITH
+        movimientos AS (
+            SELECT
+                dpc.ide_cndpc,
+                dpc.con_ide_cndpc,
+                dpc.codig_recur_cndpc,
+                dpc.nombre_cndpc,
+                dpc.ide_cnncu::int                        AS nivel,
+                dpc.ide_cntcu,
+                SUM(dcc.valor_cndcc * sc.signo_cnscu)     AS valor
+            FROM con_cab_comp_cont   ccc
+            JOIN con_det_comp_cont   dcc ON ccc.ide_cnccc = dcc.ide_cnccc
+            JOIN con_det_plan_cuen   dpc ON dpc.ide_cndpc = dcc.ide_cndpc
+            JOIN con_tipo_cuenta     tc  ON dpc.ide_cntcu = tc.ide_cntcu
+            JOIN con_signo_cuenta    sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                                       AND dcc.ide_cnlap  = sc.ide_cnlap
+            WHERE ccc.fecha_trans_cnccc BETWEEN $1 AND $2
+              AND ccc.ide_cneco IN (${estados})
+              AND ccc.ide_sucu  = $3
+              AND dpc.ide_cntcu IN (${tiposCuenta})
+            GROUP BY
+                dpc.ide_cndpc, dpc.con_ide_cndpc,
+                dpc.codig_recur_cndpc, dpc.nombre_cndpc,
+                dpc.ide_cnncu, dpc.ide_cntcu
+            HAVING SUM(dcc.valor_cndcc * sc.signo_cnscu) <> 0
+        ),
+        padres AS (
+            SELECT
+                ide_cndpc,
+                con_ide_cndpc,
+                codig_recur_cndpc,
+                nombre_cndpc,
+                ide_cnncu::int   AS nivel,
+                ide_cntcu,
+                0::numeric       AS valor
+            FROM con_det_plan_cuen
+            WHERE nivel_cndpc = 'PADRE'
+              AND ide_cntcu IN (${tiposCuenta})
+        ),
+        todas AS (
+            SELECT * FROM movimientos
+            UNION ALL
+            SELECT * FROM padres
+            WHERE ide_cndpc NOT IN (SELECT ide_cndpc FROM movimientos)
+        ),
+        ancestros AS (
+            SELECT
+                p.ide_cndpc   AS ide_padre,
+                m.ide_cndpc   AS ide_hijo,
+                m.valor
+            FROM movimientos m
+            JOIN todas p
+              ON p.nivel < m.nivel
+             AND m.codig_recur_cndpc LIKE (p.codig_recur_cndpc || '%')
+        ),
+        saldos_padre AS (
+            SELECT
+                ide_padre     AS ide_cndpc,
+                SUM(valor)    AS valor
+            FROM ancestros
+            GROUP BY ide_padre
+        ),
+        resultado AS (
+            SELECT
+                t.ide_cndpc,
+                t.con_ide_cndpc,
+                t.codig_recur_cndpc,
+                t.nombre_cndpc,
+                t.nivel,
+                t.ide_cntcu,
+                COALESCE(sp.valor, t.valor) AS valor
+            FROM todas t
+            LEFT JOIN saldos_padre sp ON sp.ide_cndpc = t.ide_cndpc
+        )
+        SELECT
+            ide_cndpc,
+            con_ide_cndpc,
+            codig_recur_cndpc,
+            REPEAT('  ', nivel) || nombre_cndpc  AS nombre_cndpc,
+            nivel,
+            ide_cntcu,
+            ROUND(valor::numeric, 2)             AS valor
+        FROM resultado t
+        WHERE valor <> 0
+          ${nivelFilter}
+        ORDER BY codig_recur_cndpc
+    `);
+
+        query.addStringParam(1, fechaInicio);
+        query.addStringParam(2, fechaFin);
+        query.addIntParam(3, ideSucu);
+        query.isLazy = false; // Para que no intente paginar esta consulta
+        return query;
+    }
+
 }

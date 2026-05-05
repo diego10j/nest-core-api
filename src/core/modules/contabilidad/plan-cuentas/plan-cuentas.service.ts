@@ -58,7 +58,8 @@ export class PlanCuentasService extends BaseService {
             return id;
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener el plan de cuentas activo: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener el plan de cuentas activo: ${errorMessage}`);
         }
     }
 
@@ -95,7 +96,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener los planes de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener los planes de cuentas: ${errorMessage}`);
         }
     }
 
@@ -126,7 +128,8 @@ export class PlanCuentasService extends BaseService {
             return rows && rows.length > 0 ? rows[0] : null;
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener el plan de cuentas activo: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener el plan de cuentas activo: ${errorMessage}`);
         }
     }
 
@@ -145,7 +148,8 @@ export class PlanCuentasService extends BaseService {
             });
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al buscar el plan de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al buscar el plan de cuentas: ${errorMessage}`);
         }
     }
 
@@ -213,7 +217,8 @@ export class PlanCuentasService extends BaseService {
             return this.core.save({ ...dtoIn, listQuery, audit: true });
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al guardar el plan de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar el plan de cuentas: ${errorMessage}`);
         }
     }
 
@@ -231,7 +236,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(deleteQuery);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al eliminar el plan de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al eliminar el plan de cuentas: ${errorMessage}`);
         }
     }
 
@@ -274,7 +280,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener el plan de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener el plan de cuentas: ${errorMessage}`);
         }
     }
 
@@ -335,7 +342,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener el árbol del plan de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener el árbol del plan de cuentas: ${errorMessage}`);
         }
     }
 
@@ -369,7 +377,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener las cuentas hijas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener las cuentas hijas: ${errorMessage}`);
         }
     }
 
@@ -407,7 +416,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener cuentas por tipo: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener cuentas por tipo: ${errorMessage}`);
         }
     }
 
@@ -445,7 +455,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al buscar cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al buscar cuentas: ${errorMessage}`);
         }
     }
 
@@ -487,7 +498,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al buscar cuenta contable: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al buscar cuenta contable: ${errorMessage}`);
         }
     }
 
@@ -503,16 +515,14 @@ export class PlanCuentasService extends BaseService {
         nombre_cnncu AS label
       FROM  con_nivel_cuenta
       WHERE ide_empr = $1
-      and ide_sucu = $2
       ORDER BY ide_cnncu
     `);
             query.addIntParam(1, dtoIn.ideEmpr);
-            query.addIntParam(2, dtoIn.ideSucu);
             query.setLazy(false);
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener los niveles del plan de cuentas: ${error?.message ?? error}`);
+            throw new InternalServerErrorException(`Error al obtener los niveles del plan de cuentas: ${error instanceof Error ? error.message : error}`);
         }
     }
 
@@ -536,7 +546,7 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener los tipos de cuenta: ${error?.message ?? error}`);
+            throw new InternalServerErrorException(`Error al obtener los tipos de cuenta: ${error instanceof Error ? error.message : error}`);
         }
     }
 
@@ -562,7 +572,8 @@ export class PlanCuentasService extends BaseService {
             return rows && rows.length > 0 ? rows[0].ultimo_nivel : null;
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al obtener el último nivel de cuentas: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener el último nivel de cuentas: ${errorMessage}`);
         }
     }
 
@@ -587,7 +598,8 @@ export class PlanCuentasService extends BaseService {
             return (rows[0].nivel_cndpc as string)?.toUpperCase() === 'HIJO';
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al verificar la cuenta: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al verificar la cuenta: ${errorMessage}`);
         }
     }
 
@@ -606,7 +618,8 @@ export class PlanCuentasService extends BaseService {
             });
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al buscar la cuenta contable: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al buscar la cuenta contable: ${errorMessage}`);
         }
     }
 
@@ -656,7 +669,8 @@ export class PlanCuentasService extends BaseService {
             }
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al guardar la cuenta contable: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar la cuenta contable: ${errorMessage}`);
         }
     }
 
@@ -674,7 +688,8 @@ export class PlanCuentasService extends BaseService {
             return this.dataSource.createQuery(deleteQuery);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException(`Error al eliminar la cuenta contable: ${error?.message ?? error}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al eliminar la cuenta contable: ${errorMessage}`);
         }
     }
 

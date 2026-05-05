@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { ContabilidadService } from './contabilidad.service';
+import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
@@ -20,6 +21,16 @@ export class ContabilidadController {
     @Get('getLibroMayor')
     getLibroMayor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LibroMayorDto) {
         return this.contabilidadService.getLibroMayor({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getBalanceGeneral')
+    getBalanceGeneral(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EstadosFinancierosDto) {
+        return this.contabilidadService.getBalanceGeneral({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getEstadoResultados')
+    getEstadoResultados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EstadosFinancierosDto) {
+        return this.contabilidadService.getEstadoResultados({ ...headersParams, ...dtoIn });
     }
 
     @Get('getComboPeriodos')

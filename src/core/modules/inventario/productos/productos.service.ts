@@ -593,11 +593,15 @@ export class ProductosService extends BaseService {
                  ELSE NULL END AS fecha_hora_ingre,
             CASE WHEN dci.fecha_actua IS NOT NULL OR dci.hora_actua IS NOT NULL
                  THEN CONCAT(dci.fecha_actua, ' ', COALESCE(dci.hora_actua, '00:00:00'))
-                 ELSE NULL END AS fecha_hora_actua
+                 ELSE NULL END AS fecha_hora_actua,
+            arti.decim_stock_inarti,
+            uni.siglas_inuni
         FROM inv_kardex_ppmp k
         JOIN inv_det_comp_inve dci ON dci.ide_indci = k.ide_indci
         JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
         LEFT JOIN gen_persona gpe ON gpe.ide_geper = cci.ide_geper
+        JOIN inv_articulo arti ON arti.ide_inarti = k.ide_inarti
+        LEFT JOIN inv_unidad uni ON uni.ide_inuni = arti.ide_inuni
         WHERE k.ide_empr = ${dtoIn.ideEmpr}
           AND k.ide_sucu = ${dtoIn.ideSucu}
           AND k.ide_inarti = $1
