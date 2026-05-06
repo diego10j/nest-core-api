@@ -1,4 +1,5 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -6,13 +7,13 @@ import { GetDetallesConteoDto } from 'src/core/modules/inventario/bodegas/dto/ge
 
 import { BodegaInvReportsService } from './bodega-rep.services';
 
-
-
+@ApiTags('Reports-Inventario')
 @Controller('reports/inventario/bodega')
 export class BodegaInvReportsController {
     constructor(private readonly comprobatesInvReportsService: BodegaInvReportsService) { }
 
     @Get('reportConteoFisico')
+    @ApiOperation({ summary: 'Generar reporte PDF de conteo físico de bodega' })
     async getOrderReport(
         @Res() response: Response,
         @AppHeaders() headersParams: HeaderParamsDto,

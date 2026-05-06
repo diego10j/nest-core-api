@@ -1,4 +1,5 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -7,11 +8,13 @@ import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/r
 
 import { FacturasRepService } from './facturas-rep.service';
 
+@ApiTags('Reports-Ventas')
 @Controller('reports/ventas/facturas')
 export class FacturasRepController {
     constructor(private readonly facturasRepService: FacturasRepService) { }
 
     @Get('reportFacturaElectronica')
+    @ApiOperation({ summary: 'Generar reporte PDF de factura electrónica' })
     async getReportFacturaElectronica(
         @Res() response: Response,
         @AppHeaders() headersParams: HeaderParamsDto,
@@ -29,6 +32,7 @@ export class FacturasRepController {
     }
 
     @Get('reportResumenDiarioFacturas')
+    @ApiOperation({ summary: 'Generar reporte PDF de resumen diario de ventas' })
     async getReportResumenDiarioFacturas(
         @Res() response: Response,
         @AppHeaders() headersParams: HeaderParamsDto,

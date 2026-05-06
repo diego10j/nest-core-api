@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
@@ -12,6 +13,7 @@ import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { RucDto } from './dto/ruc.dto';
 
+@ApiTags('Sistema-Admin')
 @Controller('sistema/admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) { }
@@ -19,6 +21,7 @@ export class AdminController {
   // -------------------------------- EMPRESA ---------------------------- //
 
   @Get('getListDataEmpresa')
+  @ApiOperation({ summary: 'Obtener listado de empresas para selector' })
   // @Auth()
   getListDataEmpresa(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getListDataEmpresa({
@@ -28,6 +31,7 @@ export class AdminController {
   }
 
   @Get('getTableQueryEmpresa')
+  @ApiOperation({ summary: 'Obtener tabla de empresas del sistema' })
   // @Auth()
   getTableQueryEmpresa(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getTableQueryEmpresa({
@@ -38,6 +42,7 @@ export class AdminController {
   // -------------------------------- SUCURSAL ---------------------------- //
 
   @Get('getListDataSucursal')
+  @ApiOperation({ summary: 'Obtener listado de sucursales para selector' })
   // @Auth()
   getListDataSucursal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getListDataSucursal({
@@ -47,6 +52,7 @@ export class AdminController {
   }
 
   @Get('getTableQuerySucursal')
+  @ApiOperation({ summary: 'Obtener tabla de sucursales del sistema' })
   // @Auth()
   getTableQuerySucursal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getTableQuerySucursal({
@@ -57,6 +63,7 @@ export class AdminController {
 
   // -------------------------------- SISTEMAS ---------------------------- //
   @Get('getListDataSistema')
+  @ApiOperation({ summary: 'Obtener listado de sistemas/módulos para selector' })
   // @Auth()
   getListDataSistema(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getListDataSistema({
@@ -66,6 +73,7 @@ export class AdminController {
   }
 
   @Get('getTableQuerySistema')
+  @ApiOperation({ summary: 'Obtener tabla de sistemas/módulos del ERP' })
   // @Auth()
   getTableQuerySistema(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getTableQuerySistema({
@@ -75,6 +83,7 @@ export class AdminController {
   }
 
   @Get('getEmpresaByRuc')
+  @ApiOperation({ summary: 'Buscar empresa por número de RUC' })
   getEmpresaByRuc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RucDto) {
     return this.adminService.getEmpresaByRuc({
       ...headersParams,
@@ -85,6 +94,7 @@ export class AdminController {
   // -------------------------------- OPCIONES ---------------------------- //
 
   @Get('getTableQueryOpcion')
+  @ApiOperation({ summary: 'Obtener tabla de opciones/menú del sistema' })
   // @Auth()
   getTableQueryOpcion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: OpcionDto) {
     return this.adminService.getTableQueryOpcion({
@@ -94,6 +104,7 @@ export class AdminController {
   }
 
   @Get('getTreeModelOpcion')
+  @ApiOperation({ summary: 'Obtener árbol jerárquico de opciones/menú del sistema' })
   // @Auth()
   getTreeModelOpcion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: OpcionDto) {
     return this.adminService.getTreeModelOpcion({
@@ -103,6 +114,7 @@ export class AdminController {
   }
 
   @Post('generarOpciones')
+  @ApiOperation({ summary: 'Generar opciones de menú masivamente a partir de estructura JSON' })
   // @Auth()
   generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
     return this.adminService.generarOpciones({
@@ -115,6 +127,7 @@ export class AdminController {
   // -------------------------------- PERFILES ---------------------------- //
 
   @Get('getTableQueryPerfil')
+  @ApiOperation({ summary: 'Obtener tabla de perfiles del sistema' })
   // @Auth()
   getTableQueryPerfil(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilDto) {
     return this.adminService.getTableQueryPerfil({
@@ -124,6 +137,7 @@ export class AdminController {
   }
 
   @Get('getPerfilesSistema')
+  @ApiOperation({ summary: 'Obtener perfiles disponibles de un sistema/módulo' })
   // @Auth()
   getPerfilesSistema(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilDto) {
     return this.adminService.getPerfilesSistema({
@@ -133,6 +147,7 @@ export class AdminController {
   }
 
   @Get('getListDataPerfilesSistema')
+  @ApiOperation({ summary: 'Obtener listado de perfiles de un sistema para selector' })
   // @Auth()
   getListDataPerfilesSistema(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilDto) {
     return this.adminService.getListDataPerfilesSistema({
@@ -142,6 +157,7 @@ export class AdminController {
   }
 
   @Get('getListDataPeriodoClave')
+  @ApiOperation({ summary: 'Obtener listado de períodos clave para selector' })
   // @Auth()
   getListDataPeriodoClave(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getListDataPeriodoClave({
@@ -152,6 +168,7 @@ export class AdminController {
 
 
   @Get('getOpcionesPerfil')
+  @ApiOperation({ summary: 'Obtener opciones del menú asignadas a un perfil' })
   // @Auth()
   getOpcionesPerfil(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilSistemaDto) {
     return this.adminService.getOpcionesPerfil({
@@ -161,6 +178,7 @@ export class AdminController {
   }
 
   @Post('saveOpcionesPerfil')
+  @ApiOperation({ summary: 'Guardar opciones de menú asignadas a un perfil' })
   // @Auth()
   saveOpcionesPerfil(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: PerfilSistemaDto) {
     return this.adminService.saveOpcionesPerfil({
@@ -172,6 +190,7 @@ export class AdminController {
   // -------------------------------- HORARIOS ---------------------------- //
 
   @Get('getListDataTiposHorario')
+  @ApiOperation({ summary: 'Obtener listado de tipos de horario para selector' })
   // @Auth()
   getListDataTiposHorario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getListDataTiposHorario({
@@ -181,6 +200,7 @@ export class AdminController {
   }
 
   @Get('getTableQueryTiposHorario')
+  @ApiOperation({ summary: 'Obtener tabla de tipos de horario de login' })
   // @Auth()
   getTableQueryTiposHorario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.adminService.getTableQueryTiposHorario({
@@ -190,6 +210,7 @@ export class AdminController {
   }
 
   @Get('getTableQueryHorario')
+  @ApiOperation({ summary: 'Obtener tabla de horarios de login por tipo' })
   // @Auth()
   getTableQueryHorario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: HorarioDto) {
     return this.adminService.getTableQueryHorario({

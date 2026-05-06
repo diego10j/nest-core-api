@@ -1,4 +1,5 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -6,11 +7,13 @@ import { CabComprobanteInventarioDto } from 'src/core/modules/inventario/comprob
 
 import { ComprobatesInvReportsService } from './comprobates-rep.service';
 
+@ApiTags('Reports-Inventario')
 @Controller('reports/inventario/comprobantes')
 export class ComprobatesInvReportsController {
   constructor(private readonly comprobatesInvReportsService: ComprobatesInvReportsService) { }
 
   @Get('reportComprobanteInventario')
+  @ApiOperation({ summary: 'Generar reporte PDF de comprobante de inventario' })
   async getOrderReport(
     @Res() response: Response,
     @AppHeaders() headersParams: HeaderParamsDto,

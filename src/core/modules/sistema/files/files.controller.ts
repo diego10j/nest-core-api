@@ -11,6 +11,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
@@ -31,6 +32,7 @@ import { fileNamer } from './helpers';
 import { fileOriginalNamer } from './helpers/fileNamer.helper';
 
 
+@ApiTags('Sistema-Files')
 @Controller('sistema/files')
 export class FilesController {
   constructor(
@@ -39,6 +41,7 @@ export class FilesController {
   ) { }
 
   @Get('image/:imageName')
+  @ApiOperation({ summary: 'Servir imagen estática por nombre de archivo' })
   getStaticImage(@Res() res: Response, @Param('imageName') imageName: string) {
     const path = this.filesService.getStaticImage(imageName);
 
@@ -46,11 +49,13 @@ export class FilesController {
   }
 
   @Post('deleteFile/:fileName')
+  @ApiOperation({ summary: 'Eliminar archivo estático por nombre' })
   deleteStaticFile(@Param('fileName') fileName: string) {
     return this.filesService.deleteStaticFile(fileName);
   }
 
   @Post('uploadStaticImage')
+  @ApiOperation({ summary: 'Subir imagen estática al servidor' })
   @UseInterceptors(
     FileInterceptor('file', {
       // limits: { fileSize: 1000 }
@@ -79,6 +84,7 @@ export class FilesController {
   //--------------
 
   @Get('getFiles')
+  @ApiOperation({ summary: 'Listar archivos de una carpeta del sistema de gestión documental' })
   //@Auth()
   getFiles(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetFilesDto) {
     return this.filesService.getFiles({
@@ -88,6 +94,7 @@ export class FilesController {
   }
 
   @Post('createFolder')
+  @ApiOperation({ summary: 'Crear carpeta en el sistema de gestión documental' })
   //@Auth()
   createFolder(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CreateFolderDto) {
     return this.filesService.createFolder({
@@ -97,6 +104,7 @@ export class FilesController {
   }
 
   @Post('uploadOriginalFile')
+  @ApiOperation({ summary: 'Subir archivo conservando el nombre original (límite 500MB)' })
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -116,6 +124,7 @@ export class FilesController {
   }
 
   @Post('uploadFile')
+  @ApiOperation({ summary: 'Subir archivo al sistema de gestión documental (límite 500MB)' })
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -148,6 +157,7 @@ export class FilesController {
   }
 
   @Post('deleteFiles')
+  @ApiOperation({ summary: 'Eliminar archivos del sistema de gestión documental' })
   //@Auth()
   deleteFiles(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: DeleteFilesDto) {
     return this.filesService.deleteFiles({
@@ -157,29 +167,34 @@ export class FilesController {
   }
 
   @Get('downloadFile/:uuid')
+  @ApiOperation({ summary: 'Descargar archivo por UUID' })
   downloadFile(@Res() res: Response, @Param('uuid') uuid: string) {
     return this.filesService.downloadFile(uuid, res);
   }
 
   @Post('checkExistFile')
+  @ApiOperation({ summary: 'Verificar si existe un archivo por ruta' })
   //@Auth()
   checkExistFile(@Body() dtoIn: CheckExistFileDto) {
     return this.filesService.checkExistFile(dtoIn);
   }
 
   @Post('renameFile')
+  @ApiOperation({ summary: 'Renombrar un archivo' })
   //@Auth()
   renameFile(@Body() dtoIn: RenameFileDto) {
     return this.filesService.renameFile(dtoIn);
   }
 
   @Post('favoriteFile')
+  @ApiOperation({ summary: 'Marcar o desmarcar un archivo como favorito' })
   //@Auth()
   favoriteFile(@Body() dtoIn: FavoriteFileDto) {
     return this.filesService.favoriteFile(dtoIn);
   }
 
   @Put('move')
+  @ApiOperation({ summary: 'Mover archivo o carpeta a una nueva ubicación' })
   moveItem(@Body('sourcePath') sourcePath: string, @Body('destinationPath') destinationPath: string) {
     return this.filesService.moveItem(sourcePath, destinationPath);
   }
@@ -187,6 +202,7 @@ export class FilesController {
   // Temporales
 
   @Post('uploadTmpFile')
+  @ApiOperation({ summary: 'Subir archivo temporal en memoria (sin persistencia)' })
   // @Auth()
   @UseInterceptors(
     FileInterceptor('file', {
@@ -202,11 +218,13 @@ export class FilesController {
   }
 
   @Get('downloadTmpFile/:fileName')
+  @ApiOperation({ summary: 'Descargar archivo temporal por nombre' })
   downloadTmpFile(@Res() res: Response, @Param('fileName') fileName: string) {
     return this.filesService.downloadTmpFile(fileName, res);
   }
 
   @Get('imageTmp/:imageName')
+  @ApiOperation({ summary: 'Servir imagen temporal por nombre' })
   getStaticImageTmp(@Res() res: Response, @Param('imageName') imageName: string) {
     const path = this.filesService.getStaticTmpImage(imageName);
     res.sendFile(path);

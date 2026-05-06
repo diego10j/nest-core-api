@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EtiquetasSaveService } from './etiquetas-save.service';
 import { EtiquetasService } from './etiquetas.service';
 import { IdEtiquetaDto } from './dto/id-etiqueta.dto';
@@ -30,6 +31,7 @@ export class EtiquetasController {
      * Retorna todas las etiquetas configuradas de la empresa.
      */
     @Get('getEtiquetas')
+    @ApiOperation({ summary: 'Listar todas las etiquetas configuradas de la empresa' })
     getEtiquetas(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -42,6 +44,7 @@ export class EtiquetasController {
      * Query param: ide_inarti
      */
     @Get('getEtiquetasByProducto')
+    @ApiOperation({ summary: 'Listar todas las etiquetas de un producto (todos los tipos)' })
     getEtiquetasByProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoDto,
@@ -54,6 +57,7 @@ export class EtiquetasController {
      * Query params: ide_inarti, tipo_ineta
      */
     @Get('getEtiquetaProducto')
+    @ApiOperation({ summary: 'Obtener etiqueta de un producto según tipo de etiqueta' })
     getEtiquetaProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoEtiquetaDto,
@@ -66,6 +70,7 @@ export class EtiquetasController {
      * Query param: tipo_ineta
      */
     @Get('getEtiquetasByTipo')
+    @ApiOperation({ summary: 'Listar todas las etiquetas de un tipo específico' })
     getEtiquetasByTipo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: TipoEtiquetaDto,
@@ -77,6 +82,7 @@ export class EtiquetasController {
      * Retorna los tipos de etiqueta disponibles en la empresa.
      */
     @Get('getTiposEtiqueta')
+    @ApiOperation({ summary: 'Obtener tipos de etiqueta disponibles en la empresa' })
     getTiposEtiqueta(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -93,6 +99,7 @@ export class EtiquetasController {
      * isUpdate: false = INSERT, isUpdate: true = UPDATE
      */
     @Post('saveEtiqueta')
+    @ApiOperation({ summary: 'Crear o actualizar una etiqueta de producto' })
     saveEtiqueta(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveEtiquetaDto,
@@ -105,6 +112,7 @@ export class EtiquetasController {
      * Body: ide_ineta
      */
     @Post('deleteEtiqueta')
+    @ApiOperation({ summary: 'Eliminar una etiqueta de producto' })
     deleteEtiqueta(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: IdEtiquetaDto,
@@ -116,6 +124,7 @@ export class EtiquetasController {
      * Body: ide_inarti, tipo_ineta
      */
     @Post('confirmarImpresion')
+    @ApiOperation({ summary: 'Confirmar impresión de etiqueta y actualizar contador de impresiones' })
     confirmarImpresion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: ConfirmarImpresionDto,
@@ -124,6 +133,7 @@ export class EtiquetasController {
     }
 
     @Get('getMetricasEtiquetas')
+    @ApiOperation({ summary: 'Obtener métricas de etiquetas (top productos más etiquetados)' })
     getMetricasEtiquetas(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto & { limitTop?: number },
@@ -132,6 +142,7 @@ export class EtiquetasController {
     }
 
     @Get('getEtiquetasPorExpiracionMeses')
+    @ApiOperation({ summary: 'Listar etiquetas de productos por vencer en los próximos meses' })
     getEtiquetasPorExpiracionMeses(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: PorExpirarDto & HeaderParamsDto,

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
@@ -39,6 +39,7 @@ export class MenudeoController {
      * Retorna los tipos de comprobante de menudeo (Ingreso/Egreso con signo).
      */
     @Get('getTipoCompMenudeo')
+    @ApiOperation({ summary: 'Listar tipos de comprobante de menudeo (Ingreso/Egreso)' })
     getTipoCompMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -50,6 +51,7 @@ export class MenudeoController {
      * Retorna todos los tipos de transacción de menudeo.
      */
     @Get('getTipoTranMenudeo')
+    @ApiOperation({ summary: 'Listar todos los tipos de transacción de menudeo' })
     getTipoTranMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -62,6 +64,7 @@ export class MenudeoController {
      * Query param: ide_inmtc
      */
     @Get('getTipoTranByTipoComp')
+    @ApiOperation({ summary: 'Listar tipos de transacción de un tipo de comprobante de menudeo' })
     getTipoTranByTipoComp(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdTipoCompDto,
@@ -77,6 +80,7 @@ export class MenudeoController {
      * Retorna todas las formas de menudeo del catálogo maestro.
      */
     @Get('getFormas')
+    @ApiOperation({ summary: 'Listar todas las formas de menudeo del catálogo maestro' })
     getFormas(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -89,6 +93,7 @@ export class MenudeoController {
      * Query param: ide_inmfor
      */
     @Get('getInsumosForma')
+    @ApiOperation({ summary: 'Obtener insumos/envases configurados para una forma de menudeo' })
     getInsumosForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdFormaDto,
@@ -105,6 +110,7 @@ export class MenudeoController {
      * Query param: ide_inarti
      */
     @Get('getPresentacionesProducto')
+    @ApiOperation({ summary: 'Obtener formas de menudeo (presentaciones) asignadas a un producto' })
     getPresentacionesProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,
@@ -117,6 +123,7 @@ export class MenudeoController {
      * Query param: ide_inarti
      */
     @Get('getFormasDisponiblesProducto')
+    @ApiOperation({ summary: 'Obtener formas de menudeo disponibles (no asignadas) a un producto' })
     getFormasDisponiblesProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,
@@ -128,6 +135,7 @@ export class MenudeoController {
      * Lista todos los productos que tienen formas de menudeo asignadas.
      */
     @Get('getProductosConMenudeo')
+    @ApiOperation({ summary: 'Listar productos que tienen formas de menudeo asignadas' })
     getProductosConMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -140,6 +148,7 @@ export class MenudeoController {
      * presentaciones de menudeo configuradas.
      */
     @Get('getProductosEstadoMenudeo')
+    @ApiOperation({ summary: 'Listar productos con indicador de si tienen presentaciones de menudeo configuradas' })
     getProductosEstadoMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -153,6 +162,7 @@ export class MenudeoController {
      * Son los únicos elegibles para crear un Saldo Inicial de menudeo.
      */
     @Get('getProductosSinComprobantesMenudeo')
+    @ApiOperation({ summary: 'Listar productos con presentaciones configuradas pero sin comprobantes de menudeo (elegibles para saldo inicial)' })
     getProductosSinComprobantesMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -170,6 +180,7 @@ export class MenudeoController {
      * Nivel de alerta: CRITICO (saldo=0), BAJO (< mínimo), IDEAL (< ideal).
      */
     @Get('getAlertasStockMenudeo')
+    @ApiOperation({ summary: 'Obtener alertas de stock de menudeo (crítico, bajo, ideal) por presentación' })
     getAlertasStockMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -183,6 +194,7 @@ export class MenudeoController {
      * Query params: [fechaCorte] (por defecto hoy), [ide_inbod] (bodega, opcional)
      */
     @Get('getStockMenudeo')
+    @ApiOperation({ summary: 'Obtener stock de menudeo a una fecha de corte para todas las presentaciones activas' })
     getStockMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: StockMenudeoDto,
@@ -195,6 +207,7 @@ export class MenudeoController {
      * Query param: ide_inarti
      */
     @Get('getSaldosMenudeoProducto')
+    @ApiOperation({ summary: 'Obtener saldo actual de menudeo por presentación de un producto' })
     getSaldosMenudeoProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,
@@ -207,6 +220,7 @@ export class MenudeoController {
      * Query param: ide_inmpre
      */
     @Get('getSaldoMenudeo')
+    @ApiOperation({ summary: 'Obtener saldo de menudeo de una presentación específica' })
     getSaldoMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdPresentacionDto,
@@ -219,6 +233,7 @@ export class MenudeoController {
      * Query param: ide_inarti
      */
     @Get('getResumenMenudeoProducto')
+    @ApiOperation({ summary: 'Obtener resumen ejecutivo de stock inventario vs base consumida en menudeo por producto' })
     getResumenMenudeoProducto(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,
@@ -235,6 +250,7 @@ export class MenudeoController {
      * Query params: ide_inarti, fechaInicio, fechaFin, [ide_inmpre]
      */
     @Get('getComprobantesMenudeo')
+    @ApiOperation({ summary: 'Listar comprobantes de menudeo de un producto en un rango de fechas' })
     getComprobantesMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: TrnMenudeoDto,
@@ -247,6 +263,7 @@ export class MenudeoController {
      * Query param: ide_incmen
      */
     @Get('getCabMenudeo')
+    @ApiOperation({ summary: 'Obtener cabecera de un comprobante de menudeo' })
     getCabMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdMenudeoDto,
@@ -259,6 +276,7 @@ export class MenudeoController {
      * Query param: ide_incmen
      */
     @Get('getDetMenudeo')
+    @ApiOperation({ summary: 'Obtener detalle de un comprobante de menudeo (presentaciones y cantidades)' })
     getDetMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdMenudeoDto,
@@ -271,6 +289,7 @@ export class MenudeoController {
      * Query params: ide_inarti, ide_inmpre, fechaInicio, fechaFin
      */
     @Get('getKardexMenudeo')
+    @ApiOperation({ summary: 'Obtener kardex de menudeo de una presentación con saldo acumulado' })
     getKardexMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: TrnMenudeoDto,
@@ -287,6 +306,7 @@ export class MenudeoController {
      * Si se incluye el array `insumos`, reemplaza completamente los insumos de la forma.
      */
     @Post('saveForma')
+    @ApiOperation({ summary: 'Crear o actualizar una forma de menudeo con sus insumos' })
     saveForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveFormaDto,
@@ -298,6 +318,7 @@ export class MenudeoController {
      * Elimina una forma de menudeo y sus insumos (solo si no tiene productos vinculados).
      */
     @Delete('deleteForma')
+    @ApiOperation({ summary: 'Eliminar una forma de menudeo y sus insumos (solo si no tiene productos vinculados)' })
     deleteForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdFormaDto,
@@ -310,6 +331,7 @@ export class MenudeoController {
      * Query param: ide_inmfin
      */
     @Delete('deleteInsumoForma')
+    @ApiOperation({ summary: 'Eliminar un insumo individual de una forma de menudeo' })
     deleteInsumoForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query('ide_inmfin') ide_inmfin: string,
@@ -328,6 +350,7 @@ export class MenudeoController {
      * Crea o actualiza un tipo de comprobante de menudeo (Ingreso/Egreso con signo).
      */
     @Post('saveTipoComp')
+    @ApiOperation({ summary: 'Crear o actualizar un tipo de comprobante de menudeo (Ingreso/Egreso)' })
     saveTipoComp(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveTipoCompDto,
@@ -339,6 +362,7 @@ export class MenudeoController {
      * Elimina un tipo de comprobante (solo si no tiene tipos de transacción vinculados).
      */
     @Delete('deleteTipoComp')
+    @ApiOperation({ summary: 'Eliminar un tipo de comprobante de menudeo (solo si no tiene tipos de transacción vinculados)' })
     deleteTipoComp(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdTipoCompDto,
@@ -350,6 +374,7 @@ export class MenudeoController {
      * Crea o actualiza un tipo de transacción de menudeo.
      */
     @Post('saveTipoTran')
+    @ApiOperation({ summary: 'Crear o actualizar un tipo de transacción de menudeo' })
     saveTipoTran(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveTipoTranDto,
@@ -361,6 +386,7 @@ export class MenudeoController {
      * Elimina un tipo de transacción (solo si no tiene comprobantes vinculados).
      */
     @Delete('deleteTipoTran')
+    @ApiOperation({ summary: 'Eliminar un tipo de transacción de menudeo (solo si no tiene comprobantes vinculados)' })
     deleteTipoTran(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdTipoTranDto,
@@ -377,6 +403,7 @@ export class MenudeoController {
      * Opcionalmente incluye cant_base_inmpre como override del valor de la forma.
      */
     @Post('savePresentacion')
+    @ApiOperation({ summary: 'Crear o actualizar vínculo producto–forma de menudeo (presentación)' })
     savePresentacion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SavePresentacionDto,
@@ -388,6 +415,7 @@ export class MenudeoController {
      * Elimina un vínculo producto ↔ forma (solo si no tiene movimientos).
      */
     @Delete('deletePresentacion')
+    @ApiOperation({ summary: 'Eliminar vínculo producto–forma de menudeo (solo si no tiene movimientos)' })
     deletePresentacion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdPresentacionDto,
@@ -401,6 +429,7 @@ export class MenudeoController {
      * Retorna el número total de presentaciones insertadas.
      */
     @Post('copiarPresentacion')
+    @ApiOperation({ summary: 'Copiar presentaciones activas de un producto origen a productos destino' })
     copiarPresentacion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: CopiarPresentacionDto,
@@ -414,6 +443,7 @@ export class MenudeoController {
      * El tipo de transacción Saldo Inicial (SI) se resuelve automáticamente.
      */
     @Post('saveSaldoInicialMenudeo')
+    @ApiOperation({ summary: 'Crear saldos iniciales de menudeo masivos (un comprobante por producto)' })
     saveSaldoInicialMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveSaldoInicialMenudeoDto,
@@ -428,6 +458,7 @@ export class MenudeoController {
      * Se crea un comprobante por cada combinación (producto, tipo de ajuste).
      */
     @Post('saveAjusteMenudeo')
+    @ApiOperation({ summary: 'Ajustar stock de menudeo al saldo final deseado (genera ajuste ingreso o egreso automáticamente)' })
     saveAjusteMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveAjusteMenudeoDto,
@@ -451,6 +482,7 @@ export class MenudeoController {
      * en el tipo de transacción correspondiente.
      */
     @Post('saveMenudeo')
+    @ApiOperation({ summary: 'Crear comprobante de menudeo con tipo de transacción explícito' })
     saveMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: SaveMenudeoDto,
@@ -464,6 +496,7 @@ export class MenudeoController {
      * El numero_incmen se genera como YYYYMM + secuencial mensual (ej: 20260300001).
      */
     @Post('crearMenudeo')
+    @ApiOperation({ summary: 'Crear comprobante de Menudeo/Fraccionamiento simplificado (tipo MEN, secuencial automático)' })
     crearMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: CrearMenudeoDto,
@@ -476,6 +509,7 @@ export class MenudeoController {
      * Body: { ide_incmen }
      */
     @Post('anularMenudeo')
+    @ApiOperation({ summary: 'Anular un comprobante de menudeo' })
     anularMenudeo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: IdMenudeoDto,
@@ -488,6 +522,7 @@ export class MenudeoController {
     // ─────────────────────────────────────────────────────────────
 
     @Get('getTableQueryMenForma')
+    @ApiOperation({ summary: 'Obtener tabla de formas de menudeo para grilla' })
     getTableQueryMenForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -496,6 +531,7 @@ export class MenudeoController {
     }
 
     @Get('getListDataMenForma')
+    @ApiOperation({ summary: 'Obtener listado de formas de menudeo para selector' })
     getListDataMenForma(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -504,6 +540,7 @@ export class MenudeoController {
     }
 
     @Get('getTableQueryMenFormaInsumo')
+    @ApiOperation({ summary: 'Obtener tabla de insumos de una forma de menudeo para grilla' })
     getTableQueryMenFormaInsumo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdFormaDto,
@@ -512,6 +549,7 @@ export class MenudeoController {
     }
 
     @Get('getListDataMenFormaInsumo')
+    @ApiOperation({ summary: 'Obtener listado de insumos de una forma de menudeo para selector' })
     getListDataMenFormaInsumo(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdFormaDto,
@@ -520,6 +558,7 @@ export class MenudeoController {
     }
 
     @Get('getTableQueryMenTipoComp')
+    @ApiOperation({ summary: 'Obtener tabla de tipos de comprobante de menudeo para grilla' })
     getTableQueryMenTipoComp(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -528,6 +567,7 @@ export class MenudeoController {
     }
 
     @Get('getListDataMenTipoComp')
+    @ApiOperation({ summary: 'Obtener listado de tipos de comprobante de menudeo para selector' })
     getListDataMenTipoComp(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -536,6 +576,7 @@ export class MenudeoController {
     }
 
     @Get('getTableQueryMenTipoTran')
+    @ApiOperation({ summary: 'Obtener tabla de tipos de transacción de menudeo para grilla' })
     getTableQueryMenTipoTran(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: QueryOptionsDto,
@@ -544,6 +585,7 @@ export class MenudeoController {
     }
 
     @Get('getListDataMenTipoTran')
+    @ApiOperation({ summary: 'Obtener listado de tipos de transacción de menudeo para selector' })
     getListDataMenTipoTran(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdTipoCompDto,
@@ -552,6 +594,7 @@ export class MenudeoController {
     }
 
     @Get('getTableQueryMenPresentacion')
+    @ApiOperation({ summary: 'Obtener tabla de presentaciones de menudeo de un producto para grilla' })
     getTableQueryMenPresentacion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,
@@ -560,6 +603,7 @@ export class MenudeoController {
     }
 
     @Get('getListDataMenPresentacion')
+    @ApiOperation({ summary: 'Obtener listado de presentaciones de menudeo de un producto para selector' })
     getListDataMenPresentacion(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Query() dtoIn: IdProductoMenudeoDto,

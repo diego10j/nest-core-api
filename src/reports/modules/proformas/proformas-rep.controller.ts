@@ -1,4 +1,5 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -6,11 +7,13 @@ import { GetProformaDto } from 'src/core/modules/proformas/dto/get-proforma.dto'
 
 import { ProformasRepService } from './proformas-rep.service';
 
+@ApiTags('Reports-Proformas')
 @Controller('reports/proformas')
 export class ProformasRepController {
     constructor(private readonly proformasRepService: ProformasRepService) { }
 
     @Get('reportProforma')
+    @ApiOperation({ summary: 'Generar reporte PDF de una proforma' })
     async reportProforma(
         @Res() response: Response,
         @AppHeaders() headersParams: HeaderParamsDto,
