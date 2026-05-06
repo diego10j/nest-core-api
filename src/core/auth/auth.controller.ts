@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Ip, Post, Headers, Req, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiHeaders, ApiBasicAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -22,8 +22,11 @@ export class AuthController {
 
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Login de usuario' })
-  @ApiResponse({ status: 200, description: 'Login exitoso — retorna accessToken (15m) y refreshToken (7d)' })
+  @ApiOperation({
+    summary: 'Login de usuario',
+    description: 'Autentica usuario con email/login y contraseña. Retorna accessToken (15min) y refreshToken (7d). Limitado a 5 intentos por minuto.',
+  })
+  @ApiResponse({ status: 200, description: 'Login exitoso', type: Object })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiResponse({ status: 429, description: 'Demasiados intentos. Intente más tarde' })
   login(@Body() dtoIn: LoginUserDto, @Ip() ip: string) {
@@ -32,8 +35,8 @@ export class AuthController {
 
   @Post('refresh')
   @UseGuards(JwtRefreshGuard)
-  @ApiOperation({ summary: 'Renovar access token usando refresh token (rotación)' })
-  @ApiResponse({ status: 200, description: 'Nuevos accessToken y refreshToken emitidos' })
+  @ApiOperation({ summary: 'Renovar access token', description: 'Usa refresh token (rotación) para obtener nuevos tokens. El refresh token anterior es invalidado.' })
+  @ApiResponse({ status: 200, description: 'Nuevos accessToken y refreshToken' })
   @ApiResponse({ status: 401, description: 'Refresh token inválido, expirado o reutilizado' })
   refresh(@Req() req: any) {
     const { id: userId, jti } = req.user as { id: string; jti: string };
@@ -42,20 +45,32 @@ export class AuthController {
 
   @Get('me')
   @Auth()
+  @ApiBearerAuth('BearerAuth')
+  @ApiHeaders([
+    { name: 'X-Ide-Usua', description: 'ID del usuario', required: true },
+    { name: 'X-Ide-Empr', description: 'ID de la empresa', required: true },
+    { name: 'X-Ide-Sucu', description: 'ID de la sucursal', required: true },
+    { name: 'X-Ide-Perf', description: 'ID del perfil/rol', required: true },
+  ])
   @ApiOperation({ summary: 'Obtener datos del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Datos del usuario' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
   me(@GetUser() user: AuthUser) {
     return this.authService.checkAuthStatus(user);
   }
 
   @Get('check-status')
   @Auth()
+  @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Verificar estado de autenticación' })
+  @ApiResponse({ status: 200, description: 'Estado de autenticación válido' })
   checkAuthStatus(@GetUser() user: AuthUser) {
     return this.authService.checkAuthStatus(user);
   }
 
   @Post('getMenuByRol')
   @Auth()
+  @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Obtener menú por rol/perfil' })
   getMenu(@Body() dtoIn: MenuRolDto) {
     return this.authService.getMenuByRol(dtoIn);
@@ -69,7 +84,8 @@ export class AuthController {
 
   @Post('logout')
   @Auth()
-  @ApiOperation({ summary: 'Cerrar sesión — invalida access token y revoca refresh token' })
+  @ApiBearerAuth('BearerAuth')
+  @ApiOperation({ summary: 'Cerrar sesión', description: 'Invalida access token y revoca refresh token' })
   @ApiResponse({ status: 200, description: 'Sesión cerrada exitosamente' })
   logout(
     @Headers('authorization') authorization: string,
@@ -89,7 +105,8 @@ export class AuthController {
 
   @Post('changePassword')
   @Auth()
-  @ApiOperation({ summary: 'Cambiar contraseña — invalida todos los tokens activos' })
+  @ApiBearerAuth('BearerAuth')
+  @ApiOperation({ summary: 'Cambiar contraseña', description: 'Invalida todos los tokens activos del usuario' })
   @ApiResponse({ status: 200, description: 'Contraseña cambiada exitosamente' })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
   changePassword(@Body() dtoIn: ChangePasswordDto, @GetUser() user: AuthUser) {
@@ -98,8 +115,9 @@ export class AuthController {
 
   @Post('resetPassword')
   @Auth()
-  @ApiOperation({ summary: 'Resetear contraseña de un usuario a valor por defecto' })
-  @ApiResponse({ status: 200, description: 'Contraseña reseteada exitosamente' })
+  @ApiBearerAuth('BearerAuth')
+  @ApiOperation({ summary: 'Resetear contraseña', description: 'Resetea contraseña de usuario a valor por defecto (solo admins)' })
+  @ApiResponse({ status: 200, description: 'Contraseña reseteada' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   resetPassword(@Body() dtoIn: ResetPasswordDto) {
     return this.authService.resetPassword(dtoIn);
