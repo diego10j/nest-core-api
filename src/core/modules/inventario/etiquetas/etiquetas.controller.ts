@@ -3,8 +3,6 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EtiquetasSaveService } from './etiquetas-save.service';
 import { EtiquetasService } from './etiquetas.service';
 import { IdEtiquetaDto } from './dto/id-etiqueta.dto';
