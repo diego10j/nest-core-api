@@ -17,6 +17,7 @@ async function bootstrap() {
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false,
   }));
 
   app.enableCors({
@@ -109,11 +110,10 @@ async function bootstrap() {
       persistAuthorization: true,
       docExpansion: 'list',
       filter: true,
-      showRequestDuration: true,
+      showRequestDuration: false,
+      supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
     },
     customSiteTitle: 'Pro-ERP API Docs',
-    customfavIcon: '/favicon.ico',
-    customCss: '.swagger-ui .topbar { display: none }',
   });
 
   await app.listen(envs.port);
