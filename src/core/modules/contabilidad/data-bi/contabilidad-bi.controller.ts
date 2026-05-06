@@ -51,11 +51,11 @@ export class ContabilidadBiController {
         return this.service.getDistribucionGastos({ ...headersParams, ...dtoIn });
     }
 
-    @Get('getMovimientosMensuales')
-    @ApiOperation({ summary: 'Obtener movimientos contables mensuales por año' })
+    @Get('getVolumenMensualMovimientos')
+    @ApiOperation({ summary: 'Obtener volumen mensual de movimientos contables por año' })
     // @Auth()
-    getMovimientosMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoAnioDto) {
-        return this.service.getMovimientosMensuales({ ...headersParams, ...dtoIn });
+    getVolumenMensualMovimientos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoAnioDto) {
+        return this.service.getVolumenMensualMovimientos({ ...headersParams, ...dtoIn });
     }
 
     @Get('getTopCuentasMayorMovimiento')

@@ -21,6 +21,7 @@ export class ContabilidadBiService extends BaseService {
                 'p_con_estado_comp_inicial',
                 'p_con_estado_comp_final',
                 'p_con_lugar_debe',
+                'p_con_lugar_haber',
                 'p_con_tipo_cuenta_activo',
                 'p_con_tipo_cuenta_pasivo',
                 'p_con_tipo_cuenta_patrimonio',
@@ -323,48 +324,55 @@ export class ContabilidadBiService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    // ─── Gráfico: Movimientos mensuales Debe vs Haber ───────────────────────────
 
     /**
-     * Total de débitos (Debe) vs créditos (Haber) agrupados por mes en un año.
-     * Incluye número de comprobantes por mes.
-     * Ideal para gráfico de barras agrupadas o apiladas.
+     * Volumen mensual de actividad contable durante un año.
+     * Retorna los 12 meses con:
+     *   - volumen_total: monto total movilizado (debe = haber, se toma uno)
+     *   - num_comprobantes: cantidad de asientos contables
+     *   - promedio_por_comprobante: monto promedio por asiento
+     * Ideal para gráfico de barras + línea de tendencia (combo chart).
      */
-    async getMovimientosMensuales(dto: HeaderParamsDto & PeriodoAnioDto) {
+    async getVolumenMensualMovimientos(dto: HeaderParamsDto & PeriodoAnioDto) {
         const estados = this.estadosComprobantes;
         const lugarDebe = this.variables.get('p_con_lugar_debe');
 
         const query = new SelectQuery(`
-            WITH movs AS (
-                SELECT
-                    EXTRACT(MONTH FROM ccc.fecha_trans_cnccc)::int AS mes,
-                    ROUND(SUM(CASE WHEN dcc.ide_cnlap =  ${lugarDebe} THEN dcc.valor_cndcc ELSE 0 END)::numeric, 2) AS total_debe,
-                    ROUND(SUM(CASE WHEN dcc.ide_cnlap != ${lugarDebe} THEN dcc.valor_cndcc ELSE 0 END)::numeric, 2) AS total_haber,
-                    COUNT(DISTINCT ccc.ide_cnccc) AS num_comprobantes
-                FROM con_cab_comp_cont  ccc
-                JOIN con_det_comp_cont  dcc ON ccc.ide_cnccc = dcc.ide_cnccc
-                WHERE EXTRACT(YEAR FROM ccc.fecha_trans_cnccc) = $1
-                  AND ccc.ide_cneco IN (${estados})
-                  AND ccc.ide_sucu  = $2
-                GROUP BY EXTRACT(MONTH FROM ccc.fecha_trans_cnccc)
-            )
+        WITH movs AS (
             SELECT
-                gm.ide_gemes                       AS mes,
-                gm.nombre_gemes,
-                COALESCE(m.total_debe,          0) AS total_debe,
-                COALESCE(m.total_haber,         0) AS total_haber,
-                COALESCE(m.num_comprobantes,    0) AS num_comprobantes,
-                ROUND(ABS(COALESCE(m.total_debe, 0) - COALESCE(m.total_haber, 0))::numeric, 2) AS diferencia
-            FROM gen_mes gm
-            LEFT JOIN movs m ON gm.ide_gemes = m.mes
-            ORDER BY gm.ide_gemes
-        `);
+                EXTRACT(MONTH FROM ccc.fecha_trans_cnccc)::int           AS mes,
+                ROUND(SUM(
+                    CASE WHEN dcc.ide_cnlap = ${lugarDebe}
+                    THEN dcc.valor_cndcc ELSE 0 END
+                )::numeric, 2)                                            AS volumen_total,
+                COUNT(DISTINCT ccc.ide_cnccc)                            AS num_comprobantes
+            FROM con_cab_comp_cont ccc
+            JOIN con_det_comp_cont dcc ON ccc.ide_cnccc = dcc.ide_cnccc
+            WHERE EXTRACT(YEAR FROM ccc.fecha_trans_cnccc) = $1
+              AND ccc.ide_cneco IN (${estados})
+              AND ccc.ide_sucu  = $2
+            GROUP BY
+                EXTRACT(MONTH FROM ccc.fecha_trans_cnccc)
+        )
+        SELECT
+            gm.ide_gemes                                                  AS mes,
+            gm.nombre_gemes,
+            COALESCE(m.volumen_total,       0)                            AS volumen_total,
+            COALESCE(m.num_comprobantes,    0)                            AS num_comprobantes,
+            ROUND(
+                CASE WHEN COALESCE(m.num_comprobantes, 0) > 0
+                THEN (m.volumen_total / m.num_comprobantes)::numeric
+                ELSE 0 END
+            , 2)                                                          AS promedio_por_comprobante
+        FROM gen_mes gm
+        LEFT JOIN movs m ON gm.ide_gemes = m.mes
+        ORDER BY gm.ide_gemes
+    `);
         query.addIntParam(1, dto.anio);
         query.addIntParam(2, dto.ideSucu);
 
         return this.dataSource.createQuery(query);
     }
-
     // ─── Gráfico: Top cuentas con mayor movimiento ──────────────────────────────
 
     /**
@@ -375,6 +383,7 @@ export class ContabilidadBiService extends BaseService {
     async getTopCuentasMayorMovimiento(dto: HeaderParamsDto & TopCuentasBiDto) {
         const estados = this.estadosComprobantes;
         const lugarDebe = this.variables.get('p_con_lugar_debe');
+        const lugarHaber = this.variables.get('p_con_lugar_haber');
         const limit = dto.limit ?? 10;
 
         const query = new SelectQuery(`
@@ -384,7 +393,7 @@ export class ContabilidadBiService extends BaseService {
                 tc.nombre_cntcu                                                                          AS tipo_cuenta,
                 COUNT(dcc.ide_cndcc)                                                                     AS num_movimientos,
                 ROUND(SUM(CASE WHEN dcc.ide_cnlap =  ${lugarDebe} THEN dcc.valor_cndcc ELSE 0 END)::numeric, 2) AS total_debe,
-                ROUND(SUM(CASE WHEN dcc.ide_cnlap != ${lugarDebe} THEN dcc.valor_cndcc ELSE 0 END)::numeric, 2) AS total_haber,
+                ROUND(SUM(CASE WHEN dcc.ide_cnlap = ${lugarHaber} THEN dcc.valor_cndcc ELSE 0 END)::numeric, 2) AS total_haber,
                 ROUND(SUM(dcc.valor_cndcc * sc.signo_cnscu)::numeric, 2)                                 AS saldo_neto
             FROM con_cab_comp_cont  ccc
             JOIN con_det_comp_cont  dcc ON ccc.ide_cnccc = dcc.ide_cnccc
