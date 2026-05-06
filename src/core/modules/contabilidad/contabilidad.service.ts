@@ -52,16 +52,18 @@ export class ContabilidadService extends BaseService {
 
         const query = new SelectQuery(`
             SELECT
-                CCC.fecha_trans_cnccc,
-                CCC.numero_cnccc,
                 CCC.ide_cnccc,
+                CCC.fecha_trans_cnccc,    
+                CCC.ide_cnccc as id,         
                 TC.nombre_cntcm,
                 DPC.codig_recur_cndpc,
                 DPC.nombre_cndpc,
                 CASE WHEN DCC.ide_cnlap = 1 THEN DCC.valor_cndcc END AS debe,
                 CASE WHEN DCC.ide_cnlap = 0 THEN DCC.valor_cndcc END AS haber,
                 CCC.observacion_cnccc,
-                DCC.ide_cndcc
+                DCC.ide_cndcc,
+                CCC.numero_cnccc, 
+                DCC.ide_cndpc
             FROM con_cab_comp_cont CCC
             INNER JOIN con_tipo_comproba TC     ON CCC.ide_cntcm    = TC.ide_cntcm
             INNER JOIN con_det_comp_cont DCC    ON CCC.ide_cnccc    = DCC.ide_cnccc
