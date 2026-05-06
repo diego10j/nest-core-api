@@ -115,7 +115,7 @@ async function bootstrap() {
 
   await app.listen(envs.port);
   logger.log(`App running on port ${envs.port}`);
-  logger.log(`Swagger docs: http://${envs.HOST_API}/docs`);
+  logger.log(`Swagger docs: http://${envs.hostApi}/docs`);
 
   const server = app.getHttpServer();
   const io: Server = socketIoAdapter.getIoInstance();
