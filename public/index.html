@@ -4,66 +4,82 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProERP - API (DEV)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Animación de máquina de escribir */
-        .typing-animation {
-            width: 0;
-            white-space: nowrap;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e2e8f0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 640px;
+        }
+        h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .brand { color: #10b981; }
+        .typing {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
             overflow: hidden;
-            animation: typing 5s steps(40) 1s forwards, blink-caret .75s step-end infinite;
+            white-space: nowrap;
+            border-right: 3px solid #10b981;
+            animation: typing 3s steps(60) 0.5s forwards, blink 0.75s step-end infinite;
+            display: inline-block;
         }
-
         @keyframes typing {
-            100% {
-                width: 100%;
-            }
+            from { width: 0; }
+            to { width: 100%; }
         }
-
-        @keyframes blink-caret {
-            50% {
-                border-color: transparent;
-            }
+        @keyframes blink {
+            50% { border-color: transparent; }
         }
+        .info {
+            color: #64748b;
+            font-size: 0.95rem;
+            line-height: 1.8;
+        }
+        .info span { color: #94a3b8; }
+        .github {
+            margin-top: 1.5rem;
+        }
+        .github a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+        .github a:hover { color: #60a5fa; }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
+<body>
+    <div class="container">
+        <h1><span class="brand">ProERP</span> - API</h1>
 
-    <div class="flex items-center justify-center min-h-screen">
-        <div class="text-center px-6 py-12 max-w-xl mx-auto">
-            <h1 class="text-5xl font-bold mb-4">
-                <span class="text-emerald-400">ProERP</span> - API
-            </h1>
+        <div style="margin-bottom: 1.5rem;">
+            <span class="typing">Bienvenido a la API de ProERP (Ambiente de Desarrollo)</span>
+        </div>
 
-            <div class="text-xl mb-6">
-                <p class="typing-animation text-lg text-gray-300">
-                    🚀 Bienvenido a la API de ProERP (Ambiente de Desarrollo)
-                </p>
-            </div>
+        <div class="info">
+            <p>ProERP API est&aacute; dise&ntilde;ada para integrar todos los aspectos de tu ERP de forma r&aacute;pida y segura.</p>
+            <p style="margin-top: 0.75rem;">
+                <span>Optimizaci&oacute;n de procesos</span> &middot;
+                <span>Conexi&oacute;n con bases de datos</span> &middot;
+                <span>Reportes y m&aacute;s</span>
+            </p>
+        </div>
 
-            <div class="text-sm text-gray-400">
-                <p>🔧 ProERP API está diseñada para integrar todos los aspectos de tu ERP de forma rápida y segura.</p>
-                <p>⚡ Optimización de procesos 🛠️ Conexión con bases de datos 📊 y mucho más.</p>
-            </div>
-
-
-            <div class="mt-6">
-                <a href="https://github.com/TuUsuario/ProERP" target="_blank" class="text-blue-400 hover:text-blue-600">
-                    <i class="fab fa-github"></i> Ver en GitHub
-                </a>
-            </div>
+        <div class="github">
+            <a href="https://github.com/TuUsuario/ProERP" target="_blank" rel="noopener">Ver en GitHub</a>
         </div>
     </div>
-
-    <!-- Agregar el icono de la máquina de escribir en el fondo para darle un toque más interactivo -->
-    <script>
-        // Este es un ejemplo de cómo hacer el efecto de máquina de escribir, pero se puede personalizar más.
-        document.addEventListener('DOMContentLoaded', () => {
-            const typingElement = document.querySelector('.typing-animation');
-            if (typingElement) {
-                typingElement.classList.add('typing-animation');
-            }
-        });
-    </script>
 </body>
 </html>

@@ -85,9 +85,6 @@ async function bootstrap() {
       },
       'BearerAuth',
     )
-    .addApiKey(
-      { name: 'X-Ide-Usua', in: 'header', type: 'apiKey', description: 'ID del usuario' },
-    )
     .addTag('Auth', 'Autenticación y gestión de sesiones')
     .addTag('Sistema', 'Usuarios, archivos, configuración general')
     .addTag('Ventas', 'Facturación, clientes, punto de venta, BI')
