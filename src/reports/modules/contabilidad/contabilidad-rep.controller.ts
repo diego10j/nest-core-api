@@ -10,7 +10,7 @@ import { ContabilidadRepService } from './contabilidad-rep.service';
 @ApiTags('Reports-Contabilidad')
 @Controller('reports/contabilidad')
 export class ContabilidadRepController {
-  constructor(private readonly contabilidadRepService: ContabilidadRepService) {}
+  constructor(private readonly contabilidadRepService: ContabilidadRepService) { }
 
   @Get('reportBalanceGeneral')
   @ApiOperation({ summary: 'Generar reporte PDF del Balance General' })
@@ -64,37 +64,4 @@ export class ContabilidadRepController {
   }
 }
 
-  @Get('reportEstadoResultados')
-  @ApiOperation({ summary: 'Generar reporte PDF del Estado de Resultados' })
-  async reportEstadoResultados(
-    @Res() response: Response,
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: EstadosFinancierosDto,
-  ) {
-    const pdfDoc = await this.contabilidadRepService.reportEstadoResultados({
-      ...headersParams,
-      ...dtoIn,
-    });
-    response.setHeader('Content-Type', 'application/pdf');
-    pdfDoc.info.Title = 'Estado de Resultados';
-    pdfDoc.pipe(response);
-    pdfDoc.end();
-  }
 
-  @Get('reportFlujosEfectivo')
-  @ApiOperation({ summary: 'Generar reporte PDF del Estado de Flujo de Efectivo (NIC 7 — Método Indirecto)' })
-  async reportFlujosEfectivo(
-    @Res() response: Response,
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: EstadosFinancierosDto,
-  ) {
-    const pdfDoc = await this.contabilidadRepService.reportFlujosEfectivo({
-      ...headersParams,
-      ...dtoIn,
-    });
-    response.setHeader('Content-Type', 'application/pdf');
-    pdfDoc.info.Title = 'Estado de Flujo de Efectivo';
-    pdfDoc.pipe(response);
-    pdfDoc.end();
-  }
-}

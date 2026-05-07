@@ -34,7 +34,7 @@ const styles: StyleDictionary = {
   tdValue: { fontSize: 9, color: C.ink, alignment: 'right' },
   sectionLabel: {
     bold: true, fontSize: 11, color: C.accent, fillColor: C.accentLight,
-    margin: [0, 6] as [number, number, number, number], alignment: 'left',
+    margin: [0, 6, 0, 6] as [number, number, number, number], alignment: 'left',
   },
   subtotalLabel: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left' },
   subtotalValue: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'right' },
