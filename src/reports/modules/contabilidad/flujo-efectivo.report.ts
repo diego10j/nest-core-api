@@ -34,19 +34,31 @@ const styles: StyleDictionary = {
   tdValue: { fontSize: 9, color: C.ink, alignment: 'right' },
   sectionLabel: {
     bold: true, fontSize: 11, color: C.accent, fillColor: C.accentLight,
-    margin: [0, 6, 0, 6] as [number, number, number, number], alignment: 'left',
+    margin: [0, 6] as [number, number, number, number], alignment: 'left',
   },
   subtotalLabel: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left' },
   subtotalValue: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'right' },
   netLabel: { bold: true, fontSize: 11, color: C.ink, fillColor: C.surface },
   netValue: { bold: true, fontSize: 11 },
   foot: { fontSize: 8, color: C.muted, alignment: 'center', margin: [0, 16, 0, 0] },
+  sep: { fontSize: 2 },
 };
 
-const divider = (): Content => ({
+const dividerBlock = (): Content => ({
   canvas: [{ type: 'line', x1: 0, y1: 0, x2: 519, y2: 0, lineWidth: 0.5, lineColor: C.border }],
   margin: [0, 4, 0, 4],
 });
+
+const sep2 = (): [Content, Content] => [
+  { text: ' ', style: 'sep', colSpan: 2, border: [false, true, false, false], margin: [0, 3, 0, 5] },
+  {},
+];
+
+const sep3 = (): [Content, Content, Content] => [
+  { text: ' ', style: 'sep', colSpan: 3, border: [false, true, false, false], margin: [0, 3, 0, 5] },
+  {},
+  {},
+];
 
 const accountRow = (desc: string, value: number): [Content, Content] => [
   { text: desc, style: 'tdName', margin: [20, 0, 0, 0] },
@@ -98,7 +110,7 @@ const buildFlujoTable = (data: FlujoEfectivoData): Content => {
     operacionBody.push(subtotalRow('Total cambios en capital de trabajo', data.totalCapitalTrabajo));
   }
 
-  operacionBody.push(divider());
+  operacionBody.push(sep2());
   operacionBody.push(subtotalRow('Flujo neto de efectivo — Actividades de Operación', data.flujoOperacional));
 
   sections.push({
@@ -133,7 +145,7 @@ const buildFlujoTable = (data: FlujoEfectivoData): Content => {
       { text: '' },
     ]);
   }
-  inversionBody.push(divider());
+  inversionBody.push(sep2());
   inversionBody.push(subtotalRow('Flujo neto de efectivo — Actividades de Inversión', data.flujoInversion));
 
   sections.push({
@@ -168,7 +180,7 @@ const buildFlujoTable = (data: FlujoEfectivoData): Content => {
       { text: '' },
     ]);
   }
-  financiamientoBody.push(divider());
+  financiamientoBody.push(sep2());
   financiamientoBody.push(subtotalRow('Flujo neto de efectivo — Actividades de Financiamiento', data.flujoFinanciamiento));
 
   sections.push({
@@ -254,7 +266,7 @@ const buildFlujoTable = (data: FlujoEfectivoData): Content => {
     ]);
   }
 
-  conciliacionBody.push(divider());
+  conciliacionBody.push(data.cuentasEfectivo.length > 0 ? sep3() : sep2());
   const variacionReal = Math.round((data.efectivoFin - data.efectivoInicio) * 100) / 100;
   conciliacionBody.push(subtotalRow('Variación real del efectivo', variacionReal));
 
