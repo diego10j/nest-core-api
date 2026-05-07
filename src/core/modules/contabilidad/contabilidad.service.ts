@@ -472,6 +472,202 @@ export class ContabilidadService extends BaseService {
     }
 
 
+    /**
+     * Estado de Flujo de Efectivo — Método Indirecto (NIC 7).
+     *
+     * Estructura del resultado:
+     *  - utilidadEjercicio: utilidad/pérdida neta del período
+     *  - ajustesNoMonetarios: cuentas marcadas como es_no_monetaria (depreciación, provisiones, etc.)
+     *  - capitalTrabajo: variación de cuentas operativas (activo/pasivo corriente) clasificadas como OPERACION
+     *  - flujoOperacional: suma de los tres anteriores
+     *  - flujosInversion / flujoInversion
+     *  - flujosFinanciamiento / flujoFinanciamiento
+     *  - variacionNetaEfectivo
+     *  - efectivoInicio / efectivoFin: saldo de cuentas en tes_cuenta_banco al inicio/fin del período
+     *  - cuentasEfectivo: desglose de cada cuenta de Caja/Banco
+     */
+    async getFlujosEfectivo(dto: HeaderParamsDto & EstadosFinancierosDto) {
+        const estados = this.estadosComprobantes;
+
+        // ── 1. Resultado del ejercicio ─────────────────────────────────────────
+        const resultadoData = await this.getEstadoResultados(dto);
+        const utilidadEjercicio = Number(resultadoData.row?.utilidadNeta ?? 0);
+
+        // ── 2. Ajustes no monetarios y cambios en capital de trabajo ─────────────
+        // Variación de saldo entre fechaInicio y fechaFin para cuentas clasificadas
+        const queryClasif = new SelectQuery(`
+            WITH variacion AS (
+                SELECT
+                    f.ide_cnfcc,
+                    f.ide_cndpc,
+                    dpc.codig_recur_cndpc,
+                    COALESCE(f.descripcion_cnfcc, dpc.nombre_cndpc) AS descripcion,
+                    f.clasificacion_cnfcc,
+                    f.es_no_monetaria_cnfcc,
+                    f.orden_cnfcc,
+                    COALESCE(SUM(
+                        CASE WHEN ccc.fecha_trans_cnccc BETWEEN $1 AND $2
+                        THEN dcc.valor_cndcc * sc.signo_cnscu ELSE 0 END
+                    ), 0) AS variacion_periodo
+                FROM con_flujo_cuenta_clasif  f
+                JOIN con_det_plan_cuen        dpc ON f.ide_cndpc  = dpc.ide_cndpc
+                JOIN con_tipo_cuenta          tc  ON dpc.ide_cntcu = tc.ide_cntcu
+                JOIN con_signo_cuenta         sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                LEFT JOIN con_det_comp_cont   dcc ON dpc.ide_cndpc = dcc.ide_cndpc
+                LEFT JOIN con_cab_comp_cont   ccc ON dcc.ide_cnccc = ccc.ide_cnccc
+                                                  AND ccc.ide_sucu  = $3
+                                                  AND ccc.ide_cneco IN (${estados})
+                                                  AND sc.ide_cnlap  = dcc.ide_cnlap
+                WHERE f.ide_sucu = $3
+                GROUP BY
+                    f.ide_cnfcc, f.ide_cndpc, dpc.codig_recur_cndpc,
+                    f.descripcion_cnfcc, dpc.nombre_cndpc,
+                    f.clasificacion_cnfcc, f.es_no_monetaria_cnfcc, f.orden_cnfcc
+            )
+            SELECT * FROM variacion
+            ORDER BY clasificacion_cnfcc, orden_cnfcc, codig_recur_cndpc
+        `);
+        queryClasif.addStringParam(1, dto.fechaInicio);
+        queryClasif.addStringParam(2, dto.fechaFin);
+        queryClasif.addIntParam(3, dto.ideSucu);
+        queryClasif.isLazy = false;
+
+        // ── 3. Efectivo inicio / fin (desde tes_cuenta_banco) ─────────────────
+        const queryEfectivo = new SelectQuery(`
+            WITH cuentas_efectivo AS (
+                SELECT DISTINCT tcb.ide_cndpc
+                FROM tes_cuenta_banco tcb
+                WHERE tcb.ide_sucu      = $3
+                  AND tcb.activo_tecba  = true
+            ),
+            saldo_inicio AS (
+                SELECT
+                    dpc.ide_cndpc,
+                    tcb.nombre_tecba,
+                    COALESCE(SUM(dcc.valor_cndcc * sc.signo_cnscu), 0) AS saldo
+                FROM tes_cuenta_banco    tcb
+                JOIN con_det_plan_cuen   dpc ON tcb.ide_cndpc = dpc.ide_cndpc
+                JOIN con_tipo_cuenta     tc  ON dpc.ide_cntcu = tc.ide_cntcu
+                JOIN con_signo_cuenta    sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                LEFT JOIN con_det_comp_cont dcc ON dpc.ide_cndpc = dcc.ide_cndpc
+                LEFT JOIN con_cab_comp_cont ccc ON dcc.ide_cnccc  = ccc.ide_cnccc
+                                               AND ccc.ide_sucu   = $3
+                                               AND ccc.ide_cneco  IN (${estados})
+                                               AND sc.ide_cnlap   = dcc.ide_cnlap
+                                               AND ccc.fecha_trans_cnccc < $1
+                WHERE tcb.ide_sucu     = $3
+                  AND tcb.activo_tecba = true
+                GROUP BY dpc.ide_cndpc, tcb.nombre_tecba
+            ),
+            saldo_fin AS (
+                SELECT
+                    dpc.ide_cndpc,
+                    tcb.nombre_tecba,
+                    COALESCE(SUM(dcc.valor_cndcc * sc.signo_cnscu), 0) AS saldo
+                FROM tes_cuenta_banco    tcb
+                JOIN con_det_plan_cuen   dpc ON tcb.ide_cndpc = dpc.ide_cndpc
+                JOIN con_tipo_cuenta     tc  ON dpc.ide_cntcu = tc.ide_cntcu
+                JOIN con_signo_cuenta    sc  ON tc.ide_cntcu  = sc.ide_cntcu
+                LEFT JOIN con_det_comp_cont dcc ON dpc.ide_cndpc = dcc.ide_cndpc
+                LEFT JOIN con_cab_comp_cont ccc ON dcc.ide_cnccc  = ccc.ide_cnccc
+                                               AND ccc.ide_sucu   = $3
+                                               AND ccc.ide_cneco  IN (${estados})
+                                               AND sc.ide_cnlap   = dcc.ide_cnlap
+                                               AND ccc.fecha_trans_cnccc <= $2
+                WHERE tcb.ide_sucu     = $3
+                  AND tcb.activo_tecba = true
+                GROUP BY dpc.ide_cndpc, tcb.nombre_tecba
+            )
+            SELECT
+                si.ide_cndpc,
+                si.nombre_tecba,
+                ROUND(si.saldo::numeric, 2) AS saldo_inicio,
+                ROUND(sf.saldo::numeric, 2) AS saldo_fin
+            FROM saldo_inicio si
+            JOIN saldo_fin    sf ON si.ide_cndpc = sf.ide_cndpc
+            ORDER BY si.nombre_tecba
+        `);
+        queryEfectivo.addStringParam(1, dto.fechaInicio);
+        queryEfectivo.addStringParam(2, dto.fechaFin);
+        queryEfectivo.addIntParam(3, dto.ideSucu);
+        queryEfectivo.isLazy = false;
+
+        const [clasifResult, efectivoResult] = await Promise.all([
+            this.dataSource.createQuery(queryClasif),
+            this.dataSource.createQuery(queryEfectivo),
+        ]);
+
+        const clasifRows = (clasifResult.rows ?? clasifResult) as Array<{
+            ide_cnfcc: number;
+            ide_cndpc: number;
+            codig_recur_cndpc: string;
+            descripcion: string;
+            clasificacion_cnfcc: string;
+            es_no_monetaria_cnfcc: boolean;
+            orden_cnfcc: number;
+            variacion_periodo: string | number;
+        }>;
+
+        const efectivoRows = (efectivoResult.rows ?? efectivoResult) as Array<{
+            ide_cndpc: number;
+            nombre_tecba: string;
+            saldo_inicio: string | number;
+            saldo_fin: string | number;
+        }>;
+
+        // Particiones
+        const ajustesNoMonetarios = clasifRows
+            .filter((r) => r.es_no_monetaria_cnfcc)
+            .map((r) => ({ ...r, variacion_periodo: Number(r.variacion_periodo) }));
+
+        const capitalTrabajo = clasifRows
+            .filter((r) => r.clasificacion_cnfcc === 'OPERACION' && !r.es_no_monetaria_cnfcc)
+            .map((r) => ({ ...r, variacion_periodo: Number(r.variacion_periodo) }));
+
+        const flujosInversion = clasifRows
+            .filter((r) => r.clasificacion_cnfcc === 'INVERSION')
+            .map((r) => ({ ...r, variacion_periodo: Number(r.variacion_periodo) }));
+
+        const flujosFinanciamiento = clasifRows
+            .filter((r) => r.clasificacion_cnfcc === 'FINANCIAMIENTO')
+            .map((r) => ({ ...r, variacion_periodo: Number(r.variacion_periodo) }));
+
+        const totalAjustes = ajustesNoMonetarios.reduce((s, r) => s + r.variacion_periodo, 0);
+        const totalCapTrab = capitalTrabajo.reduce((s, r) => s + r.variacion_periodo, 0);
+        const flujoOperacional = Math.round((utilidadEjercicio + totalAjustes + totalCapTrab) * 100) / 100;
+        const flujoInversion = Math.round(flujosInversion.reduce((s, r) => s + Number(r.variacion_periodo), 0) * 100) / 100;
+        const flujoFinanciamiento = Math.round(flujosFinanciamiento.reduce((s, r) => s + Number(r.variacion_periodo), 0) * 100) / 100;
+        const variacionNetaEfectivo = Math.round((flujoOperacional + flujoInversion + flujoFinanciamiento) * 100) / 100;
+
+        const cuentasEfectivo = efectivoRows.map((r) => ({
+            ...r,
+            saldo_inicio: Number(r.saldo_inicio),
+            saldo_fin: Number(r.saldo_fin),
+        }));
+
+        const efectivoInicio = Math.round(cuentasEfectivo.reduce((s, r) => s + r.saldo_inicio, 0) * 100) / 100;
+        const efectivoFin = Math.round(cuentasEfectivo.reduce((s, r) => s + r.saldo_fin, 0) * 100) / 100;
+
+        return {
+            utilidadEjercicio,
+            ajustesNoMonetarios,
+            totalAjustes: Math.round(totalAjustes * 100) / 100,
+            capitalTrabajo,
+            totalCapitalTrabajo: Math.round(totalCapTrab * 100) / 100,
+            flujoOperacional,
+            flujosInversion,
+            flujoInversion,
+            flujosFinanciamiento,
+            flujoFinanciamiento,
+            variacionNetaEfectivo,
+            efectivoInicio,
+            efectivoFin,
+            cuentasEfectivo,
+            fechaInicio: dto.fechaInicio,
+            fechaFin: dto.fechaFin,
+        };
+    }
+
     // ─── Helper privado ──────────────────────────────────────────────────────────
     /**
      * Query base de balances con CTE recursiva que:

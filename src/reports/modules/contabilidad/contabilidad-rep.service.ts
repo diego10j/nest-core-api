@@ -7,6 +7,8 @@ import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { balanceGeneralReport } from './balance-general.report';
 import { estadoResultadosReport } from './estado-resultados.report';
+import { flujoEfectivoReport } from './flujo-efectivo.report';
+import { FlujoEfectivoData } from './interfaces/flujo-efectivo-rep';
 
 @Injectable()
 export class ContabilidadRepService {
@@ -14,7 +16,7 @@ export class ContabilidadRepService {
     private readonly printerService: PrinterService,
     private readonly contabilidadService: ContabilidadService,
     private readonly sectionsService: SectionsService,
-  ) {}
+  ) { }
 
   async reportBalanceGeneral(dtoIn: HeaderParamsDto & EstadosFinancierosDto) {
     const result = await this.contabilidadService.getBalanceGeneral(dtoIn);
@@ -81,6 +83,14 @@ export class ContabilidadRepService {
     const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
 
     const docDefinition = estadoResultadosReport(data, header);
+    return this.printerService.createPdf(docDefinition);
+  }
+
+  async reportFlujosEfectivo(dtoIn: HeaderParamsDto & EstadosFinancierosDto) {
+    const result = await this.contabilidadService.getFlujosEfectivo(dtoIn);
+    const data = result as unknown as FlujoEfectivoData;
+    const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
+    const docDefinition = flujoEfectivoReport(data, header);
     return this.printerService.createPdf(docDefinition);
   }
 }

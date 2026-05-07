@@ -54,5 +54,11 @@ export class ContabilidadController {
     getPeriodoFecha(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoFechaDto) {
         return this.contabilidadService.getPeriodoFecha({ ...headersParams, ...dtoIn });
     }
+
+    @Get('getFlujosEfectivo')
+    @ApiOperation({ summary: 'Obtener estado de flujo de efectivo por período (NIC 7 — Método Indirecto)' })
+    getFlujosEfectivo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EstadosFinancierosDto) {
+        return this.contabilidadService.getFlujosEfectivo({ ...headersParams, ...dtoIn });
+    }
 }
 
