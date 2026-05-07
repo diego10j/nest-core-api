@@ -315,10 +315,6 @@ export const estadoResultadosReport = (
                   text: 'CONTADOR',
                   style: { fontSize: 9, bold: true, color: C.ink, alignment: 'center' },
                 },
-                {
-                  text: 'Registro Profesional: ___________',
-                  style: { fontSize: 8, color: C.muted, alignment: 'center', margin: [0, 2] },
-                },
               ],
             },
             {
@@ -333,10 +329,6 @@ export const estadoResultadosReport = (
                 {
                   text: 'GERENTE GENERAL',
                   style: { fontSize: 9, bold: true, color: C.ink, alignment: 'center' },
-                },
-                {
-                  text: 'Representante Legal',
-                  style: { fontSize: 8, color: C.muted, alignment: 'center', margin: [0, 2] },
                 },
               ],
             },
