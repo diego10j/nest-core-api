@@ -34,7 +34,7 @@ const styles: StyleDictionary = {
   tdValue: { fontSize: 9, color: C.ink, alignment: 'right' },
   sectionLabel: {
     bold: true, fontSize: 11, color: C.accent, fillColor: C.accentLight,
-    margin: [0, 6] as [number, number, number, number], alignment: 'left',
+    margin: [0, 6, 0, 6] as [number, number, number, number], alignment: 'left',
   },
   subtotalLabel: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left' },
   subtotalValue: { bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'right' },
@@ -43,11 +43,6 @@ const styles: StyleDictionary = {
   foot: { fontSize: 8, color: C.muted, alignment: 'center', margin: [0, 16, 0, 0] },
   sep: { fontSize: 2 },
 };
-
-const dividerBlock = (): Content => ({
-  canvas: [{ type: 'line', x1: 0, y1: 0, x2: 519, y2: 0, lineWidth: 0.5, lineColor: C.border }],
-  margin: [0, 4, 0, 4],
-});
 
 const sep2 = (): [Content, Content] => [
   { text: ' ', style: 'sep', colSpan: 2, border: [false, true, false, false], margin: [0, 3, 0, 5] },
@@ -268,7 +263,15 @@ const buildFlujoTable = (data: FlujoEfectivoData): Content => {
 
   conciliacionBody.push(data.cuentasEfectivo.length > 0 ? sep3() : sep2());
   const variacionReal = Math.round((data.efectivoFin - data.efectivoInicio) * 100) / 100;
-  conciliacionBody.push(subtotalRow('Variación real del efectivo', variacionReal));
+  conciliacionBody.push(
+    data.cuentasEfectivo.length > 0
+      ? [
+          { text: 'Variación real del efectivo', style: 'subtotalLabel', colSpan: 2 },
+          {},
+          { text: money(variacionReal), style: 'subtotalValue' },
+        ]
+      : subtotalRow('Variación real del efectivo', variacionReal),
+  );
 
   sections.push({
     table: {
