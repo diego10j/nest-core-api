@@ -3,11 +3,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
+    GetComprobantesDto,
     SaveComprobanteDto,
 } from './dto/comprobante-contabilidad.dto';
 import { ComprobanteContabilidadService } from './comprobante-contabilidad.service';
@@ -18,13 +18,13 @@ export class ComprobanteContabilidadController {
     constructor(private readonly service: ComprobanteContabilidadService) { }
 
     /**
-     * Lista todos los comprobantes contables con paginación y filtros.
+     * Lista todos los comprobantes contables en un rango de fechas con paginación y filtros.
      */
     @Get('getComprobantes')
-    @ApiOperation({ summary: 'Listar comprobantes contables' })
+    @ApiOperation({ summary: 'Listar comprobantes contables por rango de fechas' })
     getComprobantes(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Query() dtoIn: QueryOptionsDto,
+        @Query() dtoIn: GetComprobantesDto,
     ) {
         return this.service.getComprobantes({ ...headersParams, ...dtoIn });
     }

@@ -141,6 +141,16 @@ export class SaveComprobanteDto extends SaveDto {
     detalles?: DetalleComprobanteDataDto[];
 }
 
+export class GetComprobantesDto extends QueryOptionsDto {
+    @ApiProperty({ description: 'Fecha inicio del rango (YYYY-MM-DD)' })
+    @IsDateString()
+    fechaInicio: string;
+
+    @ApiProperty({ description: 'Fecha fin del rango (YYYY-MM-DD)' })
+    @IsDateString()
+    fechaFin: string;
+}
+
 export class GetComprobanteByIdDto extends QueryOptionsDto {
     @ApiProperty({ description: 'ID del comprobante' })
     @IsInt()

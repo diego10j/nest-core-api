@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { DeleteQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -11,6 +10,7 @@ import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
+    GetComprobantesDto,
     SaveComprobanteDto,
 } from './dto/comprobante-contabilidad.dto';
 
@@ -28,9 +28,9 @@ export class ComprobanteContabilidadService {
     ) { }
 
     /**
-     * Lista los comprobantes contables de la sucursal con paginación y filtros.
+     * Lista los comprobantes contables de la sucursal en un rango de fechas con paginación y filtros.
      */
-    async getComprobantes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getComprobantes(dtoIn: GetComprobantesDto & HeaderParamsDto) {
         try {
             const query = new SelectQuery(
                 `
@@ -60,12 +60,15 @@ export class ComprobanteContabilidadService {
                 LEFT  JOIN sis_usuario       usu ON cab.ide_usua  = usu.ide_usua
                 WHERE cab.ide_sucu = $1
                   AND cab.ide_empr = $2
+                  AND cab.fecha_trans_cnccc BETWEEN $3 AND $4
                 ORDER BY cab.fecha_trans_cnccc DESC, cab.ide_cnccc DESC
                 `,
                 dtoIn,
             );
             query.addIntParam(1, dtoIn.ideSucu);
             query.addIntParam(2, dtoIn.ideEmpr);
+            query.addStringParam(3, dtoIn.fechaInicio);
+            query.addStringParam(4, dtoIn.fechaFin);
             return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
