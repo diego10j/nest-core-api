@@ -13,10 +13,19 @@ import { FormasPagoController } from './formas-pago/formas-pago.controller';
 import { FormasPagoService } from './formas-pago/formas-pago.service';
 import { PlanCuentasController } from './plan-cuentas/plan-cuentas.controller';
 import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
+import { ComprobanteContabilidadController } from './comprobante-contabilidad/comprobante-contabilidad.controller';
+import { ComprobanteContabilidadService } from './comprobante-contabilidad/comprobante-contabilidad.service';
 
 @Module({
   imports: [],
-  controllers: [ContabilidadController, FormasPagoController, PlanCuentasController, ContabilidadBiController, FlujoEfectivoController],
+  controllers: [
+    ContabilidadController,
+    FormasPagoController,
+    PlanCuentasController,
+    ContabilidadBiController,
+    FlujoEfectivoController,
+    ComprobanteContabilidadController,
+  ],
   providers: [
     AuditService,
     CoreService,
@@ -25,6 +34,7 @@ import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
     PlanCuentasService,
     ContabilidadBiService,
     FlujoEfectivoService,
+    ComprobanteContabilidadService,
   ],
   exports: [ContabilidadService],
 })
