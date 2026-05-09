@@ -15,6 +15,7 @@ import { VentasBiController } from './data-bi/ventas-bi.controller';
 import { VentasBiService } from './data-bi/ventas-bi.service';
 import { FacturasController } from './facturas/facturas.controller';
 import { FacturasService } from './facturas/facturas.service';
+import { FacturasSaveService } from './facturas/facturas-save.service';
 import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
 
@@ -26,6 +27,7 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
     AuditService,
     CoreService,
     FacturasService,
+    FacturasSaveService,
     VentasBiService,
     PuntoVentaService,
     WhatsappService,
@@ -33,6 +35,6 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
     ComprobantesElecService,
     EmisorService,
   ],
-  exports: [FacturasService],
+  exports: [FacturasService, FacturasSaveService],
 })
 export class VentasModule { }

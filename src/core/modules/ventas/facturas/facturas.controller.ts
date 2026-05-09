@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { FacturasDto } from './dto/facturas.dto';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { FacturasService } from './facturas.service';
+import { FacturasSaveService } from './facturas-save.service';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { SaveFacturaDto } from './dto/save-factura.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
@@ -14,7 +16,10 @@ import { UtilidadVentasDto } from './dto/get-util-ventas';
 @ApiTags('Ventas-Facturas')
 @Controller('ventas/facturas')
 export class FacturasController {
-  constructor(private readonly service: FacturasService) { }
+  constructor(
+    private readonly service: FacturasService,
+    private readonly saveService: FacturasSaveService,
+  ) { }
 
   @Get('getPuntosEmisionFacturas')
   @ApiOperation({ summary: 'Obtener puntos de emisión habilitados para facturas' })
@@ -122,17 +127,22 @@ export class FacturasController {
     });
   }
 
-  @Post('saveFactura')
+  @Post('save')
   @ApiOperation({ summary: 'Crear o actualizar una factura' })
-  // @Auth()
-  saveFactura(
+  save(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Body() dtoIn: SaveFacturaDto,
   ) {
-    return this.service.saveFactura({
-      ...headersParams,
-      ...dtoIn,
-    });
+    return this.saveService.save({ ...headersParams, ...dtoIn });
+  }
+
+  @Delete('delete')
+  @ApiOperation({ summary: 'Eliminar una o varias facturas' })
+  deleteFacturas(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto,
+  ) {
+    return this.saveService.deleteFacturas({ ...headersParams, ...dtoIn });
   }
 
   @Get('getResumenDiarioFacturas')
