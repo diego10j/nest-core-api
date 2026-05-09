@@ -53,6 +53,19 @@ export class ComprobanteContabilidadService extends BaseService {
     }
 
     /**
+     * Retorna lista de tipos de comprobante para componentes Select/Autocomplete.
+     */
+    async getListDataTipoComprobante(dtoIn: HeaderParamsDto) {
+        return this.core.getListDataValues({
+            ...dtoIn,
+            module: 'con',
+            tableName: 'tipo_comproba',
+            primaryKey: 'ide_cntcm',
+            columnLabel: 'nombre_cntcm',
+        });
+    }
+
+    /**
      * Lista los comprobantes contables de la sucursal en un rango de fechas con paginación y filtros.
      */
     async getComprobantes(dtoIn: GetComprobantesDto & HeaderParamsDto) {

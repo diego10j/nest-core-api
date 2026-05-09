@@ -18,6 +18,14 @@ import { ComprobanteContabilidadService } from './comprobante-contabilidad.servi
 export class ComprobanteContabilidadController {
     constructor(private readonly service: ComprobanteContabilidadService) { }
 
+    @Get('getListDataTipoComprobante')
+    @ApiOperation({ summary: 'Lista tipos de comprobante para Select/Autocomplete' })
+    getListDataTipoComprobante(
+        @AppHeaders() headersParams: HeaderParamsDto,
+    ) {
+        return this.service.getListDataTipoComprobante(headersParams);
+    }
+
     /**
      * Lista todos los comprobantes contables en un rango de fechas con paginación y filtros.
      */
