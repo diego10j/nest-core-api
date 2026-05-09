@@ -299,11 +299,10 @@ export class FacturasSaveService extends BaseService {
         _cliente: any,
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ) {
-        const existe = await this.dataSource.createSingleQuery(
-            new SelectQuery(`SELECT ide_cccfa, ide_srcom FROM cxc_cabece_factura WHERE ide_cccfa = $1 AND ide_empr = $2`)
-                .addIntParam(1, ideCccfa)
-                .addIntParam(2, dtoIn.ideEmpr),
-        );
+        const qExiste = new SelectQuery(`SELECT ide_cccfa, ide_srcom FROM cxc_cabece_factura WHERE ide_cccfa = $1 AND ide_empr = $2`);
+        qExiste.addIntParam(1, ideCccfa);
+        qExiste.addIntParam(2, dtoIn.ideEmpr);
+        const existe = await this.dataSource.createSingleQuery(qExiste);
 
         if (!existe) {
             throw new BadRequestException(`La factura ide_cccfa=${ideCccfa} no existe`);

@@ -90,13 +90,13 @@ export class FacturasService extends BaseService {
             WHERE a.ide_ccdaf = $1
               AND a.ide_empr   = $2
         `);
-        qPto.addIntParam(1, dtoIn.ide_ccdaf);
+        qPto.addIntParam(1, dtoIn.data.ide_ccdaf);
         qPto.addIntParam(2, dtoIn.ideEmpr);
         const ptoEmision = await this.dataSource.createSingleQuery(qPto);
 
         if (!ptoEmision) {
             throw new BadRequestException(
-                `El punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf} no existe o no pertenece a la empresa.`,
+                `El punto de emisión ide_ccdaf=${dtoIn.data.ide_ccdaf} no existe o no pertenece a la empresa.`,
             );
         }
 
@@ -113,12 +113,12 @@ export class FacturasService extends BaseService {
             INNER JOIN gen_tipo_identifi t ON g.ide_getid = t.ide_getid
             WHERE g.ide_geper = $1
         `);
-        qCliente.addIntParam(1, dtoIn.ide_geper);
+        qCliente.addIntParam(1, dtoIn.data.ide_geper);
         const cliente = await this.dataSource.createSingleQuery(qCliente);
 
         if (!cliente) {
             throw new BadRequestException(
-                `El cliente ide_geper=${dtoIn.ide_geper} no existe.`,
+                `El cliente ide_geper=${dtoIn.data.ide_geper} no existe.`,
             );
         }
 
@@ -214,8 +214,8 @@ export class FacturasService extends BaseService {
         const { ptoEmision, cliente } = await this.validateSaveFactura(dtoIn);
 
         // ── 2. Configuración de tarifa IVA ───────────────────────────────────
-        const tarifaIva = isDefined(dtoIn.tarifa_iva_cccfa)
-            ? Number(dtoIn.tarifa_iva_cccfa)
+        const tarifaIva = isDefined(dtoIn.data.tarifa_iva_cccfa)
+            ? Number(dtoIn.data.tarifa_iva_cccfa)
             : 15; // tarifa por defecto Ecuador
 
         // ── 3. Calcular totales ──────────────────────────────────────────────
@@ -244,8 +244,8 @@ export class FacturasService extends BaseService {
                 login: dtoIn.login,
                 ide_sresc: ideSrEscCreado,
                 ide_cntdo: ideTipoDocFac,
-                ide_geper: dtoIn.ide_geper,
-                fecha_emisi: dtoIn.fecha_emisi_cccfa,
+                ide_geper: dtoIn.data.ide_geper,
+                fecha_emisi: dtoIn.data.fecha_emisi_cccfa,
                 estab: ptoEmision.establecimiento_ccdfa,
                 pto_emi: ptoEmision.pto_emision_ccdfa,
                 secuencial,
@@ -254,9 +254,9 @@ export class FacturasService extends BaseService {
                 iva: totales.valor_iva,
                 total: totales.total,
                 identificacion: cliente.identificac_geper,
-                forma_cobro: dtoIn.ide_cndfp1 ? String(dtoIn.ide_cndfp1) : '01',
-                dias_credito: dtoIn.dias_credito_cccfa ?? 0,
-                correo: dtoIn.correo_cccfa ?? cliente.correo_geper,
+                forma_cobro: dtoIn.data.ide_cndfp1 ? String(dtoIn.data.ide_cndfp1) : '01',
+                dias_credito: dtoIn.data.dias_credito_cccfa ?? 0,
+                correo: dtoIn.data.correo_cccfa ?? cliente.correo_geper,
             },
             ideSrcom,
         );
@@ -264,12 +264,12 @@ export class FacturasService extends BaseService {
         // ── 7. INSERT cxc_cabece_factura ─────────────────────────────────────
         const insertCabecera = new InsertQuery('cxc_cabece_factura', 'ide_cccfa', dtoIn);
         insertCabecera.values.set('ide_cccfa', ideCccfa);
-        insertCabecera.values.set('ide_ccdaf', dtoIn.ide_ccdaf);
-        insertCabecera.values.set('ide_geper', dtoIn.ide_geper);
+        insertCabecera.values.set('ide_ccdaf', dtoIn.data.ide_ccdaf);
+        insertCabecera.values.set('ide_geper', dtoIn.data.ide_geper);
         insertCabecera.values.set('ide_cntdo', ideTipoDocFac);
         insertCabecera.values.set('ide_ccefa', ideEstadoNormal);
         insertCabecera.values.set('ide_srcom', ideSrcom);
-        insertCabecera.values.set('fecha_emisi_cccfa', dtoIn.fecha_emisi_cccfa);
+        insertCabecera.values.set('fecha_emisi_cccfa', dtoIn.data.fecha_emisi_cccfa);
         insertCabecera.values.set('secuencial_cccfa', secuencial);
         insertCabecera.values.set('base_no_objeto_iva_cccfa', totales.base_no_objeto_iva);
         insertCabecera.values.set('base_tarifa0_cccfa', totales.base_tarifa0);
@@ -277,15 +277,15 @@ export class FacturasService extends BaseService {
         insertCabecera.values.set('valor_iva_cccfa', totales.valor_iva);
         insertCabecera.values.set('tarifa_iva_cccfa', tarifaIva);
         insertCabecera.values.set('total_cccfa', totales.total);
-        insertCabecera.values.set('dias_credito_cccfa', dtoIn.dias_credito_cccfa ?? 0);
+        insertCabecera.values.set('dias_credito_cccfa', dtoIn.data.dias_credito_cccfa ?? 0);
         insertCabecera.values.set('pagado_cccfa', false);
         insertCabecera.values.set('solo_guardar_cccfa', false);
-        if (isDefined(dtoIn.ide_vgven)) insertCabecera.values.set('ide_vgven', dtoIn.ide_vgven);
-        if (isDefined(dtoIn.ide_cndfp1)) insertCabecera.values.set('ide_cndfp1', dtoIn.ide_cndfp1);
-        if (isDefined(dtoIn.observacion_cccfa)) insertCabecera.values.set('observacion_cccfa', dtoIn.observacion_cccfa);
-        if (isDefined(dtoIn.direccion_cccfa)) insertCabecera.values.set('direccion_cccfa', dtoIn.direccion_cccfa);
-        if (isDefined(dtoIn.correo_cccfa)) insertCabecera.values.set('correo_cccfa', dtoIn.correo_cccfa);
-        if (isDefined(dtoIn.orden_compra_cccfa)) insertCabecera.values.set('orden_compra_cccfa', dtoIn.orden_compra_cccfa);
+        if (isDefined(dtoIn.data.ide_vgven)) insertCabecera.values.set('ide_vgven', dtoIn.data.ide_vgven);
+        if (isDefined(dtoIn.data.ide_cndfp1)) insertCabecera.values.set('ide_cndfp1', dtoIn.data.ide_cndfp1);
+        if (isDefined(dtoIn.data.observacion_cccfa)) insertCabecera.values.set('observacion_cccfa', dtoIn.data.observacion_cccfa);
+        if (isDefined(dtoIn.data.direccion_cccfa)) insertCabecera.values.set('direccion_cccfa', dtoIn.data.direccion_cccfa);
+        if (isDefined(dtoIn.data.correo_cccfa)) insertCabecera.values.set('correo_cccfa', dtoIn.data.correo_cccfa);
+        if (isDefined(dtoIn.data.orden_compra_cccfa)) insertCabecera.values.set('orden_compra_cccfa', dtoIn.data.orden_compra_cccfa);
 
         // ── 8. INSERT cxc_deta_factura × N ───────────────────────────────────
         const insertDetalles = dtoIn.detalles.map((det, idx) => {
@@ -306,7 +306,7 @@ export class FacturasService extends BaseService {
         // ── 9. UPDATE cxc_datos_fac → incrementar num_actual_ccdfa ──────────
         const updatePto = new UpdateQuery('cxc_datos_fac', 'ide_ccdaf', dtoIn);
         updatePto.values.set('num_actual_ccdfa', numActual);
-        updatePto.where = `ide_ccdaf = ${dtoIn.ide_ccdaf}`;
+        updatePto.where = `ide_ccdaf = ${dtoIn.data.ide_ccdaf}`;
 
         // ── 10. Ejecutar en transacción atómica ─────────────────────────────
         await this.dataSource.createListQuery([
