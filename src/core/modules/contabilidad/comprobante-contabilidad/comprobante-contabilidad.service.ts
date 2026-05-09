@@ -130,7 +130,13 @@ export class ComprobanteContabilidadService extends BaseService {
                     cab.ide_modu,
                     mod.nom_modu,
                     cab.ide_usua,
-                    usu.nom_usua
+                    usu.nom_usua,
+                    cab.usuario_ingre,
+                    cab.fecha_ingre,
+                    cab.hora_ingre,
+                    cab.usuario_actua,
+                    cab.fecha_actua,
+                    cab.hora_actua
                 FROM con_cab_comp_cont cab
                 INNER JOIN con_tipo_comproba tcm ON cab.ide_cntcm = tcm.ide_cntcm
                 INNER JOIN con_estado_compro  eco ON cab.ide_cneco = eco.ide_cneco
@@ -172,7 +178,13 @@ export class ComprobanteContabilidadService extends BaseService {
                     CASE WHEN det.ide_cnlap = 1 THEN det.valor_cndcc END AS debe,
                     CASE WHEN det.ide_cnlap = 0 THEN det.valor_cndcc END AS haber,
                     det.observacion_cndcc,
-                    det.referencia_cndcc
+                    det.referencia_cndcc,
+                    det.fecha_ingre,
+                    det.hora_ingre,
+                    det.usuario_ingre,
+                    det.fecha_actua,
+                    det.hora_actua,
+                    det.usuario_actua
                 FROM con_det_comp_cont det
                 LEFT JOIN con_det_plan_cuen dpc ON det.ide_cndpc = dpc.ide_cndpc
                 WHERE det.ide_cnccc = $1
