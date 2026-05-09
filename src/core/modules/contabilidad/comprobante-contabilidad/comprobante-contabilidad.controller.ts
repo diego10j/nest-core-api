@@ -8,6 +8,7 @@ import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
     GetComprobantesDto,
+    ReversarComprobanteDto,
     SaveComprobanteDto,
 } from './dto/comprobante-contabilidad.dto';
 import { ComprobanteContabilidadService } from './comprobante-contabilidad.service';
@@ -87,6 +88,18 @@ export class ComprobanteContabilidadController {
         @Body() dtoIn: AnularComprobanteDto,
     ) {
         return this.service.anular({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Reversa un comprobante contable: crea uno nuevo con DEBE/HABER invertidos.
+     */
+    @Post('reversar')
+    @ApiOperation({ summary: 'Reversar un comprobante contable' })
+    reversar(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ReversarComprobanteDto,
+    ) {
+        return this.service.reversar({ ...headersParams, ...dtoIn });
     }
 
     /**

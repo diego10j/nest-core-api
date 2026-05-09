@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 
+import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
@@ -11,6 +12,7 @@ import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
     GetComprobantesDto,
+    ReversarComprobanteDto,
     SaveComprobanteDto,
 } from './dto/comprobante-contabilidad.dto';
 
@@ -21,11 +23,34 @@ const PK_CAB = 'ide_cnccc';
 const PK_DET = 'ide_cndcc';
 
 @Injectable()
-export class ComprobanteContabilidadService {
+export class ComprobanteContabilidadService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
-    ) { }
+    ) {
+        super();
+        this.core
+            .getVariables([
+                'p_con_estado_comprobante_normal',
+                'p_con_lugar_debe',
+                'p_con_lugar_haber',
+            ])
+            .then((result) => {
+                this.variables = result;
+            });
+    }
+
+    private get lugarDebe(): string {
+        return this.variables.get('p_con_lugar_debe') || '1';
+    }
+
+    private get lugarHaber(): string {
+        return this.variables.get('p_con_lugar_haber') || '0';
+    }
+
+    private get estadoNormal(): string {
+        return this.variables.get('p_con_estado_comprobante_normal') || '1';
+    }
 
     /**
      * Lista los comprobantes contables de la sucursal en un rango de fechas con paginación y filtros.
@@ -183,17 +208,36 @@ export class ComprobanteContabilidadService {
 
     /**
      * Crea o actualiza un comprobante contable con cabecera y detalles.
-     * En UPDATE: actualiza la cabecera, elimina los detalles anteriores e inserta los nuevos.
-     * En INSERT: genera secuenciales y persiste cabecera + detalles.
+     * El número de comprobante se genera automáticamente al crear.
+     * Valida periodo activo, balance DEBE=HABER y resume detalles duplicados.
      */
     async save(dtoIn: SaveComprobanteDto & HeaderParamsDto) {
         try {
             if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
             if (!dtoIn.data.ide_cntcm) throw new BadRequestException('El tipo de comprobante (ide_cntcm) es requerido');
-            if (!dtoIn.data.fecha_trans_cnccc) throw new BadRequestException('La fecha de transacción es requerida');
 
             const { data, detalles } = dtoIn;
             const isUpdate = dtoIn.isUpdate && !!data.ide_cnccc;
+
+            // Aplicar valores por defecto en cabecera
+            if (!data.ide_cneco) {
+                data.ide_cneco = Number(this.estadoNormal);
+            }
+            if (!data.fecha_trans_cnccc) {
+                data.fecha_trans_cnccc = getCurrentDate();
+            }
+            data.ide_usua = dtoIn.ideUsua;
+
+            // Validar periodo contable activo
+            if (!(await this.isPeriodoValido(data.fecha_trans_cnccc, dtoIn.ideSucu))) {
+                throw new BadRequestException(`No existe un periodo contable activo que contenga la fecha ${data.fecha_trans_cnccc}`);
+            }
+
+            // Resumir detalles (agrupar cuentas duplicadas con mismo lugar y observación)
+            const detallesResumidos = this.resumirDetalles(detalles ?? []);
+
+            // Validar comprobante (detalles no vacío y balanceado)
+            await this.validarComprobante(detallesResumidos);
 
             if (isUpdate) {
                 const ideCnccc = data.ide_cnccc;
@@ -208,8 +252,8 @@ export class ComprobanteContabilidadService {
                 };
                 const listQuery: ObjectQueryDto[] = [updQuery];
 
-                if (detalles !== undefined) {
-                    await this.reemplazarDetalles(ideCnccc, detalles, dtoIn);
+                if (detallesResumidos.length > 0) {
+                    await this.reemplazarDetalles(ideCnccc, detallesResumidos, dtoIn);
                 }
 
                 return this.core.save({ ...dtoIn, listQuery, audit: true });
@@ -222,6 +266,9 @@ export class ComprobanteContabilidadService {
                 dtoIn.login,
             );
             data.ide_cnccc = ideCnccc;
+
+            const numero = await this.getSecuencial(data.fecha_trans_cnccc, String(data.ide_cntcm), dtoIn.ideSucu);
+            data.numero_cnccc = numero;
 
             const listQuery: ObjectQueryDto[] = [];
             listQuery.push({
@@ -243,11 +290,11 @@ export class ComprobanteContabilidadService {
 
             await this.core.save({ ...dtoIn, listQuery, audit: true });
 
-            if (detalles && detalles.length > 0) {
-                await this.insertarDetalles(ideCnccc, detalles, dtoIn);
+            if (detallesResumidos.length > 0) {
+                await this.insertarDetalles(ideCnccc, detallesResumidos, dtoIn);
             }
 
-            return { message: 'ok', rowCount: 1, ide_cnccc: ideCnccc };
+            return { message: 'ok', rowCount: 1, ide_cnccc: ideCnccc, numero_cnccc: numero };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
@@ -297,6 +344,62 @@ export class ComprobanteContabilidadService {
     }
 
     /**
+     * Reversa un comprobante contable: crea un nuevo comprobante con los mismos detalles
+     * pero con el DEBE y HABER invertidos.
+     */
+    async reversar(dtoIn: ReversarComprobanteDto & HeaderParamsDto) {
+        if (!dtoIn.ide_cnccc) {
+            throw new BadRequestException('El campo ide_cnccc es requerido para reversar');
+        }
+        try {
+            const cabecera = await this.getComprobanteCabeceraById({ ide_cnccc: dtoIn.ide_cnccc, ...dtoIn });
+            if (!cabecera) {
+                throw new BadRequestException(`No se encontró el comprobante ${dtoIn.ide_cnccc}`);
+            }
+
+            const detalles = await this.getComprobanteDetalleById({ ide_cnccc: dtoIn.ide_cnccc, ...dtoIn });
+
+            const observacion = dtoIn.observacion
+                ? `Reversa Comprobante Num: ${dtoIn.ide_cnccc} obs. (${dtoIn.observacion})`
+                : `Reversa Comprobante Num: ${dtoIn.ide_cnccc} obs. (${cabecera.observacion_cnccc || ''})`;
+
+            const fechaHoy = getCurrentDate();
+
+            const reversedDetalles = (detalles as any[]).map((det) => ({
+                ide_cnlap:
+                    String(det.ide_cnlap) === this.lugarDebe
+                        ? Number(this.lugarHaber)
+                        : Number(this.lugarDebe),
+                ide_cndpc: det.ide_cndpc,
+                valor_cndcc: det.valor_cndcc,
+                observacion_cndcc: det.observacion_cndcc ?? null,
+                referencia_cndcc: det.referencia_cndcc ?? null,
+            }));
+
+            const saveDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                isUpdate: false,
+                data: {
+                    ide_cntcm: cabecera.ide_cntcm,
+                    ide_cneco: Number(this.estadoNormal),
+                    ide_modu: cabecera.ide_modu ?? null,
+                    ide_geper: cabecera.ide_geper ?? null,
+                    fecha_trans_cnccc: fechaHoy,
+                    observacion_cnccc: observacion,
+                    automatico_cnccc: false,
+                },
+                detalles: reversedDetalles,
+            };
+
+            return this.save(saveDto);
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al reversar el comprobante: ${msg}`);
+        }
+    }
+
+    /**
      * Elimina uno o varios comprobantes contables.
      */
     async deleteComprobantes(dtoIn: { ide: number[] } & HeaderParamsDto) {
@@ -317,6 +420,120 @@ export class ComprobanteContabilidadService {
     }
 
     // ─── MÉTODOS PRIVADOS ──────────────────────────────────────────────────
+
+    /**
+     * Verifica que la fecha corresponda a un periodo contable activo y no cerrado.
+     */
+    private async isPeriodoValido(fecha: string, ideSucu: number): Promise<boolean> {
+        const query = new SelectQuery(`
+            SELECT ide_cnper FROM con_periodo
+            WHERE $1::date BETWEEN fecha_inicio_cnper AND fecha_fin_cnper
+              AND ide_sucu = $2
+              AND estado_cnper = true
+              AND cerrado_cnper = false
+            LIMIT 1
+        `);
+        query.setLazy(false);
+        query.addStringParam(1, fecha);
+        query.addIntParam(2, ideSucu);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return rows && rows.length > 0;
+    }
+
+    /**
+     * Valida que el comprobante tenga detalles y que el total DEBE sea igual al total HABER.
+     */
+    private async validarComprobante(
+        detalles: SaveComprobanteDto['detalles'],
+    ): Promise<void> {
+        if (!detalles || detalles.length === 0) {
+            throw new BadRequestException('El comprobante no tiene detalles de cuentas');
+        }
+
+        const lugarDebeVal = this.lugarDebe;
+        const lugarHaberVal = this.lugarHaber;
+        let totalDebe = 0;
+        let totalHaber = 0;
+
+        for (const det of detalles) {
+            if (String(det.ide_cnlap) === lugarDebeVal) {
+                totalDebe += Number(det.valor_cndcc);
+            } else if (String(det.ide_cnlap) === lugarHaberVal) {
+                totalHaber += Number(det.valor_cndcc);
+            }
+        }
+
+        const diferencia = Math.round((totalDebe - totalHaber) * 100) / 100;
+        if (diferencia !== 0) {
+            throw new BadRequestException(
+                `Comprobante no válido: diferencia de ${diferencia} entre debe (${totalDebe}) y haber (${totalHaber})`,
+            );
+        }
+    }
+
+    /**
+     * Resume los detalles agrupando y acumulando cuando existen varias líneas
+     * con la misma cuenta (ide_cndpc), mismo lugar (ide_cnlap) y misma observación.
+     */
+    private resumirDetalles(
+        detalles: SaveComprobanteDto['detalles'],
+    ): SaveComprobanteDto['detalles'] {
+        if (!detalles || detalles.length === 0) return [];
+
+        const mapa = new Map<string, (typeof detalles)[0]>();
+
+        for (const det of detalles) {
+            const clave = `${det.ide_cndpc}|${det.ide_cnlap}|${det.observacion_cndcc ?? ''}`;
+
+            if (mapa.has(clave)) {
+                const existente = mapa.get(clave)!;
+                existente.valor_cndcc = Number(
+                    (Number(existente.valor_cndcc) + Number(det.valor_cndcc)).toFixed(2),
+                );
+            } else {
+                mapa.set(clave, { ...det, valor_cndcc: Number(Number(det.valor_cndcc).toFixed(2)) });
+            }
+        }
+
+        return Array.from(mapa.values());
+    }
+
+    /**
+     * Genera el número secuencial del comprobante para la sucursal,
+     * a partir de la fecha y el tipo de comprobante.
+     * Formato: YYYYMM + IDE_SUCU + 8-digit secuencial
+     */
+    private async getSecuencial(
+        fechaTrans: string,
+        ideCntcm: string,
+        ideSucu: number,
+    ): Promise<string> {
+        const fecha = new Date(fechaTrans);
+        const ano = fecha.getFullYear().toString();
+        const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
+        const sucu = ideSucu.toString();
+        const prefijo = ano + mes + sucu;
+        const prefijoLen = prefijo.length;
+
+        const query = new SelectQuery(`
+            SELECT COALESCE(
+                MAX(CAST(SUBSTRING(numero_cnccc FROM ${prefijoLen + 1}) AS BIGINT)), 0
+            ) AS maximo
+            FROM con_cab_comp_cont
+            WHERE numero_cnccc LIKE '${prefijo}%'
+              AND ide_cntcm = $1
+              AND ide_sucu = $2
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, Number(ideCntcm));
+        query.addIntParam(2, ideSucu);
+
+        const rows = await this.dataSource.createSelectQuery(query);
+        const maximo = rows && rows.length > 0 ? Number(rows[0].maximo || 0) : 0;
+        const siguiente = (maximo + 1).toString().padStart(8, '0');
+
+        return prefijo + siguiente;
+    }
 
     private async reemplazarDetalles(
         ideCnccc: number,

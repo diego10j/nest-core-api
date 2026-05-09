@@ -170,3 +170,15 @@ export class AnularComprobanteDto {
     @Type(() => Number)
     ide_cneco?: number;
 }
+
+export class ReversarComprobanteDto {
+    @ApiProperty({ description: 'ID del comprobante a reversar' })
+    @IsInt()
+    @Type(() => Number)
+    ide_cnccc: number;
+
+    @ApiPropertyOptional({ description: 'Observación adicional para la reversa' })
+    @IsString()
+    @IsOptional()
+    observacion?: string;
+}
