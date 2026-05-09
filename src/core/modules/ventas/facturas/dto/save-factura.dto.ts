@@ -131,6 +131,36 @@ export class CabeceraFacturaDataDto {
     @IsOptional()
     @MaxLength(50)
     orden_compra_cccfa?: string;
+
+    // ── Campos internos (asignados por el servicio, no enviar desde el frontend) ──
+    @ApiPropertyOptional({ description: 'ID del tipo de documento (asignado automáticamente)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_cntdo?: number;
+
+    @ApiPropertyOptional({ description: 'ID del estado de la factura (asignado automáticamente)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_ccefa?: number;
+
+    @ApiPropertyOptional({ description: 'ID del usuario (asignado automáticamente)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_usua?: number;
+
+    @ApiPropertyOptional({ description: 'Secuencial de la factura (asignado automáticamente)' })
+    @IsString()
+    @IsOptional()
+    secuencial_cccfa?: string;
+
+    @ApiPropertyOptional({ description: 'ID del comprobante SRI (asignado automáticamente)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_srcom?: number;
 }
 
 // ── SAVE DTO ──
