@@ -248,11 +248,50 @@ export class ComprobanteContabilidadService extends BaseService {
             // Resumir detalles (agrupar cuentas duplicadas con mismo lugar y observación)
             const detallesResumidos = this.resumirDetalles(detalles ?? []);
 
+            // Validar que todos los detalles tengan una cuenta contable válida
+            for (const det of detallesResumidos) {
+                if (!det.ide_cndpc || det.ide_cndpc <= 0) {
+                    throw new BadRequestException(
+                        'Todos los detalles deben tener una cuenta contable válida (ide_cndpc)',
+                    );
+                }
+            }
+
             // Validar comprobante (detalles no vacío y balanceado)
             await this.validarComprobante(detallesResumidos);
 
             if (isUpdate) {
                 const ideCnccc = data.ide_cnccc;
+
+                // Verificar si la fecha cambió de mes/año respecto al número actual
+                const qNumero = new SelectQuery(`
+                    SELECT numero_cnccc, ide_cntcm FROM con_cab_comp_cont
+                    WHERE ide_cnccc = $1 AND ide_sucu = $2
+                `);
+                qNumero.setLazy(false);
+                qNumero.addIntParam(1, ideCnccc);
+                qNumero.addIntParam(2, dtoIn.ideSucu);
+                const rowsCab = await this.dataSource.createSelectQuery(qNumero);
+                const numeroActual: string = rowsCab?.[0]?.numero_cnccc ?? '';
+                const ideCntcmActual: number = rowsCab?.[0]?.ide_cntcm ?? data.ide_cntcm;
+
+                const fechaObj = new Date(data.fecha_trans_cnccc);
+                const prefijoNuevo =
+                    fechaObj.getFullYear().toString() +
+                    (fechaObj.getMonth() + 1).toString().padStart(2, '0') +
+                    dtoIn.ideSucu.toString();
+
+                if (!numeroActual.startsWith(prefijoNuevo)) {
+                    // La fecha cambió de mes/año → regenerar número
+                    data.numero_cnccc = await this.getSecuencial(
+                        data.fecha_trans_cnccc,
+                        String(data.ide_cntcm ?? ideCntcmActual),
+                        dtoIn.ideSucu,
+                    );
+                } else {
+                    // Mismo mes/año → conservar el número existente
+                    data.numero_cnccc = numeroActual;
+                }
 
                 const updQuery: ObjectQueryDto = {
                     operation: 'update',
@@ -554,12 +593,74 @@ export class ComprobanteContabilidadService extends BaseService {
     ) {
         if (!detalles || detalles.length === 0) return;
 
-        await this.dataSource.pool.query(
-            `DELETE FROM con_det_comp_cont WHERE ide_cnccc = $1`,
-            [ideCnccc],
-        );
+        // Obtener detalles actuales en BD
+        const queryExist = new SelectQuery(`
+            SELECT ide_cndcc, ide_cnlap, ide_cndpc, valor_cndcc,
+                   observacion_cndcc, referencia_cndcc
+            FROM con_det_comp_cont
+            WHERE ide_cnccc = $1
+        `);
+        queryExist.setLazy(false);
+        queryExist.addIntParam(1, ideCnccc);
+        const existentes = (await this.dataSource.createSelectQuery(queryExist)) as Array<{
+            ide_cndcc: number;
+            ide_cnlap: number;
+            ide_cndpc: number;
+            valor_cndcc: number;
+            observacion_cndcc: string | null;
+            referencia_cndcc: string | null;
+        }>;
 
-        await this.insertarDetalles(ideCnccc, detalles, dtoIn);
+        const idsEnviados = new Set<number>();
+        const nuevos: NonNullable<SaveComprobanteDto['detalles']> = [];
+
+        for (const det of detalles) {
+            if (det.ide_cndcc) {
+                idsEnviados.add(det.ide_cndcc);
+                const existente = existentes.find((e) => e.ide_cndcc === det.ide_cndcc);
+                const cambiado =
+                    !existente ||
+                    existente.ide_cnlap !== det.ide_cnlap ||
+                    existente.ide_cndpc !== det.ide_cndpc ||
+                    Number(existente.valor_cndcc) !== Number(det.valor_cndcc) ||
+                    (existente.observacion_cndcc ?? null) !== (det.observacion_cndcc ?? null) ||
+                    (existente.referencia_cndcc ?? null) !== (det.referencia_cndcc ?? null);
+
+                if (cambiado) {
+                    const updDet = new UpdateQuery(`${MODULE}_${TABLE_DET}`, PK_DET);
+                    updDet.values.set('ide_cnlap', det.ide_cnlap);
+                    updDet.values.set('ide_cndpc', det.ide_cndpc);
+                    updDet.values.set('valor_cndcc', det.valor_cndcc);
+                    updDet.values.set('observacion_cndcc', det.observacion_cndcc ?? null);
+                    updDet.values.set('referencia_cndcc', det.referencia_cndcc ?? null);
+                    updDet.values.set('usuario_actua', dtoIn.login);
+                    updDet.values.set('fecha_actua', getCurrentDate());
+                    updDet.values.set('hora_actua', getCurrentTime());
+                    updDet.where = `${PK_DET} = $1`;
+                    updDet.addIntParam(1, det.ide_cndcc);
+                    await this.dataSource.createQuery(updDet);
+                }
+            } else {
+                nuevos.push(det);
+            }
+        }
+
+        // Eliminar los que ya no están en la lista enviada
+        const idsEliminar = existentes
+            .map((e) => e.ide_cndcc)
+            .filter((id) => !idsEnviados.has(id));
+
+        if (idsEliminar.length > 0) {
+            const delDet = new DeleteQuery(`${MODULE}_${TABLE_DET}`);
+            delDet.where = `${PK_DET} = ANY ($1)`;
+            delDet.addParam(1, idsEliminar);
+            await this.dataSource.createQuery(delDet);
+        }
+
+        // Insertar los nuevos
+        if (nuevos.length > 0) {
+            await this.insertarDetalles(ideCnccc, nuevos, dtoIn);
+        }
     }
 
     private async insertarDetalles(
