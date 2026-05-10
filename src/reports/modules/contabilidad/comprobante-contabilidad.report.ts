@@ -11,6 +11,8 @@ const C = {
     muted: '#6B7280',
     accent: '#0f766e',
     accentLight: '#ccfbf1',
+    positive: '#065f46',
+    negative: '#991b1b',
     surface: '#f8fafc',
     surfaceAlt: '#f1f5f9',
     border: '#e2e8f0',
@@ -25,90 +27,84 @@ const money = (v: number): string => {
 };
 
 const styles: StyleDictionary = {
-    h1: { fontSize: 16, bold: true, color: C.ink, margin: [0, 4, 0, 2] },
-    h2: { fontSize: 12, bold: true, color: C.body, margin: [0, 14, 0, 6] },
-    range: { fontSize: 10, color: C.muted, margin: [0, 0, 0, 8] },
-    th: { bold: true, fontSize: 9, color: C.ink, fillColor: C.surfaceAlt, alignment: 'center' },
-    thLeft: { bold: true, fontSize: 9, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left' },
-    tdName: { fontSize: 9, color: C.ink, alignment: 'left' },
-    tdValue: { fontSize: 9, color: C.ink, alignment: 'right' },
-    tdCenter: { fontSize: 9, color: C.ink, alignment: 'center' },
-    tdMuted: { fontSize: 9, color: C.muted, alignment: 'left' },
-    sectionLabel: {
-        bold: true, fontSize: 11, color: C.accent, fillColor: C.accentLight,
-        margin: [0, 6, 0, 6], alignment: 'left',
-    },
+    h1: { fontSize: 14, bold: true, color: C.ink, margin: [0, 4, 0, 2] },
+    h2: { fontSize: 12, bold: true, color: C.body },
+    range: { fontSize: 9, color: C.muted, margin: [0, 0, 0, 6] },
+    th: { bold: true, fontSize: 8, color: C.ink, fillColor: C.surfaceAlt, alignment: 'center' },
+    thLeft: { bold: true, fontSize: 8, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left' },
+    tdName: { fontSize: 8, color: C.ink, alignment: 'left' },
+    tdValue: { fontSize: 8, color: C.ink, alignment: 'right' },
+    tdMuted: { fontSize: 8, color: C.muted, alignment: 'left' },
     sectionTotalLabel: {
-        bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left',
+        bold: true, fontSize: 9, color: C.ink, fillColor: C.surfaceAlt, alignment: 'left',
     },
     sectionTotal: {
-        bold: true, fontSize: 10, color: C.ink, fillColor: C.surfaceAlt, alignment: 'right',
+        bold: true, fontSize: 9, color: C.ink, fillColor: C.surfaceAlt, alignment: 'right',
     },
-    infoLabel: { fontSize: 8, color: C.muted, alignment: 'left', margin: [0, 2, 0, 0] },
-    infoValue: { fontSize: 9, color: C.ink, alignment: 'left' },
-    foot: { fontSize: 8, color: C.muted, alignment: 'center', margin: [0, 16, 0, 0] },
+    lbl: { fontSize: 7, color: C.muted, bold: true, margin: [0, 0, 0, 1] },
+    val: { fontSize: 8, color: C.ink },
+    foot: { fontSize: 7, color: C.muted, alignment: 'center', margin: [0, 12, 0, 0] },
 };
 
-const infoRow = (label: string, value: string, span?: boolean): [Content, Content] => [
-    { text: label, style: 'infoLabel' },
-    { text: value || '-', style: 'infoValue', colSpan: span ? 7 : 1 },
-];
+const labelValue = (label: string, value: string): Content => ({
+    stack: [
+        { text: label, style: 'lbl' },
+        { text: value || '-', style: 'val' },
+    ],
+});
+
+const labelValueSpan = (label: string, value: string, colSpan: number): Content => ({
+    stack: [
+        { text: label, style: 'lbl' },
+        { text: value || '-', style: 'val' },
+    ],
+    colSpan,
+});
 
 const buildCabeceraInfo = (data: ComprobanteContabilidadData): Content => {
     const c = data.cabecera;
     return {
         table: {
-            widths: ['12%', '21%', '12%', '21%', '12%', '22%'],
+            widths: ['12%', '24%', '12%', '16%', '14%', '22%'],
             body: [
+                // ── Fila 1: ID | Numero | Fecha | Tipo | Estado | Modulo ──
                 [
-                    infoRow('NUMERO', c.numero_cnccc || '-'),
-                    infoRow('FECHA', fDate(c.fecha_trans_cnccc)),
-                    { text: '', style: 'infoValue' },
-                    infoRow('TIPO', c.nombre_cntcm || '-'),
-                    { text: '', style: 'infoValue' },
-                    infoRow('ESTADO', c.nombre_cneco || '-'),
+                    labelValue('ID', String(c.ide_cnccc)),
+                    labelValue('NUMERO', c.numero_cnccc || '-'),
+                    labelValue('FECHA', fDate(c.fecha_trans_cnccc)),
+                    labelValue('TIPO', c.nombre_cntcm || '-'),
+                    labelValue('ESTADO', c.nombre_cneco || '-'),
+                    labelValue('MODULO', c.nom_modu || '-'),
                 ],
+                // ── Fila 2: Beneficiario (full width) ──
                 [
-                    { text: '', style: 'infoLabel' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
+                    labelValueSpan('BENEFICIARIO', c.nom_geper || '-', 6),
+                    {}, {}, {}, {}, {},
                 ],
+                // ── Fila 3: Usuario | Automatico ──
                 [
-                    infoRow('BENEFICIARIO', c.nom_geper || '-'),
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    infoRow('MODULO', c.nom_modu || '-'),
-                    { text: '', style: 'infoValue' },
-                    infoRow('USUARIO', c.nom_usua || '-'),
+                    labelValue('USUARIO', c.nom_usua || '-'),
+                    labelValue('AUTOMATICO', c.automatico_cnccc ? 'Si' : 'No'),
+                    { text: '', style: 'val' },
+                    { text: '', style: 'val' },
+                    { text: '', style: 'val' },
+                    { text: '', style: 'val' },
                 ],
+                // ── Fila 4: Observacion (full width) ──
                 [
-                    { text: '', style: 'infoLabel' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                ],
-                [
-                    infoRow('OBSERVACION', c.observacion_cnccc || ''),
-                    infoRow('AUTOMATICO', c.automatico_cnccc ? 'Si' : 'No'),
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
-                    { text: '', style: 'infoValue' },
+                    labelValueSpan('OBSERVACION', c.observacion_cnccc || '-', 6),
+                    {}, {}, {}, {}, {},
                 ],
             ],
         },
         layout: {
-            hLineWidth: () => 0,
+            hLineWidth: (i) => (i === 0 || i === 3 ? 0.5 : 0),
             vLineWidth: () => 0,
-            paddingTop: () => 2,
-            paddingBottom: () => 2,
-            paddingLeft: () => 4,
-            paddingRight: () => 4,
+            hLineColor: () => C.rule,
+            paddingTop: () => 4,
+            paddingBottom: () => 4,
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
         },
     };
 };
@@ -118,10 +114,9 @@ const buildDetalleTable = (data: ComprobanteContabilidadData): Content => {
 
     body.push([
         { text: 'CODIGO', style: 'thLeft' },
-        { text: 'CUENTA', style: 'thLeft' },
+        { text: 'CUENTA CONTABLE', style: 'thLeft' },
         { text: 'DEBE', style: 'th' },
         { text: 'HABER', style: 'th' },
-        { text: 'OBSERVACION', style: 'thLeft' },
     ]);
 
     let totalDebe = 0;
@@ -135,67 +130,99 @@ const buildDetalleTable = (data: ComprobanteContabilidadData): Content => {
 
         body.push([
             { text: det.codig_recur_cndpc || '', style: 'tdMuted' },
-            { text: det.nombre_cndpc || '', style: 'tdName' },
+            {
+                stack: [
+                    { text: det.nombre_cndpc || '', style: 'tdName' },
+                    ...(det.observacion_cndcc || det.referencia_cndcc
+                        ? [{ text: det.observacion_cndcc || det.referencia_cndcc || '', style: { ...styles.tdMuted, fontSize: 7 } }]
+                        : []),
+                ],
+            },
             { text: debe > 0 ? money(debe) : '', style: 'tdValue' },
             { text: haber > 0 ? money(haber) : '', style: 'tdValue' },
-            { text: det.observacion_cndcc || det.referencia_cndcc || '', style: 'tdMuted' },
         ]);
     }
 
     body.push([
-        { text: 'TOTALES', style: 'sectionTotalLabel', colSpan: 2 },
-        {},
+        { text: 'TOTALES', style: 'sectionTotalLabel' },
+        { text: '', style: 'sectionTotalLabel' },
         { text: money(totalDebe), style: 'sectionTotal' },
         { text: money(totalHaber), style: 'sectionTotal' },
-        { text: '', style: 'sectionTotalLabel' },
     ]);
 
+    const balanceado = Math.abs(totalDebe - totalHaber) < 0.01;
+
     return {
-        table: {
-            headerRows: 1,
-            widths: ['14%', '32%', '18%', '18%', '18%'],
-            body,
-        },
-        layout: {
-            hLineWidth: (i) => (i === 0 || i === 1 || i === body.length - 1 ? 0.7 : 0.3),
-            vLineWidth: () => 0,
-            hLineColor: () => C.border,
-            paddingTop: () => 4,
-            paddingBottom: () => 4,
-            paddingLeft: () => 6,
-            paddingRight: () => 6,
-        },
+        stack: [
+            {
+                table: {
+                    headerRows: 1,
+                    widths: ['15%', '43%', '21%', '21%'],
+                    body,
+                },
+                layout: {
+                    hLineWidth: (i) => (i === 0 || i === 1 || i === body.length - 1 ? 0.7 : i % 2 === 0 ? 0.2 : 0),
+                    vLineWidth: () => 0,
+                    hLineColor: () => C.border,
+                    paddingTop: () => 3,
+                    paddingBottom: () => 3,
+                    paddingLeft: () => 5,
+                    paddingRight: () => 5,
+                },
+            },
+            {
+                columns: [
+                    { text: '', width: '*' },
+                    {
+                        width: 'auto',
+                        stack: [
+                            {
+                                text: balanceado ? 'COMPROBANTE BALANCEADO' : 'COMPROBANTE DESBALANCEADO',
+                                style: {
+                                    fontSize: 7,
+                                    bold: true,
+                                    color: balanceado ? C.positive : C.negative,
+                                    alignment: 'right',
+                                },
+                                margin: [0, 6, 0, 0],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
     };
 };
 
-const firmas = (): Content => ({
+const firmas = (usuario: string | null): Content => ({
     stack: [
-        { text: '', margin: [0, 30] },
+        { text: '', margin: [0, 20] },
         {
             columns: [
                 {
                     width: '*',
                     stack: [
-                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [0, 0, 40, 6] },
-                        { text: 'ELABORADO POR', style: { fontSize: 9, bold: true, color: C.ink, alignment: 'center' } },
+                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 155, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [0, 0, 20, 6] },
+                        { text: 'ELABORADO POR', style: { fontSize: 8, bold: true, color: C.ink, alignment: 'center' } },
+                        { text: usuario || '', style: { fontSize: 7, color: C.muted, alignment: 'center', margin: [0, 4, 0, 0] } },
                     ],
                 },
                 {
                     width: '*',
                     stack: [
-                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [40, 0, 0, 6] },
-                        { text: 'REVISADO POR', style: { fontSize: 9, bold: true, color: C.ink, alignment: 'center' } },
+                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 155, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [20, 0, 20, 6] },
+                        { text: 'REVISADO POR', style: { fontSize: 8, bold: true, color: C.ink, alignment: 'center' } },
                     ],
                 },
                 {
                     width: '*',
                     stack: [
-                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [40, 0, 0, 6] },
-                        { text: 'APROBADO POR', style: { fontSize: 9, bold: true, color: C.ink, alignment: 'center' } },
+                        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 155, y2: 0, lineWidth: 0.7, lineColor: C.ink }], margin: [20, 0, 0, 6] },
+                        { text: 'APROBADO POR', style: { fontSize: 8, bold: true, color: C.ink, alignment: 'center' } },
                     ],
                 },
             ],
-            columnGap: 20,
+            columnGap: 0,
         },
     ],
     margin: [0, 10, 0, 0],
@@ -207,7 +234,7 @@ export const comprobanteContabilidadReport = (
 ): TDocumentDefinitions => ({
     styles,
     pageSize: 'A4',
-    pageMargins: [38, 20, 38, 30],
+    pageMargins: [40, 20, 40, 30],
     defaultStyle: { font: 'Inter' },
     footer: (cp, pc) => footerSection(cp, pc, true),
     content: [
@@ -216,27 +243,22 @@ export const comprobanteContabilidadReport = (
             text: 'COMPROBANTE DE CONTABILIDAD',
             style: 'h1',
             alignment: 'center',
-            margin: [0, 10, 0, 4],
+            margin: [0, 12, 0, 6],
         },
         {
-            text: `No. ${data.cabecera.numero_cnccc || '-'}  —  ${fDate(data.cabecera.fecha_trans_cnccc)}`,
-            style: 'range',
-            alignment: 'center',
-        },
-        {
-            canvas: [{ type: 'line', x1: 0, y1: 0, x2: 519, y2: 0, lineWidth: 0.5, lineColor: C.border }],
-            margin: [0, 6, 0, 10],
+            canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: C.accent }],
+            margin: [0, 4, 0, 8],
         },
         buildCabeceraInfo(data),
         {
-            canvas: [{ type: 'line', x1: 0, y1: 0, x2: 519, y2: 0, lineWidth: 0.5, lineColor: C.border }],
-            margin: [0, 12, 0, 10],
+            canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: C.accent }],
+            margin: [0, 2, 0, 10],
         },
         buildDetalleTable(data),
         {
-            text: `Generado el ${fDate(data.cabecera.fecha_siste_cnccc)} a las ${data.cabecera.hora_sistem_cnccc || '-'}`,
+            text: `Documento generado el ${fDate(data.cabecera.fecha_siste_cnccc)} a las ${data.cabecera.hora_sistem_cnccc || '-'}  •  ID: ${data.cabecera.ide_cnccc}`,
             style: 'foot',
         },
-        firmas(),
+        firmas(data.cabecera.nom_usua),
     ],
 });
