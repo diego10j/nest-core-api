@@ -56,32 +56,38 @@ export class FacturasSaveService extends BaseService {
 
     // ─── Getters de variables ────────────────────────────────────────────────
 
+    private getVar(name: string): number {
+        const val = this.variables.get(name);
+        if (!val) throw new InternalServerErrorException(`Variable del sistema '${name}' no configurada. Contacte al administrador.`);
+        return Number(val);
+    }
+
     private get ideEstadoNormal(): number {
-        return Number(this.variables.get('p_cxc_estado_factura_normal'));
+        return this.getVar('p_cxc_estado_factura_normal');
     }
 
     private get ideTipoDocFactura(): number {
-        return Number(this.variables.get('p_con_tipo_documento_factura'));
+        return this.getVar('p_con_tipo_documento_factura');
     }
 
     private get ideSriEstadoCreado(): number {
-        return Number(this.variables.get('p_sri_estado_comprobante_creado'));
+        return this.getVar('p_sri_estado_comprobante_creado');
     }
 
     private get ideTipoTransFactura(): number {
-        return Number(this.variables.get('p_cxc_tipo_trans_factura'));
+        return this.getVar('p_cxc_tipo_trans_factura');
     }
 
     private get ideTipoCompVenta(): number {
-        return Number(this.variables.get('p_inv_tipo_comp_venta'));
+        return this.getVar('p_inv_tipo_comp_venta');
     }
 
     private get ideBodegaActiva(): number {
-        return Number(this.variables.get('p_inv_bodega_activa'));
+        return this.getVar('p_inv_bodega_activa');
     }
 
     private get ideEstadoNormalInv(): number {
-        return Number(this.variables.get('p_inv_estado_normal'));
+        return this.getVar('p_inv_estado_normal');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
