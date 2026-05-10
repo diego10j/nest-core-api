@@ -43,7 +43,6 @@ export class FacturasSaveService extends BaseService {
             .getVariables([
                 'p_cxc_estado_factura_normal',      // estado normal factura (ide_ccefa)
                 'p_con_tipo_documento_factura',     // tipo documento factura (ide_cntdo)
-                'p_sri_estado_comprobante_creado',  // estado SRI al crear (ide_sresc)
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
                 'p_inv_tipo_comp_venta',            // tipo comprobante inventario venta (ide_intti)
                 'p_inv_bodega_activa',              // bodega por defecto para salidas (ide_inbod)
@@ -71,7 +70,7 @@ export class FacturasSaveService extends BaseService {
     }
 
     private get ideSriEstadoCreado(): number {
-        return this.getVar('p_sri_estado_comprobante_creado');
+        return 5;
     }
 
     private get ideTipoTransFactura(): number {
