@@ -934,7 +934,9 @@ export class FacturasService extends BaseService {
                 a.usuario_ingre,
                 a.fecha_ingre,
                 a.hora_ingre,
-                
+                a.direccion_cccfa,
+                a.orden_compra_cccfa,
+                a.correo_cccfa,
                 -- Datos del punto de emisión
                 c.serie_ccdaf,
                 c.establecimiento_ccdfa,
@@ -1882,7 +1884,7 @@ export class FacturasService extends BaseService {
      */
     async getProductoParaDetalle(dtoIn: GetProductoDetalleDto & HeaderParamsDto) {
         const ideEstNormal = Number(this.variables.get('p_inv_estado_normal'));
-        const ideBodega    = Number(this.variables.get('p_inv_bodega_activa'));
+        const ideBodega = Number(this.variables.get('p_inv_bodega_activa'));
 
         const qArticulo = new SelectQuery(`
             SELECT
@@ -1960,7 +1962,7 @@ export class FacturasService extends BaseService {
             rowCount: 1,
             row: {
                 ...articulo,
-                saldo_bodega:  saldoRow?.saldo    ?? 0,
+                saldo_bodega: saldoRow?.saldo ?? 0,
                 ultimo_precio: ultimoPrecioRow?.ultimo_precio ?? null,
             },
             message: 'ok',
@@ -2011,18 +2013,28 @@ export class FacturasService extends BaseService {
         `);
         qFormasPago.addIntParam(1, dtoIn.ideEmpr);
 
-        const [tiposGuia, camiones, formasPago] = await Promise.all([
+        const qVendedores = new SelectQuery(`
+            SELECT ide_vgven AS value, nombre_vgven AS label
+FROM ven_vendedor
+WHERE activo_vgven = TRUE AND ide_empr = $1
+ORDER BY nombre_vgven
+        `);
+        qVendedores.addIntParam(1, dtoIn.ideEmpr);
+
+        const [tiposGuia, camiones, formasPago, vendedores] = await Promise.all([
             this.dataSource.createSelectQuery(qTiposGuia),
             this.dataSource.createSelectQuery(qCamiones),
             this.dataSource.createSelectQuery(qFormasPago),
+            this.dataSource.createSelectQuery(qVendedores),
         ]);
 
         return {
             rowCount: 1,
             row: {
-                tipos_guia:  tiposGuia,
+                tipos_guia: tiposGuia,
                 camiones,
                 formas_pago: formasPago,
+                vendedores,
             },
             message: 'ok',
         };

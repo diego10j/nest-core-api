@@ -209,6 +209,8 @@ export class CabeceraFacturaDataDto {
     secuencial_cccfa?: string;
     /** @internal Asignado automáticamente por el servicio */
     ide_srcom?: number;
+
+    num_proforma_cccfa?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
