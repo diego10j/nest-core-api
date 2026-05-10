@@ -44,7 +44,6 @@ export class FacturasSaveService extends BaseService {
                 'p_cxc_estado_factura_normal',      // estado normal factura (ide_ccefa)
                 'p_con_tipo_documento_factura',     // tipo documento factura (ide_cntdo)
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
-                'p_inv_bodega_activa',              // bodega por defecto para salidas (ide_inbod)
                 'p_inv_estado_normal',              // estado normal de comprobante inventario (ide_inepi)
             ])
             .then((result) => {
@@ -76,14 +75,21 @@ export class FacturasSaveService extends BaseService {
         return this.getVar('p_cxc_tipo_trans_factura');
     }
 
-
-
-    private get ideBodegaActiva(): number {
-        return this.getVar('p_inv_bodega_activa');
-    }
-
     private get ideEstadoNormalInv(): number {
         return this.getVar('p_inv_estado_normal');
+    }
+
+    private async getBodegaSucursal(ideSucu: number): Promise<number> {
+        const q = new SelectQuery(`
+            SELECT ide_inbod FROM inv_bodega
+            WHERE ide_sucu = $1 AND activa_inbod = true
+            LIMIT 1
+        `);
+        q.addIntParam(1, ideSucu);
+        q.setLazy(false);
+        const row = await this.dataSource.createSingleQuery(q);
+        if (!row) throw new BadRequestException(`No existe bodega activa para la sucursal ${ideSucu}`);
+        return Number(row.ide_inbod);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -268,10 +274,11 @@ export class FacturasSaveService extends BaseService {
         );
 
         // inv_cab/det_comp_inve (comprobante de salida de inventario)
+        const ideBodega = tieneKardex ? await this.getBodegaSucursal(dtoIn.ideSucu) : 0;
         const kardexQueries = tieneKardex && ideIncci !== null && baseIdeIndci !== null
             ? this.buildKardexQueries(
                 ideIncci, baseIdeIndci, ideCccfa, secuencial,
-                data, cliente, detallesConKardex, dtoIn,
+                data, cliente, detallesConKardex, dtoIn, ideBodega,
             )
             : [];
 
@@ -553,6 +560,7 @@ export class FacturasSaveService extends BaseService {
         cliente: any,
         detallesKardex: DetaFacturaDto[],
         dtoIn: SaveFacturaDto & HeaderParamsDto,
+        ideBodega: number,
     ): InsertQuery[] {
         const queries: InsertQuery[] = [];
 
@@ -561,7 +569,7 @@ export class FacturasSaveService extends BaseService {
         qCab.values.set('ide_incci', ideIncci);
         qCab.values.set('ide_geper', cliente.ide_geper);
         qCab.values.set('ide_intti', 29);
-        qCab.values.set('ide_inbod', 0);
+        qCab.values.set('ide_inbod', ideBodega);
         qCab.values.set('ide_inepi', this.ideEstadoNormalInv);
         qCab.values.set('ide_usua', dtoIn.ideUsua);
         qCab.values.set('numero_incci', secuencial.slice(-10));  // max 10 chars
