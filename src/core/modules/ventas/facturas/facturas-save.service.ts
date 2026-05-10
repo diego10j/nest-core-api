@@ -122,6 +122,10 @@ export class FacturasSaveService extends BaseService {
             const { data, detalles } = dtoIn;
             const isUpdate = dtoIn.isUpdate && !!data.ide_cccfa;
 
+            // Sanitizar fecha: tomar solo la parte YYYY-MM-DD
+            data.fecha_emisi_cccfa = (data.fecha_emisi_cccfa || '').split('T')[0];
+            if (!data.fecha_emisi_cccfa) throw new BadRequestException('La fecha de emisión es requerida');
+
             const { ptoEmision, cliente } = await this.validarFactura(dtoIn);
 
             const tarifaIva = isDefined(data.tarifa_iva_cccfa) ? Number(data.tarifa_iva_cccfa) : 15;
@@ -618,15 +622,20 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const guia = dtoIn.guia!;
+        // Sanitizar fechas de guía: solo YYYY-MM-DD
+        const fechaIniTrasla = (guia.fecha_ini_trasla_ccgui || '').split('T')[0];
+        const fechaFinTrasla = guia.fecha_fin_trasla_ccgui
+            ? guia.fecha_fin_trasla_ccgui.split('T')[0]
+            : fechaIniTrasla;
         const q = new InsertQuery(TABLE_GUIA, PK_GUIA, dtoIn);
         q.values.set('ide_ccgui', ideGuia);
         q.values.set('ide_cccfa', ideCccfa);
         q.values.set('ide_geper', cliente.ide_geper);
         q.values.set('ide_cctgi', guia.ide_cctgi);
         q.values.set('ide_ccdaf', data.ide_ccdaf);
-        q.values.set('fecha_emision_ccgui', data.fecha_emisi_cccfa);
-        q.values.set('fecha_ini_trasla_ccgui', guia.fecha_ini_trasla_ccgui);
-        q.values.set('fecha_fin_trasla_ccgui', guia.fecha_fin_trasla_ccgui ?? guia.fecha_ini_trasla_ccgui);
+        q.values.set('fecha_emision_ccgui',    data.fecha_emisi_cccfa);
+        q.values.set('fecha_ini_trasla_ccgui', fechaIniTrasla);
+        q.values.set('fecha_fin_trasla_ccgui', fechaFinTrasla);
         q.values.set('punto_partida_ccgui', guia.punto_partida_ccgui);
         q.values.set('punto_llegada_ccgui', guia.punto_llegada_ccgui);
         q.values.set('destinatario_ccgui', guia.destinatario_ccgui ?? cliente.nom_geper);
