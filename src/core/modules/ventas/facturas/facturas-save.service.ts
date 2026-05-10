@@ -202,32 +202,15 @@ export class FacturasSaveService extends BaseService {
         const tieneKardex       = detallesConKardex.length > 0;
         const tieneGuia         = !!dtoIn.guia;
 
-        // ── 2. Obtener todos los secuenciales en una sola ronda paralela ──────
-        const [
-            ideSrcom,
-            ideCccfa,
-            baseIdeCcdfa,
-            ideCcctr,
-            ideCcdtr,
-            ideIncci,
-            baseIdeIndci,
-            ideGuia,
-        ] = await Promise.all([
-            this.sriFacturaService.getSecuencialSriComprobante(dtoIn.login),
-            this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login),
-            this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login),
-            this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login),
-            this.dataSource.getSeqTable(TABLE_TRN_DET, PK_TRN_DET, 1, dtoIn.login),
-            tieneKardex
-                ? this.dataSource.getSeqTable(TABLE_INV_CAB, PK_INV_CAB, 1, dtoIn.login)
-                : Promise.resolve<null>(null),
-            tieneKardex
-                ? this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, detallesConKardex.length, dtoIn.login)
-                : Promise.resolve<null>(null),
-            tieneGuia
-                ? this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login)
-                : Promise.resolve<null>(null),
-        ]);
+        // ── 2. Obtener todos los secuenciales secuencialmente (evita race condition en sis_bloqueo)
+        const ideSrcom      = await this.sriFacturaService.getSecuencialSriComprobante(dtoIn.login);
+        const ideCccfa      = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login);
+        const baseIdeCcdfa  = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login);
+        const ideCcctr      = await this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login);
+        const ideCcdtr      = await this.dataSource.getSeqTable(TABLE_TRN_DET, PK_TRN_DET, 1, dtoIn.login);
+        const ideIncci      = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_CAB, PK_INV_CAB, 1, dtoIn.login) : null;
+        const baseIdeIndci  = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, detallesConKardex.length, dtoIn.login) : null;
+        const ideGuia       = tieneGuia   ? await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login) : null;
 
         data.ide_cccfa = ideCccfa;
         data.ide_srcom = ideSrcom;
