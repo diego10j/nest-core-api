@@ -13,6 +13,7 @@ import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { SaveFacturaDto, DetaFacturaDto } from './dto/save-factura.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
+import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { isDefined } from 'src/util/helpers/common-util';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 
@@ -30,6 +31,8 @@ export class FacturasService extends BaseService {
                 'p_cxc_estado_factura_normal',    // 0 estado normal de factura
                 'p_con_tipo_documento_factura',   // 1 tipo documento factura
                 'p_sri_estado_comprobante_creado', // 2 estado SRI al crear comprobante
+                'p_inv_estado_normal',             // 3 estado normal de comprobante inventario
+                'p_inv_bodega_activa',             // 4 bodega activa por defecto
             ])
             .then((result) => {
                 this.variables = result;
@@ -1178,10 +1181,10 @@ export class FacturasService extends BaseService {
             FROM
             cxc_guia g
             INNER JOIN cxc_tipo_guia t ON g.ide_cctgi = t.ide_cctgi
-            INNER JOIN gen_camion c ON g.placa_gecam = c.placa_gecam
-            INNER JOIN gen_persona p ON g.gen_ide_geper = p.ide_geper
-            INNER JOIN sri_comprobante d ON g.ide_srcom = d.ide_srcom
-            INNER JOIN sri_estado_comprobante e ON d.ide_sresc = e.ide_sresc
+            LEFT  JOIN gen_camion c ON g.placa_gecam = c.placa_gecam
+            LEFT  JOIN gen_persona p ON g.gen_ide_geper = p.ide_geper
+            LEFT  JOIN sri_comprobante d ON g.ide_srcom = d.ide_srcom
+            LEFT  JOIN sri_estado_comprobante e ON d.ide_sresc = e.ide_sresc
             INNER JOIN cxc_datos_fac cdf ON g.ide_ccdaf = cdf.ide_ccdaf
             WHERE
             g.ide_cccfa = $1
@@ -1790,6 +1793,236 @@ export class FacturasService extends BaseService {
                     top_articulos: topArticulos,
                 },
                 facturas,
+            },
+            message: 'ok',
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DATOS INICIALES PARA FORMULARIO DE FACTURA
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Retorna en una sola llamada todo lo necesario para abrir el formulario
+     * de nueva factura: datos del punto de emisión con el siguiente secuencial,
+     * tarifa IVA vigente y formas de pago activas de la empresa.
+     */
+    async getFormularioNuevaFactura(dtoIn: GetInitDataDto & HeaderParamsDto) {
+        const qPto = new SelectQuery(`
+            SELECT
+                ide_ccdaf,
+                establecimiento_ccdfa,
+                pto_emision_ccdfa,
+                serie_ccdaf,
+                num_actual_ccdfa,
+                ide_sucu
+            FROM cxc_datos_fac
+            WHERE ide_ccdaf = $1
+              AND ide_empr   = $2
+        `);
+        qPto.addIntParam(1, dtoIn.ide_ccdaf);
+        qPto.addIntParam(2, dtoIn.ideEmpr);
+
+        const qFormasPago = new SelectQuery(`
+            SELECT
+                a.ide_cndfp  AS value,
+                a.nombre_cndfp AS label,
+                a.dias_cndfp,
+                COALESCE(b.icono_cncfp, a.icono_cndfp) AS icono
+            FROM con_deta_forma_pago a
+            INNER JOIN con_cabece_forma_pago b ON a.ide_cncfp = b.ide_cncfp
+            WHERE a.activo_cndfp = TRUE
+              AND b.activo_cncfp = TRUE
+              AND b.ide_empr     = $1
+            ORDER BY b.nombre_cncfp, a.nombre_cndfp
+        `);
+        qFormasPago.addIntParam(1, dtoIn.ideEmpr);
+
+        const [pto, formasPago] = await Promise.all([
+            this.dataSource.createSingleQuery(qPto),
+            this.dataSource.createSelectQuery(qFormasPago),
+        ]);
+
+        if (!pto) {
+            throw new BadRequestException(
+                `Punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf} no encontrado.`,
+            );
+        }
+
+        const siguiente = Number(pto.num_actual_ccdfa) + 1;
+        const secuencial = String(siguiente).padStart(9, '0');
+
+        return {
+            rowCount: 1,
+            row: {
+                punto_emision: {
+                    ide_ccdaf: pto.ide_ccdaf,
+                    establecimiento: pto.establecimiento_ccdfa,
+                    pto_emision: pto.pto_emision_ccdfa,
+                    serie: pto.serie_ccdaf,
+                    num_actual: pto.num_actual_ccdfa,
+                    secuencial,
+                    numero_completo: `${pto.establecimiento_ccdfa}-${pto.pto_emision_ccdfa}-${secuencial}`,
+                },
+                tarifa_iva: 15,
+                formas_pago: formasPago,
+            },
+            message: 'ok',
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DATOS DE PRODUCTO PARA LÍNEA DE DETALLE
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Retorna la información de un artículo al seleccionarlo en el detalle
+     * de la factura: datos básicos, stock en bodega activa y, si se envía
+     * ide_geper, el último precio de venta facturado a ese cliente.
+     */
+    async getProductoParaDetalle(dtoIn: GetProductoDetalleDto & HeaderParamsDto) {
+        const ideEstNormal = Number(this.variables.get('p_inv_estado_normal'));
+        const ideBodega    = Number(this.variables.get('p_inv_bodega_activa'));
+
+        const qArticulo = new SelectQuery(`
+            SELECT
+                a.ide_inarti,
+                a.codigo_inarti,
+                a.nombre_inarti,
+                a.iva_inarti,
+                a.hace_kardex_inarti,
+                a.decim_stock_inarti,
+                a.activo_inarti,
+                u.ide_inuni,
+                u.siglas_inuni,
+                u.nombre_inuni
+            FROM inv_articulo a
+            LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+            WHERE a.ide_inarti = $1
+        `);
+        qArticulo.addIntParam(1, dtoIn.ide_inarti);
+
+        const qSaldo = new SelectQuery(`
+            SELECT
+                f_decimales(
+                    SUM(d.cantidad_indci * t.signo_intci),
+                    a.decim_stock_inarti
+                )::numeric AS saldo
+            FROM inv_det_comp_inve d
+            INNER JOIN inv_cab_comp_inve  c ON d.ide_incci  = c.ide_incci
+            INNER JOIN inv_tip_tran_inve  t ON c.ide_intti  = t.ide_intti
+            INNER JOIN inv_articulo       a ON d.ide_inarti = a.ide_inarti
+            WHERE d.ide_inarti = $1
+              AND c.ide_inbod   = $2
+              AND c.ide_inepi   = $3
+              AND c.ide_empr    = $4
+        `);
+        qSaldo.addIntParam(1, dtoIn.ide_inarti);
+        qSaldo.addIntParam(2, ideBodega);
+        qSaldo.addIntParam(3, ideEstNormal);
+        qSaldo.addIntParam(4, dtoIn.ideEmpr);
+
+        const qUltimoPrecio = dtoIn.ide_geper
+            ? new SelectQuery(`
+                SELECT d.precio_ccdfa AS ultimo_precio
+                FROM cxc_deta_factura   d
+                INNER JOIN cxc_cabece_factura b ON d.ide_cccfa = b.ide_cccfa
+                WHERE b.ide_geper  = $1
+                  AND d.ide_inarti = $2
+                  AND b.ide_empr   = $3
+                  AND b.ide_ccefa  = ${Number(this.variables.get('p_cxc_estado_factura_normal'))}
+                ORDER BY b.fecha_emisi_cccfa DESC, b.ide_cccfa DESC
+                LIMIT 1
+            `)
+            : null;
+
+        if (qUltimoPrecio) {
+            qUltimoPrecio.addIntParam(1, dtoIn.ide_geper!);
+            qUltimoPrecio.addIntParam(2, dtoIn.ide_inarti);
+            qUltimoPrecio.addIntParam(3, dtoIn.ideEmpr);
+        }
+
+        const [articulo, saldoRow, ultimoPrecioRow] = await Promise.all([
+            this.dataSource.createSingleQuery(qArticulo),
+            this.dataSource.createSingleQuery(qSaldo),
+            qUltimoPrecio
+                ? this.dataSource.createSingleQuery(qUltimoPrecio)
+                : Promise.resolve<null>(null),
+        ]);
+
+        if (!articulo) {
+            throw new BadRequestException(
+                `Artículo ide_inarti=${dtoIn.ide_inarti} no encontrado.`,
+            );
+        }
+
+        return {
+            rowCount: 1,
+            row: {
+                ...articulo,
+                saldo_bodega:  saldoRow?.saldo    ?? 0,
+                ultimo_precio: ultimoPrecioRow?.ultimo_precio ?? null,
+            },
+            message: 'ok',
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CATÁLOGOS PARA FORMULARIO DE GUÍA DE REMISIÓN
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Catálogos necesarios para el formulario de guía de remisión:
+     * tipos de guía, camiones y formas de pago activas.
+     * Se ejecutan en paralelo para minimizar el tiempo de respuesta.
+     */
+    async getCatalogos(dtoIn: HeaderParamsDto) {
+        const qTiposGuia = new SelectQuery(`
+            SELECT
+                ide_cctgi AS value,
+                nombre_cctgi AS label
+            FROM cxc_tipo_guia
+            ORDER BY nombre_cctgi
+        `);
+
+        const qCamiones = new SelectQuery(`
+            SELECT
+                placa_gecam    AS value,
+                placa_gecam    AS placa,
+                descripcion_gecam AS label
+            FROM gen_camion
+            WHERE ide_empr = $1
+            ORDER BY descripcion_gecam
+        `);
+        qCamiones.addIntParam(1, dtoIn.ideEmpr);
+
+        const qFormasPago = new SelectQuery(`
+            SELECT
+                a.ide_cndfp    AS value,
+                a.nombre_cndfp AS label,
+                a.dias_cndfp,
+                COALESCE(b.icono_cncfp, a.icono_cndfp) AS icono
+            FROM con_deta_forma_pago a
+            INNER JOIN con_cabece_forma_pago b ON a.ide_cncfp = b.ide_cncfp
+            WHERE a.activo_cndfp = TRUE
+              AND b.activo_cncfp = TRUE
+              AND b.ide_empr     = $1
+            ORDER BY b.nombre_cncfp, a.nombre_cndfp
+        `);
+        qFormasPago.addIntParam(1, dtoIn.ideEmpr);
+
+        const [tiposGuia, camiones, formasPago] = await Promise.all([
+            this.dataSource.createSelectQuery(qTiposGuia),
+            this.dataSource.createSelectQuery(qCamiones),
+            this.dataSource.createSelectQuery(qFormasPago),
+        ]);
+
+        return {
+            rowCount: 1,
+            row: {
+                tipos_guia:  tiposGuia,
+                camiones,
+                formas_pago: formasPago,
             },
             message: 'ok',
         };

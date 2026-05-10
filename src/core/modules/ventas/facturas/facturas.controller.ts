@@ -11,6 +11,7 @@ import { FacturasSaveService } from './facturas-save.service';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { SaveFacturaDto } from './dto/save-factura.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
+import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 
 @ApiTags('Ventas-Facturas')
@@ -156,6 +157,39 @@ export class FacturasController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Get('getFormularioNuevaFactura')
+  @ApiOperation({ summary: 'Datos iniciales para el formulario de nueva factura (punto de emisión, IVA y formas de pago)' })
+  // @Auth()
+  getFormularioNuevaFactura(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetInitDataDto,
+  ) {
+    return this.service.getFormularioNuevaFactura({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getProductoParaDetalle')
+  @ApiOperation({ summary: 'Datos de un artículo para agregar al detalle de la factura (info, stock y último precio al cliente)' })
+  // @Auth()
+  getProductoParaDetalle(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetProductoDetalleDto,
+  ) {
+    return this.service.getProductoParaDetalle({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getCatalogos')
+  @ApiOperation({ summary: 'Catálogos para formulario de guía de remisión (tipos de guía, camiones y formas de pago)' })
+  // @Auth()
+  getCatalogos(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.service.getCatalogos(headersParams);
   }
 
 }
