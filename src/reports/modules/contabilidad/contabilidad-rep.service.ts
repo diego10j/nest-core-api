@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
+import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/comprobante-contabilidad/comprobante-contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { balanceGeneralReport } from './balance-general.report';
+import { comprobanteContabilidadReport } from './comprobante-contabilidad.report';
 import { estadoResultadosReport } from './estado-resultados.report';
 import { flujoEfectivoReport } from './flujo-efectivo.report';
+import { ComprobanteContabilidadData } from './interfaces/comprobante-contabilidad-rep';
 import { FlujoEfectivoData } from './interfaces/flujo-efectivo-rep';
 
 @Injectable()
@@ -15,6 +19,7 @@ export class ContabilidadRepService {
   constructor(
     private readonly printerService: PrinterService,
     private readonly contabilidadService: ContabilidadService,
+    private readonly comprobanteContabilidadService: ComprobanteContabilidadService,
     private readonly sectionsService: SectionsService,
   ) { }
 
@@ -120,6 +125,14 @@ export class ContabilidadRepService {
     const data = result as unknown as FlujoEfectivoData;
     const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
     const docDefinition = flujoEfectivoReport(data, header);
+    return this.printerService.createPdf(docDefinition);
+  }
+
+  async reportComprobante(dtoIn: HeaderParamsDto & GetComprobanteByIdDto) {
+    const result = await this.comprobanteContabilidadService.getComprobanteById(dtoIn);
+    const data = result as unknown as ComprobanteContabilidadData;
+    const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
+    const docDefinition = comprobanteContabilidadReport(data, header);
     return this.printerService.createPdf(docDefinition);
   }
 }

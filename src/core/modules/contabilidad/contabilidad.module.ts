@@ -36,6 +36,6 @@ import { ComprobanteContabilidadService } from './comprobante-contabilidad/compr
     FlujoEfectivoService,
     ComprobanteContabilidadService,
   ],
-  exports: [ContabilidadService],
+  exports: [ContabilidadService, ComprobanteContabilidadService],
 })
 export class ContabilidadModule { }

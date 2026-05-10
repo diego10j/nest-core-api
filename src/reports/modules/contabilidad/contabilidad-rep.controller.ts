@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 
 import { ContabilidadRepService } from './contabilidad-rep.service';
@@ -59,6 +60,23 @@ export class ContabilidadRepController {
     });
     response.setHeader('Content-Type', 'application/pdf');
     pdfDoc.info.Title = 'Estado de Flujo de Efectivo';
+    pdfDoc.pipe(response);
+    pdfDoc.end();
+  }
+
+  @Get('reportComprobante')
+  @ApiOperation({ summary: 'Generar reporte PDF del Comprobante de Contabilidad' })
+  async reportComprobante(
+    @Res() response: Response,
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetComprobanteByIdDto,
+  ) {
+    const pdfDoc = await this.contabilidadRepService.reportComprobante({
+      ...headersParams,
+      ...dtoIn,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    pdfDoc.info.Title = 'Comprobante de Contabilidad';
     pdfDoc.pipe(response);
     pdfDoc.end();
   }
