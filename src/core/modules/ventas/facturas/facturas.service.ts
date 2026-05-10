@@ -937,6 +937,7 @@ export class FacturasService extends BaseService {
                 a.direccion_cccfa,
                 a.orden_compra_cccfa,
                 a.correo_cccfa,
+                a.num_proforma_cccfa,
                 -- Datos del punto de emisión
                 c.serie_ccdaf,
                 c.establecimiento_ccdfa,

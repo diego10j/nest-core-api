@@ -427,12 +427,13 @@ export class FacturasSaveService extends BaseService {
         q.values.set('usuario_ingre',          dtoIn.login);
         q.values.set('fecha_ingre',            getCurrentDate());
         q.values.set('hora_ingre',             getCurrentTime());
-        if (isDefined(data.ide_vgven))         q.values.set('ide_vgven',         data.ide_vgven);
-        if (isDefined(data.ide_cndfp1))        q.values.set('ide_cndfp1',        data.ide_cndfp1);
-        if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
-        if (isDefined(data.direccion_cccfa))   q.values.set('direccion_cccfa',   data.direccion_cccfa);
-        if (isDefined(data.correo_cccfa))      q.values.set('correo_cccfa',      data.correo_cccfa);
-        if (isDefined(data.orden_compra_cccfa)) q.values.set('orden_compra_cccfa', data.orden_compra_cccfa);
+        if (isDefined(data.ide_vgven))           q.values.set('ide_vgven',           data.ide_vgven);
+        if (isDefined(data.ide_cndfp1))          q.values.set('ide_cndfp1',          data.ide_cndfp1);
+        if (isDefined(data.observacion_cccfa))   q.values.set('observacion_cccfa',   data.observacion_cccfa);
+        if (isDefined(data.direccion_cccfa))     q.values.set('direccion_cccfa',     data.direccion_cccfa);
+        if (isDefined(data.correo_cccfa))        q.values.set('correo_cccfa',        data.correo_cccfa);
+        if (isDefined(data.orden_compra_cccfa))  q.values.set('orden_compra_cccfa',  data.orden_compra_cccfa);
+        if (isDefined(data.num_proforma_cccfa))  q.values.set('num_proforma_cccfa',  data.num_proforma_cccfa);
         return q;
     }
 
@@ -457,12 +458,13 @@ export class FacturasSaveService extends BaseService {
         q.values.set('usuario_actua',          dtoIn.login);
         q.values.set('fecha_actua',            getCurrentDate());
         q.values.set('hora_actua',             getCurrentTime());
-        if (isDefined(data.ide_vgven))         q.values.set('ide_vgven',         data.ide_vgven);
-        if (isDefined(data.ide_cndfp1))        q.values.set('ide_cndfp1',        data.ide_cndfp1);
-        if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
-        if (isDefined(data.direccion_cccfa))   q.values.set('direccion_cccfa',   data.direccion_cccfa);
-        if (isDefined(data.correo_cccfa))      q.values.set('correo_cccfa',      data.correo_cccfa);
-        if (isDefined(data.orden_compra_cccfa)) q.values.set('orden_compra_cccfa', data.orden_compra_cccfa);
+        if (isDefined(data.ide_vgven))           q.values.set('ide_vgven',           data.ide_vgven);
+        if (isDefined(data.ide_cndfp1))          q.values.set('ide_cndfp1',          data.ide_cndfp1);
+        if (isDefined(data.observacion_cccfa))   q.values.set('observacion_cccfa',   data.observacion_cccfa);
+        if (isDefined(data.direccion_cccfa))     q.values.set('direccion_cccfa',     data.direccion_cccfa);
+        if (isDefined(data.correo_cccfa))        q.values.set('correo_cccfa',        data.correo_cccfa);
+        if (isDefined(data.orden_compra_cccfa))  q.values.set('orden_compra_cccfa',  data.orden_compra_cccfa);
+        if (isDefined(data.num_proforma_cccfa))  q.values.set('num_proforma_cccfa',  data.num_proforma_cccfa);
         q.where = `${PK_CAB} = $1 AND ide_empr = $2`;
         q.addIntParam(1, ideCccfa);
         q.addIntParam(2, dtoIn.ideEmpr);
