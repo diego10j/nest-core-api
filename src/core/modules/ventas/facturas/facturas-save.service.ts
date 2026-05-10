@@ -297,15 +297,10 @@ export class FacturasSaveService extends BaseService {
         updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
 
         // ── 5. Ejecutar todo en una sola transacción ──────────────────────────
-        // Orden: respetar FKs → sri primero, luego cabecera, luego todo lo que depende de ella
         await this.dataSource.createListQuery([
             insertSriComp,
             insertCabecera,
             ...insertDetalles,
-            insertTrnCab,
-            insertTrnDet,
-            ...kardexQueries,
-            ...(guiaQuery ? [guiaQuery] : []),
             updatePto,
         ]);
 
@@ -314,13 +309,9 @@ export class FacturasSaveService extends BaseService {
             rowCount: 1,
             ide_cccfa: ideCccfa,
             ide_srcom: ideSrcom,
-            ide_ccctr: ideCcctr,
-            ide_ccgui: ideGuia,
             secuencial_cccfa: secuencial,
             numero_completo: `${ptoEmision.establecimiento_ccdfa}-${ptoEmision.pto_emision_ccdfa}-${secuencial}`,
             total: totales.total,
-            kardex_generado: tieneKardex,
-            guia_generada: tieneGuia,
         };
     }
 
