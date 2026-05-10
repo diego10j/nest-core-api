@@ -82,7 +82,7 @@ export class FacturasSaveService extends BaseService {
     private async getBodegaSucursal(ideSucu: number): Promise<number> {
         const q = new SelectQuery(`
             SELECT ide_inbod FROM inv_bodega
-            WHERE ide_sucu = $1 AND activa_inbod = true
+            WHERE ide_sucu = $1 AND activo_inbod = true
             LIMIT 1
         `);
         q.addIntParam(1, ideSucu);
