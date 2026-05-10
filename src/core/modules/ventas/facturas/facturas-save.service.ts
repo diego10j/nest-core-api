@@ -12,21 +12,21 @@ import { SriFacturaService } from 'src/core/modules/sri/cel/sri-factura.service'
 import { DetaFacturaDto, GuiaRemisionDto, SaveFacturaDto } from './dto/save-factura.dto';
 
 // ─── Constantes de tablas ────────────────────────────────────────────────────
-const MODULE          = 'cxc';
-const TABLE_CAB       = 'cabece_factura';
-const TABLE_DET       = 'deta_factura';
-const PK_CAB          = 'ide_cccfa';
-const PK_DET          = 'ide_ccdfa';
-const TABLE_TRN_CAB   = 'cxc_cabece_transa';
-const TABLE_TRN_DET   = 'cxc_detall_transa';
-const PK_TRN_CAB      = 'ide_ccctr';
-const PK_TRN_DET      = 'ide_ccdtr';
-const TABLE_INV_CAB   = 'inv_cab_comp_inve';
-const TABLE_INV_DET   = 'inv_det_comp_inve';
-const PK_INV_CAB      = 'ide_incci';
-const PK_INV_DET      = 'ide_indci';
-const TABLE_GUIA      = 'cxc_guia';
-const PK_GUIA         = 'ide_ccgui';
+const MODULE = 'cxc';
+const TABLE_CAB = 'cabece_factura';
+const TABLE_DET = 'deta_factura';
+const PK_CAB = 'ide_cccfa';
+const PK_DET = 'ide_ccdfa';
+const TABLE_TRN_CAB = 'cxc_cabece_transa';
+const TABLE_TRN_DET = 'cxc_detall_transa';
+const PK_TRN_CAB = 'ide_ccctr';
+const PK_TRN_DET = 'ide_ccdtr';
+const TABLE_INV_CAB = 'inv_cab_comp_inve';
+const TABLE_INV_DET = 'inv_det_comp_inve';
+const PK_INV_CAB = 'ide_incci';
+const PK_INV_DET = 'ide_indci';
+const TABLE_GUIA = 'cxc_guia';
+const PK_GUIA = 'ide_ccgui';
 
 // ─── Tipos internos ──────────────────────────────────────────────────────────
 type Totales = ReturnType<FacturasSaveService['calcularTotales']>;
@@ -44,7 +44,6 @@ export class FacturasSaveService extends BaseService {
                 'p_cxc_estado_factura_normal',      // estado normal factura (ide_ccefa)
                 'p_con_tipo_documento_factura',     // tipo documento factura (ide_cntdo)
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
-                'p_inv_tipo_comp_venta',            // tipo comprobante inventario venta (ide_intti)
                 'p_inv_bodega_activa',              // bodega por defecto para salidas (ide_inbod)
                 'p_inv_estado_normal',              // estado normal de comprobante inventario (ide_inepi)
             ])
@@ -77,9 +76,7 @@ export class FacturasSaveService extends BaseService {
         return this.getVar('p_cxc_tipo_trans_factura');
     }
 
-    private get ideTipoCompVenta(): number {
-        return this.getVar('p_inv_tipo_comp_venta');
-    }
+
 
     private get ideBodegaActiva(): number {
         return this.getVar('p_inv_bodega_activa');
@@ -122,7 +119,7 @@ export class FacturasSaveService extends BaseService {
             const { ptoEmision, cliente } = await this.validarFactura(dtoIn);
 
             const tarifaIva = isDefined(data.tarifa_iva_cccfa) ? Number(data.tarifa_iva_cccfa) : 15;
-            const totales   = this.calcularTotales(detalles, tarifaIva);
+            const totales = this.calcularTotales(detalles, tarifaIva);
 
             for (const det of detalles) {
                 if (det.cantidad_ccdfa <= 0) {
@@ -139,7 +136,7 @@ export class FacturasSaveService extends BaseService {
 
             data.ide_cntdo = this.ideTipoDocFactura;
             data.ide_ccefa = this.ideEstadoNormal;
-            data.ide_usua  = dtoIn.ideUsua;
+            data.ide_usua = dtoIn.ideUsua;
 
             if (isUpdate) {
                 return this.actualizarFactura(data.ide_cccfa!, data, detalles, totales, tarifaIva, cliente, dtoIn);
@@ -198,30 +195,30 @@ export class FacturasSaveService extends BaseService {
         cliente: any,
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ) {
-        const numActual  = Number(ptoEmision.num_actual_ccdfa) + 1;
+        const numActual = Number(ptoEmision.num_actual_ccdfa) + 1;
         const secuencial = String(numActual).padStart(9, '0');
         data.secuencial_cccfa = secuencial;
 
         // ── 1. Detectar artículos con control de inventario (kardex) ──────────
         const detallesConKardex = await this.getDetallesConKardex(detalles);
-        const tieneKardex       = detallesConKardex.length > 0;
-        const tieneGuia         = !!dtoIn.guia;
+        const tieneKardex = detallesConKardex.length > 0;
+        const tieneGuia = !!dtoIn.guia;
 
         // ── 2. Obtener todos los secuenciales secuencialmente (evita race condition en sis_bloqueo)
-        const ideSrcom      = await this.sriFacturaService.getSecuencialSriComprobante(dtoIn.login);
-        const ideCccfa      = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login);
-        const baseIdeCcdfa  = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login);
-        const ideCcctr      = await this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login);
-        const ideCcdtr      = await this.dataSource.getSeqTable(TABLE_TRN_DET, PK_TRN_DET, 1, dtoIn.login);
-        const ideIncci      = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_CAB, PK_INV_CAB, 1, dtoIn.login) : null;
-        const baseIdeIndci  = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, detallesConKardex.length, dtoIn.login) : null;
-        const ideGuia       = tieneGuia   ? await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login) : null;
+        const ideSrcom = await this.sriFacturaService.getSecuencialSriComprobante(dtoIn.login);
+        const ideCccfa = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login);
+        const baseIdeCcdfa = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login);
+        const ideCcctr = await this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login);
+        const ideCcdtr = await this.dataSource.getSeqTable(TABLE_TRN_DET, PK_TRN_DET, 1, dtoIn.login);
+        const ideIncci = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_CAB, PK_INV_CAB, 1, dtoIn.login) : null;
+        const baseIdeIndci = tieneKardex ? await this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, detallesConKardex.length, dtoIn.login) : null;
+        const ideGuia = tieneGuia ? await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login) : null;
 
         data.ide_cccfa = ideCccfa;
         data.ide_srcom = ideSrcom;
 
         // ── 3. Calcular fecha de vencimiento ──────────────────────────────────
-        const diasCredito      = data.dias_credito_cccfa ?? 0;
+        const diasCredito = data.dias_credito_cccfa ?? 0;
         const fechaVencimiento = this.sumarDias(data.fecha_emisi_cccfa, diasCredito);
 
         // ── 4. Construir queries en memoria ───────────────────────────────────
@@ -229,24 +226,24 @@ export class FacturasSaveService extends BaseService {
         // sri_comprobante
         const insertSriComp = await this.sriFacturaService.buildSriComprobanteInsert(
             {
-                ideEmpr      : dtoIn.ideEmpr,
-                ideSucu      : dtoIn.ideSucu,
-                login        : dtoIn.login,
-                ide_sresc    : this.ideSriEstadoCreado,
-                ide_cntdo    : this.ideTipoDocFactura,
-                ide_geper    : data.ide_geper,
-                fecha_emisi  : data.fecha_emisi_cccfa,
-                estab        : ptoEmision.establecimiento_ccdfa,
-                pto_emi      : ptoEmision.pto_emision_ccdfa,
+                ideEmpr: dtoIn.ideEmpr,
+                ideSucu: dtoIn.ideSucu,
+                login: dtoIn.login,
+                ide_sresc: this.ideSriEstadoCreado,
+                ide_cntdo: this.ideTipoDocFactura,
+                ide_geper: data.ide_geper,
+                fecha_emisi: data.fecha_emisi_cccfa,
+                estab: ptoEmision.establecimiento_ccdfa,
+                pto_emi: ptoEmision.pto_emision_ccdfa,
                 secuencial,
-                subtotal0    : totales.base_tarifa0,
-                base_grabada : totales.base_grabada,
-                iva          : totales.valor_iva,
-                total        : totales.total,
+                subtotal0: totales.base_tarifa0,
+                base_grabada: totales.base_grabada,
+                iva: totales.valor_iva,
+                total: totales.total,
                 identificacion: cliente.identificac_geper,
-                forma_cobro  : data.ide_cndfp1 ? String(data.ide_cndfp1) : '01',
-                dias_credito : diasCredito,
-                correo       : data.correo_cccfa ?? cliente.correo_geper,
+                forma_cobro: data.ide_cndfp1 ? String(data.ide_cndfp1) : '01',
+                dias_credito: diasCredito,
+                correo: data.correo_cccfa ?? cliente.correo_geper,
             },
             ideSrcom,
         );
@@ -275,7 +272,7 @@ export class FacturasSaveService extends BaseService {
             ? this.buildKardexQueries(
                 ideIncci, baseIdeIndci, ideCccfa, secuencial,
                 data, cliente, detallesConKardex, dtoIn,
-              )
+            )
             : [];
 
         // cxc_guia (guía de remisión)
@@ -304,15 +301,15 @@ export class FacturasSaveService extends BaseService {
         return {
             message: 'ok',
             rowCount: 1,
-            ide_cccfa          : ideCccfa,
-            ide_srcom          : ideSrcom,
-            ide_ccctr          : ideCcctr,
-            ide_ccgui          : ideGuia,
-            secuencial_cccfa   : secuencial,
-            numero_completo    : `${ptoEmision.establecimiento_ccdfa}-${ptoEmision.pto_emision_ccdfa}-${secuencial}`,
-            total              : totales.total,
-            kardex_generado    : tieneKardex,
-            guia_generada      : tieneGuia,
+            ide_cccfa: ideCccfa,
+            ide_srcom: ideSrcom,
+            ide_ccctr: ideCcctr,
+            ide_ccgui: ideGuia,
+            secuencial_cccfa: secuencial,
+            numero_completo: `${ptoEmision.establecimiento_ccdfa}-${ptoEmision.pto_emision_ccdfa}-${secuencial}`,
+            total: totales.total,
+            kardex_generado: tieneKardex,
+            guia_generada: tieneGuia,
         };
     }
 
@@ -349,10 +346,10 @@ export class FacturasSaveService extends BaseService {
 
         if (existe.ide_srcom) {
             const updSri = new UpdateQuery('sri_comprobante', 'ide_srcom');
-            updSri.values.set('subtotal0_srcom',   totales.base_tarifa0);
+            updSri.values.set('subtotal0_srcom', totales.base_tarifa0);
             updSri.values.set('base_grabada_srcom', totales.base_grabada);
-            updSri.values.set('iva_srcom',          totales.valor_iva);
-            updSri.values.set('total_srcom',        totales.total);
+            updSri.values.set('iva_srcom', totales.valor_iva);
+            updSri.values.set('total_srcom', totales.total);
             updSri.where = `ide_srcom = ${existe.ide_srcom}`;
             await this.dataSource.createQuery(updSri);
         }
@@ -376,10 +373,10 @@ export class FacturasSaveService extends BaseService {
         }
 
         return {
-            message  : 'ok',
-            rowCount : 1,
+            message: 'ok',
+            rowCount: 1,
             ide_cccfa: ideCccfa,
-            total    : totales.total,
+            total: totales.total,
         };
     }
 
@@ -394,34 +391,34 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const q = new InsertQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
-        q.values.set('ide_cccfa',              data.ide_cccfa);
-        q.values.set('ide_ccdaf',              data.ide_ccdaf);
-        q.values.set('ide_geper',              data.ide_geper);
-        q.values.set('ide_cntdo',              data.ide_cntdo);
-        q.values.set('ide_ccefa',              data.ide_ccefa);
-        q.values.set('ide_srcom',              data.ide_srcom);
-        q.values.set('ide_usua',               data.ide_usua);
-        q.values.set('fecha_emisi_cccfa',      data.fecha_emisi_cccfa);
-        q.values.set('secuencial_cccfa',       data.secuencial_cccfa);
+        q.values.set('ide_cccfa', data.ide_cccfa);
+        q.values.set('ide_ccdaf', data.ide_ccdaf);
+        q.values.set('ide_geper', data.ide_geper);
+        q.values.set('ide_cntdo', data.ide_cntdo);
+        q.values.set('ide_ccefa', data.ide_ccefa);
+        q.values.set('ide_srcom', data.ide_srcom);
+        q.values.set('ide_usua', data.ide_usua);
+        q.values.set('fecha_emisi_cccfa', data.fecha_emisi_cccfa);
+        q.values.set('secuencial_cccfa', data.secuencial_cccfa);
         q.values.set('base_no_objeto_iva_cccfa', totales.base_no_objeto_iva);
-        q.values.set('base_tarifa0_cccfa',     totales.base_tarifa0);
-        q.values.set('base_grabada_cccfa',     totales.base_grabada);
-        q.values.set('valor_iva_cccfa',        totales.valor_iva);
-        q.values.set('tarifa_iva_cccfa',       tarifaIva);
-        q.values.set('total_cccfa',            totales.total);
-        q.values.set('dias_credito_cccfa',     data.dias_credito_cccfa ?? 0);
-        q.values.set('pagado_cccfa',           false);
-        q.values.set('solo_guardar_cccfa',     false);
-        q.values.set('usuario_ingre',          dtoIn.login);
-        q.values.set('fecha_ingre',            getCurrentDate());
-        q.values.set('hora_ingre',             getCurrentTime());
-        if (isDefined(data.ide_vgven))           q.values.set('ide_vgven',           data.ide_vgven);
-        if (isDefined(data.ide_cndfp1))          q.values.set('ide_cndfp1',          data.ide_cndfp1);
-        if (isDefined(data.observacion_cccfa))   q.values.set('observacion_cccfa',   data.observacion_cccfa);
-        if (isDefined(data.direccion_cccfa))     q.values.set('direccion_cccfa',     data.direccion_cccfa);
-        if (isDefined(data.correo_cccfa))        q.values.set('correo_cccfa',        data.correo_cccfa);
-        if (isDefined(data.orden_compra_cccfa))  q.values.set('orden_compra_cccfa',  data.orden_compra_cccfa);
-        if (isDefined(data.num_proforma_cccfa))  q.values.set('num_proforma_cccfa',  data.num_proforma_cccfa);
+        q.values.set('base_tarifa0_cccfa', totales.base_tarifa0);
+        q.values.set('base_grabada_cccfa', totales.base_grabada);
+        q.values.set('valor_iva_cccfa', totales.valor_iva);
+        q.values.set('tarifa_iva_cccfa', tarifaIva);
+        q.values.set('total_cccfa', totales.total);
+        q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
+        q.values.set('pagado_cccfa', false);
+        q.values.set('solo_guardar_cccfa', false);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_ingre', getCurrentDate());
+        q.values.set('hora_ingre', getCurrentTime());
+        if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
+        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
+        if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
+        if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
+        if (isDefined(data.correo_cccfa)) q.values.set('correo_cccfa', data.correo_cccfa);
+        if (isDefined(data.orden_compra_cccfa)) q.values.set('orden_compra_cccfa', data.orden_compra_cccfa);
+        if (isDefined(data.num_proforma_cccfa)) q.values.set('num_proforma_cccfa', data.num_proforma_cccfa);
         return q;
     }
 
@@ -433,26 +430,26 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): UpdateQuery {
         const q = new UpdateQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
-        q.values.set('ide_ccdaf',              data.ide_ccdaf);
-        q.values.set('ide_geper',              data.ide_geper);
-        q.values.set('fecha_emisi_cccfa',      data.fecha_emisi_cccfa);
+        q.values.set('ide_ccdaf', data.ide_ccdaf);
+        q.values.set('ide_geper', data.ide_geper);
+        q.values.set('fecha_emisi_cccfa', data.fecha_emisi_cccfa);
         q.values.set('base_no_objeto_iva_cccfa', totales.base_no_objeto_iva);
-        q.values.set('base_tarifa0_cccfa',     totales.base_tarifa0);
-        q.values.set('base_grabada_cccfa',     totales.base_grabada);
-        q.values.set('valor_iva_cccfa',        totales.valor_iva);
-        q.values.set('tarifa_iva_cccfa',       tarifaIva);
-        q.values.set('total_cccfa',            totales.total);
-        q.values.set('dias_credito_cccfa',     data.dias_credito_cccfa ?? 0);
-        q.values.set('usuario_actua',          dtoIn.login);
-        q.values.set('fecha_actua',            getCurrentDate());
-        q.values.set('hora_actua',             getCurrentTime());
-        if (isDefined(data.ide_vgven))           q.values.set('ide_vgven',           data.ide_vgven);
-        if (isDefined(data.ide_cndfp1))          q.values.set('ide_cndfp1',          data.ide_cndfp1);
-        if (isDefined(data.observacion_cccfa))   q.values.set('observacion_cccfa',   data.observacion_cccfa);
-        if (isDefined(data.direccion_cccfa))     q.values.set('direccion_cccfa',     data.direccion_cccfa);
-        if (isDefined(data.correo_cccfa))        q.values.set('correo_cccfa',        data.correo_cccfa);
-        if (isDefined(data.orden_compra_cccfa))  q.values.set('orden_compra_cccfa',  data.orden_compra_cccfa);
-        if (isDefined(data.num_proforma_cccfa))  q.values.set('num_proforma_cccfa',  data.num_proforma_cccfa);
+        q.values.set('base_tarifa0_cccfa', totales.base_tarifa0);
+        q.values.set('base_grabada_cccfa', totales.base_grabada);
+        q.values.set('valor_iva_cccfa', totales.valor_iva);
+        q.values.set('tarifa_iva_cccfa', tarifaIva);
+        q.values.set('total_cccfa', totales.total);
+        q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
+        q.values.set('usuario_actua', dtoIn.login);
+        q.values.set('fecha_actua', getCurrentDate());
+        q.values.set('hora_actua', getCurrentTime());
+        if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
+        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
+        if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
+        if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
+        if (isDefined(data.correo_cccfa)) q.values.set('correo_cccfa', data.correo_cccfa);
+        if (isDefined(data.orden_compra_cccfa)) q.values.set('orden_compra_cccfa', data.orden_compra_cccfa);
+        if (isDefined(data.num_proforma_cccfa)) q.values.set('num_proforma_cccfa', data.num_proforma_cccfa);
         q.where = `${PK_CAB} = $1 AND ide_empr = $2`;
         q.addIntParam(1, ideCccfa);
         q.addIntParam(2, dtoIn.ideEmpr);
@@ -466,19 +463,19 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const q = new InsertQuery(`${MODULE}_${TABLE_DET}`, PK_DET, dtoIn);
-        q.values.set('ide_ccdfa',                   ideCcdfa);
-        q.values.set('ide_cccfa',                   ideCccfa);
-        q.values.set('ide_inarti',                  det.ide_inarti);
-        q.values.set('cantidad_ccdfa',              det.cantidad_ccdfa);
-        q.values.set('precio_ccdfa',                det.precio_ccdfa);
-        q.values.set('total_ccdfa',                 det.total_ccdfa);
-        q.values.set('iva_inarti_ccdfa',            det.iva_inarti_ccdfa);
-        q.values.set('credito_tributario_ccdfa',    det.credito_tributario_ccdfa ?? false);
-        q.values.set('usuario_ingre',               dtoIn.login);
-        q.values.set('fecha_ingre',                 getCurrentDate());
-        q.values.set('hora_ingre',                  getCurrentTime());
+        q.values.set('ide_ccdfa', ideCcdfa);
+        q.values.set('ide_cccfa', ideCccfa);
+        q.values.set('ide_inarti', det.ide_inarti);
+        q.values.set('cantidad_ccdfa', det.cantidad_ccdfa);
+        q.values.set('precio_ccdfa', det.precio_ccdfa);
+        q.values.set('total_ccdfa', det.total_ccdfa);
+        q.values.set('iva_inarti_ccdfa', det.iva_inarti_ccdfa);
+        q.values.set('credito_tributario_ccdfa', det.credito_tributario_ccdfa ?? false);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_ingre', getCurrentDate());
+        q.values.set('hora_ingre', getCurrentTime());
         if (isDefined(det.observacion_ccdfa)) q.values.set('observacion_ccdfa', det.observacion_ccdfa);
-        if (isDefined(det.ide_inuni))         q.values.set('ide_inuni',         det.ide_inuni);
+        if (isDefined(det.ide_inuni)) q.values.set('ide_inuni', det.ide_inuni);
         return q;
     }
 
@@ -495,14 +492,14 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const q = new InsertQuery(TABLE_TRN_CAB, PK_TRN_CAB, dtoIn);
-        q.values.set('ide_ccctr',          ideCcctr);
-        q.values.set('ide_geper',          ideGeper);
-        q.values.set('ide_cccfa',          ideCccfa);
-        q.values.set('fecha_trans_ccctr',  fechaTrans);
-        q.values.set('observacion_ccctr',  `FACTURA ${secuencial}`);
-        q.values.set('usuario_ingre',      dtoIn.login);
-        q.values.set('fecha_ingre',        getCurrentDate());
-        q.values.set('hora_ingre',         getCurrentTime());
+        q.values.set('ide_ccctr', ideCcctr);
+        q.values.set('ide_geper', ideGeper);
+        q.values.set('ide_cccfa', ideCccfa);
+        q.values.set('fecha_trans_ccctr', fechaTrans);
+        q.values.set('observacion_ccctr', `FACTURA ${secuencial}`);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_ingre', getCurrentDate());
+        q.values.set('hora_ingre', getCurrentTime());
         // ide_empr + ide_sucu los agrega InsertQuery automáticamente desde dtoIn
         return q;
     }
@@ -523,20 +520,20 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const q = new InsertQuery(TABLE_TRN_DET, PK_TRN_DET, dtoIn);
-        q.values.set('ide_ccdtr',          ideCcdtr);
-        q.values.set('ide_ccctr',          ideCcctr);
-        q.values.set('ide_cccfa',          ideCccfa);
-        q.values.set('ide_ccttr',          this.ideTipoTransFactura);
-        q.values.set('ide_usua',           dtoIn.ideUsua);
-        q.values.set('fecha_trans_ccdtr',  fechaTrans);
-        q.values.set('fecha_venci_ccdtr',  fechaVenci);
-        q.values.set('numero_pago_ccdtr',  1);
-        q.values.set('valor_ccdtr',        valorTotal);
-        q.values.set('docum_relac_ccdtr',  secuencial);
-        q.values.set('observacion_ccdtr',  `FACTURA ${secuencial}`);
-        q.values.set('usuario_ingre',      dtoIn.login);
-        q.values.set('fecha_ingre',        getCurrentDate());
-        q.values.set('hora_ingre',         getCurrentTime());
+        q.values.set('ide_ccdtr', ideCcdtr);
+        q.values.set('ide_ccctr', ideCcctr);
+        q.values.set('ide_cccfa', ideCccfa);
+        q.values.set('ide_ccttr', this.ideTipoTransFactura);
+        q.values.set('ide_usua', dtoIn.ideUsua);
+        q.values.set('fecha_trans_ccdtr', fechaTrans);
+        q.values.set('fecha_venci_ccdtr', fechaVenci);
+        q.values.set('numero_pago_ccdtr', 1);
+        q.values.set('valor_ccdtr', valorTotal);
+        q.values.set('docum_relac_ccdtr', secuencial);
+        q.values.set('observacion_ccdtr', `FACTURA ${secuencial}`);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_ingre', getCurrentDate());
+        q.values.set('hora_ingre', getCurrentTime());
         // ide_cnccc (asiento contable) y ide_teclb (libro banco) quedan NULL
         // se vinculan cuando se contabiliza o se registra el pago
         return q;
@@ -561,39 +558,39 @@ export class FacturasSaveService extends BaseService {
 
         // Cabecera del comprobante de inventario
         const qCab = new InsertQuery(TABLE_INV_CAB, PK_INV_CAB, dtoIn);
-        qCab.values.set('ide_incci',           ideIncci);
-        qCab.values.set('ide_geper',           cliente.ide_geper);
-        qCab.values.set('ide_intti',           this.ideTipoCompVenta);
-        qCab.values.set('ide_inbod',           this.ideBodegaActiva);
-        qCab.values.set('ide_inepi',           this.ideEstadoNormalInv);
-        qCab.values.set('ide_usua',            dtoIn.ideUsua);
-        qCab.values.set('numero_incci',        secuencial.slice(-10));  // max 10 chars
-        qCab.values.set('fecha_trans_incci',   data.fecha_emisi_cccfa);
-        qCab.values.set('fecha_efect_incci',   data.fecha_emisi_cccfa);
-        qCab.values.set('observacion_incci',   `VENTA FACTURA ${secuencial}`);
-        qCab.values.set('referencia_incci',    secuencial.slice(-12));   // max 12 chars
-        qCab.values.set('automatico_incci',    true);
-        qCab.values.set('verifica_incci',      false);
-        qCab.values.set('usuario_ingre',       dtoIn.login);
-        qCab.values.set('fecha_ingre',         getCurrentDate());
-        qCab.values.set('hora_ingre',          getCurrentTime());
+        qCab.values.set('ide_incci', ideIncci);
+        qCab.values.set('ide_geper', cliente.ide_geper);
+        qCab.values.set('ide_intti', 29);
+        qCab.values.set('ide_inbod', 0);
+        qCab.values.set('ide_inepi', this.ideEstadoNormalInv);
+        qCab.values.set('ide_usua', dtoIn.ideUsua);
+        qCab.values.set('numero_incci', secuencial.slice(-10));  // max 10 chars
+        qCab.values.set('fecha_trans_incci', data.fecha_emisi_cccfa);
+        qCab.values.set('fecha_efect_incci', data.fecha_emisi_cccfa);
+        qCab.values.set('observacion_incci', `VENTA FACTURA ${secuencial}`);
+        qCab.values.set('referencia_incci', secuencial.slice(-12));   // max 12 chars
+        qCab.values.set('automatico_incci', true);
+        qCab.values.set('verifica_incci', false);
+        qCab.values.set('usuario_ingre', dtoIn.login);
+        qCab.values.set('fecha_ingre', getCurrentDate());
+        qCab.values.set('hora_ingre', getCurrentTime());
         queries.push(qCab);
 
         // Detalle por cada artículo con kardex
         detallesKardex.forEach((det, idx) => {
             const qDet = new InsertQuery(TABLE_INV_DET, PK_INV_DET, dtoIn);
-            qDet.values.set('ide_indci',          baseIdeIndci + idx);
-            qDet.values.set('ide_incci',          ideIncci);
-            qDet.values.set('ide_inarti',         det.ide_inarti);
-            qDet.values.set('ide_cccfa',          ideCccfa);
-            qDet.values.set('secuencial_indci',   String(idx + 1).padStart(6, '0'));
+            qDet.values.set('ide_indci', baseIdeIndci + idx);
+            qDet.values.set('ide_incci', ideIncci);
+            qDet.values.set('ide_inarti', det.ide_inarti);
+            qDet.values.set('ide_cccfa', ideCccfa);
+            qDet.values.set('secuencial_indci', String(idx + 1).padStart(6, '0'));
             // Negativo: salida de bodega por venta
-            qDet.values.set('cantidad_indci',     -Math.abs(det.cantidad_ccdfa));
-            qDet.values.set('precio_indci',       det.precio_ccdfa);
-            qDet.values.set('valor_indci',        -Math.abs(det.total_ccdfa));
-            qDet.values.set('usuario_ingre',      dtoIn.login);
-            qDet.values.set('fecha_ingre',        getCurrentDate());
-            qDet.values.set('hora_ingre',         getCurrentTime());
+            qDet.values.set('cantidad_indci', -Math.abs(det.cantidad_ccdfa));
+            qDet.values.set('precio_indci', det.precio_ccdfa);
+            qDet.values.set('valor_indci', -Math.abs(det.total_ccdfa));
+            qDet.values.set('usuario_ingre', dtoIn.login);
+            qDet.values.set('fecha_ingre', getCurrentDate());
+            qDet.values.set('hora_ingre', getCurrentTime());
             queries.push(qDet);
         });
 
@@ -614,22 +611,22 @@ export class FacturasSaveService extends BaseService {
     ): InsertQuery {
         const guia = dtoIn.guia!;
         const q = new InsertQuery(TABLE_GUIA, PK_GUIA, dtoIn);
-        q.values.set('ide_ccgui',              ideGuia);
-        q.values.set('ide_cccfa',              ideCccfa);
-        q.values.set('ide_geper',              cliente.ide_geper);
-        q.values.set('ide_cctgi',              guia.ide_cctgi);
-        q.values.set('ide_ccdaf',              data.ide_ccdaf);
-        q.values.set('fecha_emision_ccgui',    data.fecha_emisi_cccfa);
+        q.values.set('ide_ccgui', ideGuia);
+        q.values.set('ide_cccfa', ideCccfa);
+        q.values.set('ide_geper', cliente.ide_geper);
+        q.values.set('ide_cctgi', guia.ide_cctgi);
+        q.values.set('ide_ccdaf', data.ide_ccdaf);
+        q.values.set('fecha_emision_ccgui', data.fecha_emisi_cccfa);
         q.values.set('fecha_ini_trasla_ccgui', guia.fecha_ini_trasla_ccgui);
         q.values.set('fecha_fin_trasla_ccgui', guia.fecha_fin_trasla_ccgui ?? guia.fecha_ini_trasla_ccgui);
-        q.values.set('punto_partida_ccgui',    guia.punto_partida_ccgui);
-        q.values.set('punto_llegada_ccgui',    guia.punto_llegada_ccgui);
-        q.values.set('destinatario_ccgui',     guia.destinatario_ccgui ?? cliente.nom_geper);
-        q.values.set('usuario_ingre',          dtoIn.login);
-        q.values.set('fecha_ingre',            getCurrentDate());
-        q.values.set('hora_ingre',             getCurrentTime());
-        if (isDefined(guia.placa_gecam))     q.values.set('placa_gecam',    guia.placa_gecam);
-        if (isDefined(guia.gen_ide_geper))   q.values.set('gen_ide_geper',  guia.gen_ide_geper);
+        q.values.set('punto_partida_ccgui', guia.punto_partida_ccgui);
+        q.values.set('punto_llegada_ccgui', guia.punto_llegada_ccgui);
+        q.values.set('destinatario_ccgui', guia.destinatario_ccgui ?? cliente.nom_geper);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_ingre', getCurrentDate());
+        q.values.set('hora_ingre', getCurrentTime());
+        if (isDefined(guia.placa_gecam)) q.values.set('placa_gecam', guia.placa_gecam);
+        if (isDefined(guia.gen_ide_geper)) q.values.set('gen_ide_geper', guia.gen_ide_geper);
         // ide_srcom queda NULL → se asignará al generar la guía electrónica en SriModule
         return q;
     }
@@ -694,13 +691,13 @@ export class FacturasSaveService extends BaseService {
         }
 
         const valorIva = Number((baseGrabada * (tarifaIva / 100)).toFixed(2));
-        const total    = Number((baseTarifa0 + baseGrabada + valorIva).toFixed(2));
+        const total = Number((baseTarifa0 + baseGrabada + valorIva).toFixed(2));
 
         return {
             base_no_objeto_iva: 0,
-            base_tarifa0 : Number(baseTarifa0.toFixed(2)),
-            base_grabada : Number(baseGrabada.toFixed(2)),
-            valor_iva    : valorIva,
+            base_tarifa0: Number(baseTarifa0.toFixed(2)),
+            base_grabada: Number(baseGrabada.toFixed(2)),
+            valor_iva: valorIva,
             total,
         };
     }
