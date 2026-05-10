@@ -198,6 +198,12 @@ export class CabeceraFacturaDataDto {
     @MaxLength(50)
     orden_compra_cccfa?: string;
 
+    @ApiPropertyOptional({ description: 'Número de proforma relacionada. Máx. 50 caracteres', maxLength: 50 })
+    @IsString()
+    @IsOptional()
+    @MaxLength(50)
+    num_proforma_cccfa?: string;
+
     // ── Campos internos: el servicio los asigna, no enviar desde el frontend ──
     /** @internal Asignado automáticamente por el servicio */
     ide_cntdo?: number;
@@ -209,8 +215,6 @@ export class CabeceraFacturaDataDto {
     secuencial_cccfa?: string;
     /** @internal Asignado automáticamente por el servicio */
     ide_srcom?: number;
-
-    num_proforma_cccfa?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
