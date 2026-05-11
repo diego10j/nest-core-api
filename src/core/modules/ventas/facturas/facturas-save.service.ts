@@ -306,16 +306,19 @@ export class FacturasSaveService extends BaseService {
         updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
 
         // ── 5. Ejecutar todo en una sola transacción ──────────────────────────
-        await this.dataSource.createListQuery([
+        // DEBUG: ver columnas de las tablas
+        for (const tbl of ['sri_comprobante', 'cxc_cabece_factura', 'cxc_deta_factura']) {
+            const cols = await this.dataSource.getTableColumns(tbl);
+            console.log(`[DEBUG] ${tbl} first 5 cols:`, cols.slice(0, 5));
+        }
+
+        const queries = [
             insertSriComp,
             insertCabecera,
             ...insertDetalles,
-            insertTrnCab,
-            insertTrnDet,
-            ...kardexQueries,
-            ...(guiaQuery ? [guiaQuery] : []),
             updatePto,
-        ]);
+        ];
+        await this.dataSource.createListQuery(queries);
 
         return {
             message: 'ok',
