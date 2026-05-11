@@ -42,7 +42,6 @@ export class FacturasSaveService extends BaseService {
         this.core
             .getVariables([
                 'p_cxc_estado_factura_normal',      // estado normal factura (ide_ccefa)
-                'p_con_tipo_documento_factura',     // tipo documento factura (ide_cntdo)
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
                 'p_inv_estado_normal',              // estado normal de comprobante inventario (ide_inepi)
             ])
@@ -64,7 +63,7 @@ export class FacturasSaveService extends BaseService {
     }
 
     private get ideTipoDocFactura(): number {
-        return this.getVar('p_con_tipo_documento_factura');
+        return 3;  // FACTURA
     }
 
     private get ideSriEstadoCreado(): number {

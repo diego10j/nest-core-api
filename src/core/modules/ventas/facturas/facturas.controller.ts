@@ -132,10 +132,9 @@ export class FacturasController {
   @ApiOperation({ summary: 'Crear o actualizar una factura' })
   save(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: any,
+    @Body() dtoIn: SaveFacturaDto,
   ) {
-    // PRUEBA: usar el metodo viejo para ver si funciona
-    return this.service.saveFactura({ ...headersParams, ...dtoIn });
+    return this.saveService.save({ ...headersParams, ...dtoIn });
   }
 
   @Delete('delete')
