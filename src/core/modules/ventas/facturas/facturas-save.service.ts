@@ -233,11 +233,6 @@ export class FacturasSaveService extends BaseService {
 
         // ── 4. Construir queries en memoria ───────────────────────────────────
 
-        const fechaEmision = data.fecha_emisi_cccfa;  // ya sanitizada YYYY-MM-DD
-        const fechaActual = getCurrentDate();           // YYYY-MM-DD
-        const horaActual = getCurrentTime();            // HH:mm:ss
-        const fechaActualTS = new Date().toISOString().replace('T', ' ').replace('Z', ''); // YYYY-MM-DD HH:mm:ss.SSS
-
         // sri_comprobante
         const insertSriComp = await this.sriFacturaService.buildSriComprobanteInsert(
             {
@@ -247,7 +242,7 @@ export class FacturasSaveService extends BaseService {
                 ide_sresc    : this.ideSriEstadoCreado,
                 ide_cntdo    : this.ideTipoDocFactura,
                 ide_geper    : data.ide_geper,
-                fecha_emisi  : fechaEmision,
+                fecha_emisi  : data.fecha_emisi_cccfa,
                 estab        : ptoEmision.establecimiento_ccdfa,
                 pto_emi      : ptoEmision.pto_emision_ccdfa,
                 secuencial,
@@ -262,10 +257,6 @@ export class FacturasSaveService extends BaseService {
             },
             ideSrcom,
         );
-        // Corregir fecha_sistema_srcom: usar string en vez de Date object
-        if (insertSriComp.values.has('fecha_sistema_srcom')) {
-            insertSriComp.values.set('fecha_sistema_srcom', fechaActualTS);
-        }
 
         // cxc_cabece_factura
         const insertCabecera = this.buildInsertCabecera(data, totales, tarifaIva, dtoIn);
@@ -306,19 +297,16 @@ export class FacturasSaveService extends BaseService {
         updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
 
         // ── 5. Ejecutar todo en una sola transacción ──────────────────────────
-        // DEBUG: ver columnas de las tablas
-        for (const tbl of ['sri_comprobante', 'cxc_cabece_factura', 'cxc_deta_factura']) {
-            const cols = await this.dataSource.getTableColumns(tbl);
-            console.log(`[DEBUG] ${tbl} first 5 cols:`, cols.slice(0, 5));
-        }
-
-        const queries = [
+        await this.dataSource.createListQuery([
             insertSriComp,
             insertCabecera,
             ...insertDetalles,
+            insertTrnCab,
+            insertTrnDet,
+            ...kardexQueries,
+            ...(guiaQuery ? [guiaQuery] : []),
             updatePto,
-        ];
-        await this.dataSource.createListQuery(queries);
+        ]);
 
         return {
             message: 'ok',

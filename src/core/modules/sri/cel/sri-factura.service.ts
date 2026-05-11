@@ -76,7 +76,7 @@ export class SriFacturaService extends BaseService {
     q.values.set('ide_empr', data.ideEmpr);
     q.values.set('ide_sucu', data.ideSucu);
     q.values.set('usuario_ingre', data.login);
-    q.values.set('fecha_sistema_srcom', new Date().toISOString().replace('T', ' ').replace('Z', ''));
+    q.values.set('fecha_sistema_srcom', new Date());
     return q;
   }
 
