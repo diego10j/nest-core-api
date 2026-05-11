@@ -6,7 +6,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
-import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
+import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 import { SriFacturaService } from 'src/core/modules/sri/cel/sri-factura.service';
 
 import { DetaFacturaDto, GuiaRemisionDto, SaveFacturaDto } from './dto/save-factura.dto';
@@ -121,9 +121,14 @@ export class FacturasSaveService extends BaseService {
             const { data, detalles } = dtoIn;
             const isUpdate = dtoIn.isUpdate && !!data.ide_cccfa;
 
-            // Sanitizar fecha: tomar solo la parte YYYY-MM-DD
-            data.fecha_emisi_cccfa = (data.fecha_emisi_cccfa || '').split('T')[0];
-            if (!data.fecha_emisi_cccfa) throw new BadRequestException('La fecha de emisión es requerida');
+            // Sanitizar fecha: normalizar a YYYY-MM-DD
+            data.fecha_emisi_cccfa = toPgDate(data.fecha_emisi_cccfa) || getCurrentDate();
+            if (dtoIn.guia) {
+                dtoIn.guia.fecha_ini_trasla_ccgui = toPgDate(dtoIn.guia.fecha_ini_trasla_ccgui) || data.fecha_emisi_cccfa;
+                if (dtoIn.guia.fecha_fin_trasla_ccgui) {
+                    dtoIn.guia.fecha_fin_trasla_ccgui = toPgDate(dtoIn.guia.fecha_fin_trasla_ccgui) || dtoIn.guia.fecha_ini_trasla_ccgui;
+                }
+            }
 
             const { ptoEmision, cliente } = await this.validarFactura(dtoIn);
 
@@ -620,11 +625,8 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ): InsertQuery {
         const guia = dtoIn.guia!;
-        // Sanitizar fechas de guía: solo YYYY-MM-DD
-        const fechaIniTrasla = (guia.fecha_ini_trasla_ccgui || '').split('T')[0];
-        const fechaFinTrasla = guia.fecha_fin_trasla_ccgui
-            ? guia.fecha_fin_trasla_ccgui.split('T')[0]
-            : fechaIniTrasla;
+        const fechaIniTrasla = toPgDate(guia.fecha_ini_trasla_ccgui) || data.fecha_emisi_cccfa;
+        const fechaFinTrasla = toPgDate(guia.fecha_fin_trasla_ccgui) || fechaIniTrasla;
         const q = new InsertQuery(TABLE_GUIA, PK_GUIA, dtoIn);
         q.values.set('ide_ccgui', ideGuia);
         q.values.set('ide_cccfa', ideCccfa);

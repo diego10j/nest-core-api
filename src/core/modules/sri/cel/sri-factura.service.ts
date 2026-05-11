@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { InsertQuery } from 'src/core/connection/helpers';
 import { fNumber } from 'src/util/helpers/number-util';
+import { toPgTimestampNow } from 'src/util/helpers/date-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
@@ -76,7 +77,7 @@ export class SriFacturaService extends BaseService {
     q.values.set('ide_empr', data.ideEmpr);
     q.values.set('ide_sucu', data.ideSucu);
     q.values.set('usuario_ingre', data.login);
-    q.values.set('fecha_sistema_srcom', new Date());
+    q.values.set('fecha_sistema_srcom', toPgTimestampNow());
     return q;
   }
 

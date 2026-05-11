@@ -204,4 +204,42 @@ export function fTimestampToISODate(timestamp: number): string {
 
     return isoString;
   }
+
+  return '';
+}
+
+/**
+ * Normaliza cualquier valor a fecha PostgreSQL (YYYY-MM-DD).
+ * Acepta ISO string, Date object, timestamp, etc.
+ */
+export function toPgDate(value: any): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().split('T')[0];
+  if (typeof value === 'string') return value.split('T')[0];
+  if (typeof value === 'number') return new Date(value).toISOString().split('T')[0];
+  return null;
+}
+
+/**
+ * Normaliza cualquier valor a timestamp PostgreSQL (YYYY-MM-DD HH:mm:ss).
+ * Acepta ISO string, Date object, timestamp, etc.
+ */
+export function toPgTimestamp(value: any): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().replace('T', ' ').replace('Z', '');
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().replace('T', ' ').replace('Z', '');
+  }
+  if (typeof value === 'number') return new Date(value).toISOString().replace('T', ' ').replace('Z', '');
+  return null;
+}
+
+/**
+ * Convierte un Date a string PostgreSQL timestamp y lo agrega como parametro
+ * en vez de usar el objeto Date directamente (evita JSON.stringify en getSqlInsert)
+ */
+export function toPgTimestampNow(): string {
+  return new Date().toISOString().replace('T', ' ').replace('Z', '');
 }
