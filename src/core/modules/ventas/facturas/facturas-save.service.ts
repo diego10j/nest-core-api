@@ -233,30 +233,39 @@ export class FacturasSaveService extends BaseService {
 
         // ── 4. Construir queries en memoria ───────────────────────────────────
 
+        const fechaEmision = data.fecha_emisi_cccfa;  // ya sanitizada YYYY-MM-DD
+        const fechaActual = getCurrentDate();           // YYYY-MM-DD
+        const horaActual = getCurrentTime();            // HH:mm:ss
+        const fechaActualTS = new Date().toISOString().replace('T', ' ').replace('Z', ''); // YYYY-MM-DD HH:mm:ss.SSS
+
         // sri_comprobante
         const insertSriComp = await this.sriFacturaService.buildSriComprobanteInsert(
             {
-                ideEmpr: dtoIn.ideEmpr,
-                ideSucu: dtoIn.ideSucu,
-                login: dtoIn.login,
-                ide_sresc: this.ideSriEstadoCreado,
-                ide_cntdo: this.ideTipoDocFactura,
-                ide_geper: data.ide_geper,
-                fecha_emisi: data.fecha_emisi_cccfa,
-                estab: ptoEmision.establecimiento_ccdfa,
-                pto_emi: ptoEmision.pto_emision_ccdfa,
+                ideEmpr      : dtoIn.ideEmpr,
+                ideSucu      : dtoIn.ideSucu,
+                login        : dtoIn.login,
+                ide_sresc    : this.ideSriEstadoCreado,
+                ide_cntdo    : this.ideTipoDocFactura,
+                ide_geper    : data.ide_geper,
+                fecha_emisi  : fechaEmision,
+                estab        : ptoEmision.establecimiento_ccdfa,
+                pto_emi      : ptoEmision.pto_emision_ccdfa,
                 secuencial,
-                subtotal0: totales.base_tarifa0,
-                base_grabada: totales.base_grabada,
-                iva: totales.valor_iva,
-                total: totales.total,
+                subtotal0    : totales.base_tarifa0,
+                base_grabada : totales.base_grabada,
+                iva          : totales.valor_iva,
+                total        : totales.total,
                 identificacion: cliente.identificac_geper,
-                forma_cobro: data.ide_cndfp1 ? String(data.ide_cndfp1) : '01',
-                dias_credito: diasCredito,
-                correo: data.correo_cccfa ?? cliente.correo_geper,
+                forma_cobro  : data.ide_cndfp1 ? String(data.ide_cndfp1) : '01',
+                dias_credito : diasCredito,
+                correo       : data.correo_cccfa ?? cliente.correo_geper,
             },
             ideSrcom,
         );
+        // Corregir fecha_sistema_srcom: usar string en vez de Date object
+        if (insertSriComp.values.has('fecha_sistema_srcom')) {
+            insertSriComp.values.set('fecha_sistema_srcom', fechaActualTS);
+        }
 
         // cxc_cabece_factura
         const insertCabecera = this.buildInsertCabecera(data, totales, tarifaIva, dtoIn);
@@ -301,6 +310,10 @@ export class FacturasSaveService extends BaseService {
             insertSriComp,
             insertCabecera,
             ...insertDetalles,
+            insertTrnCab,
+            insertTrnDet,
+            ...kardexQueries,
+            ...(guiaQuery ? [guiaQuery] : []),
             updatePto,
         ]);
 
@@ -309,9 +322,13 @@ export class FacturasSaveService extends BaseService {
             rowCount: 1,
             ide_cccfa: ideCccfa,
             ide_srcom: ideSrcom,
+            ide_ccctr: ideCcctr,
+            ide_ccgui: ideGuia,
             secuencial_cccfa: secuencial,
             numero_completo: `${ptoEmision.establecimiento_ccdfa}-${ptoEmision.pto_emision_ccdfa}-${secuencial}`,
             total: totales.total,
+            kardex_generado: tieneKardex,
+            guia_generada: tieneGuia,
         };
     }
 
