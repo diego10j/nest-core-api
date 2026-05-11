@@ -229,8 +229,8 @@ export class FacturasService extends BaseService {
         const secuencial = String(numActual).padStart(9, '0');
 
         const ideEstadoNormal = Number(this.variables.get('p_cxc_estado_factura_normal'));
-        const ideTipoDocFac = Number(this.variables.get('p_con_tipo_documento_factura'));
-        const ideSrEscCreado = Number(this.variables.get('p_sri_estado_comprobante_creado'));
+        const ideTipoDocFac = 29; // Number(this.variables.get('p_con_tipo_documento_factura'));
+        const ideSrEscCreado = 5; // Number(this.variables.get('p_sri_estado_comprobante_creado'));
 
         // ── 5. Obtener secuenciales de PK en paralelo ────────────────────────
         const [ideSrcom, ideCccfa, baseIdeCcdfa] = await Promise.all([
