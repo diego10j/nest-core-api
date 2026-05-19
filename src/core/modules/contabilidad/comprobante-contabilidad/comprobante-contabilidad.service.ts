@@ -11,6 +11,7 @@ import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
+    GetComprobantesConErrorDto,
     GetComprobantesDto,
     ReversarComprobanteDto,
     SaveComprobanteDto,
@@ -480,6 +481,139 @@ export class ComprobanteContabilidadService extends BaseService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al eliminar comprobantes: ${msg}`);
+        }
+    }
+
+    /**
+     * Retorna los comprobantes contables que presentan errores desde una fecha de inicio.
+     * Verifica: cuentas padre, cuentas nulas, CXC/CXP no asociadas y banco incorrecto.
+     */
+    async getComprobantesConError(dtoIn: GetComprobantesConErrorDto & HeaderParamsDto) {
+        try {
+            const selectCols = `
+                SELECT DISTINCT a.ide_cnccc
+                     , a.numero_cnccc    AS num_asiento
+                     , a.fecha_trans_cnccc
+                     , c.nom_geper
+                     , a.observacion_cnccc`.slice(1);
+
+            const sql = `(${selectCols}, 'CUENTA CONTABLE PADRE' AS error
+              FROM con_det_comp_cont x
+             INNER JOIN con_cab_comp_cont a ON x.ide_cnccc = a.ide_cnccc
+             INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
+             WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc >= $2
+               AND a.ide_cneco = 0
+               AND x.ide_cndpc IN (
+                   SELECT ide_cndpc
+                     FROM con_det_plan_cuen
+                    WHERE nivel_cndpc != 'HIJO'
+               ))
+             UNION ALL
+            (${selectCols}, 'CUENTA NULL' AS error
+              FROM con_det_comp_cont x
+             INNER JOIN con_cab_comp_cont a ON x.ide_cnccc = a.ide_cnccc
+             INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
+             WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc >= $2
+               AND a.ide_cneco = 0
+               AND x.ide_cndpc IS NULL)
+             UNION ALL
+            (${selectCols}, 'CXC NO ASOCIADA A TRANSACCION' AS error
+              FROM con_cab_comp_cont a
+             INNER JOIN con_det_comp_cont b ON a.ide_cnccc = b.ide_cnccc
+             INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
+             WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc >= $2
+               AND a.ide_cneco = 0
+               AND a.ide_cntcm = 2
+               AND b.ide_cndpc = 677
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM tes_cab_libr_banc t
+                    WHERE t.ide_cnccc = a.ide_cnccc
+                      AND t.ide_sucu  = $1
+               ))
+             UNION ALL
+            (${selectCols}, 'CXP NO ASOCIADA A TRANSACCION' AS error
+              FROM con_cab_comp_cont a
+             INNER JOIN con_det_comp_cont b ON a.ide_cnccc = b.ide_cnccc
+             INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
+             WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc >= $2
+               AND a.ide_cneco = 0
+               AND a.ide_cntcm = 3
+               AND b.ide_cndpc = 743
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM tes_cab_libr_banc t
+                    WHERE t.ide_cnccc = a.ide_cnccc
+                      AND t.ide_sucu  = $1
+               ))
+             UNION ALL
+            (SELECT DISTINCT
+                    ccc.ide_cnccc
+                  , ccc.numero_cnccc        AS num_asiento
+                  , ccc.fecha_trans_cnccc
+                  , COALESCE(tclb.beneficiari_teclb, '') AS nom_geper
+                  , ccc.observacion_cnccc
+                  , CASE
+                        WHEN NOT EXISTS (
+                            SELECT 1
+                              FROM con_det_comp_cont dcc
+                             WHERE dcc.ide_cnccc = ccc.ide_cnccc
+                               AND dcc.ide_cndpc = tcba.ide_cndpc
+                        )
+                        THEN 'CUENTA BANCO INCORRECTA EN ASIENTO DE TESORERIA'
+                        WHEN EXISTS (
+                            SELECT 1
+                              FROM con_det_comp_cont dcc
+                             WHERE dcc.ide_cnccc = ccc.ide_cnccc
+                               AND dcc.ide_cndpc = tcba.ide_cndpc
+                               AND ABS(COALESCE(dcc.valor_cndcc, 0))
+                                   != ABS(tclb.valor_teclb)
+                        )
+                        THEN 'VALOR BANCO INCORRECTO EN ASIENTO DE TESORERIA'
+                        ELSE 'ERROR CUENTA/VALOR BANCO'
+                    END AS error
+               FROM tes_cab_libr_banc  tclb
+              INNER JOIN tes_cuenta_banco tcba
+                 ON tcba.ide_tecba = tclb.ide_tecba
+              INNER JOIN con_cab_comp_cont ccc
+                 ON ccc.ide_cnccc = tclb.ide_cnccc
+              WHERE tclb.ide_sucu = $1
+                AND tclb.ide_cnccc IS NOT NULL
+                AND ccc.ide_cneco = 0
+                AND ccc.fecha_trans_cnccc >= $2
+                AND (
+                    NOT EXISTS (
+                        SELECT 1
+                          FROM con_det_comp_cont dcc
+                         WHERE dcc.ide_cnccc = ccc.ide_cnccc
+                           AND dcc.ide_cndpc = tcba.ide_cndpc
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                          FROM con_det_comp_cont dcc
+                         WHERE dcc.ide_cnccc = ccc.ide_cnccc
+                           AND dcc.ide_cndpc = tcba.ide_cndpc
+                           AND ABS(COALESCE(dcc.valor_cndcc, 0))
+                               != ABS(tclb.valor_teclb)
+                    )
+                ))
+             ORDER BY fecha_trans_cnccc, ide_cnccc`;
+
+            const query = new SelectQuery(sql);
+            query.setLazy(false);
+            query.addIntParam(1, dtoIn.ideSucu);
+            query.addStringParam(2, dtoIn.fechaInicio);
+            return this.dataSource.createSelectQuery(query);
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(
+                `Error al obtener comprobantes con error: ${msg}`,
+            );
         }
     }
 

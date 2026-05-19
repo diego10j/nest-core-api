@@ -7,6 +7,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
+    GetComprobantesConErrorDto,
     GetComprobantesDto,
     ReversarComprobanteDto,
     SaveComprobanteDto,
@@ -120,5 +121,17 @@ export class ComprobanteContabilidadController {
         @Body() dtoIn: ArrayIdeDto,
     ) {
         return this.service.deleteComprobantes({ ...headersParams, ...dtoIn });
+    }
+
+    /**
+     * Retorna comprobantes contables con errores desde una fecha de inicio.
+     */
+    @Get('getComprobantesConError')
+    @ApiOperation({ summary: 'Obtener comprobantes contables con errores desde una fecha' })
+    getComprobantesConError(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetComprobantesConErrorDto,
+    ) {
+        return this.service.getComprobantesConError({ ...headersParams, ...dtoIn });
     }
 }

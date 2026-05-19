@@ -171,6 +171,12 @@ export class AnularComprobanteDto {
     ide_cneco?: number;
 }
 
+export class GetComprobantesConErrorDto {
+    @ApiProperty({ description: 'Fecha inicio (YYYY-MM-DD) desde la cual verificar errores' })
+    @IsDateString()
+    fechaInicio: string;
+}
+
 export class ReversarComprobanteDto {
     @ApiProperty({ description: 'ID del comprobante a reversar' })
     @IsInt()
