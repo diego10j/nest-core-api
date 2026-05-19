@@ -172,9 +172,13 @@ export class AnularComprobanteDto {
 }
 
 export class GetComprobantesConErrorDto {
-    @ApiProperty({ description: 'Fecha inicio (YYYY-MM-DD) desde la cual verificar errores' })
+    @ApiProperty({ description: 'Fecha inicio del rango (YYYY-MM-DD)' })
     @IsDateString()
     fechaInicio: string;
+
+    @ApiProperty({ description: 'Fecha fin del rango (YYYY-MM-DD)' })
+    @IsDateString()
+    fechaFin: string;
 }
 
 export class ReversarComprobanteDto {

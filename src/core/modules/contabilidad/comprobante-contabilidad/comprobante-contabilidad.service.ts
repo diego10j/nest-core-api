@@ -501,8 +501,8 @@ export class ComprobanteContabilidadService extends BaseService {
               FROM con_det_comp_cont x
              INNER JOIN con_cab_comp_cont a ON x.ide_cnccc = a.ide_cnccc
              INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
-             WHERE a.ide_sucu = $1
-               AND a.fecha_trans_cnccc >= $2
+              WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc BETWEEN $2 AND $3
                AND a.ide_cneco = 0
                AND x.ide_cndpc IN (
                    SELECT ide_cndpc
@@ -515,7 +515,7 @@ export class ComprobanteContabilidadService extends BaseService {
              INNER JOIN con_cab_comp_cont a ON x.ide_cnccc = a.ide_cnccc
              INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
              WHERE a.ide_sucu = $1
-               AND a.fecha_trans_cnccc >= $2
+               AND a.fecha_trans_cnccc BETWEEN $2 AND $3
                AND a.ide_cneco = 0
                AND x.ide_cndpc IS NULL)
              UNION ALL
@@ -523,8 +523,8 @@ export class ComprobanteContabilidadService extends BaseService {
               FROM con_cab_comp_cont a
              INNER JOIN con_det_comp_cont b ON a.ide_cnccc = b.ide_cnccc
              INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
-             WHERE a.ide_sucu = $1
-               AND a.fecha_trans_cnccc >= $2
+              WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc BETWEEN $2 AND $3
                AND a.ide_cneco = 0
                AND a.ide_cntcm = 2
                AND b.ide_cndpc = 677
@@ -539,8 +539,8 @@ export class ComprobanteContabilidadService extends BaseService {
               FROM con_cab_comp_cont a
              INNER JOIN con_det_comp_cont b ON a.ide_cnccc = b.ide_cnccc
              INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
-             WHERE a.ide_sucu = $1
-               AND a.fecha_trans_cnccc >= $2
+              WHERE a.ide_sucu = $1
+               AND a.fecha_trans_cnccc BETWEEN $2 AND $3
                AND a.ide_cneco = 0
                AND a.ide_cntcm = 3
                AND b.ide_cndpc = 743
@@ -584,7 +584,7 @@ export class ComprobanteContabilidadService extends BaseService {
               WHERE tclb.ide_sucu = $1
                 AND tclb.ide_cnccc IS NOT NULL
                 AND ccc.ide_cneco = 0
-                AND ccc.fecha_trans_cnccc >= $2
+                AND ccc.fecha_trans_cnccc BETWEEN $2 AND $3
                 AND (
                     NOT EXISTS (
                         SELECT 1
@@ -607,6 +607,7 @@ export class ComprobanteContabilidadService extends BaseService {
             query.setLazy(false);
             query.addIntParam(1, dtoIn.ideSucu);
             query.addStringParam(2, dtoIn.fechaInicio);
+            query.addStringParam(3, dtoIn.fechaFin);
             return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
