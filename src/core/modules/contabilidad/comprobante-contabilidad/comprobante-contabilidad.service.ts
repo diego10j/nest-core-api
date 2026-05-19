@@ -240,7 +240,7 @@ export class ComprobanteContabilidadService extends BaseService {
     async save(dtoIn: SaveComprobanteDto & HeaderParamsDto) {
         try {
             if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
-            if (!dtoIn.data.ide_cntcm) throw new BadRequestException('El tipo de comprobante (ide_cntcm) es requerido');
+            if (dtoIn.data.ide_cntcm === undefined || dtoIn.data.ide_cntcm === null) throw new BadRequestException('El tipo de comprobante (ide_cntcm) es requerido');
 
             const { data, detalles } = dtoIn;
             const isUpdate = dtoIn.isUpdate && !!data.ide_cnccc;
@@ -604,11 +604,10 @@ export class ComprobanteContabilidadService extends BaseService {
              ORDER BY fecha_trans_cnccc, ide_cnccc`;
 
             const query = new SelectQuery(sql);
-            query.setLazy(false);
             query.addIntParam(1, dtoIn.ideSucu);
             query.addStringParam(2, dtoIn.fechaInicio);
             query.addStringParam(3, dtoIn.fechaFin);
-            return this.dataSource.createSelectQuery(query);
+            return this.dataSource.createQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);

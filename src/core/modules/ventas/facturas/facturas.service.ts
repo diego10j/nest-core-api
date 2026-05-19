@@ -1419,8 +1419,10 @@ export class FacturasService extends BaseService {
                 INNER JOIN cxp_cabecera_nota nc ON (
                     nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
                     AND nc.ide_cpeno = 1
+                    AND nc.fecha_emisi_cpcno >= cf.fecha_emisi_cccfa
+                    AND nc.fecha_emisi_cpcno <= cf.fecha_emisi_cccfa + INTERVAL '30 days'
                     AND nc.ide_empr  = cf.ide_empr
-                    AND nc.ide_sucu  = cf.ide_sucu
+                    --AND nc.ide_sucu  = cf.ide_sucu
                 )
                 WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
                 GROUP BY cf.ide_cccfa

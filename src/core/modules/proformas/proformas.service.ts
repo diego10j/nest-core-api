@@ -928,6 +928,7 @@ ORDER BY prof.secuencial_cccpr DESC
       tableName: 'deta_forma_pago',
       primaryKey: 'ide_cndfp',
       columnLabel: 'nombre_cndfp',
+      condition: `ide_cncfp != 3 and activo_cndfp = true`,
     };
     return this.core.getListDataValues(dtoIn);
   }
