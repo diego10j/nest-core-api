@@ -4,11 +4,24 @@ import { CuentasPorPagarController } from './cuentas-por-pagar.controller';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
+import { DocumentosCxPController } from './documentos-cxp.controller';
+import { DocumentosCxPService } from './documentos-cxp.service';
+import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { TesoreriaModule } from '../tesoreria/tesoreria.module';
 
 @Module({
     imports: [TesoreriaModule],
-    controllers: [CuentasPorPagarController],
-    providers: [CuentasPorPagarService, CuentasPorPagarSaveService, CuentasPorPagarOrdenService, CoreService],
+    controllers: [
+        CuentasPorPagarController,
+        DocumentosCxPController,
+    ],
+    providers: [
+        CuentasPorPagarService,
+        CuentasPorPagarSaveService,
+        CuentasPorPagarOrdenService,
+        DocumentosCxPService,
+        DocumentosCxPSaveService,
+        CoreService,
+    ],
 })
 export class CuentasPorPagarModule { }
