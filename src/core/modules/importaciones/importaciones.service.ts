@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { CoreService } from 'src/core/core.service';
 
 import { GetImportacionesDto } from './dto/get-importaciones.dto';
 
 @Injectable()
 export class ImportacionesService extends BaseService {
-    constructor(private readonly dataSource: DataSourceService) {
+    constructor(
+        private readonly dataSource: DataSourceService,
+        private readonly core: CoreService,
+    ) {
         super();
     }
 
@@ -24,12 +29,24 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /** imp_incoterm – tabla completa para administración */
+    async getTableQueryIncoterm(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'incoterm', primaryKey: 'ide_iminco' };
+        return this.core.getTableQuery(dto);
+    }
+
     async getListDataEstadoOrden() {
         const query = new SelectQuery(`
             SELECT CAST(ide_imesor AS VARCHAR) AS value, nombre_imesor AS label
             FROM imp_estado_orden WHERE activo_imesor = true ORDER BY ide_imesor
         `);
         return this.dataSource.createSelectQuery(query);
+    }
+
+    /** imp_estado_orden – tabla completa para administración */
+    async getTableQueryEstadoOrden(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'estado_orden', primaryKey: 'ide_imesor' };
+        return this.core.getTableQuery(dto);
     }
 
     async getListDataTipoCosto() {
@@ -40,12 +57,24 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /** imp_tipo_costo – tabla completa para administración */
+    async getTableQueryTipoCosto(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'tipo_costo', primaryKey: 'ide_imtco' };
+        return this.core.getTableQuery(dto);
+    }
+
     async getListDataTipoDocumento() {
         const query = new SelectQuery(`
             SELECT CAST(ide_itd AS VARCHAR) AS value, nombre_itd AS label
             FROM imp_tipo_documento WHERE activo_itd = true ORDER BY nombre_itd
         `);
         return this.dataSource.createSelectQuery(query);
+    }
+
+    /** imp_tipo_documento – tabla completa para administración */
+    async getTableQueryTipoDocumento(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'tipo_documento', primaryKey: 'ide_itd' };
+        return this.core.getTableQuery(dto);
     }
 
     async getListDataTipoTransporte() {
@@ -56,6 +85,12 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /** imp_tipo_transporte – tabla completa para administración */
+    async getTableQueryTipoTransporte(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'tipo_transporte', primaryKey: 'ide_itt' };
+        return this.core.getTableQuery(dto);
+    }
+
     async getListDataEstadoEnvio() {
         const query = new SelectQuery(`
             SELECT CAST(ide_imev AS VARCHAR) AS value, nombre_imev AS label
@@ -64,12 +99,24 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /** imp_estado_envio – tabla completa para administración */
+    async getTableQueryEstadoEnvio(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'estado_envio', primaryKey: 'ide_imev' };
+        return this.core.getTableQuery(dto);
+    }
+
     async getListDataTipoAforo() {
         const query = new SelectQuery(`
             SELECT CAST(ide_imtaf AS VARCHAR) AS value, nombre_imtaf AS label
             FROM imp_tipo_aforo WHERE activo_imtaf = true ORDER BY nombre_imtaf
         `);
         return this.dataSource.createSelectQuery(query);
+    }
+
+    /** imp_tipo_aforo – tabla completa para administración */
+    async getTableQueryTipoAforo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const dto = { ...dtoIn, module: 'imp', tableName: 'tipo_aforo', primaryKey: 'ide_imtaf' };
+        return this.core.getTableQuery(dto);
     }
 
     // ========================================================================

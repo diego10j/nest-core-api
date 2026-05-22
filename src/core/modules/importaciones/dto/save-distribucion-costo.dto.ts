@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsNotEmpty, IsNumber, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsNotEmpty, IsNumber, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class DistribucionItemDto {
@@ -15,7 +15,7 @@ export class SaveDistribucionCostoDto {
     @IsNotEmpty()
     ide_imcoim: number;
 
-    @IsString()
+    @IsIn(['valor_fob', 'peso', 'volumen', 'cantidad', 'manual'])
     @IsNotEmpty()
     metodo: 'valor_fob' | 'peso' | 'volumen' | 'cantidad' | 'manual';
 

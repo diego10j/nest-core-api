@@ -126,7 +126,7 @@ export class PreLibroBancosSaveService extends BaseService {
         );
 
         const object: Record<string, any> = {
-            ide_teclb,
+            ide_teclb: ideTeclb,
             ide_teelb: trans.ide_teelb,
             ide_tecba: trans.ide_tecba,
             ide_tettb: ideTettbReversa,
@@ -172,7 +172,7 @@ export class PreLibroBancosSaveService extends BaseService {
         );
 
         const object: Record<string, any> = {
-            ide_teclb,
+            ide_teclb: ideTeclb,
             ide_teelb: trans.ide_teelb,
             ide_tecba: trans.ide_tecba,
             ide_tettb: 15,
@@ -212,7 +212,7 @@ export class PreLibroBancosSaveService extends BaseService {
         );
 
         const object: Record<string, any> = {
-            ide_teclb,
+            ide_teclb: ideTeclb,
             ide_teelb: ideTeelb,
             ide_tecba: dtoIn.ideTecba,
             ide_tettb: dtoIn.ideTettb,
@@ -260,7 +260,7 @@ export class PreLibroBancosSaveService extends BaseService {
         );
 
         const object: Record<string, any> = {
-            ide_teclb,
+            ide_teclb: ideTeclb,
             ide_teelb: ideTeelb,
             ide_tecba: dtoIn.ideTecba,
             ide_tettb: dtoIn.ideTettb,
@@ -461,7 +461,7 @@ export class PreLibroBancosSaveService extends BaseService {
         );
 
         const object: Record<string, any> = {
-            ide_teclb,
+            ide_teclb: ideTeclb,
             ide_teelb: ideTeelb,
             ide_tecba: dtoIn.ideTecba,
             ide_tettb: dtoIn.ideTettb,

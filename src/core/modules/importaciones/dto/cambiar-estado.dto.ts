@@ -1,4 +1,4 @@
-import { IsInt } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CambiarEstadoDto {
 
@@ -8,5 +8,8 @@ export class CambiarEstadoDto {
     @IsInt()
     ide_imesor_nuevo: number;
 
+    @IsOptional()
+    @IsString()
+    @MaxLength(500)
     observacion?: string;
 }

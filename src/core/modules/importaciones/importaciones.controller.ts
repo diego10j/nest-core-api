@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { ImportacionesService } from './importaciones.service';
 import { ImportacionesSaveService } from './importaciones-save.service';
@@ -33,29 +34,71 @@ export class ImportacionesController {
     @ApiOperation({ summary: 'Listar Incoterms activos para combos' })
     getListDataIncoterm() { return this.service.getListDataIncoterm(); }
 
+    @Get('getTableQueryIncoterm')
+    @ApiOperation({ summary: 'Tabla completa de Incoterms para administración' })
+    getTableQueryIncoterm(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryIncoterm({ ...h, ...dto });
+    }
+
     @Get('getListDataEstadoOrden')
     @ApiOperation({ summary: 'Listar estados de orden activos para combos' })
     getListDataEstadoOrden() { return this.service.getListDataEstadoOrden(); }
+
+    @Get('getTableQueryEstadoOrden')
+    @ApiOperation({ summary: 'Tabla completa de estados de orden para administración' })
+    getTableQueryEstadoOrden(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryEstadoOrden({ ...h, ...dto });
+    }
 
     @Get('getListDataTipoCosto')
     @ApiOperation({ summary: 'Listar tipos de costo activos para combos' })
     getListDataTipoCosto() { return this.service.getListDataTipoCosto(); }
 
+    @Get('getTableQueryTipoCosto')
+    @ApiOperation({ summary: 'Tabla completa de tipos de costo para administración' })
+    getTableQueryTipoCosto(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryTipoCosto({ ...h, ...dto });
+    }
+
     @Get('getListDataTipoDocumento')
     @ApiOperation({ summary: 'Listar tipos de documento activos para combos' })
     getListDataTipoDocumento() { return this.service.getListDataTipoDocumento(); }
+
+    @Get('getTableQueryTipoDocumento')
+    @ApiOperation({ summary: 'Tabla completa de tipos de documento para administración' })
+    getTableQueryTipoDocumento(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryTipoDocumento({ ...h, ...dto });
+    }
 
     @Get('getListDataTipoTransporte')
     @ApiOperation({ summary: 'Listar tipos de transporte activos para combos' })
     getListDataTipoTransporte() { return this.service.getListDataTipoTransporte(); }
 
+    @Get('getTableQueryTipoTransporte')
+    @ApiOperation({ summary: 'Tabla completa de tipos de transporte para administración' })
+    getTableQueryTipoTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryTipoTransporte({ ...h, ...dto });
+    }
+
     @Get('getListDataEstadoEnvio')
     @ApiOperation({ summary: 'Listar estados de envío activos para combos' })
     getListDataEstadoEnvio() { return this.service.getListDataEstadoEnvio(); }
 
+    @Get('getTableQueryEstadoEnvio')
+    @ApiOperation({ summary: 'Tabla completa de estados de envío para administración' })
+    getTableQueryEstadoEnvio(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryEstadoEnvio({ ...h, ...dto });
+    }
+
     @Get('getListDataTipoAforo')
     @ApiOperation({ summary: 'Listar tipos de aforo activos para combos' })
     getListDataTipoAforo() { return this.service.getListDataTipoAforo(); }
+
+    @Get('getTableQueryTipoAforo')
+    @ApiOperation({ summary: 'Tabla completa de tipos de aforo para administración' })
+    getTableQueryTipoAforo(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getTableQueryTipoAforo({ ...h, ...dto });
+    }
 
     // ========================================================================
     // CONSULTAS — GET con @Query
@@ -69,67 +112,67 @@ export class ImportacionesController {
 
     @Get('getImportacionById/:ide_imcaim')
     @ApiOperation({ summary: 'Obtener cabecera completa de una importación por ID' })
-    getImportacionById(@Param('ide_imcaim') id: number) {
+    getImportacionById(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getImportacionById(id);
     }
 
     @Get('getDetalleImportacion/:ide_imcaim')
     @ApiOperation({ summary: 'Listar productos del detalle de una importación' })
-    getDetalleImportacion(@Param('ide_imcaim') id: number) {
+    getDetalleImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getDetalleImportacion(id);
     }
 
     @Get('getCostosImportacion/:ide_imcaim')
     @ApiOperation({ summary: 'Listar costos de una importación' })
-    getCostosImportacion(@Param('ide_imcaim') id: number) {
+    getCostosImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getCostosImportacion(id);
     }
 
     @Get('getPagosImportacion/:ide_imcaim')
     @ApiOperation({ summary: 'Listar pagos de una importación' })
-    getPagosImportacion(@Param('ide_imcaim') id: number) {
+    getPagosImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getPagosImportacion(id);
     }
 
     @Get('getDocumentosImportacion/:ide_imcaim')
     @ApiOperation({ summary: 'Listar documentos de una importación' })
-    getDocumentosImportacion(@Param('ide_imcaim') id: number) {
+    getDocumentosImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getDocumentosImportacion(id);
     }
 
     @Get('getEnvioImportacion/:ide_imcaim')
     @ApiOperation({ summary: 'Obtener información de envío de una importación' })
-    getEnvioImportacion(@Param('ide_imcaim') id: number) {
+    getEnvioImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getEnvioImportacion(id);
     }
 
     @Get('getGestionAduana/:ide_imcaim')
     @ApiOperation({ summary: 'Obtener gestión aduana de una importación' })
-    getGestionAduana(@Param('ide_imcaim') id: number) {
+    getGestionAduana(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getGestionAduana(id);
     }
 
     @Get('getLiquidacionAduana/:ide_imga')
     @ApiOperation({ summary: 'Obtener liquidación de aduana por gestión' })
-    getLiquidacionAduana(@Param('ide_imga') id: number) {
+    getLiquidacionAduana(@Param('ide_imga', ParseIntPipe) id: number) {
         return this.service.getLiquidacionAduana(id);
     }
 
     @Get('getResumenCostos/:ide_imcaim')
     @ApiOperation({ summary: 'Resumen de costos agrupados por tipo' })
-    getResumenCostos(@Param('ide_imcaim') id: number) {
+    getResumenCostos(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getResumenCostos(id);
     }
 
     @Get('getHistorialEstado/:ide_imcaim')
     @ApiOperation({ summary: 'Historial de cambios de estado de una importación' })
-    getHistorialEstado(@Param('ide_imcaim') id: number) {
+    getHistorialEstado(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getHistorialEstado(id);
     }
 
     @Get('getDistribucionCostos/:ide_imcaim')
     @ApiOperation({ summary: 'Distribución de costos por producto de una importación' })
-    getDistribucionCostos(@Param('ide_imcaim') id: number) {
+    getDistribucionCostos(@Param('ide_imcaim', ParseIntPipe) id: number) {
         return this.service.getDistribucionCostos(id);
     }
 

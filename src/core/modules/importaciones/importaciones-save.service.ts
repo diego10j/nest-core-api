@@ -14,6 +14,7 @@ import { SaveEnvioDto } from './dto/save-envio.dto';
 import { SaveGestionAduanaDto } from './dto/save-gestion-aduana.dto';
 import { SaveImportacionDto } from './dto/save-importacion.dto';
 import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
+import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
 @Injectable()
@@ -42,19 +43,12 @@ export class ImportacionesSaveService extends BaseService {
             ? data.ide_imcaim
             : await this.dataSource.getSeqTable('imp_cab_importa', 'ide_imcaim', 1, dtoIn.login);
 
-        // Generar número automático si es INSERT
+        // Generar número automático si es INSERT — basado en ide_imcaim (seguro por getSeqTable)
         let numero = '';
         if (!isUpdate) {
-            const seqQuery = new SelectQuery(`
-                SELECT COALESCE(MAX(CAST(SUBSTRING(numero_imcaim FROM 12) AS INTEGER)), 0) + 1 AS seq
-                FROM imp_cab_importa
-                WHERE numero_imcaim LIKE 'IMP-' || TO_CHAR(NOW(), 'YYYYMM') || '%'
-                  AND ide_empr = $1
-            `);
-            seqQuery.addIntParam(1, dtoIn.ideEmpr);
-            const seq = await this.dataSource.createSingleQuery(seqQuery);
-            const nro = String(seq?.seq ?? 1).padStart(4, '0');
-            numero = `IMP-${getCurrentDate().replace(/-/g, '').substring(0, 6)}${nro}`;
+            const now = new Date();
+            const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+            numero = `IMP-${yyyymm}${String(ide_imcaim).padStart(5, '0')}`;
         }
 
         const obj = {
