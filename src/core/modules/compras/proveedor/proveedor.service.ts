@@ -56,7 +56,7 @@ export class ProveedorService extends BaseService {
         )
         AND p.ide_empr = ${dto.ideEmpr}
         AND p.activo_geper = true
-        and p.es_proveedor_geper = true
+        and p.es_proveedo_geper = true
         AND p.nivel_geper = 'HIJO'
     ORDER BY
         p.nom_geper

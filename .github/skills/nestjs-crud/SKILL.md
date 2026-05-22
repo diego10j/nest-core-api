@@ -23,7 +23,7 @@ argument-hint: "Nombre de la tabla (ej: con_flujo_cuenta_clasif) o descripción 
 | Módulo corto | Prefijo de 2-3 letras: `con`, `tes`, `ven`, `cxp`... |
 | PK secuencial | `getSeqTable('<modulo>_<tabla>', '<pk>', 1, login)` |
 | Multi-tenancy | Toda tabla lleva `ide_empr` + `ide_sucu` |
-| Auditoría | `usuario_ingre` / `hora_ingre` / `usuario_actua` / `hora_actua` |
+| Auditoría | `usuario_ingre`, `hora_ingre`, `usuario_actua`, `hora_actua`, `fecha_ingre`, `fecha_actua` — **NUNCA en el DTO**; se inyectan desde `HeaderParamsDto` en el service |
 | Save unificado | `isUpdate: boolean` en el DTO determina INSERT vs UPDATE |
 | Imports | Orden: builtin → external → internal (`@/**`) → parent → sibling |
 
@@ -48,8 +48,11 @@ export class <Modulo><Tabla>DataDto {
     @IsOptional()
     ide_<pk>?: number;           // PK — opcional (se genera en insert)
 
-    // ide_empr e ide_sucu NO se incluyen en el DTO de datos;
-    // se inyectan desde HeaderParamsDto en el service
+    // NUNCA incluir en el DTO:
+    //   - ide_empr, ide_sucu        → vienen de HeaderParamsDto (dtoIn.ideEmpr, dtoIn.ideSucu)
+    //   - usuario_ingre, usuario_actua → vienen de HeaderParamsDto (dtoIn.login)
+    //   - hora_ingre, hora_actua      → los asigna core.save / el service con new Date()
+    //   - fecha_ingre, fecha_actua    → ídem
 
     // --- campos de negocio ---
     @IsString()
@@ -248,7 +251,8 @@ export class XxxModule {}
 - [ ] Service: import `ObjectQueryDto` desde `src/core/connection/dto`
 - [ ] Service: import `DeleteQuery` desde `src/core/connection/helpers`
 - [ ] Service: `getSeqTable` se llama solo en el branch INSERT
-- [ ] Service: `ide_empr`, `ide_sucu`, `usuario_ingre` se asignan en el service, NO en el DTO
+- [ ] Service: `ide_empr`, `ide_sucu`, `usuario_ingre` se asignan en el service desde `HeaderParamsDto`, **nunca en el DTO**
+- [ ] DTO: sin campos de auditoría (`usuario_ingre`, `usuario_actua`, `hora_ingre`, `hora_actua`, `fecha_ingre`, `fecha_actua`)
 - [ ] Service: `catch` re-lanza `BadRequestException` y envuelve el resto en `InternalServerErrorException`
 - [ ] Controller: usa `@AppHeaders()` para inyectar `HeaderParamsDto`
 - [ ] Controller: save con `@Post` + `@Body`, delete con `@Delete` + `@Query`
