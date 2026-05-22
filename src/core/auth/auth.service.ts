@@ -100,7 +100,7 @@ export class AuthService {
       const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
       await this.refreshTokenService.store(refreshPayload.jti, validatedUser.uuid, refreshTtl);
 
-      this.logger.log(`Login exitoso: ${identifier} desde ${ip}`);
+      // this.logger.log(`Login exitoso: ${identifier} desde ${ip}`);
 
       return {
         accessToken,
@@ -190,7 +190,7 @@ export class AuthService {
     const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
     await this.refreshTokenService.store(newPayload.jti, userId, refreshTtl);
 
-    this.logger.log(`Tokens rotados para usuario ${userId}`);
+    // this.logger.log(`Tokens rotados para usuario ${userId}`);
 
     return { accessToken, refreshToken: newRefreshToken };
   }
@@ -249,7 +249,7 @@ export class AuthService {
       case 'h': return value * 3600;
       case 'm': return value * 60;
       case 's': return value;
-      default:  return defaultSeconds;
+      default: return defaultSeconds;
     }
   }
 

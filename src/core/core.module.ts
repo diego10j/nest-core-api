@@ -5,18 +5,19 @@ import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
 import { IntegrationModule } from './integration/integration.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ComprasModule } from './modules/compras/compras.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
 import { CuentasPorCobrarModule } from './modules/cuentas-por-cobrar/cuentas-por-cobrar.module';
+import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-pagar.module';
+import { ImportacionesModule } from './modules/importaciones/importaciones.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProformasModule } from './modules/proformas/proformas.module';
 import { SistemaModule } from './modules/sistema/sistema.module';
 import { SriModule } from './modules/sri/sri.module';
+import { TesoreriaModule } from './modules/tesoreria/tesoreria.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
-import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-pagar.module';
-import { TesoreriaModule } from './modules/tesoreria/tesoreria.module';
-import { ImportacionesModule } from './modules/importaciones/importaciones.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ImportacionesModule } from './modules/importaciones/importaciones.modul
     ProformasModule,
     CuentasPorCobrarModule,
     CuentasPorPagarModule,
+    ComprasModule,
     TesoreriaModule,
     ImportacionesModule,
   ],

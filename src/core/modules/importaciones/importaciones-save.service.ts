@@ -193,9 +193,9 @@ export class ImportacionesSaveService extends BaseService {
     // ========================================================================
     async saveGestionAduana(dtoIn: SaveGestionAduanaDto & HeaderParamsDto) {
         // Propagar ide_empr desde la cabecera
-        const cab = await this.dataSource.createSingleQuery(
-            new SelectQuery(`SELECT ide_empr FROM imp_cab_importa WHERE ide_imcaim = $1`).addIntParam(1, dtoIn.ide_imcaim),
-        );
+        const queryCab = new SelectQuery(`SELECT ide_empr FROM imp_cab_importa WHERE ide_imcaim = $1`);
+        queryCab.addIntParam(1, dtoIn.ide_imcaim);
+        const cab = await this.dataSource.createSingleQuery(queryCab);
 
         const isUpdate = !!dtoIn.ide_imga;
         if (isUpdate) {
@@ -424,9 +424,11 @@ export class ImportacionesSaveService extends BaseService {
     // CAMBIAR ESTADO — con historial
     // ========================================================================
     async cambiarEstado(dtoIn: CambiarEstadoDto & HeaderParamsDto) {
-        const cab = await this.dataSource.createSingleQuery(
-            new SelectQuery(`SELECT ide_imesor FROM imp_cab_importa WHERE ide_imcaim = $1`).addIntParam(1, dtoIn.ide_imcaim),
-        );
+
+        const queryCab = new SelectQuery(`SELECT ide_imesor FROM imp_cab_importa WHERE ide_imcaim = $1`);
+        queryCab.addIntParam(1, dtoIn.ide_imcaim);
+
+        const cab = await this.dataSource.createSingleQuery(queryCab);
         if (!cab) throw new BadRequestException('Importación no encontrada');
 
         const estadoAnterior = cab.ide_imesor;
