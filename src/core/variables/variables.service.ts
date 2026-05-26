@@ -5,10 +5,10 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { removeEqualsElements } from 'src/util/helpers/array-util';
 
 import { INVENTARIO_VARS } from './data/1-inv-var';
+import { IMPORTACIONES_VARS } from './data/14-imp-var';
 import { GetVariableDto } from './dto/get-variable.dto';
 import { Parametro } from './interfaces/parametro.interface';
 import { getModuloDefinition, toModuleID } from './modulos';
-import { IMPORTACIONES_VARS } from './data/14-imp-var';
 
 @Injectable()
 export class VariablesService {

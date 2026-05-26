@@ -4,9 +4,9 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-import { ModulosSistemaService } from './modulos-sistema.service';
-import { SaveModuloDto } from './dto/save-modulo.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
+import { SaveModuloDto } from './dto/save-modulo.dto';
+import { ModulosSistemaService } from './modulos-sistema.service';
 import { VariablesService } from './variables.service';
 
 @ApiTags('Sistema-Variables')
