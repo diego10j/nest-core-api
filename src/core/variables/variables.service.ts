@@ -8,13 +8,14 @@ import { INVENTARIO_VARS } from './data/1-inv-var';
 import { GetVariableDto } from './dto/get-variable.dto';
 import { Parametro } from './interfaces/parametro.interface';
 import { getModuloDefinition, toModuleID } from './modulos';
+import { IMPORTACIONES_VARS } from './data/14-imp-var';
 
 @Injectable()
 export class VariablesService {
   private readonly logger = new Logger(VariablesService.name);
   private readonly CACHE_PREFIX = 'var_';
 
-  constructor(private readonly dataSource: DataSourceService) {}
+  constructor(private readonly dataSource: DataSourceService) { }
 
   async getVariable(dto: GetVariableDto & HeaderParamsDto): Promise<string | null> {
     const cacheKey = this.getCacheKey(dto.name);
@@ -109,30 +110,89 @@ export class VariablesService {
     }
   }
 
-  // Actualizar variables en la base de datos
-  public async updateVariables(dto: HeaderParamsDto) {
-    const variables = this.getAllVariables();
+  async getModulosSistema() {
+    const query = new SelectQuery(`
+      SELECT ide_modu, nom_modu
+      FROM sis_modulo
+      ORDER BY ide_modu
+    `);
+    return this.dataSource.createSelectQuery(query);
+  }
 
-    if (variables.length === 0) {
+  async getVariablesModulo(ideModu: number) {
+    const query = new SelectQuery(`
+      SELECT ide_modu, nom_para, descripcion_para, valor_para,
+             tabla_para, campo_codigo_para, campo_nombre_para,
+             activo_para, es_empr_para
+      FROM sis_parametros
+      WHERE ide_modu = $1
+      ORDER BY nom_para
+    `);
+    query.addIntParam(1, ideModu);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  // Inserta en la BD las variables que aún no existen; las ya existentes se omiten.
+  public async updateVariables(dto: HeaderParamsDto) {
+    const allLocalVars = this.getAllVariables();
+    const totalLocal = allLocalVars.length;
+
+    if (totalLocal === 0) {
+      return { message: 'No hay variables definidas en el sistema.' };
+    }
+
+    // 1. Obtener nombres de variables que ya existen en la BD (globales + de esta empresa)
+    const existingQuery = new SelectQuery(`
+      SELECT nom_para, es_empr_para
+      FROM sis_parametros
+      WHERE es_empr_para = false
+         OR (es_empr_para = true AND ide_empr = $1)
+    `);
+    existingQuery.addParam(1, dto.ideEmpr);
+    const existingRows: { nom_para: string; es_empr_para: boolean }[] =
+      await this.dataSource.createSelectQuery(existingQuery);
+
+    const globalSet = new Set<string>();
+    const empresaSet = new Set<string>();
+    for (const row of existingRows) {
+      if (row.es_empr_para) {
+        empresaSet.add(row.nom_para.toLowerCase());
+      } else {
+        globalSet.add(row.nom_para.toLowerCase());
+      }
+    }
+
+    // 2. Filtrar solo las variables nuevas
+    const newVars = allLocalVars.filter((v) => {
+      const key = v.nom_para.toLowerCase();
+      return v.es_empr_para ? !empresaSet.has(key) : !globalSet.has(key);
+    });
+
+    if (newVars.length === 0) {
       return {
-        message: `No se encontraron variables para actualizar para empresa ${dto.ideEmpr}`,
+        message: `El sistema ya cuenta con todas las variables registradas (${totalLocal} en total). No se realizaron inserciones.`,
       };
     }
 
     try {
-      // validar variables
-      // console.log(variables);
-      this.validateParameters(variables);
-      const query = new SelectQuery(`SELECT f_update_variables($1, $2)`);
-      query.addParam(1, dto.ideEmpr);
-      query.addParam(2, JSON.stringify(variables));
+      this.validateParameters(newVars);
 
-      await this.dataSource.createSelectQuery(query);
+      const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
+      query.addParam(1, dto.ideEmpr);
+      query.addParam(2, JSON.stringify(newVars));
+      query.addParam(3, dto.login);
+
+      const result = await this.dataSource.createSelectQuery(query);
+      const inserted: number = result[0]?.f_update_variables ?? newVars.length;
+
       return {
-        message: `Variables actualizadas para empresa ${dto.ideEmpr}`,
+        message: `Se crearon ${inserted} variable(s) nueva(s). El sistema ahora cuenta con ${existingRows.length + inserted} variable(s) registrada(s) de un total de ${totalLocal} definida(s).`,
+        inserted,
+        total: totalLocal,
+        existing: existingRows.length,
       };
     } catch (error) {
-      console.error('Error actualizando variables:', error);
+      this.logger.error('Error actualizando variables:', error);
       throw error;
     }
   }
@@ -236,6 +296,7 @@ export class VariablesService {
   private getAllVariables(): Parametro[] {
     return [
       ...INVENTARIO_VARS,
+      ...IMPORTACIONES_VARS,
       // Agregar más conjuntos de variables
     ];
   }
@@ -297,11 +358,11 @@ export class VariablesService {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return new Error(
       `Error en validación de parámetro #${index + 1}:\n` +
-        `- Nombre: ${param.nom_para}\n` +
-        `- Módulo ID: ${param.ide_modu}\n` +
-        `- es_empr_para: ${param.es_empr_para}\n` +
-        `- Descripción: ${param.descripcion_para}\n` +
-        `- Error: ${errorMessage}`,
+      `- Nombre: ${param.nom_para}\n` +
+      `- Módulo ID: ${param.ide_modu}\n` +
+      `- es_empr_para: ${param.es_empr_para}\n` +
+      `- Descripción: ${param.descripcion_para}\n` +
+      `- Error: ${errorMessage}`,
     );
   }
 }

@@ -388,3 +388,22 @@ CREATE INDEX idx_imp_pagos_imcoim       ON imp_pagos_import(ide_imcoim);
 CREATE INDEX idx_imp_historial_imcaim   ON imp_historial_estado(ide_imcaim);
 CREATE INDEX idx_imp_dist_imcoim        ON imp_distribucion_costo(ide_imcoim);
 CREATE INDEX idx_imp_dist_imdet         ON imp_distribucion_costo(ide_imdet);
+
+-- MODULO 
+INSERT INTO "public"."sis_modulo" ("ide_modu", "nom_modu") VALUES
+(14, 'Importaciones');
+
+
+
+
+ALTER TABLE sis_parametros ADD COLUMN es_empr_para bool DEFAULT false;  -- para saber si el parametro se maneja por empresa
+ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;    -- se llena cuando  es_empr_para = true
+ALTER TABLE sis_parametros ADD COLUMN activo_para bool DEFAULT true;
+ALTER TABLE sis_parametros ADD COLUMN usuario_ingre varchar(50); 
+ALTER TABLE sis_parametros ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE sis_parametros ADD COLUMN usuario_actua varchar(50); 
+ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
+
+CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
+CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
+

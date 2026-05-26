@@ -161,16 +161,7 @@ ALTER TABLE con_cabece_forma_pago ADD COLUMN hora_actua TIMESTAMP;
 
 
 
-ALTER TABLE sis_parametros ADD COLUMN es_empr_para bool DEFAULT false;  -- para saber si el parametro se maneja por empresa
-ALTER TABLE sis_parametros ADD COLUMN empresa_para  INT;    -- se llena cuando  es_empr_para = true
-ALTER TABLE sis_parametros ADD COLUMN activo_para bool DEFAULT true;
-ALTER TABLE sis_parametros ADD COLUMN usuario_ingre varchar(50); 
-ALTER TABLE sis_parametros ADD COLUMN hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE sis_parametros ADD COLUMN usuario_actua varchar(50); 
-ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 
-CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
-CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
 
 --- actualiza categorias de productos existentes
 

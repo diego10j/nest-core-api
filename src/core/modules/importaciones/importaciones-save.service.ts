@@ -4,6 +4,9 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { ObjectQueryDto } from 'src/core/connection/dto';
+import { DocumentosCxPSaveService } from '../cuentas-por-pagar/documentos-cxp-save.service';
+import { SaveDocumentoCxPDto } from '../cuentas-por-pagar/dto/save-documento-cxp.dto';
 
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { SaveCostoImportDto } from './dto/save-costo-import.dto';
@@ -16,11 +19,14 @@ import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
 import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
+const IDE_CNTDO_IMPORTACION = 11;
+
 @Injectable()
 export class ImportacionesSaveService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly cxpSaveService: DocumentosCxPSaveService,
     ) {
         super();
         this.core
@@ -32,62 +38,242 @@ export class ImportacionesSaveService extends BaseService {
     // IMPORTACIÓN — Cabecera + Detalles
     // ========================================================================
 
+    // ========================================================================
+    // CREAR / ACTUALIZAR FACTURA CxP DE IMPORTACIÓN
+    // ========================================================================
+
+    /**
+     * Crea o actualiza el documento CxP (tipo 11 - DOCUMENTO DE IMPORTACION)
+     * asociado a la cabecera de importación.
+     * - Si ide_cpcfa es null en la cabecera → crea la factura y actualiza el campo.
+     * - Si ide_cpcfa ya existe → actualiza montos del documento existente.
+     */
+    async crearFacturaCxpImportacion(ide_imcaim: number, dtoIn: HeaderParamsDto) {
+        const qCab = new SelectQuery(`
+            SELECT ide_geper, fecha_factura_imcaim, total_factura_imcaim,
+                   numero_imcaim, observaciones_imcaim, ide_cpcfa, ide_empr, ide_sucu
+            FROM imp_cab_importa
+            WHERE ide_imcaim = $1
+        `);
+        qCab.addIntParam(1, ide_imcaim);
+        const cab = await this.dataSource.createSingleQuery(qCab);
+
+        if (!cab) throw new BadRequestException('Importación no encontrada');
+
+        const total = Number(cab.total_factura_imcaim ?? 0);
+        if (total <= 0) {
+            return { message: 'Sin total de factura, se omite la creación del documento CxP' };
+        }
+
+        const ideCpcfaExistente: number | null = cab.ide_cpcfa ?? null;
+        const isUpdate = !!ideCpcfaExistente;
+        let numeroCpcfa: string;
+
+        if (isUpdate) {
+            const qNum = new SelectQuery(`SELECT numero_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
+            qNum.addIntParam(1, ideCpcfaExistente);
+            const existing = await this.dataSource.createSingleQuery(qNum);
+            numeroCpcfa = existing?.numero_cpcfa ?? '001-001-000000001';
+
+            // Si la factura fue asignada manualmente (no sigue el formato auto-generado)
+            // no se sobreescribe: el usuario debe gestionarla desde CxP directamente
+            if (!/^001-001-\d{9}$/.test(numeroCpcfa)) {
+                return { message: 'ok', ide_cpcfa: ideCpcfaExistente, skipped: true };
+            }
+        } else {
+            const qSeq = new SelectQuery(`
+                SELECT COALESCE(MAX(CAST(SPLIT_PART(numero_cpcfa, '-', 3) AS BIGINT)), 0) + 1 AS secuencial
+                FROM cxp_cabece_factur
+                WHERE ide_cntdo = ${IDE_CNTDO_IMPORTACION}
+                AND ide_empr = $1
+                AND ide_sucu = $2
+            `);
+            qSeq.addIntParam(1, cab.ide_empr);
+            qSeq.addIntParam(2, Number(cab.ide_sucu ?? dtoIn.ideSucu));
+            const seqResult = await this.dataSource.createSingleQuery(qSeq);
+            const seq = Number(seqResult?.secuencial ?? 1);
+            numeroCpcfa = `001-001-${String(seq).padStart(9, '0')}`;
+        }
+
+        const observacion = [cab.numero_imcaim, cab.observaciones_imcaim]
+            .filter(Boolean)
+            .join(' - ');
+        const fechaEmisi = cab.fecha_factura_imcaim
+            ? new Date(cab.fecha_factura_imcaim).toISOString().slice(0, 10)
+            : new Date().toISOString().slice(0, 10);
+
+        const saveDto: SaveDocumentoCxPDto & HeaderParamsDto = {
+            ...dtoIn,
+            cabecera: {
+                ...(ideCpcfaExistente ? { ide_cpcfa: ideCpcfaExistente } : {}),
+                ide_cntdo: IDE_CNTDO_IMPORTACION, // DOCUMENTO DE IMPORTACION
+                ide_geper: Number(cab.ide_geper),
+                numero_cpcfa: numeroCpcfa,
+                autorizacio_cpcfa: '1234567890',
+                fecha_emisi_cpcfa: fechaEmisi,
+                ide_cndfp: 1, // Contado
+                ide_cndfp1: 11, // Otros con utilizacion del sistema financiero
+                observacion_cpcfa: observacion,
+                base_grabada_cpcfa: 0,
+                base_no_objeto_iva_cpcfa: 0,
+                base_tarifa0_cpcfa: total,
+                valor_iva_cpcfa: 0,
+                total_cpcfa: total,
+                descuento_cpcfa: 0,
+                otros_cpcfa: 0,
+                valor_ice_cpcfa: 0,
+                tarifa_iva_cpcfa: 0,
+                dias_credito_cpcfa: 0,
+                ide_srtst: 10,
+            },
+            detalles: [
+                {
+                    ide_inarti: 1000,  // Importaciones en transito
+                    cantidad_cpdfa: 1,
+                    precio_cpdfa: total,
+                    valor_cpdfa: total,
+                    iva_inarti_cpdfa: '-1',
+                },
+            ],
+        };
+
+        const result = await this.cxpSaveService.saveDocumento(saveDto);
+
+        if (!isUpdate) {
+            await this.dataSource.pool.query(
+                `UPDATE imp_cab_importa SET ide_cpcfa = $2, usuario_actua = $3, hora_actua = NOW()
+                 WHERE ide_imcaim = $1`,
+                [ide_imcaim, result.ide_cpcfa, dtoIn.login],
+            );
+        }
+
+        return { message: 'ok', ide_cpcfa: result.ide_cpcfa };
+    }
+
+    /**
+     * Vincula una factura CxP existente (tipo 11) a una orden de importación.
+     * Útil cuando la factura fue ingresada antes de que existiera el módulo.
+     * Valida que la factura sea tipo 11, no esté anulada y no esté ya asignada.
+     */
+    async asignarFacturaCxp(ide_imcaim: number, ide_cpcfa: number, login: string) {
+        // Validar que la importación exista y obtener su total esperado
+        const qImp = new SelectQuery(`
+            SELECT ide_imcaim, total_factura_imcaim, ide_cpcfa AS ide_cpcfa_actual
+            FROM imp_cab_importa
+            WHERE ide_imcaim = $1
+        `);
+        qImp.addIntParam(1, ide_imcaim);
+        const importacion = await this.dataSource.createSingleQuery(qImp);
+        if (!importacion) throw new BadRequestException('Orden de importación no encontrada');
+
+        // Validar que la factura exista, sea tipo 11 y no esté anulada
+        const qFac = new SelectQuery(`
+            SELECT ide_cpcfa, ide_cntdo, ide_cpefa, total_cpcfa
+            FROM cxp_cabece_factur
+            WHERE ide_cpcfa = $1
+        `);
+        qFac.addIntParam(1, ide_cpcfa);
+        const factura = await this.dataSource.createSingleQuery(qFac);
+
+        if (!factura) throw new BadRequestException('Factura CxP no encontrada');
+        if (Number(factura.ide_cntdo) !== IDE_CNTDO_IMPORTACION)
+            throw new BadRequestException(
+                `La factura no es de tipo DOCUMENTO DE IMPORTACION (${IDE_CNTDO_IMPORTACION})`,
+            );
+        if (Number(factura.ide_cpefa) !== 0)
+            throw new BadRequestException('La factura está anulada y no puede asignarse');
+
+        // Validar que el total de la factura coincida con el total de la importación
+        const totalImportacion = Number(importacion.total_factura_imcaim ?? 0);
+        const totalFactura = Number(factura.total_cpcfa ?? 0);
+        if (totalImportacion > 0 && totalFactura !== totalImportacion) {
+            throw new BadRequestException(
+                `El total de la factura (${totalFactura}) no coincide con el total de la importación (${totalImportacion})`,
+            );
+        }
+
+        // Validar que no esté ya asignada a otra importación
+        const qDup = new SelectQuery(`
+            SELECT ide_imcaim FROM imp_cab_importa
+            WHERE ide_cpcfa = $1 AND ide_imcaim <> $2
+        `);
+        qDup.addIntParam(1, ide_cpcfa);
+        qDup.addIntParam(2, ide_imcaim);
+        const dup = await this.dataSource.createSingleQuery(qDup);
+        if (dup) throw new BadRequestException(`La factura ya está asignada a la importación #${dup.ide_imcaim}`);
+
+        await this.dataSource.pool.query(
+            `UPDATE imp_cab_importa
+             SET ide_cpcfa = $2, usuario_actua = $3, hora_actua = NOW()
+             WHERE ide_imcaim = $1`,
+            [ide_imcaim, ide_cpcfa, login],
+        );
+
+        return { message: 'ok', ide_imcaim, ide_cpcfa, total_cpcfa: factura.total_cpcfa };
+    }
+
+    async desasignarFacturaCxp(ide_imcaim: number, login: string) {
+        const qCab = new SelectQuery(`SELECT ide_cpcfa FROM imp_cab_importa WHERE ide_imcaim = $1`);
+        qCab.addIntParam(1, ide_imcaim);
+        const cab = await this.dataSource.createSingleQuery(qCab);
+        if (!cab) throw new BadRequestException('Orden de importación no encontrada');
+        if (!cab.ide_cpcfa) throw new BadRequestException('La orden no tiene ninguna factura asignada');
+
+        await this.dataSource.pool.query(
+            `UPDATE imp_cab_importa
+             SET ide_cpcfa = NULL, usuario_actua = $2, hora_actua = NOW()
+             WHERE ide_imcaim = $1`,
+            [ide_imcaim, login],
+        );
+
+        return { message: 'ok', ide_imcaim, ide_cpcfa_desasignado: cab.ide_cpcfa };
+    }
+
     async saveImportacion(dtoIn: SaveImportacionDto & HeaderParamsDto) {
         const { data, detalles } = dtoIn;
         const isUpdate = !!data.ide_imcaim;
-        const ide_imcaim = isUpdate
-            ? data.ide_imcaim
-            : await this.dataSource.getSeqTable('imp_cab_importa', 'ide_imcaim', 1, dtoIn.login);
-
-        const obj: Record<string, any> = {
-            ide_imcaim,
-            ide_geper: data.ide_geper,
-            ide_iminco: data.ide_iminco,
-            ide_imesor: data.ide_imesor,
-            ide_gepais: data.ide_gepais ?? null,
-            ide_empr: dtoIn.ideEmpr,
-            ide_sucu: dtoIn.ideSucu,
-            fecha_imcaim: data.fecha_imcaim,
-            fecha_produccion_imcaim: data.fecha_produccion_imcaim ?? null,
-            fecha_factura_imcaim: data.fecha_factura_imcaim ?? null,
-            num_factura_imcaim: data.num_factura_imcaim ?? null,
-            total_factura_imcaim: data.total_factura_imcaim ?? null,
-            peso_neto_imcaim: data.peso_neto_imcaim ?? null,
-            peso_carga_imcaim: data.peso_carga_imcaim ?? null,
-            volumen_carga_imcaim: data.volumen_carga_imcaim ?? null,
-            observaciones_imcaim: data.observaciones_imcaim ?? null,
-            activo_imcaim: true,
-        };
-
-        if (!isUpdate) {
-            const now = new Date();
-            const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-            obj.numero_imcaim = `IMP-${yyyymm}${String(ide_imcaim).padStart(5, '0')}`;
-        }
+        const listQuery: ObjectQueryDto[] = [];
+        let numero = '';
+        let oldTotal: number | null = null;
 
         if (isUpdate) {
-            const colsUpd = Object.entries(obj)
-                .filter(([k]) => k !== 'ide_imcaim' && k !== 'ide_empr' && k !== 'ide_sucu' && k !== 'ide_geper')
-                .filter(([k]) => !(k === 'numero_imcaim'));
-            const setClauses = colsUpd.map(([k], i) => `${k} = $${i + 2}`).join(', ');
-            const params = [ide_imcaim, ...colsUpd.map(([, v]) => v)];
-            await this.dataSource.pool.query(
-                `UPDATE imp_cab_importa SET ${setClauses} WHERE ide_imcaim = $1`,
-                params,
+            const qOldTotal = new SelectQuery(
+                `SELECT total_factura_imcaim FROM imp_cab_importa WHERE ide_imcaim = $1`,
             );
+            qOldTotal.addIntParam(1, data.ide_imcaim!);
+            const oldCab = await this.dataSource.createSingleQuery(qOldTotal);
+            oldTotal = oldCab ? Number(oldCab.total_factura_imcaim ?? 0) : null;
+
+            listQuery.push({
+                operation: 'update',
+                module: 'imp',
+                tableName: 'cab_importa',
+                primaryKey: 'ide_imcaim',
+                object: data,
+            });
         } else {
-            const cols = Object.keys(obj);
-            const vals = cols.map((_, i) => `$${i + 1}`).join(', ');
-            await this.dataSource.pool.query(
-                `INSERT INTO imp_cab_importa (${cols.join(', ')}) VALUES (${vals})`,
-                Object.values(obj),
-            );
+            const ide_imcaim = await this.dataSource.getSeqTable('imp_cab_importa', 'ide_imcaim', 1, dtoIn.login);
+            const now = new Date();
+            const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+            numero = `IMP-${yyyymm}${String(ide_imcaim).padStart(5, '0')}`;
+            data.ide_imcaim = ide_imcaim;
+            listQuery.push({
+                operation: 'insert',
+                module: 'imp',
+                tableName: 'cab_importa',
+                primaryKey: 'ide_imcaim',
+                object: { ...data, numero_imcaim: numero, activo_imcaim: true },
+            });
         }
 
+        await this.core.save({ ...dtoIn, listQuery, audit: true });
+
+        // imp_det_importa no tiene ide_empr/ide_sucu → SQL directo
         if (detalles && detalles.length > 0) {
             if (isUpdate) {
                 await this.dataSource.pool.query(
-                    `DELETE FROM imp_det_importa WHERE ide_imcaim = $1`, [ide_imcaim],
+                    `DELETE FROM imp_det_importa WHERE ide_imcaim = $1`,
+                    [data.ide_imcaim],
                 );
             }
             for (const det of detalles) {
@@ -102,7 +288,7 @@ export class ImportacionesSaveService extends BaseService {
                         impuesto_ad_valorem_imdet, regulacion_ecuatoriana_imdet
                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
                     [
-                        ide_imdet, ide_imcaim, det.ide_inarti, det.ide_inuni ?? null,
+                        ide_imdet, data.ide_imcaim, det.ide_inarti, det.ide_inuni ?? null,
                         det.cantidad_imdet, det.precio_unitario_imdet,
                         det.descripcion_prod_imdet ?? null, det.num_paquetes_imdet ?? null,
                         det.observaciones_imdet ?? null,
@@ -117,7 +303,17 @@ export class ImportacionesSaveService extends BaseService {
             }
         }
 
-        return { message: 'ok', ide_imcaim, numero: isUpdate ? undefined : obj.numero_imcaim };
+        // Crear / actualizar factura CxP de importación
+        // const newTotal = Number(data.total_factura_imcaim ?? 0);
+        // if (newTotal > 0) {
+        //     if (!isUpdate) {
+        //         await this.crearFacturaCxpImportacion(data.ide_imcaim!, dtoIn);
+        //     } else if (oldTotal !== null && newTotal !== oldTotal) {
+        //         await this.crearFacturaCxpImportacion(data.ide_imcaim!, dtoIn);
+        //     }
+        // }
+
+        return { message: 'ok', ide_imcaim: data.ide_imcaim, numero };
     }
 
     // ========================================================================
@@ -168,6 +364,23 @@ export class ImportacionesSaveService extends BaseService {
         const queryCab = new SelectQuery(`SELECT ide_empr FROM imp_cab_importa WHERE ide_imcaim = $1`);
         queryCab.addIntParam(1, dtoIn.ide_imcaim);
         const cab = await this.dataSource.createSingleQuery(queryCab);
+        const ideEmpr = cab?.ide_empr ?? dtoIn.ideEmpr;
+
+        // Validar unicidad de numero_dau_imga antes de INSERT/UPDATE
+        if (dtoIn.numero_dau_imga) {
+            const qDup = new SelectQuery(
+                `SELECT ide_imga FROM imp_gestion_aduana WHERE numero_dau_imga = $1 AND ide_empr = $2`,
+            );
+            qDup.addStringParam(1, dtoIn.numero_dau_imga);
+            qDup.addIntParam(2, ideEmpr);
+            const dup = await this.dataSource.createSingleQuery(qDup);
+            if (dup && dup.ide_imga !== dtoIn.ide_imga) {
+                throw new BadRequestException(
+                    `El número DAU "${dtoIn.numero_dau_imga}" ya existe para esta empresa`,
+                );
+            }
+        }
+
         const isUpdate = !!dtoIn.ide_imga;
         if (isUpdate) {
             await this.dataSource.pool.query(
@@ -194,7 +407,7 @@ export class ImportacionesSaveService extends BaseService {
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [
                 ide_imga, dtoIn.ide_imcaim, dtoIn.ide_imtaf, dtoIn.ide_geper,
-                cab?.ide_empr ?? dtoIn.ideEmpr,
+                ideEmpr,
                 dtoIn.numero_dau_imga ?? null, dtoIn.fecha_presentacion_imga ?? null,
                 dtoIn.fecha_liquidacion_imga ?? null, dtoIn.fecha_liberacion_imga ?? null,
                 dtoIn.observaciones_imga ?? null,

@@ -16,6 +16,7 @@ import { SistemaModule } from './modules/sistema/sistema.module';
 import { SriModule } from './modules/sri/sri.module';
 import { TesoreriaModule } from './modules/tesoreria/tesoreria.module';
 import { VentasModule } from './modules/ventas/ventas.module';
+import { ModulosSistemaService } from './variables/modulos-sistema.service';
 import { VariablesController } from './variables/variables.controller';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 
@@ -37,7 +38,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     TesoreriaModule,
     ImportacionesModule,
   ],
-  providers: [CoreService],
+  providers: [CoreService, ModulosSistemaService],
 
   controllers: [CoreController, VariablesController],
 })

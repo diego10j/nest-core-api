@@ -12,7 +12,11 @@ export class Query {
   }
 
   addIntParam(index: number, value: number) {
-    this.params.push({ index: index, value: parseInt(value.toString()) });
+    const intValue = Number(value);
+    if (value === null || value === undefined || Number.isNaN(intValue)) {
+      throw new Error(`Invalid integer param at index ${index}: ${value}`);
+    }
+    this.params.push({ index, value: parseInt(String(intValue), 10) });
   }
 
   addNumberParam(index: number, value: number) {

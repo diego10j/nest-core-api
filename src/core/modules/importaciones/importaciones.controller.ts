@@ -6,7 +6,9 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { ImportacionesService } from './importaciones.service';
 import { ImportacionesSaveService } from './importaciones-save.service';
+import { AsignarFacturaCxpDto } from './dto/asignar-factura-cxp.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
+import { CrearFacturaCxpImportDto } from './dto/crear-factura-cxp-import.dto';
 import { GetImportacionesDto } from './dto/get-importaciones.dto';
 import { SaveCostoImportDto } from './dto/save-costo-import.dto';
 import { SaveDistribucionCostoDto } from './dto/save-distribucion-costo.dto';
@@ -176,6 +178,21 @@ export class ImportacionesController {
         return this.service.getDistribucionCostos(id);
     }
 
+    @Get('getFacturaImportacion/:ide_imcaim')
+    @ApiOperation({ summary: 'Factura CxP asignada a una orden de importación con sus detalles' })
+    getFacturaImportacion(@Param('ide_imcaim', ParseIntPipe) id: number) {
+        return this.service.getFacturaImportacion(id);
+    }
+
+    @Get('getFacturasImportaciones')
+    @ApiOperation({ summary: 'Facturas CxP tipo 11 del proveedor no asignadas a ninguna importación' })
+    getFacturasImportaciones(
+        @AppHeaders() h: HeaderParamsDto,
+        @Query('ide_geper', ParseIntPipe) ide_geper: number,
+    ) {
+        return this.service.getFacturasImportaciones(ide_geper, h.ideEmpr);
+    }
+
     // ========================================================================
     // MUTACIONES — POST con @Body
     // ========================================================================
@@ -250,6 +267,24 @@ export class ImportacionesController {
     @ApiOperation({ summary: 'Distribuir costos de importacion entre productos del detalle' })
     distribuirCostos(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveDistribucionCostoDto) {
         return this.saveService.distribuirCostos({ ...h, ...dto });
+    }
+
+    @Post('crearFacturaCxpImportacion')
+    @ApiOperation({ summary: 'Crear o actualizar la factura CxP (doc. importación) de una orden' })
+    crearFacturaCxpImportacion(@AppHeaders() h: HeaderParamsDto, @Body() dto: CrearFacturaCxpImportDto) {
+        return this.saveService.crearFacturaCxpImportacion(dto.ide_imcaim, h);
+    }
+
+    @Post('asignarFacturaCxp')
+    @ApiOperation({ summary: 'Asignar una factura CxP tipo 11 existente a una orden de importación' })
+    asignarFacturaCxp(@AppHeaders() h: HeaderParamsDto, @Body() dto: AsignarFacturaCxpDto) {
+        return this.saveService.asignarFacturaCxp(dto.ide_imcaim, dto.ide_cpcfa, h.login);
+    }
+
+    @Post('desasignarFacturaCxp')
+    @ApiOperation({ summary: 'Desasignar (desvincular) la factura CxP de una orden de importación' })
+    desasignarFacturaCxp(@AppHeaders() h: HeaderParamsDto, @Body() dto: CrearFacturaCxpImportDto) {
+        return this.saveService.desasignarFacturaCxp(dto.ide_imcaim, h.login);
     }
 
     // ========================================================================

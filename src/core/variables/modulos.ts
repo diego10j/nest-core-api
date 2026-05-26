@@ -26,6 +26,11 @@ export const MODULOS = {
     SIGLAS: 'gen',
     NOMBRE: 'General',
   },
+  IMPORTACIONES: {
+    ID: toModuleID(14),
+    SIGLAS: 'imp',
+    NOMBRE: 'Importaciones',
+  },
 } as const;
 
 export const MODULOS_DEFINIDOS: ReadonlyMap<ModuleID, ModuloDefinition> = new Map(

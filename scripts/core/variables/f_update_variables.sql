@@ -2,90 +2,59 @@ CREATE OR REPLACE FUNCTION f_update_variables(
     p_ide_empr INTEGER,
     p_parametros JSONB,
     p_login VARCHAR DEFAULT 'sa'
-) RETURNS VOID AS $$
+) RETURNS INTEGER AS $$
+-- Inserta únicamente los parámetros recibidos (el filtrado de existentes se hace en la capa de servicio).
+-- Retorna el número de filas insertadas.
 DECLARE
-    v_param RECORD;
+    v_param    RECORD;
     v_ide_para INTEGER;
-    v_exists BOOLEAN;
+    v_count    INTEGER := 0;
 BEGIN
-    -- Verificar si el array de parámetros está vacío
     IF jsonb_array_length(p_parametros) = 0 THEN
-        RAISE NOTICE 'El array de parámetros está vacío';
-        RETURN;
+        RETURN 0;
     END IF;
 
-    -- Recorrer cada parámetro en el array JSON
-    FOR v_param IN SELECT * FROM jsonb_to_recordset(p_parametros) AS x(
-        ide_modu INTEGER,
-        nom_para VARCHAR(50),
-        descripcion_para VARCHAR(2000),
-        valor_para VARCHAR(2000),
-        tabla_para VARCHAR(50),
-        campo_codigo_para VARCHAR(30),
-        campo_nombre_para VARCHAR(40),
-        activo_para BOOLEAN,
-        es_empr_para BOOLEAN
-    )
+    FOR v_param IN
+        SELECT * FROM jsonb_to_recordset(p_parametros) AS x(
+            ide_modu            INTEGER,
+            nom_para            VARCHAR(50),
+            descripcion_para    VARCHAR(2000),
+            valor_para          VARCHAR(2000),
+            tabla_para          VARCHAR(50),
+            campo_codigo_para   VARCHAR(30),
+            campo_nombre_para   VARCHAR(40),
+            activo_para         BOOLEAN,
+            es_empr_para        BOOLEAN
+        )
     LOOP
-        -- Verificar si el parámetro ya existe usando los índices creados
-        IF v_param.es_empr_para THEN
-            -- Parámetro por empresa: verificar existencia para esta empresa específica
-            SELECT EXISTS (
-                SELECT 1 FROM sis_parametros 
-                WHERE nom_para = v_param.nom_para 
-                AND ide_empr = p_ide_empr
-                AND ide_modu = v_param.ide_modu
-            ) INTO v_exists;
-        ELSE
-            -- Parámetro global: verificar existencia sin considerar empresa
-            SELECT EXISTS (
-                SELECT 1 FROM sis_parametros 
-                WHERE nom_para = v_param.nom_para 
-                AND ide_modu = v_param.ide_modu
-                AND es_empr_para = false
-            ) INTO v_exists;
-        END IF;
+        SELECT get_seq_table('sis_parametros', 'ide_para', 1, p_login) INTO v_ide_para;
 
-        IF NOT v_exists THEN
-            -- Obtener el próximo ID para el parámetro
-            SELECT get_seq_table('sis_parametros', 'ide_para', 1, p_login) INTO v_ide_para;
-            
-            -- Insertar el nuevo parámetro
-            INSERT INTO sis_parametros (
-                ide_para,
-                ide_empr,
-                ide_modu,
-                nom_para,
-                descripcion_para,
-                valor_para,
-                tabla_para,
-                campo_codigo_para,
-                campo_nombre_para,
-                activo_para,
-                usuario_ingre,
-                es_empr_para
-            ) VALUES (
-                v_ide_para,
-                CASE WHEN v_param.es_empr_para THEN p_ide_empr ELSE NULL END,
-                v_param.ide_modu,
-                v_param.nom_para,
-                v_param.descripcion_para,
-                v_param.valor_para,
-                v_param.tabla_para,
-                v_param.campo_codigo_para,
-                v_param.campo_nombre_para,
-                COALESCE(v_param.activo_para, true),
-                p_login,
-                COALESCE(v_param.es_empr_para, false)
-            );
-            
-            RAISE NOTICE 'Parámetro insertado: % (ID: %)', v_param.nom_para, v_ide_para;
-        ELSE
-            RAISE NOTICE 'Parámetro ya existe: %', v_param.nom_para;
-        END IF;
+        INSERT INTO sis_parametros (
+            ide_para, ide_empr, ide_modu,
+            nom_para, descripcion_para, valor_para,
+            tabla_para, campo_codigo_para, campo_nombre_para,
+            activo_para, usuario_ingre, es_empr_para
+        ) VALUES (
+            v_ide_para,
+            CASE WHEN v_param.es_empr_para THEN p_ide_empr ELSE NULL END,
+            v_param.ide_modu,
+            v_param.nom_para,
+            v_param.descripcion_para,
+            v_param.valor_para,
+            v_param.tabla_para,
+            v_param.campo_codigo_para,
+            v_param.campo_nombre_para,
+            COALESCE(v_param.activo_para, true),
+            p_login,
+            COALESCE(v_param.es_empr_para, false)
+        );
+
+        v_count := v_count + 1;
     END LOOP;
+
+    RETURN v_count;
 END;
-$$ LANGUAGE plpgsql
+$$ LANGUAGE plpgsql;
 
 
 -- Ejemplo de llamada con parámetros específicos
