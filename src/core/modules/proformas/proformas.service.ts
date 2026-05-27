@@ -31,6 +31,7 @@ import { ProformasDto } from './dto/proformas.dto';
 import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { CabProformaDto, DetaProformaDto, SaveProformaDto } from './dto/save-proforma.dto';
 import { SendProformaEmailDto } from './dto/send-proforma-email.dto';
+import { ArchivoAdjuntoDto } from './dto/send-proforma-email.dto';
 
 const SOLICITUD = {
   tableName: 'cxc_cabece_proforma',
@@ -355,6 +356,53 @@ ORDER BY prof.secuencial_cccpr DESC
           hora_ingre: factura.hora_ingre,
         }
         : null,
+    };
+  }
+
+  async getFilesProforma(dtoIn: GetProformaDto & HeaderParamsDto) {
+    const data = await this.getProformaByID(dtoIn);
+    const detalles = data.detalles;
+    if (!detalles || detalles.length === 0) {
+      return { rows: [], rowCount: 0 };
+    }
+
+    const idsArticulos = detalles.map((d: any) => d.ide_inarti);
+    const idsUnicos = Array.from(new Set(idsArticulos));
+
+    const query = new SelectQuery(`
+      SELECT
+        a.ide_arch,
+        a.nombre_arch AS name,
+        a.extension_arch AS type,
+        a.uuid AS id,
+        a.peso_arch AS size,
+        a.type_arch AS mime,
+        a.ide_inarti,
+        art.codigo_inarti AS codigo,
+        art.nombre_inarti AS producto
+      FROM sis_archivo a
+      INNER JOIN inv_articulo art ON a.ide_inarti = art.ide_inarti
+      WHERE a.ide_inarti = ANY($1)
+        AND a.papelera_arch = FALSE
+        AND a.public_arch = TRUE
+        AND a.ide_empr = $2
+      ORDER BY art.nombre_inarti, a.nombre_arch
+    `, dtoIn);
+    query.addParam(1, idsUnicos);
+    query.addIntParam(2, dtoIn.ideEmpr);
+
+    const rows: any[] = await this.dataSource.createSelectQuery(query);
+
+    const result = rows.map((r) => ({
+      ...r,
+      url: `${envs.hostApi}/api/sistema/files/downloadFile/${r.id}.${r.type}`,
+    }));
+
+    return {
+      rowCount: result.length,
+      rows: result,
+      idsArticulos: idsUnicos,
+      totalProductos: idsUnicos.length,
     };
   }
 
@@ -1537,6 +1585,23 @@ ORDER BY prof.secuencial_cccpr DESC
       contenidoBase64: pdfBuffer.toString('base64'),
     };
 
+    const adjuntosEnvio: AdjuntoCorreoDto[] = [adjunto];
+    const archivosTemporales: string[] = [];
+    if (dtoIn.adjuntos && dtoIn.adjuntos.length > 0) {
+      for (const archivo of dtoIn.adjuntos.slice(0, 5)) {
+        const { adjunto: a, tempPath } = this.convertirArchivoAdjunto(archivo);
+        adjuntosEnvio.push(a);
+        if (tempPath) archivosTemporales.push(tempPath);
+      }
+    }
+    if (dtoIn.idsArchivos && dtoIn.idsArchivos.length > 0) {
+      const archivosProducto = await this.obtenerArchivosPorIds(dtoIn.idsArchivos);
+      for (const archivo of archivosProducto) {
+        if (adjuntosEnvio.length >= 6) break;
+        adjuntosEnvio.push(archivo);
+      }
+    }
+
     const cuentaEnvio = await this.obtenerCuentaEnvioProforma(cabecera.correo_vgven, dtoIn.ideEmpr);
 
     const destinatarios = Array.isArray(dtoIn.destinatario)
@@ -1555,7 +1620,7 @@ ORDER BY prof.secuencial_cccpr DESC
         ...(copias.length ? { cc: Array.from(new Set(copias)) } : {}),
         asunto: `📄 Proforma #${cabecera.secuencial_cccpr}`,
         contenido: htmlContent,
-        adjuntos: [adjunto],
+        adjuntos: adjuntosEnvio,
       },
       dtoIn.ideEmpr,
       dtoIn.login,
@@ -1565,6 +1630,10 @@ ORDER BY prof.secuencial_cccpr DESC
       `UPDATE cxc_cabece_proforma SET enviado_cccpr = true WHERE ide_cccpr = $1`,
       [dtoIn.ide_cccpr],
     );
+
+    for (const tempPath of archivosTemporales) {
+      try { fs.unlinkSync(tempPath); } catch { /* ignorar si falla */ }
+    }
 
     return {
       message: 'ok',
@@ -1635,6 +1704,160 @@ ORDER BY prof.secuencial_cccpr DESC
     throw new BadRequestException(
       `No se encontro la plantilla: ${relativePath}`,
     );
+  }
+
+  private convertirArchivoAdjunto(archivo: ArchivoAdjuntoDto): { adjunto: AdjuntoCorreoDto; tempPath?: string } {
+    if (archivo.contenidoBase64) {
+      return {
+        adjunto: {
+          nombre: archivo.nombre,
+          tipoMime: archivo.tipoMime || 'application/octet-stream',
+          tamano: Buffer.from(archivo.contenidoBase64, 'base64').length,
+          ruta: '',
+          contenidoBase64: archivo.contenidoBase64,
+        },
+      };
+    }
+    if (archivo.ruta) {
+      const tempPath = path.join(envs.pathDrive, 'temp_media', archivo.ruta);
+      if (fs.existsSync(tempPath)) {
+        const contenido = fs.readFileSync(tempPath);
+        return {
+          adjunto: {
+            nombre: archivo.nombre,
+            tipoMime: archivo.tipoMime || 'application/octet-stream',
+            tamano: contenido.length,
+            ruta: tempPath,
+            contenidoBase64: contenido.toString('base64'),
+          },
+          tempPath,
+        };
+      }
+      const mainPath = path.join(envs.pathDrive, archivo.ruta);
+      if (!fs.existsSync(mainPath)) {
+        throw new BadRequestException(`Archivo adjunto no encontrado: ${archivo.ruta}`);
+      }
+      const contenido = fs.readFileSync(mainPath);
+      return {
+        adjunto: {
+          nombre: archivo.nombre,
+          tipoMime: archivo.tipoMime || 'application/octet-stream',
+          tamano: contenido.length,
+          ruta: mainPath,
+          contenidoBase64: contenido.toString('base64'),
+        },
+      };
+    }
+    throw new BadRequestException(`Archivo adjunto requiere contenidoBase64 o ruta: ${archivo.nombre}`);
+  }
+
+  private async obtenerArchivosPorIds(ids: string[]): Promise<AdjuntoCorreoDto[]> {
+    const adjuntos: AdjuntoCorreoDto[] = [];
+    for (const uuid of ids.slice(0, 5)) {
+      const query = new SelectQuery(`
+        SELECT nombre_arch, nombre2_arch, extension_arch, type_arch
+        FROM sis_archivo
+        WHERE uuid = $1
+        LIMIT 1
+      `);
+      query.addStringParam(1, uuid);
+      const archivo = await this.dataSource.createSingleQuery(query);
+      if (!archivo) {
+        this.logger.warn(`Archivo con uuid ${uuid} no encontrado en sis_archivo`);
+        continue;
+      }
+
+      const rutaCompleta = path.join(envs.pathDrive, archivo.nombre2_arch);
+      if (!fs.existsSync(rutaCompleta)) {
+        this.logger.warn(`Archivo fisico no encontrado en disco: ${rutaCompleta}`);
+        continue;
+      }
+
+      const contenido = fs.readFileSync(rutaCompleta);
+      adjuntos.push({
+        nombre: archivo.nombre_arch || `${uuid}.${archivo.extension_arch}`,
+        tipoMime: archivo.type_arch || 'application/octet-stream',
+        tamano: contenido.length,
+        ruta: archivo.nombre2_arch,
+        contenidoBase64: contenido.toString('base64'),
+      });
+    }
+    return adjuntos;
+  }
+
+  public async getPreviewProformaEmail(dtoIn: GetProformaDto & HeaderParamsDto) {
+    const data = await this.getProformaByID(dtoIn);
+    const cabecera = data.cabecera;
+    const detalles = data.detalles;
+
+    const empresa = await this.dataSource.createSingleQuery(
+      (() => {
+        const q = new SelectQuery(`
+          SELECT ide_empr, nom_empr, direccion_empr, telefono_empr, mail_empr, pagina_empr, logotipo_empr
+          FROM sis_empresa WHERE ide_empr = $1
+        `);
+        q.addIntParam(1, dtoIn.ideEmpr);
+        return q;
+      })(),
+    );
+
+    const appName = empresa?.nom_empr || 'ProERP';
+
+    let logoBase64: string | undefined;
+    if (empresa?.logotipo_empr) {
+      const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+      if (fs.existsSync(logoPath)) {
+        logoBase64 = fs.readFileSync(logoPath).toString('base64');
+      }
+    }
+
+    const cuentaEnvio = await this.obtenerCuentaEnvioProforma(cabecera.correo_vgven, dtoIn.ideEmpr);
+
+    const variables: Record<string, any> = {
+      appName,
+      logoBase64,
+      title: `Proforma #${cabecera.secuencial_cccpr}`,
+      currentYear: new Date().getFullYear(),
+      secuencial: cabecera.secuencial_cccpr,
+      fecha: fDate(cabecera.fecha_cccpr),
+      solicitante: cabecera.solicitante_cccpr,
+      identificacion: cabecera.identificac_cccpr,
+      vendedor: cabecera.nombre_vgven,
+      vendedorMovil: cabecera.movil_vgven,
+      vendedorCorreo: cabecera.correo_vgven,
+      tipoProforma: cabecera.nombre_cctpr,
+      validez: cabecera.nombre_ccvap,
+      formaPago: cabecera.nombre_cndfp,
+      tiempoEntrega: cabecera.nombre_ccten,
+      observacion: cabecera.observacion_cccpr,
+      baseGrabada: fCurrency(cabecera.base_grabada_cccpr),
+      baseTarifa0: fCurrency(cabecera.base_tarifa0_cccpr),
+      valorIva: fCurrency(cabecera.valor_iva_cccpr),
+      total: fCurrency(cabecera.total_cccpr),
+      tarifaIva: cabecera.tarifa_iva_cccpr,
+      utilidad: cabecera.utilidad_cccpr ? fCurrency(cabecera.utilidad_cccpr) : null,
+      detalles: detalles.map((d: any) => ({
+        codigo: d.codigo_inarti,
+        nombre: d.nombre_inarti,
+        cantidad: d.cantidad_ccdpr,
+        precio: fCurrency(d.precio_ccdpr),
+        total: fCurrency(d.total_ccdpr),
+      })),
+      empresaDireccion: empresa?.direccion_empr || '',
+      empresaTelefono: empresa?.telefono_empr || '',
+      empresaEmail: empresa?.mail_empr || '',
+      empresaWeb: empresa?.pagina_empr || '',
+    };
+
+    const html = this.buildEmailHtml(variables);
+
+    return {
+      html,
+      remitente: cuentaEnvio.correoRemitente,
+      alias: cuentaEnvio.alias,
+      secuencial: cabecera.secuencial_cccpr,
+      solicitante: cabecera.solicitante_cccpr,
+    };
   }
 
   private buildEmailHtml(variables: Record<string, any>): string {

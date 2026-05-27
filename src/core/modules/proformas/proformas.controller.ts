@@ -135,4 +135,24 @@ export class ProformasController {
       ...dtoIn,
     });
   }
+
+  @Get('getPreviewProformaEmail')
+  @ApiOperation({ summary: 'Obtener preview HTML del correo de proforma' })
+  // @Auth()
+  getPreviewProformaEmail(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProformaDto) {
+    return this.service.getPreviewProformaEmail({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getFilesProforma')
+  @ApiOperation({ summary: 'Obtener archivos adjuntos de los productos del detalle de la proforma' })
+  // @Auth()
+  getFilesProforma(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProformaDto) {
+    return this.service.getFilesProforma({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 }

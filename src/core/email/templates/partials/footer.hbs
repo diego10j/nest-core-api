@@ -4,32 +4,16 @@
                 <!-- ── Footer ── -->
                 <tr>
                     <td style="background-color:#F5F8FF;border-top:1px solid #E2EAF4;padding:22px 40px;">
-                        <!-- Links -->
-                        <p style="margin:0 0 12px;text-align:center;font-size:0;">
-                            <a href="{{portalUrl}}"
+                        <!-- Sitio web de la empresa -->
+                        {{#if empresaWeb}}
+                        <p style="margin:0 0 12px;text-align:center;">
+                            <a href="{{empresaWeb}}"
                                style="font-size:12px;font-weight:600;color:#5B80C0;
-                                      text-decoration:none;margin:0 10px;">
-                                Portal de Clientes
-                            </a>
-                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
-                            <a href="mailto:{{empresaEmail}}"
-                               style="font-size:12px;font-weight:600;color:#5B80C0;
-                                      text-decoration:none;margin:0 10px;">
-                                Soporte T&eacute;cnico
-                            </a>
-                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
-                            <a href="{{privacyUrl}}"
-                               style="font-size:12px;font-weight:600;color:#5B80C0;
-                                      text-decoration:none;margin:0 10px;">
-                                Privacidad
-                            </a>
-                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
-                            <a href="{{unsubscribeUrl}}"
-                               style="font-size:12px;font-weight:600;color:#5B80C0;
-                                      text-decoration:none;margin:0 10px;">
-                                Cancelar suscripci&oacute;n
+                                      text-decoration:none;">
+                                {{empresaWeb}}
                             </a>
                         </p>
+                        {{/if}}
 
                         <!-- Empresa + dirección -->
                         <p style="margin:0 0 6px;text-align:center;font-size:11px;
@@ -58,7 +42,6 @@
                         <p style="margin:0;text-align:center;font-size:10px;
                                   color:#BFC8D8;line-height:1.5;letter-spacing:0.03em;">
                             &copy; {{year}} {{appName}}. Todos los derechos reservados.
-                            &mdash; Correo generado autom&aacute;ticamente, por favor no responder.
                         </p>
                     </td>
                 </tr>
