@@ -230,7 +230,7 @@ export class ImportacionesController {
     @Post('deleteCosto')
     @ApiOperation({ summary: 'Desactivar un costo de importación (soft delete)' })
     deleteCosto(@AppHeaders() h: HeaderParamsDto, @Body() dto: { ide_imcoim: number }) {
-        return this.saveService.deleteCosto(dto.ide_imcoim, h.login);
+        return this.saveService.deleteCosto(dto.ide_imcoim);
     }
 
     @Post('savePago')
@@ -242,7 +242,7 @@ export class ImportacionesController {
     @Post('deletePago')
     @ApiOperation({ summary: 'Desactivar un pago de importación (soft delete)' })
     deletePago(@AppHeaders() h: HeaderParamsDto, @Body() dto: { ide_impag: number }) {
-        return this.saveService.deletePago(dto.ide_impag, h.login);
+        return this.saveService.deletePago(dto.ide_impag);
     }
 
     @Post('saveDocumento')
@@ -260,7 +260,7 @@ export class ImportacionesController {
     @Post('deleteImportacion')
     @ApiOperation({ summary: 'Desactivar una importación (soft delete)' })
     deleteImportacion(@AppHeaders() h: HeaderParamsDto, @Body() dto: { ide_imcaim: number }) {
-        return this.saveService.deleteImportacion(dto.ide_imcaim, h.login);
+        return this.saveService.deleteImportacion(dto.ide_imcaim);
     }
 
     @Post('distribuirCostos')

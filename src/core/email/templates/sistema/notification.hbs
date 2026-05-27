@@ -1,0 +1,42 @@
+{{> partials/header}}
+        <h2>Notificacion del Sistema</h2>
+        <p>Hola <strong>{{nombre}}</strong>,</p>
+
+        {{#if message}}
+        <p>{{message}}</p>
+        {{/if}}
+
+        {{#if details}}
+        <div class="info-card">
+            {{{details}}}
+        </div>
+        {{/if}}
+
+        {{#if actionUrl}}
+        <p style="text-align:center;margin:24px 0;">
+            <a href="{{actionUrl}}" class="btn btn-primary">{{actionText}}</a>
+        </p>
+        {{/if}}
+
+        {{#if additionalInfo}}
+        <div class="info-card">
+            <div class="card-title">Informacion Adicional</div>
+            <table>
+                {{#each additionalInfo}}
+                <tr>
+                    <td class="label">{{this.label}}</td>
+                    <td>{{this.value}}</td>
+                </tr>
+                {{/each}}
+            </table>
+        </div>
+        {{/if}}
+
+        {{#if requiresAction}}
+        <div class="obs-block">
+            <strong>Accion Requerida:</strong> {{actionRequired}}
+        </div>
+        {{/if}}
+
+        <p>Saludos cordiales,<br>El equipo de {{appName}}</p>
+{{> partials/footer}}

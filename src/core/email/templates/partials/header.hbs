@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light only">
+    <meta name="supported-color-schemes" content="light only">
+    <title>{{title}} - {{appName}}</title>
+    <style>
+        :root { color-scheme: light only; }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Plus Jakarta Sans', 'Segoe UI', Arial, Helvetica, sans-serif;
+            background-color: #EEF2F8;
+            color: #0D1F4E;
+        }
+
+        .em-outer {
+            width: 100%;
+            background-color: #EEF2F8;
+        }
+
+        .em-wrapper {
+            width: 620px;
+            max-width: 620px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #D4DCE8;
+        }
+
+        /* ── Top accent bar ── */
+        .em-accent-bar {
+            height: 4px;
+            background: linear-gradient(90deg, #1A56DB 0%, #0EA5E9 50%, #38BDF8 100%);
+            line-height: 0;
+            font-size: 0;
+        }
+
+        /* ── Header: logo + brand ── */
+        .em-header {
+            background-color: #ffffff;
+            padding: 26px 40px 22px;
+            border-bottom: 1px solid #E8EEF6;
+        }
+
+        .em-header-inner {
+            display: inline-block;
+            width: 100%;
+        }
+
+        .em-logo-row {
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .em-logo-icon {
+            display: inline-block;
+            width: 42px;
+            height: 42px;
+            background-color: #0D1F4E;
+            border-radius: 10px;
+            vertical-align: middle;
+        }
+
+        .em-brand-group {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 12px;
+        }
+
+        .em-brand {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0D1F4E;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            line-height: 1.2;
+            display: block;
+        }
+
+        .em-brand-sub {
+            font-size: 10px;
+            font-weight: 600;
+            color: #8898B4;
+            letter-spacing: 0.06em;
+            margin-top: 3px;
+            display: block;
+        }
+
+        .em-header-badge {
+            float: right;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1A56DB;
+            background-color: #EEF3FF;
+            border: 1px solid #C7D9FF;
+            border-radius: 20px;
+            padding: 4px 12px;
+            letter-spacing: 0.03em;
+            margin-top: 8px;
+        }
+
+        /* ── Hero section ── */
+        .em-hero {
+            background-color: #0D1F4E;
+            padding: 32px 40px 28px;
+        }
+
+        .em-hero-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            color: #5B9BFF;
+            text-transform: uppercase;
+            margin: 0 0 10px;
+            display: block;
+        }
+
+        .em-hero-title {
+            font-size: 26px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.25;
+            margin: 0 0 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .em-hero-sub {
+            font-size: 13px;
+            font-weight: 500;
+            color: #8FAACC;
+            line-height: 1.65;
+            margin: 0;
+        }
+
+        /* ── Body wrapper (abierto — se cierra en footer) ── */
+        .em-body {
+            background-color: #ffffff;
+            padding: 32px 40px 0;
+        }
+
+        /* ── Responsive ── */
+        @media only screen and (max-width: 680px) {
+            .em-wrapper { width: 100% !important; max-width: 100% !important; }
+            .em-header, .em-hero, .em-body { padding-left: 20px !important; padding-right: 20px !important; }
+            .em-hero-title { font-size: 22px !important; }
+            .em-brand { font-size: 13px !important; }
+            .em-header-badge { display: none !important; }
+        }
+    </style>
+</head>
+<body style="margin:0;padding:0;background-color:#EEF2F8;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="background-color:#EEF2F8;border-collapse:collapse;">
+    <tr>
+        <td align="center" style="padding:32px 16px;">
+
+            <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+                   style="width:620px;max-width:620px;border-collapse:collapse;background-color:#ffffff;
+                          border-radius:16px;overflow:hidden;border:1px solid #D4DCE8;">
+
+                <!-- Accent bar -->
+                <tr>
+                    <td style="height:4px;font-size:0;line-height:0;
+                               background:linear-gradient(90deg,#1A56DB 0%,#0EA5E9 50%,#38BDF8 100%);">&nbsp;</td>
+                </tr>
+
+                <!-- Header: logo + brand + badge -->
+                <tr>
+                    <td style="background-color:#ffffff;padding:26px 40px 22px;
+                               border-bottom:1px solid #E8EEF6;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="border-collapse:collapse;">
+                            <tr>
+                                <!-- Logo icon -->
+                                <td width="42" valign="middle">
+                                    {{#if logoBase64}}
+                                    <img src="data:image/png;base64,{{logoBase64}}"
+                                         alt="{{appName}}"
+                                         width="42" height="42"
+                                         style="display:block;width:42px;height:42px;border-radius:10px;" />
+                                    {{else}}
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0"
+                                           style="border-collapse:collapse;width:42px;height:42px;
+                                                  background-color:#0D1F4E;border-radius:10px;">
+                                        <tr>
+                                            <td align="center" valign="middle"
+                                                style="width:42px;height:42px;font-size:18px;line-height:1;">
+                                                ⬡
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    {{/if}}
+                                </td>
+                                <!-- Brand name -->
+                                <td valign="middle" style="padding-left:12px;">
+                                    <span style="display:block;font-size:15px;font-weight:800;
+                                                 color:#0D1F4E;letter-spacing:0.05em;
+                                                 text-transform:uppercase;line-height:1.2;">{{appName}}</span>
+                                    <span style="display:block;font-size:10px;font-weight:600;
+                                                 color:#8898B4;letter-spacing:0.06em;margin-top:3px;">
+                                        Distribuidores e Importadores Qu&iacute;micos del Ecuador
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- Hero: título + subtítulo -->
+                <tr>
+                    <td style="background-color:#0D1F4E;padding:32px 40px 28px;">
+                        {{#if heroLabel}}
+                        <p style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#5B9BFF;
+                                  text-transform:uppercase;margin:0 0 10px;">{{heroLabel}}</p>
+                        {{/if}}
+                        <p style="font-size:26px;font-weight:800;color:#ffffff;line-height:1.25;
+                                  margin:0 0 10px;letter-spacing:-0.01em;">{{title}}</p>
+                        {{#if subtitle}}
+                        <p style="font-size:13px;font-weight:500;color:#8FAACC;
+                                  line-height:1.65;margin:0;">{{subtitle}}</p>
+                        {{/if}}
+                    </td>
+                </tr>
+
+                <!-- Body wrapper START (se cierra en footer.html) -->
+                <tr>
+                    <td style="background-color:#ffffff;padding:32px 40px 0;">

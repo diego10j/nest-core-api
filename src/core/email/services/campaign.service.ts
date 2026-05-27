@@ -30,7 +30,7 @@ export class CampaignService {
   constructor(
     public readonly dataSource: DataSourceService,
     private readonly mailService: MailService,
-  ) {}
+  ) { }
 
   // ──────────────────────────────────────────────
   // Consultas
@@ -83,23 +83,23 @@ export class CampaignService {
     usuario: string,
   ) {
     try {
-      const cuenta = await this.mailService.getCuentaCorreo(createCampaignDto.ide_corr);
+      const cuenta = await this.mailService.getCuentaCorreo(createCampaignDto.alias_corr, ideEmpr);
 
       const insertQuery = new InsertQuery('sis_campania_correo', 'ide_caco');
       const ide_caco = await this.dataSource.getSeqTable('sis_campania_correo', 'ide_caco', 1, usuario);
 
-      insertQuery.values.set('ide_caco',             ide_caco);
-      insertQuery.values.set('nombre_caco',          createCampaignDto.nombre);
-      insertQuery.values.set('asunto_caco',          createCampaignDto.asunto);
-      insertQuery.values.set('contenido_caco',       createCampaignDto.contenido);
-      insertQuery.values.set('destinatarios_caco',   JSON.stringify(createCampaignDto.destinatarios));
-      insertQuery.values.set('estado_caco',          'PENDIENTE');
-      insertQuery.values.set('programacion_caco',    createCampaignDto.programacion || new Date());
-      insertQuery.values.set('ide_corr',             cuenta.ide_corr);
-      insertQuery.values.set('ide_empr',             ideEmpr);
-      insertQuery.values.set('ide_usua',             ideUsua);
-      insertQuery.values.set('usuario_ingre',        usuario);
-      insertQuery.values.set('fecha_ingre',          new Date());
+      insertQuery.values.set('ide_caco', ide_caco);
+      insertQuery.values.set('nombre_caco', createCampaignDto.nombre);
+      insertQuery.values.set('asunto_caco', createCampaignDto.asunto);
+      insertQuery.values.set('contenido_caco', createCampaignDto.contenido);
+      insertQuery.values.set('destinatarios_caco', JSON.stringify(createCampaignDto.destinatarios));
+      insertQuery.values.set('estado_caco', 'PENDIENTE');
+      insertQuery.values.set('programacion_caco', createCampaignDto.programacion || new Date());
+      insertQuery.values.set('ide_corr', cuenta.ide_corr);
+      insertQuery.values.set('ide_empr', ideEmpr);
+      insertQuery.values.set('ide_usua', ideUsua);
+      insertQuery.values.set('usuario_ingre', usuario);
+      insertQuery.values.set('fecha_ingre', new Date());
 
       await this.dataSource.createQuery(insertQuery);
 
@@ -130,7 +130,7 @@ export class CampaignService {
 
     await this.updateCampaignStatus(ide_caco, 'PROCESANDO');
 
-    const destinatarios: Array<{ email: string; variables?: Record<string, any> }> = 
+    const destinatarios: Array<{ email: string; variables?: Record<string, any> }> =
       JSON.parse(campaign.destinatarios_caco);
 
     let enviados = 0;
@@ -141,10 +141,10 @@ export class CampaignService {
         await this.mailService.sendMail(
           {
             destinatario: dest.email,
-            asunto:       campaign.asunto_caco,
-            contenido:    campaign.contenido_caco,
-            ide_corr:     campaign.ide_corr,
-            variables:    dest.variables || {},
+            asunto: campaign.asunto_caco,
+            contenido: campaign.contenido_caco,
+            ide_corr: campaign.ide_corr,
+            variables: dest.variables || {},
           } as any,
           ide_empr,
           'sistema',
@@ -220,7 +220,7 @@ export class CampaignService {
     updateQuery.values.set('estado_caco', estado);
     if (enviados > 0) updateQuery.values.set('enviados_caco', enviados);
     if (fallidos > 0) updateQuery.values.set('fallidos_caco', fallidos);
-    if (error)        updateQuery.values.set('error_caco',    error);
+    if (error) updateQuery.values.set('error_caco', error);
 
     updateQuery.where = 'ide_caco = $1';
     updateQuery.addParam(1, ide_caco);

@@ -27,7 +27,9 @@ export interface ConfigCuentaCorreo {
 
 export interface ColaCorreo {
   jobId: string;
+  remitente: string;
   destinatario: string | string[];
+  cc?: string | string[];
   asunto: string;
   contenido: string;
   ide_plco?: number;

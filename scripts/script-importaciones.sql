@@ -407,3 +407,19 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
 
+
+
+
+
+
+
+
+
+
+ALTER TABLE "public"."ven_vendedor"
+ADD COLUMN "correo_vgven" varchar(80),
+ADD COLUMN "copia_correo_vgven" bool DEFAULT 'FALSE';
+
+
+
+

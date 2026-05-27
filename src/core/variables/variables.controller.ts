@@ -4,8 +4,11 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
+import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
+import { GetVariablesModuloDto } from './dto/get-variables-modulo.dto';
 import { SaveModuloDto } from './dto/save-modulo.dto';
+import { SaveVariableDto } from './dto/save-variable.dto';
 import { ModulosSistemaService } from './modulos-sistema.service';
 import { VariablesService } from './variables.service';
 
@@ -15,7 +18,7 @@ export class VariablesController {
   constructor(
     private readonly service: VariablesService,
     private readonly modulosService: ModulosSistemaService,
-  ) {}
+  ) { }
 
   @Get('getVariable')
   @ApiOperation({ summary: 'Obtener valor de una variable del sistema' })
@@ -44,6 +47,16 @@ export class VariablesController {
     return this.service.updateVariables(headersParams);
   }
 
+  @Post('saveVariable')
+  @ApiOperation({ summary: 'Guardar o actualizar una variable del sistema' })
+  // @Auth()
+  saveVariable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveVariableDto) {
+    return this.service.saveVariable({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getModulosSistema')
   @ApiOperation({ summary: 'Obtener listado de modulos del sistema' })
   // @Auth()
@@ -54,8 +67,21 @@ export class VariablesController {
   @Get('getVariablesModulo')
   @ApiOperation({ summary: 'Obtener variables de parametrizacion filtradas por modulo' })
   // @Auth()
-  getVariablesModulo(@Query('ideModu') ideModu: number) {
-    return this.service.getVariablesModulo(ideModu);
+  getVariablesModulo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dto: GetVariablesModuloDto) {
+    return this.service.getVariablesModulo({
+      ...headersParams,
+      ...dto,
+    });
+  }
+
+  @Get('getConfiguracionTablaVariable')
+  @ApiOperation({ summary: 'Obtener registros de tabla de referencia configurada en una variable' })
+  // @Auth()
+  getConfiguracionTablaVariable(@AppHeaders() headersParams: HeaderParamsDto, @Query() dto: GetConfiguracionTablaVariableDto) {
+    return this.service.getConfiguracionTablaVariable({
+      ...headersParams,
+      ...dto,
+    });
   }
 
   @Get('getListDataModulo')

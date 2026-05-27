@@ -31,6 +31,8 @@ export interface SendEmailOptions {
     from: EmailFrom;
     /** Uno o varios destinatarios */
     to: string | string[];
+    /** Uno o varios destinatarios en copia (CC) */
+    cc?: string | string[];
     subject: string;
     /** Contenido HTML del correo */
     html: string;

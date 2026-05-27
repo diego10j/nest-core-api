@@ -7,6 +7,10 @@ export class SendMailDto {
   @IsEmail({}, { each: true })
   destinatario: string | string[];
 
+  @IsOptional()
+  @IsEmail({}, { each: true })
+  cc?: string | string[];
+
   @IsNotEmpty()
   @IsString()
   asunto: string;
@@ -19,7 +23,8 @@ export class SendMailDto {
   ide_plco?: number;
 
   @IsOptional()
-  ide_corr?: number;
+  @IsString()
+  alias_corr?: string = 'default';
 
   @IsOptional()
   variables?: Record<string, any>;

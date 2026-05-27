@@ -1,0 +1,72 @@
+</td><!-- cierra padding body -->
+                </tr><!-- cierra fila body -->
+
+                <!-- ── Footer ── -->
+                <tr>
+                    <td style="background-color:#F5F8FF;border-top:1px solid #E2EAF4;padding:22px 40px;">
+                        <!-- Links -->
+                        <p style="margin:0 0 12px;text-align:center;font-size:0;">
+                            <a href="{{portalUrl}}"
+                               style="font-size:12px;font-weight:600;color:#5B80C0;
+                                      text-decoration:none;margin:0 10px;">
+                                Portal de Clientes
+                            </a>
+                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
+                            <a href="mailto:{{empresaEmail}}"
+                               style="font-size:12px;font-weight:600;color:#5B80C0;
+                                      text-decoration:none;margin:0 10px;">
+                                Soporte T&eacute;cnico
+                            </a>
+                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
+                            <a href="{{privacyUrl}}"
+                               style="font-size:12px;font-weight:600;color:#5B80C0;
+                                      text-decoration:none;margin:0 10px;">
+                                Privacidad
+                            </a>
+                            <span style="font-size:12px;color:#C7D9FF;">&bull;</span>
+                            <a href="{{unsubscribeUrl}}"
+                               style="font-size:12px;font-weight:600;color:#5B80C0;
+                                      text-decoration:none;margin:0 10px;">
+                                Cancelar suscripci&oacute;n
+                            </a>
+                        </p>
+
+                        <!-- Empresa + dirección -->
+                        <p style="margin:0 0 6px;text-align:center;font-size:11px;
+                                  color:#A0AABF;line-height:1.6;">
+                            <strong style="color:#8898B4;font-weight:600;">{{appName}}</strong>
+                            &nbsp;&middot;&nbsp;
+                            {{#if empresaDireccion}}{{empresaDireccion}}{{else}}Quito, Ecuador{{/if}}
+                        </p>
+
+                        <!-- Teléfono + email de contacto -->
+                        {{#if empresaTelefono}}
+                        <p style="margin:0 0 6px;text-align:center;font-size:11px;
+                                  color:#A0AABF;line-height:1.6;">
+                            {{empresaTelefono}}
+                            {{#if empresaEmail}}
+                            &nbsp;&middot;&nbsp;
+                            <a href="mailto:{{empresaEmail}}"
+                               style="color:#8898B4;font-weight:600;text-decoration:none;">
+                                {{empresaEmail}}
+                            </a>
+                            {{/if}}
+                        </p>
+                        {{/if}}
+
+                        <!-- Copyright -->
+                        <p style="margin:0;text-align:center;font-size:10px;
+                                  color:#BFC8D8;line-height:1.5;letter-spacing:0.03em;">
+                            &copy; {{year}} {{appName}}. Todos los derechos reservados.
+                            &mdash; Correo generado autom&aacute;ticamente, por favor no responder.
+                        </p>
+                    </td>
+                </tr>
+
+            </table><!-- cierra em-wrapper -->
+
+        </td>
+    </tr>
+</table>
+</body>
+</html>

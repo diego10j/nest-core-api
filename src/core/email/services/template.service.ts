@@ -13,6 +13,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { CreateTemplateDto } from '../dto/create-template.dto';
+import { registerHelpers } from '../helpers/handlebars.helpers';
 import { UpdateTemplateDto } from '../dto/update-template.dto';
 
 @Injectable()
@@ -21,27 +22,60 @@ export class TemplateService {
   private templateCache = new Map<string, handlebars.TemplateDelegate>();
 
   constructor(public readonly dataSource: DataSourceService) {
+    registerHelpers(handlebars);
     this.precompileBuiltInTemplates();
   }
 
   /**
-   * Precompila las plantillas integradas
+   * Precompila las plantillas integradas y registra parciales comunes
    */
   private precompileBuiltInTemplates() {
-    const templateNames = ['user-created', 'password-reset', 'password-change', 'notification'];
+    this.registerPartials();
 
-    templateNames.forEach((name) => {
+    const templateNames = [
+      { name: 'user-created', module: 'sistema' },
+      { name: 'password-reset', module: 'sistema' },
+      { name: 'password-change', module: 'sistema' },
+      { name: 'notification', module: 'sistema' },
+      { name: 'proforma-envio', module: 'proformas' },
+    ];
+
+    templateNames.forEach(({ name, module }) => {
       try {
-        const templatePath = path.join(__dirname, 'templates', `${name}.hbs`);
+        const templatePath = path.join(__dirname, '..', 'templates', module, `${name}.hbs`);
         if (fs.existsSync(templatePath)) {
           const templateSource = fs.readFileSync(templatePath, 'utf8');
           this.templateCache.set(name, handlebars.compile(templateSource));
-          this.logger.log(`Plantilla precompilada: ${name}`);
+          this.logger.log(`Plantilla precompilada: ${module}/${name}`);
         }
       } catch (error) {
-        this.logger.warn(`Plantilla ${name} no encontrada, omitiendo precompilación`);
+        this.logger.warn(`Plantilla ${module}/${name} no encontrada, omitiendo precompilacion`);
       }
     });
+  }
+
+  /**
+   * Registra parciales comunes (header, footer) para todas las plantillas
+   */
+  private registerPartials() {
+    const partialsDir = path.join(__dirname, '..', 'templates', 'partials');
+    if (!fs.existsSync(partialsDir)) {
+      this.logger.warn('Directorio de parciales no encontrado: ' + partialsDir);
+      return;
+    }
+
+    const files = fs.readdirSync(partialsDir).filter((f) => f.endsWith('.hbs'));
+    for (const file of files) {
+      const partialName = file.replace('.hbs', '');
+      const partialPath = path.join(partialsDir, file);
+      try {
+        const source = fs.readFileSync(partialPath, 'utf8');
+        handlebars.registerPartial(`partials/${partialName}`, source);
+        this.logger.log(`Parcial registrado: partials/${partialName}`);
+      } catch (error) {
+        this.logger.warn(`Error registrando parcial ${partialName}: ${error.message}`);
+      }
+    }
   }
 
   /**
@@ -254,19 +288,20 @@ export class TemplateService {
    */
   async compileBuiltInTemplate(templateName: string, variables: Record<string, any>): Promise<string> {
     try {
-      // Primero buscar en caché
       if (this.templateCache.has(templateName)) {
         const template = this.templateCache.get(templateName);
         return template(variables);
       }
 
-      // Si no está en caché, cargar desde archivo
-      const templatePath = path.join(__dirname, 'templates', `${templateName}.hbs`);
-      if (fs.existsSync(templatePath)) {
-        const templateSource = fs.readFileSync(templatePath, 'utf8');
-        const template = handlebars.compile(templateSource);
-        this.templateCache.set(templateName, template);
-        return template(variables);
+      const modules = ['sistema', 'proformas'];
+      for (const mod of modules) {
+        const templatePath = path.join(__dirname, '..', 'templates', mod, `${templateName}.hbs`);
+        if (fs.existsSync(templatePath)) {
+          const templateSource = fs.readFileSync(templatePath, 'utf8');
+          const template = handlebars.compile(templateSource);
+          this.templateCache.set(templateName, template);
+          return template(variables);
+        }
       }
 
       throw new NotFoundException(`Plantilla integrada ${templateName} no encontrada`);

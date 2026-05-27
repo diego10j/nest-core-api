@@ -40,6 +40,7 @@ export class ResendEmailProvider implements IEmailProvider {
         const { data, error } = await client.emails.send({
             from: this.formatearFrom(options.from.name, options.from.address),
             to: this.normalizarDestinatarios(options.to),
+            ...(options.cc ? { cc: this.normalizarDestinatarios(options.cc) } : {}),
             subject: options.subject,
             html: options.html,
             ...(options.attachments?.length ? { attachments: this.mapearAdjuntos(options.attachments) } : {}),

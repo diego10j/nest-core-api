@@ -11,6 +11,7 @@ import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { SaveProformaDto } from './dto/save-proforma.dto';
+import { SendProformaEmailDto } from './dto/send-proforma-email.dto';
 import { ProformasService } from './proformas.service';
 
 @ApiTags('Proformas')
@@ -120,6 +121,16 @@ export class ProformasController {
   // @Auth()
   getResumenDiarioProformas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ResumenDiarioProformasDto) {
     return this.service.getResumenDiarioProformas({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('sendProformaEmail')
+  @ApiOperation({ summary: 'Enviar proforma por correo electronico con PDF adjunto' })
+  // @Auth()
+  sendProformaEmail(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SendProformaEmailDto) {
+    return this.service.sendProformaEmail({
       ...headersParams,
       ...dtoIn,
     });

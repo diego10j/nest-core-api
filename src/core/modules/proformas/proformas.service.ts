@@ -1,14 +1,28 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import * as handlebars from 'handlebars';
+import PdfPrinter from 'pdfmake';
+import { envs } from 'src/config/envs';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { ObjectQueryDto } from 'src/core/connection/dto';
+import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
-import { isDefined } from 'src/util/helpers/common-util';
-import { getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/util/helpers/date-util';
+import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
+import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
+import { MailService } from 'src/core/email/services/mail.service';
+import { TemplateService } from 'src/core/email/services/template.service';
+import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { HeaderSection } from 'src/reports/common/sections/header.section';
+import { proformaReport } from 'src/reports/modules/proformas/proforma.report';
+import { isDefined, fCurrency } from 'src/util/helpers/common-util';
+import { fDate, getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/util/helpers/date-util';
 import { fNumber } from 'src/util/helpers/number-util';
+import { assignIfDefined } from 'src/util/helpers/sql-util';
 
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
@@ -16,8 +30,7 @@ import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { CabProformaDto, DetaProformaDto, SaveProformaDto } from './dto/save-proforma.dto';
-import { assignIfDefined } from 'src/util/helpers/sql-util';
-import { ca } from 'zod/v4/locales';
+import { SendProformaEmailDto } from './dto/send-proforma-email.dto';
 
 const SOLICITUD = {
   tableName: 'cxc_cabece_proforma',
@@ -43,6 +56,8 @@ export class ProformasService extends BaseService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
+    private readonly mailService: MailService,
+    private readonly templateService: TemplateService,
   ) {
     super();
     // obtiene las variables del sistema para el servicio
@@ -196,6 +211,9 @@ ORDER BY prof.secuencial_cccpr DESC
         c.identificac_cccpr,
         c.ide_vgven,
         v.nombre_vgven,
+        v.movil_vgven,
+        v.correo_vgven,
+        v.copia_correo_vgven,
         c.direccion_cccpr,
         c.contacto_cccpr,
         c.ide_ccten,
@@ -1443,6 +1461,223 @@ ORDER BY prof.secuencial_cccpr DESC
       },
       message: 'ok',
     };
+  }
+
+  async sendProformaEmail(dtoIn: SendProformaEmailDto & HeaderParamsDto) {
+    const data = await this.getProformaByID(dtoIn);
+    const cabecera = data.cabecera;
+    const detalles = data.detalles;
+
+    const empresa = await this.dataSource.createSingleQuery(
+      (() => {
+        const q = new SelectQuery(`
+          SELECT ide_empr, nom_empr, direccion_empr, telefono_empr, mail_empr, pagina_empr, logotipo_empr
+          FROM sis_empresa WHERE ide_empr = $1
+        `);
+        q.addIntParam(1, dtoIn.ideEmpr);
+        return q;
+      })(),
+    );
+
+    const appName = empresa?.nom_empr || 'ProERP';
+
+    let logoBase64: string | undefined;
+    if (empresa?.logotipo_empr) {
+      const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+      if (fs.existsSync(logoPath)) {
+        logoBase64 = fs.readFileSync(logoPath).toString('base64');
+      }
+    }
+
+    const variables: Record<string, any> = {
+      appName,
+      logoBase64,
+      title: `Proforma #${cabecera.secuencial_cccpr}`,
+      currentYear: new Date().getFullYear(),
+      secuencial: cabecera.secuencial_cccpr,
+      fecha: fDate(cabecera.fecha_cccpr),
+      solicitante: cabecera.solicitante_cccpr,
+      identificacion: cabecera.identificac_cccpr,
+      vendedor: cabecera.nombre_vgven,
+      vendedorMovil: cabecera.movil_vgven,
+      vendedorCorreo: cabecera.correo_vgven,
+      tipoProforma: cabecera.nombre_cctpr,
+      validez: cabecera.nombre_ccvap,
+      formaPago: cabecera.nombre_cndfp,
+      tiempoEntrega: cabecera.nombre_ccten,
+      observacion: cabecera.observacion_cccpr,
+      baseGrabada: fCurrency(cabecera.base_grabada_cccpr),
+      baseTarifa0: fCurrency(cabecera.base_tarifa0_cccpr),
+      valorIva: fCurrency(cabecera.valor_iva_cccpr),
+      total: fCurrency(cabecera.total_cccpr),
+      tarifaIva: cabecera.tarifa_iva_cccpr,
+      utilidad: cabecera.utilidad_cccpr ? fCurrency(cabecera.utilidad_cccpr) : null,
+      detalles: detalles.map((d: any) => ({
+        codigo: d.codigo_inarti,
+        nombre: d.nombre_inarti,
+        cantidad: d.cantidad_ccdpr,
+        precio: fCurrency(d.precio_ccdpr),
+        total: fCurrency(d.total_ccdpr),
+      })),
+      empresaDireccion: empresa?.direccion_empr || '',
+      empresaTelefono: empresa?.telefono_empr || '',
+      empresaEmail: empresa?.mail_empr || '',
+      empresaWeb: empresa?.pagina_empr || '',
+    };
+
+    const htmlContent = this.buildEmailHtml(variables);
+
+    const pdfBuffer = await this.generateProformaPdf(data, empresa as Empresa);
+
+    const adjunto: AdjuntoCorreoDto = {
+      nombre: `Proforma_${cabecera.secuencial_cccpr}.pdf`,
+      tipoMime: 'application/pdf',
+      tamano: pdfBuffer.length,
+      ruta: '',
+      contenidoBase64: pdfBuffer.toString('base64'),
+    };
+
+    const cuentaEnvio = await this.obtenerCuentaEnvioProforma(cabecera.correo_vgven, dtoIn.ideEmpr);
+
+    const destinatarios = Array.isArray(dtoIn.destinatario)
+      ? [...dtoIn.destinatario]
+      : [dtoIn.destinatario];
+
+    const copias = this.normalizarCorreosProforma(dtoIn.cc);
+    if (cuentaEnvio?.correoRemitente) {
+      copias.push(cuentaEnvio.correoRemitente);
+    }
+
+    await this.mailService.sendMail(
+      {
+        alias_corr: cuentaEnvio.alias,
+        destinatario: destinatarios,
+        ...(copias.length ? { cc: Array.from(new Set(copias)) } : {}),
+        asunto: `📄 Proforma #${cabecera.secuencial_cccpr}`,
+        contenido: htmlContent,
+        adjuntos: [adjunto],
+      },
+      dtoIn.ideEmpr,
+      dtoIn.login,
+    );
+
+    await this.dataSource.pool.query(
+      `UPDATE cxc_cabece_proforma SET enviado_cccpr = true WHERE ide_cccpr = $1`,
+      [dtoIn.ide_cccpr],
+    );
+
+    return {
+      message: 'ok',
+      secuencial: cabecera.secuencial_cccpr,
+      destinatario: Array.isArray(dtoIn.destinatario)
+        ? dtoIn.destinatario.join(', ')
+        : dtoIn.destinatario,
+    };
+  }
+
+  private normalizarCorreosProforma(correos?: string | string[]): string[] {
+    if (!correos) return [];
+    const lista = Array.isArray(correos) ? correos : [correos];
+    return lista
+      .map((correo) => (correo || '').trim())
+      .filter((correo) => correo.length > 0);
+  }
+
+  private async obtenerCuentaEnvioProforma(correoVendedor: string | null, ideEmpr: number): Promise<{ alias: string; correoRemitente: string }> {
+    const cuentaDefault = await this.mailService.getCuentaCorreo('default', ideEmpr);
+    const correoDefault = (cuentaDefault?.correo_corr || cuentaDefault?.usuario_corr || '').trim();
+
+    if (!correoVendedor?.trim()) {
+      return {
+        alias: 'default',
+        correoRemitente: correoDefault,
+      };
+    }
+
+    const queryAlias = new SelectQuery(`
+      SELECT alias_cucor, correo_cucor
+      FROM sis_cuenta_correo
+      WHERE LOWER(TRIM(correo_cucor)) = LOWER(TRIM($1))
+      ORDER BY
+        CASE WHEN ide_empr = $2 THEN 0 ELSE 1 END,
+        ide_cucor
+      LIMIT 1
+    `);
+    queryAlias.addParam(1, correoVendedor);
+    queryAlias.addParam(2, ideEmpr ?? null);
+
+    const cuentaVendedor = await this.dataSource.createSingleQuery(queryAlias);
+
+    if (!cuentaVendedor?.alias_cucor) {
+      return {
+        alias: 'default',
+        correoRemitente: correoDefault,
+      };
+    }
+
+    const cuentaPorAlias = await this.mailService.getCuentaCorreo(cuentaVendedor.alias_cucor, ideEmpr);
+    return {
+      alias: cuentaVendedor.alias_cucor,
+      correoRemitente: (cuentaPorAlias?.correo_corr || cuentaPorAlias?.usuario_corr || correoDefault).trim(),
+    };
+  }
+
+  private loadTemplateFile(relativePath: string): string {
+    const roots = [
+      path.join(process.cwd(), 'src', 'core', 'email', 'templates', relativePath),
+      path.join(process.cwd(), 'dist', 'core', 'email', 'templates', relativePath),
+    ];
+    for (const templatePath of roots) {
+      if (fs.existsSync(templatePath)) {
+        return fs.readFileSync(templatePath, 'utf8');
+      }
+    }
+    throw new BadRequestException(
+      `No se encontro la plantilla: ${relativePath}`,
+    );
+  }
+
+  private buildEmailHtml(variables: Record<string, any>): string {
+    const headerContent = this.loadTemplateFile('partials/header.hbs');
+    const footerContent = this.loadTemplateFile('partials/footer.hbs');
+
+    handlebars.registerPartial('partials/header', headerContent);
+    handlebars.registerPartial('partials/footer', footerContent);
+
+    registerHelpers(handlebars);
+
+    const bodyContent = this.loadTemplateFile('proformas/proforma-envio.hbs');
+    const template = handlebars.compile(bodyContent);
+    return template(variables);
+  }
+
+  private async generateProformaPdf(data: any, empresa: Empresa): Promise<Buffer> {
+    const fontsDir = path.join(process.cwd(), 'public/assets/fonts');
+    const printer = new PdfPrinter({
+      Roboto: {
+        normal: path.join(fontsDir, 'Roboto-Regular.ttf'),
+        bold: path.join(fontsDir, 'Roboto-Medium.ttf'),
+        italics: path.join(fontsDir, 'Roboto-Italic.ttf'),
+        bolditalics: path.join(fontsDir, 'Roboto-MediumItalic.ttf'),
+      },
+      Inter: {
+        normal: path.join(fontsDir, 'Inter-Regular.ttf'),
+        bold: path.join(fontsDir, 'Inter-Bold.ttf'),
+        italics: path.join(fontsDir, 'Inter-Italic-Variable.ttf'),
+        bolditalics: path.join(fontsDir, 'Inter-Italic-Variable.ttf'),
+      },
+    });
+
+    const header = HeaderSection.createReportHeader(empresa, { showDate: false } as any);
+    const docDefinition = proformaReport(data, header);
+    const doc = printer.createPdfKitDocument(docDefinition);
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.end();
+    });
   }
 
 

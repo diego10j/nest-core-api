@@ -84,15 +84,20 @@ No ORM. All queries use:
 - **pool.query()** only for complex multi-table operations or mass updates/deletes
 
 ```typescript
-// SELECT with parameters
+// SELECT with parameters — pass DTO to enable pagination/filters/ordering
 const query = new SelectQuery(`
     SELECT c.ide_tecba, c.nombre_tecba, b.nombre_teban
     FROM tes_cuenta_banco c
     INNER JOIN tes_banco b ON b.ide_teban = c.ide_teban
     WHERE c.ide_empr = $1 AND c.ide_sucu = $2 AND c.activo_tecba = true
-`);
+`, dtoIn);                               // ✅ DTO for pagination/filters
 query.addIntParam(1, dtoIn.ideEmpr);
 query.addIntParam(2, dtoIn.ideSucu);
+
+// Paginated result (with QueryOptionsDto pagination, filters, ordering)
+return this.dataSource.createQuery(query, 'tes_cuenta_banco');
+
+// Raw result (flat array of rows)
 return this.dataSource.createSelectQuery(query);
 
 // Single record
@@ -114,12 +119,14 @@ const ide = await this.dataSource.getSeqTable('table', 'pk_column', 1, dtoIn.log
 
 ## 3. Controllers — GET vs POST
 
+**Every GET endpoint MUST use its own DTO class that extends `QueryOptionsDto`.** Never use `@Query('paramName')` bare parameters. The DTO passed to `@Query()` provides automatic validation, Swagger documentation, and pagination/filtering/ordering support.
+
 ```typescript
-// GET endpoints with query params
+// GET endpoints with query params — DTO extends QueryOptionsDto
 @Get('getSomething')
 getSomething(
     @AppHeaders() h: HeaderParamsDto,
-    @Query() dto: SomeDto,
+    @Query() dto: SomeDto,       // ✅ DTO extends QueryOptionsDto
 ) {
     return this.service.getSomething({ ...h, ...dto });
 }
@@ -129,6 +136,10 @@ getSomething(
 getById(@Param('id', ParseIntPipe) id: number) {
     return this.service.getById(id);
 }
+
+// NEVER do this — bare @Query params
+@Get('getSomething')
+getSomething(@Query('name') name: string) { ... }  // ❌
 
 // POST endpoints with body
 @Post('save')
@@ -142,10 +153,14 @@ save(
 
 ## 4. DTOs Pattern
 
-```typescript
-import { IsInt, IsString, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
+**All GET DTOs MUST extend `QueryOptionsDto`** to enable pagination, filtering, globalFilter, and ordering. POST/save DTOs should only contain business fields.
 
-export class SomeDto {
+```typescript
+import { IsInt, IsString, IsOptional, IsNumber, Min, IsNotEmpty } from 'class-validator';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+
+// GET DTO — extends QueryOptionsDto for pagination/filters/ordering
+export class SomeDto extends QueryOptionsDto {
     @IsInt()
     @IsNotEmpty()
     ide: number;
@@ -153,6 +168,17 @@ export class SomeDto {
     @IsString()
     @IsOptional()
     observacion?: string;
+}
+
+// SAVE DTO — only business fields, no audit fields
+export class SaveDto {
+    @IsInt()
+    @IsNotEmpty()
+    id: number;
+
+    @IsString()
+    @IsOptional()
+    nombre?: string;
 
     @IsNumber()
     @Min(0)
@@ -182,6 +208,8 @@ src/core/modules/<module>/
 
 ## 6. Service Pattern
 
+**Always pass the DTO as the second argument to `new SelectQuery(sql, dto)`.** This enables pagination, filtering, globalFilter, and ordering from the frontend's `QueryOptionsDto`. Use `createSelectQuery` for raw rows or `createQuery` for paginated results.
+
 ```typescript
 import { Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
@@ -197,15 +225,30 @@ export class MyService extends BaseService {
         private readonly core: CoreService,
     ) {
         super();
-        // Load system variables
         this.core.getVariables(['p_var_name']).then((result) => {
             this.variables = result;
         });
     }
 
+    // GET with pagination — pass dto to SelectQuery + createQuery
     async get(dtoIn: SomeDto & HeaderParamsDto) {
-        const query = new SelectQuery(`...`);
-        query.addIntParam(1, dtoIn.ideEmpr);
+        const query = new SelectQuery(`
+            SELECT col1, col2
+            FROM some_table
+            WHERE ide_modu = $1
+            ORDER BY col1
+        `, dtoIn);                          // ✅ DTO enables pagination/filters/ordering
+        query.addIntParam(1, dtoIn.ideModu);
+        return this.dataSource.createQuery(query, 'some_table');
+    }
+
+    // GET without pagination (raw rows) — pass dto to SelectQuery + createSelectQuery
+    async getList(dtoIn: SomeDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT col1, col2
+            FROM some_table
+            ORDER BY col1
+        `, dtoIn);                          // ✅ Still pass DTO
         return this.dataSource.createSelectQuery(query);
     }
 }

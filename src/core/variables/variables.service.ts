@@ -6,7 +6,10 @@ import { removeEqualsElements } from 'src/util/helpers/array-util';
 
 import { INVENTARIO_VARS } from './data/1-inv-var';
 import { IMPORTACIONES_VARS } from './data/14-imp-var';
+import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
+import { GetVariablesModuloDto } from './dto/get-variables-modulo.dto';
+import { SaveVariableDto } from './dto/save-variable.dto';
 import { Parametro } from './interfaces/parametro.interface';
 import { getModuloDefinition, toModuleID } from './modulos';
 
@@ -119,20 +122,169 @@ export class VariablesService {
     return this.dataSource.createSelectQuery(query);
   }
 
-  async getVariablesModulo(ideModu: number) {
+  async getVariablesModulo(dto: GetVariablesModuloDto & HeaderParamsDto) {
     const query = new SelectQuery(`
       SELECT ide_modu, nom_para, descripcion_para, valor_para,
              tabla_para, campo_codigo_para, campo_nombre_para,
              activo_para, es_empr_para
       FROM sis_parametros
       WHERE ide_modu = $1
+        AND (es_empr_para = false OR (es_empr_para = true AND ide_empr = $2))
       ORDER BY nom_para
-    `);
-    query.addIntParam(1, ideModu);
-    return this.dataSource.createSelectQuery(query);
+    `, dto);
+    query.addIntParam(1, dto.ideModu);
+    query.addIntParam(2, dto.ideEmpr);
+    return this.dataSource.createQuery(query, 'sis_parametros');
+  }
+
+  async getConfiguracionTablaVariable(dto: GetConfiguracionTablaVariableDto & HeaderParamsDto) {
+    const configQuery = new SelectQuery(`
+      SELECT tabla_para, campo_codigo_para, campo_nombre_para, es_empr_para
+      FROM sis_parametros
+      WHERE nom_para = $1
+    `, dto);
+    configQuery.addStringParam(1, dto.nom_para);
+    const config = await this.dataSource.createSingleQuery(configQuery);
+
+    if (!config || !config.tabla_para || !config.campo_codigo_para || !config.campo_nombre_para) {
+      throw new BadRequestException(
+        `La variable "${dto.nom_para}" no tiene configurada una tabla de referencia.`,
+      );
+    }
+
+    const whereClause = config.es_empr_para
+      ? `WHERE ide_sucu = $1`
+      : '';
+
+    const query = new SelectQuery(`
+      SELECT ${config.campo_codigo_para}, ${config.campo_nombre_para}
+      FROM ${config.tabla_para}
+      ${whereClause}
+      ORDER BY ${config.campo_nombre_para}
+    `, dto);
+    query.isLazy = false;
+    if (config.es_empr_para) {
+      query.addIntParam(1, dto.ideSucu);
+    }
+
+    return this.dataSource.createQuery(query, config.tabla_para);
+  }
+
+  async saveVariable(dtoIn: SaveVariableDto & HeaderParamsDto) {
+    const isEmpresa = dtoIn.es_empr_para ?? false;
+    const nomPara = dtoIn.nom_para.trim();
+    const nomParaLower = nomPara.toLowerCase();
+
+    const existingQuery = isEmpresa
+      ? {
+        sql: `
+            SELECT ide_para
+            FROM sis_parametros
+            WHERE ide_modu = $1
+              AND LOWER(nom_para) = $2
+              AND es_empr_para = true
+              AND ide_empr = $3
+            LIMIT 1
+          `,
+        params: [dtoIn.ide_modu, nomParaLower, dtoIn.ideEmpr],
+      }
+      : {
+        sql: `
+            SELECT ide_para
+            FROM sis_parametros
+            WHERE ide_modu = $1
+              AND LOWER(nom_para) = $2
+              AND es_empr_para = false
+            LIMIT 1
+          `,
+        params: [dtoIn.ide_modu, nomParaLower],
+      };
+
+    const existingResult = await this.dataSource.pool.query(existingQuery.sql, existingQuery.params);
+    const existingIdePara = existingResult.rows?.[0]?.ide_para as number | undefined;
+
+    if (existingIdePara) {
+      await this.dataSource.pool.query(
+        `
+          UPDATE sis_parametros
+          SET valor_para = $2,
+              descripcion_para = $3,
+              activo_para = COALESCE($4, activo_para),
+              usuario_actua = $5,
+              hora_actua = NOW()
+          WHERE ide_para = $1
+        `,
+        [
+          existingIdePara,
+          dtoIn.valor_para,
+          dtoIn.descripcion_para,
+          dtoIn.activo_para ?? null,
+          dtoIn.login,
+        ],
+      );
+
+      await this.clearCacheVariables([nomPara]);
+      if (isEmpresa) {
+        await this.dataSource.redisClient.del(`${this.getCacheKey(nomPara)}_${dtoIn.ideEmpr}`);
+      }
+
+      return {
+        message: `Variable actualizada: ${nomPara}`,
+        ide_para: existingIdePara,
+        action: 'updated',
+      };
+    }
+
+    const idePara = await this.dataSource.getSeqTable('sis_parametros', 'ide_para', 1, dtoIn.login);
+
+    await this.dataSource.pool.query(
+      `
+        INSERT INTO sis_parametros (
+          ide_para,
+          ide_empr,
+          ide_modu,
+          nom_para,
+          descripcion_para,
+          valor_para,
+          tabla_para,
+          campo_codigo_para,
+          campo_nombre_para,
+          activo_para,
+          usuario_ingre,
+          hora_ingre,
+          es_empr_para
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),$12)
+      `,
+      [
+        idePara,
+        isEmpresa ? dtoIn.ideEmpr : null,
+        dtoIn.ide_modu,
+        nomPara,
+        dtoIn.descripcion_para,
+        dtoIn.valor_para,
+        dtoIn.tabla_para ?? null,
+        dtoIn.campo_codigo_para ?? null,
+        dtoIn.campo_nombre_para ?? null,
+        dtoIn.activo_para ?? true,
+        dtoIn.login,
+        isEmpresa,
+      ],
+    );
+
+    await this.clearCacheVariables([nomPara]);
+    if (isEmpresa) {
+      await this.dataSource.redisClient.del(`${this.getCacheKey(nomPara)}_${dtoIn.ideEmpr}`);
+    }
+
+    return {
+      message: `Variable creada: ${nomPara}`,
+      ide_para: idePara,
+      action: 'inserted',
+    };
   }
 
   // Inserta en la BD las variables que aún no existen; las ya existentes se omiten.
+  // Si la variable es de empresa (es_empr_para=true) se crea en TODAS las empresas donde no exista.
   public async updateVariables(dto: HeaderParamsDto) {
     const allLocalVars = this.getAllVariables();
     const totalLocal = allLocalVars.length;
@@ -141,60 +293,90 @@ export class VariablesService {
       return { message: 'No hay variables definidas en el sistema.' };
     }
 
-    // 1. Obtener nombres de variables que ya existen en la BD (globales + de esta empresa)
-    const existingQuery = new SelectQuery(`
-      SELECT nom_para, es_empr_para
-      FROM sis_parametros
-      WHERE es_empr_para = false
-         OR (es_empr_para = true AND ide_empr = $1)
-    `);
-    existingQuery.addParam(1, dto.ideEmpr);
-    const existingRows: { nom_para: string; es_empr_para: boolean }[] =
-      await this.dataSource.createSelectQuery(existingQuery);
+    const globalVars = allLocalVars.filter((v) => !v.es_empr_para);
+    const empresaVars = allLocalVars.filter((v) => v.es_empr_para);
 
-    const globalSet = new Set<string>();
-    const empresaSet = new Set<string>();
-    for (const row of existingRows) {
-      if (row.es_empr_para) {
-        empresaSet.add(row.nom_para.toLowerCase());
-      } else {
-        globalSet.add(row.nom_para.toLowerCase());
+    // 1. Obtener todas las empresas activas
+    const empresasQuery = new SelectQuery(`SELECT ide_empr FROM sis_empresa WHERE activo_empr = true`);
+    const empresas: { ide_empr: number }[] =
+      await this.dataSource.createSelectQuery(empresasQuery);
+
+    // 2. Variables globales que ya existen (ide_empr IS NULL)
+    let existingGlobalCount = 0;
+    let newGlobalCount = 0;
+
+    if (globalVars.length > 0) {
+      const existingGlobalQuery = new SelectQuery(`
+        SELECT nom_para FROM sis_parametros
+        WHERE es_empr_para = false
+      `);
+      const existingGlobalRows: { nom_para: string }[] =
+        await this.dataSource.createSelectQuery(existingGlobalQuery);
+      const globalSet = new Set(existingGlobalRows.map((r) => r.nom_para.toLowerCase()));
+      existingGlobalCount = existingGlobalRows.length;
+
+      const newGlobalVars = globalVars.filter(
+        (v) => !globalSet.has(v.nom_para.toLowerCase()),
+      );
+
+      if (newGlobalVars.length > 0) {
+        this.validateParameters(newGlobalVars);
+        const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
+        query.addParam(1, dto.ideEmpr);
+        query.addParam(2, JSON.stringify(newGlobalVars));
+        query.addParam(3, dto.login);
+        await this.dataSource.createSelectQuery(query);
+        newGlobalCount = newGlobalVars.length;
       }
     }
 
-    // 2. Filtrar solo las variables nuevas
-    const newVars = allLocalVars.filter((v) => {
-      const key = v.nom_para.toLowerCase();
-      return v.es_empr_para ? !empresaSet.has(key) : !globalSet.has(key);
-    });
+    // 3. Variables de empresa: crear en cada empresa donde no existan
+    let empresaInsertedCount = 0;
+    let empresaExistingCount = 0;
 
-    if (newVars.length === 0) {
+    if (empresaVars.length > 0 && empresas.length > 0) {
+      for (const empresa of empresas) {
+        const existingEmpQuery = new SelectQuery(`
+          SELECT nom_para FROM sis_parametros
+          WHERE es_empr_para = true AND ide_empr = $1
+        `);
+        existingEmpQuery.addIntParam(1, empresa.ide_empr);
+        const existingEmpRows: { nom_para: string }[] =
+          await this.dataSource.createSelectQuery(existingEmpQuery);
+        const empSet = new Set(existingEmpRows.map((r) => r.nom_para.toLowerCase()));
+        empresaExistingCount += existingEmpRows.length;
+
+        const newEmpVars = empresaVars.filter(
+          (v) => !empSet.has(v.nom_para.toLowerCase()),
+        );
+
+        if (newEmpVars.length > 0) {
+          this.validateParameters(newEmpVars);
+          const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
+          query.addParam(1, empresa.ide_empr);
+          query.addParam(2, JSON.stringify(newEmpVars));
+          query.addParam(3, dto.login);
+          await this.dataSource.createSelectQuery(query);
+          empresaInsertedCount += newEmpVars.length;
+        }
+      }
+    }
+
+    const totalInserted = newGlobalCount + empresaInsertedCount;
+    const totalExisting = existingGlobalCount + empresaExistingCount;
+
+    if (totalInserted === 0) {
       return {
-        message: `El sistema ya cuenta con todas las variables registradas (${totalLocal} en total). No se realizaron inserciones.`,
+        message: `El sistema ya cuenta con todas las variables registradas. No se realizaron inserciones.`,
       };
     }
 
-    try {
-      this.validateParameters(newVars);
-
-      const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
-      query.addParam(1, dto.ideEmpr);
-      query.addParam(2, JSON.stringify(newVars));
-      query.addParam(3, dto.login);
-
-      const result = await this.dataSource.createSelectQuery(query);
-      const inserted: number = result[0]?.f_update_variables ?? newVars.length;
-
-      return {
-        message: `Se crearon ${inserted} variable(s) nueva(s). El sistema ahora cuenta con ${existingRows.length + inserted} variable(s) registrada(s) de un total de ${totalLocal} definida(s).`,
-        inserted,
-        total: totalLocal,
-        existing: existingRows.length,
-      };
-    } catch (error) {
-      this.logger.error('Error actualizando variables:', error);
-      throw error;
-    }
+    return {
+      message: `Se crearon ${totalInserted} variable(s) nueva(s). El sistema ahora cuenta con ${totalExisting + totalInserted} variable(s) registrada(s) de un total de ${totalLocal} definida(s).`,
+      inserted: totalInserted,
+      total: totalLocal,
+      existing: totalExisting,
+    };
   }
 
   // ============ Private Methods ============

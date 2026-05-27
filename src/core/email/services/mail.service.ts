@@ -32,7 +32,7 @@ export class MailService {
     public readonly dataSource: DataSourceService,
     private readonly templateService: TemplateService,
     @Inject(EMAIL_PROVIDER_TOKEN) private readonly emailProvider: IEmailProvider,
-  ) {}
+  ) { }
 
   // ──────────────────────────────────────────────
   // Consultas de configuración de cuentas
@@ -41,20 +41,23 @@ export class MailService {
   async getCuentasCorreo(dtoIn: QueryOptionsDto & HeaderParamsDto) {
     const queryStr = `
       SELECT
-        ide_corr,
-        alias_corr,
-        smtp_corr,
-        puerto_corr,
-        usuario_corr,
-        correo_corr,
-        f_enmascarar_texto(clave_corr) AS clave_corr,
-        secure_corr,
-        ide_sucu,
-        ide_empr,
-        ide_usua
-      FROM sis_correo
-      WHERE ide_empr = $1
-      ORDER BY ide_corr
+        co.ide_corr,
+        COALESCE(cu.alias_cucor, 'default') AS alias_corr,
+        co.smtp_corr,
+        co.puerto_corr,
+        COALESCE(cu.usuario_cucor, co.usuario_corr) AS usuario_corr,
+        COALESCE(cu.correo_cucor, co.correo_corr) AS correo_corr,
+        COALESCE(cu.nom_correo_cucor, co.nom_correo_corr) AS nom_correo_corr,
+        f_enmascarar_texto(co.clave_corr) AS clave_corr,
+        co.secure_corr,
+        COALESCE(cu.ide_sucu, co.ide_sucu) AS ide_sucu,
+        COALESCE(cu.ide_empr, co.ide_empr) AS ide_empr,
+        COALESCE(cu.ide_usua, co.ide_usua) AS ide_usua
+      FROM sis_correo co
+      LEFT JOIN sis_cuenta_correo cu ON cu.ide_corr = co.ide_corr
+      WHERE co.ide_empr = $1
+        AND co.alias_corr = 'resend'
+      ORDER BY cu.ide_cucor NULLS LAST, co.ide_corr
     `;
     const query = new SelectQuery(queryStr, dtoIn);
     query.addParam(1, dtoIn.ideEmpr);
@@ -62,7 +65,19 @@ export class MailService {
   }
 
   async getCuentaCorreoPorDefecto(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const queryStr = `
+    const cuenta = await this.getCuentaCorreo('default', dtoIn.ideEmpr);
+    return [cuenta];
+  }
+
+  /**
+   * Obtiene una cuenta de correo para envío.
+   *
+   * - La configuración/API key se obtiene desde sis_correo (alias_corr='resend').
+   * - Los datos del remitente se obtienen desde sis_cuenta_correo por alias_cucor.
+   * - Si no existe cuenta en sis_cuenta_correo, usa correo/usuario/nombre de sis_correo.
+   */
+  async getCuentaCorreo(alias_corr: string = 'default', ideEmpr?: number) {
+    const queryConfig = new SelectQuery(`
       SELECT
         ide_corr,
         alias_corr,
@@ -70,50 +85,131 @@ export class MailService {
         puerto_corr,
         usuario_corr,
         correo_corr,
-        f_enmascarar_texto(clave_corr) AS clave_corr,
+        clave_corr,
+        nom_correo_corr,
         secure_corr,
         ide_sucu,
         ide_empr,
         ide_usua
       FROM sis_correo
-      WHERE ide_empr = $1
-        AND alias_corr = 'default'
+      WHERE alias_corr = 'resend'
+        AND ($1::int IS NULL OR ide_empr = $1)
       ORDER BY ide_corr
-    `;
-    const query = new SelectQuery(queryStr, dtoIn);
-    query.addParam(1, dtoIn.ideEmpr);
-    return await this.dataSource.createQuery(query);
-  }
+      LIMIT 1
+    `);
+    queryConfig.addParam(1, ideEmpr ?? null);
 
-  /**
-   * Obtiene una cuenta de correo con su Resend API Key (clave_corr).
-   */
-  async getCuentaCorreo(ide_corr: number) {
-    const query = new SelectQuery(`
+    const configResend = await this.dataSource.createSingleQuery(queryConfig);
+    if (!configResend) {
+      throw new NotFoundException('No existe configuración de correo en sis_correo con alias resend');
+    }
+
+    const queryCuenta = new SelectQuery(`
       SELECT
+        ide_cucor,
         ide_corr,
-        alias_corr,
-        correo_corr,
-        clave_corr,
-        nom_correo_corr,
+        alias_cucor,
+        usuario_cucor,
+        correo_cucor,
+        nom_correo_cucor,
         ide_sucu,
         ide_empr,
         ide_usua
-      FROM sis_correo
+      FROM sis_cuenta_correo
       WHERE ide_corr = $1
+        AND alias_cucor = $2
+      ORDER BY ide_cucor
+      LIMIT 1
     `);
-    query.addParam(1, ide_corr);
+    queryCuenta.addParam(1, configResend.ide_corr);
+    queryCuenta.addParam(2, alias_corr);
 
-    const cuenta = await this.dataSource.createSingleQuery(query);
-    if (!cuenta) {
-      throw new NotFoundException(`No existe cuenta de correo con ID ${ide_corr}`);
+    let cuenta = await this.dataSource.createSingleQuery(queryCuenta);
+
+    // Si no se encuentra por ide_corr + alias, intenta localizar el alias en cualquier cuenta
+    // (priorizando la empresa actual). Esto cubre datos legacy donde ide_corr no coincide.
+    if (!cuenta && alias_corr !== 'default') {
+      const queryAliasGlobal = new SelectQuery(`
+        SELECT
+          ide_cucor,
+          ide_corr,
+          alias_cucor,
+          usuario_cucor,
+          correo_cucor,
+          nom_correo_cucor,
+          ide_sucu,
+          ide_empr,
+          ide_usua
+        FROM sis_cuenta_correo
+        WHERE alias_cucor = $1
+        ORDER BY
+          CASE WHEN ide_empr = $2 THEN 0 ELSE 1 END,
+          ide_cucor
+        LIMIT 1
+      `);
+      queryAliasGlobal.addParam(1, alias_corr);
+      queryAliasGlobal.addParam(2, ideEmpr ?? null);
+      cuenta = await this.dataSource.createSingleQuery(queryAliasGlobal);
     }
-    return cuenta;
+
+    if (!cuenta && alias_corr !== 'default') {
+      const queryDefault = new SelectQuery(`
+        SELECT
+          ide_cucor,
+          ide_corr,
+          alias_cucor,
+          usuario_cucor,
+          correo_cucor,
+          nom_correo_cucor,
+          ide_sucu,
+          ide_empr,
+          ide_usua
+        FROM sis_cuenta_correo
+        WHERE ide_corr = $1
+          AND alias_cucor = 'default'
+        ORDER BY ide_cucor
+        LIMIT 1
+      `);
+      queryDefault.addParam(1, configResend.ide_corr);
+      cuenta = await this.dataSource.createSingleQuery(queryDefault);
+    }
+
+    if (!cuenta) {
+      return {
+        ide_corr: configResend.ide_corr,
+        alias_corr: alias_corr || 'default',
+        smtp_corr: configResend.smtp_corr,
+        puerto_corr: configResend.puerto_corr,
+        usuario_corr: configResend.usuario_corr,
+        correo_corr: configResend.correo_corr,
+        clave_corr: configResend.clave_corr,
+        nom_correo_corr: configResend.nom_correo_corr,
+        secure_corr: configResend.secure_corr,
+        ide_sucu: configResend.ide_sucu,
+        ide_empr: configResend.ide_empr,
+        ide_usua: configResend.ide_usua,
+      };
+    }
+
+    return {
+      ide_corr: configResend.ide_corr,
+      alias_corr: cuenta.alias_cucor,
+      smtp_corr: configResend.smtp_corr,
+      puerto_corr: configResend.puerto_corr,
+      usuario_corr: cuenta.usuario_cucor || configResend.usuario_corr,
+      correo_corr: cuenta.correo_cucor || configResend.correo_corr,
+      clave_corr: configResend.clave_corr,
+      nom_correo_corr: cuenta.nom_correo_cucor || configResend.nom_correo_corr,
+      secure_corr: configResend.secure_corr,
+      ide_sucu: cuenta.ide_sucu || configResend.ide_sucu,
+      ide_empr: cuenta.ide_empr || configResend.ide_empr,
+      ide_usua: cuenta.ide_usua || configResend.ide_usua,
+    };
   }
 
   // Alias para compatibilidad interna
-  async getCuentaCorreoById(ide_corr: number) {
-    return this.getCuentaCorreo(ide_corr);
+  async getCuentaCorreoByAlias(alias_corr: string) {
+    return this.getCuentaCorreo(alias_corr);
   }
 
   // ──────────────────────────────────────────────
@@ -125,13 +221,18 @@ export class MailService {
    * Registra el resultado en sis_cola_correo para auditoría.
    */
   async sendMail(sendMailDto: SendMailDto, ideEmpr: number, usuario: string) {
-    const cuenta = await this.getCuentaCorreo(sendMailDto.ide_corr);
+    const cuenta = await this.getCuentaCorreo(sendMailDto.alias_corr, ideEmpr);
     const { contenido, asunto } = await this.procesarPlantilla(sendMailDto, ideEmpr);
+    const nombreRemitente = cuenta.nom_correo_corr || cuenta.alias_corr || cuenta.correo_corr || 'No Reply';
+    const correoRemitente = cuenta.correo_corr || cuenta.usuario_corr || '';
+    const remitente = this.formatearRemitente(nombreRemitente, correoRemitente);
 
     // Registrar intento de envío en BD (estado: ENVIANDO)
     const ide_coco = await this.guardarEnColaBD({
       jobId: `resend-${Date.now()}`,
+      remitente,
       destinatario: sendMailDto.destinatario,
+      cc: sendMailDto.cc,
       asunto,
       contenido,
       ide_plco: sendMailDto.ide_plco,
@@ -156,10 +257,11 @@ export class MailService {
       const resultado = await this.emailProvider.send(
         {
           from: {
-            name: cuenta.nom_correo_corr || cuenta.alias_corr || cuenta.correo_corr,
-            address: cuenta.correo_corr,
+            name: nombreRemitente,
+            address: correoRemitente,
           },
           to: this.normalizarDestinatarios(sendMailDto.destinatario),
+          ...(sendMailDto.cc ? { cc: this.normalizarDestinatarios(sendMailDto.cc) } : {}),
           subject: asunto,
           html: contenido,
           attachments: adjuntosEnvio,
@@ -178,9 +280,10 @@ export class MailService {
         ide_coco,
       };
     } catch (error) {
-      await this.actualizarEstadoCola(ide_coco, 'ERROR', error.message);
-      this.logger.error(`Error sendMail: ${error.message}`);
-      throw new InternalServerErrorException(`Error al enviar correo: ${error.message}`);
+      const errorMessage = this.getErrorMessage(error);
+      await this.actualizarEstadoCola(ide_coco, 'ERROR', errorMessage);
+      this.logger.error(`Error sendMail: ${errorMessage}`);
+      throw new InternalServerErrorException(`Error al enviar correo: ${errorMessage}`);
     }
   }
 
@@ -206,15 +309,15 @@ export class MailService {
       for (const row of rows) {
         const cantidad: number = row.cantidad;
         stats.total += cantidad;
-        if (row.estado_coco === 'ENVIADO')  stats.enviados  += cantidad;
-        if (row.estado_coco === 'ERROR')    stats.errores   += cantidad;
-        if (row.estado_coco === 'ENVIANDO') stats.enviando  += cantidad;
+        if (row.estado_coco === 'ENVIADO') stats.enviados += cantidad;
+        if (row.estado_coco === 'ERROR') stats.errores += cantidad;
+        if (row.estado_coco === 'ENVIANDO') stats.enviando += cantidad;
       }
 
       this.logger.log(`📊 Estadísticas cola BD: ${JSON.stringify(stats)}`);
       return stats;
     } catch (error) {
-      this.logger.error(`Error processMailQueue: ${error.message}`);
+      this.logger.error(`Error processMailQueue: ${this.getErrorMessage(error)}`);
       throw new InternalServerErrorException('Error obteniendo estadísticas de correos');
     }
   }
@@ -284,7 +387,7 @@ export class MailService {
     if (sendMailDto.ide_plco && !sendMailDto.contenido) {
       const plantilla = await this.templateService.getTemplateById(sendMailDto.ide_plco, ideEmpr);
       contenido = this.templateService.compileTemplate(plantilla.contenido_plco, sendMailDto.variables || {});
-      asunto    = this.templateService.compileTemplate(plantilla.asunto_plco,    sendMailDto.variables || {});
+      asunto = this.templateService.compileTemplate(plantilla.asunto_plco, sendMailDto.variables || {});
     }
 
     return { contenido, asunto };
@@ -294,17 +397,19 @@ export class MailService {
     const insertQuery = new InsertQuery('sis_cola_correo', 'ide_coco');
     const ide_coco = await this.dataSource.getSeqTable('sis_cola_correo', 'ide_coco', 1, params.usuario);
 
-    insertQuery.values.set('ide_coco',          ide_coco);
-    insertQuery.values.set('job_id_coco',        params.jobId);
-    insertQuery.values.set('destinatario_coco',  this.formatDestinatarios(params.destinatario));
-    insertQuery.values.set('asunto_coco',        params.asunto);
-    insertQuery.values.set('contenido_coco',     params.contenido);
-    insertQuery.values.set('tipo_coco',          'INDIVIDUAL');
-    insertQuery.values.set('estado_coco',        'ENVIANDO');
-    insertQuery.values.set('ide_plco',           params.ide_plco || null);
-    insertQuery.values.set('ide_corr',           params.ide_corr);
-    insertQuery.values.set('usuario_ingre',      params.usuario);
-    insertQuery.values.set('fecha_ingre',        new Date());
+    insertQuery.values.set('ide_coco', ide_coco);
+    insertQuery.values.set('job_id_coco', params.jobId);
+    insertQuery.values.set('remitente_coco', params.remitente);
+    insertQuery.values.set('destinatario_coco', this.formatDestinatarios(params.destinatario));
+    insertQuery.values.set('cc_coco', params.cc ? this.formatDestinatarios(params.cc) : null);
+    insertQuery.values.set('asunto_coco', params.asunto);
+    insertQuery.values.set('contenido_coco', params.contenido);
+    insertQuery.values.set('tipo_coco', 'INDIVIDUAL');
+    insertQuery.values.set('estado_coco', 'ENVIANDO');
+    insertQuery.values.set('ide_plco', params.ide_plco || null);
+    insertQuery.values.set('ide_corr', params.ide_corr);
+    insertQuery.values.set('usuario_ingre', params.usuario);
+    insertQuery.values.set('fecha_ingre', new Date());
 
     await this.dataSource.createQuery(insertQuery);
     return ide_coco;
@@ -320,7 +425,7 @@ export class MailService {
       const updateQuery = new UpdateQuery('sis_cola_correo', 'ide_coco');
       updateQuery.values.set('estado_coco', estado);
 
-      if (error)     updateQuery.values.set('error_coco',    error);
+      if (error) updateQuery.values.set('error_coco', error);
       if (messageId) updateQuery.values.set('mensaje_id_coco', messageId);
 
       if (estado === 'ENVIADO') {
@@ -331,7 +436,7 @@ export class MailService {
       updateQuery.addParam(1, ide_coco);
       await this.dataSource.createQuery(updateQuery);
     } catch (err) {
-      this.logger.error(`Error actualizarEstadoCola: ${err.message}`);
+      this.logger.error(`Error actualizarEstadoCola: ${this.getErrorMessage(err)}`);
     }
   }
 
@@ -343,16 +448,16 @@ export class MailService {
       const insertQuery = new InsertQuery('sis_adjunto_correo', 'ide_adco');
       const ide_adco = await this.dataSource.getSeqTable('sis_adjunto_correo', 'ide_adco', 1, referencias.usuario);
 
-      insertQuery.values.set('ide_adco',              ide_adco);
-      insertQuery.values.set('nombre_archivo_adco',   adjunto.nombre);
-      insertQuery.values.set('tipo_mime_adco',        adjunto.tipoMime || detectMimeType(adjunto.nombre));
-      insertQuery.values.set('tamano_adco',           adjunto.tamano);
-      insertQuery.values.set('ruta_adco',             adjunto.ruta);
-      insertQuery.values.set('ide_plco',              referencias.ide_plco || null);
-      insertQuery.values.set('ide_caco',              referencias.ide_caco || null);
-      insertQuery.values.set('ide_coco',              referencias.ide_coco || null);
-      insertQuery.values.set('usuario_ingre',         referencias.usuario);
-      insertQuery.values.set('fecha_ingre',           new Date());
+      insertQuery.values.set('ide_adco', ide_adco);
+      insertQuery.values.set('nombre_archivo_adco', adjunto.nombre);
+      insertQuery.values.set('tipo_mime_adco', adjunto.tipoMime || detectMimeType(adjunto.nombre));
+      insertQuery.values.set('tamano_adco', adjunto.tamano);
+      insertQuery.values.set('ruta_adco', adjunto.ruta);
+      insertQuery.values.set('ide_plco', referencias.ide_plco || null);
+      insertQuery.values.set('ide_caco', referencias.ide_caco || null);
+      insertQuery.values.set('ide_coco', referencias.ide_coco || null);
+      insertQuery.values.set('usuario_ingre', referencias.usuario);
+      insertQuery.values.set('fecha_ingre', new Date());
 
       await this.dataSource.createQuery(insertQuery);
     }
@@ -371,12 +476,12 @@ export class MailService {
           : await this.cargarArchivo(adj.ruta);
 
         resultado.push({
-          filename:    adj.nombre,
-          content:     contenido,
+          filename: adj.nombre,
+          content: contenido,
           contentType: adj.tipoMime || detectMimeType(adj.nombre),
         });
       } catch (err) {
-        this.logger.error(`Error cargando adjunto "${adj.nombre}": ${err.message}`);
+        this.logger.error(`Error cargando adjunto "${adj.nombre}": ${this.getErrorMessage(err)}`);
         // Continúa con los demás adjuntos
       }
     }
@@ -389,12 +494,24 @@ export class MailService {
     try {
       return await fs.readFile(ruta);
     } catch (err) {
-      throw new Error(`No se pudo cargar el archivo desde "${ruta}": ${err.message}`);
+      throw new Error(`No se pudo cargar el archivo desde "${ruta}": ${this.getErrorMessage(err)}`);
     }
   }
 
   private formatDestinatarios(destinatario: string | string[]): string {
     return Array.isArray(destinatario) ? destinatario.join(',') : destinatario;
+  }
+
+  private formatearRemitente(nombre: string, correo: string): string {
+    const nombreLimpio = (nombre || '').trim();
+    const correoLimpio = (correo || '').trim();
+    if (nombreLimpio && correoLimpio) return `${nombreLimpio} <${correoLimpio}>`;
+    if (correoLimpio) return correoLimpio;
+    return nombreLimpio;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private normalizarDestinatarios(destinatario: string | string[]): string[] {

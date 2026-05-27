@@ -24,5 +24,6 @@ export class CreateCampaignDto {
   programacion?: Date;
 
   @IsOptional()
-  ide_corr?: number;
+  @IsString()
+  alias_corr?: string = 'default';
 }
