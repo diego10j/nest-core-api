@@ -44,6 +44,10 @@ class SolicitanteDto {
 
   @IsNumber()
   ideEmpr: number;
+
+  @IsString()
+  @IsOptional()
+  uuid?: string;
 }
 
 class DetalleItemDto {
@@ -61,10 +65,10 @@ class DetalleItemDto {
 export class CreateProformaWebDto extends QueryOptionsDto {
   @IsArray({ message: 'Debe ser un array de objetos con productos' })
   @ArrayMaxSize(100, { message: 'El array no puede contener más de 100 elementos' })
-  @ValidateNested({ each: true }) // Valida cada objeto en el array
-  @Type(() => DetalleItemDto) // Convierte cada elemento a DetalleItemDto
-  @UniqueArrayField('producto') // <-- Valida unicidad en el campo 'producto'
-  detalles: DetalleItemDto[]; // Ahora es un array de objetos
+  @ValidateNested({ each: true })
+  @Type(() => DetalleItemDto)
+  @UniqueArrayField('producto')
+  detalles: DetalleItemDto[];
 
   @ValidateNested()
   @Type(() => SolicitanteDto)

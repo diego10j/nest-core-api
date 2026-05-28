@@ -4,10 +4,10 @@ import * as path from 'path';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as handlebars from 'handlebars';
 import PdfPrinter from 'pdfmake';
-import { envs } from 'src/config/envs';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -24,6 +24,7 @@ import { fDate, getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/u
 import { fNumber } from 'src/util/helpers/number-util';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 
+import { AssignProformaDto } from './dto/assign-proforma.dto';
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
 import { GetProformaDto } from './dto/get-proforma.dto';
@@ -166,7 +167,7 @@ SELECT
   END                                                            AS estado_comparativo
 
 FROM proformas_periodo              prof
-INNER JOIN sis_usuario              usua ON prof.ide_usua   = usua.ide_usua
+LEFT JOIN sis_usuario              usua ON prof.ide_usua   = usua.ide_usua
 LEFT  JOIN cxc_tipo_proforma        tipo ON prof.ide_cctpr  = tipo.ide_cctpr
 LEFT  JOIN ven_vendedor             vend ON prof.ide_vgven  = vend.ide_vgven
 LEFT  JOIN items_proforma           ip   ON ip.ide_cccpr    = prof.ide_cccpr
@@ -262,7 +263,7 @@ ORDER BY prof.secuencial_cccpr DESC
         d.ide_ccdpr,
         d.ide_inarti,
         d.observacion_ccdpr,
-        f_decimales(d.cantidad_ccdpr, a.decim_stock_inarti)::text AS cantidad_ccdpr,
+        cantidad_ccdpr,
         d.precio_ccdpr,
         d.total_ccdpr,
         COALESCE(d.iva_inarti_ccdpr, 0) AS aplica_iva_ccdpr,
@@ -288,7 +289,7 @@ ORDER BY prof.secuencial_cccpr DESC
         precio_sugerido_ccdpr
       FROM cxc_deta_proforma d
       INNER JOIN cxc_cabece_proforma c ON d.ide_cccpr = c.ide_cccpr
-      INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+      LEFT JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
       LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni
       WHERE d.ide_cccpr = $1
         AND d.ide_empr = ${dtoIn.ideEmpr}
@@ -1000,80 +1001,259 @@ ORDER BY prof.secuencial_cccpr DESC
   }
 
 
-  /**
-   * Guarda una proforma proveniente de una canal externo como pagina web
-   */
   async createProformaWeb(dtoIn: CreateProformaWebDto) {
     const listQuery: Query[] = [];
-    const solicitudId = await this.asyncgetNextSolicitudId();
-    // Construir query para cabecera
-    const cabeceraQuery = this.buildInsertSolicitudQuery(solicitudId, dtoIn);
+    const ideCccpr = await this.getNextSolicitudId();
+    const secuencial = String(ideCccpr).padStart(9, '0');
+    const { solicitante } = dtoIn;
+
+    const fechaIngre = getCurrentDate();
+    const horaIngre = getCurrentTime();
+
+    if (solicitante.uuid) {
+      const existeQuery = new SelectQuery(`
+        SELECT ide_cccpr
+        FROM cxc_cabece_proforma
+        WHERE referencia_cccpr = $1
+          AND ide_empr = $2
+        LIMIT 1
+      `);
+      existeQuery.addParam(1, solicitante.uuid);
+      existeQuery.addIntParam(2, solicitante.ideEmpr);
+      const existente = await this.dataSource.createSingleQuery(existeQuery);
+      if (existente) {
+        throw new BadRequestException(`Ya existe una proforma registrada con el UUID: ${solicitante.uuid}`);
+      }
+    }
+
+    const ideCndfp = solicitante.formaPago?.toLowerCase() === 'credit' ? 18 : 1;
+
+    const [ideGeprov, unidadMap, articuloMap] = await Promise.all([
+      this.lookupProvincia(solicitante.provincia),
+      this.lookupUnidades(dtoIn.detalles, solicitante.ideEmpr),
+      this.lookupArticulos(dtoIn.detalles, solicitante.ideEmpr),
+    ]);
+
+    const cabeceraQuery = new InsertQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
+    cabeceraQuery.values.set(SOLICITUD.primaryKey, ideCccpr);
+    cabeceraQuery.values.set('ide_empr', solicitante.ideEmpr);
+    cabeceraQuery.values.set('ide_sucu', 0);
+    cabeceraQuery.values.set('ide_geper', 7712);  // Consumidor final por defecto
+    cabeceraQuery.values.set('identificac_cccpr', "9999999999999");
+    cabeceraQuery.values.set('ide_getid', 3);
+
+    cabeceraQuery.values.set('secuencial_cccpr', secuencial);
+    cabeceraQuery.values.set('fecha_cccpr', solicitante.fecha);
+    cabeceraQuery.values.set('solicitante_cccpr', solicitante.nombres);
+    cabeceraQuery.values.set('correo_cccpr', solicitante.correo);
+    cabeceraQuery.values.set('telefono_cccpr', solicitante.telefono);
+    cabeceraQuery.values.set('direccion_cccpr', solicitante.direccion);
+    cabeceraQuery.values.set('observacion_cccpr', solicitante.observacion);
+    cabeceraQuery.values.set('referencia_cccpr', solicitante.uuid);
+    cabeceraQuery.values.set('ide_cctpr', 2);
+    cabeceraQuery.values.set('ide_cndfp', ideCndfp);
+    cabeceraQuery.values.set('ide_geprov', ideGeprov);
+    cabeceraQuery.values.set('anulado_cccpr', false);
+    cabeceraQuery.values.set('enviado_cccpr', false);
+    cabeceraQuery.values.set('base_grabada_cccpr', null);
+    cabeceraQuery.values.set('base_tarifa0_cccpr', null);
+    cabeceraQuery.values.set('valor_iva_cccpr', null);
+    cabeceraQuery.values.set('total_cccpr', null);
+    cabeceraQuery.values.set('tarifa_iva_cccpr', null);
+    cabeceraQuery.values.set('utilidad_cccpr', null);
+    cabeceraQuery.values.set('usuario_ingre', 'admin');
+    cabeceraQuery.values.set('fecha_ingre', fechaIngre);
+    cabeceraQuery.values.set('hora_ingre', horaIngre);
     listQuery.push(cabeceraQuery);
 
-    // Procesar detalles
-    const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length);
-    await this.processDetails(dtoIn, solicitudId, detallesIds, listQuery);
+    const baseIdeCcdpr = await this.getNextDetalleIds(dtoIn.detalles.length);
+
+    dtoIn.detalles.forEach((detalle, idx) => {
+      const siglas = detalle.unidad?.toUpperCase() ?? null;
+      const ideInuni = siglas ? (unidadMap.get(siglas) ?? null) : null;
+      const nombreProd = detalle.producto?.toUpperCase();
+      const ideInarti = nombreProd ? (articuloMap.get(nombreProd) ?? null) : null;
+
+      const detQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey);
+      detQuery.values.set(DETALLES.primaryKey, baseIdeCcdpr + idx);
+      detQuery.values.set(SOLICITUD.primaryKey, ideCccpr);
+      detQuery.values.set('ide_empr', solicitante.ideEmpr);
+      detQuery.values.set('ide_sucu', 0);
+      detQuery.values.set('ide_inarti', ideInarti);
+      detQuery.values.set('cantidad_ccdpr', detalle.cantidad);
+      detQuery.values.set('precio_ccdpr', null);
+      detQuery.values.set('total_ccdpr', null);
+      detQuery.values.set('iva_inarti_ccdpr', null);
+      detQuery.values.set('ide_inuni', ideInuni);
+      detQuery.values.set('observacion_ccdpr', detalle.producto);
+      detQuery.values.set('usuario_ingre', 'admin');
+      detQuery.values.set('fecha_ingre', fechaIngre);
+      detQuery.values.set('hora_ingre', horaIngre);
+
+      listQuery.push(detQuery);
+    });
 
     const resultMessage = await this.dataSource.createListQuery(listQuery);
 
     return {
       success: true,
-      message: 'Campaña guardada correctamente',
+      message: 'Proforma web guardada correctamente',
       data: {
-        ide_cccpr: solicitudId,
-        totalQueries: listQuery.length,
+        ide_cccpr: ideCccpr,
+        secuencial_cccpr: secuencial,
+        total_items: dtoIn.detalles.length,
         resultMessage,
       },
     };
   }
 
+  private async lookupProvincia(nombreProvincia: string): Promise<number | null> {
+    if (!nombreProvincia) return null;
 
-  private asyncgetNextSolicitudId(login: string = 'sa'): Promise<number> {
+    const query = new SelectQuery(`
+      SELECT ide_geprov
+      FROM gen_provincia
+      WHERE UPPER(nombre_geprov) = $1
+      LIMIT 1
+    `);
+    query.addParam(1, nombreProvincia.toUpperCase());
+
+    const row = await this.dataSource.createSingleQuery(query);
+    return row?.ide_geprov ?? null;
+  }
+
+  private async lookupUnidades(
+    detalles: { unidad?: string }[],
+    ideEmpr: number,
+  ): Promise<Map<string, number>> {
+    const siglas = Array.from(new Set(
+      detalles
+        .map((d) => d.unidad?.toUpperCase())
+        .filter((s): s is string => !!s),
+    ));
+
+    const map = new Map<string, number>();
+    if (siglas.length === 0) return map;
+
+    const query = new SelectQuery(`
+      SELECT siglas_inuni, ide_inuni
+      FROM inv_unidad
+      WHERE UPPER(siglas_inuni) = ANY($1)
+        AND ide_empr = $2
+    `);
+    query.addParam(1, siglas);
+    query.addIntParam(2, ideEmpr);
+
+    const rows = await this.dataSource.createSelectQuery(query);
+    for (const row of rows) {
+      map.set(row.siglas_inuni?.toUpperCase(), row.ide_inuni);
+    }
+
+    return map;
+  }
+
+  private async lookupArticulos(
+    detalles: { producto: string }[],
+    ideEmpr: number,
+  ): Promise<Map<string, number>> {
+    const nombres = Array.from(new Set(
+      detalles
+        .map((d) => d.producto?.toUpperCase())
+        .filter((s): s is string => !!s),
+    ));
+
+    const map = new Map<string, number>();
+    if (nombres.length === 0) return map;
+
+    const query = new SelectQuery(`
+      SELECT UPPER(nombre_inarti) AS nombre_inarti, ide_inarti
+      FROM inv_articulo
+      WHERE UPPER(nombre_inarti) = ANY($1)
+        AND ide_empr = $2
+    `);
+    query.addParam(1, nombres);
+    query.addIntParam(2, ideEmpr);
+
+    const rows = await this.dataSource.createSelectQuery(query);
+    for (const row of rows) {
+      map.set(row.nombre_inarti, row.ide_inarti);
+    }
+
+    return map;
+  }
+
+  private getNextSolicitudId(login: string = 'sa'): Promise<number> {
     return this.dataSource.getSeqTable(SOLICITUD.tableName, SOLICITUD.primaryKey, 1, login);
   }
 
-  private async getNextDetalleIds(length: number, login: string = 'sa'): Promise<number> {
+  private getNextDetalleIds(length: number, login: string = 'sa'): Promise<number> {
     return this.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
   }
 
-  private buildInsertSolicitudQuery(seqCabecera: number, dtoIn: CreateProformaWebDto): InsertQuery {
-    const q = new InsertQuery(SOLICITUD.tableName, SOLICITUD.primaryKey, dtoIn);
+  async assignProformaToUser(dtoIn: AssignProformaDto) {
+    const checkQuery = new SelectQuery(`
+      SELECT ide_usua
+      FROM cxc_cabece_proforma
+      WHERE ide_cccpr = $1
+      LIMIT 1
+    `);
+    checkQuery.addIntParam(1, dtoIn.ide_cccpr);
 
-    q.values.set(SOLICITUD.primaryKey, seqCabecera);
-    q.values.set('fecha_cccpr', dtoIn.solicitante.fecha);
-    q.values.set('solicitante_cccpr', dtoIn.solicitante.nombres);
-    q.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
-    q.values.set('correo_cccpr', dtoIn.solicitante.correo);
-    q.values.set('secuencial_cccpr', '');
-    q.values.set('observacion_cccpr', dtoIn.solicitante.observacion);
-    q.values.set('telefono_cccpr', dtoIn.solicitante.telefono);
-    q.values.set('direccion_cccpr', dtoIn.solicitante.direccion);
-    q.values.set('fecha_ingre', getCurrentDate());
-    q.values.set('hora_actua', getCurrentTime());
-    q.values.set('ide_cctpr', 2); // 2 == Pagina web
+    const proforma = await this.dataSource.createSingleQuery(checkQuery);
+    if (!proforma) {
+      throw new BadRequestException(`No se encontró la proforma ide_cccpr=${dtoIn.ide_cccpr}`);
+    }
+    if (proforma.ide_usua !== null) {
+      throw new BadRequestException('La proforma ya tiene un usuario asignado');
+    }
 
-    return q;
+    const updateQuery = new UpdateQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
+    updateQuery.values.set('ide_usua', dtoIn.ide_usua);
+    updateQuery.values.set('ide_sucu', 2);
+    updateQuery.values.set('usuario_actua', 'admin');
+    updateQuery.values.set('fecha_actua', getCurrentDate());
+    updateQuery.values.set('hora_actua', getCurrentTime());
+    updateQuery.where = 'ide_cccpr = $1 AND ide_usua IS NULL';
+    updateQuery.addIntParam(1, dtoIn.ide_cccpr);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      success: true,
+      message: 'Proforma asignada correctamente',
+    };
   }
 
-  /**
-   * Procesa los detalles de la campaña
-   */
-  private async processDetails(dtoIn: CreateProformaWebDto, seqCabecera: number, seqStart: number, listQuery: Query[]) {
-    let seq = seqStart;
+  async openProformaWeb(ide_cccpr: number, dtoIn: HeaderParamsDto) {
+    const checkQuery = new SelectQuery(`
+      SELECT fecha_abre_cccpr, usuario_abre_cccpr
+      FROM cxc_cabece_proforma
+      WHERE ide_cccpr = $1
+      LIMIT 1
+    `);
+    checkQuery.addIntParam(1, ide_cccpr);
 
-    for (const detalle of dtoIn.detalles) {
-      const insertQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey, dtoIn);
-      insertQuery.values.set(DETALLES.primaryKey, seq);
-      insertQuery.values.set(SOLICITUD.primaryKey, seqCabecera);
-      insertQuery.values.set('cantidad_ccdpr', detalle.cantidad);
-      insertQuery.values.set('observacion_ccdpr', detalle.producto);
-      insertQuery.values.set('ide_empr', dtoIn.solicitante.ideEmpr);
-      insertQuery.values.set('hora_actua', getCurrentTime());
-      insertQuery.values.set('fecha_ingre', getCurrentDate());
-
-      listQuery.push(insertQuery);
-      seq++;
+    const proforma = await this.dataSource.createSingleQuery(checkQuery);
+    if (!proforma) {
+      throw new BadRequestException(`No se encontró la proforma ide_cccpr=${ide_cccpr}`);
     }
+
+    if (proforma.fecha_abre_cccpr !== null || proforma.usuario_abre_cccpr !== null) {
+      return { success: true, message: 'La proforma ya fue abierta anteriormente' };
+    }
+
+    const updateQuery = new UpdateQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
+    updateQuery.values.set('fecha_abre_cccpr', getCurrentDateTime());
+    updateQuery.values.set('usuario_abre_cccpr', dtoIn.login);
+    updateQuery.where = 'ide_cccpr = $1 AND fecha_abre_cccpr IS NULL AND usuario_abre_cccpr IS NULL';
+    updateQuery.addIntParam(1, ide_cccpr);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      success: true,
+      message: 'Proforma abierta correctamente',
+    };
   }
 
   async updateOpenSolicitud(ide_cccpr: number, login: string) {

@@ -211,7 +211,7 @@ export class ImportacionesService extends BaseService {
                 ORDER BY d.ide_imdet
             `);
         query.addIntParam(1, ide_imcaim);
-        return this.dataSource.createSelectQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     async getCostosImportacion(ide_imcaim: number) {

@@ -5,6 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
+import { AssignProformaDto } from './dto/assign-proforma.dto';
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
 import { GetProformaDto } from './dto/get-proforma.dto';
@@ -107,6 +108,18 @@ export class ProformasController {
     return this.service.createProformaWeb({
       ...dtoIn,
     });
+  }
+
+  @Post('assignProformaToUser')
+  @ApiOperation({ summary: 'Asignar proforma web a un usuario del sistema (sin autenticación)' })
+  assignProformaToUser(@Body() dtoIn: AssignProformaDto) {
+    return this.service.assignProformaToUser(dtoIn);
+  }
+
+  @Post('openProformaWeb')
+  @ApiOperation({ summary: 'Registrar apertura de proforma web por un usuario autenticado' })
+  openProformaWeb(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
+    return this.service.openProformaWeb(dtoIn.ide, headersParams);
   }
 
   @Post('updateOpenSolicitud')
