@@ -63,10 +63,7 @@ export class VariablesService {
     }
 
     try {
-      const cacheKeys = variableNames.flatMap((name) => [
-        this.getCacheKey(name),
-        this.getCacheMetaKey(name),
-      ]);
+      const cacheKeys = variableNames.map((name) => this.getCacheKey(name));
       const deletedCount = await this.dataSource.redisClient.del(...cacheKeys);
       return { deleted: deletedCount };
     } catch (error) {
@@ -455,206 +452,147 @@ export class VariablesService {
 
   // ============ Private Methods ============
 
-  private getCacheKey(variableName: string): string {
-    return `${this.CACHE_PREFIX}${variableName.toLowerCase()}`;
+  private getCacheKey(name: string): string {
+    return `${this.CACHE_PREFIX}${name.toLowerCase()}`;
   }
 
-  private getCacheMetaKey(variableName: string): string {
-    return `${this.getCacheKey(variableName)}:meta`;
+  private getEmpresaCacheKey(name: string, ideEmpr: number): string {
+    return `${this.getCacheKey(name)}_${ideEmpr}`;
   }
 
-  private getEmpresaCacheKey(variableName: string, ideEmpr: number): string {
-    return `${this.getCacheKey(variableName)}_${ideEmpr}`;
-  }
-
-  private getEmpresaCacheMetaKey(variableName: string, ideEmpr: number): string {
-    return `${this.getEmpresaCacheKey(variableName, ideEmpr)}:meta`;
-  }
-
-  private async resolveVariable(
-    variableName: string,
-    ideEmpr?: number,
-  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
-    const hasEmpresaContext = ideEmpr !== undefined && ideEmpr !== null;
-
-    const globalValue = await this.dataSource.redisClient.get(this.getCacheKey(variableName));
-    if (globalValue !== null) {
-      const detail = await this.getCachedVariableDetail(variableName, undefined, globalValue);
-      return { valor: globalValue, descripcion: detail.descripcion, scope: 'global', cache: true };
-    }
-
-    if (hasEmpresaContext) {
-      const empresaValue = await this.getCachedEmpresaVariable(variableName, ideEmpr);
-      if (empresaValue !== null) {
-        const detail = await this.getCachedVariableDetail(variableName, ideEmpr, empresaValue);
-        return { valor: empresaValue, descripcion: detail.descripcion, scope: 'empresa', cache: true };
-      }
-
-      if (ideEmpr !== 0) {
-        const empresaDefaultValue = await this.getCachedEmpresaVariable(variableName, 0);
-        if (empresaDefaultValue !== null) {
-          const detail = await this.getCachedVariableDetail(variableName, 0, empresaDefaultValue);
-          await this.cacheVariableEmpresa(variableName, ideEmpr, empresaDefaultValue, detail.descripcion);
-          return { valor: empresaDefaultValue, descripcion: detail.descripcion, scope: 'empresa_default', cache: true };
-        }
-      }
-    }
-
-    return this.resolveVariableFromDB(variableName, ideEmpr);
-  }
-
-  private async resolveVariableFromDB(
-    variableName: string,
-    ideEmpr?: number,
-  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+  /**
+   * Lee una entrada de caché (JSON { valor, descripcion }).
+   * Retorna null si no existe o si falla Redis.
+   */
+  private async readCache(key: string): Promise<{ valor: string; descripcion: string } | null> {
     try {
-      const detail = await this.fetchVariableDetailFromDB(variableName);
-      await this.cacheVariable(variableName, detail.valor, detail.descripcion);
-      return { valor: detail.valor, descripcion: detail.descripcion, scope: 'global', cache: false };
-    } catch (error) {
-      const hasEmpresaContext = ideEmpr !== undefined && ideEmpr !== null;
-      if (!hasEmpresaContext || !this.isVariableNotConfiguredError(error)) {
-        throw error;
-      }
-
-      try {
-        const detail = await this.fetchVariableDetailFromDB(variableName, ideEmpr);
-        await this.cacheVariableEmpresa(variableName, ideEmpr, detail.valor, detail.descripcion);
-        return { valor: detail.valor, descripcion: detail.descripcion, scope: 'empresa', cache: false };
-      } catch (empresaError) {
-        if (ideEmpr !== 0 && this.isVariableNotConfiguredError(empresaError)) {
-          const detail = await this.fetchVariableDetailFromDB(variableName, 0);
-          await this.cacheVariableEmpresa(variableName, 0, detail.valor, detail.descripcion);
-          await this.cacheVariableEmpresa(variableName, ideEmpr, detail.valor, detail.descripcion);
-          return { valor: detail.valor, descripcion: detail.descripcion, scope: 'empresa_default', cache: false };
-        }
-        throw empresaError;
-      }
-    }
-  }
-
-  private async fetchVariableDetailFromDB(
-    variableName: string,
-    ideEmpr?: number,
-  ): Promise<{ valor: string; descripcion: string }> {
-    const result = ideEmpr === undefined
-      ? await this.dataSource.pool.query(
-        `
-          SELECT valor_para, COALESCE(descripcion_para, '') AS descripcion_para
-          FROM sis_parametros
-          WHERE LOWER(nom_para) = LOWER($1)
-            AND es_empr_para = false
-          LIMIT 1
-        `,
-        [variableName],
-      )
-      : await this.dataSource.pool.query(
-        `
-          SELECT valor_para, COALESCE(descripcion_para, '') AS descripcion_para
-          FROM sis_parametros
-          WHERE LOWER(nom_para) = LOWER($1)
-            AND es_empr_para = true
-            AND ide_empr = $2
-          LIMIT 1
-        `,
-        [variableName, ideEmpr],
-      );
-
-    const row = result.rows?.[0] as { valor_para: string; descripcion_para: string } | undefined;
-    if (!row) {
-      if (ideEmpr === undefined) {
-        throw new Error(`El parámetro ${variableName} no se encuentra configurado`);
-      }
-
-      throw new Error(`El parámetro ${variableName} no se encuentra configurado para la empresa ${ideEmpr}`);
-    }
-
-    return {
-      valor: row.valor_para,
-      descripcion: row.descripcion_para,
-    };
-  }
-
-  private async cacheVariable(variableName: string, value: string, descripcion: string): Promise<void> {
-    try {
-      await Promise.all([
-        this.dataSource.redisClient.set(this.getCacheKey(variableName), value),
-        this.dataSource.redisClient.set(this.getCacheMetaKey(variableName), JSON.stringify({ descripcion })),
-      ]);
-    } catch (error) {
-      this.logger.warn(`Failed to cache variable ${variableName}: ${(error as Error).message}`);
-    }
-  }
-
-  private async cacheVariableEmpresa(variableName: string, ideEmpr: number, value: string, descripcion: string): Promise<void> {
-    try {
-      await Promise.all([
-        this.dataSource.redisClient.set(this.getEmpresaCacheKey(variableName, ideEmpr), value),
-        this.dataSource.redisClient.set(this.getEmpresaCacheMetaKey(variableName, ideEmpr), JSON.stringify({ descripcion })),
-      ]);
-    } catch (error) {
-      this.logger.warn(`Failed to cache empresa variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
-    }
-  }
-
-  private async clearEmpresaCacheVariable(variableName: string, ideEmpr: number): Promise<void> {
-    try {
-      await this.dataSource.redisClient.del(
-        this.getEmpresaCacheKey(variableName, ideEmpr),
-        this.getEmpresaCacheMetaKey(variableName, ideEmpr),
-      );
-    } catch (error) {
-      this.logger.warn(`Failed to clear empresa cache variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
-    }
-  }
-
-  private async getCachedEmpresaVariable(variableName: string, ideEmpr: number): Promise<string | null> {
-    try {
-      return await this.dataSource.redisClient.get(this.getEmpresaCacheKey(variableName, ideEmpr));
-    } catch (error) {
-      this.logger.warn(`Failed to read empresa cache variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
+      const raw = await this.dataSource.redisClient.get(key);
+      if (raw === null) return null;
+      return JSON.parse(raw) as { valor: string; descripcion: string };
+    } catch {
       return null;
     }
   }
 
-  private async getCachedVariableDetail(
-    variableName: string,
-    ideEmpr: number | undefined,
-    fallbackValue: string,
-  ): Promise<{ valor: string; descripcion: string }> {
-    const metaKey = ideEmpr === undefined
-      ? this.getCacheMetaKey(variableName)
-      : this.getEmpresaCacheMetaKey(variableName, ideEmpr);
-
+  /** Escribe una entrada de caché con fallo silencioso. */
+  private async writeCache(key: string, valor: string, descripcion: string): Promise<void> {
     try {
-      const cachedMeta = await this.dataSource.redisClient.get(metaKey);
-      if (cachedMeta !== null) {
-        const parsed = JSON.parse(cachedMeta) as { descripcion?: string };
-        return {
-          valor: fallbackValue,
-          descripcion: parsed.descripcion ?? '',
-        };
-      }
+      await this.dataSource.redisClient.set(key, JSON.stringify({ valor, descripcion }));
     } catch (error) {
-      this.logger.warn(`Failed to read cache metadata for ${variableName}: ${(error as Error).message}`);
+      this.logger.warn(`Failed to write cache ${key}: ${(error as Error).message}`);
     }
-
-    const detail = await this.fetchVariableDetailFromDB(variableName, ideEmpr);
-    if (ideEmpr === undefined) {
-      await this.cacheVariable(variableName, fallbackValue, detail.descripcion);
-    } else {
-      await this.cacheVariableEmpresa(variableName, ideEmpr, fallbackValue, detail.descripcion);
-    }
-
-    return {
-      valor: fallbackValue,
-      descripcion: detail.descripcion,
-    };
   }
 
-  private isVariableNotConfiguredError(error: unknown): boolean {
-    const message = (error as Error)?.message ?? '';
-    return message.toLowerCase().includes('no se encuentra configurado');
+  /**
+   * Resuelve una variable con prioridad:
+   * 1. Caché empresa específica (si ideEmpr != 0)
+   * 2. Caché empresa default (ide_empr=0)
+   * 3. Caché global
+   * 4. BD — una sola query con ORDER BY prioridad
+   */
+  private async resolveVariable(
+    variableName: string,
+    ideEmpr?: number,
+  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+    const hasEmpr = ideEmpr !== undefined && ideEmpr !== null;
+
+    // 1. Caché empresa específica
+    if (hasEmpr && ideEmpr !== 0) {
+      const cached = await this.readCache(this.getEmpresaCacheKey(variableName, ideEmpr));
+      if (cached) return { ...cached, scope: 'empresa', cache: true };
+    }
+
+    // 2. Caché empresa default (ide_empr=0)
+    if (hasEmpr) {
+      const cached = await this.readCache(this.getEmpresaCacheKey(variableName, 0));
+      if (cached) {
+        if (ideEmpr !== 0) {
+          await this.writeCache(this.getEmpresaCacheKey(variableName, ideEmpr!), cached.valor, cached.descripcion);
+        }
+        return { ...cached, scope: ideEmpr === 0 ? 'empresa' : 'empresa_default', cache: true };
+      }
+    }
+
+    // 3. Caché global
+    const globalCached = await this.readCache(this.getCacheKey(variableName));
+    if (globalCached) return { ...globalCached, scope: 'global', cache: true };
+
+    // 4. Base de datos
+    return this.resolveVariableFromDB(variableName, ideEmpr);
+  }
+
+  /**
+   * Busca en BD con prioridad: empresa exacta → empresa default (ide_empr=0) → global.
+   * Una sola query SQL, sin try/catch anidados.
+   */
+  private async resolveVariableFromDB(
+    variableName: string,
+    ideEmpr?: number,
+  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+    const ideEmprParam = ideEmpr ?? 0;
+
+    const result = await this.dataSource.pool.query<{
+      valor_para: string;
+      descripcion_para: string;
+      es_empr_para: boolean;
+      ide_empr: number;
+    }>(
+      `SELECT valor_para, COALESCE(descripcion_para, '') AS descripcion_para,
+              es_empr_para, ide_empr
+       FROM sis_parametros
+       WHERE LOWER(nom_para) = LOWER($1)
+         AND (
+           (es_empr_para = false)
+           OR (es_empr_para = true AND ide_empr = $2)
+           OR (es_empr_para = true AND ide_empr = 0)
+         )
+       ORDER BY
+         CASE
+           WHEN es_empr_para = true AND ide_empr = $2 THEN 1
+           WHEN es_empr_para = true AND ide_empr = 0  THEN 2
+           ELSE 3
+         END
+       LIMIT 1`,
+      [variableName, ideEmprParam],
+    );
+
+    const row = result.rows?.[0];
+    if (!row) {
+      throw new Error(`El parámetro ${variableName} no se encuentra configurado`);
+    }
+
+    const { valor_para: valor, descripcion_para: descripcion, es_empr_para: esEmpr, ide_empr: dbIdeEmpr } = row;
+
+    if (!esEmpr) {
+      await this.writeCache(this.getCacheKey(variableName), valor, descripcion);
+      return { valor, descripcion, scope: 'global', cache: false };
+    }
+
+    // Cachear para el ide_empr encontrado en BD (puede ser 0)
+    await this.writeCache(this.getEmpresaCacheKey(variableName, dbIdeEmpr), valor, descripcion);
+    // Propagación: cachear también para el ide_empr solicitado
+    if (ideEmpr !== undefined && ideEmpr !== dbIdeEmpr) {
+      await this.writeCache(this.getEmpresaCacheKey(variableName, ideEmpr), valor, descripcion);
+    }
+
+    const scope = dbIdeEmpr === 0 && ideEmprParam !== 0 ? 'empresa_default' : 'empresa';
+    return { valor, descripcion, scope, cache: false };
+  }
+
+  private async cacheVariable(variableName: string, value: string, descripcion: string): Promise<void> {
+    await this.writeCache(this.getCacheKey(variableName), value, descripcion);
+  }
+
+  private async cacheVariableEmpresa(variableName: string, ideEmpr: number, value: string, descripcion: string): Promise<void> {
+    await this.writeCache(this.getEmpresaCacheKey(variableName, ideEmpr), value, descripcion);
+  }
+
+  private async clearEmpresaCacheVariable(variableName: string, ideEmpr: number): Promise<void> {
+    try {
+      await this.dataSource.redisClient.del(this.getEmpresaCacheKey(variableName, ideEmpr));
+    } catch (error) {
+      this.logger.warn(`Failed to clear empresa cache variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
+    }
   }
 
   private async checkCacheForVariables(variables: string[], resultMap: Map<string, string>): Promise<string[]> {
@@ -662,15 +600,10 @@ export class VariablesService {
 
     await Promise.all(
       variables.map(async (variable) => {
-        try {
-          const cachedValue = await this.dataSource.redisClient.get(this.getCacheKey(variable));
-          if (cachedValue !== null) {
-            resultMap.set(variable, cachedValue);
-          } else {
-            variablesToFetch.push(variable);
-          }
-        } catch (error) {
-          this.logger.warn(`Cache check failed for ${variable}: ${(error as Error).message}`);
+        const cached = await this.readCache(this.getCacheKey(variable));
+        if (cached !== null) {
+          resultMap.set(variable, cached.valor);
+        } else {
           variablesToFetch.push(variable);
         }
       }),
