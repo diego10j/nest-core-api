@@ -479,7 +479,13 @@ export class VariablesService {
     try {
       const raw = await this.dataSource.redisClient.get(key);
       if (raw === null) return null;
-      return JSON.parse(raw) as { valor: string; descripcion: string };
+      const parsed = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null || typeof parsed.valor !== 'string') {
+        // Formato antiguo (string plano) o inválido — invalida la entrada
+        await this.dataSource.redisClient.del(key);
+        return null;
+      }
+      return parsed as { valor: string; descripcion: string };
     } catch {
       return null;
     }
