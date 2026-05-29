@@ -23,7 +23,18 @@ export class VariablesService {
 
   constructor(private readonly dataSource: DataSourceService) { }
 
-  async getVariable(dto: GetVariableDto & HeaderParamsDto): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+  async getVariable(dto: GetVariableDto & HeaderParamsDto): Promise<string> {
+    try {
+      const result = await this.resolveVariable(dto.name, dto.ideEmpr);
+      return result.valor;
+    } catch (error) {
+      const msg = (error as Error).message;
+      this.logger.error(`Error getting variable ${dto.name}: ${msg}`);
+      throw new BadRequestException(msg);
+    }
+  }
+
+  async getVariableDetail(dto: GetVariableDto & HeaderParamsDto): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
     try {
       return await this.resolveVariable(dto.name, dto.ideEmpr);
     } catch (error) {

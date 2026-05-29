@@ -22,10 +22,20 @@ export class VariablesController {
   ) { }
 
   @Get('getVariable')
-  @ApiOperation({ summary: 'Obtener valor de una variable del sistema' })
+  @ApiOperation({ summary: 'Obtener valor de una variable del sistema (texto plano)' })
   // @Auth()
-  getMovimientosBodega(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
+  getVariable(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
     return this.service.getVariable({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getVariableDetail')
+  @ApiOperation({ summary: 'Obtener detalle completo de una variable: valor, descripcion, scope, cache' })
+  // @Auth()
+  getVariableDetail(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
+    return this.service.getVariableDetail({
       ...headersParams,
       ...dtoIn,
     });
