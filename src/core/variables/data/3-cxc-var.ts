@@ -12,4 +12,12 @@ export const CUENTAS_POR_COBRAR_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'pe_cxc_observacion_proforma',
+    descripcion_para: 'Almacena observaciones por defecto para las proformas, se guardan valores separados por comas',
+    valor_para: 'Puesto en Quito hasta agotar stock, No se aceptan cambios ni devoluciones, Oferta válida hasta agotar stock',
+    activo_para: true,
+    es_empr_para: true,
+  },
 ];

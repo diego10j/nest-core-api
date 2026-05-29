@@ -24,4 +24,30 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION f_get_variable(
+    p_nom_para VARCHAR(50),
+    p_ide_empr INTEGER
+)
+RETURNS VARCHAR
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_valor_para VARCHAR;
+BEGIN
+    SELECT valor_para INTO v_valor_para
+    FROM sis_parametros
+    WHERE LOWER(nom_para) = LOWER(p_nom_para)
+      AND ide_empr = p_ide_empr
+      AND es_empr_para = true;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'El parámetro % no se encuentra configurado para la empresa %',
+                        p_nom_para, p_ide_empr;
+    END IF;
+
+    RETURN v_valor_para;
+END;
+$$;
+
 --SELECT f_get_variable('p_prueba_empresa');
+--SELECT f_get_variable('pe_prueba_empresa', 0);

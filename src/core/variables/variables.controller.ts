@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
+import { ActualizarVariableDto } from './dto/actualizar-variable.dto';
 import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
 import { GetVariablesModuloDto } from './dto/get-variables-modulo.dto';
@@ -30,16 +31,6 @@ export class VariablesController {
     });
   }
 
-  @Get('getVariableEmpresa')
-  @ApiOperation({ summary: 'Obtener valor de una variable del sistema a nivel de empresa' })
-  // @Auth()
-  getVariableEmpresa(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
-    return this.service.getVariableEmpresa({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
   @Post('updateVariables')
   @ApiOperation({ summary: 'Recargar variables del sistema desde base de datos' })
   //@Auth()
@@ -52,6 +43,16 @@ export class VariablesController {
   // @Auth()
   saveVariable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveVariableDto) {
     return this.service.saveVariable({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Post('actualizarVariable')
+  @ApiOperation({ summary: 'Actualizar valor de variable por nombre (global o por empresa)' })
+  // @Auth()
+  actualizarVariable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ActualizarVariableDto) {
+    return this.service.actualizarVariable({
       ...headersParams,
       ...dtoIn,
     });

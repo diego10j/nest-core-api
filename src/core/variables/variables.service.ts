@@ -6,6 +6,9 @@ import { removeEqualsElements } from 'src/util/helpers/array-util';
 
 import { INVENTARIO_VARS } from './data/1-inv-var';
 import { IMPORTACIONES_VARS } from './data/14-imp-var';
+import { CUENTAS_POR_PAGAR_VARS } from './data/2-cxp-var';
+import { CUENTAS_POR_COBRAR_VARS } from './data/3-cxc-var';
+import { ActualizarVariableDto } from './dto/actualizar-variable.dto';
 import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
 import { GetVariablesModuloDto } from './dto/get-variables-modulo.dto';
@@ -20,47 +23,13 @@ export class VariablesService {
 
   constructor(private readonly dataSource: DataSourceService) { }
 
-  async getVariable(dto: GetVariableDto & HeaderParamsDto): Promise<string | null> {
-    const cacheKey = this.getCacheKey(dto.name);
-
+  async getVariable(dto: GetVariableDto & HeaderParamsDto): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
     try {
-      // Intenta obtener de Redis primero
-      const cachedValue = await this.dataSource.redisClient.get(cacheKey);
-      if (cachedValue !== null) {
-        return cachedValue;
-      }
-
-      // Si no está en cache, busca en DB
-      const dbValue = await this.fetchVariableFromDB(dto.name);
-      if (dbValue !== null) {
-        await this.cacheVariable(dto.name, dbValue);
-      }
-      return dbValue;
+      return await this.resolveVariable(dto.name, dto.ideEmpr);
     } catch (error) {
-      this.logger.error(`Error getting variable ${dto.name}: ${error.message}`);
-      throw new BadRequestException(error.message);
-    }
-  }
-
-  async getVariableEmpresa(dto: GetVariableDto & HeaderParamsDto): Promise<string | null> {
-    const cacheKey = `${this.getCacheKey(dto.name)}_${dto.ideEmpr}`;
-
-    try {
-      // Intenta obtener de Redis primero
-      const cachedValue = await this.dataSource.redisClient.get(cacheKey);
-      if (cachedValue !== null) {
-        return cachedValue;
-      }
-
-      // Si no está en cache, busca en DB
-      const dbValue = await this.fetchVariableEmpresaFromDB(dto.name, dto.ideEmpr);
-      if (dbValue !== null) {
-        await this.cacheVariable(dto.name, dbValue);
-      }
-      return dbValue;
-    } catch (error) {
-      this.logger.error(`Error getting variable ${dto.name}: ${error.message}`);
-      throw new BadRequestException(error.message);
+      const msg = (error as Error).message;
+      this.logger.error(`Error getting variable ${dto.name}: ${msg}`);
+      throw new BadRequestException(msg);
     }
   }
 
@@ -83,7 +52,7 @@ export class VariablesService {
 
       return resultMap;
     } catch (error) {
-      this.logger.error(`Error getting multiple variables: ${error.message}`);
+      this.logger.error(`Error getting multiple variables: ${(error as Error).message}`);
       throw new BadRequestException('Failed to get variables');
     }
   }
@@ -94,11 +63,14 @@ export class VariablesService {
     }
 
     try {
-      const cacheKeys = variableNames.map((name) => this.getCacheKey(name));
+      const cacheKeys = variableNames.flatMap((name) => [
+        this.getCacheKey(name),
+        this.getCacheMetaKey(name),
+      ]);
       const deletedCount = await this.dataSource.redisClient.del(...cacheKeys);
       return { deleted: deletedCount };
     } catch (error) {
-      this.logger.error(`Cache clear error: ${error.message}`);
+      this.logger.error(`Cache clear error: ${(error as Error).message}`);
       throw new BadRequestException('Failed to clear cache');
     }
   }
@@ -108,7 +80,7 @@ export class VariablesService {
       const totalDeleted = await this.clearCacheByPattern(`${this.CACHE_PREFIX}*`);
       return { deleted: totalDeleted };
     } catch (error) {
-      this.logger.error(`Full cache clear error: ${error.message}`);
+      this.logger.error(`Full cache clear error: ${(error as Error).message}`);
       throw new BadRequestException('Failed to clear all cache');
     }
   }
@@ -225,7 +197,7 @@ export class VariablesService {
 
       await this.clearCacheVariables([nomPara]);
       if (isEmpresa) {
-        await this.dataSource.redisClient.del(`${this.getCacheKey(nomPara)}_${dtoIn.ideEmpr}`);
+        await this.clearEmpresaCacheVariable(nomPara, dtoIn.ideEmpr);
       }
 
       return {
@@ -273,7 +245,7 @@ export class VariablesService {
 
     await this.clearCacheVariables([nomPara]);
     if (isEmpresa) {
-      await this.dataSource.redisClient.del(`${this.getCacheKey(nomPara)}_${dtoIn.ideEmpr}`);
+      await this.clearEmpresaCacheVariable(nomPara, dtoIn.ideEmpr);
     }
 
     return {
@@ -281,6 +253,59 @@ export class VariablesService {
       ide_para: idePara,
       action: 'inserted',
     };
+  }
+
+  async actualizarVariable(dtoIn: ActualizarVariableDto & HeaderParamsDto) {
+    const nomPara = dtoIn.nom_para.trim();
+    const nomParaLower = nomPara.toLowerCase();
+
+    // Intenta actualizar variable de empresa primero (evita SELECT previo usando rowCount)
+    const empresaResult = await this.dataSource.pool.query(
+      `
+        UPDATE sis_parametros
+        SET valor_para    = $3,
+            usuario_actua = $4,
+            hora_actua    = NOW()
+        WHERE LOWER(nom_para) = $1
+          AND es_empr_para    = true
+          AND ide_empr        = $2
+      `,
+      [nomParaLower, dtoIn.ideEmpr, dtoIn.valor_para, dtoIn.login],
+    );
+
+    if ((empresaResult.rowCount ?? 0) > 0) {
+      await this.clearEmpresaCacheVariable(nomPara, dtoIn.ideEmpr);
+      return {
+        message: `Variable de empresa actualizada: ${nomPara}`,
+        scope: 'empresa',
+        ide_empr: dtoIn.ideEmpr,
+      };
+    }
+
+    // Si no era de empresa, intenta variable global
+    const globalResult = await this.dataSource.pool.query(
+      `
+        UPDATE sis_parametros
+        SET valor_para    = $2,
+            usuario_actua = $3,
+            hora_actua    = NOW()
+        WHERE LOWER(nom_para) = $1
+          AND es_empr_para    = false
+      `,
+      [nomParaLower, dtoIn.valor_para, dtoIn.login],
+    );
+
+    if ((globalResult.rowCount ?? 0) > 0) {
+      await this.clearCacheVariables([nomPara]);
+      return {
+        message: `Variable global actualizada: ${nomPara}`,
+        scope: 'global',
+      };
+    }
+
+    throw new BadRequestException(
+      `No existe la variable "${nomPara}" para actualizar (global ni en empresa ${dtoIn.ideEmpr}).`,
+    );
   }
 
   // Inserta en la BD las variables que aún no existen; las ya existentes se omiten.
@@ -296,22 +321,27 @@ export class VariablesService {
     const globalVars = allLocalVars.filter((v) => !v.es_empr_para);
     const empresaVars = allLocalVars.filter((v) => v.es_empr_para);
 
+    this.validateParameters(allLocalVars);
+
     // 1. Obtener todas las empresas activas
-    const empresasQuery = new SelectQuery(`SELECT ide_empr FROM sis_empresa WHERE activo_empr = true`);
-    const empresas: { ide_empr: number }[] =
-      await this.dataSource.createSelectQuery(empresasQuery);
+    const empresasResult = await this.dataSource.pool.query(
+      `SELECT ide_empr FROM sis_empresa WHERE activo_empr = true`,
+    );
+    const empresaIds: number[] = empresasResult.rows.map((row) => Number(row.ide_empr));
 
     // 2. Variables globales que ya existen (ide_empr IS NULL)
     let existingGlobalCount = 0;
     let newGlobalCount = 0;
 
     if (globalVars.length > 0) {
-      const existingGlobalQuery = new SelectQuery(`
-        SELECT nom_para FROM sis_parametros
+      const globalVarNamesLower = globalVars.map((variable) => variable.nom_para.toLowerCase());
+      const existingGlobalResult = await this.dataSource.pool.query(`
+        SELECT LOWER(nom_para) AS nom_para
+        FROM sis_parametros
         WHERE es_empr_para = false
-      `);
-      const existingGlobalRows: { nom_para: string }[] =
-        await this.dataSource.createSelectQuery(existingGlobalQuery);
+          AND LOWER(nom_para) = ANY($1)
+      `, [globalVarNamesLower]);
+      const existingGlobalRows: { nom_para: string }[] = existingGlobalResult.rows;
       const globalSet = new Set(existingGlobalRows.map((r) => r.nom_para.toLowerCase()));
       existingGlobalCount = existingGlobalRows.length;
 
@@ -320,7 +350,6 @@ export class VariablesService {
       );
 
       if (newGlobalVars.length > 0) {
-        this.validateParameters(newGlobalVars);
         const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
         query.addParam(1, dto.ideEmpr);
         query.addParam(2, JSON.stringify(newGlobalVars));
@@ -334,32 +363,58 @@ export class VariablesService {
     let empresaInsertedCount = 0;
     let empresaExistingCount = 0;
 
-    if (empresaVars.length > 0 && empresas.length > 0) {
-      for (const empresa of empresas) {
-        const existingEmpQuery = new SelectQuery(`
-          SELECT nom_para FROM sis_parametros
-          WHERE es_empr_para = true AND ide_empr = $1
-        `);
-        existingEmpQuery.addIntParam(1, empresa.ide_empr);
-        const existingEmpRows: { nom_para: string }[] =
-          await this.dataSource.createSelectQuery(existingEmpQuery);
-        const empSet = new Set(existingEmpRows.map((r) => r.nom_para.toLowerCase()));
-        empresaExistingCount += existingEmpRows.length;
+    if (empresaVars.length > 0 && empresaIds.length > 0) {
+      const empresaVarNamesLower = empresaVars.map((variable) => variable.nom_para.toLowerCase());
+      const existingEmpResult = await this.dataSource.pool.query(
+        `
+          SELECT ide_empr, LOWER(nom_para) AS nom_para
+          FROM sis_parametros
+          WHERE es_empr_para = true
+            AND ide_empr = ANY($1)
+            AND LOWER(nom_para) = ANY($2)
+        `,
+        [empresaIds, empresaVarNamesLower],
+      );
 
-        const newEmpVars = empresaVars.filter(
-          (v) => !empSet.has(v.nom_para.toLowerCase()),
-        );
+      const existingByEmpresa = new Map<number, Set<string>>();
+      for (const row of existingEmpResult.rows as { ide_empr: number; nom_para: string }[]) {
+        const ideEmpr = Number(row.ide_empr);
+        if (!existingByEmpresa.has(ideEmpr)) {
+          existingByEmpresa.set(ideEmpr, new Set<string>());
+        }
+        existingByEmpresa.get(ideEmpr)?.add(row.nom_para.toLowerCase());
+      }
 
-        if (newEmpVars.length > 0) {
-          this.validateParameters(newEmpVars);
+      empresaExistingCount = existingEmpResult.rows.length;
+
+      const empresaVarsWithLower = empresaVars.map((variable) => ({
+        variable,
+        nomParaLower: variable.nom_para.toLowerCase(),
+      }));
+
+      const insertTasks: Array<() => Promise<number>> = [];
+
+      for (const ideEmpr of empresaIds) {
+        const existingSet = existingByEmpresa.get(ideEmpr) ?? new Set<string>();
+        const newEmpVars = empresaVarsWithLower
+          .filter(({ nomParaLower }) => !existingSet.has(nomParaLower))
+          .map(({ variable }) => variable);
+
+        if (newEmpVars.length === 0) {
+          continue;
+        }
+
+        insertTasks.push(async () => {
           const query = new SelectQuery(`SELECT f_update_variables($1, $2, $3)`);
-          query.addParam(1, empresa.ide_empr);
+          query.addParam(1, ideEmpr);
           query.addParam(2, JSON.stringify(newEmpVars));
           query.addParam(3, dto.login);
           await this.dataSource.createSelectQuery(query);
-          empresaInsertedCount += newEmpVars.length;
-        }
+          return newEmpVars.length;
+        });
       }
+
+      empresaInsertedCount = await this.runInsertTasksInBatches(insertTasks, 8);
     }
 
     const totalInserted = newGlobalCount + empresaInsertedCount;
@@ -379,33 +434,227 @@ export class VariablesService {
     };
   }
 
+  private async runInsertTasksInBatches(
+    tasks: Array<() => Promise<number>>,
+    batchSize: number,
+  ): Promise<number> {
+    if (tasks.length === 0) {
+      return 0;
+    }
+
+    let total = 0;
+
+    for (let i = 0; i < tasks.length; i += batchSize) {
+      const chunk = tasks.slice(i, i + batchSize);
+      const insertedByChunk = await Promise.all(chunk.map((task) => task()));
+      total += insertedByChunk.reduce((sum, inserted) => sum + inserted, 0);
+    }
+
+    return total;
+  }
+
   // ============ Private Methods ============
 
   private getCacheKey(variableName: string): string {
     return `${this.CACHE_PREFIX}${variableName.toLowerCase()}`;
   }
 
-  private async fetchVariableFromDB(variableName: string): Promise<string | null> {
-    const query = new SelectQuery(`SELECT f_get_variable($1)`);
-    query.addParam(1, variableName);
-    const result = await this.dataSource.createSelectQuery(query);
-    return result[0]?.f_get_variable ?? null;
+  private getCacheMetaKey(variableName: string): string {
+    return `${this.getCacheKey(variableName)}:meta`;
   }
 
-  private async fetchVariableEmpresaFromDB(variableName: string, ideEmpr: number): Promise<string | null> {
-    const query = new SelectQuery(`SELECT f_get_variable_empresa($1,$2)`);
-    query.addParam(1, variableName);
-    query.addParam(2, ideEmpr);
-    const result = await this.dataSource.createSelectQuery(query);
-    return result[0]?.f_get_variable ?? null;
+  private getEmpresaCacheKey(variableName: string, ideEmpr: number): string {
+    return `${this.getCacheKey(variableName)}_${ideEmpr}`;
   }
 
-  private async cacheVariable(variableName: string, value: string): Promise<void> {
-    try {
-      await this.dataSource.redisClient.set(this.getCacheKey(variableName), value);
-    } catch (error) {
-      this.logger.warn(`Failed to cache variable ${variableName}: ${error.message}`);
+  private getEmpresaCacheMetaKey(variableName: string, ideEmpr: number): string {
+    return `${this.getEmpresaCacheKey(variableName, ideEmpr)}:meta`;
+  }
+
+  private async resolveVariable(
+    variableName: string,
+    ideEmpr?: number,
+  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+    const hasEmpresaContext = ideEmpr !== undefined && ideEmpr !== null;
+
+    const globalValue = await this.dataSource.redisClient.get(this.getCacheKey(variableName));
+    if (globalValue !== null) {
+      const detail = await this.getCachedVariableDetail(variableName, undefined, globalValue);
+      return { valor: globalValue, descripcion: detail.descripcion, scope: 'global', cache: true };
     }
+
+    if (hasEmpresaContext) {
+      const empresaValue = await this.getCachedEmpresaVariable(variableName, ideEmpr);
+      if (empresaValue !== null) {
+        const detail = await this.getCachedVariableDetail(variableName, ideEmpr, empresaValue);
+        return { valor: empresaValue, descripcion: detail.descripcion, scope: 'empresa', cache: true };
+      }
+
+      if (ideEmpr !== 0) {
+        const empresaDefaultValue = await this.getCachedEmpresaVariable(variableName, 0);
+        if (empresaDefaultValue !== null) {
+          const detail = await this.getCachedVariableDetail(variableName, 0, empresaDefaultValue);
+          await this.cacheVariableEmpresa(variableName, ideEmpr, empresaDefaultValue, detail.descripcion);
+          return { valor: empresaDefaultValue, descripcion: detail.descripcion, scope: 'empresa_default', cache: true };
+        }
+      }
+    }
+
+    return this.resolveVariableFromDB(variableName, ideEmpr);
+  }
+
+  private async resolveVariableFromDB(
+    variableName: string,
+    ideEmpr?: number,
+  ): Promise<{ valor: string; descripcion: string; scope: string; cache: boolean }> {
+    try {
+      const detail = await this.fetchVariableDetailFromDB(variableName);
+      await this.cacheVariable(variableName, detail.valor, detail.descripcion);
+      return { valor: detail.valor, descripcion: detail.descripcion, scope: 'global', cache: false };
+    } catch (error) {
+      const hasEmpresaContext = ideEmpr !== undefined && ideEmpr !== null;
+      if (!hasEmpresaContext || !this.isVariableNotConfiguredError(error)) {
+        throw error;
+      }
+
+      try {
+        const detail = await this.fetchVariableDetailFromDB(variableName, ideEmpr);
+        await this.cacheVariableEmpresa(variableName, ideEmpr, detail.valor, detail.descripcion);
+        return { valor: detail.valor, descripcion: detail.descripcion, scope: 'empresa', cache: false };
+      } catch (empresaError) {
+        if (ideEmpr !== 0 && this.isVariableNotConfiguredError(empresaError)) {
+          const detail = await this.fetchVariableDetailFromDB(variableName, 0);
+          await this.cacheVariableEmpresa(variableName, 0, detail.valor, detail.descripcion);
+          await this.cacheVariableEmpresa(variableName, ideEmpr, detail.valor, detail.descripcion);
+          return { valor: detail.valor, descripcion: detail.descripcion, scope: 'empresa_default', cache: false };
+        }
+        throw empresaError;
+      }
+    }
+  }
+
+  private async fetchVariableDetailFromDB(
+    variableName: string,
+    ideEmpr?: number,
+  ): Promise<{ valor: string; descripcion: string }> {
+    const result = ideEmpr === undefined
+      ? await this.dataSource.pool.query(
+        `
+          SELECT valor_para, COALESCE(descripcion_para, '') AS descripcion_para
+          FROM sis_parametros
+          WHERE LOWER(nom_para) = LOWER($1)
+            AND es_empr_para = false
+          LIMIT 1
+        `,
+        [variableName],
+      )
+      : await this.dataSource.pool.query(
+        `
+          SELECT valor_para, COALESCE(descripcion_para, '') AS descripcion_para
+          FROM sis_parametros
+          WHERE LOWER(nom_para) = LOWER($1)
+            AND es_empr_para = true
+            AND ide_empr = $2
+          LIMIT 1
+        `,
+        [variableName, ideEmpr],
+      );
+
+    const row = result.rows?.[0] as { valor_para: string; descripcion_para: string } | undefined;
+    if (!row) {
+      if (ideEmpr === undefined) {
+        throw new Error(`El parámetro ${variableName} no se encuentra configurado`);
+      }
+
+      throw new Error(`El parámetro ${variableName} no se encuentra configurado para la empresa ${ideEmpr}`);
+    }
+
+    return {
+      valor: row.valor_para,
+      descripcion: row.descripcion_para,
+    };
+  }
+
+  private async cacheVariable(variableName: string, value: string, descripcion: string): Promise<void> {
+    try {
+      await Promise.all([
+        this.dataSource.redisClient.set(this.getCacheKey(variableName), value),
+        this.dataSource.redisClient.set(this.getCacheMetaKey(variableName), JSON.stringify({ descripcion })),
+      ]);
+    } catch (error) {
+      this.logger.warn(`Failed to cache variable ${variableName}: ${(error as Error).message}`);
+    }
+  }
+
+  private async cacheVariableEmpresa(variableName: string, ideEmpr: number, value: string, descripcion: string): Promise<void> {
+    try {
+      await Promise.all([
+        this.dataSource.redisClient.set(this.getEmpresaCacheKey(variableName, ideEmpr), value),
+        this.dataSource.redisClient.set(this.getEmpresaCacheMetaKey(variableName, ideEmpr), JSON.stringify({ descripcion })),
+      ]);
+    } catch (error) {
+      this.logger.warn(`Failed to cache empresa variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
+    }
+  }
+
+  private async clearEmpresaCacheVariable(variableName: string, ideEmpr: number): Promise<void> {
+    try {
+      await this.dataSource.redisClient.del(
+        this.getEmpresaCacheKey(variableName, ideEmpr),
+        this.getEmpresaCacheMetaKey(variableName, ideEmpr),
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to clear empresa cache variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
+    }
+  }
+
+  private async getCachedEmpresaVariable(variableName: string, ideEmpr: number): Promise<string | null> {
+    try {
+      return await this.dataSource.redisClient.get(this.getEmpresaCacheKey(variableName, ideEmpr));
+    } catch (error) {
+      this.logger.warn(`Failed to read empresa cache variable ${variableName}_${ideEmpr}: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  private async getCachedVariableDetail(
+    variableName: string,
+    ideEmpr: number | undefined,
+    fallbackValue: string,
+  ): Promise<{ valor: string; descripcion: string }> {
+    const metaKey = ideEmpr === undefined
+      ? this.getCacheMetaKey(variableName)
+      : this.getEmpresaCacheMetaKey(variableName, ideEmpr);
+
+    try {
+      const cachedMeta = await this.dataSource.redisClient.get(metaKey);
+      if (cachedMeta !== null) {
+        const parsed = JSON.parse(cachedMeta) as { descripcion?: string };
+        return {
+          valor: fallbackValue,
+          descripcion: parsed.descripcion ?? '',
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to read cache metadata for ${variableName}: ${(error as Error).message}`);
+    }
+
+    const detail = await this.fetchVariableDetailFromDB(variableName, ideEmpr);
+    if (ideEmpr === undefined) {
+      await this.cacheVariable(variableName, fallbackValue, detail.descripcion);
+    } else {
+      await this.cacheVariableEmpresa(variableName, ideEmpr, fallbackValue, detail.descripcion);
+    }
+
+    return {
+      valor: fallbackValue,
+      descripcion: detail.descripcion,
+    };
+  }
+
+  private isVariableNotConfiguredError(error: unknown): boolean {
+    const message = (error as Error)?.message ?? '';
+    return message.toLowerCase().includes('no se encuentra configurado');
   }
 
   private async checkCacheForVariables(variables: string[], resultMap: Map<string, string>): Promise<string[]> {
@@ -421,7 +670,7 @@ export class VariablesService {
             variablesToFetch.push(variable);
           }
         } catch (error) {
-          this.logger.warn(`Cache check failed for ${variable}: ${error.message}`);
+          this.logger.warn(`Cache check failed for ${variable}: ${(error as Error).message}`);
           variablesToFetch.push(variable);
         }
       }),
@@ -432,7 +681,7 @@ export class VariablesService {
 
   private async fetchAndCacheVariablesFromDB(variables: string[], resultMap: Map<string, string>): Promise<void> {
     const query = new SelectQuery(`
-            SELECT nom_para, valor_para 
+            SELECT nom_para, valor_para, COALESCE(descripcion_para, '') AS descripcion_para
             FROM sis_parametros 
             WHERE LOWER(nom_para) = ANY($1)`);
     query.addArrayStringParam(1, variables);
@@ -445,7 +694,7 @@ export class VariablesService {
           const varName = row.nom_para.toLowerCase();
           const varValue = row.valor_para;
           resultMap.set(varName, varValue);
-          await this.cacheVariable(varName, varValue);
+          await this.cacheVariable(varName, varValue, row.descripcion_para ?? '');
         }),
       );
 
@@ -455,7 +704,7 @@ export class VariablesService {
         this.logger.warn(`Missing variables in DB: ${missingVars.join(', ')}`);
       }
     } catch (error) {
-      this.logger.error(`DB fetch failed: ${error.message}`);
+      this.logger.error(`DB fetch failed: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -479,6 +728,8 @@ export class VariablesService {
     return [
       ...INVENTARIO_VARS,
       ...IMPORTACIONES_VARS,
+      ...CUENTAS_POR_COBRAR_VARS,
+      ...CUENTAS_POR_PAGAR_VARS,
       // Agregar más conjuntos de variables
     ];
   }

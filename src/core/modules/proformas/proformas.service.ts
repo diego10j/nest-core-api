@@ -49,7 +49,7 @@ const OPTIONAL_CAB_FIELDS = [
   'observacion_cccpr', 'referencia_cccpr', 'ide_cndfp', 'telefono_cccpr',
   'ide_getid', 'identificac_cccpr', 'ide_vgven', 'direccion_cccpr',
   'contacto_cccpr', 'ide_ccten', 'ide_ccvap', 'ide_geprov',
-  'ide_geper', 'fecha_abre_cccpr', 'usuario_abre_cccpr',
+  'ide_geper', 'fecha_abre_cccpr', 'usuario_abre_cccpr', 'notas_cccpr',
 ];
 
 @Injectable()
@@ -202,6 +202,7 @@ ORDER BY prof.secuencial_cccpr DESC
         c.total_cccpr,
         c.tarifa_iva_cccpr,
         c.observacion_cccpr,
+        c.notas_cccpr,
         c.referencia_cccpr,
         c.anulado_cccpr,
         c.ide_cndfp,
@@ -1050,7 +1051,8 @@ ORDER BY prof.secuencial_cccpr DESC
     cabeceraQuery.values.set('correo_cccpr', solicitante.correo);
     cabeceraQuery.values.set('telefono_cccpr', solicitante.telefono);
     cabeceraQuery.values.set('direccion_cccpr', solicitante.direccion);
-    cabeceraQuery.values.set('observacion_cccpr', solicitante.observacion);
+    cabeceraQuery.values.set('observacion_cccpr', null);
+    cabeceraQuery.values.set('notas_cccpr', solicitante.observacion);
     cabeceraQuery.values.set('referencia_cccpr', solicitante.uuid);
     cabeceraQuery.values.set('ide_cctpr', 2);
     cabeceraQuery.values.set('ide_cndfp', ideCndfp);
