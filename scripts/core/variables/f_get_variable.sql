@@ -7,19 +7,22 @@ AS $$
 DECLARE
     v_valor_para VARCHAR;
 BEGIN
-    -- Buscar el parámetro en la tabla sis_parametros
+    -- Prioridad: global → empresa con ide_empr=0 (default para todas las empresas)
     SELECT valor_para INTO v_valor_para
     FROM sis_parametros
     WHERE LOWER(nom_para) = LOWER(p_nom_para)
-    AND es_empr_para = false;
-    
-    -- Verificar si se encontró el parámetro
+    ORDER BY
+        CASE
+            WHEN es_empr_para = false            THEN 1
+            WHEN es_empr_para = true AND ide_empr = 0 THEN 2
+        END
+    LIMIT 1;
+
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'El parámetro % no se encuentra configurado', 
+        RAISE EXCEPTION 'El parámetro % no se encuentra configurado',
                         p_nom_para;
     END IF;
-    
-    -- Retornar el valor encontrado
+
     RETURN v_valor_para;
 END;
 $$;
@@ -34,11 +37,18 @@ AS $$
 DECLARE
     v_valor_para VARCHAR;
 BEGIN
+    -- Prioridad: empresa específica → empresa default (ide_empr=0)
     SELECT valor_para INTO v_valor_para
     FROM sis_parametros
     WHERE LOWER(nom_para) = LOWER(p_nom_para)
-      AND ide_empr = p_ide_empr
-      AND es_empr_para = true;
+      AND es_empr_para = true
+      AND ide_empr IN (p_ide_empr, 0)
+    ORDER BY
+        CASE
+            WHEN ide_empr = p_ide_empr THEN 1
+            ELSE 2
+        END
+    LIMIT 1;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'El parámetro % no se encuentra configurado para la empresa %',
