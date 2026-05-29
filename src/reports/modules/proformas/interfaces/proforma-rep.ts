@@ -43,6 +43,7 @@ export interface ProformaRepDetalle {
     ide_inarti: number;
     observacion_ccdpr?: string;
     cantidad_ccdpr: number;
+    cantidad_formateada: string;
     precio_ccdpr: number;
     total_ccdpr: number;
     iva_inarti_ccdpr: number;

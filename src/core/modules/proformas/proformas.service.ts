@@ -264,6 +264,7 @@ ORDER BY prof.secuencial_cccpr DESC
         d.ide_inarti,
         d.observacion_ccdpr,
         cantidad_ccdpr,
+        f_decimales(cantidad_ccdpr, a.decim_stock_inarti) AS cantidad_formateada,
         d.precio_ccdpr,
         d.total_ccdpr,
         COALESCE(d.iva_inarti_ccdpr, 0) AS aplica_iva_ccdpr,
@@ -286,7 +287,8 @@ ORDER BY prof.secuencial_cccpr DESC
         d.fecha_actua,
         d.hora_actua,
         d.usuario_actua,
-        precio_sugerido_ccdpr
+        precio_sugerido_ccdpr,
+        decim_stock_inarti
       FROM cxc_deta_proforma d
       INNER JOIN cxc_cabece_proforma c ON d.ide_cccpr = c.ide_cccpr
       LEFT JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti

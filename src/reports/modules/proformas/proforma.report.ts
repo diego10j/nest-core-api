@@ -188,7 +188,7 @@ const buildDesc = (d: ProformaRepDetalle): string =>
         .join('\n');
 
 const qtyWithUnit = (d: ProformaRepDetalle): string => {
-    const raw = d.cantidad_ccdpr;
+    const raw = d.cantidad_formateada;
     const unit = safeText(d.siglas_inuni, '').trim();
 
     if (raw === null || raw === undefined) {
