@@ -28,7 +28,7 @@ export class SessionService {
      */
     async recordLoginSuccess(ideUsua: number, ip: string, device: string = ''): Promise<void> {
         await this.closeActiveSessions(ideUsua);
-        this.auditService.saveEventoAuditoria(
+        await this.auditService.saveEventoAuditoria(
             ideUsua,
             EventAudit.LOGIN_SUCCESS,
             ip,
@@ -42,7 +42,7 @@ export class SessionService {
      */
     async recordLogout(ideUsua: number, ip: string, device: string = ''): Promise<void> {
         await this.sessionRepository.closeActiveSessions(ideUsua, EventAudit.LOGOUT);
-        this.auditService.saveEventoAuditoria(
+        await this.auditService.saveEventoAuditoria(
             ideUsua,
             EventAudit.LOGOUT,
             ip,
@@ -54,8 +54,8 @@ export class SessionService {
     /**
      * Registra un error de login
      */
-    recordLoginError(ideUsua: number, ip: string, reason: string): void {
-        this.auditService.saveEventoAuditoria(
+    async recordLoginError(ideUsua: number, ip: string, reason: string): Promise<void> {
+        await this.auditService.saveEventoAuditoria(
             ideUsua,
             EventAudit.LOGIN_ERROR,
             ip,
