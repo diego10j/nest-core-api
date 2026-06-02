@@ -1,7 +1,20 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+
 import { TesoreriaLdService } from './tesoreria-ld.service';
 import { TesoreriaService } from './tesoreria.service';
 
@@ -51,5 +64,53 @@ export class TesoreriaController {
     @ApiOperation({ summary: 'Listar tipos de transacción bancaria de egreso' })
     getListDataTiposTranBancEgreso(@AppHeaders() headersParams: HeaderParamsDto) {
         return this.serviceLd.getListDataTiposTranBancEgreso(headersParams);
+    }
+
+    @Post('procesarImagenTransferencia')
+    @ApiOperation({ summary: 'Procesa imagen de comprobante de transferencia bancaria (OCR con fallback a GPT-4o Vision)' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Imagen del comprobante de transferencia (PNG, JPG, JPEG)',
+                },
+            },
+            required: ['file'],
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async procesarImagenTransferencia(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+    ) {
+        return this.service.procesarImagenTransferencia(file.buffer, file.originalname, file.mimetype);
+    }
+
+    @Post('procesarImagenTransferenciaGpt')
+    @ApiOperation({ summary: 'Procesa imagen directamente con GPT-4o Vision (sin OCR). Más preciso.' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Imagen del comprobante de transferencia (PNG, JPG, JPEG)',
+                },
+            },
+            required: ['file'],
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async procesarImagenTransferenciaGpt(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+    ) {
+        return this.service.procesarImagenTransferenciaVision(file.buffer, file.mimetype);
     }
 }

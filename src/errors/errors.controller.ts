@@ -6,7 +6,7 @@ import { ErrorsLoggerService } from './errors-logger.service';
 @ApiTags('Sistema-Errors')
 @Controller('errors')
 export class ErrorsController {
-  constructor(private readonly errorsLoggerService: ErrorsLoggerService) {}
+  constructor(private readonly errorsLoggerService: ErrorsLoggerService) { }
 
   @Get('getAllErrorLog')
   @ApiOperation({ summary: 'Obtener todos los errores registrados en el log en memoria' })

@@ -63,6 +63,7 @@ insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (11, '
 insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (12, 'ISD', true);
 insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (13, 'Comisiones Bancarias', true);
 insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (14, 'Otros', true);
+insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (15, 'Factura Comercial', true);
 
 
 create table imp_tipo_documento(
@@ -142,17 +143,16 @@ insert into imp_tipo_aforo (ide_imtaf, nombre_imtaf, activo_imtaf) values (1, 'A
 insert into imp_tipo_aforo (ide_imtaf, nombre_imtaf, activo_imtaf) values (2, 'Aforo Automático', true);
 
 
-
 CREATE TABLE imp_cab_importa (
     ide_imcaim int8,
-    ide_geper INT NOT NULL REFERENCES gen_persona(ide_geper) ON DELETE RESTRICT,
-    ide_iminco INT NOT NULL REFERENCES imp_incoterm(ide_iminco) ON DELETE RESTRICT,
-    ide_imesor INT NOT NULL REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT,
-    ide_gepais INT REFERENCES gen_pais(ide_gepais) ON DELETE RESTRICT,
-    ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE RESTRICT,
-    ide_sucu INT REFERENCES sis_sucursal(ide_sucu) ON DELETE RESTRICT,
-    ide_cpcfa INT REFERENCES cxp_cabece_factur(ide_cpcfa) ON DELETE RESTRICT,   --Factura interna cxp
-    ide_incci INT REFERENCES inv_cab_comp_inve(ide_incci) ON DELETE RESTRICT,   --Comprobante inventario
+    ide_geper INT NOT NULL,
+    ide_iminco INT NOT NULL,
+    ide_imesor INT NOT NULL,
+    ide_gepais INT,
+    ide_empr INT,
+    ide_sucu INT,
+    ide_cpcfa INT,   --Factura interna cxp
+    ide_incci INT,   --Comprobante inventario
     fecha_imcaim DATE NOT NULL,
     numero_imcaim VARCHAR(20) NOT NULL,  --generado automáticamente con formato: IMP-2026060001
     fecha_produccion_imcaim DATE,
@@ -176,8 +176,8 @@ COMMENT ON TABLE imp_cab_importa IS 'Cabecera de la orden de importación, con i
 
 CREATE TABLE imp_documentos (
     ide_imdocu int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_itd int4 REFERENCES imp_tipo_documento(ide_itd) ON DELETE RESTRICT,
+    ide_imcaim int8,
+    ide_itd int4,
     numero_documento_imdocu VARCHAR(50),
     fecha_emision_imdocu DATE,
     fecha_recepcion_imdocu DATE,
@@ -192,9 +192,9 @@ CREATE TABLE imp_documentos (
 
 CREATE TABLE imp_envio (
     ide_imenv int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_imev int4 REFERENCES imp_estado_envio(ide_imev) ON DELETE RESTRICT,
-    ide_itt int4 REFERENCES imp_tipo_transporte(ide_itt) ON DELETE RESTRICT,
+    ide_imcaim int8,
+    ide_imev int4,
+    ide_itt int4,
     naviera_aerolinea_imenv VARCHAR(100),  -- Nombre de la naviera o aerolínea
     fecha_embarque_imenv DATE,
     fecha_estimada_llegada_imenv DATE,
@@ -213,10 +213,10 @@ CREATE TABLE imp_envio (
 
 CREATE TABLE imp_gestion_aduana (
     ide_imga int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_imtaf int4 REFERENCES imp_tipo_aforo(ide_imtaf) ON DELETE RESTRICT,
-    ide_geper int4 REFERENCES gen_persona(ide_geper) ON DELETE RESTRICT,  -- Agente/empresa de aduanas responsable
-    ide_empr INT REFERENCES sis_empresa(ide_empr) ON DELETE RESTRICT,
+    ide_imcaim int8,
+    ide_imtaf int4,
+    ide_geper int4,  -- Agente/empresa de aduanas responsable
+    ide_empr INT,
     numero_dau_imga VARCHAR(30),  -- Número del Documento Único Aduanero (DAU)
     fecha_presentacion_imga DATE,
     fecha_liquidacion_imga DATE,
@@ -234,7 +234,7 @@ COMMENT ON TABLE imp_gestion_aduana IS 'Información sobre el proceso de desadua
 
 CREATE TABLE imp_liquidacion_aduana (
     ide_imliq int8,
-    ide_imga int8 REFERENCES imp_gestion_aduana(ide_imga) ON DELETE RESTRICT,
+    ide_imga int8,
     base_imponible_liq_imliq numeric(12,2),  -- Valor CIF en USD
     arancel_advalorem_liq_imliq numeric(12,2),
     iva_liquidacion_imliq numeric(12,2),
@@ -259,12 +259,12 @@ COMMENT ON TABLE imp_liquidacion_aduana IS 'Cálculo detallado de los impuestos 
 
 CREATE TABLE imp_det_importa (
     ide_imdet int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_inarti int4 REFERENCES inv_articulo(ide_inarti) ON DELETE RESTRICT,  -- Producto específico
-    ide_inuni int4 REFERENCES inv_unidad(ide_inuni) ON DELETE RESTRICT,  -- Unidad de medida
-    cantidad_imdet numeric(12,2),
-    precio_unitario_imdet numeric(12,2),
-    subtotal_imdet numeric(12,2) GENERATED ALWAYS AS (COALESCE(cantidad_imdet, 0) * COALESCE(precio_unitario_imdet, 0)) STORED,
+    ide_imcaim int8,
+    ide_inarti int4,  -- Producto específico
+    ide_inuni int4,  -- Unidad de medida
+    cantidad_imdet numeric(12,4),
+    precio_unitario_imdet numeric(12,4),
+    subtotal_imdet numeric(12,4) GENERATED ALWAYS AS (COALESCE(cantidad_imdet, 0) * COALESCE(precio_unitario_imdet, 0)) STORED,
     descripcion_prod_imdet VARCHAR(200),  -- Descripción detallada del producto para referencia
     num_paquetes_imdet varchar(100),  -- Número de paquetes para este producto específico
     observaciones_imdet VARCHAR(200),  -- Observaciones adicionales para este producto específico
@@ -277,8 +277,8 @@ CREATE TABLE imp_det_importa (
     impuesto_ad_valorem_imdet DECIMAL(5,2),  -- % de arancel aplicable
     regulacion_ecuatoriana_imdet TEXT,  -- Descripción de regulaciones específicas en Ecuador
     --CAMPOS PRECIO FINAL YA CON TODOS LOS COSTOS OPERATIVOS INCLUIDOS PARA CADA PRODUCTO (se calculan automáticamente)
-    precio_unit_final_imdet numeric(12,2),  -- Precio unitario final incluyendo todos los costos operativos
-    subtotal_final_imdet numeric(12,2),  -- Subtotal final (cantidad * precio_unit_final_imdet)
+    precio_unit_final_imdet numeric(12,4),  -- Precio unitario final incluyendo todos los costos operativos
+    subtotal_final_imdet numeric(12,4),  -- Subtotal final (cantidad * precio_unit_final_imdet)
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_actua varchar(50),
@@ -290,10 +290,10 @@ COMMENT ON TABLE imp_det_importa IS 'Detalle de productos de cada orden de impor
 
 CREATE TABLE imp_costos_import(
     ide_imcoim int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_imtco int4 REFERENCES imp_tipo_costo(ide_imtco) ON DELETE RESTRICT,
-    ide_mone int4 REFERENCES sis_moneda(ide_mone) ON DELETE RESTRICT,
-    ide_cpcfa INT REFERENCES cxp_cabece_factur(ide_cpcfa) ON DELETE RESTRICT,   --Documento x pagar
+    ide_imcaim int8,
+    ide_imtco int4,
+    ide_mone int4,
+    ide_cpcfa INT,   --Documento x pagar
     fecha_imcoim DATE,
     monto_imcoim numeric(12,2),
     observaciones_imcoim VARCHAR(255),
@@ -309,11 +309,11 @@ CREATE TABLE imp_costos_import(
 
 CREATE TABLE imp_pagos_import(
     ide_impag int8,
-    ide_imcaim int8 REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_imcoim int8 REFERENCES imp_costos_import(ide_imcoim) ON DELETE RESTRICT,
-    ide_mone int4 REFERENCES sis_moneda(ide_mone) ON DELETE RESTRICT,
-    ide_cpcfa INT REFERENCES cxp_cabece_factur(ide_cpcfa) ON DELETE RESTRICT,   --Documento cxp cuando aplique
-    ide_teclb int4 REFERENCES tes_cab_libr_banc(ide_teclb) ON DELETE RESTRICT, --cab libro banco
+    ide_imcaim int8,
+    ide_imcoim int8,
+    ide_mone int4,
+    ide_cpcfa INT,   --Documento cxp cuando aplique
+    ide_teclb int4,  --cab libro banco
     fecha_pago_impag DATE,
     monto_pago_impag numeric(12,2),
     referencia_pago_impag VARCHAR(50),  -- Número de referencia/transacción
@@ -334,9 +334,9 @@ CREATE TABLE imp_pagos_import(
 -- ============================================================
 CREATE TABLE imp_historial_estado (
     ide_imhest int8,
-    ide_imcaim int8 NOT NULL REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT,
-    ide_imesor_anterior INT REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT,
-    ide_imesor_nuevo INT NOT NULL REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT,
+    ide_imcaim int8 NOT NULL,
+    ide_imesor_anterior INT,
+    ide_imesor_nuevo INT NOT NULL,
     fecha_cambio_imhest TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     observacion_imhest TEXT,
     usuario_ingre varchar(50),
@@ -351,8 +351,8 @@ COMMENT ON TABLE imp_historial_estado IS 'Registro de transiciones de estado de 
 -- ============================================================
 CREATE TABLE imp_distribucion_costo (
     ide_imdico int8,
-    ide_imcoim int8 NOT NULL REFERENCES imp_costos_import(ide_imcoim) ON DELETE RESTRICT,
-    ide_imdet int8 NOT NULL REFERENCES imp_det_importa(ide_imdet) ON DELETE RESTRICT,
+    ide_imcoim int8 NOT NULL,
+    ide_imdet int8 NOT NULL,
     metodo_dist_imdico VARCHAR(20) NOT NULL DEFAULT 'valor_fob',  -- valor_fob | peso | volumen | cantidad | manual
     porcentaje_imdico numeric(8,4),  -- % del costo asignado a este producto
     monto_imdico numeric(12,2),      -- Monto del costo asignado a este producto
@@ -364,6 +364,68 @@ CREATE TABLE imp_distribucion_costo (
     CONSTRAINT uq_imp_dist_costo_det UNIQUE(ide_imcoim, ide_imdet)
 );
 COMMENT ON TABLE imp_distribucion_costo IS 'Distribución proporcional de cada costo de importación entre los productos del detalle';
+
+
+-- ============================================================
+-- FOREIGN KEYS
+-- Se declaran al final para garantizar que todas las tablas
+-- existan antes de crear las restricciones de integridad.
+-- ============================================================
+
+-- imp_cab_importa
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_geper   FOREIGN KEY (ide_geper)  REFERENCES gen_persona(ide_geper)       ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_iminco  FOREIGN KEY (ide_iminco) REFERENCES imp_incoterm(ide_iminco)     ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_imesor  FOREIGN KEY (ide_imesor) REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_gepais  FOREIGN KEY (ide_gepais) REFERENCES gen_pais(ide_gepais)         ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_empr    FOREIGN KEY (ide_empr)   REFERENCES sis_empresa(ide_empr)        ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_sucu    FOREIGN KEY (ide_sucu)   REFERENCES sis_sucursal(ide_sucu)       ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_cpcfa   FOREIGN KEY (ide_cpcfa)  REFERENCES cxp_cabece_factur(ide_cpcfa) ON DELETE RESTRICT;
+ALTER TABLE imp_cab_importa ADD CONSTRAINT fk_imcaim_incci   FOREIGN KEY (ide_incci)  REFERENCES inv_cab_comp_inve(ide_incci) ON DELETE RESTRICT;
+
+-- imp_documentos
+ALTER TABLE imp_documentos ADD CONSTRAINT fk_imdocu_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)  ON DELETE RESTRICT;
+ALTER TABLE imp_documentos ADD CONSTRAINT fk_imdocu_itd    FOREIGN KEY (ide_itd)    REFERENCES imp_tipo_documento(ide_itd)  ON DELETE RESTRICT;
+
+-- imp_envio
+ALTER TABLE imp_envio ADD CONSTRAINT fk_imenv_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)   ON DELETE RESTRICT;
+ALTER TABLE imp_envio ADD CONSTRAINT fk_imenv_imev   FOREIGN KEY (ide_imev)   REFERENCES imp_estado_envio(ide_imev)    ON DELETE RESTRICT;
+ALTER TABLE imp_envio ADD CONSTRAINT fk_imenv_itt    FOREIGN KEY (ide_itt)    REFERENCES imp_tipo_transporte(ide_itt)  ON DELETE RESTRICT;
+
+-- imp_gestion_aduana
+ALTER TABLE imp_gestion_aduana ADD CONSTRAINT fk_imga_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)  ON DELETE RESTRICT;
+ALTER TABLE imp_gestion_aduana ADD CONSTRAINT fk_imga_imtaf  FOREIGN KEY (ide_imtaf)  REFERENCES imp_tipo_aforo(ide_imtaf)    ON DELETE RESTRICT;
+ALTER TABLE imp_gestion_aduana ADD CONSTRAINT fk_imga_geper  FOREIGN KEY (ide_geper)  REFERENCES gen_persona(ide_geper)       ON DELETE RESTRICT;
+ALTER TABLE imp_gestion_aduana ADD CONSTRAINT fk_imga_empr   FOREIGN KEY (ide_empr)   REFERENCES sis_empresa(ide_empr)        ON DELETE RESTRICT;
+
+-- imp_liquidacion_aduana
+ALTER TABLE imp_liquidacion_aduana ADD CONSTRAINT fk_imliq_imga FOREIGN KEY (ide_imga) REFERENCES imp_gestion_aduana(ide_imga) ON DELETE RESTRICT;
+
+-- imp_det_importa
+ALTER TABLE imp_det_importa ADD CONSTRAINT fk_imdet_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim) ON DELETE RESTRICT;
+ALTER TABLE imp_det_importa ADD CONSTRAINT fk_imdet_inarti FOREIGN KEY (ide_inarti)  REFERENCES inv_articulo(ide_inarti)    ON DELETE RESTRICT;
+ALTER TABLE imp_det_importa ADD CONSTRAINT fk_imdet_inuni  FOREIGN KEY (ide_inuni)   REFERENCES inv_unidad(ide_inuni)       ON DELETE RESTRICT;
+
+-- imp_costos_import
+ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)    ON DELETE RESTRICT;
+ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_imtco  FOREIGN KEY (ide_imtco)  REFERENCES imp_tipo_costo(ide_imtco)      ON DELETE RESTRICT;
+ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_mone   FOREIGN KEY (ide_mone)   REFERENCES sis_moneda(ide_mone)           ON DELETE RESTRICT;
+ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_cpcfa  FOREIGN KEY (ide_cpcfa)  REFERENCES cxp_cabece_factur(ide_cpcfa)   ON DELETE RESTRICT;
+
+-- imp_pagos_import
+ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)    ON DELETE RESTRICT;
+ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_imcoim FOREIGN KEY (ide_imcoim) REFERENCES imp_costos_import(ide_imcoim)  ON DELETE RESTRICT;
+ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_mone   FOREIGN KEY (ide_mone)   REFERENCES sis_moneda(ide_mone)           ON DELETE RESTRICT;
+ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_cpcfa  FOREIGN KEY (ide_cpcfa)  REFERENCES cxp_cabece_factur(ide_cpcfa)   ON DELETE RESTRICT;
+ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_teclb  FOREIGN KEY (ide_teclb)  REFERENCES tes_cab_libr_banc(ide_teclb)   ON DELETE RESTRICT;
+
+-- imp_historial_estado
+ALTER TABLE imp_historial_estado ADD CONSTRAINT fk_imhest_imcaim       FOREIGN KEY (ide_imcaim)          REFERENCES imp_cab_importa(ide_imcaim)  ON DELETE RESTRICT;
+ALTER TABLE imp_historial_estado ADD CONSTRAINT fk_imhest_imesor_ant    FOREIGN KEY (ide_imesor_anterior) REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT;
+ALTER TABLE imp_historial_estado ADD CONSTRAINT fk_imhest_imesor_nuevo  FOREIGN KEY (ide_imesor_nuevo)    REFERENCES imp_estado_orden(ide_imesor) ON DELETE RESTRICT;
+
+-- imp_distribucion_costo
+ALTER TABLE imp_distribucion_costo ADD CONSTRAINT fk_imdico_imcoim FOREIGN KEY (ide_imcoim) REFERENCES imp_costos_import(ide_imcoim) ON DELETE RESTRICT;
+ALTER TABLE imp_distribucion_costo ADD CONSTRAINT fk_imdico_imdet  FOREIGN KEY (ide_imdet)  REFERENCES imp_det_importa(ide_imdet)    ON DELETE RESTRICT;
 
 
 -- ============================================================
@@ -407,11 +469,61 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
 
+-----
+
+--SQL 1 - permisos de esquema
+ALTER SCHEMA public OWNER TO postgres;
+GRANT USAGE, CREATE ON SCHEMA public TO postgres;
+
+--SQL 2 - asegurar dueño de la tabla que estás alterando
+ALTER TABLE public.imp_det_importa OWNER TO postgres;
+
+--SQL 3 - opcional recomendado para futuro
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO postgres;
+
+
+
+GRANT USAGE ON SCHEMA public TO postgres;
+GRANT CREATE ON SCHEMA public TO postgres;
+
+
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO postgres;
+
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL ON TABLES TO postgres;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL ON SEQUENCES TO postgres;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL ON FUNCTIONS TO postgres;
 
 
 
 
 
+ALTER TABLE public.gen_persona OWNER TO postgres;
+
+-------------ESTO PARA PASAR OBJETOS A ESQUEMA -------------
+
+SELECT schemaname,
+       tablename,
+       tableowner
+FROM pg_tables
+WHERE tableowner='doadmin';
 
 
+REASSIGN OWNED BY doadmin TO postgres;
 
+ALTER SCHEMA public OWNER TO postgres;
+
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;

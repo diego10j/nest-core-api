@@ -8,6 +8,7 @@ import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
 import { ConfigPreciosProductosService } from './config-precios.service';
 import { CategoriasDto } from './dto/categorias.dto';
@@ -27,7 +28,6 @@ import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
-import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')

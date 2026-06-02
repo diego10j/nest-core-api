@@ -1,5 +1,5 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 
 export class OrderByDto {
   @ApiProperty({ description: 'Columna para ordenar', example: 'nombre' })

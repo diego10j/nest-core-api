@@ -1,17 +1,18 @@
-import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+
+import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
+import { IdEtiquetaDto } from './dto/id-etiqueta.dto';
+import { IdProductoEtiquetaDto } from './dto/id-producto-etiqueta.dto';
+import { IdProductoDto } from './dto/id-producto.dto';
+import { PorExpirarDto } from './dto/por-expriar.dto';
+import { SaveEtiquetaDto } from './dto/save-etiqueta.dto';
+import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
 import { EtiquetasSaveService } from './etiquetas-save.service';
 import { EtiquetasService } from './etiquetas.service';
-import { IdEtiquetaDto } from './dto/id-etiqueta.dto';
-import { IdProductoDto } from './dto/id-producto.dto';
-import { IdProductoEtiquetaDto } from './dto/id-producto-etiqueta.dto';
-import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
-import { SaveEtiquetaDto } from './dto/save-etiqueta.dto';
-import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
-import { PorExpirarDto } from './dto/por-expriar.dto';
 
 @ApiTags('Inventario-Etiquetas')
 @Controller('inventario/etiquetas')

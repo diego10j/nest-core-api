@@ -1,5 +1,5 @@
-import { IsDateString, IsInt, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsDateString, IsInt, IsNotEmpty } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class LibroMayorDto extends QueryOptionsDto {

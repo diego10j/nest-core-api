@@ -25,7 +25,7 @@ declare module 'pdfmake/interfaces' {
 }
 
 declare module 'pdfmake' {
-    import { TDocumentDefinitions, CustomTableLayout, BufferOptions, TFontDictionary } from 'pdfmake/interfaces';
+    import { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
 
     class PdfPrinter {
         constructor(fontDescriptors: TFontDictionary);

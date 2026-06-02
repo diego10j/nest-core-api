@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsInt } from 'class-validator';
 
 export class AnularDocumentoCxPDto {
 

@@ -7,10 +7,10 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
 
-import { IdProductoDto } from './dto/id-producto.dto';
 import { IdProductoEtiquetaDto } from './dto/id-producto-etiqueta.dto';
-import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
+import { IdProductoDto } from './dto/id-producto.dto';
 import { PorExpirarDto } from './dto/por-expriar.dto';
+import { TipoEtiquetaDto } from './dto/tipo-etiqueta.dto';
 
 @Injectable()
 export class EtiquetasService extends BaseService {

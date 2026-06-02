@@ -1,5 +1,5 @@
-import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class HeaderParamsDto {
   @ApiProperty({ description: 'ID del usuario', example: 1 })

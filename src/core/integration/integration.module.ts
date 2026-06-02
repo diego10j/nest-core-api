@@ -5,10 +5,12 @@ import { ApiPersonaController } from './api-persona/api-persona.controller';
 import { ApiPersonaService } from './api-persona/api-persona.service';
 import { GptController } from './gpt/gpt.controller';
 import { GptService } from './gpt/gpt.service';
+import { OcrService } from './ocr/ocr.service';
 
 @Module({
   imports: [HttpModule],
   controllers: [ApiPersonaController, GptController],
-  providers: [ApiPersonaService, GptService],
+  providers: [ApiPersonaService, GptService, OcrService],
+  exports: [GptService, OcrService],
 })
 export class IntegrationModule {}

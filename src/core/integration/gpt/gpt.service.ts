@@ -95,4 +95,70 @@ export class GptService {
   async generateContentProduct({ product }: ContentProductDto) {
     return await contentProductUseCase(this.openai, { product });
   }
+
+  async parseTextToJson(prompt: string, text: string) {
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: prompt,
+        },
+        {
+          role: 'user',
+          content: `Texto a analizar:\n${text}`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No se pudo obtener respuesta de OpenAI');
+    }
+
+    return JSON.parse(content);
+  }
+
+  async parseImageToJson(prompt: string, imageBuffer: Buffer, mimeType: string) {
+    const base64Image = imageBuffer.toString('base64');
+    const dataUrl = `data:${mimeType};base64,${base64Image}`;
+
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: prompt,
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Analiza esta imagen de comprobante de transferencia y extrae los datos solicitados.',
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: dataUrl,
+                detail: 'high',
+              },
+            },
+          ],
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0,
+      max_tokens: 1000,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No se pudo obtener respuesta de OpenAI');
+    }
+
+    return JSON.parse(content);
+  }
 }

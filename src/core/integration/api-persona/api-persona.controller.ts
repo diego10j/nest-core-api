@@ -8,7 +8,7 @@ import { ApiPersonaService } from './api-persona.service';
 @ApiTags('Integración-ApiPersona')
 @Controller('integration/api-persona')
 export class ApiPersonaController {
-  constructor(private readonly service: ApiPersonaService) {}
+  constructor(private readonly service: ApiPersonaService) { }
 
   @Post('consultaCedula')
   @ApiOperation({ summary: 'Consultar datos de persona natural por número de cédula' })

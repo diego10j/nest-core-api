@@ -10,11 +10,11 @@ import { SaveDto } from '../../../../common/dto/save.dto';
 
 import { ClientesService } from './clientes.service';
 import { ExistClienteDto } from './dto/exist-client.dto';
+import { GetClientesDto } from './dto/get-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
-import { GetClientesDto } from './dto/get-clientes.dto';
 
 @ApiTags('Ventas-Clientes')
 @ApiBearerAuth('BearerAuth')

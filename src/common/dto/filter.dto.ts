@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 
 export class FilterDto {
   @ApiProperty({ description: 'Nombre de columna', example: 'nombre' })

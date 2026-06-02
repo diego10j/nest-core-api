@@ -13,8 +13,8 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { CreateTemplateDto } from '../dto/create-template.dto';
-import { registerHelpers } from '../helpers/handlebars.helpers';
 import { UpdateTemplateDto } from '../dto/update-template.dto';
+import { registerHelpers } from '../helpers/handlebars.helpers';
 
 @Injectable()
 export class TemplateService {

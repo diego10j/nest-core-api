@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
-
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { IdOrdenPagoDto } from './dto/id-orden-pago.dto';
 

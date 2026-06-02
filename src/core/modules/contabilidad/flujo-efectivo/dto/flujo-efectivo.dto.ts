@@ -1,6 +1,6 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class SaveFlujoClasifDto {
     @ApiPropertyOptional({ description: 'ID de clasificación (omitir para crear)' })

@@ -4,7 +4,6 @@ import { fCurrency } from 'src/util/helpers/common-util';
 import { fDate } from 'src/util/helpers/date-util';
 
 import { ProformaRep, ProformaRepDetalle } from './interfaces/proforma-rep';
-import { fNumber } from 'src/util/helpers/number-util';
 
 // ─── Paleta neutral y profesional ────────────────────────────────────────────
 const C = {
@@ -333,22 +332,32 @@ export const proformaReport = (
     };
 
     // ── Cliente ───────────────────────────────────────────────────────────────
+    const isConsumidorFinal = (cabecera.nombre_getid || '').toUpperCase().includes('CONSUMIDOR FINAL');
+
     const clienteSection: Content = {
         stack: [
             sectionHeading('Datos del cliente'),
             {
                 columns: [
-                    { width: '33%', stack: [field('Razón social / Nombre', cabecera.solicitante_cccpr, true)] },
-                    { width: '33%', stack: [field('Identificación', `${safeText(cabecera.nombre_getid, '')} ${safeText(cabecera.identificac_cccpr, '—')}`.trim())] },
-                    { width: '34%', stack: [field('Dirección', cabecera.direccion_cccpr)] },
+                    { width: '50%', stack: [field('Razón social / Nombre', cabecera.solicitante_cccpr, true)] },
+                    {
+                        width: '50%',
+                        stack: [{
+                            stack: [
+                                { text: safeText(cabecera.nombre_getid, 'IDENTIFICACIÓN').toUpperCase(), style: 'label', margin: [0, 0, 0, 1] as [number, number, number, number] },
+                                ...(isConsumidorFinal ? [] : [{ text: safeText(cabecera.identificac_cccpr), style: 'value', margin: [0, 0, 0, 0] as [number, number, number, number] }]),
+                            ],
+                            margin: [0, 0, 0, 10] as [number, number, number, number],
+                        }],
+                    },
                 ],
                 columnGap: 16,
             },
             {
                 columns: [
-                    { width: '33%', stack: [field('Contacto', cabecera.contacto_cccpr)] },
-                    { width: '33%', stack: [field('Teléfono', cabecera.telefono_cccpr)] },
-                    { width: '34%', stack: [field('Correo electrónico', cabecera.correo_cccpr)] },
+                    { width: '40%', stack: [field('Dirección', cabecera.direccion_cccpr)] },
+                    { width: '15%', stack: [field('Teléfono', cabecera.telefono_cccpr)] },
+                    { width: '25%', stack: [field('Correo electrónico', cabecera.correo_cccpr)] },
                 ],
                 columnGap: 16,
             },
@@ -362,7 +371,7 @@ export const proformaReport = (
             sectionHeading('Condiciones comerciales'),
             {
                 columns: [
-                    { width: '33%', stack: [field('Asesor comercial', cabecera.nombre_vgven, true)] },
+                    { width: '33%', stack: [field('Forma de pago', cabecera.nombre_cndfp)] },
                     { width: '33%', stack: [field('Validez de la oferta', cabecera.nombre_ccvap)] },
                     { width: '34%', stack: [field('Tiempo de entrega', cabecera.nombre_ccten)] },
                 ],
@@ -429,7 +438,13 @@ export const proformaReport = (
     const observacionesBlock: Content = {
         stack: [
             sectionHeading('Observaciones'),
-            { text: safeText(cabecera.observacion_cccpr, 'Sin observaciones adicionales.'), style: 'noteText' },
+            ...(cabecera.observacion_cccpr ? [{ text: cabecera.observacion_cccpr, style: 'noteText', margin: [0, 0, 0, 14] as [number, number, number, number] }] : []),
+            ...(cabecera.nombre_vgven ? [
+                { text: 'Atentamente,', style: 'label', margin: [0, 0, 0, 16] as [number, number, number, number] },
+                { text: cabecera.nombre_vgven, style: 'valueStrong', margin: [0, 0, 0, 2] as [number, number, number, number] },
+                ...(cabecera.correo_vgven ? [{ text: cabecera.correo_vgven, style: 'noteText', margin: [0, 0, 0, 2] as [number, number, number, number] }] : []),
+                ...(cabecera.movil_vgven ? [{ text: cabecera.movil_vgven, style: 'noteText', margin: [0, 0, 0, 0] as [number, number, number, number] }] : []),
+            ] : []),
         ],
     };
 

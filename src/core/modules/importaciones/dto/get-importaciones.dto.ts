@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsNumber, IsInt } from 'class-validator';
+import { IsOptional, IsInt } from 'class-validator';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 export class GetImportacionesDto extends RangoFechasDto {

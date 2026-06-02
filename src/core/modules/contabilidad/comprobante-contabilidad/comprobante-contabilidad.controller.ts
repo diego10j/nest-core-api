@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { ComprobanteContabilidadService } from './comprobante-contabilidad.service';
 import {
     AnularComprobanteDto,
     GetComprobanteByIdDto,
@@ -12,7 +13,6 @@ import {
     ReversarComprobanteDto,
     SaveComprobanteDto,
 } from './dto/comprobante-contabilidad.dto';
-import { ComprobanteContabilidadService } from './comprobante-contabilidad.service';
 
 @ApiTags('Contabilidad-Comprobante')
 @Controller('contabilidad/comprobante')

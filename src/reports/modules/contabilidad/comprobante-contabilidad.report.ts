@@ -1,5 +1,4 @@
 import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
-
 import { footerSection } from 'src/reports/common/sections/footer.section';
 import { fDate } from 'src/util/helpers/date-util';
 

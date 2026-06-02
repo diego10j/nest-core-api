@@ -31,8 +31,7 @@ import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { CabProformaDto, DetaProformaDto, SaveProformaDto } from './dto/save-proforma.dto';
-import { SendProformaEmailDto } from './dto/send-proforma-email.dto';
-import { ArchivoAdjuntoDto } from './dto/send-proforma-email.dto';
+import { SendProformaEmailDto , ArchivoAdjuntoDto } from './dto/send-proforma-email.dto';
 
 const SOLICITUD = {
   tableName: 'cxc_cabece_proforma',

@@ -1,21 +1,19 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { CoreService } from 'src/core/core.service';
+import { isDefined } from 'src/util/helpers/common-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
-import { InsertQuery, SelectQuery, UpdateQuery } from '../../../connection/helpers';
+import { SelectQuery } from '../../../connection/helpers';
 import { SriFacturaService } from '../../sri/cel/sri-factura.service';
 
 import { FacturasDto } from './dto/facturas.dto';
-import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
-import { SaveFacturaDto, DetaFacturaDto } from './dto/save-factura.dto';
-import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
-import { isDefined } from 'src/util/helpers/common-util';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
+import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
+import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 
 @Injectable()
 export class FacturasService extends BaseService {

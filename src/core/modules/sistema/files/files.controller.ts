@@ -40,6 +40,13 @@ export class FilesController {
     private readonly configService: ConfigService
   ) { }
 
+  @Get('image/tesoreria/:imageName')
+  @ApiOperation({ summary: 'Servir imagen estática de tesorería' })
+  getTesoreriaImage(@Res() res: Response, @Param('imageName') imageName: string) {
+    const path = this.filesService.getStaticImage(`tesoreria/${imageName}`);
+    res.sendFile(path);
+  }
+
   @Get('image/:imageName')
   @ApiOperation({ summary: 'Servir imagen estática por nombre de archivo' })
   getStaticImage(@Res() res: Response, @Param('imageName') imageName: string) {

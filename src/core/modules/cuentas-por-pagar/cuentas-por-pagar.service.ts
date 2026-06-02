@@ -3,11 +3,12 @@ import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
-import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+
 import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
+import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
+import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 
 // Tablas CXP:
 //   cxp_cabece_factur  (pk: ide_cpcfa, estado: ide_cpefa)

@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
     ArrayMinSize,
@@ -14,8 +15,6 @@ import {
     Min,
     ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 import { SaveDto } from 'src/common/dto/save.dto';
 
 // ─────────────────────────────────────────────────────────────────────────────

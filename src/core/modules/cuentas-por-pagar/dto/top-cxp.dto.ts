@@ -1,5 +1,5 @@
-import { IsInt, IsOptional, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsInt, IsOptional, Min, Max } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class TopCuentasPorPagarDto extends QueryOptionsDto {

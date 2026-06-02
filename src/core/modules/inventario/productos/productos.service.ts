@@ -16,6 +16,8 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { ResultQuery } from '../../../connection/interfaces/resultQuery';
 import { AuditService } from '../../audit/audit.service';
+import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
+import { getExtensionFile } from '../../sistema/files/helpers/fileNamer.helper';
 
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
@@ -29,8 +31,6 @@ import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { SaldoProducto } from './interfaces/productos';
-import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
-import { getExtensionFile } from '../../sistema/files/helpers/fileNamer.helper';
 
 @Injectable()
 export class ProductosService extends BaseService {

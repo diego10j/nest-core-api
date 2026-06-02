@@ -1,9 +1,9 @@
 import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { footerSection } from 'src/reports/common/sections/footer.section';
-import { fDate } from 'src/util/helpers/date-util';
-import { fCurrency } from 'src/util/helpers/common-util';
-import { getStaticImage } from 'src/util/helpers/file-utils';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { footerSection } from 'src/reports/common/sections/footer.section';
+import { fCurrency } from 'src/util/helpers/common-util';
+import { fDate } from 'src/util/helpers/date-util';
+import { getStaticImage } from 'src/util/helpers/file-utils';
 
 import { FacturaRep, FacturaDetalle, FacturaPagoDetalle } from './interfaces/factura-rep';
 

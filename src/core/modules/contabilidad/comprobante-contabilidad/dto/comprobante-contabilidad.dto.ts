@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
     IsArray,
@@ -12,8 +13,6 @@ import {
     MaxLength,
     ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { SaveDto } from 'src/common/dto/save.dto';
 

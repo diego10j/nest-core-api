@@ -138,7 +138,8 @@ export class WhatsappController {
   @Get('download/:ideEmpr/:id')
   @Header('Cache-Control', 'public, max-age=3600')
   async download(
-    @Param('ideEmpr') ideEmpr: string, // Quitar ****
+    @AppHeaders() _h: HeaderParamsDto,
+    @Param('ideEmpr') ideEmpr: string,
     @Param('id') messageId: string,
     @Req() req: Request,
     @Res() res: Response,
@@ -302,7 +303,11 @@ export class WhatsappController {
   @Get('getServeFile/:filename')
   @Header('Cache-Control', 'public, max-age=3600')
   @ApiOperation({ summary: 'Descarga un archivo temporal del servidor' })
-  async getServeFile(@Param('filename') filename: string, @Res() response: Response) {
+  async getServeFile(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Param('filename') filename: string,
+    @Res() response: Response,
+  ) {
     return this.service.fileTempService.downloadFile(response, filename);
   }
 

@@ -11,7 +11,6 @@ import {
     MaxLength,
     ValidateNested,
 } from 'class-validator';
-
 import { SaveDto } from 'src/common/dto/save.dto';
 
 export class ConCabPlanCuenDataDto {

@@ -68,12 +68,12 @@ export class VariablesController {
     });
   }
 
-  @Get('getModulosSistema')
-  @ApiOperation({ summary: 'Obtener listado de modulos del sistema' })
-  // @Auth()
-  getModulosSistema() {
-    return this.service.getModulosSistema();
-  }
+    @Get('getModulosSistema')
+    @ApiOperation({ summary: 'Obtener listado de modulos del sistema' })
+    // @Auth()
+    getModulosSistema(@AppHeaders() _h: HeaderParamsDto) {
+        return this.service.getModulosSistema();
+    }
 
   @Get('getVariablesModulo')
   @ApiOperation({ summary: 'Obtener variables de parametrizacion filtradas por modulo' })

@@ -112,7 +112,7 @@ export class ProformasController {
 
   @Post('assignProformaToUser')
   @ApiOperation({ summary: 'Asignar proforma web a un usuario del sistema (sin autenticación)' })
-  assignProformaToUser(@Body() dtoIn: AssignProformaDto) {
+  assignProformaToUser(@AppHeaders() _h: HeaderParamsDto, @Body() dtoIn: AssignProformaDto) {
     return this.service.assignProformaToUser(dtoIn);
   }
 

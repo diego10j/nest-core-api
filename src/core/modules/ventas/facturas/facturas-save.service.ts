@@ -1,15 +1,14 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
-
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { SriFacturaService } from 'src/core/modules/sri/cel/sri-factura.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
-import { SriFacturaService } from 'src/core/modules/sri/cel/sri-factura.service';
 
-import { DetaFacturaDto, GuiaRemisionDto, SaveFacturaDto } from './dto/save-factura.dto';
+import { DetaFacturaDto, SaveFacturaDto } from './dto/save-factura.dto';
 
 // ─── Constantes de tablas ────────────────────────────────────────────────────
 const MODULE = 'cxc';

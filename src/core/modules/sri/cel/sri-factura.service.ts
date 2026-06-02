@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { InsertQuery } from 'src/core/connection/helpers';
-import { fNumber } from 'src/util/helpers/number-util';
 import { toPgTimestampNow } from 'src/util/helpers/date-util';
+import { fNumber } from 'src/util/helpers/number-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';

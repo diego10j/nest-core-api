@@ -12,10 +12,12 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import {
   AudioToTextDto,
@@ -36,19 +38,29 @@ export class GptController {
 
   @Post('orthography-check')
   @ApiOperation({ summary: 'Verificar ortografía de un texto usando GPT' })
-  orthographyCheck(@Body() orthographyDto: OrthographyDto) {
+  orthographyCheck(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() orthographyDto: OrthographyDto,
+  ) {
     return this.gptService.orthographyCheck(orthographyDto);
   }
 
   @Post('pros-cons-discusser')
   @ApiOperation({ summary: 'Generar análisis de pros y contras de un tema usando GPT' })
-  prosConsDicusser(@Body() prosConsDiscusserDto: ProsConsDiscusserDto) {
+  prosConsDicusser(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() prosConsDiscusserDto: ProsConsDiscusserDto,
+  ) {
     return this.gptService.prosConsDicusser(prosConsDiscusserDto);
   }
 
   @Post('pros-cons-discusser-stream')
   @ApiOperation({ summary: 'Generar análisis de pros y contras en modo streaming' })
-  async prosConsDicusserStream(@Body() prosConsDiscusserDto: ProsConsDiscusserDto, @Res() res: Response) {
+  async prosConsDicusserStream(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() prosConsDiscusserDto: ProsConsDiscusserDto,
+    @Res() res: Response,
+  ) {
     const stream = await this.gptService.prosConsDicusserStream(prosConsDiscusserDto);
 
     res.setHeader('Content-Type', 'application/json');
@@ -56,7 +68,6 @@ export class GptController {
 
     for await (const chunk of stream) {
       const piece = chunk.choices[0].delta.content || '';
-      // console.log(piece);
       res.write(piece);
     }
 
@@ -65,13 +76,20 @@ export class GptController {
 
   @Post('translate')
   @ApiOperation({ summary: 'Traducir texto entre idiomas usando GPT' })
-  translateText(@Body() translateDto: TranslateDto) {
+  translateText(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() translateDto: TranslateDto,
+  ) {
     return this.gptService.translateText(translateDto);
   }
 
   @Get('text-to-audio/:fileId')
   @ApiOperation({ summary: 'Descargar archivo de audio generado previamente por ID' })
-  async textToAudioGetter(@Res() res: Response, @Param('fileId') fileId: string) {
+  async textToAudioGetter(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Res() res: Response,
+    @Param('fileId') fileId: string,
+  ) {
     const filePath = await this.gptService.textToAudioGetter(fileId);
 
     res.setHeader('Content-Type', 'audio/mp3');
@@ -81,7 +99,11 @@ export class GptController {
 
   @Post('text-to-audio')
   @ApiOperation({ summary: 'Convertir texto a audio mp3 usando GPT TTS' })
-  async textToAudio(@Body() textToAudioDto: TextToAudioDto, @Res() res: Response) {
+  async textToAudio(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() textToAudioDto: TextToAudioDto,
+    @Res() res: Response,
+  ) {
     const filePath = await this.gptService.textToAudio(textToAudioDto);
 
     res.setHeader('Content-Type', 'audio/mp3');
@@ -104,6 +126,7 @@ export class GptController {
     }),
   )
   async audioToText(
+    @AppHeaders() _h: HeaderParamsDto,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -123,13 +146,20 @@ export class GptController {
 
   @Post('image-generation')
   @ApiOperation({ summary: 'Generar imagen con DALL-E a partir de una descripción' })
-  async imageGeneration(@Body() imageGenerationDto: ImageGenerationDto) {
+  async imageGeneration(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() imageGenerationDto: ImageGenerationDto,
+  ) {
     return await this.gptService.imageGeneration(imageGenerationDto);
   }
 
   @Get('image-generation/:filename')
   @ApiOperation({ summary: 'Obtener imagen generada por nombre de archivo' })
-  async getGenerated(@Res() res: Response, @Param('filename') fileName: string) {
+  async getGenerated(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Res() res: Response,
+    @Param('filename') fileName: string,
+  ) {
     const filePath = this.gptService.getGeneratedImage(fileName);
     res.status(HttpStatus.OK);
     res.sendFile(filePath);
@@ -137,13 +167,19 @@ export class GptController {
 
   @Post('image-variation')
   @ApiOperation({ summary: 'Generar variaciones de una imagen existente con DALL-E' })
-  async imageVariation(@Body() imageVariationDto: ImageVariationDto) {
+  async imageVariation(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() imageVariationDto: ImageVariationDto,
+  ) {
     return await this.gptService.geneateImageVariation(imageVariationDto);
   }
 
   @Post('generateContentProduct')
   @ApiOperation({ summary: 'Generar descripción y contenido de un producto con GPT' })
-  generateContentProduct(@Body() contentProductDto: ContentProductDto) {
+  generateContentProduct(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() contentProductDto: ContentProductDto,
+  ) {
     return this.gptService.generateContentProduct(contentProductDto);
   }
 }

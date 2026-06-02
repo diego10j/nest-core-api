@@ -1,5 +1,5 @@
-import { IsArray, IsInt, ArrayNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsArray, IsInt, ArrayNotEmpty } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class IdOrdenPagoDto extends QueryOptionsDto {

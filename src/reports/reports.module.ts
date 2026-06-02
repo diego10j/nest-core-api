@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { CommonRepModule } from './common/common-rep.module';
 import { ContabilidadReportsModule } from './modules/contabilidad/contabilidad-reports.module';
 import { InventarioReportsModule } from './modules/inventario/inventario-reports.module';

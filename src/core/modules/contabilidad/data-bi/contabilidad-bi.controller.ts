@@ -4,8 +4,8 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
-import { ComparativoPeriodosDto, PeriodoAnioDto, TopCuentasBiDto } from './dto/contabilidad-bi.dto';
 import { ContabilidadBiService } from './contabilidad-bi.service';
+import { ComparativoPeriodosDto, PeriodoAnioDto, TopCuentasBiDto } from './dto/contabilidad-bi.dto';
 
 @ApiTags('Contabilidad-DataBI')
 @Controller('contabilidad/data-bi')

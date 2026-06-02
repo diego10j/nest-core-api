@@ -165,7 +165,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    async getImportacionById(ide_imcaim: number) {
+    async getImportacionById(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT c.ide_imcaim, c.ide_geper, c.ide_iminco, c.ide_imesor,
                     c.ide_gepais, c.ide_empr, c.ide_sucu, c.ide_cpcfa, c.ide_incci,
@@ -190,7 +190,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSingleQuery(query);
     }
 
-    async getDetalleImportacion(ide_imcaim: number) {
+    async getDetalleImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT d.ide_imdet, d.ide_imcaim, d.ide_inarti, d.ide_inuni,
                     d.cantidad_imdet, d.precio_unitario_imdet, d.subtotal_imdet,
@@ -214,7 +214,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    async getCostosImportacion(ide_imcaim: number) {
+    async getCostosImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT co.ide_imcoim, co.ide_imcaim, co.ide_imtco, co.ide_mone, co.ide_cpcfa,
                     co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
@@ -225,14 +225,39 @@ export class ImportacionesService extends BaseService {
                 FROM imp_costos_import co
                 INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
                 LEFT JOIN sis_moneda m ON co.ide_mone = m.ide_mone
-                WHERE co.ide_imcaim = $1
+                WHERE co.ide_imcaim = $1 AND co.ide_cpcfa IS NULL
                 ORDER BY co.ide_imcoim
             `);
         query.addIntParam(1, ide_imcaim);
         return this.dataSource.createQuery(query);
     }
 
-    async getPagosImportacion(ide_imcaim: number) {
+    async getFacturasImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
+        const query = new SelectQuery(`
+                SELECT co.ide_imcoim, co.ide_imcaim, co.ide_imtco, co.ide_mone, co.ide_cpcfa,
+                    co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
+                    co.referencia_imcoim, co.activo_imcoim,
+                    co.usuario_ingre, co.hora_ingre, co.usuario_actua, co.hora_actua,
+                    tc.nombre_imtco           AS tipo_costo,
+                    m.nombre_mone             AS moneda,
+                    f.numero_cpcfa,
+                    f.fecha_emisi_cpcfa,
+                    f.base_grabada_cpcfa      AS subtotal,
+                    f.base_tarifa0_cpcfa      AS subtotal_tarifa_0,
+                    f.valor_iva_cpcfa         AS valor_iva,
+                    f.total_cpcfa             AS total
+                FROM imp_costos_import co
+                INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
+                LEFT JOIN sis_moneda m ON co.ide_mone = m.ide_mone
+                INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+                WHERE co.ide_imcaim = $1 AND co.ide_cpcfa IS NOT NULL
+                ORDER BY co.ide_imcoim
+            `);
+        query.addIntParam(1, ide_imcaim);
+        return this.dataSource.createQuery(query);
+    }
+
+    async getPagosImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT pa.ide_impag, pa.ide_imcaim, pa.ide_imcoim, pa.ide_mone,
                     pa.ide_cpcfa, pa.ide_teclb, pa.fecha_pago_impag,
@@ -253,7 +278,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    async getDocumentosImportacion(ide_imcaim: number) {
+    async getDocumentosImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT d.ide_imdocu, d.ide_imcaim, d.ide_itd,
                     d.numero_documento_imdocu, d.fecha_emision_imdocu,
@@ -270,7 +295,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    async getEnvioImportacion(ide_imcaim: number) {
+    async getEnvioImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT e.ide_imenv, e.ide_imcaim, e.ide_imev, e.ide_itt,
                     e.naviera_aerolinea_imenv, e.fecha_embarque_imenv,
@@ -289,7 +314,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getGestionAduana(ide_imcaim: number) {
+    async getGestionAduana(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT g.ide_imga, g.ide_imcaim, g.ide_imtaf, g.ide_geper, g.ide_empr,
                     g.numero_dau_imga, g.fecha_presentacion_imga,
@@ -307,7 +332,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getLiquidacionAduana(ide_imga: number) {
+    async getLiquidacionAduana(ide_imga: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT l.ide_imliq, l.ide_imga,
                     l.base_imponible_liq_imliq, l.arancel_advalorem_liq_imliq,
@@ -323,7 +348,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getResumenCostos(ide_imcaim: number) {
+    async getResumenCostos(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT tc.nombre_imtco  AS tipo_costo,
                     COUNT(co.ide_imcoim) AS cantidad,
@@ -338,7 +363,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getHistorialEstado(ide_imcaim: number) {
+    async getHistorialEstado(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT h.ide_imhest, h.ide_imcaim,
                     h.ide_imesor_anterior, h.ide_imesor_nuevo,
@@ -356,7 +381,7 @@ export class ImportacionesService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getDistribucionCostos(ide_imcaim: number) {
+    async getDistribucionCostos(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT d.ide_imdico, d.ide_imcoim, d.ide_imdet,
                     d.metodo_dist_imdico, d.porcentaje_imdico, d.monto_imdico,
@@ -381,7 +406,7 @@ export class ImportacionesService extends BaseService {
      * - detalles de la factura CxP (productos/líneas de la factura)
      * - detalles de la orden de importación (productos importados)
      */
-    async getFacturaImportacion(ide_imcaim: number) {
+    async getFacturaImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         // 1. Obtener el ide_cpcfa asignado a la orden
         const ordenQuery = new SelectQuery(`
                 SELECT ide_cpcfa FROM imp_cab_importa WHERE ide_imcaim = $1
@@ -506,7 +531,7 @@ export class ImportacionesService extends BaseService {
                 INNER JOIN gen_persona p ON f.ide_geper = p.ide_geper
                 LEFT  JOIN cxp_estado_factur ef ON f.ide_cpefa = ef.ide_cpefa
                 WHERE f.ide_geper = $1
-                AND f.ide_cntdo = ${IDE_CNTDO_IMPORTACION}
+               -- AND f.ide_cntdo = ${IDE_CNTDO_IMPORTACION}
                 AND f.ide_empr = $2
                 AND f.ide_cpefa = 0
                 AND f.ide_cpcfa NOT IN (

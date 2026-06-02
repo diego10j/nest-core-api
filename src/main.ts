@@ -2,8 +2,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
-import { Server } from 'socket.io';
 import helmet from 'helmet';
+import { Server } from 'socket.io';
 
 import { AppModule } from './app.module';
 import { envs } from './config/envs';

@@ -19,11 +19,11 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
+import { GetClientesDto } from './dto/get-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
-import { GetClientesDto } from './dto/get-clientes.dto';
 
 const CLIENTE = {
     tableName: 'gen_persona',

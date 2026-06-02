@@ -22,7 +22,7 @@ import { CoreService } from './core.service';
 @ApiTags('Core')
 @Controller('core')
 export class CoreController {
-  constructor(private readonly service: CoreService) {}
+  constructor(private readonly service: CoreService) { }
 
   @Get('getListDataValues')
   @ApiOperation({ summary: 'Obtener valores de lista (combo) desde una tabla de catálogo' })

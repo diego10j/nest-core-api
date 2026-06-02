@@ -31,6 +31,8 @@ interface EnvVars {
   WHATSAPP_SOCKET_PORT: number;
 
   OPENAI_API_KEY: string;
+  OCR_SPACE_API_KEY: string;
+  OCR_SPACE_TIMEOUT_MS: number;
 }
 
 const envsSchema = z
@@ -84,6 +86,15 @@ const envsSchema = z
       .transform(Number),
 
     OPENAI_API_KEY: z.string(),
+    OCR_SPACE_API_KEY: z.string(),
+    OCR_SPACE_TIMEOUT_MS: z
+      .string()
+      .refine((val) => !isNaN(Number(val)), {
+        message: 'OCR_SPACE_TIMEOUT_MS must be a number',
+      })
+      .transform(Number)
+      .optional()
+      .default(30000),
   })
   .passthrough();
 
@@ -126,4 +137,6 @@ export const envs = {
   whatsappSocketPort: envVars.WHATSAPP_SOCKET_PORT,
 
   openaiApiKey: envVars.OPENAI_API_KEY,
+  ocrSpaceApiKey: envVars.OCR_SPACE_API_KEY,
+  ocrSpaceTimeoutMs: envVars.OCR_SPACE_TIMEOUT_MS,
 };

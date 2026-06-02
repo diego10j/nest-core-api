@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsPositive } from 'class-validator';
+import { IsInt, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 /** DTO reutilizable para las consultas de menudeo que reciben ide_inarti */

@@ -1,19 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
 import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 import { FacturasService } from 'src/core/modules/ventas/facturas/facturas.service';
-import { SectionsService } from 'src/reports/common/services/sections.service';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
+import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
-import * as bwipjs from 'bwip-js';
 
 import { facturaElectronicaReport } from './factura.report';
-import { resumenDiarioFacturasReport } from './resumen-diario.report';
 import { FacturaCabecera, FacturaDetalle, FacturaPago, FacturaRep } from './interfaces/factura-rep';
 import { ResumenDiarioRep } from './interfaces/resumen-diario-rep';
+import { resumenDiarioFacturasReport } from './resumen-diario.report';
 
 @Injectable()
 export class FacturasRepService {

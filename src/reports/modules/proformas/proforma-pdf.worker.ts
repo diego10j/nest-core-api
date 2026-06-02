@@ -8,7 +8,6 @@
 import * as path from 'path';
 
 import PdfPrinter from 'pdfmake';
-
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
 import { HeaderSection } from 'src/reports/common/sections/header.section';
 

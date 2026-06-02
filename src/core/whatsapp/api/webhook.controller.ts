@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Body, Query, HttpException, HttpStatus, Logger, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Logger, Post, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 
 import { WhatsappApiService } from './whatsapp-api.service';
@@ -13,8 +15,12 @@ export class WebhookController {
 
   @Get()
   @ApiOperation({ summary: 'Verificar token de webhook de WhatsApp (Meta)' })
-  verifyWebhook(@Query('hub.challenge') challenge: string, @Query('hub.verify_token') verifyToken: string) {
-    const token = envs.whatsappVerifyToken; // Debe ser el mismo que configuraste en Meta
+  verifyWebhook(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Query('hub.challenge') challenge: string,
+    @Query('hub.verify_token') verifyToken: string,
+  ) {
+    const token = envs.whatsappVerifyToken;
     if (verifyToken === token) {
       this.logger.log('Webhook verification successful');
       return challenge;
@@ -25,15 +31,17 @@ export class WebhookController {
 
   @Post()
   @ApiOperation({ summary: 'Recibir eventos de webhook de WhatsApp (mensajes entrantes)' })
-  async handleWebhook(@Body() body: any, @Res() res: any) {
+  async handleWebhook(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() body: any,
+    @Res() res: any,
+  ) {
     this.logger.log(`Webhook received: ${JSON.stringify(body, null, 2)}`);
-    // Responde inmediatamente a Meta para evitar reintentos
     res.status(HttpStatus.OK).send({ status: 'EVENT_RECEIVED' });
-    // Procesa el mensaje en segundo plano
     try {
       await this.whatsappApiService.saveReceivedMessage(body);
     } catch (error) {
-      this.logger.error(`❌ Error manejando webhook: ${error.message}`);
+      this.logger.error(`Error manejando webhook: ${error.message}`);
     }
   }
 }

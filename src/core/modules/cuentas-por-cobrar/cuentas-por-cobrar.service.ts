@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Console } from 'console';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';

@@ -16,11 +16,16 @@ export interface ProformaRepCabecera {
     referencia_cccpr?: string;
     anulado_cccpr?: boolean;
     enviado_cccpr?: boolean;
+    ide_cndfp?: number;
+    nombre_cndfp?: string;
     ide_getid?: number;
     nombre_getid?: string;
     identificac_cccpr?: string;
     ide_vgven?: number;
     nombre_vgven?: string;
+    movil_vgven?: string;
+    correo_vgven?: string;
+    copia_correo_vgven?: string;
     ide_ccten?: number;
     nombre_ccten?: string;
     ide_ccvap?: number;

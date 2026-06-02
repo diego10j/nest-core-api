@@ -2,9 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
-import { ObjectQueryDto } from 'src/core/connection/dto';
+
 import { DocumentosCxPSaveService } from '../cuentas-por-pagar/documentos-cxp-save.service';
 import { SaveDocumentoCxPDto } from '../cuentas-por-pagar/dto/save-documento-cxp.dto';
 
@@ -20,6 +21,7 @@ import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
 const IDE_CNTDO_IMPORTACION = 11;
+const IDE_IMTCO_FACTURA_COMERCIAL = 15;
 
 @Injectable()
 export class ImportacionesSaveService extends BaseService {
@@ -168,7 +170,7 @@ export class ImportacionesSaveService extends BaseService {
 
         // Validar que la factura exista, sea tipo 11 y no esté anulada
         const qFac = new SelectQuery(`
-            SELECT ide_cpcfa, ide_cntdo, ide_cpefa, total_cpcfa
+            SELECT ide_cpcfa, ide_cntdo, ide_cpefa, total_cpcfa, numero_cpcfa
             FROM cxp_cabece_factur
             WHERE ide_cpcfa = $1
         `);
@@ -209,7 +211,31 @@ export class ImportacionesSaveService extends BaseService {
             [ide_imcaim, ide_cpcfa, login],
         );
 
-        return { message: 'ok', ide_imcaim, ide_cpcfa, total_cpcfa: factura.total_cpcfa };
+        // Si la importación ya tenía otra factura asignada, desactivar el costo anterior
+        if (importacion.ide_cpcfa_actual && Number(importacion.ide_cpcfa_actual) !== ide_cpcfa) {
+            await this.dataSource.pool.query(
+                `UPDATE imp_costos_import SET activo_imcoim = false
+                 WHERE ide_imcaim = $1 AND ide_imtco = $2 AND activo_imcoim = true`,
+                [ide_imcaim, IDE_IMTCO_FACTURA_COMERCIAL],
+            );
+        }
+
+        // Crear el costo asociado a la factura comercial
+        const ide_imcoim = await this.dataSource.getSeqTable('imp_costos_import', 'ide_imcoim', 1, login);
+        await this.dataSource.pool.query(
+            `INSERT INTO imp_costos_import (
+                ide_imcoim, ide_imcaim, ide_imtco, ide_mone, ide_cpcfa,
+                fecha_imcoim, monto_imcoim, observaciones_imcoim,
+                referencia_imcoim, activo_imcoim
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
+            [
+                ide_imcoim, ide_imcaim, IDE_IMTCO_FACTURA_COMERCIAL, null, ide_cpcfa,
+                new Date().toISOString().slice(0, 10), null,
+                'Costo asociado a factura CxP', factura.numero_cpcfa ?? null,
+            ],
+        );
+
+        return { message: 'ok', ide_imcaim, ide_cpcfa, total_cpcfa: factura.total_cpcfa, ide_imcoim };
     }
 
     async desasignarFacturaCxp(ide_imcaim: number, login: string) {
@@ -218,6 +244,13 @@ export class ImportacionesSaveService extends BaseService {
         const cab = await this.dataSource.createSingleQuery(qCab);
         if (!cab) throw new BadRequestException('Orden de importación no encontrada');
         if (!cab.ide_cpcfa) throw new BadRequestException('La orden no tiene ninguna factura asignada');
+
+        // Desactivar el costo asociado a la factura comercial
+        await this.dataSource.pool.query(
+            `UPDATE imp_costos_import SET activo_imcoim = false
+             WHERE ide_imcaim = $1 AND ide_cpcfa = $2 AND ide_imtco = $3 AND activo_imcoim = true`,
+            [ide_imcaim, cab.ide_cpcfa, IDE_IMTCO_FACTURA_COMERCIAL],
+        );
 
         await this.dataSource.pool.query(
             `UPDATE imp_cab_importa
@@ -320,7 +353,7 @@ export class ImportacionesSaveService extends BaseService {
     // ENVÍO
     // ========================================================================
     async saveEnvio(dtoIn: SaveEnvioDto & HeaderParamsDto) {
-        const isUpdate = !!dtoIn.ide_imenv;
+        const isUpdate = dtoIn.ide_imenv != null;
         if (isUpdate) {
             await this.dataSource.pool.query(
                 `UPDATE imp_envio SET
@@ -381,7 +414,7 @@ export class ImportacionesSaveService extends BaseService {
             }
         }
 
-        const isUpdate = !!dtoIn.ide_imga;
+        const isUpdate = dtoIn.ide_imga != null;
         if (isUpdate) {
             await this.dataSource.pool.query(
                 `UPDATE imp_gestion_aduana SET
@@ -420,7 +453,7 @@ export class ImportacionesSaveService extends BaseService {
     // LIQUIDACIÓN ADUANA
     // ========================================================================
     async saveLiquidacionAduana(dtoIn: SaveLiquidacionAduanaDto & HeaderParamsDto) {
-        const isUpdate = !!dtoIn.ide_imliq;
+        const isUpdate = dtoIn.ide_imliq != null;
         if (isUpdate) {
             await this.dataSource.pool.query(
                 `UPDATE imp_liquidacion_aduana SET
@@ -461,18 +494,30 @@ export class ImportacionesSaveService extends BaseService {
     // COSTO
     // ========================================================================
     async saveCosto(dtoIn: SaveCostoImportDto & HeaderParamsDto) {
-        const isUpdate = !!dtoIn.ide_imcoim;
+        const isUpdate = dtoIn.ide_imcoim != null;
         if (isUpdate) {
+            const qOld = new SelectQuery(`
+                SELECT ide_imtco, ide_mone, ide_cpcfa, fecha_imcoim,
+                       monto_imcoim, observaciones_imcoim, referencia_imcoim
+                FROM imp_costos_import
+                WHERE ide_imcoim = $1
+            `);
+            qOld.addIntParam(1, dtoIn.ide_imcoim);
+            const old = await this.dataSource.createSingleQuery(qOld);
+
             await this.dataSource.pool.query(
                 `UPDATE imp_costos_import SET
                    ide_imtco = $2, ide_mone = $3, ide_cpcfa = $4, fecha_imcoim = $5,
                    monto_imcoim = $6, observaciones_imcoim = $7, referencia_imcoim = $8
                  WHERE ide_imcoim = $1`,
                 [
-                    dtoIn.ide_imcoim, dtoIn.ide_imtco, dtoIn.ide_mone ?? null,
-                    dtoIn.ide_cpcfa ?? null, dtoIn.fecha_imcoim ?? null,
-                    dtoIn.monto_imcoim, dtoIn.observaciones_imcoim ?? null,
-                    dtoIn.referencia_imcoim ?? null,
+                    dtoIn.ide_imcoim, dtoIn.ide_imtco,
+                    dtoIn.ide_mone ?? old.ide_mone ?? null,
+                    dtoIn.ide_cpcfa ?? old.ide_cpcfa ?? null,
+                    dtoIn.fecha_imcoim ?? old.fecha_imcoim ?? null,
+                    dtoIn.monto_imcoim ?? old.monto_imcoim,
+                    dtoIn.observaciones_imcoim ?? old.observaciones_imcoim ?? null,
+                    dtoIn.referencia_imcoim ?? old.referencia_imcoim ?? null,
                 ],
             );
             return { message: 'ok', ide_imcoim: dtoIn.ide_imcoim };
@@ -495,7 +540,11 @@ export class ImportacionesSaveService extends BaseService {
 
     async deleteCosto(ide_imcoim: number) {
         await this.dataSource.pool.query(
-            `UPDATE imp_costos_import SET activo_imcoim = false WHERE ide_imcoim = $1`,
+            `DELETE FROM imp_distribucion_costo WHERE ide_imcoim = $1`,
+            [ide_imcoim],
+        );
+        await this.dataSource.pool.query(
+            `DELETE FROM imp_costos_import WHERE ide_imcoim = $1`,
             [ide_imcoim],
         );
         return { message: 'ok' };
@@ -505,7 +554,7 @@ export class ImportacionesSaveService extends BaseService {
     // PAGO
     // ========================================================================
     async savePago(dtoIn: SavePagoImportDto & HeaderParamsDto) {
-        const isUpdate = !!dtoIn.ide_impag;
+        const isUpdate = dtoIn.ide_impag != null;
         if (isUpdate) {
             await this.dataSource.pool.query(
                 `UPDATE imp_pagos_import SET
@@ -555,7 +604,7 @@ export class ImportacionesSaveService extends BaseService {
     // DOCUMENTO
     // ========================================================================
     async saveDocumento(dtoIn: SaveDocumentoDto & HeaderParamsDto) {
-        const isUpdate = !!dtoIn.ide_imdocu;
+        const isUpdate = dtoIn.ide_imdocu != null;
         if (isUpdate) {
             await this.dataSource.pool.query(
                 `UPDATE imp_documentos SET

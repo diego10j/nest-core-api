@@ -1,5 +1,5 @@
-import { IsArray, IsIn, IsInt, IsNotEmpty, IsNumber, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsArray, IsIn, IsInt, IsNotEmpty, IsNumber, ValidateNested } from 'class-validator';
 
 export class DistribucionItemDto {
     @IsInt()

@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/comprobante-contabilidad/comprobante-contabilidad.service';
-import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
+import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
+import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 

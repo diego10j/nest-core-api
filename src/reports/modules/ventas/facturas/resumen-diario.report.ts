@@ -1,9 +1,9 @@
-import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { footerSection } from 'src/reports/common/sections/footer.section';
-import { fDate, fTime } from 'src/util/helpers/date-util';
-import { fCurrency } from 'src/util/helpers/common-util';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
+import { footerSection } from 'src/reports/common/sections/footer.section';
+import { fCurrency } from 'src/util/helpers/common-util';
+import { fTime } from 'src/util/helpers/date-util';
 
 import { ResumenDiarioRep } from './interfaces/resumen-diario-rep';
 

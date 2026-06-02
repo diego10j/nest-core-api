@@ -29,8 +29,8 @@ import {
   SessionRepository,
 } from './infrastructure/repositories';
 import { PasswordService } from './password.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 // Use Cases
 
