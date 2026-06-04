@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
@@ -17,4 +17,9 @@ export class PagosFacturasDto extends QueryOptionsDto {
   @IsOptional()
   conDiferencias?: 'true' | 'false';
 
+
+  @IsOptional()
+  @IsNotEmpty({ each: true })
+  @IsArray()
+  ideUsuaList?: number[];
 }

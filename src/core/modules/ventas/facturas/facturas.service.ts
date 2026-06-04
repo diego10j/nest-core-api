@@ -31,7 +31,8 @@ export class FacturasService extends BaseService {
                 'p_con_tipo_documento_factura',   // 1 tipo documento factura
                 'p_sri_estado_comprobante_creado', // 2 estado SRI al crear comprobante
                 'p_inv_estado_normal',             // 3 estado normal de comprobante inventario
-                'p_inv_bodega_activa',             // 4 bodega activa por defecto
+                'p_inv_bodega_activa',
+                'p_tes_estado_lib_banco_normal'
             ])
             .then((result) => {
                 this.variables = result;
@@ -669,6 +670,9 @@ export class FacturasService extends BaseService {
         const condDiferencias = String(dtoIn.conDiferencias) === 'true'
             ? `AND (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) != 0`
             : '';
+        const condIdeUsua = (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0)
+            ? `AND a.ide_usua = ANY ($3)`
+            : '';
         const query = new SelectQuery(
             `
             WITH facturas_ids AS (
@@ -682,6 +686,7 @@ export class FacturasService extends BaseService {
                   AND a.ide_sucu  = ${dtoIn.ideSucu}
                   AND a.ide_ccefa = ${estadoNormal}
                   ${condPtoEmision}
+                  ${condIdeUsua}
             ),
             pagos_totales AS (
                 -- Total pagado por factura: SUM limpio sin joins adicionales
@@ -695,10 +700,9 @@ export class FacturasService extends BaseService {
                 WHERE dt.numero_pago_ccdtr > 0
                 GROUP BY dt.ide_cccfa
             ),
-            pagos_detalle AS (
-                -- Detalle JSON de cada pago con información de banco/cuenta.
-                -- Separado de pagos_totales para que los LEFT JOINs no
-                -- afecten el cálculo del total.
+            pagos_cxc_detalle AS (
+                -- Detalle puro de CXC: solo cxc_detall_transa + tipo de transacción.
+                -- Sin joins a tesorería ni bancos para no mezclar orígenes.
                 SELECT
                     dt.ide_cccfa,
                     json_agg(
@@ -706,24 +710,52 @@ export class FacturasService extends BaseService {
                             'ide_ccdtr',     dt.ide_ccdtr,
                             'fecha',         dt.fecha_trans_ccdtr,
                             'documento',     dt.docum_relac_ccdtr,
-                            'tipo',          f.nombre_tettb,
+                            'tipo',          tt.nombre_ccttr,
                             'valor',         dt.valor_ccdtr,
-                            'banco',         e.nombre_teban,
-                            'cuenta',        d.nombre_tecba,
                             'observacion',   dt.observacion_ccdtr,
-                            'foto',          e.foto_teban,
-                            'color',         e.color_teban,
                             'usuario_ingre', dt.usuario_ingre,
                             'fecha_ingre',   dt.fecha_ingre,
                             'hora_ingre',    dt.hora_ingre
                         ) ORDER BY dt.fecha_trans_ccdtr
-                    ) AS pagos
+                    ) AS pagos_cxc
                 FROM cxc_detall_transa dt
-                INNER JOIN facturas_ids fi ON dt.ide_cccfa = fi.ide_cccfa
-                LEFT JOIN tes_cab_libr_banc c ON dt.ide_teclb = c.ide_teclb
-                LEFT JOIN tes_cuenta_banco  d ON c.ide_tecba  = d.ide_tecba
-                LEFT JOIN tes_banco         e ON d.ide_teban  = e.ide_teban
-                LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb  = f.ide_tettb
+                INNER JOIN facturas_ids fi         ON dt.ide_cccfa = fi.ide_cccfa
+                LEFT  JOIN cxc_tipo_transacc tt    ON dt.ide_ccttr = tt.ide_ccttr
+                WHERE dt.numero_pago_ccdtr > 0
+                GROUP BY dt.ide_cccfa
+            ),
+            pagos_tesoreria AS (
+                -- Detalle de tesorería anclado a cada ide_cccfa:
+                -- FROM principal es cxc_detall_transa (igual que pagos_cxc_detalle)
+                -- para garantizar que valor_teclb se impute solo a su factura.
+                -- Solo registros con cuenta bancaria activa (c.ide_tecba IS NOT NULL).
+                SELECT
+                    dt.ide_cccfa,
+                    COALESCE(SUM(c.valor_teclb), 0) AS total_tesoreria,
+                    json_agg(
+                        json_build_object(
+                            'ide_teclb',          c.ide_teclb,
+                            'numero_teclb',       c.numero_teclb,
+                            'num_comprobante',    c.num_comprobante_teclb,
+                            'fecha',              c.fecha_trans_teclb,
+                            'tipo',               f.nombre_tettb,
+                            'banco',              e.nombre_teban,
+                            'foto_banco',         e.foto_teban,
+                            'color_banco',        e.color_teban,
+                            'cuenta',             d.nombre_tecba,
+                            'valor_tesoreria',    c.valor_teclb,
+                            'usuario_ingre',      c.usuario_ingre,
+                            'fecha_ingre',        c.fecha_ingre,
+                            'hora_ingre',         c.hora_ingre
+                        ) ORDER BY c.fecha_trans_teclb
+                    ) AS pagos_tesoreria
+                FROM cxc_detall_transa dt
+                INNER JOIN facturas_ids fi         ON dt.ide_cccfa = fi.ide_cccfa
+                INNER JOIN tes_cab_libr_banc c     ON c.ide_teclb  = dt.ide_teclb
+                                                   AND c.ide_tecba IS NOT NULL
+                LEFT  JOIN tes_cuenta_banco  d     ON c.ide_tecba  = d.ide_tecba
+                LEFT  JOIN tes_banco         e     ON d.ide_teban  = e.ide_teban
+                LEFT  JOIN tes_tip_tran_banc f     ON c.ide_tettb  = f.ide_tettb
                 WHERE dt.numero_pago_ccdtr > 0
                 GROUP BY dt.ide_cccfa
             ),
@@ -737,6 +769,23 @@ export class FacturasService extends BaseService {
                 INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fi.ide_cncre
                 WHERE fi.ide_cncre IS NOT NULL
                 GROUP BY fi.ide_cccfa
+            ),
+            notas_credito_cte AS (
+                -- Total de notas de crédito asociadas a cada factura.
+                -- Se ancla por secuencial_cccfa (igual que en el resto del service).
+                SELECT
+                    cf.ide_cccfa,
+                    COUNT(nc.ide_cpcno)              AS cantidad_notas_credito,
+                    COALESCE(SUM(nc.total_cpcno), 0) AS total_notas_credito
+                FROM cxc_cabece_factura cf
+                INNER JOIN facturas_ids fi ON cf.ide_cccfa = fi.ide_cccfa
+                INNER JOIN cxp_cabecera_nota nc ON (
+                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    AND nc.ide_cpeno = 1
+                    AND nc.ide_empr  = cf.ide_empr
+                    AND nc.ide_sucu  = cf.ide_sucu
+                )
+                GROUP BY cf.ide_cccfa
             )
             SELECT
                 a.ide_cccfa,
@@ -754,38 +803,52 @@ export class FacturasService extends BaseService {
                 a.total_cccfa,
                 COALESCE(re.total_retencion, 0) AS total_retencion,
                 COALESCE(pt.total_pagado, 0)    AS total_pagado,
-                (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) AS saldo,
+                (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0))) AS saldo,
                 x.nombre_cndfp AS forma_pago,
                 a.dias_credito_cccfa,
                 CASE
                     WHEN a.dias_credito_cccfa > 0
                         AND (a.fecha_emisi_cccfa + a.dias_credito_cccfa * INTERVAL '1 day') < CURRENT_DATE
-                    THEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0)))
+                    THEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0)))
                     ELSE 0
                 END AS valor_vencido,
-                COALESCE(pd.pagos, '[]'::json) AS pagos,
+                -- Notas de crédito
+                COALESCE(ncc.cantidad_notas_credito, 0)                              AS cantidad_notas_credito,
+                COALESCE(ncc.total_notas_credito, 0)                                AS total_notas_credito,
+                (a.total_cccfa - COALESCE(ncc.total_notas_credito, 0))              AS total_neto,
+                -- Pagos CXC (origen cxc_detall_transa, sin tesorería)
+                COALESCE(pcxc.pagos_cxc, '[]'::json)                               AS pagos_cxc,
+                -- Pagos Tesorería (origen tes_cab_libr_banc)
+                COALESCE(ptes.total_tesoreria, 0)                                   AS total_tesoreria,
+                COALESCE(ptes.pagos_tesoreria, '[]'::json)                          AS pagos_tesoreria,
+                -- Diferencia: pagos CXC (efectivo/banco) vs registros en tesorería.
+                -- La retención NO se incluye: es un mecanismo distinto que no pasa por tesorería.
+                ROUND(COALESCE(pt.total_pagado, 0) - COALESCE(ptes.total_tesoreria, 0), 2) AS diferencia_tesoreria,
                 v.nombre_vgven AS vendedor,
                 a.usuario_ingre AS usuario_responsable,
                 a.fecha_ingre,
                 a.hora_ingre,
                 CASE
-                    WHEN (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0)) > a.total_cccfa
+                    WHEN (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0)) > a.total_cccfa
                         THEN 'PAGADO EN EXCESO'
-                    WHEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) <= 0
+                    WHEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0))) <= 0
                         THEN 'PAGADA'
                     WHEN COALESCE(pt.total_pagado, 0) = 0
-                        AND COALESCE(re.total_retencion, 0) = 0 THEN 'POR PAGAR'
+                        AND COALESCE(re.total_retencion, 0) = 0
+                        AND COALESCE(ncc.total_notas_credito, 0) = 0 THEN 'POR PAGAR'
                     ELSE 'PAGADO PARCIAL'
                 END AS estado_pago
             FROM cxc_cabece_factura a
-            INNER JOIN facturas_ids fi ON a.ide_cccfa  = fi.ide_cccfa
-            INNER JOIN gen_persona b   ON a.ide_geper  = b.ide_geper
-            INNER JOIN cxc_datos_fac df ON a.ide_ccdaf = df.ide_ccdaf
-            LEFT JOIN con_deta_forma_pago x ON a.ide_cndfp1 = x.ide_cndfp
-            LEFT JOIN ven_vendedor v        ON a.ide_vgven  = v.ide_vgven
-            LEFT JOIN pagos_totales pt      ON a.ide_cccfa  = pt.ide_cccfa
-            LEFT JOIN pagos_detalle pd      ON a.ide_cccfa  = pd.ide_cccfa
-            LEFT JOIN retenciones_cte re    ON a.ide_cccfa  = re.ide_cccfa
+            INNER JOIN facturas_ids fi   ON a.ide_cccfa  = fi.ide_cccfa
+            INNER JOIN gen_persona b     ON a.ide_geper  = b.ide_geper
+            INNER JOIN cxc_datos_fac df  ON a.ide_ccdaf  = df.ide_ccdaf
+            LEFT JOIN con_deta_forma_pago x  ON a.ide_cndfp1 = x.ide_cndfp
+            LEFT JOIN ven_vendedor v          ON a.ide_vgven  = v.ide_vgven
+            LEFT JOIN pagos_totales pt        ON a.ide_cccfa  = pt.ide_cccfa
+            LEFT JOIN pagos_cxc_detalle pcxc  ON a.ide_cccfa  = pcxc.ide_cccfa
+            LEFT JOIN pagos_tesoreria ptes    ON a.ide_cccfa  = ptes.ide_cccfa
+            LEFT JOIN retenciones_cte re      ON a.ide_cccfa  = re.ide_cccfa
+            LEFT JOIN notas_credito_cte ncc   ON a.ide_cccfa  = ncc.ide_cccfa
             WHERE TRUE
                 ${condDiferencias}
             ORDER BY a.fecha_emisi_cccfa DESC, a.secuencial_cccfa DESC
@@ -794,6 +857,9 @@ export class FacturasService extends BaseService {
         );
         query.addParam(1, dtoIn.fechaInicio);
         query.addParam(2, dtoIn.fechaFin);
+        if (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0) {
+            query.addParam(3, dtoIn.ideUsuaList);
+        }
         return this.dataSource.createQuery(query);
     }
 
@@ -932,41 +998,40 @@ export class FacturasService extends BaseService {
             throw new Error(`No se encontró la factura con ide_cccfa: ${dtoIn.ide_cccfa}`);
         }
 
-        // Pagos asociados a la factura
+        // Pagos asociados a la factura — valores desde tesorería (tes_cab_libr_banc),
+        // anclados por cxc_detall_transa para garantizar imputación correcta por factura.
+        // Se mantienen los mismos alias de columna para no romper el front.
         const queryPagos = new SelectQuery(
             `
             SELECT
-            a.ide_ccdtr,
-            a.fecha_trans_ccdtr,
-            a.docum_relac_ccdtr,
-            nombre_tettb,
-            a.valor_ccdtr,
-            e.nombre_teban,
-            d.nombre_tecba as cuenta,
-            a.observacion_ccdtr AS observacion,
-            c.ide_tecba,
-            'PAGO' AS tipo_transaccion,
-            a.usuario_ingre,
-            a.fecha_ingre,
-            a.hora_ingre,
-            a.usuario_actua,
-            a.fecha_actua,
-            a.hora_actua,
-            SUM(a.valor_ccdtr) OVER () AS totalpagos,
-            e.foto_teban,
-            e.color_teban
-            FROM
-            cxc_detall_transa a
-            LEFT JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
-            LEFT JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
-            LEFT JOIN tes_cuenta_banco d ON c.ide_tecba = d.ide_tecba
-            LEFT JOIN tes_banco e ON d.ide_teban = e.ide_teban
-            LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb = f.ide_tettb
-            WHERE
-            a.numero_pago_ccdtr > 0
-            AND a.ide_cccfa = $1
-            ORDER BY
-            a.fecha_trans_ccdtr
+                dt.ide_ccdtr,
+                c.fecha_trans_teclb             AS fecha_trans_ccdtr,
+                c.num_comprobante_teclb         AS docum_relac_ccdtr,
+                f.nombre_tettb,
+                c.valor_teclb                   AS valor_ccdtr,
+                e.nombre_teban,
+                d.nombre_tecba                  AS cuenta,
+                dt.observacion_ccdtr            AS observacion,
+                c.ide_tecba,
+                'PAGO'                          AS tipo_transaccion,
+                c.usuario_ingre,
+                c.fecha_ingre,
+                c.hora_ingre,
+                c.usuario_actua,
+                c.fecha_actua,
+                c.hora_actua,
+                SUM(c.valor_teclb) OVER ()      AS totalpagos,
+                e.foto_teban,
+                e.color_teban
+            FROM cxc_detall_transa dt
+            INNER JOIN tes_cab_libr_banc c  ON c.ide_teclb  = dt.ide_teclb
+                                           AND c.ide_tecba IS NOT NULL
+            LEFT  JOIN tes_cuenta_banco  d  ON c.ide_tecba  = d.ide_tecba
+            LEFT  JOIN tes_banco         e  ON d.ide_teban  = e.ide_teban
+            LEFT  JOIN tes_tip_tran_banc f  ON c.ide_tettb  = f.ide_tettb
+            WHERE dt.numero_pago_ccdtr > 0
+              AND dt.ide_cccfa = $1
+            ORDER BY c.fecha_trans_teclb
             `,
         );
         queryPagos.addIntParam(1, dtoIn.ide_cccfa);

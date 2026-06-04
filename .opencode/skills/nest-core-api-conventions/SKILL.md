@@ -404,3 +404,55 @@ const isUpdate = dtoIn.ideTeban != null;
 
 This applies to **every** save method that uses the presence of an ID to decide
 between insert and update. Check all `ide*` fields in save DTOs.
+
+## 9. Array Parameters in SQL — Use `ANY ($N)`, NEVER string interpolation
+
+When filtering by an array of IDs (e.g. `WHERE col IN (1,2,3)`), **ALWAYS** use
+PostgreSQL's `ANY ($N)` operator with parameterized queries. Never use string
+interpolation like `${ids.join(',')}` — it's a SQL injection risk.
+
+```typescript
+// WRONG — string interpolation, SQL injection risk
+const ids = [1, 2, 3];
+const cond = `AND a.ide_usua IN (${ids.join(',')})`;
+
+// CORRECT — parameterized array with ANY
+const cond = `AND a.ide_usua = ANY ($3)`;
+query.addParam(3, ids);
+```
+
+The `addParam` method passes the JavaScript array directly to node-postgres,
+which serializes it as a PostgreSQL array (`{1,2,3}`). The `ANY ($N)` operator
+matches any element in the array.
+
+When the array parameter is conditional (optional filter), place the
+`addParam` call inside the same conditional block:
+
+```typescript
+const condIdeUsua = (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0)
+    ? `AND a.ide_usua = ANY ($3)`
+    : '';
+
+// ...
+
+query.addParam(1, dtoIn.fechaInicio);
+query.addParam(2, dtoIn.fechaFin);
+if (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0) {
+    query.addParam(3, dtoIn.ideUsuaList);
+}
+```
+
+**DTO pattern for array query params** (GET endpoints pass comma-separated strings):
+
+```typescript
+@IsInt({ each: true })
+@IsOptional()
+@Transform(({ value }) => {
+    if (value == null) return undefined;
+    if (Array.isArray(value)) return value.map(Number);
+    return String(value).split(',').map(Number);
+})
+ideUsuaList?: number[];
+```
+
+This transforms `?ideUsuaList=1,2,3` into `[1, 2, 3]`.
