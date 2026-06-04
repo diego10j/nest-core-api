@@ -32,4 +32,8 @@ export class SaveCuentaBancoDto {
     @IsBoolean()
     @IsOptional()
     haceChequeTecba?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    activoTecba?: boolean;
 }

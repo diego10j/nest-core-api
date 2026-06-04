@@ -7,6 +7,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { FacturasDto } from './dto/facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
+import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
@@ -100,6 +101,15 @@ export class FacturasController {
   // @Auth()
   getFacturasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getFacturasPorCobrar({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getReportePagosFacturas')
+  @ApiOperation({ summary: 'Listar facturas con detalle de pagos en JSON, agrupadas por factura' })
+  getReportePagosFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PagosFacturasDto) {
+    return this.service.getReportePagosFacturas({
       ...headersParams,
       ...dtoIn,
     });

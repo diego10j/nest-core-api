@@ -13,6 +13,7 @@ import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
+import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 
 @Injectable()
@@ -659,6 +660,143 @@ export class FacturasService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
+    async getReportePagosFacturas(dtoIn: PagosFacturasDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const condPtoEmision = dtoIn.ide_ccdaf ? `AND a.ide_ccdaf = ${dtoIn.ide_ccdaf}` : '';
+        // condDiferencias usa los valores ya calculados en los CTEs (no subqueries correlacionadas)
+        // saldo = total_cccfa - (total_pagado + total_retencion)
+        const condDiferencias = dtoIn.conDiferencias
+            ? `AND (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) != 0`
+            : '';
+
+        const query = new SelectQuery(
+            `
+            WITH facturas_ids AS (
+                -- CTE ancla: pre-filtra solo los ide_cccfa del rango/empresa/sucursal/estado.
+                -- Los CTEs siguientes se unen a este conjunto reducido en lugar de
+                -- escanear las tablas completas.
+                SELECT a.ide_cccfa, a.ide_cncre
+                FROM cxc_cabece_factura a
+                WHERE a.fecha_emisi_cccfa BETWEEN $1 AND $2
+                  AND a.ide_empr  = ${dtoIn.ideEmpr}
+                  AND a.ide_sucu  = ${dtoIn.ideSucu}
+                  AND a.ide_ccefa = ${estadoNormal}
+                  ${condPtoEmision}
+            ),
+            pagos_totales AS (
+                -- Total pagado por factura: SUM limpio sin joins adicionales
+                -- (igual que pagos_agrupados en getFacturas) para evitar
+                -- que los LEFT JOINs de banco/cuenta dupliquen filas.
+                SELECT
+                    dt.ide_cccfa,
+                    SUM(dt.valor_ccdtr) AS total_pagado
+                FROM cxc_detall_transa dt
+                INNER JOIN facturas_ids fi ON dt.ide_cccfa = fi.ide_cccfa
+                WHERE dt.numero_pago_ccdtr > 0
+                GROUP BY dt.ide_cccfa
+            ),
+            pagos_detalle AS (
+                -- Detalle JSON de cada pago con información de banco/cuenta.
+                -- Separado de pagos_totales para que los LEFT JOINs no
+                -- afecten el cálculo del total.
+                SELECT
+                    dt.ide_cccfa,
+                    json_agg(
+                        json_build_object(
+                            'ide_ccdtr',     dt.ide_ccdtr,
+                            'fecha',         dt.fecha_trans_ccdtr,
+                            'documento',     dt.docum_relac_ccdtr,
+                            'tipo',          f.nombre_tettb,
+                            'valor',         dt.valor_ccdtr,
+                            'banco',         e.nombre_teban,
+                            'cuenta',        d.nombre_tecba,
+                            'observacion',   dt.observacion_ccdtr,
+                            'foto',          e.foto_teban,
+                            'color',         e.color_teban,
+                            'usuario_ingre', dt.usuario_ingre,
+                            'fecha_ingre',   dt.fecha_ingre,
+                            'hora_ingre',    dt.hora_ingre
+                        ) ORDER BY dt.fecha_trans_ccdtr
+                    ) AS pagos
+                FROM cxc_detall_transa dt
+                INNER JOIN facturas_ids fi ON dt.ide_cccfa = fi.ide_cccfa
+                LEFT JOIN tes_cab_libr_banc c ON dt.ide_teclb = c.ide_teclb
+                LEFT JOIN tes_cuenta_banco  d ON c.ide_tecba  = d.ide_tecba
+                LEFT JOIN tes_banco         e ON d.ide_teban  = e.ide_teban
+                LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb  = f.ide_tettb
+                WHERE dt.numero_pago_ccdtr > 0
+                GROUP BY dt.ide_cccfa
+            ),
+            retenciones_cte AS (
+                -- Retenciones ancladas al conjunto reducido; evita full scan de
+                -- cxc_cabece_factura y con_detall_retenc para toda la historia.
+                SELECT
+                    fi.ide_cccfa,
+                    SUM(dr.valor_cndre) AS total_retencion
+                FROM facturas_ids fi
+                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fi.ide_cncre
+                WHERE fi.ide_cncre IS NOT NULL
+                GROUP BY fi.ide_cccfa
+            )
+            SELECT
+                a.ide_cccfa,
+                a.ide_geper,
+                a.fecha_emisi_cccfa,
+                df.establecimiento_ccdfa,
+                df.pto_emision_ccdfa,
+                df.serie_ccdaf,
+                a.secuencial_cccfa,
+                b.nom_geper AS cliente,
+                b.identificac_geper,
+                a.base_grabada_cccfa,
+                a.base_tarifa0_cccfa + COALESCE(a.base_no_objeto_iva_cccfa, 0) AS base0,
+                a.valor_iva_cccfa,
+                a.total_cccfa,
+                COALESCE(re.total_retencion, 0) AS total_retencion,
+                COALESCE(pt.total_pagado, 0)    AS total_pagado,
+                (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) AS saldo,
+                x.nombre_cndfp AS forma_pago,
+                a.dias_credito_cccfa,
+                CASE
+                    WHEN a.dias_credito_cccfa > 0
+                        AND (a.fecha_emisi_cccfa + a.dias_credito_cccfa * INTERVAL '1 day') < CURRENT_DATE
+                    THEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0)))
+                    ELSE 0
+                END AS valor_vencido,
+                COALESCE(pd.pagos, '[]'::json) AS pagos,
+                v.nombre_vgven AS vendedor,
+                a.usuario_ingre AS usuario_responsable,
+                a.fecha_ingre,
+                a.hora_ingre,
+                CASE
+                    WHEN (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0)) > a.total_cccfa
+                        THEN 'PAGADO EN EXCESO'
+                    WHEN (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) <= 0
+                        THEN 'PAGADA'
+                    WHEN COALESCE(pt.total_pagado, 0) = 0
+                        AND COALESCE(re.total_retencion, 0) = 0 THEN 'POR PAGAR'
+                    ELSE 'PAGADO PARCIAL'
+                END AS estado_pago
+            FROM cxc_cabece_factura a
+            INNER JOIN facturas_ids fi ON a.ide_cccfa  = fi.ide_cccfa
+            INNER JOIN gen_persona b   ON a.ide_geper  = b.ide_geper
+            INNER JOIN cxc_datos_fac df ON a.ide_ccdaf = df.ide_ccdaf
+            LEFT JOIN con_deta_forma_pago x ON a.ide_cndfp1 = x.ide_cndfp
+            LEFT JOIN ven_vendedor v        ON a.ide_vgven  = v.ide_vgven
+            LEFT JOIN pagos_totales pt      ON a.ide_cccfa  = pt.ide_cccfa
+            LEFT JOIN pagos_detalle pd      ON a.ide_cccfa  = pd.ide_cccfa
+            LEFT JOIN retenciones_cte re    ON a.ide_cccfa  = re.ide_cccfa
+            WHERE TRUE
+                ${condDiferencias}
+            ORDER BY a.fecha_emisi_cccfa DESC, a.secuencial_cccfa DESC
+            `,
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        return this.dataSource.createQuery(query);
+    }
+
     async getFacturaById(dtoIn: GetFacturaDto & HeaderParamsDto) {
         // Consulta para obtener la cabecera de la factura con todos los joins
         const queryCabecera = new SelectQuery(
@@ -814,7 +952,9 @@ export class FacturasService extends BaseService {
             a.usuario_actua,
             a.fecha_actua,
             a.hora_actua,
-            SUM(a.valor_ccdtr) OVER () AS totalpagos
+            SUM(a.valor_ccdtr) OVER () AS totalpagos,
+            e.foto_teban,
+            e.color_teban
             FROM
             cxc_detall_transa a
             LEFT JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr

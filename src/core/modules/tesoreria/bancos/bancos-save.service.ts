@@ -91,6 +91,7 @@ export class BancosSaveService extends BaseService {
             observacion_tecba: dtoIn.observacionTecba ?? null,
             hace_pagos_tecba: dtoIn.hacePagosTecba ?? false,
             hace_cheque_tecba: dtoIn.haceChequeTecba ?? false,
+            activo_tecba: dtoIn.activoTecba ?? true,
         };
 
         if (isUpdate) {
@@ -106,7 +107,6 @@ export class BancosSaveService extends BaseService {
         } else {
             ideTecba = await this.dataSource.getSeqTable('tes_cuenta_banco', 'ide_tecba', 1, dtoIn.login);
             object.ide_tecba = ideTecba;
-            object.activo_tecba = true;
             listQuery.push({
                 operation: 'insert',
                 module: 'tes',

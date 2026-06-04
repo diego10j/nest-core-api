@@ -28,13 +28,15 @@ export class BancosService extends BaseService {
                 b.telefono_teban,
                 b.es_caja_teban,
                 b.foto_teban,
-                b.color_teban
+                b.color_teban,
+        (select count(1) from tes_cuenta_banco cb where cb.ide_teban = b.ide_teban and cb.ide_empr = $1 and cb.ide_sucu = $2) as cantidad_cuentas
             FROM tes_banco b
             WHERE b.ide_empr = $1
               AND b.es_caja_teban = false
             ORDER BY b.nombre_teban
         `, dtoIn);
         query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.ideSucu);
         return this.dataSource.createQuery(query, 'tes_banco');
     }
 
@@ -78,16 +80,20 @@ export class BancosService extends BaseService {
                 cb.ide_tetcb,
                 cb.ide_teban,
                 cb.ide_cndpc,
+                tcb.nombre_tetcb,
                 cb.nombre_tecba,
                 cb.observacion_tecba,
                 cb.hace_pagos_tecba,
                 cb.hace_cheque_tecba,
+                cta.codig_recur_cndpc || ' - ' || cta.nombre_cndpc AS cuenta,
                 cb.activo_tecba,
                 b.nombre_teban,
                 b.color_teban,
                 b.foto_teban
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            LEFT JOIN con_det_plan_cuen cta ON cta.ide_cndpc = cb.ide_cndpc
+            LEFT JOIN tes_tip_cuen_banc tcb ON tcb.ide_tetcb = cb.ide_tetcb
             WHERE cb.ide_empr = $1
               AND cb.ide_sucu = $2
               AND ($3::int8 IS NULL OR cb.ide_teban = $3)
