@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsInt, IsOptional } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
@@ -13,8 +13,8 @@ export class PagosFacturasDto extends QueryOptionsDto {
   @IsOptional()
   ide_ccdaf?: number;
 
-  @IsBoolean()
+  @IsIn(['true', 'false']) // Solo permite estos valores
   @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  conDiferencias?: boolean = false;
+  conDiferencias?: 'true' | 'false';
+
 }

@@ -665,10 +665,10 @@ export class FacturasService extends BaseService {
         const condPtoEmision = dtoIn.ide_ccdaf ? `AND a.ide_ccdaf = ${dtoIn.ide_ccdaf}` : '';
         // condDiferencias usa los valores ya calculados en los CTEs (no subqueries correlacionadas)
         // saldo = total_cccfa - (total_pagado + total_retencion)
-        const condDiferencias = dtoIn.conDiferencias
+
+        const condDiferencias = String(dtoIn.conDiferencias) === 'true'
             ? `AND (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0))) != 0`
             : '';
-
         const query = new SelectQuery(
             `
             WITH facturas_ids AS (
