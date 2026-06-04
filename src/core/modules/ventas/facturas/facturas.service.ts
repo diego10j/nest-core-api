@@ -821,9 +821,13 @@ export class FacturasService extends BaseService {
                 -- Pagos Tesorería (origen tes_cab_libr_banc)
                 COALESCE(ptes.total_tesoreria, 0)                                   AS total_tesoreria,
                 COALESCE(ptes.pagos_tesoreria, '[]'::json)                          AS pagos_tesoreria,
-                -- Diferencia: pagos CXC (efectivo/banco) vs registros en tesorería.
-                -- La retención NO se incluye: es un mecanismo distinto que no pasa por tesorería.
-                ROUND(COALESCE(pt.total_pagado, 0) - COALESCE(ptes.total_tesoreria, 0), 2) AS diferencia_tesoreria,
+                -- Diferencia: pagos CXC netos vs registros en tesorería.
+                -- Se excluyen retención y notas de crédito: ambos reducen el saldo en CXC
+                -- pero no generan movimiento bancario en tesorería.
+                ROUND(
+                    (COALESCE(pt.total_pagado, 0) - COALESCE(ncc.total_notas_credito, 0))
+                    - COALESCE(ptes.total_tesoreria, 0),
+                2) AS diferencia_tesoreria,
                 v.nombre_vgven AS vendedor,
                 a.usuario_ingre AS usuario_responsable,
                 a.fecha_ingre,
