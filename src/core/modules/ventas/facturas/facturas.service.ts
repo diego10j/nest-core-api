@@ -663,8 +663,12 @@ export class FacturasService extends BaseService {
         // condDiferencias usa los valores ya calculados en los CTEs (no subqueries correlacionadas)
         // saldo = total_cccfa - (total_pagado + total_retencion)
 
+        // conDiferencias muestra solo facturas con saldo pendiente real > 0.
+        // Excluye facturas totalmente pagadas (saldo <= 0), incluyendo:
+        //   - devoluciones completas por NC (saldo negativo)
+        //   - facturas pagadas en efectivo/retención (saldo = 0)
         const condDiferencias = String(dtoIn.conDiferencias) === 'true'
-            ? `AND (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0))) != 0`
+            ? `AND (a.total_cccfa - (COALESCE(pt.total_pagado, 0) + COALESCE(re.total_retencion, 0) + COALESCE(ncc.total_notas_credito, 0))) > 0`
             : '';
         const condIdeUsua = (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0)
             ? `AND a.ide_usua = ANY ($3)`
