@@ -635,17 +635,15 @@ export class ProductosService extends BaseService {
         WITH notas_credito_detalle AS (
             SELECT 
                 cdn.ide_inarti,
-                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                cf.ide_cccfa,
                 SUM(cdn.valor_cpdno) AS valor_nota_credito,
                 SUM(cdn.cantidad_cpdno) AS cantidad_nota_credito
             FROM cxp_cabecera_nota cn
             JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
-              AND cn.ide_empr = cf.ide_empr
-              AND cn.ide_sucu = cf.ide_sucu
-            GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
+            GROUP BY cdn.ide_inarti, cf.ide_cccfa
         )
         SELECT
             cdf.ide_ccdfa,
@@ -690,8 +688,8 @@ export class ProductosService extends BaseService {
         LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
         LEFT JOIN ven_vendedor ven ON cf.ide_vgven = ven.ide_vgven
-        LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti 
-            AND lpad(cf.secuencial_cccfa::text, 9, '0') = ncd.secuencial_padded
+         LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti 
+             AND cf.ide_cccfa = ncd.ide_cccfa
         WHERE
             cdf.ide_inarti =  $1
             AND iart.ide_empr = ${dtoIn.ideEmpr}  
@@ -1098,12 +1096,10 @@ export class ProductosService extends BaseService {
                 SUM(cdn.valor_cpdno) AS valor_nota_credito
             FROM cxp_cabecera_nota cn
             JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa AND cdn.ide_inarti = cdf.ide_inarti
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1
-              AND cn.ide_empr = cf.ide_empr
-              AND cn.ide_sucu = cf.ide_sucu
               AND cdf.ide_inarti = $6
               ${dtoIn.ide_geper ? `AND cf.ide_geper = ${dtoIn.ide_geper}` : ''}
             GROUP BY EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
@@ -1193,15 +1189,13 @@ export class ProductosService extends BaseService {
         FROM
             cxp_cabecera_nota cn
         JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-        JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+        JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
         JOIN cxc_deta_factura cdf ON cf.ide_cccfa = cdf.ide_cccfa AND cdn.ide_inarti = cdf.ide_inarti
         LEFT JOIN inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
         LEFT JOIN inv_unidad uni ON iart.ide_inuni = uni.ide_inuni
         WHERE
             cn.fecha_emisi_cpcno BETWEEN $7 AND $8
             AND cn.ide_cpeno = 1
-            AND cn.ide_empr = cf.ide_empr
-            AND cn.ide_sucu = cf.ide_sucu
             AND cdf.ide_inarti = $9
         GROUP BY
             uni.siglas_inuni
@@ -1446,12 +1440,10 @@ export class ProductosService extends BaseService {
               JOIN 
                   cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
               JOIN 
-                  cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa:: text, 9, '0')
+                  cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
               WHERE 
                   cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                   AND cn.ide_cpeno = 1
-                  AND cn.ide_empr = cf.ide_empr
-                  AND cn.ide_sucu = cf.ide_sucu
                   AND cdn.ide_inarti = $8
               GROUP BY 
                   cdn.ide_inarti, cf.ide_geper
@@ -1520,7 +1512,7 @@ export class ProductosService extends BaseService {
                     SELECT SUM(cdn.valor_cpdno)
                     FROM cxp_cabecera_nota cn
                     JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-                    JOIN cxc_cabece_factura cf2 ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf2.secuencial_cccfa::text, 9, '0')
+                    JOIN cxc_cabece_factura cf2 ON cn.ide_cccfa = cf2.ide_cccfa
                     WHERE cf2.ide_geper = p.ide_geper
                         AND cdn.ide_inarti = cdf.ide_inarti
                         AND cn.ide_cpeno = 1

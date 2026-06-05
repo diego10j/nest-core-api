@@ -11,9 +11,9 @@ import { SriFacturaService } from '../../sri/cel/sri-factura.service';
 import { FacturasDto } from './dto/facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
+import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
-import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 
 @Injectable()
@@ -169,10 +169,8 @@ export class FacturasService extends BaseService {
                 SUM(nc.total_cpcno) AS total_nc
             FROM cxc_cabece_factura cf
             INNER JOIN cxp_cabecera_nota nc ON (
-                nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                nc.ide_cccfa = cf.ide_cccfa
                 AND nc.ide_cpeno = 1
-                AND nc.ide_empr  = cf.ide_empr
-                AND nc.ide_sucu  = cf.ide_sucu
             )
             WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
               AND cf.ide_empr = ${dtoIn.ideEmpr}
@@ -326,10 +324,8 @@ export class FacturasService extends BaseService {
                 
                 -- LEFT JOIN para incluir todas las facturas, incluso las sin NC
                 LEFT JOIN cxp_cabecera_nota nc ON (
-                    nc.num_doc_mod_cpcno LIKE '%' || lpad(a.secuencial_cccfa::text, 9, '0') AND
-                    nc.ide_cpeno = 1 AND
-                    nc.ide_empr = a.ide_empr
-                    AND nc.ide_sucu  = a.ide_sucu
+                    nc.ide_cccfa = a.ide_cccfa AND
+                    nc.ide_cpeno = 1
                 )
                 
             WHERE
@@ -772,7 +768,7 @@ export class FacturasService extends BaseService {
             ),
             notas_credito_cte AS (
                 -- Total de notas de crédito asociadas a cada factura.
-                -- Se ancla por secuencial_cccfa (igual que en el resto del service).
+                -- Se ancla por ide_cccfa (igual que en el resto del service).
                 SELECT
                     cf.ide_cccfa,
                     COUNT(nc.ide_cpcno)              AS cantidad_notas_credito,
@@ -780,10 +776,8 @@ export class FacturasService extends BaseService {
                 FROM cxc_cabece_factura cf
                 INNER JOIN facturas_ids fi ON cf.ide_cccfa = fi.ide_cccfa
                 INNER JOIN cxp_cabecera_nota nc ON (
-                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    nc.ide_cccfa = cf.ide_cccfa
                     AND nc.ide_cpeno = 1
-                    AND nc.ide_empr  = cf.ide_empr
-                    AND nc.ide_sucu  = cf.ide_sucu
                 )
                 GROUP BY cf.ide_cccfa
             )
@@ -1376,12 +1370,10 @@ export class FacturasService extends BaseService {
                 SELECT cf.ide_cccfa, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
                 FROM cxc_cabece_factura cf
                 INNER JOIN cxp_cabecera_nota nc ON (
-                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    nc.ide_cccfa = cf.ide_cccfa
                     AND nc.ide_cpeno = 1
                     AND nc.fecha_emisi_cpcno >= cf.fecha_emisi_cccfa
                     AND nc.fecha_emisi_cpcno <= cf.fecha_emisi_cccfa + INTERVAL '30 days'
-                    --AND nc.ide_empr  = cf.ide_empr
-                    --AND nc.ide_sucu  = cf.ide_sucu
                 )
                 WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
                 GROUP BY cf.ide_cccfa
@@ -1513,10 +1505,8 @@ export class FacturasService extends BaseService {
                 SELECT cf.ide_geper, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
                 FROM cxc_cabece_factura cf
                 INNER JOIN cxp_cabecera_nota nc ON (
-                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    nc.ide_cccfa = cf.ide_cccfa
                     AND nc.ide_cpeno = 1
-                    AND nc.ide_empr  = cf.ide_empr
-                    AND nc.ide_sucu  = cf.ide_sucu
                 )
                 WHERE cf.fecha_emisi_cccfa = $1
                   AND cf.ide_empr          = $2
@@ -1555,10 +1545,8 @@ export class FacturasService extends BaseService {
                 SELECT cdn.ide_inarti, COALESCE(SUM(cdn.valor_cpdno), 0) AS total_nc
                 FROM cxc_cabece_factura cf
                 INNER JOIN cxp_cabecera_nota  cn  ON (
-                    cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    cn.ide_cccfa = cf.ide_cccfa
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr  = cf.ide_empr
-                    AND cn.ide_sucu  = cf.ide_sucu
                 )
                 INNER JOIN cxp_detalle_nota   cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 WHERE cf.fecha_emisi_cccfa = $1
@@ -1635,10 +1623,8 @@ export class FacturasService extends BaseService {
                                ORDER BY nc.numero_cpcno)     AS numeros_nc
                 FROM cxc_cabece_factura cf
                 INNER JOIN cxp_cabecera_nota nc ON (
-                    nc.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    nc.ide_cccfa = cf.ide_cccfa
                     AND nc.ide_cpeno = 1
-                    AND nc.ide_empr  = cf.ide_empr
-                    AND nc.ide_sucu  = cf.ide_sucu
 
                 )
                 WHERE cf.fecha_emisi_cccfa = $1

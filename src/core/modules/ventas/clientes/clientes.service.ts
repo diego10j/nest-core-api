@@ -327,16 +327,14 @@ export class ClientesService extends BaseService {
         WITH notas_credito_detalle AS (
             SELECT 
                 cdn.ide_inarti,
-                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                cf.ide_cccfa,
                 SUM(cdn.valor_cpdno) AS valor_nota_credito
             FROM cxp_cabecera_nota cn
             JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             WHERE cn.fecha_emisi_cpcno BETWEEN $4 AND $5
               AND cn.ide_cpeno = 1  -- Estado normal de nota de crédito
-              AND cn.ide_empr = cf.ide_empr
-                AND cn.ide_sucu = cf.ide_sucu
-            GROUP BY cdn.ide_inarti, lpad(cf.secuencial_cccfa::text, 9, '0')
+            GROUP BY cdn.ide_inarti, cf.ide_cccfa
         )
         SELECT
             cdf.ide_ccdfa,
@@ -363,7 +361,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN cxc_datos_fac df ON cf.ide_ccdaf = df.ide_ccdaf 
             LEFT JOIN inv_unidad uni ON cdf.ide_inuni = uni.ide_inuni
             LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti 
-                AND lpad(cf.secuencial_cccfa::text, 9, '0') = ncd.secuencial_padded
+                AND cf.ide_cccfa = ncd.ide_cccfa
         WHERE
             cf.ide_geper = $1
             AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
@@ -629,12 +627,10 @@ export class ClientesService extends BaseService {
                 AVG(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno) AS promedio_nota_credito
             FROM 
                 cxp_cabecera_nota cn
-            INNER JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            INNER JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $4 AND $5
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = cf.ide_empr
-                AND cn.ide_sucu = cf.ide_sucu
                 AND cf.ide_geper = $6
             GROUP BY 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno)
@@ -771,6 +767,7 @@ export class ClientesService extends BaseService {
             SELECT
                 cdf.ide_ccdfa,
                 cdf.ide_inarti,
+                cf.ide_cccfa,
                 cf.fecha_emisi_cccfa,
                 cf.secuencial_cccfa,
                 per.nom_geper,
@@ -846,17 +843,15 @@ export class ClientesService extends BaseService {
         ),
         facturas_con_nota AS (
             SELECT 
-                lpad(cf.secuencial_cccfa::text, 9, '0') AS secuencial_padded,
+                cf.ide_cccfa,
                 cdn.ide_inarti,
                 SUM(cdn.valor_cpdno) AS valor_nota_credito
             FROM cxp_cabecera_nota cn
             JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-            JOIN cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+            JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             WHERE cn.fecha_emisi_cpcno BETWEEN $7 AND $8
               AND cn.ide_cpeno = 1
-              AND cn.ide_empr = cf.ide_empr
-              AND cn.ide_sucu = cf.ide_sucu
-            GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti
+            GROUP BY cf.ide_cccfa, cdn.ide_inarti
         )
         SELECT
             dc.ide_ccdfa,
@@ -908,7 +903,7 @@ export class ClientesService extends BaseService {
                 ELSE 'SIN_COSTO'
             END AS clasificacion_margen
         FROM datos_completos dc
-        LEFT JOIN facturas_con_nota fn ON lpad(dc.numero_factura::text, 9, '0') = fn.secuencial_padded 
+        LEFT JOIN facturas_con_nota fn ON dc.ide_cccfa = fn.ide_cccfa 
                                        AND dc.ide_inarti = fn.ide_inarti
         ORDER BY 
             dc.fecha_emisi_cccfa DESC, 
@@ -1161,9 +1156,8 @@ export class ClientesService extends BaseService {
             SELECT fb.ide_cccfa, COALESCE(SUM(nc.total_cpcno), 0) AS total_nc
             FROM facturas_base fb
             INNER JOIN cxp_cabecera_nota nc ON (
-                nc.num_doc_mod_cpcno LIKE '%' || lpad(fb.secuencial_cccfa::text, 9, '0')
+                nc.ide_cccfa = fb.ide_cccfa
                 AND nc.ide_cpeno = 1
-                AND nc.ide_empr  = fb.ide_empr
             )
             GROUP BY fb.ide_cccfa
         ),

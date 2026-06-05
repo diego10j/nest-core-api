@@ -131,9 +131,7 @@ export class VentasBiService extends BaseService {
         FROM cxp_cabecera_nota cn
         JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
         JOIN cxc_cabece_factura cf
-          ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-         AND cf.ide_empr = cn.ide_empr
-         AND cf.ide_sucu = cn.ide_sucu
+           ON cn.ide_cccfa = cf.ide_cccfa
          AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
          AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
          ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
@@ -436,14 +434,12 @@ export class VentasBiService extends BaseService {
             FROM 
                 cxp_cabecera_nota cn
             JOIN 
-                cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-            WHERE 
-                cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                AND cn.ide_cpeno = 1
-                AND cn.ide_empr = cf.ide_empr
-                AND cn.ide_sucu = cf.ide_sucu
-            GROUP BY 
-                cf.ide_vgven
+                cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
+             WHERE 
+                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                 AND cn.ide_cpeno = 1
+             GROUP BY 
+                 cf.ide_vgven
         ),
         total_ventas_empresa AS (
             SELECT 
@@ -602,14 +598,12 @@ ORDER BY
                     FROM 
                         cxp_cabecera_nota cn
                     JOIN 
-                        cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-                    WHERE 
-                        cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                        AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = cf.ide_empr
-                        AND cn.ide_sucu = cf.ide_sucu
-                    GROUP BY 
-                        cf.ide_geper
+                        cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
+                     WHERE 
+                         cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                         AND cn.ide_cpeno = 1
+                     GROUP BY 
+                         cf.ide_geper
                 ) nc ON p.ide_geper = nc.ide_geper
                 WHERE 
                     cf.fecha_emisi_cccfa BETWEEN $5 AND $6
@@ -845,20 +839,16 @@ ORDER BY
                 COALESCE((
                     SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
                     FROM cxp_cabecera_nota cn
-                    WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-                        AND cn.fecha_emisi_cpcno BETWEEN $1 AND $2
-                        AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = cf.ide_empr
-                        AND cn.ide_sucu = cf.ide_sucu
+                     WHERE cn.ide_cccfa = cf.ide_cccfa
+                         AND cn.fecha_emisi_cpcno BETWEEN $1 AND $2
+                         AND cn.ide_cpeno = 1
                 ), 0) AS total_nota_credito,
                 (cf.total_cccfa - COALESCE((
                     SELECT SUM(cn.base_grabada_cpcno + cn.base_tarifa0_cpcno + cn.base_no_objeto_iva_cpcno)
                     FROM cxp_cabecera_nota cn
-                    WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-                        AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                        AND cn.ide_cpeno = 1
-                        AND cn.ide_empr = cf.ide_empr
-                        AND cn.ide_sucu = cf.ide_sucu
+                     WHERE cn.ide_cccfa = cf.ide_cccfa
+                         AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                         AND cn.ide_cpeno = 1
                 ), 0)) AS total_real,
                 v.nombre_vgven AS vendedor,
                 fp.nombre_cndfp AS forma_pago,
@@ -866,11 +856,9 @@ ORDER BY
                     WHEN EXISTS (
                         SELECT 1 
                         FROM cxp_cabecera_nota cn 
-                        WHERE cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-                            AND cn.fecha_emisi_cpcno BETWEEN $5 AND $6
-                            AND cn.ide_cpeno = 1
-                            AND cn.ide_empr = cf.ide_empr
-                            AND cn.ide_sucu = cf.ide_sucu
+                         WHERE cn.ide_cccfa = cf.ide_cccfa
+                             AND cn.fecha_emisi_cpcno BETWEEN $5 AND $6
+                             AND cn.ide_cpeno = 1
                     ) THEN 'CON NOTA CRÉDITO'
                     ELSE 'SIN NOTA CRÉDITO'
                 END AS estado_nota_credito
@@ -1214,14 +1202,12 @@ ORDER BY
             JOIN 
                 cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
             JOIN 
-                cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
-            WHERE 
-                cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                AND cn.ide_cpeno = 1
-                AND cn.ide_empr = cf.ide_empr
-                AND cn.ide_sucu = cf.ide_sucu
-            GROUP BY 
-                cdn.ide_inarti
+                cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
+             WHERE 
+                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                 AND cn.ide_cpeno = 1
+             GROUP BY 
+                 cdn.ide_inarti
         )
         SELECT 
             vp.ide_inarti,
@@ -1328,15 +1314,13 @@ ORDER BY
                 JOIN 
                     cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 JOIN 
-                    cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa:: text, 9, '0')
-                WHERE 
-                    cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-                    AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = cf.ide_empr
-                    AND cn.ide_sucu = cf.ide_sucu
-                    AND cdn.ide_inarti = $8
-                GROUP BY 
-                    cdn.ide_inarti, cf.ide_geper
+                    cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
+                 WHERE 
+                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
+                     AND cn.ide_cpeno = 1
+                     AND cdn.ide_inarti = $8
+                 GROUP BY 
+                     cdn.ide_inarti, cf.ide_geper
         ) nc ON p.ide_geper = nc.ide_geper AND cdf.ide_inarti = nc.ide_inarti
         WHERE
         cf.fecha_emisi_cccfa BETWEEN $5 AND $6
@@ -1443,14 +1427,12 @@ ORDER BY
                 JOIN 
                     cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 JOIN 
-                    cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
                 JOIN
                     con_deta_forma_pago fp ON cf.ide_cndfp1 = fp.ide_cndfp
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = cf.ide_empr
-                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     fp.ide_cndfp
@@ -1532,12 +1514,10 @@ ORDER BY
                 JOIN 
                     cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 JOIN 
-                    cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = cf.ide_empr
-                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $8
                 GROUP BY 
                     cf.ide_vgven
@@ -1616,7 +1596,7 @@ ORDER BY
                 FROM
                     cxp_cabecera_nota cn
                 INNER JOIN cxp_detalle_nota e ON cn.ide_cpcno = e.ide_cpcno
-                INNER JOIN cxc_cabece_factura a ON cn.num_doc_mod_cpcno LIKE '%' || lpad(a.secuencial_cccfa::text, 9, '0')
+                INNER JOIN cxc_cabece_factura a ON cn.ide_cccfa = a.ide_cccfa
                 INNER JOIN gen_persona c ON a.ide_geper = c.ide_geper
                 INNER JOIN gen_tipo_identifi d ON c.ide_getid = d.ide_getid
                 WHERE
@@ -1770,12 +1750,10 @@ ORDER BY
             JOIN
                 cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
             JOIN 
-                cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
             WHERE 
                 cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                 AND cn.ide_cpeno = 1
-                AND cn.ide_empr = cf.ide_empr
-                AND cn.ide_sucu = cf.ide_sucu
                 AND cdn.ide_inarti = $6
             GROUP BY 
                 EXTRACT(MONTH FROM cn.fecha_emisi_cpcno),
@@ -1861,12 +1839,10 @@ ORDER BY
                 JOIN
                     cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 JOIN 
-                    cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
                 WHERE 
                     cn.fecha_emisi_cpcno BETWEEN $4 AND $5
                     AND cn.ide_cpeno = 1
-                    AND cn.ide_empr = cf.ide_empr
-                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $6
                 GROUP BY 
                     EXTRACT(DOW FROM cn.fecha_emisi_cpcno)
@@ -1947,11 +1923,9 @@ ORDER BY
                 JOIN
                     cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
                 JOIN 
-                    cxc_cabece_factura cf ON cn.num_doc_mod_cpcno LIKE '%' || lpad(cf.secuencial_cccfa::text, 9, '0')
+                    cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
                 WHERE 
                     cn.ide_cpeno = 1
-                    AND cn.ide_empr = cf.ide_empr
-                    AND cn.ide_sucu = cf.ide_sucu
                     AND cdn.ide_inarti = $2
                 GROUP BY 
                     EXTRACT(YEAR FROM cn.fecha_emisi_cpcno)
