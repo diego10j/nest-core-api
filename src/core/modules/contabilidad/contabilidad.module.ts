@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { CoreService } from '../../core.service';
 import { AuditService } from '../audit/audit.service';
 
+import { AsientosAutomaticosService } from './asientos-automaticos.service';
 import { ComprobanteContabilidadController } from './comprobante-contabilidad/comprobante-contabilidad.controller';
 import { ComprobanteContabilidadService } from './comprobante-contabilidad/comprobante-contabilidad.service';
 import { ContabilidadController } from './contabilidad.controller';
@@ -35,7 +36,8 @@ import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
     ContabilidadBiService,
     FlujoEfectivoService,
     ComprobanteContabilidadService,
+    AsientosAutomaticosService,
   ],
-  exports: [ContabilidadService, ComprobanteContabilidadService],
+  exports: [ContabilidadService, ComprobanteContabilidadService, AsientosAutomaticosService],
 })
 export class ContabilidadModule { }

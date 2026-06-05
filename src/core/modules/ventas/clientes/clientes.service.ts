@@ -20,6 +20,7 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
@@ -168,7 +169,13 @@ export class ClientesService extends BaseService {
      * @param dtoIn
      * @returns
      */
-    async getSaldosClientes(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getSaldosClientes(dtoIn: GetSaldosClientesDto & HeaderParamsDto) {
+        // conDiferencias=true (default): solo clientes con saldo != 0
+        // conDiferencias=false: todos los clientes
+        const condDiferencias = String(dtoIn.conDiferencias) !== 'false'
+            ? 'AND COALESCE(s.saldo, 0) != 0'
+            : '';
+
         const query = new SelectQuery(
             `
         WITH saldo_cte AS (
@@ -211,7 +218,7 @@ export class ClientesService extends BaseService {
             AND p.identificac_geper IS NOT NULL
             AND p.nivel_geper = 'HIJO'
             AND P.ide_empr = ${dtoIn.ideEmpr}
-            AND COALESCE(s.saldo, 0) != 0
+            ${condDiferencias}
         ORDER BY
             p.nom_geper
         `,

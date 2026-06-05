@@ -11,6 +11,7 @@ import { SaveDto } from '../../../../common/dto/save.dto';
 import { ClientesService } from './clientes.service';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
@@ -39,8 +40,10 @@ export class ClientesController {
   @Get('getSaldosClientes')
   @ApiOperation({ summary: 'Obtener saldos pendientes de clientes' })
   @ApiResponse({ status: 200, description: 'Lista de saldos pendientes' })
-  getSaldosClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+  getSaldosClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetSaldosClientesDto) {
+
     return this.service.getSaldosClientes({ ...headersParams, ...dtoIn });
+
   }
 
   @Get('getTrnCliente')

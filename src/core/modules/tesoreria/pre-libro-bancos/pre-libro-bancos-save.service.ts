@@ -495,7 +495,7 @@ export class PreLibroBancosSaveService extends BaseService {
     /**
      * Actualiza el numero maximo en tes_secuencial_trans para un tipo de transaccion
      */
-    private async actualizarSecuencial(
+    async actualizarSecuencial(
         ideTecba: number, ideTettb: number, numero: string, dtoIn: HeaderParamsDto,
     ) {
         if (!numero) return;
@@ -522,9 +522,10 @@ export class PreLibroBancosSaveService extends BaseService {
                 [numIng, dtoIn.login, ideTecba, ideTettb, dtoIn.ideSucu],
             );
         } else {
+            const ideTesec = await this.dataSource.getSeqTable('tes_secuencial_trans', 'ide_tesec', 1, dtoIn.login);
             await this.dataSource.pool.query(
-                `INSERT INTO tes_secuencial_trans (ide_tecba, ide_tettb, ide_empr, ide_sucu, secuencial_tesec) VALUES ($1, $2, $3, $4, $5)`,
-                [ideTecba, ideTettb, dtoIn.ideEmpr, dtoIn.ideSucu, numIng],
+                `INSERT INTO tes_secuencial_trans (ide_tesec, ide_tecba, ide_tettb, ide_empr, ide_sucu, secuencial_tesec) VALUES ($1, $2, $3, $4, $5, $6)`,
+                [ideTesec, ideTecba, ideTettb, dtoIn.ideEmpr, dtoIn.ideSucu, numIng],
             );
         }
     }

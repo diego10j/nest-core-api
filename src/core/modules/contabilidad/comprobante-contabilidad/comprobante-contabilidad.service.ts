@@ -367,6 +367,106 @@ export class ComprobanteContabilidadService extends BaseService {
     }
 
     /**
+     * Guarda un comprobante contable automatico (desde modulos externos como tesoreria).
+     * Variante de save() que permite cuentas contables nulas y omite la validacion de balance.
+     */
+    async saveAutomatico(dtoIn: SaveComprobanteDto & HeaderParamsDto) {
+        try {
+            if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
+            if (dtoIn.data.ide_cntcm === undefined || dtoIn.data.ide_cntcm === null)
+                throw new BadRequestException('El tipo de comprobante (ide_cntcm) es requerido');
+
+            const { data, detalles } = dtoIn;
+
+            if (!data.ide_cneco) {
+                data.ide_cneco = Number(this.estadoNormal);
+            }
+            if (!data.fecha_trans_cnccc) {
+                data.fecha_trans_cnccc = getCurrentDate();
+            }
+            data.automatico_cnccc = true;
+            data.ide_usua = dtoIn.ideUsua;
+
+            if (!(await this.isPeriodoValido(data.fecha_trans_cnccc, dtoIn.ideSucu))) {
+                throw new BadRequestException(
+                    `No existe un periodo contable activo que contenga la fecha ${data.fecha_trans_cnccc}`,
+                );
+            }
+
+            const detallesResumidos = this.resumirDetalles(detalles ?? []);
+
+            const ideCnccc = await this.dataSource.getSeqTable(
+                `${MODULE}_${TABLE_CAB}`,
+                PK_CAB,
+                1,
+                dtoIn.login,
+            );
+            data.ide_cnccc = ideCnccc;
+
+            const numero = await this.getSecuencial(
+                data.fecha_trans_cnccc,
+                String(data.ide_cntcm),
+                dtoIn.ideSucu,
+            );
+            data.numero_cnccc = numero;
+
+            const listQuery: ObjectQueryDto[] = [{
+                operation: 'insert',
+                module: MODULE,
+                tableName: TABLE_CAB,
+                primaryKey: PK_CAB,
+                object: {
+                    ...data,
+                    ide_empr: dtoIn.ideEmpr,
+                    ide_sucu: dtoIn.ideSucu,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
+                    fecha_siste_cnccc: getCurrentDate(),
+                    hora_sistem_cnccc: getCurrentTime(),
+                },
+            }];
+
+            for (const det of detallesResumidos) {
+                const ideCndcc = await this.dataSource.getSeqTable(
+                    `${MODULE}_${TABLE_DET}`,
+                    PK_DET,
+                    1,
+                    dtoIn.login,
+                );
+                listQuery.push({
+                    operation: 'insert',
+                    module: MODULE,
+                    tableName: TABLE_DET,
+                    primaryKey: PK_DET,
+                    object: {
+                        ide_cndcc: ideCndcc,
+                        ide_cnccc: ideCnccc,
+                        ide_cnlap: det.ide_cnlap,
+                        ide_cndpc: det.ide_cndpc || null,
+                        valor_cndcc: det.valor_cndcc,
+                        observacion_cndcc: det.observacion_cndcc ?? '',
+                        referencia_cndcc: det.referencia_cndcc ?? '',
+                        ide_empr: dtoIn.ideEmpr,
+                        ide_sucu: dtoIn.ideSucu,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                });
+            }
+
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
+
+            return { message: 'ok', rowCount: 1, ide_cnccc: ideCnccc, numero_cnccc: numero };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar el comprobante automatico: ${msg}`);
+        }
+    }
+
+    /**
      * Anula un comprobante contable cambiando su estado a ANULADO.
      * Busca automáticamente el ID del estado ANULADO si no se proporciona.
      */

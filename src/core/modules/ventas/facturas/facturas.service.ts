@@ -894,6 +894,9 @@ export class FacturasService extends BaseService {
                 a.orden_compra_cccfa,
                 a.correo_cccfa,
                 a.num_proforma_cccfa,
+                a.usuario_actua,
+                a.fecha_actua,
+                a.hora_actua,
                 -- Datos del punto de emisión
                 c.serie_ccdaf,
                 c.establecimiento_ccdfa,
@@ -974,7 +977,13 @@ export class FacturasService extends BaseService {
                 u.siglas_inuni,
                 
                 -- Categoría del producto
-                cat.nombre_incate
+                cat.nombre_incate,
+                d.usuario_ingre,
+                d.fecha_ingre,
+                d.hora_ingre,              
+                d.usuario_actua,
+                d.fecha_actua,
+                d.hora_actua
                 
             FROM
                 cxc_deta_factura d
@@ -1021,13 +1030,28 @@ export class FacturasService extends BaseService {
                 c.hora_actua,
                 SUM(c.valor_teclb) OVER ()      AS totalpagos,
                 e.foto_teban,
-                e.color_teban
+                e.color_teban,
+                -- Datos del comprobante bancario (OCR/IA)
+                icb.foto_teincb                 AS comprobante_foto,
+                icb.num_comprobante_teincb      AS comprobante_numero,
+                icb.tipo_trns_teincb            AS comprobante_tipo,
+                icb.ordenante_teincb            AS comprobante_ordenante,
+                icb.cuenta_origen_teincb        AS comprobante_cuenta_origen,
+                icb.banco_origen_teincb         AS comprobante_banco_origen,
+                icb.beneficiario_teincb         AS comprobante_beneficiario,
+                icb.cuenta_destino_teincb       AS comprobante_cuenta_destino,
+                icb.banco_destino_teincb        AS comprobante_banco_destino,
+                icb.texto_original_teincb       AS comprobante_texto_original,
+                icb.por_ocr_teincb              AS comprobante_por_ocr,
+                icb.por_ia_teincb               AS comprobante_por_ia,
+                icb.validado_teincb             AS comprobante_validado
             FROM cxc_detall_transa dt
             INNER JOIN tes_cab_libr_banc c  ON c.ide_teclb  = dt.ide_teclb
                                            AND c.ide_tecba IS NOT NULL
             LEFT  JOIN tes_cuenta_banco  d  ON c.ide_tecba  = d.ide_tecba
             LEFT  JOIN tes_banco         e  ON d.ide_teban  = e.ide_teban
             LEFT  JOIN tes_tip_tran_banc f  ON c.ide_tettb  = f.ide_tettb
+            LEFT  JOIN tes_info_comprobante_banco icb ON icb.ide_teclb = c.ide_teclb
             WHERE dt.numero_pago_ccdtr > 0
               AND dt.ide_cccfa = $1
             ORDER BY c.fecha_trans_teclb
