@@ -518,8 +518,8 @@ export class PreLibroBancosSaveService extends BaseService {
 
         if (existente) {
             await this.dataSource.pool.query(
-                `UPDATE tes_secuencial_trans SET secuencial_tesec = $1, usuario_actua = $2, hora_actua = NOW() WHERE ide_tecba = $3 AND ide_tettb = $4 AND ide_sucu = $5`,
-                [numIng, dtoIn.login, ideTecba, ideTettb, dtoIn.ideSucu],
+                `UPDATE tes_secuencial_trans SET secuencial_tesec = $1 WHERE ide_tecba = $2 AND ide_tettb = $3 AND ide_sucu = $4`,
+                [numIng, ideTecba, ideTettb, dtoIn.ideSucu],
             );
         } else {
             const ideTesec = await this.dataSource.getSeqTable('tes_secuencial_trans', 'ide_tesec', 1, dtoIn.login);
