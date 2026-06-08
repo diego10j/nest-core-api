@@ -10,10 +10,16 @@ import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappGateway } from './whatsapp.gateway';
 import { WhatsappService } from './whatsapp.service';
+import { YcloudCampaniaService } from './ycloud/ycloud-camp.service';
+import { YcloudMetricsService } from './ycloud/ycloud-metrics.service';
+import { YcloudWebhookController } from './ycloud/ycloud-webhook.controller';
+import { YcloudWindowService } from './ycloud/ycloud-window.service';
+import { YcloudController } from './ycloud/ycloud.controller';
+import { YcloudService } from './ycloud/ycloud.service';
 
 @Module({
   imports: [HttpModule],
-  controllers: [WhatsappController, WebhookController],
+  controllers: [WhatsappController, WebhookController, YcloudController, YcloudWebhookController],
   providers: [
     WhatsappApiService,
     WhatsappGateway,
@@ -21,6 +27,10 @@ import { WhatsappService } from './whatsapp.service';
     WhatsappService,
     FileTempService,
     WhatsappCampaniaService,
+    YcloudService,
+    YcloudCampaniaService,
+    YcloudWindowService,
+    YcloudMetricsService,
   ],
   exports: [
     WhatsappApiService,
@@ -29,6 +39,10 @@ import { WhatsappService } from './whatsapp.service';
     WhatsappService,
     FileTempService,
     WhatsappCampaniaService,
+    YcloudService,
+    YcloudCampaniaService,
+    YcloudWindowService,
+    YcloudMetricsService,
   ],
 })
 export class WhatsappModule { }

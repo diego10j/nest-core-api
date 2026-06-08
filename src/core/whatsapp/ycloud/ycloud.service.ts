@@ -1,0 +1,795 @@
+import { HttpService } from '@nestjs/axios';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { AxiosRequestConfig } from 'axios';
+import { isDefined } from 'class-validator';
+import FormData from 'form-data';
+import { envs } from 'src/config/envs';
+import { DataSourceService } from 'src/core/connection/datasource.service';
+import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { getCurrentDateTime } from 'src/util/helpers/date-util';
+
+
+import { WhatsappGateway } from '../whatsapp.gateway';
+
+
+import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
+import { YcloudCacheConfig, YcloudDbConfig } from './interfaces/ycloud-config.interface';
+import {
+  YcloudDocumentPayload,
+  YcloudImagePayload,
+  YcloudInboundMessage,
+  YcloudMessagePayload,
+  YcloudStatusData,
+  YcloudTemplatePayload,
+  YcloudTextPayload,
+} from './interfaces/ycloud-message.interface';
+import { MessageSaveData } from './interfaces/ycloud-metrics.interface';
+import { YcloudWebhookPayload } from './interfaces/ycloud-webhook.interface';
+import { YcloudMetricsService } from './ycloud-metrics.service';
+import { YcloudWindowService } from './ycloud-window.service';
+
+@Injectable()
+export class YcloudService {
+  private readonly YCLOUD_API_URL: string;
+  private readonly YCLOUD_API_KEY: string;
+  private readonly logger = new Logger(YcloudService.name);
+
+  constructor(
+    private readonly httpService: HttpService,
+    public readonly dataSource: DataSourceService,
+    private readonly whatsappGateway: WhatsappGateway,
+    private readonly windowService: YcloudWindowService,
+    private readonly metricsService: YcloudMetricsService,
+  ) {
+    this.YCLOUD_API_URL = envs.ycloudApiUrl || 'https://api.ycloud.com/v2';
+    this.YCLOUD_API_KEY = envs.ycloudApiKey || '';
+  }
+
+  // ─── Config ───────────────────────────────────────────────────
+
+  async getConfig(ideEmpr: number): Promise<YcloudCacheConfig> {
+    const cacheKey = `ycloud_config:${ideEmpr}`;
+    let data = await this.getFromCache(cacheKey);
+    if (!data) {
+      data = await this.fetchConfigFromDatabase(ideEmpr);
+      if (data) {
+        await this.setToCache(cacheKey, data);
+      } else {
+        throw new BadRequestException('No existe configuracion YCloud para esta empresa');
+      }
+    }
+    return {
+      apiKey: this.YCLOUD_API_KEY,
+      phoneNumberId: data.id_telefono_whcue,
+      businessId: data.business_id_whcue,
+      displayPhoneNumber: data.id_telefono_whcue,
+    };
+  }
+
+  private async getFromCache(cacheKey: string): Promise<YcloudDbConfig | null> {
+    const dataConfig = await this.dataSource.redisClient.get(cacheKey);
+    return dataConfig ? JSON.parse(dataConfig) : null;
+  }
+
+  private async setToCache(cacheKey: string, data: YcloudDbConfig): Promise<void> {
+    await this.dataSource.redisClient.set(cacheKey, JSON.stringify(data));
+  }
+
+  private async fetchConfigFromDatabase(ideEmpr: number): Promise<YcloudDbConfig | null> {
+    const query = new SelectQuery(`
+      SELECT
+        id_cuenta_whcue,
+        business_id_whcue,
+        id_telefono_whcue,
+        webhook_url_whcue
+      FROM wha_cuenta
+      WHERE ide_empr = $1
+        AND tipo_whcue = 'YCLOUD'
+        AND activo_whcue = TRUE
+      LIMIT 1
+    `);
+    query.addIntParam(1, ideEmpr);
+    const data = await this.dataSource.createSingleQuery(query);
+    return data || null;
+  }
+
+  private async assertConfig(ideEmpr: number): Promise<YcloudCacheConfig> {
+    const config = await this.getConfig(ideEmpr);
+    if (!isDefined(config) || !config.apiKey) {
+      throw new BadRequestException('Error al obtener la configuracion YCloud');
+    }
+    return config;
+  }
+
+  // ─── HTTP Helpers ──────────────────────────────────────────────
+
+  private buildAuthHeaders(): AxiosRequestConfig {
+    return {
+      headers: {
+        'X-API-Key': this.YCLOUD_API_KEY,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
+  private async apiPost(path: string, data: any): Promise<any> {
+    const url = `${this.YCLOUD_API_URL}${path}`;
+    const config = this.buildAuthHeaders();
+    try {
+      const resp = await this.httpService.axiosRef.post(url, data, config);
+      return resp.data;
+    } catch (error) {
+      this.logger.error(`YCloud POST ${path} error: ${error.response?.data || error.message}`);
+      throw new InternalServerErrorException(
+        `[YCloud API Error] ${JSON.stringify(error.response?.data || error.message)}`,
+      );
+    }
+  }
+
+  private async apiGet(path: string): Promise<any> {
+    const url = `${this.YCLOUD_API_URL}${path}`;
+    const config = this.buildAuthHeaders();
+    try {
+      const resp = await this.httpService.axiosRef.get(url, config);
+      return resp.data;
+    } catch (error) {
+      this.logger.error(`YCloud GET ${path} error: ${error.response?.data || error.message}`);
+      throw new InternalServerErrorException(
+        `[YCloud API Error] ${JSON.stringify(error.response?.data || error.message)}`,
+      );
+    }
+  }
+
+  private async apiPostFormData(path: string, formData: FormData): Promise<any> {
+    const url = `${this.YCLOUD_API_URL}${path}`;
+    const config: AxiosRequestConfig = {
+      headers: {
+        'X-API-Key': this.YCLOUD_API_KEY,
+        ...formData.getHeaders(),
+      },
+    };
+    try {
+      const resp = await this.httpService.axiosRef.post(url, formData, config);
+      return resp.data;
+    } catch (error) {
+      this.logger.error(`YCloud POST form-data ${path} error: ${error.response?.data || error.message}`);
+      throw new InternalServerErrorException(
+        `[YCloud API Error] ${JSON.stringify(error.response?.data || error.message)}`,
+      );
+    }
+  }
+
+  // ─── Send Messages ────────────────────────────────────────────
+
+  async sendText(
+    ideEmpr: number,
+    to: string,
+    body: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const windowCheck = await this.windowService.canSendFreeMessage(config.phoneNumberId, to);
+    if (!windowCheck.allowed) {
+      throw new BadRequestException(windowCheck.reason);
+    }
+
+    const payload: YcloudTextPayload = {
+      to,
+      type: 'text',
+      text: { body, preview_url: false },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'text',
+        texto: body,
+        idWts: messageId,
+        ideUsua,
+        tiempoRespuesta: windowCheck.lastInbound
+          ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
+          : null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async sendTemplate(
+    ideEmpr: number,
+    to: string,
+    name: string,
+    language: string,
+    components?: Record<string, any>[],
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const payload: YcloudTemplatePayload = {
+      to,
+      type: 'template',
+      template: {
+        name,
+        language: { code: language },
+        components: components as any,
+      },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'template',
+        texto: `Template: ${name}`,
+        idWts: messageId,
+        ideUsua,
+        tiempoRespuesta: null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async sendImage(
+    ideEmpr: number,
+    to: string,
+    mediaId: string,
+    caption?: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const windowCheck = await this.windowService.canSendFreeMessage(config.phoneNumberId, to);
+    if (!windowCheck.allowed) {
+      throw new BadRequestException(windowCheck.reason);
+    }
+
+    const payload: YcloudImagePayload = {
+      to,
+      type: 'image',
+      image: { id: mediaId, caption },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'image',
+        texto: caption || null,
+        idWts: messageId,
+        mediaId,
+        ideUsua,
+        tiempoRespuesta: windowCheck.lastInbound
+          ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
+          : null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async sendVideo(
+    ideEmpr: number,
+    to: string,
+    mediaId: string,
+    caption?: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const windowCheck = await this.windowService.canSendFreeMessage(config.phoneNumberId, to);
+    if (!windowCheck.allowed) {
+      throw new BadRequestException(windowCheck.reason);
+    }
+
+    const payload: YcloudMessagePayload = {
+      to,
+      type: 'video',
+      video: { id: mediaId, caption },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'video',
+        texto: caption || null,
+        idWts: messageId,
+        mediaId,
+        ideUsua,
+        tiempoRespuesta: windowCheck.lastInbound
+          ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
+          : null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async sendDocument(
+    ideEmpr: number,
+    to: string,
+    mediaId: string,
+    filename: string,
+    caption?: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const windowCheck = await this.windowService.canSendFreeMessage(config.phoneNumberId, to);
+    if (!windowCheck.allowed) {
+      throw new BadRequestException(windowCheck.reason);
+    }
+
+    const payload: YcloudDocumentPayload = {
+      to,
+      type: 'document',
+      document: { id: mediaId, filename, caption },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'document',
+        texto: caption || null,
+        idWts: messageId,
+        mediaId,
+        fileName: filename,
+        ideUsua,
+        tiempoRespuesta: windowCheck.lastInbound
+          ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
+          : null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async sendTemplateWithDocument(
+    ideEmpr: number,
+    to: string,
+    templateName: string,
+    language: string,
+    docMediaId: string,
+    filename: string,
+    components?: Record<string, any>[],
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const mergedComponents = components || [];
+    const hasHeaderDoc = mergedComponents.some(
+      (c) => c.type === 'header' && c.parameters?.some((p: any) => p.type === 'document'),
+    );
+
+    if (!hasHeaderDoc) {
+      mergedComponents.push({
+        type: 'header',
+        parameters: [
+          {
+            type: 'document',
+            document: { id: docMediaId, filename },
+          },
+        ],
+      });
+    }
+
+    const payload: YcloudTemplatePayload = {
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: language },
+        components: mergedComponents as any,
+      },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'template',
+        texto: `Template: ${templateName} + doc: ${filename}`,
+        idWts: messageId,
+        mediaId: docMediaId,
+        fileName: filename,
+        ideUsua,
+        tiempoRespuesta: null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  // ─── Media ────────────────────────────────────────────────────
+
+  async uploadMedia(
+    ideEmpr: number,
+    file: Buffer,
+    mimeType: string,
+    filename?: string,
+  ): Promise<{ mediaId: string }> {
+    await this.assertConfig(ideEmpr);
+
+    const formData = new FormData();
+    formData.append('file', file, {
+      filename: filename || 'file',
+      contentType: mimeType,
+    });
+    formData.append('messaging_product', 'whatsapp');
+
+    const resp: YcloudUploadResponse = await this.apiPostFormData('/whatsapp/media', formData);
+    return { mediaId: resp.id };
+  }
+
+  async downloadMedia(mediaId: string): Promise<Buffer> {
+    const url = `${this.YCLOUD_API_URL}/whatsapp/media/${mediaId}`;
+    const config: AxiosRequestConfig = {
+      responseType: 'arraybuffer',
+      headers: { 'X-API-Key': this.YCLOUD_API_KEY },
+      timeout: 30000,
+    };
+    try {
+      const response = await this.httpService.axiosRef.get(url, config);
+      return Buffer.from(response.data, 'binary');
+    } catch (error) {
+      this.logger.error(`YCloud download media error: ${error.response?.data || error.message}`);
+      throw new InternalServerErrorException('Error al descargar archivo de YCloud');
+    }
+  }
+
+  // ─── Webhook ──────────────────────────────────────────────────
+
+  async handleWebhook(payload: YcloudWebhookPayload): Promise<void> {
+    const { eventType, data } = payload;
+
+    this.logger.log(`YCloud webhook received: ${eventType}`);
+
+    switch (eventType) {
+      case 'whatsapp.inbound_message':
+        await this.processInboundMessage(data as YcloudInboundMessage);
+        break;
+      case 'whatsapp.message_status_updated':
+        await this.processStatusUpdate(data as unknown as YcloudStatusData);
+        break;
+      case 'whatsapp.template_message_sent':
+        await this.processTemplateResponse(data as Record<string, any>);
+        break;
+      default:
+        this.logger.warn(`Evento YCloud desconocido: ${eventType}`);
+        break;
+    }
+  }
+
+  private async processInboundMessage(data: YcloudInboundMessage): Promise<void> {
+    try {
+      const phoneNumberId = data.to || data.from;
+      const jsonMsg = JSON.stringify({ eventType: 'whatsapp.inbound_message', data });
+      const query = new SelectQuery(`SELECT mensaje_ycloud($1::jsonb, $2) AS wa_id`);
+      query.addStringParam(1, jsonMsg);
+      query.addStringParam(2, phoneNumberId);
+      const res = await this.dataSource.createSingleQuery(query);
+      this.whatsappGateway.sendMessageToClients(res.wa_id);
+      this.logger.log(`Inbound message processed: ${res.wa_id}`);
+    } catch (error) {
+      this.logger.error(`Error processing inbound message: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
+    try {
+      const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
+      updateQuery.values.set('status_whmem', data.status);
+
+      if (data.status === 'sent') {
+        updateQuery.values.set('timestamp_whmem', data.timestamp);
+      } else if (data.status === 'delivered') {
+        updateQuery.values.set('timestamp_sent_whmem', new Date(Number(data.timestamp) * 1000).toISOString());
+      } else if (data.status === 'read') {
+        updateQuery.values.set('timestamp_read_whmem', new Date(Number(data.timestamp) * 1000).toISOString());
+        updateQuery.values.set('leido_whmem', true);
+        this.whatsappGateway.sendReadMessageToClients(data.id);
+      } else if (data.status === 'failed') {
+        updateQuery.values.set('timestamp_whmem', data.timestamp);
+        if (data.errors && data.errors.length > 0) {
+          updateQuery.values.set('error_whmem', data.errors[0].error_data?.details || data.errors[0].message);
+          updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`);
+        }
+      }
+
+      updateQuery.where = 'id_whmem = $1';
+      updateQuery.addStringParam(1, data.id);
+      await this.dataSource.createQuery(updateQuery);
+
+      if (data.conversation?.id) {
+        const convQuery = new UpdateQuery('wha_mensaje', 'uuid');
+        convQuery.values.set('conversation_id_whmem', data.conversation.id);
+        if (data.pricing?.category) {
+          convQuery.values.set('pricing_category_whmem', data.pricing.category);
+        }
+        convQuery.where = 'id_whmem = $1';
+        convQuery.addStringParam(1, data.id);
+        await this.dataSource.createQuery(convQuery);
+      }
+    } catch (error) {
+      this.logger.error(`Error processing status update: ${error.message}`, error.stack);
+    }
+  }
+
+  private async processTemplateResponse(data: Record<string, any>): Promise<void> {
+    this.logger.log(`Template message response: ${JSON.stringify(data)}`);
+    try {
+      const messageId = data?.id || data?.messages?.[0]?.id;
+      if (messageId) {
+        const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
+        updateQuery.values.set('status_whmem', 'sent');
+        updateQuery.where = 'id_whmem = $1';
+        updateQuery.addStringParam(1, messageId);
+        await this.dataSource.createQuery(updateQuery);
+      }
+    } catch (error) {
+      this.logger.error(`Error processing template response: ${error.message}`);
+    }
+  }
+
+  // ─── Campaign helpers ─────────────────────────────────────────
+
+  async enviarMensajeTextoCampania(
+    ideEmpr: number,
+    telefono: string,
+    texto: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const payload: YcloudTextPayload = {
+      to: telefono,
+      type: 'text',
+      text: { body: texto, preview_url: false },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono,
+        tipo: 'text',
+        texto,
+        idWts: messageId,
+        ideUsua,
+        tiempoRespuesta: null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  async enviarMensajeMediaCampania(
+    ideEmpr: number,
+    telefono: string,
+    caption: string,
+    file: Express.Multer.File,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const mimeType = file.mimetype;
+    const { mediaId } = await this.uploadMedia(ideEmpr, file.buffer, mimeType, file.originalname);
+
+    const mediaType = mimeType.startsWith('image')
+      ? 'image'
+      : mimeType.startsWith('video')
+        ? 'video'
+        : mimeType.startsWith('audio')
+          ? 'audio'
+          : 'document';
+
+    let payload: YcloudMessagePayload;
+    if (mediaType === 'image') {
+      payload = { to: telefono, type: 'image', image: { id: mediaId, caption } };
+    } else if (mediaType === 'video') {
+      payload = { to: telefono, type: 'video', video: { id: mediaId, caption } };
+    } else if (mediaType === 'audio') {
+      payload = { to: telefono, type: 'audio', audio: { id: mediaId } };
+    } else {
+      payload = { to: telefono, type: 'document', document: { id: mediaId, filename: file.originalname, caption } };
+    }
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono,
+        tipo: mediaType,
+        texto: caption || null,
+        idWts: messageId,
+        mediaId,
+        fileName: file.originalname,
+        mimeType,
+        ideUsua,
+        tiempoRespuesta: null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
+  // ─── Save message in DB ───────────────────────────────────────
+
+  async saveMessageSent(data: MessageSaveData, config: YcloudCacheConfig): Promise<any> {
+    if (!isDefined(config)) {
+      throw new BadRequestException('Error al obtener la configuracion YCloud');
+    }
+
+    try {
+      const updateChatQuery = new UpdateQuery('wha_chat', 'ide_whcha');
+      updateChatQuery.values.set('id_whcha', data.idWts);
+      updateChatQuery.where = 'wa_id_whcha = $1';
+      updateChatQuery.addParam(1, data.telefono);
+      await this.dataSource.createQuery(updateChatQuery);
+
+      const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
+      insertQuery.values.set('phone_number_id_whmem', config.phoneNumberId);
+      insertQuery.values.set('wa_id_whmem', data.telefono);
+      insertQuery.values.set('id_whmem', data.idWts);
+      insertQuery.values.set('body_whmem', data.texto || '');
+      insertQuery.values.set('fecha_whmem', getCurrentDateTime());
+      insertQuery.values.set('content_type_whmem', data.tipo);
+      insertQuery.values.set('leido_whmem', false);
+      insertQuery.values.set('direction_whmem', 1);
+      insertQuery.values.set('attachment_name_whmem', data.fileName || null);
+      insertQuery.values.set('attachment_type_whmem', data.mimeType || null);
+      insertQuery.values.set('tipo_whmem', 'YCLOUD');
+      insertQuery.values.set('attachment_id_whmem', data.mediaId || null);
+      insertQuery.values.set('caption_whmem', data.tipo === 'text' ? null : data.texto);
+
+      if (data.ideUsua) {
+        insertQuery.values.set('ide_usua_whmem', data.ideUsua);
+      }
+      if (data.tiempoRespuesta != null) {
+        insertQuery.values.set('tiempo_respuesta_seg_whmem', data.tiempoRespuesta);
+      }
+
+      const res = await this.dataSource.createQuery(insertQuery);
+      this.whatsappGateway.sendMessageToClients(data.telefono);
+      return res;
+    } catch (error) {
+      this.logger.error(`Error saveMessageSent: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Error saveMessageSent: ${error.message}`);
+    }
+  }
+
+  // ─── Validate ─────────────────────────────────────────────────
+
+  async validateNumber(
+    ideEmpr: number,
+    phoneNumber: string,
+  ): Promise<{ isValid: boolean; formattedNumber?: string; error?: string }> {
+    const normalizedPhone = phoneNumber.replace(/[^\d]/g, '');
+    if (!normalizedPhone || normalizedPhone.length < 8) {
+      return { isValid: false, error: 'Numero de telefono no valido' };
+    }
+
+    const query = new SelectQuery(`
+      SELECT f_existe_telefono_whatsapp($1) AS existe
+    `);
+    query.addParam(1, normalizedPhone);
+    const res = await this.dataSource.createSingleQuery(query);
+
+    if (res?.existe === true) {
+      return { isValid: true, formattedNumber: normalizedPhone };
+    }
+
+    return { isValid: true, formattedNumber: normalizedPhone };
+  }
+
+  // ─── Sync ─────────────────────────────────────────────────────
+
+  async syncPendingMessages(ideEmpr: number): Promise<{ reconciled: number; errors: number }> {
+    const orphans = await this.metricsService.orphanLocalMessages(ideEmpr);
+    let reconciled = 0;
+    let errors = 0;
+
+    for (const msgId of orphans) {
+      try {
+        await this.metricsService.reconcileMessage(ideEmpr, msgId);
+        reconciled++;
+      } catch (error) {
+        await this.metricsService.markAsConflict(ideEmpr, msgId, error.message);
+        errors++;
+      }
+    }
+
+    return { reconciled, errors };
+  }
+}

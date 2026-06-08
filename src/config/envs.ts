@@ -33,6 +33,10 @@ interface EnvVars {
   OPENAI_API_KEY: string;
   OCR_SPACE_API_KEY: string;
   OCR_SPACE_TIMEOUT_MS: number;
+
+  YCLOUD_API_KEY?: string;
+  YCLOUD_WEBHOOK_VERIFY_TOKEN?: string;
+  YCLOUD_API_URL?: string;
 }
 
 const envsSchema = z
@@ -95,6 +99,9 @@ const envsSchema = z
       .transform(Number)
       .optional()
       .default(30000),
+    YCLOUD_API_KEY: z.string().optional(),
+    YCLOUD_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+    YCLOUD_API_URL: z.string().optional().default('https://api.ycloud.com/v2'),
   })
   .passthrough();
 
@@ -139,4 +146,8 @@ export const envs = {
   openaiApiKey: envVars.OPENAI_API_KEY,
   ocrSpaceApiKey: envVars.OCR_SPACE_API_KEY,
   ocrSpaceTimeoutMs: envVars.OCR_SPACE_TIMEOUT_MS,
+
+  ycloudApiKey: envVars.YCLOUD_API_KEY,
+  ycloudWebhookVerifyToken: envVars.YCLOUD_WEBHOOK_VERIFY_TOKEN,
+  ycloudApiUrl: envVars.YCLOUD_API_URL,
 };

@@ -181,16 +181,28 @@ export class ClientesService extends BaseService {
         WITH saldo_cte AS (
             SELECT
                 ide_geper,
-                SUM(valor_ccdtr * signo_ccttr) AS saldo,
-                MAX(ct.fecha_trans_ccctr) AS ultima_transaccion
+                SUM(valor_ccdtr * signo_ccttr) AS saldo
             FROM
                 cxc_detall_transa dt
                 LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
                 LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
             WHERE 
                 dt.ide_empr = ${dtoIn.ideEmpr}
+                and dt.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 ide_geper
+        ),
+        ultima_transaccion_cte AS (
+            SELECT
+                ct.ide_geper,
+                MAX(dt.fecha_trans_ccdtr) AS ultima_transaccion
+            FROM
+                cxc_detall_transa dt
+                INNER JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            WHERE
+                dt.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY
+                ct.ide_geper
         )
         SELECT
             p.ide_geper,
@@ -203,7 +215,38 @@ export class ClientesService extends BaseService {
             p.fecha_ingre_geper,
             b.nombre_cndfp,
             c.nombre_vgven,
-            ultima_transaccion,
+            ut.ultima_transaccion,
+            CASE
+                WHEN COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date) IS NULL THEN 'SIN ACTIVIDAD'
+                WHEN (CURRENT_DATE - COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)) < 30
+                    THEN (CURRENT_DATE - COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date))::text || ' dias'
+                ELSE TRIM(
+                    BOTH ' ' FROM CONCAT(
+                        CASE
+                            WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int > 0
+                                THEN EXTRACT(YEAR FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int::text
+                                    || ' '
+                                    || CASE
+                                        WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int = 1
+                                            THEN 'año '
+                                        ELSE 'años '
+                                    END
+                            ELSE ''
+                        END,
+                        CASE
+                            WHEN EXTRACT(MONTH FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int > 0
+                                THEN EXTRACT(MONTH FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int::text
+                                    || ' '
+                                    || CASE
+                                        WHEN EXTRACT(MONTH FROM age(CURRENT_DATE, COALESCE(ut.ultima_transaccion::date, p.fecha_ingre_geper::date)))::int = 1
+                                            THEN 'mes'
+                                        ELSE 'meses'
+                                    END
+                            ELSE ''
+                        END
+                    )
+                )
+            END AS tiempo_inactivo,
             COALESCE(s.saldo, 0) AS saldo,
             activo_geper
         FROM
@@ -211,13 +254,14 @@ export class ClientesService extends BaseService {
             LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
             LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
             LEFT JOIN saldo_cte s ON s.ide_geper = p.ide_geper
+            LEFT JOIN ultima_transaccion_cte ut ON ut.ide_geper = p.ide_geper
             LEFT JOIN gen_tipo_persona d on p.ide_getip = d.ide_getip
-            LEFT JOIN gen_tipo_identifi h on p.ide_getip = h.ide_getid
+            LEFT JOIN gen_tipo_identifi h on p.ide_getid = h.ide_getid
         WHERE
             p.es_cliente_geper = true
             AND p.identificac_geper IS NOT NULL
             AND p.nivel_geper = 'HIJO'
-            AND P.ide_empr = ${dtoIn.ideEmpr}
+            AND p.ide_empr = ${dtoIn.ideEmpr}
             ${condDiferencias}
         ORDER BY
             p.nom_geper
