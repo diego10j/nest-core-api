@@ -10,6 +10,8 @@
 /*                              MODIFICACIONES                          */
 /*  FECHA           AUTOR           RAZON                               */
 /*  31/May/2024     D. Jacome    Emision inicial                        */
+/*  08/Jun/2026     Nest-Core     Case-insensitive: busca tabla_bloq    */
+/*                                en mayúsculas o minúsculas            */
 /************************************************************************/
 
 CREATE OR REPLACE FUNCTION get_seq_table(
@@ -25,19 +27,19 @@ DECLARE
     new_max INTEGER;
     ide_bloq INTEGER;
 BEGIN
-    -- Busca el máximo en la tabla sis_bloqueo
-    SELECT maximo_bloq INTO max_bloq FROM sis_bloqueo WHERE tabla_bloq = LOWER(table_name);
+    -- Busca el máximo en la tabla sis_bloqueo (case-insensitive)
+    SELECT maximo_bloq INTO max_bloq FROM sis_bloqueo WHERE LOWER(tabla_bloq) = LOWER(table_name);
 
     IF max_bloq IS NOT NULL THEN
         -- Si existe, actualiza el secuencial en la tabla sis_bloqueo
         seq := max_bloq;
         new_max := seq + number_rows_added;
-        UPDATE sis_bloqueo SET maximo_bloq = new_max WHERE tabla_bloq = LOWER(table_name);
+        UPDATE sis_bloqueo SET maximo_bloq = new_max WHERE LOWER(tabla_bloq) = LOWER(table_name);
     ELSE
         -- Si no existe, busca el máximo en la tabla específica
         EXECUTE format('SELECT COALESCE(MAX(%I), 0) FROM %I', primary_key, table_name) INTO seq;
 
-        -- Inserta el nuevo secuencial en la tabla sis_bloqueo
+        -- Inserta el nuevo secuencial en la tabla sis_bloqueo (siempre en minúsculas)
         EXECUTE 'SELECT COALESCE(MAX(ide_bloq), 0) + 1 FROM sis_bloqueo' INTO ide_bloq;
         INSERT INTO sis_bloqueo (maximo_bloq, tabla_bloq, ide_bloq, usuario_bloq)
         VALUES (seq + number_rows_added, LOWER(table_name), ide_bloq, login);  
