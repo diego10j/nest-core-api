@@ -622,22 +622,27 @@ export class YcloudService {
     if (data.image) {
       insertQuery.values.set('attachment_id_whmem', data.image.id);
       insertQuery.values.set('attachment_type_whmem', data.image.mime_type);
+      insertQuery.values.set('attachment_url_whmem', data.image.link || null);
       insertQuery.values.set('caption_whmem', data.image.caption || null);
     } else if (data.video) {
       insertQuery.values.set('attachment_id_whmem', data.video.id);
       insertQuery.values.set('attachment_type_whmem', data.video.mime_type);
+      insertQuery.values.set('attachment_url_whmem', data.video.link || null);
       insertQuery.values.set('caption_whmem', data.video.caption || null);
     } else if (data.audio) {
       insertQuery.values.set('attachment_id_whmem', data.audio.id);
       insertQuery.values.set('attachment_type_whmem', data.audio.mime_type);
+      insertQuery.values.set('attachment_url_whmem', data.audio.link || null);
     } else if (data.document) {
       insertQuery.values.set('attachment_id_whmem', data.document.id);
       insertQuery.values.set('attachment_type_whmem', data.document.mime_type);
+      insertQuery.values.set('attachment_url_whmem', data.document.link || null);
       insertQuery.values.set('attachment_name_whmem', data.document.filename || null);
       insertQuery.values.set('caption_whmem', data.document.caption || null);
     } else if (data.sticker) {
       insertQuery.values.set('attachment_id_whmem', data.sticker.id);
       insertQuery.values.set('attachment_type_whmem', data.sticker.mime_type);
+      insertQuery.values.set('attachment_url_whmem', data.sticker.link || null);
     }
 
     if (data.location) {

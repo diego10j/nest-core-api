@@ -113,7 +113,6 @@ export class AsientosAutomaticosService extends BaseService {
             data: {
                 ide_cntcm: ideCntcm,
                 ide_geper: dtoIn.ideGeper,
-                ide_modu: dtoIn.ideTeclb,
                 fecha_trans_cnccc: dtoIn.fecha,
                 observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
                 automatico_cnccc: true,
