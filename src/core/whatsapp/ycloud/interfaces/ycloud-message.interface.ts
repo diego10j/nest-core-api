@@ -96,9 +96,23 @@ export interface YcloudStatusData {
   from: string;
   to: string;
   status: 'sent' | 'delivered' | 'read' | 'failed' | 'deleted';
-  timestamp: string;
+  createTime?: string;
   sendTime?: string;
+  deliverTime?: string;
+  readTime?: string;
+  wabaId?: string;
+  recipient?: string;
+  type?: string;
+  text?: { body: string };
+  image?: { id: string; link?: string; mime_type: string; sha256: string; caption?: string };
+  video?: { id: string; link?: string; mime_type: string; sha256: string; caption?: string };
+  audio?: { id: string; link?: string; mime_type: string; sha256: string };
+  document?: { id: string; link?: string; mime_type: string; sha256: string; filename?: string; caption?: string };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
+  sticker?: { id: string; link?: string; mime_type: string; sha256: string };
   conversation?: { id: string; expiration_timestamp?: string; origin?: { type: string } };
   pricing?: { category: string; pricing_model: string };
+  pricingCategory?: string;
+  totalPrice?: number;
   errors?: Array<{ code: number; title: string; message: string; error_data: { details: string } }>;
 }

@@ -510,8 +510,6 @@ export class YcloudService {
   // ─── Webhook ──────────────────────────────────────────────────
 
   async handleWebhook(payload: YcloudWebhookPayload): Promise<void> {
-    this.logger.log(`YCloud webhook received: ${payload.type}`);
-
     switch (payload.type) {
       case 'whatsapp.inbound_message.received':
         if (payload.whatsappInboundMessage) {
@@ -548,79 +546,118 @@ export class YcloudService {
       query.addStringParam(2, data.to || data.from);
       const res = await this.dataSource.createSingleQuery(query);
       this.whatsappGateway.sendMessageToClients(res.wa_id);
-      this.logger.log(`Inbound message processed: ${res.wa_id}`);
     } catch (error) {
       this.logger.error(`Error processing inbound message: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  private parseTimestamp(ts: any): string | null {
-    if (ts == null || ts === '') return null;
-    const str = String(ts);
-    const num = Number(str);
-    if (!isNaN(num) && num > 0) {
-      return new Date(num * 1000).toISOString();
-    }
-    const date = new Date(str);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-    this.logger.warn(`Could not parse webhook timestamp: "${str}"`);
-    return null;
-  }
-
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
     try {
-      this.logger.log(`Status update: ${JSON.stringify(data)}`);
       const wamid = data.wamid || data.id;
-      const ts = this.parseTimestamp(data.timestamp);
-      const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
-      updateQuery.values.set('status_whmem', data.status);
 
-      if (data.status === 'sent') {
-        updateQuery.values.set('timestamp_whmem', data.timestamp);
-      } else if (data.status === 'delivered' && ts) {
-        updateQuery.values.set('timestamp_sent_whmem', ts);
-      } else if (data.status === 'read' && ts) {
-        updateQuery.values.set('timestamp_read_whmem', ts);
-        updateQuery.values.set('leido_whmem', true);
-        this.whatsappGateway.sendReadMessageToClients(wamid);
-      } else if (data.status === 'failed') {
-        updateQuery.values.set('timestamp_whmem', data.timestamp);
-        if (data.errors && data.errors.length > 0) {
-          updateQuery.values.set('error_whmem', data.errors[0].error_data?.details || data.errors[0].message);
-          updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`);
+      const existsQuery = new SelectQuery(`SELECT ide_whmem FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`);
+      existsQuery.addStringParam(1, wamid);
+      const existing = await this.dataSource.createSingleQuery(existsQuery);
+
+      if (existing) {
+        const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
+        updateQuery.values.set('status_whmem', data.status);
+
+        if (data.status === 'sent') {
+          updateQuery.values.set('timestamp_whmem', data.sendTime || data.createTime);
+        } else if (data.status === 'delivered') {
+          updateQuery.values.set('timestamp_sent_whmem', data.deliverTime || data.sendTime);
+        } else if (data.status === 'read') {
+          updateQuery.values.set('timestamp_read_whmem', data.readTime || data.deliverTime);
+          updateQuery.values.set('leido_whmem', true);
+          this.whatsappGateway.sendReadMessageToClients(wamid);
+        } else if (data.status === 'failed') {
+          if (data.errors && data.errors.length > 0) {
+            updateQuery.values.set('error_whmem', data.errors[0].error_data?.details || data.errors[0].message);
+            updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`);
+          }
         }
+
+        updateQuery.where = 'id_whmem = $1';
+        updateQuery.addStringParam(1, wamid);
+        await this.dataSource.createQuery(updateQuery);
       } else {
-        this.logger.warn(`Unknown status: ${data.status}`);
-      }
-
-      updateQuery.where = 'id_whmem = $1';
-      updateQuery.addStringParam(1, wamid);
-      await this.dataSource.createQuery(updateQuery);
-
-      if (data.conversation?.id) {
-        const convQuery = new UpdateQuery('wha_mensaje', 'uuid');
-        convQuery.values.set('conversation_id_whmem', data.conversation.id);
-        if (data.pricing?.category) {
-          convQuery.values.set('pricing_category_whmem', data.pricing.category);
-        }
-        convQuery.where = 'id_whmem = $1';
-        convQuery.addStringParam(1, wamid);
-        await this.dataSource.createQuery(convQuery);
+        await this.insertOutboundMessage(data, wamid);
       }
     } catch (error) {
-      this.logger.error(`Error processing status update: ${error.message}`, error.stack);
+      this.logger.error(`Status update failed: ${error.message}`);
     }
+  }
+
+  private async insertOutboundMessage(data: YcloudStatusData, wamid: string): Promise<void> {
+    const customerWaId = (data.to || '').replace(/^\+/, '');
+    const businessPhone = (data.from || '').replace(/^\+/, '');
+    const tipo = data.type || 'text';
+
+    let body = data.text?.body || '';
+    if (data.image) body = data.image.caption || '';
+    if (data.video) body = data.video.caption || '';
+    if (data.document) body = data.document.caption || '';
+
+    const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
+    insertQuery.values.set('id_whmem', wamid);
+    insertQuery.values.set('wa_id_whmem', customerWaId);
+    insertQuery.values.set('phone_number_id_whmem', businessPhone);
+    insertQuery.values.set('direction_whmem', 1);
+    insertQuery.values.set('content_type_whmem', tipo);
+    insertQuery.values.set('body_whmem', body);
+    insertQuery.values.set('status_whmem', data.status);
+    insertQuery.values.set('fecha_whmem', data.sendTime || data.createTime || new Date().toISOString());
+    insertQuery.values.set('tipo_whmem', 'YCLOUD');
+    insertQuery.values.set('leido_whmem', false);
+
+    if (data.status === 'delivered') {
+      insertQuery.values.set('timestamp_sent_whmem', data.deliverTime || data.sendTime);
+    } else if (data.status === 'read') {
+      insertQuery.values.set('timestamp_read_whmem', data.readTime || data.deliverTime);
+      insertQuery.values.set('leido_whmem', true);
+    }
+
+    if (data.image) {
+      insertQuery.values.set('attachment_id_whmem', data.image.id);
+      insertQuery.values.set('attachment_type_whmem', data.image.mime_type);
+      insertQuery.values.set('caption_whmem', data.image.caption || null);
+    } else if (data.video) {
+      insertQuery.values.set('attachment_id_whmem', data.video.id);
+      insertQuery.values.set('attachment_type_whmem', data.video.mime_type);
+      insertQuery.values.set('caption_whmem', data.video.caption || null);
+    } else if (data.audio) {
+      insertQuery.values.set('attachment_id_whmem', data.audio.id);
+      insertQuery.values.set('attachment_type_whmem', data.audio.mime_type);
+    } else if (data.document) {
+      insertQuery.values.set('attachment_id_whmem', data.document.id);
+      insertQuery.values.set('attachment_type_whmem', data.document.mime_type);
+      insertQuery.values.set('attachment_name_whmem', data.document.filename || null);
+      insertQuery.values.set('caption_whmem', data.document.caption || null);
+    } else if (data.sticker) {
+      insertQuery.values.set('attachment_id_whmem', data.sticker.id);
+      insertQuery.values.set('attachment_type_whmem', data.sticker.mime_type);
+    }
+
+    if (data.location) {
+      insertQuery.values.set('location_lat_whmem', data.location.latitude);
+      insertQuery.values.set('location_lng_whmem', data.location.longitude);
+      if (data.location.name) insertQuery.values.set('location_name_whmem', data.location.name);
+      if (data.location.address) insertQuery.values.set('location_address_whmem', data.location.address);
+    }
+
+    if (data.pricingCategory) {
+      insertQuery.values.set('pricing_category_whmem', data.pricingCategory);
+    }
+
+    await this.dataSource.createQuery(insertQuery);
   }
 
   private async processTemplateResponse(data: Record<string, any>): Promise<void> {
-    this.logger.log(`Template event: ${JSON.stringify(data)}`);
   }
 
   private async processContactEvent(data: Record<string, any>): Promise<void> {
-    this.logger.log(`Contact event received`);
     try {
       const waId = data?.whatsappId || data?.wa_id || data?.phoneNumber || data?.from;
       const name = data?.name || data?.profile?.name || data?.customerProfile?.name;

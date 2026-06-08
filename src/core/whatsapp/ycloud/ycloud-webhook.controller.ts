@@ -39,7 +39,6 @@ export class YcloudWebhookController {
   @Post()
   @ApiOperation({ summary: 'Recibir eventos de webhook de YCloud' })
   async handleWebhook(@Body() body: any, @Res() res: any) {
-    this.logger.log(`YCloud webhook received: ${JSON.stringify(body)}`);
     res.status(HttpStatus.OK).send({ status: 'ok' });
     try {
       await this.ycloudService.handleWebhook(body);

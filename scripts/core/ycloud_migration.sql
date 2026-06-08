@@ -60,6 +60,18 @@ CREATE INDEX IF NOT EXISTS idx_wha_chat_asignado
     ON wha_chat (ide_usua_asignado_whcha)
     WHERE ide_usua_asignado_whcha IS NOT NULL;
 
+-- Columnas de ubicacion en wha_mensaje (para mensajes tipo location)
+ALTER TABLE wha_mensaje
+    ADD COLUMN IF NOT EXISTS location_lat_whmem DECIMAL(10,7),
+    ADD COLUMN IF NOT EXISTS location_lng_whmem DECIMAL(10,7),
+    ADD COLUMN IF NOT EXISTS location_name_whmem VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS location_address_whmem TEXT;
+
+COMMENT ON COLUMN wha_mensaje.location_lat_whmem IS 'Latitud para mensajes tipo location';
+COMMENT ON COLUMN wha_mensaje.location_lng_whmem IS 'Longitud para mensajes tipo location';
+COMMENT ON COLUMN wha_mensaje.location_name_whmem IS 'Nombre del lugar (location name)';
+COMMENT ON COLUMN wha_mensaje.location_address_whmem IS 'Direccion del lugar (location address)';
+
 -- ============================================================
 -- 4. wha_mensaje: agente que envió + tiempo de respuesta
 -- ============================================================
@@ -247,13 +259,18 @@ v_timestamp_whmem      := COALESCE(
         id_whmem, wa_id_whmem, wa_id_context_whmem, body_whmem,
         fecha_whmem, timestamp_whmem, content_type_whmem, direction_whmem,
         attachment_id_whmem, attachment_type_whmem, caption_whmem,
-        leido_whmem, attachment_name_whmem, tipo_whmem
+        leido_whmem, attachment_name_whmem, tipo_whmem,
+        location_lat_whmem, location_lng_whmem, location_name_whmem, location_address_whmem
     ) VALUES (
         v_ide_whcha, v_phone_number_id, v_phone_number,
         v_id_whmem, v_wa_id_whmem, v_wa_id_context_whmem, v_body_whmem,
         v_fecha_whmem, v_timestamp_whmem, v_content_type_whmem, '0',
         v_attachment_id_whmem, v_attachment_type_whmem, v_caption_whmem,
-        false, v_attachment_name_whmem, 'YCLOUD'
+        false, v_attachment_name_whmem, 'YCLOUD',
+        (v_media_data #>> '{location,latitude}')::DECIMAL(10,7),
+        (v_media_data #>> '{location,longitude}')::DECIMAL(10,7),
+        trim(both '"' from v_media_data #>> '{location,name}'),
+        trim(both '"' from v_media_data #>> '{location,address}')
     );
 
     RETURN v_wa_id_whcha;
