@@ -82,7 +82,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         // PASO 3: Obtener cuenta contable del CLIENTE (CxC)
-        const ideCndpcCliente = await this.getCuentaPersona('CUENTA POR COBRAR', dtoIn.ideGeper);
+        const ideCndpcCliente = await this.getCuentaPersona('CUENTA POR COBRAR', dtoIn.ideGeper, dtoIn.ideEmpr, dtoIn.ideSucu);
 
         if (!ideCndpcCliente) {
             advertencias.push('Cuenta por cobrar del cliente no configurada en con_det_conf_asie');
@@ -175,24 +175,28 @@ export class AsientosAutomaticosService extends BaseService {
     /**
      * Obtiene la cuenta contable de una persona para un tipo de configuracion contable
      */
-    private async getCuentaPersona(identificador: string, ideGeper: number): Promise<number | null> {
+    private async getCuentaPersona(identificador: string, ideGeper: number, ideEmpr: number, ideSucu: number): Promise<number | null> {
         const qConf = new SelectQuery(`
             SELECT ide_cncca FROM con_cab_conf_asie
             WHERE UPPER(nombre_cncca) = UPPER($1)
+              AND ide_empr = $2
+              AND ide_sucu = $3
             LIMIT 1
         `);
         qConf.addStringParam(1, identificador);
+        qConf.addIntParam(2, ideEmpr);
+        qConf.addIntParam(3, ideSucu);
         const conf = await this.dataSource.createSingleQuery(qConf);
         if (!conf?.ide_cncca) return null;
 
-        return this.buscarCuentaPersona(conf.ide_cncca, ideGeper, 3);
+        return this.buscarCuentaPersona(conf.ide_cncca, ideGeper, 3, ideEmpr, ideSucu);
     }
 
     /**
      * Busca recursivamente la cuenta contable de una persona
      */
     private async buscarCuentaPersona(
-        ideCncca: number, ideGeper: number, maxNivel: number,
+        ideCncca: number, ideGeper: number, maxNivel: number, ideEmpr: number, ideSucu: number,
     ): Promise<number | null> {
         if (!ideGeper || maxNivel < 0) return null;
 
@@ -203,21 +207,30 @@ export class AsientosAutomaticosService extends BaseService {
             WHERE cn_v.ide_cncca = $1
               AND cn_v.estado_cnvca = true
               AND cn_d.ide_geper = $2
+              AND cn_v.ide_empr = $3
+              AND cn_v.ide_sucu = $4
             LIMIT 1
         `);
         qCuenta.addIntParam(1, ideCncca);
         qCuenta.addIntParam(2, ideGeper);
+        qCuenta.addIntParam(3, ideEmpr);
+        qCuenta.addIntParam(4, ideSucu);
         const result = await this.dataSource.createSingleQuery(qCuenta);
         if (result?.ide_cndpc) return result.ide_cndpc;
 
         if (maxNivel > 0) {
             const qPadre = new SelectQuery(`
-                SELECT gen_ide_geper FROM gen_persona WHERE ide_geper = $1
+                SELECT gen_ide_geper FROM gen_persona
+                WHERE ide_geper = $1
+                  AND ide_empr = $2
+                  AND ide_sucu = $3
             `);
             qPadre.addIntParam(1, ideGeper);
+            qPadre.addIntParam(2, ideEmpr);
+            qPadre.addIntParam(3, ideSucu);
             const padre = await this.dataSource.createSingleQuery(qPadre);
             if (padre?.gen_ide_geper && padre.gen_ide_geper !== ideGeper) {
-                return this.buscarCuentaPersona(ideCncca, padre.gen_ide_geper, maxNivel - 1);
+                return this.buscarCuentaPersona(ideCncca, padre.gen_ide_geper, maxNivel - 1, ideEmpr, ideSucu);
             }
         }
         return null;

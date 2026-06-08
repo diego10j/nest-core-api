@@ -19,49 +19,6 @@ ALTER TABLE tes_cuenta_banco ADD COLUMN usuario_actua varchar(50);
 ALTER TABLE tes_cuenta_banco ADD COLUMN hora_actua TIMESTAMP;
 
 
----------------
-
-CREATE TABLE "public"."tes_cab_libr_banc" (
-    "ide_teclb" int8 NOT NULL,
-    "ide_tecba" int8,
-    "ide_sucu" int8,
-    "ide_tettb" int8,
-    "ide_teelb" int8,
-    "ide_empr" int8,
-    "ide_cnccc" int8,
-    "valor_teclb" numeric(12,2) NOT NULL,
-    "numero_teclb" varchar(20),
-    "fecha_trans_teclb" date,
-    "fecha_venci_teclb" date,
-    "fec_cam_est_teclb" date,
-    "conciliado_teclb" bool,
-    "beneficiari_teclb" varchar(150),
-    "observacion_teclb" text,
-    "num_comprobante_teclb" varchar(30),
-    "usuario_ingre" varchar(50),
-    "fecha_ingre" date,
-    "hora_ingre" time,
-    "usuario_actua" varchar(50),
-    "fecha_actua" date,
-    "hora_actua" time,
-    "tes_ide_teclb" int8,
-    "tes_ide_teclb1" int8,
-    "depositado_teclb" bool DEFAULT false,
-    "devuelto_teclb" bool DEFAULT false,
-    "ide_teban" int8,
-    "fecha_concilia_teclb" date,
-    CONSTRAINT "tes_cab_libr_banc_ide_cnccc_fkey" FOREIGN KEY ("ide_cnccc") REFERENCES "public"."con_cab_comp_cont"("ide_cnccc") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_empr_fkey" FOREIGN KEY ("ide_empr") REFERENCES "public"."sis_empresa"("ide_empr") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_sucu_fkey" FOREIGN KEY ("ide_sucu") REFERENCES "public"."sis_sucursal"("ide_sucu") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_teban_fkey" FOREIGN KEY ("ide_teban") REFERENCES "public"."tes_banco"("ide_teban") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_tecba_fkey" FOREIGN KEY ("ide_tecba") REFERENCES "public"."tes_cuenta_banco"("ide_tecba") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_teelb_fkey" FOREIGN KEY ("ide_teelb") REFERENCES "public"."tes_estado_libro_banco"("ide_teelb") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_ide_tettb_fkey" FOREIGN KEY ("ide_tettb") REFERENCES "public"."tes_tip_tran_banc"("ide_tettb") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_tes_ide_teclb1_fkey" FOREIGN KEY ("tes_ide_teclb1") REFERENCES "public"."tes_cab_libr_banc"("ide_teclb") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT "tes_cab_libr_banc_tes_ide_teclb_fkey" FOREIGN KEY ("tes_ide_teclb") REFERENCES "public"."tes_cab_libr_banc"("ide_teclb") ON DELETE RESTRICT ON UPDATE RESTRICT,
-    PRIMARY KEY ("ide_teclb")
-);
-
 
 -- tabla tes_info_comprobante_banco
 CREATE TABLE tes_info_comprobante_banco (

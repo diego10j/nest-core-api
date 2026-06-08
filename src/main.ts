@@ -27,6 +27,7 @@ async function bootstrap() {
       'http://devproerpec.site',
       'https://devproerpec.site',
       'https://proerp.sigafi.com',
+      'https://devapi.proialab.com',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
