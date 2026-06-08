@@ -555,18 +555,35 @@ export class YcloudService {
     }
   }
 
+  private parseTimestamp(ts: any): string | null {
+    if (ts == null || ts === '') return null;
+    const str = String(ts);
+    const num = Number(str);
+    if (!isNaN(num) && num > 0) {
+      return new Date(num * 1000).toISOString();
+    }
+    const date = new Date(str);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+    this.logger.warn(`Could not parse webhook timestamp: "${str}"`);
+    return null;
+  }
+
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
     try {
+      this.logger.log(`Status update: ${JSON.stringify(data)}`);
       const wamid = data.wamid || data.id;
+      const ts = this.parseTimestamp(data.timestamp);
       const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
       updateQuery.values.set('status_whmem', data.status);
 
       if (data.status === 'sent') {
         updateQuery.values.set('timestamp_whmem', data.timestamp);
-      } else if (data.status === 'delivered') {
-        updateQuery.values.set('timestamp_sent_whmem', new Date(Number(data.timestamp) * 1000).toISOString());
-      } else if (data.status === 'read') {
-        updateQuery.values.set('timestamp_read_whmem', new Date(Number(data.timestamp) * 1000).toISOString());
+      } else if (data.status === 'delivered' && ts) {
+        updateQuery.values.set('timestamp_sent_whmem', ts);
+      } else if (data.status === 'read' && ts) {
+        updateQuery.values.set('timestamp_read_whmem', ts);
         updateQuery.values.set('leido_whmem', true);
         this.whatsappGateway.sendReadMessageToClients(wamid);
       } else if (data.status === 'failed') {
@@ -575,6 +592,8 @@ export class YcloudService {
           updateQuery.values.set('error_whmem', data.errors[0].error_data?.details || data.errors[0].message);
           updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`);
         }
+      } else {
+        this.logger.warn(`Unknown status: ${data.status}`);
       }
 
       updateQuery.where = 'id_whmem = $1';

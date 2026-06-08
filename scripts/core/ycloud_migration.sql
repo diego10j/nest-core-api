@@ -150,6 +150,7 @@ DECLARE
 
     v_id_whmem                 VARCHAR(80);
     v_wa_id_whmem              VARCHAR(80);
+    v_wa_id_context_whmem      VARCHAR(80);
     v_body_whmem               TEXT;
     v_fecha_whmem              TIMESTAMP;
     v_timestamp_whmem          VARCHAR(20);
@@ -198,15 +199,17 @@ BEGIN
 
     v_id_whmem             := v_id_whcha;
     v_wa_id_whmem          := v_wa_id_whcha;
+    v_wa_id_context_whmem  := trim(both '"' from v_media_data #>> '{context,id}');
     v_body_whmem           := trim(both '"' from v_media_data #>> '{text,body}');
-    v_fecha_whmem          := COALESCE(
-        (v_media_data ->> 'sendTime')::TIMESTAMPTZ,
-        NOW()
-    ) AT TIME ZONE 'America/Guayaquil';
-    v_timestamp_whmem      := COALESCE(
-        EXTRACT(EPOCH FROM (v_media_data ->> 'sendTime')::TIMESTAMPTZ)::BIGINT::VARCHAR,
-        EXTRACT(EPOCH FROM NOW())::BIGINT::VARCHAR
-    );
+v_fecha_whmem          := COALESCE(
+    (v_media_data ->> 'sendTime')::TIMESTAMPTZ,
+    NOW()
+) AT TIME ZONE 'America/Guayaquil';
+v_timestamp_whmem      := COALESCE(
+    EXTRACT(EPOCH FROM (v_media_data ->> 'sendTime')::TIMESTAMPTZ)::BIGINT::VARCHAR,
+    EXTRACT(EPOCH FROM NOW())::BIGINT::VARCHAR
+);
+
     v_content_type_whmem   := trim(both '"' from v_media_data ->> 'type');
 
     v_attachment_id_whmem := CASE
@@ -240,15 +243,15 @@ BEGIN
     END;
 
     INSERT INTO wha_mensaje (
-        ide_whcha, phone_number_id_whmem, wa_id_whmem,
-        id_whmem, body_whmem, fecha_whmem, timestamp_whmem,
-        content_type_whmem, direction_whmem,
+        ide_whcha, phone_number_id_whmem, phone_number_whmem,
+        id_whmem, wa_id_whmem, wa_id_context_whmem, body_whmem,
+        fecha_whmem, timestamp_whmem, content_type_whmem, direction_whmem,
         attachment_id_whmem, attachment_type_whmem, caption_whmem,
         leido_whmem, attachment_name_whmem, tipo_whmem
     ) VALUES (
-        v_ide_whcha, v_phone_number_id, v_wa_id_whmem,
-        v_id_whmem, v_body_whmem, v_fecha_whmem, v_timestamp_whmem,
-        v_content_type_whmem, '0',
+        v_ide_whcha, v_phone_number_id, v_phone_number,
+        v_id_whmem, v_wa_id_whmem, v_wa_id_context_whmem, v_body_whmem,
+        v_fecha_whmem, v_timestamp_whmem, v_content_type_whmem, '0',
         v_attachment_id_whmem, v_attachment_type_whmem, v_caption_whmem,
         false, v_attachment_name_whmem, 'YCLOUD'
     );
