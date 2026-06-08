@@ -64,6 +64,45 @@ export class YcloudController {
     );
   }
 
+  @Post('send-template-document')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @ApiOperation({ summary: 'Enviar plantilla con documento adjunto (PDF, Excel, etc.)' })
+  async sendTemplateDocument(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() body: { telefono: string; name: string; language: string; filename?: string; components?: string },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ messageId: string }> {
+    let components: Record<string, any>[] | undefined;
+    if (body.components) {
+      components = typeof body.components === 'string' ? JSON.parse(body.components) : body.components;
+    }
+
+    let mediaId: string;
+    if (file) {
+      const upload = await this.ycloudService.uploadMedia(
+        h.ideEmpr,
+        file.buffer,
+        file.mimetype,
+        file.originalname,
+      );
+      mediaId = upload.mediaId;
+    } else {
+      throw new Error('Se requiere un archivo para enviar con la plantilla');
+    }
+
+    return this.ycloudService.sendTemplateWithDocument(
+      h.ideEmpr,
+      body.telefono,
+      body.name,
+      body.language,
+      mediaId,
+      body.filename || file.originalname,
+      components,
+      h.ideUsua,
+    );
+  }
+
   @Post('send-media')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))

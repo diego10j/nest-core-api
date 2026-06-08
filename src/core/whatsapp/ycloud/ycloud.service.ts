@@ -515,17 +515,23 @@ export class YcloudService {
     this.logger.log(`YCloud webhook received: ${eventType}`);
 
     switch (eventType) {
-      case 'whatsapp.inbound_message':
+      case 'whatsapp.inbound_message.received':
         await this.processInboundMessage(data as YcloudInboundMessage);
         break;
-      case 'whatsapp.message_status_updated':
+      case 'whatsapp.message.updated':
         await this.processStatusUpdate(data as unknown as YcloudStatusData);
         break;
-      case 'whatsapp.template_message_sent':
+      case 'whatsapp.template.category_updated':
+      case 'whatsapp.template.quality_updated':
+      case 'whatsapp.template.reviewed':
         await this.processTemplateResponse(data as Record<string, any>);
         break;
+      case 'contact.created':
+      case 'contact.attributes_changed':
+        await this.processContactEvent(data as Record<string, any>);
+        break;
       default:
-        this.logger.warn(`Evento YCloud desconocido: ${eventType}`);
+        this.logger.log(`Evento YCloud no procesado (${eventType}), payload registrado`);
         break;
     }
   }
@@ -533,7 +539,7 @@ export class YcloudService {
   private async processInboundMessage(data: YcloudInboundMessage): Promise<void> {
     try {
       const phoneNumberId = data.to || data.from;
-      const jsonMsg = JSON.stringify({ eventType: 'whatsapp.inbound_message', data });
+      const jsonMsg = JSON.stringify({ eventType: 'whatsapp.inbound_message.received', data });
       const query = new SelectQuery(`SELECT mensaje_ycloud($1::jsonb, $2) AS wa_id`);
       query.addStringParam(1, jsonMsg);
       query.addStringParam(2, phoneNumberId);
@@ -599,6 +605,23 @@ export class YcloudService {
       }
     } catch (error) {
       this.logger.error(`Error processing template response: ${error.message}`);
+    }
+  }
+
+  private async processContactEvent(data: Record<string, any>): Promise<void> {
+    this.logger.log(`Contact event received: ${JSON.stringify(data)}`);
+    try {
+      const waId = data?.whatsappId || data?.wa_id || data?.phoneNumber;
+      const name = data?.name || data?.profile?.name;
+      if (!waId || !name) return;
+
+      const updateQuery = new UpdateQuery('wha_chat', 'uuid');
+      updateQuery.values.set('name_whcha', name);
+      updateQuery.where = 'wa_id_whcha = $1';
+      updateQuery.addStringParam(1, waId);
+      await this.dataSource.createQuery(updateQuery);
+    } catch (error) {
+      this.logger.error(`Error processing contact event: ${error.message}`);
     }
   }
 

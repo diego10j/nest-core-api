@@ -21,12 +21,11 @@ import { YcloudService } from './ycloud.service';
 export class YcloudWebhookController {
   private readonly logger = new Logger(YcloudWebhookController.name);
 
-  constructor(private readonly ycloudService: YcloudService) {}
+  constructor(private readonly ycloudService: YcloudService) { }
 
   @Get()
   @ApiOperation({ summary: 'Verificar token de webhook de YCloud' })
   verifyWebhook(
-    @AppHeaders() _h: HeaderParamsDto,
     @Query('hub.challenge') challenge: string,
     @Query('hub.verify_token') verifyToken: string,
   ) {

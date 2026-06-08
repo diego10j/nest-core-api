@@ -155,7 +155,11 @@ BEGIN
 
     SELECT
         trim(both '"' from v_media_data ->> 'from'),
-        trim(both '"' from v_media_data ->> 'from'),
+        COALESCE(
+          NULLIF(trim(both '"' from v_media_data #>> '{profile,name}'), ''),
+          NULLIF(trim(both '"' from v_media_data #>> '{contact,profile,name}'), ''),
+          trim(both '"' from v_media_data ->> 'from')
+        ),
         trim(both '"' from v_media_data ->> 'from'),
         trim(both '"' from v_media_data ->> 'id')
     INTO v_wa_id_whcha, v_name_whcha, v_phone_number, v_id_whcha;
