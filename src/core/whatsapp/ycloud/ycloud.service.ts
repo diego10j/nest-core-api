@@ -510,39 +510,41 @@ export class YcloudService {
   // ─── Webhook ──────────────────────────────────────────────────
 
   async handleWebhook(payload: YcloudWebhookPayload): Promise<void> {
-    const { eventType, data } = payload;
+    this.logger.log(`YCloud webhook received: ${payload.type}`);
 
-    this.logger.log(`YCloud webhook received: ${eventType}`);
-
-    switch (eventType) {
+    switch (payload.type) {
       case 'whatsapp.inbound_message.received':
-        await this.processInboundMessage(data as YcloudInboundMessage);
+        if (payload.whatsappInboundMessage) {
+          await this.processInboundMessage(payload.whatsappInboundMessage);
+        }
         break;
       case 'whatsapp.message.updated':
-        await this.processStatusUpdate(data as unknown as YcloudStatusData);
+        if (payload.whatsappMessage) {
+          await this.processStatusUpdate(payload.whatsappMessage as YcloudStatusData);
+        }
         break;
       case 'whatsapp.template.category_updated':
       case 'whatsapp.template.quality_updated':
       case 'whatsapp.template.reviewed':
-        await this.processTemplateResponse(data as Record<string, any>);
+        await this.processTemplateResponse(payload as Record<string, any>);
         break;
       case 'contact.created':
       case 'contact.attributes_changed':
-        await this.processContactEvent(data as Record<string, any>);
+        await this.processContactEvent(payload.contact || (payload as Record<string, any>));
         break;
       default:
-        this.logger.log(`Evento YCloud no procesado (${eventType}), payload registrado`);
+        this.logger.log(`Evento YCloud no procesado (${payload.type}), payload registrado`);
         break;
     }
   }
 
   private async processInboundMessage(data: YcloudInboundMessage): Promise<void> {
     try {
-      const phoneNumberId = data.to || data.from;
-      const jsonMsg = JSON.stringify({ eventType: 'whatsapp.inbound_message.received', data });
+      const msgPayload = { type: 'whatsapp.inbound_message.received', whatsappInboundMessage: data };
+      const jsonMsg = JSON.stringify(msgPayload);
       const query = new SelectQuery(`SELECT mensaje_ycloud($1::jsonb, $2) AS wa_id`);
       query.addStringParam(1, jsonMsg);
-      query.addStringParam(2, phoneNumberId);
+      query.addStringParam(2, data.to || data.from);
       const res = await this.dataSource.createSingleQuery(query);
       this.whatsappGateway.sendMessageToClients(res.wa_id);
       this.logger.log(`Inbound message processed: ${res.wa_id}`);
@@ -554,6 +556,7 @@ export class YcloudService {
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
     try {
+      const wamid = data.wamid || data.id;
       const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
       updateQuery.values.set('status_whmem', data.status);
 
@@ -564,7 +567,7 @@ export class YcloudService {
       } else if (data.status === 'read') {
         updateQuery.values.set('timestamp_read_whmem', new Date(Number(data.timestamp) * 1000).toISOString());
         updateQuery.values.set('leido_whmem', true);
-        this.whatsappGateway.sendReadMessageToClients(data.id);
+        this.whatsappGateway.sendReadMessageToClients(wamid);
       } else if (data.status === 'failed') {
         updateQuery.values.set('timestamp_whmem', data.timestamp);
         if (data.errors && data.errors.length > 0) {
@@ -574,7 +577,7 @@ export class YcloudService {
       }
 
       updateQuery.where = 'id_whmem = $1';
-      updateQuery.addStringParam(1, data.id);
+      updateQuery.addStringParam(1, wamid);
       await this.dataSource.createQuery(updateQuery);
 
       if (data.conversation?.id) {
@@ -584,7 +587,7 @@ export class YcloudService {
           convQuery.values.set('pricing_category_whmem', data.pricing.category);
         }
         convQuery.where = 'id_whmem = $1';
-        convQuery.addStringParam(1, data.id);
+        convQuery.addStringParam(1, wamid);
         await this.dataSource.createQuery(convQuery);
       }
     } catch (error) {
@@ -593,32 +596,21 @@ export class YcloudService {
   }
 
   private async processTemplateResponse(data: Record<string, any>): Promise<void> {
-    this.logger.log(`Template message response: ${JSON.stringify(data)}`);
-    try {
-      const messageId = data?.id || data?.messages?.[0]?.id;
-      if (messageId) {
-        const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
-        updateQuery.values.set('status_whmem', 'sent');
-        updateQuery.where = 'id_whmem = $1';
-        updateQuery.addStringParam(1, messageId);
-        await this.dataSource.createQuery(updateQuery);
-      }
-    } catch (error) {
-      this.logger.error(`Error processing template response: ${error.message}`);
-    }
+    this.logger.log(`Template event: ${JSON.stringify(data)}`);
   }
 
   private async processContactEvent(data: Record<string, any>): Promise<void> {
-    this.logger.log(`Contact event received: ${JSON.stringify(data)}`);
+    this.logger.log(`Contact event received`);
     try {
-      const waId = data?.whatsappId || data?.wa_id || data?.phoneNumber;
-      const name = data?.name || data?.profile?.name;
+      const waId = data?.whatsappId || data?.wa_id || data?.phoneNumber || data?.from;
+      const name = data?.name || data?.profile?.name || data?.customerProfile?.name;
       if (!waId || !name) return;
 
+      const normalizedWaId = waId.replace('+', '');
       const updateQuery = new UpdateQuery('wha_chat', 'uuid');
       updateQuery.values.set('name_whcha', name);
       updateQuery.where = 'wa_id_whcha = $1';
-      updateQuery.addStringParam(1, waId);
+      updateQuery.addStringParam(1, normalizedWaId);
       await this.dataSource.createQuery(updateQuery);
     } catch (error) {
       this.logger.error(`Error processing contact event: ${error.message}`);
@@ -735,15 +727,16 @@ export class YcloudService {
     }
 
     try {
+      const normalizedPhone = data.telefono.replace(/^\+/, '');
       const updateChatQuery = new UpdateQuery('wha_chat', 'ide_whcha');
       updateChatQuery.values.set('id_whcha', data.idWts);
       updateChatQuery.where = 'wa_id_whcha = $1';
-      updateChatQuery.addParam(1, data.telefono);
+      updateChatQuery.addStringParam(1, normalizedPhone);
       await this.dataSource.createQuery(updateChatQuery);
 
       const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
       insertQuery.values.set('phone_number_id_whmem', config.phoneNumberId);
-      insertQuery.values.set('wa_id_whmem', data.telefono);
+      insertQuery.values.set('wa_id_whmem', normalizedPhone);
       insertQuery.values.set('id_whmem', data.idWts);
       insertQuery.values.set('body_whmem', data.texto || '');
       insertQuery.values.set('fecha_whmem', getCurrentDateTime());

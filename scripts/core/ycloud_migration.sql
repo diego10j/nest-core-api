@@ -127,11 +127,14 @@ CREATE INDEX IF NOT EXISTS idx_wha_ycloud_sync_empr
 
 -- ============================================================
 -- 7. Función mensaje_ycloud() para procesar webhooks entrantes
---    Payload YCloud: { eventType, data: { from, id, type, ... } }
+--    Payload YCloud real:
+--    { type, whatsappInboundMessage: { from, to, wamid, type,
+--      customerProfile: { name }, text: { body }, sendTime, ... } }
 -- ============================================================
 CREATE OR REPLACE FUNCTION mensaje_ycloud(json_data JSONB, p_phone_number_id VARCHAR DEFAULT NULL)
 RETURNS VARCHAR(30) AS $$
 DECLARE
+    v_media_data               JSONB;
     v_wa_id_whcha              VARCHAR(30);
     v_name_whcha               VARCHAR(80);
     v_phone_number_id          VARCHAR(20);
@@ -139,7 +142,6 @@ DECLARE
     v_ide_whcha                INT8;
     v_id_whcha                 VARCHAR(80);
 
-    v_media_data               JSONB;
     v_id_whmem                 VARCHAR(80);
     v_wa_id_whmem              VARCHAR(80);
     v_body_whmem               TEXT;
@@ -151,18 +153,19 @@ DECLARE
     v_attachment_name_whmem    VARCHAR(200);
     v_caption_whmem            TEXT;
 BEGIN
-    v_media_data := json_data -> 'data';
+    v_media_data := json_data -> 'whatsappInboundMessage';
 
-    SELECT
-        trim(both '"' from v_media_data ->> 'from'),
-        COALESCE(
-          NULLIF(trim(both '"' from v_media_data #>> '{profile,name}'), ''),
-          NULLIF(trim(both '"' from v_media_data #>> '{contact,profile,name}'), ''),
-          trim(both '"' from v_media_data ->> 'from')
-        ),
-        trim(both '"' from v_media_data ->> 'from'),
-        trim(both '"' from v_media_data ->> 'id')
-    INTO v_wa_id_whcha, v_name_whcha, v_phone_number, v_id_whcha;
+    v_wa_id_whcha  := replace(trim(both '"' from v_media_data ->> 'from'), '+', '');
+    v_name_whcha   := COALESCE(
+        NULLIF(trim(both '"' from v_media_data #>> '{customerProfile,name}'), ''),
+        v_wa_id_whcha
+    );
+    v_phone_number := replace(trim(both '"' from v_media_data ->> 'to'), '+', '');
+    v_id_whcha     := trim(both '"' from v_media_data ->> 'wamid');
+
+    IF v_id_whcha IS NULL OR v_id_whcha = '' THEN
+        v_id_whcha := trim(both '"' from v_media_data ->> 'id');
+    END IF;
 
     v_phone_number_id := COALESCE(p_phone_number_id, v_phone_number);
 
@@ -178,15 +181,20 @@ BEGIN
     SET fecha_msg_whcha = EXCLUDED.fecha_msg_whcha,
         id_whcha = EXCLUDED.id_whcha,
         leido_whcha = false,
+        name_whcha = CASE
+            WHEN wha_chat.name_whcha ~ '^\+\d+$' AND EXCLUDED.name_whcha !~ '^\+\d+$'
+            THEN EXCLUDED.name_whcha
+            ELSE wha_chat.name_whcha
+        END,
         no_leidos_whcha = COALESCE(wha_chat.no_leidos_whcha, 0) + 1,
         ultimo_ingreso_cliente_whcha = NOW()
     RETURNING ide_whcha INTO v_ide_whcha;
 
-    v_id_whmem             := trim(both '"' from v_media_data ->> 'id');
-    v_wa_id_whmem          := trim(both '"' from v_media_data ->> 'from');
+    v_id_whmem             := v_id_whcha;
+    v_wa_id_whmem          := v_wa_id_whcha;
     v_body_whmem           := trim(both '"' from v_media_data #>> '{text,body}');
-    v_fecha_whmem          := to_timestamp((trim(both '"' from v_media_data ->> 'timestamp'))::BIGINT) AT TIME ZONE 'America/Guayaquil';
-    v_timestamp_whmem      := trim(both '"' from v_media_data ->> 'timestamp');
+    v_fecha_whmem          := (trim(both '"' from v_media_data ->> 'sendTime'))::TIMESTAMPTZ AT TIME ZONE 'America/Guayaquil';
+    v_timestamp_whmem      := EXTRACT(EPOCH FROM (trim(both '"' from v_media_data ->> 'sendTime'))::TIMESTAMPTZ)::BIGINT::VARCHAR;
     v_content_type_whmem   := trim(both '"' from v_media_data ->> 'type');
 
     v_attachment_id_whmem := CASE
@@ -237,4 +245,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION mensaje_ycloud(JSONB, VARCHAR) IS 'Procesa payload de webhook YCloud (whatsapp.inbound_message) e inserta en wha_chat y wha_mensaje con tipo_whmem=YCLOUD. p_phone_number_id: ID telefonico de la cuenta de negocio.';
+COMMENT ON FUNCTION mensaje_ycloud(JSONB, VARCHAR) IS 'Procesa payload de webhook YCloud (whatsapp.inbound_message.received) e inserta en wha_chat y wha_mensaje con tipo_whmem=YCLOUD. p_phone_number_id: ID telefonico de la cuenta de negocio.';
+
+ALTER TABLE "public"."wha_cuenta" ALTER COLUMN "tipo_whcue" SET DATA TYPE varchar(15);
+
+INSERT INTO wha_cuenta (
+ide_whcue,
+    nombre_whcue,
+    id_telefono_whcue,
+    id_aplicacion_whcue,
+    id_cuenta_whcue,
+    id_token_whcue,
+    tipo_whcue,
+    ide_empr,
+    activo_whcue
+) VALUES (
+1,
+    'YCloud WhatsApp',          -- nombre descriptivo
+    '+593998931505',            -- numero del negocio (el "to" del webhook que mostraste)
+    'YCLOUD',                   -- id_aplicacion (referencia)
+    '+593998931505',            -- id_cuenta (usado como phoneNumberId para filtrar chats)
+    '',                         -- token vacio (la API key es global via YCLOUD_API_KEY en .env)
+    'YCLOUD',                   -- tipo_whcue
+    0,                          -- ide_empr (ID de tu empresa)
+    TRUE
+);

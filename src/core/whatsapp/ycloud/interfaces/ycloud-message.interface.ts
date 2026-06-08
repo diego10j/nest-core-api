@@ -1,3 +1,5 @@
+// ─── Outgoing message payloads (para envio via API) ────────────────────
+
 export interface YcloudTextPayload {
   to: string;
   type: 'text';
@@ -46,35 +48,6 @@ export type YcloudMessagePayload =
   | YcloudVideoPayload
   | YcloudDocumentPayload;
 
-export interface YcloudInboundMessage {
-  id: string;
-  from: string;
-  to: string;
-  type: string;
-  timestamp: string;
-  text?: { body: string };
-  image?: { id: string; mime_type: string; sha256: string; caption?: string };
-  video?: { id: string; mime_type: string; sha256: string; caption?: string };
-  audio?: { id: string; mime_type: string; sha256: string };
-  document?: { id: string; mime_type: string; sha256: string; filename?: string; caption?: string };
-  sticker?: { id: string; mime_type: string; sha256: string; animated?: boolean };
-  location?: { latitude: number; longitude: number; name?: string; address?: string };
-  reaction?: { message_id: string; emoji: string };
-  context?: { from: string; id: string };
-  button?: { payload: string; text: string };
-  interactive?: Record<string, any>;
-}
-
-export interface YcloudStatusData {
-  id: string;
-  status: 'sent' | 'delivered' | 'read' | 'failed' | 'deleted';
-  timestamp: string;
-  recipient_id: string;
-  conversation?: { id: string; expiration_timestamp?: string; origin?: { type: string } };
-  pricing?: { category: string; pricing_model: string };
-  errors?: Array<{ code: number; title: string; message: string; error_data: { details: string } }>;
-}
-
 export interface YcloudTemplateComponent {
   type: 'header' | 'body' | 'button';
   sub_type?: string;
@@ -90,4 +63,42 @@ export interface YcloudTemplateParameter {
   image?: { id: string };
   video?: { id: string };
   document?: { id: string; filename?: string };
+}
+
+// ─── Incoming webhook data (desde YCloud) ───────────────────────────────
+
+export interface YcloudInboundMessage {
+  id: string;
+  wamid: string;
+  wabaId: string;
+  from: string;
+  fromUserId?: string;
+  customerProfile?: { name: string };
+  to: string;
+  sendTime: string;
+  type: string;
+  text?: { body: string };
+  image?: { id: string; mime_type: string; sha256: string; caption?: string };
+  video?: { id: string; mime_type: string; sha256: string; caption?: string };
+  audio?: { id: string; mime_type: string; sha256: string };
+  document?: { id: string; mime_type: string; sha256: string; filename?: string; caption?: string };
+  sticker?: { id: string; mime_type: string; sha256: string; animated?: boolean };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
+  reaction?: { message_id: string; emoji: string };
+  context?: { from: string; id: string };
+  button?: { payload: string; text: string };
+  interactive?: Record<string, any>;
+}
+
+export interface YcloudStatusData {
+  id: string;
+  wamid: string;
+  from: string;
+  to: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed' | 'deleted';
+  timestamp: string;
+  sendTime?: string;
+  conversation?: { id: string; expiration_timestamp?: string; origin?: { type: string } };
+  pricing?: { category: string; pricing_model: string };
+  errors?: Array<{ code: number; title: string; message: string; error_data: { details: string } }>;
 }
