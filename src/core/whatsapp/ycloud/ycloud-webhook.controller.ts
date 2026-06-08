@@ -10,8 +10,6 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AppHeaders } from 'src/common/decorators/header-params.decorator';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 
 import { YcloudService } from './ycloud.service';
@@ -40,7 +38,7 @@ export class YcloudWebhookController {
 
   @Post()
   @ApiOperation({ summary: 'Recibir eventos de webhook de YCloud' })
-  async handleWebhook(@AppHeaders() _h: HeaderParamsDto, @Body() body: any, @Res() res: any) {
+  async handleWebhook(@Body() body: any, @Res() res: any) {
     this.logger.log(`YCloud webhook received: ${JSON.stringify(body)}`);
     res.status(HttpStatus.OK).send({ status: 'ok' });
     try {
