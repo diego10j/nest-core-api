@@ -17,6 +17,9 @@ ALTER TABLE wha_cuenta
     DROP CONSTRAINT IF EXISTS chk_tipo_whcue;
 
 ALTER TABLE wha_cuenta
+    ALTER COLUMN tipo_whcue TYPE VARCHAR(10);
+
+ALTER TABLE wha_cuenta
     ADD CONSTRAINT chk_tipo_whcue
     CHECK (tipo_whcue IN ('API', 'YCLOUD'));
 
@@ -27,6 +30,9 @@ COMMENT ON COLUMN wha_cuenta.tipo_whcue IS 'Tipo de proveedor: API (Meta Cloud A
 -- ============================================================
 ALTER TABLE wha_mensaje
     DROP CONSTRAINT IF EXISTS chk_tipo_whmem;
+
+ALTER TABLE wha_mensaje
+    ALTER COLUMN tipo_whmem TYPE VARCHAR(10);
 
 ALTER TABLE wha_mensaje
     ADD CONSTRAINT chk_tipo_whmem
@@ -193,8 +199,14 @@ BEGIN
     v_id_whmem             := v_id_whcha;
     v_wa_id_whmem          := v_wa_id_whcha;
     v_body_whmem           := trim(both '"' from v_media_data #>> '{text,body}');
-    v_fecha_whmem          := (trim(both '"' from v_media_data ->> 'sendTime'))::TIMESTAMPTZ AT TIME ZONE 'America/Guayaquil';
-    v_timestamp_whmem      := EXTRACT(EPOCH FROM (trim(both '"' from v_media_data ->> 'sendTime'))::TIMESTAMPTZ)::BIGINT::VARCHAR;
+    v_fecha_whmem          := COALESCE(
+        (v_media_data ->> 'sendTime')::TIMESTAMPTZ,
+        NOW()
+    ) AT TIME ZONE 'America/Guayaquil';
+    v_timestamp_whmem      := COALESCE(
+        EXTRACT(EPOCH FROM (v_media_data ->> 'sendTime')::TIMESTAMPTZ)::BIGINT::VARCHAR,
+        EXTRACT(EPOCH FROM NOW())::BIGINT::VARCHAR
+    );
     v_content_type_whmem   := trim(both '"' from v_media_data ->> 'type');
 
     v_attachment_id_whmem := CASE
@@ -270,3 +282,6 @@ ide_whcue,
     0,                          -- ide_empr (ID de tu empresa)
     TRUE
 );
+
+
+ALTER TABLE wha_mensaje ALTER COLUMN tipo_whmem TYPE VARCHAR(15);

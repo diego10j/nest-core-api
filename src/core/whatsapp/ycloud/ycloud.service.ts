@@ -540,6 +540,7 @@ export class YcloudService {
 
   private async processInboundMessage(data: YcloudInboundMessage): Promise<void> {
     try {
+      const phoneNumberId = (data.to || data.from).replace(/^\+/, '');
       const msgPayload = { type: 'whatsapp.inbound_message.received', whatsappInboundMessage: data };
       const jsonMsg = JSON.stringify(msgPayload);
       const query = new SelectQuery(`SELECT mensaje_ycloud($1::jsonb, $2) AS wa_id`);
