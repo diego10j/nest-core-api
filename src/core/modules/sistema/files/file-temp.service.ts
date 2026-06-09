@@ -38,8 +38,8 @@ const constants = fs.constants;
 @Injectable()
 export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
   // Configuración de tiempos (en milisegundos)
-  private readonly fileLifetime = 15 * 24 * 3600 * 1000; // 15 días
-  private readonly cleanupInterval = 3600 * 1000; // 1 hora entre limpiezas
+  private readonly fileLifetime = 180 * 24 * 3600 * 1000; // 180 días
+  private readonly cleanupInterval = 24 * 3600 * 1000; // 1 día entre limpiezas
   private cleanupTimer: NodeJS.Timeout;
   private readonly logger = new Logger(FileTempService.name);
 
