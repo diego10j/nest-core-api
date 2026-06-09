@@ -77,4 +77,18 @@ export class SaveComprobanteBancoDto {
     @IsBoolean()
     @IsOptional()
     activoTeincb?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    esEfectivoTeincb?: boolean;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    valorEntregadoTeincb?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    cambioTeincb?: number;
 }

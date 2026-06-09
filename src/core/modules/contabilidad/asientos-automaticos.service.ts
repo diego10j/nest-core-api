@@ -8,7 +8,7 @@ import { CoreService } from 'src/core/core.service';
 import { ComprobanteContabilidadService } from './comprobante-contabilidad/comprobante-contabilidad.service';
 import { SaveComprobanteDto } from './comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 
-export interface GenerarAsientoCobroCxCDto extends HeaderParamsDto {
+export interface GenerarAsientoCobroCxCDto {
     ideTeclb: number;
     fecha: string;
     ideTecba: number;
@@ -58,7 +58,7 @@ export class AsientosAutomaticosService extends BaseService {
         return Number(this.variables.get('p_con_lugar_haber') || '0');
     }
 
-    async generarAsientoCobroCxC(dtoIn: GenerarAsientoCobroCxCDto): Promise<AsientoCobroResult> {
+    async generarAsientoCobroCxC(dtoIn: GenerarAsientoCobroCxCDto & HeaderParamsDto): Promise<AsientoCobroResult> {
         const advertencias: string[] = [];
 
         // PASO 1: Obtener signo de la transaccion bancaria
@@ -223,11 +223,9 @@ export class AsientosAutomaticosService extends BaseService {
                 SELECT gen_ide_geper FROM gen_persona
                 WHERE ide_geper = $1
                   AND ide_empr = $2
-                  AND ide_sucu = $3
             `);
             qPadre.addIntParam(1, ideGeper);
             qPadre.addIntParam(2, ideEmpr);
-            qPadre.addIntParam(3, ideSucu);
             const padre = await this.dataSource.createSingleQuery(qPadre);
             if (padre?.gen_ide_geper && padre.gen_ide_geper !== ideGeper) {
                 return this.buscarCuentaPersona(ideCncca, padre.gen_ide_geper, maxNivel - 1, ideEmpr, ideSucu);

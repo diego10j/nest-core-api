@@ -312,6 +312,29 @@ export class SaveDto {
 
 These come from `HeaderParamsDto` via `@AppHeaders()` decorator.
 
+**NEVER extend `HeaderParamsDto` in DTOs.** The controller receives `HeaderParamsDto` separately
+via `@AppHeaders()` and merges them into the service call. DTOs must be clean — only business fields.
+When a service method needs both, use the intersection type in the service signature:
+`dtoIn: SomeDto & HeaderParamsDto`.
+
+```typescript
+// WRONG — DTO extends HeaderParamsDto
+export interface GenerarAsientoDto extends HeaderParamsDto {  // ❌
+    ideTeclb: number;
+    valor: number;
+}
+
+// CORRECT — DTO only has business fields, intersection in service
+export interface GenerarAsientoDto {                            // ✅
+    ideTeclb: number;
+    valor: number;
+}
+
+async generar(dtoIn: GenerarAsientoDto & HeaderParamsDto) {    // ✅ Intersection in service
+    // dtoIn.ideEmpr, dtoIn.ideTeclb both available
+}
+```
+
 ## 5. Module Structure
 
 ```

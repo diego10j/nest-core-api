@@ -1044,7 +1044,10 @@ export class FacturasService extends BaseService {
                 icb.texto_original_teincb       AS comprobante_texto_original,
                 icb.por_ocr_teincb              AS comprobante_por_ocr,
                 icb.por_ia_teincb               AS comprobante_por_ia,
-                icb.validado_teincb             AS comprobante_validado
+                icb.validado_teincb             AS comprobante_validado,
+                icb.es_efectivo_teincb          AS comprobante_es_efectivo,
+                icb.valor_entregado_teincb      AS comprobante_valor_entregado,
+                icb.cambio_teincb               AS comprobante_cambio
             FROM cxc_detall_transa dt
             INNER JOIN tes_cab_libr_banc c  ON c.ide_teclb  = dt.ide_teclb
                                            AND c.ide_tecba IS NOT NULL

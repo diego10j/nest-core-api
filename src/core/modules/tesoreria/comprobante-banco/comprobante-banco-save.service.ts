@@ -43,6 +43,9 @@ export class ComprobanteBancoSaveService extends BaseService {
             validado_teincb: dtoIn.validadoTeincb ?? false,
             fecha_validacion_teincb: dtoIn.fechaValidacionTeincb ?? null,
             activo_teincb: dtoIn.activoTeincb ?? true,
+            es_efectivo_teincb: dtoIn.esEfectivoTeincb ?? false,
+            valor_entregado_teincb: dtoIn.valorEntregadoTeincb ?? null,
+            cambio_teincb: dtoIn.cambioTeincb ?? null,
         };
 
         if (isUpdate) {

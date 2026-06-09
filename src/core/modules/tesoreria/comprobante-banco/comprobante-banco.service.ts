@@ -39,7 +39,10 @@ export class ComprobanteBancoService extends BaseService {
                 c.por_ia_teincb,
                 c.validado_teincb,
                 c.fecha_validacion_teincb,
-                c.activo_teincb
+                c.activo_teincb,
+                c.es_efectivo_teincb,
+                c.valor_entregado_teincb,
+                c.cambio_teincb
             FROM tes_info_comprobante_banco c
             WHERE ($3::int8 IS NULL OR c.ide_teclb = $3)
               AND ($4::varchar IS NULL OR c.tipo_trns_teincb = $4)
@@ -75,7 +78,10 @@ export class ComprobanteBancoService extends BaseService {
                 c.por_ia_teincb,
                 c.validado_teincb,
                 c.fecha_validacion_teincb,
-                c.activo_teincb
+                c.activo_teincb,
+                c.es_efectivo_teincb,
+                c.valor_entregado_teincb,
+                c.cambio_teincb
             FROM tes_info_comprobante_banco c
             WHERE c.ide_teincb = $1
         `);
@@ -106,7 +112,10 @@ export class ComprobanteBancoService extends BaseService {
                 c.por_ia_teincb,
                 c.validado_teincb,
                 c.fecha_validacion_teincb,
-                c.activo_teincb
+                c.activo_teincb,
+                c.es_efectivo_teincb,
+                c.valor_entregado_teincb,
+                c.cambio_teincb
             FROM tes_info_comprobante_banco c
             WHERE c.ide_teclb = $1
             ORDER BY c.fecha_teincb DESC, c.ide_teincb DESC
