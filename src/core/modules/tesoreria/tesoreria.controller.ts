@@ -1,16 +1,16 @@
 import {
-  Controller,
-  Get,
-  Post,
-  UploadedFile,
-  UseInterceptors,
+    Controller,
+    Get,
+    Post,
+    UploadedFile,
+    UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiBody,
-  ApiConsumes,
-  ApiOperation,
-  ApiTags,
+    ApiBody,
+    ApiConsumes,
+    ApiOperation,
+    ApiTags,
 } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -44,6 +44,18 @@ export class TesoreriaController {
     @ApiOperation({ summary: 'Listar cuentas bancarias habilitadas para emisión de cheques' })
     getCuentasBancoCheques(@AppHeaders() headersParams: HeaderParamsDto) {
         return this.service.getCuentasBancoCheques(headersParams);
+    }
+
+    @Get('getCuentasCaja')
+    @ApiOperation({ summary: 'Listar cuentas de caja' })
+    getCuentasCaja(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getCuentasCaja(headersParams);
+    }
+
+    @Get('getCuentasCajaCheques')
+    @ApiOperation({ summary: 'Listar cuentas de caja habilitadas para emisión de cheques' })
+    getCuentasCajaCheques(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getCuentasCajaCheques(headersParams);
     }
 
     // ─── TIPOS DE TRANSACCIÓN BANCARIA ────────────────────────────────────────

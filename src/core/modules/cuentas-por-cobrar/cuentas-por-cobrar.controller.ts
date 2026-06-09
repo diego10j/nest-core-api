@@ -60,4 +60,10 @@ export class CuentasPorCobrarController {
       ...dtoIn,
     });
   }
+
+  @Get('getReporteDiferenciasCxc')
+  @ApiOperation({ summary: 'Detectar cabeceras CxC con desbalance entre cargos y abonos' })
+  getReporteDiferenciasCxc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getReporteDiferenciasCxc({ ...headersParams, ...dtoIn });
+  }
 }

@@ -592,13 +592,17 @@ export class DataSourceService {
         getSqlInsert(query);
       } else if (query instanceof UpdateQuery) {
         const cols: string[] = await this.getTableColumns(query.table);
-        const keysToDelete = [];
-        // Elimina valores que no existan en las columnas de la tabla
+        const keysToDelete: string[] = [];
         query.values.forEach((_value, key) => {
           if (!cols.includes(key)) {
             keysToDelete.push(key);
           }
         });
+        if (keysToDelete.length > 0) {
+          this.logger.warn(
+            `[UpdateQuery] Descartando campos no encontrados en tabla "${query.table}": ${keysToDelete.join(', ')}`,
+          );
+        }
         keysToDelete.forEach((key) => query.values.delete(key));
 
         // Pistas de auditoría

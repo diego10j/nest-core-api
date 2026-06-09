@@ -140,5 +140,11 @@ export class CuentasPorPagarController {
     getReporteCxPDetallado(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
         return this.service.getReporteCxPDetallado({ ...headersParams, ...dtoIn });
     }
+
+    @Get('getReporteDiferenciasCxp')
+    @ApiOperation({ summary: 'Detectar cabeceras CxP con desbalance entre cargos y abonos' })
+    getReporteDiferenciasCxp(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.service.getReporteDiferenciasCxp({ ...headersParams, ...dtoIn });
+    }
 }
 

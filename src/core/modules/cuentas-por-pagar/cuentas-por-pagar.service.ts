@@ -1022,4 +1022,33 @@ export class CuentasPorPagarService extends BaseService {
     query.addParam(4, dtoIn.ideEmpr);
     return this.dataSource.createQuery(query);
   }
+
+  async getReporteDiferenciasCxp(dtoIn: HeaderParamsDto & RangoFechasDto) {
+    const query = new SelectQuery(`
+      SELECT
+          ct.ide_cpctr,
+          ct.ide_cpcfa,
+          ct.ide_geper,
+          p.nom_geper,
+          p.apel_geper,
+          ct.fecha_trans_cpctr,
+          ct.observacion_cpctr,
+          SUM(CASE WHEN tt.signo_cpttr =  1 THEN dt.valor_cpdtr ELSE 0 END)::NUMERIC(15,2) AS suma_cargos,
+          SUM(CASE WHEN tt.signo_cpttr = -1 THEN dt.valor_cpdtr ELSE 0 END)::NUMERIC(15,2) AS suma_abonos,
+          SUM(dt.valor_cpdtr * tt.signo_cpttr)::NUMERIC(15,2) AS saldo_desbalance
+      FROM cxp_cabece_transa ct
+      INNER JOIN cxp_detall_transa dt ON dt.ide_cpctr = ct.ide_cpctr
+      INNER JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+      LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+      WHERE ct.ide_empr = $1
+        AND ct.ide_sucu = $2
+      GROUP BY ct.ide_cpctr, ct.ide_cpcfa, ct.ide_geper, p.nom_geper, p.apel_geper,
+               ct.fecha_trans_cpctr, ct.observacion_cpctr
+      HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) != 0
+      ORDER BY ABS(SUM(dt.valor_cpdtr * tt.signo_cpttr)) DESC
+    `, dtoIn);
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createQuery(query);
+  }
 }

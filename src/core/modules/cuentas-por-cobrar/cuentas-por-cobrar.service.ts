@@ -1032,6 +1032,35 @@ export class CuentasPorCobrarService extends BaseService {
         query.addParam(2, dtoIn.fechaFin);
         query.addParam(3, dtoIn.ideSucu);
         query.addParam(4, dtoIn.ideEmpr);
-        return this.dataSource.createQuery(query);
-    }
+    return this.dataSource.createQuery(query);
+  }
+
+  async getReporteDiferenciasCxc(dtoIn: HeaderParamsDto & RangoFechasDto) {
+    const query = new SelectQuery(`
+      SELECT
+          ct.ide_ccctr,
+          ct.ide_cccfa,
+          ct.ide_geper,
+          p.nom_geper,
+          p.apel_geper,
+          ct.fecha_trans_ccctr,
+          ct.observacion_ccctr,
+          SUM(CASE WHEN tt.signo_ccttr =  1 THEN dt.valor_ccdtr ELSE 0 END)::NUMERIC(15,2) AS suma_cargos,
+          SUM(CASE WHEN tt.signo_ccttr = -1 THEN dt.valor_ccdtr ELSE 0 END)::NUMERIC(15,2) AS suma_abonos,
+          SUM(dt.valor_ccdtr * tt.signo_ccttr)::NUMERIC(15,2) AS saldo_desbalance
+      FROM cxc_cabece_transa ct
+      INNER JOIN cxc_detall_transa dt ON dt.ide_ccctr = ct.ide_ccctr
+      INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+      LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+      WHERE ct.ide_empr = $1
+        AND ct.ide_sucu = $2
+      GROUP BY ct.ide_ccctr, ct.ide_cccfa, ct.ide_geper, p.nom_geper, p.apel_geper,
+               ct.fecha_trans_ccctr, ct.observacion_ccctr
+      HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) != 0
+      ORDER BY ABS(SUM(dt.valor_ccdtr * tt.signo_ccttr)) DESC
+    `, dtoIn);
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createQuery(query);
+  }
 }

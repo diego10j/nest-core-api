@@ -60,11 +60,19 @@ export class CxcTransaccionesService extends BaseService {
         }
 
         if (Number(factura.saldo_x_pagar) <= 0) {
-            throw new BadRequestException('La factura no tiene saldo pendiente');
+            return {
+                error: false,
+                message: 'La factura no tiene saldo pendiente',
+            }
+
         }
 
         if (factura.pagado_cccfa) {
-            throw new BadRequestException('La factura ya se encuentra pagada');
+            return {
+                error: false,
+                message: 'La factura ya ha sido pagada completamente',
+            }
+
         }
 
         return factura;

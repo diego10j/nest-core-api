@@ -296,6 +296,55 @@ export class TesoreriaService extends BaseService {
     return this.dataSource.createSelectQuery(query);
   }
 
+
+  async getCuentasCaja(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT
+        cb.ide_tecba,
+        cb.nombre_tecba,
+        b.nombre_teban,
+        b.foto_teban,
+        color_teban
+      FROM tes_cuenta_banco cb
+      LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+      WHERE cb.ide_empr = $1
+        AND cb.ide_sucu = $2
+        AND activo_tecba = true
+        AND es_caja_teban = true
+        and upper(nombre_tecba) like '%GENERAL%' 
+      ORDER BY cb.nombre_tecba
+      `,
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  async getCuentasCajaCheques(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT
+        cb.ide_tecba,
+        cb.nombre_tecba,
+        b.nombre_teban,
+        b.foto_teban,
+        color_teban
+      FROM tes_cuenta_banco cb
+      LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+      WHERE cb.ide_empr = $1
+        AND cb.ide_sucu = $2
+        AND activo_tecba = true
+        AND es_caja_teban = true
+        and upper(nombre_tecba) like '%CHEQUES%' 
+      ORDER BY cb.nombre_tecba
+      `,
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
+
   /**
    * Procesa imagen de transferencia: OCR primero, con fallback a GPT-4o Vision.
    */
