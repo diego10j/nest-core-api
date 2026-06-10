@@ -73,10 +73,11 @@ export class BuildAuthUserUseCase {
             login: user.login,
             photoURL: `${this.configService.get('HOST_API')}/assets/images/avatars/${user.photoURL}`,
             isPublic: user.requirePasswordChange,
-            lastAccess: undefined, // Se puede agregar después
+            lastAccess: undefined,
             ip,
             requireChange: user.requirePasswordChange,
             isSuperUser: user.isSuperUser,
+            ide_cucor: user.ideCucor,
             perfiles,
             sucursales,
             empresas,

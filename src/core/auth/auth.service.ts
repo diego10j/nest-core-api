@@ -343,7 +343,8 @@ export class AuthService {
         e.logotipo_empr,
         f.fecha_auac,
         f.ip_auac,
-        a.uuid
+        a.uuid,
+        a.ide_cucor
       FROM 
         sis_usuario a 
         INNER JOIN sis_usuario_clave b ON a.ide_usua = b.ide_usua 

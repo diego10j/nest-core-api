@@ -29,6 +29,7 @@ export interface AuthUser {
     ip?: string;
     requireChange: boolean;
     isSuperUser: boolean;
+    ide_cucor?: number;
     perfiles: PerfilAuth[];
     sucursales: SucursalAuth[];
     empresas: EmpresaAuth[];

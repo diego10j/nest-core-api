@@ -6,6 +6,7 @@ import { DeleteQuery, InsertQuery, SelectQuery, UpdateQuery } from 'src/core/con
 import { detectMimeType } from 'src/util/helpers/file-utils';
 
 import { AdjuntoCorreoDto } from '../dto/adjunto-dto';
+import { GetMailQueueDto } from '../dto/get-mail-queue.dto';
 import { SendMailDto } from '../dto/send-mail.dto';
 import { ColaCorreo } from '../interfaces/email';
 import {
@@ -67,6 +68,23 @@ export class MailService {
   async getCuentaCorreoPorDefecto(dtoIn: QueryOptionsDto & HeaderParamsDto) {
     const cuenta = await this.getCuentaCorreo('default', dtoIn.ideEmpr);
     return [cuenta];
+  }
+
+  async getCuentasCorreoActivas(ideEmpr: number) {
+    const query = new SelectQuery(`
+      SELECT
+        ide_cucor,
+        alias_cucor,
+        usuario_cucor,
+        correo_cucor,
+        nom_correo_cucor
+      FROM sis_cuenta_correo
+      WHERE ide_empr = $1
+        AND activo_cucor = true
+      ORDER BY alias_cucor
+    `);
+    query.addIntParam(1, ideEmpr);
+    return this.dataSource.createSelectQuery(query);
   }
 
   /**
@@ -335,6 +353,76 @@ export class MailService {
   }
 
   // ──────────────────────────────────────────────
+  // Consultas de cola de correo (listado sin cuerpo)
+  // ──────────────────────────────────────────────
+
+  async getMailQueue(dtoIn: GetMailQueueDto & HeaderParamsDto) {
+    return this.buildMailQueueQuery(dtoIn, dtoIn.ideEmpr, dtoIn.estado_coco, dtoIn.remitente);
+  }
+
+  private buildMailQueueQuery(
+    dtoIn: QueryOptionsDto,
+    ideEmpr: number,
+    estado_coco?: string,
+    remitente?: string,
+  ) {
+    const query = new SelectQuery(`
+      SELECT
+        c.ide_coco,
+        c.job_id_coco,
+        c.remitente_coco,
+        c.destinatario_coco,
+        c.cc_coco,
+        c.asunto_coco,
+        c.tipo_coco,
+        c.estado_coco,
+        c.error_coco,
+        c.ide_plco,
+        c.ide_corr,
+        c.fecha_envio_coco,
+        c.usuario_ingre,
+        c.fecha_ingre,
+        (SELECT COUNT(*) FROM sis_adjunto_correo a WHERE a.ide_coco = c.ide_coco)::int AS num_adjuntos
+      FROM sis_cola_correo c
+      INNER JOIN sis_correo co ON c.ide_corr = co.ide_corr
+      WHERE co.ide_empr = $1
+        AND ($2::varchar IS NULL OR c.estado_coco = $2)
+        AND ($3::varchar IS NULL OR c.remitente_coco ILIKE '%' || $3 || '%')
+      ORDER BY c.fecha_ingre DESC
+    `, dtoIn);
+    query.addIntParam(1, ideEmpr);
+    query.addParam(2, estado_coco ?? null);
+    query.addParam(3, remitente ?? null);
+    return this.dataSource.createQuery(query, 'sis_cola_correo');
+  }
+
+  async getMailBody(ideCoco: number) {
+    const query = new SelectQuery(`
+      SELECT
+        ide_coco,
+        job_id_coco,
+        remitente_coco,
+        destinatario_coco,
+        cc_coco,
+        asunto_coco,
+        contenido_coco,
+        tipo_coco,
+        estado_coco,
+        error_coco,
+        ide_plco,
+        ide_corr,
+        fecha_envio_coco,
+        usuario_ingre,
+        fecha_ingre,
+        (SELECT COUNT(*) FROM sis_adjunto_correo a WHERE a.ide_coco = c.ide_coco)::int AS num_adjuntos
+      FROM sis_cola_correo c
+      WHERE ide_coco = $1
+    `);
+    query.addIntParam(1, ideCoco);
+    return this.dataSource.createSingleQuery(query);
+  }
+
+  // ──────────────────────────────────────────────
   // Adjuntos
   // ──────────────────────────────────────────────
 
@@ -357,6 +445,10 @@ export class MailService {
     `);
     query.addParam(1, ide_referencia);
     return this.dataSource.createSelectQuery(query);
+  }
+
+  async getAdjuntosMail(ideCoco: number) {
+    return this.getAdjuntosPorReferencia('cola', ideCoco);
   }
 
   async eliminarAdjunto(ide_adco: number, _usuario: string): Promise<void> {

@@ -480,3 +480,7 @@ ADD COLUMN "color_sucu" varchar(30);
 UPDATE "public"."sis_sucursal" SET "color_sucu" = '#0C68E9' WHERE "ide_sucu" = 0;
 
 UPDATE "public"."sis_sucursal" SET "color_sucu" = '#00A76F' WHERE "ide_sucu" = 2;
+
+-- FK sis_usuario -> sis_cuenta_correo
+ALTER TABLE public.sis_usuario ADD COLUMN ide_cucor int4;
+ALTER TABLE public.sis_usuario ADD CONSTRAINT fk_sis_cuenta_correo FOREIGN KEY (ide_cucor) REFERENCES public.sis_cuenta_correo(ide_cucor);

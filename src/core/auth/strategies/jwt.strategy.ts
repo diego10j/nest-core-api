@@ -64,6 +64,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ip: dataUser.ip_auac,
       requireChange: dataUser.cambia_clave_usua,
       isSuperUser: dataUser.admin_usua,
+      ide_cucor: dataUser.ide_cucor ? Number.parseInt(dataUser.ide_cucor) : undefined,
       perfiles: dataPerf,
       sucursales: dataSucu,
       empresas: [

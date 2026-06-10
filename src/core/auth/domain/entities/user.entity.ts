@@ -16,6 +16,7 @@ export class User {
         private readonly _isSuperUser: boolean,
         private readonly _requirePasswordChange: boolean,
         private readonly _photoURL: string,
+        private readonly _ideCucor?: number,
     ) { }
 
     static create(data: {
@@ -28,6 +29,7 @@ export class User {
         isSuperUser: boolean;
         requirePasswordChange: boolean;
         photoURL: string;
+        ideCucor?: number;
     }): User {
         const userId = UserId.create(data.id);
         const email = Email.create(data.email);
@@ -42,6 +44,7 @@ export class User {
             data.isSuperUser,
             data.requirePasswordChange,
             data.photoURL,
+            data.ideCucor,
         );
     }
 
@@ -89,5 +92,9 @@ export class User {
 
     get photoURL(): string {
         return this._photoURL;
+    }
+
+    get ideCucor(): number | undefined {
+        return this._ideCucor;
     }
 }

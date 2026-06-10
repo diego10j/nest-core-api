@@ -34,7 +34,8 @@ export class UserRepository implements IUserRepository {
         nick_usua,
         avatar_usua,
         bloqueado_usua,
-        activo_usua
+        activo_usua,
+        ide_cucor
       FROM sis_usuario 
       WHERE mail_usua = $1 
         AND activo_usua = true
@@ -62,7 +63,8 @@ export class UserRepository implements IUserRepository {
         nick_usua,
         avatar_usua,
         bloqueado_usua,
-        activo_usua
+        activo_usua,
+        ide_cucor
       FROM sis_usuario 
       WHERE (LOWER(mail_usua) = LOWER($1) OR LOWER(nick_usua) = LOWER($1))
       AND activo_usua = true
@@ -91,6 +93,7 @@ export class UserRepository implements IUserRepository {
         a.avatar_usua,
         a.bloqueado_usua,
         a.activo_usua,
+        a.ide_cucor,
         a.ide_empr,
         e.nom_empr,
         e.identificacion_empr,
@@ -135,7 +138,8 @@ export class UserRepository implements IUserRepository {
         nick_usua,
         avatar_usua,
         bloqueado_usua,
-        activo_usua
+        activo_usua,
+        ide_cucor
       FROM sis_usuario 
       WHERE ide_usua = $1 
         AND activo_usua = true
@@ -225,6 +229,7 @@ export class UserRepository implements IUserRepository {
       isSuperUser: data.admin_usua,
       requirePasswordChange: data.cambia_clave_usua,
       photoURL: data.avatar_usua,
+      ideCucor: data.ide_cucor ? Number.parseInt(data.ide_cucor) : undefined,
     });
   }
 }
