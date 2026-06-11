@@ -1036,6 +1036,7 @@ export class CuentasPorCobrarService extends BaseService {
     }
 
     async getReporteDiferenciasCxc(dtoIn: HeaderParamsDto & RangoFechasDto) {
+        const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
         const query = new SelectQuery(`
       SELECT
           ct.ide_ccctr,
@@ -1046,15 +1047,43 @@ export class CuentasPorCobrarService extends BaseService {
           ct.observacion_ccctr,
           SUM(CASE WHEN tt.signo_ccttr =  1 THEN dt.valor_ccdtr ELSE 0 END)::NUMERIC(15,2) AS suma_debe,
           SUM(CASE WHEN tt.signo_ccttr = -1 THEN dt.valor_ccdtr ELSE 0 END)::NUMERIC(15,2) AS suma_haber,
-          SUM(dt.valor_ccdtr * tt.signo_ccttr)::NUMERIC(15,2) AS saldo_desbalance
+          SUM(dt.valor_ccdtr * tt.signo_ccttr)::NUMERIC(15,2) AS saldo_desbalance,
+          fp.nombre_cndfp AS forma_pago,
+          v.nombre_vgven AS vendedor,
+          cf.dias_credito_cccfa AS dias_credito,
+          cf.total_cccfa AS total_factura,
+          COALESCE((
+              SELECT SUM(dt2.valor_ccdtr * tt2.signo_ccttr)
+              FROM cxc_cabece_transa ct2
+              JOIN cxc_detall_transa dt2 ON dt2.ide_ccctr = ct2.ide_ccctr
+              JOIN cxc_tipo_transacc tt2 ON tt2.ide_ccttr = dt2.ide_ccttr
+              WHERE ct2.ide_cccfa = ct.ide_cccfa
+          ), 0)::NUMERIC(15,2) AS saldo_por_pagar,
+          COALESCE((
+              SELECT SUM(dt3.valor_ccdtr * tt3.signo_ccttr)
+              FROM cxc_cabece_transa ct3
+              JOIN cxc_detall_transa dt3 ON dt3.ide_ccctr = ct3.ide_ccctr
+              JOIN cxc_tipo_transacc tt3 ON tt3.ide_ccttr = dt3.ide_ccttr
+              WHERE ct3.ide_geper = ct.ide_geper
+                AND ct3.ide_empr = ct.ide_empr
+          ), 0)::NUMERIC(15,2) AS saldo_actual_cliente
       FROM cxc_cabece_transa ct
       INNER JOIN cxc_detall_transa dt ON dt.ide_ccctr = ct.ide_ccctr
       INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
       LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+      LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa AND cf.ide_ccefa = ${estadoFacturaNormal}
+      LEFT JOIN con_deta_forma_pago fp ON fp.ide_cndfp = cf.ide_cndfp1
+      LEFT JOIN ven_vendedor v ON v.ide_vgven = cf.ide_vgven
       WHERE ct.ide_empr = $1
         AND ct.ide_sucu = $2
+        AND cf.fecha_emisi_cccfa IS NOT NULL
+        AND (
+            cf.ide_cccfa IS NULL
+            OR (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa * INTERVAL '1 day') >= CURRENT_DATE
+        )
       GROUP BY ct.ide_ccctr, ct.ide_cccfa, ct.ide_geper, p.nom_geper,
-               ct.fecha_trans_ccctr, ct.observacion_ccctr
+               ct.fecha_trans_ccctr, ct.observacion_ccctr,
+               fp.nombre_cndfp, v.nombre_vgven, cf.dias_credito_cccfa, cf.total_cccfa
       HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) != 0
       ORDER BY ABS(SUM(dt.valor_ccdtr * tt.signo_ccttr)) DESC
     `, dtoIn);
@@ -1062,4 +1091,5 @@ export class CuentasPorCobrarService extends BaseService {
         query.addIntParam(2, dtoIn.ideSucu);
         return this.dataSource.createQuery(query);
     }
+
 }

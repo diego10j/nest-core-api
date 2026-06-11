@@ -1024,26 +1024,52 @@ export class CuentasPorPagarService extends BaseService {
   }
 
   async getReporteDiferenciasCxp(dtoIn: HeaderParamsDto & RangoFechasDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
     const query = new SelectQuery(`
       SELECT
           ct.ide_cpctr,
           ct.ide_cpcfa,
           ct.ide_geper,
           p.nom_geper,
-          p.apel_geper,
           ct.fecha_trans_cpctr,
           ct.observacion_cpctr,
           SUM(CASE WHEN tt.signo_cpttr =  1 THEN dt.valor_cpdtr ELSE 0 END)::NUMERIC(15,2) AS suma_cargos,
           SUM(CASE WHEN tt.signo_cpttr = -1 THEN dt.valor_cpdtr ELSE 0 END)::NUMERIC(15,2) AS suma_abonos,
-          SUM(dt.valor_cpdtr * tt.signo_cpttr)::NUMERIC(15,2) AS saldo_desbalance
+          SUM(dt.valor_cpdtr * tt.signo_cpttr)::NUMERIC(15,2) AS saldo_desbalance,
+          fp.nombre_cndfp AS forma_pago,
+          cf.dias_credito_cpcfa AS dias_credito,
+          cf.total_cpcfa AS total_factura,
+          COALESCE((
+              SELECT SUM(dt2.valor_cpdtr * tt2.signo_cpttr)
+              FROM cxp_cabece_transa ct2
+              JOIN cxp_detall_transa dt2 ON dt2.ide_cpctr = ct2.ide_cpctr
+              JOIN cxp_tipo_transacc tt2 ON tt2.ide_cpttr = dt2.ide_cpttr
+              WHERE ct2.ide_cpcfa = ct.ide_cpcfa
+          ), 0)::NUMERIC(15,2) AS saldo_por_pagar,
+          COALESCE((
+              SELECT SUM(dt3.valor_cpdtr * tt3.signo_cpttr)
+              FROM cxp_cabece_transa ct3
+              JOIN cxp_detall_transa dt3 ON dt3.ide_cpctr = ct3.ide_cpctr
+              JOIN cxp_tipo_transacc tt3 ON tt3.ide_cpttr = dt3.ide_cpttr
+              WHERE ct3.ide_geper = ct.ide_geper
+                AND ct3.ide_empr = ct.ide_empr
+          ), 0)::NUMERIC(15,2) AS saldo_actual_proveedor
       FROM cxp_cabece_transa ct
       INNER JOIN cxp_detall_transa dt ON dt.ide_cpctr = ct.ide_cpctr
       INNER JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
       LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+      LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa AND cf.ide_cpefa = ${estadoFacturaNormal}
+      LEFT JOIN con_deta_forma_pago fp ON fp.ide_cndfp = cf.ide_cndfp
       WHERE ct.ide_empr = $1
         AND ct.ide_sucu = $2
-      GROUP BY ct.ide_cpctr, ct.ide_cpcfa, ct.ide_geper, p.nom_geper, p.apel_geper,
-               ct.fecha_trans_cpctr, ct.observacion_cpctr
+        AND cf.fecha_emisi_cpcfa IS NOT NULL
+        AND (
+            cf.ide_cpcfa IS NULL
+            OR (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa * INTERVAL '1 day') >= CURRENT_DATE
+        )
+      GROUP BY ct.ide_cpctr, ct.ide_cpcfa, ct.ide_geper, p.nom_geper, 
+               ct.fecha_trans_cpctr, ct.observacion_cpctr,
+               fp.nombre_cndfp, cf.dias_credito_cpcfa, cf.total_cpcfa
       HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) != 0
       ORDER BY ABS(SUM(dt.valor_cpdtr * tt.signo_cpttr)) DESC
     `, dtoIn);

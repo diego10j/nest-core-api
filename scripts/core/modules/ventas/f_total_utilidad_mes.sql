@@ -161,3 +161,100 @@ $$ LANGUAGE plpgsql;
 
 -- SELECT f_total_utilidad_mes(0, 2, 2025);
 -- SELECT f_total_utilidad_mes(0, 2, 2025, 1);  -- Filtrado por sucursal
+
+
+
+
+--- NUEVA VERSION USANDO PRECIO PROMEDIO
+
+
+CREATE OR REPLACE FUNCTION f_total_utilidad_mes(
+    id_empresa  BIGINT,
+    p_mes       BIGINT,
+    p_anio      BIGINT,
+    id_sucursal BIGINT DEFAULT NULL
+) RETURNS NUMERIC AS $$
+DECLARE
+    fecha_inicio DATE;
+    fecha_fin    DATE;
+    sumatoria    NUMERIC;
+BEGIN
+    fecha_inicio := MAKE_DATE(p_anio::INTEGER, p_mes::INTEGER, 1);
+    fecha_fin    := (MAKE_DATE(p_anio::INTEGER, p_mes::INTEGER, 1)
+                     + INTERVAL '1 month' - INTERVAL '1 day')::DATE;
+
+    WITH
+    -- ═══ Notas de crédito del mes ═══
+    -- Join directo por ide_cccfa (igual que f_utilidad_ventas),
+    -- eliminando el LIKE frágil sobre secuencial_cccfa.
+    facturas_con_nota AS MATERIALIZED (
+        SELECT
+            cdn.ide_cccfa  AS fn_ide_cccfa,
+            cdn.ide_inarti AS fn_ide_inarti
+        FROM cxp_cabecera_nota cn
+        JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
+        JOIN cxc_cabece_factura cf
+            ON cn.ide_cccfa          = cf.ide_cccfa
+           AND cf.ide_empr           = cn.ide_empr
+           AND cf.ide_ccefa          = 0
+           AND cf.fecha_emisi_cccfa  BETWEEN fecha_inicio AND fecha_fin
+           AND (id_sucursal IS NULL OR cf.ide_sucu = id_sucursal)
+        WHERE
+            cn.ide_empr          = id_empresa
+            AND cn.ide_cpeno     = 1
+            AND cn.fecha_emisi_cpcno BETWEEN fecha_inicio AND fecha_fin
+            AND (id_sucursal IS NULL OR cn.ide_sucu = id_sucursal)
+        GROUP BY cdn.ide_cccfa, cdn.ide_inarti
+        HAVING SUM(cdn.valor_cpdno) <> 0
+    ),
+    -- ═══ Ventas del mes (solo artículos con kardex, sin nota de crédito) ═══
+    ventas_mes AS MATERIALIZED (
+        SELECT
+            cdf.ide_cccfa        AS vm_ide_cccfa,
+            cdf.ide_inarti       AS vm_ide_inarti,
+            cf.ide_sucu          AS vm_ide_sucu,
+            cf.fecha_emisi_cccfa AS vm_fecha_venta,
+            cdf.precio_ccdfa     AS vm_precio_venta,
+            cdf.cantidad_ccdfa   AS vm_cantidad
+        FROM cxc_deta_factura cdf
+        JOIN cxc_cabece_factura cf ON cf.ide_cccfa    = cdf.ide_cccfa
+        JOIN inv_articulo iart      ON iart.ide_inarti = cdf.ide_inarti
+        WHERE
+            cf.ide_empr              = id_empresa
+            AND cf.ide_ccefa         = 0
+            AND cf.fecha_emisi_cccfa BETWEEN fecha_inicio AND fecha_fin
+            AND iart.hace_kardex_inarti = true
+            AND (id_sucursal IS NULL OR cf.ide_sucu = id_sucursal)
+            -- Excluye líneas que tienen NC asociada
+            AND NOT EXISTS (
+                SELECT 1 FROM facturas_con_nota fn
+                WHERE fn.fn_ide_cccfa  = cdf.ide_cccfa
+                  AND fn.fn_ide_inarti = cdf.ide_inarti
+            )
+    )
+    -- ═══ Suma de utilidad usando f_costo_unitario_ppmp via LATERAL ═══
+    -- Si costo PPMP = 0 → utilidad 0 (no infla), la fila sigue existiendo.
+    SELECT COALESCE(SUM(
+        CASE
+            WHEN COALESCE(ppmp.costo_unitario, 0) = 0 THEN 0
+            ELSE ROUND(
+                (vm.vm_precio_venta - ppmp.costo_unitario) * vm.vm_cantidad,
+                2
+            )
+        END
+    ), 0)
+    INTO sumatoria
+    FROM ventas_mes vm
+    LEFT JOIN LATERAL (
+        SELECT p.costo_unitario
+        FROM f_costo_unitario_ppmp(
+            id_empresa,
+            vm.vm_ide_sucu,
+            vm.vm_ide_inarti,
+            vm.vm_fecha_venta
+        ) p
+    ) ppmp ON true;
+
+    RETURN sumatoria;
+END;
+$$ LANGUAGE plpgsql;

@@ -87,72 +87,48 @@ export class VentasBiService extends BaseService {
             EXTRACT(MONTH FROM fecha_emisi_cpcno),
             EXTRACT(YEAR FROM fecha_emisi_cpcno)
     ),
-    -- ═══ UTILIDAD: Compras del período extendido ±5 días (1 scan anual) ═══
-    compras_anual AS MATERIALIZED (
-        SELECT d.ide_inarti, c.fecha_trans_incci AS fecha_compra, d.precio_indci AS precio
-        FROM inv_det_comp_inve d
-        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-        WHERE c.ide_empr = ${dtoIn.ideEmpr}
-            AND c.ide_inepi = 1
-            AND c.fecha_trans_incci BETWEEN ($1::DATE - INTERVAL '5 days') AND ($2::DATE + INTERVAL '5 days')
-            AND c.ide_intti IN (19, 16, 3025)
-            AND d.precio_indci > 0
-            ${whereSucursal.replace(/ide_sucu/g, 'c.ide_sucu')}
-            AND EXISTS (
-                SELECT 1 FROM inv_tip_tran_inve t
-                JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-                WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
-            )
-    ),
-    -- ═══ UTILIDAD: Última compra histórica por artículo (fallback) ═══
-    ultima_compra AS MATERIALIZED (
-        SELECT DISTINCT ON (d.ide_inarti)
-            d.ide_inarti, d.precio_indci AS precio
-        FROM inv_det_comp_inve d
-        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-        WHERE c.ide_empr = ${dtoIn.ideEmpr}
-            AND c.ide_inepi = 1
-            AND c.fecha_trans_incci < ($1::DATE - INTERVAL '5 days')
-            AND c.ide_intti IN (19, 16, 3025)
-            AND d.precio_indci > 0
-            ${whereSucursal.replace(/ide_sucu/g, 'c.ide_sucu')}
-            AND EXISTS (
-                SELECT 1 FROM inv_tip_tran_inve t
-                JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-                WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1
-            )
-        ORDER BY d.ide_inarti, c.fecha_trans_incci DESC
-    ),
-    -- ═══ UTILIDAD: Notas de crédito para exclusión (mismo mes nota=factura) ═══
+    -- ═══ UTILIDAD: Notas de crédito para exclusión (join directo por ide_cccfa) ═══
     facturas_con_nota AS MATERIALIZED (
-        SELECT lpad(cf.secuencial_cccfa::text, 9, '0') AS fn_secuencial_pad,
-            cdn.ide_inarti AS fn_ide_inarti,
-            EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS fn_mes
+        SELECT
+            cn.ide_cccfa  AS fn_ide_cccfa,
+            cdn.ide_inarti AS fn_ide_inarti
         FROM cxp_cabecera_nota cn
         JOIN cxp_detalle_nota cdn ON cdn.ide_cpcno = cn.ide_cpcno
         JOIN cxc_cabece_factura cf
            ON cn.ide_cccfa = cf.ide_cccfa
+         AND cf.ide_empr = cn.ide_empr
          AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
          AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
          ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
         WHERE cn.ide_empr = ${dtoIn.ideEmpr}
             AND cn.ide_cpeno = 1
             AND cn.fecha_emisi_cpcno BETWEEN $3 AND $4
-            AND EXTRACT(MONTH FROM cn.fecha_emisi_cpcno) = EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
             ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
-        GROUP BY lpad(cf.secuencial_cccfa::text, 9, '0'), cdn.ide_inarti, EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
+        GROUP BY cn.ide_cccfa, cdn.ide_inarti
         HAVING SUM(cdn.valor_cpdno) <> 0
     ),
-    -- ═══ UTILIDAD: Ventas del año (solo kardex, sin nota crédito en mismo mes) ═══
+    -- ═══ UTILIDAD: Ventas del año con costo PPMP vía LATERAL (f_costo_unitario_ppmp) ═══
     ventas_detalle AS MATERIALIZED (
-        SELECT cdf.ide_inarti,
+        SELECT
+            cdf.ide_inarti,
             cf.fecha_emisi_cccfa AS fecha_venta,
             cdf.precio_ccdfa AS precio_venta,
             cdf.cantidad_ccdfa AS cantidad,
-            EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes
+            EXTRACT(MONTH FROM cf.fecha_emisi_cccfa) AS mes,
+            COALESCE(ppmp.costo_unitario, 0) AS precio_compra,
+            ppmp.metodo_aplicado AS metodo_costo
         FROM cxc_deta_factura cdf
         JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
         JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+        LEFT JOIN LATERAL (
+            SELECT p.costo_unitario, p.metodo_aplicado
+            FROM f_costo_unitario_ppmp(
+                ${dtoIn.ideEmpr},
+                cf.ide_sucu,
+                cdf.ide_inarti,
+                cf.fecha_emisi_cccfa
+            ) p
+        ) ppmp ON true
         WHERE cf.ide_empr = ${dtoIn.ideEmpr}
             AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
             AND cf.fecha_emisi_cccfa BETWEEN $1 AND $2
@@ -160,49 +136,21 @@ export class VentasBiService extends BaseService {
             ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
             AND NOT EXISTS (
                 SELECT 1 FROM facturas_con_nota fn
-                WHERE fn.fn_secuencial_pad = lpad(cf.secuencial_cccfa::text, 9, '0')
+                WHERE fn.fn_ide_cccfa  = cdf.ide_cccfa
                   AND fn.fn_ide_inarti = cdf.ide_inarti
-                  AND fn.fn_mes = EXTRACT(MONTH FROM cf.fecha_emisi_cccfa)
             )
-    ),
-    -- ═══ Pares únicos (artículo, fecha) para resolver precios en batch ═══
-    fechas_unicas AS (
-        SELECT DISTINCT ide_inarti, fecha_venta FROM ventas_detalle
-    ),
-    -- ═══ Precio Prioridad 1: compra futura más cercana (≤5 días) ═══
-    precio_futuro AS (
-        SELECT DISTINCT ON (fu.ide_inarti, fu.fecha_venta)
-            fu.ide_inarti, fu.fecha_venta, ca.precio
-        FROM fechas_unicas fu
-        JOIN compras_anual ca ON ca.ide_inarti = fu.ide_inarti
-            AND ca.fecha_compra > fu.fecha_venta
-            AND ca.fecha_compra <= (fu.fecha_venta + INTERVAL '5 days')
-        ORDER BY fu.ide_inarti, fu.fecha_venta, ca.fecha_compra ASC
-    ),
-    -- ═══ Precio Prioridad 2: compra pasada más reciente ═══
-    precio_pasado AS (
-        SELECT DISTINCT ON (fu.ide_inarti, fu.fecha_venta)
-            fu.ide_inarti, fu.fecha_venta, ca.precio
-        FROM fechas_unicas fu
-        JOIN compras_anual ca ON ca.ide_inarti = fu.ide_inarti
-            AND ca.fecha_compra <= fu.fecha_venta
-        ORDER BY fu.ide_inarti, fu.fecha_venta, ca.fecha_compra DESC
-    ),
-    -- ═══ Precios resueltos: COALESCE de 3 prioridades ═══
-    precios_resueltos AS (
-        SELECT fu.ide_inarti, fu.fecha_venta,
-            COALESCE(pf.precio, pp.precio, uc.precio, 0) AS precio_compra
-        FROM fechas_unicas fu
-        LEFT JOIN precio_futuro pf ON pf.ide_inarti = fu.ide_inarti AND pf.fecha_venta = fu.fecha_venta
-        LEFT JOIN precio_pasado pp ON pp.ide_inarti = fu.ide_inarti AND pp.fecha_venta = fu.fecha_venta
-        LEFT JOIN ultima_compra uc ON uc.ide_inarti = fu.ide_inarti
     ),
     -- ═══ Utilidad mensual: SUM directo agrupado por mes ═══
     utilidad_mensual AS (
         SELECT vd.mes,
-            COALESCE(SUM(ROUND((vd.precio_venta - pr.precio_compra) * vd.cantidad, 2)), 0) AS utilidad
+            COALESCE(SUM(
+                CASE
+                    WHEN vd.metodo_costo IN ('SIN_COSTO', 'SIN_PRECIO_COMPRA') THEN 0
+                    WHEN vd.precio_compra = 0 THEN 0
+                    ELSE ROUND((vd.precio_venta - vd.precio_compra) * vd.cantidad, 2)
+                END
+            ), 0) AS utilidad
         FROM ventas_detalle vd
-        JOIN precios_resueltos pr ON pr.ide_inarti = vd.ide_inarti AND pr.fecha_venta = vd.fecha_venta
         GROUP BY vd.mes
     )
     SELECT 
