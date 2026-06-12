@@ -20,4 +20,15 @@ export const CUENTAS_POR_COBRAR_VARS = [
     activo_para: true,
     es_empr_para: true,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'p_cxc_tipo_trans_sobrepago',
+    descripcion_para: 'Indica que el tipo de transaccion es (Sobrepago) ',
+    valor_para: '20',
+    tabla_para: 'cxc_tipo_transacc',
+    campo_codigo_para: 'ide_ccttr',
+    campo_nombre_para: 'nombre_ccttr',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

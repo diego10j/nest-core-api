@@ -479,3 +479,63 @@ ideUsuaList?: number[];
 ```
 
 This transforms `?ideUsuaList=1,2,3` into `[1, 2, 3]`.
+
+## 10. System Variables — Add to the module's vars file
+
+Every system variable used via `this.core.getVariables([...])` or `this.variables.get('...')`
+**MUST be defined** in the corresponding module's TypeScript file under
+`src/core/variables/data/`. Each module has its own file identified by its module ID prefix:
+
+| Module | ID | File |
+|--------|----|------|
+| Contabilidad | 0 | `0-con-var.ts` |
+| Inventario | 1 | `1-inv-var.ts` |
+| Cuentas Por Pagar | 2 | `2-cxp-var.ts` |
+| Cuentas Por Cobrar | 3 | `3-cxc-var.ts` |
+| General | 5 | `5-gen-var.ts` |
+| Importaciones | 14 | `14-imp-var.ts` |
+
+### Naming convention
+
+- **Global variables**: `p_{siglas}_` prefix (e.g. `p_cxc_`)
+- **Company-scoped variables**: `pe_{siglas}_` prefix (e.g. `pe_cxc_`)
+- SIGLAS are defined in `src/core/variables/modulos.ts` per module.
+
+### Variable definition format
+
+Variables follow the `Parametro` interface from `src/core/variables/interfaces/parametro.interface.ts`:
+
+```typescript
+import { MODULOS } from '../modulos';
+
+export const CUENTAS_POR_COBRAR_VARS = [
+  // ... existing variables ...
+
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'p_cxc_tipo_trans_sobrepago',
+    descripcion_para: 'Indica que el tipo de transaccion es (Sobrepago) ',
+    valor_para: '20',
+    tabla_para: 'cxc_tipo_transacc',
+    campo_codigo_para: 'ide_ccttr',
+    campo_nombre_para: 'nombre_ccttr',
+    activo_para: true,
+    es_empr_para: false,
+  },
+];
+```
+
+### Auto-import mechanism
+
+- `VariablesService.getAllVariables()` (line 677 in `variables.service.ts`) imports and spreads all `*_VARS` arrays.
+- `VariablesService.updateVariables()` upserts them into `sis_parametros` via the stored procedure `f_update_variables()`.
+- Variables not yet in the DB are inserted; existing ones are **skipped** (not overwritten).
+- After adding a variable to the `.ts` file, run the `updateVariables` endpoint to sync it to the database.
+
+### How to add a new system variable
+
+1. **Add it** to the corresponding `src/core/variables/data/{id}-{siglas}-var.ts` array
+2. **Load it** in the service constructor via `this.core.getVariables(['p_xxx_var_name'])`
+3. **Use it** via `this.variables.get('p_xxx_var_name')`
+
+**NEVER hardcode variable values in service code** — always load them via `getVariables`.
