@@ -8,6 +8,7 @@ import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asient
 import { getCurrentTime } from 'src/util/helpers/date-util';
 
 import { PreLibroBancosSaveService } from '../pre-libro-bancos/pre-libro-bancos-save.service';
+
 import { CxcTransaccionesService } from './cxc-transacciones.service';
 import { SaveCobroCxCDto } from './dto/save-cobro-cxc.dto';
 
@@ -116,6 +117,12 @@ export class CxcTransaccionesSaveService extends BaseService {
         const fechaVenci = esChequePostfechado ? (dtoIn.fechaEfectivo ?? dtoIn.fecha) : dtoIn.fecha;
         const documRelacion = dtoIn.numero ?? factura.secuencial_cccfa ?? '';
 
+        const sobrepago = dtoIn.valor > saldoAnterior ? dtoIn.valor - saldoAnterior : 0;
+        const observacionDetalle = (sobrepago > 0
+            ? `PAGO ADICIONAL $${sobrepago.toFixed(2)}. ${dtoIn.observacion}`
+            : dtoIn.observacion
+        ).substring(0, 180);
+
         const detalleObject: Record<string, unknown> = {
             ide_ccdtr: ideCcdtr,
             ide_teclb: ideTeclb,
@@ -124,7 +131,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             ide_ccttr: ideCcttr,
             ide_usua: dtoIn.ideUsua,
             valor_ccdtr: dtoIn.valor,
-            observacion_ccdtr: dtoIn.observacion.substring(0, 180),
+            observacion_ccdtr: observacionDetalle,
             numero_pago_ccdtr: numeroPago,
             fecha_trans_ccdtr: dtoIn.fecha,
             fecha_venci_ccdtr: fechaVenci,
@@ -157,7 +164,6 @@ export class CxcTransaccionesSaveService extends BaseService {
         // ─── PASO 6: RECALCULAR SALDO Y MARCAR PAGO ──────────────────────────
         const saldoRestante = await this.cxcTransaccionesService.getSaldoActual(factura.ide_ccctr);
         let pagadoTotal = false;
-        let saldoFavorCreado = false;
 
         if (saldoRestante <= 0) {
             await this.dataSource.pool.query(
@@ -167,70 +173,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             pagadoTotal = true;
         }
 
-        // ─── PASO 7: SOBREPAGO - SALDO A FAVOR ────────────────────────────────
-        if (dtoIn.valor > saldoAnterior) {
-            const diferencia = dtoIn.valor - saldoAnterior;
-
-            let ideCcctrSaldoFavor = await this.cxcTransaccionesService.buscarCabeceraSaldoFavor(
-                ideCcttr, factura.ide_geper,
-            );
-
-            if (!ideCcctrSaldoFavor) {
-                ideCcctrSaldoFavor = await this.dataSource.getSeqTable(
-                    'cxc_cabece_transa', 'ide_ccctr', 1, dtoIn.login,
-                );
-
-                const cabeceraObject: Record<string, unknown> = {
-                    ide_ccctr: ideCcctrSaldoFavor,
-                    ide_geper: factura.ide_geper,
-                    fecha_trans_ccctr: dtoIn.fecha,
-                    observacion_ccctr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
-                    hora_ingre: getCurrentTime(),
-                };
-
-                const cabeceraListQuery: ObjectQueryDto[] = [{
-                    operation: 'insert',
-                    module: 'cxc',
-                    tableName: 'cabece_transa',
-                    primaryKey: 'ide_ccctr',
-                    object: cabeceraObject,
-                }];
-
-                await this.core.save({ ...dtoIn, listQuery: cabeceraListQuery, audit: false });
-            }
-
-            const ideCcdtrSaldo = await this.dataSource.getSeqTable(
-                'cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login,
-            );
-
-            const saldoFavorObject: Record<string, unknown> = {
-                ide_ccdtr: ideCcdtrSaldo,
-                ide_teclb: ideTeclb,
-                ide_ccctr: ideCcctrSaldoFavor,
-                ide_ccttr: ideCcttr,
-                ide_usua: dtoIn.ideUsua,
-                valor_ccdtr: diferencia,
-                observacion_ccdtr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
-                numero_pago_ccdtr: 1,
-                fecha_trans_ccdtr: dtoIn.fecha,
-                fecha_venci_ccdtr: dtoIn.fecha,
-                docum_relac_ccdtr: documRelacion,
-                hora_ingre: getCurrentTime(),
-            };
-
-            const saldoFavorListQuery: ObjectQueryDto[] = [{
-                operation: 'insert',
-                module: 'cxc',
-                tableName: 'detall_transa',
-                primaryKey: 'ide_ccdtr',
-                object: saldoFavorObject,
-            }];
-
-            await this.core.save({ ...dtoIn, listQuery: saldoFavorListQuery, audit: false });
-            saldoFavorCreado = true;
-        }
-
-        // ─── PASO 8: GENERAR ASIENTO CONTABLE AUTOMATICO ─────────────────────
+        // ─── PASO 7: GENERAR ASIENTO CONTABLE AUTOMATICO ─────────────────────
         let asientoResult: any = { generado: false };
         try {
             asientoResult = await this.asientosAutomaticosService.generarAsientoCobroCxC({
@@ -247,7 +190,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             this.logger.warn(`Error en asiento automatico para ide_teclb=${ideTeclb}: ${error}`);
         }
 
-        // ─── PASO 9: RETORNAR RESULTADO ──────────────────────────────────────
+        // ─── PASO 8: RETORNAR RESULTADO ──────────────────────────────────────
         return {
             message: 'ok',
             ide_teclb: ideTeclb,
@@ -255,7 +198,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             saldo_anterior: saldoAnterior,
             saldo_restante: saldoRestante,
             pagado_total: pagadoTotal,
-            saldo_favor_creado: saldoFavorCreado,
+            sobrepago: sobrepago > 0 ? sobrepago : 0,
             ide_cccfa: dtoIn.ideCccfa,
             asiento_contable: asientoResult,
         };

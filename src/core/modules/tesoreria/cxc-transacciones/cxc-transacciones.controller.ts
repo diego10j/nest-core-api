@@ -5,7 +5,6 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { CxcTransaccionesSaveService } from './cxc-transacciones-save.service';
 import { CxcTransaccionesService } from './cxc-transacciones.service';
-import { GetFacturaCxCDto } from './dto/get-factura-cxc.dto';
 import { SaveCobroCxCDto } from './dto/save-cobro-cxc.dto';
 
 @ApiTags('Tesoreria - Cobros CxC')

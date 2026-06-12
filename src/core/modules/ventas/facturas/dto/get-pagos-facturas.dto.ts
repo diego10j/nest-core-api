@@ -1,5 +1,4 @@
-import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsArray, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class PagosFacturasDto extends QueryOptionsDto {
