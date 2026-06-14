@@ -151,10 +151,7 @@ export class CatalogosService extends BaseService {
     }
 
     async getCatalogoCompleto(dtoIn: IdCatalogoDto & HeaderParamsDto) {
-        const cabecera = await this.getCatalogoById(dtoIn);
-        if (!cabecera) return null;
-        const detalle = await this.getDetallesByCatalogo(dtoIn);
-        return { ...cabecera, detalle };
+        return this.fetchCatalogoById(dtoIn.ide_inccat, dtoIn.ideEmpr, false);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -308,6 +305,134 @@ export class CatalogosService extends BaseService {
         `);
         queryDet.addParam(1, path);
         queryDet.addIntParam(2, cabecera.ide_cata);
+        const detalle = await this.dataSource.createSelectQuery(queryDet);
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { ide_empr, ...cabeceraPublica } = cabecera;
+        return { ...cabeceraPublica, detalles: detalle };
+    }
+
+    private async fetchCatalogoById(ideInccat: number, ideEmpr: number, publicOnly = false) {
+        const queryCab = new SelectQuery(`
+            SELECT
+                c.ide_inccat       AS ide_cata,
+                c.ide_empr,
+                c.ide_tipo_inccat  AS ide_tipo_cata,
+                c.nombre_inccat    AS nombre_cata,
+                c.desc_corta_inccat AS descripcion_corta_cata,
+                c.descripcion_inccat AS descripcion_cata,
+                c.imagen_inccat    AS imagen_cata,
+                CASE WHEN c.estado_inccat = true THEN 1 ELSE 0 END AS activo_cata,
+                c.path_inccat      AS path_cata,
+                c.color_inccat     AS color_cata,
+                c.vistas_inccat    AS vistas_cata,
+                c.fecha_ingre      AS fecha_crea,
+                c.usuario_ingre    AS usuario_crea,
+                c.fecha_actua      AS fecha_modi,
+                c.usuario_actua    AS usuario_modi
+            FROM inv_cab_catalogo c
+            WHERE c.ide_inccat = $1
+              AND c.ide_empr = $2
+        `);
+        queryCab.addIntParam(1, ideInccat);
+        queryCab.addIntParam(2, ideEmpr);
+        const cabecera = await this.dataSource.createSingleQuery(queryCab);
+        if (!cabecera) return null;
+
+        const detConditions: string[] = [`d.ide_inccat = $1`];
+        if (publicOnly) {
+            detConditions.push('d.activo_indcat = true');
+            detConditions.push('a.activo_inarti = true');
+            detConditions.push(`(
+                d.publica_sin_stock_indcat = true
+                OR (
+                    d.publica_sin_stock_indcat = false
+                    AND COALESCE((
+                        SELECT SUM(dci2.cantidad_indci * tci2.signo_intci)
+                        FROM inv_det_comp_inve dci2
+                        INNER JOIN inv_cab_comp_inve cci2 ON cci2.ide_incci = dci2.ide_incci
+                        INNER JOIN inv_tip_tran_inve tti2 ON tti2.ide_intti = cci2.ide_intti
+                        INNER JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intci
+                        WHERE dci2.ide_inarti = d.ide_inarti
+                          AND cci2.ide_empr = ${ideEmpr}
+                          AND cci2.ide_inepi = 1
+                    ), 0) > 0
+                )
+            )`);
+        }
+        const detWhereClause = detConditions.join(' AND ');
+
+        const queryDet = new SelectQuery(`
+            SELECT
+                d.ide_indcat             AS ide_catp,
+                d.ide_inarti             AS ide_prod,
+                a.nombre_inarti          AS nom_prod,
+                a.uuid                   AS uuid_prod,
+                a.foto_inarti            AS img_prod,
+                CASE WHEN d.activo_indcat = true THEN 1 ELSE 0 END AS activo_catp,
+                a.otro_nombre_inarti     AS nom2_prod,
+                a.desc_corta_inarti      AS descr_corta_prod,
+                a.publicacion_inarti     AS contenido_prod,
+                a.fotos_inarti           AS fotos_prod,
+                a.total_vistas_inarti    AS vistas_prod,
+                COALESCE(u.nombre_inuni, u.siglas_inuni) AS unidad,
+                d.publica_sin_stock_indcat AS publica_sin_stock,
+                d.descripcion_indcat     AS descripcion_catp,
+                d.fotos_indcat           AS fotos_catp,
+                d.video_indcat           AS video_catp,
+                d.orden_indcat           AS orden,
+                d.url_indcat             AS url,
+                COALESCE((
+                    SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                    FROM inv_det_comp_inve dci
+                    INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                    INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                    INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                    WHERE dci.ide_inarti = d.ide_inarti
+                      AND cci.ide_empr = ${ideEmpr}
+                      AND cci.ide_inepi = 1
+                ), 0) AS stock,
+                (
+                    SELECT json_agg(prices.*)
+                    FROM (
+                        SELECT
+                            cp.ide_incpa,
+                            cp.rango1_cant_incpa,
+                            cp.rango2_cant_incpa,
+                            cp.precio_fijo_incpa,
+                            cp.incluye_iva_incpa,
+                            ROUND(
+                                CASE
+                                    WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
+                                    ELSE cp.precio_fijo_incpa * (1 + COALESCE((
+                                        SELECT porcentaje_cnpim
+                                        FROM con_porcen_impues
+                                        WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+                                          AND activo_cnpim = TRUE
+                                        ORDER BY fecha_desde_cnpim DESC LIMIT 1
+                                    ), 0.12))
+                                END, 2
+                            ) AS precio_final,
+                            fp.nombre_cndfp,
+                            cfp.nombre_cncfp
+                        FROM inv_conf_precios_articulo cp
+                        LEFT JOIN con_deta_forma_pago fp ON cp.ide_cndfp = fp.ide_cndfp
+                        LEFT JOIN con_cabece_forma_pago cfp ON cp.ide_cncfp = cfp.ide_cncfp
+                        WHERE cp.ide_inarti = d.ide_inarti
+                          AND cp.activo_incpa = true
+                          AND cp.autorizado_incpa = true
+                          AND cp.precio_fijo_incpa IS NOT NULL
+                          AND cp.precio_fijo_incpa > 0
+                        ORDER BY cp.rango1_cant_incpa
+                    ) prices
+                ) AS precios
+            FROM inv_det_catalogo d
+            INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+            LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+            WHERE ${detWhereClause}
+            ORDER BY d.orden_indcat, a.nombre_inarti
+        `);
+        queryDet.addIntParam(1, ideInccat);
         const detalle = await this.dataSource.createSelectQuery(queryDet);
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
