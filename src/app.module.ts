@@ -19,7 +19,7 @@ import { ReportsModule } from './reports/reports.module';
   imports: [
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
-      exclude: ['api/*'],
+      exclude: ['/api/(.*)'],
     }),
     ConfigModule.forRoot(),
     // Rate Limiting - Protección contra fuerza bruta

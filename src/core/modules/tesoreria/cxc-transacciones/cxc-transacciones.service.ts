@@ -112,19 +112,4 @@ export class CxcTransaccionesService extends BaseService {
         return Number(result?.saldo ?? 0);
     }
 
-    async buscarCabeceraSaldoFavor(ideCcttr: number, ideGeper: number) {
-        const query = new SelectQuery(`
-            SELECT ct.ide_ccctr
-            FROM cxc_cabece_transa ct
-            JOIN cxc_detall_transa dt ON dt.ide_ccctr = ct.ide_ccctr
-            WHERE dt.ide_ccttr = $1
-              AND ct.ide_cccfa IS NULL
-              AND ct.ide_geper = $2
-            LIMIT 1
-        `);
-        query.addIntParam(1, ideCcttr);
-        query.addIntParam(2, ideGeper);
-        const result = await this.dataSource.createSingleQuery(query);
-        return result?.ide_ccctr ?? null;
-    }
 }

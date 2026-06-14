@@ -636,11 +636,7 @@ export class ClientesService extends BaseService {
         );
         query.addIntParam(1, dtoIn.ide_geper);
         query.addIntParam(2, dtoIn.ide_geper);
-        const rows = await this.dataSource.createSelectQuery(query);
-        return {
-            rows,
-            rowCount: rows.length || 0,
-        };
+        return await this.dataSource.createQuery(query);
     }
 
     /**

@@ -1,9 +1,14 @@
+import { existsSync, mkdirSync, renameSync } from 'fs';
+import { join } from 'path';
+
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
+import { envs } from 'src/config/envs';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { HOST_API, isDefined, validateDataRequiere } from 'src/util/helpers/common-util';
 import { fShortDate, fDate, getDateFormatFront, FORMAT_DATETIME_DB, toDate } from 'src/util/helpers/date-util';
 import { fNumber } from 'src/util/helpers/number-util';
@@ -1922,6 +1927,45 @@ export class ProductosService extends BaseService {
         const module = 'inv';
         const tableName = 'articulo';
         const primaryKey = 'ide_inarti';
+
+        // ── Mover imágenes extraídas de temp → almacenamiento permanente ──
+        if (dtoIn.imagenesExtraidas && dtoIn.imagenesExtraidas.length > 0) {
+            const baseDir = FILE_STORAGE_CONSTANTS.BASE_PATH;
+            const tempDir = FILE_STORAGE_CONSTANTS.TEMP_DIR;
+            this.logger.log(`[saveProducto] Moviendo ${dtoIn.imagenesExtraidas.length} imágenes extraídas de temp → permanente`);
+
+            // Asegurar directorio base
+            if (!existsSync(baseDir)) {
+                mkdirSync(baseDir, { recursive: true });
+            }
+
+            const fotosActuales: string[] = Array.isArray(dtoIn.data.fotos_inarti) ? [...dtoIn.data.fotos_inarti] : [];
+
+            for (const fileName of dtoIn.imagenesExtraidas) {
+                const tempPath = join(tempDir, fileName);
+                const destPath = join(baseDir, fileName);
+
+                if (existsSync(tempPath)) {
+                    try {
+                        renameSync(tempPath, destPath);
+                        fotosActuales.push(fileName);
+                        this.logger.log(`  [saveProducto] ${fileName} → movido a drive`);
+                    } catch (err) {
+                        this.logger.warn(`  [saveProducto] Error moviendo ${fileName}: ${err.message}`);
+                    }
+                } else {
+                    this.logger.warn(`  [saveProducto] ${fileName} no encontrado en temp — omitiendo`);
+                }
+            }
+
+            // Si no hay imagen principal, usar la primera extraída
+            if (!dtoIn.data.foto_inarti && fotosActuales.length > 0) {
+                dtoIn.data.foto_inarti = fotosActuales[0];
+            }
+
+            dtoIn.data.fotos_inarti = fotosActuales;
+        }
+
         if (dtoIn.isUpdate === true) {
             // Actualiza
             const isValid = await this.validateUpdateProducto(dtoIn.data, dtoIn.ideEmpr);

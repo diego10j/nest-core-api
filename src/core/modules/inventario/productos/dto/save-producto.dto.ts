@@ -110,7 +110,7 @@ export class InvArticulo {
   activo_inarti?: boolean | null;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
   @Transform(({ value }) => value || null)
   foto_inarti?: string | null;
 
@@ -254,4 +254,9 @@ export class SaveProductoDto {
 
   @IsBoolean()
   isUpdate!: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imagenesExtraidas?: string[];
 }

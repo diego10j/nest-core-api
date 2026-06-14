@@ -182,33 +182,27 @@ export class CxcTransaccionesSaveService extends BaseService {
         if (dtoIn.valor > saldoAnterior) {
             const diferencia = dtoIn.valor - saldoAnterior;
 
-            let ideCcctrSaldoFavor = await this.cxcTransaccionesService.buscarCabeceraSaldoFavor(
-                ideCcttrSobrePago, factura.ide_geper,
+            const ideCcctrSaldoFavor = await this.dataSource.getSeqTable(
+                'cxc_cabece_transa', 'ide_ccctr', 1, dtoIn.login,
             );
 
-            if (!ideCcctrSaldoFavor) {
-                ideCcctrSaldoFavor = await this.dataSource.getSeqTable(
-                    'cxc_cabece_transa', 'ide_ccctr', 1, dtoIn.login,
-                );
+            const cabeceraObject: Record<string, unknown> = {
+                ide_ccctr: ideCcctrSaldoFavor,
+                ide_geper: factura.ide_geper,
+                fecha_trans_ccctr: dtoIn.fecha,
+                observacion_ccctr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
+                hora_ingre: getCurrentTime(),
+            };
 
-                const cabeceraObject: Record<string, unknown> = {
-                    ide_ccctr: ideCcctrSaldoFavor,
-                    ide_geper: factura.ide_geper,
-                    fecha_trans_ccctr: dtoIn.fecha,
-                    observacion_ccctr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
-                    hora_ingre: getCurrentTime(),
-                };
+            const cabeceraListQuery: ObjectQueryDto[] = [{
+                operation: 'insert',
+                module: 'cxc',
+                tableName: 'cabece_transa',
+                primaryKey: 'ide_ccctr',
+                object: cabeceraObject,
+            }];
 
-                const cabeceraListQuery: ObjectQueryDto[] = [{
-                    operation: 'insert',
-                    module: 'cxc',
-                    tableName: 'cabece_transa',
-                    primaryKey: 'ide_ccctr',
-                    object: cabeceraObject,
-                }];
-
-                await this.core.save({ ...dtoIn, listQuery: cabeceraListQuery, audit: false });
-            }
+            await this.core.save({ ...dtoIn, listQuery: cabeceraListQuery, audit: false });
 
             const ideCcdtrSaldo = await this.dataSource.getSeqTable(
                 'cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login,

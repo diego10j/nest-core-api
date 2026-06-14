@@ -21,14 +21,32 @@ async function bootstrap() {
   }));
 
   app.enableCors({
-    origin: [
-      'http://localhost:18080',
-      'http://192.168.56.103:18080',
-      'http://devproerpec.site',
-      'https://devproerpec.site',
-      'https://proerp.sigafi.com',
-      'https://devapi.proialab.com',
-    ],
+    origin: (origin, callback) => {
+      const whitelist = [
+        'http://localhost:18080',
+        'http://192.168.56.103:18080',
+        'http://localhost:8080',
+        'http://devproerpec.site',
+        'https://devproerpec.site',
+        'https://proerp.sigafi.com',
+        'https://devapi.proialab.com',
+        'https://diquimec.com.ec',
+      ];
+      // Sin origin (server-to-server, Postman, curl) → permitir
+      if (!origin) return callback(null, true);
+      // Whitelist explícito
+      if (whitelist.includes(origin)) return callback(null, true);
+      // IPs privadas / localhost en cualquier puerto (desarrollo)
+      if (
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:') ||
+        origin.startsWith('http://192.168.') ||
+        origin.startsWith('http://31.220.')
+      ) {
+        return callback(null, true);
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

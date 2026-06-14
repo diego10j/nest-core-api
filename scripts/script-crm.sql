@@ -66,6 +66,95 @@ CREATE TABLE "public"."gen_direccion_persona" (
 );
 
 
+
+
+-- 07/09/2024
+ALTER TABLE gen_direccion_persona ADD COLUMN defecto_gedirp boolean default false;
+ALTER TABLE gen_direccion_persona ADD COLUMN ide_gegen int;
+
+
+--  insertar direcciones exiistentes de gen_persona
+
+
+WITH max_id AS (
+    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
+)
+INSERT INTO gen_direccion_persona (
+    ide_gedirp,
+    ide_getidi,
+    ide_gepais,
+    ide_geprov,
+    ide_gecant,
+    ide_geper,
+    nombre_dir_gedirp,
+    direccion_gedirp,
+    telefono_gedirp,
+    movil_gedirp,
+    activo_gedirp,
+    defecto_gedirp,
+    usuario_ingre,
+    hora_ingre
+)
+SELECT
+    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente
+    1 AS ide_getidi,            -- Tipo de dirección, valor nulo
+    1 AS ide_gepais,               -- País por defecto
+    gp.ide_geprov,                 -- Provincia
+    gp.ide_gecant,                 -- Cantón
+    gp.ide_geper,
+    'Direccion Principal' as   nombre_dir_gedirp,                -- Persona
+    gp.direccion_geper,    
+    gp.telefono_geper,
+    LEFT(gp.movil_geper, 10) AS movil_gedirp, -- Móvil truncado a 10 dígitos     -- Dirección
+    TRUE AS activo_gedirp,  
+    TRUE AS defecto_gedirp,         -- Activo
+    'sa' AS usuario_ingre,     -- Usuario de ingreso
+    NOW() AS hora_ingre            -- Fecha y hora de ingreso
+FROM
+    gen_persona gp,
+    max_id
+WHERE
+    gp.direccion_geper IS NOT NULL;
+
+
+
+-- inserta contactos 
+
+WITH max_id AS (
+    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
+)
+INSERT INTO gen_direccion_persona (
+    ide_gedirp,
+    ide_geper,
+    nombre_dir_gedirp,
+    telefono_gedirp,
+    movil_gedirp,
+    correo_gedirp,
+    activo_gedirp,
+    usuario_ingre,
+    hora_ingre
+)
+SELECT
+    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente         -- Tipo de dirección, valor nulo               -- Cantón
+    gp.ide_geper,
+    gp.contacto_geper as   nombre_dir_gedirp,                -- Persona  
+    gp.telefono_geper,
+    LEFT(gp.movil_geper, 10) AS movil_gedirp, 
+    gp.correo_geper, -- Móvil truncado a 10 dígitos     -- Dirección
+    TRUE AS activo_gedirp,          -- Activo
+    'sa' AS usuario_ingre,     -- Usuario de ingreso
+    NOW() AS hora_ingre            -- Fecha y hora de ingreso
+FROM
+    gen_persona gp,
+    max_id
+WHERE
+    gp.contacto_geper is not null
+
+
+
+
+
+
 -------------Log Actividades
 
 -- Esta tabla almacenará los tipos de actividades posibles, como "cambio de datos", "envío de factura", "cotización", "programación de llamada", "creación", etc.
@@ -163,91 +252,6 @@ CREATE TABLE sis_actividad_comentario (
     usuario_actua varchar(50),
     hora_actua TIMESTAMP
 );
-
-
-
-
--- 07/09/2024
-ALTER TABLE gen_direccion_persona ADD COLUMN defecto_gedirp boolean default false;
-ALTER TABLE gen_direccion_persona ADD COLUMN ide_gegen int;
-
-
---  insertar direcciones exiistentes de gen_persona
-
-
-WITH max_id AS (
-    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
-)
-INSERT INTO gen_direccion_persona (
-    ide_gedirp,
-    ide_getidi,
-    ide_gepais,
-    ide_geprov,
-    ide_gecant,
-    ide_geper,
-    nombre_dir_gedirp,
-    direccion_gedirp,
-    telefono_gedirp,
-    movil_gedirp,
-    activo_gedirp,
-    defecto_gedirp,
-    usuario_ingre,
-    hora_ingre
-)
-SELECT
-    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente
-    1 AS ide_getidi,            -- Tipo de dirección, valor nulo
-    1 AS ide_gepais,               -- País por defecto
-    gp.ide_geprov,                 -- Provincia
-    gp.ide_gecant,                 -- Cantón
-    gp.ide_geper,
-    'Direccion Principal' as   nombre_dir_gedirp,                -- Persona
-    gp.direccion_geper,    
-    gp.telefono_geper,
-    LEFT(gp.movil_geper, 10) AS movil_gedirp, -- Móvil truncado a 10 dígitos     -- Dirección
-    TRUE AS activo_gedirp,  
-    TRUE AS defecto_gedirp,         -- Activo
-    'sa' AS usuario_ingre,     -- Usuario de ingreso
-    NOW() AS hora_ingre            -- Fecha y hora de ingreso
-FROM
-    gen_persona gp,
-    max_id
-WHERE
-    gp.direccion_geper IS NOT NULL;
-
-
-
--- inserta contactos 
-
-WITH max_id AS (
-    SELECT COALESCE(MAX(ide_gedirp), 0) AS max_ide FROM gen_direccion_persona
-)
-INSERT INTO gen_direccion_persona (
-    ide_gedirp,
-    ide_geper,
-    nombre_dir_gedirp,
-    telefono_gedirp,
-    movil_gedirp,
-    correo_gedirp,
-    activo_gedirp,
-    usuario_ingre,
-    hora_ingre
-)
-SELECT
-    max_id.max_ide + ROW_NUMBER() OVER () AS ide_gedirp, -- Incrementa dinámicamente         -- Tipo de dirección, valor nulo               -- Cantón
-    gp.ide_geper,
-    gp.contacto_geper as   nombre_dir_gedirp,                -- Persona  
-    gp.telefono_geper,
-    LEFT(gp.movil_geper, 10) AS movil_gedirp, 
-    gp.correo_geper, -- Móvil truncado a 10 dígitos     -- Dirección
-    TRUE AS activo_gedirp,          -- Activo
-    'sa' AS usuario_ingre,     -- Usuario de ingreso
-    NOW() AS hora_ingre            -- Fecha y hora de ingreso
-FROM
-    gen_persona gp,
-    max_id
-WHERE
-    gp.contacto_geper is not null
 
 
 
