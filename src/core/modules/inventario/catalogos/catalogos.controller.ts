@@ -9,6 +9,7 @@ import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { envs } from 'src/config/envs';
 import { Public } from 'src/core/auth/decorators/public.decorator';
 import { v4 as uuid } from 'uuid';
@@ -21,7 +22,6 @@ import { IdCatalogoDto } from './dto/id-catalogo.dto';
 import { IdDetCatalogoDto } from './dto/id-det-catalogo.dto';
 import { SaveCatalogoDto } from './dto/save-catalogo.dto';
 import { SetActivoCatalogoDto } from './dto/set-activo-catalogo.dto';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 const CATALOGOS_DIR = path.join(envs.pathDrive, 'inventario', 'catalogos');
 fs.mkdirSync(CATALOGOS_DIR, { recursive: true });

@@ -126,7 +126,10 @@ export class CatalogosSaveService extends BaseService {
             } as ObjectQueryDto);
         }
 
-        // Insertar los nuevos detalles
+        // Insertar los nuevos detalles y sus cantidades
+        const tableNameCant = 'cant_det_catalogo';
+        const primaryKeyCant = 'ide_incdc';
+
         for (const det of dtoIn.detalle) {
             if (!det.ide_inarti) continue;
 
@@ -144,6 +147,39 @@ export class CatalogosSaveService extends BaseService {
                 primaryKey: primaryKeyDet,
                 object: this.buildDetalleObject(det, ideInccat, ideIndcat, dtoIn),
             });
+
+            // Insertar cantidades del detalle
+            if (det.cantidades && det.cantidades.length > 0) {
+                for (const cant of det.cantidades) {
+                    if (cant.cantidad_incdc == null) continue;
+
+                    const ideIncdc = await this.dataSource.getSeqTable(
+                        `${module}_${tableNameCant}`,
+                        primaryKeyCant,
+                        1,
+                        dtoIn.login,
+                    );
+
+                    listQuery.push({
+                        operation: 'insert',
+                        module,
+                        tableName: tableNameCant,
+                        primaryKey: primaryKeyCant,
+                        object: {
+                            ide_incdc: ideIncdc,
+                            ide_indcat: ideIndcat,
+                            cantidad_incdc: cant.cantidad_incdc,
+                            unidad_medida_incdc: cant.unidad_medida_incdc ?? null,
+                            descripcion_incdc: cant.descripcion_incdc ?? null,
+                            orden_incdc: cant.orden_incdc ?? 0,
+                            activo_incdc: cant.activo_incdc ?? true,
+                            usuario_ingre: dtoIn.login,
+                            fecha_ingre: getCurrentDate(),
+                            hora_ingre: getCurrentTime(),
+                        },
+                    });
+                }
+            }
         }
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });

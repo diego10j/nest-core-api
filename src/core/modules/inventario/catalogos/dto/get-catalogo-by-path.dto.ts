@@ -1,5 +1,5 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsInt, IsOptional, IsString } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class GetCatalogoByPathDto extends QueryOptionsDto {

@@ -4,11 +4,13 @@ import {
     IsBoolean,
     IsInt,
     IsNotEmpty,
+    IsNumber,
     IsObject,
     IsOptional,
     IsPositive,
     IsString,
     MaxLength,
+    Min,
     ValidateNested,
 } from 'class-validator';
 
@@ -88,6 +90,40 @@ export class InvCabCatalogo {
     color_inccat?: string | null;
 }
 
+export class InvCantDetCatalogo {
+    @IsOptional()
+    @IsInt()
+    @IsPositive()
+    ide_incdc?: number;
+
+    @IsNumber({ maxDecimalPlaces: 3 })
+    @Min(0)
+    @Transform(({ value }) => value ?? 0)
+    cantidad_incdc: number;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(50)
+    @Transform(({ value }) => value || null)
+    unidad_medida_incdc?: string | null;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    @Transform(({ value }) => value || null)
+    descripcion_incdc?: string | null;
+
+    @IsOptional()
+    @IsInt()
+    @Transform(({ value }) => value ?? 0)
+    orden_incdc?: number;
+
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ value }) => value ?? true)
+    activo_incdc?: boolean;
+}
+
 export class InvDetCatalogo {
     @IsOptional()
     @IsInt()
@@ -149,6 +185,12 @@ export class InvDetCatalogo {
     @MaxLength(200)
     @Transform(({ value }) => value || null)
     url_indcat?: string | null;
+
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => InvCantDetCatalogo)
+    cantidades?: InvCantDetCatalogo[];
 }
 
 export class SaveCatalogoDto {

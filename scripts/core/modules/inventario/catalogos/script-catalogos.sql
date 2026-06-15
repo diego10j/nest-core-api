@@ -129,6 +129,42 @@ COMMENT ON COLUMN "public"."inv_det_catalogo"."video_indcat"         IS 'URL o n
 COMMENT ON COLUMN "public"."inv_det_catalogo"."url_indcat"           IS 'URL amigable (slug) del producto en el catálogo';
 
 -- ============================================================
+-- 3. CANTIDADES POR DETALLE DE CATÁLOGO
+--    Define las cantidades/presentaciones que se publican para
+--    cada producto dentro del catálogo (ej: 1 KG, 25 KG).
+--    Los precios se obtienen de inv_conf_precios_articulo
+--    según la cantidad configurada.
+-- ============================================================
+CREATE TABLE "public"."inv_cant_det_catalogo" (
+    "ide_incdc"              int8         NOT NULL,
+    "ide_indcat"             int8         NOT NULL,
+    "cantidad_incdc"         numeric(12,3) NOT NULL,
+    "unidad_medida_incdc"    varchar(50),
+    "descripcion_incdc"      varchar(100),
+    "orden_incdc"            int          DEFAULT 0,
+    "activo_incdc"           bool         DEFAULT true,
+    "usuario_ingre"          varchar(50),
+    "fecha_ingre"            date,
+    "hora_ingre"             time,
+    "usuario_actua"          varchar(50),
+    "fecha_actua"            date,
+    "hora_actua"             time,
+    CONSTRAINT "inv_cant_det_catalogo_pkey"
+        PRIMARY KEY ("ide_incdc"),
+    CONSTRAINT "inv_cant_det_catalogo_ide_indcat_fkey"
+        FOREIGN KEY ("ide_indcat") REFERENCES "public"."inv_det_catalogo"("ide_indcat")
+        ON DELETE CASCADE ON UPDATE RESTRICT
+);
+COMMENT ON TABLE  "public"."inv_cant_det_catalogo" IS 'Cantidades/presentaciones a publicar por cada producto del catálogo. Los precios se obtienen de inv_conf_precios_articulo según la cantidad.';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."ide_incdc"           IS 'ID de la cantidad del detalle de catálogo';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."ide_indcat"          IS 'FK al detalle del catálogo';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."cantidad_incdc"      IS 'Cantidad a publicar (ej: 1, 25)';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."unidad_medida_incdc" IS 'Unidad de medida (ej: KG, UNI)';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."descripcion_incdc"   IS 'Etiqueta visible (ej: 1 KG, Saco 25 KG)';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."orden_incdc"         IS 'Orden de presentación';
+COMMENT ON COLUMN "public"."inv_cant_det_catalogo"."activo_incdc"        IS 'Estado: true = activo, false = inactivo';
+
+-- ============================================================
 -- ÍNDICES
 -- ============================================================
 
@@ -163,3 +199,11 @@ CREATE INDEX "idx_inv_det_catalogo_inarti"
 -- Consulta de detalles por cabecera y orden
 CREATE INDEX "idx_inv_det_catalogo_inccat_orden"
     ON "public"."inv_det_catalogo" ("ide_inccat", "orden_indcat");
+
+-- Cantidades por detalle
+CREATE INDEX "idx_inv_cant_det_catalogo_indcat"
+    ON "public"."inv_cant_det_catalogo" ("ide_indcat");
+
+-- Cantidades por detalle y orden
+CREATE INDEX "idx_inv_cant_det_catalogo_indcat_orden"
+    ON "public"."inv_cant_det_catalogo" ("ide_indcat", "orden_incdc");

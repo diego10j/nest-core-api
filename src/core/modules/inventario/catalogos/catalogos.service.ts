@@ -264,39 +264,61 @@ export class CatalogosService extends BaseService {
                       AND cci.ide_inepi = 1
                 ), 0) AS stock,
                 (
-                    SELECT json_agg(prices.*)
+                    SELECT json_agg(cants.*)
                     FROM (
                         SELECT
-                            cp.ide_incpa,
-                            cp.rango1_cant_incpa,
-                            cp.rango2_cant_incpa,
-                            cp.precio_fijo_incpa,
-                            cp.incluye_iva_incpa,
-                            ROUND(
-                                CASE
-                                    WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
-                                    ELSE cp.precio_fijo_incpa * (1 + COALESCE((
-                                        SELECT porcentaje_cnpim
-                                        FROM con_porcen_impues
-                                        WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-                                          AND activo_cnpim = TRUE
-                                        ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                    ), 0.12))
-                                END, 2
+                            cdc.ide_incdc,
+                            cdc.cantidad_incdc AS cantidad,
+                            cdc.unidad_medida_incdc AS unidad_medida,
+                            cdc.descripcion_incdc AS descripcion,
+                            cdc.orden_incdc AS orden,
+                            COALESCE(cp.precio_fijo_incpa, 0) AS precio_fijo,
+                            cp.incluye_iva_incpa AS incluye_iva,
+                            COALESCE(
+                                ROUND(
+                                    cdc.cantidad_incdc * (
+                                        CASE
+                                            WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
+                                            ELSE cp.precio_fijo_incpa * (1 + COALESCE((
+                                                SELECT porcentaje_cnpim
+                                                FROM con_porcen_impues
+                                                WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+                                                  AND activo_cnpim = TRUE
+                                                ORDER BY fecha_desde_cnpim DESC LIMIT 1
+                                            ), 0.12))
+                                        END
+                                    ), 2
+                                ), 0
                             ) AS precio_final,
                             fp.nombre_cndfp,
                             cfp.nombre_cncfp
-                        FROM inv_conf_precios_articulo cp
+                        FROM inv_cant_det_catalogo cdc
+                        LEFT JOIN LATERAL (
+                            SELECT *
+                            FROM inv_conf_precios_articulo cp2
+                            WHERE cp2.ide_inarti = d.ide_inarti
+                              AND cp2.activo_incpa = true
+                              AND cp2.autorizado_incpa = true
+                              AND cp2.precio_fijo_incpa IS NOT NULL
+                              AND cp2.precio_fijo_incpa > 0
+                              AND (
+                                  (cp2.rangos_incpa = false AND cp2.rango1_cant_incpa = cdc.cantidad_incdc)
+                                  OR
+                                  (cp2.rangos_incpa = true AND cdc.cantidad_incdc >= cp2.rango1_cant_incpa
+                                   AND (cp2.rango2_cant_incpa IS NULL OR cdc.cantidad_incdc <= cp2.rango2_cant_incpa))
+                              )
+                            ORDER BY
+                                CASE WHEN cp2.rangos_incpa = false THEN 0 ELSE 1 END,
+                                cp2.rango1_cant_incpa
+                            LIMIT 1
+                        ) cp ON true
                         LEFT JOIN con_deta_forma_pago fp ON cp.ide_cndfp = fp.ide_cndfp
                         LEFT JOIN con_cabece_forma_pago cfp ON cp.ide_cncfp = cfp.ide_cncfp
-                        WHERE cp.ide_inarti = d.ide_inarti
-                          AND cp.activo_incpa = true
-                          AND cp.autorizado_incpa = true
-                          AND cp.precio_fijo_incpa IS NOT NULL
-                          AND cp.precio_fijo_incpa > 0
-                        ORDER BY cp.rango1_cant_incpa
-                    ) prices
-                ) AS precios
+                        WHERE cdc.ide_indcat = d.ide_indcat
+                          AND cdc.activo_incdc = true
+                        ORDER BY cdc.orden_incdc
+                    ) cants
+                ) AS cantidades
             FROM inv_det_catalogo d
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
@@ -393,39 +415,61 @@ export class CatalogosService extends BaseService {
                       AND cci.ide_inepi = 1
                 ), 0) AS stock,
                 (
-                    SELECT json_agg(prices.*)
+                    SELECT json_agg(cants.*)
                     FROM (
                         SELECT
-                            cp.ide_incpa,
-                            cp.rango1_cant_incpa,
-                            cp.rango2_cant_incpa,
-                            cp.precio_fijo_incpa,
-                            cp.incluye_iva_incpa,
-                            ROUND(
-                                CASE
-                                    WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
-                                    ELSE cp.precio_fijo_incpa * (1 + COALESCE((
-                                        SELECT porcentaje_cnpim
-                                        FROM con_porcen_impues
-                                        WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-                                          AND activo_cnpim = TRUE
-                                        ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                    ), 0.12))
-                                END, 2
+                            cdc.ide_incdc,
+                            cdc.cantidad_incdc AS cantidad,
+                            cdc.unidad_medida_incdc AS unidad_medida,
+                            cdc.descripcion_incdc AS descripcion,
+                            cdc.orden_incdc AS orden,
+                            COALESCE(cp.precio_fijo_incpa, 0) AS precio_fijo,
+                            cp.incluye_iva_incpa AS incluye_iva,
+                            COALESCE(
+                                ROUND(
+                                    cdc.cantidad_incdc * (
+                                        CASE
+                                            WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
+                                            ELSE cp.precio_fijo_incpa * (1 + COALESCE((
+                                                SELECT porcentaje_cnpim
+                                                FROM con_porcen_impues
+                                                WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+                                                  AND activo_cnpim = TRUE
+                                                ORDER BY fecha_desde_cnpim DESC LIMIT 1
+                                            ), 0.12))
+                                        END
+                                    ), 2
+                                ), 0
                             ) AS precio_final,
                             fp.nombre_cndfp,
                             cfp.nombre_cncfp
-                        FROM inv_conf_precios_articulo cp
+                        FROM inv_cant_det_catalogo cdc
+                        LEFT JOIN LATERAL (
+                            SELECT *
+                            FROM inv_conf_precios_articulo cp2
+                            WHERE cp2.ide_inarti = d.ide_inarti
+                              AND cp2.activo_incpa = true
+                              AND cp2.autorizado_incpa = true
+                              AND cp2.precio_fijo_incpa IS NOT NULL
+                              AND cp2.precio_fijo_incpa > 0
+                              AND (
+                                  (cp2.rangos_incpa = false AND cp2.rango1_cant_incpa = cdc.cantidad_incdc)
+                                  OR
+                                  (cp2.rangos_incpa = true AND cdc.cantidad_incdc >= cp2.rango1_cant_incpa
+                                   AND (cp2.rango2_cant_incpa IS NULL OR cdc.cantidad_incdc <= cp2.rango2_cant_incpa))
+                              )
+                            ORDER BY
+                                CASE WHEN cp2.rangos_incpa = false THEN 0 ELSE 1 END,
+                                cp2.rango1_cant_incpa
+                            LIMIT 1
+                        ) cp ON true
                         LEFT JOIN con_deta_forma_pago fp ON cp.ide_cndfp = fp.ide_cndfp
                         LEFT JOIN con_cabece_forma_pago cfp ON cp.ide_cncfp = cfp.ide_cncfp
-                        WHERE cp.ide_inarti = d.ide_inarti
-                          AND cp.activo_incpa = true
-                          AND cp.autorizado_incpa = true
-                          AND cp.precio_fijo_incpa IS NOT NULL
-                          AND cp.precio_fijo_incpa > 0
-                        ORDER BY cp.rango1_cant_incpa
-                    ) prices
-                ) AS precios
+                        WHERE cdc.ide_indcat = d.ide_indcat
+                          AND cdc.activo_incdc = true
+                        ORDER BY cdc.orden_incdc
+                    ) cants
+                ) AS cantidades
             FROM inv_det_catalogo d
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
