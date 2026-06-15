@@ -432,15 +432,11 @@ export class HtmlProductService {
     }
 
     private buildMainOverlaySvg(nomCorto: string, pagina: string): string {
-        const atoms = this.generateAtomPattern();
         const centerText = nomCorto ? this.buildCenterWatermarkSvg(nomCorto) : '';
         const footerCard = pagina ? this.buildFooterCardSvg(pagina) : '';
 
         return `<svg width="${CANVAS}" height="${CANVAS}" xmlns="http://www.w3.org/2000/svg">
             <defs>
-                <pattern id="atoms" x="0" y="0" width="300" height="300" patternUnits="userSpaceOnUse">
-                    ${atoms}
-                </pattern>
                 <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="white" stop-opacity="0.60"/>
                     <stop offset="100%" stop-color="white" stop-opacity="0.25"/>
@@ -610,7 +606,7 @@ Debes devolver un JSON con esta estructura:
     // ─── PROCESAR IMÁGENES EXISTENTES ───────────────────────────────────
 
     /**
-     * Aplica watermark sobre una imagen existente de producto (logo, átomos, footer, marca centro).
+     * Aplica watermark sobre una imagen existente (logo card top-right, marca centro, footer).
      * Guarda resultado en temp_media/ con el mismo nombre.
      */
     async processImage(fileName: string, ideEmpr: number): Promise<{ tempFileName: string }> {
@@ -622,7 +618,7 @@ Debes devolver un JSON con esta estructura:
         }
 
         this.logger.log(`[processImage] Procesando ${fileName}...`);
-        const watermark = await this.getWatermark(ideEmpr);
+        const watermark = await this.getSimpleWatermark(ideEmpr);
 
         const tempPath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
         await sharp(sourcePath)
