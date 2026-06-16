@@ -211,7 +211,7 @@ export class CatalogosService extends BaseService {
 
         const ideEmpr = ideEmprFilter && ideEmprFilter > 0 ? ideEmprFilter : cabecera.ide_empr;
 
-        const detConditions: string[] = [`d.ide_inccat = $2`];
+        const detConditions: string[] = [`d.ide_inccat = $1`];
         if (publicOnly) {
             detConditions.push('d.activo_indcat = true');
             detConditions.push('a.activo_inarti = true');
@@ -326,8 +326,7 @@ export class CatalogosService extends BaseService {
             WHERE ${detWhereClause}
             ORDER BY d.orden_indcat, a.nombre_inarti
         `);
-        queryDet.addParam(1, path);
-        queryDet.addIntParam(2, cabecera.ide_cata);
+        queryDet.addIntParam(1, cabecera.ide_cata);
         const detalle = await this.dataSource.createSelectQuery(queryDet);
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
