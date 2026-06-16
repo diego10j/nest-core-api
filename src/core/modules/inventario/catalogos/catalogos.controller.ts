@@ -58,7 +58,6 @@ export class CatalogosController {
     @Get('getCatalogoByPath')
     @ApiOperation({ summary: 'Obtener catálogo completo por path (público, incluye detalles con precios)' })
     getCatalogoByPath(
-        @AppHeaders() _h: HeaderParamsDto,
         @Query() dtoIn: GetCatalogoByPathDto,
     ) {
         return this.service.getCatalogoByPath(dtoIn);

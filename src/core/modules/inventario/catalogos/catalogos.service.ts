@@ -87,6 +87,7 @@ export class CatalogosService extends BaseService {
             WHERE ${whereClause}
             ORDER BY c.orden_inccat, c.nombre_inccat
         `, dtoIn);
+        query.isLazy = false;
         return this.dataSource.createQuery(query);
     }
 
