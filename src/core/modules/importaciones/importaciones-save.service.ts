@@ -617,6 +617,7 @@ export class ImportacionesSaveService extends BaseService {
                     dtoIn.archivo_ruta_imdocu ?? null, dtoIn.observaciones_imdocu ?? null,
                 ],
             );
+            await this._updateTipoDocumentoFile(dtoIn);
             return { message: 'ok', ide_imdocu: dtoIn.ide_imdocu };
         }
         const ide_imdocu = await this.dataSource.getSeqTable('imp_documentos', 'ide_imdocu', 1, dtoIn.login);
@@ -631,7 +632,19 @@ export class ImportacionesSaveService extends BaseService {
                 dtoIn.archivo_ruta_imdocu ?? null, dtoIn.observaciones_imdocu ?? null,
             ],
         );
+        await this._updateTipoDocumentoFile(dtoIn);
         return { message: 'ok', ide_imdocu };
+    }
+
+    private async _updateTipoDocumentoFile(dtoIn: SaveDocumentoDto) {
+        if (dtoIn.peso_archivo_itd != null || dtoIn.nombre_real_archivo_itd != null) {
+            await this.dataSource.pool.query(
+                `UPDATE imp_tipo_documento SET
+                   peso_archivo_itd = $2, nombre_real_archivo_itd = $3
+                 WHERE ide_itd = $1`,
+                [dtoIn.ide_itd, dtoIn.peso_archivo_itd ?? null, dtoIn.nombre_real_archivo_itd ?? null],
+            );
+        }
     }
 
     // ========================================================================

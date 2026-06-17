@@ -1,8 +1,17 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import {
+    Body, Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Query, Res, UploadedFile, UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { envs } from 'src/config/envs';
+import { v4 as uuid } from 'uuid';
 
 import { AsignarFacturaCxpDto } from './dto/asignar-factura-cxp.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
@@ -20,6 +29,9 @@ import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 import { ImportacionesSaveService } from './importaciones-save.service';
 import { ImportacionesService } from './importaciones.service';
+
+const IMPORTACIONES_DIR = path.join(envs.pathDrive, 'importaciones');
+fs.mkdirSync(IMPORTACIONES_DIR, { recursive: true });
 
 @ApiTags('Importaciones')
 @Controller('importaciones')
@@ -250,6 +262,56 @@ export class ImportacionesController {
     @ApiOperation({ summary: 'Desactivar un pago de importación (soft delete)' })
     deletePago(@AppHeaders() h: HeaderParamsDto, @Body() dto: { ide_impag: number }) {
         return this.saveService.deletePago(dto.ide_impag);
+    }
+
+    @Post('uploadDocumentoFile')
+    @ApiOperation({ summary: 'Subir archivo asociado a un documento de importación y retorna metadatos' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Archivo del documento de importación',
+                },
+            },
+            required: ['file'],
+        },
+    })
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: (_req, _file, cb) => cb(null, IMPORTACIONES_DIR),
+            filename: (_req, file, cb) => {
+                const ext = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
+                cb(null, `${uuid()}.${ext}`);
+            },
+        }),
+    }))
+    uploadDocumentoFile(
+        @AppHeaders() _h: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+    ) {
+        return {
+            filename: file.filename,
+            originalName: file.originalname,
+            size: file.size,
+        };
+    }
+
+    @Get('downloadDocumentoFile/:fileName')
+    @ApiOperation({ summary: 'Descargar archivo de documento de importación' })
+    downloadDocumentoFile(
+        @AppHeaders() _h: HeaderParamsDto,
+        @Param('fileName') fileName: string,
+        @Res() res: any,
+    ) {
+        const filePath = path.join(IMPORTACIONES_DIR, fileName);
+        if (!fs.existsSync(filePath)) {
+            throw new NotFoundException('Archivo no encontrado');
+        }
+        res.sendFile(filePath);
     }
 
     @Post('saveDocumento')

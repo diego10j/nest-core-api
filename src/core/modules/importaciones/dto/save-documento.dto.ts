@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class SaveDocumentoDto {
     @IsOptional()
@@ -32,4 +32,12 @@ export class SaveDocumentoDto {
     @IsString()
     @IsOptional()
     observaciones_imdocu?: string;
+
+    @IsNumber()
+    @IsOptional()
+    peso_archivo_itd?: number;
+
+    @IsString()
+    @IsOptional()
+    nombre_real_archivo_itd?: string;
 }

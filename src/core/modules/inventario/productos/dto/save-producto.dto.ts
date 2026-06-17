@@ -7,7 +7,6 @@ import {
   IsOptional,
   IsNotEmpty,
   IsUUID,
-  IsUrl,
   IsObject,
   IsArray,
   IsPositive,
@@ -151,7 +150,7 @@ export class InvArticulo {
   ide_incate?: number | null;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
   @Transform(({ value }) => value || null)
   url_inarti?: string | null;
 

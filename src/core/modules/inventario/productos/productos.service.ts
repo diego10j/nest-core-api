@@ -5,7 +5,6 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
-import { envs } from 'src/config/envs';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
 import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';

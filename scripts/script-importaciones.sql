@@ -70,6 +70,8 @@ create table imp_tipo_documento(
 ide_itd int4,
 nombre_itd varchar(50) NOT NULL UNIQUE,
 descripcion_itd varchar(200),
+peso_archivo_itd int8,
+nombre_real_archivo_itd varchar(300),
 activo_itd bool,
 usuario_ingre varchar(50),
 hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -468,6 +470,10 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
+
+
+--ALTER TABLE imp_tipo_documento ADD COLUMN IF NOT EXISTS peso_archivo_itd int8;
+--ALTER TABLE imp_tipo_documento ADD COLUMN IF NOT EXISTS nombre_real_archivo_itd varchar(300);
 
 -----
 

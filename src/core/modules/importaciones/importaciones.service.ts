@@ -285,7 +285,9 @@ export class ImportacionesService extends BaseService {
                     d.fecha_recepcion_imdocu, d.archivo_ruta_imdocu,
                     d.observaciones_imdocu,
                     d.usuario_ingre, d.hora_ingre, d.usuario_actua, d.hora_actua,
-                    td.nombre_itd             AS tipo_documento
+                    td.nombre_itd             AS tipo_documento,
+                    td.peso_archivo_itd,
+                    td.nombre_real_archivo_itd
                 FROM imp_documentos d
                 INNER JOIN imp_tipo_documento td ON d.ide_itd = td.ide_itd
                 WHERE d.ide_imcaim = $1
