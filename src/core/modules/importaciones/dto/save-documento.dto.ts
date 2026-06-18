@@ -29,15 +29,15 @@ export class SaveDocumentoDto {
     @IsOptional()
     archivo_ruta_imdocu?: string;
 
+    @IsNumber()
+    @IsOptional()
+    peso_archivo_imdocu?: number;
+
+    @IsString()
+    @IsOptional()
+    nombre_real_archivo_imdocu?: string;
+
     @IsString()
     @IsOptional()
     observaciones_imdocu?: string;
-
-    @IsNumber()
-    @IsOptional()
-    peso_archivo_itd?: number;
-
-    @IsString()
-    @IsOptional()
-    nombre_real_archivo_itd?: string;
 }

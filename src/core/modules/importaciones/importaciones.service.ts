@@ -126,8 +126,8 @@ export class ImportacionesService extends BaseService {
     // ========================================================================
 
     async getImportaciones(dtoIn: GetImportacionesDto & HeaderParamsDto) {
-        const condicionEstado = dtoIn.ide_imesor ? `AND c.ide_imesor = ${dtoIn.ide_imesor}` : '';
-        const condicionProveedor = dtoIn.ide_geper ? `AND c.ide_geper = ${dtoIn.ide_geper}` : '';
+        const condicionEstado = dtoIn.ide_imesor ? `AND c.ide_imesor = $4` : '';
+        const condicionProveedor = dtoIn.ide_geper ? `AND c.ide_geper = $5` : '';
 
         const query = new SelectQuery(
             `
@@ -146,11 +146,39 @@ export class ImportacionesService extends BaseService {
                     c.observaciones_imcaim,
                     c.activo_imcaim,
                     c.usuario_ingre,
-                    c.hora_ingre
+                    c.hora_ingre,
+                    COALESCE(liq.total_liquidaciones, 0)       AS total_liquidaciones,
+                    COALESCE(liq.suma_arancel_advalorem, 0)    AS suma_arancel_advalorem,
+                    COALESCE(liq.suma_iva, 0)                  AS suma_iva,
+                    COALESCE(liq.suma_ice, 0)                  AS suma_ice,
+                    COALESCE(liq.suma_fodinfa, 0)              AS suma_fodinfa,
+                    COALESCE(liq.suma_tasas, 0)                AS suma_tasas,
+                    COALESCE(liq.suma_recargos, 0)             AS suma_recargos,
+                    COALESCE(liq.suma_intereses, 0)            AS suma_intereses,
+                    COALESCE(liq.suma_multas, 0)               AS suma_multas,
+                    COALESCE(liq.suma_otros, 0)                AS suma_otros,
+                    COALESCE(liq.suma_total_impuestos, 0)      AS suma_total_impuestos
                 FROM imp_cab_importa c
                 INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
                 INNER JOIN imp_incoterm i ON c.ide_iminco = i.ide_iminco
                 INNER JOIN imp_estado_orden e ON c.ide_imesor = e.ide_imesor
+                LEFT JOIN (
+                    SELECT g.ide_imcaim,
+                           COUNT(l.ide_imliq)                         AS total_liquidaciones,
+                           SUM(l.arancel_advalorem_liq_imliq)         AS suma_arancel_advalorem,
+                           SUM(l.iva_liquidacion_imliq)               AS suma_iva,
+                           SUM(l.ice_liquidacion_imliq)               AS suma_ice,
+                           SUM(l.fodinfa_liquidacion_imliq)           AS suma_fodinfa,
+                           SUM(l.tasas_imliq)                         AS suma_tasas,
+                           SUM(l.recargos_imliq)                      AS suma_recargos,
+                           SUM(l.intereses_imliq)                     AS suma_intereses,
+                           SUM(l.multas_imliq)                        AS suma_multas,
+                           SUM(l.otros_imliq)                         AS suma_otros,
+                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos
+                    FROM imp_gestion_aduana g
+                    INNER JOIN imp_liquidacion_aduana l ON g.ide_imga = l.ide_imga
+                    GROUP BY g.ide_imcaim
+                ) liq ON c.ide_imcaim = liq.ide_imcaim
                 WHERE c.ide_empr = $1
                 AND c.fecha_imcaim BETWEEN $2 AND $3
                 ${condicionEstado}
@@ -162,6 +190,8 @@ export class ImportacionesService extends BaseService {
         query.addIntParam(1, dtoIn.ideEmpr);
         query.addStringParam(2, dtoIn.fechaInicio);
         query.addStringParam(3, dtoIn.fechaFin);
+        if (dtoIn.ide_imesor) query.addIntParam(4, dtoIn.ide_imesor);
+        if (dtoIn.ide_geper) query.addIntParam(5, dtoIn.ide_geper);
         return this.dataSource.createQuery(query);
     }
 
@@ -178,12 +208,40 @@ export class ImportacionesService extends BaseService {
                     p.identificac_geper,
                     i.nombre_iminco           AS incoterm,
                     e.nombre_imesor           AS estado,
-                    pa.nombre_gepais          AS pais_origen
+                    pa.nombre_gepais          AS pais_origen,
+                    COALESCE(liq.total_liquidaciones, 0)       AS total_liquidaciones,
+                    COALESCE(liq.suma_arancel_advalorem, 0)    AS suma_arancel_advalorem,
+                    COALESCE(liq.suma_iva, 0)                  AS suma_iva,
+                    COALESCE(liq.suma_ice, 0)                  AS suma_ice,
+                    COALESCE(liq.suma_fodinfa, 0)              AS suma_fodinfa,
+                    COALESCE(liq.suma_tasas, 0)                AS suma_tasas,
+                    COALESCE(liq.suma_recargos, 0)             AS suma_recargos,
+                    COALESCE(liq.suma_intereses, 0)            AS suma_intereses,
+                    COALESCE(liq.suma_multas, 0)               AS suma_multas,
+                    COALESCE(liq.suma_otros, 0)                AS suma_otros,
+                    COALESCE(liq.suma_total_impuestos, 0)      AS suma_total_impuestos
                 FROM imp_cab_importa c
                 INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
                 INNER JOIN imp_incoterm i ON c.ide_iminco = i.ide_iminco
                 INNER JOIN imp_estado_orden e ON c.ide_imesor = e.ide_imesor
                 LEFT JOIN gen_pais pa ON c.ide_gepais = pa.ide_gepais
+                LEFT JOIN (
+                    SELECT g.ide_imcaim,
+                           COUNT(l.ide_imliq)                         AS total_liquidaciones,
+                           SUM(l.arancel_advalorem_liq_imliq)         AS suma_arancel_advalorem,
+                           SUM(l.iva_liquidacion_imliq)               AS suma_iva,
+                           SUM(l.ice_liquidacion_imliq)               AS suma_ice,
+                           SUM(l.fodinfa_liquidacion_imliq)           AS suma_fodinfa,
+                           SUM(l.tasas_imliq)                         AS suma_tasas,
+                           SUM(l.recargos_imliq)                      AS suma_recargos,
+                           SUM(l.intereses_imliq)                     AS suma_intereses,
+                           SUM(l.multas_imliq)                        AS suma_multas,
+                           SUM(l.otros_imliq)                         AS suma_otros,
+                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos
+                    FROM imp_gestion_aduana g
+                    INNER JOIN imp_liquidacion_aduana l ON g.ide_imga = l.ide_imga
+                    GROUP BY g.ide_imcaim
+                ) liq ON c.ide_imcaim = liq.ide_imcaim
                 WHERE c.ide_imcaim = $1
             `);
         query.addIntParam(1, ide_imcaim);
@@ -283,11 +341,10 @@ export class ImportacionesService extends BaseService {
                 SELECT d.ide_imdocu, d.ide_imcaim, d.ide_itd,
                     d.numero_documento_imdocu, d.fecha_emision_imdocu,
                     d.fecha_recepcion_imdocu, d.archivo_ruta_imdocu,
+                    d.peso_archivo_imdocu, d.nombre_real_archivo_imdocu,
                     d.observaciones_imdocu,
                     d.usuario_ingre, d.hora_ingre, d.usuario_actua, d.hora_actua,
-                    td.nombre_itd             AS tipo_documento,
-                    td.peso_archivo_itd,
-                    td.nombre_real_archivo_itd
+                    td.nombre_itd             AS tipo_documento
                 FROM imp_documentos d
                 INNER JOIN imp_tipo_documento td ON d.ide_itd = td.ide_itd
                 WHERE d.ide_imcaim = $1
@@ -321,6 +378,8 @@ export class ImportacionesService extends BaseService {
                 SELECT g.ide_imga, g.ide_imcaim, g.ide_imtaf, g.ide_geper, g.ide_empr,
                     g.numero_dau_imga, g.fecha_presentacion_imga,
                     g.fecha_liquidacion_imga, g.fecha_liberacion_imga,
+                    g.fob_imga, g.flete_imga, g.seguro_imga, g.ajustes_imga,
+                    g.valor_aduana_imga, g.items_declarados_imga, g.peso_neto_kilos_imga,
                     g.observaciones_imga,
                     g.usuario_ingre, g.hora_ingre, g.usuario_actua, g.hora_actua,
                     ta.nombre_imtaf           AS tipo_aforo,
@@ -337,16 +396,41 @@ export class ImportacionesService extends BaseService {
     async getLiquidacionAduana(ide_imga: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT l.ide_imliq, l.ide_imga,
-                    l.base_imponible_liq_imliq, l.arancel_advalorem_liq_imliq,
+                    l.arancel_advalorem_liq_imliq,
                     l.iva_liquidacion_imliq, l.ice_liquidacion_imliq,
-                    l.fodinfa_liquidacion_imliq, l.total_impuestos_liq_imliq,
+                    l.fodinfa_liquidacion_imliq,
+                    l.tasas_imliq, l.recargos_imliq, l.intereses_imliq,
+                    l.multas_imliq, l.otros_imliq,
+                    l.total_impuestos_liq_imliq,
                     l.fecha_liquidacion_imliq, l.numero_liquidacion_imliq,
                     l.observaciones_liquidacion_imliq,
                     l.usuario_ingre, l.hora_ingre, l.usuario_actua, l.hora_actua
                 FROM imp_liquidacion_aduana l
                 WHERE l.ide_imga = $1
+                ORDER BY l.ide_imliq
             `);
         query.addIntParam(1, ide_imga);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    async getLiquidacionesByImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
+        const query = new SelectQuery(`
+                SELECT l.ide_imliq, l.ide_imga,
+                    l.arancel_advalorem_liq_imliq,
+                    l.iva_liquidacion_imliq, l.ice_liquidacion_imliq,
+                    l.fodinfa_liquidacion_imliq,
+                    l.tasas_imliq, l.recargos_imliq, l.intereses_imliq,
+                    l.multas_imliq, l.otros_imliq,
+                    l.total_impuestos_liq_imliq,
+                    l.fecha_liquidacion_imliq, l.numero_liquidacion_imliq,
+                    l.observaciones_liquidacion_imliq,
+                    l.usuario_ingre, l.hora_ingre, l.usuario_actua, l.hora_actua
+                FROM imp_liquidacion_aduana l
+                INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                WHERE g.ide_imcaim = $1
+                ORDER BY l.ide_imliq
+            `);
+        query.addIntParam(1, ide_imcaim);
         return this.dataSource.createSelectQuery(query);
     }
 

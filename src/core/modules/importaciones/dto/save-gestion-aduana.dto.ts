@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class SaveGestionAduanaDto {
     @IsOptional()
@@ -32,6 +32,41 @@ export class SaveGestionAduanaDto {
     @IsDateString()
     @IsOptional()
     fecha_liberacion_imga?: string;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    fob_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    flete_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    seguro_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    ajustes_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    valor_aduana_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    items_declarados_imga?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    peso_neto_kilos_imga?: number;
 
     @IsString()
     @IsOptional()

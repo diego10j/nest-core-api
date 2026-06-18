@@ -420,12 +420,19 @@ export class ImportacionesSaveService extends BaseService {
                 `UPDATE imp_gestion_aduana SET
                    ide_imtaf = $2, ide_geper = $3, numero_dau_imga = $4,
                    fecha_presentacion_imga = $5, fecha_liquidacion_imga = $6,
-                   fecha_liberacion_imga = $7, observaciones_imga = $8
+                   fecha_liberacion_imga = $7,
+                   fob_imga = $8, flete_imga = $9, seguro_imga = $10,
+                   ajustes_imga = $11, valor_aduana_imga = $12,
+                   items_declarados_imga = $13, peso_neto_kilos_imga = $14,
+                   observaciones_imga = $15
                  WHERE ide_imga = $1`,
                 [
                     dtoIn.ide_imga, dtoIn.ide_imtaf, dtoIn.ide_geper,
                     dtoIn.numero_dau_imga ?? null, dtoIn.fecha_presentacion_imga ?? null,
                     dtoIn.fecha_liquidacion_imga ?? null, dtoIn.fecha_liberacion_imga ?? null,
+                    dtoIn.fob_imga ?? 0, dtoIn.flete_imga ?? 0, dtoIn.seguro_imga ?? 0,
+                    dtoIn.ajustes_imga ?? 0, dtoIn.valor_aduana_imga ?? 0,
+                    dtoIn.items_declarados_imga ?? 0, dtoIn.peso_neto_kilos_imga ?? 0,
                     dtoIn.observaciones_imga ?? null,
                 ],
             );
@@ -436,13 +443,19 @@ export class ImportacionesSaveService extends BaseService {
             `INSERT INTO imp_gestion_aduana (
                 ide_imga, ide_imcaim, ide_imtaf, ide_geper, ide_empr,
                 numero_dau_imga, fecha_presentacion_imga, fecha_liquidacion_imga,
-                fecha_liberacion_imga, observaciones_imga
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                fecha_liberacion_imga,
+                fob_imga, flete_imga, seguro_imga, ajustes_imga,
+                valor_aduana_imga, items_declarados_imga, peso_neto_kilos_imga,
+                observaciones_imga
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
             [
                 ide_imga, dtoIn.ide_imcaim, dtoIn.ide_imtaf, dtoIn.ide_geper,
                 ideEmpr,
                 dtoIn.numero_dau_imga ?? null, dtoIn.fecha_presentacion_imga ?? null,
                 dtoIn.fecha_liquidacion_imga ?? null, dtoIn.fecha_liberacion_imga ?? null,
+                dtoIn.fob_imga ?? 0, dtoIn.flete_imga ?? 0, dtoIn.seguro_imga ?? 0,
+                dtoIn.ajustes_imga ?? 0, dtoIn.valor_aduana_imga ?? 0,
+                dtoIn.items_declarados_imga ?? 0, dtoIn.peso_neto_kilos_imga ?? 0,
                 dtoIn.observaciones_imga ?? null,
             ],
         );
@@ -453,41 +466,45 @@ export class ImportacionesSaveService extends BaseService {
     // LIQUIDACIÓN ADUANA
     // ========================================================================
     async saveLiquidacionAduana(dtoIn: SaveLiquidacionAduanaDto & HeaderParamsDto) {
-        const isUpdate = dtoIn.ide_imliq != null;
-        if (isUpdate) {
+        const { ide_imga, liquidaciones } = dtoIn;
+
+        const hasExisting = liquidaciones.some((liq) => liq.ide_imliq != null);
+
+        if (hasExisting) {
             await this.dataSource.pool.query(
-                `UPDATE imp_liquidacion_aduana SET
-                   base_imponible_liq_imliq = $2, arancel_advalorem_liq_imliq = $3,
-                   iva_liquidacion_imliq = $4, ice_liquidacion_imliq = $5,
-                   fodinfa_liquidacion_imliq = $6, fecha_liquidacion_imliq = $7,
-                   numero_liquidacion_imliq = $8, observaciones_liquidacion_imliq = $9
-                 WHERE ide_imliq = $1`,
+                `DELETE FROM imp_liquidacion_aduana WHERE ide_imga = $1`,
+                [ide_imga],
+            );
+        }
+
+        const ids: number[] = [];
+
+        for (const liq of liquidaciones) {
+            const ide_imliq = await this.dataSource.getSeqTable(
+                'imp_liquidacion_aduana', 'ide_imliq', 1, dtoIn.login,
+            );
+            await this.dataSource.pool.query(
+                `INSERT INTO imp_liquidacion_aduana (
+                    ide_imliq, ide_imga, arancel_advalorem_liq_imliq,
+                    iva_liquidacion_imliq, ice_liquidacion_imliq, fodinfa_liquidacion_imliq,
+                    tasas_imliq, recargos_imliq, intereses_imliq, multas_imliq, otros_imliq,
+                    fecha_liquidacion_imliq, numero_liquidacion_imliq, observaciones_liquidacion_imliq
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
                 [
-                    dtoIn.ide_imliq,
-                    dtoIn.base_imponible_liq_imliq ?? null, dtoIn.arancel_advalorem_liq_imliq ?? null,
-                    dtoIn.iva_liquidacion_imliq ?? null, dtoIn.ice_liquidacion_imliq ?? 0,
-                    dtoIn.fodinfa_liquidacion_imliq ?? 0, dtoIn.fecha_liquidacion_imliq ?? null,
-                    dtoIn.numero_liquidacion_imliq, dtoIn.observaciones_liquidacion_imliq ?? null,
+                    ide_imliq, ide_imga,
+                    liq.arancel_advalorem_liq_imliq ?? null,
+                    liq.iva_liquidacion_imliq ?? null, liq.ice_liquidacion_imliq ?? 0,
+                    liq.fodinfa_liquidacion_imliq ?? 0,
+                    liq.tasas_imliq ?? 0, liq.recargos_imliq ?? 0,
+                    liq.intereses_imliq ?? 0, liq.multas_imliq ?? 0, liq.otros_imliq ?? 0,
+                    liq.fecha_liquidacion_imliq ?? null,
+                    liq.numero_liquidacion_imliq, liq.observaciones_liquidacion_imliq ?? null,
                 ],
             );
-            return { message: 'ok', ide_imliq: dtoIn.ide_imliq };
+            ids.push(ide_imliq);
         }
-        const ide_imliq = await this.dataSource.getSeqTable('imp_liquidacion_aduana', 'ide_imliq', 1, dtoIn.login);
-        await this.dataSource.pool.query(
-            `INSERT INTO imp_liquidacion_aduana (
-                ide_imliq, ide_imga, base_imponible_liq_imliq, arancel_advalorem_liq_imliq,
-                iva_liquidacion_imliq, ice_liquidacion_imliq, fodinfa_liquidacion_imliq,
-                fecha_liquidacion_imliq, numero_liquidacion_imliq, observaciones_liquidacion_imliq
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [
-                ide_imliq, dtoIn.ide_imga,
-                dtoIn.base_imponible_liq_imliq ?? null, dtoIn.arancel_advalorem_liq_imliq ?? null,
-                dtoIn.iva_liquidacion_imliq ?? null, dtoIn.ice_liquidacion_imliq ?? 0,
-                dtoIn.fodinfa_liquidacion_imliq ?? 0, dtoIn.fecha_liquidacion_imliq ?? null,
-                dtoIn.numero_liquidacion_imliq, dtoIn.observaciones_liquidacion_imliq ?? null,
-            ],
-        );
-        return { message: 'ok', ide_imliq };
+
+        return { message: 'ok', ide_imga, count: ids.length, ids };
     }
 
     // ========================================================================
@@ -609,42 +626,36 @@ export class ImportacionesSaveService extends BaseService {
             await this.dataSource.pool.query(
                 `UPDATE imp_documentos SET
                    ide_itd = $2, numero_documento_imdocu = $3, fecha_emision_imdocu = $4,
-                   fecha_recepcion_imdocu = $5, archivo_ruta_imdocu = $6, observaciones_imdocu = $7
+                   fecha_recepcion_imdocu = $5, archivo_ruta_imdocu = $6,
+                   peso_archivo_imdocu = $7, nombre_real_archivo_imdocu = $8,
+                   observaciones_imdocu = $9
                  WHERE ide_imdocu = $1`,
                 [
                     dtoIn.ide_imdocu, dtoIn.ide_itd, dtoIn.numero_documento_imdocu ?? null,
                     dtoIn.fecha_emision_imdocu ?? null, dtoIn.fecha_recepcion_imdocu ?? null,
-                    dtoIn.archivo_ruta_imdocu ?? null, dtoIn.observaciones_imdocu ?? null,
+                    dtoIn.archivo_ruta_imdocu ?? null,
+                    dtoIn.peso_archivo_imdocu ?? null, dtoIn.nombre_real_archivo_imdocu ?? null,
+                    dtoIn.observaciones_imdocu ?? null,
                 ],
             );
-            await this._updateTipoDocumentoFile(dtoIn);
             return { message: 'ok', ide_imdocu: dtoIn.ide_imdocu };
         }
         const ide_imdocu = await this.dataSource.getSeqTable('imp_documentos', 'ide_imdocu', 1, dtoIn.login);
         await this.dataSource.pool.query(
             `INSERT INTO imp_documentos (
                 ide_imdocu, ide_imcaim, ide_itd, numero_documento_imdocu,
-                fecha_emision_imdocu, fecha_recepcion_imdocu, archivo_ruta_imdocu, observaciones_imdocu
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                fecha_emision_imdocu, fecha_recepcion_imdocu, archivo_ruta_imdocu,
+                peso_archivo_imdocu, nombre_real_archivo_imdocu, observaciones_imdocu
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [
                 ide_imdocu, dtoIn.ide_imcaim, dtoIn.ide_itd, dtoIn.numero_documento_imdocu ?? null,
                 dtoIn.fecha_emision_imdocu ?? null, dtoIn.fecha_recepcion_imdocu ?? null,
-                dtoIn.archivo_ruta_imdocu ?? null, dtoIn.observaciones_imdocu ?? null,
+                dtoIn.archivo_ruta_imdocu ?? null,
+                dtoIn.peso_archivo_imdocu ?? null, dtoIn.nombre_real_archivo_imdocu ?? null,
+                dtoIn.observaciones_imdocu ?? null,
             ],
         );
-        await this._updateTipoDocumentoFile(dtoIn);
         return { message: 'ok', ide_imdocu };
-    }
-
-    private async _updateTipoDocumentoFile(dtoIn: SaveDocumentoDto) {
-        if (dtoIn.peso_archivo_itd != null || dtoIn.nombre_real_archivo_itd != null) {
-            await this.dataSource.pool.query(
-                `UPDATE imp_tipo_documento SET
-                   peso_archivo_itd = $2, nombre_real_archivo_itd = $3
-                 WHERE ide_itd = $1`,
-                [dtoIn.ide_itd, dtoIn.peso_archivo_itd ?? null, dtoIn.nombre_real_archivo_itd ?? null],
-            );
-        }
     }
 
     // ========================================================================

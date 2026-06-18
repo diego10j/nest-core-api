@@ -70,8 +70,6 @@ create table imp_tipo_documento(
 ide_itd int4,
 nombre_itd varchar(50) NOT NULL UNIQUE,
 descripcion_itd varchar(200),
-peso_archivo_itd int8,
-nombre_real_archivo_itd varchar(300),
 activo_itd bool,
 usuario_ingre varchar(50),
 hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -184,6 +182,8 @@ CREATE TABLE imp_documentos (
     fecha_emision_imdocu DATE,
     fecha_recepcion_imdocu DATE,
     archivo_ruta_imdocu TEXT,  -- Ruta al documento digital
+    peso_archivo_imdocu int8,  -- Peso del archivo en bytes
+    nombre_real_archivo_imdocu varchar(300),  -- Nombre original del archivo
     observaciones_imdocu TEXT,
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -223,6 +223,13 @@ CREATE TABLE imp_gestion_aduana (
     fecha_presentacion_imga DATE,
     fecha_liquidacion_imga DATE,
     fecha_liberacion_imga DATE,
+    fob_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Valor FOB
+    flete_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Flete internacional
+    seguro_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Seguro internacional
+    ajustes_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Ajustes al valor
+    valor_aduana_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Valor en aduana (CIF + ajustes)
+    items_declarados_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Cantidad de ítems declarados
+    peso_neto_kilos_imga numeric(12,4) NOT NULL DEFAULT 0,  -- Peso neto en kilos
     observaciones_imga TEXT,
     usuario_ingre varchar(50),
     hora_ingre TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -237,14 +244,19 @@ COMMENT ON TABLE imp_gestion_aduana IS 'Información sobre el proceso de desadua
 CREATE TABLE imp_liquidacion_aduana (
     ide_imliq int8,
     ide_imga int8,
-    base_imponible_liq_imliq numeric(12,2),  -- Valor CIF en USD
-    arancel_advalorem_liq_imliq numeric(12,2),
-    iva_liquidacion_imliq numeric(12,2),
-    ice_liquidacion_imliq numeric(12,2) NOT NULL DEFAULT 0,  -- Impuesto a Consumos Especiales (si aplica)
-    fodinfa_liquidacion_imliq numeric(12,2) NOT NULL DEFAULT 0,  -- Fondo de Desarrollo Infantil (FODINFA)
-    total_impuestos_liq_imliq numeric(12,2) GENERATED ALWAYS AS (
+    arancel_advalorem_liq_imliq numeric(12,4),
+    iva_liquidacion_imliq numeric(12,4),
+    ice_liquidacion_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Impuesto a Consumos Especiales (si aplica)
+    fodinfa_liquidacion_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Fondo de Desarrollo Infantil (FODINFA)
+    tasas_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Tasas de aduana
+    recargos_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Recargos aduaneros
+    intereses_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Intereses de aduana
+    multas_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Multas de aduana
+    otros_imliq numeric(12,4) NOT NULL DEFAULT 0,  -- Otros impuestos/cargos de aduana
+    total_impuestos_liq_imliq numeric(12,4) GENERATED ALWAYS AS (
         COALESCE(arancel_advalorem_liq_imliq, 0) + COALESCE(iva_liquidacion_imliq, 0) +
-        ice_liquidacion_imliq + fodinfa_liquidacion_imliq
+        ice_liquidacion_imliq + fodinfa_liquidacion_imliq +
+        tasas_imliq + recargos_imliq + intereses_imliq + multas_imliq + otros_imliq
     ) STORED,
     fecha_liquidacion_imliq DATE,
     numero_liquidacion_imliq VARCHAR(30) NOT NULL UNIQUE,
@@ -471,9 +483,6 @@ ALTER TABLE sis_parametros ADD COLUMN hora_actua TIMESTAMP;
 CREATE INDEX idx_sis_parametros_nom_empresa ON sis_parametros (nom_para, empresa_para);
 CREATE INDEX idx_sis_parametros_lower_nom_empresa ON sis_parametros (LOWER(nom_para), empresa_para);
 
-
---ALTER TABLE imp_tipo_documento ADD COLUMN IF NOT EXISTS peso_archivo_itd int8;
---ALTER TABLE imp_tipo_documento ADD COLUMN IF NOT EXISTS nombre_real_archivo_itd varchar(300);
 
 -----
 

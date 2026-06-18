@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, ArrayNotEmpty, IsOptional, IsNotEmpty, IsArray } from 'class-validator';
+import { IsDateString, ArrayNotEmpty, IsIn, IsInt, IsOptional, IsNotEmpty, IsArray } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class StockProductosDto extends QueryOptionsDto {
@@ -12,7 +12,11 @@ export class StockProductosDto extends QueryOptionsDto {
   @IsArray()
   ide_inbod?: number[];
 
-  @IsBoolean()
+  @IsIn(['true', 'false'])
   @IsOptional()
-  onlyStock?: boolean = true;
+  onlyStock?: 'true' | 'false' = 'true';
+
+  @IsInt()
+  @IsOptional()
+  ide_incate?: number;
 }

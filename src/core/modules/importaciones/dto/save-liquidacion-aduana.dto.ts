@@ -1,18 +1,10 @@
-import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 
-export class SaveLiquidacionAduanaDto {
+export class LiquidacionAduanaItemDto {
     @IsOptional()
     @IsInt()
     ide_imliq?: number;
-
-    @IsInt()
-    @IsNotEmpty()
-    ide_imga: number;
-
-    @IsNumber()
-    @Min(0)
-    @IsOptional()
-    base_imponible_liq_imliq?: number;
 
     @IsNumber()
     @Min(0)
@@ -34,6 +26,31 @@ export class SaveLiquidacionAduanaDto {
     @IsOptional()
     fodinfa_liquidacion_imliq?: number;
 
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    tasas_imliq?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    recargos_imliq?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    intereses_imliq?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    multas_imliq?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    otros_imliq?: number;
+
     @IsDateString()
     @IsOptional()
     fecha_liquidacion_imliq?: string;
@@ -45,4 +62,16 @@ export class SaveLiquidacionAduanaDto {
     @IsString()
     @IsOptional()
     observaciones_liquidacion_imliq?: string;
+}
+
+export class SaveLiquidacionAduanaDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_imga: number;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => LiquidacionAduanaItemDto)
+    @IsNotEmpty()
+    liquidaciones: LiquidacionAduanaItemDto[];
 }

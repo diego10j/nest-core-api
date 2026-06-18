@@ -174,9 +174,15 @@ export class ImportacionesController {
     }
 
     @Get('getLiquidacionAduana/:ide_imga')
-    @ApiOperation({ summary: 'Obtener liquidación de aduana por gestión' })
+    @ApiOperation({ summary: 'Obtener liquidaciones de aduana por gestión' })
     getLiquidacionAduana(@AppHeaders() h: HeaderParamsDto, @Param('ide_imga', ParseIntPipe) id: number) {
         return this.service.getLiquidacionAduana(id, h);
+    }
+
+    @Get('getLiquidacionesByImportacion/:ide_imcaim')
+    @ApiOperation({ summary: 'Obtener todas las liquidaciones de aduana de una orden de importación' })
+    getLiquidacionesByImportacion(@AppHeaders() h: HeaderParamsDto, @Param('ide_imcaim', ParseIntPipe) id: number) {
+        return this.service.getLiquidacionesByImportacion(id, h);
     }
 
     @Get('getResumenCostos/:ide_imcaim')
@@ -235,7 +241,7 @@ export class ImportacionesController {
     }
 
     @Post('saveLiquidacionAduana')
-    @ApiOperation({ summary: 'Crear o actualizar liquidación de aduana' })
+    @ApiOperation({ summary: 'Guardar liquidaciones de aduana (reemplaza todas las existentes para la gestión)' })
     saveLiquidacionAduana(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveLiquidacionAduanaDto) {
         return this.saveService.saveLiquidacionAduana({ ...h, ...dto });
     }

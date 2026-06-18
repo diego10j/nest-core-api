@@ -138,7 +138,8 @@ export class ProductosService extends BaseService {
     }
 
     private getQueryProductos(dtoIn: GetProductoDto & HeaderParamsDto) {
-        const activeClause = dtoIn.activos ? 'and activo_inarti = true' : '';
+        const activeClause = dtoIn.activos ? 'AND activo_inarti = true' : '';
+        const incateClause = dtoIn.ide_incate ? `AND a.ide_incate = ${dtoIn.ide_incate}` : '';
         const query = new SelectQuery(
             `
         SELECT
@@ -163,6 +164,7 @@ export class ProductosService extends BaseService {
             AND a.nivel_inarti = 'HIJO'
             AND a.ide_empr = ${dtoIn.ideEmpr}
             ${activeClause}
+            ${incateClause}
         ORDER BY
             unaccent(a.nombre_inarti)
         `,

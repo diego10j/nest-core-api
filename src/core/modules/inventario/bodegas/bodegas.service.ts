@@ -175,8 +175,9 @@ export class BodegasService extends BaseService {
     }
 
     const fechaCorte = dtoIn.fechaCorte ? dtoIn.fechaCorte : new Date();
-    const conditionStock = dtoIn.onlyStock === true ? 'AND COALESCE(existencia_cte.existencia, 0) <> 0 ' : '';
+    const conditionStock = dtoIn.onlyStock === 'true' ? 'AND COALESCE(existencia_cte.existencia, 0) <> 0 ' : '';
     const conditionBodega = dtoIn.ide_inbod ? `AND cci.ide_inbod = ANY($2)` : '';
+    const conditionIncate = dtoIn.ide_incate ? `AND ARTICULO.ide_incate = ${dtoIn.ide_incate}` : '';
 
     const query = new SelectQuery(
       `
@@ -241,6 +242,7 @@ export class BodegasService extends BaseService {
             AND ARTICULO.ide_empr = ${dtoIn.ideEmpr}
             AND activo_inarti = true
             ${conditionStock} -- Filtro de existencia mayor a 0
+            ${conditionIncate}
         ORDER BY
             nombre_incate, ARTICULO.nombre_inarti
         `,
