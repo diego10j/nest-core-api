@@ -204,6 +204,7 @@ export class BodegasService extends BaseService {
             ARTICULO.nombre_inarti,
             nombre_incate,
             ARTICULO.codigo_inarti,
+            ARTICULO.foto_inarti,
             ARTICULO.decim_stock_inarti,
             COALESCE(f_redondeo(existencia_cte.existencia, ARTICULO.decim_stock_inarti) , 0) AS saldo,
             UNIDAD.siglas_inuni,            

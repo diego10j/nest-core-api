@@ -154,7 +154,8 @@ export class ProductosService extends BaseService {
             otro_nombre_inarti,
             a.ide_incate,
             siglas_inuni,
-            decim_stock_inarti
+            decim_stock_inarti,
+            COALESCE((SELECT COUNT(*) FROM inv_conf_precios_articulo cp WHERE cp.ide_inarti = a.ide_inarti), 0) AS num_conf_precios
         FROM
             inv_articulo a
             LEFT JOIN inv_unidad UNIDAD ON a.ide_inuni = UNIDAD.ide_inuni
