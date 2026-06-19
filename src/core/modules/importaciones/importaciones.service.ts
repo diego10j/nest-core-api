@@ -219,7 +219,16 @@ export class ImportacionesService extends BaseService {
                     COALESCE(liq.suma_intereses, 0)            AS suma_intereses,
                     COALESCE(liq.suma_multas, 0)               AS suma_multas,
                     COALESCE(liq.suma_otros, 0)                AS suma_otros,
-                    COALESCE(liq.suma_total_impuestos, 0)      AS suma_total_impuestos
+                    COALESCE(liq.suma_total_impuestos, 0)      AS suma_total_impuestos,
+                    COALESCE(liq.suma_valor_aduana, 0)         AS suma_valor_aduana,
+                    COALESCE(liq.suma_fob, 0)                  AS suma_fob,
+                    COALESCE(liq.suma_flete, 0)                AS suma_flete,
+                    COALESCE(liq.suma_seguro, 0)               AS suma_seguro,
+                    COALESCE(liq.suma_ajustes, 0)              AS suma_ajustes,
+                    COALESCE(total_op.otros_costos, 0)         AS otros_costos,
+                    COALESCE(total_op.bases_facturas, 0)       AS bases_facturas,
+                    COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costos_operativos,
+                    COALESCE(liq.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total
                 FROM imp_cab_importa c
                 INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
                 INNER JOIN imp_incoterm i ON c.ide_iminco = i.ide_iminco
@@ -237,15 +246,162 @@ export class ImportacionesService extends BaseService {
                            SUM(l.intereses_imliq)                     AS suma_intereses,
                            SUM(l.multas_imliq)                        AS suma_multas,
                            SUM(l.otros_imliq)                         AS suma_otros,
-                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos
+                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos,
+                           SUM(g.valor_aduana_imga)                   AS suma_valor_aduana,
+                           SUM(g.fob_imga)                            AS suma_fob,
+                           SUM(g.flete_imga)                          AS suma_flete,
+                           SUM(g.seguro_imga)                         AS suma_seguro,
+                           SUM(g.ajustes_imga)                        AS suma_ajustes
                     FROM imp_gestion_aduana g
                     INNER JOIN imp_liquidacion_aduana l ON g.ide_imga = l.ide_imga
                     GROUP BY g.ide_imcaim
                 ) liq ON c.ide_imcaim = liq.ide_imcaim
+                LEFT JOIN (
+                    SELECT ide_imcaim,
+                           COALESCE(SUM(monto_imcoim), 0)              AS otros_costos,
+                           COALESCE(SUM(bases_fact), 0)                AS bases_facturas
+                    FROM (
+                        SELECT co.ide_imcaim, co.monto_imcoim, 0 AS bases_fact
+                        FROM imp_costos_import co
+                        WHERE co.ide_cpcfa IS NULL
+                        UNION ALL
+                        SELECT co.ide_imcaim, 0 AS monto_imcoim,
+                               COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) AS bases_fact
+                        FROM imp_costos_import co
+                        INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+                        WHERE co.ide_cpcfa IS NOT NULL
+                        UNION ALL
+                        SELECT c2.ide_imcaim, 0 AS monto_imcoim,
+                               COALESCE(f2.base_grabada_cpcfa, 0) + COALESCE(f2.base_tarifa0_cpcfa, 0) AS bases_fact
+                        FROM imp_cab_importa c2
+                        INNER JOIN cxp_cabece_factur f2 ON c2.ide_cpcfa = f2.ide_cpcfa
+                        WHERE c2.ide_cpcfa IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM imp_costos_import co3
+                              WHERE co3.ide_imcaim = c2.ide_imcaim AND co3.ide_cpcfa = c2.ide_cpcfa
+                          )
+                    ) raw
+                    GROUP BY ide_imcaim
+                ) total_op ON c.ide_imcaim = total_op.ide_imcaim
                 WHERE c.ide_imcaim = $1
             `);
         query.addIntParam(1, ide_imcaim);
-        return this.dataSource.createSingleQuery(query);
+        const cabecera = await this.dataSource.createSingleQuery(query);
+
+        if (!cabecera) return null;
+
+        const qDocs = new SelectQuery(`
+                SELECT f.ide_cpcfa,
+                    f.numero_cpcfa        AS motivo,
+                    p.nom_geper           AS proveedor,
+                    p.identificac_geper   AS identificacion_proveedor,
+                    f.base_grabada_cpcfa  AS base_imponible,
+                    f.base_tarifa0_cpcfa  AS base_tarifa_0,
+                    f.base_no_objeto_iva_cpcfa,
+                    f.valor_iva_cpcfa,
+                    f.total_cpcfa         AS total,
+                    f.fecha_emisi_cpcfa   AS fecha_emision,
+                    f.autorizacio_cpcfa   AS autorizacion,
+                    f.observacion_cpcfa   AS observacion,
+                    td.nombre_cntdo       AS tipo_documento,
+                    ef.nombre_cpefa       AS estado_factura,
+                    'CABECERA'            AS origen
+                FROM imp_cab_importa c
+                INNER JOIN cxp_cabece_factur f ON c.ide_cpcfa = f.ide_cpcfa
+                INNER JOIN gen_persona p ON f.ide_geper = p.ide_geper
+                LEFT JOIN con_tipo_document td ON f.ide_cntdo = td.ide_cntdo
+                LEFT JOIN cxp_estado_factur ef ON f.ide_cpefa = ef.ide_cpefa
+                WHERE c.ide_imcaim = $1 AND c.ide_cpcfa IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM imp_costos_import co
+                      WHERE co.ide_imcaim = c.ide_imcaim AND co.ide_cpcfa = c.ide_cpcfa
+                  )
+
+                UNION ALL
+
+                SELECT f.ide_cpcfa,
+                    f.numero_cpcfa        AS motivo,
+                    p.nom_geper           AS proveedor,
+                    p.identificac_geper   AS identificacion_proveedor,
+                    f.base_grabada_cpcfa  AS base_imponible,
+                    f.base_tarifa0_cpcfa  AS base_tarifa_0,
+                    f.base_no_objeto_iva_cpcfa,
+                    f.valor_iva_cpcfa,
+                    f.total_cpcfa         AS total,
+                    f.fecha_emisi_cpcfa   AS fecha_emision,
+                    f.autorizacio_cpcfa   AS autorizacion,
+                    f.observacion_cpcfa   AS observacion,
+                    td.nombre_cntdo       AS tipo_documento,
+                    ef.nombre_cpefa       AS estado_factura,
+                    'COSTO'               AS origen
+                FROM imp_costos_import co
+                INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+                INNER JOIN gen_persona p ON f.ide_geper = p.ide_geper
+                LEFT JOIN con_tipo_document td ON f.ide_cntdo = td.ide_cntdo
+                LEFT JOIN cxp_estado_factur ef ON f.ide_cpefa = ef.ide_cpefa
+                WHERE co.ide_imcaim = $1 AND co.ide_cpcfa IS NOT NULL
+
+                ORDER BY ide_cpcfa
+            `);
+        qDocs.addIntParam(1, ide_imcaim);
+        const documentos_por_pagar = await this.dataSource.createSelectQuery(qDocs);
+
+        const pagos_documento = await this.getPagosImportacion(ide_imcaim, _h);
+
+        const {
+            total_liquidaciones,
+            suma_arancel_advalorem,
+            suma_iva,
+            suma_ice,
+            suma_fodinfa,
+            suma_tasas,
+            suma_recargos,
+            suma_intereses,
+            suma_multas,
+            suma_otros,
+            suma_total_impuestos,
+            suma_valor_aduana,
+            suma_fob,
+            suma_flete,
+            suma_seguro,
+            suma_ajustes,
+            otros_costos,
+            bases_facturas,
+            costos_operativos,
+            costo_total,
+            ...cabeceraResto
+        } = cabecera;
+
+        return {
+            ...cabeceraResto,
+            totales: {
+                total_liquidaciones,
+                fob: suma_fob,
+                flete: suma_flete,
+                seguro: suma_seguro,
+                ajustes: suma_ajustes,
+                cif: (suma_fob ?? 0) + (suma_flete ?? 0) + (suma_seguro ?? 0),
+                valor_aduana: suma_valor_aduana,
+                impuestos: {
+                    arancel_advalorem: suma_arancel_advalorem,
+                    iva: suma_iva,
+                    ice: suma_ice,
+                    fodinfa: suma_fodinfa,
+                    tasas: suma_tasas,
+                    recargos: suma_recargos,
+                    intereses: suma_intereses,
+                    multas: suma_multas,
+                    otros: suma_otros,
+                    total_impuestos: suma_total_impuestos,
+                },
+                otros_costos,
+                bases_facturas,
+                costos_operativos,
+                costo_total,
+            },
+            documentos_por_pagar,
+            pagos_documento,
+        };
     }
 
     async getDetalleImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
@@ -275,7 +431,7 @@ export class ImportacionesService extends BaseService {
     async getCostosImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT co.ide_imcoim, co.ide_imcaim, co.ide_imtco, co.ide_mone, co.ide_cpcfa,
-                    co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
+                    co.ide_teccba, co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
                     co.referencia_imcoim, co.activo_imcoim,
                     co.usuario_ingre, co.hora_ingre, co.usuario_actua, co.hora_actua,
                     tc.nombre_imtco           AS tipo_costo,
@@ -293,7 +449,7 @@ export class ImportacionesService extends BaseService {
     async getFacturasImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
                 SELECT co.ide_imcoim, co.ide_imcaim, co.ide_imtco, co.ide_mone, co.ide_cpcfa,
-                    co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
+                    co.ide_teccba, co.fecha_imcoim, co.monto_imcoim, co.observaciones_imcoim,
                     co.referencia_imcoim, co.activo_imcoim,
                     co.usuario_ingre, co.hora_ingre, co.usuario_actua, co.hora_actua,
                     tc.nombre_imtco           AS tipo_costo,
@@ -305,7 +461,7 @@ export class ImportacionesService extends BaseService {
                     f.valor_iva_cpcfa         AS valor_iva,
                     f.total_cpcfa             AS total
                 FROM imp_costos_import co
-                INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
+                LEFT JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
                 LEFT JOIN sis_moneda m ON co.ide_mone = m.ide_mone
                 INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
                 WHERE co.ide_imcaim = $1 AND co.ide_cpcfa IS NOT NULL
@@ -317,20 +473,91 @@ export class ImportacionesService extends BaseService {
 
     async getPagosImportacion(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
-                SELECT pa.ide_impag, pa.ide_imcaim, pa.ide_imcoim, pa.ide_mone,
-                    pa.ide_cpcfa, pa.ide_teclb, pa.fecha_pago_impag,
-                    pa.monto_pago_impag, pa.referencia_pago_impag,
-                    pa.observaciones_pago_impag, pa.path_comprobante_impag,
-                    pa.es_costo_operativo_impag, pa.activo_impag,
-                    pa.usuario_ingre, pa.hora_ingre, pa.usuario_actua, pa.hora_actua,
-                    m.nombre_mone             AS moneda,
-                    tc.nombre_imtco           AS tipo_costo
-                FROM imp_pagos_import pa
-                LEFT JOIN sis_moneda m ON pa.ide_mone = m.ide_mone
-                LEFT JOIN imp_costos_import co ON pa.ide_imcoim = co.ide_imcoim
+                SELECT
+                    co.ide_imcoim,
+                    co.ide_imtco,
+                    tc.nombre_imtco           AS tipo_costo,
+                    co.referencia_imcoim,
+                    co.monto_imcoim,
+                    dt.fecha_trans_cpdtr      AS fecha_pago,
+                    dt.valor_cpdtr            AS monto_pago,
+                    dt.docum_relac_cpdtr      AS referencia_pago,
+                    dt.observacion_cpdtr      AS observacion_pago,
+                    tt.nombre_cpttr           AS tipo_transaccion,
+                    cb.nombre_tecba || ' ' || b.nombre_teban AS cuenta_banco,
+                    b.foto_teban              AS logo_banco,
+                    b.color_teban             AS color_banco,
+                    'CXP'                     AS origen_pago
+                FROM imp_costos_import co
                 LEFT JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
-                WHERE pa.ide_imcaim = $1
-                ORDER BY pa.fecha_pago_impag, pa.ide_impag
+                INNER JOIN cxp_detall_transa dt ON co.ide_cpcfa = dt.ide_cpcfa
+                INNER JOIN cxp_tipo_transacc tt ON dt.ide_cpttr = tt.ide_cpttr
+                LEFT JOIN tes_cab_libr_banc tclb ON dt.ide_teclb = tclb.ide_teclb
+                LEFT JOIN tes_cuenta_banco cb ON tclb.ide_tecba = cb.ide_tecba
+                LEFT JOIN tes_banco b ON cb.ide_teban = b.ide_teban
+                WHERE co.ide_imcaim = $1
+                  AND co.ide_cpcfa IS NOT NULL
+                  AND dt.numero_pago_cpdtr > 0
+
+                UNION ALL
+
+                SELECT
+                    co.ide_imcoim,
+                    co.ide_imtco,
+                    tc.nombre_imtco           AS tipo_costo,
+                    co.referencia_imcoim,
+                    co.monto_imcoim,
+                    tclb.fecha_trans_teclb    AS fecha_pago,
+                    tclb.valor_teclb          AS monto_pago,
+                    tclb.num_comprobante_teclb AS referencia_pago,
+                    tclb.observacion_teclb    AS observacion_pago,
+                    tbt.nombre_tettb          AS tipo_transaccion,
+                    cb.nombre_tecba || ' ' || b.nombre_teban AS cuenta_banco,
+                    b.foto_teban              AS logo_banco,
+                    b.color_teban             AS color_banco,
+                    'DIRECTO'                 AS origen_pago
+                FROM imp_costos_import co
+                INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
+                INNER JOIN tes_cab_libr_banc tclb ON co.ide_teccba = tclb.ide_teclb
+                LEFT JOIN tes_cuenta_banco cb ON tclb.ide_tecba = cb.ide_tecba
+                LEFT JOIN tes_banco b ON cb.ide_teban = b.ide_teban
+                LEFT JOIN tes_tip_tran_banc tbt ON tclb.ide_tettb = tbt.ide_tettb
+                WHERE co.ide_imcaim = $1
+                  AND co.ide_cpcfa IS NULL
+                  AND co.ide_teccba IS NOT NULL
+
+                UNION ALL
+
+                SELECT
+                    NULL                      AS ide_imcoim,
+                    NULL                      AS ide_imtco,
+                    NULL                      AS tipo_costo,
+                    NULL                      AS referencia_imcoim,
+                    NULL                      AS monto_imcoim,
+                    dt.fecha_trans_cpdtr      AS fecha_pago,
+                    dt.valor_cpdtr            AS monto_pago,
+                    dt.docum_relac_cpdtr      AS referencia_pago,
+                    dt.observacion_cpdtr      AS observacion_pago,
+                    tt.nombre_cpttr           AS tipo_transaccion,
+                    cb.nombre_tecba || ' ' || b.nombre_teban AS cuenta_banco,
+                    b.foto_teban              AS logo_banco,
+                    b.color_teban             AS color_banco,
+                    'CABECERA'                AS origen_pago
+                FROM imp_cab_importa c
+                INNER JOIN cxp_detall_transa dt ON c.ide_cpcfa = dt.ide_cpcfa
+                INNER JOIN cxp_tipo_transacc tt ON dt.ide_cpttr = tt.ide_cpttr
+                LEFT JOIN tes_cab_libr_banc tclb ON dt.ide_teclb = tclb.ide_teclb
+                LEFT JOIN tes_cuenta_banco cb ON tclb.ide_tecba = cb.ide_tecba
+                LEFT JOIN tes_banco b ON cb.ide_teban = b.ide_teban
+                WHERE c.ide_imcaim = $1
+                  AND c.ide_cpcfa IS NOT NULL
+                  AND dt.numero_pago_cpdtr > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM imp_costos_import
+                      WHERE ide_imcaim = $1 AND ide_cpcfa = c.ide_cpcfa
+                  )
+
+                ORDER BY fecha_pago ASC, ide_imcoim NULLS LAST
             `);
         query.addIntParam(1, ide_imcaim);
         return this.dataSource.createQuery(query);
@@ -440,7 +667,7 @@ export class ImportacionesService extends BaseService {
                     COUNT(co.ide_imcoim) AS cantidad,
                     COALESCE(SUM(co.monto_imcoim), 0) AS total
                 FROM imp_costos_import co
-                INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
+                LEFT JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
                 WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
                 GROUP BY tc.nombre_imtco
                 ORDER BY total DESC
@@ -476,7 +703,7 @@ export class ImportacionesService extends BaseService {
                     tc.nombre_imtco       AS tipo_costo
                 FROM imp_distribucion_costo d
                 INNER JOIN imp_costos_import co ON d.ide_imcoim = co.ide_imcoim
-                INNER JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
+                LEFT JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
                 INNER JOIN imp_det_importa det ON d.ide_imdet = det.ide_imdet
                 INNER JOIN inv_articulo a ON det.ide_inarti = a.ide_inarti
                 WHERE co.ide_imcaim = $1
@@ -629,6 +856,32 @@ export class ImportacionesService extends BaseService {
             `);
         query.addIntParam(1, ide_geper);
         query.addIntParam(2, ideEmpr);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Retorna el detalle de pagos de un documento CxP desde tesorería.
+     */
+    async getPagosByDocumento(ide_cpcfa: number) {
+        const query = new SelectQuery(`
+                SELECT a.ide_cpdtr,
+                    a.fecha_trans_cpdtr    AS fecha_pago,
+                    a.docum_relac_cpdtr    AS documento_referencia,
+                    b.nombre_cpttr         AS tipo_transaccion,
+                    a.valor_cpdtr          AS valor,
+                    d.nombre_tecba || ' ' || e.nombre_teban AS destino,
+                    a.observacion_cpdtr    AS observacion,
+                    c.ide_teclb
+                FROM cxp_detall_transa a
+                LEFT JOIN cxp_tipo_transacc b ON a.ide_cpttr = b.ide_cpttr
+                LEFT JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
+                LEFT JOIN tes_cuenta_banco d ON c.ide_tecba = d.ide_tecba
+                LEFT JOIN tes_banco e ON d.ide_teban = e.ide_teban
+                WHERE a.numero_pago_cpdtr > 0
+                  AND a.ide_cpcfa = $1
+                ORDER BY a.fecha_trans_cpdtr
+            `);
+        query.addIntParam(1, ide_cpcfa);
         return this.dataSource.createSelectQuery(query);
     }
 }

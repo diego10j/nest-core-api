@@ -49,21 +49,10 @@ hora_actua TIMESTAMP,
 CONSTRAINT pk_imp_tipo_costo PRIMARY KEY(ide_imtco)
 );
 
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (1, 'Flete Internacional', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (2, 'Seguro Internacional', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (3, 'Arancel Ad-Valorem', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (4, 'IVA', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (5, 'ICE', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (6, 'FODINFA', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (7, 'Almacenaje', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (8, 'Transporte Local', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (9, 'Honorarios Agente Aduana', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (10, 'Otros Impuestos', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (11, 'Multas', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (12, 'ISD', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (13, 'Comisiones Bancarias', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (14, 'Otros', true);
-insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (15, 'Factura Comercial', true);
+insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (1, 'ISD', true);
+insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (2, 'Costos sin Factura', true);
+insert into imp_tipo_costo (ide_imtco, nombre_imtco, activo_imtco) values (3, 'Reembolso de Gastos', true);
+
 
 
 create table imp_tipo_documento(
@@ -420,10 +409,12 @@ ALTER TABLE imp_det_importa ADD CONSTRAINT fk_imdet_inarti FOREIGN KEY (ide_inar
 ALTER TABLE imp_det_importa ADD CONSTRAINT fk_imdet_inuni  FOREIGN KEY (ide_inuni)   REFERENCES inv_unidad(ide_inuni)       ON DELETE RESTRICT;
 
 -- imp_costos_import
+ALTER TABLE imp_costos_import ADD COLUMN IF NOT EXISTS ide_teccba int8;
 ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)    ON DELETE RESTRICT;
 ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_imtco  FOREIGN KEY (ide_imtco)  REFERENCES imp_tipo_costo(ide_imtco)      ON DELETE RESTRICT;
 ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_mone   FOREIGN KEY (ide_mone)   REFERENCES sis_moneda(ide_mone)           ON DELETE RESTRICT;
 ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_cpcfa  FOREIGN KEY (ide_cpcfa)  REFERENCES cxp_cabece_factur(ide_cpcfa)   ON DELETE RESTRICT;
+ALTER TABLE imp_costos_import ADD CONSTRAINT fk_imcoim_teccba FOREIGN KEY (ide_teccba) REFERENCES tes_cab_libr_banc(ide_teclb)   ON DELETE RESTRICT;
 
 -- imp_pagos_import
 ALTER TABLE imp_pagos_import ADD CONSTRAINT fk_impag_imcaim FOREIGN KEY (ide_imcaim) REFERENCES imp_cab_importa(ide_imcaim)    ON DELETE RESTRICT;
@@ -459,6 +450,7 @@ CREATE INDEX idx_imp_det_imcaim         ON imp_det_importa(ide_imcaim);
 CREATE INDEX idx_imp_det_inarti         ON imp_det_importa(ide_inarti);
 CREATE INDEX idx_imp_costos_imcaim      ON imp_costos_import(ide_imcaim);
 CREATE INDEX idx_imp_costos_imtco       ON imp_costos_import(ide_imtco);
+CREATE INDEX idx_imp_costos_teccba      ON imp_costos_import(ide_teccba);
 CREATE INDEX idx_imp_pagos_imcaim       ON imp_pagos_import(ide_imcaim);
 CREATE INDEX idx_imp_pagos_imcoim       ON imp_pagos_import(ide_imcoim);
 CREATE INDEX idx_imp_historial_imcaim   ON imp_historial_estado(ide_imcaim);

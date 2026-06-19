@@ -10,6 +10,8 @@ import { DocumentosCxPSaveService } from '../cuentas-por-pagar/documentos-cxp-sa
 import { SaveDocumentoCxPDto } from '../cuentas-por-pagar/dto/save-documento-cxp.dto';
 
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
+import { AsociarDocumentoCxPDto } from './dto/asociar-documento-cxp.dto';
+import { AsociarPagoTesoreriaDto } from './dto/asociar-pago-tesoreria.dto';
 import { SaveCostoImportDto } from './dto/save-costo-import.dto';
 import { SaveDistribucionCostoDto } from './dto/save-distribucion-costo.dto';
 import { SaveDocumentoDto } from './dto/save-documento.dto';
@@ -17,11 +19,9 @@ import { SaveEnvioDto } from './dto/save-envio.dto';
 import { SaveGestionAduanaDto } from './dto/save-gestion-aduana.dto';
 import { SaveImportacionDto } from './dto/save-importacion.dto';
 import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
-import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
 const IDE_CNTDO_IMPORTACION = 11;
-const IDE_IMTCO_FACTURA_COMERCIAL = 15;
 
 @Injectable()
 export class ImportacionesSaveService extends BaseService {
@@ -160,7 +160,7 @@ export class ImportacionesSaveService extends BaseService {
     async asignarFacturaCxp(ide_imcaim: number, ide_cpcfa: number, login: string) {
         // Validar que la importación exista y obtener su total esperado
         const qImp = new SelectQuery(`
-            SELECT ide_imcaim, total_factura_imcaim, ide_cpcfa AS ide_cpcfa_actual
+            SELECT ide_imcaim, total_factura_imcaim
             FROM imp_cab_importa
             WHERE ide_imcaim = $1
         `);
@@ -211,31 +211,7 @@ export class ImportacionesSaveService extends BaseService {
             [ide_imcaim, ide_cpcfa, login],
         );
 
-        // Si la importación ya tenía otra factura asignada, desactivar el costo anterior
-        if (importacion.ide_cpcfa_actual && Number(importacion.ide_cpcfa_actual) !== ide_cpcfa) {
-            await this.dataSource.pool.query(
-                `UPDATE imp_costos_import SET activo_imcoim = false
-                 WHERE ide_imcaim = $1 AND ide_imtco = $2 AND activo_imcoim = true`,
-                [ide_imcaim, IDE_IMTCO_FACTURA_COMERCIAL],
-            );
-        }
-
-        // Crear el costo asociado a la factura comercial
-        const ide_imcoim = await this.dataSource.getSeqTable('imp_costos_import', 'ide_imcoim', 1, login);
-        await this.dataSource.pool.query(
-            `INSERT INTO imp_costos_import (
-                ide_imcoim, ide_imcaim, ide_imtco, ide_mone, ide_cpcfa,
-                fecha_imcoim, monto_imcoim, observaciones_imcoim,
-                referencia_imcoim, activo_imcoim
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
-            [
-                ide_imcoim, ide_imcaim, IDE_IMTCO_FACTURA_COMERCIAL, null, ide_cpcfa,
-                new Date().toISOString().slice(0, 10), null,
-                'Costo asociado a factura CxP', factura.numero_cpcfa ?? null,
-            ],
-        );
-
-        return { message: 'ok', ide_imcaim, ide_cpcfa, total_cpcfa: factura.total_cpcfa, ide_imcoim };
+        return { message: 'ok', ide_imcaim, ide_cpcfa, total_cpcfa: factura.total_cpcfa };
     }
 
     async desasignarFacturaCxp(ide_imcaim: number, login: string) {
@@ -244,13 +220,6 @@ export class ImportacionesSaveService extends BaseService {
         const cab = await this.dataSource.createSingleQuery(qCab);
         if (!cab) throw new BadRequestException('Orden de importación no encontrada');
         if (!cab.ide_cpcfa) throw new BadRequestException('La orden no tiene ninguna factura asignada');
-
-        // Desactivar el costo asociado a la factura comercial
-        await this.dataSource.pool.query(
-            `UPDATE imp_costos_import SET activo_imcoim = false
-             WHERE ide_imcaim = $1 AND ide_cpcfa = $2 AND ide_imtco = $3 AND activo_imcoim = true`,
-            [ide_imcaim, cab.ide_cpcfa, IDE_IMTCO_FACTURA_COMERCIAL],
-        );
 
         await this.dataSource.pool.query(
             `UPDATE imp_cab_importa
@@ -514,8 +483,8 @@ export class ImportacionesSaveService extends BaseService {
         const isUpdate = dtoIn.ide_imcoim != null;
         if (isUpdate) {
             const qOld = new SelectQuery(`
-                SELECT ide_imtco, ide_mone, ide_cpcfa, fecha_imcoim,
-                       monto_imcoim, observaciones_imcoim, referencia_imcoim
+                SELECT ide_imtco, ide_mone, ide_cpcfa, ide_teccba,
+                       fecha_imcoim, monto_imcoim, observaciones_imcoim, referencia_imcoim
                 FROM imp_costos_import
                 WHERE ide_imcoim = $1
             `);
@@ -524,13 +493,15 @@ export class ImportacionesSaveService extends BaseService {
 
             await this.dataSource.pool.query(
                 `UPDATE imp_costos_import SET
-                   ide_imtco = $2, ide_mone = $3, ide_cpcfa = $4, fecha_imcoim = $5,
-                   monto_imcoim = $6, observaciones_imcoim = $7, referencia_imcoim = $8
+                   ide_imtco = $2, ide_mone = $3, ide_cpcfa = $4, ide_teccba = $5,
+                   fecha_imcoim = $6, monto_imcoim = $7, observaciones_imcoim = $8,
+                   referencia_imcoim = $9
                  WHERE ide_imcoim = $1`,
                 [
                     dtoIn.ide_imcoim, dtoIn.ide_imtco,
                     dtoIn.ide_mone ?? old.ide_mone ?? null,
                     dtoIn.ide_cpcfa ?? old.ide_cpcfa ?? null,
+                    dtoIn.ide_teccba ?? old.ide_teccba ?? null,
                     dtoIn.fecha_imcoim ?? old.fecha_imcoim ?? null,
                     dtoIn.monto_imcoim ?? old.monto_imcoim,
                     dtoIn.observaciones_imcoim ?? old.observaciones_imcoim ?? null,
@@ -542,13 +513,14 @@ export class ImportacionesSaveService extends BaseService {
         const ide_imcoim = await this.dataSource.getSeqTable('imp_costos_import', 'ide_imcoim', 1, dtoIn.login);
         await this.dataSource.pool.query(
             `INSERT INTO imp_costos_import (
-                ide_imcoim, ide_imcaim, ide_imtco, ide_mone, ide_cpcfa,
+                ide_imcoim, ide_imcaim, ide_imtco, ide_mone, ide_cpcfa, ide_teccba,
                 fecha_imcoim, monto_imcoim, observaciones_imcoim,
                 referencia_imcoim, activo_imcoim
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)`,
             [
                 ide_imcoim, dtoIn.ide_imcaim, dtoIn.ide_imtco, dtoIn.ide_mone ?? null,
-                dtoIn.ide_cpcfa ?? null, dtoIn.fecha_imcoim ?? null, dtoIn.monto_imcoim,
+                dtoIn.ide_cpcfa ?? null, dtoIn.ide_teccba ?? null,
+                dtoIn.fecha_imcoim ?? null, dtoIn.monto_imcoim,
                 dtoIn.observaciones_imcoim ?? null, dtoIn.referencia_imcoim ?? null,
             ],
         );
@@ -568,53 +540,65 @@ export class ImportacionesSaveService extends BaseService {
     }
 
     // ========================================================================
-    // PAGO
+    // ASOCIAR DOCUMENTO CxP — crea costo con referencia/observacion del frontend
     // ========================================================================
-    async savePago(dtoIn: SavePagoImportDto & HeaderParamsDto) {
-        const isUpdate = dtoIn.ide_impag != null;
-        if (isUpdate) {
-            await this.dataSource.pool.query(
-                `UPDATE imp_pagos_import SET
-                   ide_imcoim = $2, ide_mone = $3, ide_cpcfa = $4, ide_teclb = $5,
-                   fecha_pago_impag = $6, monto_pago_impag = $7, referencia_pago_impag = $8,
-                   observaciones_pago_impag = $9, path_comprobante_impag = $10,
-                   es_costo_operativo_impag = $11
-                 WHERE ide_impag = $1`,
-                [
-                    dtoIn.ide_impag, dtoIn.ide_imcoim ?? null, dtoIn.ide_mone ?? null,
-                    dtoIn.ide_cpcfa ?? null, dtoIn.ide_teclb ?? null,
-                    dtoIn.fecha_pago_impag ?? null, dtoIn.monto_pago_impag,
-                    dtoIn.referencia_pago_impag ?? null, dtoIn.observaciones_pago_impag ?? null,
-                    dtoIn.path_comprobante_impag ?? null, dtoIn.es_costo_operativo_impag ?? false,
-                ],
-            );
-            return { message: 'ok', ide_impag: dtoIn.ide_impag };
-        }
-        const ide_impag = await this.dataSource.getSeqTable('imp_pagos_import', 'ide_impag', 1, dtoIn.login);
+    async asociarDocumentoCxP(dtoIn: AsociarDocumentoCxPDto & HeaderParamsDto) {
+        const qImp = new SelectQuery(`
+            SELECT ide_imcaim FROM imp_cab_importa WHERE ide_imcaim = $1
+        `);
+        qImp.addIntParam(1, dtoIn.ide_imcaim);
+        const importacion = await this.dataSource.createSingleQuery(qImp);
+        if (!importacion) throw new BadRequestException('Orden de importación no encontrada');
+
+        const qFac = new SelectQuery(`
+            SELECT ide_cpcfa, numero_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = $1
+        `);
+        qFac.addIntParam(1, dtoIn.ide_cpcfa);
+        const factura = await this.dataSource.createSingleQuery(qFac);
+        if (!factura) throw new BadRequestException('Documento CxP no encontrado');
+
+        const ide_imcoim = await this.dataSource.getSeqTable('imp_costos_import', 'ide_imcoim', 1, dtoIn.login);
         await this.dataSource.pool.query(
-            `INSERT INTO imp_pagos_import (
-                ide_impag, ide_imcaim, ide_imcoim, ide_mone, ide_cpcfa, ide_teclb,
-                fecha_pago_impag, monto_pago_impag, referencia_pago_impag,
-                observaciones_pago_impag, path_comprobante_impag,
-                es_costo_operativo_impag, activo_impag
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)`,
+            `INSERT INTO imp_costos_import (
+                ide_imcoim, ide_imcaim, ide_imtco, ide_mone, ide_cpcfa,
+                fecha_imcoim, monto_imcoim, observaciones_imcoim,
+                referencia_imcoim, activo_imcoim
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
             [
-                ide_impag, dtoIn.ide_imcaim, dtoIn.ide_imcoim ?? null, dtoIn.ide_mone ?? null,
-                dtoIn.ide_cpcfa ?? null, dtoIn.ide_teclb ?? null,
-                dtoIn.fecha_pago_impag ?? null, dtoIn.monto_pago_impag,
-                dtoIn.referencia_pago_impag ?? null, dtoIn.observaciones_pago_impag ?? null,
-                dtoIn.path_comprobante_impag ?? null, dtoIn.es_costo_operativo_impag ?? false,
+                ide_imcoim, dtoIn.ide_imcaim, null, null, dtoIn.ide_cpcfa,
+                new Date().toISOString().slice(0, 10), null,
+                dtoIn.observacion ?? null, dtoIn.referencia,
             ],
         );
-        return { message: 'ok', ide_impag };
+
+        return { message: 'ok', ide_imcoim, ide_imcaim: dtoIn.ide_imcaim, ide_cpcfa: dtoIn.ide_cpcfa };
     }
 
-    async deletePago(ide_impag: number) {
+    // ========================================================================
+    // ASOCIAR PAGO TESORERIA — vincula un pago de tesorería a un costo sin CxP
+    // ========================================================================
+    async asociarPagoTesoreria(dtoIn: AsociarPagoTesoreriaDto & HeaderParamsDto) {
+        const qCosto = new SelectQuery(`
+            SELECT ide_imcoim, ide_cpcfa FROM imp_costos_import WHERE ide_imcoim = $1
+        `);
+        qCosto.addIntParam(1, dtoIn.ide_imcoim);
+        const costo = await this.dataSource.createSingleQuery(qCosto);
+        if (!costo) throw new BadRequestException('Costo no encontrado');
+        if (costo.ide_cpcfa) throw new BadRequestException('El costo ya tiene un documento CxP asociado, use el módulo de cuentas por pagar');
+
+        const qTeclb = new SelectQuery(`
+            SELECT ide_teclb FROM tes_cab_libr_banc WHERE ide_teclb = $1
+        `);
+        qTeclb.addIntParam(1, dtoIn.ide_teccba);
+        const teclb = await this.dataSource.createSingleQuery(qTeclb);
+        if (!teclb) throw new BadRequestException('Transacción de tesorería no encontrada');
+
         await this.dataSource.pool.query(
-            `UPDATE imp_pagos_import SET activo_impag = false WHERE ide_impag = $1`,
-            [ide_impag],
+            `UPDATE imp_costos_import SET ide_teccba = $2 WHERE ide_imcoim = $1`,
+            [dtoIn.ide_imcoim, dtoIn.ide_teccba],
         );
-        return { message: 'ok' };
+
+        return { message: 'ok', ide_imcoim: dtoIn.ide_imcoim, ide_teccba: dtoIn.ide_teccba };
     }
 
     // ========================================================================
@@ -770,12 +754,6 @@ export class ImportacionesSaveService extends BaseService {
     async setActivoCosto(dtoIn: SetActivoDto & HeaderParamsDto) {
         await this.dataSource.pool.query(
             `UPDATE imp_costos_import SET activo_imcoim = $1 WHERE ide_imcoim = $2`,
-            [dtoIn.activo, dtoIn.ide],
-        ); return { message: 'ok' };
-    }
-    async setActivoPago(dtoIn: SetActivoDto & HeaderParamsDto) {
-        await this.dataSource.pool.query(
-            `UPDATE imp_pagos_import SET activo_impag = $1 WHERE ide_impag = $2`,
             [dtoIn.activo, dtoIn.ide],
         ); return { message: 'ok' };
     }

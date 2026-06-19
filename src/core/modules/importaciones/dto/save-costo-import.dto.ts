@@ -30,6 +30,10 @@ export class SaveCostoImportDto {
     @IsNotEmpty()
     monto_imcoim: number;
 
+    @IsInt()
+    @IsOptional()
+    ide_teccba?: number;
+
     @IsString()
     @IsOptional()
     observaciones_imcoim?: string;

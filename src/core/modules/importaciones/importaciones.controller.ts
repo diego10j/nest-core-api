@@ -14,6 +14,8 @@ import { envs } from 'src/config/envs';
 import { v4 as uuid } from 'uuid';
 
 import { AsignarFacturaCxpDto } from './dto/asignar-factura-cxp.dto';
+import { AsociarDocumentoCxPDto } from './dto/asociar-documento-cxp.dto';
+import { AsociarPagoTesoreriaDto } from './dto/asociar-pago-tesoreria.dto';
 import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { CrearFacturaCxpImportDto } from './dto/crear-factura-cxp-import.dto';
 import { DeleteCostoDto } from './dto/delete-costo.dto';
@@ -25,7 +27,6 @@ import { SaveEnvioDto } from './dto/save-envio.dto';
 import { SaveGestionAduanaDto } from './dto/save-gestion-aduana.dto';
 import { SaveImportacionDto } from './dto/save-importacion.dto';
 import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
-import { SavePagoImportDto } from './dto/save-pago-import.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 import { ImportacionesSaveService } from './importaciones-save.service';
 import { ImportacionesService } from './importaciones.service';
@@ -258,16 +259,22 @@ export class ImportacionesController {
         return this.saveService.deleteCosto(dto.ide_imcoim);
     }
 
-    @Post('savePago')
-    @ApiOperation({ summary: 'Crear o actualizar un pago de importación' })
-    savePago(@AppHeaders() h: HeaderParamsDto, @Body() dto: SavePagoImportDto) {
-        return this.saveService.savePago({ ...h, ...dto });
+    @Post('asociarDocumentoCxP')
+    @ApiOperation({ summary: 'Asociar un documento CxP a una orden de importación creando un costo con referencia y observacion' })
+    asociarDocumentoCxP(@AppHeaders() h: HeaderParamsDto, @Body() dto: AsociarDocumentoCxPDto) {
+        return this.saveService.asociarDocumentoCxP({ ...h, ...dto });
     }
 
-    @Post('deletePago')
-    @ApiOperation({ summary: 'Desactivar un pago de importación (soft delete)' })
-    deletePago(@AppHeaders() h: HeaderParamsDto, @Body() dto: { ide_impag: number }) {
-        return this.saveService.deletePago(dto.ide_impag);
+    @Post('asociarPagoTesoreria')
+    @ApiOperation({ summary: 'Vincular un pago existente de tesorería a un costo sin documento CxP' })
+    asociarPagoTesoreria(@AppHeaders() h: HeaderParamsDto, @Body() dto: AsociarPagoTesoreriaDto) {
+        return this.saveService.asociarPagoTesoreria({ ...h, ...dto });
+    }
+
+    @Get('getPagosByDocumento/:ide_cpcfa')
+    @ApiOperation({ summary: 'Obtener detalle de pagos de un documento CxP desde tesorería' })
+    getPagosByDocumento(@AppHeaders() h: HeaderParamsDto, @Param('ide_cpcfa', ParseIntPipe) id: number) {
+        return this.service.getPagosByDocumento(id);
     }
 
     @Post('uploadDocumentoFile')
@@ -418,11 +425,5 @@ export class ImportacionesController {
     @ApiOperation({ summary: 'Activar/desactivar un costo de importacion' })
     setActivoCosto(@AppHeaders() h: HeaderParamsDto, @Body() dto: SetActivoDto) {
         return this.saveService.setActivoCosto({ ...h, ...dto });
-    }
-
-    @Post('setActivoPago')
-    @ApiOperation({ summary: 'Activar/desactivar un pago de importacion' })
-    setActivoPago(@AppHeaders() h: HeaderParamsDto, @Body() dto: SetActivoDto) {
-        return this.saveService.setActivoPago({ ...h, ...dto });
     }
 }
