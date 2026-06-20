@@ -60,7 +60,7 @@ export class HtmlProductController {
         @Param('fileName') fileName: string,
         @Res() res: Response,
     ) {
-        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR, fileName);
         if (!fs.existsSync(filePath)) {
             throw new NotFoundException('Imagen no encontrada');
         }

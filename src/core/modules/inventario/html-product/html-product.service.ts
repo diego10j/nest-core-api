@@ -305,7 +305,7 @@ export class HtmlProductService {
                 }
                 const buffer = Buffer.from(await response.arrayBuffer());
                 const fileName = `${uuid()}.jpg`;
-                const tempPath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+                const tempPath = path.join(FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR, fileName);
 
                 this.logger.log(`  [Imagen ${i + 1}/${total}] Procesando con Sharp (cover para llenar canvas)...`);
                 await sharp(buffer)
@@ -607,7 +607,7 @@ Debes devolver un JSON con esta estructura:
 
     /**
      * Aplica watermark sobre una imagen existente (logo card top-right, marca centro, footer).
-     * Guarda resultado en temp_media/ con el mismo nombre.
+     * Guarda resultado en inventario/images_html/ con el mismo nombre.
      */
     async processImage(fileName: string, ideEmpr: number): Promise<{ tempFileName: string }> {
         this.ensureTempDir();
@@ -620,7 +620,7 @@ Debes devolver un JSON con esta estructura:
         this.logger.log(`[processImage] Procesando ${fileName}...`);
         const watermark = await this.getSimpleWatermark(ideEmpr);
 
-        const tempPath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+        const tempPath = path.join(FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR, fileName);
         await sharp(sourcePath)
             .resize(CANVAS, CANVAS, { fit: 'cover', position: 'center' })
             .composite([{ input: watermark, blend: 'over' }])
@@ -633,7 +633,7 @@ Debes devolver un JSON con esta estructura:
 
     /**
      * Procesa imagen como portada: redimensiona, aplica logo, marca de agua central y footer navy.
-     * Guarda resultado en temp_media/ con el mismo nombre.
+     * Guarda resultado en inventario/images_html/ con el mismo nombre.
      */
     async processImagePortada(fileName: string, ideEmpr: number): Promise<{ tempFileName: string }> {
         this.ensureTempDir();
@@ -702,7 +702,7 @@ Debes devolver un JSON con esta estructura:
             });
         }
 
-        const tempPath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+        const tempPath = path.join(FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR, fileName);
         await sharp(withBg)
             .composite(portadaComposites)
             .jpeg({ quality: 90 })
@@ -713,10 +713,10 @@ Debes devolver un JSON con esta estructura:
     }
 
     /**
-     * Reemplaza la imagen original en PATH_DRIVE con la versión procesada de temp_media.
+     * Reemplaza la imagen original en PATH_DRIVE con la versión procesada de inventario/images_html.
      */
     async acceptImage(fileName: string): Promise<{ ok: boolean }> {
-        const tempPath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+        const tempPath = path.join(FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR, fileName);
         const destPath = path.join(FILE_STORAGE_CONSTANTS.BASE_PATH, fileName);
 
         if (!fs.existsSync(tempPath)) {
@@ -1056,7 +1056,7 @@ Debes devolver un JSON con esta estructura:
     // ─── UTILIDADES ─────────────────────────────────────────────────────
 
     private ensureTempDir(): void {
-        const dir = FILE_STORAGE_CONSTANTS.TEMP_DIR;
+        const dir = FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR;
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }

@@ -1933,7 +1933,7 @@ export class ProductosService extends BaseService {
         // ── Mover imágenes extraídas de temp → almacenamiento permanente ──
         if (dtoIn.imagenesExtraidas && dtoIn.imagenesExtraidas.length > 0) {
             const baseDir = FILE_STORAGE_CONSTANTS.BASE_PATH;
-            const tempDir = FILE_STORAGE_CONSTANTS.TEMP_DIR;
+            const tempDir = FILE_STORAGE_CONSTANTS.IMAGES_HTML_DIR;
             this.logger.log(`[saveProducto] Moviendo ${dtoIn.imagenesExtraidas.length} imágenes extraídas de temp → permanente`);
 
             // Asegurar directorio base
