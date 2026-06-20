@@ -220,20 +220,31 @@ export class ImportacionesService extends BaseService {
                     COALESCE(liq.suma_multas, 0)               AS suma_multas,
                     COALESCE(liq.suma_otros, 0)                AS suma_otros,
                     COALESCE(liq.suma_total_impuestos, 0)      AS suma_total_impuestos,
-                    COALESCE(liq.suma_valor_aduana, 0)         AS suma_valor_aduana,
-                    COALESCE(liq.suma_fob, 0)                  AS suma_fob,
-                    COALESCE(liq.suma_flete, 0)                AS suma_flete,
-                    COALESCE(liq.suma_seguro, 0)               AS suma_seguro,
-                    COALESCE(liq.suma_ajustes, 0)              AS suma_ajustes,
+                    COALESCE(ga.suma_valor_aduana, 0)         AS suma_valor_aduana,
+                    COALESCE(ga.suma_fob, 0)                  AS suma_fob,
+                    COALESCE(ga.suma_flete, 0)                AS suma_flete,
+                    COALESCE(ga.suma_seguro, 0)               AS suma_seguro,
+                    COALESCE(ga.suma_ajustes, 0)              AS suma_ajustes,
                     COALESCE(total_op.otros_costos, 0)         AS otros_costos,
                     COALESCE(total_op.bases_facturas, 0)       AS bases_facturas,
+                    COALESCE(total_op.iva_facturas, 0)         AS iva_facturas,
                     COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costos_operativos,
-                    COALESCE(liq.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total
+                    COALESCE(ga.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total
                 FROM imp_cab_importa c
                 INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
                 INNER JOIN imp_incoterm i ON c.ide_iminco = i.ide_iminco
                 INNER JOIN imp_estado_orden e ON c.ide_imesor = e.ide_imesor
                 LEFT JOIN gen_pais pa ON c.ide_gepais = pa.ide_gepais
+                LEFT JOIN (
+                    SELECT ide_imcaim,
+                           SUM(fob_imga)                            AS suma_fob,
+                           SUM(flete_imga)                          AS suma_flete,
+                           SUM(seguro_imga)                         AS suma_seguro,
+                           SUM(ajustes_imga)                        AS suma_ajustes,
+                           SUM(valor_aduana_imga)                   AS suma_valor_aduana
+                    FROM imp_gestion_aduana
+                    GROUP BY ide_imcaim
+                ) ga ON c.ide_imcaim = ga.ide_imcaim
                 LEFT JOIN (
                     SELECT g.ide_imcaim,
                            COUNT(l.ide_imliq)                         AS total_liquidaciones,
@@ -246,12 +257,7 @@ export class ImportacionesService extends BaseService {
                            SUM(l.intereses_imliq)                     AS suma_intereses,
                            SUM(l.multas_imliq)                        AS suma_multas,
                            SUM(l.otros_imliq)                         AS suma_otros,
-                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos,
-                           SUM(g.valor_aduana_imga)                   AS suma_valor_aduana,
-                           SUM(g.fob_imga)                            AS suma_fob,
-                           SUM(g.flete_imga)                          AS suma_flete,
-                           SUM(g.seguro_imga)                         AS suma_seguro,
-                           SUM(g.ajustes_imga)                        AS suma_ajustes
+                           SUM(l.total_impuestos_liq_imliq)           AS suma_total_impuestos
                     FROM imp_gestion_aduana g
                     INNER JOIN imp_liquidacion_aduana l ON g.ide_imga = l.ide_imga
                     GROUP BY g.ide_imcaim
@@ -259,27 +265,19 @@ export class ImportacionesService extends BaseService {
                 LEFT JOIN (
                     SELECT ide_imcaim,
                            COALESCE(SUM(monto_imcoim), 0)              AS otros_costos,
-                           COALESCE(SUM(bases_fact), 0)                AS bases_facturas
+                           COALESCE(SUM(bases_fact), 0)                AS bases_facturas,
+                           COALESCE(SUM(iva_fact), 0)                  AS iva_facturas
                     FROM (
-                        SELECT co.ide_imcaim, co.monto_imcoim, 0 AS bases_fact
+                        SELECT co.ide_imcaim, co.monto_imcoim, 0 AS bases_fact, 0 AS iva_fact
                         FROM imp_costos_import co
                         WHERE co.ide_cpcfa IS NULL
                         UNION ALL
                         SELECT co.ide_imcaim, 0 AS monto_imcoim,
-                               COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) AS bases_fact
+                               COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) AS bases_fact,
+                               COALESCE(f.valor_iva_cpcfa, 0) AS iva_fact
                         FROM imp_costos_import co
                         INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
                         WHERE co.ide_cpcfa IS NOT NULL
-                        UNION ALL
-                        SELECT c2.ide_imcaim, 0 AS monto_imcoim,
-                               COALESCE(f2.base_grabada_cpcfa, 0) + COALESCE(f2.base_tarifa0_cpcfa, 0) AS bases_fact
-                        FROM imp_cab_importa c2
-                        INNER JOIN cxp_cabece_factur f2 ON c2.ide_cpcfa = f2.ide_cpcfa
-                        WHERE c2.ide_cpcfa IS NOT NULL
-                          AND NOT EXISTS (
-                              SELECT 1 FROM imp_costos_import co3
-                              WHERE co3.ide_imcaim = c2.ide_imcaim AND co3.ide_cpcfa = c2.ide_cpcfa
-                          )
                     ) raw
                     GROUP BY ide_imcaim
                 ) total_op ON c.ide_imcaim = total_op.ide_imcaim
@@ -346,7 +344,8 @@ export class ImportacionesService extends BaseService {
         qDocs.addIntParam(1, ide_imcaim);
         const documentos_por_pagar = await this.dataSource.createSelectQuery(qDocs);
 
-        const pagos_documento = await this.getPagosImportacion(ide_imcaim, _h);
+        const pagosResult = await this.getPagosImportacion(ide_imcaim, _h);
+        const pagos_documento = Array.isArray(pagosResult) ? pagosResult : pagosResult?.rows ?? [];
 
         const {
             total_liquidaciones,
@@ -367,6 +366,7 @@ export class ImportacionesService extends BaseService {
             suma_ajustes,
             otros_costos,
             bases_facturas,
+            iva_facturas,
             costos_operativos,
             costo_total,
             ...cabeceraResto
@@ -396,6 +396,7 @@ export class ImportacionesService extends BaseService {
                 },
                 otros_costos,
                 bases_facturas,
+                iva_facturas,
                 costos_operativos,
                 costo_total,
             },
