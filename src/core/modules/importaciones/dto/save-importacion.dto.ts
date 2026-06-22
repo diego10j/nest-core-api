@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-    IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested,
+    IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateNested,
 } from 'class-validator';
 
 export class DetImportacionDataDto {
@@ -72,6 +72,17 @@ export class DetImportacionDataDto {
     @IsString()
     @IsOptional()
     regulacion_ecuatoriana_imdet?: string;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    precio_venta_imdet?: number;
+
+    @IsNumber()
+    @Min(0)
+    @Max(100)
+    @IsOptional()
+    porcentaje_utilidad_imdet?: number;
 }
 
 export class CabImportacionDataDto {

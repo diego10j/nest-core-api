@@ -229,7 +229,10 @@ export class ImportacionesService extends BaseService {
                     COALESCE(total_op.bases_facturas, 0)       AS bases_facturas,
                     COALESCE(total_op.iva_facturas, 0)         AS iva_facturas,
                     COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costos_operativos,
-                    COALESCE(ga.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total
+                    COALESCE(ga.suma_valor_aduana, 0) + COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total,
+                    COALESCE(ga.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) + COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) AS costo_final_total,
+                    COALESCE(dist_det.total_costo_operativo_det, 0) AS total_costo_operativo_detalle,
+                    COALESCE(dist_det.suma_costo_unitario_total, 0) AS suma_costo_unitario_total_detalle
                 FROM imp_cab_importa c
                 INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
                 INNER JOIN imp_incoterm i ON c.ide_iminco = i.ide_iminco
@@ -281,6 +284,13 @@ export class ImportacionesService extends BaseService {
                     ) raw
                     GROUP BY ide_imcaim
                 ) total_op ON c.ide_imcaim = total_op.ide_imcaim
+                LEFT JOIN (
+                    SELECT ide_imcaim,
+                           COALESCE(SUM(costo_operativo_total_imdet), 0) AS total_costo_operativo_det,
+                           COALESCE(SUM(costo_unitario_total_imdet * cantidad_imdet), 0) AS suma_costo_unitario_total
+                    FROM imp_det_importa
+                    GROUP BY ide_imcaim
+                ) dist_det ON c.ide_imcaim = dist_det.ide_imcaim
                 WHERE c.ide_imcaim = $1
             `);
         query.addIntParam(1, ide_imcaim);
@@ -369,6 +379,9 @@ export class ImportacionesService extends BaseService {
             iva_facturas,
             costos_operativos,
             costo_total,
+            costo_final_total,
+            total_costo_operativo_detalle,
+            suma_costo_unitario_total_detalle,
             ...cabeceraResto
         } = cabecera;
 
@@ -399,6 +412,9 @@ export class ImportacionesService extends BaseService {
                 iva_facturas,
                 costos_operativos,
                 costo_total,
+                costo_final_total,
+                total_costo_operativo_detalle,
+                suma_costo_unitario_total_detalle,
             },
             documentos_por_pagar,
             pagos_documento,
@@ -414,6 +430,9 @@ export class ImportacionesService extends BaseService {
                     d.peso_neto_imdet, d.peso_carga_imdet, d.volumen_unitario_imdet,
                     d.impuesto_ad_valorem_imdet, d.regulacion_ecuatoriana_imdet,
                     d.precio_unit_final_imdet, d.subtotal_final_imdet,
+                    d.precio_venta_imdet, d.porcentaje_utilidad_imdet,
+                    d.costo_unitario_total_imdet, d.utilidad_imdet, d.margen_utilidad_imdet,
+                    d.costo_operativo_unitario_imdet, d.costo_operativo_total_imdet,
                     d.usuario_ingre, d.hora_ingre, d.usuario_actua, d.hora_actua,
                     a.nombre_inarti           AS nombre_producto,
                     a.codigo_inarti,
@@ -697,18 +716,17 @@ export class ImportacionesService extends BaseService {
 
     async getDistribucionCostos(ide_imcaim: number, _h: HeaderParamsDto) {
         const query = new SelectQuery(`
-                SELECT d.ide_imdico, d.ide_imcoim, d.ide_imdet,
-                    d.metodo_dist_imdico, d.porcentaje_imdico, d.monto_imdico,
-                    d.usuario_ingre, d.hora_ingre, d.usuario_actua, d.hora_actua,
-                    a.nombre_inarti       AS producto,
-                    tc.nombre_imtco       AS tipo_costo
-                FROM imp_distribucion_costo d
-                INNER JOIN imp_costos_import co ON d.ide_imcoim = co.ide_imcoim
-                LEFT JOIN imp_tipo_costo tc ON co.ide_imtco = tc.ide_imtco
-                INNER JOIN imp_det_importa det ON d.ide_imdet = det.ide_imdet
-                INNER JOIN inv_articulo a ON det.ide_inarti = a.ide_inarti
-                WHERE co.ide_imcaim = $1
-                ORDER BY co.ide_imcoim, d.ide_imdet
+                SELECT d.ide_imdet, d.ide_imcaim,
+                    d.costo_operativo_unitario_imdet,
+                    d.costo_operativo_total_imdet,
+                    d.costo_unitario_total_imdet,
+                    d.precio_unit_final_imdet,
+                    d.subtotal_final_imdet,
+                    a.nombre_inarti       AS producto
+                FROM imp_det_importa d
+                INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+                WHERE d.ide_imcaim = $1
+                ORDER BY d.ide_imdet
             `);
         query.addIntParam(1, ide_imcaim);
         return this.dataSource.createSelectQuery(query);
@@ -801,6 +819,9 @@ export class ImportacionesService extends BaseService {
                     d.peso_neto_imdet, d.peso_carga_imdet, d.volumen_unitario_imdet,
                     d.impuesto_ad_valorem_imdet, d.regulacion_ecuatoriana_imdet,
                     d.precio_unit_final_imdet, d.subtotal_final_imdet,
+                    d.precio_venta_imdet, d.porcentaje_utilidad_imdet,
+                    d.costo_unitario_total_imdet, d.utilidad_imdet, d.margen_utilidad_imdet,
+                    d.costo_operativo_unitario_imdet, d.costo_operativo_total_imdet,
                     d.observaciones_imdet,
                     a.nombre_inarti,
                     a.codigo_inarti,
@@ -863,6 +884,133 @@ export class ImportacionesService extends BaseService {
     /**
      * Retorna el detalle de pagos de un documento CxP desde tesorería.
      */
+    // ========================================================================
+    // RENTABILIDAD — Utilidad y rentabilidad de la importación
+    // ========================================================================
+
+    async getRentabilidadByImportacion(ide_imcaim: number) {
+        // 1. Datos globales de rentabilidad
+        const qRent = new SelectQuery(`
+            SELECT r.ide_imren, r.ide_imcaim,
+                r.porcentaje_utilidad_global,
+                r.margen_utilidad_global,
+                r.ganancia_bruta_imren,
+                r.costo_total_importacion_imren,
+                r.precio_venta_total_imren,
+                r.total_utilidad_imren,
+                r.total_inversion_imren,
+                r.roi_porcentaje_imren,
+                r.activo_imren
+            FROM imp_rentabilidad r
+            WHERE r.ide_imcaim = $1
+        `);
+        qRent.addIntParam(1, ide_imcaim);
+        const rentabilidad = await this.dataSource.createSingleQuery(qRent);
+
+        // 2. Detalle con rentabilidad por producto
+        const qDet = new SelectQuery(`
+            SELECT d.ide_imdet, d.ide_inarti, d.ide_inuni,
+                d.cantidad_imdet, d.precio_unitario_imdet,
+                d.precio_unit_final_imdet,
+                d.costo_unitario_total_imdet,
+                d.precio_venta_imdet,
+                d.porcentaje_utilidad_imdet,
+                d.utilidad_imdet,
+                d.margen_utilidad_imdet,
+                a.nombre_inarti           AS nombre_producto,
+                a.codigo_inarti,
+                u.nombre_inuni            AS unidad,
+                u.siglas_inuni
+            FROM imp_det_importa d
+            INNER JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+            LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni
+            WHERE d.ide_imcaim = $1
+            ORDER BY d.ide_imdet
+        `);
+        qDet.addIntParam(1, ide_imcaim);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        // 3. Totales de costos para contexto
+        const qCostos = new SelectQuery(`
+            SELECT COALESCE(SUM(co.monto_imcoim), 0) AS total_costos_operativos
+            FROM imp_costos_import co
+            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
+        `);
+        qCostos.addIntParam(1, ide_imcaim);
+        const costos = await this.dataSource.createSingleQuery(qCostos);
+
+        return {
+            rentabilidad: rentabilidad ?? null,
+            detalles,
+            total_costos_operativos: costos?.total_costos_operativos ?? 0,
+        };
+    }
+
+    /**
+     * Dashboard gerencial de rentabilidad de todas las importaciones.
+     * Retorna métricas agregadas para la toma de decisiones.
+     */
+    async getRentabilidadDashboard(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                c.ide_imcaim,
+                c.numero_imcaim,
+                c.fecha_imcaim,
+                p.nom_geper                        AS proveedor,
+                e.nombre_imesor                    AS estado,
+                r.porcentaje_utilidad_global,
+                r.margen_utilidad_global,
+                r.ganancia_bruta_imren,
+                r.costo_total_importacion_imren,
+                r.precio_venta_total_imren,
+                r.total_utilidad_imren,
+                r.total_inversion_imren,
+                r.roi_porcentaje_imren,
+                COALESCE(d.total_productos, 0)      AS total_productos,
+                COALESCE(d.total_cantidad, 0)       AS total_cantidad
+            FROM imp_cab_importa c
+            INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
+            INNER JOIN imp_estado_orden e ON c.ide_imesor = e.ide_imesor
+            LEFT JOIN imp_rentabilidad r ON c.ide_imcaim = r.ide_imcaim
+            LEFT JOIN (
+                SELECT ide_imcaim,
+                    COUNT(*)                    AS total_productos,
+                    SUM(cantidad_imdet)         AS total_cantidad
+                FROM imp_det_importa
+                GROUP BY ide_imcaim
+            ) d ON c.ide_imcaim = d.ide_imcaim
+            WHERE c.ide_empr = $1 AND c.activo_imcaim = true
+            ORDER BY r.roi_porcentaje_imren DESC NULLS LAST, c.fecha_imcaim DESC
+        `, dtoIn);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Métricas resumen para dashboard ejecutivo.
+     */
+    async getRentabilidadResumen(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                COUNT(DISTINCT c.ide_imcaim)                                        AS total_importaciones,
+                COUNT(DISTINCT CASE WHEN r.ide_imren IS NOT NULL THEN c.ide_imcaim END) AS con_rentabilidad,
+                COALESCE(SUM(r.total_utilidad_imren), 0)                            AS utilidad_total,
+                COALESCE(SUM(r.ganancia_bruta_imren), 0)                            AS ganancia_bruta_total,
+                COALESCE(SUM(r.total_inversion_imren), 0)                           AS inversion_total,
+                COALESCE(AVG(r.roi_porcentaje_imren), 0)                            AS roi_promedio,
+                COALESCE(AVG(r.margen_utilidad_global), 0)                          AS margen_promedio,
+                COALESCE(SUM(r.precio_venta_total_imren), 0)                        AS venta_total,
+                COUNT(DISTINCT d.ide_imdet)                                         AS total_productos_importados
+            FROM imp_cab_importa c
+            INNER JOIN imp_estado_orden e ON c.ide_imesor = e.ide_imesor
+            LEFT JOIN imp_rentabilidad r ON c.ide_imcaim = r.ide_imcaim
+            LEFT JOIN imp_det_importa d ON c.ide_imcaim = d.ide_imcaim
+            WHERE c.ide_empr = $1 AND c.activo_imcaim = true
+        `);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        return this.dataSource.createSingleQuery(query);
+    }
+
     async getPagosByDocumento(ide_cpcfa: number) {
         const query = new SelectQuery(`
                 SELECT a.ide_cpdtr,

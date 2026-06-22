@@ -9,16 +9,18 @@ import { CoreService } from 'src/core/core.service';
 import { DocumentosCxPSaveService } from '../cuentas-por-pagar/documentos-cxp-save.service';
 import { SaveDocumentoCxPDto } from '../cuentas-por-pagar/dto/save-documento-cxp.dto';
 
-import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { AsociarDocumentoCxPDto } from './dto/asociar-documento-cxp.dto';
 import { AsociarPagoTesoreriaDto } from './dto/asociar-pago-tesoreria.dto';
+import { CambiarEstadoDto } from './dto/cambiar-estado.dto';
 import { SaveCostoImportDto } from './dto/save-costo-import.dto';
+import { SaveCostoOperativoDto } from './dto/save-costo-operativo.dto';
 import { SaveDistribucionCostoDto } from './dto/save-distribucion-costo.dto';
 import { SaveDocumentoDto } from './dto/save-documento.dto';
 import { SaveEnvioDto } from './dto/save-envio.dto';
 import { SaveGestionAduanaDto } from './dto/save-gestion-aduana.dto';
 import { SaveImportacionDto } from './dto/save-importacion.dto';
 import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
+import { SaveRentabilidadDto } from './dto/save-rentabilidad.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
 const IDE_CNTDO_IMPORTACION = 11;
@@ -287,8 +289,9 @@ export class ImportacionesSaveService extends BaseService {
                         descripcion_prod_imdet, num_paquetes_imdet, observaciones_imdet,
                         partida_aduana_imdet, descripcion_partida_imdet, categoria_imdet,
                         peso_neto_imdet, peso_carga_imdet, volumen_unitario_imdet,
-                        impuesto_ad_valorem_imdet, regulacion_ecuatoriana_imdet
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                        impuesto_ad_valorem_imdet, regulacion_ecuatoriana_imdet,
+                        precio_venta_imdet, porcentaje_utilidad_imdet
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
                     [
                         ide_imdet, data.ide_imcaim, det.ide_inarti, det.ide_inuni ?? null,
                         det.cantidad_imdet, det.precio_unitario_imdet,
@@ -300,6 +303,8 @@ export class ImportacionesSaveService extends BaseService {
                         det.volumen_unitario_imdet ?? null,
                         det.impuesto_ad_valorem_imdet ?? null,
                         det.regulacion_ecuatoriana_imdet ?? null,
+                        det.precio_venta_imdet ?? null,
+                        det.porcentaje_utilidad_imdet ?? null,
                     ],
                 );
             }
@@ -529,10 +534,6 @@ export class ImportacionesSaveService extends BaseService {
 
     async deleteCosto(ide_imcoim: number) {
         await this.dataSource.pool.query(
-            `DELETE FROM imp_distribucion_costo WHERE ide_imcoim = $1`,
-            [ide_imcoim],
-        );
-        await this.dataSource.pool.query(
             `DELETE FROM imp_costos_import WHERE ide_imcoim = $1`,
             [ide_imcoim],
         );
@@ -677,26 +678,187 @@ export class ImportacionesSaveService extends BaseService {
     }
 
     // ========================================================================
-    // DISTRIBUCIÓN DE COSTOS
+    // DISTRIBUCIÓN DE COSTOS OPERATIVOS — directa sobre imp_det_importa
     // ========================================================================
+
+    /**
+     * Distribuye proporcionalmente el costo_total de la importación entre todos
+     * los items del detalle, usando el subtotal FOB (precio_unitario * cantidad)
+     * como base de proporción.
+     * costo_total = suma_valor_aduana + otros_costos + bases_facturas + suma_total_impuestos.
+     * sum(costo_unitario_total_imdet * cantidad_imdet) == costo_total.
+     */
     async distribuirCostos(dtoIn: SaveDistribucionCostoDto & HeaderParamsDto) {
-        await this.dataSource.pool.query(
-            `DELETE FROM imp_distribucion_costo WHERE ide_imcoim = $1`,
-            [dtoIn.ide_imcoim],
+        const qTot = new SelectQuery(`
+            SELECT
+                COALESCE((
+                    SELECT SUM(g.valor_aduana_imga)
+                    FROM imp_gestion_aduana g
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_valor_aduana,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
+                COALESCE((
+                    SELECT SUM(l.total_impuestos_liq_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_total_impuestos
+            FROM imp_costos_import co
+            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
+        `);
+        qTot.addIntParam(1, dtoIn.ide_imcaim);
+        const row = await this.dataSource.createSingleQuery(qTot);
+        const costoTotal = Number(row.suma_valor_aduana ?? 0) + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0) + Number(row.suma_total_impuestos ?? 0);
+
+        const qDet = new SelectQuery(`
+            SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet
+            FROM imp_det_importa
+            WHERE ide_imcaim = $1
+            ORDER BY ide_imdet
+        `);
+        qDet.addIntParam(1, dtoIn.ide_imcaim);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        if (!detalles.length) {
+            return { message: 'ok', ide_imcaim: dtoIn.ide_imcaim, items: 0 };
+        }
+
+        const totalFob = detalles.reduce(
+            (sum, d) => sum + Number(d.precio_unitario_imdet ?? 0) * Number(d.cantidad_imdet ?? 0),
+            0,
         );
-        const totalMonto = dtoIn.items.reduce((sum, i) => sum + i.monto_imdico, 0);
-        for (const item of dtoIn.items) {
-            const porcentaje = totalMonto > 0 ? (item.monto_imdico / totalMonto) * 100 : 0;
-            const ide_imdico = await this.dataSource.getSeqTable('imp_distribucion_costo', 'ide_imdico', 1, dtoIn.login);
+
+        for (const det of detalles) {
+            const cantidad = Math.max(Number(det.cantidad_imdet) || 1, 0.0001);
+            const precioUnitario = Number(det.precio_unitario_imdet ?? 0);
+            const fobItem = precioUnitario * cantidad;
+            const proporcion = totalFob > 0 ? fobItem / totalFob : 1 / detalles.length;
+            const costoTotalDistribuido = costoTotal * proporcion;
+            const costoUnitarioTotal = costoTotalDistribuido / cantidad;
+            const costoOperativoTotal = costoTotalDistribuido - fobItem;
+            const costoOperativoUnitario = costoOperativoTotal / cantidad;
+            const subtotalFinal = costoUnitarioTotal * cantidad;
+
             await this.dataSource.pool.query(
-                `INSERT INTO imp_distribucion_costo (
-                    ide_imdico, ide_imcoim, ide_imdet, metodo_dist_imdico,
-                    porcentaje_imdico, monto_imdico
-                ) VALUES ($1,$2,$3,$4,$5,$6)`,
-                [ide_imdico, dtoIn.ide_imcoim, item.ide_imdet, dtoIn.metodo, porcentaje, item.monto_imdico],
+                `UPDATE imp_det_importa SET
+                    costo_operativo_unitario_imdet = ROUND($2, 4),
+                    costo_operativo_total_imdet = ROUND($3, 4),
+                    costo_unitario_total_imdet = ROUND($4, 4),
+                    precio_unit_final_imdet = ROUND($4, 4),
+                    subtotal_final_imdet = ROUND($5, 4)
+                 WHERE ide_imdet = $1`,
+                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, subtotalFinal],
             );
         }
-        return { message: 'ok', ide_imcoim: dtoIn.ide_imcoim, items: dtoIn.items.length };
+
+        return { message: 'ok', ide_imcaim: dtoIn.ide_imcaim, items: detalles.length, costo_total: costoTotal };
+    }
+
+    /**
+     * Permite modificar manualmente la distribución de costos operativos.
+     * Valida que la suma de costo_operativo_total_imdet de los items
+     * coincida con el total operativo: costo_total - sum(precio_unitario * cantidad).
+     */
+    async saveCostoOperativo(dtoIn: SaveCostoOperativoDto & HeaderParamsDto) {
+        const qTot = new SelectQuery(`
+            SELECT
+                COALESCE((
+                    SELECT SUM(g.valor_aduana_imga)
+                    FROM imp_gestion_aduana g
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_valor_aduana,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
+                COALESCE((
+                    SELECT SUM(l.total_impuestos_liq_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_total_impuestos
+            FROM imp_costos_import co
+            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
+        `);
+        qTot.addIntParam(1, dtoIn.ide_imcaim);
+        const row = await this.dataSource.createSingleQuery(qTot);
+        const costoTotal = Number(row.suma_valor_aduana ?? 0) + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0) + Number(row.suma_total_impuestos ?? 0);
+
+        const qFob = new SelectQuery(`
+            SELECT COALESCE(SUM(precio_unitario_imdet * cantidad_imdet), 0) AS total_fob
+            FROM imp_det_importa
+            WHERE ide_imcaim = $1
+        `);
+        qFob.addIntParam(1, dtoIn.ide_imcaim);
+        const { total_fob } = await this.dataSource.createSingleQuery(qFob);
+        const totalOperativoEsperado = costoTotal - Number(total_fob ?? 0);
+
+        const sumaItems = dtoIn.items.reduce((sum, i) => sum + i.costo_operativo_total_imdet, 0);
+        const tolerancia = 0.01;
+        if (Math.abs(sumaItems - totalOperativoEsperado) > tolerancia) {
+            throw new BadRequestException(
+                `La suma de costos operativos de los items (${sumaItems}) no coincide con el total operativo de la importación (${totalOperativoEsperado})`,
+            );
+        }
+
+        for (const item of dtoIn.items) {
+            const qDet = new SelectQuery(`
+                SELECT cantidad_imdet, precio_unitario_imdet
+                FROM imp_det_importa
+                WHERE ide_imdet = $1
+            `);
+            qDet.addIntParam(1, item.ide_imdet);
+            const det = await this.dataSource.createSingleQuery(qDet);
+            if (!det) continue;
+
+            const cantidad = Math.max(Number(det.cantidad_imdet) || 1, 0.0001);
+            const costoOperativoUnitario = item.costo_operativo_total_imdet / cantidad;
+            const costoUnitarioTotal = Number(det.precio_unitario_imdet ?? 0) + costoOperativoUnitario;
+            const subtotalFinal = costoUnitarioTotal * cantidad;
+
+            await this.dataSource.pool.query(
+                `UPDATE imp_det_importa SET
+                    costo_operativo_unitario_imdet = ROUND($2, 4),
+                    costo_operativo_total_imdet = ROUND($3, 4),
+                    costo_unitario_total_imdet = ROUND($4, 4),
+                    precio_unit_final_imdet = ROUND($4, 4),
+                    subtotal_final_imdet = ROUND($5, 4)
+                 WHERE ide_imdet = $1`,
+                [item.ide_imdet, costoOperativoUnitario, item.costo_operativo_total_imdet, costoUnitarioTotal, subtotalFinal],
+            );
+        }
+
+        return { message: 'ok', ide_imcaim: dtoIn.ide_imcaim, items: dtoIn.items.length };
+    }
+
+    /**
+     * Resetea a NULL los campos de distribución de costos operativos y rentabilidad
+     * en imp_det_importa, y elimina el registro de imp_rentabilidad.
+     * Deja la importación en estado inicial (sin costos distribuidos ni rentabilidad).
+     */
+    async resetearCostosRentabilidad(ide_imcaim: number) {
+        await this.dataSource.pool.query(
+            `UPDATE imp_det_importa SET
+                costo_operativo_unitario_imdet = NULL,
+                costo_operativo_total_imdet = NULL,
+                costo_unitario_total_imdet = NULL,
+                precio_unit_final_imdet = NULL,
+                subtotal_final_imdet = NULL,
+                precio_venta_imdet = NULL,
+                porcentaje_utilidad_imdet = NULL,
+                utilidad_imdet = NULL,
+                margen_utilidad_imdet = NULL
+             WHERE ide_imcaim = $1`,
+            [ide_imcaim],
+        );
+
+        await this.dataSource.pool.query(
+            `DELETE FROM imp_rentabilidad WHERE ide_imcaim = $1`,
+            [ide_imcaim],
+        );
+
+        return { message: 'ok', ide_imcaim };
     }
 
     // ========================================================================
@@ -756,5 +918,238 @@ export class ImportacionesSaveService extends BaseService {
             `UPDATE imp_costos_import SET activo_imcoim = $1 WHERE ide_imcoim = $2`,
             [dtoIn.activo, dtoIn.ide],
         ); return { message: 'ok' };
+    }
+
+    // ========================================================================
+    // RENTABILIDAD — Cálculo de utilidades y rentabilidad
+    // ========================================================================
+
+    /**
+     * Recalcula costo_unitario_total_imdet, precio_unit_final_imdet y subtotal_final_imdet
+     * usando costo_operativo_unitario_imdet (ya distribuido en el detalle).
+     */
+    async calcularCostosUnitarios(ide_imcaim: number, login: string) {
+        const qDetalles = new SelectQuery(`
+            SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet,
+                   COALESCE(costo_operativo_unitario_imdet, 0) AS costo_operativo_unitario
+            FROM imp_det_importa
+            WHERE ide_imcaim = $1
+        `);
+        qDetalles.addIntParam(1, ide_imcaim);
+        const detalles = await this.dataSource.createSelectQuery(qDetalles);
+
+        for (const det of detalles) {
+            const cantidad = Math.max(Number(det.cantidad_imdet) || 1, 0.0001);
+            const costoUnitarioTotal = Number(det.precio_unitario_imdet ?? 0) + Number(det.costo_operativo_unitario);
+
+            await this.dataSource.pool.query(
+                `UPDATE imp_det_importa
+                 SET costo_unitario_total_imdet = ROUND($2, 4),
+                     precio_unit_final_imdet = ROUND($2, 4),
+                     subtotal_final_imdet = ROUND($2 * cantidad_imdet, 4)
+                 WHERE ide_imdet = $1`,
+                [det.ide_imdet, costoUnitarioTotal],
+            );
+        }
+
+        return { message: 'ok', detalles_actualizados: detalles.length };
+    }
+
+    /**
+     * Guarda/actualiza la rentabilidad de una importación.
+     * - Si se envía porcentaje_utilidad_global sin detalles, aplica a todos los detalles.
+     * - Si se envían detalles, aplica por cada uno.
+     * - Calcula automáticamente: precio_venta, utilidad, margen según lo que reciba.
+     */
+    async saveRentabilidad(dtoIn: SaveRentabilidadDto & HeaderParamsDto) {
+        const { ide_imcaim, porcentaje_utilidad_global, detalles } = dtoIn;
+
+        // 1. Obtener detalles actuales con costos unitarios
+        const qDetalles = new SelectQuery(`
+            SELECT d.ide_imdet, d.cantidad_imdet, d.precio_unitario_imdet,
+                   d.precio_unit_final_imdet, d.costo_unitario_total_imdet,
+                   d.precio_venta_imdet, d.porcentaje_utilidad_imdet
+            FROM imp_det_importa d
+            WHERE d.ide_imcaim = $1
+            ORDER BY d.ide_imdet
+        `);
+        qDetalles.addIntParam(1, ide_imcaim);
+        const detallesDB = await this.dataSource.createSelectQuery(qDetalles);
+
+        if (!detallesDB || detallesDB.length === 0) {
+            throw new BadRequestException('La importación no tiene productos en el detalle');
+        }
+
+        // 2. Construir mapa de datos entrantes por ide_imdet
+        const detallesMap = new Map<number, { precio_venta?: number; pct_utilidad?: number }>();
+        if (detalles) {
+            for (const d of detalles) {
+                detallesMap.set(d.ide_imdet, {
+                    precio_venta: d.precio_venta_imdet,
+                    pct_utilidad: d.porcentaje_utilidad_imdet,
+                });
+            }
+        }
+
+        // 3. Calcular por cada detalle
+        //    Fórmulas:
+        //      - %utilidad es MARKUP: precio_venta = costo * (1 + %/100)
+        //      - %margen es MARGIN: ((precio_venta - costo) / precio_venta) * 100
+        let sumaUtilidad = 0;
+        let sumaPrecioVenta = 0;
+        let sumaCostoTotal = 0;
+        let sumaPctUtilidadPonderado = 0;
+        let sumaPesoPonderado = 0;
+        let sumaMargenPonderado = 0;
+
+        for (const det of detallesDB) {
+            const ide_imdet = Number(det.ide_imdet);
+            const cantidad = Math.max(Number(det.cantidad_imdet) || 1, 0.0001);
+            const costoUnitario = Number(det.costo_unitario_total_imdet ?? det.precio_unit_final_imdet ?? det.precio_unitario_imdet ?? 0);
+
+            if (costoUnitario <= 0) continue;
+
+            const dbPctUtilidad = Number(det.porcentaje_utilidad_imdet ?? 0);
+            const dbPrecioVenta = Number(det.precio_venta_imdet ?? 0);
+            const input = detallesMap.get(ide_imdet);
+
+            let pctUtilidad: number;
+            let precioVenta: number;
+
+            if (input) {
+                const hasPrecioVenta = input.precio_venta != null;
+                const hasPctUtilidad = input.pct_utilidad != null;
+
+                if (hasPrecioVenta) {
+                    // Precio venta explícito → calcula %utilidad (markup)
+                    precioVenta = input.precio_venta!;
+                    pctUtilidad = ((precioVenta / costoUnitario) - 1) * 100;
+                } else if (hasPctUtilidad) {
+                    // %utilidad explícito → calcula precio_venta (markup)
+                    pctUtilidad = input.pct_utilidad!;
+                    precioVenta = costoUnitario * (1 + pctUtilidad / 100);
+                } else {
+                    // Detalle en la lista pero sin datos → valores existentes o costo
+                    pctUtilidad = dbPctUtilidad;
+                    precioVenta = dbPrecioVenta > 0 ? dbPrecioVenta : costoUnitario * (1 + pctUtilidad / 100);
+                }
+            } else if (porcentaje_utilidad_global != null) {
+                // Aplica % global a detalles no incluidos en la lista
+                pctUtilidad = porcentaje_utilidad_global;
+                precioVenta = costoUnitario * (1 + pctUtilidad / 100);
+            } else {
+                // Sin input y sin %global → valores DB o costo
+                pctUtilidad = dbPctUtilidad;
+                precioVenta = dbPrecioVenta > 0 ? dbPrecioVenta : costoUnitario * (1 + pctUtilidad / 100);
+            }
+
+            // Calcular utilidad (absoluta) y margen (% del precio de venta)
+            const utilidad = (precioVenta - costoUnitario) * cantidad;
+            const margen = precioVenta > 0 ? ((precioVenta - costoUnitario) / precioVenta) * 100 : 0;
+
+            // Actualizar en DB
+            await this.dataSource.pool.query(
+                `UPDATE imp_det_importa
+                 SET precio_venta_imdet = $2,
+                     porcentaje_utilidad_imdet = $3,
+                     utilidad_imdet = $4,
+                     margen_utilidad_imdet = $5,
+                     usuario_actua = $6,
+                     hora_actua = NOW()
+                 WHERE ide_imdet = $1`,
+                [ide_imdet, precioVenta, pctUtilidad, utilidad, margen, dtoIn.login],
+            );
+
+            // Acumular para globales (ponderados por precio_venta * cantidad)
+            const peso = precioVenta * cantidad;
+            sumaUtilidad += utilidad;
+            sumaPrecioVenta += peso;
+            sumaCostoTotal += costoUnitario * cantidad;
+            sumaPctUtilidadPonderado += pctUtilidad * peso;
+            sumaPesoPonderado += peso;
+            sumaMargenPonderado += margen * peso;
+        }
+
+        // 4. Calcular métricas globales
+        const totalUtilidad = sumaUtilidad;
+        const costoTotalImportacion = sumaCostoTotal;
+        const precioVentaTotal = sumaPrecioVenta;
+        const gananciaBruta = totalUtilidad;
+        const totalInversion = costoTotalImportacion;
+        const pctUtilidadGlobal = sumaPesoPonderado > 0 ? sumaPctUtilidadPonderado / sumaPesoPonderado : 0;
+        const margenGlobal = sumaPesoPonderado > 0 ? sumaMargenPonderado / sumaPesoPonderado : 0;
+        const roiPorcentaje = totalInversion > 0 ? (totalUtilidad / totalInversion) * 100 : 0;
+
+        // 5. UPSERT en imp_rentabilidad
+        const qExist = new SelectQuery(`SELECT ide_imren FROM imp_rentabilidad WHERE ide_imcaim = $1`);
+        qExist.addIntParam(1, ide_imcaim);
+        const exist = await this.dataSource.createSingleQuery(qExist);
+
+        if (exist) {
+            await this.dataSource.pool.query(
+                `UPDATE imp_rentabilidad SET
+                    porcentaje_utilidad_global = $2,
+                    margen_utilidad_global = $3,
+                    ganancia_bruta_imren = $4,
+                    costo_total_importacion_imren = $5,
+                    precio_venta_total_imren = $6,
+                    total_utilidad_imren = $7,
+                    total_inversion_imren = $8,
+                    roi_porcentaje_imren = $9,
+                    usuario_actua = $10,
+                    hora_actua = NOW()
+                 WHERE ide_imcaim = $1`,
+                [
+                    ide_imcaim,
+                    Math.round(pctUtilidadGlobal * 100) / 100,
+                    Math.round(margenGlobal * 100) / 100,
+                    Math.round(gananciaBruta * 100) / 100,
+                    Math.round(costoTotalImportacion * 100) / 100,
+                    Math.round(precioVentaTotal * 100) / 100,
+                    Math.round(totalUtilidad * 100) / 100,
+                    Math.round(totalInversion * 100) / 100,
+                    Math.round(roiPorcentaje * 100) / 100,
+                    dtoIn.login,
+                ],
+            );
+        } else {
+            const ide_imren = await this.dataSource.getSeqTable('imp_rentabilidad', 'ide_imren', 1, dtoIn.login);
+            await this.dataSource.pool.query(
+                `INSERT INTO imp_rentabilidad (
+                    ide_imren, ide_imcaim,
+                    porcentaje_utilidad_global, margen_utilidad_global,
+                    ganancia_bruta_imren, costo_total_importacion_imren,
+                    precio_venta_total_imren, total_utilidad_imren,
+                    total_inversion_imren, roi_porcentaje_imren,
+                    activo_imren
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)`,
+                [
+                    ide_imren, ide_imcaim,
+                    Math.round(pctUtilidadGlobal * 100) / 100,
+                    Math.round(margenGlobal * 100) / 100,
+                    Math.round(gananciaBruta * 100) / 100,
+                    Math.round(costoTotalImportacion * 100) / 100,
+                    Math.round(precioVentaTotal * 100) / 100,
+                    Math.round(totalUtilidad * 100) / 100,
+                    Math.round(totalInversion * 100) / 100,
+                    Math.round(roiPorcentaje * 100) / 100,
+                ],
+            );
+        }
+
+        return {
+            message: 'ok',
+            ide_imcaim,
+            totales: {
+                costo_total_importacion: Math.round(costoTotalImportacion * 100) / 100,
+                precio_venta_total: Math.round(precioVentaTotal * 100) / 100,
+                ganancia_bruta: Math.round(gananciaBruta * 100) / 100,
+                total_utilidad: Math.round(totalUtilidad * 100) / 100,
+                total_inversion: Math.round(totalInversion * 100) / 100,
+                porcentaje_utilidad_global: Math.round(pctUtilidadGlobal * 100) / 100,
+                margen_utilidad_global: Math.round(margenGlobal * 100) / 100,
+                roi_porcentaje: Math.round(roiPorcentaje * 100) / 100,
+            },
+        };
     }
 }

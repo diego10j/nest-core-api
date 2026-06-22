@@ -21,12 +21,14 @@ import { CrearFacturaCxpImportDto } from './dto/crear-factura-cxp-import.dto';
 import { DeleteCostoDto } from './dto/delete-costo.dto';
 import { GetImportacionesDto } from './dto/get-importaciones.dto';
 import { SaveCostoImportDto } from './dto/save-costo-import.dto';
+import { SaveCostoOperativoDto } from './dto/save-costo-operativo.dto';
 import { SaveDistribucionCostoDto } from './dto/save-distribucion-costo.dto';
 import { SaveDocumentoDto } from './dto/save-documento.dto';
 import { SaveEnvioDto } from './dto/save-envio.dto';
 import { SaveGestionAduanaDto } from './dto/save-gestion-aduana.dto';
 import { SaveImportacionDto } from './dto/save-importacion.dto';
 import { SaveLiquidacionAduanaDto } from './dto/save-liquidacion-aduana.dto';
+import { SaveRentabilidadDto } from './dto/save-rentabilidad.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 import { ImportacionesSaveService } from './importaciones-save.service';
 import { ImportacionesService } from './importaciones.service';
@@ -277,6 +279,28 @@ export class ImportacionesController {
         return this.service.getPagosByDocumento(id);
     }
 
+    // ========================================================================
+    // RENTABILIDAD — Utilidad y rentabilidad de la importación
+    // ========================================================================
+
+    @Get('getRentabilidad/:ide_imcaim')
+    @ApiOperation({ summary: 'Obtener rentabilidad de una importación (global + detalle)' })
+    getRentabilidad(@AppHeaders() _h: HeaderParamsDto, @Param('ide_imcaim', ParseIntPipe) id: number) {
+        return this.service.getRentabilidadByImportacion(id);
+    }
+
+    @Get('getRentabilidadDashboard')
+    @ApiOperation({ summary: 'Dashboard gerencial de rentabilidad de importaciones' })
+    getRentabilidadDashboard(@AppHeaders() h: HeaderParamsDto, @Query() dto: QueryOptionsDto) {
+        return this.service.getRentabilidadDashboard({ ...h, ...dto });
+    }
+
+    @Get('getRentabilidadResumen')
+    @ApiOperation({ summary: 'Métricas resumen de rentabilidad para dashboard ejecutivo' })
+    getRentabilidadResumen(@AppHeaders() h: HeaderParamsDto) {
+        return this.service.getRentabilidadResumen(h);
+    }
+
     @Post('uploadDocumentoFile')
     @ApiOperation({ summary: 'Subir archivo asociado a un documento de importación y retorna metadatos' })
     @ApiConsumes('multipart/form-data')
@@ -346,9 +370,21 @@ export class ImportacionesController {
     }
 
     @Post('distribuirCostos')
-    @ApiOperation({ summary: 'Distribuir costos de importacion entre productos del detalle' })
+    @ApiOperation({ summary: 'Distribuir costos operativos proporcionalmente entre los productos del detalle' })
     distribuirCostos(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveDistribucionCostoDto) {
         return this.saveService.distribuirCostos({ ...h, ...dto });
+    }
+
+    @Post('saveCostoOperativo')
+    @ApiOperation({ summary: 'Guardar/editar la distribución manual de costos operativos por producto' })
+    saveCostoOperativo(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveCostoOperativoDto) {
+        return this.saveService.saveCostoOperativo({ ...h, ...dto });
+    }
+
+    @Post('resetearCostosRentabilidad')
+    @ApiOperation({ summary: 'Resetear a NULL la distribución de costos y cálculo de rentabilidad de una importación' })
+    resetearCostosRentabilidad(@AppHeaders() _h: HeaderParamsDto, @Body() dto: { ide_imcaim: number }) {
+        return this.saveService.resetearCostosRentabilidad(dto.ide_imcaim);
     }
 
     @Post('crearFacturaCxpImportacion')
@@ -425,5 +461,20 @@ export class ImportacionesController {
     @ApiOperation({ summary: 'Activar/desactivar un costo de importacion' })
     setActivoCosto(@AppHeaders() h: HeaderParamsDto, @Body() dto: SetActivoDto) {
         return this.saveService.setActivoCosto({ ...h, ...dto });
+    }
+
+    @Post('calcularCostosUnitarios')
+    @ApiOperation({ summary: 'Calcular costos unitarios finales desde distribución de costos' })
+    calcularCostosUnitarios(
+        @AppHeaders() h: HeaderParamsDto,
+        @Body() dto: { ide_imcaim: number },
+    ) {
+        return this.saveService.calcularCostosUnitarios(dto.ide_imcaim, h.login);
+    }
+
+    @Post('saveRentabilidad')
+    @ApiOperation({ summary: 'Guardar/calcular rentabilidad de una importación (global + por detalle)' })
+    saveRentabilidad(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveRentabilidadDto) {
+        return this.saveService.saveRentabilidad({ ...h, ...dto });
     }
 }
