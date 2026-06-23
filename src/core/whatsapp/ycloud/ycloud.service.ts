@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { BadRequestException, forwardRef, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { AxiosRequestConfig } from 'axios';
 import { isDefined } from 'class-validator';
 import FormData from 'form-data';
@@ -8,7 +8,6 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
-import { BotService } from '../bot/bot.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
 import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
@@ -27,11 +26,17 @@ import { YcloudWebhookPayload } from './interfaces/ycloud-webhook.interface';
 import { YcloudMetricsService } from './ycloud-metrics.service';
 import { YcloudWindowService } from './ycloud-window.service';
 
+type InboundMessageHandler = (
+  waId: string, phoneNumberId: string, ideWhcha: number,
+  ideWhcue: number, ideEmpr: number, texto: string, botActivo: boolean,
+) => Promise<void>;
+
 @Injectable()
 export class YcloudService {
   private readonly YCLOUD_API_URL: string;
   private readonly YCLOUD_API_KEY: string;
   private readonly logger = new Logger(YcloudService.name);
+  private messageHandler: InboundMessageHandler | null = null;
 
   constructor(
     private readonly httpService: HttpService,
@@ -39,11 +44,13 @@ export class YcloudService {
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
-    @Inject(forwardRef(() => BotService))
-    private readonly botService: BotService,
   ) {
     this.YCLOUD_API_URL = envs.ycloudApiUrl || 'https://api.ycloud.com/v2';
     this.YCLOUD_API_KEY = envs.ycloudApiKey || '';
+  }
+
+  setMessageHandler(handler: InboundMessageHandler): void {
+    this.messageHandler = handler;
   }
 
   // ─── Config ───────────────────────────────────────────────────
@@ -580,9 +587,11 @@ export class YcloudService {
         if (infoRow.rowCount > 0) {
           const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
           // Ejecutar en background — no bloquear el 200 al webhook de YCloud
-          this.botService.processMessage(
-            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
-          ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
+          if (this.messageHandler) {
+            this.messageHandler(
+              waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
+            ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
+          }
         }
       }
     } catch (error) {

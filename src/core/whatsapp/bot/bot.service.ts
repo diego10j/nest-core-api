@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { getCurrentDate } from 'src/util/helpers/date-util';
 
 import { YcloudService } from '../ycloud/ycloud.service';
@@ -15,7 +15,7 @@ import { ClienteSesion, DatosSesion, ProductoSesion } from './interfaces/bot-ses
 const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
 
 @Injectable()
-export class BotService {
+export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
 
   constructor(
@@ -27,6 +27,13 @@ export class BotService {
     private readonly ycloudService: YcloudService,
     private readonly gateway: WhatsappGateway,
   ) {}
+
+  onModuleInit() {
+    this.ycloudService.setMessageHandler(
+      (waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, botActivo) =>
+        this.processMessage(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, botActivo),
+    );
+  }
 
   /**
    * Punto de entrada desde el webhook. Decide si el bot responde.
