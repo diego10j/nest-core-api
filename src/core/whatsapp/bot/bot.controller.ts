@@ -14,7 +14,7 @@ export class BotController {
     private readonly botConfig: BotConfigService,
     private readonly botSession: BotSessionService,
     private readonly botService: BotService,
-  ) {}
+  ) { }
 
   @Post('toggle')
   @ApiOperation({ summary: 'Activar o desactivar el bot manualmente' })

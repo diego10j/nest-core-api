@@ -850,10 +850,10 @@ export class WhatsappDbService {
      */
     async getChatsPorFiltro(ideEmpr: number, ideUsua: number, filtro: string) {
         const filtroCond = {
-            todos:         '',
-            bot:           `AND c.bot_modo_whcha = 'BOT'`,
-            asesor:        `AND c.bot_modo_whcha = 'ASESOR'`,
-            sin_asignar:   `AND c.ide_usua_asignado_whcha IS NULL`,
+            todos: '',
+            bot: `AND c.bot_modo_whcha = 'BOT'`,
+            asesor: `AND c.bot_modo_whcha = 'ASESOR'`,
+            sin_asignar: `AND c.ide_usua_asignado_whcha IS NULL`,
             asignado_a_mi: `AND c.ide_usua_asignado_whcha = ${ideUsua}`,
         }[filtro] || '';
 
@@ -890,7 +890,7 @@ export class WhatsappDbService {
             FROM wha_chat c
             INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
                        AND cu.id_cuenta_whcue = c.phone_number_id_whcha
-            LEFT JOIN wha_mensaje  m  ON m.id_whmem  = c.id_whcha
+            LEFT JOIN wha_mensaje  m  ON m.ide_whcha  = c.ide_whcha
             LEFT JOIN wha_etiqueta et ON et.ide_wheti = c.ide_wheti
             LEFT JOIN sis_usuario  u  ON u.ide_usua   = c.ide_usua_asignado_whcha
             WHERE c.eliminado_whcha = FALSE

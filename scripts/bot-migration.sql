@@ -32,30 +32,30 @@ BEGIN
 END $$;
 
 -- Lunes a Viernes: madrugada/mañana (00:00 - 07:59)
-INSERT INTO sis_horario (ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
-SELECT 3, d, '00:00:00', '07:59:59', TRUE, 0, 2
+INSERT INTO sis_horario (ide_hora, ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
+SELECT 20, 3, d, '00:00:00', '07:59:59', TRUE, 0, 2
 FROM unnest(ARRAY[1,2,3,4,5]) AS d
 ON CONFLICT DO NOTHING;
 
 -- Lunes a Viernes: tarde/noche (17:01 - 23:59)
-INSERT INTO sis_horario (ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
-SELECT 3, d, '17:01:00', '23:59:59', TRUE, 0, 2
+INSERT INTO sis_horario (ide_hora, ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
+SELECT 21, 3, d, '17:01:00', '23:59:59', TRUE, 0, 2
 FROM unnest(ARRAY[1,2,3,4,5]) AS d
 ON CONFLICT DO NOTHING;
 
 -- Sábado: madrugada/mañana (00:00 - 08:59)
-INSERT INTO sis_horario (ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
-VALUES (3, 6, '00:00:00', '08:59:59', TRUE, 0, 2)
+INSERT INTO sis_horario (ide_hora, ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
+VALUES (22, 3, 6, '00:00:00', '08:59:59', TRUE, 0, 2)
 ON CONFLICT DO NOTHING;
 
 -- Sábado: tarde/noche (13:01 - 23:59)
-INSERT INTO sis_horario (ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
-VALUES (3, 6, '13:01:00', '23:59:59', TRUE, 0, 2)
+INSERT INTO sis_horario (ide_hora, ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
+VALUES (23, 3, 6, '13:01:00', '23:59:59', TRUE, 0, 2)
 ON CONFLICT DO NOTHING;
 
 -- Domingo: todo el día
-INSERT INTO sis_horario (ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
-VALUES (3, 7, '00:00:00', '23:59:59', TRUE, 0, 2)
+INSERT INTO sis_horario (ide_hora, ide_tihor, dia_hora, hora_inicio_hora, hora_fin_hora, activo_hora, ide_empr, ide_sucu)
+VALUES (24, 3, 7, '00:00:00', '23:59:59', TRUE, 0, 2)
 ON CONFLICT DO NOTHING;
 
 -- 3. Configuración del bot por cuenta WhatsApp
@@ -131,3 +131,38 @@ COMMENT ON TABLE  wha_bot_sesion IS 'Estado de la máquina de estados del bot po
 COMMENT ON COLUMN wha_bot_sesion.datos_sesion IS '{ "cliente": {...}, "productos": [...], "envio": {...} }';
 CREATE INDEX IF NOT EXISTS idx_wha_bot_sesion_chat   ON wha_bot_sesion(ide_whcha) WHERE activa = TRUE;
 CREATE INDEX IF NOT EXISTS idx_wha_bot_sesion_estado ON wha_bot_sesion(estado)    WHERE activa = TRUE;
+
+
+
+----desactivar bot 
+ UPDATE wha_bot_config
+  SET activo_manual = FALSE,
+      usa_horario   = FALSE;
+
+
+
+---campos conn error desa tamaño
+ALTER TABLE "public"."wha_chat" ALTER COLUMN "phone_number_whcha" SET DATA TYPE varchar(50);
+UPDATE "public"."wha_bot_config" SET "usa_horario" = 'F' WHERE "ide_whbco" = 1;
+
+ALTER TABLE "public"."wha_chat" ALTER COLUMN "phone_number_id_whcha" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "tipo_whmem" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "wa_id_whmem" SET DATA TYPE varchar(80);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "phone_number_whmem" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_cuenta" ALTER COLUMN "id_telefono_whcue" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_chat" ALTER COLUMN "bot_modo_whcha" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_bot_activacion_log" ALTER COLUMN "origen" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_det_camp_envio" ALTER COLUMN "telefono_whden" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_ycloud_sync" ALTER COLUMN "estado_sync" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "timestamp_whmem" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "phone_number_id_whmem" SET DATA TYPE varchar(50);
