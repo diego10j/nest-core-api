@@ -135,7 +135,7 @@ export class BotConfigService {
    */
   async setActivoPorHorario(ideWhcue: number, activar: boolean): Promise<void> {
     // Solo registrar log si cambió el estado para evitar spam
-    const cacheKey = `${CACHE_PREFIX}${ideWhcue}`;
+    const cacheKey = `${CACHE_ACTIVO}${ideWhcue}`;
     const prev = await this.dataSource.redisClient.get(cacheKey);
     const prevState = prev === '1';
     if (prevState === activar) return;
