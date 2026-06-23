@@ -5,6 +5,7 @@ import { PATH_DRIVE } from "../helpers/fileNamer.helper";
 export const FILE_STORAGE_CONSTANTS = {
     BASE_PATH: PATH_DRIVE(),
     TEMP_DIR: path.join(PATH_DRIVE(), 'temp_media'),
+    WHATSAPP_MEDIA_DIR: path.join(PATH_DRIVE(), 'whatsapp_media'),
     IMAGES_HTML_DIR: path.join(PATH_DRIVE(), 'inventario', 'images_html'),
     MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
     LARGE_FILE_THRESHOLD: 50 * 1024 * 1024, // 50MB

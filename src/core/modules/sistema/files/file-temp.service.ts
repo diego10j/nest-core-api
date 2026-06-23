@@ -71,9 +71,24 @@ export class FileTempService implements OnModuleDestroy, OnApplicationShutdown {
   ): Promise<{ filePath: string; fileName: string }> {
     const fileName = originalName ? originalName : `${uuidv4()}.${extension}`;
     const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
-
     await writeFile(filePath, data);
     return { filePath, fileName };
+  }
+
+  async saveWhatsAppMedia(
+    data: Buffer,
+    extension: string,
+    originalName?: string,
+  ): Promise<string> {
+    const dir = FILE_STORAGE_CONSTANTS.WHATSAPP_MEDIA_DIR;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const fileName = originalName ?? `${uuidv4()}.${extension}`;
+    await writeFile(path.join(dir, fileName), data);
+    return fileName;
+  }
+
+  getWhatsAppMediaPath(fileName: string): string {
+    return path.join(FILE_STORAGE_CONSTANTS.WHATSAPP_MEDIA_DIR, fileName);
   }
 
   /**

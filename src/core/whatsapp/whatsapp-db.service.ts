@@ -496,20 +496,19 @@ export class WhatsappDbService {
      * @returns
      */
     async getFile(id: string) {
-        // Busca datos del archivo
         const queryFile = new SelectQuery(`
             SELECT
                 ide_whmem,
+                attachment_id_whmem,
                 attachment_type_whmem,
                 attachment_name_whmem,
                 attachment_url_whmem,
                 attachment_size_whmem,
                 content_type_whmem,
-                phone_number_id_whmem
-            FROM
-                wha_mensaje 
-            WHERE
-                attachment_id_whmem = $1
+                phone_number_id_whmem,
+                tipo_whmem
+            FROM wha_mensaje
+            WHERE attachment_id_whmem = $1
         `);
         queryFile.addStringParam(1, id);
         return this.dataSource.createSingleQuery(queryFile);

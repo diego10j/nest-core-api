@@ -141,6 +141,13 @@ export class WhatsappController {
     });
   }
 
+  @Get('media/:filename')
+  @Header('Cache-Control', 'public, max-age=86400')
+  async serveMedia(@Param('filename') filename: string, @Res() res: Response) {
+    const filePath = this.service.fileTempService.getWhatsAppMediaPath(filename);
+    res.sendFile(filePath);
+  }
+
   @Get('download/:ideEmpr/:id')
   @Header('Cache-Control', 'public, max-age=3600')
   async download(

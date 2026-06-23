@@ -18,6 +18,7 @@ import { UploadMediaDto } from '../dto/upload-media.dto';
 import { getFileExtension } from '../helpers/media-util';
 import { WhatsappDbService } from '../whatsapp-db.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
+import { YcloudService } from '../ycloud/ycloud.service';
 
 import { ChatEtiquetaDto } from './dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './dto/chat-favorito.dto';
@@ -36,7 +37,8 @@ export class WhatsappApiService {
     private readonly httpService: HttpService,
     private readonly whatsappDb: WhatsappDbService,
     private readonly fileTempService: FileTempService,
-    private readonly whatsappGateway: WhatsappGateway, // Inyectamos el gateway
+    private readonly whatsappGateway: WhatsappGateway,
+    private readonly ycloudService: YcloudService,
   ) {
     // Recupera valores variables de entorno
     this.WHATSAPP_API_URL = envs.whatsappApiUrl;
@@ -147,60 +149,50 @@ export class WhatsappApiService {
    * @returns Información del archivo descargado con URL temporal
    */
   async download(ideEmpr: string, id: string): Promise<MediaFile> {
-    // 1. Verificar existencia del archivo en BD
     const resFile = await this.whatsappDb.getFile(id);
-    if (!resFile) {
-      throw new BadRequestException('El id no existe');
-    }
+    if (!resFile) throw new BadRequestException('El id no existe');
 
     const {
+      attachment_id_whmem: mediaId,
       attachment_name_whmem: filename,
       attachment_size_whmem: filesize,
       attachment_type_whmem: contentType,
       attachment_url_whmem: existingUrl,
     } = resFile;
 
-    // Si ya tiene URL, retornar los datos existentes
-    if (isDefined(existingUrl)) {
+    // Si ya tenemos la ruta a un archivo temporal (no es URL CDN) lo servimos directo
+    if (existingUrl && !existingUrl.startsWith('http')) {
       return {
         url: existingUrl,
-        data: null, // No descargamos los datos nuevamente
+        data: null,
         mimeType: contentType,
         fileSize: filesize,
         fileName: filename,
       };
     }
 
-    // 2. Obtener configuración de WhatsApp
-    const config = await this.getConfigWhatsApp(Number(ideEmpr));
-    if (!isDefined(config)) {
-      throw new BadRequestException('Error al obtener la configuración de WhatsApp');
-    }
-
-    // 3. Obtener URL del media desde WhatsApp
-    const resUrl = await this.getMediaWhatsApp(id, Number(ideEmpr));
-    const mediaUrl = resUrl.url;
-
     try {
-      // 4. Descargar el archivo
-      const fileData = await this.downloadFileFromUrl(mediaUrl, config.WHATSAPP_API_TOKEN);
+      let fileData: Buffer;
 
-      // 5. Guardar temporalmente y generar URL segura
+      if (existingUrl && existingUrl.startsWith('https://')) {
+        fileData = await this.downloadFileFromUrl(existingUrl);
+      } else {
+        fileData = await this.ycloudService.downloadMedia(mediaId);
+      }
+
       const fileExtension = getFileExtension(contentType, filename);
-      const { fileName: tempFileName } = await this.fileTempService.saveTempFile(fileData, fileExtension);
-
-      // 6. Actualizar la base de datos con la nueva información
-      await this.whatsappDb.updateUrlFile(id, tempFileName);
+      const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
+      await this.whatsappDb.updateUrlFile(id, savedName);
 
       return {
-        url: tempFileName,
+        url: savedName,
         data: fileData,
         mimeType: contentType,
         fileSize: fileData.length,
-        fileName: filename || tempFileName,
+        fileName: filename || savedName,
       };
     } catch (error) {
-      this.logger.error(`Error en downloadMedia_: ${error.message}`, error.stack);
+      this.logger.error(`Error en download: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Error al descargar el archivo multimedia');
     }
   }
@@ -208,12 +200,12 @@ export class WhatsappApiService {
   /**
    * Descarga un archivo desde una URL con autenticación
    */
-  private async downloadFileFromUrl(url: string, authToken: string): Promise<Buffer> {
+  private async downloadFileFromUrl(url: string, authToken?: string): Promise<Buffer> {
     const requestConfig: AxiosRequestConfig = {
       responseType: 'arraybuffer',
-      headers: { Authorization: `Bearer ${authToken}` },
-      maxContentLength: 100 * 1024 * 1024, // 100MB máximo
-      timeout: 30000, // 30 segundos timeout
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      maxContentLength: 100 * 1024 * 1024,
+      timeout: 30000,
     };
 
     const response = await this.httpService.axiosRef.get(url, requestConfig);

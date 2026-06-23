@@ -9,6 +9,8 @@ import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpe
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
 
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
+import { getFileExtension } from '../helpers/media-util';
 import { BotService } from '../bot/bot.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
@@ -40,6 +42,7 @@ export class YcloudService {
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
+    private readonly fileTempService: FileTempService,
     @Inject(forwardRef(() => BotService))
     private readonly botService: BotService,
   ) {
@@ -493,6 +496,16 @@ export class YcloudService {
     return { mediaId: resp.id };
   }
 
+  private async saveInboundMedia(mediaId: string, mimeType: string, originalName?: string): Promise<void> {
+    const fileData = await this.downloadMedia(mediaId);
+    const extension = getFileExtension(mimeType, originalName);
+    const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, extension, originalName);
+    await this.dataSource.pool.query(
+      `UPDATE wha_mensaje SET attachment_url_whmem = $1 WHERE attachment_id_whmem = $2`,
+      [savedName, mediaId],
+    );
+  }
+
   async downloadMedia(mediaId: string): Promise<Buffer> {
     const url = `${this.YCLOUD_API_URL}/whatsapp/media/${mediaId}`;
     const config: AxiosRequestConfig = {
@@ -669,17 +682,21 @@ export class YcloudService {
 
     if (data.context?.id) insert.values.set('wa_id_context_whmem', data.context.id);
 
-    if (data.image)    { insert.values.set('attachment_id_whmem', data.image.id);    insert.values.set('attachment_type_whmem', data.image.mime_type); }
-    if (data.video)    { insert.values.set('attachment_id_whmem', data.video.id);    insert.values.set('attachment_type_whmem', data.video.mime_type); }
-    if (data.audio)    { insert.values.set('attachment_id_whmem', data.audio.id);    insert.values.set('attachment_type_whmem', data.audio.mime_type); }
-    if (data.document) {
-      insert.values.set('attachment_id_whmem', data.document.id);
-      insert.values.set('attachment_type_whmem', data.document.mime_type);
-      insert.values.set('attachment_name_whmem', data.document.filename || null);
+    const mediaObj = data.image || data.video || data.audio || data.document || data.sticker;
+    if (mediaObj) {
+      insert.values.set('attachment_id_whmem', mediaObj.id);
+      insert.values.set('attachment_type_whmem', mediaObj.mime_type);
+      if (data.document?.filename) insert.values.set('attachment_name_whmem', data.document.filename);
     }
-    if (data.sticker)  { insert.values.set('attachment_id_whmem', data.sticker.id);  insert.values.set('attachment_type_whmem', data.sticker.mime_type); }
 
     await this.dataSource.createQuery(insert);
+
+    // Descargar media en background y guardar URL permanente
+    if (mediaObj) {
+      this.saveInboundMedia(mediaObj.id, mediaObj.mime_type, (data.document as any)?.filename).catch(
+        (err) => this.logger.warn(`saveInboundMedia ${mediaObj.id}: ${err.message}`),
+      );
+    }
   }
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
