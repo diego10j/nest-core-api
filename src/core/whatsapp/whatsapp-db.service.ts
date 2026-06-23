@@ -890,7 +890,15 @@ export class WhatsappDbService {
             FROM wha_chat c
             INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
                        AND cu.id_cuenta_whcue = c.phone_number_id_whcha
-            LEFT JOIN wha_mensaje  m  ON m.ide_whcha  = c.ide_whcha
+            LEFT JOIN LATERAL (
+                SELECT body_whmem, caption_whmem, content_type_whmem,
+                       direction_whmem, es_bot_whmem, fecha_whmem
+                FROM wha_mensaje
+                WHERE phone_number_id_whmem = c.phone_number_id_whcha
+                  AND wa_id_whmem = c.wa_id_whcha
+                ORDER BY fecha_whmem DESC
+                LIMIT 1
+            ) m ON TRUE
             LEFT JOIN wha_etiqueta et ON et.ide_wheti = c.ide_wheti
             LEFT JOIN sis_usuario  u  ON u.ide_usua   = c.ide_usua_asignado_whcha
             WHERE c.eliminado_whcha = FALSE
