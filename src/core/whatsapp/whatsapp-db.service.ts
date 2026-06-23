@@ -889,7 +889,7 @@ export class WhatsappDbService {
                 END AS ventana_activa
             FROM wha_chat c
             INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
-                       AND cu.id_telefono_whcue = c.phone_number_id_whcha
+                       AND cu.id_cuenta_whcue = c.phone_number_id_whcha
             LEFT JOIN wha_mensaje  m  ON m.id_whmem  = c.id_whcha
             LEFT JOIN wha_etiqueta et ON et.ide_wheti = c.ide_wheti
             LEFT JOIN sis_usuario  u  ON u.ide_usua   = c.ide_usua_asignado_whcha
