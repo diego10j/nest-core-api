@@ -166,3 +166,15 @@ ALTER TABLE "public"."wha_ycloud_sync" ALTER COLUMN "estado_sync" SET DATA TYPE 
 ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "timestamp_whmem" SET DATA TYPE varchar(50);
 
 ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "phone_number_id_whmem" SET DATA TYPE varchar(50);
+
+ALTER TABLE "public"."wha_mensaje" ALTER COLUMN "attachment_url_whmem" SET DATA TYPE varchar(500);
+
+
+CREATE INDEX IF NOT EXISTS idx_wha_mensaje_ide_whcha
+    ON wha_mensaje (ide_whcha)
+    WHERE ide_whcha IS NOT NULL;
+
+-- Expandir columnas de error para evitar truncado de mensajes de error de YCloud
+ALTER TABLE wha_mensaje
+    ALTER COLUMN error_whmem      TYPE VARCHAR(500),
+    ALTER COLUMN code_error_whmem TYPE VARCHAR(100);
