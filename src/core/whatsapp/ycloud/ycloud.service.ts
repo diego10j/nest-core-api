@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { HttpService } from '@nestjs/axios';
 import { BadRequestException, forwardRef, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { AxiosRequestConfig } from 'axios';
@@ -7,10 +10,9 @@ import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
+import { v4 as uuidv4 } from 'uuid';
 
-
-import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
-import { getFileExtension } from '../helpers/media-util';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { BotService } from '../bot/bot.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
@@ -42,7 +44,6 @@ export class YcloudService {
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
-    private readonly fileTempService: FileTempService,
     @Inject(forwardRef(() => BotService))
     private readonly botService: BotService,
   ) {
@@ -498,11 +499,16 @@ export class YcloudService {
 
   private async saveInboundMedia(mediaId: string, mimeType: string, originalName?: string): Promise<void> {
     const fileData = await this.downloadMedia(mediaId);
-    const extension = getFileExtension(mimeType, originalName);
-    const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, extension, originalName);
+
+    const ext = mimeType?.split('/')[1]?.split(';')[0] || 'bin';
+    const fileName = originalName ?? `${uuidv4()}.${ext}`;
+    const dir = FILE_STORAGE_CONSTANTS.WHATSAPP_MEDIA_DIR;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, fileName), fileData);
+
     await this.dataSource.pool.query(
       `UPDATE wha_mensaje SET attachment_url_whmem = $1 WHERE attachment_id_whmem = $2`,
-      [savedName, mediaId],
+      [fileName, mediaId],
     );
   }
 
