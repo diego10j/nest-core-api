@@ -23,8 +23,6 @@ export class WhatsappService {
    * Retorna los mensajes de un chat (Cloud API)
    */
   async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
-    if (dto.telefono === '000000000000') return [];
-    await this.assertConfig(dto.ideEmpr);
     return this.whatsappApi.getMensajes(dto);
   }
 

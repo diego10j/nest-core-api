@@ -1,16 +1,16 @@
+import { Type } from 'class-transformer';
 import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
 
-import { TelefonoDto } from './telefono.dto';
-
-export class GetMensajesDto extends TelefonoDto {
-  // WEB
-  @IsString()
+export class GetMensajesDto {
+  @IsInt()
   @IsNotEmpty()
-  chatId: string;
+  @Type(() => Number)
+  chatId: number;
 
   @IsInt()
   @IsPositive()
   @IsOptional()
+  @Type(() => Number)
   limit?: number = 100;
 
   @IsString()

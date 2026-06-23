@@ -39,6 +39,7 @@ import { GetChatsDto } from './dto/get-chats.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
+import { TelefonoDto } from './dto/telefono.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
@@ -166,7 +167,7 @@ export class WhatsappController {
   // ---------------------------- API
   @Get('getListasContacto')
   // @Auth()
-  getListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetMensajesDto) {
+  getListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TelefonoDto) {
     return this.service.whatsappApi.getListasContacto({
       ...headersParams,
       ...dtoIn,

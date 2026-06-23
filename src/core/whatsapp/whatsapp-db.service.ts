@@ -11,13 +11,14 @@ import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
 import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
-import { CacheConfig, WhatsAppConfig } from './api/interface/whatsapp';
+import { WhatsAppConfig } from './api/interface/whatsapp';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
+import { TelefonoDto } from './dto/telefono.dto';
 import { WhatsappGateway } from './whatsapp.gateway';
 
 @Injectable()
@@ -123,9 +124,7 @@ export class WhatsappDbService {
      * Obtiene todos los mensajes agrupados por número de teléfono
      * @returns Lista de conversaciones agrupadas por número de teléfono
      */
-    async getChats(dto: GetChatsDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
-
+    async getChats(dto: GetChatsDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             a.ide_whcha,
@@ -138,15 +137,12 @@ export class WhatsappDbService {
             leido_whcha,
             favorito_whcha,
             -- Último mensaje
-            b.wa_id_whmem,
-            b.id_whmem,
-            b.body_whmem,
-            b.caption_whmem,
-            b.fecha_whmem,
-            b.content_type_whmem,
-            b.status_whmem,
-            b.direction_whmem,
-            b.es_bot_whmem,
+            m.body_whmem,
+            m.caption_whmem,
+            m.fecha_whmem,
+            m.content_type_whmem,
+            m.direction_whmem,
+            m.es_bot_whmem,
             -- Sin leer
             no_leidos_whcha,
             -- Etiqueta
@@ -158,23 +154,31 @@ export class WhatsappDbService {
             a.bot_modo_whcha,
             a.ide_usua_asignado_whcha,
             u.nom_usua             AS nombre_agente_asignado,
-            -- Ventana 24h (segundos desde último mensaje del cliente)
+            -- Ventana 24h
             EXTRACT(EPOCH FROM (NOW() - a.ultimo_ingreso_cliente_whcha))::INT AS segundos_desde_cliente,
             CASE
               WHEN a.ultimo_ingreso_cliente_whcha IS NULL THEN FALSE
               WHEN EXTRACT(EPOCH FROM (NOW() - a.ultimo_ingreso_cliente_whcha)) <= 86400 THEN TRUE
               ELSE FALSE
             END AS ventana_activa
-        FROM
-            wha_chat a
-            LEFT JOIN wha_mensaje b ON a.id_whcha = b.id_whmem
-            LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
-            LEFT JOIN sis_usuario u ON a.ide_usua_asignado_whcha = u.ide_usua
-        WHERE a.phone_number_id_whcha = $1
-          AND a.eliminado_whcha = FALSE
+        FROM wha_chat a
+        INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
+                   AND cu.id_cuenta_whcue = a.phone_number_id_whcha
+        LEFT JOIN LATERAL (
+            SELECT body_whmem, caption_whmem, content_type_whmem,
+                   direction_whmem, es_bot_whmem, fecha_whmem
+            FROM wha_mensaje
+            WHERE phone_number_id_whmem = a.phone_number_id_whcha
+              AND wa_id_whmem = a.wa_id_whcha
+            ORDER BY fecha_whmem DESC
+            LIMIT 1
+        ) m ON TRUE
+        LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
+        LEFT JOIN sis_usuario u ON a.ide_usua_asignado_whcha = u.ide_usua
+        WHERE a.eliminado_whcha = FALSE
         ORDER BY a.fecha_msg_whcha DESC
         `);
-        query.addStringParam(1, config.WHATSAPP_API_ID);
+        query.addIntParam(1, dto.ideEmpr);
         const data = await this.dataSource.createSelectQuery(query);
         return data;
     }
@@ -184,37 +188,21 @@ export class WhatsappDbService {
      * @param dto
      * @returns
      */
-    async getTotalMensajes(dto: QueryOptionsDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async getTotalMensajes(dto: QueryOptionsDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `
-    SELECT 
-    (SELECT count(1) 
-     FROM wha_mensaje 
-     WHERE direction_whmem = '0' 
-       AND phone_number_id_whmem = $1) AS msg_enviados,
-    
-    (SELECT count(1) 
-     FROM wha_mensaje 
-     WHERE direction_whmem = '1' 
-       AND phone_number_id_whmem = $2) AS msg_recibidos,
-    
-    (SELECT count(1) 
-     FROM wha_chat 
-     WHERE phone_number_id_whcha = $3) AS total_chats,
-    
-    (SELECT count(1) 
-     FROM wha_chat 
-     WHERE leido_whcha = FALSE 
-       AND phone_number_id_whcha = $4) AS total_chats_no_leidos    
+    WITH cuenta AS (
+        SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $1 AND activo_whcue = TRUE LIMIT 1
+    )
+    SELECT
+    (SELECT count(1) FROM wha_mensaje WHERE direction_whmem = '0' AND phone_number_id_whmem = (SELECT id_cuenta_whcue FROM cuenta)) AS msg_enviados,
+    (SELECT count(1) FROM wha_mensaje WHERE direction_whmem = '1' AND phone_number_id_whmem = (SELECT id_cuenta_whcue FROM cuenta)) AS msg_recibidos,
+    (SELECT count(1) FROM wha_chat        WHERE phone_number_id_whcha = (SELECT id_cuenta_whcue FROM cuenta))                        AS total_chats,
+    (SELECT count(1) FROM wha_chat        WHERE leido_whcha = FALSE   AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM cuenta)) AS total_chats_no_leidos
     `,
             dto,
         );
-        query.addStringParam(1, config.WHATSAPP_API_ID);
-        query.addStringParam(2, config.WHATSAPP_API_ID);
-        query.addStringParam(3, config.WHATSAPP_API_ID);
-        query.addStringParam(4, config.WHATSAPP_API_ID);
-
+        query.addIntParam(1, dto.ideEmpr);
         const data = await this.dataSource.createSelectQuery(query);
         return data;
     }
@@ -224,8 +212,7 @@ export class WhatsappDbService {
      * @param dto
      * @returns
      */
-    async findContacto(dto: SearchChatDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async findContacto(dto: SearchChatDto & HeaderParamsDto) {
         const query = new SelectQuery(`
         SELECT
             a.ide_whcha,
@@ -237,20 +224,18 @@ export class WhatsappDbService {
             a.leido_whcha,
             a.favorito_whcha,
             a.no_leidos_whcha
-        FROM
-            wha_chat a
-        WHERE
-            a.phone_number_id_whcha = $1
-            AND (
-                unaccent(LOWER(a.name_whcha)) ILIKE '%' || unaccent(LOWER($2)) || '%'
-                OR unaccent(LOWER(a.nombre_whcha)) ILIKE '%' || unaccent(LOWER($3)) || '%'
-                OR unaccent(LOWER(a.wa_id_whcha)) ILIKE '%' || unaccent(LOWER($4)) || '%'
-            )
-        order by
-            a.fecha_msg_whcha DESC
+        FROM wha_chat a
+        INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
+                   AND cu.id_cuenta_whcue = a.phone_number_id_whcha
+        WHERE (
+            unaccent(LOWER(a.name_whcha))   ILIKE '%' || unaccent(LOWER($2)) || '%'
+            OR unaccent(LOWER(a.nombre_whcha)) ILIKE '%' || unaccent(LOWER($3)) || '%'
+            OR unaccent(LOWER(a.wa_id_whcha))  ILIKE '%' || unaccent(LOWER($4)) || '%'
+        )
+        ORDER BY a.fecha_msg_whcha DESC
         LIMIT ${dto.resultados}
         `);
-        query.addStringParam(1, config.WHATSAPP_API_ID);
+        query.addIntParam(1, dto.ideEmpr);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
         query.addStringParam(4, dto.texto);
@@ -317,22 +302,22 @@ export class WhatsappDbService {
      * @param dto
      * @returns
      */
-    async getMensajes(dto: GetMensajesDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async getMensajes(dto: GetMensajesDto) {
         const query = new SelectQuery(`
             SELECT
                 m.*,
                 m.es_bot_whmem,
-                u.nom_usua   AS nombre_agente,
+                u.nom_usua    AS nombre_agente,
                 u.avatar_usua AS avatar_agente
-            FROM wha_mensaje m
+            FROM wha_chat c
+            JOIN wha_mensaje m
+              ON m.wa_id_whmem          = c.wa_id_whcha
+             AND m.phone_number_id_whmem = c.phone_number_id_whcha
             LEFT JOIN sis_usuario u ON m.ide_usua_whmem = u.ide_usua
-            WHERE m.phone_number_id_whmem = $1
-              AND m.wa_id_whmem = $2
+            WHERE c.ide_whcha = $1
             ORDER BY m.ide_whmem
         `);
-        query.addStringParam(1, config.WHATSAPP_API_ID);
-        query.addParam(2, dto.telefono);
+        query.addIntParam(1, dto.chatId);
         return this.dataSource.createSelectQuery(query);
     }
 
@@ -341,7 +326,7 @@ export class WhatsappDbService {
      * @param dto
      * @returns  [1,2]
      */
-    async getListasContacto(dto: GetMensajesDto) {
+    async getListasContacto(dto: TelefonoDto) {
         if (dto.telefono === '000000000000') {
             return [];
         }
@@ -366,9 +351,7 @@ export class WhatsappDbService {
      * @param dto
      * @returns
      */
-    async searchContacto(dto: SearchChatDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
-
+    async searchContacto(dto: SearchChatDto & HeaderParamsDto) {
         if (dto.texto.trim() === '') {
             return [];
         }
@@ -383,32 +366,35 @@ export class WhatsappDbService {
         phone_number_whcha,
         leido_whcha,
         favorito_whcha,
-        wa_id_whmem,
-        id_whmem,
-        wa_id_context_whmem,
-        body_whmem,
-        fecha_whmem,
-        content_type_whmem,
-        status_whmem,
-        direction_whmem,
+        m.body_whmem,
+        m.fecha_whmem,
+        m.content_type_whmem,
+        m.direction_whmem,
         no_leidos_whcha,
         nombre_wheti,
         color_wheti,
         a.ide_wheti
-    FROM
-        wha_chat a
-        left join wha_mensaje b on a.id_whcha = b.id_whmem
-        left join wha_etiqueta c on a.ide_wheti = c.ide_wheti
-    WHERE phone_number_id_whcha = $1
-    AND (
-        unaccent(LOWER(a.name_whcha)) ILIKE '%' || unaccent(LOWER($2)) || '%'
+    FROM wha_chat a
+    INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
+               AND cu.id_cuenta_whcue = a.phone_number_id_whcha
+    LEFT JOIN LATERAL (
+        SELECT body_whmem, content_type_whmem, direction_whmem, fecha_whmem
+        FROM wha_mensaje
+        WHERE phone_number_id_whmem = a.phone_number_id_whcha
+          AND wa_id_whmem = a.wa_id_whcha
+        ORDER BY fecha_whmem DESC
+        LIMIT 1
+    ) m ON TRUE
+    LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
+    WHERE (
+        unaccent(LOWER(a.name_whcha))   ILIKE '%' || unaccent(LOWER($2)) || '%'
         OR unaccent(LOWER(a.nombre_whcha)) ILIKE '%' || unaccent(LOWER($3)) || '%'
         OR unaccent(LOWER(f_phone_number(a.wa_id_whcha))) ILIKE '%' || unaccent(LOWER($4)) || '%'
     )
-    order by nombre_whcha 
-    LIMIT ${dto.resultados}            
+    ORDER BY nombre_whcha
+    LIMIT ${dto.resultados}
     `);
-        query.addStringParam(1, config.WHATSAPP_API_ID);
+        query.addIntParam(1, dto.ideEmpr);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
         query.addStringParam(4, dto.texto);
@@ -450,8 +436,7 @@ export class WhatsappDbService {
      * @param dto
      * @returns
      */
-    async findTextoMensajes(dto: SearchChatDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async findTextoMensajes(dto: SearchChatDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             SELECT
                 a.ide_whcha,
@@ -465,20 +450,18 @@ export class WhatsappDbService {
                 a.no_leidos_whcha,
                 b.body_whmem,
                 b.caption_whmem
-            FROM
-                wha_mensaje b
-                inner JOIN wha_chat a ON b.wa_id_whmem = a.wa_id_whcha
-            WHERE
-                a.phone_number_id_whcha = $1
-                AND (
-                    unaccent(LOWER(b.body_whmem)) ILIKE '%' || unaccent(LOWER($2)) || '%'
-                    OR unaccent(LOWER(b.caption_whmem)) ILIKE '%' || unaccent(LOWER($3)) || '%'
-                )
-            order by
-                a.fecha_msg_whcha DESC
+            FROM wha_mensaje b
+            INNER JOIN wha_chat a ON b.wa_id_whmem = a.wa_id_whcha
+            INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
+                       AND cu.id_cuenta_whcue = a.phone_number_id_whcha
+            WHERE (
+                unaccent(LOWER(b.body_whmem))    ILIKE '%' || unaccent(LOWER($2)) || '%'
+                OR unaccent(LOWER(b.caption_whmem)) ILIKE '%' || unaccent(LOWER($3)) || '%'
+            )
+            ORDER BY a.fecha_msg_whcha DESC
             LIMIT ${dto.resultados}
             `);
-        query.addStringParam(1, config.WHATSAPP_API_ID);
+        query.addIntParam(1, dto.ideEmpr);
         query.addStringParam(2, dto.texto);
         query.addStringParam(3, dto.texto);
         const data = await this.dataSource.createSelectQuery(query);
@@ -536,18 +519,21 @@ export class WhatsappDbService {
      * Guarda un mensaje enviado en la base de datos.
      * @param dto - DTO con los datos del mensaje.
      */
-    async saveMensajeEnviado(dto: EnviarMensajeDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async saveMensajeEnviado(dto: EnviarMensajeDto & HeaderParamsDto) {
         try {
-            // Actualiza último mensaje chat
+            const cuentaQ = new SelectQuery(`SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $1 AND activo_whcue = TRUE LIMIT 1`);
+            cuentaQ.addIntParam(1, dto.ideEmpr);
+            const cuenta = await this.dataSource.createSingleQuery(cuentaQ);
+            if (!cuenta) throw new BadRequestException('No existe cuenta WhatsApp configurada');
+
             const updateQuery = new UpdateQuery('wha_chat', 'ide_whcha');
             updateQuery.values.set('id_whcha', dto.idWts);
             updateQuery.where = 'wa_id_whcha = $1';
             updateQuery.addParam(1, dto.telefono);
             await this.dataSource.createQuery(updateQuery);
-            // Guarda mensaje
+
             const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
-            insertQuery.values.set('phone_number_id_whmem', config.WHATSAPP_API_ID);
+            insertQuery.values.set('phone_number_id_whmem', cuenta.id_cuenta_whcue);
             insertQuery.values.set('wa_id_whmem', dto.telefono);
             insertQuery.values.set('id_whmem', dto.idWts);
             insertQuery.values.set('body_whmem', dto.texto || '');
@@ -557,12 +543,10 @@ export class WhatsappDbService {
             insertQuery.values.set('direction_whmem', 1);
             insertQuery.values.set('attachment_name_whmem', dto.fileName);
             insertQuery.values.set('attachment_type_whmem', dto.mimeType);
-            insertQuery.values.set('tipo_whmem', 'API');
-
-            //media
+            insertQuery.values.set('tipo_whmem', 'YCLOUD');
             insertQuery.values.set('attachment_id_whmem', dto.mediaId);
             const res = await this.dataSource.createQuery(insertQuery);
-            this.whatsappGateway.sendMessageToClients(dto.telefono); // Emitir el mensaje enviado a los clientes WebSocket
+            this.whatsappGateway.sendMessageToClients(dto.telefono);
             return res;
         } catch (error) {
             this.logger.error(`Error saveMensajeEnviado: ${error.message}`);
@@ -584,53 +568,42 @@ export class WhatsappDbService {
     /**
      * Marca como leidos todos los mensajes de un chat
      */
-    async setMensajesLeidosChat(dto: GetMensajesDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
-
-        const updateQuery = new UpdateQuery('wha_chat', 'uuid');
+    async setMensajesLeidosChat(dto: GetMensajesDto) {
+        const updateQuery = new UpdateQuery('wha_chat', 'ide_whcha');
         updateQuery.values.set('no_leidos_whcha', 0);
         updateQuery.values.set('leido_whcha', true);
-        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
-        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
-        updateQuery.addParam(2, dto.telefono);
+        updateQuery.where = 'ide_whcha = $1';
+        updateQuery.addIntParam(1, dto.chatId);
         return await this.dataSource.createQuery(updateQuery);
     }
 
     /**
      * Marca como no leido un chat
      */
-    async setChatNoLeido(dto: ChatNoLeidoDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async setChatNoLeido(dto: ChatNoLeidoDto & HeaderParamsDto) {
         const updateQuery = new UpdateQuery('wha_chat', 'uuid');
         updateQuery.values.set('leido_whcha', dto.leido);
-        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
-        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
-        updateQuery.addParam(2, dto.telefono);
+        updateQuery.where = 'wa_id_whcha = $1 AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $2 AND activo_whcue = TRUE LIMIT 1)';
+        updateQuery.addParam(1, dto.telefono);
+        updateQuery.addIntParam(2, dto.ideEmpr);
         return await this.dataSource.createQuery(updateQuery);
     }
 
-    /**
-     * Marca como favorito un chat
-     * @param dto
-     * @returns
-     */
-    async setChatFavorito(dto: ChatFavoritoDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async setChatFavorito(dto: ChatFavoritoDto & HeaderParamsDto) {
         const updateQuery = new UpdateQuery('wha_chat', 'uuid');
         updateQuery.values.set('favorito_whcha', dto.favorito);
-        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
-        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
-        updateQuery.addParam(2, dto.telefono);
+        updateQuery.where = 'wa_id_whcha = $1 AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $2 AND activo_whcue = TRUE LIMIT 1)';
+        updateQuery.addParam(1, dto.telefono);
+        updateQuery.addIntParam(2, dto.ideEmpr);
         return await this.dataSource.createQuery(updateQuery);
     }
 
-    async setEtiquetaChat(dto: ChatEtiquetaDto, config: CacheConfig) {
-        if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    async setEtiquetaChat(dto: ChatEtiquetaDto & HeaderParamsDto) {
         const updateQuery = new UpdateQuery('wha_chat', 'uuid');
         updateQuery.values.set('ide_wheti', dto.etiqueta);
-        updateQuery.where = 'phone_number_id_whcha = $1 and  wa_id_whcha = $2';
-        updateQuery.addStringParam(1, config.WHATSAPP_API_ID);
-        updateQuery.addParam(2, dto.telefono);
+        updateQuery.where = 'wa_id_whcha = $1 AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $2 AND activo_whcue = TRUE LIMIT 1)';
+        updateQuery.addParam(1, dto.telefono);
+        updateQuery.addIntParam(2, dto.ideEmpr);
         return await this.dataSource.createQuery(updateQuery);
     }
 
