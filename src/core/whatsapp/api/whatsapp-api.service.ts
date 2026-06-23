@@ -155,42 +155,23 @@ export class WhatsappApiService {
     const {
       attachment_id_whmem: mediaId,
       attachment_name_whmem: filename,
-      attachment_size_whmem: filesize,
       attachment_type_whmem: contentType,
       attachment_url_whmem: existingUrl,
     } = resFile;
 
-    // Si ya tenemos la ruta a un archivo temporal (no es URL CDN) lo servimos directo
-    if (existingUrl && !existingUrl.startsWith('http')) {
-      return {
-        url: existingUrl,
-        data: null,
-        mimeType: contentType,
-        fileSize: filesize,
-        fileName: filename,
-      };
+    // Ya tiene URL permanente guardada → retornar directo
+    if (existingUrl) {
+      return { url: existingUrl, data: null, mimeType: contentType, fileSize: null, fileName: filename };
     }
 
     try {
-      let fileData: Buffer;
-
-      if (existingUrl && existingUrl.startsWith('https://')) {
-        fileData = await this.downloadFileFromUrl(existingUrl);
-      } else {
-        fileData = await this.ycloudService.downloadMedia(mediaId);
-      }
-
+      const fileData = await this.ycloudService.downloadMedia(mediaId, Number(ideEmpr));
       const fileExtension = getFileExtension(contentType, filename);
       const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
-      await this.whatsappDb.updateUrlFile(id, savedName);
+      const publicUrl = `${envs.hostApi}/api/whatsapp/media/${savedName}`;
+      await this.whatsappDb.updateUrlFile(id, publicUrl);
 
-      return {
-        url: savedName,
-        data: fileData,
-        mimeType: contentType,
-        fileSize: fileData.length,
-        fileName: filename || savedName,
-      };
+      return { url: publicUrl, data: null, mimeType: contentType, fileSize: fileData.length, fileName: filename || savedName };
     } catch (error) {
       this.logger.error(`Error en download: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Error al descargar el archivo multimedia');

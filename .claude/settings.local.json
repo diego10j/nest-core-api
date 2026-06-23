@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I{} basename {})",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -145,20 +145,23 @@ export class WhatsappController {
   @Header('Cache-Control', 'public, max-age=86400')
   async serveMedia(@Param('filename') filename: string, @Res() res: Response) {
     const filePath = this.service.fileTempService.getWhatsAppMediaPath(filename);
-    res.sendFile(filePath);
+    res.sendFile(filePath, (err) => {
+      if (err) res.status(404).json({ message: 'Archivo no encontrado' });
+    });
   }
 
   @Get('download/:ideEmpr/:id')
-  @Header('Cache-Control', 'public, max-age=3600')
   async download(
     @AppHeaders() _h: HeaderParamsDto,
     @Param('ideEmpr') ideEmpr: string,
     @Param('id') messageId: string,
-    @Req() req: Request,
     @Res() res: Response,
   ) {
     const fileInfo = await this.service.downloadMedia(ideEmpr, messageId);
-    return await this.service.fileTempService.downloadMediaFile(fileInfo, req, res);
+    if (fileInfo.url?.startsWith('https://')) {
+      return res.redirect(fileInfo.url);
+    }
+    return res.redirect(`/api/whatsapp/media/${fileInfo.url}`);
   }
 
   @Get('getAgentesCuenta')
