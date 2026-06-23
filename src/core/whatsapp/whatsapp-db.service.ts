@@ -129,6 +129,7 @@ export class WhatsappDbService {
         const query = new SelectQuery(`
         SELECT
             a.ide_whcha,
+            a.wa_id_whcha,
             fecha_crea_whcha,
             fecha_msg_whcha,
             name_whcha,
@@ -136,25 +137,42 @@ export class WhatsappDbService {
             phone_number_whcha,
             leido_whcha,
             favorito_whcha,
-            wa_id_whmem,
-            id_whmem,
-            wa_id_context_whmem,
-            body_whmem,
-            fecha_whmem,
-            content_type_whmem,
-            status_whmem,
-            direction_whmem,
+            -- Último mensaje
+            b.wa_id_whmem,
+            b.id_whmem,
+            b.body_whmem,
+            b.caption_whmem,
+            b.fecha_whmem,
+            b.content_type_whmem,
+            b.status_whmem,
+            b.direction_whmem,
+            b.es_bot_whmem,
+            -- Sin leer
             no_leidos_whcha,
-            nombre_wheti,
-            color_wheti,
-            a.ide_wheti
+            -- Etiqueta
+            c.nombre_wheti,
+            c.color_wheti,
+            a.ide_wheti,
+            -- Bot y agente
+            a.bot_activo_whcha,
+            a.bot_modo_whcha,
+            a.ide_usua_asignado_whcha,
+            u.nom_usua             AS nombre_agente_asignado,
+            -- Ventana 24h (segundos desde último mensaje del cliente)
+            EXTRACT(EPOCH FROM (NOW() - a.ultimo_ingreso_cliente_whcha))::INT AS segundos_desde_cliente,
+            CASE
+              WHEN a.ultimo_ingreso_cliente_whcha IS NULL THEN FALSE
+              WHEN EXTRACT(EPOCH FROM (NOW() - a.ultimo_ingreso_cliente_whcha)) <= 86400 THEN TRUE
+              ELSE FALSE
+            END AS ventana_activa
         FROM
             wha_chat a
-            left join wha_mensaje b on a.id_whcha = b.id_whmem
-            left join wha_etiqueta c on a.ide_wheti = c.ide_wheti
-        WHERE phone_number_id_whcha = $1
-        order by
-            fecha_msg_whcha desc
+            LEFT JOIN wha_mensaje b ON a.id_whcha = b.id_whmem
+            LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
+            LEFT JOIN sis_usuario u ON a.ide_usua_asignado_whcha = u.ide_usua
+        WHERE a.phone_number_id_whcha = $1
+          AND a.eliminado_whcha = FALSE
+        ORDER BY a.fecha_msg_whcha DESC
         `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         const data = await this.dataSource.createSelectQuery(query);
@@ -302,15 +320,16 @@ export class WhatsappDbService {
     async getMensajes(dto: GetMensajesDto, config: CacheConfig) {
         if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
         const query = new SelectQuery(`
-            select
-                *
-            from
-                wha_mensaje
-            WHERE
-                phone_number_id_whmem = $1
-            and wa_id_whmem = $2
-            order by
-                ide_whmem     
+            SELECT
+                m.*,
+                m.es_bot_whmem,
+                u.nom_usua   AS nombre_agente,
+                u.avatar_usua AS avatar_agente
+            FROM wha_mensaje m
+            LEFT JOIN sis_usuario u ON m.ide_usua_whmem = u.ide_usua
+            WHERE m.phone_number_id_whmem = $1
+              AND m.wa_id_whmem = $2
+            ORDER BY m.ide_whmem
         `);
         query.addStringParam(1, config.WHATSAPP_API_ID);
         query.addParam(2, dto.telefono);
@@ -772,5 +791,113 @@ export class WhatsappDbService {
         query.addParam(1, telefono);
         const res = await this.dataSource.createSingleQuery(query);
         return res.existe === true;
+    }
+
+    /**
+     * Info completa de un chat para el panel derecho de la interfaz.
+     * Incluye ventana 24h, bot, agente asignado.
+     */
+    async getChatInfo(ideWhcha: number, ideEmpr: number) {
+        const query = new SelectQuery(`
+            SELECT
+                c.ide_whcha,
+                c.wa_id_whcha,
+                c.phone_number_id_whcha,
+                c.phone_number_whcha,
+                c.name_whcha,
+                c.nombre_whcha,
+                c.fecha_crea_whcha,
+                c.fecha_msg_whcha,
+                c.leido_whcha,
+                c.favorito_whcha,
+                c.notas_whcha,
+                c.ide_wheti,
+                et.nombre_wheti,
+                et.color_wheti,
+                -- Bot
+                c.bot_activo_whcha,
+                c.bot_modo_whcha,
+                -- Agente
+                c.ide_usua_asignado_whcha,
+                c.hora_asignacion_whcha,
+                u.nom_usua           AS nombre_agente,
+                u.avatar_usua        AS avatar_agente,
+                -- Ventana 24h (para habilitar/deshabilitar el input de envío)
+                c.ultimo_ingreso_cliente_whcha,
+                EXTRACT(EPOCH FROM (NOW() - c.ultimo_ingreso_cliente_whcha))::INT AS segundos_desde_cliente,
+                CASE
+                  WHEN c.ultimo_ingreso_cliente_whcha IS NULL THEN FALSE
+                  WHEN EXTRACT(EPOCH FROM (NOW() - c.ultimo_ingreso_cliente_whcha)) <= 86400 THEN TRUE
+                  ELSE FALSE
+                END                  AS ventana_activa,
+                -- Sesión de bot activa (si la hay)
+                bs.ide_whbse,
+                bs.estado            AS estado_sesion_bot
+            FROM wha_chat c
+            LEFT JOIN wha_etiqueta  et ON et.ide_wheti = c.ide_wheti
+            LEFT JOIN sis_usuario   u  ON u.ide_usua   = c.ide_usua_asignado_whcha
+            LEFT JOIN wha_bot_sesion bs ON bs.ide_whcha = c.ide_whcha AND bs.activa = TRUE
+            WHERE c.ide_whcha = $1
+            LIMIT 1
+        `);
+        query.addIntParam(1, ideWhcha);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
+     * Lista de chats filtrada por modo bot / agente / estado.
+     * filtro: 'todos' | 'bot' | 'asesor' | 'sin_asignar' | 'asignado_a_mi'
+     */
+    async getChatsPorFiltro(ideEmpr: number, ideUsua: number, filtro: string) {
+        const filtroCond = {
+            todos:         '',
+            bot:           `AND c.bot_modo_whcha = 'BOT'`,
+            asesor:        `AND c.bot_modo_whcha = 'ASESOR'`,
+            sin_asignar:   `AND c.ide_usua_asignado_whcha IS NULL`,
+            asignado_a_mi: `AND c.ide_usua_asignado_whcha = ${ideUsua}`,
+        }[filtro] || '';
+
+        const query = new SelectQuery(`
+            SELECT
+                c.ide_whcha,
+                c.wa_id_whcha,
+                c.name_whcha,
+                c.nombre_whcha,
+                c.phone_number_whcha,
+                c.fecha_msg_whcha,
+                c.leido_whcha,
+                c.favorito_whcha,
+                c.no_leidos_whcha,
+                c.bot_activo_whcha,
+                c.bot_modo_whcha,
+                c.ide_usua_asignado_whcha,
+                u.nom_usua  AS nombre_agente,
+                et.nombre_wheti,
+                et.color_wheti,
+                -- Último mensaje
+                m.body_whmem,
+                m.caption_whmem,
+                m.content_type_whmem,
+                m.direction_whmem,
+                m.es_bot_whmem,
+                m.fecha_whmem,
+                -- Ventana
+                CASE
+                  WHEN c.ultimo_ingreso_cliente_whcha IS NULL THEN FALSE
+                  WHEN EXTRACT(EPOCH FROM (NOW() - c.ultimo_ingreso_cliente_whcha)) <= 86400 THEN TRUE
+                  ELSE FALSE
+                END AS ventana_activa
+            FROM wha_chat c
+            INNER JOIN wha_cuenta cu ON cu.ide_empr = $1 AND cu.activo_whcue = TRUE
+                       AND cu.id_telefono_whcue = c.phone_number_id_whcha
+            LEFT JOIN wha_mensaje  m  ON m.id_whmem  = c.id_whcha
+            LEFT JOIN wha_etiqueta et ON et.ide_wheti = c.ide_wheti
+            LEFT JOIN sis_usuario  u  ON u.ide_usua   = c.ide_usua_asignado_whcha
+            WHERE c.eliminado_whcha = FALSE
+            ${filtroCond}
+            ORDER BY c.fecha_msg_whcha DESC NULLS LAST
+        `);
+        query.addIntParam(1, ideEmpr);
+        return this.dataSource.createSelectQuery(query);
     }
 }

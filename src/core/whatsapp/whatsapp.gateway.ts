@@ -22,7 +22,21 @@ export class WhatsappGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   sendReadMessageToClients(message: string) {
-    // console.log(`Emit onReadMessage: : ${message}`);
     this.server.emit('onReadMessage', message);
+  }
+
+  /** Notifica al front cuando el bot se activa o desactiva */
+  emitBotStatus(ideWhcue: number, activo: boolean) {
+    this.server.emit('botStatus', { ideWhcue, activo });
+  }
+
+  /** Notifica a los agentes que el bot generó una proforma */
+  emitNuevaProformaBot(ideWhcue: number, secuencial: string, nombreCliente: string) {
+    this.server.emit('nuevaProformaBot', { ideWhcue, secuencial, nombreCliente });
+  }
+
+  /** Notifica a los agentes que un chat necesita atención humana */
+  emitChatEsperandoAsesor(ideWhcue: number, waId: string, ideWhcha: number) {
+    this.server.emit('chatEsperandoAsesor', { ideWhcue, waId, ideWhcha });
   }
 }

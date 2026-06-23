@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { AxiosRequestConfig } from 'axios';
 import { isDefined } from 'class-validator';
 import FormData from 'form-data';
@@ -9,8 +9,8 @@ import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpe
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
 
+import { BotService } from '../bot/bot.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
-
 
 import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
 import { YcloudCacheConfig, YcloudDbConfig } from './interfaces/ycloud-config.interface';
@@ -40,6 +40,8 @@ export class YcloudService {
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
   ) {
     this.YCLOUD_API_URL = envs.ycloudApiUrl || 'https://api.ycloud.com/v2';
     this.YCLOUD_API_KEY = envs.ycloudApiKey || '';
@@ -538,18 +540,146 @@ export class YcloudService {
 
   private async processInboundMessage(data: YcloudInboundMessage): Promise<void> {
     try {
-      const phoneNumberId = (data.to || data.from).replace(/^\+/, '');
-      const msgPayload = { type: 'whatsapp.inbound_message.received', whatsappInboundMessage: data };
-      const jsonMsg = JSON.stringify(msgPayload);
-      const query = new SelectQuery(`SELECT mensaje_ycloud($1::jsonb, $2) AS wa_id`);
-      query.addStringParam(1, jsonMsg);
-      query.addStringParam(2, data.to || data.from);
-      const res = await this.dataSource.createSingleQuery(query);
-      this.whatsappGateway.sendMessageToClients(res.wa_id);
+      const waId = data.from.replace(/^\+/, '');
+      const phoneNumberId = data.to.replace(/^\+/, '');
+      const profileName = data.customerProfile?.name || null;
+      const now = new Date();
+
+      const ideWhcha = await this.upsertChat({
+        waId,
+        phoneNumberId,
+        phoneNumberFrom: data.from,
+        profileName,
+        now,
+        isInbound: true,
+      });
+
+      await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, now);
+      await this.windowService.registerInboundMessage(waId, phoneNumberId);
+      this.whatsappGateway.sendMessageToClients(waId);
+
+      // Disparar bot si hay texto (texto, botón de template o respuesta interactiva)
+      const textoBot = data.text?.body
+        || data.button?.payload
+        || data.interactive?.button_reply?.id
+        || data.interactive?.list_reply?.id
+        || '';
+      if (textoBot) {
+        // Obtener cuenta (ideEmpr + ideWhcue) y estado bot del chat en un solo query
+        const infoRow = await this.dataSource.pool.query<{
+          ide_empr: number; ide_whcue: number; bot_activo_whcha: boolean;
+        }>(
+          `SELECT cu.ide_empr, cu.ide_whcue, c.bot_activo_whcha
+           FROM wha_chat c
+           INNER JOIN wha_cuenta cu
+             ON REPLACE(cu.id_telefono_whcue, '+', '') = $2
+            AND cu.activo_whcue = TRUE
+           WHERE c.ide_whcha = $1
+           LIMIT 1`,
+          [ideWhcha, phoneNumberId],
+        );
+        if (infoRow.rowCount > 0) {
+          const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
+          // Ejecutar en background — no bloquear el 200 al webhook de YCloud
+          this.botService.processMessage(
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
+          ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
+        }
+      }
     } catch (error) {
       this.logger.error(`Error processing inbound message: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private async upsertChat(opts: {
+    waId: string;
+    phoneNumberId: string;
+    phoneNumberFrom: string;
+    profileName: string | null;
+    now: Date;
+    isInbound: boolean;
+  }): Promise<number> {
+    const { waId, phoneNumberId, phoneNumberFrom, profileName, now, isInbound } = opts;
+
+    // UPSERT atómico: INSERT si no existe, UPDATE si existe
+    const sql = `
+      INSERT INTO wha_chat (
+        wa_id_whcha, phone_number_id_whcha, phone_number_whcha,
+        name_whcha, nombre_whcha,
+        fecha_crea_whcha, fecha_msg_whcha,
+        leido_whcha, no_leidos_whcha,
+        ultimo_ingreso_cliente_whcha, bot_activo_whcha, bot_modo_whcha
+      ) VALUES ($1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6, TRUE, 'BOT')
+      ON CONFLICT (wa_id_whcha) DO UPDATE SET
+        fecha_msg_whcha              = $5,
+        leido_whcha                  = FALSE,
+        no_leidos_whcha              = wha_chat.no_leidos_whcha + 1,
+        name_whcha                   = COALESCE($4, wha_chat.name_whcha),
+        nombre_whcha                 = COALESCE($4, wha_chat.nombre_whcha),
+        phone_number_id_whcha        = EXCLUDED.phone_number_id_whcha,
+        ultimo_ingreso_cliente_whcha = $6
+      RETURNING ide_whcha
+    `;
+    const inboundTs = isInbound ? now.toISOString() : null;
+    const result = await this.dataSource.pool.query(sql, [
+      waId, phoneNumberId, phoneNumberFrom, profileName, now.toISOString(), inboundTs,
+    ]);
+    return result.rows[0].ide_whcha as number;
+  }
+
+  private async insertMensajeInbound(
+    data: YcloudInboundMessage,
+    waId: string,
+    phoneNumberId: string,
+    ideWhcha: number,
+    now: Date,
+  ): Promise<void> {
+    const wamid = data.wamid || data.id;
+
+    // Evitar duplicados si YCloud reintenta el webhook
+    const existsQ = await this.dataSource.pool.query(
+      `SELECT 1 FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`,
+      [wamid],
+    );
+    if (existsQ.rowCount > 0) return;
+
+    const tipo = data.type || 'text';
+    const body = data.text?.body
+      || data.button?.text
+      || data.interactive?.button_reply?.title
+      || data.interactive?.list_reply?.title
+      || null;
+    const caption = data.image?.caption || data.video?.caption || data.document?.caption || null;
+
+    const insert = new InsertQuery('wha_mensaje', 'uuid');
+    insert.values.set('ide_whcha', ideWhcha);
+    insert.values.set('phone_number_id_whmem', phoneNumberId);
+    insert.values.set('phone_number_whmem', data.from);
+    insert.values.set('wa_id_whmem', waId);
+    insert.values.set('id_whmem', wamid);
+    insert.values.set('body_whmem', body);
+    insert.values.set('caption_whmem', caption);
+    insert.values.set('fecha_whmem', now.toISOString());
+    insert.values.set('content_type_whmem', tipo);
+    insert.values.set('direction_whmem', '0');   // 0 = inbound
+    insert.values.set('leido_whmem', false);
+    insert.values.set('tipo_whmem', 'YCLOUD');
+    insert.values.set('timestamp_whmem', data.sendTime || null);
+
+    if (data.context?.id) insert.values.set('wa_id_context_whmem', data.context.id);
+
+    if (data.image)    { insert.values.set('attachment_id_whmem', data.image.id);    insert.values.set('attachment_type_whmem', data.image.mime_type); }
+    if (data.video)    { insert.values.set('attachment_id_whmem', data.video.id);    insert.values.set('attachment_type_whmem', data.video.mime_type); }
+    if (data.audio)    { insert.values.set('attachment_id_whmem', data.audio.id);    insert.values.set('attachment_type_whmem', data.audio.mime_type); }
+    if (data.document) {
+      insert.values.set('attachment_id_whmem', data.document.id);
+      insert.values.set('attachment_type_whmem', data.document.mime_type);
+      insert.values.set('attachment_name_whmem', data.document.filename || null);
+    }
+    if (data.sticker)  { insert.values.set('attachment_id_whmem', data.sticker.id);  insert.values.set('attachment_type_whmem', data.sticker.mime_type); }
+
+    await this.dataSource.createQuery(insert);
   }
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
@@ -790,11 +920,16 @@ export class YcloudService {
 
     try {
       const normalizedPhone = data.telefono.replace(/^\+/, '');
-      const updateChatQuery = new UpdateQuery('wha_chat', 'ide_whcha');
-      updateChatQuery.values.set('id_whcha', data.idWts);
-      updateChatQuery.where = 'wa_id_whcha = $1';
-      updateChatQuery.addStringParam(1, normalizedPhone);
-      await this.dataSource.createQuery(updateChatQuery);
+      const now = new Date().toISOString();
+
+      // Actualiza wha_chat con fecha_msg y el id del último mensaje enviado
+      await this.dataSource.pool.query(
+        `UPDATE wha_chat
+            SET id_whcha        = $1,
+                fecha_msg_whcha = $2
+          WHERE wa_id_whcha = $3`,
+        [data.idWts, now, normalizedPhone],
+      );
 
       const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
       insertQuery.values.set('phone_number_id_whmem', config.phoneNumberId);

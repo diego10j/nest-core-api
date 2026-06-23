@@ -7,6 +7,7 @@ import {
   Header,
   InternalServerErrorException,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   Req,
@@ -41,6 +42,8 @@ import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
+import { BotConfigService } from './bot/bot-config.service';
+import { BotService } from './bot/bot.service';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
@@ -51,6 +54,8 @@ export class WhatsappController {
     private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
     private readonly whatsappCamp: WhatsappCampaniaService,
+    private readonly botConfig: BotConfigService,
+    private readonly botService: BotService,
   ) { }
 
   // ---------------------------- COMMON
@@ -368,5 +373,57 @@ export class WhatsappController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  // ─── Bot por chat ──────────────────────────────────────────────
+
+  /**
+   * Habilitar / deshabilitar el bot para UN chat específico.
+   * Independiente del toggle global: el bot global puede estar ON
+   * pero este chat en particular puede tener bot OFF (modo ASESOR).
+   */
+  @Post('bot/toggle-chat')
+  @ApiOperation({ summary: 'Activar o desactivar el bot para un chat específico' })
+  async toggleBotChat(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() dto: { ideWhcha: number; activar: boolean },
+  ) {
+    if (dto.activar) {
+      await this.botService.liberarChat(dto.ideWhcha);
+      return { ok: true, bot_modo_whcha: 'BOT' };
+    } else {
+      // Silenciar el bot en este chat sin enviar mensaje
+      await this.whatsappDbService.dataSource.pool.query(
+        `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
+        [dto.ideWhcha],
+      );
+      return { ok: true, bot_modo_whcha: 'ASESOR' };
+    }
+  }
+
+  /**
+   * Info completa de un chat: datos del contacto + ventana 24h + estado bot + agente.
+   * Usado al abrir el panel derecho de la interfaz.
+   */
+  @Get('getChatInfo/:ideWhcha')
+  @ApiOperation({ summary: 'Info de un chat: contacto, ventana 24h, bot, agente asignado' })
+  async getChatInfo(
+    @AppHeaders() h: HeaderParamsDto,
+    @Param('ideWhcha', ParseIntPipe) ideWhcha: number,
+  ) {
+    return this.whatsappDbService.getChatInfo(ideWhcha, h.ideEmpr);
+  }
+
+  /**
+   * Filtrar lista de chats por modo del bot.
+   * filtro: 'todos' | 'bot' | 'asesor' | 'sin_asignar' | 'asignado_a_mi'
+   */
+  @Get('getChatsPorFiltro')
+  @ApiOperation({ summary: 'Chats filtrados por modo bot/asesor/asignación' })
+  async getChatsPorFiltro(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query('filtro') filtro: string,
+  ) {
+    return this.whatsappDbService.getChatsPorFiltro(h.ideEmpr, h.ideUsua, filtro || 'todos');
   }
 }
