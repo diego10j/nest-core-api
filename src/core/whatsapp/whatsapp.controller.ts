@@ -150,13 +150,9 @@ export class WhatsappController {
     });
   }
 
-  @Get('download/:ideEmpr/:id')
-  async download(
-    @Param('ideEmpr') ideEmpr: string,
-    @Param('id') messageId: string,
-    @Res() res: Response,
-  ) {
-    const fileInfo = await this.service.downloadMedia(ideEmpr, messageId);
+  @Get('download/:id')
+  async download(@Param('id') messageId: string, @Res() res: Response) {
+    const fileInfo = await this.service.downloadMedia(messageId);
     if (fileInfo.url?.startsWith('https://')) {
       return res.redirect(fileInfo.url);
     }

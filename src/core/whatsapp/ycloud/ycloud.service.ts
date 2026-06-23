@@ -67,8 +67,8 @@ export class YcloudService {
       }
     }
     return {
-      apiKey: data.id_cuenta_whcue || this.YCLOUD_API_KEY,
-      phoneNumberId: data.id_telefono_whcue,
+      apiKey: data.id_token_whcue || this.YCLOUD_API_KEY,
+      phoneNumberId: data.id_cuenta_whcue,
       businessId: data.business_id_whcue,
       displayPhoneNumber: data.id_telefono_whcue,
     };
@@ -87,6 +87,7 @@ export class YcloudService {
     const query = new SelectQuery(`
       SELECT
         id_cuenta_whcue,
+        id_token_whcue,
         business_id_whcue,
         id_telefono_whcue,
         webhook_url_whcue
@@ -499,16 +500,11 @@ export class YcloudService {
     return { mediaId: resp.id };
   }
 
-  async downloadMedia(mediaId: string, ideEmpr?: number): Promise<Buffer> {
-    let apiKey = this.YCLOUD_API_KEY;
-    if (ideEmpr) {
-      const cfg = await this.getConfig(ideEmpr);
-      apiKey = cfg.apiKey;
-    }
+  async downloadMedia(mediaId: string): Promise<Buffer> {
     const url = `${this.YCLOUD_API_URL}/whatsapp/media/${mediaId}`;
     const config: AxiosRequestConfig = {
       responseType: 'arraybuffer',
-      headers: { 'X-API-Key': apiKey },
+      headers: { 'X-API-Key': this.YCLOUD_API_KEY },
       timeout: 30000,
     };
     try {

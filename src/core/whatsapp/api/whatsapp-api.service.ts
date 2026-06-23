@@ -165,7 +165,7 @@ export class WhatsappApiService {
     }
 
     try {
-      const fileData = await this.ycloudService.downloadMedia(mediaId, ideEmpr);
+      const fileData = await this.ycloudService.downloadMedia(mediaId);
       const fileExtension = getFileExtension(contentType, filename);
       const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
       const publicUrl = `${envs.hostApi}/api/whatsapp/media/${savedName}`;
