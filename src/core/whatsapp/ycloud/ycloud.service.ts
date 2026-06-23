@@ -543,8 +543,10 @@ export class YcloudService {
       case 'contact.attributes_changed':
         await this.processContactEvent(payload.contact || (payload as Record<string, any>));
         break;
+      case 'whatsapp.smb.message.echoes':
+        break;
       default:
-        this.logger.log(`Evento YCloud no procesado (${payload.type}), payload registrado`);
+        this.logger.debug(`Evento YCloud no procesado (${payload.type})`);
         break;
     }
   }

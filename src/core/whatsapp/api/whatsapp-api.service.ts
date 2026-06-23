@@ -148,24 +148,24 @@ export class WhatsappApiService {
    * @param id Identificador del mensaje/media
    * @returns Información del archivo descargado con URL temporal
    */
-  async download(ideEmpr: string, id: string): Promise<MediaFile> {
+  async download(id: string): Promise<MediaFile> {
     const resFile = await this.whatsappDb.getFile(id);
-    if (!resFile) throw new BadRequestException('El id no existe');
+    if (!resFile) throw new BadRequestException('Archivo no encontrado');
 
     const {
       attachment_id_whmem: mediaId,
       attachment_name_whmem: filename,
       attachment_type_whmem: contentType,
       attachment_url_whmem: existingUrl,
+      ide_empr: ideEmpr,
     } = resFile;
 
-    // Ya tiene URL permanente guardada → retornar directo
     if (existingUrl) {
       return { url: existingUrl, data: null, mimeType: contentType, fileSize: null, fileName: filename };
     }
 
     try {
-      const fileData = await this.ycloudService.downloadMedia(mediaId, Number(ideEmpr));
+      const fileData = await this.ycloudService.downloadMedia(mediaId, ideEmpr);
       const fileExtension = getFileExtension(contentType, filename);
       const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
       const publicUrl = `${envs.hostApi}/api/whatsapp/media/${savedName}`;

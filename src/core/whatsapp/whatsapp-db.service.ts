@@ -498,17 +498,20 @@ export class WhatsappDbService {
     async getFile(id: string) {
         const queryFile = new SelectQuery(`
             SELECT
-                ide_whmem,
-                attachment_id_whmem,
-                attachment_type_whmem,
-                attachment_name_whmem,
-                attachment_url_whmem,
-                attachment_size_whmem,
-                content_type_whmem,
-                phone_number_id_whmem,
-                tipo_whmem
-            FROM wha_mensaje
-            WHERE attachment_id_whmem = $1
+                m.ide_whmem,
+                m.attachment_id_whmem,
+                m.attachment_type_whmem,
+                m.attachment_name_whmem,
+                m.attachment_url_whmem,
+                m.attachment_size_whmem,
+                m.content_type_whmem,
+                m.phone_number_id_whmem,
+                m.tipo_whmem,
+                c.ide_empr
+            FROM wha_mensaje m
+            LEFT JOIN wha_cuenta c ON c.id_cuenta_whcue = m.phone_number_id_whmem
+                                  AND c.activo_whcue = TRUE
+            WHERE m.attachment_id_whmem = $1
         `);
         queryFile.addStringParam(1, id);
         return this.dataSource.createSingleQuery(queryFile);

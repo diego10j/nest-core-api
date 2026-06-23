@@ -62,9 +62,8 @@ export class WhatsappService {
   /**
    * Descarga un archivo multimedia desde WhatsApp y lo guarda en temporales
    */
-  async downloadMedia(ideEmpr: string, messageId: string): Promise<MediaFile> {
-    await this.assertConfig(Number(ideEmpr));
-    return this.whatsappApi.download(ideEmpr, messageId);
+  async downloadMedia(messageId: string): Promise<MediaFile> {
+    return this.whatsappApi.download(messageId);
   }
 
   /**
