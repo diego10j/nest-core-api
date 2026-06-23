@@ -704,8 +704,9 @@ export class YcloudService {
           this.whatsappGateway.sendReadMessageToClients(wamid);
         } else if (data.status === 'failed') {
           if (data.errors && data.errors.length > 0) {
-            updateQuery.values.set('error_whmem', data.errors[0].error_data?.details || data.errors[0].message);
-            updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`);
+            const errorDetail = (data.errors[0].error_data?.details || data.errors[0].message || '');
+            updateQuery.values.set('error_whmem', errorDetail.substring(0, 500));
+            updateQuery.values.set('code_error_whmem', `${data.errors[0].code} - ${data.errors[0].title}`.substring(0, 100));
           }
         }
 

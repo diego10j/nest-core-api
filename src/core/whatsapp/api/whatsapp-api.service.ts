@@ -428,19 +428,19 @@ export class WhatsappApiService {
       let data: any = undefined;
       // Crear el mensaje de imagen
 
-      const dtoIn: EnviarMensajeDto = {
+      const dtoIn: EnviarMensajeDto & HeaderParamsDto = {
         telefono: dto.telefono,
         tipo: dto.type,
         texto: null,
         idWts: '',
         mediaId,
-        // ideUsua: Number(dto.ideUsua),
-        // ideEmpr: Number(dto.ideEmpr),
-        // ideSucu: Number(dto.ideSucu),
-        // idePerf: 1,
-        // login: dto.login,
         fileName: dto.fileName,
         mimeType: file.mimetype,
+        ideUsua: dto.ideUsua,
+        ideEmpr: dto.ideEmpr,
+        ideSucu: dto.ideSucu,
+        idePerf: dto.idePerf,
+        login: dto.login,
       };
 
       switch (dto.type) {
