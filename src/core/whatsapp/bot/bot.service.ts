@@ -47,12 +47,15 @@ export class BotService implements OnModuleInit {
     texto: string,
     botActivoWhcha: boolean,
   ): Promise<void> {
+    this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha=${botActivoWhcha} texto="${texto}"`);
+
     // 1. ¿El bot global está activo para esta cuenta?
     const botActivo = await this.botConfig.isBotActive(ideWhcue);
-    if (!botActivo) return;
+    this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo}`);
+    if (!botActivo) { this.logger.warn(`[Bot] Bot global INACTIVO para ideWhcue=${ideWhcue}`); return; }
 
-    // 2. ¿El chat está en modo ASESOR (cliente pidió humano antes)?
-    if (!botActivoWhcha) return;
+    // 2. ¿El chat está en modo ASESOR?
+    if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
 
     // 3. Detección de "Asesor" en CUALQUIER estado (override universal)
     if (PALABRAS_ASESOR.test(texto)) {
@@ -114,10 +117,13 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcue: number, ideEmpr: number,
     templateSaludo: string, nombreBot: string,
   ): Promise<void> {
-    // Envía template de WhatsApp con botones (ya configurado en YCloud)
-    await this.ycloudService.sendTemplate(
-      ideEmpr, `+${waId}`, templateSaludo, 'es',
-      [], // sin componentes adicionales — los botones van en el template
+    // TODO: reemplazar por template aprobado cuando esté disponible
+    // await this.ycloudService.sendTemplate(ideEmpr, `+${waId}`, templateSaludo, 'es', []);
+    await this.sendText(ideEmpr, waId,
+      `¡Hola! Soy *${nombreBot}*, la asistente virtual de DIQUIMEC ✨\n\n` +
+      `Estoy aquí para ayudarte con información de nuestros productos, como catálogos de precios, dirección, horarios de atención y también para gestionar tu solicitud de cotización.\n\n` +
+      `¿Deseas continuar con la atención a través de este asistente virtual o prefieres recibir atención personalizada de uno de nuestros asesores comerciales?\n\n` +
+      `Por favor responde *Sí* para continuar con el asistente o *No* para hablar con un asesor.`,
     );
   }
 

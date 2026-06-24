@@ -581,14 +581,15 @@ export class YcloudService {
       await this.windowService.registerInboundMessage(waId, phoneNumberId);
       this.whatsappGateway.sendMessageToClients(waId);
 
-      // Disparar bot si hay texto (texto, botón de template o respuesta interactiva)
       const textoBot = data.text?.body
         || data.button?.payload
         || data.interactive?.button_reply?.id
         || data.interactive?.list_reply?.id
         || '';
+
+      this.logger.log(`[Bot-diag] ideWhcha=${ideWhcha} phoneNumberId=${phoneNumberId} textoBot="${textoBot}" handlerSet=${!!this.messageHandler}`);
+
       if (textoBot) {
-        // Obtener cuenta (ideEmpr + ideWhcue) y estado bot del chat en un solo query
         const infoRow = await this.dataSource.pool.query<{
           ide_empr: number; ide_whcue: number; bot_activo_whcha: boolean;
         }>(
@@ -601,13 +602,17 @@ export class YcloudService {
            LIMIT 1`,
           [ideWhcha, phoneNumberId],
         );
+
+        this.logger.log(`[Bot-diag] infoRow.rowCount=${infoRow.rowCount} | data=${JSON.stringify(infoRow.rows[0] ?? null)}`);
+
         if (infoRow.rowCount > 0) {
           const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
-          // Ejecutar en background — no bloquear el 200 al webhook de YCloud
           if (this.messageHandler) {
             this.messageHandler(
               waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
             ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
+          } else {
+            this.logger.warn(`[Bot-diag] messageHandler no registrado — bot no puede responder`);
           }
         }
       }
