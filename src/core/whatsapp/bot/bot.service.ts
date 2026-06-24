@@ -68,8 +68,8 @@ Puedes buscar lo que necesitas y solicitar tu cotización directamente.
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
 const MSG_ES_CLIENTE_BODY = `Para ayudarte de la mejor manera 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
 const BTN_ES_CLIENTE = [
-  { id: 'SI_CLIENTE', title: '✅ Sí, ya compré antes' },
-  { id: 'NO_CLIENTE', title: '🆕 No, es mi primera vez' },
+  { id: 'SI_CLIENTE', title: '✅ Sí, soy cliente' },
+  { id: 'NO_CLIENTE', title: '❌ No' },
 ];
 
 // ─── Mensaje de inicio de cotización ─────────────────────────────────────────
@@ -628,7 +628,7 @@ export class BotService implements OnModuleInit {
         `Perfecto 👍 Ahora necesito la dirección de entrega.\n\n¿Cómo prefieres indicarla?`,
         [
           { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
-          { id: 'DIR_UBICACION', title: '📍 Compartir ubicación' },
+          { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
         ],
       );
       return;
