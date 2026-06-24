@@ -21,9 +21,9 @@ export class BotSessionService {
 
   constructor(private readonly dataSource: DataSourceService) {}
 
-  async getOrCreate(ideWhcha: number, ideWhcue: number): Promise<BotSesion> {
-    const existing = await this.getActiva(ideWhcha);
-    if (existing) return existing;
+  async getOrCreate(ideWhcha: number, ideWhcue: number): Promise<{ sesion: BotSesion; expirada: boolean }> {
+    const result = await this.getActiva(ideWhcha);
+    if (result.sesion) return result;
 
     const ins = new InsertQuery('wha_bot_sesion', 'ide_whbse');
     ins.values.set('ide_whcha', ideWhcha);
@@ -34,12 +34,15 @@ export class BotSessionService {
     ins.values.set('intentos_fallo', 0);
     await this.dataSource.createQuery(ins);
 
-    return this.getActiva(ideWhcha);
+    const created = await this.getActiva(ideWhcha);
+    return { sesion: created.sesion, expirada: result.expirada };
   }
 
-  private readonly SESSION_TTL_HOURS = 4; // sesiones sin actividad > 4h se cierran
+  // Estándar bots conversacionales: 20 min sin actividad → sesión expira
+  // Parametrizable: cambiar SESSION_TTL_MINUTES según necesidad del negocio
+  static readonly SESSION_TTL_MINUTES = 20;
 
-  async getActiva(ideWhcha: number): Promise<BotSesion | null> {
+  async getActiva(ideWhcha: number): Promise<{ sesion: BotSesion | null; expirada: boolean }> {
     const q = new SelectQuery(`
       SELECT ide_whbse, ide_whcha, ide_whcue, estado,
              datos_sesion, activa, intentos_fallo, hora_actua
@@ -50,27 +53,45 @@ export class BotSessionService {
     `);
     q.addParam(1, ideWhcha);
     const row = await this.dataSource.createSingleQuery(q);
-    if (!row) return null;
+    if (!row) return { sesion: null, expirada: false };
 
-    // Cerrar sesión si lleva más de SESSION_TTL_HOURS sin actividad
-    if (row.hora_actua) {
-      const horasSinActividad = (Date.now() - new Date(row.hora_actua).getTime()) / 3_600_000;
-      if (horasSinActividad > this.SESSION_TTL_HOURS) {
+    // Estados terminales no cuentan el timeout (INICIO/ESPERANDO_CONFIRMACION permiten más tiempo)
+    const estadosConTimeout = ['ATENCION_LIBRE', 'PREGUNTA_ES_CLIENTE', 'IDENTIFICACION',
+      'DATOS_NUEVO_CLIENTE', 'SELECCION_PRODUCTOS', 'SELECCION_MULTIPLE', 'ESPERANDO_CANTIDAD',
+      'CONFIRMACION_PRODUCTOS', 'DATOS_ENVIO', 'DATOS_PAGO'];
+
+    if (row.hora_actua && estadosConTimeout.includes(row.estado)) {
+      const minutosSinActividad = (Date.now() - new Date(row.hora_actua).getTime()) / 60_000;
+      if (minutosSinActividad > BotSessionService.SESSION_TTL_MINUTES) {
         await this.dataSource.pool.query(
           `UPDATE wha_bot_sesion SET activa = FALSE, estado = 'EXPIRADO', hora_actua = NOW()
            WHERE ide_whbse = $1`,
           [row.ide_whbse],
         );
-        return null;
+        return { sesion: null, expirada: true };
       }
     }
 
-    return {
+    // Sesiones muy largas en INICIO/ESPERANDO (sin avanzar) → expiran en 4h
+    if (row.hora_actua && !estadosConTimeout.includes(row.estado)) {
+      const horasSinActividad = (Date.now() - new Date(row.hora_actua).getTime()) / 3_600_000;
+      if (horasSinActividad > 4) {
+        await this.dataSource.pool.query(
+          `UPDATE wha_bot_sesion SET activa = FALSE, estado = 'EXPIRADO', hora_actua = NOW()
+           WHERE ide_whbse = $1`,
+          [row.ide_whbse],
+        );
+        return { sesion: null, expirada: false };  // no avanzó → no despedida
+      }
+    }
+
+    const sesion: BotSesion = {
       ...row,
       datos_sesion: typeof row.datos_sesion === 'string'
         ? JSON.parse(row.datos_sesion)
         : (row.datos_sesion as DatosSesion),
     } as BotSesion;
+    return { sesion, expirada: false };
   }
 
   async update(ideWhbse: number, estado: BotState, datos: DatosSesion): Promise<void> {

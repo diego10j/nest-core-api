@@ -141,7 +141,16 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    let sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+    const { sesion: sesionInicial, expirada } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+    let sesion = sesionInicial;
+
+    // Sesión expirada por inactividad → avisar y nueva sesión
+    if (expirada) {
+      await this.sendText(ideEmpr, waId,
+        `Tu sesión anterior finalizó por inactividad ⏱️\n\nEscribe *Hola* cuando estés listo y con mucho gusto te atenderé de nuevo 😊`,
+      );
+      return;
+    }
     // this.logger.log(`[Bot] sesion.estado=${sesion?.estado} ide_whbse=${sesion?.ide_whbse}`);
     const config = await this.botConfig.getConfig(ideWhcue);
     this.logger.debug(`[Bot] config=${config ? 'OK nombre_bot=' + config.nombre_bot : 'NULL'}`);
@@ -188,7 +197,8 @@ export class BotService implements OnModuleInit {
     ];
     if (REGEX_SALUDO.test(texto.trim()) && estadosQueReinician.includes(sesion.estado as BotState)) {
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
-      sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      const { sesion: sesionNueva } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      sesion = sesionNueva;
       this.logger.log(`[Bot] Saludo detectado en estado ${sesion.estado} → sesión reiniciada`);
     }
 
@@ -331,7 +341,10 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     this.logger.debug(`[Bot] handleAtencionLibre texto="${texto}"`);
     const datos = sesion.datos_sesion as DatosSesion;
-    const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
+
+    // Afirmación corta después de respuesta informativa → interpretar como querer cotizar
+    const esAfirmacion = /^(si|sí|s[ií]|si!|sí!|claro|ok|okey|dale|quiero|me interesa|adelante|por favor|porfa)[\s!.,]*$/i.test(texto.trim());
+    const tipoConsulta = esAfirmacion ? 'PRODUCTO' : await this.botGpt.clasificarConsulta(texto);
     this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
@@ -745,29 +758,19 @@ export class BotService implements OnModuleInit {
       const provinciaMemoria  = datos.envio?.provincia;
       const dirRegistrada     = datos.cliente?.direccion_registrada;
 
-      // Si tiene provincia y dirección guardadas → confirmar en un solo mensaje
-      if (provinciaMemoria && (dirRegistrada || datos.memoria_cargada)) {
-        const resumen = dirRegistrada
-          ? `📌 *Dirección:* ${dirRegistrada}\n🗺️ *Provincia:* ${provinciaMemoria}`
-          : `🗺️ *Provincia:* ${provinciaMemoria}`;
+      // Si tiene dirección O provincia guardada → confirmar todo en un solo mensaje
+      if (dirRegistrada || provinciaMemoria) {
+        const partes: string[] = [];
+        if (dirRegistrada) partes.push(`📌 *Dirección:* ${dirRegistrada}`);
+        if (provinciaMemoria) partes.push(`🗺️ *Provincia:* ${provinciaMemoria}`);
+        const resumen = partes.join('\n');
         const nuevosDatos: DatosSesion = { ...datos, envio: { ...datos.envio, pendiente_campo: 'confirmar_envio_guardado' } };
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
           `Para el envío, tengo registrada la siguiente información:\n\n${resumen}\n\n¿La utilizamos para esta cotización?`,
           [
-            { id: 'ENV_MISMO',  title: '✅ Sí, son correctos' },
+            { id: 'ENV_MISMO',   title: '✅ Sí, son correctos' },
             { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
-          ],
-        );
-      } else if (dirRegistrada) {
-        // Solo dirección registrada (sin provincia en memoria)
-        const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'usar_direccion_existente' } };
-        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
-        await this.sendButtons(ideEmpr, waId,
-          `Tu dirección registrada es:\n📌 *${dirRegistrada}*\n\n¿Deseas usar esta dirección de entrega?`,
-          [
-            { id: 'USAR_DIR_SI',  title: '✅ Sí, usar esta' },
-            { id: 'USAR_DIR_NO',  title: '📝 Ingresar otra' },
           ],
         );
       } else {
@@ -1061,7 +1064,7 @@ export class BotService implements OnModuleInit {
     if (t === 'NUEVA_COTIZACION' || /NUEVA|COTIZAR|OTRO PRODUCTO|OTRA COTIZ/i.test(texto)) {
       // Cerrar la sesión actual y crear una nueva para empezar de cero
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
-      const nuevaSesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      const { sesion: nuevaSesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
       await this.botSession.update(nuevaSesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
         { productos: [], texto_inicial: '' });
       await this.sendButtons(ideEmpr, waId, `¡Con gusto! 😊 ¿Eres cliente registrado con nosotros?`, [
@@ -1072,8 +1075,14 @@ export class BotService implements OnModuleInit {
     }
 
     if (t === 'HABLAR_ASESOR' || PALABRAS_ASESOR.test(texto)) {
+      // Cerrar sesión antes de derivar para evitar re-procesos
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
+      await this.sendText(ideEmpr, waId,
+        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n¡Que tengas un excelente día! 🌟`,
+      );
+      // null = no enviar mensaje adicional al cliente (ya lo enviamos arriba)
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        `El cliente desea hablar con un asesor tras recibir su cotización.`,
+        null, `Cliente solicitó asesor tras recibir cotización.`,
       );
       return;
     }
