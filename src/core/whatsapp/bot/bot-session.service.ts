@@ -102,6 +102,35 @@ export class BotSessionService {
     await this.dataSource.createQuery(upd);
   }
 
+  /** Recupera datos del cliente y envío de sesiones completadas anteriores */
+  async getMemoriaCliente(ideWhcha: number): Promise<{
+    cliente?: import('./interfaces/bot-session.interface').ClienteSesion;
+    provincia?: string;
+  } | null> {
+    const res = await this.dataSource.pool.query(
+      `SELECT datos_sesion
+       FROM wha_bot_sesion
+       WHERE ide_whcha = $1
+         AND activa = FALSE
+         AND estado NOT IN ('EXPIRADO','CANCELADO')
+         AND datos_sesion IS NOT NULL
+         AND datos_sesion::jsonb -> 'cliente' ->> 'nombres' IS NOT NULL
+       ORDER BY hora_actua DESC
+       LIMIT 1`,
+      [ideWhcha],
+    );
+    if (!res.rowCount) return null;
+    const datos: import('./interfaces/bot-session.interface').DatosSesion =
+      typeof res.rows[0].datos_sesion === 'string'
+        ? JSON.parse(res.rows[0].datos_sesion)
+        : res.rows[0].datos_sesion;
+    if (!datos?.cliente?.nombres) return null;
+    return {
+      cliente: datos.cliente,
+      provincia: datos.envio?.provincia,
+    };
+  }
+
   /** Obtiene historial de mensajes del chat para contexto de GPT */
   async getHistorialMensajes(ideWhcha: number, limit = 10): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
     const q = new SelectQuery(`

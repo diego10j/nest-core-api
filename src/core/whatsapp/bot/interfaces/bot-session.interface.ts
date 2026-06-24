@@ -28,11 +28,12 @@ export interface EnvioSesion {
   provincia?: string;
   latitud?: number;
   longitud?: number;
-  pendiente_campo?: 'usar_direccion_existente' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
+  pendiente_campo?: 'confirmar_envio_guardado' | 'usar_direccion_existente' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
 }
 
 export interface DatosSesion {
   texto_inicial?: string;
+  memoria_cargada?: boolean;  // indica que los datos del cliente vienen de sesión anterior
   cliente?: ClienteSesion;
   productos: ProductoSesion[];
   opciones_producto?: OpcionProducto[];

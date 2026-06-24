@@ -488,6 +488,38 @@ export class YcloudService {
     return { messageId };
   }
 
+  async sendInteractiveList(
+    ideEmpr: number,
+    to: string,
+    body: string,
+    buttonLabel: string,
+    rows: { id: string; title: string; description?: string }[],
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const payload = {
+      from: config.displayPhoneNumber,
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: body },
+        action: {
+          button: buttonLabel,
+          sections: [{ rows: rows.map((r) => ({ id: r.id, title: r.title.substring(0, 24), description: r.description?.substring(0, 72) })) }],
+        },
+      },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+    await this.saveMessageSent(
+      { telefono: to, tipo: 'interactive', texto: body, idWts: messageId, tiempoRespuesta: null },
+      config,
+    );
+    return { messageId };
+  }
+
   async sendInteractiveButtons(
     ideEmpr: number,
     to: string,

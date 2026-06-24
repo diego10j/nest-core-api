@@ -78,9 +78,11 @@ const BTN_ES_CLIENTE = [
 // ─── Mensaje de inicio de cotización ─────────────────────────────────────────
 const MSG_INICIO_COTIZACION = `¡Perfecto! Vamos a preparar tu cotización 📋
 
-Por favor dime el *nombre del producto* que necesitas cotizar.
-_(Puedes agregar varios productos uno por uno)_
-Cuando termines de agregar todos, escribe *FIN*.`;
+¿Qué producto necesitas? Escribe solo el nombre.
+
+_Ejemplo: *Cera de palma*_
+
+Cuando termines de agregar todos los productos escribe *FIN*.`;
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -157,6 +159,25 @@ export class BotService implements OnModuleInit {
 
     const nombreBot = config.nombre_bot || 'QuimIA';
 
+    // Cargar memoria de sesiones anteriores en sesiones nuevas (INICIO)
+    if (sesion.estado === BotState.INICIO && !sesion.datos_sesion?.memoria_cargada) {
+      const memoria = await this.botSession.getMemoriaCliente(ideWhcha);
+      if (memoria?.cliente) {
+        const datosConMemoria: DatosSesion = {
+          ...sesion.datos_sesion,
+          productos: [],
+          cliente: { ...memoria.cliente, pendiente_campo: undefined },
+          memoria_cargada: true,
+        };
+        if (memoria.provincia) {
+          datosConMemoria.envio = { provincia: memoria.provincia };
+        }
+        await this.botSession.update(sesion.ide_whbse, BotState.INICIO, datosConMemoria);
+        sesion = { ...sesion, datos_sesion: datosConMemoria };
+        this.logger.log(`[Bot] Memoria cargada para ideWhcha=${ideWhcha}: ${memoria.cliente.nombres}`);
+      }
+    }
+
     // Si llega un saludo en un estado distinto de INICIO → resetear sesión
     const estadosQueReinician = [
       BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.ESPERANDO_CANTIDAD,
@@ -229,25 +250,22 @@ export class BotService implements OnModuleInit {
     waId: string, ideWhcue: number, ideEmpr: number,
     ideWhbse: number, texto: string, nombreBot: string, datosSesion: DatosSesion,
   ): Promise<void> {
-    await this.botSession.update(ideWhbse, BotState.ESPERANDO_CONFIRMACION, {
+    const datosActualizados: DatosSesion = {
       ...datosSesion,
       productos: datosSesion?.productos ?? [],
       texto_inicial: texto,
-    });
+    };
+    await this.botSession.update(ideWhbse, BotState.ESPERANDO_CONFIRMACION, datosActualizados);
 
-    await this.sendButtons(ideEmpr, waId,
-      `¡Hola! Soy *${nombreBot}*, la asistente virtual de *DIQUIMEC* ✨\n\n` +
-      `Estoy aquí para ayudarte con:\n` +
-      `🧪 Catálogos y precios de productos\n` +
-      `📋 Solicitudes de cotización\n` +
-      `📍 Información de ubicación y horarios\n` +
-      `🚚 Consultas sobre envíos\n\n` +
-      `¿Deseas continuar con el asistente virtual o prefieres atención personalizada?`,
-      [
-        { id: 'SI', title: '✅ Continuar con bot' },
-        { id: 'NO', title: '👤 Hablar con asesor' },
-      ],
-    );
+    const nombreCliente = datosSesion?.cliente?.nombres;
+    const saludo = nombreCliente
+      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *DIQUIMEC*.\n\n¿En qué puedo ayudarte hoy?`
+      : `¡Hola! Soy *${nombreBot}*, la asistente virtual de *DIQUIMEC* ✨\n\nEstoy aquí para ayudarte con cotizaciones, precios, ubicación y más.\n\n¿Deseas continuar con el asistente o prefieres atención personalizada?`;
+
+    await this.sendButtons(ideEmpr, waId, saludo, [
+      { id: 'SI', title: '✅ Continuar con bot' },
+      { id: 'NO', title: '👤 Hablar con asesor' },
+    ]);
   }
 
   private async handleConfirmacion(
@@ -268,8 +286,17 @@ export class BotService implements OnModuleInit {
       const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
 
       if (tipoConsulta === 'PRODUCTO') {
-        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+        if (datos.cliente?.nombres && datos.memoria_cargada) {
+          // Tiene memoria → saltar pregunta de cliente
+          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
+            { ...datos, productos: [] });
+          await this.sendText(ideEmpr, waId,
+            MSG_INICIO_COTIZACION,
+          );
+        } else {
+          await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+          await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+        }
         return;
       }
 
@@ -312,13 +339,21 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      try {
-        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-      } catch (e) {
-        this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
-        throw e;
+      if (datos.cliente?.nombres && datos.memoria_cargada) {
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
+          { ...datos, productos: [] });
+        await this.sendText(ideEmpr, waId,
+          `Con gusto 😊 Usaré tus datos guardados.\n\n${MSG_INICIO_COTIZACION}`,
+        );
+      } else {
+        try {
+          await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+        } catch (e) {
+          this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
+          throw e;
+        }
+        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
       }
-      await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
       return;
     }
 
@@ -483,33 +518,43 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const nombreBuscado = texto.trim();
-    let resultados = await this.botTools.buscarProductos(nombreBuscado, ideEmpr);
+    // Limpiar el texto: extraer solo el nombre del producto (quitar cantidades como "25kg", "5 litros")
+    const textoOriginal = texto.trim();
+    const nombreBuscado = textoOriginal
+      .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|unidad[s]?|galon[s]?|gal[s]?|lb)\b/gi, '')
+      .replace(/\b\d+\b/g, '')       // quitar números sueltos
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    if (nombreBuscado !== textoOriginal) {
+      this.logger.log(`[Bot] Nombre limpiado: "${textoOriginal}" → "${nombreBuscado}"`);
+    }
+
+    let resultados = await this.botTools.buscarProductos(nombreBuscado || textoOriginal, ideEmpr);
 
     // Fallback 1: reducir palabras progresivamente
     if (!resultados.length) {
-      const palabras = nombreBuscado.split(/\s+/).filter(Boolean);
+      const palabras = (nombreBuscado || textoOriginal).split(/\s+/).filter(Boolean);
       for (let n = palabras.length - 1; n >= 2; n--) {
         const subTexto = palabras.slice(0, n).join(' ');
         resultados = await this.botTools.buscarProductos(subTexto, ideEmpr);
         if (resultados.length > 0) {
-          this.logger.log(`[Bot] Búsqueda reducida: "${nombreBuscado}" → "${subTexto}" → ${resultados.length}`);
+          this.logger.log(`[Bot] Búsqueda reducida → "${subTexto}" → ${resultados.length}`);
           break;
         }
       }
     }
 
-    // Fallback 2: palabras significativas con score (ignora stop words y busca coincidencias)
+    // Fallback 2: palabras significativas
     if (!resultados.length) {
-      resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado, ideEmpr);
-      if (resultados.length > 0) {
-        this.logger.log(`[Bot] Búsqueda por palabras clave: "${nombreBuscado}" → ${resultados.length} resultado(s)`);
-      }
+      resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado || textoOriginal, ideEmpr);
     }
 
     if (!resultados.length) {
       await this.sendText(ideEmpr, waId,
-        `No encontré ningún producto con ese nombre 🤔\n\nPuedes explorar nuestro catálogo en:\n👉 https://diquimec.com.ec/product\n\nO intenta escribir el nombre principal del producto _(ej: cera de soya, texapon, betaína)_.`,
+        `No encontré ningún producto con ese nombre 🤔\n\n` +
+        `💡 *Tip:* Escribe solo el nombre principal, sin cantidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_\n\n` +
+        `O explora nuestro catálogo: 👉 https://diquimec.com.ec/product`,
       );
       return;
     }
@@ -548,10 +593,27 @@ export class BotService implements OnModuleInit {
     const nuevosDatos: DatosSesion = { ...datos, opciones_producto: opciones };
     await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
 
-    const listaTexto = opciones.map((o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`).join('\n');
-    await this.sendText(ideEmpr, waId,
-      `Encontré varios productos que coinciden 🔍 Selecciona el número que corresponde al que necesitas:\n\n${listaTexto}\n\n_Responde con el número de la opción_`,
-    );
+    // Usar lista interactiva de WhatsApp (tap para seleccionar, no tipear número)
+    const rows = opciones.map((o) => ({
+      id: String(o.numero),
+      title: this.displayNombreProducto(o),
+      description: o.siglas_unidad ? `Unidad: ${o.nombre_unidad}` : undefined,
+    }));
+
+    try {
+      await this.ycloudService.sendInteractiveList(
+        ideEmpr, `+${waId}`,
+        `Encontré ${opciones.length} productos que coinciden 🔍\nSelecciona el que necesitas:`,
+        'Ver productos',
+        rows,
+      );
+    } catch {
+      // Fallback a texto si la lista no es soportada
+      const listaTexto = opciones.map((o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`).join('\n');
+      await this.sendText(ideEmpr, waId,
+        `Encontré varios productos 🔍 Responde con el número:\n\n${listaTexto}`,
+      );
+    }
   }
 
   private async handleSeleccionMultiple(
@@ -654,9 +716,25 @@ export class BotService implements OnModuleInit {
     }
 
     if (confirma) {
-      const dirRegistrada = datos.cliente?.direccion_registrada;
-      if (dirRegistrada) {
-        // Cliente con dirección registrada → preguntar si la usa
+      const provinciaMemoria  = datos.envio?.provincia;
+      const dirRegistrada     = datos.cliente?.direccion_registrada;
+
+      // Si tiene provincia y dirección guardadas → confirmar en un solo mensaje
+      if (provinciaMemoria && (dirRegistrada || datos.memoria_cargada)) {
+        const resumen = dirRegistrada
+          ? `📌 *Dirección:* ${dirRegistrada}\n🗺️ *Provincia:* ${provinciaMemoria}`
+          : `🗺️ *Provincia:* ${provinciaMemoria}`;
+        const nuevosDatos: DatosSesion = { ...datos, envio: { ...datos.envio, pendiente_campo: 'confirmar_envio_guardado' } };
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
+        await this.sendButtons(ideEmpr, waId,
+          `Perfecto 👍 ¿Usamos los datos de envío anteriores?\n\n${resumen}`,
+          [
+            { id: 'ENV_MISMO',  title: '✅ Sí, son correctos' },
+            { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
+          ],
+        );
+      } else if (dirRegistrada) {
+        // Solo dirección registrada (sin provincia en memoria)
         const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'usar_direccion_existente' } };
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
@@ -692,6 +770,33 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const envio = datos.envio ?? {};
+
+    // Paso -1 — confirmación de datos de envío guardados (provincia + dirección)
+    if (envio.pendiente_campo === 'confirmar_envio_guardado') {
+      const t = texto.trim().toUpperCase();
+      if (t === 'ENV_MISMO') {
+        // Usar provincia y dirección guardadas → ir directo a pago
+        const dir = datos.cliente?.direccion_registrada || envio.direccion || '';
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO,
+          { ...datos, envio: { ...envio, direccion: dir || undefined, pendiente_campo: undefined } });
+        await this.sendButtons(ideEmpr, waId, `¿Cuál es tu forma de pago preferida? 💳`, [
+          { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
+          { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
+        ]);
+        return;
+      }
+      // Quiere cambiar → flujo normal
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+        { ...datos, envio: { pendiente_campo: 'tipo_direccion' } });
+      await this.sendButtons(ideEmpr, waId,
+        `¿Cómo prefieres indicar la nueva dirección?`,
+        [
+          { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+          { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+        ],
+      );
+      return;
+    }
 
     // Paso 0 — cliente con dirección registrada: ¿usarla o no?
     if (envio.pendiente_campo === 'usar_direccion_existente') {
@@ -841,11 +946,12 @@ export class BotService implements OnModuleInit {
       );
 
       if (resultado.automatica && resultado.pdfBuffer) {
-        // ── CASO 1: Todos con precio + en catálogo ──
-        const detalle = resultado.productosConPrecio.map(
-          (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — *$${p.precio_total?.toFixed(2)}*`,
-        ).join('\n');
-        const total = resultado.productosConPrecio.reduce((s, p) => s + (p.precio_total ?? 0), 0);
+        // ── CASO 1: Automático — mostrar resumen financiero ──
+        const baseSinIva = resultado.baseGrabada ?? 0;
+        const tarifa0    = resultado.baseTarifa0  ?? 0;
+        const iva        = resultado.valorIva     ?? 0;
+        const totalFinal = resultado.total        ?? 0;
+        const pctIva     = resultado.tarifaIva    ?? 15;
 
         // Enviar PDF como documento usando link público (evita upload a YCloud que falla)
         try {
@@ -865,12 +971,19 @@ export class BotService implements OnModuleInit {
           this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
         }
 
-        await this.sendText(ideEmpr, waId,
-          `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n` +
-          `📋 *Resumen:*\n${detalle}\n\n` +
-          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n\n` +
+        const lineas = [
+          `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n`,
+          `📋 Subtotal tarifa 0%:  *$${tarifa0.toFixed(2)}*`,
+          `📋 Subtotal gravado:    *$${baseSinIva.toFixed(2)}*`,
+          `📋 IVA ${pctIva}%:             *$${iva.toFixed(2)}*`,
+          `💰 *Total:               $${totalFinal.toFixed(2)}*`,
+          ``,
+          `📄 Adjuntamos tu cotización en PDF con el detalle completo.`,
+          ``,
           `Uno de nuestros asesores confirmará disponibilidad y coordinará el pago y envío 😊`,
-        );
+        ];
+
+        await this.sendText(ideEmpr, waId, lineas.join('\n'));
 
         // Esperar 5s para que el PDF llegue antes que el mensaje de seguimiento
         await new Promise((r) => setTimeout(r, 5000));

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getCurrentDate } from 'src/util/helpers/date-util';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { SelectQuery } from 'src/core/connection/helpers';
 import { ProformasService } from 'src/core/modules/proformas/proformas.service';
 
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
@@ -27,11 +28,17 @@ function toLocalPhone(phone: string): string {
 export interface ResultadoProforma {
   ide_cccpr: number;
   secuencial: string;
-  automatica: boolean;          // todos los productos tienen precio Y están en catálogo
-  conPrecio: boolean;           // todos tienen precio pero alguno no está en catálogo
+  automatica: boolean;
+  conPrecio: boolean;
   productosConPrecio: ProductoSesion[];
   productosSinPrecio: ProductoSesion[];
   pdfBuffer?: Buffer;
+  // Totales financieros (solo cuando automatica=true)
+  baseGrabada?: number;
+  baseTarifa0?: number;
+  valorIva?: number;
+  tarifaIva?: number;
+  total?: number;
 }
 
 @Injectable()
@@ -50,21 +57,21 @@ export class BotProformaService {
     ideEmpr: number,
     nombreBot: string,
   ): Promise<ResultadoProforma> {
-    const db = this.dataSource.pool;
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
     // Obtener tasa de IVA actual de con_porcen_impues (decimal: 0.15 para 15%)
-    const ivaRow = await db.query<{ iva: number }>(
-      `SELECT COALESCE(porcentaje_cnpim, 0.15) AS iva
-       FROM con_porcen_impues
-       WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-         AND activo_cnpim = TRUE
-       ORDER BY fecha_desde_cnpim DESC
-       LIMIT 1`,
-    );
-    const ivaDecimal: number = Number(ivaRow.rows[0]?.iva ?? 0.15);  // e.g. 0.15
-    const tarifaIva: number  = Math.round(ivaDecimal * 100);          // e.g. 15 (%)
+    const ivaQ = new SelectQuery(`
+      SELECT COALESCE(porcentaje_cnpim, 0.15) AS iva
+      FROM con_porcen_impues
+      WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+        AND activo_cnpim = TRUE
+      ORDER BY fecha_desde_cnpim DESC
+      LIMIT 1
+    `);
+    const ivaRow = await this.dataSource.createSingleQuery(ivaQ);
+    const ivaDecimal: number = Number(ivaRow?.iva ?? 0.15);
+    const tarifaIva: number  = Math.round(ivaDecimal * 100);
     this.logger.log(`[Proforma] IVA actual: ${tarifaIva}% (${ivaDecimal})`);
 
     for (const prod of datos.productos) {
@@ -146,14 +153,30 @@ export class BotProformaService {
         correo      = cliente.correo || correo;
 
         // Obtener ide_getid real del cliente desde gen_persona
-        const personaRow = await db.query(
-          `SELECT ide_getid, correo_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`,
-          [ideGeper],
-        );
-        if (personaRow.rowCount > 0) {
-          ideGetid = personaRow.rows[0].ide_getid ?? 3;
-          correo   = personaRow.rows[0].correo_geper || correo;
+        const pQ = new SelectQuery(`SELECT ide_getid, correo_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`);
+        pQ.addIntParam(1, ideGeper);
+        const personaRow = await this.dataSource.createSingleQuery(pQ);
+        if (personaRow) {
+          ideGetid = personaRow.ide_getid ?? 3;
+          correo   = personaRow.correo_geper || correo;
         }
+      }
+
+      // Buscar ide_geprov por nombre de provincia (coincidencia flexible)
+      let ideGeprov: number | null = null;
+      const provinciaInput = datos.envio?.provincia?.trim();
+      if (provinciaInput) {
+        const provQ = new SelectQuery(`
+          SELECT ide_geprov FROM gen_provincia
+          WHERE unaccent(UPPER(nombre_geprov)) ILIKE '%' || unaccent(UPPER($1)) || '%'
+             OR unaccent(UPPER($1)) ILIKE '%' || unaccent(UPPER(nombre_geprov)) || '%'
+          ORDER BY LENGTH(nombre_geprov) ASC
+          LIMIT 1
+        `);
+        provQ.addParam(1, provinciaInput);
+        const provRow = await this.dataSource.createSingleQuery(provQ);
+        ideGeprov = provRow?.ide_geprov ?? null;
+        this.logger.log(`[Proforma] Provincia "${provinciaInput}" → ide_geprov=${ideGeprov}`);
       }
 
       // notas_cccpr: coordenadas GPS en JSON si el cliente compartió ubicación
@@ -163,7 +186,7 @@ export class BotProformaService {
         ? JSON.stringify({ lat: latitud, lng: longitud })
         : null;
 
-      await db.query(`
+      await this.dataSource.pool.query(`
         UPDATE cxc_cabece_proforma
         SET
           ide_cctpr         = $2,
@@ -177,7 +200,9 @@ export class BotProformaService {
           telefono_cccpr    = $10,
           direccion_cccpr   = $11,
           notas_cccpr       = COALESCE($12, notas_cccpr),
-          ide_vgven         = COALESCE($13, ide_vgven)
+          ide_vgven         = COALESCE($13, ide_vgven),
+          observacion_cccpr = $14,
+          ide_geprov        = COALESCE($15, ide_geprov)
         WHERE ide_cccpr = $1
       `, [
         ide_cccpr,
@@ -193,6 +218,8 @@ export class BotProformaService {
         datos.envio?.direccion || '',
         notasGps,
         datos.cliente?.ide_vgven || null,
+        'LA COTIZACIÓN NO INCLUYE COSTO DE ENVÍO.',
+        ideGeprov,
       ]);
       this.logger.log(`[Proforma] Cabecera WhatsApp actualizada ide_cccpr=${ide_cccpr} ide_geper=${ideGeper}`);
     } catch (err) {
@@ -204,7 +231,7 @@ export class BotProformaService {
       for (const p of productosConPrecio) {
         try {
           const totalSinIva = Math.round(p.precio_unitario * p.cantidad * 100) / 100;
-          await db.query(
+          await this.dataSource.pool.query(
             `UPDATE cxc_deta_proforma
              SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
@@ -216,23 +243,33 @@ export class BotProformaService {
         }
       }
 
-      // Recalcular totales cabecera con IVA correcto
+      // Recalcular totales cabecera con IVA correcto + utilidad desde detalles
       try {
         const baseGrabada = productosConPrecio.reduce((s, p) => s + Math.round(p.precio_unitario * p.cantidad * 100) / 100, 0);
         const valorIva    = Math.round(baseGrabada * ivaDecimal * 100) / 100;
         const total       = Math.round((baseGrabada + valorIva) * 100) / 100;
 
-        await db.query(
+        // Sumar utilidad desde los detalles (si tienen precio_compra configurado)
+        const utilQ = new SelectQuery(`
+          SELECT COALESCE(SUM(COALESCE(utilidad_ccdpr, 0)), 0) AS utilidad
+          FROM cxc_deta_proforma WHERE ide_cccpr = $1
+        `);
+        utilQ.addIntParam(1, ide_cccpr);
+        const utilRow = await this.dataSource.createSingleQuery(utilQ);
+        const utilidad = Number(utilRow?.utilidad ?? 0);
+
+        await this.dataSource.pool.query(
           `UPDATE cxc_cabece_proforma
            SET base_grabada_cccpr = $2,
                base_tarifa0_cccpr = 0,
                tarifa_iva_cccpr   = $3,
                valor_iva_cccpr    = $4,
-               total_cccpr        = $5
+               total_cccpr        = $5,
+               utilidad_cccpr     = $6
            WHERE ide_cccpr = $1`,
-          [ide_cccpr, baseGrabada, tarifaIva, valorIva, total],
+          [ide_cccpr, baseGrabada, tarifaIva, valorIva, total, utilidad],
         );
-        this.logger.log(`[Proforma] Cabecera: base=${baseGrabada} tarifa=${tarifaIva}% iva=${valorIva} total=${total}`);
+        this.logger.log(`[Proforma] Totales → base_grabada=${baseGrabada} tarifa=${tarifaIva}% iva=${valorIva} total=${total} utilidad=${utilidad}`);
       } catch (err) {
         this.logger.warn(`[Proforma] No se actualizaron totales de cabecera: ${err.message}`);
       }
@@ -240,11 +277,10 @@ export class BotProformaService {
 
     let pdfBuffer: Buffer | undefined;
     if (automatica) {
-      const check = await db.query<{ total: number }>(
-        `SELECT COALESCE(total_cccpr, 0) AS total FROM cxc_cabece_proforma WHERE ide_cccpr = $1`,
-        [ide_cccpr],
-      );
-      const totalProforma = Number(check.rows[0]?.total ?? 0);
+      const checkQ = new SelectQuery(`SELECT COALESCE(total_cccpr, 0) AS total FROM cxc_cabece_proforma WHERE ide_cccpr = $1`);
+      checkQ.addIntParam(1, ide_cccpr);
+      const checkRow = await this.dataSource.createSingleQuery(checkQ);
+      const totalProforma = Number(checkRow?.total ?? 0);
 
       if (totalProforma <= 0) {
         this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
@@ -254,12 +290,29 @@ export class BotProformaService {
           const ideVgven = datos.cliente?.ide_vgven || IDE_VGVEN_DEFAULT;
           await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, ideVgven);
           pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
+          // Marcar como enviado al adjuntar el PDF
+          await this.dataSource.pool.query(
+            `UPDATE cxc_cabece_proforma SET enviado_cccpr = TRUE WHERE ide_cccpr = $1`,
+            [ide_cccpr],
+          );
+          this.logger.log(`[Proforma] enviado_cccpr=true ide_cccpr=${ide_cccpr}`);
         } catch (err) {
           this.logger.error(`Error generando PDF proforma ${ide_cccpr}: ${err.message}`);
         }
       }
     }
 
-    return { ide_cccpr, secuencial, automatica, conPrecio, productosConPrecio, productosSinPrecio, pdfBuffer };
+    // Totales calculados (solo cuando hay precios)
+    const baseGrabada = todosTienePrecio
+      ? productosConPrecio.reduce((s, p) => s + Math.round(p.precio_unitario * p.cantidad * 100) / 100, 0)
+      : undefined;
+    const valorIva  = baseGrabada != null ? Math.round(baseGrabada * ivaDecimal * 100) / 100 : undefined;
+    const total     = baseGrabada != null ? Math.round((baseGrabada + valorIva) * 100) / 100 : undefined;
+
+    return {
+      ide_cccpr, secuencial, automatica, conPrecio,
+      productosConPrecio, productosSinPrecio, pdfBuffer,
+      baseGrabada, baseTarifa0: 0, valorIva, tarifaIva, total,
+    };
   }
 }
