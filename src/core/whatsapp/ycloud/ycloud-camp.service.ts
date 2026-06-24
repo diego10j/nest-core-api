@@ -5,6 +5,7 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { extractErrorMessage } from 'src/util/helpers/common-util';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../../connection/helpers';
 import { EnviarCampaniaDto } from '../dto/enviar-campania.dto';
 import { GetDetalleCampaniaDto } from '../dto/get-detalle-camp';
@@ -35,6 +36,7 @@ export class YcloudCampaniaService {
   private readonly logger = new Logger(YcloudCampaniaService.name);
 
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly ycloudService: YcloudService,
     private readonly whatsappDB: WhatsappDbService,
   ) {}
@@ -68,7 +70,7 @@ export class YcloudCampaniaService {
 
     const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length, dtoIn.login);
     await this.processDetails(dtoIn, seqCabecera, detallesIds, listQuery);
-    const resultMessage = await this.whatsappDB.dataSource.createListQuery(listQuery);
+    const resultMessage = await this.dataSource.createListQuery(listQuery);
 
     return {
       success: true,
@@ -89,7 +91,7 @@ export class YcloudCampaniaService {
     const deleteQuery = new DeleteQuery(DETALLES.tableName);
     deleteQuery.where = 'ide_whdenv = $1';
     deleteQuery.addIntParam(1, detalleId);
-    return await this.whatsappDB.dataSource.createQuery(deleteQuery);
+    return await this.dataSource.createQuery(deleteQuery);
   }
 
   async updateCampaignStatus(ide_whcenv: number, status: number) {
@@ -97,7 +99,7 @@ export class YcloudCampaniaService {
     query.values.set('ide_whesce', status);
     query.where = 'ide_whcenv = $1';
     query.addIntParam(1, ide_whcenv);
-    return await this.whatsappDB.dataSource.createQuery(query);
+    return await this.dataSource.createQuery(query);
   }
 
   private async processCampaignSend(dtoIn: EnviarCampaniaDto & HeaderParamsDto) {
@@ -212,7 +214,7 @@ export class YcloudCampaniaService {
     query.values.set('fecha_envio_whden', getCurrentDateTime());
     query.where = 'ide_whdenv = $1';
     query.addIntParam(1, ide_whdenv);
-    await this.whatsappDB.dataSource.createQuery(query);
+    await this.dataSource.createQuery(query);
   }
 
   private async updateMessageError(ide_whdenv: number, error: string) {
@@ -221,7 +223,7 @@ export class YcloudCampaniaService {
     query.values.set('fecha_envio_whden', getCurrentDateTime());
     query.where = 'ide_whdenv = $1';
     query.addIntParam(1, ide_whdenv);
-    await this.whatsappDB.dataSource.createQuery(query);
+    await this.dataSource.createQuery(query);
   }
 
   private buildDeleteDetailsQuery(cabeceraId: number): DeleteQuery {
@@ -282,10 +284,10 @@ export class YcloudCampaniaService {
   }
 
   private async getNextCabeceraId(dtoIn: HeaderParamsDto): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(CABECERA.tableName, CABECERA.primaryKey, 1, dtoIn.login);
+    return this.dataSource.getSeqTable(CABECERA.tableName, CABECERA.primaryKey, 1, dtoIn.login);
   }
 
   private async getNextDetalleIds(length: number, login: string): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
+    return this.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
   }
 }

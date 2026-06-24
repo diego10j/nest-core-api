@@ -4,6 +4,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { extractErrorMessage } from 'src/util/helpers/common-util';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../connection/helpers';
 
 import { WhatsappApiService } from './api/whatsapp-api.service';
@@ -34,6 +35,7 @@ export class WhatsappCampaniaService {
   private readonly logger = new Logger(WhatsappCampaniaService.name);
 
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly whatsappApi: WhatsappApiService,
     private readonly whatsappDB: WhatsappDbService,
   ) { }
@@ -61,7 +63,7 @@ export class WhatsappCampaniaService {
     // Procesar detalles
     const detallesIds = await this.getNextDetalleIds(dtoIn.detalles.length, dtoIn.login);
     await this.processDetails(dtoIn, seqCabecera, detallesIds, listQuery);
-    const resultMessage = await this.whatsappDB.dataSource.createListQuery(listQuery);
+    const resultMessage = await this.dataSource.createListQuery(listQuery);
 
     return {
       success: true,
@@ -214,7 +216,7 @@ export class WhatsappCampaniaService {
     query.values.set('fecha_envio_whden', getCurrentDateTime());
     query.where = 'ide_whdenv = $1';
     query.addNumberParam(1, ide_whdenv);
-    await this.whatsappDB.dataSource.createQuery(query);
+    await this.dataSource.createQuery(query);
   }
 
   private async updateMessageError(ide_whdenv: number, error: string) {
@@ -223,7 +225,7 @@ export class WhatsappCampaniaService {
     query.values.set('fecha_envio_whden', getCurrentDateTime());
     query.where = 'ide_whdenv = $1';
     query.addNumberParam(1, ide_whdenv);
-    await this.whatsappDB.dataSource.createQuery(query);
+    await this.dataSource.createQuery(query);
   }
 
   /**
@@ -235,7 +237,7 @@ export class WhatsappCampaniaService {
     query.where = 'ide_whcenv = $1';
     query.addNumberParam(1, ide_whcenv);
 
-    return await this.whatsappDB.dataSource.createQuery(query);
+    return await this.dataSource.createQuery(query);
   }
 
   /**
@@ -264,7 +266,7 @@ export class WhatsappCampaniaService {
     const deleteQuery = new DeleteQuery(DETALLES.tableName);
     deleteQuery.where = 'ide_whdenv = $1';
     deleteQuery.addParam(1, detalleId);
-    return await this.whatsappDB.dataSource.createQuery(deleteQuery);
+    return await this.dataSource.createQuery(deleteQuery);
   }
 
   // ============ QUERY BUILDERS ============
@@ -316,10 +318,10 @@ export class WhatsappCampaniaService {
   // ============ HELPERS ============
 
   private async getNextCabeceraId(dtoIn: HeaderParamsDto): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(CABECERA.tableName, CABECERA.primaryKey, 1, dtoIn.login);
+    return this.dataSource.getSeqTable(CABECERA.tableName, CABECERA.primaryKey, 1, dtoIn.login);
   }
 
   private async getNextDetalleIds(length: number, login: string): Promise<number> {
-    return this.whatsappDB.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
+    return this.dataSource.getSeqTable(DETALLES.tableName, DETALLES.primaryKey, length, login);
   }
 }
