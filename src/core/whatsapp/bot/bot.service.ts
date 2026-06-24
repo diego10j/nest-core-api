@@ -743,6 +743,7 @@ export class BotService implements OnModuleInit {
             ideEmpr, `+${waId}`, mediaId,
             `Cotizacion_${resultado.secuencial}.pdf`,
             `📄 Tu cotización #${resultado.secuencial} de DIQUIMEC`,
+            undefined,   // ideUsua
           );
           pdfEnviado = true;
         } catch (pdfErr) {

@@ -160,9 +160,10 @@ export class YcloudService {
       const resp = await this.httpService.axiosRef.post(url, formData, config);
       return resp.data;
     } catch (error) {
-      this.logger.error(`YCloud POST form-data ${path} error: ${error.response?.data || error.message}`);
+      const errData = error.response?.data;
+      this.logger.error(`YCloud POST form-data ${path} error: ${JSON.stringify(errData ?? error.message)}`);
       throw new InternalServerErrorException(
-        `[YCloud API Error] ${JSON.stringify(error.response?.data || error.message)}`,
+        `[YCloud API Error] ${JSON.stringify(errData ?? error.message)}`,
       );
     }
   }
@@ -369,8 +370,8 @@ export class YcloudService {
     mediaId: string | null,
     filename: string,
     caption?: string,
-    link?: string,
     ideUsua?: number,
+    link?: string,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
