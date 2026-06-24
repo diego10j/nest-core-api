@@ -1,12 +1,14 @@
 // ─── Outgoing message payloads (para envio via API) ────────────────────
 
 export interface YcloudTextPayload {
+  from?: string;
   to: string;
   type: 'text';
   text: { preview_url?: boolean; body: string };
 }
 
 export interface YcloudTemplatePayload {
+  from?: string;
   to: string;
   type: 'template';
   template: {
@@ -17,24 +19,28 @@ export interface YcloudTemplatePayload {
 }
 
 export interface YcloudImagePayload {
+  from?: string;
   to: string;
   type: 'image';
   image: { id: string; caption?: string };
 }
 
 export interface YcloudAudioPayload {
+  from?: string;
   to: string;
   type: 'audio';
   audio: { id: string };
 }
 
 export interface YcloudVideoPayload {
+  from?: string;
   to: string;
   type: 'video';
   video: { id: string; caption?: string };
 }
 
 export interface YcloudDocumentPayload {
+  from?: string;
   to: string;
   type: 'document';
   document: { id: string; filename?: string; caption?: string };

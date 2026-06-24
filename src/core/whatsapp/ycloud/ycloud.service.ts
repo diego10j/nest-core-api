@@ -183,6 +183,7 @@ export class YcloudService {
     }
 
     const payload: YcloudTextPayload = {
+      from: config.displayPhoneNumber,
       to,
       type: 'text',
       text: { body, preview_url: false },
@@ -227,6 +228,7 @@ export class YcloudService {
     const config = await this.assertConfig(ideEmpr);
 
     const payload: YcloudTemplatePayload = {
+      from: config.displayPhoneNumber,
       to,
       type: 'template',
       template: {
@@ -277,6 +279,7 @@ export class YcloudService {
     }
 
     const payload: YcloudImagePayload = {
+      from: config.displayPhoneNumber,
       to,
       type: 'image',
       image: { id: mediaId, caption },
@@ -885,6 +888,7 @@ export class YcloudService {
     const config = await this.assertConfig(ideEmpr);
 
     const payload: YcloudTextPayload = {
+      from: config.displayPhoneNumber,
       to: telefono,
       type: 'text',
       text: { body: texto, preview_url: false },
@@ -936,15 +940,16 @@ export class YcloudService {
           ? 'audio'
           : 'document';
 
+    const from = config.displayPhoneNumber;
     let payload: YcloudMessagePayload;
     if (mediaType === 'image') {
-      payload = { to: telefono, type: 'image', image: { id: mediaId, caption } };
+      payload = { from, to: telefono, type: 'image', image: { id: mediaId, caption } };
     } else if (mediaType === 'video') {
-      payload = { to: telefono, type: 'video', video: { id: mediaId, caption } };
+      payload = { from, to: telefono, type: 'video', video: { id: mediaId, caption } };
     } else if (mediaType === 'audio') {
-      payload = { to: telefono, type: 'audio', audio: { id: mediaId } };
+      payload = { from, to: telefono, type: 'audio', audio: { id: mediaId } };
     } else {
-      payload = { to: telefono, type: 'document', document: { id: mediaId, filename: file.originalname, caption } };
+      payload = { from, to: telefono, type: 'document', document: { id: mediaId, filename: file.originalname, caption } };
     }
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
