@@ -105,7 +105,7 @@ export class BotGptService {
     if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
     if (/ENV[IÍ]O|ENVIAN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|GUAYAQUIL|QUITO|OTRA CIUDAD/.test(t)) return 'ENVIO';
     if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIO|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
-    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN/.test(t)) return 'PRODUCTO';
+    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|TIENE[N]?|DISPONE[N]?|HAY\s|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK/.test(t)) return 'PRODUCTO';
 
     try {
       const resp = await this.openai.chat.completions.create({
@@ -113,10 +113,11 @@ export class BotGptService {
         messages: [
           {
             role: 'system',
-            content: 'Clasifica el mensaje en: UBICACION, HORARIO, ENVIO, CATALOGO, PRODUCTO, GENERAL. '
-              + 'UBICACION=dirección/mapa. HORARIO=horarios. ENVIO=envíos nacionales. '
-              + 'CATALOGO=lista de precios. PRODUCTO=cotización/compra. GENERAL=otro. '
-              + 'Responde SOLO la categoría.',
+            content: 'Clasifica el mensaje de un cliente de empresa química en: UBICACION, HORARIO, ENVIO, CATALOGO, PRODUCTO, GENERAL. '
+              + 'UBICACION=dirección o cómo llegar. HORARIO=horarios de atención. ENVIO=envíos a otras ciudades. '
+              + 'CATALOGO=lista de precios o catálogo. '
+              + 'PRODUCTO=pregunta sobre disponibilidad, existencia, precio o compra de un producto específico (ej: "tiene X", "dispone de X", "cuánto cuesta X", "necesito X"). '
+              + 'GENERAL=saludo u otra cosa. Responde SOLO la categoría.',
           },
           { role: 'user', content: texto },
         ],

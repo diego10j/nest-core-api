@@ -135,7 +135,18 @@ export class BotService implements OnModuleInit {
 
     let sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
     const config = await this.botConfig.getConfig(ideWhcue);
-    if (!config) return;
+    if (!config) {
+      this.logger.warn(`[Bot] Sin configuración en wha_bot_config para ideWhcue=${ideWhcue} — creando config mínima`);
+      // Config mínima por defecto para no perder el mensaje
+      await this.botConfig.crearConfigMinima(ideWhcue);
+      const configCreada = await this.botConfig.getConfig(ideWhcue);
+      if (!configCreada) {
+        await this.sendText(ideEmpr, waId,
+          `Hola 😊 Soy tu asistente virtual de DIQUIMEC. En este momento estoy siendo configurado, pronto podré ayudarte mejor. Por favor escribe *SALIR* para hablar con un asesor.`
+        );
+        return;
+      }
+    }
 
     const nombreBot = config.nombre_bot || 'QuimIA';
 
@@ -260,13 +271,13 @@ export class BotService implements OnModuleInit {
 
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
       await this.sendText(ideEmpr, waId,
-        `¡Perfecto *${nombreBot}* ya está aquí para ayudarte! 😊\n\n` +
-        `¿En qué puedo ayudarte hoy?\n\n` +
-        `🧪 *Cotización de productos*\n` +
-        `📍 *Ubicación* / 🕒 *Horarios*\n` +
-        `🚚 *Información de envíos*\n` +
-        `📦 *Catálogo de productos*\n\n` +
-        `_O escribe *SALIR* si prefieres atención con un asesor_`,
+        `¡Perfecto! 😊 ¿En qué te puedo ayudar hoy?\n\n` +
+        `🧪 Cotización de productos\n` +
+        `📍 Ubicación y cómo llegar\n` +
+        `🕒 Horarios de atención\n` +
+        `🚚 Información de envíos\n` +
+        `📦 Catálogos y precios\n\n` +
+        `_Escribe lo que necesitas o *SALIR* para hablar con un asesor_`,
       );
       return;
     }

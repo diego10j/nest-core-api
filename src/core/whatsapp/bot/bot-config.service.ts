@@ -222,6 +222,24 @@ export class BotConfigService {
     await this.dataSource.createQuery(ins);
   }
 
+  async crearConfigMinima(ideWhcue: number): Promise<void> {
+    const existe = new SelectQuery(`SELECT 1 FROM wha_bot_config WHERE ide_whcue = $1 LIMIT 1`);
+    existe.addIntParam(1, ideWhcue);
+    const row = await this.dataSource.createSingleQuery(existe);
+    if (row) return; // ya existe
+
+    const ins = new InsertQuery('wha_bot_config', 'ide_whbco');
+    ins.values.set('ide_whcue', ideWhcue);
+    ins.values.set('activo_manual', false);
+    ins.values.set('usa_horario', false);
+    ins.values.set('nombre_bot', 'QuimIA');
+    ins.values.set('max_intentos_fallo', 3);
+    ins.values.set('monto_envio_gratis', 100);
+    await this.dataSource.createQuery(ins);
+    this.logger.log(`[BotConfig] Config mínima creada para ide_whcue=${ideWhcue}`);
+    await this.invalidarCache(ideWhcue);
+  }
+
   private async invalidarCache(ideWhcue: number): Promise<void> {
     await this.dataSource.redisClient.del(`${CACHE_ACTIVO}${ideWhcue}`);
     await this.dataSource.redisClient.del(`${CACHE_CONFIG}${ideWhcue}`);
