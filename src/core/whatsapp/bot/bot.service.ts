@@ -30,10 +30,9 @@ Estamos en el *Valle de los Chillos*:
 
 🏟️ Referencia: *Estadio del Independiente del Valle*
 
-🗺️ Ver en Google Maps:
-https://www.google.com/maps/place/PRODUQUIMIC+DEL+VALLE-DIQUIMEC/@-0.346593,-78.482222,15z/data=!4m6!3m5!1s0x91d5a3368a9f1d6d:0xf5556b94b44591d1!8m2!3d-0.3465918!4d-78.4822285!16s%2Fg%2F11gbk4_nbw
+Te comparto la ubicación en el siguiente mensaje 👇
 
-Si eres de otra ciudad o provincia, no te preocupes, *realizamos envíos a nivel nacional* 🚚
+Si eres de otra ciudad, no te preocupes, *realizamos envíos a nivel nacional* 🚚
 
 ¿Puedo ayudarte con algo más?`,
 
@@ -1064,8 +1063,22 @@ export class BotService implements OnModuleInit {
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   private async responderInfo(ideEmpr: number, waId: string, tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO'): Promise<void> {
+    if (tipo === 'UBICACION') {
+      await this.sendText(ideEmpr, waId, INFO.ubicacion);
+      // Enviar pin de ubicación (mapa interactivo en WhatsApp)
+      try {
+        await this.ycloudService.sendLocation(
+          ideEmpr, `+${waId}`,
+          -0.3465918, -78.4822285,
+          'DIQUIMEC',
+          'Calles Jacinto Jijón y Caamaño & Paseo 7, Sector Chillo Jijón, Valle de los Chillos',
+        );
+      } catch (err) {
+        this.logger.warn(`[Bot] No se pudo enviar ubicación: ${err.message}`);
+      }
+      return;
+    }
     const mapa = {
-      UBICACION: INFO.ubicacion,
       HORARIO: INFO.horario,
       ENVIO: INFO.envios,
       CATALOGO: INFO.catalogo,

@@ -555,6 +555,33 @@ export class YcloudService {
     return { messageId };
   }
 
+  async sendLocation(
+    ideEmpr: number,
+    to: string,
+    latitude: number,
+    longitude: number,
+    name?: string,
+    address?: string,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const payload = {
+      from: config.displayPhoneNumber,
+      to,
+      type: 'location',
+      location: { latitude, longitude, name, address },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      { telefono: to, tipo: 'location', texto: name || 'Ubicación', idWts: messageId, tiempoRespuesta: null },
+      config,
+    );
+    return { messageId };
+  }
+
   // ─── Geocodificación inversa ──────────────────────────────────
 
   async getAddressFromCoords(lat: number, lng: number): Promise<string | null> {
