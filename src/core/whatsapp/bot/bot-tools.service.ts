@@ -133,6 +133,62 @@ export class BotToolsService {
     return row?.ide_geprov ?? null;
   }
 
+  private readonly STOP_WORDS = new Set([
+    'de','la','el','los','las','un','una','para','con','del','al','lo','si',
+    'por','que','en','y','o','a','su','se','es','son','hay','como','mas','pero',
+    'este','esta','esto','ese','esa','cual','cuales','nos','les','le','me','mi',
+  ]);
+
+  async buscarProductosPorPalabras(texto: string, ideEmpr: number): Promise<ProductoInfo[]> {
+    const significativas = texto
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !this.STOP_WORDS.has(w));
+
+    if (!significativas.length) return [];
+
+    // Construir condiciones OR: el nombre contiene ALGUNA de las palabras significativas
+    // y al menos 2 de ellas deben coincidir (prioridad)
+    const params: any[] = [ideEmpr];
+    const conditions = significativas.map((w, i) => {
+      params.push(w);
+      const n = i + 2;
+      return `(unaccent(UPPER(a.nombre_inarti)) ILIKE '%' || unaccent(UPPER($${n})) || '%' OR unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) ILIKE '%' || unaccent(UPPER($${n})) || '%')`;
+    });
+
+    // Score: cuenta cuántas palabras coinciden
+    const scoreExpr = conditions.map(c => `CASE WHEN ${c} THEN 1 ELSE 0 END`).join(' + ');
+
+    const q = new SelectQuery(`
+      SELECT
+        a.ide_inarti,
+        a.nombre_inarti          AS nombre,
+        a.otro_nombre_inarti     AS otro_nombre,
+        a.desc_corta_inarti      AS desc_corta,
+        COALESCE(u.siglas_inuni, 'UND')    AS siglas_unidad,
+        COALESCE(u.nombre_inuni, 'Unidad') AS nombre_unidad,
+        EXISTS (
+          SELECT 1 FROM inv_det_catalogo dc
+          WHERE dc.ide_inarti = a.ide_inarti AND dc.activo_indcat = TRUE
+        ) AS en_catalogo,
+        (${scoreExpr}) AS score
+      FROM inv_articulo a
+      LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+      WHERE a.ide_empr = $1
+        AND a.activo_inarti = TRUE
+        AND a.hace_kardex_inarti = TRUE
+        AND (${conditions.join(' OR ')})
+      ORDER BY score DESC, nombre_inarti
+      LIMIT 10
+    `);
+    params.forEach((p, i) => {
+      if (i === 0) q.addIntParam(1, p);
+      else q.addParam(i + 1, p);
+    });
+    const rows = await this.dataSource.createSelectQuery(q);
+    return rows.filter((r: any) => r.score >= Math.min(2, significativas.length));
+  }
+
   async getIdeEmprPorPhoneNumberId(phoneNumberId: string): Promise<number | null> {
     const cacheKey = `wha_empr:${phoneNumberId}`;
     const cached = await this.dataSource.redisClient.get(cacheKey);

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
+import { envs } from 'src/config/envs';
 
 import { YcloudService } from '../ycloud/ycloud.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
@@ -480,11 +481,32 @@ export class BotService implements OnModuleInit {
     }
 
     const nombreBuscado = texto.trim();
-    const resultados = await this.botTools.buscarProductos(nombreBuscado, ideEmpr);
+    let resultados = await this.botTools.buscarProductos(nombreBuscado, ideEmpr);
+
+    // Fallback 1: reducir palabras progresivamente
+    if (!resultados.length) {
+      const palabras = nombreBuscado.split(/\s+/).filter(Boolean);
+      for (let n = palabras.length - 1; n >= 2; n--) {
+        const subTexto = palabras.slice(0, n).join(' ');
+        resultados = await this.botTools.buscarProductos(subTexto, ideEmpr);
+        if (resultados.length > 0) {
+          this.logger.log(`[Bot] Búsqueda reducida: "${nombreBuscado}" → "${subTexto}" → ${resultados.length}`);
+          break;
+        }
+      }
+    }
+
+    // Fallback 2: palabras significativas con score (ignora stop words y busca coincidencias)
+    if (!resultados.length) {
+      resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado, ideEmpr);
+      if (resultados.length > 0) {
+        this.logger.log(`[Bot] Búsqueda por palabras clave: "${nombreBuscado}" → ${resultados.length} resultado(s)`);
+      }
+    }
 
     if (!resultados.length) {
       await this.sendText(ideEmpr, waId,
-        `No encontré ningún producto con ese nombre 🤔\n\nPuedes buscar nuestros productos en:\n👉 https://diquimec.com.ec/product\n\nO escribe el nombre de otra forma e intento buscarlo nuevamente.`,
+        `No encontré ningún producto con ese nombre 🤔\n\nPuedes explorar nuestro catálogo en:\n👉 https://diquimec.com.ec/product\n\nO intenta escribir el nombre principal del producto _(ej: cera de soya, texapon, betaína)_.`,
       );
       return;
     }
@@ -762,7 +784,6 @@ export class BotService implements OnModuleInit {
         // ── CASO 1: Todos con precio + en catálogo → guardar PDF en servidor y enviar por URL ──
         let pdfEnviado = false;
         try {
-          const { envs } = await import('src/config/envs');
           const filename = await this.fileTempService.saveWhatsAppMedia(
             resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
           );
