@@ -366,9 +366,10 @@ export class YcloudService {
   async sendDocument(
     ideEmpr: number,
     to: string,
-    mediaId: string,
+    mediaId: string | null,
     filename: string,
     caption?: string,
+    link?: string,
     ideUsua?: number,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
@@ -378,10 +379,15 @@ export class YcloudService {
       throw new BadRequestException(windowCheck.reason);
     }
 
+    const docField = link
+      ? { link, filename, caption }
+      : { id: mediaId, filename, caption };
+
     const payload: YcloudDocumentPayload = {
+      from: config.displayPhoneNumber,
       to,
       type: 'document',
-      document: { id: mediaId, filename, caption },
+      document: docField as any,
     };
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
@@ -621,9 +627,12 @@ export class YcloudService {
         || data.button?.payload
         || data.interactive?.button_reply?.id
         || data.interactive?.list_reply?.id
+        || (data.location
+            ? `__LOCATION__:${data.location.latitude},${data.location.longitude},${data.location.name || ''},${data.location.address || ''}`
+            : '')
         || '';
 
-      this.logger.log(`[Bot-diag] ideWhcha=${ideWhcha} phoneNumberId=${phoneNumberId} textoBot="${textoBot}" handlerSet=${!!this.messageHandler}`);
+      this.logger.debug(`[Bot-diag] ideWhcha=${ideWhcha} phoneNumberId=${phoneNumberId} textoBot="${textoBot}" handlerSet=${!!this.messageHandler}`);
 
       if (textoBot) {
         const infoRow = await this.dataSource.pool.query<{
@@ -639,7 +648,7 @@ export class YcloudService {
           [ideWhcha, phoneNumberId],
         );
 
-        this.logger.log(`[Bot-diag] infoRow.rowCount=${infoRow.rowCount} | data=${JSON.stringify(infoRow.rows[0] ?? null)}`);
+        this.logger.debug(`[Bot-diag] infoRow.rowCount=${infoRow.rowCount} | data=${JSON.stringify(infoRow.rows[0] ?? null)}`);
 
         if (infoRow.rowCount > 0) {
           const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
@@ -762,12 +771,12 @@ export class YcloudService {
 
     try {
       await this.dataSource.createQuery(fullQuery);
-      this.logger.log(`[Inbound] Guardado wamid=${wamid} tipo=${tipo} de=${waId}`);
+      this.logger.debug(`[Inbound] Guardado wamid=${wamid} tipo=${tipo} de=${waId}`);
     } catch (fullErr) {
       this.logger.warn(`[insertMensajeInbound] ${wamid}: insert completo falló (${fullErr.message}) — reintentando sin adjuntos`);
       try {
         await this.dataSource.createQuery(buildBase());
-        this.logger.log(`[Inbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
+        this.logger.debug(`[Inbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
       } catch (baseErr) {
         this.logger.error(`[insertMensajeInbound] ${wamid}: NO SE PUDO GUARDAR: ${baseErr.message}`);
       }
@@ -886,7 +895,7 @@ export class YcloudService {
 
     try {
       await this.dataSource.createQuery(fullQuery);
-      this.logger.log(`[Outbound] Guardado wamid=${wamid} tipo=${tipo} status=${data.status}`);
+      this.logger.debug(`[Outbound] Guardado wamid=${wamid} tipo=${tipo} status=${data.status}`);
       return;
     } catch (fullErr) {
       this.logger.warn(`[insertOutboundMessage] ${wamid}: insert completo falló (${fullErr.message}) — reintentando sin adjuntos`);
@@ -895,7 +904,7 @@ export class YcloudService {
     // Fallback: solo campos base
     try {
       await this.dataSource.createQuery(buildBase());
-      this.logger.log(`[Outbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
+      this.logger.debug(`[Outbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
     } catch (baseErr) {
       this.logger.error(`[insertOutboundMessage] ${wamid}: NO SE PUDO GUARDAR: ${baseErr.message}`);
       throw baseErr;

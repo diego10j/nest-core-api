@@ -23,8 +23,9 @@ export interface ClienteSesion {
 export interface EnvioSesion {
   direccion?: string;
   provincia?: string;
-  transporte?: string;
-  pendiente_campo?: 'direccion' | 'provincia' | 'transporte';
+  latitud?: number;
+  longitud?: number;
+  pendiente_campo?: 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
 }
 
 export interface DatosSesion {
@@ -32,7 +33,7 @@ export interface DatosSesion {
   cliente?: ClienteSesion;
   productos: ProductoSesion[];
   opciones_producto?: OpcionProducto[];
-  producto_pendiente?: { ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string };
+  producto_pendiente?: { ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string; en_catalogo: boolean };
   envio?: EnvioSesion;
   forma_pago?: 'cash' | 'credit';
   proforma_ide?: number;

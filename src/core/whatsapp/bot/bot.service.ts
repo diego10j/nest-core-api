@@ -66,11 +66,11 @@ Puedes buscar lo que necesitas y solicitar tu cotización directamente.
 };
 
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
-const MSG_ES_CLIENTE = `Para ayudarte de la mejor manera, necesito saber:
-
-*¿Has realizado alguna compra con nosotros anteriormente?*
-
-Responde *Sí* o *No* 😊`;
+const MSG_ES_CLIENTE_BODY = `Para ayudarte de la mejor manera 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
+const BTN_ES_CLIENTE = [
+  { id: 'SI_CLIENTE', title: '✅ Sí, ya compré antes' },
+  { id: 'NO_CLIENTE', title: '🆕 No, es mi primera vez' },
+];
 
 // ─── Mensaje de inicio de cotización ─────────────────────────────────────────
 const MSG_INICIO_COTIZACION = `¡Perfecto! Vamos a preparar tu cotización 📋
@@ -248,7 +248,7 @@ export class BotService implements OnModuleInit {
 
       if (tipoConsulta === 'PRODUCTO') {
         await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
-        await this.sendText(ideEmpr, waId, MSG_ES_CLIENTE);
+        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
         return;
       }
 
@@ -290,7 +290,7 @@ export class BotService implements OnModuleInit {
 
     if (tipoConsulta === 'PRODUCTO') {
       await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
-      await this.sendText(ideEmpr, waId, MSG_ES_CLIENTE);
+      await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
       return;
     }
 
@@ -309,31 +309,34 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-    const intencion = await this.botGpt.detectarIntencion(texto);
 
-    if (intencion === 'CONFIRMAR') {
+    // Los botones devuelven el ID directamente
+    const t = texto.trim().toUpperCase();
+    const esCliente = t === 'SI_CLIENTE' || /^(SI|SÍ|S[Ii]|YES|YA|YA COMPRÉ)$/i.test(t);
+    const esNuevo   = t === 'NO_CLIENTE' || /^(NO|NUNCA|NUEVO|PRIMERA)$/i.test(t);
+
+    if (esCliente) {
       await this.botSession.update(sesion.ide_whbse, BotState.IDENTIFICACION, datos);
       await this.sendText(ideEmpr, waId,
-        `¡Genial! Para encontrar tu información, por favor dime tu *número de cédula o RUC* 🔍`,
+        `Perfecto 👍 Por favor dime tu *número de cédula o RUC* para buscarte en nuestro sistema 🔍`,
       );
       return;
     }
 
-    if (intencion === 'CANCELAR') {
+    if (esNuevo) {
       const nuevosDatos: DatosSesion = {
         ...datos,
         cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
       };
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `¡Bienvenido a DIQUIMEC! 😊\n\nPor favor, ¿cuál es tu *nombre completo*?`,
+        `¡Con mucho gusto te atendemos! 😊\n\n¿Cuál es tu nombre?`,
       );
       return;
     }
 
-    await this.sendText(ideEmpr, waId,
-      `Por favor responde *Sí* si ya eres cliente o *No* si es tu primera compra con nosotros 😊`,
-    );
+    // Si no se detectó ninguna opción, volver a mostrar botones
+    await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
   }
 
   private async handleIdentificacion(
@@ -442,7 +445,10 @@ export class BotService implements OnModuleInit {
         return;
       }
       await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-      await this.sendText(ideEmpr, waId, this.buildResumenProductos(datos.productos));
+      await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
+        { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+        { id: 'CONF_NO', title: '✏️ Modificar lista' },
+      ]);
       return;
     }
 
@@ -465,6 +471,7 @@ export class BotService implements OnModuleInit {
           nombre: prod.nombre,
           siglas_unidad: prod.siglas_unidad,
           nombre_unidad: prod.nombre_unidad,
+          en_catalogo: prod.en_catalogo,
         },
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
@@ -516,6 +523,7 @@ export class BotService implements OnModuleInit {
         nombre: opcion.nombre,
         siglas_unidad: opcion.siglas_unidad,
         nombre_unidad: opcion.nombre_unidad,
+        en_catalogo: opcion.en_catalogo,
       },
     };
     await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
@@ -552,6 +560,7 @@ export class BotService implements OnModuleInit {
       cantidad,
       unidad: prod.nombre_unidad,
       siglas_unidad: prod.siglas_unidad,
+      en_catalogo: prod.en_catalogo,
     };
 
     const nuevosDatos: DatosSesion = {
@@ -572,38 +581,41 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-    const intencion = await this.botGpt.detectarIntencion(texto);
+    const t = texto.trim().toUpperCase();
 
-    if (intencion === 'ASESOR') {
+    const confirma = t === 'CONF_SI' || (await this.botGpt.detectarIntencion(texto)) === 'CONFIRMAR';
+    const modifica = t === 'CONF_NO' || (await this.botGpt.detectarIntencion(texto)) === 'CANCELAR';
+
+    if (PALABRAS_ASESOR.test(texto)) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
       return;
     }
 
-    if (intencion === 'CANCELAR') {
+    if (modifica) {
       const nuevosDatos: DatosSesion = { ...datos, productos: [] };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `Entendido, empecemos de nuevo 😊\n\n${MSG_INICIO_COTIZACION}`,
-      );
+      await this.sendText(ideEmpr, waId, `Entendido, empecemos de nuevo 😊\n\n${MSG_INICIO_COTIZACION}`);
       return;
     }
 
-    if (intencion === 'CONFIRMAR') {
-      const nuevosDatos: DatosSesion = {
-        ...datos,
-        envio: { pendiente_campo: 'direccion' },
-      };
+    if (confirma) {
+      const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'tipo_direccion' } };
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `Perfecto 👍\n\nAhora necesito la información de envío.\n\n¿Cuál es la *dirección exacta* de entrega? 📍`,
+      await this.sendButtons(ideEmpr, waId,
+        `Perfecto 👍 Ahora necesito la dirección de entrega.\n\n¿Cómo prefieres indicarla?`,
+        [
+          { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+          { id: 'DIR_UBICACION', title: '📍 Compartir ubicación' },
+        ],
       );
       return;
     }
 
-    await this.sendText(ideEmpr, waId,
-      `Responde *Sí* para continuar con estos productos o *No* para modificar la lista 😊`,
-    );
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
+      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+      { id: 'CONF_NO', title: '✏️ Modificar lista' },
+    ]);
   }
 
   private async handleDatosEnvio(
@@ -613,37 +625,77 @@ export class BotService implements OnModuleInit {
     const datos = sesion.datos_sesion as DatosSesion;
     const envio = datos.envio ?? {};
 
-    if (envio.pendiente_campo === 'direccion') {
-      const nuevosDatos: DatosSesion = {
-        ...datos,
-        envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' },
-      };
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
+    // Paso 1 — elegir cómo indicar la dirección
+    if (envio.pendiente_campo === 'tipo_direccion') {
+      const t = texto.trim().toUpperCase();
+      if (t === 'DIR_TEXTO') {
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+          { ...datos, envio: { ...envio, pendiente_campo: 'direccion_texto' } });
+        await this.sendText(ideEmpr, waId,
+          `Por favor escribe tu *dirección completa* y un *punto de referencia* 📝\n\n_Ejemplo: Av. Los Shyris N35-150 y Suecia, Quito. Referencia: frente al Parque del Arbolito_`,
+        );
+        return;
+      }
+      if (t === 'DIR_UBICACION') {
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+          { ...datos, envio: { ...envio, pendiente_campo: 'esperar_ubicacion' } });
+        await this.sendText(ideEmpr, waId,
+          `📍 Comparte tu ubicación desde WhatsApp:\n_Adjuntar → Ubicación → Enviar ubicación actual_`,
+        );
+        return;
+      }
+      // Si escribió algo libre, tomarlo como dirección directamente
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+        { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
       await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
       return;
     }
 
-    if (envio.pendiente_campo === 'provincia') {
-      const nuevosDatos: DatosSesion = {
-        ...datos,
-        envio: { ...envio, provincia: texto.trim(), pendiente_campo: 'transporte' },
-      };
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `¿Cuál es tu *empresa de transporte preferida*? 🚚\n_(Servientrega, TCC, Laar Courier, etc. o escribe "cualquiera" si no tienes preferencia)_`,
-      );
+    // Paso 2a — dirección escrita
+    if (envio.pendiente_campo === 'direccion_texto') {
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+        { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
+      await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
       return;
     }
 
-    if (envio.pendiente_campo === 'transporte') {
-      const nuevosDatos: DatosSesion = {
-        ...datos,
-        envio: { ...envio, transporte: texto.trim(), pendiente_campo: undefined },
-      };
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `¿Cuál es tu *forma de pago* preferida? 💳\n\n1️⃣ *Efectivo*\n2️⃣ *Tarjeta de crédito*\n\nResponde *1* o *2*`,
-      );
+    // Paso 2b — ubicación compartida de WhatsApp
+    if (envio.pendiente_campo === 'esperar_ubicacion') {
+      if (texto.startsWith('__LOCATION__:')) {
+        const [, coordPart] = texto.split(':');
+        const [lat, lng, nombre, direccionMapa] = coordPart.split(',');
+        const direccionFormateada = direccionMapa?.trim() || nombre?.trim()
+          || `Coordenadas: ${lat}, ${lng}`;
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, {
+          ...datos,
+          envio: {
+            ...envio,
+            direccion: direccionFormateada,
+            latitud: parseFloat(lat),
+            longitud: parseFloat(lng),
+            pendiente_campo: 'provincia',
+          },
+        });
+        await this.sendText(ideEmpr, waId,
+          `📍 Ubicación recibida ✅\n\n¿En qué *provincia* te encuentras? 🗺️`,
+        );
+        return;
+      }
+      // Si escribió texto en lugar de compartir ubicación, tomarlo como dirección
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+        { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
+      await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
+      return;
+    }
+
+    // Paso 3 — provincia → directo a pago (sin transporte)
+    if (envio.pendiente_campo === 'provincia') {
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO,
+        { ...datos, envio: { ...envio, provincia: texto.trim(), pendiente_campo: undefined } });
+      await this.sendButtons(ideEmpr, waId, `¿Cuál es tu forma de pago preferida? 💳`, [
+        { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
+        { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
+      ]);
       return;
     }
   }
@@ -653,14 +705,17 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-    const t = texto.trim();
+    const t = texto.trim().toUpperCase();
     let formaPago: 'cash' | 'credit' | null = null;
 
-    if (/^(1|EFECTIVO|CASH|E)$/i.test(t)) formaPago = 'cash';
-    else if (/^(2|TARJETA|CREDITO|CR[EÉ]DITO|CARD)$/i.test(t)) formaPago = 'credit';
+    if (t === 'PAGO_EFECTIVO' || /^(EFECTIVO|CASH|E)$/i.test(t)) formaPago = 'cash';
+    else if (t === 'PAGO_TARJETA' || /^(TARJETA|CREDITO|CR[EÉ]DITO|CARD)$/i.test(t))   formaPago = 'credit';
 
     if (!formaPago) {
-      await this.sendText(ideEmpr, waId, `Por favor responde *1* para efectivo o *2* para tarjeta de crédito 😊`);
+      await this.sendButtons(ideEmpr, waId, `Por favor selecciona tu forma de pago 💳`, [
+        { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
+        { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
+      ]);
       return;
     }
 
@@ -677,12 +732,11 @@ export class BotService implements OnModuleInit {
       );
 
       if (resultado.automatica && resultado.pdfBuffer) {
-        // Subir PDF a YCloud y enviar como documento
+        // ── CASO 1: Todos con precio + en catálogo → enviar PDF desde nuestro servidor ──
+        let pdfEnviado = false;
         try {
           const { mediaId } = await this.ycloudService.uploadMedia(
-            ideEmpr,
-            resultado.pdfBuffer,
-            'application/pdf',
+            ideEmpr, resultado.pdfBuffer, 'application/pdf',
             `Cotizacion_${resultado.secuencial}.pdf`,
           );
           await this.ycloudService.sendDocument(
@@ -690,39 +744,58 @@ export class BotService implements OnModuleInit {
             `Cotizacion_${resultado.secuencial}.pdf`,
             `📄 Tu cotización #${resultado.secuencial} de DIQUIMEC`,
           );
+          pdfEnviado = true;
         } catch (pdfErr) {
           this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
         }
 
         await this.sendText(ideEmpr, waId,
-          `✅ *¡Tu cotización está lista!*\n\n` +
-          `📋 Cotización #*${resultado.secuencial}*\n\n` +
-          `Te hemos enviado el PDF arriba 📄\n\n` +
-          `Un asesor se pondrá en contacto contigo para confirmar disponibilidad y coordinar el pago y envío.\n\n` +
+          `✅ *¡Tu cotización #${resultado.secuencial} está lista!*\n\n` +
+          `📋 *Detalle:*\n` +
+          resultado.productosConPrecio.map(
+            (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
+          ).join('\n') +
+          `\n\n${pdfEnviado ? '📄 Te hemos enviado el PDF arriba.\n\n' : ''}` +
+          `Un asesor confirmará disponibilidad y coordinará el pago y envío.\n\n` +
           `*¡Gracias por confiar en DIQUIMEC!* 🧪✨`,
         );
+
+      } else if (resultado.conPrecio) {
+        // ── CASO 2: Todos tienen precio pero alguno no está en catálogo ──
+        await this.sendText(ideEmpr, waId,
+          `✅ *Cotización #${resultado.secuencial} registrada*\n\n` +
+          `📋 *Productos cotizados:*\n` +
+          resultado.productosConPrecio.map(
+            (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
+          ).join('\n') +
+          `\n\n🔔 Tu cotización ha sido asignada a uno de nuestros asesores comerciales, quien se comunicará contigo en la brevedad posible con todos los detalles.\n\n` +
+          `*¡Gracias por contactarnos!* 🧪`,
+        );
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+          `Cotización #${resultado.secuencial} generada. Cliente tiene precios pero productos fuera de catálogo — revisar y enviar proforma.`,
+        );
+
       } else {
-        let msg = `✅ *Cotización registrada #${resultado.secuencial}*\n\n`;
+        // ── CASO 3: Algunos productos sin precio configurado ──
+        let msg = `✅ *Cotización #${resultado.secuencial} registrada*\n\n`;
 
         if (resultado.productosConPrecio.length) {
-          msg += `📋 *Productos con precio configurado:*\n`;
+          msg += `📋 *Productos con precio:*\n`;
           msg += resultado.productosConPrecio.map(
             (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
-          ).join('\n');
-          msg += '\n\n';
+          ).join('\n') + '\n\n';
         }
 
         if (resultado.productosSinPrecio.length) {
-          msg += `⏳ *Productos en proceso de cotización:*\n`;
-          msg += resultado.productosSinPrecio.map((p) => `• ${p.nombre}`).join('\n');
-          msg += '\n\n';
+          msg += `⏳ *Productos pendientes de precio:*\n`;
+          msg += resultado.productosSinPrecio.map((p) => `• ${p.nombre}`).join('\n') + '\n\n';
         }
 
-        msg += `Un asesor revisará los precios pendientes y te enviará la cotización completa en el menor tiempo posible 😊\n\n*¡Gracias por contactarnos!* 🧪`;
+        msg += `🔔 Uno de nuestros asesores revisará los precios pendientes y te enviará la cotización completa en el menor tiempo posible.\n\n*¡Gracias por contactarnos!* 🧪`;
 
         await this.sendText(ideEmpr, waId, msg);
         await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-          `Hola, el cliente acaba de generar la cotización #${resultado.secuencial} y necesita revisión de precios. Por favor comunícate con él.`,
+          `Cotización #${resultado.secuencial} — hay ${resultado.productosSinPrecio.length} producto(s) sin precio configurado. Completar y enviar proforma al cliente.`,
         );
       }
     } catch (err) {
@@ -753,7 +826,7 @@ export class BotService implements OnModuleInit {
       (p, i) => `${i + 1}. *${p.nombre}* — ${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`,
     ).join('\n');
 
-    return `📋 *Resumen de tu pedido:*\n\n${lista}\n\n¿Confirmamos estos productos? Responde *Sí* para continuar o *No* para modificar la lista.`;
+    return `📋 *Resumen de tu pedido:*\n\n${lista}\n\n¿Confirmamos estos productos?`;
   }
 
   private getPromptSistema(nombreBot: string): string {

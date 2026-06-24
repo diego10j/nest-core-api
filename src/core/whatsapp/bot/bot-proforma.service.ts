@@ -5,13 +5,14 @@ import { ProformasService } from 'src/core/modules/proformas/proformas.service';
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 import { BotToolsService } from './bot-tools.service';
 
-export const IDE_USUA_BOT     = 32;  // Usuario bot asignado a proformas automáticas
-export const IDE_VGVEN_DEFAULT = 3;  // Vendedor por defecto para cotizaciones automáticas
+export const IDE_USUA_BOT      = 32;  // Usuario bot para proformas automáticas
+export const IDE_VGVEN_DEFAULT  = 3;  // Vendedor por defecto para cotizaciones automáticas
 
 export interface ResultadoProforma {
   ide_cccpr: number;
   secuencial: string;
-  automatica: boolean;
+  automatica: boolean;          // todos los productos tienen precio Y están en catálogo
+  conPrecio: boolean;           // todos tienen precio pero alguno no está en catálogo
   productosConPrecio: ProductoSesion[];
   productosSinPrecio: ProductoSesion[];
   pdfBuffer?: Buffer;
@@ -37,6 +38,7 @@ export class BotProformaService {
 
     for (const prod of datos.productos) {
       const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr);
+      this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cantidad=${prod.cantidad} → ${precioConf ? `precio_unit=${precioConf.precio_unitario} incluye_iva=${precioConf.incluye_iva} cant_min=${precioConf.cantidad_minima}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
         const iva = precioConf.incluye_iva ? 1 : 1.12;
         const precioUnitario = Math.round(precioConf.precio_unitario * iva * 100) / 100;
@@ -51,14 +53,27 @@ export class BotProformaService {
       }
     }
 
-    const automatica = productosSinPrecio.length === 0 &&
-      datos.productos.every((p) => p.en_catalogo !== false);
+    const todosTienePrecio = productosSinPrecio.length === 0;
+    // Automática: todos tienen precio Y todos están en catálogo
+    const automatica = todosTienePrecio &&
+      datos.productos.every((p) => p.en_catalogo === true);
+    // Con precio pero alguno fuera de catálogo: se carga precio pero no es automática
+    const conPrecio = todosTienePrecio && !automatica;
 
+    // Construir detalles con precio cuando está disponible
+    const precioMap = new Map(productosConPrecio.map((p) => [p.ide_inarti, p.precio_unitario]));
     const detalles = datos.productos.map((p) => ({
       producto: p.nombre,
       cantidad: p.cantidad,
       unidad: p.siglas_unidad || p.unidad,
+      precio: precioMap.get(p.ide_inarti) ?? null,
     }));
+
+    const observacion = automatica
+      ? `Cotización automática generada por ${nombreBot} vía WhatsApp`
+      : conPrecio
+        ? `Cotización ${nombreBot} vía WhatsApp — precios cargados, pendiente revisión de catálogo`
+        : `Cotización ${nombreBot} vía WhatsApp — revisar productos sin precio`;
 
     const resultado = await this.proformasService.createProformaWeb({
       ideEmpr,
@@ -72,10 +87,8 @@ export class BotProformaService {
         provincia: datos.envio?.provincia || '',
         direccion: datos.envio?.direccion || '',
         formaPago: datos.forma_pago === 'credit' ? 'credit' : 'cash',
-        formaEntrega: datos.envio?.transporte || 'Por definir',
-        observacion: automatica
-          ? `Cotización automática generada por ${nombreBot} vía WhatsApp`
-          : `Cotización generada por ${nombreBot} vía WhatsApp — revisar productos sin precio`,
+        formaEntrega: 'Por definir',
+        observacion,
         ideEmpr,
       },
       detalles,
@@ -84,8 +97,44 @@ export class BotProformaService {
     const ide_cccpr: number = resultado.data.ide_cccpr;
     const secuencial: string = resultado.data.secuencial_cccpr;
 
-    let pdfBuffer: Buffer | undefined;
+    // Actualizar precios en los detalles cuando están disponibles
+    if (todosTienePrecio) {
+      try {
+        await this.proformasService['dataSource'].pool.query(
+          `UPDATE cxc_deta_proforma d
+           SET precio_ccdpr = sub.precio,
+               total_ccdpr  = sub.precio * d.cantidad_ccdpr
+           FROM (
+             SELECT a.ide_inarti, $2::jsonb -> a.ide_inarti::text AS precio_raw
+             FROM inv_articulo a
+             WHERE a.ide_inarti = ANY($1::int[])
+           ) sub
+           WHERE d.ide_cccpr = $3
+             AND d.ide_inarti = sub.ide_inarti
+             AND sub.precio_raw IS NOT NULL`,
+          [
+            productosConPrecio.map((p) => p.ide_inarti),
+            JSON.stringify(Object.fromEntries(precioMap.entries())),
+            ide_cccpr,
+          ],
+        );
+      } catch (err) {
+        this.logger.warn(`No se pudieron actualizar precios en detalles: ${err.message}`);
+        // Fallback: update individual
+        for (const p of productosConPrecio) {
+          try {
+            await this.proformasService['dataSource'].pool.query(
+              `UPDATE cxc_deta_proforma
+               SET precio_ccdpr = $1, total_ccdpr = $2
+               WHERE ide_cccpr = $3 AND ide_inarti = $4`,
+              [p.precio_unitario, p.precio_total, ide_cccpr, p.ide_inarti],
+            );
+          } catch { /* continuar */ }
+        }
+      }
+    }
 
+    let pdfBuffer: Buffer | undefined;
     if (automatica) {
       try {
         await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, IDE_VGVEN_DEFAULT);
@@ -95,6 +144,6 @@ export class BotProformaService {
       }
     }
 
-    return { ide_cccpr, secuencial, automatica, productosConPrecio, productosSinPrecio, pdfBuffer };
+    return { ide_cccpr, secuencial, automatica, conPrecio, productosConPrecio, productosSinPrecio, pdfBuffer };
   }
 }
