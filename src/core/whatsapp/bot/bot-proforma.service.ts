@@ -8,7 +8,7 @@ import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface'
 import { BotToolsService } from './bot-tools.service';
 
 export const IDE_USUA_BOT       = 32;  // Usuario bot para proformas automáticas
-export const IDE_VGVEN_DEFAULT  =  3;  // Vendedor por defecto para cotizaciones automáticas
+export const IDE_VGVEN_DEFAULT  = 16;  // Vendedor por defecto para cotizaciones automáticas
 
 // ─── Constantes WhatsApp proforma ─────────────────────────────────────────────
 const IDE_CCTPR_WHATSAPP    = 3;           // Tipo de proforma: WhatsApp
