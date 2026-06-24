@@ -54,17 +54,34 @@ export class BotProformaService {
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
+    // Obtener tasa de IVA actual (decimal: 0.15 para 15%)
+    const ivaRow = await db.query<{ iva: number }>(
+      `SELECT COALESCE(porcentaje_iva_cncii, 0.15) AS iva
+       FROM con_config_iva
+       WHERE fecha_inicio_cncii <= CURRENT_DATE
+         AND (fecha_fin_cncii IS NULL OR fecha_fin_cncii >= CURRENT_DATE)
+       ORDER BY fecha_inicio_cncii DESC
+       LIMIT 1`,
+    );
+    const ivaDecimal: number = Number(ivaRow.rows[0]?.iva ?? 0.15);  // e.g. 0.15
+    const tarifaIva: number  = Math.round(ivaDecimal * 100);          // e.g. 15 (%)
+    this.logger.log(`[Proforma] IVA actual: ${tarifaIva}% (${ivaDecimal})`);
+
     for (const prod of datos.productos) {
       const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr);
       this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cantidad=${prod.cantidad} → ${precioConf ? `precio_unit=${precioConf.precio_unitario} incluye_iva=${precioConf.incluye_iva} cant_min=${precioConf.cantidad_minima}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
-        const iva = precioConf.incluye_iva ? 1 : 1.12;
-        const precioUnitario = Math.round(precioConf.precio_unitario * iva * 100) / 100;
+        // precio_sin_iva: si el configurado ya incluye IVA, extraemos la base
+        const precioSinIva = precioConf.incluye_iva
+          ? Math.round((precioConf.precio_unitario / (1 + ivaDecimal)) * 100) / 100
+          : precioConf.precio_unitario;
+        const totalSinIva   = Math.round(precioSinIva * prod.cantidad * 100) / 100;
+        const totalConIva   = Math.round(totalSinIva * (1 + ivaDecimal) * 100) / 100;
         productosConPrecio.push({
           ...prod,
-          precio_unitario: precioUnitario,
-          precio_total: Math.round(precioUnitario * prod.cantidad * 100) / 100,
-          tiene_precio: true,
+          precio_unitario: precioSinIva,          // SIN IVA (para proforma)
+          precio_total:    totalConIva,            // CON IVA (para mostrar al cliente)
+          tiene_precio:    true,
         });
       } else {
         productosSinPrecio.push({ ...prod, tiene_precio: false });
@@ -182,55 +199,40 @@ export class BotProformaService {
       this.logger.warn(`[Proforma] No se actualizaron campos WhatsApp: ${err.message}`);
     }
 
-    // Actualizar precios en los detalles cuando están disponibles
+    // Actualizar precios en los detalles (precio SIN IVA, total SIN IVA)
     if (todosTienePrecio) {
       for (const p of productosConPrecio) {
         try {
-          // precio_ccdpr = precio sin IVA (si el configurado ya incluía IVA, extraemos la base)
-          const precioSinIva = p.tiene_precio
-            ? Math.round((p.precio_unitario / 1) * 100) / 100  // ya calculamos con IVA incluido en procesarProforma
-            : p.precio_unitario;
+          const totalSinIva = Math.round(p.precio_unitario * p.cantidad * 100) / 100;
           await db.query(
             `UPDATE cxc_deta_proforma
              SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
-            [precioSinIva, p.precio_total, ide_cccpr, p.ide_inarti],
+            [p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti],
           );
-          this.logger.log(`[Proforma] Detalle actualizado ide_inarti=${p.ide_inarti} precio=${precioSinIva} total=${p.precio_total}`);
+          this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio_sin_iva=${p.precio_unitario} total_sin_iva=${totalSinIva}`);
         } catch (err) {
           this.logger.warn(`[Proforma] No se actualizó detalle ide_inarti=${p.ide_inarti}: ${err.message}`);
         }
       }
 
-      // Recalcular totales en la cabecera desde los detalles
+      // Recalcular totales cabecera con IVA correcto
       try {
-        await db.query(`
-          UPDATE cxc_cabece_proforma c
-          SET
-            base_grabada_cccpr = sums.base_grabada,
-            base_tarifa0_cccpr = sums.base_tarifa0,
-            tarifa_iva_cccpr   = COALESCE(iva.porcentaje_cnpim, 15),
-            valor_iva_cccpr    = ROUND(sums.base_grabada * COALESCE(iva.porcentaje_cnpim, 15) / 100, 2),
-            total_cccpr        = sums.base_tarifa0 + sums.base_grabada
-                                 + ROUND(sums.base_grabada * COALESCE(iva.porcentaje_cnpim, 15) / 100, 2)
-          FROM (
-            SELECT
-              COALESCE(SUM(CASE WHEN d.iva_inarti_ccdpr = 1 THEN d.total_ccdpr ELSE 0 END), 0) AS base_grabada,
-              COALESCE(SUM(CASE WHEN d.iva_inarti_ccdpr != 1 OR d.iva_inarti_ccdpr IS NULL THEN d.total_ccdpr ELSE 0 END), 0) AS base_tarifa0
-            FROM cxc_deta_proforma d
-            WHERE d.ide_cccpr = $1
-          ) sums,
-          LATERAL (
-            SELECT porcentaje_cnpim
-            FROM con_porcen_impues
-            WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-              AND activo_cnpim = TRUE
-            ORDER BY fecha_desde_cnpim DESC
-            LIMIT 1
-          ) iva
-          WHERE c.ide_cccpr = $1
-        `, [ide_cccpr]);
-        this.logger.log(`[Proforma] Cabecera actualizada con totales para ide_cccpr=${ide_cccpr}`);
+        const baseGrabada = productosConPrecio.reduce((s, p) => s + Math.round(p.precio_unitario * p.cantidad * 100) / 100, 0);
+        const valorIva    = Math.round(baseGrabada * ivaDecimal * 100) / 100;
+        const total       = Math.round((baseGrabada + valorIva) * 100) / 100;
+
+        await db.query(
+          `UPDATE cxc_cabece_proforma
+           SET base_grabada_cccpr = $2,
+               base_tarifa0_cccpr = 0,
+               tarifa_iva_cccpr   = $3,
+               valor_iva_cccpr    = $4,
+               total_cccpr        = $5
+           WHERE ide_cccpr = $1`,
+          [ide_cccpr, baseGrabada, tarifaIva, valorIva, total],
+        );
+        this.logger.log(`[Proforma] Cabecera: base=${baseGrabada} tarifa=${tarifaIva}% iva=${valorIva} total=${total}`);
       } catch (err) {
         this.logger.warn(`[Proforma] No se actualizaron totales de cabecera: ${err.message}`);
       }

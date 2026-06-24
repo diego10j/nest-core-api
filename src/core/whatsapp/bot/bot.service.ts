@@ -847,26 +847,33 @@ export class BotService implements OnModuleInit {
         ).join('\n');
         const total = resultado.productosConPrecio.reduce((s, p) => s + (p.precio_total ?? 0), 0);
 
-        let pdfLine = '';
+        // Enviar PDF como documento usando link público (evita upload a YCloud que falla)
         try {
           const filename = await this.fileTempService.saveWhatsAppMedia(
             resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
           );
           const pdfUrl = `${envs.hostApi}/api/whatsapp/media/${filename}`;
-          pdfLine = `\n📄 *Descarga tu cotización:*\n${pdfUrl}\n`;
-          this.logger.log(`[Bot] PDF guardado: ${pdfUrl}`);
+          await this.ycloudService.sendDocument(
+            ideEmpr, `+${waId}`, null,
+            `Cotizacion_${resultado.secuencial}.pdf`,
+            `📄 Cotización #${resultado.secuencial} — DIQUIMEC`,
+            undefined,
+            pdfUrl,
+          );
+          this.logger.log(`[Bot] PDF enviado como documento link: ${pdfUrl}`);
         } catch (pdfErr) {
-          this.logger.error(`Error guardando PDF: ${pdfErr.message}`);
+          this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
         }
 
         await this.sendText(ideEmpr, waId,
           `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n` +
           `📋 *Resumen:*\n${detalle}\n\n` +
-          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n` +
-          pdfLine +
-          `\nUno de nuestros asesores confirmará disponibilidad y coordinará el pago y envío 😊`,
+          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n\n` +
+          `Uno de nuestros asesores confirmará disponibilidad y coordinará el pago y envío 😊`,
         );
 
+        // Esperar 5s para que el PDF llegue antes que el mensaje de seguimiento
+        await new Promise((r) => setTimeout(r, 5000));
         await this.sendButtons(ideEmpr, waId,
           `¿Hay algo más en que pueda ayudarte? 🧪`,
           [
