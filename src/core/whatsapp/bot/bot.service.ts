@@ -389,14 +389,14 @@ export class BotService implements OnModuleInit {
           ide_geper: cliente.ide_geper,
           identificacion: cliente.identificacion,
           nombres: cliente.nombres,
-          correo: cliente.correo,
-          telefono: cliente.telefono,
+          correo: cliente.correo || 'info@diquimec.com.ec',
+          telefono: cliente.telefono || waId,
           es_cliente_registrado: true,
         },
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `¡Qué gusto verte de nuevo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+        `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
       );
       return;
     }
@@ -450,7 +450,7 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `¡Listo, *${cliente.nombres.split(' ')[0]}*! Ya tengo tus datos 😊\n\n${MSG_INICIO_COTIZACION}`,
+        `¡Listo, *${cliente.nombres}*! Ya tengo tus datos 😊\n\n${MSG_INICIO_COTIZACION}`,
       );
       return;
     }
