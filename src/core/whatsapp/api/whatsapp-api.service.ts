@@ -157,7 +157,7 @@ export class WhatsappApiService {
       attachment_name_whmem: filename,
       attachment_type_whmem: contentType,
       attachment_url_whmem: existingUrl,
-      ide_empr: ideEmpr,
+      phone_number_id_whmem: phoneNumberId,
     } = resFile;
 
     if (existingUrl) {
@@ -165,7 +165,7 @@ export class WhatsappApiService {
     }
 
     try {
-      const fileData = await this.ycloudService.downloadMedia(mediaId);
+      const fileData = await this.ycloudService.downloadMedia(mediaId, phoneNumberId);
       const fileExtension = getFileExtension(contentType, filename);
       const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
       const publicUrl = `${envs.hostApi}/api/whatsapp/media/${savedName}`;
@@ -181,18 +181,6 @@ export class WhatsappApiService {
   /**
    * Descarga un archivo desde una URL con autenticación
    */
-  private async downloadFileFromUrl(url: string, authToken?: string): Promise<Buffer> {
-    const requestConfig: AxiosRequestConfig = {
-      responseType: 'arraybuffer',
-      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      maxContentLength: 100 * 1024 * 1024,
-      timeout: 30000,
-    };
-
-    const response = await this.httpService.axiosRef.get(url, requestConfig);
-    return Buffer.from(response.data, 'binary');
-  }
-
   /**
    * Guarda los mensajes recibidos por el API de Whatsapp
    *  @param body

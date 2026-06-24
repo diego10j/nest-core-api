@@ -45,8 +45,9 @@ export class YcloudService {
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
   ) {
-    this.YCLOUD_API_URL = envs.ycloudApiUrl || 'https://api.ycloud.com/v2';
-    this.YCLOUD_API_KEY = envs.ycloudApiKey || '';
+    this.YCLOUD_API_URL = (envs.ycloudApiUrl || 'https://api.ycloud.com/v2').trim();
+    this.YCLOUD_API_KEY = (envs.ycloudApiKey || '').trim();
+    this.logger.log(`YCloud API KEY length: ${this.YCLOUD_API_KEY.length} | URL: ${this.YCLOUD_API_URL}`);
   }
 
   setMessageHandler(handler: InboundMessageHandler): void {
@@ -500,18 +501,31 @@ export class YcloudService {
     return { mediaId: resp.id };
   }
 
-  async downloadMedia(mediaId: string): Promise<Buffer> {
+  private extractInboxKey(link?: string): string | null {
+    if (!link) return null;
+    // URL: https://static-internal.ycloud.com/.../2026/06/24/{inboxKey}.pdf?Expires=...
+    const match = link.match(/\/([a-f0-9]{32})\.[a-z0-9]+\?/i);
+    return match ? match[1] : null;
+  }
+
+  async downloadMedia(mediaId: string, phoneNumberId?: string): Promise<Buffer> {
+    const params: Record<string, string> = {};
+    if (phoneNumberId) params['phoneNumber'] = phoneNumberId;
+
     const url = `${this.YCLOUD_API_URL}/whatsapp/media/${mediaId}`;
+    this.logger.debug(`Descargando media: ${url} | phone: ${phoneNumberId || 'N/A'} | keyLen: ${this.YCLOUD_API_KEY.length}`);
+
     const config: AxiosRequestConfig = {
       responseType: 'arraybuffer',
       headers: { 'X-API-Key': this.YCLOUD_API_KEY },
+      params,
       timeout: 30000,
     };
     try {
       const response = await this.httpService.axiosRef.get(url, config);
       return Buffer.from(response.data, 'binary');
     } catch (error) {
-      this.logger.error(`YCloud download media error: ${error.response?.data || error.message}`);
+      this.logger.error(`YCloud download media error [${mediaId}]: ${JSON.stringify(error.response?.data || error.message)}`);
       throw new InternalServerErrorException('Error al descargar archivo de YCloud');
     }
   }
@@ -648,7 +662,6 @@ export class YcloudService {
   ): Promise<void> {
     const wamid = data.wamid || data.id;
 
-    // Evitar duplicados si YCloud reintenta el webhook
     const existsQ = await this.dataSource.pool.query(
       `SELECT 1 FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`,
       [wamid],
@@ -656,41 +669,56 @@ export class YcloudService {
     if (existsQ.rowCount > 0) return;
 
     const tipo = data.type || 'text';
-    const body = data.text?.body
-      || data.button?.text
-      || data.interactive?.button_reply?.title
-      || data.interactive?.list_reply?.title
-      || null;
+    const body = data.text?.body || data.button?.text
+      || data.interactive?.button_reply?.title || data.interactive?.list_reply?.title || null;
     const caption = data.image?.caption || data.video?.caption || data.document?.caption || null;
 
-    const insert = new InsertQuery('wha_mensaje', 'uuid');
-    insert.values.set('ide_whcha', ideWhcha);
-    insert.values.set('phone_number_id_whmem', phoneNumberId);
-    insert.values.set('phone_number_whmem', data.from);
-    insert.values.set('wa_id_whmem', waId);
-    insert.values.set('id_whmem', wamid);
-    insert.values.set('body_whmem', body);
-    insert.values.set('caption_whmem', caption);
-    insert.values.set('fecha_whmem', now.toISOString());
-    insert.values.set('content_type_whmem', tipo);
-    insert.values.set('direction_whmem', '0');   // 0 = inbound
-    insert.values.set('leido_whmem', false);
-    insert.values.set('tipo_whmem', 'YCLOUD');
-    insert.values.set('timestamp_whmem', data.sendTime || null);
+    const buildBase = (): InsertQuery => {
+      const q = new InsertQuery('wha_mensaje', 'uuid');
+      q.values.set('ide_whcha', ideWhcha);
+      q.values.set('phone_number_id_whmem', phoneNumberId);
+      q.values.set('phone_number_whmem', data.from);
+      q.values.set('wa_id_whmem', waId);
+      q.values.set('id_whmem', wamid);
+      q.values.set('body_whmem', body);
+      q.values.set('caption_whmem', caption);
+      q.values.set('fecha_whmem', now.toISOString());
+      q.values.set('content_type_whmem', tipo);
+      q.values.set('direction_whmem', '0');
+      q.values.set('leido_whmem', false);
+      q.values.set('tipo_whmem', 'YCLOUD');
+      q.values.set('timestamp_whmem', data.sendTime || null);
+      if (data.context?.id) q.values.set('wa_id_context_whmem', data.context.id);
+      return q;
+    };
 
-    if (data.context?.id) insert.values.set('wa_id_context_whmem', data.context.id);
+    const addAttachments = (q: InsertQuery): void => {
+      if (data.image)    { if (data.image.id) q.values.set('attachment_id_whmem', data.image.id); if (data.image.mime_type) q.values.set('attachment_type_whmem', data.image.mime_type); }
+      if (data.video)    { if (data.video.id) q.values.set('attachment_id_whmem', data.video.id); if (data.video.mime_type) q.values.set('attachment_type_whmem', data.video.mime_type); }
+      if (data.audio)    { if (data.audio.id) q.values.set('attachment_id_whmem', data.audio.id); if (data.audio.mime_type) q.values.set('attachment_type_whmem', data.audio.mime_type); }
+      if (data.document) {
+        if (data.document.id) q.values.set('attachment_id_whmem', data.document.id);
+        if (data.document.mime_type) q.values.set('attachment_type_whmem', data.document.mime_type);
+        if (data.document.filename) q.values.set('attachment_name_whmem', data.document.filename);
+      }
+      if (data.sticker)  { if (data.sticker.id) q.values.set('attachment_id_whmem', data.sticker.id); if (data.sticker.mime_type) q.values.set('attachment_type_whmem', data.sticker.mime_type); }
+    };
 
-    if (data.image)    { insert.values.set('attachment_id_whmem', data.image.id);    insert.values.set('attachment_type_whmem', data.image.mime_type); }
-    if (data.video)    { insert.values.set('attachment_id_whmem', data.video.id);    insert.values.set('attachment_type_whmem', data.video.mime_type); }
-    if (data.audio)    { insert.values.set('attachment_id_whmem', data.audio.id);    insert.values.set('attachment_type_whmem', data.audio.mime_type); }
-    if (data.document) {
-      insert.values.set('attachment_id_whmem', data.document.id);
-      insert.values.set('attachment_type_whmem', data.document.mime_type);
-      insert.values.set('attachment_name_whmem', data.document.filename || null);
+    const fullQuery = buildBase();
+    addAttachments(fullQuery);
+
+    try {
+      await this.dataSource.createQuery(fullQuery);
+      this.logger.log(`[Inbound] Guardado wamid=${wamid} tipo=${tipo} de=${waId}`);
+    } catch (fullErr) {
+      this.logger.warn(`[insertMensajeInbound] ${wamid}: insert completo falló (${fullErr.message}) — reintentando sin adjuntos`);
+      try {
+        await this.dataSource.createQuery(buildBase());
+        this.logger.log(`[Inbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
+      } catch (baseErr) {
+        this.logger.error(`[insertMensajeInbound] ${wamid}: NO SE PUDO GUARDAR: ${baseErr.message}`);
+      }
     }
-    if (data.sticker)  { insert.values.set('attachment_id_whmem', data.sticker.id);  insert.values.set('attachment_type_whmem', data.sticker.mime_type); }
-
-    await this.dataSource.createQuery(insert);
   }
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
@@ -728,78 +756,100 @@ export class YcloudService {
         await this.insertOutboundMessage(data, wamid);
       }
     } catch (error) {
-      this.logger.error(`Status update failed: ${error.message}`);
+      this.logger.error(`Status update failed [${data.wamid || data.id}] status=${data.status}: ${error.message}`);
     }
+  }
+
+  private buildOutboundAttachments(data: YcloudStatusData, q: InsertQuery | UpdateQuery): void {
+    if (data.image) {
+      const id = data.image.id || this.extractInboxKey(data.image.link);
+      if (id) q.values.set('attachment_id_whmem', id);
+      if (data.image.mime_type) q.values.set('attachment_type_whmem', data.image.mime_type);
+      q.values.set('attachment_url_whmem', data.image.link || null);
+      if (data.image.caption) q.values.set('caption_whmem', data.image.caption);
+    } else if (data.video) {
+      const id = data.video.id || this.extractInboxKey(data.video.link);
+      if (id) q.values.set('attachment_id_whmem', id);
+      if (data.video.mime_type) q.values.set('attachment_type_whmem', data.video.mime_type);
+      q.values.set('attachment_url_whmem', data.video.link || null);
+      if (data.video.caption) q.values.set('caption_whmem', data.video.caption);
+    } else if (data.audio) {
+      const id = data.audio.id || this.extractInboxKey(data.audio.link);
+      if (id) q.values.set('attachment_id_whmem', id);
+      if (data.audio.mime_type) q.values.set('attachment_type_whmem', data.audio.mime_type);
+      q.values.set('attachment_url_whmem', data.audio.link || null);
+    } else if (data.document) {
+      const id = data.document.id || this.extractInboxKey(data.document.link);
+      if (id) q.values.set('attachment_id_whmem', id);
+      if (data.document.mime_type) q.values.set('attachment_type_whmem', data.document.mime_type);
+      q.values.set('attachment_url_whmem', data.document.link || null);
+      if (data.document.filename) q.values.set('attachment_name_whmem', data.document.filename);
+      if (data.document.caption) q.values.set('caption_whmem', data.document.caption);
+    } else if (data.sticker) {
+      const id = data.sticker.id || this.extractInboxKey(data.sticker.link);
+      if (id) q.values.set('attachment_id_whmem', id);
+      if (data.sticker.mime_type) q.values.set('attachment_type_whmem', data.sticker.mime_type);
+      q.values.set('attachment_url_whmem', data.sticker.link || null);
+    }
+    if (data.location) {
+      q.values.set('location_lat_whmem', data.location.latitude);
+      q.values.set('location_lng_whmem', data.location.longitude);
+      if (data.location.name) q.values.set('location_name_whmem', data.location.name);
+      if (data.location.address) q.values.set('location_address_whmem', data.location.address);
+    }
+    if (data.pricingCategory) q.values.set('pricing_category_whmem', data.pricingCategory);
   }
 
   private async insertOutboundMessage(data: YcloudStatusData, wamid: string): Promise<void> {
     const customerWaId = (data.to || '').replace(/^\+/, '');
     const businessPhone = (data.from || '').replace(/^\+/, '');
     const tipo = data.type || 'text';
+    const body = data.text?.body || data.image?.caption || data.video?.caption || data.document?.caption || '';
 
-    let body = data.text?.body || '';
-    if (data.image) body = data.image.caption || '';
-    if (data.video) body = data.video.caption || '';
-    if (data.document) body = data.document.caption || '';
+    const buildBase = (): InsertQuery => {
+      const q = new InsertQuery('wha_mensaje', 'uuid');
+      q.values.set('id_whmem', wamid);
+      q.values.set('wa_id_whmem', customerWaId);
+      q.values.set('phone_number_id_whmem', businessPhone);
+      q.values.set('direction_whmem', 1);
+      q.values.set('content_type_whmem', tipo);
+      q.values.set('body_whmem', body);
+      q.values.set('status_whmem', data.status);
+      q.values.set('fecha_whmem', data.sendTime || data.createTime || new Date().toISOString());
+      q.values.set('tipo_whmem', 'YCLOUD');
+      q.values.set('leido_whmem', false);
+      if (data.status === 'delivered') q.values.set('timestamp_sent_whmem', data.deliverTime || data.sendTime);
+      else if (data.status === 'read') { q.values.set('timestamp_read_whmem', data.readTime || data.deliverTime); q.values.set('leido_whmem', true); }
+      return q;
+    };
 
-    const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
-    insertQuery.values.set('id_whmem', wamid);
-    insertQuery.values.set('wa_id_whmem', customerWaId);
-    insertQuery.values.set('phone_number_id_whmem', businessPhone);
-    insertQuery.values.set('direction_whmem', 1);
-    insertQuery.values.set('content_type_whmem', tipo);
-    insertQuery.values.set('body_whmem', body);
-    insertQuery.values.set('status_whmem', data.status);
-    insertQuery.values.set('fecha_whmem', data.sendTime || data.createTime || new Date().toISOString());
-    insertQuery.values.set('tipo_whmem', 'YCLOUD');
-    insertQuery.values.set('leido_whmem', false);
-
-    if (data.status === 'delivered') {
-      insertQuery.values.set('timestamp_sent_whmem', data.deliverTime || data.sendTime);
-    } else if (data.status === 'read') {
-      insertQuery.values.set('timestamp_read_whmem', data.readTime || data.deliverTime);
-      insertQuery.values.set('leido_whmem', true);
+    // Intento completo (campos base + adjuntos)
+    const fullQuery = buildBase();
+    try {
+      this.buildOutboundAttachments(data, fullQuery);
+    } catch (attachErr) {
+      this.logger.warn(`[insertOutboundMessage] ${wamid}: error preparando adjuntos: ${attachErr.message}`);
     }
 
-    if (data.image) {
-      insertQuery.values.set('attachment_id_whmem', data.image.id);
-      insertQuery.values.set('attachment_type_whmem', data.image.mime_type);
-      insertQuery.values.set('attachment_url_whmem', data.image.link || null);
-      insertQuery.values.set('caption_whmem', data.image.caption || null);
-    } else if (data.video) {
-      insertQuery.values.set('attachment_id_whmem', data.video.id);
-      insertQuery.values.set('attachment_type_whmem', data.video.mime_type);
-      insertQuery.values.set('attachment_url_whmem', data.video.link || null);
-      insertQuery.values.set('caption_whmem', data.video.caption || null);
-    } else if (data.audio) {
-      insertQuery.values.set('attachment_id_whmem', data.audio.id);
-      insertQuery.values.set('attachment_type_whmem', data.audio.mime_type);
-      insertQuery.values.set('attachment_url_whmem', data.audio.link || null);
-    } else if (data.document) {
-      insertQuery.values.set('attachment_id_whmem', data.document.id);
-      insertQuery.values.set('attachment_type_whmem', data.document.mime_type);
-      insertQuery.values.set('attachment_url_whmem', data.document.link || null);
-      insertQuery.values.set('attachment_name_whmem', data.document.filename || null);
-      insertQuery.values.set('caption_whmem', data.document.caption || null);
-    } else if (data.sticker) {
-      insertQuery.values.set('attachment_id_whmem', data.sticker.id);
-      insertQuery.values.set('attachment_type_whmem', data.sticker.mime_type);
-      insertQuery.values.set('attachment_url_whmem', data.sticker.link || null);
+    try {
+      await this.dataSource.createQuery(fullQuery);
+      this.logger.log(`[Outbound] Guardado wamid=${wamid} tipo=${tipo} status=${data.status}`);
+      return;
+    } catch (fullErr) {
+      this.logger.warn(`[insertOutboundMessage] ${wamid}: insert completo falló (${fullErr.message}) — reintentando sin adjuntos`);
     }
 
-    if (data.location) {
-      insertQuery.values.set('location_lat_whmem', data.location.latitude);
-      insertQuery.values.set('location_lng_whmem', data.location.longitude);
-      if (data.location.name) insertQuery.values.set('location_name_whmem', data.location.name);
-      if (data.location.address) insertQuery.values.set('location_address_whmem', data.location.address);
+    // Fallback: solo campos base
+    try {
+      await this.dataSource.createQuery(buildBase());
+      this.logger.log(`[Outbound] Guardado (sin adjuntos) wamid=${wamid} tipo=${tipo}`);
+    } catch (baseErr) {
+      this.logger.error(`[insertOutboundMessage] ${wamid}: NO SE PUDO GUARDAR: ${baseErr.message}`);
+      throw baseErr;
     }
-
-    if (data.pricingCategory) {
-      insertQuery.values.set('pricing_category_whmem', data.pricingCategory);
-    }
-
-    await this.dataSource.createQuery(insertQuery);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
   private async processTemplateResponse(data: Record<string, any>): Promise<void> {
   }
