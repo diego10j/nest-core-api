@@ -523,6 +523,29 @@ export class YcloudService {
     return { messageId };
   }
 
+  // ─── Geocodificación inversa ──────────────────────────────────
+
+  async getAddressFromCoords(lat: number, lng: number): Promise<string | null> {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es`;
+      const resp = await this.httpService.axiosRef.get(url, {
+        headers: { 'User-Agent': 'DIQUIMEC-WhatsApp-Bot/1.0' },
+        timeout: 5000,
+      });
+      const addr = resp.data?.address;
+      if (!addr) return resp.data?.display_name || null;
+      const partes = [
+        addr.road || addr.pedestrian || addr.footway,
+        addr.house_number,
+        addr.suburb || addr.neighbourhood,
+        addr.city || addr.town || addr.village || addr.county,
+      ].filter(Boolean);
+      return partes.length ? partes.join(', ') : resp.data?.display_name || null;
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Media ────────────────────────────────────────────────────
 
   async uploadMedia(

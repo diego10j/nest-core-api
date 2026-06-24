@@ -5,8 +5,23 @@ import { ProformasService } from 'src/core/modules/proformas/proformas.service';
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 import { BotToolsService } from './bot-tools.service';
 
-export const IDE_USUA_BOT      = 32;  // Usuario bot para proformas automáticas
-export const IDE_VGVEN_DEFAULT  = 3;  // Vendedor por defecto para cotizaciones automáticas
+export const IDE_USUA_BOT       = 32;  // Usuario bot para proformas automáticas
+export const IDE_VGVEN_DEFAULT  =  3;  // Vendedor por defecto para cotizaciones automáticas
+
+// ─── Constantes WhatsApp proforma ─────────────────────────────────────────────
+const IDE_CCTPR_WHATSAPP    = 3;           // Tipo de proforma: WhatsApp
+const IDE_CCVAP_WHATSAPP    = 6;           // Canal de venta WhatsApp
+const IDE_CCTEN_WHATSAPP    = 0;           // Tiene (campo requerido)
+const REFERENCIA_WHATSAPP   = 'WhatsApp';  // Referencia en cabecera
+
+/** Convierte número internacional Ecuador a formato local: +593983113543 → 0983113543 */
+function toLocalPhone(phone: string): string {
+  const digits = phone.replace(/^\+/, '');
+  if (digits.startsWith('593') && digits.length > 3) {
+    return '0' + digits.substring(3);
+  }
+  return digits;
+}
 
 export interface ResultadoProforma {
   ide_cccpr: number;
@@ -83,7 +98,7 @@ export class BotProformaService {
         fecha: getCurrentDate(),
         nombres: datos.cliente.nombres,
         correo: datos.cliente.correo,
-        telefono: telefonoWa.replace(/^\+/, ''),
+        telefono: toLocalPhone(telefonoWa),
         provincia: datos.envio?.provincia || '',
         direccion: datos.envio?.direccion || '',
         formaPago: datos.forma_pago === 'credit' ? 'credit' : 'cash',
@@ -96,6 +111,71 @@ export class BotProformaService {
 
     const ide_cccpr: number = resultado.data.ide_cccpr;
     const secuencial: string = resultado.data.secuencial_cccpr;
+
+    // Actualizar cabecera con datos específicos de WhatsApp y del cliente
+    try {
+      const cliente = datos.cliente;
+      let ideGeper   = 7712;  // Consumidor final por defecto
+      let identificac = '9999999999999';
+      let ideGetid   = 3;
+      let correo     = cliente?.correo || 'info@diquimec.com.ec';
+
+      if (cliente?.es_cliente_registrado && cliente.ide_geper) {
+        ideGeper   = cliente.ide_geper;
+        identificac = cliente.identificacion || identificac;
+        correo      = cliente.correo || correo;
+
+        // Obtener ide_getid real del cliente desde gen_persona
+        const personaRow = await db.query(
+          `SELECT ide_getid, correo_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`,
+          [ideGeper],
+        );
+        if (personaRow.rowCount > 0) {
+          ideGetid = personaRow.rows[0].ide_getid ?? 3;
+          correo   = personaRow.rows[0].correo_geper || correo;
+        }
+      }
+
+      // notas_cccpr: coordenadas GPS en JSON si el cliente compartió ubicación
+      const latitud  = datos.envio?.latitud;
+      const longitud = datos.envio?.longitud;
+      const notasGps = (latitud && longitud)
+        ? JSON.stringify({ lat: latitud, lng: longitud })
+        : null;
+
+      await db.query(`
+        UPDATE cxc_cabece_proforma
+        SET
+          ide_cctpr         = $2,
+          referencia_cccpr  = $3,
+          ide_ccvap         = $4,
+          ide_ccten         = $5,
+          ide_geper         = $6,
+          identificac_cccpr = $7,
+          ide_getid         = $8,
+          correo_cccpr      = $9,
+          telefono_cccpr    = $10,
+          direccion_cccpr   = $11,
+          notas_cccpr       = COALESCE($12, notas_cccpr)
+        WHERE ide_cccpr = $1
+      `, [
+        ide_cccpr,
+        IDE_CCTPR_WHATSAPP,
+        REFERENCIA_WHATSAPP,
+        IDE_CCVAP_WHATSAPP,
+        IDE_CCTEN_WHATSAPP,
+        ideGeper,
+        identificac,
+        ideGetid,
+        correo,
+        toLocalPhone(telefonoWa),
+        datos.envio?.direccion || '',
+        notasGps,
+      ]);
+      this.logger.log(`[Proforma] Cabecera WhatsApp actualizada ide_cccpr=${ide_cccpr} ide_geper=${ideGeper}`);
+    } catch (err) {
+      this.logger.warn(`[Proforma] No se actualizaron campos WhatsApp: ${err.message}`);
+    }
 
     const db = this.proformasService['dataSource'].pool;
 

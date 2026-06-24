@@ -16,6 +16,8 @@ export interface ClienteSesion {
   nombres: string;
   correo: string;
   telefono?: string;
+  direccion_registrada?: string;
+  ide_getid?: number;
   es_cliente_registrado: boolean;
   pendiente_campo?: 'nombres' | 'correo';
 }
@@ -25,7 +27,7 @@ export interface EnvioSesion {
   provincia?: string;
   latitud?: number;
   longitud?: number;
-  pendiente_campo?: 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
+  pendiente_campo?: 'usar_direccion_existente' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
 }
 
 export interface DatosSesion {
@@ -44,6 +46,8 @@ export interface OpcionProducto {
   numero: number;
   ide_inarti: number;
   nombre: string;
+  otro_nombre?: string;
+  matched_by_otro_nombre?: boolean;
   siglas_unidad: string;
   nombre_unidad: string;
   en_catalogo: boolean;

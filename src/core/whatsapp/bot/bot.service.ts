@@ -391,6 +391,8 @@ export class BotService implements OnModuleInit {
           nombres: cliente.nombres,
           correo: cliente.correo || 'info@diquimec.com.ec',
           telefono: cliente.telefono || waId,
+          direccion_registrada: cliente.direccion || '',
+          ide_getid: cliente.ide_getid,
           es_cliente_registrado: true,
         },
       };
@@ -523,7 +525,7 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `Encontré: *${prod.nombre}* ✅\n\n` +
+        `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
         `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
       );
       return;
@@ -533,6 +535,8 @@ export class BotService implements OnModuleInit {
       numero: i + 1,
       ide_inarti: p.ide_inarti,
       nombre: p.nombre,
+      otro_nombre: p.otro_nombre,
+      matched_by_otro_nombre: p.matched_by_otro_nombre,
       siglas_unidad: p.siglas_unidad,
       nombre_unidad: p.nombre_unidad,
       en_catalogo: p.en_catalogo,
@@ -541,7 +545,7 @@ export class BotService implements OnModuleInit {
     const nuevosDatos: DatosSesion = { ...datos, opciones_producto: opciones };
     await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
 
-    const listaTexto = opciones.map((o) => `*${o.numero}.* ${o.nombre}`).join('\n');
+    const listaTexto = opciones.map((o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`).join('\n');
     await this.sendText(ideEmpr, waId,
       `Encontré varios productos que coinciden 🔍 Selecciona el número que corresponde al que necesitas:\n\n${listaTexto}\n\n_Responde con el número de la opción_`,
     );
@@ -647,15 +651,29 @@ export class BotService implements OnModuleInit {
     }
 
     if (confirma) {
-      const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'tipo_direccion' } };
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
-      await this.sendButtons(ideEmpr, waId,
-        `Perfecto 👍 Ahora necesito la dirección de entrega.\n\n¿Cómo prefieres indicarla?`,
-        [
-          { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
-          { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
-        ],
-      );
+      const dirRegistrada = datos.cliente?.direccion_registrada;
+      if (dirRegistrada) {
+        // Cliente con dirección registrada → preguntar si la usa
+        const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'usar_direccion_existente' } };
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
+        await this.sendButtons(ideEmpr, waId,
+          `Tu dirección registrada es:\n📌 *${dirRegistrada}*\n\n¿Deseas usar esta dirección de entrega?`,
+          [
+            { id: 'USAR_DIR_SI',  title: '✅ Sí, usar esta' },
+            { id: 'USAR_DIR_NO',  title: '📝 Ingresar otra' },
+          ],
+        );
+      } else {
+        const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'tipo_direccion' } };
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
+        await this.sendButtons(ideEmpr, waId,
+          `Perfecto 👍 ¿Cómo prefieres indicar la dirección de entrega?`,
+          [
+            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+          ],
+        );
+      }
       return;
     }
 
@@ -671,6 +689,39 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const envio = datos.envio ?? {};
+
+    // Paso 0 — cliente con dirección registrada: ¿usarla o no?
+    if (envio.pendiente_campo === 'usar_direccion_existente') {
+      const t = texto.trim().toUpperCase();
+      if (t === 'USAR_DIR_SI') {
+        const dir = datos.cliente?.direccion_registrada || '';
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+          { ...datos, envio: { ...envio, direccion: dir, pendiente_campo: 'provincia' } });
+        await this.sendText(ideEmpr, waId, `Perfecto, usaremos esa dirección 📍\n\n¿En qué *provincia* te encuentras? 🗺️`);
+        return;
+      }
+      if (t === 'USAR_DIR_NO') {
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+          { ...datos, envio: { ...envio, pendiente_campo: 'tipo_direccion' } });
+        await this.sendButtons(ideEmpr, waId,
+          `¿Cómo prefieres indicar la nueva dirección de entrega?`,
+          [
+            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+          ],
+        );
+        return;
+      }
+      // Respuesta no reconocida → repetir
+      await this.sendButtons(ideEmpr, waId,
+        `Por favor selecciona una opción 😊`,
+        [
+          { id: 'USAR_DIR_SI',  title: '✅ Sí, usar esta' },
+          { id: 'USAR_DIR_NO',  title: '📝 Ingresar otra' },
+        ],
+      );
+      return;
+    }
 
     // Paso 1 — elegir cómo indicar la dirección
     if (envio.pendiente_campo === 'tipo_direccion') {
@@ -711,20 +762,28 @@ export class BotService implements OnModuleInit {
       if (texto.startsWith('__LOCATION__:')) {
         const [, coordPart] = texto.split(':');
         const [lat, lng, nombre, direccionMapa] = coordPart.split(',');
-        const direccionFormateada = direccionMapa?.trim() || nombre?.trim()
-          || `Coordenadas: ${lat}, ${lng}`;
+        const latNum = parseFloat(lat);
+        const lngNum = parseFloat(lng);
+
+        // Geocodificación inversa con Nominatim
+        let direccionFormateada = direccionMapa?.trim() || nombre?.trim() || null;
+        if (!direccionFormateada) {
+          const geocoded = await this.ycloudService.getAddressFromCoords(latNum, lngNum);
+          direccionFormateada = geocoded || `Coordenadas: ${lat}, ${lng}`;
+        }
+
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, {
           ...datos,
           envio: {
             ...envio,
             direccion: direccionFormateada,
-            latitud: parseFloat(lat),
-            longitud: parseFloat(lng),
+            latitud: latNum,
+            longitud: lngNum,
             pendiente_campo: 'provincia',
           },
         });
         await this.sendText(ideEmpr, waId,
-          `📍 Ubicación recibida ✅\n\n¿En qué *provincia* te encuentras? 🗺️`,
+          `📍 Ubicación recibida ✅\n_${direccionFormateada}_\n\n¿En qué *provincia* te encuentras? 🗺️`,
         );
         return;
       }
@@ -779,37 +838,30 @@ export class BotService implements OnModuleInit {
       );
 
       if (resultado.automatica && resultado.pdfBuffer) {
-        // ── CASO 1: Todos con precio + en catálogo → guardar PDF en servidor y enviar por URL ──
-        let pdfEnviado = false;
-        try {
-          const filename = await this.fileTempService.saveWhatsAppMedia(
-            resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
-          );
-          const pdfUrl = `${envs.hostApi}/api/whatsapp/media/${filename}`;
-          await this.ycloudService.sendDocument(
-            ideEmpr, `+${waId}`, null,
-            `Cotizacion_${resultado.secuencial}.pdf`,
-            `📄 Tu cotización #${resultado.secuencial} de DIQUIMEC`,
-            undefined,   // ideUsua
-            pdfUrl,      // link público
-          );
-          pdfEnviado = true;
-          this.logger.log(`[Bot] PDF enviado via URL: ${pdfUrl}`);
-        } catch (pdfErr) {
-          this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
-        }
-
+        // ── CASO 1: Todos con precio + en catálogo ──
         const detalle = resultado.productosConPrecio.map(
           (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — *$${p.precio_total?.toFixed(2)}*`,
         ).join('\n');
         const total = resultado.productosConPrecio.reduce((s, p) => s + (p.precio_total ?? 0), 0);
 
+        let pdfLine = '';
+        try {
+          const filename = await this.fileTempService.saveWhatsAppMedia(
+            resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
+          );
+          const pdfUrl = `${envs.hostApi}/api/whatsapp/media/${filename}`;
+          pdfLine = `\n📄 *Descarga tu cotización:*\n${pdfUrl}\n`;
+          this.logger.log(`[Bot] PDF guardado: ${pdfUrl}`);
+        } catch (pdfErr) {
+          this.logger.error(`Error guardando PDF: ${pdfErr.message}`);
+        }
+
         await this.sendText(ideEmpr, waId,
           `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n` +
           `📋 *Resumen:*\n${detalle}\n\n` +
-          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n\n` +
-          `${pdfEnviado ? '📄 Hemos adjuntado tu cotización en PDF para que puedas revisarla con calma.\n\n' : ''}` +
-          `Uno de nuestros asesores estará en contacto contigo para confirmar la disponibilidad de stock y coordinar el proceso de pago y entrega 😊`,
+          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n` +
+          pdfLine +
+          `\nUno de nuestros asesores confirmará disponibilidad y coordinará el pago y envío 😊`,
         );
 
         await this.sendButtons(ideEmpr, waId,
@@ -820,43 +872,19 @@ export class BotService implements OnModuleInit {
           ],
         );
 
-      } else if (resultado.conPrecio) {
-        // ── CASO 2: Todos tienen precio pero alguno no está en catálogo ──
+      } else {
+        // ── CASO 2 y 3: algún producto sin precio o fuera de catálogo ──
+        const msgAsesor = resultado.conPrecio
+          ? `Cotización #${resultado.secuencial} — precios cargados pero productos fuera de catálogo. Revisar y enviar proforma al cliente.`
+          : `Cotización #${resultado.secuencial} — ${resultado.productosSinPrecio.length} producto(s) sin precio. Completar y enviar proforma al cliente.`;
+
         await this.sendText(ideEmpr, waId,
-          `✅ *Cotización #${resultado.secuencial} registrada*\n\n` +
-          `📋 *Productos cotizados:*\n` +
-          resultado.productosConPrecio.map(
-            (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
-          ).join('\n') +
-          `\n\n🔔 Tu cotización ha sido asignada a uno de nuestros asesores comerciales, quien se comunicará contigo en la brevedad posible con todos los detalles.\n\n` +
+          `✅ *Cotización #${resultado.secuencial} registrada* 😊\n\n` +
+          `Uno de nuestros asesores comerciales será asignado para completar tu cotización.\n` +
+          `En cuanto esté lista te notificaremos.\n\n` +
           `*¡Gracias por contactarnos!* 🧪`,
         );
-        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-          `Cotización #${resultado.secuencial} generada. Cliente tiene precios pero productos fuera de catálogo — revisar y enviar proforma.`,
-        );
-
-      } else {
-        // ── CASO 3: Algunos productos sin precio configurado ──
-        let msg = `✅ *Cotización #${resultado.secuencial} registrada*\n\n`;
-
-        if (resultado.productosConPrecio.length) {
-          msg += `📋 *Productos con precio:*\n`;
-          msg += resultado.productosConPrecio.map(
-            (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
-          ).join('\n') + '\n\n';
-        }
-
-        if (resultado.productosSinPrecio.length) {
-          msg += `⏳ *Productos pendientes de precio:*\n`;
-          msg += resultado.productosSinPrecio.map((p) => `• ${p.nombre}`).join('\n') + '\n\n';
-        }
-
-        msg += `🔔 Uno de nuestros asesores revisará los precios pendientes y te enviará la cotización completa en el menor tiempo posible.\n\n*¡Gracias por contactarnos!* 🧪`;
-
-        await this.sendText(ideEmpr, waId, msg);
-        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-          `Cotización #${resultado.secuencial} — hay ${resultado.productosSinPrecio.length} producto(s) sin precio configurado. Completar y enviar proforma al cliente.`,
-        );
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, msgAsesor);
       }
     } catch (err) {
       this.logger.error(`Error creando proforma: ${err.message}`);
@@ -915,6 +943,13 @@ export class BotService implements OnModuleInit {
       CATALOGO: INFO.catalogo,
     };
     await this.sendText(ideEmpr, waId, mapa[tipo]);
+  }
+
+  private displayNombreProducto(prod: { nombre: string; otro_nombre?: string; matched_by_otro_nombre?: boolean }): string {
+    if (prod.matched_by_otro_nombre && prod.otro_nombre) {
+      return `${prod.nombre} / ${prod.otro_nombre}`;
+    }
+    return prod.nombre;
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {

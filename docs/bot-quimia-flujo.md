@@ -11,96 +11,139 @@ Asistente virtual comercial especializado en venta de materias primas y producto
 Cliente escribe cualquier mensaje
         │
         ▼
-[INICIO] → Guarda texto_inicial → Envía bienvenida
+[INICIO] → Guarda texto_inicial → Envía bienvenida con botones [Sí bot / No asesor]
         │
         ▼
 [ESPERANDO_CONFIRMACION]
-  SI ──→ Clasifica texto_inicial (GPT)
-  │        ├─ PRODUCTO ──────────────────────→ [PREGUNTA_ES_CLIENTE]
-  │        ├─ UBICACION/HORARIO/ENVIO/CATALOGO → responde info → [ATENCION_LIBRE]
-  │        └─ GENERAL ────────────────────────→ [ATENCION_LIBRE]
-  NO ──→ Deriva a asesor
+  NO/ASESOR ──→ Deriva a asesor
+  SI ──→ Clasifica texto_inicial (GPT + regex)
+           ├─ PRODUCTO ──────────────────────→ [PREGUNTA_ES_CLIENTE]
+           ├─ UBICACION/HORARIO/ENVIO/CATALOGO → responde info → [ATENCION_LIBRE]
+           └─ GENERAL ────────────────────────→ [ATENCION_LIBRE]
         │
         ▼
 [ATENCION_LIBRE]
-  Detecta intención:
-  ├─ UBICACION  → responde dirección + mapa
-  ├─ HORARIO    → responde horarios
-  ├─ ENVIO      → responde info de envíos
-  ├─ CATALOGO   → responde links catálogo
+  Detecta intención (regex + GPT):
+  ├─ UBICACION  → responde dirección + mapa Google Maps
+  ├─ HORARIO    → responde horarios L-V / Sábado
+  ├─ ENVIO      → responde info envíos nacionales
+  ├─ CATALOGO   → responde links catálogo/productos
   ├─ PRODUCTO   → [PREGUNTA_ES_CLIENTE]
-  └─ GENERAL    → GPT responde en contexto
+  └─ GENERAL    → GPT responde en contexto (prompt_sistema)
         │
         ▼
-[PREGUNTA_ES_CLIENTE]
-  "¿Has comprado antes con nosotros?"
+[PREGUNTA_ES_CLIENTE]  — botones: [✅ Sí, soy cliente] [❌ No]
   SI ──→ [IDENTIFICACION]
   NO ──→ [DATOS_NUEVO_CLIENTE]
         │
         ├─ [IDENTIFICACION]
         │    Pide cédula/RUC → Busca en gen_persona
-        │    Encontrado ──→ [SELECCION_PRODUCTOS]
-        │    No encontrado → [DATOS_NUEVO_CLIENTE]
+        │    Encontrado:
+        │      - Guarda: ide_geper, nombres, correo, telefono, direccion_registrada, ide_getid
+        │      - → [SELECCION_PRODUCTOS]
+        │    No encontrado → [DATOS_NUEVO_CLIENTE] (pide nombre + correo)
         │
         └─ [DATOS_NUEVO_CLIENTE]
-             Pide nombre → Pide correo
+             1. Pide nombre completo
+             2. Pide correo electrónico
              Listo ──→ [SELECCION_PRODUCTOS]
         │
         ▼
 [SELECCION_PRODUCTOS]
   Cliente escribe nombre de producto:
-  ├─ 0 resultados → pide reformular
-  ├─ 1 resultado  → confirma → [ESPERANDO_CANTIDAD]
-  └─ N resultados → muestra lista → [SELECCION_MULTIPLE]
-  FIN → [CONFIRMACION_PRODUCTOS]
+  Búsqueda 3 niveles:
+    1. ILIKE exact phrase
+    2. Reducción progresiva de palabras
+    3. Palabras significativas (sin stop words) con score
+  Resultado:
+  ├─ 0 resultados → pide reformular + link catálogo
+  ├─ 1 resultado  → muestra nombre (nombre/otro_nombre si match por otro_nombre)
+  │                → [ESPERANDO_CANTIDAD]
+  └─ N resultados → muestra lista numerada → [SELECCION_MULTIPLE]
+  FIN/LISTO → [CONFIRMACION_PRODUCTOS]
         │
         ├─ [SELECCION_MULTIPLE]
-        │    Cliente elige número → [ESPERANDO_CANTIDAD]
+        │    Cliente escribe número de opción → [ESPERANDO_CANTIDAD]
         │
         └─ [ESPERANDO_CANTIDAD]
-             Extrae cantidad → agrega producto
-             → vuelve a [SELECCION_PRODUCTOS]
+               Extrae cantidad (regex numérico)
+               Agrega producto a lista con en_catalogo y unidad
+               → "¿Otro producto o FIN?" → vuelve a [SELECCION_PRODUCTOS]
         │
         ▼
-[CONFIRMACION_PRODUCTOS]
-  Muestra resumen de productos
-  SI  → [DATOS_ENVIO]
-  NO  → reinicia [SELECCION_PRODUCTOS]
-  ASESOR → deriva
+[CONFIRMACION_PRODUCTOS]  — botones: [✅ Confirmar pedido] [✏️ Modificar lista]
+  Resumen: lista de productos + cantidades
+  MODIFICAR → reinicia [SELECCION_PRODUCTOS]
+  CONFIRMAR →
+        │
+        ├─ Cliente registrado CON dirección guardada:
+        │    "Tu dirección registrada es: XXX. ¿Usarla?"
+        │    [✅ Sí, usar esta] [📝 Ingresar otra]
+        │    → [DATOS_ENVIO] pendiente=usar_direccion_existente
+        │
+        └─ Cliente sin dirección registrada / cliente nuevo:
+             → [DATOS_ENVIO] pendiente=tipo_direccion
         │
         ▼
-[DATOS_ENVIO]  (3 pasos secuenciales)
-  1. Dirección exacta
-  2. Provincia
-  3. Empresa de transporte preferida
-  → [DATOS_PAGO]
+[DATOS_ENVIO]
+  pendiente=usar_direccion_existente:
+    SI usar → toma direccion_registrada → pendiente=provincia
+    NO usar → pendiente=tipo_direccion
+  pendiente=tipo_direccion — botones: [📝 Escribir dirección] [📍 Mi ubicación]
+  pendiente=direccion_texto:
+    Pide "dirección completa + punto de referencia"
+    → pendiente=provincia
+  pendiente=esperar_ubicacion:
+    WhatsApp envía location (lat, lng, name, address)
+    → Geocodificación inversa con Nominatim (OSM)
+    → muestra dirección obtenida
+    → guarda lat, lng, dirección
+    → pendiente=provincia
+  pendiente=provincia:
+    Pide provincia → → [DATOS_PAGO]
         │
         ▼
-[DATOS_PAGO]
-  "¿Efectivo o tarjeta?"
-  → "Espera un momento..."
+[DATOS_PAGO]  — botones: [💵 Efectivo] [💳 Tarjeta de crédito]
         │
         ▼
 [PROCESANDO PROFORMA]
+  "⏳ Espera un momento..."
   Por cada producto:
-  ├─ Busca precio configurado (inv_conf_precios_articulo)
-  ├─ Verifica si está en catálogo (inv_det_catalogo)
-  └─ Calcula precio total (con IVA si aplica)
+    → buscarPrecioConfigurado(ide_inarti, cantidad, ideEmpr)
+    → si precio: calcula con/sin IVA → precio_unitario, precio_total
+  Condiciones:
+    AUTOMÁTICA: todos tienen precio AND todos en catálogo
+    CON_PRECIO:  todos tienen precio BUT alguno fuera de catálogo
+    BORRADOR:    algún producto sin precio configurado
+  → createProformaWeb (Solicitante, detalles)
+  → UPDATE cabecera:
+      ide_cctpr=3(WhatsApp), referencia='WhatsApp'
+      ide_ccvap=6, ide_ccten=0
+      ide_geper (cliente real o 7712)
+      identificac_cccpr, ide_getid (del cliente)
+      correo_cccpr, telefono_cccpr (formato local 0XXXXXXXXX)
+      direccion_cccpr (dirección de entrega)
+  → UPDATE detalles: precio_ccdpr, total_ccdpr, iva_inarti_ccdpr
+  → UPDATE cabecera totales: base_grabada, valor_iva, total (con IVA actual)
+  → Validar total > 0 antes de PDF
 
-  ¿TODOS tienen precio + están en catálogo?
-  ├─ SÍ → COTIZACIÓN AUTOMÁTICA
-  │        • Asigna ide_usua=32, ide_vgven=3
-  │        • Genera PDF
-  │        • Envía PDF por WhatsApp
-  │        • Mensaje de confirmación
-  └─ NO → COTIZACIÓN PARCIAL/BORRADOR
-           • Crea proforma borrador
-           • Muestra productos con y sin precio
-           • Notifica a asesor
-           • Deriva a modo ASESOR
-        │
-        ▼
-[FINALIZADO] / deriva a ASESOR
+  AUTOMÁTICA + total>0:
+    → asignarVendedor(ide_usua=32, ide_vgven=3)
+    → generateProformaPdf → guardar en whatsapp_media/
+    → Enviar texto con resumen + link descarga PDF
+    → Botones [🛒 Nueva cotización] [👤 Hablar con asesor]
+    → [FINALIZADO]
+
+  CON_PRECIO / BORRADOR:
+    → "Cotización #XXX registrada. Un asesor será asignado..."
+    → derivar a ASESOR (con nota interna)
+    → [FINALIZADO]
+
+[FINALIZADO]
+  pendiente_campo en sesión:
+  NUEVA_COTIZACION → reinicia → [PREGUNTA_ES_CLIENTE]
+  HABLAR_ASESOR   → deriva a asesor
+  Otro mensaje    → "¿Puedo ayudarte con algo más?" + botones
 ```
 
 ---
@@ -109,9 +152,12 @@ Cliente escribe cualquier mensaje
 
 | Comando | Acción |
 |---------|--------|
-| `SALIR` | Deriva inmediatamente a asesor con mensaje cordial |
+| `SALIR` | Deriva inmediatamente a asesor |
 | `ASESOR`, `AGENTE`, `HUMANO`, `PERSONA`, `VENDEDOR` | Deriva a asesor |
 | `FIN`, `LISTO` | Finaliza selección de productos |
+| Saludo (`Hola`, `Buenas`, etc.) en estado activo | Resetea sesión → INICIO |
+
+**Sesiones**: expiran tras 4h de inactividad → nueva sesión en INICIO.
 
 ---
 
@@ -121,14 +167,14 @@ Cliente escribe cualquier mensaje
 - Calles Jacinto Jijón y Caamaño & Paseo 7, Valle de los Chillos
 - Referencia: Estadio del Independiente del Valle
 - Link Google Maps incluido
+- Nota: envíos a nivel nacional disponibles
 
 ### 🕒 Horarios
 - Lunes a Viernes: 08:00 — 17:00
 - Sábados: 09:00 — 13:00
 
 ### 🚚 Envíos
-- Envíos a nivel nacional
-- Transporte a elección del cliente
+- Nacionales, transporte a elección del cliente
 
 ### 📦 Catálogo
 - Catálogos por sector: https://diquimec.com.ec/catalogo
@@ -136,16 +182,54 @@ Cliente escribe cualquier mensaje
 
 ---
 
+## Búsqueda de productos (3 niveles)
+
+1. **ILIKE exacto** — `nombre_inarti ILIKE '%texto%' OR otro_nombre_inarti ILIKE '%texto%'`
+2. **Reducción progresiva** — quita una palabra por iteración hasta encontrar match
+3. **Palabras significativas** — elimina stop words, busca OR con score ≥ 2 palabras coincidentes
+
+Cuando coincide por `otro_nombre_inarti` (no por nombre principal) → muestra `NOMBRE / OTRO_NOMBRE`.
+
+---
+
+## Geocodificación inversa
+
+Cuando el cliente comparte ubicación WhatsApp:
+- Se capturan lat, lng desde el webhook `data.location`
+- Se llama a **Nominatim (OpenStreetMap)**: `GET /reverse?lat={lat}&lon={lng}&format=json&accept-language=es`
+- Se extrae: road + house_number + suburb + city
+- Se guarda en `EnvioSesion.direccion` (texto), `.latitud`, `.longitud`
+- El cliente ve la dirección obtenida confirmada en el chat
+
+---
+
 ## Configuración técnica
+
+### Proforma WhatsApp — constantes
+```typescript
+IDE_CCTPR_WHATSAPP  = 3   // Tipo proforma WhatsApp
+IDE_CCVAP_WHATSAPP  = 6   // Canal de venta
+IDE_CCTEN_WHATSAPP  = 0   // ide_ccten
+REFERENCIA          = 'WhatsApp'
+IDE_USUA_BOT        = 32  // Usuario bot (cotización automática)
+IDE_VGVEN_DEFAULT   = 3   // Vendedor por defecto
+```
+
+### Teléfono formato local
+`+593983113543` → `0983113543` (función `toLocalPhone`, equivale a SQL `f_phone_number`)
 
 ### Variables de estado (wha_bot_sesion.datos_sesion JSONB)
 ```typescript
 {
-  texto_inicial?: string        // mensaje que activó el bot
+  texto_inicial?: string
   cliente?: {
-    ide_geper?: number          // PK en gen_persona (si es cliente)
+    ide_geper?: number          // PK gen_persona (cliente registrado)
+    ide_getid?: number          // Tipo de identificación
+    identificacion?: string
     nombres: string
     correo: string
+    telefono?: string
+    direccion_registrada?: string  // dirección de gen_persona
     es_cliente_registrado: boolean
     pendiente_campo?: 'nombres' | 'correo'
   }
@@ -154,41 +238,24 @@ Cliente escribe cualquier mensaje
     nombre: string
     cantidad: number
     siglas_unidad: string
-    precio_unitario?: number    // calculado si tiene precio
+    en_catalogo: boolean
+    precio_unitario?: number
     precio_total?: number
     tiene_precio?: boolean
-    en_catalogo?: boolean
   }]
-  opciones_producto?: [...]     // cuando hay selección múltiple
-  producto_pendiente?: {...}    // producto esperando cantidad
   envio?: {
     direccion?: string
     provincia?: string
-    transporte?: string
-    pendiente_campo?: 'direccion' | 'provincia' | 'transporte'
+    latitud?: number
+    longitud?: number
+    pendiente_campo?: 'usar_direccion_existente' | 'tipo_direccion' |
+                      'direccion_texto' | 'esperar_ubicacion' | 'provincia'
   }
   forma_pago?: 'cash' | 'credit'
   proforma_ide?: number
   proforma_secuencial?: string
 }
 ```
-
-### Constantes de cotización automática
-```typescript
-IDE_USUA_BOT      = 32   // Usuario bot asignado a proformas
-IDE_VGVEN_DEFAULT = 3    // Vendedor por defecto
-```
-
-### Búsqueda de productos
-- Tabla: `inv_articulo`
-- Campos: `nombre_inarti`, `otro_nombre_inarti`
-- Límite: 10 resultados
-- Ordenamiento: coincidencia exacta primero
-
-### Verificación de precio automático
-- Tabla: `inv_conf_precios_articulo`
-- Condición: `precio_fijo_incpa > 0` y cantidad mínima cumplida
-- IVA: se aplica 12% si `incluye_iva_incpa = FALSE`
 
 ---
 
@@ -197,42 +264,33 @@ IDE_VGVEN_DEFAULT = 3    // Vendedor por defecto
 | Servicio | Responsabilidad |
 |----------|----------------|
 | `BotService` | Máquina de estados, orquestación |
-| `BotConfigService` | Config bot desde wha_bot_config (Redis cache) |
-| `BotSessionService` | Sesiones y estado en wha_bot_sesion |
-| `BotToolsService` | Queries BD: clientes, productos, precios |
-| `BotGptService` | OpenAI: clasificación de intenciones y respuestas |
-| `BotProformaService` | Creación de proforma y cálculo de precios |
-| `YcloudService` | Envío de mensajes y documentos vía YCloud |
+| `BotConfigService` | Config bot desde wha_bot_config (Redis 60s) |
+| `BotSessionService` | Sesiones TTL 4h en wha_bot_sesion |
+| `BotToolsService` | Queries BD: clientes (con dirección), productos (búsqueda 3 niveles), precios |
+| `BotGptService` | OpenAI: clasificación intenciones, extracción, generación |
+| `BotProformaService` | Creación proforma + precios + totales cabecera |
+| `YcloudService` | Envío mensajes/botones/documentos, geocodificación inversa (Nominatim) |
+| `FileTempService` | Guardado PDF en whatsapp_media/ |
 
 ---
 
 ## Mejoras sugeridas
 
 ### Corto plazo
-1. **Template de saludo aprobado**: Reemplazar el mensaje de texto por el template oficial de WhatsApp Business cuando sea aprobado (pendiente en `handleInicio`).
-2. **Botones interactivos**: Usar `sendInteractiveButtons` de YCloud para "Sí/No", "Efectivo/Tarjeta" — más UX que texto libre.
-3. **Confirmación de pedido antes de proforma**: Mostrar resumen final completo (productos + envío + forma de pago) antes de generar el PDF.
-4. **Manejo de paquetes/kits**: Si el cliente pide combos de productos frecuentes, detectar y ofrecer paquetes preconfigurados.
+1. **Template aprobado**: reemplazar mensaje de texto bienvenida por template WhatsApp Business cuando esté aprobado (pendiente en `handleInicio`).
+2. **Botones interactivos en más pasos**: el paso de provincia podría tener botones con las provincias más frecuentes (Pichincha, Guayas, etc.).
+3. **Resumen previo a pago**: mostrar dirección + provincia + forma de pago antes de crear proforma para que el cliente confirme todo.
+4. **Historial de cotizaciones**: en clientes registrados, mostrar "tu última cotización fue #XXX" para reorden rápido.
 
 ### Mediano plazo
-5. **Precios en tiempo real**: Integrar verificación de stock en el flujo para informar disponibilidad inmediata.
-6. **Historial de pedidos**: En clientes registrados, mostrar sus últimas cotizaciones para reorden rápido.
-7. **Catálogo interactivo**: Enviar imágenes del producto al mostrar las opciones de selección múltiple.
-8. **Notificaciones push**: Cuando el asesor actualiza el estado de la cotización, notificar al cliente por WhatsApp.
-9. **GPT con RAG**: Alimentar el modelo con la base de conocimiento de productos (fichas técnicas, usos, aplicaciones) para respuestas más precisas.
+5. **Actualizar gen_persona**: cuando un cliente registrado cambia su dirección via bot, ofrecer actualizar la BD.
+6. **Imágenes de productos**: en selección múltiple, enviar foto del producto si existe en el catálogo.
+7. **Stock en tiempo real**: informar disponibilidad inmediata al mostrar el producto.
+8. **Notificación al cliente**: cuando el asesor completa la cotización borrador, notificar al cliente via WhatsApp automáticamente.
+9. **GPT con RAG**: alimentar el modelo con fichas técnicas de productos para respuestas más precisas sobre composición, usos y aplicaciones.
 
 ### Largo plazo
-10. **Integración con sistema de pedidos**: Cuando el cliente confirma y paga, generar automáticamente la orden de venta (no solo la proforma).
-11. **Seguimiento post-venta**: Bot que consulta si recibió el pedido y solicita calificación de servicio.
-12. **Multi-empresa/multi-cuenta**: El prompt_sistema y respuestas informativas podrían ser configurables por empresa desde el panel admin.
-13. **Análisis de conversaciones**: Dashboard de métricas: tasa de conversión, productos más cotizados, abandono por estado.
-
----
-
-## Notas de implementación
-
-- **SALIR** en cualquier momento: el cliente siempre puede escribir SALIR para ser atendido por un asesor humano.
-- **Reintentos**: Si el bot falla 3 veces consecutivas en un estado, deriva automáticamente a asesor.
-- **Sesión**: Una sesión activa por chat. Al completarse o cancelarse, se cierra y la siguiente interacción inicia nueva sesión.
-- **Cache Redis**: Config del bot (TTL 300s) y empresa (TTL 3600s) para minimizar queries a BD.
-- **Cotización automática**: Solo se genera si TODOS los productos tienen precio configurado Y están en algún catálogo activo.
+10. **Pedido automático**: cuando el cliente confirma y paga, generar orden de venta directamente.
+11. **Dashboard analítico**: tasa de conversión, productos más cotizados, abandono por estado, tiempo promedio de respuesta.
+12. **Multi-idioma**: soporte básico para inglés (clientes de importación/exportación).
+13. **Integración pagos**: link de pago directo en el mensaje de cotización (Payphone, Kushki).

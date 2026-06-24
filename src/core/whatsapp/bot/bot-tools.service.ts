@@ -8,6 +8,8 @@ export interface ClienteInfo {
   correo: string;
   telefono?: string;
   identificacion: string;
+  direccion?: string;
+  ide_getid?: number;
 }
 
 export interface ProductoInfo {
@@ -18,6 +20,7 @@ export interface ProductoInfo {
   siglas_unidad: string;
   nombre_unidad: string;
   en_catalogo: boolean;
+  matched_by_otro_nombre?: boolean;
 }
 
 export interface PrecioConfigurado {
@@ -37,7 +40,9 @@ export class BotToolsService {
         nom_geper         AS nombres,
         correo_geper      AS correo,
         telefono_geper    AS telefono,
-        identificac_geper AS identificacion
+        identificac_geper AS identificacion,
+        direccion_geper   AS direccion,
+        ide_getid
       FROM gen_persona
       WHERE TRIM(identificac_geper) = $1
         AND ide_empr = $2
@@ -63,7 +68,11 @@ export class BotToolsService {
           SELECT 1 FROM inv_det_catalogo dc
           WHERE dc.ide_inarti = a.ide_inarti
             AND dc.activo_indcat = TRUE
-        ) AS en_catalogo
+        ) AS en_catalogo,
+        (
+          unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) ILIKE '%' || unaccent(UPPER($1)) || '%'
+          AND NOT (unaccent(UPPER(a.nombre_inarti)) ILIKE '%' || unaccent(UPPER($1)) || '%')
+        ) AS matched_by_otro_nombre
       FROM inv_articulo a
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
       WHERE a.ide_empr = $2
