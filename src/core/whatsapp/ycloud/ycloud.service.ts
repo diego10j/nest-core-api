@@ -89,8 +89,7 @@ export class YcloudService {
       SELECT
         id_cuenta_whcue,
         id_token_whcue,
-        id_telefono_whcue,
-        webhook_url_whcue
+        id_telefono_whcue
       FROM wha_cuenta
       WHERE ide_empr = $1
         AND tipo_whcue = 'YCLOUD'
