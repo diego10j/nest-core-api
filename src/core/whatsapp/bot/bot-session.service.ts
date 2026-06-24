@@ -37,10 +37,12 @@ export class BotSessionService {
     return this.getActiva(ideWhcha);
   }
 
+  private readonly SESSION_TTL_HOURS = 4; // sesiones sin actividad > 4h se cierran
+
   async getActiva(ideWhcha: number): Promise<BotSesion | null> {
     const q = new SelectQuery(`
       SELECT ide_whbse, ide_whcha, ide_whcue, estado,
-             datos_sesion, activa, intentos_fallo
+             datos_sesion, activa, intentos_fallo, hora_actua
       FROM wha_bot_sesion
       WHERE ide_whcha = $1 AND activa = TRUE
       ORDER BY ide_whbse DESC
@@ -49,6 +51,20 @@ export class BotSessionService {
     q.addParam(1, ideWhcha);
     const row = await this.dataSource.createSingleQuery(q);
     if (!row) return null;
+
+    // Cerrar sesión si lleva más de SESSION_TTL_HOURS sin actividad
+    if (row.hora_actua) {
+      const horasSinActividad = (Date.now() - new Date(row.hora_actua).getTime()) / 3_600_000;
+      if (horasSinActividad > this.SESSION_TTL_HOURS) {
+        await this.dataSource.pool.query(
+          `UPDATE wha_bot_sesion SET activa = FALSE, estado = 'EXPIRADO', hora_actua = NOW()
+           WHERE ide_whbse = $1`,
+          [row.ide_whbse],
+        );
+        return null;
+      }
+    }
+
     return {
       ...row,
       datos_sesion: typeof row.datos_sesion === 'string'

@@ -481,6 +481,41 @@ export class YcloudService {
     return { messageId };
   }
 
+  async sendInteractiveButtons(
+    ideEmpr: number,
+    to: string,
+    body: string,
+    buttons: { id: string; title: string }[],
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const payload = {
+      from: config.displayPhoneNumber,
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: body },
+        action: {
+          buttons: buttons.map((b) => ({
+            type: 'reply',
+            reply: { id: b.id, title: b.title },
+          })),
+        },
+      },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      { telefono: to, tipo: 'interactive', texto: body, idWts: messageId, tiempoRespuesta: null },
+      config,
+    );
+
+    return { messageId };
+  }
+
   // ─── Media ────────────────────────────────────────────────────
 
   async uploadMedia(

@@ -15,6 +15,7 @@ import { ClienteSesion, DatosSesion, OpcionProducto, ProductoSesion } from './in
 // ─── Constantes de negocio ────────────────────────────────────────────────────
 const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
 const REGEX_SALIR     = /^SALIR$/i;
+const REGEX_SALUDO    = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
 // ─── Respuestas informativas ──────────────────────────────────────────────────
 const INFO = {
@@ -132,11 +133,24 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+    let sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
     const config = await this.botConfig.getConfig(ideWhcue);
     if (!config) return;
 
     const nombreBot = config.nombre_bot || 'QuimIA';
+
+    // Si llega un saludo en un estado distinto de INICIO → resetear sesión
+    const estadosQueReinician = [
+      BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.ESPERANDO_CANTIDAD,
+      BotState.CONFIRMACION_PRODUCTOS, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
+      BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
+      BotState.ATENCION_LIBRE,
+    ];
+    if (REGEX_SALUDO.test(texto.trim()) && estadosQueReinician.includes(sesion.estado as BotState)) {
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
+      sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      this.logger.log(`[Bot] Saludo detectado en estado ${sesion.estado} → sesión reiniciada`);
+    }
 
     try {
       switch (sesion.estado as BotState) {
@@ -200,16 +214,18 @@ export class BotService implements OnModuleInit {
       texto_inicial: texto,
     });
 
-    await this.sendText(ideEmpr, waId,
+    await this.sendButtons(ideEmpr, waId,
       `¡Hola! Soy *${nombreBot}*, la asistente virtual de *DIQUIMEC* ✨\n\n` +
       `Estoy aquí para ayudarte con:\n` +
       `🧪 Catálogos y precios de productos\n` +
       `📋 Solicitudes de cotización\n` +
       `📍 Información de ubicación y horarios\n` +
       `🚚 Consultas sobre envíos\n\n` +
-      `¿Deseas continuar con la atención a través de este asistente virtual o prefieres recibir atención personalizada de uno de nuestros asesores comerciales?\n\n` +
-      `Responde *Sí* para continuar con el asistente ✅\n` +
-      `Responde *No* para hablar con un asesor 👤`,
+      `¿Deseas continuar con el asistente virtual o prefieres atención personalizada?`,
+      [
+        { id: 'SI', title: '✅ Continuar con bot' },
+        { id: 'NO', title: '👤 Hablar con asesor' },
+      ],
     );
   }
 
@@ -791,6 +807,25 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
         `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
         [result.messageId],
       );
+    }
+  }
+
+  private async sendButtons(
+    ideEmpr: number, waId: string, body: string,
+    buttons: { id: string; title: string }[],
+  ): Promise<void> {
+    try {
+      const result = await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons);
+      if (result?.messageId) {
+        await this.ycloudService.dataSource.pool.query(
+          `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
+          [result.messageId],
+        );
+      }
+    } catch {
+      // Fallback a texto plano si interactive no está soportado
+      const opciones = buttons.map((b) => `*${b.title}*`).join(' o ');
+      await this.sendText(ideEmpr, waId, `${body}\n\nResponde: ${opciones}`);
     }
   }
 }
