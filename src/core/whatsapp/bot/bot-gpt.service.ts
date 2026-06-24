@@ -2,15 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { envs } from 'src/config/envs';
 
+export type IntencionCliente = 'CONFIRMAR' | 'CANCELAR' | 'ASESOR' | 'LISTO' | 'SALIR' | 'OTRO';
+export type IntencionConsulta = 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' | 'PRODUCTO' | 'GENERAL';
+
 @Injectable()
 export class BotGptService {
   private readonly logger = new Logger(BotGptService.name);
   private readonly openai = new OpenAI({ apiKey: envs.openaiApiKey });
 
-  /**
-   * Extrae producto y cantidad de un texto libre del cliente.
-   * Usa max_tokens=100 — llamada muy barata.
-   */
   async extractProductoCantidad(texto: string): Promise<{ producto: string; cantidad: number } | null> {
     try {
       const resp = await this.openai.chat.completions.create({
@@ -37,18 +36,14 @@ export class BotGptService {
     }
   }
 
-  /**
-   * Genera la respuesta conversacional del bot.
-   * Envía solo los últimos 10 mensajes del historial para controlar costos.
-   */
   async generateResponse(
     systemPrompt: string,
     historial: { role: 'user' | 'assistant'; content: string }[],
     mensajeActual: string,
-    contextoExtra?: string,   // datos de sesión resumidos para enriquecer el contexto
+    contextoExtra?: string,
   ): Promise<string> {
     const sysContent = contextoExtra
-      ? `${systemPrompt}\n\n--- Contexto actual de la sesión ---\n${contextoExtra}`
+      ? `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra}`
       : systemPrompt;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
@@ -64,36 +59,31 @@ export class BotGptService {
         temperature: 0.7,
         max_tokens: 350,
       });
-      return resp.choices[0]?.message?.content?.trim() ?? 'Lo siento, tuve un inconveniente. ¿Podrías repetir tu mensaje?';
+      return resp.choices[0]?.message?.content?.trim() ?? 'Lo siento, tuve un inconveniente. ¿Podrías repetir?';
     } catch (err) {
       this.logger.error(`generateResponse error: ${err.message}`);
       return 'Disculpa, ocurrió un problema procesando tu mensaje. Por favor intenta de nuevo.';
     }
   }
 
-  /**
-   * Normaliza la respuesta de un cliente para detectar intenciones clave.
-   * Muy barato (max_tokens=30).
-   */
-  async detectarIntencion(texto: string): Promise<'CONFIRMAR' | 'CANCELAR' | 'ASESOR' | 'LISTO' | 'OTRO'> {
-    const textoNorm = texto.trim().toUpperCase();
+  async detectarIntencion(texto: string): Promise<IntencionCliente> {
+    const t = texto.trim().toUpperCase();
 
-    // Detección directa sin GPT (ahorra tokens en casos obvios)
-    if (/^(SI|SÍ|S[Ii]|YES|OK|OKEY|DALE|ADELANTE|CONTINUAR|ASISTENTE|BOT)$/.test(textoNorm)) return 'CONFIRMAR';
-    if (/^(NO|CANCELAR|SALIR)$/.test(textoNorm)) return 'CANCELAR';
-    if (/ASESOR|AGENTE|HUMANO|PERSONA|VENDEDOR/.test(textoNorm)) return 'ASESOR';
-    if (/^(LISTO|FIN|FINALIZAR|TERMINAR|ESO ES TODO|ESO ES|YA)$/.test(textoNorm)) return 'LISTO';
+    if (/^(SI|SÍ|S[Ii]|YES|OK|OKEY|DALE|ADELANTE|CONTINUAR|ASISTENTE|BOT)$/.test(t)) return 'CONFIRMAR';
+    if (/^(NO|CANCELAR)$/.test(t)) return 'CANCELAR';
+    if (/^SALIR$/.test(t)) return 'SALIR';
+    if (/ASESOR|AGENTE|HUMANO|PERSONA|VENDEDOR/.test(t)) return 'ASESOR';
+    if (/^(LISTO|FIN|FINALIZAR|TERMINAR|ESO ES TODO|YA)$/.test(t)) return 'LISTO';
 
-    // Solo llamar GPT si el texto es ambiguo
     try {
       const resp = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: 'Clasifica el mensaje del cliente en UNA de estas categorías: CONFIRMAR, CANCELAR, ASESOR, LISTO, OTRO. '
-              + 'CONFIRMAR=acepta/dice sí. CANCELAR=rechaza/dice no. ASESOR=quiere hablar con una persona. '
-              + 'LISTO=terminó de listar productos. OTRO=cualquier otra cosa. '
+            content: 'Clasifica el mensaje del cliente en UNA categoría: CONFIRMAR, CANCELAR, ASESOR, LISTO, SALIR, OTRO. '
+              + 'CONFIRMAR=acepta/sí. CANCELAR=rechaza/no. ASESOR=quiere persona humana. '
+              + 'LISTO=terminó productos. SALIR=quiere salir. OTRO=cualquier otra cosa. '
               + 'Responde SOLO la categoría en mayúsculas.',
           },
           { role: 'user', content: texto },
@@ -101,12 +91,42 @@ export class BotGptService {
         temperature: 0,
         max_tokens: 10,
       });
-      const cat = resp.choices[0]?.message?.content?.trim().toUpperCase();
-      if (['CONFIRMAR', 'CANCELAR', 'ASESOR', 'LISTO', 'OTRO'].includes(cat)) {
-        return cat as any;
-      }
+      const cat = resp.choices[0]?.message?.content?.trim().toUpperCase() as IntencionCliente;
+      if (['CONFIRMAR', 'CANCELAR', 'ASESOR', 'LISTO', 'SALIR', 'OTRO'].includes(cat)) return cat;
     } catch { /* silencio */ }
 
     return 'OTRO';
+  }
+
+  async clasificarConsulta(texto: string): Promise<IntencionConsulta> {
+    const t = texto.toUpperCase();
+
+    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO/.test(t)) return 'UBICACION';
+    if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
+    if (/ENV[IÍ]O|ENVIAN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|GUAYAQUIL|QUITO|OTRA CIUDAD/.test(t)) return 'ENVIO';
+    if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIO|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
+    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN/.test(t)) return 'PRODUCTO';
+
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Clasifica el mensaje en: UBICACION, HORARIO, ENVIO, CATALOGO, PRODUCTO, GENERAL. '
+              + 'UBICACION=dirección/mapa. HORARIO=horarios. ENVIO=envíos nacionales. '
+              + 'CATALOGO=lista de precios. PRODUCTO=cotización/compra. GENERAL=otro. '
+              + 'Responde SOLO la categoría.',
+          },
+          { role: 'user', content: texto },
+        ],
+        temperature: 0,
+        max_tokens: 10,
+      });
+      const cat = resp.choices[0]?.message?.content?.trim().toUpperCase() as IntencionConsulta;
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO', 'PRODUCTO', 'GENERAL'].includes(cat)) return cat;
+    } catch { /* silencio */ }
+
+    return 'GENERAL';
   }
 }

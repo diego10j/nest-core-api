@@ -14,14 +14,16 @@ export interface ProductoInfo {
   ide_inarti: number;
   nombre: string;
   otro_nombre?: string;
-  unidad?: string;
+  desc_corta?: string;
+  siglas_unidad: string;
+  nombre_unidad: string;
+  en_catalogo: boolean;
 }
 
-export interface CantidadMinima {
-  cantidad: number;
-  unidad_medida: string;
-  descripcion: string;
-  precio_final: number;
+export interface PrecioConfigurado {
+  precio_unitario: number;
+  incluye_iva: boolean;
+  cantidad_minima: number;
 }
 
 @Injectable()
@@ -32,10 +34,10 @@ export class BotToolsService {
     const q = new SelectQuery(`
       SELECT
         ide_geper,
-        nom_geper           AS nombres,
-        correo_geper        AS correo,
-        telefono_geper      AS telefono,
-        identificac_geper   AS identificacion
+        nom_geper         AS nombres,
+        correo_geper      AS correo,
+        telefono_geper    AS telefono,
+        identificac_geper AS identificacion
       FROM gen_persona
       WHERE TRIM(identificac_geper) = $1
         AND ide_empr = $2
@@ -51,10 +53,17 @@ export class BotToolsService {
   async buscarProductos(texto: string, ideEmpr: number): Promise<ProductoInfo[]> {
     const q = new SelectQuery(`
       SELECT
-        ide_inarti,
-        nombre_inarti          AS nombre,
-        otro_nombre_inarti     AS otro_nombre,
-        COALESCE(u.siglas_inuni, u.nombre_inuni) AS unidad
+        a.ide_inarti,
+        a.nombre_inarti          AS nombre,
+        a.otro_nombre_inarti     AS otro_nombre,
+        a.desc_corta_inarti      AS desc_corta,
+        COALESCE(u.siglas_inuni, 'UND')  AS siglas_unidad,
+        COALESCE(u.nombre_inuni,  'Unidad') AS nombre_unidad,
+        EXISTS (
+          SELECT 1 FROM inv_det_catalogo dc
+          WHERE dc.ide_inarti = a.ide_inarti
+            AND dc.activo_indcat = TRUE
+        ) AS en_catalogo
       FROM inv_articulo a
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
       WHERE a.ide_empr = $2
@@ -62,56 +71,55 @@ export class BotToolsService {
         AND a.hace_kardex_inarti = TRUE
         AND (
           unaccent(UPPER(a.nombre_inarti))      ILIKE '%' || unaccent(UPPER($1)) || '%'
-          OR unaccent(UPPER(a.otro_nombre_inarti)) ILIKE '%' || unaccent(UPPER($1)) || '%'
+          OR unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) ILIKE '%' || unaccent(UPPER($1)) || '%'
         )
-      ORDER BY nombre_inarti
-      LIMIT 5
+      ORDER BY
+        CASE WHEN unaccent(UPPER(a.nombre_inarti)) = unaccent(UPPER($1)) THEN 0 ELSE 1 END,
+        nombre_inarti
+      LIMIT 10
     `);
     q.addParam(1, texto);
     q.addIntParam(2, ideEmpr);
     return this.dataSource.createSelectQuery(q);
   }
 
-  async buscarCantidadesMinimas(ideInarti: number, ideEmpr: number): Promise<CantidadMinima[]> {
+  async buscarPrecioConfigurado(ideInarti: number, cantidad: number, ideEmpr: number): Promise<PrecioConfigurado | null> {
     const q = new SelectQuery(`
       SELECT
-        cdc.cantidad_incdc      AS cantidad,
-        cdc.unidad_medida_incdc AS unidad_medida,
-        cdc.descripcion_incdc   AS descripcion,
-        COALESCE(
-          ROUND(
-            cdc.cantidad_incdc * (
-              CASE
-                WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
-                ELSE cp.precio_fijo_incpa * (1 + COALESCE((
-                  SELECT porcentaje_cnpim
-                  FROM con_porcen_impues
-                  WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-                    AND activo_cnpim = TRUE
-                  ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                ), 0.12))
-              END
-            ), 2
-          ), 0
-        ) AS precio_final
-      FROM inv_cant_det_catalogo cdc
-      LEFT JOIN LATERAL (
-        SELECT precio_fijo_incpa, incluye_iva_incpa
-        FROM inv_conf_precios_articulo cp2
-        WHERE cp2.ide_inarti = cdc.ide_inarti
-          AND cp2.precio_fijo_incpa IS NOT NULL
-          AND cp2.precio_fijo_incpa > 0
-          AND (
-            cp2.rangos_incpa = FALSE AND cp2.rango1_cant_incpa = cdc.cantidad_incdc
-            OR cp2.rangos_incpa = TRUE
-          )
-        ORDER BY cp2.rango1_cant_incpa ASC LIMIT 1
-      ) cp ON TRUE
-      WHERE cdc.ide_inarti = $1
-      ORDER BY cdc.cantidad_incdc
+        cp.precio_fijo_incpa  AS precio_unitario,
+        cp.incluye_iva_incpa  AS incluye_iva,
+        cp.rango1_cant_incpa  AS cantidad_minima
+      FROM inv_conf_precios_articulo cp
+      WHERE cp.ide_inarti = $1
+        AND cp.precio_fijo_incpa IS NOT NULL
+        AND cp.precio_fijo_incpa > 0
+        AND (
+          cp.rangos_incpa = FALSE AND cp.rango1_cant_incpa <= $2
+          OR cp.rangos_incpa = TRUE
+        )
+      ORDER BY
+        CASE WHEN cp.rangos_incpa = FALSE THEN cp.rango1_cant_incpa ELSE 0 END DESC
+      LIMIT 1
     `);
     q.addIntParam(1, ideInarti);
-    return this.dataSource.createSelectQuery(q);
+    q.addIntParam(2, cantidad);
+    return this.dataSource.createSingleQuery(q);
+  }
+
+  async getStockProducto(ideInarti: number, ideEmpr: number): Promise<number> {
+    const q = new SelectQuery(`
+      SELECT COALESCE(SUM(
+        CASE WHEN tipo_movinv = 'E' THEN cantidad_inkar ELSE -cantidad_inkar END
+      ), 0) AS saldo
+      FROM inv_kardex
+      WHERE ide_inarti = $1
+        AND ide_empr = $2
+        AND activo_inkar = TRUE
+    `);
+    q.addIntParam(1, ideInarti);
+    q.addIntParam(2, ideEmpr);
+    const row = await this.dataSource.createSingleQuery(q);
+    return Number(row?.saldo ?? 0);
   }
 
   async getProvinciaId(nombre: string): Promise<number | null> {

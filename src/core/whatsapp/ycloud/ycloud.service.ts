@@ -633,15 +633,27 @@ export class YcloudService {
   }): Promise<number> {
     const { waId, phoneNumberId, phoneNumberFrom, profileName, now, isInbound } = opts;
 
-    // UPSERT atómico: INSERT si no existe, UPDATE si existe
+    // bot_activo_whcha inicial depende de si el bot global está activo (activo_manual)
     const sql = `
+      WITH bot_estado AS (
+        SELECT COALESCE(bc.activo_manual, FALSE) AS activo
+        FROM wha_cuenta cu
+        LEFT JOIN wha_bot_config bc ON bc.ide_whcue = cu.ide_whcue
+        WHERE cu.id_cuenta_whcue = $2
+          AND cu.activo_whcue = TRUE
+        LIMIT 1
+      )
       INSERT INTO wha_chat (
         wa_id_whcha, phone_number_id_whcha, phone_number_whcha,
         name_whcha, nombre_whcha,
         fecha_crea_whcha, fecha_msg_whcha,
         leido_whcha, no_leidos_whcha,
         ultimo_ingreso_cliente_whcha, bot_activo_whcha, bot_modo_whcha
-      ) VALUES ($1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6, TRUE, 'BOT')
+      )
+      SELECT $1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6,
+             activo,
+             CASE WHEN activo THEN 'BOT' ELSE 'ASESOR' END
+      FROM bot_estado
       ON CONFLICT (wa_id_whcha) DO UPDATE SET
         fecha_msg_whcha              = $5,
         leido_whcha                  = FALSE,

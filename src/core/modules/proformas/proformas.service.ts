@@ -2057,6 +2057,27 @@ ORDER BY prof.secuencial_cccpr DESC
     return template(variables);
   }
 
+  async getPdfBuffer(ide_cccpr: number, ideEmpr: number): Promise<Buffer> {
+    const dtoIn = { ide_cccpr, ideEmpr, ideUsua: 0, ideSucu: 0, idePerf: 0, login: 'bot' } as any;
+    const data = await this.getProformaByID(dtoIn);
+    const q = new SelectQuery(`SELECT ide_empr, nom_empr, direccion_empr, telefono_empr, mail_empr, pagina_empr, logotipo_empr FROM sis_empresa WHERE ide_empr = $1`);
+    q.addIntParam(1, ideEmpr);
+    const empresa = await this.dataSource.createSingleQuery(q);
+    if (empresa?.logotipo_empr) {
+      const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+      if (fs.existsSync(logoPath)) empresa.logoBase64 = fs.readFileSync(logoPath).toString('base64');
+    }
+    return this.generateProformaPdf({ ...data, empresa }, empresa);
+  }
+
+  async asignarVendedorProforma(ide_cccpr: number, ide_usua: number, ide_vgven: number): Promise<void> {
+    await this.dataSource.pool.query(
+      `UPDATE cxc_cabece_proforma SET ide_usua = $2, ide_vgven = $3, usuario_actua = 'bot', hora_actua = NOW()
+       WHERE ide_cccpr = $1`,
+      [ide_cccpr, ide_usua, ide_vgven],
+    );
+  }
+
   private async generateProformaPdf(data: any, empresa: Empresa): Promise<Buffer> {
     const fontsDir = path.join(process.cwd(), 'public/assets/fonts');
     const printer = new PdfPrinter({

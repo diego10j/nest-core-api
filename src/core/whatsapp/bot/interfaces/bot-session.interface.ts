@@ -3,7 +3,11 @@ export interface ProductoSesion {
   nombre: string;
   cantidad: number;
   unidad?: string;
-  precio_referencia?: number;
+  siglas_unidad?: string;
+  precio_unitario?: number;
+  precio_total?: number;
+  tiene_precio?: boolean;
+  en_catalogo?: boolean;
 }
 
 export interface ClienteSesion {
@@ -13,21 +17,33 @@ export interface ClienteSesion {
   correo: string;
   telefono?: string;
   es_cliente_registrado: boolean;
-  pendiente_campo?: 'nombres' | 'correo';   // campo que el bot está esperando del cliente nuevo
+  pendiente_campo?: 'nombres' | 'correo';
 }
 
 export interface EnvioSesion {
   direccion?: string;
   provincia?: string;
   transporte?: string;
-  envio_gratis?: boolean;
   pendiente_campo?: 'direccion' | 'provincia' | 'transporte';
 }
 
 export interface DatosSesion {
+  texto_inicial?: string;
   cliente?: ClienteSesion;
   productos: ProductoSesion[];
+  opciones_producto?: OpcionProducto[];
+  producto_pendiente?: { ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string };
   envio?: EnvioSesion;
-  ultimo_producto_texto?: string;   // último texto del cliente sobre un producto (para contexto GPT)
-  proforma_secuencial?: string;     // número de proforma generada al finalizar
+  forma_pago?: 'cash' | 'credit';
+  proforma_ide?: number;
+  proforma_secuencial?: string;
+}
+
+export interface OpcionProducto {
+  numero: number;
+  ide_inarti: number;
+  nombre: string;
+  siglas_unidad: string;
+  nombre_unidad: string;
+  en_catalogo: boolean;
 }
