@@ -393,6 +393,7 @@ export class BotService implements OnModuleInit {
           telefono: cliente.telefono || waId,
           direccion_registrada: cliente.direccion || '',
           ide_getid: cliente.ide_getid,
+          ide_vgven: cliente.ide_vgven,
           es_cliente_registrado: true,
         },
       };

@@ -48,6 +48,7 @@ export class BotProformaService {
     ideEmpr: number,
     nombreBot: string,
   ): Promise<ResultadoProforma> {
+    const db = this.proformasService['dataSource'].pool;
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
@@ -156,7 +157,8 @@ export class BotProformaService {
           correo_cccpr      = $9,
           telefono_cccpr    = $10,
           direccion_cccpr   = $11,
-          notas_cccpr       = COALESCE($12, notas_cccpr)
+          notas_cccpr       = COALESCE($12, notas_cccpr),
+          ide_vgven         = COALESCE($13, ide_vgven)
         WHERE ide_cccpr = $1
       `, [
         ide_cccpr,
@@ -171,13 +173,12 @@ export class BotProformaService {
         toLocalPhone(telefonoWa),
         datos.envio?.direccion || '',
         notasGps,
+        datos.cliente?.ide_vgven || null,
       ]);
       this.logger.log(`[Proforma] Cabecera WhatsApp actualizada ide_cccpr=${ide_cccpr} ide_geper=${ideGeper}`);
     } catch (err) {
       this.logger.warn(`[Proforma] No se actualizaron campos WhatsApp: ${err.message}`);
     }
-
-    const db = this.proformasService['dataSource'].pool;
 
     // Actualizar precios en los detalles cuando están disponibles
     if (todosTienePrecio) {
@@ -235,7 +236,6 @@ export class BotProformaService {
 
     let pdfBuffer: Buffer | undefined;
     if (automatica) {
-      // Verificar que el total sea mayor a 0 antes de generar PDF
       const check = await db.query<{ total: number }>(
         `SELECT COALESCE(total_cccpr, 0) AS total FROM cxc_cabece_proforma WHERE ide_cccpr = $1`,
         [ide_cccpr],
@@ -246,7 +246,9 @@ export class BotProformaService {
         this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
       } else {
         try {
-          await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, IDE_VGVEN_DEFAULT);
+          // Usar vendedor del cliente si existe, caso contrario el vendedor por defecto
+          const ideVgven = datos.cliente?.ide_vgven || IDE_VGVEN_DEFAULT;
+          await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, ideVgven);
           pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
         } catch (err) {
           this.logger.error(`Error generando PDF proforma ${ide_cccpr}: ${err.message}`);

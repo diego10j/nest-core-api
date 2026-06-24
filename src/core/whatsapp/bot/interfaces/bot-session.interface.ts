@@ -18,6 +18,7 @@ export interface ClienteSesion {
   telefono?: string;
   direccion_registrada?: string;
   ide_getid?: number;
+  ide_vgven?: number;
   es_cliente_registrado: boolean;
   pendiente_campo?: 'nombres' | 'correo';
 }

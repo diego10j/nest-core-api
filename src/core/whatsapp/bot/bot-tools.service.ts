@@ -10,6 +10,7 @@ export interface ClienteInfo {
   identificacion: string;
   direccion?: string;
   ide_getid?: number;
+  ide_vgven?: number;
 }
 
 export interface ProductoInfo {
@@ -42,7 +43,8 @@ export class BotToolsService {
         telefono_geper    AS telefono,
         identificac_geper AS identificacion,
         direccion_geper   AS direccion,
-        ide_getid
+        ide_getid,
+        ide_vgven
       FROM gen_persona
       WHERE TRIM(identificac_geper) = $1
         AND ide_empr = $2
