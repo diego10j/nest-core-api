@@ -1,7 +1,6 @@
 export interface YcloudDbConfig {
   id_cuenta_whcue: string;
-  id_token_whcue: string;
-  business_id_whcue?: string;
+  id_token_whcue?: string;
   id_telefono_whcue: string;
   webhook_url_whcue?: string;
 }

@@ -70,7 +70,7 @@ export class YcloudService {
     return {
       apiKey: data.id_token_whcue || this.YCLOUD_API_KEY,
       phoneNumberId: data.id_cuenta_whcue,
-      businessId: data.business_id_whcue,
+      businessId: undefined,
       displayPhoneNumber: data.id_telefono_whcue,
     };
   }
@@ -89,7 +89,6 @@ export class YcloudService {
       SELECT
         id_cuenta_whcue,
         id_token_whcue,
-        business_id_whcue,
         id_telefono_whcue,
         webhook_url_whcue
       FROM wha_cuenta
