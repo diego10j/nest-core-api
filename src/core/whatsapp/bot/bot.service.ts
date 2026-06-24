@@ -134,7 +134,9 @@ export class BotService implements OnModuleInit {
     }
 
     let sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+    this.logger.log(`[Bot] sesion.estado=${sesion?.estado} ide_whbse=${sesion?.ide_whbse}`);
     const config = await this.botConfig.getConfig(ideWhcue);
+    this.logger.log(`[Bot] config=${config ? 'OK nombre_bot=' + config.nombre_bot : 'NULL'}`);
     if (!config) {
       this.logger.warn(`[Bot] Sin configuración en wha_bot_config para ideWhcue=${ideWhcue} — creando config mínima`);
       // Config mínima por defecto para no perder el mensaje
@@ -291,8 +293,10 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, config: any,
   ): Promise<void> {
+    this.logger.log(`[Bot] handleAtencionLibre texto="${texto}"`);
     const datos = sesion.datos_sesion as DatosSesion;
     const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
+    this.logger.log(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any);
