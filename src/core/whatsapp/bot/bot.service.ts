@@ -592,27 +592,13 @@ export class BotService implements OnModuleInit {
     const nuevosDatos: DatosSesion = { ...datos, opciones_producto: opciones };
     await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
 
-    // Usar lista interactiva de WhatsApp (tap para seleccionar, no tipear número)
-    const rows = opciones.map((o) => ({
-      id: String(o.numero),
-      title: this.displayNombreProducto(o),
-      description: o.siglas_unidad ? `Unidad: ${o.nombre_unidad}` : undefined,
-    }));
-
-    try {
-      await this.ycloudService.sendInteractiveList(
-        ideEmpr, `+${waId}`,
-        `Encontré ${opciones.length} productos que coinciden 🔍\nSelecciona el que necesitas:`,
-        'Ver productos',
-        rows,
-      );
-    } catch {
-      // Fallback a texto si la lista no es soportada
-      const listaTexto = opciones.map((o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`).join('\n');
-      await this.sendText(ideEmpr, waId,
-        `Encontré varios productos 🔍 Responde con el número:\n\n${listaTexto}`,
-      );
-    }
+    // Lista numerada en texto — sin límite de caracteres (ideal para nombres químicos largos)
+    const listaTexto = opciones.map(
+      (o) => `*${o.numero}.* ${this.displayNombreProducto(o)} _(${o.nombre_unidad})_`,
+    ).join('\n');
+    await this.sendText(ideEmpr, waId,
+      `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde con el *número* del producto que necesitas._`,
+    );
   }
 
   private async handleSeleccionMultiple(
@@ -1011,7 +997,8 @@ export class BotService implements OnModuleInit {
           `En cuanto esté lista te notificaremos.\n\n` +
           `*¡Gracias por contactarnos!* 🧪`,
         );
-        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, msgAsesor);
+        // null = ya se envió mensaje al cliente; msgAsesor = nota interna solo para log/asesor
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, null, msgAsesor);
       }
     } catch (err) {
       this.logger.error(`Error creando proforma: ${err.message}`);
@@ -1117,22 +1104,28 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
   async derivarAsesor(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number,
-    mensaje?: string,
+    mensajeCliente?: string,   // mensaje visible al cliente (undefined = mensaje default)
+    notaAsesor?: string,       // nota interna para el asesor (NO se envía al cliente)
   ): Promise<void> {
     await this.dataSource.pool.query(
       `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
 
-    const config = await this.botConfig.getConfig(ideWhcue);
-    const horario = config?.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00';
+    if (mensajeCliente !== null) {
+      const config = await this.botConfig.getConfig(ideWhcue);
+      const horario = config?.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00';
+      await this.sendText(ideEmpr, waId,
+        mensajeCliente ||
+        `Enseguida te comunico con uno de nuestros asesores comerciales 👤\n\n` +
+        `*Horario de atención:* ${horario}\n\n` +
+        `_Si nos escribes fuera de este horario, te respondemos al siguiente día hábil 😊_`,
+      );
+    }
 
-    await this.sendText(ideEmpr, waId,
-      mensaje ||
-      `Enseguida te comunico con uno de nuestros asesores comerciales 👤\n\n` +
-      `*Horario de atención:* ${horario}\n\n` +
-      `_Si nos escribes fuera de este horario, te respondemos al siguiente día hábil 😊_`,
-    );
+    if (notaAsesor) {
+      this.logger.log(`[Asesor] Nota interna para chat ${ideWhcha}: ${notaAsesor}`);
+    }
 
     this.gateway.emitChatEsperandoAsesor(ideWhcue, waId, ideWhcha);
     this.logger.log(`Chat ${waId} derivado a asesor`);
