@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 
 import { YcloudService } from '../ycloud/ycloud.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
@@ -91,6 +92,7 @@ export class BotService implements OnModuleInit {
     private readonly botProforma: BotProformaService,
     private readonly ycloudService: YcloudService,
     private readonly gateway: WhatsappGateway,
+    private readonly fileTempService: FileTempService,
   ) {}
 
   onModuleInit() {
@@ -202,6 +204,9 @@ export class BotService implements OnModuleInit {
           break;
         case BotState.DATOS_PAGO:
           await this.handleDatosPago(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
+          break;
+        case BotState.FINALIZADO:
+          await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
           break;
       }
     } catch (error) {
@@ -754,33 +759,46 @@ export class BotService implements OnModuleInit {
       );
 
       if (resultado.automatica && resultado.pdfBuffer) {
-        // ── CASO 1: Todos con precio + en catálogo → enviar PDF desde nuestro servidor ──
+        // ── CASO 1: Todos con precio + en catálogo → guardar PDF en servidor y enviar por URL ──
         let pdfEnviado = false;
         try {
-          const { mediaId } = await this.ycloudService.uploadMedia(
-            ideEmpr, resultado.pdfBuffer, 'application/pdf',
-            `Cotizacion_${resultado.secuencial}.pdf`,
+          const { envs } = await import('src/config/envs');
+          const filename = await this.fileTempService.saveWhatsAppMedia(
+            resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
           );
+          const pdfUrl = `${envs.hostApi}/api/whatsapp/media/${filename}`;
           await this.ycloudService.sendDocument(
-            ideEmpr, `+${waId}`, mediaId,
+            ideEmpr, `+${waId}`, null,
             `Cotizacion_${resultado.secuencial}.pdf`,
             `📄 Tu cotización #${resultado.secuencial} de DIQUIMEC`,
             undefined,   // ideUsua
+            pdfUrl,      // link público
           );
           pdfEnviado = true;
+          this.logger.log(`[Bot] PDF enviado via URL: ${pdfUrl}`);
         } catch (pdfErr) {
           this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
         }
 
+        const detalle = resultado.productosConPrecio.map(
+          (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — *$${p.precio_total?.toFixed(2)}*`,
+        ).join('\n');
+        const total = resultado.productosConPrecio.reduce((s, p) => s + (p.precio_total ?? 0), 0);
+
         await this.sendText(ideEmpr, waId,
-          `✅ *¡Tu cotización #${resultado.secuencial} está lista!*\n\n` +
-          `📋 *Detalle:*\n` +
-          resultado.productosConPrecio.map(
-            (p) => `• ${p.nombre} — ${p.cantidad} ${p.siglas_unidad || p.unidad} — $${p.precio_total?.toFixed(2)}`,
-          ).join('\n') +
-          `\n\n${pdfEnviado ? '📄 Te hemos enviado el PDF arriba.\n\n' : ''}` +
-          `Un asesor confirmará disponibilidad y coordinará el pago y envío.\n\n` +
-          `*¡Gracias por confiar en DIQUIMEC!* 🧪✨`,
+          `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n` +
+          `📋 *Resumen:*\n${detalle}\n\n` +
+          `💰 *Total estimado: $${total.toFixed(2)}* _(incluye IVA donde aplica)_\n\n` +
+          `${pdfEnviado ? '📄 Hemos adjuntado tu cotización en PDF para que puedas revisarla con calma.\n\n' : ''}` +
+          `Uno de nuestros asesores estará en contacto contigo para confirmar la disponibilidad de stock y coordinar el proceso de pago y entrega 😊`,
+        );
+
+        await this.sendButtons(ideEmpr, waId,
+          `¿Hay algo más en que pueda ayudarte? 🧪`,
+          [
+            { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
+            { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+          ],
         );
 
       } else if (resultado.conPrecio) {
@@ -830,6 +848,42 @@ export class BotService implements OnModuleInit {
     }
 
     await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
+  }
+
+  private async handlePostCotizacion(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string,
+  ): Promise<void> {
+    const t = texto.trim().toUpperCase();
+
+    if (t === 'NUEVA_COTIZACION' || /NUEVA|COTIZAR|OTRO PRODUCTO|OTRA COTIZ/i.test(texto)) {
+      // Cerrar la sesión actual y crear una nueva para empezar de cero
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
+      const nuevaSesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      await this.botSession.update(nuevaSesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
+        { productos: [], texto_inicial: '' });
+      await this.sendButtons(ideEmpr, waId, `¡Con gusto! 😊 ¿Eres cliente registrado con nosotros?`, [
+        { id: 'SI_CLIENTE', title: '✅ Sí, soy cliente' },
+        { id: 'NO_CLIENTE', title: '❌ No' },
+      ]);
+      return;
+    }
+
+    if (t === 'HABLAR_ASESOR' || PALABRAS_ASESOR.test(texto)) {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        `El cliente desea hablar con un asesor tras recibir su cotización.`,
+      );
+      return;
+    }
+
+    // Cualquier otro mensaje → responder amablemente y repetir opciones
+    await this.sendButtons(ideEmpr, waId,
+      `¡Gracias por tu mensaje! 😊 ¿Puedo ayudarte con algo más?`,
+      [
+        { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
+        { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+      ],
+    );
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

@@ -99,37 +99,17 @@ export class BotProformaService {
 
     // Actualizar precios en los detalles cuando están disponibles
     if (todosTienePrecio) {
-      try {
-        await this.proformasService['dataSource'].pool.query(
-          `UPDATE cxc_deta_proforma d
-           SET precio_ccdpr = sub.precio,
-               total_ccdpr  = sub.precio * d.cantidad_ccdpr
-           FROM (
-             SELECT a.ide_inarti, $2::jsonb -> a.ide_inarti::text AS precio_raw
-             FROM inv_articulo a
-             WHERE a.ide_inarti = ANY($1::int[])
-           ) sub
-           WHERE d.ide_cccpr = $3
-             AND d.ide_inarti = sub.ide_inarti
-             AND sub.precio_raw IS NOT NULL`,
-          [
-            productosConPrecio.map((p) => p.ide_inarti),
-            JSON.stringify(Object.fromEntries(precioMap.entries())),
-            ide_cccpr,
-          ],
-        );
-      } catch (err) {
-        this.logger.warn(`No se pudieron actualizar precios en detalles: ${err.message}`);
-        // Fallback: update individual
-        for (const p of productosConPrecio) {
-          try {
-            await this.proformasService['dataSource'].pool.query(
-              `UPDATE cxc_deta_proforma
-               SET precio_ccdpr = $1, total_ccdpr = $2
-               WHERE ide_cccpr = $3 AND ide_inarti = $4`,
-              [p.precio_unitario, p.precio_total, ide_cccpr, p.ide_inarti],
-            );
-          } catch { /* continuar */ }
+      for (const p of productosConPrecio) {
+        try {
+          await this.proformasService['dataSource'].pool.query(
+            `UPDATE cxc_deta_proforma
+             SET precio_ccdpr = $1, total_ccdpr = $2
+             WHERE ide_cccpr = $3 AND ide_inarti = $4`,
+            [p.precio_unitario, p.precio_total, ide_cccpr, p.ide_inarti],
+          );
+          this.logger.log(`[Proforma] Precio actualizado ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} total=${p.precio_total}`);
+        } catch (err) {
+          this.logger.warn(`[Proforma] No se actualizó precio ide_inarti=${p.ide_inarti}: ${err.message}`);
         }
       }
     }
