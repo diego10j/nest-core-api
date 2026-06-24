@@ -25,6 +25,25 @@ function toLocalPhone(phone: string): string {
   return digits;
 }
 
+// ─── Modelo de cálculo de proformas (idéntico al frontend) ────────────────────
+const MAX_DECIMALES_PRECIO = 4;
+const DECIMALES_TOTALES    = 2;
+
+function roundTo(value: number, decimals: number): number {
+  return Number(value.toFixed(decimals));
+}
+
+/** Determina 2 o 4 decimales para precio_ccdpr según regla del frontend */
+function getPrecioDecimals(precio: number): number {
+  const str4 = Math.abs(precio).toFixed(MAX_DECIMALES_PRECIO);
+  const dec   = str4.split('.')[1] ?? '0000';
+  return (dec[2] === '0' && dec[3] === '0') ? DECIMALES_TOTALES : MAX_DECIMALES_PRECIO;
+}
+
+function roundPrecio(precio: number): number {
+  return roundTo(precio, getPrecioDecimals(precio));
+}
+
 export interface ResultadoProforma {
   ide_cccpr: number;
   secuencial: string;
@@ -78,16 +97,17 @@ export class BotProformaService {
       const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr);
       this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cantidad=${prod.cantidad} → ${precioConf ? `precio_unit=${precioConf.precio_unitario} incluye_iva=${precioConf.incluye_iva} cant_min=${precioConf.cantidad_minima}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
-        // precio_sin_iva: si el configurado ya incluye IVA, extraemos la base
-        const precioSinIva = precioConf.incluye_iva
-          ? Math.round((precioConf.precio_unitario / (1 + ivaDecimal)) * 100) / 100
+        // precio SIN IVA usando la regla de decimales del frontend
+        const precioSinIvaRaw = precioConf.incluye_iva
+          ? precioConf.precio_unitario / (1 + ivaDecimal)
           : precioConf.precio_unitario;
-        const totalSinIva   = Math.round(precioSinIva * prod.cantidad * 100) / 100;
-        const totalConIva   = Math.round(totalSinIva * (1 + ivaDecimal) * 100) / 100;
+        const precioSinIva = roundPrecio(precioSinIvaRaw);               // 2 o 4 dec
+        const totalSinIva  = roundTo(precioSinIva * prod.cantidad, DECIMALES_TOTALES);  // 2 dec
+        const totalConIva  = roundTo(totalSinIva  * (1 + ivaDecimal), DECIMALES_TOTALES);
         productosConPrecio.push({
           ...prod,
-          precio_unitario: precioSinIva,          // SIN IVA (para proforma)
-          precio_total:    totalConIva,            // CON IVA (para mostrar al cliente)
+          precio_unitario: precioSinIva,   // SIN IVA para proforma (2 o 4 dec)
+          precio_total:    totalConIva,    // CON IVA para mostrar al cliente (2 dec)
           tiene_precio:    true,
         });
       } else {
@@ -230,24 +250,34 @@ export class BotProformaService {
     if (todosTienePrecio) {
       for (const p of productosConPrecio) {
         try {
-          const totalSinIva = Math.round(p.precio_unitario * p.cantidad * 100) / 100;
+          // total_ccdpr = roundTo(cantidad × precio, 2) — modelo frontend
+          const totalSinIva = roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES);
           await this.dataSource.pool.query(
             `UPDATE cxc_deta_proforma
              SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
             [p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti],
           );
-          this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio_sin_iva=${p.precio_unitario} total_sin_iva=${totalSinIva}`);
+          this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} (${getPrecioDecimals(p.precio_unitario)} dec) total=${totalSinIva}`);
         } catch (err) {
           this.logger.warn(`[Proforma] No se actualizó detalle ide_inarti=${p.ide_inarti}: ${err.message}`);
         }
       }
 
-      // Recalcular totales cabecera con IVA correcto + utilidad desde detalles
+      // Recalcular totales cabecera — modelo idéntico al frontend
       try {
-        const baseGrabada = productosConPrecio.reduce((s, p) => s + Math.round(p.precio_unitario * p.cantidad * 100) / 100, 0);
-        const valorIva    = Math.round(baseGrabada * ivaDecimal * 100) / 100;
-        const total       = Math.round((baseGrabada + valorIva) * 100) / 100;
+        // 1. Acumular totales de línea (ya redondeados a 2 dec en el UPDATE anterior)
+        //    iva_inarti_ccdpr = 1 → baseGrabada | iva_inarti_ccdpr != 1 → baseTarifa0
+        const baseGrabada = productosConPrecio.reduce(
+          (s, p) => s + roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES), 0,
+        );
+        const baseTarifa0 = 0;  // bot solo maneja productos gravados (iva=1)
+
+        // 2. IVA = roundTo(baseGrabada × %IVA/100, 2)
+        const valorIva = roundTo(baseGrabada * (tarifaIva / 100), DECIMALES_TOTALES);
+
+        // 3. Total = suma simple (sin redondeo adicional)
+        const total = baseGrabada + baseTarifa0 + valorIva;
 
         // Sumar utilidad desde los detalles (si tienen precio_compra configurado)
         const utilQ = new SelectQuery(`
@@ -302,17 +332,17 @@ export class BotProformaService {
       }
     }
 
-    // Totales calculados (solo cuando hay precios)
-    const baseGrabada = todosTienePrecio
-      ? productosConPrecio.reduce((s, p) => s + Math.round(p.precio_unitario * p.cantidad * 100) / 100, 0)
+    // Totales para el return (mismo cálculo que el UPDATE de cabecera)
+    const baseGrabadaRet = todosTienePrecio
+      ? productosConPrecio.reduce((s, p) => s + roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES), 0)
       : undefined;
-    const valorIva  = baseGrabada != null ? Math.round(baseGrabada * ivaDecimal * 100) / 100 : undefined;
-    const total     = baseGrabada != null ? Math.round((baseGrabada + valorIva) * 100) / 100 : undefined;
+    const valorIva  = baseGrabadaRet != null ? roundTo(baseGrabadaRet * (tarifaIva / 100), DECIMALES_TOTALES) : undefined;
+    const total     = baseGrabadaRet != null ? baseGrabadaRet + 0 + valorIva : undefined;
 
     return {
       ide_cccpr, secuencial, automatica, conPrecio,
       productosConPrecio, productosSinPrecio, pdfBuffer,
-      baseGrabada, baseTarifa0: 0, valorIva, tarifaIva, total,
+      baseGrabada: baseGrabadaRet, baseTarifa0: 0, valorIva, tarifaIva, total,
     };
   }
 }

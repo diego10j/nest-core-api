@@ -69,20 +69,20 @@ Puedes buscar lo que necesitas y solicitar tu cotización directamente.
 };
 
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
-const MSG_ES_CLIENTE_BODY = `Para ayudarte de la mejor manera 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
+const MSG_ES_CLIENTE_BODY = `Para brindarte una atención personalizada 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
 const BTN_ES_CLIENTE = [
   { id: 'SI_CLIENTE', title: '✅ Sí, soy cliente' },
   { id: 'NO_CLIENTE', title: '❌ No' },
 ];
 
 // ─── Mensaje de inicio de cotización ─────────────────────────────────────────
-const MSG_INICIO_COTIZACION = `¡Perfecto! Vamos a preparar tu cotización 📋
+const MSG_INICIO_COTIZACION = `Con mucho gusto te ayudo con tu cotización 😊
 
-¿Qué producto necesitas? Escribe solo el nombre.
+Cuéntame, ¿qué producto necesitas? Escríbeme solo el nombre.
 
 _Ejemplo: *Cera de palma*_
 
-Cuando termines de agregar todos los productos escribe *FIN*.`;
+Cuando hayas terminado de agregar todos los productos, escribe *FIN*.`;
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -343,7 +343,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
           { ...datos, productos: [] });
         await this.sendText(ideEmpr, waId,
-          `Con gusto 😊 Usaré tus datos guardados.\n\n${MSG_INICIO_COTIZACION}`,
+          MSG_INICIO_COTIZACION,
         );
       } else {
         try {
@@ -381,7 +381,7 @@ export class BotService implements OnModuleInit {
     if (esCliente) {
       await this.botSession.update(sesion.ide_whbse, BotState.IDENTIFICACION, datos);
       await this.sendText(ideEmpr, waId,
-        `Perfecto 👍 Por favor dime tu *número de cédula o RUC* para buscarte en nuestro sistema 🔍`,
+        `¡Qué bueno tenerte de nuevo! 😊 Por favor dime tu *número de cédula o RUC* para ubicar tu información.`,
       );
       return;
     }
@@ -393,7 +393,7 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `¡Con mucho gusto te atendemos! 😊\n\n¿Cuál es tu nombre?`,
+        `Es un placer atenderte 😊 Para comenzar, ¿me podrías indicar tu nombre?`,
       );
       return;
     }
@@ -472,7 +472,7 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `Perfecto, *${nombres.split(' ')[0]}* 😊\n\nAhora dime tu *correo electrónico* para enviarte la cotización 📧`,
+        `Gracias, *${nombres.split(' ')[0]}* 😊 ¿Cuál es tu *correo electrónico* para enviarte la cotización? 📧`,
       );
       return;
     }
@@ -490,7 +490,7 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
       await this.sendText(ideEmpr, waId,
-        `¡Listo, *${cliente.nombres}*! Ya tengo tus datos 😊\n\n${MSG_INICIO_COTIZACION}`,
+        `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
       );
       return;
     }
@@ -711,7 +711,7 @@ export class BotService implements OnModuleInit {
     if (modifica) {
       const nuevosDatos: DatosSesion = { ...datos, productos: [] };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId, `Entendido, empecemos de nuevo 😊\n\n${MSG_INICIO_COTIZACION}`);
+      await this.sendText(ideEmpr, waId, `Por supuesto, empecemos de nuevo 😊\n\n${MSG_INICIO_COTIZACION}`);
       return;
     }
 
@@ -727,7 +727,7 @@ export class BotService implements OnModuleInit {
         const nuevosDatos: DatosSesion = { ...datos, envio: { ...datos.envio, pendiente_campo: 'confirmar_envio_guardado' } };
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
-          `Perfecto 👍 ¿Usamos los datos de envío anteriores?\n\n${resumen}`,
+          `Para el envío, tengo registrada la siguiente información:\n\n${resumen}\n\n¿La utilizamos para esta cotización?`,
           [
             { id: 'ENV_MISMO',  title: '✅ Sí, son correctos' },
             { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
@@ -748,7 +748,7 @@ export class BotService implements OnModuleInit {
         const nuevosDatos: DatosSesion = { ...datos, envio: { pendiente_campo: 'tipo_direccion' } };
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
-          `Perfecto 👍 ¿Cómo prefieres indicar la dirección de entrega?`,
+          `Necesito la dirección de entrega. ¿Cómo prefieres indicármela?`,
           [
             { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
             { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
@@ -973,7 +973,7 @@ export class BotService implements OnModuleInit {
 
         const lineas = [
           `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n`,
-          `📋 Subtotal tarifa 0%:  *$${tarifa0.toFixed(2)}*`,
+          ...(tarifa0 > 0 ? [`📋 Subtotal tarifa 0%:  *$${tarifa0.toFixed(2)}*`] : []),
           `📋 Subtotal gravado:    *$${baseSinIva.toFixed(2)}*`,
           `📋 IVA ${pctIva}%:             *$${iva.toFixed(2)}*`,
           `💰 *Total:               $${totalFinal.toFixed(2)}*`,
@@ -986,6 +986,11 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId, lineas.join('\n'));
 
         // Esperar 5s para que el PDF llegue antes que el mensaje de seguimiento
+        await new Promise((r) => setTimeout(r, 5000));
+        await this.sendText(ideEmpr, waId,
+          `Tu cotización ya está lista para revisarla 📄\n\n` +
+          `Si tienes alguna consulta, necesitas ajustar algún detalle o deseas hacer algún cambio, no dudes en escribirnos — con gusto te atendemos 😊`,
+        );
         await new Promise((r) => setTimeout(r, 5000));
         await this.sendButtons(ideEmpr, waId,
           `¿Hay algo más en que pueda ayudarte? 🧪`,
