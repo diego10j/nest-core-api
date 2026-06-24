@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getCurrentDate } from 'src/util/helpers/date-util';
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ProformasService } from 'src/core/modules/proformas/proformas.service';
 
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
@@ -38,6 +39,7 @@ export class BotProformaService {
   private readonly logger = new Logger(BotProformaService.name);
 
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly proformasService: ProformasService,
     private readonly botTools: BotToolsService,
   ) {}
@@ -48,7 +50,7 @@ export class BotProformaService {
     ideEmpr: number,
     nombreBot: string,
   ): Promise<ResultadoProforma> {
-    const db = this.proformasService['dataSource'].pool;
+    const db = this.dataSource.pool;
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 

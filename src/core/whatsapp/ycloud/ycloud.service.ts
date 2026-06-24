@@ -40,7 +40,7 @@ export class YcloudService {
 
   constructor(
     private readonly httpService: HttpService,
-    public readonly dataSource: DataSourceService,
+    private readonly dataSource: DataSourceService,
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,

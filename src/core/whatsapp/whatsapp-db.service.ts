@@ -26,7 +26,7 @@ export class WhatsappDbService {
     private readonly logger = new Logger(WhatsappDbService.name);
 
     constructor(
-        public readonly dataSource: DataSourceService,
+        private readonly dataSource: DataSourceService,
         private readonly whatsappGateway: WhatsappGateway,
     ) { }
 

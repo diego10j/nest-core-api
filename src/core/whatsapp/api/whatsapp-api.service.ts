@@ -8,6 +8,7 @@ import { envs } from 'src/config/envs';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { isDefined } from 'src/util/helpers/common-util';
 
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../../connection/helpers';
 import { EnviarMensajeDto } from '../dto/enviar-mensaje.dto';
 import { GetChatsDto } from '../dto/get-chats.dto';
@@ -34,6 +35,7 @@ export class WhatsappApiService {
   private readonly logger = new Logger(WhatsappApiService.name);
 
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly httpService: HttpService,
     private readonly whatsappDb: WhatsappDbService,
     private readonly fileTempService: FileTempService,
@@ -215,7 +217,7 @@ export class WhatsappApiService {
             }
             updateQuery.where = 'id_whmem = $1';
             updateQuery.addParam(1, statuses.id);
-            this.whatsappDb.dataSource.createQuery(updateQuery);
+            this.dataSource.createQuery(updateQuery);
           } catch (error) {
             this.logger.error('Error al actualizar estado del mensaje', error);
           }
@@ -225,7 +227,7 @@ export class WhatsappApiService {
         const jsonMsg = JSON.stringify(body);
         try {
           const query = new SelectQuery(`SELECT mensaje_whatsapp('${jsonMsg}'::jsonb) AS wa_id`);
-          const res = await this.whatsappDb.dataSource.createSingleQuery(query);
+          const res = await this.dataSource.createSingleQuery(query);
           // Emitir el mensaje a través de WebSocket
           this.whatsappGateway.sendMessageToClients(res.wa_id); // Emitir el mensaje recibido a los clientes WebSocket
         } catch (error) {
@@ -531,7 +533,7 @@ export class WhatsappApiService {
    * @param cacheKey - Clave de la caché.
    */
   private async getFromCache(cacheKey: string): Promise<WhatsAppConfig | null> {
-    const dataConfig = await this.whatsappDb.dataSource.redisClient.get(cacheKey);
+    const dataConfig = await this.dataSource.redisClient.get(cacheKey);
     return dataConfig ? JSON.parse(dataConfig) : null;
   }
 
@@ -541,7 +543,7 @@ export class WhatsappApiService {
    * @param data - Datos a guardar.
    */
   private async setToCache(cacheKey: string, data: WhatsAppConfig): Promise<void> {
-    await this.whatsappDb.dataSource.redisClient.set(cacheKey, JSON.stringify(data));
+    await this.dataSource.redisClient.set(cacheKey, JSON.stringify(data));
   }
 
   /**
@@ -689,7 +691,7 @@ export class WhatsappApiService {
       listQuery.push(insertQuery);
     });
     // Ejecuta querys
-    const messages = await this.whatsappDb.dataSource.createListQuery(listQuery);
+    const messages = await this.dataSource.createListQuery(listQuery);
 
     return {
       message: 'ok',

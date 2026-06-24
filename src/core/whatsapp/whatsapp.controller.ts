@@ -25,6 +25,7 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
 
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
@@ -52,6 +53,7 @@ import { WhatsappService } from './whatsapp.service';
 @Controller('whatsapp')
 export class WhatsappController {
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
     private readonly whatsappCamp: WhatsappCampaniaService,
@@ -399,7 +401,7 @@ export class WhatsappController {
       return { ok: true, bot_modo_whcha: 'BOT' };
     } else {
       // Silenciar el bot en este chat sin enviar mensaje
-      await this.whatsappDbService.dataSource.pool.query(
+      await this.dataSource.pool.query(
         `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
         [dto.ideWhcha],
       );

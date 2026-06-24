@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { envs } from 'src/config/envs';
+import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { YcloudService } from '../ycloud/ycloud.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
@@ -86,6 +87,7 @@ export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
 
   constructor(
+    private readonly dataSource: DataSourceService,
     private readonly botConfig: BotConfigService,
     private readonly botSession: BotSessionService,
     private readonly botGpt: BotGptService,
@@ -979,7 +981,7 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
     ideWhcue: number, ideEmpr: number,
     mensaje?: string,
   ): Promise<void> {
-    await this.ycloudService.dataSource.pool.query(
+    await this.dataSource.pool.query(
       `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
@@ -999,7 +1001,7 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
   }
 
   async liberarChat(ideWhcha: number): Promise<void> {
-    await this.ycloudService.dataSource.pool.query(
+    await this.dataSource.pool.query(
       `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
@@ -1008,7 +1010,7 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
   private async sendText(ideEmpr: number, waId: string, texto: string): Promise<void> {
     const result = await this.ycloudService.sendText(ideEmpr, `+${waId}`, texto);
     if (result?.messageId) {
-      await this.ycloudService.dataSource.pool.query(
+      await this.dataSource.pool.query(
         `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
         [result.messageId],
       );
@@ -1022,7 +1024,7 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
     try {
       const result = await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons);
       if (result?.messageId) {
-        await this.ycloudService.dataSource.pool.query(
+        await this.dataSource.pool.query(
           `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
           [result.messageId],
         );
