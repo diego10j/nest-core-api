@@ -49,13 +49,15 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha=${botActivoWhcha} texto="${texto}"`);
 
-    // 1. ¿El bot global está activo para esta cuenta?
-    const botActivo = await this.botConfig.isBotActive(ideWhcue);
-    this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo}`);
-    if (!botActivo) { this.logger.warn(`[Bot] Bot global INACTIVO para ideWhcue=${ideWhcue}`); return; }
-
-    // 2. ¿El chat está en modo ASESOR?
+    // 1. Si el chat está en modo ASESOR → nunca responder
     if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
+
+    // 2. Bot global: solo bloquea si el chat NO fue habilitado explícitamente
+    //    bot_activo_whcha=true actúa como override del global
+    const botActivo = await this.botConfig.isBotActive(ideWhcue);
+    if (!botActivo && !botActivoWhcha) { this.logger.warn(`[Bot] Bot global INACTIVO y chat sin override`); return; }
+
+    this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo} | override por chat=${botActivoWhcha}`);
 
     // 3. Detección de "Asesor" en CUALQUIER estado (override universal)
     if (PALABRAS_ASESOR.test(texto)) {
