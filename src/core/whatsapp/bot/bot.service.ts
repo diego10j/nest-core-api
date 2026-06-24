@@ -137,9 +137,9 @@ export class BotService implements OnModuleInit {
     }
 
     let sesion = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
-    this.logger.log(`[Bot] sesion.estado=${sesion?.estado} ide_whbse=${sesion?.ide_whbse}`);
+    // this.logger.log(`[Bot] sesion.estado=${sesion?.estado} ide_whbse=${sesion?.ide_whbse}`);
     const config = await this.botConfig.getConfig(ideWhcue);
-    this.logger.log(`[Bot] config=${config ? 'OK nombre_bot=' + config.nombre_bot : 'NULL'}`);
+    this.logger.debug(`[Bot] config=${config ? 'OK nombre_bot=' + config.nombre_bot : 'NULL'}`);
     if (!config) {
       this.logger.warn(`[Bot] Sin configuración en wha_bot_config para ideWhcue=${ideWhcue} — creando config mínima`);
       // Config mínima por defecto para no perder el mensaje
@@ -299,10 +299,10 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, config: any,
   ): Promise<void> {
-    this.logger.log(`[Bot] handleAtencionLibre texto="${texto}"`);
+    this.logger.debug(`[Bot] handleAtencionLibre texto="${texto}"`);
     const datos = sesion.datos_sesion as DatosSesion;
     const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
-    this.logger.log(`[Bot] tipoConsulta="${tipoConsulta}"`);
+    this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any);
@@ -310,10 +310,8 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      this.logger.log(`[Bot] Llamando sendButtons ideEmpr=${ideEmpr} waId=${waId}`);
       try {
         await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-        this.logger.log(`[Bot] sendButtons completado OK`);
       } catch (e) {
         this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
         throw e;
@@ -985,11 +983,8 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
     ideEmpr: number, waId: string, body: string,
     buttons: { id: string; title: string }[],
   ): Promise<void> {
-    this.logger.log(`[Bot] sendButtons ENTER ideEmpr=${ideEmpr} waId=${waId} buttons=${buttons.length}`);
     try {
-      this.logger.log(`[Bot] llamando sendInteractiveButtons...`);
       const result = await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons);
-      this.logger.log(`[Bot] sendInteractiveButtons OK messageId=${result?.messageId}`);
       if (result?.messageId) {
         await this.ycloudService.dataSource.pool.query(
           `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
@@ -1006,6 +1001,5 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
         throw txtErr;
       }
     }
-    this.logger.log(`[Bot] sendButtons EXIT`);
   }
 }

@@ -97,30 +97,80 @@ export class BotProformaService {
     const ide_cccpr: number = resultado.data.ide_cccpr;
     const secuencial: string = resultado.data.secuencial_cccpr;
 
+    const db = this.proformasService['dataSource'].pool;
+
     // Actualizar precios en los detalles cuando están disponibles
     if (todosTienePrecio) {
       for (const p of productosConPrecio) {
         try {
-          await this.proformasService['dataSource'].pool.query(
+          // precio_ccdpr = precio sin IVA (si el configurado ya incluía IVA, extraemos la base)
+          const precioSinIva = p.tiene_precio
+            ? Math.round((p.precio_unitario / 1) * 100) / 100  // ya calculamos con IVA incluido en procesarProforma
+            : p.precio_unitario;
+          await db.query(
             `UPDATE cxc_deta_proforma
-             SET precio_ccdpr = $1, total_ccdpr = $2
+             SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
-            [p.precio_unitario, p.precio_total, ide_cccpr, p.ide_inarti],
+            [precioSinIva, p.precio_total, ide_cccpr, p.ide_inarti],
           );
-          this.logger.log(`[Proforma] Precio actualizado ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} total=${p.precio_total}`);
+          this.logger.log(`[Proforma] Detalle actualizado ide_inarti=${p.ide_inarti} precio=${precioSinIva} total=${p.precio_total}`);
         } catch (err) {
-          this.logger.warn(`[Proforma] No se actualizó precio ide_inarti=${p.ide_inarti}: ${err.message}`);
+          this.logger.warn(`[Proforma] No se actualizó detalle ide_inarti=${p.ide_inarti}: ${err.message}`);
         }
+      }
+
+      // Recalcular totales en la cabecera desde los detalles
+      try {
+        await db.query(`
+          UPDATE cxc_cabece_proforma c
+          SET
+            base_grabada_cccpr = sums.base_grabada,
+            base_tarifa0_cccpr = sums.base_tarifa0,
+            tarifa_iva_cccpr   = COALESCE(iva.porcentaje_cnpim, 15),
+            valor_iva_cccpr    = ROUND(sums.base_grabada * COALESCE(iva.porcentaje_cnpim, 15) / 100, 2),
+            total_cccpr        = sums.base_tarifa0 + sums.base_grabada
+                                 + ROUND(sums.base_grabada * COALESCE(iva.porcentaje_cnpim, 15) / 100, 2)
+          FROM (
+            SELECT
+              COALESCE(SUM(CASE WHEN d.iva_inarti_ccdpr = 1 THEN d.total_ccdpr ELSE 0 END), 0) AS base_grabada,
+              COALESCE(SUM(CASE WHEN d.iva_inarti_ccdpr != 1 OR d.iva_inarti_ccdpr IS NULL THEN d.total_ccdpr ELSE 0 END), 0) AS base_tarifa0
+            FROM cxc_deta_proforma d
+            WHERE d.ide_cccpr = $1
+          ) sums,
+          LATERAL (
+            SELECT porcentaje_cnpim
+            FROM con_porcen_impues
+            WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+              AND activo_cnpim = TRUE
+            ORDER BY fecha_desde_cnpim DESC
+            LIMIT 1
+          ) iva
+          WHERE c.ide_cccpr = $1
+        `, [ide_cccpr]);
+        this.logger.log(`[Proforma] Cabecera actualizada con totales para ide_cccpr=${ide_cccpr}`);
+      } catch (err) {
+        this.logger.warn(`[Proforma] No se actualizaron totales de cabecera: ${err.message}`);
       }
     }
 
     let pdfBuffer: Buffer | undefined;
     if (automatica) {
-      try {
-        await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, IDE_VGVEN_DEFAULT);
-        pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
-      } catch (err) {
-        this.logger.error(`Error generando PDF proforma ${ide_cccpr}: ${err.message}`);
+      // Verificar que el total sea mayor a 0 antes de generar PDF
+      const check = await db.query<{ total: number }>(
+        `SELECT COALESCE(total_cccpr, 0) AS total FROM cxc_cabece_proforma WHERE ide_cccpr = $1`,
+        [ide_cccpr],
+      );
+      const totalProforma = Number(check.rows[0]?.total ?? 0);
+
+      if (totalProforma <= 0) {
+        this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
+      } else {
+        try {
+          await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, IDE_VGVEN_DEFAULT);
+          pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
+        } catch (err) {
+          this.logger.error(`Error generando PDF proforma ${ide_cccpr}: ${err.message}`);
+        }
       }
     }
 
