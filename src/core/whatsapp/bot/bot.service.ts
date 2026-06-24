@@ -260,14 +260,14 @@ export class BotService implements OnModuleInit {
       const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
 
       if (tipoConsulta === 'PRODUCTO') {
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
         await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
         return;
       }
 
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
         await this.responderInfo(ideEmpr, waId, tipoConsulta as any);
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
         return;
       }
 
@@ -304,8 +304,8 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
       await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+      await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
       return;
     }
 
@@ -911,10 +911,15 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
           [result.messageId],
         );
       }
-    } catch {
-      // Fallback a texto plano si interactive no está soportado
-      const opciones = buttons.map((b) => `*${b.title}*`).join(' o ');
-      await this.sendText(ideEmpr, waId, `${body}\n\nResponde: ${opciones}`);
+    } catch (btnErr) {
+      this.logger.warn(`[Bot] sendInteractiveButtons falló: ${btnErr.message} — usando texto plano`);
+      try {
+        const opciones = buttons.map((b) => `*${b.title}*`).join(' o ');
+        await this.sendText(ideEmpr, waId, `${body}\n\nResponde: ${opciones}`);
+      } catch (txtErr) {
+        this.logger.error(`[Bot] sendButtons fallback texto también falló: ${txtErr.message}`);
+        throw txtErr; // Re-lanzar para que processMessage lo registre
+      }
     }
   }
 }
