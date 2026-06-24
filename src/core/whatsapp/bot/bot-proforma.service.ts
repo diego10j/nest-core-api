@@ -54,13 +54,13 @@ export class BotProformaService {
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
-    // Obtener tasa de IVA actual (decimal: 0.15 para 15%)
+    // Obtener tasa de IVA actual de con_porcen_impues (decimal: 0.15 para 15%)
     const ivaRow = await db.query<{ iva: number }>(
-      `SELECT COALESCE(porcentaje_iva_cncii, 0.15) AS iva
-       FROM con_config_iva
-       WHERE fecha_inicio_cncii <= CURRENT_DATE
-         AND (fecha_fin_cncii IS NULL OR fecha_fin_cncii >= CURRENT_DATE)
-       ORDER BY fecha_inicio_cncii DESC
+      `SELECT COALESCE(porcentaje_cnpim, 0.15) AS iva
+       FROM con_porcen_impues
+       WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+         AND activo_cnpim = TRUE
+       ORDER BY fecha_desde_cnpim DESC
        LIMIT 1`,
     );
     const ivaDecimal: number = Number(ivaRow.rows[0]?.iva ?? 0.15);  // e.g. 0.15
