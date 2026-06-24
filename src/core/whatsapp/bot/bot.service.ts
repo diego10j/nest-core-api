@@ -4,6 +4,7 @@ import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { YcloudService } from '../ycloud/ycloud.service';
+import { YcloudWindowService } from '../ycloud/ycloud-window.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
 import { BotConfigService } from './bot-config.service';
@@ -95,6 +96,7 @@ export class BotService implements OnModuleInit {
     private readonly botTools: BotToolsService,
     private readonly botProforma: BotProformaService,
     private readonly ycloudService: YcloudService,
+    private readonly ycloudWindowService: YcloudWindowService,
     private readonly gateway: WhatsappGateway,
     private readonly fileTempService: FileTempService,
   ) {}
@@ -517,6 +519,16 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // ── PRE-CHECK: consulta informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
+    const tipoInfoPre = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfoPre as any);
+      await this.sendText(ideEmpr, waId,
+        `Espero haber resuelto tu consulta 😊\n\n¿Continuamos con la cotización? Dime el nombre del siguiente producto o escribe *FIN* para revisar tu pedido.`,
+      );
+      return;
+    }
+
     // Limpiar el texto: extraer solo el nombre del producto (quitar cantidades como "25kg", "5 litros")
     const textoOriginal = texto.trim();
     const nombreBuscado = textoOriginal
@@ -550,11 +562,10 @@ export class BotService implements OnModuleInit {
     }
 
     if (!resultados.length) {
-      await this.sendText(ideEmpr, waId,
-        `No encontré ningún producto con ese nombre 🤔\n\n` +
-        `💡 *Tip:* Escribe solo el nombre principal, sin cantidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_\n\n` +
-        `O explora nuestro catálogo: 👉 https://diquimec.com.ec/product`,
-      );
+      // GPT analiza qué quiso decir el cliente (info, reformulación, irrelevante)
+      const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
+      const analisis = await this.botGpt.analizarProductoNoEncontrado(textoOriginal, nombresYa);
+      await this.sendText(ideEmpr, waId, analisis.respuesta);
       return;
     }
 
@@ -606,6 +617,15 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
+
+    // Consulta informativa mid-cotización
+    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any);
+      await this.sendText(ideEmpr, waId, `¿Continuamos? Responde con el *número* del producto que necesitas.`);
+      return;
+    }
+
     const num = parseInt(texto.trim(), 10);
 
     if (isNaN(num) || num < 1 || num > (datos.opciones_producto?.length ?? 0)) {
@@ -640,6 +660,16 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const prod = datos.producto_pendiente;
+
+    // Consulta informativa mid-cotización
+    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any);
+      await this.sendText(ideEmpr, waId,
+        `¿Continuamos? Indica la cantidad de *${prod?.nombre}* que necesitas.`,
+      );
+      return;
+    }
 
     const cantidadMatch = texto.trim().match(/^(\d+(?:[.,]\d+)?)/);
     if (!cantidadMatch) {
@@ -683,6 +713,17 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const t = texto.trim().toUpperCase();
+
+    // Consulta informativa mid-cotización
+    const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfoConf as any);
+      await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
+        { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+        { id: 'CONF_NO', title: '✏️ Modificar lista' },
+      ]);
+      return;
+    }
 
     const confirma = t === 'CONF_SI' || (await this.botGpt.detectarIntencion(texto)) === 'CONFIRMAR';
     const modifica = t === 'CONF_NO' || (await this.botGpt.detectarIntencion(texto)) === 'CANCELAR';
@@ -1099,6 +1140,108 @@ Información clave:
 - Web productos: https://diquimec.com.ec/product
 - Catálogos: https://diquimec.com.ec/catalogo
 Si el cliente pregunta algo que no puedes responder, invítale a contactar a un asesor escribiendo SALIR.`;
+  }
+
+  /** Procesa mensajes pendientes de un chat específico al liberarlo */
+  async procesarPendientesChat(ideWhcha: number): Promise<void> {
+    try {
+      const chatRow = await this.dataSource.pool.query<{
+        wa_id_whcha: string; phone_number_id_whcha: string;
+        no_leidos_whcha: number; ide_whcue: number; ide_empr: number;
+      }>(
+        `SELECT c.wa_id_whcha, c.phone_number_id_whcha, c.no_leidos_whcha,
+                cu.ide_whcue, cu.ide_empr
+         FROM wha_chat c
+         INNER JOIN wha_cuenta cu
+           ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
+           AND cu.activo_whcue = TRUE
+         WHERE c.ide_whcha = $1 LIMIT 1`,
+        [ideWhcha],
+      );
+      if (!chatRow.rowCount) return;
+      const chat = chatRow.rows[0];
+      if (!chat.no_leidos_whcha || chat.no_leidos_whcha <= 0) return;
+
+      const windowCheck = await this.ycloudWindowService.canSendFreeMessage(
+        chat.phone_number_id_whcha, chat.wa_id_whcha,
+      );
+      if (!windowCheck.allowed) {
+        this.logger.log(`[Bot] Chat ${ideWhcha} fuera de ventana 24h — no se procesan pendientes`);
+        return;
+      }
+
+      const msgRow = await this.dataSource.pool.query<{ body_whmem: string }>(
+        `SELECT body_whmem FROM wha_mensaje
+         WHERE ide_whcha = $1 AND direction_whmem = '0'
+           AND body_whmem IS NOT NULL AND content_type_whmem = 'text'
+         ORDER BY ide_whmem DESC LIMIT 1`,
+        [ideWhcha],
+      );
+      if (!msgRow.rowCount || !msgRow.rows[0].body_whmem) return;
+
+      const texto = msgRow.rows[0].body_whmem;
+      this.logger.log(`[Bot] Procesando pendiente chat=${ideWhcha} texto="${texto}"`);
+      await this.processMessage(
+        chat.wa_id_whcha, chat.phone_number_id_whcha,
+        ideWhcha, chat.ide_whcue, chat.ide_empr, texto, true,
+      );
+    } catch (err) {
+      this.logger.error(`[Bot] procesarPendientesChat error chat=${ideWhcha}: ${err.message}`);
+    }
+  }
+
+  /** Procesa mensajes pendientes de todos los chats del bot al activarlo globalmente */
+  async procesarPendientesGlobal(ideWhcue: number, ideEmpr: number): Promise<void> {
+    try {
+      const result = await this.dataSource.pool.query<{
+        ide_whcha: number; wa_id_whcha: string; phone_number_id_whcha: string;
+      }>(
+        `SELECT c.ide_whcha, c.wa_id_whcha, c.phone_number_id_whcha
+         FROM wha_chat c
+         INNER JOIN wha_cuenta cu
+           ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
+           AND cu.ide_whcue = $1 AND cu.activo_whcue = TRUE
+         WHERE c.no_leidos_whcha > 0
+           AND c.bot_activo_whcha = TRUE
+           AND c.ultimo_ingreso_cliente_whcha IS NOT NULL
+           AND (NOW() - c.ultimo_ingreso_cliente_whcha) < INTERVAL '24 hours'
+           AND c.eliminado_whcha = FALSE
+         ORDER BY c.ultimo_ingreso_cliente_whcha DESC
+         LIMIT 20`,
+        [ideWhcue],
+      );
+      if (!result.rowCount) return;
+      this.logger.log(`[Bot] procesarPendientesGlobal: ${result.rowCount} chats pendientes`);
+
+      for (const chat of result.rows) {
+        try {
+          const windowCheck = await this.ycloudWindowService.canSendFreeMessage(
+            chat.phone_number_id_whcha, chat.wa_id_whcha,
+          );
+          if (!windowCheck.allowed) continue;
+
+          const msgRow = await this.dataSource.pool.query<{ body_whmem: string }>(
+            `SELECT body_whmem FROM wha_mensaje
+             WHERE ide_whcha = $1 AND direction_whmem = '0'
+               AND body_whmem IS NOT NULL AND content_type_whmem = 'text'
+             ORDER BY ide_whmem DESC LIMIT 1`,
+            [chat.ide_whcha],
+          );
+          if (!msgRow.rowCount || !msgRow.rows[0].body_whmem) continue;
+
+          this.logger.log(`[Bot] Pendiente global chat=${chat.ide_whcha} texto="${msgRow.rows[0].body_whmem}"`);
+          await this.processMessage(
+            chat.wa_id_whcha, chat.phone_number_id_whcha,
+            chat.ide_whcha, ideWhcue, ideEmpr, msgRow.rows[0].body_whmem, true,
+          );
+          await new Promise((r) => setTimeout(r, 500));
+        } catch (chatErr) {
+          this.logger.error(`[Bot] pendiente global chat=${chat.ide_whcha}: ${chatErr.message}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error(`[Bot] procesarPendientesGlobal error: ${err.message}`);
+    }
   }
 
   async derivarAsesor(

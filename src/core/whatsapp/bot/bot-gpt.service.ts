@@ -130,4 +130,44 @@ export class BotGptService {
 
     return 'GENERAL';
   }
+
+  async analizarProductoNoEncontrado(
+    texto: string,
+    productosYaAgregados: string[] = [],
+  ): Promise<{ tipo: 'INFO' | 'PRODUCTO' | 'IRRELEVANTE'; respuesta: string }> {
+    const ctx = productosYaAgregados.length
+      ? `Productos ya cotizados: ${productosYaAgregados.join(', ')}.`
+      : '';
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `Eres QuimIA, asesora comercial de DIQUIMEC (materias primas y productos químicos). ${ctx}
+El cliente está cotizando y escribió algo que no coincidió con ningún producto del catálogo.
+Responde en JSON: {"tipo":"INFO|PRODUCTO|IRRELEVANTE","respuesta":"texto para el cliente"}
+INFO = pregunta de ubicación/horario/envíos/catálogo → responde la info y pide continuar cotizando.
+PRODUCTO = busca un producto con nombre poco claro → sugiere escribir solo el nombre principal sin cantidades ni unidades.
+IRRELEVANTE = fuera de contexto → responde brevemente y pide continuar.
+Tono: amable, femenino, profesional. Máximo 2 párrafos cortos.`,
+          },
+          { role: 'user', content: texto },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.4,
+        max_tokens: 220,
+      });
+      const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
+      if (['INFO', 'PRODUCTO', 'IRRELEVANTE'].includes(parsed.tipo) && parsed.respuesta) {
+        return parsed;
+      }
+    } catch (err) {
+      this.logger.error(`analizarProductoNoEncontrado error: ${err.message}`);
+    }
+    return {
+      tipo: 'PRODUCTO',
+      respuesta: `No encontré ese producto en nuestro catálogo 🤔\n\n💡 Escribe solo el nombre principal del producto, sin cantidades ni unidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_\n\n👉 https://diquimec.com.ec/product`,
+    };
+  }
 }
