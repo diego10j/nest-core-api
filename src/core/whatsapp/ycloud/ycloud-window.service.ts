@@ -13,6 +13,8 @@ export class YcloudWindowService {
     phoneNumberId: string,
     waId: string,
   ): Promise<{ allowed: boolean; reason?: string; lastInbound?: Date }> {
+    const waIdClean = waId.replace(/^\+/, '');
+    const phoneIdClean = phoneNumberId.replace(/^\+/, '');
     const query = new SelectQuery(`
       SELECT
         ultimo_ingreso_cliente_whcha,
@@ -22,8 +24,8 @@ export class YcloudWindowService {
         AND phone_number_id_whcha = $2
       LIMIT 1
     `);
-    query.addParam(1, waId);
-    query.addStringParam(2, phoneNumberId);
+    query.addParam(1, waIdClean);
+    query.addStringParam(2, phoneIdClean);
 
     const chat = await this.dataSource.createSingleQuery(query);
 
