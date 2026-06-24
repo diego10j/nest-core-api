@@ -304,7 +304,14 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+      this.logger.log(`[Bot] Llamando sendButtons ideEmpr=${ideEmpr} waId=${waId}`);
+      try {
+        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+        this.logger.log(`[Bot] sendButtons completado OK`);
+      } catch (e) {
+        this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
+        throw e;
+      }
       await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
       return;
     }
@@ -903,8 +910,11 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
     ideEmpr: number, waId: string, body: string,
     buttons: { id: string; title: string }[],
   ): Promise<void> {
+    this.logger.log(`[Bot] sendButtons ENTER ideEmpr=${ideEmpr} waId=${waId} buttons=${buttons.length}`);
     try {
+      this.logger.log(`[Bot] llamando sendInteractiveButtons...`);
       const result = await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons);
+      this.logger.log(`[Bot] sendInteractiveButtons OK messageId=${result?.messageId}`);
       if (result?.messageId) {
         await this.ycloudService.dataSource.pool.query(
           `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
@@ -918,8 +928,9 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
         await this.sendText(ideEmpr, waId, `${body}\n\nResponde: ${opciones}`);
       } catch (txtErr) {
         this.logger.error(`[Bot] sendButtons fallback texto también falló: ${txtErr.message}`);
-        throw txtErr; // Re-lanzar para que processMessage lo registre
+        throw txtErr;
       }
     }
+    this.logger.log(`[Bot] sendButtons EXIT`);
   }
 }
