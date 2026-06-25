@@ -72,7 +72,7 @@ export class BotToolsService {
             AND dc.activo_indcat = TRUE
         ) AS en_catalogo,
         (
-          unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) ILIKE '%' || unaccent(UPPER($1)) || '%'
+          unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) = unaccent(UPPER($1))
           AND NOT (unaccent(UPPER(a.nombre_inarti)) ILIKE '%' || unaccent(UPPER($1)) || '%')
         ) AS matched_by_otro_nombre
       FROM inv_articulo a
@@ -81,8 +81,10 @@ export class BotToolsService {
         AND a.activo_inarti = TRUE
         AND a.hace_kardex_inarti = TRUE
         AND (
-          unaccent(UPPER(a.nombre_inarti))      ILIKE '%' || unaccent(UPPER($1)) || '%'
-          OR unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) ILIKE '%' || unaccent(UPPER($1)) || '%'
+          -- nombre_inarti: coincidencia parcial (substring)
+          unaccent(UPPER(a.nombre_inarti)) ILIKE '%' || unaccent(UPPER($1)) || '%'
+          -- otro_nombre_inarti: coincidencia exacta (sin mayúsculas, sin tildes, sin %)
+          OR unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) = unaccent(UPPER($1))
         )
       ORDER BY
         CASE WHEN unaccent(UPPER(a.nombre_inarti)) = unaccent(UPPER($1)) THEN 0 ELSE 1 END,

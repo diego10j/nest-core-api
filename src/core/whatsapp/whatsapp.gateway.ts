@@ -39,4 +39,9 @@ export class WhatsappGateway implements OnGatewayConnection, OnGatewayDisconnect
   emitChatEsperandoAsesor(ideWhcue: number, waId: string, ideWhcha: number) {
     this.server.emit('chatEsperandoAsesor', { ideWhcue, waId, ideWhcha });
   }
+
+  /** Emite el total de chats no leídos de una empresa para actualizar el badge del icono */
+  emitTotalChatsNoLeidos(ideEmpr: number, total: number) {
+    this.server.emit('totalChatsNoLeidos', { ideEmpr, total });
+  }
 }

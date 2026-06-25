@@ -3,7 +3,11 @@
     "allow": [
       "Bash(xargs -I{} basename {})",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx -p typescript tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(npm run *)",
+      "Bash(xargs ls)"
     ]
   }
 }

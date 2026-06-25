@@ -364,6 +364,55 @@ export class YcloudService {
     return { messageId };
   }
 
+  async sendAudio(
+    ideEmpr: number,
+    to: string,
+    mediaId: string,
+    ideUsua?: number,
+  ): Promise<{ messageId: string }> {
+    const config = await this.assertConfig(ideEmpr);
+
+    const windowCheck = await this.windowService.canSendFreeMessage(config.phoneNumberId, to);
+    if (!windowCheck.allowed) {
+      throw new BadRequestException(windowCheck.reason);
+    }
+
+    const payload: YcloudMessagePayload = {
+      from: config.displayPhoneNumber,
+      to,
+      type: 'audio',
+      audio: { id: mediaId },
+    };
+
+    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
+    const messageId = resp.messages?.[0]?.id || resp.id;
+
+    await this.saveMessageSent(
+      {
+        telefono: to,
+        tipo: 'audio',
+        texto: null,
+        idWts: messageId,
+        mediaId,
+        ideUsua,
+        tiempoRespuesta: windowCheck.lastInbound
+          ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
+          : null,
+      },
+      config,
+    );
+
+    await this.metricsService.logSyncEvent({
+      ideEmpr,
+      idMensaje: messageId,
+      tipo: 'S',
+      payloadYcloud: resp,
+      estado: 'PENDING',
+    });
+
+    return { messageId };
+  }
+
   async sendDocument(
     ideEmpr: number,
     to: string,
@@ -679,6 +728,11 @@ export class YcloudService {
         await this.processContactEvent(payload.contact || (payload as Record<string, any>));
         break;
       case 'whatsapp.smb.message.echoes':
+        // Mensaje enviado desde WhatsApp Web / App nativa (fuera de nuestra API).
+        // El agente vio y respondió el chat → reseteamos no_leidos_whcha.
+        if (payload.whatsappMessage) {
+          await this.processEchoMessage(payload.whatsappMessage);
+        }
         break;
       default:
         this.logger.debug(`Evento YCloud no procesado (${payload.type})`);
@@ -705,6 +759,7 @@ export class YcloudService {
       await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, now);
       await this.windowService.registerInboundMessage(waId, phoneNumberId);
       this.whatsappGateway.sendMessageToClients(waId);
+      void this.emitTotalNoLeidos(phoneNumberId);
 
       const textoBot = data.text?.body
         || data.button?.payload
@@ -1131,11 +1186,13 @@ export class YcloudService {
       const normalizedPhone = data.telefono.replace(/^\+/, '');
       const now = new Date().toISOString();
 
-      // Actualiza wha_chat con fecha_msg y el id del último mensaje enviado
+      // Actualiza wha_chat: fecha, último id y resetea no_leidos porque el agente está respondiendo
       await this.dataSource.pool.query(
         `UPDATE wha_chat
             SET id_whcha        = $1,
-                fecha_msg_whcha = $2
+                fecha_msg_whcha = $2,
+                no_leidos_whcha = 0,
+                leido_whcha     = TRUE
           WHERE wa_id_whcha = $3`,
         [data.idWts, now, normalizedPhone],
       );
@@ -1163,7 +1220,8 @@ export class YcloudService {
       }
 
       const res = await this.dataSource.createQuery(insertQuery);
-      this.whatsappGateway.sendMessageToClients(data.telefono);
+      // Emitir siempre sin + para que coincida con wa_id_whcha en el frontend
+      this.whatsappGateway.sendMessageToClients(normalizedPhone);
       return res;
     } catch (error) {
       this.logger.error(`Error saveMessageSent: ${error.message}`, error.stack);
@@ -1196,6 +1254,69 @@ export class YcloudService {
   }
 
   // ─── Sync ─────────────────────────────────────────────────────
+
+  /**
+   * Procesa el echo de un mensaje enviado desde WhatsApp Web / App nativa.
+   * Resetea no_leidos_whcha porque el agente leyó y respondió desde esa interfaz.
+   */
+  private async processEchoMessage(data: YcloudStatusData): Promise<void> {
+    try {
+      // data.from = número de la empresa (quien envió)
+      // data.to   = número del cliente (destinatario)
+      const customerWaId = (data.to || '').replace(/^\+/, '');
+      const businessPhone = (data.from || '').replace(/^\+/, '');
+      if (!customerWaId || !businessPhone) return;
+
+      const result = await this.dataSource.pool.query<{ ide_empr: number }>(
+        `UPDATE wha_chat c
+            SET no_leidos_whcha = 0,
+                leido_whcha     = TRUE
+           FROM wha_cuenta cu
+          WHERE c.wa_id_whcha           = $1
+            AND cu.activo_whcue         = TRUE
+            AND REPLACE(cu.id_telefono_whcue, '+', '') = $2
+            AND c.phone_number_id_whcha = cu.id_cuenta_whcue
+          RETURNING cu.ide_empr`,
+        [customerWaId, businessPhone],
+      );
+
+      if (result.rows.length > 0) {
+        const { ide_empr } = result.rows[0];
+        const phoneNumberId = (await this.dataSource.pool.query<{ id_cuenta_whcue: string }>(
+          `SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $1 AND activo_whcue = TRUE LIMIT 1`,
+          [ide_empr],
+        )).rows[0]?.id_cuenta_whcue;
+
+        if (phoneNumberId) {
+          void this.emitTotalNoLeidos(phoneNumberId);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error processEchoMessage: ${error.message}`);
+    }
+  }
+
+  private async emitTotalNoLeidos(phoneNumberId: string): Promise<void> {
+    try {
+      const result = await this.dataSource.pool.query<{ ide_empr: number; total: number }>(
+        `SELECT cu.ide_empr, COUNT(c.ide_whcha)::int AS total
+         FROM wha_cuenta cu
+         LEFT JOIN wha_chat c
+           ON c.phone_number_id_whcha = cu.id_cuenta_whcue
+          AND c.leido_whcha = FALSE
+         WHERE cu.id_cuenta_whcue = $1
+           AND cu.activo_whcue = TRUE
+         GROUP BY cu.ide_empr`,
+        [phoneNumberId],
+      );
+      if (result.rows.length > 0) {
+        const { ide_empr, total } = result.rows[0];
+        this.whatsappGateway.emitTotalChatsNoLeidos(ide_empr, total);
+      }
+    } catch (error) {
+      this.logger.error(`Error emitTotalNoLeidos: ${error.message}`);
+    }
+  }
 
   async syncPendingMessages(ideEmpr: number): Promise<{ reconciled: number; errors: number }> {
     const orphans = await this.metricsService.orphanLocalMessages(ideEmpr);

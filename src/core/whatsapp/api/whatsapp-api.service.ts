@@ -229,7 +229,15 @@ export class WhatsappApiService {
           const query = new SelectQuery(`SELECT mensaje_whatsapp('${jsonMsg}'::jsonb) AS wa_id`);
           const res = await this.dataSource.createSingleQuery(query);
           // Emitir el mensaje a través de WebSocket
-          this.whatsappGateway.sendMessageToClients(res.wa_id); // Emitir el mensaje recibido a los clientes WebSocket
+          this.whatsappGateway.sendMessageToClients((res.wa_id || '').replace(/^\+/, ''));
+          // Emitir total de chats no leídos para actualizar el badge del icono
+          const phoneNumberId = body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+          if (phoneNumberId) {
+            const noLeidos = await this.whatsappDb.getTotalChatsNoLeidosByPhoneId(phoneNumberId);
+            if (noLeidos) {
+              this.whatsappGateway.emitTotalChatsNoLeidos(noLeidos.ideEmpr, noLeidos.total);
+            }
+          }
         } catch (error) {
           this.logger.error('Error al guardar el mensaje', error);
         }
@@ -380,98 +388,35 @@ export class WhatsappApiService {
   }
 
   async enviarMensajeMedia(dto: UploadMediaDto & HeaderParamsDto, file: Express.Multer.File) {
-    const config = await this.getConfigWhatsApp(Number(dto.ideEmpr));
-    if (isDefined(config) === false) throw new BadRequestException('Error al obtener la configuración de WhatsApp');
+    const ideEmpr = Number(dto.ideEmpr);
+    const ideUsua = Number(dto.ideUsua);
 
     try {
-      // Subir imagen y obtener media_id
-      const mediaId = await this.sendMediaWhatsApp(file, Number(dto.ideEmpr));
+      const { mediaId } = await this.ycloudService.uploadMedia(ideEmpr, file.buffer, file.mimetype, file.originalname);
 
-      // console.log(file.mimetype);
-      let data: any = undefined;
-      // Crear el mensaje de imagen
+      const type = dto.type || (
+        file.mimetype.startsWith('image/') ? 'image' :
+        file.mimetype.startsWith('video/') ? 'video' :
+        file.mimetype.startsWith('audio/') ? 'audio' : 'document'
+      );
 
-      const dtoIn: EnviarMensajeDto & HeaderParamsDto = {
-        telefono: dto.telefono,
-        tipo: dto.type,
-        texto: null,
-        idWts: '',
-        mediaId,
-        fileName: dto.fileName,
-        mimeType: file.mimetype,
-        ideUsua: dto.ideUsua,
-        ideEmpr: dto.ideEmpr,
-        ideSucu: dto.ideSucu,
-        idePerf: dto.idePerf,
-        login: dto.login,
-      };
-
-      switch (dto.type) {
+      let result: { messageId: string };
+      switch (type) {
         case 'image':
-          data = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: dto.telefono,
-            type: dto.type,
-            image: {
-              id: mediaId,
-              caption: dto.caption,
-            },
-          };
-          break;
-        case 'audio':
-          data = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: dto.telefono,
-            type: dto.type,
-            audio: {
-              id: mediaId, // El ID de la imagen subida a WhatsApp
-              caption: dto.caption,
-            },
-          };
+          result = await this.ycloudService.sendImage(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua);
           break;
         case 'video':
-          data = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: dto.telefono,
-            type: dto.type,
-            video: {
-              id: mediaId, // El ID de la imagen subida a WhatsApp
-              caption: dto.caption,
-            },
-          };
+          result = await this.ycloudService.sendVideo(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua);
+          break;
+        case 'audio':
+          result = await this.ycloudService.sendAudio(ideEmpr, dto.telefono, mediaId, ideUsua);
           break;
         default:
-          data = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: dto.telefono,
-            type: 'document',
-            document: {
-              id: mediaId, // El ID de la imagen subida a WhatsApp
-              caption: dto.caption,
-              filename: dto.fileName,
-            },
-          };
+          result = await this.ycloudService.sendDocument(ideEmpr, dto.telefono, mediaId, dto.fileName || file.originalname, dto.caption, ideUsua);
           break;
-
-        // Añadir más tipos de mensajes según sea necesario
       }
 
-      // console.log(data);
-
-      const respWts = await this.sendMessageWhatsApp(data, dto.ideEmpr);
-      // Asigna el id del API para el mensaje
-      dtoIn.idWts = respWts.messages[0].id;
-      // Guarda el mensaje
-      const resp = await this.whatsappDb.saveMensajeEnviado(dtoIn);
-      return {
-        mensaje: 'ok',
-        data: respWts,
-        resp,
-      };
+      return { mensaje: 'ok', messageId: result.messageId };
     } catch (error) {
       this.logger.error(`Error enviando mensaje media: ${error.message}`);
       throw new InternalServerErrorException(`[ERROR]: enviarMensajeMedia ${error}`);

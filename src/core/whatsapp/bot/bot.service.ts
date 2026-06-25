@@ -996,6 +996,10 @@ export class BotService implements OnModuleInit {
             pdfUrl,
           );
           this.logger.log(`[Bot] PDF enviado como documento link: ${pdfUrl}`);
+          // Notificar a agentes via socket que se generó una proforma automática
+          this.gateway.emitNuevaProformaBot(
+            ideWhcue, resultado.secuencial, nuevosDatos.cliente?.nombres || waId,
+          );
         } catch (pdfErr) {
           this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
         }

@@ -528,8 +528,11 @@ export class WhatsappDbService {
             const cuenta = await this.dataSource.createSingleQuery(cuentaQ);
             if (!cuenta) throw new BadRequestException('No existe cuenta WhatsApp configurada');
 
+            // El agente está respondiendo → leyó los mensajes → se resetea el contador
             const updateQuery = new UpdateQuery('wha_chat', 'ide_whcha');
             updateQuery.values.set('id_whcha', dto.idWts);
+            updateQuery.values.set('no_leidos_whcha', 0);
+            updateQuery.values.set('leido_whcha', true);
             updateQuery.where = 'wa_id_whcha = $1';
             updateQuery.addParam(1, dto.telefono);
             await this.dataSource.createQuery(updateQuery);
@@ -548,7 +551,7 @@ export class WhatsappDbService {
             insertQuery.values.set('tipo_whmem', 'YCLOUD');
             insertQuery.values.set('attachment_id_whmem', dto.mediaId);
             const res = await this.dataSource.createQuery(insertQuery);
-            this.whatsappGateway.sendMessageToClients(dto.telefono);
+            this.whatsappGateway.sendMessageToClients(dto.telefono.replace(/^\+/, ''));
             return res;
         } catch (error) {
             this.logger.error(`Error saveMensajeEnviado: ${error.message}`);
@@ -568,15 +571,56 @@ export class WhatsappDbService {
     }
 
     /**
-     * Marca como leidos todos los mensajes de un chat
+     * Total de chats no leídos para una empresa
      */
-    async setMensajesLeidosChat(dto: GetMensajesDto) {
+    async getTotalChatsNoLeidos(ideEmpr: number): Promise<number> {
+        const query = new SelectQuery(`
+            SELECT COUNT(1)::int AS total
+            FROM wha_chat
+            WHERE leido_whcha = FALSE
+            AND phone_number_id_whcha = (
+                SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $1 AND activo_whcue = TRUE LIMIT 1
+            )
+        `);
+        query.addIntParam(1, ideEmpr);
+        const res = await this.dataSource.createSingleQuery(query);
+        return res?.total ?? 0;
+    }
+
+    /**
+     * Total de chats no leídos buscando por phone_number_id (número de la empresa).
+     * Útil cuando solo se dispone del phoneNumberId del webhook.
+     */
+    async getTotalChatsNoLeidosByPhoneId(phoneNumberId: string): Promise<{ ideEmpr: number; total: number } | null> {
+        const query = new SelectQuery(`
+            SELECT cu.ide_empr, COUNT(c.ide_whcha)::int AS total
+            FROM wha_cuenta cu
+            LEFT JOIN wha_chat c
+              ON c.phone_number_id_whcha = cu.id_cuenta_whcue
+             AND c.leido_whcha = FALSE
+            WHERE cu.id_cuenta_whcue = $1
+              AND cu.activo_whcue = TRUE
+            GROUP BY cu.ide_empr
+        `);
+        query.addStringParam(1, phoneNumberId);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
+     * Marca como leidos todos los mensajes de un chat y emite el total actualizado por socket
+     */
+    async setMensajesLeidosChat(dto: GetMensajesDto & { ideEmpr?: number }) {
         const updateQuery = new UpdateQuery('wha_chat', 'ide_whcha');
         updateQuery.values.set('no_leidos_whcha', 0);
         updateQuery.values.set('leido_whcha', true);
         updateQuery.where = 'ide_whcha = $1';
         updateQuery.addIntParam(1, dto.chatId);
-        return await this.dataSource.createQuery(updateQuery);
+        const result = await this.dataSource.createQuery(updateQuery);
+        if (dto.ideEmpr) {
+            const total = await this.getTotalChatsNoLeidos(dto.ideEmpr);
+            this.whatsappGateway.emitTotalChatsNoLeidos(dto.ideEmpr, total);
+        }
+        return result;
     }
 
     /**
