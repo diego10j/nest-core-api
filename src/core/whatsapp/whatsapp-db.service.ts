@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
@@ -638,9 +637,14 @@ export class WhatsappDbService {
     async setChatNoLeido(dto: ChatNoLeidoDto & HeaderParamsDto) {
         const updateQuery = new UpdateQuery('wha_chat', 'uuid');
         updateQuery.values.set('leido_whcha', dto.leido);
-        updateQuery.where = 'wa_id_whcha = $1 AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $2 AND activo_whcue = TRUE LIMIT 1)';
-        updateQuery.addParam(1, dto.telefono);
-        updateQuery.addIntParam(2, dto.ideEmpr);
+        if (dto.chatId != null) {
+            updateQuery.where = 'ide_whcha = $1';
+            updateQuery.addIntParam(1, dto.chatId);
+        } else {
+            updateQuery.where = 'wa_id_whcha = $1 AND phone_number_id_whcha = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $2 AND activo_whcue = TRUE LIMIT 1)';
+            updateQuery.addParam(1, dto.telefono);
+            updateQuery.addIntParam(2, dto.ideEmpr);
+        }
         return await this.dataSource.createQuery(updateQuery);
     }
 
