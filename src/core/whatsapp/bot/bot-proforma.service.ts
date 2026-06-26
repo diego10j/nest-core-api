@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { getCurrentDate } from 'src/util/helpers/date-util';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { ProformasService } from 'src/core/modules/proformas/proformas.service';
+import { NotificacionesService } from 'src/core/modules/sistema/notificaciones/notificaciones.service';
+import { getCurrentDate } from 'src/util/helpers/date-util';
 
-import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 import { BotToolsService } from './bot-tools.service';
+import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 
 export const IDE_USUA_BOT       = 32;  // Usuario bot para proformas automáticas
 export const IDE_VGVEN_DEFAULT  = 16;  // Vendedor por defecto para cotizaciones automáticas
@@ -68,6 +69,7 @@ export class BotProformaService {
     private readonly dataSource: DataSourceService,
     private readonly proformasService: ProformasService,
     private readonly botTools: BotToolsService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   async procesarProforma(
@@ -306,6 +308,7 @@ export class BotProformaService {
     }
 
     let pdfBuffer: Buffer | undefined;
+    let proformaCompletada = false;
     if (automatica) {
       const checkQ = new SelectQuery(`SELECT COALESCE(total_cccpr, 0) AS total FROM cxc_cabece_proforma WHERE ide_cccpr = $1`);
       checkQ.addIntParam(1, ide_cccpr);
@@ -316,20 +319,57 @@ export class BotProformaService {
         this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
       } else {
         try {
-          // Usar vendedor del cliente si existe, caso contrario el vendedor por defecto
           const ideVgven = datos.cliente?.ide_vgven || IDE_VGVEN_DEFAULT;
           await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, ideVgven);
           pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
-          // Marcar como enviado al adjuntar el PDF
           await this.dataSource.pool.query(
             `UPDATE cxc_cabece_proforma SET enviado_cccpr = TRUE WHERE ide_cccpr = $1`,
             [ide_cccpr],
           );
           this.logger.log(`[Proforma] enviado_cccpr=true ide_cccpr=${ide_cccpr}`);
+          proformaCompletada = true;
         } catch (err) {
           this.logger.error(`Error generando PDF proforma ${ide_cccpr}: ${err.message}`);
         }
       }
+    }
+
+    // ─── Notificaciones según resultado ──────────────────────────────
+    try {
+      const clienteNombre = datos.cliente?.nombres || telefonoWa;
+      if (proformaCompletada) {
+        await this.notificaciones.enviarSistema(
+          'PROFORMA_BOT_COMPLETADA',
+          `✅ Cotización #${secuencial} generada para ${clienteNombre}`,
+          `Se generó exitosamente la cotización N° ${secuencial} al solicitante ${clienteNombre}.\n` +
+          `Productos: ${datos.productos.length} ítem(s).`,
+          {
+            tipo: 'text',
+            botones: [
+              { texto: 'Ver Detalle', accion: 'navigate', estilo: 'primary', url: `/dashboard/proformas/${ide_cccpr}/details` },
+            ],
+          },
+          ideEmpr,
+          'bot',
+        );
+      } else {
+        await this.notificaciones.enviarSistema(
+          'PROFORMA_BOT_INCOMPLETA',
+          `⚠️ Cotización #${secuencial} requiere revisión`,
+          `Se generó la cotización N° ${secuencial} al solicitante ${clienteNombre}, pero debe ser completada por un asesor comercial.\n` +
+          `Productos sin precio: ${productosSinPrecio.length} de ${datos.productos.length}.`,
+          {
+            tipo: 'text',
+            botones: [
+              { texto: 'Completar', accion: 'navigate', estilo: 'primary', url: `/dashboard/proformas/${ide_cccpr}/details` },
+            ],
+          },
+          ideEmpr,
+          'bot',
+        );
+      }
+    } catch (err) {
+      this.logger.error(`[Notif] Error al notificar proforma bot: ${err.message}`);
     }
 
     // Totales para el return (mismo cálculo que el UPDATE de cabecera)

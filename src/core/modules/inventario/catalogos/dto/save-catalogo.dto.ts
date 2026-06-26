@@ -37,7 +37,7 @@ export class InvCabCatalogo {
 
     @IsOptional()
     @IsString()
-    @MaxLength(300)
+    @MaxLength(500)
     @Transform(({ value }) => value || null)
     desc_corta_inccat?: string | null;
 

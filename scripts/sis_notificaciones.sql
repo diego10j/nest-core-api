@@ -134,3 +134,91 @@ FROM sis_notificacion
 WHERE NOT EXISTS (
     SELECT 1 FROM sis_notificacion WHERE codigo_noti = 'COTIZACION_WEB' AND ide_empr = 0
 );
+
+-- ============================================================
+-- Seed: Plantilla "Proforma Bot Completada"
+-- Se dispara cuando el bot genera PDF y marca enviado_cccpr = TRUE
+-- ============================================================
+
+INSERT INTO sis_notificacion (
+    ide_noti, nombre_noti, descripcion_noti, codigo_noti,
+    icono_noti, color_noti, modulo_noti, activo_noti, botones_noti,
+    notificar_todos_noti, ide_empr, usuario_ingre
+)
+SELECT
+    COALESCE(MAX(ide_noti), 0) + 1,
+    'Proforma Bot Completada',
+    'El bot de WhatsApp generó exitosamente una cotización con PDF',
+    'PROFORMA_BOT_COMPLETADA',
+    '✅',
+    '#52c41a',
+    'Ventas',
+    TRUE,
+    '[
+        {"texto":"Ver Detalle","accion":"navigate","estilo":"primary","url":"/dashboard/proformas/{ide}/details"}
+    ]'::jsonb,
+    TRUE,
+    0,
+    'sa'
+FROM sis_notificacion
+WHERE NOT EXISTS (
+    SELECT 1 FROM sis_notificacion WHERE codigo_noti = 'PROFORMA_BOT_COMPLETADA' AND ide_empr = 0
+);
+
+-- ============================================================
+-- Seed: Plantilla "Proforma Bot Incompleta"
+-- Se dispara cuando el bot NO puede generar PDF (faltan precios o catálogo)
+-- ============================================================
+
+INSERT INTO sis_notificacion (
+    ide_noti, nombre_noti, descripcion_noti, codigo_noti,
+    icono_noti, color_noti, modulo_noti, activo_noti, botones_noti,
+    notificar_todos_noti, ide_empr, usuario_ingre
+)
+SELECT
+    COALESCE(MAX(ide_noti), 0) + 1,
+    'Proforma Bot Incompleta',
+    'El bot de WhatsApp generó una cotización que requiere revisión de un asesor',
+    'PROFORMA_BOT_INCOMPLETA',
+    '⚠️',
+    '#faad14',
+    'Ventas',
+    TRUE,
+    '[
+        {"texto":"Completar","accion":"navigate","estilo":"primary","url":"/dashboard/proformas/{ide}/details"}
+    ]'::jsonb,
+    TRUE,
+    0,
+    'sa'
+FROM sis_notificacion
+WHERE NOT EXISTS (
+    SELECT 1 FROM sis_notificacion WHERE codigo_noti = 'PROFORMA_BOT_INCOMPLETA' AND ide_empr = 0
+);
+
+-- ============================================================
+-- Seed: Plantilla "Proforma Asignada"
+-- Se dispara cuando un usuario se asigna una proforma sin responsable
+-- ============================================================
+
+INSERT INTO sis_notificacion (
+    ide_noti, nombre_noti, descripcion_noti, codigo_noti,
+    icono_noti, color_noti, modulo_noti, activo_noti, botones_noti,
+    notificar_todos_noti, ide_empr, usuario_ingre
+)
+SELECT
+    COALESCE(MAX(ide_noti), 0) + 1,
+    'Proforma Asignada',
+    'Un usuario se asignó una proforma que no tenía responsable',
+    'PROFORMA_ASIGNADA',
+    '👤',
+    '#1890ff',
+    'Ventas',
+    TRUE,
+    '[]'::jsonb,
+    TRUE,
+    0,
+    'sa'
+FROM sis_notificacion
+WHERE NOT EXISTS (
+    SELECT 1 FROM sis_notificacion WHERE codigo_noti = 'PROFORMA_ASIGNADA' AND ide_empr = 0
+);

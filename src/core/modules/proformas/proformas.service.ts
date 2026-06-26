@@ -1222,7 +1222,7 @@ ORDER BY prof.secuencial_cccpr DESC
 
   async assignProformaToUser(dtoIn: AssignProformaDto) {
     const checkQuery = new SelectQuery(`
-      SELECT ide_usua
+      SELECT ide_usua, ide_empr, secuencial_cccpr
       FROM cxc_cabece_proforma
       WHERE ide_cccpr = $1
       LIMIT 1
@@ -1247,6 +1247,26 @@ ORDER BY prof.secuencial_cccpr DESC
     updateQuery.addIntParam(1, dtoIn.ide_cccpr);
 
     await this.dataSource.createQuery(updateQuery);
+
+    // ─── Notificar asignación ────────────────────────────────────────
+    try {
+      const userQ = await this.dataSource.pool.query(
+        `SELECT nom_usua FROM sis_usuario WHERE ide_usua = $1`,
+        [dtoIn.ide_usua],
+      );
+      const nombreUsuario = userQ.rows[0]?.nom_usua || `Usuario #${dtoIn.ide_usua}`;
+
+      await this.notificaciones.enviarSistema(
+        'PROFORMA_ASIGNADA',
+        `👤 ${nombreUsuario} se asignó la proforma #${proforma.secuencial_cccpr}`,
+        `El usuario ${nombreUsuario} se asignó la proforma N° ${proforma.secuencial_cccpr}.`,
+        { tipo: 'text' },
+        proforma.ide_empr,
+        'admin',
+      );
+    } catch (err) {
+      this.logger.error(`[Notif] Error al notificar asignación de proforma: ${err.message}`);
+    }
 
     return {
       success: true,
