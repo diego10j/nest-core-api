@@ -21,52 +21,6 @@ const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR
 const REGEX_SALIR     = /^SALIR$/i;
 const REGEX_SALUDO    = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
-// ─── Respuestas informativas ──────────────────────────────────────────────────
-const INFO = {
-  ubicacion: `📍 *¡Con gusto te indico cómo llegar!*
-
-Estamos en el *Valle de los Chillos*:
-📌 Calles Jacinto Jijón y Caamaño & Paseo 7
-   _(Sector Chillo Jijón)_
-
-🏟️ Referencia: *Estadio del Independiente del Valle*
-
-Te comparto la ubicación en el siguiente mensaje 👇
-
-Si eres de otra ciudad, no te preocupes, *realizamos envíos a nivel nacional* 🚚
-
-¿Puedo ayudarte con algo más?`,
-
-  horario: `🕒 *Nuestros horarios de atención son:*
-
-📅 *Lunes a Viernes*
-   🕗 08:00 — 17:00
-
-📅 *Sábados*
-   🕘 09:00 — 13:00
-
-_Si nos escribes fuera de este horario, con gusto te respondemos en el próximo día hábil 😊_
-
-¿Hay algo más en que pueda ayudarte?`,
-
-  envios: `🚚 *¡Sí realizamos envíos a nivel nacional!*
-
-Trabajamos con el transporte de tu preferencia para que recibas tus productos cómodamente donde estés.
-
-¿Te interesa cotizar algún producto? 🧪`,
-
-  catalogo: `📦 *Explora nuestros productos:*
-
-🔹 *Catálogos de precios* (por sector):
-   👉 https://diquimec.com.ec/catalogo
-
-🔹 *Listado completo de productos:*
-   👉 https://diquimec.com.ec/product
-
-Puedes buscar lo que necesitas y solicitar tu cotización directamente.
-
-¿Te gustaría que te ayude con una cotización personalizada? 🧪`,
-};
 
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
 const MSG_ES_CLIENTE_BODY = `Para brindarte una atención personalizada 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
@@ -157,13 +111,14 @@ export class BotService implements OnModuleInit {
       const configCreada = await this.botConfig.getConfig(ideWhcue);
       if (!configCreada) {
         await this.sendText(ideEmpr, waId,
-          `Hola 😊 Soy tu asistente virtual de DIQUIMEC. En este momento estoy siendo configurado, pronto podré ayudarte mejor. Por favor escribe *SALIR* para hablar con un asesor.`
+          `Hola 😊 Soy tu asistente virtual. En este momento estoy siendo configurado, pronto podré ayudarte mejor. Por favor escribe *SALIR* para hablar con un asesor.`
         );
         return;
       }
     }
 
     const nombreBot = config.nombre_bot || 'QuimIA';
+    const nombreEmpresa = config.nombre_empresa || 'DIQUIMEC';
 
     // Cargar memoria de sesiones anteriores en sesiones nuevas (INICIO)
     if (sesion.estado === BotState.INICIO && !sesion.datos_sesion?.memoria_cargada) {
@@ -201,13 +156,13 @@ export class BotService implements OnModuleInit {
     try {
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
-          await this.handleInicio(waId, ideWhcue, ideEmpr, sesion.ide_whbse, texto, nombreBot, sesion.datos_sesion as DatosSesion);
+          await this.handleInicio(waId, ideWhcue, ideEmpr, sesion.ide_whbse, texto, nombreBot, nombreEmpresa, sesion.datos_sesion as DatosSesion);
           break;
         case BotState.ESPERANDO_CONFIRMACION:
-          await this.handleConfirmacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
+          await this.handleConfirmacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
         case BotState.ATENCION_LIBRE:
-          await this.handleAtencionLibre(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, config);
+          await this.handleAtencionLibre(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
         case BotState.PREGUNTA_ES_CLIENTE:
           await this.handlePreguntaEsCliente(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto);
@@ -219,22 +174,22 @@ export class BotService implements OnModuleInit {
           await this.handleDatosNuevoCliente(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, config);
           break;
         case BotState.SELECCION_PRODUCTOS:
-          await this.handleSeleccionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, config);
+          await this.handleSeleccionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.SELECCION_MULTIPLE:
-          await this.handleSeleccionMultiple(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto);
+          await this.handleSeleccionMultiple(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.ESPERANDO_CANTIDAD:
-          await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto);
+          await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.CONFIRMACION_PRODUCTOS:
-          await this.handleConfirmacionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, config);
+          await this.handleConfirmacionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.DATOS_ENVIO:
           await this.handleDatosEnvio(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, config);
           break;
         case BotState.DATOS_PAGO:
-          await this.handleDatosPago(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
+          await this.handleDatosPago(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa);
           break;
         case BotState.FINALIZADO:
           await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
@@ -255,7 +210,7 @@ export class BotService implements OnModuleInit {
 
   private async handleInicio(
     waId: string, ideWhcue: number, ideEmpr: number,
-    ideWhbse: number, texto: string, nombreBot: string, datosSesion: DatosSesion,
+    ideWhbse: number, texto: string, nombreBot: string, nombreEmpresa: string, datosSesion: DatosSesion,
   ): Promise<void> {
     const datosActualizados: DatosSesion = {
       ...datosSesion,
@@ -266,8 +221,8 @@ export class BotService implements OnModuleInit {
 
     const nombreCliente = datosSesion?.cliente?.nombres;
     const saludo = nombreCliente
-      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *DIQUIMEC*.\n\n¿En qué puedo ayudarte hoy?`
-      : `¡Hola! Soy *${nombreBot}*, la asistente virtual de *DIQUIMEC* ✨\n\nEstoy aquí para ayudarte con cotizaciones, precios, ubicación y más.\n\n¿Deseas continuar con el asistente o prefieres atención personalizada?`;
+      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *${nombreEmpresa}*.\n\n¿En qué puedo ayudarte hoy?`
+      : `¡Hola! Soy *${nombreBot}*, la asistente virtual de *${nombreEmpresa}* ✨\n\nEstoy aquí para ayudarte con cotizaciones, precios, ubicación y más.\n\n¿Deseas continuar con el asistente o prefieres atención personalizada?`;
 
     await this.sendButtons(ideEmpr, waId, saludo, [
       { id: 'SI', title: '✅ Continuar con bot' },
@@ -277,7 +232,7 @@ export class BotService implements OnModuleInit {
 
   private async handleConfirmacion(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const intencion = await this.botGpt.detectarIntencion(texto);
     const datos = sesion.datos_sesion as DatosSesion;
@@ -308,7 +263,7 @@ export class BotService implements OnModuleInit {
       }
 
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-        await this.responderInfo(ideEmpr, waId, tipoConsulta as any);
+        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
         await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
         return;
       }
@@ -333,7 +288,7 @@ export class BotService implements OnModuleInit {
 
   private async handleAtencionLibre(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, config: any,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     this.logger.debug(`[Bot] handleAtencionLibre texto="${texto}"`);
     const datos = sesion.datos_sesion as DatosSesion;
@@ -344,7 +299,7 @@ export class BotService implements OnModuleInit {
     this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any);
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
       return;
     }
 
@@ -368,11 +323,14 @@ export class BotService implements OnModuleInit {
     }
 
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
+    const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
+      .replace(/{BOT_NOMBRE}/g, nombreBot)
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
     const respuesta = await this.botGpt.generateResponse(
-      config.prompt_sistema || this.getPromptSistema(nombreBot),
+      promptBase,
       historial,
       texto,
-      `Empresa: DIQUIMEC - Materias primas y productos químicos.`,
+      `Empresa: ${nombreEmpresa}`,
     );
     await this.sendText(ideEmpr, waId, respuesta);
   }
@@ -508,7 +466,7 @@ export class BotService implements OnModuleInit {
 
   private async handleSeleccionProductos(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, config: any,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const intencion = await this.botGpt.detectarIntencion(texto);
@@ -531,7 +489,7 @@ export class BotService implements OnModuleInit {
     // ── PRE-CHECK: consulta informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
     const tipoInfoPre = await this.botGpt.clasificarConsulta(texto);
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfoPre as any);
+      await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
       await this.sendText(ideEmpr, waId,
         `Espero haber resuelto tu consulta 😊\n\n¿Continuamos con la cotización? Dime el nombre del siguiente producto o escribe *FIN* para revisar tu pedido.`,
       );
@@ -573,7 +531,7 @@ export class BotService implements OnModuleInit {
     if (!resultados.length) {
       // GPT analiza qué quiso decir el cliente (info, reformulación, irrelevante)
       const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
-      const analisis = await this.botGpt.analizarProductoNoEncontrado(textoOriginal, nombresYa);
+      const analisis = await this.botGpt.analizarProductoNoEncontrado(textoOriginal, nombresYa, config?.nombre_bot, nombreEmpresa, config?.prompt_sistema);
       await this.sendText(ideEmpr, waId, analisis.respuesta);
       return;
     }
@@ -623,14 +581,14 @@ export class BotService implements OnModuleInit {
 
   private async handleSeleccionMultiple(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
 
     // Consulta informativa mid-cotización
     const tipoInfo = await this.botGpt.clasificarConsulta(texto);
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any);
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
       await this.sendText(ideEmpr, waId, `¿Continuamos? Responde con el *número* del producto que necesitas.`);
       return;
     }
@@ -665,7 +623,7 @@ export class BotService implements OnModuleInit {
 
   private async handleEsperandoCantidad(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const prod = datos.producto_pendiente;
@@ -673,7 +631,7 @@ export class BotService implements OnModuleInit {
     // Consulta informativa mid-cotización
     const tipoInfo = await this.botGpt.clasificarConsulta(texto);
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any);
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
       await this.sendText(ideEmpr, waId,
         `¿Continuamos? Indica la cantidad de *${prod?.nombre}* que necesitas.`,
       );
@@ -718,7 +676,7 @@ export class BotService implements OnModuleInit {
 
   private async handleConfirmacionProductos(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, config: any,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const t = texto.trim().toUpperCase();
@@ -726,7 +684,7 @@ export class BotService implements OnModuleInit {
     // Consulta informativa mid-cotización
     const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfoConf as any);
+      await this.responderInfo(ideEmpr, waId, tipoInfoConf as any, nombreEmpresa, config);
       await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
         { id: 'CONF_SI', title: '✅ Confirmar pedido' },
         { id: 'CONF_NO', title: '✏️ Modificar lista' },
@@ -941,7 +899,7 @@ export class BotService implements OnModuleInit {
 
   private async handleDatosPago(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const t = texto.trim().toUpperCase();
@@ -987,7 +945,7 @@ export class BotService implements OnModuleInit {
           await this.ycloudService.sendDocument(
             ideEmpr, `+${waId}`, null,
             `Cotizacion_${resultado.secuencial}.pdf`,
-            `📄 Cotización #${resultado.secuencial} — DIQUIMEC`,
+            `📄 Cotización #${resultado.secuencial} — ${nombreEmpresa}`,
             undefined,
             pdfUrl,
           );
@@ -1099,28 +1057,34 @@ export class BotService implements OnModuleInit {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  private async responderInfo(ideEmpr: number, waId: string, tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO'): Promise<void> {
+  private async responderInfo(
+    ideEmpr: number, waId: string,
+    tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
+    nombreEmpresa: string,
+    config: any,
+  ): Promise<void> {
+    const preguntas: Record<string, string> = {
+      UBICACION: '¿Cuál es la dirección y cómo puedo llegar?',
+      HORARIO:   '¿Cuáles son los horarios de atención?',
+      ENVIO:     '¿Realizan envíos a otras ciudades? ¿Cuál es la política de envíos y costos?',
+      CATALOGO:  '¿Dónde puedo ver el catálogo de productos y precios?',
+    };
+    const promptBase = (config?.prompt_sistema || this.getPromptSistema(config?.nombre_bot || 'Asistente', nombreEmpresa))
+      .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+
+    const respuesta = await this.botGpt.generateResponse(promptBase, [], preguntas[tipo]);
+    await this.sendText(ideEmpr, waId, respuesta);
+
     if (tipo === 'UBICACION') {
-      await this.sendText(ideEmpr, waId, INFO.ubicacion);
-      // Enviar pin de ubicación (mapa interactivo en WhatsApp)
       try {
         await this.ycloudService.sendLocation(
-          ideEmpr, `+${waId}`,
-          -0.3465918, -78.4822285,
-          'DIQUIMEC',
-          'Calles Jacinto Jijón y Caamaño & Paseo 7, Sector Chillo Jijón, Valle de los Chillos',
+          ideEmpr, `+${waId}`, -0.3465918, -78.4822285, nombreEmpresa, '',
         );
       } catch (err) {
-        this.logger.warn(`[Bot] No se pudo enviar ubicación: ${err.message}`);
+        this.logger.warn(`[Bot] No se pudo enviar pin de ubicación: ${err.message}`);
       }
-      return;
     }
-    const mapa = {
-      HORARIO: INFO.horario,
-      ENVIO: INFO.envios,
-      CATALOGO: INFO.catalogo,
-    };
-    await this.sendText(ideEmpr, waId, mapa[tipo]);
   }
 
   private displayNombreProducto(prod: { nombre: string; otro_nombre?: string; matched_by_otro_nombre?: boolean }): string {
@@ -1138,16 +1102,10 @@ export class BotService implements OnModuleInit {
     return `📋 *Resumen de tu pedido:*\n\n${lista}\n\n¿Confirmamos estos productos?`;
   }
 
-  private getPromptSistema(nombreBot: string): string {
-    return `Eres ${nombreBot}, asesora comercial experta de DIQUIMEC, empresa especializada en materias primas y productos químicos para industria, cosmética, limpieza y más.
+  private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {
+    return `Eres ${nombreBot}, asesora comercial experta de ${nombreEmpresa}.
 Tu estilo es amable, confiable, profesional y conciso. Nunca eres condescendiente ni repetitiva.
 Respondes en español, con emojis moderados para dar cercanía.
-Información clave:
-- Ubicación: Valle de los Chillos, Calles Jacinto Jijón y Caamaño & Paseo 7
-- Horario: L-V 08:00-17:00, Sábados 09:00-13:00
-- Envíos nacionales disponibles
-- Web productos: https://diquimec.com.ec/product
-- Catálogos: https://diquimec.com.ec/catalogo
 Si el cliente pregunta algo que no puedes responder, invítale a contactar a un asesor escribiendo SALIR.`;
   }
 

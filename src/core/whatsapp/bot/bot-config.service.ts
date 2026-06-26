@@ -19,6 +19,7 @@ export interface BotConfigData {
   usa_horario: boolean;
   ide_tihor: number;
   nombre_bot: string;
+  nombre_empresa: string;
   prompt_sistema: string;
   template_saludo: string;
   horario_atencion: string;
@@ -44,11 +45,14 @@ export class BotConfigService {
     if (cached) return JSON.parse(cached) as BotConfigData;
 
     const q = new SelectQuery(`
-      SELECT ide_whbco, ide_whcue, activo_manual, usa_horario, ide_tihor,
-             nombre_bot, prompt_sistema, template_saludo, horario_atencion,
-             monto_envio_gratis, max_intentos_fallo
-      FROM wha_bot_config
-      WHERE ide_whcue = $1
+      SELECT bc.ide_whbco, bc.ide_whcue, bc.activo_manual, bc.usa_horario, bc.ide_tihor,
+             bc.nombre_bot, bc.prompt_sistema, bc.template_saludo, bc.horario_atencion,
+             bc.monto_envio_gratis, bc.max_intentos_fallo,
+             COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa
+      FROM wha_bot_config bc
+      LEFT JOIN wha_cuenta cu ON cu.ide_whcue = bc.ide_whcue
+      LEFT JOIN sis_empresa e ON e.ide_empr = COALESCE(bc.ide_empr, cu.ide_empr)
+      WHERE bc.ide_whcue = $1
       LIMIT 1
     `);
     q.addIntParam(1, ideWhcue);
@@ -262,9 +266,11 @@ export class BotConfigService {
         bc.monto_envio_gratis,
         bc.max_intentos_fallo,
         bc.hora_ingre,
-        bc.hora_actua
+        bc.hora_actua,
+        COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa
       FROM wha_bot_config bc
       INNER JOIN wha_cuenta cu ON cu.ide_whcue = bc.ide_whcue
+      LEFT JOIN sis_empresa e ON e.ide_empr = COALESCE(bc.ide_empr, cu.ide_empr)
       WHERE cu.ide_empr = $1
       ORDER BY bc.hora_ingre DESC
     `, dto);
@@ -350,8 +356,9 @@ export class BotConfigService {
       ins.values.set('activo_manual', dto.activo_manual ?? false);
       ins.values.set('usa_horario', dto.usa_horario ?? true);
       if (dto.ide_tihor !== undefined) ins.values.set('ide_tihor', dto.ide_tihor);
-      ins.values.set('nombre_bot', dto.nombre_bot ?? 'QuimIA');
-      ins.values.set('prompt_sistema', dto.prompt_sistema ?? 'Eres QuimIA, asistente comercial virtual.');
+      const nombreBotDefault = dto.nombre_bot ?? 'QuimIA';
+      ins.values.set('nombre_bot', nombreBotDefault);
+      ins.values.set('prompt_sistema', dto.prompt_sistema ?? `Eres ${nombreBotDefault}, asistente comercial virtual. Eres amable y profesional. Responde en español.\n\nCOMPLETA ESTE PROMPT CON: horarios, dirección, políticas de envío, catálogo y cualquier info que el bot debe conocer.`);
       ins.values.set('template_saludo', dto.template_saludo ?? 'bot_saludo_inicial');
       ins.values.set('horario_atencion', dto.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00 y Sábados de 09:00 a 13:00.');
       ins.values.set('monto_envio_gratis', dto.monto_envio_gratis ?? 100);

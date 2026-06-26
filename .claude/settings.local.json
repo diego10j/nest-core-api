@@ -9,7 +9,9 @@
       "Bash(npm run *)",
       "Bash(xargs ls)",
       "Bash(xargs cat)",
-      "Bash(npx --no-install tsc --noEmit)"
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(yarn tsc *)",
+      "Bash(yarn build *)"
     ]
   }
 }

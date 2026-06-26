@@ -134,23 +134,29 @@ export class BotGptService {
   async analizarProductoNoEncontrado(
     texto: string,
     productosYaAgregados: string[] = [],
+    nombreBot: string = 'Asistente',
+    nombreEmpresa: string = 'la empresa',
+    promptSistema?: string,
   ): Promise<{ tipo: 'INFO' | 'PRODUCTO' | 'IRRELEVANTE'; respuesta: string }> {
     const ctx = productosYaAgregados.length
       ? `Productos ya cotizados: ${productosYaAgregados.join(', ')}.`
       : '';
+    const sysBase = promptSistema
+      ? `${promptSistema}\n\n${ctx}`
+      : `Eres ${nombreBot}, asesora comercial de ${nombreEmpresa}. ${ctx}`;
     try {
       const resp = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `Eres QuimIA, asesora comercial de DIQUIMEC (materias primas y productos químicos). ${ctx}
+            content: `${sysBase}
 El cliente está cotizando y escribió algo que no coincidió con ningún producto del catálogo.
 Responde en JSON: {"tipo":"INFO|PRODUCTO|IRRELEVANTE","respuesta":"texto para el cliente"}
 INFO = pregunta de ubicación/horario/envíos/catálogo → responde la info y pide continuar cotizando.
-PRODUCTO = busca un producto con nombre poco claro → sugiere escribir solo el nombre principal sin cantidades ni unidades.
+PRODUCTO = nombre de producto poco claro → sugiere escribir solo el nombre principal sin cantidades ni unidades.
 IRRELEVANTE = fuera de contexto → responde brevemente y pide continuar.
-Tono: amable, femenino, profesional. Máximo 2 párrafos cortos.`,
+Tono: amable, profesional. Máximo 2 párrafos cortos.`,
           },
           { role: 'user', content: texto },
         ],
@@ -167,7 +173,7 @@ Tono: amable, femenino, profesional. Máximo 2 párrafos cortos.`,
     }
     return {
       tipo: 'PRODUCTO',
-      respuesta: `No encontré ese producto en nuestro catálogo 🤔\n\n💡 Escribe solo el nombre principal del producto, sin cantidades ni unidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_\n\n👉 https://diquimec.com.ec/product`,
+      respuesta: `No encontré ese producto en nuestro catálogo 🤔\n\n💡 Escribe solo el nombre principal del producto, sin cantidades ni unidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_`,
     };
   }
 }
