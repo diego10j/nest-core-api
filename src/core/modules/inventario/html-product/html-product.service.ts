@@ -38,33 +38,60 @@ export class HtmlProductService {
         private readonly dataSource: DataSourceService,
     ) { }
 
-    async extractFromHtml(html: string, ideEmpr: number, sourceUrl?: string, ideInarti?: number): Promise<HtmlProductResult> {
+    async extractFromHtml(
+        html: string,
+        ideEmpr: number,
+        sourceUrl?: string,
+        ideInarti?: number,
+        soloImagen?: boolean,
+        soloTexto?: boolean,
+    ): Promise<HtmlProductResult> {
         const startTime = Date.now();
-        this.logger.log(`[INICIO] ideInarti=${ideInarti ?? 'nuevo'} html=${html.length} chars url=${(sourceUrl || '').substring(0, 60)}`);
+        const soloImg = soloImagen === true;
+        const soloTxt = soloTexto === true;
+
+        if (!soloImg && !soloTxt) {
+            soloImagen = true;
+            soloTexto = true;
+        }
+
+        this.logger.log(`[INICIO] ideInarti=${ideInarti ?? 'nuevo'} soloImagen=${!!soloImagen} soloTexto=${!!soloTexto} html=${html.length} chars`);
 
         this.ensureTempDir();
 
-        // ── Fase 1: Parsear HTML ──
-        this.logger.log('[FASE 1/3] Parseando HTML...');
+        // ── Fase 1: Parsear HTML (siempre) ──
+        this.logger.log('[FASE 1] Parseando HTML...');
         const parsed = this.parseHtml(html, sourceUrl);
-        this.logger.log(`[FASE 1/3] Parseo completado — ${parsed.imagenes.length} imágenes, título="${parsed.titulo?.substring(0, 50)}...", desc=${parsed.descripcion.length} chars, specs=${parsed.especificaciones.length} chars`);
+        this.logger.log(`[FASE 1] Parseo OK — ${parsed.imagenes.length} img, título="${parsed.titulo?.substring(0, 50)}", desc=${parsed.descripcion.length}c, specs=${parsed.especificaciones.length}c`);
 
         // ── Fase 2: Imágenes ──
-        this.logger.log(`[FASE 2/3] Procesando ${parsed.imagenes.length} imágenes (Sharp: fondo blanco, ${CANVAS}x${CANVAS}, watermark)...`);
-        const processedImages = await this.downloadAndProcessImages(parsed.imagenes, ideEmpr);
-        this.logger.log(`[FASE 2/3] Imágenes — ${processedImages.length}/${parsed.imagenes.length} exitosas`);
+        let processedImages: string[] = [];
+        if (soloImagen) {
+            this.logger.log(`[FASE 2] Procesando ${parsed.imagenes.length} imágenes...`);
+            processedImages = await this.downloadAndProcessImages(parsed.imagenes, ideEmpr);
+            this.logger.log(`[FASE 2] Imágenes: ${processedImages.length}/${parsed.imagenes.length} exitosas`);
+        } else {
+            this.logger.log('[FASE 2] Imágenes omitidas (soloTexto=true)');
+        }
 
         // ── Fase 3: OpenAI ──
-        const inputChars = parsed.descripcion.length + parsed.especificaciones.length;
-        if (inputChars > 20) {
-            this.logger.log(`[FASE 3/3] Normalizando con OpenAI (${inputChars} chars de entrada)...`);
+        let normalized: { descripcionCorta: string; descripcionLarga: string; otrosNombres: string };
+        if (soloTexto) {
+            const inputChars = parsed.descripcion.length + parsed.especificaciones.length;
+            if (inputChars > 20) {
+                this.logger.log(`[FASE 3] Normalizando con OpenAI (${inputChars} chars)...`);
+            } else {
+                this.logger.warn(`[FASE 3] Poco contenido (${inputChars} chars). Usando datos crudos.`);
+            }
+            normalized = await this.normalizeWithOpenAI(parsed, inputChars);
+            this.logger.log(`[FASE 3] Texto OK — descCorta=${normalized.descripcionCorta.length}c, descLarga=${normalized.descripcionLarga.length}c`);
         } else {
-            this.logger.warn(`[FASE 3/3] Poco contenido (${inputChars} chars). OpenAI omitido, usando datos crudos.`);
+            this.logger.log('[FASE 3] Texto omitido (soloImagen=true)');
+            normalized = { descripcionCorta: '', descripcionLarga: '', otrosNombres: parsed.titulo || '' };
         }
-        const normalized = await this.normalizeWithOpenAI(parsed, inputChars);
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        this.logger.log(`[COMPLETADO] ${elapsed}s — ${processedImages.length} img | descCorta=${normalized.descripcionCorta.length}c | descLarga=${normalized.descripcionLarga.length}c`);
+        this.logger.log(`[COMPLETADO] ${elapsed}s — ${processedImages.length} img | descCorta=${normalized.descripcionCorta.length}c`);
 
         return {
             imagenes: processedImages,

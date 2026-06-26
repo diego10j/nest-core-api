@@ -23,6 +23,7 @@ import { SendDocumentDto } from './dto/send-document.dto';
 import { SendMediaDto } from './dto/send-media.dto';
 import { SendTemplateDto } from './dto/send-template.dto';
 import { SendTextDto } from './dto/send-text.dto';
+import { SyncLogQueryDto } from './dto/sync-log-query.dto';
 import { YcloudMetricsQueryDto } from './dto/ycloud-metrics-query.dto';
 import { YcloudCampaniaService } from './ycloud-camp.service';
 import { YcloudMetricsService } from './ycloud-metrics.service';
@@ -252,6 +253,15 @@ export class YcloudController {
   @ApiOperation({ summary: 'Ejecutar sincronizacion automatica de mensajes huerfanos' })
   async runSync(@AppHeaders() h: HeaderParamsDto) {
     return this.ycloudService.syncPendingMessages(h.ideEmpr);
+  }
+
+  @Get('sync/log')
+  @ApiOperation({ summary: 'Grilla completa de log de sincronizacion con filtros' })
+  async getSyncLog(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query() dto: SyncLogQueryDto,
+  ) {
+    return this.metricsService.getSyncLog({ ...h, ...dto });
   }
 
   @Get('config')

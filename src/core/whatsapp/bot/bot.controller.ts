@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Logger, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { BotConfigService } from './bot-config.service';
 import { BotSessionService } from './bot-session.service';
 import { BotService } from './bot.service';
+import { BotConfigQueryDto } from './dto/bot-config-query.dto';
+import { BotSessionQueryDto } from './dto/bot-session-query.dto';
+import { SaveBotConfigDto } from './dto/save-bot-config.dto';
 import { ToggleBotDto } from './dto/toggle-bot.dto';
 
 @ApiTags('WhatsApp-Bot')
@@ -73,5 +77,64 @@ export class BotController {
   @ApiOperation({ summary: 'Obtener configuración actual del bot' })
   async getConfig(@Param('ideWhcue', ParseIntPipe) ideWhcue: number) {
     return this.botConfig.getConfig(ideWhcue);
+  }
+
+  @Get('configs')
+  @ApiOperation({ summary: 'Listar todas las configuraciones de bot de la empresa (grilla admin)' })
+  async getConfigs(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query() dto: BotConfigQueryDto,
+  ) {
+    return this.botConfig.getConfigs({ ...h, ...dto });
+  }
+
+  @Post('config')
+  @ApiOperation({ summary: 'Crear o actualizar una configuración de bot para una cuenta' })
+  async saveConfig(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() dto: SaveBotConfigDto,
+  ) {
+    await this.botConfig.saveConfig({ ...h, ...dto });
+    return { ok: true };
+  }
+
+  @Get('cuentas-sin-config')
+  @ApiOperation({ summary: 'Cuentas WhatsApp sin configuración de bot (dropdown)' })
+  async getCuentasSinConfig(@AppHeaders() h: HeaderParamsDto) {
+    return this.botConfig.getCuentasSinConfig(h.ideEmpr);
+  }
+
+  @Post('setActivoConfig')
+  @ApiOperation({ summary: 'Activar/desactivar bot desde la grilla (por ide_whbco)' })
+  async setActivoConfig(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() dto: { ide: number; activo: boolean },
+  ) {
+    await this.botConfig.setActivoBotConfig(dto.ide, dto.activo, h.ideUsua);
+    return { ok: true, activo: dto.activo };
+  }
+
+  @Get('logs')
+  @ApiOperation({ summary: 'Historial global de activaciones del bot (todas las cuentas)' })
+  async logsGlobal(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query() dto: BotConfigQueryDto,
+  ) {
+    return this.botConfig.getLogsGlobal({ ...h, ...dto });
+  }
+
+  @Get('sessions')
+  @ApiOperation({ summary: 'Listar sesiones activas del bot con datos del chat' })
+  async sessions(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query() dto: BotSessionQueryDto,
+  ) {
+    return this.botSession.getSessions({ ...h, ...dto });
+  }
+
+  @Get('sessions/:ideWhcha')
+  @ApiOperation({ summary: 'Historial de sesiones de un chat específico' })
+  async sessionHistory(@Param('ideWhcha', ParseIntPipe) ideWhcha: number) {
+    return this.botSession.getSessionHistory(ideWhcha);
   }
 }

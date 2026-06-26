@@ -17,6 +17,7 @@ import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
 import { MailService } from 'src/core/email/services/mail.service';
 import { TemplateService } from 'src/core/email/services/template.service';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { NotificacionesService } from 'src/core/modules/sistema/notificaciones/notificaciones.service';
 import { HeaderSection } from 'src/reports/common/sections/header.section';
 import { proformaReport } from 'src/reports/modules/proformas/proforma.report';
 import { isDefined, fCurrency } from 'src/util/helpers/common-util';
@@ -59,6 +60,7 @@ export class ProformasService extends BaseService {
     private readonly core: CoreService,
     private readonly mailService: MailService,
     private readonly templateService: TemplateService,
+    private readonly notificaciones: NotificacionesService,
   ) {
     super();
     // obtiene las variables del sistema para el servicio
@@ -1097,6 +1099,31 @@ ORDER BY prof.secuencial_cccpr DESC
     });
 
     const resultMessage = await this.dataSource.createListQuery(listQuery);
+
+    // ─── Notificar a todos los usuarios vía push ──────────────────────────
+    try {
+      await this.notificaciones.enviarSistema(
+        'COTIZACION_WEB',
+        `🛒 ${dtoIn.solicitante.nombres} solicitó cotización`,
+        `Cliente: ${dtoIn.solicitante.nombres}\n` +
+        `Correo: ${dtoIn.solicitante.correo}\n` +
+        `Teléfono: ${dtoIn.solicitante.telefono}\n` +
+        `Productos: ${dtoIn.detalles.length} ítem(s)\n` +
+        `Provincia: ${dtoIn.solicitante.provincia || '—'}\n` +
+        `Forma de pago: ${dtoIn.solicitante.formaPago || '—'}`,
+        {
+          tipo: 'text',
+          botones: [
+            { texto: 'Ver Cotización', accion: 'navigate', estilo: 'primary', url: `/proformas/${ideCccpr}` },
+            { texto: 'Ignorar', accion: 'archive', estilo: 'default', url: '' },
+          ],
+        },
+        dtoIn.solicitante.ideEmpr,
+        'web',
+      );
+    } catch (err) {
+      this.logger.error(`[Notif] Error al notificar cotización web: ${err.message}`);
+    }
 
     return {
       success: true,

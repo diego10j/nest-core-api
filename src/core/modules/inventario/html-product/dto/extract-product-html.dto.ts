@@ -1,4 +1,5 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ExtractProductHtmlDto {
     @IsInt()
@@ -12,4 +13,14 @@ export class ExtractProductHtmlDto {
     @IsString()
     @IsOptional()
     url?: string;
+
+    @IsIn(['true', 'false'])
+    @IsOptional()
+    @Transform(({ value }) => value === 'true')
+    soloImagen?: boolean;
+
+    @IsIn(['true', 'false'])
+    @IsOptional()
+    @Transform(({ value }) => value === 'true')
+    soloTexto?: boolean;
 }

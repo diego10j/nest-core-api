@@ -4,10 +4,11 @@ import { AdminModule } from './admin/admin.module';
 import { CalendarioModule } from './calendario/calendario.module';
 import { FilesModule } from './files/files.module';
 import { GeneralModule } from './general/general.module';
+import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 
 @Module({
-  imports: [GeneralModule, CalendarioModule, UsuariosModule, AdminModule, FilesModule],
+  imports: [GeneralModule, CalendarioModule, UsuariosModule, AdminModule, FilesModule, NotificacionesModule],
   providers: [],
   exports: [],
   controllers: [],

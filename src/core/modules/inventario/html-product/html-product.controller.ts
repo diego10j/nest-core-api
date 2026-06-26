@@ -19,12 +19,12 @@ export class HtmlProductController {
     constructor(private readonly service: HtmlProductService) { }
 
     @Post('extract')
-    @ApiOperation({ summary: 'Extrae datos de producto desde HTML: imágenes, título, descripciones normalizadas con IA' })
+    @ApiOperation({ summary: 'Extrae datos de producto desde HTML. Parámetros opcionales: soloImagen, soloTexto.' })
     extract(
         @AppHeaders() h: HeaderParamsDto,
         @Body() dto: ExtractProductHtmlDto,
     ) {
-        return this.service.extractFromHtml(dto.html, h.ideEmpr, dto.url, dto.ideInarti);
+        return this.service.extractFromHtml(dto.html, h.ideEmpr, dto.url, dto.ideInarti, dto.soloImagen, dto.soloTexto);
     }
 
     @Post('processImage')

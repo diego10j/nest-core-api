@@ -1,20 +1,20 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
+import { NotificacionesService } from 'src/core/modules/sistema/notificaciones/notificaciones.service';
 
-import { YcloudService } from '../ycloud/ycloud.service';
-import { YcloudWindowService } from '../ycloud/ycloud-window.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
+import { YcloudWindowService } from '../ycloud/ycloud-window.service';
+import { YcloudService } from '../ycloud/ycloud.service';
 
 import { BotConfigService } from './bot-config.service';
 import { BotGptService } from './bot-gpt.service';
 import { BotProformaService } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
 import { BotToolsService } from './bot-tools.service';
-import { ProductoInfo } from './bot-tools.service';
-import { BotState } from './interfaces/bot-state.enum';
 import { ClienteSesion, DatosSesion, OpcionProducto, ProductoSesion } from './interfaces/bot-session.interface';
+import { BotState } from './interfaces/bot-state.enum';
 
 // ─── Constantes de negocio ────────────────────────────────────────────────────
 const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
@@ -99,6 +99,7 @@ export class BotService implements OnModuleInit {
     private readonly ycloudWindowService: YcloudWindowService,
     private readonly gateway: WhatsappGateway,
     private readonly fileTempService: FileTempService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   onModuleInit() {
@@ -1285,6 +1286,31 @@ Si el cliente pregunta algo que no puedes responder, invítale a contactar a un 
 
     this.gateway.emitChatEsperandoAsesor(ideWhcue, waId, ideWhcha);
     this.logger.log(`Chat ${waId} derivado a asesor`);
+
+    // ─── Notificación push a los asesores asignados ─────────────────────────
+    try {
+      const chatInfo = await this.dataSource.pool.query(
+        `SELECT nombre_whcha FROM wha_chat WHERE ide_whcha = $1`,
+        [ideWhcha],
+      );
+      const nombreCliente = chatInfo.rows[0]?.nombre_whcha || waId;
+
+      await this.notificaciones.enviarSistema(
+        'WHATSAPP_SOLICITA_ASESOR',
+        `💬 ${waId} ${nombreCliente} solicita asesor`,
+        `El cliente ${nombreCliente} (${waId}) quiere contactarse con un asesor humano.`,
+        {
+          tipo: 'text',
+          botones: [
+            { texto: 'Ver Chat', accion: 'navigate', estilo: 'primary', url: '/dashboard/whatsapp' },
+          ],
+        },
+        ideEmpr,
+        'bot',
+      );
+    } catch (err) {
+      this.logger.error(`[Notif] Error al enviar notificación WhatsApp: ${err.message}`);
+    }
   }
 
   async liberarChat(ideWhcha: number): Promise<void> {

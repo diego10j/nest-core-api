@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
-import { BotState } from './interfaces/bot-state.enum';
+import { BotSessionQueryDto } from './dto/bot-session-query.dto';
 import { DatosSesion } from './interfaces/bot-session.interface';
+import { BotState } from './interfaces/bot-state.enum';
 
 export interface BotSesion {
   ide_whbse: number;
@@ -171,5 +173,64 @@ export class BotSessionService {
         role: r.direction_whmem === '0' ? ('user' as const) : ('assistant' as const),
         content: r.body_whmem as string,
       }));
+  }
+
+  /** Lista sesiones de bot de la empresa con datos del chat y cuenta */
+  async getSessions(dto: BotSessionQueryDto & HeaderParamsDto) {
+    const estadoCond = dto.estado ? `AND bs.estado = '${dto.estado}'` : '';
+
+    const query = new SelectQuery(`
+      SELECT
+        bs.ide_whbse,
+        bs.ide_whcha,
+        bs.ide_whcue,
+        cu.nombre_whcue,
+        bs.estado,
+        bs.activa,
+        bs.intentos_fallo,
+        bs.hora_ingre,
+        bs.hora_actua,
+        c.wa_id_whcha,
+        c.name_whcha,
+        c.nombre_whcha,
+        c.phone_number_whcha,
+        c.bot_modo_whcha
+      FROM wha_bot_sesion bs
+      INNER JOIN wha_chat c ON c.ide_whcha = bs.ide_whcha
+      INNER JOIN wha_cuenta cu ON cu.ide_whcue = bs.ide_whcue
+      WHERE cu.ide_empr = $1
+        ${estadoCond}
+      ORDER BY bs.hora_ingre DESC
+    `, dto);
+    query.addIntParam(1, dto.ideEmpr);
+    return this.dataSource.createQuery(query, 'wha_bot_sesion');
+  }
+
+  /** Historial de sesiones de un chat específico */
+  async getSessionHistory(ideWhcha: number, limit = 20) {
+    const q = new SelectQuery(`
+      SELECT
+        ide_whbse,
+        ide_whcha,
+        ide_whcue,
+        estado,
+        activa,
+        intentos_fallo,
+        datos_sesion,
+        hora_ingre,
+        hora_actua
+      FROM wha_bot_sesion
+      WHERE ide_whcha = $1
+      ORDER BY hora_ingre DESC
+      LIMIT ${limit}
+    `);
+    q.addParam(1, ideWhcha);
+    const rows = await this.dataSource.createSelectQuery(q);
+    return rows.map((r) => ({
+      ...r,
+      datos_sesion: typeof r.datos_sesion === 'string'
+        ? JSON.parse(r.datos_sesion)
+        : r.datos_sesion,
+    }));
   }
 }

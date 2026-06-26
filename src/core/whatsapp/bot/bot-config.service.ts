@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { WhatsappGateway } from '../whatsapp.gateway';
+
+import { BotConfigQueryDto } from './dto/bot-config-query.dto';
+import { SaveBotConfigDto } from './dto/save-bot-config.dto';
 
 const CACHE_ACTIVO  = 'bot_activo:';
 const CACHE_CONFIG  = 'bot_config:';
@@ -238,6 +242,125 @@ export class BotConfigService {
     await this.dataSource.createQuery(ins);
     this.logger.log(`[BotConfig] Config mínima creada para ide_whcue=${ideWhcue}`);
     await this.invalidarCache(ideWhcue);
+  }
+
+  /** Lista todas las configuraciones de bot de la empresa con datos de la cuenta */
+  async getConfigs(dto: BotConfigQueryDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
+      SELECT
+        bc.ide_whbco,
+        bc.ide_whcue,
+        cu.nombre_whcue,
+        cu.id_telefono_whcue,
+        cu.tipo_whcue,
+        bc.activo_manual,
+        bc.usa_horario,
+        bc.ide_tihor,
+        bc.nombre_bot,
+        bc.template_saludo,
+        bc.horario_atencion,
+        bc.monto_envio_gratis,
+        bc.max_intentos_fallo,
+        bc.hora_ingre,
+        bc.hora_actua
+      FROM wha_bot_config bc
+      INNER JOIN wha_cuenta cu ON cu.ide_whcue = bc.ide_whcue
+      WHERE cu.ide_empr = $1
+      ORDER BY bc.hora_ingre DESC
+    `, dto);
+    query.addIntParam(1, dto.ideEmpr);
+    return this.dataSource.createQuery(query, 'wha_bot_config');
+  }
+
+  /** Cuentas WhatsApp de la empresa que aún no tienen configuración de bot */
+  async getCuentasSinConfig(ideEmpr: number) {
+    const query = new SelectQuery(`
+      SELECT cu.ide_whcue AS value, cu.nombre_whcue AS label
+      FROM wha_cuenta cu
+      WHERE cu.ide_empr = $1
+        AND cu.activo_whcue = TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM wha_bot_config bc WHERE bc.ide_whcue = cu.ide_whcue
+        )
+      ORDER BY cu.nombre_whcue
+    `);
+    query.addIntParam(1, ideEmpr);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /** Historial global de activaciones del bot (todas las cuentas de la empresa) */
+  async getLogsGlobal(dto: BotConfigQueryDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
+      SELECT
+        l.ide_whbal,
+        l.ide_whcue,
+        cu.nombre_whcue,
+        cu.id_telefono_whcue,
+        l.accion,
+        l.origen,
+        l.observacion,
+        l.hora_ingre,
+        u.nom_usua
+      FROM wha_bot_activacion_log l
+      INNER JOIN wha_cuenta cu ON cu.ide_whcue = l.ide_whcue
+      LEFT JOIN sis_usuario u ON l.ide_usua = u.ide_usua
+      WHERE cu.ide_empr = $1
+      ORDER BY l.hora_ingre DESC
+    `, dto);
+    query.addIntParam(1, dto.ideEmpr);
+    return this.dataSource.createQuery(query, 'wha_bot_activacion_log');
+  }
+
+  /** Activar/desactivar el bot desde la grilla de administración (por ide_whbco) */
+  async setActivoBotConfig(ideWhbco: number, activo: boolean, ideUsua: number): Promise<void> {
+    const q = new SelectQuery(`
+      SELECT ide_whcue FROM wha_bot_config WHERE ide_whbco = $1 LIMIT 1
+    `);
+    q.addIntParam(1, ideWhbco);
+    const config = await this.dataSource.createSingleQuery(q) as { ide_whcue: number } | null;
+
+    if (!config) return;
+
+    await this.toggleManual(config.ide_whcue, activo, ideUsua);
+  }
+
+  /** Crea o actualiza una configuración de bot para una cuenta */
+  async saveConfig(dto: SaveBotConfigDto & HeaderParamsDto): Promise<void> {
+    const existe = new SelectQuery(`SELECT 1 FROM wha_bot_config WHERE ide_whcue = $1 LIMIT 1`);
+    existe.addIntParam(1, dto.ide_whcue);
+    const row = await this.dataSource.createSingleQuery(existe);
+
+    if (row) {
+      const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
+      if (dto.nombre_bot !== undefined) upd.values.set('nombre_bot', dto.nombre_bot);
+      if (dto.prompt_sistema !== undefined) upd.values.set('prompt_sistema', dto.prompt_sistema);
+      if (dto.template_saludo !== undefined) upd.values.set('template_saludo', dto.template_saludo);
+      if (dto.horario_atencion !== undefined) upd.values.set('horario_atencion', dto.horario_atencion);
+      if (dto.monto_envio_gratis !== undefined) upd.values.set('monto_envio_gratis', dto.monto_envio_gratis);
+      if (dto.max_intentos_fallo !== undefined) upd.values.set('max_intentos_fallo', dto.max_intentos_fallo);
+      if (dto.activo_manual !== undefined) upd.values.set('activo_manual', dto.activo_manual);
+      if (dto.usa_horario !== undefined) upd.values.set('usa_horario', dto.usa_horario);
+      if (dto.ide_tihor !== undefined) upd.values.set('ide_tihor', dto.ide_tihor);
+      upd.where = 'ide_whcue = $1';
+      upd.addIntParam(1, dto.ide_whcue);
+      await this.dataSource.createQuery(upd);
+    } else {
+      const ins = new InsertQuery('wha_bot_config', 'ide_whbco');
+      ins.values.set('ide_whcue', dto.ide_whcue);
+      ins.values.set('activo_manual', dto.activo_manual ?? false);
+      ins.values.set('usa_horario', dto.usa_horario ?? true);
+      if (dto.ide_tihor !== undefined) ins.values.set('ide_tihor', dto.ide_tihor);
+      ins.values.set('nombre_bot', dto.nombre_bot ?? 'QuimIA');
+      ins.values.set('prompt_sistema', dto.prompt_sistema ?? 'Eres QuimIA, asistente comercial virtual.');
+      ins.values.set('template_saludo', dto.template_saludo ?? 'bot_saludo_inicial');
+      ins.values.set('horario_atencion', dto.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00 y Sábados de 09:00 a 13:00.');
+      ins.values.set('monto_envio_gratis', dto.monto_envio_gratis ?? 100);
+      ins.values.set('max_intentos_fallo', dto.max_intentos_fallo ?? 3);
+      await this.dataSource.createQuery(ins);
+    }
+
+    await this.invalidarCache(dto.ide_whcue);
+    this.logger.log(`[BotConfig] Config guardada para ide_whcue=${dto.ide_whcue}`);
   }
 
   private async invalidarCache(ideWhcue: number): Promise<void> {

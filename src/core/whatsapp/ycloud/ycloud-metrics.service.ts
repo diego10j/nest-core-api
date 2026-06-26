@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
+import { SyncLogQueryDto } from './dto/sync-log-query.dto';
 import { AgentMetrics, DailyMetrics, SyncLogEntry } from './interfaces/ycloud-metrics.interface';
 
 @Injectable()
@@ -194,5 +196,51 @@ export class YcloudMetricsService {
     query.addIntParam(1, ideEmpr);
     const rows = await this.dataSource.createSelectQuery(query);
     return rows.map((r) => r.id_mensaje_whysn);
+  }
+
+  /** Grilla completa de log de sincronización con filtros */
+  async getSyncLog(dto: SyncLogQueryDto & HeaderParamsDto) {
+    const condiciones: string[] = [];
+    const params: any[] = [dto.ideEmpr];
+    let idx = 2;
+
+    if (dto.estado_sync) {
+      condiciones.push(`ys.estado_sync = $${idx++}`);
+      params.push(dto.estado_sync);
+    }
+    if (dto.tipo_operacion) {
+      condiciones.push(`ys.tipo_operacion = $${idx++}`);
+      params.push(dto.tipo_operacion);
+    }
+    if (dto.fechaDesde) {
+      condiciones.push(`ys.hora_ingre >= $${idx++}::timestamptz`);
+      params.push(dto.fechaDesde);
+    }
+    if (dto.fechaHasta) {
+      condiciones.push(`ys.hora_ingre <= $${idx++}::timestamptz`);
+      params.push(dto.fechaHasta);
+    }
+
+    const whereExtra = condiciones.length > 0 ? `AND ${condiciones.join(' AND ')}` : '';
+
+    const query = new SelectQuery(`
+      SELECT
+        ys.ide_whysn,
+        ys.id_mensaje_whysn,
+        ys.tipo_operacion,
+        ys.estado_sync,
+        ys.error_sync,
+        ys.hora_ingre,
+        ys.hora_sync
+      FROM wha_ycloud_sync ys
+      WHERE ys.ide_empr = $1
+        ${whereExtra}
+      ORDER BY ys.hora_ingre DESC
+    `, dto);
+    query.addIntParam(1, dto.ideEmpr);
+    for (let i = 1; i < params.length; i++) {
+      query.addParam(i + 1, params[i]);
+    }
+    return this.dataSource.createQuery(query, 'wha_ycloud_sync');
   }
 }
