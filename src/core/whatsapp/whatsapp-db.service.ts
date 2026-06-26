@@ -119,10 +119,22 @@ export class WhatsappDbService {
     }
 
     /**
-     * Obtiene todos los mensajes agrupados por número de teléfono
-     * @returns Lista de conversaciones agrupadas por número de teléfono
+     * Retorna los chats paginados con cursor compuesto (fecha_msg + ide_whcha).
+     * Primer llamado: sin cursor → los 25 más recientes.
+     * Siguientes: beforeDate + beforeId del último chat visible → 25 más antiguos.
      */
-    async getChats(dto: GetChatsDto & HeaderParamsDto) {
+    async getChats(dto: GetChatsDto & HeaderParamsDto): Promise<{ data: any[]; hasMore: boolean }> {
+        const limit = Math.min(dto.limit ?? 25, 100);
+
+        const hasCursor = dto.beforeDate != null && dto.beforeId != null;
+        const cursorClause = hasCursor
+            ? `AND (
+                COALESCE(a.fecha_msg_whcha, '1970-01-01'::timestamp) < COALESCE($2::timestamp, '1970-01-01'::timestamp)
+                OR (COALESCE(a.fecha_msg_whcha, '1970-01-01'::timestamp) = COALESCE($2::timestamp, '1970-01-01'::timestamp)
+                    AND a.ide_whcha < $3)
+               )`
+            : '';
+
         const query = new SelectQuery(`
         SELECT
             a.ide_whcha,
@@ -174,11 +186,22 @@ export class WhatsappDbService {
         LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
         LEFT JOIN sis_usuario u ON a.ide_usua_asignado_whcha = u.ide_usua
         WHERE a.eliminado_whcha = FALSE
-        ORDER BY a.fecha_msg_whcha DESC NULLS LAST
+        ${cursorClause}
+        ORDER BY COALESCE(a.fecha_msg_whcha, '1970-01-01'::timestamp) DESC, a.ide_whcha DESC
+        LIMIT ${limit + 1}
         `);
         query.addIntParam(1, dto.ideEmpr);
-        const data = await this.dataSource.createSelectQuery(query);
-        return data;
+        if (hasCursor) {
+            query.addParam(2, dto.beforeDate);
+            query.addParam(3, dto.beforeId);
+        }
+
+        const rows = await this.dataSource.createSelectQuery(query);
+        const hasMore = rows.length > limit;
+        return {
+            data: hasMore ? rows.slice(0, limit) : rows,
+            hasMore,
+        };
     }
 
     /**
@@ -296,23 +319,29 @@ export class WhatsappDbService {
     }
 
     /**
-     * Retorna los mensajes de un chat
-     * @param dto
-     * @returns
+     * Retorna mensajes paginados con cursor por ide_whmem (BIGSERIAL, estable).
+     *
+     * - Sin cursor → últimos 25 mensajes (carga inicial).
+     * - beforeId  → 25 anteriores al id dado (scroll hacia arriba / "cargar más").
+     * - afterId   → mensajes posteriores al id dado (actualización por WebSocket, sin límite fijo).
+     *
+     * El array `data` siempre viene en orden cronológico ASC para renderizado.
      */
-    async getMensajes(dto: GetMensajesDto) {
-        const query = new SelectQuery(`
-            SELECT
+    async getMensajes(dto: GetMensajesDto): Promise<{ data: any[]; hasMore: boolean; nextCursor: number | null }> {
+        const limit = Math.min(dto.limit ?? 25, 100);
+
+        const BASE_COLS = `
                 m.*,
                 m.es_bot_whmem,
                 u.nom_usua    AS nombre_agente,
                 u.avatar_usua AS avatar_agente,
-                -- Mensaje citado (cuando este mensaje es respuesta a otro)
                 qm.body_whmem            AS quoted_body_whmem,
                 qm.content_type_whmem    AS quoted_type_whmem,
                 qm.caption_whmem         AS quoted_caption_whmem,
                 qm.direction_whmem       AS quoted_direction_whmem,
-                qm.attachment_type_whmem AS quoted_attachment_type_whmem
+                qm.attachment_type_whmem AS quoted_attachment_type_whmem`;
+
+        const BASE_FROM = `
             FROM wha_chat c
             JOIN wha_mensaje m
               ON m.wa_id_whmem          = c.wa_id_whcha
@@ -322,11 +351,42 @@ export class WhatsappDbService {
               ON m.wa_id_context_whmem IS NOT NULL
              AND qm.id_whmem             = m.wa_id_context_whmem
              AND qm.phone_number_id_whmem = c.phone_number_id_whcha
-            WHERE c.ide_whcha = $1
-            ORDER BY m.fecha_whmem, m.ide_whmem
+            WHERE c.ide_whcha = $1`;
+
+        // afterId: trae mensajes nuevos desde el WebSocket (sin invertir, siempre ASC)
+        if (dto.afterId != null) {
+            const query = new SelectQuery(`
+                SELECT ${BASE_COLS}
+                ${BASE_FROM} AND m.ide_whmem > $2
+                ORDER BY m.ide_whmem ASC
+            `);
+            query.addIntParam(1, dto.chatId);
+            query.addParam(2, dto.afterId);
+            const data = await this.dataSource.createSelectQuery(query);
+            return { data, hasMore: false, nextCursor: null };
+        }
+
+        // beforeId o carga inicial: fetch DESC limit+1, luego invertir para mostrar ASC
+        const cursorClause = dto.beforeId != null ? 'AND m.ide_whmem < $2' : '';
+        const query = new SelectQuery(`
+            SELECT ${BASE_COLS}
+            ${BASE_FROM} ${cursorClause}
+            ORDER BY m.ide_whmem DESC
+            LIMIT ${limit + 1}
         `);
         query.addIntParam(1, dto.chatId);
-        return this.dataSource.createSelectQuery(query);
+        if (dto.beforeId != null) query.addParam(2, dto.beforeId);
+
+        const rows = await this.dataSource.createSelectQuery(query);
+        const hasMore = rows.length > limit;
+        const data = (hasMore ? rows.slice(0, limit) : rows).reverse();
+
+        return {
+            data,
+            hasMore,
+            // nextCursor = ide_whmem del mensaje más antiguo visible → cursor para "cargar más"
+            nextCursor: data.length > 0 ? Number(data[0].ide_whmem) : null,
+        };
     }
 
     /**

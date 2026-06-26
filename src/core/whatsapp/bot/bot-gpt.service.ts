@@ -101,11 +101,13 @@ export class BotGptService {
   async clasificarConsulta(texto: string): Promise<IntencionConsulta> {
     const t = texto.toUpperCase();
 
-    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO/.test(t)) return 'UBICACION';
+    // UBICACION: incluye preguntas sobre sucursales, sedes, locales en otras ciudades
+    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA/.test(t)) return 'UBICACION';
     if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
-    if (/ENV[IÍ]O|ENVIAN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|GUAYAQUIL|QUITO|OTRA CIUDAD/.test(t)) return 'ENVIO';
+    if (/ENV[IÍ]O|ENV[IÍ]AN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|OTRA CIUDAD/.test(t)) return 'ENVIO';
     if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIO|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
-    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|TIENE[N]?|DISPONE[N]?|HAY\s|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK/.test(t)) return 'PRODUCTO';
+    // PRODUCTO: TIENE[N] removido — muy ambiguo (captura "tienen sucursal en X")
+    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|DISPONE[N]?|HAY\s+|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK/.test(t)) return 'PRODUCTO';
 
     try {
       const resp = await this.openai.chat.completions.create({
@@ -113,11 +115,16 @@ export class BotGptService {
         messages: [
           {
             role: 'system',
-            content: 'Clasifica el mensaje de un cliente de empresa química en: UBICACION, HORARIO, ENVIO, CATALOGO, PRODUCTO, GENERAL. '
-              + 'UBICACION=dirección o cómo llegar. HORARIO=horarios de atención. ENVIO=envíos a otras ciudades. '
-              + 'CATALOGO=lista de precios o catálogo. '
-              + 'PRODUCTO=pregunta sobre disponibilidad, existencia, precio o compra de un producto específico (ej: "tiene X", "dispone de X", "cuánto cuesta X", "necesito X"). '
-              + 'GENERAL=saludo u otra cosa. Responde SOLO la categoría.',
+            content:
+              'Clasifica el mensaje de un cliente en: UBICACION, HORARIO, ENVIO, CATALOGO, PRODUCTO, GENERAL.\n'
+              + 'UBICACION = dirección, cómo llegar, si tienen sucursal/sede/local/tienda en otra ciudad.\n'
+              + 'HORARIO = horarios de atención, si están abiertos.\n'
+              + 'ENVIO = envíos, despacho, costo de envío a otras ciudades.\n'
+              + 'CATALOGO = lista de precios, catálogo de productos.\n'
+              + 'PRODUCTO = disponibilidad, precio o compra de un producto específico. NO incluye preguntas sobre sucursales.\n'
+              + 'GENERAL = saludos u otras consultas.\n'
+              + 'Ejemplos: "tienen sucursal en Cuenca"→UBICACION | "envían a Guayaquil"→ENVIO | "tienen cera de palma"→PRODUCTO | "qué horario tienen"→HORARIO.\n'
+              + 'Responde SOLO la categoría en mayúsculas.',
           },
           { role: 'user', content: texto },
         ],
@@ -129,6 +136,38 @@ export class BotGptService {
     } catch { /* silencio */ }
 
     return 'GENERAL';
+  }
+
+  /**
+   * Extrae la cantidad numérica de un texto libre.
+   * Entiende expresiones como "dos kilos", "media docena", "un par", "5".
+   * Devuelve null si no hay una cantidad reconocible.
+   */
+  async extraerCantidad(texto: string): Promise<number | null> {
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Extrae la cantidad numérica del texto. Responde SOLO con el número (entero o decimal con punto). '
+              + 'Ejemplos: "quiero 5 kilos"→5, "dos litros"→2, "media docena"→6, "un par"→2, "necesito uno"→1. '
+              + 'Si no hay cantidad clara responde null.',
+          },
+          { role: 'user', content: texto },
+        ],
+        temperature: 0,
+        max_tokens: 10,
+      });
+      const raw = resp.choices[0]?.message?.content?.trim() ?? '';
+      if (!raw || raw.toLowerCase() === 'null') return null;
+      const num = parseFloat(raw.replace(',', '.'));
+      return isNaN(num) || num <= 0 ? null : num;
+    } catch (err) {
+      this.logger.error(`extraerCantidad error: ${err.message}`);
+      return null;
+    }
   }
 
   async analizarProductoNoEncontrado(

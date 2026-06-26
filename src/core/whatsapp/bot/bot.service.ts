@@ -281,8 +281,10 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.sendText(ideEmpr, waId,
-      `Disculpa, no entendí bien tu respuesta 😊\n\nResponde *Sí* para continuar con el asistente o *No* para hablar con un asesor.`,
+    await this.responderFallback(
+      ideEmpr, waId, texto,
+      'El cliente acaba de recibir el saludo inicial del bot y debe elegir entre continuar con el asistente o hablar con un asesor.',
+      config, nombreBot, nombreEmpresa,
     );
   }
 
@@ -299,7 +301,8 @@ export class BotService implements OnModuleInit {
     this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      // Pasa el texto original para que responderInfo pueda personalizar (ej: sucursal en X ciudad)
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, texto);
       return;
     }
 
@@ -322,6 +325,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // GENERAL: GPT responde con el contexto completo de la empresa
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
@@ -330,7 +334,8 @@ export class BotService implements OnModuleInit {
       promptBase,
       historial,
       texto,
-      `Empresa: ${nombreEmpresa}`,
+      `Empresa: ${nombreEmpresa}. Usa la información del sistema para responder. ` +
+      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt.`,
     );
     await this.sendText(ideEmpr, waId, respuesta);
   }
@@ -343,8 +348,15 @@ export class BotService implements OnModuleInit {
 
     // Los botones devuelven el ID directamente
     const t = texto.trim().toUpperCase();
-    const esCliente = t === 'SI_CLIENTE' || /^(SI|SÍ|S[Ii]|YES|YA|YA COMPRÉ)$/i.test(t);
-    const esNuevo   = t === 'NO_CLIENTE' || /^(NO|NUNCA|NUEVO|PRIMERA)$/i.test(t);
+    let esCliente = t === 'SI_CLIENTE' || /^(SI|SÍ|S[Ii]|YES|YA|YA COMPRÉ)$/i.test(t);
+    let esNuevo   = t === 'NO_CLIENTE' || /^(NO|NUNCA|NUEVO|PRIMERA)$/i.test(t);
+
+    // Si no hay match directo, GPT interpreta el texto libre
+    if (!esCliente && !esNuevo) {
+      const intencion = await this.botGpt.detectarIntencion(texto);
+      if (intencion === 'CONFIRMAR') esCliente = true;
+      else if (intencion === 'CANCELAR') esNuevo = true;
+    }
 
     if (esCliente) {
       await this.botSession.update(sesion.ide_whbse, BotState.IDENTIFICACION, datos);
@@ -366,7 +378,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // Si no se detectó ninguna opción, volver a mostrar botones
+    // GPT aún no detectó intención → re-enviar botones (pregunta binaria, no hay alternativa)
     await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
   }
 
@@ -596,8 +608,13 @@ export class BotService implements OnModuleInit {
     const num = parseInt(texto.trim(), 10);
 
     if (isNaN(num) || num < 1 || num > (datos.opciones_producto?.length ?? 0)) {
-      await this.sendText(ideEmpr, waId,
-        `Por favor responde con el *número* de la opción que necesitas 😊`,
+      const listaOpciones = (datos.opciones_producto ?? [])
+        .map((o, i) => `${i + 1}. ${o.nombre}`).join('\n');
+      await this.responderFallback(
+        ideEmpr, waId, texto,
+        `El cliente está seleccionando entre estas opciones de producto:\n${listaOpciones}\n` +
+        `Debe responder con el número (1 al ${datos.opciones_producto?.length ?? '?'}) de la opción que desea.`,
+        config, config?.nombre_bot || 'Asistente', nombreEmpresa,
       );
       return;
     }
@@ -638,17 +655,21 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const cantidadMatch = texto.trim().match(/^(\d+(?:[.,]\d+)?)/);
-    if (!cantidadMatch) {
-      await this.sendText(ideEmpr, waId,
-        `Por favor indica la cantidad con un número. Ejemplo: *5* o *2.5* 😊`,
-      );
-      return;
+    // Intenta extraer número con regex; si falla, GPT intenta interpretar lenguaje natural
+    const cantidadMatch = texto.trim().match(/(\d+(?:[.,]\d+)?)/);
+    let cantidad: number | null = cantidadMatch ? parseFloat(cantidadMatch[1].replace(',', '.')) : null;
+
+    if (!cantidad || cantidad <= 0) {
+      cantidad = await this.botGpt.extraerCantidad(texto);
     }
 
-    const cantidad = parseFloat(cantidadMatch[1].replace(',', '.'));
-    if (cantidad <= 0) {
-      await this.sendText(ideEmpr, waId, `La cantidad debe ser mayor a 0 😊`);
+    if (!cantidad || cantidad <= 0) {
+      await this.responderFallback(
+        ideEmpr, waId, texto,
+        `El cliente está cotizando *${prod?.nombre}*. Debe indicar la cantidad que necesita (número). ` +
+        `Pídele amablemente la cantidad con un ejemplo concreto según la unidad: ${prod?.nombre_unidad}.`,
+        config, config?.nombre_bot || 'Asistente', nombreEmpresa,
+      );
       return;
     }
 
@@ -905,11 +926,13 @@ export class BotService implements OnModuleInit {
     const t = texto.trim().toUpperCase();
     let formaPago: 'cash' | 'credit' | null = null;
 
-    if (t === 'PAGO_EFECTIVO' || /^(EFECTIVO|CASH|E)$/i.test(t)) formaPago = 'cash';
-    else if (t === 'PAGO_TARJETA' || /^(TARJETA|CREDITO|CR[EÉ]DITO|CARD)$/i.test(t))   formaPago = 'credit';
+    if (t === 'PAGO_EFECTIVO' || /EFECTIVO|CASH|\bEFE\b|BILLETES?|DINERO\s*EN\s*EFECTIVO/.test(t)) formaPago = 'cash';
+    else if (t === 'PAGO_TARJETA' || /TARJETA|CR[EÉ]DITO|D[EÉ]BITO|CARD|VISA|MASTERCARD/.test(t)) formaPago = 'credit';
+    // Casos comunes: transferencia / depósito → tratados como efectivo (coordinan aparte)
+    else if (/TRANSFER|DEP[OÓ]SITO|DEPOSITO|BANCO|CHEQUE/.test(t)) formaPago = 'cash';
 
     if (!formaPago) {
-      await this.sendButtons(ideEmpr, waId, `Por favor selecciona tu forma de pago 💳`, [
+      await this.sendButtons(ideEmpr, waId, `💳 ¿Cuál es tu forma de pago preferida?`, [
         { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
         { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
       ]);
@@ -1059,15 +1082,18 @@ export class BotService implements OnModuleInit {
 
   /**
    * Responde preguntas de info (ubicación, horario, envíos, catálogo).
-   * Primero busca una sección === RESPUESTA_UBICACION === en prompt_sistema —
-   * si existe, devuelve ese texto tal cual (determinista, sin costo GPT).
-   * Si no existe, fallback a GPT para generarlo dinámicamente.
+   *
+   * Para preguntas de ubicación contextuales (ej: "¿tienen sucursal en Cuenca?"),
+   * usa GPT con el contenido del template como contexto para una respuesta personalizada.
+   * Para preguntas genéricas usa el template directamente (determinista, sin costo GPT).
+   * Si no existe el template, fallback a GPT.
    */
   private async responderInfo(
     ideEmpr: number, waId: string,
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
     nombreEmpresa: string,
     config: any,
+    textoCliente?: string,
   ): Promise<void> {
     const seccionKey: Record<string, string> = {
       UBICACION: 'RESPUESTA_UBICACION',
@@ -1078,22 +1104,40 @@ export class BotService implements OnModuleInit {
 
     const prompt = config?.prompt_sistema || '';
     const template = this.extraerSeccionPrompt(prompt, seccionKey[tipo]);
+    const nombreBot = config?.nombre_bot || 'Asistente';
 
     let respuesta: string;
-    if (template) {
+
+    // Para UBICACION: si el cliente pregunta por sucursal/ciudad específica → GPT personaliza
+    const esPreguntaContextual = tipo === 'UBICACION' && textoCliente &&
+      /SUCURSAL|SEDE|TIENDA|CUENCA|LOJA|MANTA|AMBATO|RIOBAMBA|IBARRA|MACHALA|OTRA CIUDAD|ALGUNA CIUDAD/i.test(textoCliente);
+
+    if (esPreguntaContextual && template) {
+      const infoUbicacion = template.replace(/{BOT_NOMBRE}/g, nombreBot).replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+      const promptBase = (prompt || this.getPromptSistema(nombreBot, nombreEmpresa))
+        .replace(/{BOT_NOMBRE}/g, nombreBot)
+        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+      respuesta = await this.botGpt.generateResponse(
+        promptBase, [], textoCliente,
+        `Información de nuestra ubicación:\n${infoUbicacion}\n\n` +
+        `El cliente pregunta específicamente sobre presencia en otra ciudad. ` +
+        `Responde indicando que solo contamos con la ubicación indicada, ` +
+        `y que hacemos envíos a nivel nacional si necesitan productos. Usa emojis y tono cálido.`,
+      );
+    } else if (template) {
       respuesta = template
-        .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
+        .replace(/{BOT_NOMBRE}/g, nombreBot)
         .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
     } else {
       // Fallback: GPT genera la respuesta con el prompt completo
       const preguntas: Record<string, string> = {
-        UBICACION: 'El cliente pregunta cómo llegar. Responde con emojis, *negrita* y encabezado cálido.',
+        UBICACION: textoCliente || 'El cliente pregunta cómo llegar. Responde con emojis, *negrita* y encabezado cálido.',
         HORARIO:   'El cliente pregunta los horarios. Responde con emojis, *negrita* y encabezado cálido.',
         ENVIO:     'El cliente pregunta sobre envíos y costos. Responde con emojis, *negrita* y encabezado cálido.',
         CATALOGO:  'El cliente quiere ver el catálogo. Responde con emojis, *negrita* y encabezado cálido.',
       };
-      const promptBase = (prompt || this.getPromptSistema(config?.nombre_bot || 'Asistente', nombreEmpresa))
-        .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
+      const promptBase = (prompt || this.getPromptSistema(nombreBot, nombreEmpresa))
+        .replace(/{BOT_NOMBRE}/g, nombreBot)
         .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
       respuesta = await this.botGpt.generateResponse(promptBase, [], preguntas[tipo]);
     }
@@ -1116,19 +1160,27 @@ export class BotService implements OnModuleInit {
    *   === NOMBRE_SECCION ===
    *   contenido...
    *   === SIGUIENTE_SECCION === (o fin del texto)
+   *
+   * Usa regex para detectar el inicio de la siguiente sección con mayor precisión
+   * que un simple indexOf('\n==='), que fallaba con dobles saltos de línea.
    */
   private extraerSeccionPrompt(prompt: string, nombreSeccion: string): string | null {
-    const marker = `=== ${nombreSeccion} ===`;
-    const idx = prompt.indexOf(marker);
-    if (idx === -1) return null;
+    const startMarker = `=== ${nombreSeccion} ===`;
+    const startIdx = prompt.indexOf(startMarker);
+    if (startIdx === -1) return null;
 
-    const contentStart = idx + marker.length;
-    const nextMarker = prompt.indexOf('\n===', contentStart);
-    const content = nextMarker === -1
-      ? prompt.slice(contentStart)
-      : prompt.slice(contentStart, nextMarker);
+    const contentFrom = startIdx + startMarker.length;
 
-    return content.trim() || null;
+    // Encuentra el próximo encabezado de sección: \n=== NOMBRE === en cualquier línea
+    const nextSectionRx = /\n=== [A-Z_]+ ===/g;
+    nextSectionRx.lastIndex = contentFrom;
+    const next = nextSectionRx.exec(prompt);
+
+    const raw = next
+      ? prompt.slice(contentFrom, next.index)
+      : prompt.slice(contentFrom);
+
+    return raw.trim() || null;
   }
 
   private displayNombreProducto(prod: { nombre: string; otro_nombre?: string; matched_by_otro_nombre?: boolean }): string {
@@ -1321,6 +1373,33 @@ export class BotService implements OnModuleInit {
       `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
+  }
+
+  /**
+   * Responde cuando el bot no entiende el mensaje del usuario.
+   * GPT analiza el texto en contexto y genera una respuesta natural
+   * recordando al cliente que puede escribir SALIR para un asesor.
+   */
+  private async responderFallback(
+    ideEmpr: number, waId: string,
+    textoCliente: string,
+    contextoFlujo: string,
+    config: any,
+    nombreBot: string,
+    nombreEmpresa: string,
+  ): Promise<void> {
+    const promptBase = (config?.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
+      .replace(/{BOT_NOMBRE}/g, nombreBot)
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+
+    const respuesta = await this.botGpt.generateResponse(
+      promptBase, [], textoCliente,
+      `${contextoFlujo} ` +
+      `Responde de forma natural y cálida al mensaje del cliente. ` +
+      `Si no puedes procesar su solicitud en este momento, guíalo de vuelta al flujo. ` +
+      `Al final de tu respuesta agrega una línea: "_Recuerda que puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_"`,
+    );
+    await this.sendText(ideEmpr, waId, respuesta);
   }
 
   private async sendText(ideEmpr: number, waId: string, texto: string): Promise<void> {

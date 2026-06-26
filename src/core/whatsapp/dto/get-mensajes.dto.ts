@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsPositive } from 'class-validator';
 
 export class GetMensajesDto {
   @IsInt()
@@ -11,9 +11,17 @@ export class GetMensajesDto {
   @IsPositive()
   @IsOptional()
   @Type(() => Number)
-  limit?: number = 100;
+  limit?: number = 25;
 
-  @IsString()
+  /** Cursor hacia atrás: trae mensajes con ide_whmem < beforeId (scroll hacia arriba / cargar más) */
+  @IsInt()
   @IsOptional()
-  beforeId?: string;
+  @Type(() => Number)
+  beforeId?: number;
+
+  /** Cursor hacia adelante: trae mensajes con ide_whmem > afterId (actualización por WebSocket) */
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  afterId?: number;
 }
