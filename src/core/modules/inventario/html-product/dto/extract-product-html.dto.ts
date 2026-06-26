@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ExtractProductHtmlDto {
     @IsInt()
@@ -14,13 +14,11 @@ export class ExtractProductHtmlDto {
     @IsOptional()
     url?: string;
 
-    @IsIn(['true', 'false'])
+    @IsBoolean()
     @IsOptional()
-    @Transform(({ value }) => value === 'true')
     soloImagen?: boolean;
 
-    @IsIn(['true', 'false'])
+    @IsBoolean()
     @IsOptional()
-    @Transform(({ value }) => value === 'true')
     soloTexto?: boolean;
 }
