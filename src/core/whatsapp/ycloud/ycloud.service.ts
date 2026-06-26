@@ -6,7 +6,6 @@ import FormData from 'form-data';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
-import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { WhatsappGateway } from '../whatsapp.gateway';
 
@@ -175,6 +174,7 @@ export class YcloudService {
     to: string,
     body: string,
     ideUsua?: number,
+    contextMessageId?: string,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -183,12 +183,15 @@ export class YcloudService {
       throw new BadRequestException(windowCheck.reason);
     }
 
-    const payload: YcloudTextPayload = {
+    const payload: YcloudTextPayload & { context?: { message_id: string } } = {
       from: config.displayPhoneNumber,
       to,
       type: 'text',
       text: { body, preview_url: false },
     };
+    if (contextMessageId) {
+      payload.context = { message_id: contextMessageId };
+    }
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
     const messageId = resp.messages?.[0]?.id || resp.id;
@@ -203,6 +206,7 @@ export class YcloudService {
         tiempoRespuesta: windowCheck.lastInbound
           ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
           : null,
+        contextMessageId: contextMessageId || null,
       },
       config,
     );
@@ -764,7 +768,9 @@ export class YcloudService {
       const textoBot = data.text?.body
         || data.button?.payload
         || data.interactive?.button_reply?.id
+        || data.interactive?.buttonReply?.id
         || data.interactive?.list_reply?.id
+        || data.interactive?.listReply?.id
         || (data.location
             ? `__LOCATION__:${data.location.latitude},${data.location.longitude},${data.location.name || ''},${data.location.address || ''}`
             : '')
@@ -870,7 +876,11 @@ export class YcloudService {
 
     const tipo = data.type || 'text';
     const body = data.text?.body || data.button?.text
-      || data.interactive?.button_reply?.title || data.interactive?.list_reply?.title || null;
+      || data.interactive?.button_reply?.title
+      || data.interactive?.buttonReply?.title
+      || data.interactive?.list_reply?.title
+      || data.interactive?.listReply?.title
+      || null;
     const caption = data.image?.caption || data.video?.caption || data.document?.caption || null;
 
     const buildBase = (): InsertQuery => {
@@ -923,15 +933,27 @@ export class YcloudService {
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
     try {
+      const yCloudId = data.id;
       const wamid = data.wamid || data.id;
 
-      const existsQuery = new SelectQuery(`SELECT ide_whmem FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`);
-      existsQuery.addStringParam(1, wamid);
-      const existing = await this.dataSource.createSingleQuery(existsQuery);
+      // saveMessageSent stores resp.id (YCloud internal ID), while the webhook
+      // carries data.wamid (WhatsApp WAMID) — they differ, so we search by both.
+      const existsResult = await this.dataSource.pool.query<{ ide_whmem: number }>(
+        `SELECT ide_whmem FROM wha_mensaje WHERE id_whmem = $1 OR id_whmem = $2 LIMIT 1`,
+        [yCloudId, wamid],
+      );
+      const existing = existsResult.rows[0] || null;
 
       if (existing) {
         const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
         updateQuery.values.set('status_whmem', data.status);
+
+        // Normalise id_whmem to the WhatsApp WAMID on first status update.
+        // saveMessageSent stores resp.id (YCloud internal ID); after this update
+        // id_whmem becomes the WAMID so context references (quoted replies) resolve.
+        if (data.wamid && data.wamid !== yCloudId) {
+          updateQuery.values.set('id_whmem', data.wamid);
+        }
 
         if (data.status === 'sent') {
           updateQuery.values.set('timestamp_whmem', data.sendTime || data.createTime);
@@ -949,8 +971,9 @@ export class YcloudService {
           }
         }
 
-        updateQuery.where = 'id_whmem = $1';
-        updateQuery.addStringParam(1, wamid);
+        // Update by primary key to avoid ambiguity
+        updateQuery.where = 'ide_whmem = $1';
+        updateQuery.addIntParam(1, existing.ide_whmem);
         await this.dataSource.createQuery(updateQuery);
       } else {
         await this.insertOutboundMessage(data, wamid);
@@ -1202,7 +1225,7 @@ export class YcloudService {
       insertQuery.values.set('wa_id_whmem', normalizedPhone);
       insertQuery.values.set('id_whmem', data.idWts);
       insertQuery.values.set('body_whmem', data.texto || '');
-      insertQuery.values.set('fecha_whmem', getCurrentDateTime());
+      insertQuery.values.set('fecha_whmem', new Date().toISOString());
       insertQuery.values.set('content_type_whmem', data.tipo);
       insertQuery.values.set('leido_whmem', false);
       insertQuery.values.set('direction_whmem', 1);
@@ -1217,6 +1240,9 @@ export class YcloudService {
       }
       if (data.tiempoRespuesta != null) {
         insertQuery.values.set('tiempo_respuesta_seg_whmem', data.tiempoRespuesta);
+      }
+      if (data.contextMessageId) {
+        insertQuery.values.set('wa_id_context_whmem', data.contextMessageId);
       }
 
       const res = await this.dataSource.createQuery(insertQuery);

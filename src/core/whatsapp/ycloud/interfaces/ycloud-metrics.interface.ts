@@ -43,4 +43,5 @@ export interface MessageSaveData {
   mimeType?: string | null;
   ideUsua?: number;
   tiempoRespuesta?: number | null;
+  contextMessageId?: string | null;
 }

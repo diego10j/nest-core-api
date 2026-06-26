@@ -46,7 +46,7 @@ export class YcloudController {
     @AppHeaders() h: HeaderParamsDto,
     @Body() dto: SendTextDto,
   ): Promise<{ messageId: string }> {
-    return this.ycloudService.sendText(h.ideEmpr, dto.telefono, dto.body, h.ideUsua);
+    return this.ycloudService.sendText(h.ideEmpr, dto.telefono, dto.body, h.ideUsua, dto.contextMessageId);
   }
 
   @Post('send-template')

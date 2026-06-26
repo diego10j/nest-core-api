@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger }
 import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { DataSourceService } from '../connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from '../connection/helpers';
@@ -176,7 +175,7 @@ export class WhatsappDbService {
         LEFT JOIN wha_etiqueta c ON a.ide_wheti = c.ide_wheti
         LEFT JOIN sis_usuario u ON a.ide_usua_asignado_whcha = u.ide_usua
         WHERE a.eliminado_whcha = FALSE
-        ORDER BY a.fecha_msg_whcha DESC
+        ORDER BY a.fecha_msg_whcha DESC NULLS LAST
         `);
         query.addIntParam(1, dto.ideEmpr);
         const data = await this.dataSource.createSelectQuery(query);
@@ -308,12 +307,22 @@ export class WhatsappDbService {
                 m.*,
                 m.es_bot_whmem,
                 u.nom_usua    AS nombre_agente,
-                u.avatar_usua AS avatar_agente
+                u.avatar_usua AS avatar_agente,
+                -- Mensaje citado (cuando este mensaje es respuesta a otro)
+                qm.body_whmem            AS quoted_body_whmem,
+                qm.content_type_whmem    AS quoted_type_whmem,
+                qm.caption_whmem         AS quoted_caption_whmem,
+                qm.direction_whmem       AS quoted_direction_whmem,
+                qm.attachment_type_whmem AS quoted_attachment_type_whmem
             FROM wha_chat c
             JOIN wha_mensaje m
               ON m.wa_id_whmem          = c.wa_id_whcha
              AND m.phone_number_id_whmem = c.phone_number_id_whcha
             LEFT JOIN sis_usuario u ON m.ide_usua_whmem = u.ide_usua
+            LEFT JOIN wha_mensaje qm
+              ON m.wa_id_context_whmem IS NOT NULL
+             AND qm.id_whmem             = m.wa_id_context_whmem
+             AND qm.phone_number_id_whmem = c.phone_number_id_whcha
             WHERE c.ide_whcha = $1
             ORDER BY m.ide_whmem
         `);
@@ -542,7 +551,7 @@ export class WhatsappDbService {
             insertQuery.values.set('wa_id_whmem', dto.telefono);
             insertQuery.values.set('id_whmem', dto.idWts);
             insertQuery.values.set('body_whmem', dto.texto || '');
-            insertQuery.values.set('fecha_whmem', getCurrentDateTime());
+            insertQuery.values.set('fecha_whmem', new Date().toISOString());
             insertQuery.values.set('content_type_whmem', dto.tipo);
             insertQuery.values.set('leido_whmem', false);
             insertQuery.values.set('direction_whmem', 1);

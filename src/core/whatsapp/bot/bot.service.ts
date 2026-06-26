@@ -145,13 +145,8 @@ export class BotService implements OnModuleInit {
     const { sesion: sesionInicial, expirada } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
     let sesion = sesionInicial;
 
-    // Sesión expirada por inactividad → avisar y nueva sesión
-    if (expirada) {
-      await this.sendText(ideEmpr, waId,
-        `Tu sesión anterior finalizó por inactividad ⏱️\n\nEscribe *Hola* cuando estés listo y con mucho gusto te atenderé de nuevo 😊`,
-      );
-      return;
-    }
+    // Sesión expirada por inactividad → la nueva sesión ya fue creada en INICIO,
+    // se procesa el mensaje normalmente (transparente para el usuario).
     // this.logger.log(`[Bot] sesion.estado=${sesion?.estado} ide_whbse=${sesion?.ide_whbse}`);
     const config = await this.botConfig.getConfig(ideWhcue);
     this.logger.debug(`[Bot] config=${config ? 'OK nombre_bot=' + config.nombre_bot : 'NULL'}`);

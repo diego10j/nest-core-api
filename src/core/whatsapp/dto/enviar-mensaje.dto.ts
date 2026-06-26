@@ -32,4 +32,8 @@ export class EnviarMensajeDto extends TelefonoDto {
   @IsString()
   @IsOptional()
   mimeType?: string;
+
+  @IsString()
+  @IsOptional()
+  contextMessageId?: string;
 }
