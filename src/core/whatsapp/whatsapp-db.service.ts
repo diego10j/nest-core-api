@@ -323,7 +323,7 @@ export class WhatsappDbService {
              AND qm.id_whmem             = m.wa_id_context_whmem
              AND qm.phone_number_id_whmem = c.phone_number_id_whcha
             WHERE c.ide_whcha = $1
-            ORDER BY m.ide_whmem
+            ORDER BY m.fecha_whmem, m.ide_whmem
         `);
         query.addIntParam(1, dto.chatId);
         return this.dataSource.createSelectQuery(query);

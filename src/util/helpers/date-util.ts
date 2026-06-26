@@ -243,3 +243,27 @@ export function toPgTimestamp(value: any): string | null {
 export function toPgTimestampNow(): string {
   return new Date().toISOString().replace('T', ' ').replace('Z', '');
 }
+
+const GUAYAQUIL_OFFSET_MS = -5 * 60 * 60 * 1000; // UTC-5, sin horario de verano
+
+/**
+ * Retorna la fecha/hora actual en zona horaria America/Guayaquil (UTC-5)
+ * como string compatible con columnas TIMESTAMP de PostgreSQL.
+ * Formato: "YYYY-MM-DD HH:mm:ss.SSS"
+ */
+export function nowGuayaquil(): string {
+  const local = new Date(Date.now() + GUAYAQUIL_OFFSET_MS);
+  return local.toISOString().replace('T', ' ').replace('Z', '');
+}
+
+/**
+ * Convierte cualquier fecha/string UTC al equivalente en America/Guayaquil (UTC-5).
+ * Si el valor es nulo o inválido devuelve la hora actual en Guayaquil.
+ */
+export function toGuayaquil(d: Date | string | null | undefined): string {
+  if (!d) return nowGuayaquil();
+  const date = d instanceof Date ? d : new Date(d);
+  if (isNaN(date.getTime())) return nowGuayaquil();
+  const local = new Date(date.getTime() + GUAYAQUIL_OFFSET_MS);
+  return local.toISOString().replace('T', ' ').replace('Z', '');
+}

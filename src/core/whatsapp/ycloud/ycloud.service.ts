@@ -749,18 +749,20 @@ export class YcloudService {
       const waId = data.from.replace(/^\+/, '');
       const phoneNumberId = data.to.replace(/^\+/, '');
       const profileName = data.customerProfile?.name || null;
-      const now = new Date();
+      // Usar la hora real del mensaje (sendTime de YCloud), no la hora de procesamiento.
+      // Si YCloud reintenta el webhook horas después, el mensaje se guarda con su hora original.
+      const msgDate = data.sendTime ? new Date(data.sendTime) : new Date();
 
       const ideWhcha = await this.upsertChat({
         waId,
         phoneNumberId,
         phoneNumberFrom: data.from,
         profileName,
-        now,
+        now: msgDate,
         isInbound: true,
       });
 
-      await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, now);
+      await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, msgDate);
       await this.windowService.registerInboundMessage(waId, phoneNumberId);
       this.whatsappGateway.sendMessageToClients(waId);
       void this.emitTotalNoLeidos(phoneNumberId);
@@ -852,9 +854,10 @@ export class YcloudService {
         ultimo_ingreso_cliente_whcha = $6
       RETURNING ide_whcha
     `;
-    const inboundTs = isInbound ? now.toISOString() : null;
+    const nowStr = now.toISOString();
+    const inboundTs = isInbound ? nowStr : null;
     const result = await this.dataSource.pool.query(sql, [
-      waId, phoneNumberId, phoneNumberFrom, profileName, now.toISOString(), inboundTs,
+      waId, phoneNumberId, phoneNumberFrom, profileName, nowStr, inboundTs,
     ]);
     return result.rows[0].ide_whcha as number;
   }
@@ -1225,7 +1228,7 @@ export class YcloudService {
       insertQuery.values.set('wa_id_whmem', normalizedPhone);
       insertQuery.values.set('id_whmem', data.idWts);
       insertQuery.values.set('body_whmem', data.texto || '');
-      insertQuery.values.set('fecha_whmem', new Date().toISOString());
+      insertQuery.values.set('fecha_whmem', now);
       insertQuery.values.set('content_type_whmem', data.tipo);
       insertQuery.values.set('leido_whmem', false);
       insertQuery.values.set('direction_whmem', 1);

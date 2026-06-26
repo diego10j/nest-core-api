@@ -15,8 +15,22 @@ export class TypeParserService {
      */
     registerParsers(): void {
         this.registerTimeParser();
+        this.registerTimestampParsers();
         this.registerNumericParsers();
         this.registerIntegerParsers();
+    }
+
+    /**
+     * Parser para TIMESTAMP WITHOUT TIME ZONE (OID 1114).
+     * El driver pg por defecto interpreta estos valores como hora local del proceso Node.js,
+     * lo que causa desfase si el OS corre en America/Guayaquil.
+     * Forzamos lectura como UTC para que JSON.stringify produzca el valor correcto con Z.
+     */
+    private registerTimestampParsers(): void {
+        types.setTypeParser(
+            PG_TYPE_CONFIG.TIMESTAMP_OID,
+            (val) => val ? new Date(val + '+00:00').toISOString() : null,
+        );
     }
 
     /**

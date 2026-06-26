@@ -1057,34 +1057,78 @@ export class BotService implements OnModuleInit {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  /**
+   * Responde preguntas de info (ubicación, horario, envíos, catálogo).
+   * Primero busca una sección === RESPUESTA_UBICACION === en prompt_sistema —
+   * si existe, devuelve ese texto tal cual (determinista, sin costo GPT).
+   * Si no existe, fallback a GPT para generarlo dinámicamente.
+   */
   private async responderInfo(
     ideEmpr: number, waId: string,
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
     nombreEmpresa: string,
     config: any,
   ): Promise<void> {
-    const preguntas: Record<string, string> = {
-      UBICACION: '¿Cuál es la dirección y cómo puedo llegar?',
-      HORARIO:   '¿Cuáles son los horarios de atención?',
-      ENVIO:     '¿Realizan envíos a otras ciudades? ¿Cuál es la política de envíos y costos?',
-      CATALOGO:  '¿Dónde puedo ver el catálogo de productos y precios?',
+    const seccionKey: Record<string, string> = {
+      UBICACION: 'RESPUESTA_UBICACION',
+      HORARIO:   'RESPUESTA_HORARIO',
+      ENVIO:     'RESPUESTA_ENVIO',
+      CATALOGO:  'RESPUESTA_CATALOGO',
     };
-    const promptBase = (config?.prompt_sistema || this.getPromptSistema(config?.nombre_bot || 'Asistente', nombreEmpresa))
-      .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
-      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
 
-    const respuesta = await this.botGpt.generateResponse(promptBase, [], preguntas[tipo]);
+    const prompt = config?.prompt_sistema || '';
+    const template = this.extraerSeccionPrompt(prompt, seccionKey[tipo]);
+
+    let respuesta: string;
+    if (template) {
+      respuesta = template
+        .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
+        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+    } else {
+      // Fallback: GPT genera la respuesta con el prompt completo
+      const preguntas: Record<string, string> = {
+        UBICACION: 'El cliente pregunta cómo llegar. Responde con emojis, *negrita* y encabezado cálido.',
+        HORARIO:   'El cliente pregunta los horarios. Responde con emojis, *negrita* y encabezado cálido.',
+        ENVIO:     'El cliente pregunta sobre envíos y costos. Responde con emojis, *negrita* y encabezado cálido.',
+        CATALOGO:  'El cliente quiere ver el catálogo. Responde con emojis, *negrita* y encabezado cálido.',
+      };
+      const promptBase = (prompt || this.getPromptSistema(config?.nombre_bot || 'Asistente', nombreEmpresa))
+        .replace(/{BOT_NOMBRE}/g, config?.nombre_bot || 'Asistente')
+        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+      respuesta = await this.botGpt.generateResponse(promptBase, [], preguntas[tipo]);
+    }
+
     await this.sendText(ideEmpr, waId, respuesta);
 
-    if (tipo === 'UBICACION') {
+    if (tipo === 'UBICACION' && config?.lat_empresa && config?.lng_empresa) {
       try {
         await this.ycloudService.sendLocation(
-          ideEmpr, `+${waId}`, -0.3465918, -78.4822285, nombreEmpresa, '',
+          ideEmpr, `+${waId}`, config.lat_empresa, config.lng_empresa, nombreEmpresa, '',
         );
       } catch (err) {
         this.logger.warn(`[Bot] No se pudo enviar pin de ubicación: ${err.message}`);
       }
     }
+  }
+
+  /**
+   * Extrae el contenido de una sección marcada como:
+   *   === NOMBRE_SECCION ===
+   *   contenido...
+   *   === SIGUIENTE_SECCION === (o fin del texto)
+   */
+  private extraerSeccionPrompt(prompt: string, nombreSeccion: string): string | null {
+    const marker = `=== ${nombreSeccion} ===`;
+    const idx = prompt.indexOf(marker);
+    if (idx === -1) return null;
+
+    const contentStart = idx + marker.length;
+    const nextMarker = prompt.indexOf('\n===', contentStart);
+    const content = nextMarker === -1
+      ? prompt.slice(contentStart)
+      : prompt.slice(contentStart, nextMarker);
+
+    return content.trim() || null;
   }
 
   private displayNombreProducto(prod: { nombre: string; otro_nombre?: string; matched_by_otro_nombre?: boolean }): string {
@@ -1103,10 +1147,16 @@ export class BotService implements OnModuleInit {
   }
 
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {
-    return `Eres ${nombreBot}, asesora comercial experta de ${nombreEmpresa}.
-Tu estilo es amable, confiable, profesional y conciso. Nunca eres condescendiente ni repetitiva.
-Respondes en español, con emojis moderados para dar cercanía.
-Si el cliente pregunta algo que no puedes responder, invítale a contactar a un asesor escribiendo SALIR.`;
+    return `Eres ${nombreBot}, asesora comercial virtual de ${nombreEmpresa}.
+
+=== ESTILO DE RESPUESTA ===
+- Eres mujer, cálida, amable y profesional. Tus mensajes transmiten confianza.
+- SIEMPRE usa emojis relevantes (📍 🕒 🚚 📦 🌐 ✅ 😊).
+- Usa *negrita de WhatsApp* (*texto*) para datos clave.
+- Usa _cursiva de WhatsApp_ (_texto_) para referencias secundarias.
+- Empieza con un encabezado cálido antes de dar la información.
+- Responde en español. Si no tienes información, invita al cliente a escribir SALIR para hablar con un asesor.
+- Nunca inventas precios ni información que no tengas.`;
   }
 
   /** Procesa mensajes pendientes de un chat específico al liberarlo */

@@ -11,7 +11,10 @@
       "Bash(xargs cat)",
       "Bash(npx --no-install tsc --noEmit)",
       "Bash(yarn tsc *)",
-      "Bash(yarn build *)"
+      "Bash(yarn build *)",
+      "Bash(git -C /mnt/d/DIEGO2022/Varios/git/nest-core-api diff HEAD -- src/core/whatsapp/bot/bot.service.ts)",
+      "Bash(git *)",
+      "Bash(grep -vE \"^[+-]\\\\s*\\(//|$|\\\\*\\)\")"
     ]
   }
 }

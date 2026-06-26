@@ -8,9 +8,10 @@ import { WhatsappGateway } from '../whatsapp.gateway';
 import { BotConfigQueryDto } from './dto/bot-config-query.dto';
 import { SaveBotConfigDto } from './dto/save-bot-config.dto';
 
-const CACHE_ACTIVO  = 'bot_activo:';
-const CACHE_CONFIG  = 'bot_config:';
-const CACHE_TTL_S   = 60;
+const CACHE_ACTIVO     = 'bot_activo:';
+const CACHE_CONFIG     = 'bot_config:';
+const CACHE_TTL_S      = 60;    // estado activo/inactivo del bot (1 min)
+const CACHE_CONFIG_TTL = 3600;  // config completa + prompt (1 hora, rara vez cambia)
 
 export interface BotConfigData {
   ide_whbco: number;
@@ -21,10 +22,11 @@ export interface BotConfigData {
   nombre_bot: string;
   nombre_empresa: string;
   prompt_sistema: string;
-  template_saludo: string;
   horario_atencion: string;
   monto_envio_gratis: number;
   max_intentos_fallo: number;
+  lat_empresa: number | null;
+  lng_empresa: number | null;
 }
 
 @Injectable()
@@ -46,9 +48,11 @@ export class BotConfigService {
 
     const q = new SelectQuery(`
       SELECT bc.ide_whbco, bc.ide_whcue, bc.activo_manual, bc.usa_horario, bc.ide_tihor,
-             bc.nombre_bot, bc.prompt_sistema, bc.template_saludo, bc.horario_atencion,
+             bc.nombre_bot, bc.prompt_sistema, bc.horario_atencion,
              bc.monto_envio_gratis, bc.max_intentos_fallo,
-             COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa
+             COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa,
+             e.latitud_empr  AS lat_empresa,
+             e.longitud_empr AS lng_empresa
       FROM wha_bot_config bc
       LEFT JOIN wha_cuenta cu ON cu.ide_whcue = bc.ide_whcue
       LEFT JOIN sis_empresa e ON e.ide_empr = COALESCE(bc.ide_empr, cu.ide_empr)
@@ -58,7 +62,7 @@ export class BotConfigService {
     q.addIntParam(1, ideWhcue);
     const row = await this.dataSource.createSingleQuery(q);
     if (!row) return null;
-    await this.dataSource.redisClient.setex(cacheKey, 300, JSON.stringify(row));
+    await this.dataSource.redisClient.setex(cacheKey, CACHE_CONFIG_TTL, JSON.stringify(row));
     return row as BotConfigData;
   }
 
@@ -124,7 +128,7 @@ export class BotConfigService {
 
   /** Actualiza la configuración editable del bot (nombre, prompt, template, horario) */
   async updateConfigBot(ideWhcue: number, data: Partial<Pick<BotConfigData,
-    'nombre_bot' | 'prompt_sistema' | 'template_saludo' | 'horario_atencion' | 'monto_envio_gratis' | 'max_intentos_fallo'
+    'nombre_bot' | 'prompt_sistema' | 'horario_atencion' | 'monto_envio_gratis' | 'max_intentos_fallo'
   >>): Promise<void> {
     const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
     for (const [k, v] of Object.entries(data)) {
@@ -133,9 +137,10 @@ export class BotConfigService {
     upd.where = 'ide_whcue = $1';
     upd.addIntParam(1, ideWhcue);
     await this.dataSource.createQuery(upd);
-    // Invalidar caché de config
     await this.dataSource.redisClient.del(`${CACHE_CONFIG}${ideWhcue}`);
     await this.invalidarCache(ideWhcue);
+    // Pre-calentar caché con los nuevos valores
+    await this.getConfig(ideWhcue).catch(() => {});
   }
 
   /**
@@ -261,7 +266,6 @@ export class BotConfigService {
         bc.usa_horario,
         bc.ide_tihor,
         bc.nombre_bot,
-        bc.template_saludo,
         bc.horario_atencion,
         bc.monto_envio_gratis,
         bc.max_intentos_fallo,
@@ -340,7 +344,6 @@ export class BotConfigService {
       const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
       if (dto.nombre_bot !== undefined) upd.values.set('nombre_bot', dto.nombre_bot);
       if (dto.prompt_sistema !== undefined) upd.values.set('prompt_sistema', dto.prompt_sistema);
-      if (dto.template_saludo !== undefined) upd.values.set('template_saludo', dto.template_saludo);
       if (dto.horario_atencion !== undefined) upd.values.set('horario_atencion', dto.horario_atencion);
       if (dto.monto_envio_gratis !== undefined) upd.values.set('monto_envio_gratis', dto.monto_envio_gratis);
       if (dto.max_intentos_fallo !== undefined) upd.values.set('max_intentos_fallo', dto.max_intentos_fallo);
@@ -358,8 +361,7 @@ export class BotConfigService {
       if (dto.ide_tihor !== undefined) ins.values.set('ide_tihor', dto.ide_tihor);
       const nombreBotDefault = dto.nombre_bot ?? 'QuimIA';
       ins.values.set('nombre_bot', nombreBotDefault);
-      ins.values.set('prompt_sistema', dto.prompt_sistema ?? `Eres ${nombreBotDefault}, asistente comercial virtual. Eres amable y profesional. Responde en español.\n\nCOMPLETA ESTE PROMPT CON: horarios, dirección, políticas de envío, catálogo y cualquier info que el bot debe conocer.`);
-      ins.values.set('template_saludo', dto.template_saludo ?? 'bot_saludo_inicial');
+      ins.values.set('prompt_sistema', dto.prompt_sistema ?? this.getDefaultPrompt(nombreBotDefault));
       ins.values.set('horario_atencion', dto.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00 y Sábados de 09:00 a 13:00.');
       ins.values.set('monto_envio_gratis', dto.monto_envio_gratis ?? 100);
       ins.values.set('max_intentos_fallo', dto.max_intentos_fallo ?? 3);
@@ -367,7 +369,49 @@ export class BotConfigService {
     }
 
     await this.invalidarCache(dto.ide_whcue);
+    // Pre-calentar caché con los nuevos valores
+    await this.getConfig(dto.ide_whcue).catch(() => {});
     this.logger.log(`[BotConfig] Config guardada para ide_whcue=${dto.ide_whcue}`);
+  }
+
+  private getDefaultPrompt(nombreBot: string): string {
+    return `Eres ${nombreBot}, asistente comercial virtual.
+
+=== PERSONALIDAD ===
+Eres amable, cálida y profesional. Usa emojis con naturalidad.
+Usa *negrita* para datos clave. Responde en español.
+Si no puedes responder algo, invita al cliente a escribir SALIR.
+
+=== INSTRUCCIONES DE COTIZACIÓN ===
+Cuando el cliente quiera cotizar, solicita: nombre completo, correo, productos con cantidades y dirección.
+
+=== RESPUESTA_UBICACION ===
+📍 *¡Con gusto te indico cómo llegar!*
+
+[COMPLETA CON LA DIRECCIÓN Y REFERENCIA DE TU EMPRESA]
+
+¿Puedo ayudarte con algo más?
+
+=== RESPUESTA_HORARIO ===
+🕒 *Nuestros horarios de atención son:*
+
+[COMPLETA CON LOS HORARIOS DE TU EMPRESA]
+
+¿Hay algo más en que pueda ayudarte?
+
+=== RESPUESTA_ENVIO ===
+🚚 *¡Claro que sí, realizamos envíos!*
+
+[COMPLETA CON LA POLÍTICA DE ENVÍOS DE TU EMPRESA]
+
+¿Te gustaría que te ayude con una cotización?
+
+=== RESPUESTA_CATALOGO ===
+📦 *Explora nuestros productos:*
+
+[COMPLETA CON LOS LINKS DE TU CATÁLOGO]
+
+¿Te gustaría que te ayude con una cotización personalizada? 🧪`;
   }
 
   private async invalidarCache(ideWhcue: number): Promise<void> {

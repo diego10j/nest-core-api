@@ -63,7 +63,6 @@ export class BotController {
     @Body() dto: {
       nombre_bot?: string;
       prompt_sistema?: string;
-      template_saludo?: string;
       horario_atencion?: string;
       monto_envio_gratis?: number;
       max_intentos_fallo?: number;

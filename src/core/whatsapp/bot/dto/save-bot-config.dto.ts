@@ -27,10 +27,6 @@ export class SaveBotConfigDto {
 
   @IsString()
   @IsOptional()
-  template_saludo?: string;
-
-  @IsString()
-  @IsOptional()
   horario_atencion?: string;
 
   @IsNumber()
