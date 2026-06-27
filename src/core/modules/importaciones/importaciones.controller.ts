@@ -472,6 +472,15 @@ export class ImportacionesController {
         return this.saveService.calcularCostosUnitarios(dto.ide_imcaim, h.login);
     }
 
+    @Post('recalcularCostos')
+    @ApiOperation({ summary: 'Recalcular distribución de costos (sin IVA liquidaciones) y actualizar rentabilidad si existe precio_venta' })
+    recalcularCostos(
+        @AppHeaders() h: HeaderParamsDto,
+        @Body() dto: { ide_imcaim: number },
+    ) {
+        return this.saveService.recalcularCostos(dto.ide_imcaim, h.login);
+    }
+
     @Post('saveRentabilidad')
     @ApiOperation({ summary: 'Guardar/calcular rentabilidad de una importación (global + por detalle)' })
     saveRentabilidad(@AppHeaders() h: HeaderParamsDto, @Body() dto: SaveRentabilidadDto) {

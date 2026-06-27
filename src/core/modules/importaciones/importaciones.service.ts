@@ -228,7 +228,9 @@ export class ImportacionesService extends BaseService {
                     COALESCE(total_op.otros_costos, 0)         AS otros_costos,
                     COALESCE(total_op.bases_facturas, 0)       AS bases_facturas,
                     COALESCE(total_op.iva_facturas, 0)         AS iva_facturas,
-                    COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costos_operativos,
+                    (COALESCE(ga.suma_valor_aduana, 0) - COALESCE(c.total_factura_imcaim, 0))
+                    + COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0)
+                    + (COALESCE(liq.suma_total_impuestos, 0) - COALESCE(liq.suma_iva, 0)) AS costos_operativos,
                     COALESCE(ga.suma_valor_aduana, 0) + COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) + COALESCE(liq.suma_total_impuestos, 0) AS costo_total,
                     COALESCE(ga.suma_valor_aduana, 0) + COALESCE(liq.suma_total_impuestos, 0) + COALESCE(total_op.otros_costos, 0) + COALESCE(total_op.bases_facturas, 0) AS costo_final_total,
                     COALESCE(dist_det.total_costo_operativo_det, 0) AS total_costo_operativo_detalle,
