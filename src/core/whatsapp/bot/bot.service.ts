@@ -1466,6 +1466,20 @@ export class BotService implements OnModuleInit {
         [ideWhcha],
       );
       const ultimoEstado = lastSesionRow.rows[0]?.estado;
+
+      // Chat sin historial de bot → presentar el asistente con los botones estándar
+      if (!ultimoEstado) {
+        const cfg = await this.botConfig.getConfig(ideWhcue);
+        const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+        await this.handleInicio(
+          waId, ideWhcue, ideEmpr, sesion.ide_whbse, lastClientMsg,
+          cfg?.nombre_bot || 'QuimIA', cfg?.nombre_empresa || 'la empresa',
+          sesion.datos_sesion as DatosSesion,
+        );
+        return;
+      }
+
+      // Sesión anterior completada o cancelada → el bot espera el próximo mensaje sin re-saludar
       if (ultimoEstado === BotState.FINALIZADO || ultimoEstado === BotState.CANCELADO) {
         this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — sesión anterior ${ultimoEstado}, sin re-saludo`);
         return;
