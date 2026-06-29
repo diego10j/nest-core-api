@@ -1065,6 +1065,7 @@ export class BotService implements OnModuleInit {
           `*¡Gracias por contactarnos!* 🧪`,
         );
         // null = ya se envió mensaje al cliente; msgAsesor = nota interna solo para log/asesor
+        await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
         await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, null, msgAsesor);
       }
     } catch (err) {
@@ -1072,10 +1073,11 @@ export class BotService implements OnModuleInit {
       await this.sendText(ideEmpr, waId,
         `Hubo un inconveniente al generar tu cotización 😔\nUn asesor te contactará en breve para ayudarte.`,
       );
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
     }
-
-    await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
+    // CASO 1 (automático): la sesión queda ACTIVA+FINALIZADO para que handlePostCotizacion
+    // recoja el siguiente mensaje (HABLAR_ASESOR / NUEVA_COTIZACION) sin crear una sesión nueva.
   }
 
   private async handlePostCotizacion(
