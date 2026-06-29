@@ -1087,8 +1087,8 @@ export class ImportacionesSaveService extends BaseService {
         return {
             message: 'ok',
             ide_imcaim,
-            items: detalles.length,
-            costo_operativo: costoOperativo,
+            items_distribuidos: detalles.length,
+            costo_operativo_distribuido: Math.round(costoOperativo * 100) / 100,
             totales: exist ? {
                 costo_total_importacion: Math.round(costoTotalImportacion * 100) / 100,
                 precio_venta_total: Math.round(precioVentaTotal * 100) / 100,
