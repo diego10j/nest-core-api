@@ -688,42 +688,54 @@ export class ImportacionesSaveService extends BaseService {
      *             + (suma_total_impuestos - suma_iva).
      * El IVA de liquidaciones se excluye por ser crédito tributario recuperable.
      */
-    async distribuirCostos(dtoIn: SaveDistribucionCostoDto & HeaderParamsDto) {
-        const qTot = new SelectQuery(`
+
+    /**
+     * Calcula el costo operativo total de la importación usando la misma fórmula
+     * que getImportacionById (campo costos_operativos).
+     * No filtra por activo_imcoim para mantenerse consistente con la vista de cabecera.
+     */
+    private async calcularCostoOperativoTotal(ide_imcaim: number): Promise<number> {
+        const result = await this.dataSource.pool.query<{ costos_operativos: string }>(`
             SELECT
-                COALESCE((
-                    SELECT SUM(g.valor_aduana_imga)
-                    FROM imp_gestion_aduana g
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_valor_aduana,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
-                COALESCE((
-                    SELECT SUM(l.total_impuestos_liq_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_total_impuestos,
-                COALESCE((
-                    SELECT SUM(l.iva_liquidacion_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_iva,
-                COALESCE((
-                    SELECT c.total_factura_imcaim
-                    FROM imp_cab_importa c
-                    WHERE c.ide_imcaim = $1
-                ), 0) AS total_factura_imcaim
-            FROM imp_costos_import co
-            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
-            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
-        `);
-        qTot.addIntParam(1, dtoIn.ide_imcaim);
-        const row = await this.dataSource.createSingleQuery(qTot);
-        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
-            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
-            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
+                (COALESCE(ga.suma_valor_aduana, 0) - COALESCE(c.total_factura_imcaim, 0))
+                + COALESCE(op.otros_costos, 0) + COALESCE(op.bases_facturas, 0)
+                + (COALESCE(liq.suma_total_impuestos, 0) - COALESCE(liq.suma_iva, 0))
+                AS costos_operativos
+            FROM imp_cab_importa c
+            LEFT JOIN (
+                SELECT SUM(valor_aduana_imga) AS suma_valor_aduana
+                FROM imp_gestion_aduana
+                WHERE ide_imcaim = $1
+            ) ga ON TRUE
+            LEFT JOIN (
+                SELECT SUM(l.total_impuestos_liq_imliq) AS suma_total_impuestos,
+                       SUM(l.iva_liquidacion_imliq)      AS suma_iva
+                FROM imp_gestion_aduana g
+                INNER JOIN imp_liquidacion_aduana l ON g.ide_imga = l.ide_imga
+                WHERE g.ide_imcaim = $1
+            ) liq ON TRUE
+            LEFT JOIN (
+                SELECT COALESCE(SUM(monto_imcoim), 0) AS otros_costos,
+                       COALESCE(SUM(bases_fact), 0)    AS bases_facturas
+                FROM (
+                    SELECT co.monto_imcoim, 0::numeric AS bases_fact
+                    FROM imp_costos_import co
+                    WHERE co.ide_cpcfa IS NULL AND co.ide_imcaim = $1
+                    UNION ALL
+                    SELECT 0::numeric AS monto_imcoim,
+                           COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) AS bases_fact
+                    FROM imp_costos_import co
+                    INNER JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+                    WHERE co.ide_cpcfa IS NOT NULL AND co.ide_imcaim = $1
+                ) raw
+            ) op ON TRUE
+            WHERE c.ide_imcaim = $1
+        `, [ide_imcaim]);
+        return Number(result.rows[0]?.costos_operativos ?? 0);
+    }
+
+    async distribuirCostos(dtoIn: SaveDistribucionCostoDto & HeaderParamsDto) {
+        const costoOperativo = await this.calcularCostoOperativoTotal(dtoIn.ide_imcaim);
 
         const qDet = new SelectQuery(`
             SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet
@@ -774,41 +786,7 @@ export class ImportacionesSaveService extends BaseService {
      * coincida con el total operativo: costo_total - sum(precio_unitario * cantidad).
      */
     async saveCostoOperativo(dtoIn: SaveCostoOperativoDto & HeaderParamsDto) {
-        const qTot = new SelectQuery(`
-            SELECT
-                COALESCE((
-                    SELECT SUM(g.valor_aduana_imga)
-                    FROM imp_gestion_aduana g
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_valor_aduana,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
-                COALESCE((
-                    SELECT SUM(l.total_impuestos_liq_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_total_impuestos,
-                COALESCE((
-                    SELECT SUM(l.iva_liquidacion_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_iva,
-                COALESCE((
-                    SELECT c.total_factura_imcaim
-                    FROM imp_cab_importa c
-                    WHERE c.ide_imcaim = $1
-                ), 0) AS total_factura_imcaim
-            FROM imp_costos_import co
-            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
-            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
-        `);
-        qTot.addIntParam(1, dtoIn.ide_imcaim);
-        const row = await this.dataSource.createSingleQuery(qTot);
-        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
-            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
-            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
+        const costoOperativo = await this.calcularCostoOperativoTotal(dtoIn.ide_imcaim);
 
         const sumaItems = dtoIn.items.reduce((sum, i) => sum + i.costo_operativo_total_imdet, 0);
         const tolerancia = 0.01;
@@ -979,44 +957,7 @@ export class ImportacionesSaveService extends BaseService {
      * - Actualiza imp_rentabilidad con las nuevas métricas
      */
     async recalcularCostos(ide_imcaim: number, login: string) {
-        const qTot = new SelectQuery(`
-            SELECT
-                COALESCE((
-                    SELECT SUM(g.valor_aduana_imga)
-                    FROM imp_gestion_aduana g
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_valor_aduana,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
-                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
-                COALESCE((
-                    SELECT SUM(l.total_impuestos_liq_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_total_impuestos,
-                COALESCE((
-                    SELECT SUM(l.iva_liquidacion_imliq)
-                    FROM imp_liquidacion_aduana l
-                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
-                    WHERE g.ide_imcaim = $1
-                ), 0) AS suma_iva,
-                COALESCE((
-                    SELECT c.total_factura_imcaim
-                    FROM imp_cab_importa c
-                    WHERE c.ide_imcaim = $1
-                ), 0) AS total_factura_imcaim
-            FROM imp_costos_import co
-            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
-            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
-        `);
-        qTot.addIntParam(1, ide_imcaim);
-        const row = await this.dataSource.createSingleQuery(qTot);
-        if (!row) {
-            return { message: 'ok', ide_imcaim, items: 0, costo_operativo: 0 };
-        }
-        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
-            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
-            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
+        const costoOperativo = await this.calcularCostoOperativoTotal(ide_imcaim);
 
         const qDet = new SelectQuery(`
             SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet,
