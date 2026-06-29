@@ -23,12 +23,13 @@ export class BotController {
   ) { }
 
   @Post('toggle')
-  @ApiOperation({ summary: 'Activar o desactivar el bot manualmente' })
+  @ApiOperation({ summary: 'Activar o desactivar el bot manualmente (si no se envía activar, alterna el estado actual)' })
   async toggle(@Body() dto: ToggleBotDto & HeaderParamsDto) {
-    await this.botConfig.toggleManual(dto.ideWhcue, dto.activar, dto.ideUsua, dto.observacion);
+    const activar = dto.activar ?? !(await this.botConfig.isBotActive(dto.ideWhcue));
+    await this.botConfig.toggleManual(dto.ideWhcue, activar, dto.ideUsua, dto.observacion);
     // La activación global solo cambia el estado del bot.
     // El bot responde únicamente a los mensajes NUEVOS que lleguen mientras está activo.
-    return { ok: true, activo: dto.activar };
+    return { ok: true, activo: activar };
   }
 
   @Get('status/:ideWhcue')

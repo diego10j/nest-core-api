@@ -6,8 +6,8 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { YcloudMetricsService } from '../ycloud/ycloud-metrics.service';
 
 import { BotConfigService } from './bot-config.service';
-import { BotService } from './bot.service';
 import { BotSessionService } from './bot-session.service';
+import { BotService } from './bot.service';
 
 @Injectable()
 export class BotScheduleService {
@@ -78,7 +78,7 @@ export class BotScheduleService {
           await this.botService.derivarAsesor(
             row.wa_id_whcha, row.phone_number_id_whcha,
             row.ide_whcha, row.ide_whcue, row.ide_empr,
-            `Parece que ya no estás disponible 🙂 No te preocupes, cuando quieras continuar escríbenos y con gusto te ayudamos.\n\n_Hasta pronto 👋_`,
+            `Tu sesión ha finalizado por inactividad ⏳\n\nTe estamos comunicando con uno de nuestros asesores comerciales para dar seguimiento a tu consulta 👤\n\n_En breve te atenderán_ 😊`,
             `Chat derivado a asesor por inactividad de ${ttl} min.`,
           );
           this.logger.log(`[Bot] Inactividad: chat=${row.ide_whcha} → ASESOR`);

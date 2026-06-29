@@ -5,7 +5,8 @@ export class ToggleBotDto {
   ideWhcue: number;
 
   @IsBoolean()
-  activar: boolean;
+  @IsOptional()
+  activar?: boolean;
 
   @IsString()
   @IsOptional()

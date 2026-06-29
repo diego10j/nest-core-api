@@ -755,11 +755,11 @@ export class ImportacionesSaveService extends BaseService {
 
             await this.dataSource.pool.query(
                 `UPDATE imp_det_importa SET
-                    costo_operativo_unitario_imdet = ROUND($2, 4),
-                    costo_operativo_total_imdet = ROUND($3, 4),
-                    costo_unitario_total_imdet = ROUND($4, 4),
-                    precio_unit_final_imdet = ROUND($4, 4),
-                    subtotal_final_imdet = ROUND($5, 4)
+                    costo_operativo_unitario_imdet = ROUND($2::numeric, 4),
+                    costo_operativo_total_imdet = ROUND($3::numeric, 4),
+                    costo_unitario_total_imdet = ROUND($4::numeric, 4),
+                    precio_unit_final_imdet = ROUND($4::numeric, 4),
+                    subtotal_final_imdet = ROUND($5::numeric, 4)
                  WHERE ide_imdet = $1`,
                 [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, subtotalFinal],
             );
@@ -835,11 +835,11 @@ export class ImportacionesSaveService extends BaseService {
 
             await this.dataSource.pool.query(
                 `UPDATE imp_det_importa SET
-                    costo_operativo_unitario_imdet = ROUND($2, 4),
-                    costo_operativo_total_imdet = ROUND($3, 4),
-                    costo_unitario_total_imdet = ROUND($4, 4),
-                    precio_unit_final_imdet = ROUND($4, 4),
-                    subtotal_final_imdet = ROUND($5, 4)
+                    costo_operativo_unitario_imdet = ROUND($2::numeric, 4),
+                    costo_operativo_total_imdet = ROUND($3::numeric, 4),
+                    costo_unitario_total_imdet = ROUND($4::numeric, 4),
+                    precio_unit_final_imdet = ROUND($4::numeric, 4),
+                    subtotal_final_imdet = ROUND($5::numeric, 4)
                  WHERE ide_imdet = $1`,
                 [item.ide_imdet, costoOperativoUnitario, item.costo_operativo_total_imdet, costoUnitarioTotal, subtotalFinal],
             );
@@ -1056,24 +1056,24 @@ export class ImportacionesSaveService extends BaseService {
             let utilidad = 0;
             let margen = 0;
 
-            if (precioVenta > 0) {
-                pctUtilidad = ((precioVenta / costoUnitarioTotal) - 1) * 100;
-                utilidad = (precioVenta - costoUnitarioTotal) * cantidad;
-                margen = ((precioVenta - costoUnitarioTotal) / precioVenta) * 100;
+            if (precioVenta > 0 && costoUnitarioTotal > 0) {
+                pctUtilidad = Math.round((((precioVenta / costoUnitarioTotal) - 1) * 100) * 100) / 100;
+                utilidad = Math.round(((precioVenta - costoUnitarioTotal) * cantidad) * 100) / 100;
+                margen = Math.round((((precioVenta - costoUnitarioTotal) / precioVenta) * 100) * 100) / 100;
             }
 
             await this.dataSource.pool.query(
                 `UPDATE imp_det_importa SET
-                    costo_operativo_unitario_imdet = ROUND($2, 4),
-                    costo_operativo_total_imdet = ROUND($3, 4),
-                    costo_unitario_total_imdet = ROUND($4, 4),
-                    precio_unit_final_imdet = ROUND($4, 4),
-                    subtotal_final_imdet = ROUND($5, 4),
-                    porcentaje_utilidad_imdet = $6,
-                    utilidad_imdet = $7,
-                    margen_utilidad_imdet = $8
+                    costo_operativo_unitario_imdet = ROUND($2::numeric, 4),
+                    costo_operativo_total_imdet = ROUND($3::numeric, 4),
+                    costo_unitario_total_imdet = ROUND($4::numeric, 4),
+                    precio_unit_final_imdet = ROUND($4::numeric, 4),
+                    subtotal_final_imdet = ROUND($5::numeric, 4),
+                    porcentaje_utilidad_imdet = ROUND($6::numeric, 2),
+                    utilidad_imdet = ROUND($7::numeric, 4),
+                    margen_utilidad_imdet = ROUND($8::numeric, 2)
                  WHERE ide_imdet = $1`,
-                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, costoUnitarioTotal * cantidad, pctUtilidad, utilidad, margen],
+                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, Math.round(costoUnitarioTotal * cantidad * 10000) / 10000, pctUtilidad, utilidad, margen],
             );
 
             if (precioVenta > 0) {

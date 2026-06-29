@@ -32,7 +32,7 @@ import { GetProformaDto } from './dto/get-proforma.dto';
 import { ProformasDto } from './dto/proformas.dto';
 import { ResumenDiarioProformasDto } from './dto/resumen-diario-proformas.dto';
 import { CabProformaDto, DetaProformaDto, SaveProformaDto } from './dto/save-proforma.dto';
-import { SendProformaEmailDto , ArchivoAdjuntoDto } from './dto/send-proforma-email.dto';
+import { SendProformaEmailDto, ArchivoAdjuntoDto } from './dto/send-proforma-email.dto';
 
 const SOLICITUD = {
   tableName: 'cxc_cabece_proforma',
@@ -84,7 +84,7 @@ proformas_periodo AS MATERIALIZED (
   SELECT
     ide_cccpr, secuencial_cccpr, fecha_cccpr, solicitante_cccpr,
     correo_cccpr, ide_cctpr, ide_vgven, ide_usua,
-    total_cccpr, utilidad_cccpr, anulado_cccpr, enviado_cccpr
+    total_cccpr, utilidad_cccpr, anulado_cccpr, enviado_cccpr, fecha_ingre,hora_ingre
   FROM cxc_cabece_proforma
   WHERE fecha_cccpr BETWEEN $1 AND $2
     AND ide_empr = ${dtoIn.ideEmpr}
@@ -165,8 +165,9 @@ SELECT
     WHEN fv.total_cccfa = prof.total_cccpr THEN 'TOTALES_IGUALES'
     WHEN fv.total_cccfa > prof.total_cccpr THEN 'FACTURA_MAYOR'
     ELSE                                        'PROFORMA_MAYOR'
-  END                                                            AS estado_comparativo
-
+  END                                                            AS estado_comparativo,
+  prof.fecha_ingre,
+  prof.hora_ingre
 FROM proformas_periodo              prof
 LEFT JOIN sis_usuario              usua ON prof.ide_usua   = usua.ide_usua
 LEFT  JOIN cxc_tipo_proforma        tipo ON prof.ide_cctpr  = tipo.ide_cctpr
@@ -1114,7 +1115,7 @@ ORDER BY prof.secuencial_cccpr DESC
         {
           tipo: 'text',
           botones: [
-            { texto: 'Ver Cotización', accion: 'navigate', estilo: 'primary', url: `/proformas/${ideCccpr}` },
+            { texto: 'Ver Cotización', accion: 'navigate', estilo: 'primary', url: `/dashboard/proformas/${ideCccpr}/details` },
             { texto: 'Ignorar', accion: 'archive', estilo: 'default', url: '' },
           ],
         },

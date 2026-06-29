@@ -78,6 +78,20 @@ export class BotService implements OnModuleInit {
 
     if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
 
+    // Verificar que el chat no tenga historial con un agente humano
+    const tieneAgenteHumano = await this.dataSource.pool.query(
+      `SELECT 1 FROM wha_mensaje
+       WHERE ide_whcha = $1
+         AND direction_whmem = '1'
+         AND (es_bot_whmem IS NULL OR es_bot_whmem = FALSE)
+       LIMIT 1`,
+      [ideWhcha],
+    );
+    if (tieneAgenteHumano.rowCount > 0) {
+      this.logger.warn(`[Bot] Chat ${ideWhcha} tiene historial con agente humano — bot no responde`);
+      return;
+    }
+
     const botActivo = await this.botConfig.isBotActive(ideWhcue);
     if (!botActivo && !botActivoWhcha) { this.logger.warn(`[Bot] Bot global INACTIVO y chat sin override`); return; }
 
@@ -234,8 +248,25 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
-    const intencion = await this.botGpt.detectarIntencion(texto);
     const datos = sesion.datos_sesion as DatosSesion;
+
+    // Detección por IDs de botón (respuestas exactas de WhatsApp) — sin GPT en este estado
+    const t = texto.trim();
+    const tUpper = t.toUpperCase();
+    let intencion: string | null = null;
+
+    if (tUpper === 'SI' || tUpper === 'NO') {
+      intencion = tUpper === 'SI' ? 'CONFIRMAR' : 'CANCELAR';
+    } else if (REGEX_SALIR.test(t)) {
+      intencion = 'SALIR';
+    } else if (PALABRAS_ASESOR.test(t)) {
+      intencion = 'ASESOR';
+    }
+
+    // Solo usar GPT si no se detectó por botón/regex
+    if (!intencion) {
+      intencion = await this.botGpt.detectarIntencion(texto);
+    }
 
     if (intencion === 'CANCELAR' || intencion === 'ASESOR') {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
@@ -249,7 +280,6 @@ export class BotService implements OnModuleInit {
 
       if (tipoConsulta === 'PRODUCTO') {
         if (datos.cliente?.nombres && datos.memoria_cargada) {
-          // Tiene memoria → saltar pregunta de cliente
           await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
             { ...datos, productos: [] });
           await this.sendText(ideEmpr, waId,
@@ -281,10 +311,13 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.responderFallback(
-      ideEmpr, waId, texto,
-      'El cliente acaba de recibir el saludo inicial del bot y debe elegir entre continuar con el asistente o hablar con un asesor.',
-      config, nombreBot, nombreEmpresa,
+    // Cualquier otra respuesta → re-enviar los botones de elección
+    await this.sendButtons(ideEmpr, waId,
+      `Para poder ayudarte, primero selecciona una opción por favor 😊`,
+      [
+        { id: 'SI', title: '✅ Continuar con bot' },
+        { id: 'NO', title: '👤 Hablar con asesor' },
+      ],
     );
   }
 
@@ -585,7 +618,15 @@ export class BotService implements OnModuleInit {
     if (!resultados.length) {
       // GPT analiza qué quiso decir el cliente (info, reformulación, irrelevante)
       const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
-      const analisis = await this.botGpt.analizarProductoNoEncontrado(textoOriginal, nombresYa, config?.nombre_bot, nombreEmpresa, config?.prompt_sistema);
+      const clienteYaRegistrado = !!(datos.cliente?.nombres && datos.cliente?.correo);
+      const promptConContexto = (config?.prompt_sistema || '')
+        + (clienteYaRegistrado
+          ? `\n\nYa tienes los datos del cliente: ${datos.cliente?.nombres}, ${datos.cliente?.correo}. NO vuelvas a pedir nombre, correo ni dirección.`
+          : '');
+      const analisis = await this.botGpt.analizarProductoNoEncontrado(
+        textoOriginal, nombresYa, config?.nombre_bot, nombreEmpresa,
+        promptConContexto || undefined,
+      );
       await this.sendText(ideEmpr, waId, analisis.respuesta);
       return;
     }
@@ -1231,9 +1272,10 @@ export class BotService implements OnModuleInit {
 - SIEMPRE usa emojis relevantes (📍 🕒 🚚 📦 🌐 ✅ 😊).
 - Usa *negrita de WhatsApp* (*texto*) para datos clave.
 - Usa _cursiva de WhatsApp_ (_texto_) para referencias secundarias.
-- Empieza con un encabezado cálido antes de dar la información.
+- Empieza con un encabezado cálido SOLO en el primer mensaje. En mensajes siguientes NO repitas el saludo ni te presentes de nuevo.
 - Responde en español. Si no tienes información, invita al cliente a escribir SALIR para hablar con un asesor.
-- Nunca inventas precios ni información que no tengas.`;
+- NUNCA inventas precios ni información que no tengas.
+- NUNCA asumas que el cliente está insatisfecho o molesto a menos que lo diga explícitamente. No te disculpes sin motivo.`;
   }
 
   /** Procesa mensajes pendientes de un chat específico al liberarlo */
@@ -1352,8 +1394,7 @@ export class BotService implements OnModuleInit {
     if (mensajeCliente !== null) {
       await this.sendText(ideEmpr, waId,
         mensajeCliente ||
-        `Enseguida te comunico con uno de nuestros asesores comerciales 👤\n\n` +
-        `_Si nos escribes fuera de nuestro horario, te respondemos al siguiente día hábil 😊_`,
+        `Enseguida te comunico con uno de nuestros asesores comerciales 👤\nEspera un momento por favor 😊`,
       );
     }
 
