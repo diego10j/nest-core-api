@@ -1085,7 +1085,7 @@ export class ImportacionesSaveService extends BaseService {
                     costo_unitario_total_imdet = ROUND($4::numeric, 4),
                     precio_unit_final_imdet = ROUND($4::numeric, 4),
                     subtotal_final_imdet = ROUND($5::numeric, 4),
-                    precio_venta_imdet = CASE WHEN $9 > 0 THEN ROUND($9::numeric, 4) ELSE precio_venta_imdet END,
+                    precio_venta_imdet = CASE WHEN $9::numeric > 0 THEN ROUND($9::numeric, 4) ELSE precio_venta_imdet END,
                     porcentaje_utilidad_imdet = $6::numeric(5,2),
                     utilidad_imdet = $7::numeric(12,4),
                     margen_utilidad_imdet = $8::numeric(5,2)
