@@ -682,11 +682,11 @@ export class ImportacionesSaveService extends BaseService {
     // ========================================================================
 
     /**
-     * Distribuye proporcionalmente el costo_total de la importación entre todos
-     * los items del detalle, usando el subtotal FOB (precio_unitario * cantidad)
-     * como base de proporción.
-     * costo_total = suma_valor_aduana + otros_costos + bases_facturas + suma_total_impuestos.
-     * sum(costo_unitario_total_imdet * cantidad_imdet) == costo_total.
+     * Distribuye proporcionalmente el costo_total (sin IVA de liquidaciones) entre
+     * todos los items del detalle, usando el subtotal FOB como base de proporción.
+     * costo_total = suma_valor_aduana + otros_costos + bases_facturas
+     *             + (suma_total_impuestos - suma_iva).
+     * El IVA de liquidaciones se excluye por ser crédito tributario recuperable.
      */
     async distribuirCostos(dtoIn: SaveDistribucionCostoDto & HeaderParamsDto) {
         const qTot = new SelectQuery(`
@@ -703,14 +703,27 @@ export class ImportacionesSaveService extends BaseService {
                     FROM imp_liquidacion_aduana l
                     INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
                     WHERE g.ide_imcaim = $1
-                ), 0) AS suma_total_impuestos
+                ), 0) AS suma_total_impuestos,
+                COALESCE((
+                    SELECT SUM(l.iva_liquidacion_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_iva,
+                COALESCE((
+                    SELECT c.total_factura_imcaim
+                    FROM imp_cab_importa c
+                    WHERE c.ide_imcaim = $1
+                ), 0) AS total_factura_imcaim
             FROM imp_costos_import co
             LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
             WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
         `);
         qTot.addIntParam(1, dtoIn.ide_imcaim);
         const row = await this.dataSource.createSingleQuery(qTot);
-        const costoTotal = Number(row.suma_valor_aduana ?? 0) + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0) + Number(row.suma_total_impuestos ?? 0);
+        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
+            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
+            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
 
         const qDet = new SelectQuery(`
             SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet
@@ -735,10 +748,9 @@ export class ImportacionesSaveService extends BaseService {
             const precioUnitario = Number(det.precio_unitario_imdet ?? 0);
             const fobItem = precioUnitario * cantidad;
             const proporcion = totalFob > 0 ? fobItem / totalFob : 1 / detalles.length;
-            const costoTotalDistribuido = costoTotal * proporcion;
-            const costoUnitarioTotal = costoTotalDistribuido / cantidad;
-            const costoOperativoTotal = costoTotalDistribuido - fobItem;
+            const costoOperativoTotal = costoOperativo * proporcion;
             const costoOperativoUnitario = costoOperativoTotal / cantidad;
+            const costoUnitarioTotal = precioUnitario + costoOperativoUnitario;
             const subtotalFinal = costoUnitarioTotal * cantidad;
 
             await this.dataSource.pool.query(
@@ -753,7 +765,7 @@ export class ImportacionesSaveService extends BaseService {
             );
         }
 
-        return { message: 'ok', ide_imcaim: dtoIn.ide_imcaim, items: detalles.length, costo_total: costoTotal };
+        return { message: 'ok', ide_imcaim: dtoIn.ide_imcaim, items: detalles.length, costo_operativo: costoOperativo };
     }
 
     /**
@@ -776,29 +788,33 @@ export class ImportacionesSaveService extends BaseService {
                     FROM imp_liquidacion_aduana l
                     INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
                     WHERE g.ide_imcaim = $1
-                ), 0) AS suma_total_impuestos
+                ), 0) AS suma_total_impuestos,
+                COALESCE((
+                    SELECT SUM(l.iva_liquidacion_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_iva,
+                COALESCE((
+                    SELECT c.total_factura_imcaim
+                    FROM imp_cab_importa c
+                    WHERE c.ide_imcaim = $1
+                ), 0) AS total_factura_imcaim
             FROM imp_costos_import co
             LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
             WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
         `);
         qTot.addIntParam(1, dtoIn.ide_imcaim);
         const row = await this.dataSource.createSingleQuery(qTot);
-        const costoTotal = Number(row.suma_valor_aduana ?? 0) + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0) + Number(row.suma_total_impuestos ?? 0);
-
-        const qFob = new SelectQuery(`
-            SELECT COALESCE(SUM(precio_unitario_imdet * cantidad_imdet), 0) AS total_fob
-            FROM imp_det_importa
-            WHERE ide_imcaim = $1
-        `);
-        qFob.addIntParam(1, dtoIn.ide_imcaim);
-        const { total_fob } = await this.dataSource.createSingleQuery(qFob);
-        const totalOperativoEsperado = costoTotal - Number(total_fob ?? 0);
+        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
+            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
+            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
 
         const sumaItems = dtoIn.items.reduce((sum, i) => sum + i.costo_operativo_total_imdet, 0);
         const tolerancia = 0.01;
-        if (Math.abs(sumaItems - totalOperativoEsperado) > tolerancia) {
+        if (Math.abs(sumaItems - costoOperativo) > tolerancia) {
             throw new BadRequestException(
-                `La suma de costos operativos de los items (${sumaItems}) no coincide con el total operativo de la importación (${totalOperativoEsperado})`,
+                `La suma de costos operativos de los items (${sumaItems}) no coincide con el costo operativo de la importación (${costoOperativo})`,
             );
         }
 
@@ -953,6 +969,179 @@ export class ImportacionesSaveService extends BaseService {
         }
 
         return { message: 'ok', detalles_actualizados: detalles.length };
+    }
+
+    /**
+     * Recalcula la distribución de costos operativos usando el nuevo costo_total
+     * (sin IVA de liquidaciones) y re-evalúa la rentabilidad si ya existe precio_venta.
+     * - Re-distribuye costo_total proporcionalmente por FOB
+     * - Si el item tiene precio_venta_imdet > 0, recalcula %utilidad, utilidad y margen
+     * - Actualiza imp_rentabilidad con las nuevas métricas
+     */
+    async recalcularCostos(ide_imcaim: number, login: string) {
+        const qTot = new SelectQuery(`
+            SELECT
+                COALESCE((
+                    SELECT SUM(g.valor_aduana_imga)
+                    FROM imp_gestion_aduana g
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_valor_aduana,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NULL THEN co.monto_imcoim ELSE 0 END), 0) AS otros_costos,
+                COALESCE(SUM(CASE WHEN co.ide_cpcfa IS NOT NULL THEN COALESCE(f.base_grabada_cpcfa, 0) + COALESCE(f.base_tarifa0_cpcfa, 0) ELSE 0 END), 0) AS bases_facturas,
+                COALESCE((
+                    SELECT SUM(l.total_impuestos_liq_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_total_impuestos,
+                COALESCE((
+                    SELECT SUM(l.iva_liquidacion_imliq)
+                    FROM imp_liquidacion_aduana l
+                    INNER JOIN imp_gestion_aduana g ON l.ide_imga = g.ide_imga
+                    WHERE g.ide_imcaim = $1
+                ), 0) AS suma_iva,
+                COALESCE((
+                    SELECT c.total_factura_imcaim
+                    FROM imp_cab_importa c
+                    WHERE c.ide_imcaim = $1
+                ), 0) AS total_factura_imcaim
+            FROM imp_costos_import co
+            LEFT JOIN cxp_cabece_factur f ON co.ide_cpcfa = f.ide_cpcfa
+            WHERE co.ide_imcaim = $1 AND co.activo_imcoim = true
+        `);
+        qTot.addIntParam(1, ide_imcaim);
+        const row = await this.dataSource.createSingleQuery(qTot);
+        const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
+            + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
+            + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
+
+        const qDet = new SelectQuery(`
+            SELECT ide_imdet, cantidad_imdet, precio_unitario_imdet,
+                   precio_venta_imdet, porcentaje_utilidad_imdet
+            FROM imp_det_importa
+            WHERE ide_imcaim = $1
+            ORDER BY ide_imdet
+        `);
+        qDet.addIntParam(1, ide_imcaim);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        if (!detalles.length) {
+            return { message: 'ok', ide_imcaim, items: 0 };
+        }
+
+        const totalFob = detalles.reduce(
+            (sum, d) => sum + Number(d.precio_unitario_imdet ?? 0) * Number(d.cantidad_imdet ?? 0),
+            0,
+        );
+
+        let sumaUtilidad = 0;
+        let sumaPrecioVenta = 0;
+        let sumaCostoTotal = 0;
+        let sumaPctUtilidadPonderado = 0;
+        let sumaPesoPonderado = 0;
+        let sumaMargenPonderado = 0;
+
+        for (const det of detalles) {
+            const cantidad = Math.max(Number(det.cantidad_imdet) || 1, 0.0001);
+            const precioUnitario = Number(det.precio_unitario_imdet ?? 0);
+            const fobItem = precioUnitario * cantidad;
+            const proporcion = totalFob > 0 ? fobItem / totalFob : 1 / detalles.length;
+            const costoOperativoTotal = costoOperativo * proporcion;
+            const costoOperativoUnitario = costoOperativoTotal / cantidad;
+            const costoUnitarioTotal = precioUnitario + costoOperativoUnitario;
+
+            const dbPrecioVenta = Number(det.precio_venta_imdet ?? 0);
+            let pctUtilidad = Number(det.porcentaje_utilidad_imdet ?? 0);
+            let precioVenta = dbPrecioVenta;
+            let utilidad = 0;
+            let margen = 0;
+
+            if (precioVenta > 0) {
+                pctUtilidad = ((precioVenta / costoUnitarioTotal) - 1) * 100;
+                utilidad = (precioVenta - costoUnitarioTotal) * cantidad;
+                margen = ((precioVenta - costoUnitarioTotal) / precioVenta) * 100;
+            }
+
+            await this.dataSource.pool.query(
+                `UPDATE imp_det_importa SET
+                    costo_operativo_unitario_imdet = ROUND($2, 4),
+                    costo_operativo_total_imdet = ROUND($3, 4),
+                    costo_unitario_total_imdet = ROUND($4, 4),
+                    precio_unit_final_imdet = ROUND($4, 4),
+                    subtotal_final_imdet = ROUND($5, 4),
+                    porcentaje_utilidad_imdet = $6,
+                    utilidad_imdet = $7,
+                    margen_utilidad_imdet = $8
+                 WHERE ide_imdet = $1`,
+                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, costoUnitarioTotal * cantidad, pctUtilidad, utilidad, margen],
+            );
+
+            if (precioVenta > 0) {
+                const peso = precioVenta * cantidad;
+                sumaUtilidad += utilidad;
+                sumaPrecioVenta += peso;
+                sumaCostoTotal += costoUnitarioTotal * cantidad;
+                sumaPctUtilidadPonderado += pctUtilidad * peso;
+                sumaPesoPonderado += peso;
+                sumaMargenPonderado += margen * peso;
+            }
+        }
+
+        const totalUtilidad = sumaUtilidad;
+        const costoTotalImportacion = sumaCostoTotal;
+        const precioVentaTotal = sumaPrecioVenta;
+        const gananciaBruta = totalUtilidad;
+        const totalInversion = costoTotalImportacion;
+        const pctUtilidadGlobal = sumaPesoPonderado > 0 ? sumaPctUtilidadPonderado / sumaPesoPonderado : 0;
+        const margenGlobal = sumaPesoPonderado > 0 ? sumaMargenPonderado / sumaPesoPonderado : 0;
+        const roiPorcentaje = totalInversion > 0 ? (totalUtilidad / totalInversion) * 100 : 0;
+
+        const qExist = new SelectQuery(`SELECT ide_imren FROM imp_rentabilidad WHERE ide_imcaim = $1`);
+        qExist.addIntParam(1, ide_imcaim);
+        const exist = await this.dataSource.createSingleQuery(qExist);
+
+        if (exist) {
+            await this.dataSource.pool.query(
+                `UPDATE imp_rentabilidad SET
+                    porcentaje_utilidad_global = $2,
+                    margen_utilidad_global = $3,
+                    ganancia_bruta_imren = $4,
+                    costo_total_importacion_imren = $5,
+                    precio_venta_total_imren = $6,
+                    total_utilidad_imren = $7,
+                    total_inversion_imren = $8,
+                    roi_porcentaje_imren = $9
+                 WHERE ide_imcaim = $1`,
+                [
+                    ide_imcaim,
+                    Math.round(pctUtilidadGlobal * 100) / 100,
+                    Math.round(margenGlobal * 100) / 100,
+                    Math.round(gananciaBruta * 100) / 100,
+                    Math.round(costoTotalImportacion * 100) / 100,
+                    Math.round(precioVentaTotal * 100) / 100,
+                    Math.round(totalUtilidad * 100) / 100,
+                    Math.round(totalInversion * 100) / 100,
+                    Math.round(roiPorcentaje * 100) / 100,
+                ],
+            );
+        }
+
+        return {
+            message: 'ok',
+            ide_imcaim,
+            items: detalles.length,
+            costo_operativo: costoOperativo,
+            totales: exist ? {
+                costo_total_importacion: Math.round(costoTotalImportacion * 100) / 100,
+                precio_venta_total: Math.round(precioVentaTotal * 100) / 100,
+                ganancia_bruta: Math.round(gananciaBruta * 100) / 100,
+                total_utilidad: Math.round(totalUtilidad * 100) / 100,
+                total_inversion: Math.round(totalInversion * 100) / 100,
+                porcentaje_utilidad_global: Math.round(pctUtilidadGlobal * 100) / 100,
+                margen_utilidad_global: Math.round(margenGlobal * 100) / 100,
+                roi_porcentaje: Math.round(roiPorcentaje * 100) / 100,
+            } : null,
+        };
     }
 
     /**
