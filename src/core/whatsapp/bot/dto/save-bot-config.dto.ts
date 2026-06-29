@@ -27,7 +27,19 @@ export class SaveBotConfigDto {
 
   @IsString()
   @IsOptional()
-  horario_atencion?: string;
+  resp_ubicacion?: string;
+
+  @IsString()
+  @IsOptional()
+  resp_horario?: string;
+
+  @IsString()
+  @IsOptional()
+  resp_envio?: string;
+
+  @IsString()
+  @IsOptional()
+  resp_catalogo?: string;
 
   @IsNumber()
   @IsOptional()

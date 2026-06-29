@@ -414,10 +414,27 @@ export class BotService implements OnModuleInit {
           es_cliente_registrado: true,
         },
       };
-      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
-      );
+      if (nuevosDatos.producto_pendiente) {
+        const prod = nuevosDatos.producto_pendiente;
+        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n` +
+          `Encontré: *${prod.nombre}* ✅\n\n` +
+          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
+        );
+      } else if (nuevosDatos.productos?.length > 0) {
+        // Tenía productos acumulados antes de identificarse → ir directo a confirmación
+        await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
+        await this.sendButtons(ideEmpr, waId,
+          `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
+          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+        );
+      } else {
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+        );
+      }
       return;
     }
 
@@ -468,10 +485,27 @@ export class BotService implements OnModuleInit {
         productos: datos.productos ?? [],
         cliente: { ...cliente, correo, pendiente_campo: undefined },
       };
-      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
-      );
+      if (nuevosDatos.producto_pendiente) {
+        const prod = nuevosDatos.producto_pendiente;
+        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n` +
+          `Encontré: *${prod.nombre}* ✅\n\n` +
+          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
+        );
+      } else if (nuevosDatos.productos?.length > 0) {
+        // Tenía productos acumulados antes de registrarse → ir directo a confirmación
+        await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
+        await this.sendButtons(ideEmpr, waId,
+          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
+          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+        );
+      } else {
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+        );
+      }
       return;
     }
   }
@@ -487,6 +521,15 @@ export class BotService implements OnModuleInit {
       if (!datos.productos?.length) {
         await this.sendText(ideEmpr, waId,
           `Aún no has agregado ningún producto 😊\nDime el nombre del producto que necesitas cotizar, o escribe *SALIR* para hablar con un asesor.`,
+        );
+        return;
+      }
+      // Si no tenemos datos del cliente, pedirlos antes de confirmar
+      if (!datos.cliente?.nombres) {
+        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+        await this.sendButtons(ideEmpr, waId,
+          `${this.buildResumenProductos(datos.productos)}\n\nPara preparar tu cotización, necesito unos datos rápidos 😊\n\n${MSG_ES_CLIENTE_BODY}`,
+          BTN_ES_CLIENTE,
         );
         return;
       }
@@ -1103,44 +1146,25 @@ export class BotService implements OnModuleInit {
     };
 
     const prompt = config?.prompt_sistema || '';
-    const template = this.extraerSeccionPrompt(prompt, seccionKey[tipo]);
     const nombreBot = config?.nombre_bot || 'Asistente';
 
-    let respuesta: string;
+    // Columnas dedicadas en DB — fuente de verdad, sin parseo de texto
+    const colMap: Record<string, string | null> = {
+      UBICACION: config?.resp_ubicacion ?? null,
+      HORARIO:   config?.resp_horario   ?? null,
+      ENVIO:     config?.resp_envio     ?? null,
+      CATALOGO:  config?.resp_catalogo  ?? null,
+    };
+    const template = colMap[tipo] ?? null;
 
-    // Para UBICACION: si el cliente pregunta por sucursal/ciudad específica → GPT personaliza
-    const esPreguntaContextual = tipo === 'UBICACION' && textoCliente &&
-      /SUCURSAL|SEDE|TIENDA|CUENCA|LOJA|MANTA|AMBATO|RIOBAMBA|IBARRA|MACHALA|OTRA CIUDAD|ALGUNA CIUDAD/i.test(textoCliente);
-
-    if (esPreguntaContextual && template) {
-      const infoUbicacion = template.replace(/{BOT_NOMBRE}/g, nombreBot).replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
-      const promptBase = (prompt || this.getPromptSistema(nombreBot, nombreEmpresa))
-        .replace(/{BOT_NOMBRE}/g, nombreBot)
-        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
-      respuesta = await this.botGpt.generateResponse(
-        promptBase, [], textoCliente,
-        `Información de nuestra ubicación:\n${infoUbicacion}\n\n` +
-        `El cliente pregunta específicamente sobre presencia en otra ciudad. ` +
-        `Responde indicando que solo contamos con la ubicación indicada, ` +
-        `y que hacemos envíos a nivel nacional si necesitan productos. Usa emojis y tono cálido.`,
-      );
-    } else if (template) {
-      respuesta = template
-        .replace(/{BOT_NOMBRE}/g, nombreBot)
-        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
-    } else {
-      // Fallback: GPT genera la respuesta con el prompt completo
-      const preguntas: Record<string, string> = {
-        UBICACION: textoCliente || 'El cliente pregunta cómo llegar. Responde con emojis, *negrita* y encabezado cálido.',
-        HORARIO:   'El cliente pregunta los horarios. Responde con emojis, *negrita* y encabezado cálido.',
-        ENVIO:     'El cliente pregunta sobre envíos y costos. Responde con emojis, *negrita* y encabezado cálido.',
-        CATALOGO:  'El cliente quiere ver el catálogo. Responde con emojis, *negrita* y encabezado cálido.',
-      };
-      const promptBase = (prompt || this.getPromptSistema(nombreBot, nombreEmpresa))
-        .replace(/{BOT_NOMBRE}/g, nombreBot)
-        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
-      respuesta = await this.botGpt.generateResponse(promptBase, [], preguntas[tipo]);
+    if (!template) {
+      this.logger.warn(`[responderInfo] tipo=${tipo} sin template configurado en resp_${tipo.toLowerCase()} — omitiendo respuesta`);
+      return;
     }
+
+    const respuesta = template
+      .replace(/{BOT_NOMBRE}/g, nombreBot)
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
 
     await this.sendText(ideEmpr, waId, respuesta);
 
@@ -1156,31 +1180,40 @@ export class BotService implements OnModuleInit {
   }
 
   /**
-   * Extrae el contenido de una sección marcada como:
-   *   === NOMBRE_SECCION ===
-   *   contenido...
-   *   === SIGUIENTE_SECCION === (o fin del texto)
-   *
-   * Usa regex para detectar el inicio de la siguiente sección con mayor precisión
-   * que un simple indexOf('\n==='), que fallaba con dobles saltos de línea.
+   * Parser línea a línea: extrae solo el contenido de la sección indicada.
+   * Detecta como marcador cualquier línea cuyo trim comience Y termine con ===,
+   * por lo que es robusto frente a: saltos \r\n, espacios extras, nombres con/sin _,
+   * o cualquier variación de formato que tenga el prompt en la DB.
    */
   private extraerSeccionPrompt(prompt: string, nombreSeccion: string): string | null {
-    const startMarker = `=== ${nombreSeccion} ===`;
-    const startIdx = prompt.indexOf(startMarker);
-    if (startIdx === -1) return null;
+    const norm = prompt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = norm.split('\n');
 
-    const contentFrom = startIdx + startMarker.length;
+    let inSection = false;
+    const content: string[] = [];
 
-    // Encuentra el próximo encabezado de sección: \n=== NOMBRE === en cualquier línea
-    const nextSectionRx = /\n=== [A-Z_]+ ===/g;
-    nextSectionRx.lastIndex = contentFrom;
-    const next = nextSectionRx.exec(prompt);
+    for (const line of lines) {
+      const trimmed = line.trim();
 
-    const raw = next
-      ? prompt.slice(contentFrom, next.index)
-      : prompt.slice(contentFrom);
+      // Cualquier línea que empiece Y termine con === es un marcador de sección
+      if (trimmed.startsWith('===') && trimmed.endsWith('===') && trimmed.length > 6) {
+        if (inSection) break; // siguiente sección → detenerse
 
-    return raw.trim() || null;
+        // Extraer el nombre quitando los === y espacios/tabs de los extremos
+        const markerName = trimmed.replace(/^===[ \t]*/, '').replace(/[ \t]*===[ \t]*$/, '').trim();
+
+        // Coincidencia exacta o sin guiones (por si DB usa RESPUESTAHORARIO en vez de RESPUESTA_HORARIO)
+        if (markerName === nombreSeccion || markerName.replace(/_/g, '') === nombreSeccion.replace(/_/g, '')) {
+          inSection = true;
+        }
+        continue;
+      }
+
+      if (inSection) content.push(line);
+    }
+
+    if (!inSection) return null;
+    return content.join('\n').trim() || null;
   }
 
   private displayNombreProducto(prod: { nombre: string; otro_nombre?: string; matched_by_otro_nombre?: boolean }): string {
@@ -1325,13 +1358,10 @@ export class BotService implements OnModuleInit {
     );
 
     if (mensajeCliente !== null) {
-      const config = await this.botConfig.getConfig(ideWhcue);
-      const horario = config?.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00';
       await this.sendText(ideEmpr, waId,
         mensajeCliente ||
         `Enseguida te comunico con uno de nuestros asesores comerciales 👤\n\n` +
-        `*Horario de atención:* ${horario}\n\n` +
-        `_Si nos escribes fuera de este horario, te respondemos al siguiente día hábil 😊_`,
+        `_Si nos escribes fuera de nuestro horario, te respondemos al siguiente día hábil 😊_`,
       );
     }
 
@@ -1373,6 +1403,222 @@ export class BotService implements OnModuleInit {
       `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
+  }
+
+  /**
+   * Al liberar un chat de vuelta al bot, lee los últimos mensajes del cliente,
+   * analiza el contexto con GPT y envía una respuesta inteligente que retoma
+   * la conversación donde quedó — sin mencionar que hubo un asesor.
+   * Deja la sesión en ATENCION_LIBRE para responder mensajes siguientes normalmente.
+   */
+  async iniciarConContextoChat(ideWhcha: number): Promise<void> {
+    try {
+      // 1. Obtener datos del chat y la cuenta
+      const chatRow = await this.dataSource.pool.query<{
+        wa_id_whcha: string;
+        phone_number_id_whcha: string;
+        ide_whcue: number;
+        ide_empr: number;
+      }>(
+        `SELECT c.wa_id_whcha, c.phone_number_id_whcha, cu.ide_whcue, cu.ide_empr
+         FROM wha_chat c
+         INNER JOIN wha_cuenta cu
+           ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
+           AND cu.activo_whcue = TRUE
+         WHERE c.ide_whcha = $1 LIMIT 1`,
+        [ideWhcha],
+      );
+      if (!chatRow.rowCount) return;
+      const { wa_id_whcha: waId, phone_number_id_whcha, ide_whcue: ideWhcue, ide_empr: ideEmpr } = chatRow.rows[0];
+
+      // 2. Verificar ventana de 24h antes de intentar enviar
+      const windowCheck = await this.ycloudWindowService.canSendFreeMessage(phone_number_id_whcha, waId);
+      if (!windowCheck.allowed) {
+        this.logger.log(`[Bot] iniciarConContextoChat: chat ${ideWhcha} fuera de ventana 24h — sin respuesta`);
+        return;
+      }
+
+      // 3. Obtener últimos mensajes de texto del chat (más recientes primero, luego invertir)
+      const msgResult = await this.dataSource.pool.query<{
+        body_whmem: string;
+        direction_whmem: string;
+      }>(
+        `SELECT body_whmem, direction_whmem
+         FROM wha_mensaje
+         WHERE ide_whcha = $1
+           AND content_type_whmem = 'text'
+           AND body_whmem IS NOT NULL
+           AND TRIM(body_whmem) <> ''
+         ORDER BY ide_whmem DESC
+         LIMIT 15`,
+        [ideWhcha],
+      );
+      if (!msgResult.rowCount) return;
+
+      const msgs = msgResult.rows.reverse(); // orden cronológico: más antiguo primero
+
+      // 4. Encontrar el último mensaje del cliente (direction_whmem = '0' → inbound)
+      let lastClientIdx = -1;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (String(msgs[i].direction_whmem) === '0') { lastClientIdx = i; break; }
+      }
+      if (lastClientIdx === -1) return; // no hay mensajes del cliente
+
+      const lastClientMsg = msgs[lastClientIdx].body_whmem;
+
+      // 5. Historial previo al último mensaje del cliente → contexto para GPT
+      const historial: { role: 'user' | 'assistant'; content: string }[] = msgs
+        .slice(0, lastClientIdx)
+        .map((m) => ({
+          role: (String(m.direction_whmem) === '0' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.body_whmem,
+        }));
+
+      // 6. Configuración del bot
+      const config = await this.botConfig.getConfig(ideWhcue);
+      const nombreBot = config?.nombre_bot || 'QuimIA';
+      const nombreEmpresa = config?.nombre_empresa || 'la empresa';
+
+      const promptBase = (config?.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
+        .replace(/{BOT_NOMBRE}/g, nombreBot)
+        .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+
+      // 7. Clasificar el último mensaje para dar respuesta inteligente
+      const tipoConsulta = await this.botGpt.clasificarConsulta(lastClientMsg);
+
+      // 7a. Preguntas de info: responder con template/GPT y liberar en ATENCION_LIBRE
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
+        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, lastClientMsg);
+        const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+        if ([BotState.INICIO, BotState.ESPERANDO_CONFIRMACION].includes(sesion.estado as BotState)) {
+          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, { ...sesion.datos_sesion, productos: [] });
+        }
+        this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — info ${tipoConsulta}`);
+        return;
+      }
+
+      // 7b. Pregunta de producto: buscar en catálogo y usar la unidad real (siglas_unidad)
+      if (tipoConsulta === 'PRODUCTO') {
+        const extracted = await this.botGpt.extractProductoCantidad(lastClientMsg).catch(() => null);
+        const textoBase = extracted?.producto || lastClientMsg;
+        const nombreBuscado = textoBase
+          .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|galon[s]?|gal[s]?)\b/gi, '')
+          .replace(/\b\d+\b/g, '').replace(/\s{2,}/g, ' ').trim() || textoBase;
+
+        let resultados = await this.botTools.buscarProductos(nombreBuscado, ideEmpr);
+
+        if (!resultados.length) {
+          const palabras = nombreBuscado.split(/\s+/).filter(Boolean);
+          for (let n = palabras.length - 1; n >= 2; n--) {
+            resultados = await this.botTools.buscarProductos(palabras.slice(0, n).join(' '), ideEmpr);
+            if (resultados.length) break;
+          }
+        }
+        if (!resultados.length) {
+          resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado, ideEmpr);
+        }
+
+        if (resultados.length > 0) {
+          const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+          const memoria = await this.botSession.getMemoriaCliente(ideWhcha);
+          const tieneMemoria = !!(memoria?.cliente?.nombres);
+
+          if (resultados.length === 1) {
+            const prod = resultados[0];
+            const productoPendiente = {
+              ide_inarti: prod.ide_inarti,
+              nombre: prod.nombre,
+              siglas_unidad: prod.siglas_unidad,
+              nombre_unidad: prod.nombre_unidad,
+              en_catalogo: prod.en_catalogo,
+            };
+
+            if (tieneMemoria) {
+              // Cliente conocido → ir directamente a pedir cantidad con unidad real
+              const datosSesion: DatosSesion = {
+                productos: [],
+                producto_pendiente: productoPendiente,
+                cliente: { ...memoria.cliente } as ClienteSesion,
+                memoria_cargada: true,
+              };
+              await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, datosSesion);
+              await this.sendText(ideEmpr, waId,
+                `¡Hola de nuevo, *${memoria.cliente.nombres.split(' ')[0]}*! 😊\n\n` +
+                `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
+                `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_\n\n` +
+                `_Puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_`,
+              );
+            } else {
+              // Cliente desconocido → identificar primero; conservar producto_pendiente
+              const datosSesion: DatosSesion = { productos: [], producto_pendiente: productoPendiente };
+              await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datosSesion);
+              await this.sendButtons(ideEmpr, waId,
+                `Encontré *${this.displayNombreProducto(prod)}* en nuestro catálogo 🧪\n\n` +
+                `Para preparar tu cotización necesito unos datos. ${MSG_ES_CLIENTE_BODY}`,
+                BTN_ES_CLIENTE,
+              );
+            }
+            this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO encontrado (1), unidad=${prod.siglas_unidad}`);
+            return;
+          }
+
+          // Múltiples resultados → mostrar lista numerada
+          const opciones: OpcionProducto[] = resultados.slice(0, 5).map((p, i) => ({
+            numero: i + 1,
+            ide_inarti: p.ide_inarti,
+            nombre: p.nombre,
+            otro_nombre: p.otro_nombre,
+            matched_by_otro_nombre: p.matched_by_otro_nombre,
+            siglas_unidad: p.siglas_unidad,
+            nombre_unidad: p.nombre_unidad,
+            en_catalogo: p.en_catalogo,
+          }));
+          const datosSesion: DatosSesion = {
+            productos: [],
+            opciones_producto: opciones,
+            ...(tieneMemoria ? { cliente: memoria.cliente as ClienteSesion, memoria_cargada: true } : {}),
+          };
+          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, datosSesion);
+          const listaTexto = opciones.map(
+            (o) => `*${o.numero}.* ${this.displayNombreProducto(o)} _(${o.nombre_unidad})_`,
+          ).join('\n');
+          await this.sendText(ideEmpr, waId,
+            `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n` +
+            `_Responde con el *número* del producto que necesitas._`,
+          );
+          this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO múltiple (${opciones.length})`);
+          return;
+        }
+        // Producto no encontrado → cae a respuesta GPT general
+      }
+
+      // 7c. GENERAL o producto no encontrado: GPT analiza historial y retoma conversación
+      const respuesta = await this.botGpt.generateResponse(
+        promptBase,
+        historial,
+        lastClientMsg,
+        `Eres ${nombreBot} y acabas de retomar la atención de este chat. ` +
+        `Responde al último mensaje del cliente de forma natural y cálida, basándote en el historial. ` +
+        `Si el cliente hacía consultas, respóndelas. Si iniciaba una cotización, ofrece continuar. ` +
+        `No menciones que hubo un asesor ni que hubo una pausa en la conversación. ` +
+        `Al final recuerda amablemente: "_Puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_"`,
+      );
+
+      await this.sendText(ideEmpr, waId, respuesta);
+
+      // 8. Actualizar sesión a ATENCION_LIBRE para responder los siguientes mensajes normalmente
+      const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+      if ([BotState.INICIO, BotState.ESPERANDO_CONFIRMACION].includes(sesion.estado as BotState)) {
+        await this.botSession.update(
+          sesion.ide_whbse, BotState.ATENCION_LIBRE,
+          { ...(sesion.datos_sesion || {}), productos: [] },
+        );
+      }
+
+      this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — respuesta contextual enviada`);
+    } catch (err) {
+      this.logger.error(`[Bot] iniciarConContextoChat error chat=${ideWhcha}: ${err.message}`);
+    }
   }
 
   /**

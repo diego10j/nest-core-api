@@ -22,7 +22,10 @@ export interface BotConfigData {
   nombre_bot: string;
   nombre_empresa: string;
   prompt_sistema: string;
-  horario_atencion: string;
+  resp_ubicacion: string | null;
+  resp_horario: string | null;
+  resp_envio: string | null;
+  resp_catalogo: string | null;
   monto_envio_gratis: number;
   max_intentos_fallo: number;
   lat_empresa: number | null;
@@ -44,11 +47,21 @@ export class BotConfigService {
   async getConfig(ideWhcue: number): Promise<BotConfigData | null> {
     const cacheKey = `${CACHE_CONFIG}${ideWhcue}`;
     const cached = await this.dataSource.redisClient.get(cacheKey);
-    if (cached) return JSON.parse(cached) as BotConfigData;
+    if (cached) {
+      const parsed = JSON.parse(cached) as BotConfigData;
+      // Invalidar cache si resp_ubicacion no existe o es null (objeto pre-migración o cacheado con valores vacíos)
+      if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null) {
+        this.logger.warn(`[getConfig] Cache obsoleto para ide_whcue=${ideWhcue} — re-consultando BD`);
+        await this.dataSource.redisClient.del(cacheKey);
+      } else {
+        return parsed;
+      }
+    }
 
     const q = new SelectQuery(`
       SELECT bc.ide_whbco, bc.ide_whcue, bc.activo_manual, bc.usa_horario, bc.ide_tihor,
-             bc.nombre_bot, bc.prompt_sistema, bc.horario_atencion,
+             bc.nombre_bot, bc.prompt_sistema,
+             bc.resp_ubicacion, bc.resp_horario, bc.resp_envio, bc.resp_catalogo,
              bc.monto_envio_gratis, bc.max_intentos_fallo,
              COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa,
              e.latitud_empr  AS lat_empresa,
@@ -62,6 +75,7 @@ export class BotConfigService {
     q.addIntParam(1, ideWhcue);
     const row = await this.dataSource.createSingleQuery(q);
     if (!row) return null;
+    this.logger.log(`[getConfig] ide_whcue=${ideWhcue} resp_ubi=${row.resp_ubicacion ? 'OK(' + row.resp_ubicacion.length + ')' : 'NULL'} resp_hor=${row.resp_horario ? 'OK' : 'NULL'}`);
     await this.dataSource.redisClient.setex(cacheKey, CACHE_CONFIG_TTL, JSON.stringify(row));
     return row as BotConfigData;
   }
@@ -126,9 +140,10 @@ export class BotConfigService {
     this.logger.log(`Bot ${activar ? 'ACTIVADO' : 'DESACTIVADO'} manualmente en cuenta ${ideWhcue}`);
   }
 
-  /** Actualiza la configuración editable del bot (nombre, prompt, template, horario) */
+  /** Actualiza la configuración editable del bot (nombre, prompt, respuestas fijas, parámetros) */
   async updateConfigBot(ideWhcue: number, data: Partial<Pick<BotConfigData,
-    'nombre_bot' | 'prompt_sistema' | 'horario_atencion' | 'monto_envio_gratis' | 'max_intentos_fallo'
+    'nombre_bot' | 'prompt_sistema' | 'resp_ubicacion' | 'resp_horario' | 'resp_envio' | 'resp_catalogo' |
+    'monto_envio_gratis' | 'max_intentos_fallo'
   >>): Promise<void> {
     const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
     for (const [k, v] of Object.entries(data)) {
@@ -266,7 +281,6 @@ export class BotConfigService {
         bc.usa_horario,
         bc.ide_tihor,
         bc.nombre_bot,
-        bc.horario_atencion,
         bc.monto_envio_gratis,
         bc.max_intentos_fallo,
         bc.hora_ingre,
@@ -344,7 +358,10 @@ export class BotConfigService {
       const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
       if (dto.nombre_bot !== undefined) upd.values.set('nombre_bot', dto.nombre_bot);
       if (dto.prompt_sistema !== undefined) upd.values.set('prompt_sistema', dto.prompt_sistema);
-      if (dto.horario_atencion !== undefined) upd.values.set('horario_atencion', dto.horario_atencion);
+      if (dto.resp_ubicacion !== undefined) upd.values.set('resp_ubicacion', dto.resp_ubicacion);
+      if (dto.resp_horario !== undefined) upd.values.set('resp_horario', dto.resp_horario);
+      if (dto.resp_envio !== undefined) upd.values.set('resp_envio', dto.resp_envio);
+      if (dto.resp_catalogo !== undefined) upd.values.set('resp_catalogo', dto.resp_catalogo);
       if (dto.monto_envio_gratis !== undefined) upd.values.set('monto_envio_gratis', dto.monto_envio_gratis);
       if (dto.max_intentos_fallo !== undefined) upd.values.set('max_intentos_fallo', dto.max_intentos_fallo);
       if (dto.activo_manual !== undefined) upd.values.set('activo_manual', dto.activo_manual);
@@ -362,7 +379,6 @@ export class BotConfigService {
       const nombreBotDefault = dto.nombre_bot ?? 'QuimIA';
       ins.values.set('nombre_bot', nombreBotDefault);
       ins.values.set('prompt_sistema', dto.prompt_sistema ?? this.getDefaultPrompt(nombreBotDefault));
-      ins.values.set('horario_atencion', dto.horario_atencion ?? 'Lunes a Viernes de 08:00 a 17:00 y Sábados de 09:00 a 13:00.');
       ins.values.set('monto_envio_gratis', dto.monto_envio_gratis ?? 100);
       ins.values.set('max_intentos_fallo', dto.max_intentos_fallo ?? 3);
       await this.dataSource.createQuery(ins);

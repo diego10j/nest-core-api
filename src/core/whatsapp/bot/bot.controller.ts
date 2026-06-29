@@ -26,11 +26,8 @@ export class BotController {
   @ApiOperation({ summary: 'Activar o desactivar el bot manualmente' })
   async toggle(@Body() dto: ToggleBotDto & HeaderParamsDto) {
     await this.botConfig.toggleManual(dto.ideWhcue, dto.activar, dto.ideUsua, dto.observacion);
-    if (dto.activar) {
-      // Fire-and-forget: procesar chats con mensajes pendientes
-      this.botService.procesarPendientesGlobal(dto.ideWhcue, dto.ideEmpr)
-        .catch((err) => this.logger.error(`procesarPendientesGlobal error: ${err.message}`));
-    }
+    // La activación global solo cambia el estado del bot.
+    // El bot responde únicamente a los mensajes NUEVOS que lleguen mientras está activo.
     return { ok: true, activo: dto.activar };
   }
 
@@ -48,11 +45,21 @@ export class BotController {
 
   @Post('liberar-chat/:ideWhcha')
   @ApiOperation({ summary: 'Agente libera un chat — el bot puede volver a responder' })
-  async liberarChat(@Param('ideWhcha', ParseIntPipe) ideWhcha: number) {
+  async liberarChat(
+    @Param('ideWhcha', ParseIntPipe) ideWhcha: number,
+    @Body() dto: { responderAnteriores?: boolean } = {},
+  ) {
     await this.botService.liberarChat(ideWhcha);
-    // Fire-and-forget: procesar mensajes pendientes de ese chat
-    this.botService.procesarPendientesChat(ideWhcha)
-      .catch((err) => this.logger.error(`procesarPendientesChat error chat=${ideWhcha}: ${err.message}`));
+
+    // Por defecto (responderAnteriores=true): GPT analiza el historial y retoma inteligentemente.
+    // responderAnteriores=false: el bot espera el próximo mensaje nuevo del cliente.
+    const responderAnteriores = dto?.responderAnteriores !== false;
+
+    if (responderAnteriores) {
+      this.botService.iniciarConContextoChat(ideWhcha)
+        .catch((err) => this.logger.error(`iniciarConContextoChat error chat=${ideWhcha}: ${err.message}`));
+    }
+
     return { ok: true, message: 'Chat liberado — el bot puede responder de nuevo' };
   }
 
@@ -63,7 +70,6 @@ export class BotController {
     @Body() dto: {
       nombre_bot?: string;
       prompt_sistema?: string;
-      horario_atencion?: string;
       monto_envio_gratis?: number;
       max_intentos_fallo?: number;
     },

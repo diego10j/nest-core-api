@@ -769,7 +769,7 @@ export class DataSourceService {
   }
 
   async clearCacheRedis() {
-    const patterns = ['schema:*', 'table_columns:*', 'whatsapp_config:*', 'empresa:*', 'login:locked:*'];
+    const patterns = ['schema:*', 'table_columns:*', 'whatsapp_config:*', 'empresa:*', 'login:locked:*', 'bot_config:*', 'bot_activo:*', 'wha_cue:*'];
 
     for (const pattern of patterns) {
       const keys = await this.redisClient.keys(pattern);
