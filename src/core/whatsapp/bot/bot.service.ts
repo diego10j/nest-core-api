@@ -419,7 +419,7 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId,
           `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n` +
           `Encontré: *${prod.nombre}* ✅\n\n` +
-          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
+          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
         );
       } else if (nuevosDatos.productos?.length > 0) {
         // Tenía productos acumulados antes de identificarse → ir directo a confirmación
@@ -490,7 +490,7 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId,
           `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n` +
           `Encontré: *${prod.nombre}* ✅\n\n` +
-          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
+          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
         );
       } else if (nuevosDatos.productos?.length > 0) {
         // Tenía productos acumulados antes de registrarse → ir directo a confirmación
@@ -605,7 +605,7 @@ export class BotService implements OnModuleInit {
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
       await this.sendText(ideEmpr, waId,
         `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
-        `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_`,
+        `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
       );
       return;
     }
@@ -626,7 +626,7 @@ export class BotService implements OnModuleInit {
 
     // Lista numerada en texto — sin límite de caracteres (ideal para nombres químicos largos)
     const listaTexto = opciones.map(
-      (o) => `*${o.numero}.* ${this.displayNombreProducto(o)} _(${o.nombre_unidad})_`,
+      (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
     ).join('\n');
     await this.sendText(ideEmpr, waId,
       `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde con el *número* del producto que necesitas._`,
@@ -676,7 +676,7 @@ export class BotService implements OnModuleInit {
     await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
     await this.sendText(ideEmpr, waId,
       `¡Seleccionaste: *${opcion.nombre}*! ✅\n\n` +
-      `¿Qué cantidad necesitas? _(Ejemplo: 5 ${opcion.nombre_unidad}s / 2.5 ${opcion.siglas_unidad})_`,
+      `¿Qué cantidad necesitas? _(Ejemplo: 5 ${opcion.nombre_unidad} / 2.5 ${opcion.siglas_unidad})_`,
     );
   }
 
@@ -1548,7 +1548,7 @@ export class BotService implements OnModuleInit {
               await this.sendText(ideEmpr, waId,
                 `¡Hola de nuevo, *${memoria.cliente.nombres.split(' ')[0]}*! 😊\n\n` +
                 `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
-                `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad}s / 2.5 ${prod.siglas_unidad})_\n\n` +
+                `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_\n\n` +
                 `_Puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_`,
               );
             } else {
@@ -1583,7 +1583,7 @@ export class BotService implements OnModuleInit {
           };
           await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, datosSesion);
           const listaTexto = opciones.map(
-            (o) => `*${o.numero}.* ${this.displayNombreProducto(o)} _(${o.nombre_unidad})_`,
+            (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
           ).join('\n');
           await this.sendText(ideEmpr, waId,
             `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n` +

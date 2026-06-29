@@ -25,9 +25,10 @@ export interface ProductoInfo {
 }
 
 export interface PrecioConfigurado {
-  precio_unitario: number;
-  incluye_iva: boolean;
-  cantidad_minima: number;
+  precio_venta_sin_iva: number;
+  precio_venta_con_iva: number;
+  porcentaje_iva: number;
+  tipo_configuracion: string;
 }
 
 @Injectable()
@@ -96,27 +97,16 @@ export class BotToolsService {
     return this.dataSource.createSelectQuery(q);
   }
 
-  async buscarPrecioConfigurado(ideInarti: number, cantidad: number, ideEmpr: number): Promise<PrecioConfigurado | null> {
+  async buscarPrecioConfigurado(ideInarti: number, cantidad: number): Promise<PrecioConfigurado | null> {
     const q = new SelectQuery(`
-      SELECT
-        cp.precio_fijo_incpa  AS precio_unitario,
-        cp.incluye_iva_incpa  AS incluye_iva,
-        cp.rango1_cant_incpa  AS cantidad_minima
-      FROM inv_conf_precios_articulo cp
-      WHERE cp.ide_inarti = $1
-        AND cp.precio_fijo_incpa IS NOT NULL
-        AND cp.precio_fijo_incpa > 0
-        AND (
-          cp.rangos_incpa = FALSE AND cp.rango1_cant_incpa <= $2
-          OR cp.rangos_incpa = TRUE
-        )
-      ORDER BY
-        CASE WHEN cp.rangos_incpa = FALSE THEN cp.rango1_cant_incpa ELSE 0 END DESC
-      LIMIT 1
+      SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva, tipo_configuracion
+      FROM f_calcula_precio_venta($1, $2, NULL, NULL)
     `);
     q.addIntParam(1, ideInarti);
-    q.addIntParam(2, cantidad);
-    return this.dataSource.createSingleQuery(q);
+    q.addParam(2, cantidad);
+    const row = await this.dataSource.createSingleQuery(q);
+    if (!row || row.precio_venta_sin_iva == null) return null;
+    return row as PrecioConfigurado;
   }
 
   async getStockProducto(ideInarti: number, ideEmpr: number): Promise<number> {

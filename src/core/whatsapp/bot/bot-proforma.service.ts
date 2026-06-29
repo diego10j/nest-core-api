@@ -81,35 +81,19 @@ export class BotProformaService {
     const productosConPrecio: ProductoSesion[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
-    // Obtener tasa de IVA actual de con_porcen_impues (decimal: 0.15 para 15%)
-    const ivaQ = new SelectQuery(`
-      SELECT COALESCE(porcentaje_cnpim, 0.15) AS iva
-      FROM con_porcen_impues
-      WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-        AND activo_cnpim = TRUE
-      ORDER BY fecha_desde_cnpim DESC
-      LIMIT 1
-    `);
-    const ivaRow = await this.dataSource.createSingleQuery(ivaQ);
-    const ivaDecimal: number = Number(ivaRow?.iva ?? 0.15);
-    const tarifaIva: number  = Math.round(ivaDecimal * 100);
-    this.logger.log(`[Proforma] IVA actual: ${tarifaIva}% (${ivaDecimal})`);
+    let tarifaIva = 15; // fallback
 
     for (const prod of datos.productos) {
-      const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr);
-      this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cantidad=${prod.cantidad} → ${precioConf ? `precio_unit=${precioConf.precio_unitario} incluye_iva=${precioConf.incluye_iva} cant_min=${precioConf.cantidad_minima}` : 'SIN PRECIO CONFIGURADO'}`);
+      const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad);
+      this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cant=${prod.cantidad} → ${precioConf ? `sin_iva=${precioConf.precio_venta_sin_iva} con_iva=${precioConf.precio_venta_con_iva} iva=${precioConf.porcentaje_iva}% tipo=${precioConf.tipo_configuracion}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
-        // precio SIN IVA usando la regla de decimales del frontend
-        const precioSinIvaRaw = precioConf.incluye_iva
-          ? precioConf.precio_unitario / (1 + ivaDecimal)
-          : precioConf.precio_unitario;
-        const precioSinIva = roundPrecio(precioSinIvaRaw);               // 2 o 4 dec
-        const totalSinIva  = roundTo(precioSinIva * prod.cantidad, DECIMALES_TOTALES);  // 2 dec
-        const totalConIva  = roundTo(totalSinIva  * (1 + ivaDecimal), DECIMALES_TOTALES);
+        tarifaIva = precioConf.porcentaje_iva;
+        const precioSinIva = roundPrecio(precioConf.precio_venta_sin_iva);
+        const totalConIva  = roundTo(precioConf.precio_venta_con_iva * prod.cantidad, DECIMALES_TOTALES);
         productosConPrecio.push({
           ...prod,
-          precio_unitario: precioSinIva,   // SIN IVA para proforma (2 o 4 dec)
-          precio_total:    totalConIva,    // CON IVA para mostrar al cliente (2 dec)
+          precio_unitario: precioSinIva,
+          precio_total:    totalConIva,
           tiene_precio:    true,
         });
       } else {
