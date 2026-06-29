@@ -125,6 +125,14 @@ export class BotSessionService {
     await this.dataSource.createQuery(upd);
   }
 
+  async expirarPorInactividad(ideWhbse: number): Promise<void> {
+    await this.dataSource.pool.query(
+      `UPDATE wha_bot_sesion SET activa = FALSE, estado = 'EXPIRADO', hora_actua = NOW()
+       WHERE ide_whbse = $1`,
+      [ideWhbse],
+    );
+  }
+
   /** Recupera datos del cliente y envío de sesiones completadas anteriores */
   async getMemoriaCliente(ideWhcha: number): Promise<{
     cliente?: import('./interfaces/bot-session.interface').ClienteSesion;

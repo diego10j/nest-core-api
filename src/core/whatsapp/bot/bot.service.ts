@@ -301,8 +301,7 @@ export class BotService implements OnModuleInit {
     this.logger.debug(`[Bot] tipoConsulta="${tipoConsulta}"`);
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      // Pasa el texto original para que responderInfo pueda personalizar (ej: sucursal en X ciudad)
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, texto);
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
       return;
     }
 
@@ -1136,16 +1135,7 @@ export class BotService implements OnModuleInit {
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
     nombreEmpresa: string,
     config: any,
-    textoCliente?: string,
   ): Promise<void> {
-    const seccionKey: Record<string, string> = {
-      UBICACION: 'RESPUESTA_UBICACION',
-      HORARIO:   'RESPUESTA_HORARIO',
-      ENVIO:     'RESPUESTA_ENVIO',
-      CATALOGO:  'RESPUESTA_CATALOGO',
-    };
-
-    const prompt = config?.prompt_sistema || '';
     const nombreBot = config?.nombre_bot || 'Asistente';
 
     // Columnas dedicadas en DB — fuente de verdad, sin parseo de texto
@@ -1466,6 +1456,19 @@ export class BotService implements OnModuleInit {
 
       const lastClientMsg = msgs[lastClientIdx].body_whmem;
 
+      // Si la última sesión del chat terminó en FINALIZADO o CANCELADO, el bot no
+      // debe re-saludar. El asesor estaba atendiendo; si lo libera, el bot simplemente
+      // espera el próximo mensaje del cliente sin enviar nada.
+      const lastSesionRow = await this.dataSource.pool.query<{ estado: string }>(
+        `SELECT estado FROM wha_bot_sesion WHERE ide_whcha = $1 ORDER BY ide_whbse DESC LIMIT 1`,
+        [ideWhcha],
+      );
+      const ultimoEstado = lastSesionRow.rows[0]?.estado;
+      if (ultimoEstado === BotState.FINALIZADO || ultimoEstado === BotState.CANCELADO) {
+        this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — sesión anterior ${ultimoEstado}, sin re-saludo`);
+        return;
+      }
+
       // 5. Historial previo al último mensaje del cliente → contexto para GPT
       const historial: { role: 'user' | 'assistant'; content: string }[] = msgs
         .slice(0, lastClientIdx)
@@ -1488,7 +1491,7 @@ export class BotService implements OnModuleInit {
 
       // 7a. Preguntas de info: responder con template/GPT y liberar en ATENCION_LIBRE
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, lastClientMsg);
+        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
         const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
         if ([BotState.INICIO, BotState.ESPERANDO_CONFIRMACION].includes(sesion.estado as BotState)) {
           await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, { ...sesion.datos_sesion, productos: [] });
