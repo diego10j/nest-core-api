@@ -1057,10 +1057,15 @@ export class ImportacionesSaveService extends BaseService {
             let margen = 0;
 
             if (precioVenta > 0 && costoUnitarioTotal > 0) {
-                pctUtilidad = Math.round((((precioVenta / costoUnitarioTotal) - 1) * 100) * 100) / 100;
-                utilidad = Math.round(((precioVenta - costoUnitarioTotal) * cantidad) * 100) / 100;
-                margen = Math.round((((precioVenta - costoUnitarioTotal) / precioVenta) * 100) * 100) / 100;
+                pctUtilidad = ((precioVenta / costoUnitarioTotal) - 1) * 100;
+                utilidad = (precioVenta - costoUnitarioTotal) * cantidad;
+                margen = ((precioVenta - costoUnitarioTotal) / precioVenta) * 100;
             }
+
+            const pctSafe = isFinite(pctUtilidad) ? Math.max(-99.99, Math.min(999.99, Number(pctUtilidad.toFixed(2)))) : 0;
+            const utilidadSafe = isFinite(utilidad) ? Number(utilidad.toFixed(4)) : 0;
+            const margenSafe = isFinite(margen) ? Math.max(-99.99, Math.min(999.99, Number(margen.toFixed(2)))) : 0;
+            const subtotalSafe = isFinite(costoUnitarioTotal * cantidad) ? Number((costoUnitarioTotal * cantidad).toFixed(4)) : 0;
 
             await this.dataSource.pool.query(
                 `UPDATE imp_det_importa SET
@@ -1069,11 +1074,11 @@ export class ImportacionesSaveService extends BaseService {
                     costo_unitario_total_imdet = ROUND($4::numeric, 4),
                     precio_unit_final_imdet = ROUND($4::numeric, 4),
                     subtotal_final_imdet = ROUND($5::numeric, 4),
-                    porcentaje_utilidad_imdet = ROUND($6::numeric, 2),
-                    utilidad_imdet = ROUND($7::numeric, 4),
-                    margen_utilidad_imdet = ROUND($8::numeric, 2)
+                    porcentaje_utilidad_imdet = $6::numeric(5,2),
+                    utilidad_imdet = $7::numeric(12,4),
+                    margen_utilidad_imdet = $8::numeric(5,2)
                  WHERE ide_imdet = $1`,
-                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, Math.round(costoUnitarioTotal * cantidad * 10000) / 10000, pctUtilidad, utilidad, margen],
+                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, subtotalSafe, pctSafe, utilidadSafe, margenSafe],
             );
 
             if (precioVenta > 0) {
