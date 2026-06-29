@@ -1011,6 +1011,9 @@ export class ImportacionesSaveService extends BaseService {
         `);
         qTot.addIntParam(1, ide_imcaim);
         const row = await this.dataSource.createSingleQuery(qTot);
+        if (!row) {
+            return { message: 'ok', ide_imcaim, items: 0, costo_operativo: 0 };
+        }
         const costoOperativo = (Number(row.suma_valor_aduana ?? 0) - Number(row.total_factura_imcaim ?? 0))
             + Number(row.otros_costos ?? 0) + Number(row.bases_facturas ?? 0)
             + (Number(row.suma_total_impuestos ?? 0) - Number(row.suma_iva ?? 0));
@@ -1051,13 +1054,20 @@ export class ImportacionesSaveService extends BaseService {
             const costoUnitarioTotal = precioUnitario + costoOperativoUnitario;
 
             const dbPrecioVenta = Number(det.precio_venta_imdet ?? 0);
-            let pctUtilidad = Number(det.porcentaje_utilidad_imdet ?? 0);
+            const dbPctUtilidad = Number(det.porcentaje_utilidad_imdet ?? 0);
+            let pctUtilidad = dbPctUtilidad;
             let precioVenta = dbPrecioVenta;
             let utilidad = 0;
             let margen = 0;
 
             if (precioVenta > 0 && costoUnitarioTotal > 0) {
+                // Precio de venta configurado → recalcula %utilidad con el nuevo costo
                 pctUtilidad = ((precioVenta / costoUnitarioTotal) - 1) * 100;
+                utilidad = (precioVenta - costoUnitarioTotal) * cantidad;
+                margen = ((precioVenta - costoUnitarioTotal) / precioVenta) * 100;
+            } else if (dbPctUtilidad > 0 && costoUnitarioTotal > 0) {
+                // Solo % de utilidad configurado → recalcula precio de venta con el nuevo costo
+                precioVenta = costoUnitarioTotal * (1 + dbPctUtilidad / 100);
                 utilidad = (precioVenta - costoUnitarioTotal) * cantidad;
                 margen = ((precioVenta - costoUnitarioTotal) / precioVenta) * 100;
             }
@@ -1066,6 +1076,7 @@ export class ImportacionesSaveService extends BaseService {
             const utilidadSafe = isFinite(utilidad) ? Number(utilidad.toFixed(4)) : 0;
             const margenSafe = isFinite(margen) ? Math.max(-99.99, Math.min(999.99, Number(margen.toFixed(2)))) : 0;
             const subtotalSafe = isFinite(costoUnitarioTotal * cantidad) ? Number((costoUnitarioTotal * cantidad).toFixed(4)) : 0;
+            const precioVentaSafe = precioVenta > 0 ? Number(precioVenta.toFixed(4)) : 0;
 
             await this.dataSource.pool.query(
                 `UPDATE imp_det_importa SET
@@ -1074,11 +1085,12 @@ export class ImportacionesSaveService extends BaseService {
                     costo_unitario_total_imdet = ROUND($4::numeric, 4),
                     precio_unit_final_imdet = ROUND($4::numeric, 4),
                     subtotal_final_imdet = ROUND($5::numeric, 4),
+                    precio_venta_imdet = CASE WHEN $9 > 0 THEN ROUND($9::numeric, 4) ELSE precio_venta_imdet END,
                     porcentaje_utilidad_imdet = $6::numeric(5,2),
                     utilidad_imdet = $7::numeric(12,4),
                     margen_utilidad_imdet = $8::numeric(5,2)
                  WHERE ide_imdet = $1`,
-                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, subtotalSafe, pctSafe, utilidadSafe, margenSafe],
+                [det.ide_imdet, costoOperativoUnitario, costoOperativoTotal, costoUnitarioTotal, subtotalSafe, pctSafe, utilidadSafe, margenSafe, precioVentaSafe],
             );
 
             if (precioVenta > 0) {

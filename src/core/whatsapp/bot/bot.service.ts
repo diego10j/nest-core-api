@@ -110,6 +110,26 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // El bot global solo inicia en chats nuevos (sin historial previo de sesión bot).
+    // Chats que ya tienen mensajes de asesor humano se ignoran para no interrumpir
+    // conversaciones activas que no pasaron por el bot.
+    {
+      const sesCheck = await this.dataSource.pool.query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1) AS exists`,
+        [ideWhcha],
+      );
+      if (!sesCheck.rows[0]?.exists) {
+        const msgCheck = await this.dataSource.pool.query<{ exists: boolean }>(
+          `SELECT EXISTS(SELECT 1 FROM wha_mensaje WHERE ide_whcha = $1 AND direction_whmem != '0') AS exists`,
+          [ideWhcha],
+        );
+        if (msgCheck.rows[0]?.exists) {
+          this.logger.log(`[Bot] Chat ${ideWhcha} tiene historial de asesor sin sesión bot — se omite inicio automático`);
+          return;
+        }
+      }
+    }
+
     const { sesion: sesionInicial, expirada } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
     let sesion = sesionInicial;
 
