@@ -51,7 +51,6 @@ export class BotConfigService {
       const parsed = JSON.parse(cached) as BotConfigData;
       // Invalidar cache si resp_ubicacion no existe o es null (objeto pre-migración o cacheado con valores vacíos)
       if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null) {
-        this.logger.warn(`[getConfig] Cache obsoleto para ide_whcue=${ideWhcue} — re-consultando BD`);
         await this.dataSource.redisClient.del(cacheKey);
       } else {
         return parsed;
@@ -75,7 +74,6 @@ export class BotConfigService {
     q.addIntParam(1, ideWhcue);
     const row = await this.dataSource.createSingleQuery(q);
     if (!row) return null;
-    this.logger.log(`[getConfig] ide_whcue=${ideWhcue} resp_ubi=${row.resp_ubicacion ? 'OK(' + row.resp_ubicacion.length + ')' : 'NULL'} resp_hor=${row.resp_horario ? 'OK' : 'NULL'}`);
     await this.dataSource.redisClient.setex(cacheKey, CACHE_CONFIG_TTL, JSON.stringify(row));
     return row as BotConfigData;
   }
