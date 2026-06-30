@@ -76,26 +76,57 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha=${botActivoWhcha} texto="${texto}"`);
 
-    if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
+    // ── Chat NUEVO (primer mensaje): el bot SIEMPRE responde ──
+    // No importa si está globalmente inactivo, fuera de horario o deshabilitado por chat.
+    // Se verifica en 2 capas: sesiones previas (local) → API YCloud (fuente de verdad)
+    let esChatNuevo = false;
 
-    // Verificar que el chat no tenga historial con un agente humano
-    const tieneAgenteHumano = await this.dataSource.pool.query(
-      `SELECT 1 FROM wha_mensaje
-       WHERE ide_whcha = $1
-         AND direction_whmem = '1'
-         AND (es_bot_whmem IS NULL OR es_bot_whmem = FALSE)
-       LIMIT 1`,
+    // Capa 1: ¿hay sesiones previas de bot para este chat?
+    const sesionesPrevias = await this.dataSource.pool.query(
+      `SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1 LIMIT 1`,
       [ideWhcha],
     );
-    if (tieneAgenteHumano.rowCount > 0) {
-      this.logger.warn(`[Bot] Chat ${ideWhcha} tiene historial con agente humano — bot no responde`);
-      return;
+    if (sesionesPrevias.rowCount === 0) {
+      // Capa 2: YCloud como fuente de verdad — ¿el número ha escrito antes?
+      const yaEscribioAntes = await this.ycloudService.hasPriorMessages(waId);
+      esChatNuevo = !yaEscribioAntes;
+      this.logger.log(`[Bot] YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
+    }
+
+    // Anti-duplicado: si ya existe una sesión activa para este chat,
+    // es un webhook retransmitido y el bot ya respondió → no responder de nuevo.
+    if (esChatNuevo) {
+      const sesionDuplicada = await this.dataSource.pool.query(
+        `SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
+        [ideWhcha],
+      );
+      if (sesionDuplicada.rowCount > 0) {
+        this.logger.warn(`[Bot] Chat ${ideWhcha} nuevo pero ya tiene sesión activa — webhook duplicado, se omite`);
+        return;
+      }
+    }
+
+    if (!esChatNuevo) {
+      if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
+
+      const tieneAgenteHumano = await this.dataSource.pool.query(
+        `SELECT 1 FROM wha_mensaje
+         WHERE ide_whcha = $1
+           AND direction_whmem = '1'
+           AND (es_bot_whmem IS NULL OR es_bot_whmem = FALSE)
+         LIMIT 1`,
+        [ideWhcha],
+      );
+      if (tieneAgenteHumano.rowCount > 0) {
+        this.logger.warn(`[Bot] Chat ${ideWhcha} tiene historial con agente humano — bot no responde`);
+        return;
+      }
     }
 
     const botActivo = await this.botConfig.isBotActive(ideWhcue);
-    if (!botActivo && !botActivoWhcha) { this.logger.warn(`[Bot] Bot global INACTIVO y chat sin override`); return; }
+    if (!esChatNuevo && !botActivo && !botActivoWhcha) { this.logger.warn(`[Bot] Bot global INACTIVO y chat sin override`); return; }
 
-    this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo} | override por chat=${botActivoWhcha}`);
+    this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo} | esChatNuevo=${esChatNuevo} | override por chat=${botActivoWhcha}`);
 
     // Detección global: SALIR (en cualquier estado)
     if (REGEX_SALIR.test(texto.trim())) {
