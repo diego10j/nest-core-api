@@ -170,9 +170,23 @@ export class InvArticulo {
   cod_barras_inarti?: string | null;
 
   @IsOptional()
-  @IsString()
-  @Transform(({ value }) => value || null)
-  notas_inarti?: string | null;
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        return null;
+      }
+    }
+    return value ? [value] : null;
+  })
+  notas_inarti?: string[] | null;
 
   @IsOptional()
   @IsString()

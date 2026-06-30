@@ -141,7 +141,9 @@ export class CatalogosService extends BaseService {
                 d.hora_ingre,
                 d.usuario_actua,
                 d.fecha_actua,
-                d.hora_actua
+                d.hora_actua,
+                a.url_inarti as url,
+                a.notas_inarti  AS tags
             FROM inv_det_catalogo d
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             WHERE d.ide_inccat = $1
@@ -253,7 +255,8 @@ export class CatalogosService extends BaseService {
                 d.fotos_indcat           AS fotos_catp,
                 d.video_indcat           AS video_catp,
                 d.orden_indcat           AS orden,
-                d.url_indcat             AS url,
+                a.url_inarti             AS url,
+                a.notas_inarti           AS tags,
                 COALESCE((
                     SELECT SUM(dci.cantidad_indci * tci.signo_intci)
                     FROM inv_det_comp_inve dci

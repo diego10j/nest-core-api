@@ -25,6 +25,7 @@ import { getExtensionFile } from '../../sistema/files/helpers/fileNamer.helper';
 
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
+import { GetCatalogoProductosDto } from './dto/get-catalogo-productos.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
@@ -115,6 +116,18 @@ export class ProductosService extends BaseService {
             }
         }
 
+        if (res.rowCount > 0) {
+            for (const row of res.rows) {
+                if (row.notas_inarti) {
+                    try {
+                        row.notas_inarti = JSON.parse(row.notas_inarti);
+                    } catch {
+                        row.notas_inarti = [];
+                    }
+                }
+            }
+        }
+
         return {
             row: res.rows[0],
             columns: res.columns,
@@ -174,7 +187,11 @@ export class ProductosService extends BaseService {
         return query;
     }
 
-    async getCatalogoProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getCatalogoProductos(dtoIn: GetCatalogoProductosDto & HeaderParamsDto) {
+        const tagFilter = dtoIn.tag
+            ? `AND a.notas_inarti::jsonb ? '${dtoIn.tag}'`
+            : '';
+
         const query = new SelectQuery(
             `
         SELECT
@@ -182,7 +199,8 @@ export class ProductosService extends BaseService {
             nombre_inarti,
             foto_inarti,
             a.ide_incate,
-            nombre_incate
+            nombre_incate,
+            a.notas_inarti
         FROM
             inv_articulo a
             LEFT JOIN inv_categoria b ON a.ide_incate = b.ide_incate
@@ -191,14 +209,50 @@ export class ProductosService extends BaseService {
             AND nivel_inarti = 'HIJO'
             AND a.ide_empr  = ${dtoIn.ideEmpr}
             AND activo_inarti = TRUE
-            -- AND a.ide_incate IS NULL
+            ${tagFilter}
         ORDER BY
             unaccent(nombre_inarti)
         `,
             dtoIn,
         );
 
-        return this.dataSource.createSelectQuery(query);
+        const rows = await this.dataSource.createSelectQuery(query);
+
+        for (const row of rows) {
+            if (row.notas_inarti) {
+                try {
+                    row.tags = JSON.parse(row.notas_inarti);
+                } catch {
+                    row.tags = [];
+                }
+            } else {
+                row.tags = [];
+            }
+            delete row.notas_inarti;
+        }
+
+        return rows;
+    }
+
+    async getTagsProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+        SELECT DISTINCT tag
+        FROM inv_articulo a,
+        LATERAL jsonb_array_elements_text(a.notas_inarti::jsonb) AS tag
+        WHERE a.ide_empr = ${dtoIn.ideEmpr}
+            AND a.notas_inarti IS NOT NULL
+            AND a.notas_inarti != 'null'
+            AND a.ide_intpr = 1
+            AND a.nivel_inarti = 'HIJO'
+        ORDER BY tag
+        `,
+            dtoIn,
+        );
+
+        query.setLazy(false);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return rows.map((r: { tag: string }) => r.tag);
     }
 
     async searchProducto(dto: SearchDto & HeaderParamsDto) {
@@ -317,6 +371,15 @@ export class ProductosService extends BaseService {
         query.addStringParam(1, dtoIn.uuid);
 
         const res = await this.dataSource.createSingleQuery(query);
+
+        if (res && res.notas_inarti) {
+            try {
+                res.notas_inarti = JSON.parse(res.notas_inarti);
+            } catch {
+                res.notas_inarti = [];
+            }
+        }
+
         if (res) {
             const ide_inarti = res.ide_inarti;
             const queryCarac = new SelectQuery(`

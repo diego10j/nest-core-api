@@ -9,6 +9,8 @@ import { BodegasService } from './bodegas/bodegas.service';
 import { CatalogosSaveService } from './catalogos/catalogos-save.service';
 import { CatalogosController } from './catalogos/catalogos.controller';
 import { CatalogosService } from './catalogos/catalogos.service';
+import { CategoriasController } from './categorias/categorias.controller';
+import { CategoriasService } from './categorias/categorias.service';
 import { ComprobantesInvController } from './comprobantes/comprobantes.controller';
 import { ComprobantesInvService } from './comprobantes/comprobantes.service';
 import { InventarioBiController } from './data-bi/inventario-bi.controller';
@@ -28,7 +30,7 @@ import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [IntegrationModule],
-  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController],
+  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController],
   providers: [
     ProductosService,
     AuditService,
@@ -45,6 +47,7 @@ import { ProductosService } from './productos/productos.service';
     CatalogosService,
     CatalogosSaveService,
     HtmlProductService,
+    CategoriasService,
   ],
 })
 export class InventarioModule { }

@@ -104,6 +104,13 @@ export class BotService implements OnModuleInit {
         this.logger.warn(`[Bot] Chat ${ideWhcha} nuevo pero ya tiene sesión activa — webhook duplicado, se omite`);
         return;
       }
+
+      // Forzar chat en modo BOT para que el flujo continúe en los siguientes mensajes
+      await this.dataSource.pool.query(
+        `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
+        [ideWhcha],
+      );
+      this.logger.log(`[Bot] Chat nuevo ${ideWhcha} → forzado a modo BOT`);
     }
 
     if (!esChatNuevo) {

@@ -15,6 +15,7 @@ import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
+import { GetCatalogoProductosDto } from './dto/get-catalogo-productos.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
@@ -70,8 +71,18 @@ export class ProductosController {
   @Get('getCatalogoProductos')
   @ApiOperation({ summary: 'Obtener catálogo de productos con precios e imágenes' })
   // @Auth()
-  getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+  getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCatalogoProductosDto) {
     return this.productos.getCatalogoProductos({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getTagsProductos')
+  @ApiOperation({ summary: 'Obtener tags distintos de todos los productos' })
+  // @Auth()
+  getTagsProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    return this.productos.getTagsProductos({
       ...headersParams,
       ...dtoIn,
     });
