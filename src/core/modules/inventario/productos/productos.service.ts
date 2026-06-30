@@ -14,7 +14,6 @@ import { fNumber } from 'src/util/helpers/number-util';
 import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { BaseService } from '../../../../common/base-service';
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { UuidDto } from '../../../../common/dto/uuid.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
@@ -189,7 +188,7 @@ export class ProductosService extends BaseService {
 
     async getCatalogoProductos(dtoIn: GetCatalogoProductosDto & HeaderParamsDto) {
         const tagFilter = dtoIn.tag
-            ? `AND a.notas_inarti::jsonb ? '${dtoIn.tag}'`
+            ? `AND a.notas_inarti::jsonb @> $1::jsonb`
             : '';
 
         const query = new SelectQuery(
@@ -200,7 +199,16 @@ export class ProductosService extends BaseService {
             foto_inarti,
             a.ide_incate,
             nombre_incate,
-            a.notas_inarti
+            COALESCE(
+                (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+                 FROM inv_det_comp_inve dci
+                 INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                 INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                 INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                 WHERE dci.ide_inarti = a.ide_inarti
+                   AND cci.ide_inepi = 1
+                ), 0
+            ) AS stock
         FROM
             inv_articulo a
             LEFT JOIN inv_categoria b ON a.ide_incate = b.ide_incate
@@ -211,48 +219,17 @@ export class ProductosService extends BaseService {
             AND activo_inarti = TRUE
             ${tagFilter}
         ORDER BY
+            stock DESC,
             unaccent(nombre_inarti)
         `,
             dtoIn,
         );
 
-        const rows = await this.dataSource.createSelectQuery(query);
-
-        for (const row of rows) {
-            if (row.notas_inarti) {
-                try {
-                    row.tags = JSON.parse(row.notas_inarti);
-                } catch {
-                    row.tags = [];
-                }
-            } else {
-                row.tags = [];
-            }
-            delete row.notas_inarti;
+        if (dtoIn.tag) {
+            query.addParam(1, JSON.stringify([dtoIn.tag]));
         }
 
-        return rows;
-    }
-
-    async getTagsProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-        const query = new SelectQuery(
-            `
-        SELECT DISTINCT tag
-        FROM inv_articulo a,
-        LATERAL jsonb_array_elements_text(a.notas_inarti::jsonb) AS tag
-        WHERE a.ide_empr = ${dtoIn.ideEmpr}
-            AND a.notas_inarti IS NOT NULL
-            AND a.notas_inarti != 'null'
-            AND a.ide_intpr = 1
-            AND a.nivel_inarti = 'HIJO'
-        ORDER BY tag
-        `,
-            dtoIn,
-        );
-
-        query.setLazy(false);
-        const rows = await this.dataSource.createSelectQuery(query);
-        return rows.map((r: { tag: string }) => r.tag);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async searchProducto(dto: SearchDto & HeaderParamsDto) {

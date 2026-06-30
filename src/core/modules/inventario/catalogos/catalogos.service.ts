@@ -9,6 +9,7 @@ import { CoreService } from '../../../core.service';
 
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';
 import { GetCatalogosDto } from './dto/get-catalogos.dto';
+import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
 import { IdCatalogoDto } from './dto/id-catalogo.dto';
 
 @Injectable()
@@ -485,6 +486,30 @@ export class CatalogosService extends BaseService {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { ide_empr, ...cabeceraPublica } = cabecera;
         return { ...cabeceraPublica, detalles: detalle };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // TAGS DEL CATÁLOGO
+    // ─────────────────────────────────────────────────────────────
+
+    async getTagsCatalogo(dtoIn: GetTagsCatalogoDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+        SELECT DISTINCT tag
+        FROM inv_det_catalogo d
+        INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+        CROSS JOIN LATERAL jsonb_array_elements_text(a.notas_inarti::jsonb) AS tag
+        WHERE d.ide_inccat = ${dtoIn.ide_inccat}
+            AND a.notas_inarti IS NOT NULL
+            AND a.notas_inarti != 'null'
+        ORDER BY tag
+        `,
+            dtoIn,
+        );
+
+        query.setLazy(false);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return rows.map((r: { tag: string }) => r.tag);
     }
 
     // ─────────────────────────────────────────────────────────────

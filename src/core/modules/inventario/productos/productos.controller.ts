@@ -7,7 +7,6 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
 import { ConfigPreciosProductosService } from './config-precios.service';
@@ -73,16 +72,6 @@ export class ProductosController {
   // @Auth()
   getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCatalogoProductosDto) {
     return this.productos.getCatalogoProductos({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getTagsProductos')
-  @ApiOperation({ summary: 'Obtener tags distintos de todos los productos' })
-  // @Auth()
-  getTagsProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.productos.getTagsProductos({
       ...headersParams,
       ...dtoIn,
     });
