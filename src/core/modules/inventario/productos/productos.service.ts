@@ -208,7 +208,8 @@ export class ProductosService extends BaseService {
                  WHERE dci.ide_inarti = a.ide_inarti
                    AND cci.ide_inepi = 1
                 ), 0
-            ) AS stock
+            ) AS stock,
+             a.notas_inarti
         FROM
             inv_articulo a
             LEFT JOIN inv_categoria b ON a.ide_incate = b.ide_incate
