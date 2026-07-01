@@ -616,21 +616,25 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
 
-    // ── PRE-CHECK: consulta informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
-    const tipoInfoPre = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
-      await this.sendText(ideEmpr, waId,
-        `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu pedido.`,
-      );
-      return;
-    }
-
-    // Acumula el texto (puede venir en varios mensajes) y deja que GPT extraiga los productos
-    // en lote solo cuando detecta que el cliente terminó de listar (FIN o cierre semántico).
+    // Extrae primero el/los producto(s) del mensaje — se prioriza sobre la detección de
+    // consulta informativa para que líneas como "cera de coco 10kg, cera en gel 20kg" no
+    // se malinterpreten como pregunta de catálogo/ubicación/horario/envío.
     const textoAcumulado = [datos.texto_acumulado, texto.trim()].filter(Boolean).join('\n');
     const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
     const { completo, items } = await this.botGpt.analizarLoteProductos(textoAcumulado, nombresYa);
+
+    // ── Solo si NO se detectó ningún producto en el mensaje: puede ser una consulta
+    //    informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
+    if (!items.length) {
+      const tipoInfoPre = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
+        await this.sendText(ideEmpr, waId,
+          `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu pedido.`,
+        );
+        return;
+      }
+    }
 
     if (!completo) {
       const nuevosDatos: DatosSesion = { ...datos, texto_acumulado: textoAcumulado };

@@ -53,13 +53,21 @@ Cliente escribe cualquier mensaje
   El cliente puede listar productos y cantidades en uno o varios mensajes seguidos
   (ej: "3kg cera de palma, 5kg cera de soya" en un solo mensaje, o uno por uno).
   Cada mensaje se acumula en `texto_acumulado` y se envía completo a
-  `BotGptService.analizarLoteProductos()`, que en un solo call GPT decide:
+  `BotGptService.analizarLoteProductos()` PRIMERO (antes que cualquier otra clasificación),
+  que en un solo call GPT decide:
     - "completo": true si el cliente escribió FIN (aislada) o dio a entender que ya
       terminó de listar ("eso es todo", "ya", "nada más"...). false → sigue acumulando
       (el bot responde solo un acuse breve "Anotado ✅...", sin tocar la BDD todavía).
     - "items": arreglo [{producto, cantidad}] con TODOS los productos mencionados hasta
       el momento (cantidad: número si vino explícita, 0 si el cliente pidió "cantidad
       mínima", null si no la mencionó).
+  Solo si "items" viene VACÍO se evalúa si el mensaje es una consulta informativa mid-
+  cotización (`clasificarConsulta` → UBICACION/HORARIO/ENVIO/CATALOGO). Este orden es
+  importante: si la detección de consulta informativa corriera primero (como en una
+  versión anterior), GPT podía clasificar erróneamente líneas de productos con varias
+  cantidades (ej. "cera de coco 10kg, cera en gel 20kg") como CATALOGO y el bot
+  respondía con los links de catálogo en vez de seguir acumulando — bug real detectado
+  y corregido en producción.
   Cuando completo=true, los items pasan a `cola_productos` y arranca resolverColaProductos.
         │
         ▼
@@ -235,6 +243,12 @@ Cuando el cliente comparte ubicación WhatsApp:
 - Se extrae: road + house_number + suburb + city
 - Se guarda en `EnvioSesion.direccion` (texto), `.latitud`, `.longitud`
 - El cliente ve la dirección obtenida confirmada en el chat
+
+---
+
+## Idempotencia de webhooks (YCloud)
+
+`YcloudService.insertMensajeInbound()` deduplica por `wamid` (`data.wamid || data.id`) contra `wha_mensaje.id_whmem`. Si YCloud reintenta el mismo webhook (timeout, respuesta no-2xx, etc.), `processInboundMessage()` corta el flujo apenas detecta el duplicado — **no** vuelve a invocar al bot ni a las notificaciones de ventana/gateway. Antes de esta corrección, el insert se deduplicaba correctamente pero el resto del pipeline (incluido `messageHandler` del bot) igual se ejecutaba de nuevo, generando respuestas duplicadas del bot para el mismo mensaje del cliente.
 
 ---
 

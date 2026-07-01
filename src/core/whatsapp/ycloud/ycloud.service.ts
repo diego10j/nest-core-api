@@ -783,7 +783,13 @@ export class YcloudService {
         isInbound: true,
       });
 
-      await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, msgDate);
+      const esNuevo = await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, msgDate);
+      if (!esNuevo) {
+        // YCloud reintentó el webhook para un mensaje ya procesado (mismo wamid) —
+        // no volver a invocar el bot ni las notificaciones, o se duplican las respuestas.
+        this.logger.debug(`[Bot-diag] wamid duplicado (${data.wamid || data.id}) — se omite reprocesamiento`);
+        return;
+      }
       await this.windowService.registerInboundMessage(waId, phoneNumberId);
       this.whatsappGateway.sendMessageToClients(waId);
       void this.emitTotalNoLeidos(phoneNumberId);
@@ -883,20 +889,21 @@ export class YcloudService {
     return result.rows[0].ide_whcha as number;
   }
 
+  /** Devuelve false si el wamid ya existía (webhook duplicado/reintento de YCloud) — no insertó nada nuevo. */
   private async insertMensajeInbound(
     data: YcloudInboundMessage,
     waId: string,
     phoneNumberId: string,
     ideWhcha: number,
     now: Date,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const wamid = data.wamid || data.id;
 
     const existsQ = await this.dataSource.pool.query(
       `SELECT 1 FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`,
       [wamid],
     );
-    if (existsQ.rowCount > 0) return;
+    if (existsQ.rowCount > 0) return false;
 
     const tipo = data.type || 'text';
     const body = data.text?.body || data.button?.text
@@ -953,6 +960,7 @@ export class YcloudService {
         this.logger.error(`[insertMensajeInbound] ${wamid}: NO SE PUDO GUARDAR: ${baseErr.message}`);
       }
     }
+    return true;
   }
 
   private async processStatusUpdate(data: YcloudStatusData): Promise<void> {
