@@ -882,7 +882,18 @@ ORDER BY prof.secuencial_cccpr DESC
     qUltimosPreciosCompra.addIntParam(1, ide_inarti);
     qUltimosPreciosCompra.addIntParam(2, ide_inarti);
 
-    //  7 promesas → 7 variables desestructuradas
+    const qCostoPromedio = new SelectQuery(`
+      SELECT
+        costo_unitario,
+        fecha_costo,
+        saldo_cantidad,
+        metodo_aplicado
+      FROM f_costo_unitario_ppmp($1, $2, $3, CURRENT_DATE)
+    `);
+    qCostoPromedio.addIntParam(1, dtoIn.ideEmpr);
+    qCostoPromedio.addIntParam(2, dtoIn.ideSucu);
+    qCostoPromedio.addIntParam(3, ide_inarti);
+
     const [
       configPrecios,
       ventasCliente,
@@ -891,6 +902,7 @@ ORDER BY prof.secuencial_cccpr DESC
       cotizacionesCliente,
       ultimaCompra,
       ultimosPreciosCompra,
+      costoPromedio,
     ] = await Promise.all([
       this.dataSource.createSelectQuery(qConfigPrecios),
       qVentasCliente
@@ -901,6 +913,7 @@ ORDER BY prof.secuencial_cccpr DESC
       this.dataSource.createSelectQuery(qCotizacionesCliente),
       this.dataSource.createSingleQuery(qUltimaCompra),
       this.dataSource.createSelectQuery(qUltimosPreciosCompra),
+      this.dataSource.createSingleQuery(qCostoPromedio),
     ]);
 
     const tiene_config_precio = configPrecios.some(
@@ -951,7 +964,10 @@ ORDER BY prof.secuencial_cccpr DESC
       ultima_precio_compra: ultimaCompra?.ultima_precio_compra ?? null,
       ultima_fecha_compra: ultimaCompra?.ultima_fecha_compra ?? null,
       proveedor_ultima_compra: ultimaCompra?.proveedor ?? null,
-      ultimos_precios_compra: ultimosPreciosCompra,   // ✅ nuevo campo
+      ultimos_precios_compra: ultimosPreciosCompra,
+      costo_promedio: costoPromedio?.costo_unitario ?? null,
+      costo_promedio_fecha: costoPromedio?.fecha_costo ?? null,
+      costo_promedio_metodo: costoPromedio?.metodo_aplicado ?? null,
       metricas,
       precio_sugerido,
     };
