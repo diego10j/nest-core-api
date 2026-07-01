@@ -241,8 +241,12 @@ export class BotProformaService {
       this.logger.warn(`[Proforma] No se actualizaron campos WhatsApp: ${err.message}`);
     }
 
-    // Actualizar precios en los detalles (precio SIN IVA, total SIN IVA)
-    if (todosTienePrecio) {
+    // Actualizar precios en los detalles (precio SIN IVA, total SIN IVA).
+    // Se escribe el precio de cada producto que SÍ tiene configuración, aunque otros
+    // productos de la misma cotización no la tengan (CASO 2: "con precio" mixto) —
+    // antes este bloque solo corría si TODOS tenían precio, dejando en NULL hasta los
+    // que sí lo tenían configurado cuando la cotización era parcial.
+    if (productosConPrecio.length > 0) {
       for (const p of productosConPrecio) {
         try {
           // total_ccdpr = roundTo(cantidad × precio, 2) — modelo frontend

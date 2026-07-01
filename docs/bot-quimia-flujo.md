@@ -159,6 +159,10 @@ Cliente escribe cualquier mensaje
     AUTOMÁTICA: todos tienen precio AND todos en catálogo
     CON_PRECIO:  todos tienen precio BUT alguno fuera de catálogo (ej. ítems genéricos)
     BORRADOR:    algún producto sin precio configurado (ítems genéricos casi siempre caen aquí)
+  → En BORRADOR/CON_PRECIO, los productos que SÍ tienen precio configurado igual se
+    escriben en `cxc_deta_proforma` (precio_ccdpr/total_ccdpr) — antes había un bug donde
+    si UN SOLO producto no tenía precio, se salteaba el guardado de precios de TODOS los
+    productos de la cotización (incluidos los que sí lo tenían), quedando en NULL. Corregido.
   → createProformaWeb (solicitante, detalles)
      · cada detalle envía `ideInarti` explícito (el que el bot ya resolvió) y
        `producto` = observación: nombre tal como lo escribió el cliente + " — Uso: X"

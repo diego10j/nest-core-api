@@ -304,7 +304,7 @@ export class BotService implements OnModuleInit {
     const nombreCliente = datosSesion?.cliente?.nombres;
     const saludo = nombreCliente
       ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *${nombreEmpresa}*.\n\n¿En qué te ayudo hoy?`
-      : `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}*.\n\nPuedo darte al instante: 🧪 cotizaciones, 📦 catálogo y precios, 📍 ubicación y 🚚 envíos.\n\n¿Empezamos?`;
+      : `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}*.\n\nCon gusto te ayudo con: 🧪 cotizaciones, 📦 catálogo y precios, 📍 ubicación y 🚚 envíos.\n\n¿Empezamos?`;
 
     await this.sendButtons(ideEmpr, waId, saludo, [
       { id: 'SI', title: '⚡ Continuar' },
