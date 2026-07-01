@@ -1078,7 +1078,10 @@ ORDER BY prof.secuencial_cccpr DESC
       const siglas = detalle.unidad?.toUpperCase() ?? null;
       const ideInuni = siglas ? (unidadMap.get(siglas) ?? null) : null;
       const nombreProd = detalle.producto?.toUpperCase();
-      const ideInarti = nombreProd ? (articuloMap.get(nombreProd) ?? null) : null;
+      // Si el caller ya conoce el ide_inarti (ej. el bot, que ya resolvió el artículo
+      // por búsqueda) se usa directo — evita depender de un match exacto por nombre,
+      // que se rompe si `producto` incluye texto adicional (uso, cantidad mínima, etc).
+      const ideInarti = detalle.ideInarti ?? (nombreProd ? (articuloMap.get(nombreProd) ?? null) : null);
 
       const detQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey);
       detQuery.values.set(DETALLES.primaryKey, baseIdeCcdpr + idx);

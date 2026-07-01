@@ -60,6 +60,7 @@ export class BotSessionService {
     // Estados terminales no cuentan el timeout (INICIO/ESPERANDO_CONFIRMACION permiten más tiempo)
     const estadosConTimeout = ['ATENCION_LIBRE', 'PREGUNTA_ES_CLIENTE', 'IDENTIFICACION',
       'DATOS_NUEVO_CLIENTE', 'SELECCION_PRODUCTOS', 'SELECCION_MULTIPLE', 'ESPERANDO_CANTIDAD',
+      'ESPERANDO_USO_PRODUCTO',
       'CONFIRMACION_PRODUCTOS', 'DATOS_ENVIO', 'DATOS_PAGO'];
 
     if (row.hora_actua && estadosConTimeout.includes(row.estado)) {

@@ -108,14 +108,23 @@ export class BotProformaService {
     // Con precio pero alguno fuera de catálogo: se carga precio pero no es automática
     const conPrecio = todosTienePrecio && !automatica;
 
-    // Construir detalles con precio cuando está disponible
+    // Construir detalles con precio cuando está disponible.
+    // La observación (`producto`) se guarda tal como lo escribió el cliente en el chat
+    // (más el uso, si se preguntó por ser un ítem genérico) — el ide_inarti se envía
+    // explícito (`ideInarti`) para no depender de un match por nombre en el backend.
     const precioMap = new Map(productosConPrecio.map((p) => [p.ide_inarti, p.precio_unitario]));
-    const detalles = datos.productos.map((p) => ({
-      producto: p.nombre,
-      cantidad: p.cantidad,
-      unidad: p.siglas_unidad || p.unidad,
-      precio: precioMap.get(p.ide_inarti) ?? null,
-    }));
+    const detalles = datos.productos.map((p) => {
+      let observacionProducto = p.nombre;
+      if (p.uso_generico) observacionProducto += ` — Uso: ${p.uso_generico}`;
+      if (p.cantidad === 0) observacionProducto += ' - CANTIDAD MINIMA';
+      return {
+        producto: observacionProducto,
+        cantidad: p.cantidad,
+        unidad: p.siglas_unidad || p.unidad,
+        ideInarti: p.ide_inarti,
+        precio: precioMap.get(p.ide_inarti) ?? null,
+      };
+    });
 
     const observacion = automatica
       ? `Cotización automática generada por ${nombreBot} vía WhatsApp`

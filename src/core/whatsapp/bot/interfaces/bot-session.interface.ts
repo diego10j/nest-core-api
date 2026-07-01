@@ -8,6 +8,7 @@ export interface ProductoSesion {
   precio_total?: number;
   tiene_precio?: boolean;
   en_catalogo?: boolean;
+  uso_generico?: string;
 }
 
 export interface ClienteSesion {
@@ -37,11 +38,18 @@ export interface DatosSesion {
   cliente?: ClienteSesion;
   productos: ProductoSesion[];
   opciones_producto?: OpcionProducto[];
-  producto_pendiente?: { ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string; en_catalogo: boolean };
+  producto_pendiente?: {
+    ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string;
+    en_catalogo: boolean; es_generico?: boolean; uso_generico?: string;
+  };
   envio?: EnvioSesion;
   forma_pago?: 'cash' | 'credit';
   proforma_ide?: number;
   proforma_secuencial?: string;
+  // ─── Captura de productos en lote ──────────────────────────────────────
+  texto_acumulado?: string;
+  cola_productos?: { producto: string; cantidad: number | null }[];
+  item_cantidad_conocida?: number | null;
 }
 
 export interface OpcionProducto {

@@ -60,6 +60,10 @@ class DetalleItemDto {
   @IsString()
   @IsOptional()
   unidad?: string;
+
+  @IsNumber()
+  @IsOptional()
+  ideInarti?: number;
 }
 
 export class CreateProformaWebDto extends QueryOptionsDto {

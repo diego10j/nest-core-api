@@ -97,6 +97,30 @@ export class BotToolsService {
     return this.dataSource.createSelectQuery(q);
   }
 
+  async obtenerProductoPorId(ideInarti: number, ideEmpr: number): Promise<ProductoInfo | null> {
+    const q = new SelectQuery(`
+      SELECT
+        a.ide_inarti,
+        a.nombre_inarti          AS nombre,
+        a.otro_nombre_inarti     AS otro_nombre,
+        a.desc_corta_inarti      AS desc_corta,
+        COALESCE(u.siglas_inuni, 'UND')    AS siglas_unidad,
+        COALESCE(u.nombre_inuni, 'Unidad') AS nombre_unidad,
+        EXISTS (
+          SELECT 1 FROM inv_det_catalogo dc
+          WHERE dc.ide_inarti = a.ide_inarti AND dc.activo_indcat = TRUE
+        ) AS en_catalogo
+      FROM inv_articulo a
+      LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
+      WHERE a.ide_inarti = $1
+        AND a.ide_empr = $2
+      LIMIT 1
+    `);
+    q.addIntParam(1, ideInarti);
+    q.addIntParam(2, ideEmpr);
+    return this.dataSource.createSingleQuery(q);
+  }
+
   async buscarPrecioConfigurado(ideInarti: number, cantidad: number): Promise<PrecioConfigurado | null> {
     const q = new SelectQuery(`
       SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva, tipo_configuracion

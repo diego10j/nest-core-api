@@ -21,6 +21,12 @@ const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR
 const REGEX_SALIR     = /^SALIR$/i;
 const REGEX_SALUDO    = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
+// Categorías que casi nunca están en el catálogo de materias primas (sabor/color/fragancia/aceite).
+// Cuando la búsqueda coincide con esto, se evita el fallback difuso (evita falsos positivos tipo
+// "de mango" → "MANTECA DE MANGO") y, si no hay match exacto, se ofrece cotizar como ítem genérico.
+const REGEX_PRODUCTO_GENERICO = /\b(sabor(?:es|izantes?)?|colorantes?|colores?|fragancias?|aceites?|esencias?)\b/i;
+const PRODUCTO_GENERICO_IDE_INARTI = 2102;
+
 
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
 const MSG_ES_CLIENTE_BODY = `Para brindarte una atención personalizada 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
@@ -30,13 +36,13 @@ const BTN_ES_CLIENTE = [
 ];
 
 // ─── Mensaje de inicio de cotización ─────────────────────────────────────────
-const MSG_INICIO_COTIZACION = `Con mucho gusto te ayudo con tu cotización 😊
+const MSG_INICIO_COTIZACION = `¡Vamos a cotizar! 🧪 Dime los productos y cantidades que necesitas, todos juntos o uno por uno.
 
-Cuéntame, ¿qué producto necesitas? Escríbeme solo el nombre.
+_Ejemplo: "3kg cera de palma, 5kg cera de soya"_
 
-_Ejemplo: *Cera de palma*_
+Cuando termines, escribe *FIN*.`;
 
-Cuando hayas terminado de agregar todos los productos, escribe *FIN*.`;
+const MSG_ACUSE_LOTE = `Anotado ✅ Sigue agregando o escribe *FIN* cuando termines.`;
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -176,6 +182,7 @@ export class BotService implements OnModuleInit {
     // Si llega un saludo en un estado distinto de INICIO → resetear sesión
     const estadosQueReinician = [
       BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.ESPERANDO_CANTIDAD,
+      BotState.ESPERANDO_USO_PRODUCTO,
       BotState.CONFIRMACION_PRODUCTOS, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
       BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
       BotState.ATENCION_LIBRE,
@@ -216,6 +223,9 @@ export class BotService implements OnModuleInit {
         case BotState.ESPERANDO_CANTIDAD:
           await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
+        case BotState.ESPERANDO_USO_PRODUCTO:
+          await this.handleEsperandoUsoProducto(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
+          break;
         case BotState.CONFIRMACION_PRODUCTOS:
           await this.handleConfirmacionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
@@ -255,11 +265,11 @@ export class BotService implements OnModuleInit {
 
     const nombreCliente = datosSesion?.cliente?.nombres;
     const saludo = nombreCliente
-      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *${nombreEmpresa}*.\n\n¿En qué puedo ayudarte hoy?`
-      : `¡Hola! Soy *${nombreBot}*, la asistente virtual de *${nombreEmpresa}* ✨\n\nEstoy aquí para ayudarte con cotizaciones, precios, ubicación y más.\n\n¿Deseas continuar con el asistente o prefieres atención personalizada?`;
+      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *${nombreEmpresa}*.\n\n¿En qué te ayudo hoy?`
+      : `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}*.\n\nPuedo darte al instante: 🧪 cotizaciones, 📦 catálogo y precios, 📍 ubicación y 🚚 envíos.\n\n¿Empezamos?`;
 
     await this.sendButtons(ideEmpr, waId, saludo, [
-      { id: 'SI', title: '✅ Continuar con bot' },
+      { id: 'SI', title: '⚡ Continuar' },
       { id: 'NO', title: '👤 Hablar con asesor' },
     ]);
   }
@@ -567,131 +577,215 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-    const intencion = await this.botGpt.detectarIntencion(texto);
-
-    if (intencion === 'LISTO' || intencion === 'CANCELAR') {
-      if (!datos.productos?.length) {
-        await this.sendText(ideEmpr, waId,
-          `Aún no has agregado ningún producto 😊\nDime el nombre del producto que necesitas cotizar, o escribe *SALIR* para hablar con un asesor.`,
-        );
-        return;
-      }
-      // Si no tenemos datos del cliente, pedirlos antes de confirmar
-      if (!datos.cliente?.nombres) {
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
-        await this.sendButtons(ideEmpr, waId,
-          `${this.buildResumenProductos(datos.productos)}\n\nPara preparar tu cotización, necesito unos datos rápidos 😊\n\n${MSG_ES_CLIENTE_BODY}`,
-          BTN_ES_CLIENTE,
-        );
-        return;
-      }
-      await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-      await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
-        { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-        { id: 'CONF_NO', title: '✏️ Modificar lista' },
-      ]);
-      return;
-    }
 
     // ── PRE-CHECK: consulta informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
     const tipoInfoPre = await this.botGpt.clasificarConsulta(texto);
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
       await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
       await this.sendText(ideEmpr, waId,
-        `Espero haber resuelto tu consulta 😊\n\n¿Continuamos con la cotización? Dime el nombre del siguiente producto o escribe *FIN* para revisar tu pedido.`,
+        `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu pedido.`,
       );
       return;
     }
 
-    // Limpiar el texto: extraer solo el nombre del producto (quitar cantidades como "25kg", "5 litros")
-    const textoOriginal = texto.trim();
-    const nombreBuscado = textoOriginal
-      .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|unidad[s]?|galon[s]?|gal[s]?|lb)\b/gi, '')
-      .replace(/\b\d+\b/g, '')       // quitar números sueltos
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    // Acumula el texto (puede venir en varios mensajes) y deja que GPT extraiga los productos
+    // en lote solo cuando detecta que el cliente terminó de listar (FIN o cierre semántico).
+    const textoAcumulado = [datos.texto_acumulado, texto.trim()].filter(Boolean).join('\n');
+    const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
+    const { completo, items } = await this.botGpt.analizarLoteProductos(textoAcumulado, nombresYa);
 
-    if (nombreBuscado !== textoOriginal) {
-      this.logger.log(`[Bot] Nombre limpiado: "${textoOriginal}" → "${nombreBuscado}"`);
+    if (!completo) {
+      const nuevosDatos: DatosSesion = { ...datos, texto_acumulado: textoAcumulado };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+      await this.sendText(ideEmpr, waId, MSG_ACUSE_LOTE);
+      return;
     }
 
-    let resultados = await this.botTools.buscarProductos(nombreBuscado || textoOriginal, ideEmpr);
+    if (!items.length && !datos.productos?.length) {
+      const nuevosDatos: DatosSesion = { ...datos, texto_acumulado: undefined };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+      await this.sendText(ideEmpr, waId,
+        `Aún no has agregado ningún producto 😊\nDime el nombre del producto que necesitas cotizar, o escribe *SALIR* para hablar con un asesor.`,
+      );
+      return;
+    }
 
-    // Fallback 1: reducir palabras progresivamente
-    if (!resultados.length) {
-      const palabras = (nombreBuscado || textoOriginal).split(/\s+/).filter(Boolean);
-      for (let n = palabras.length - 1; n >= 2; n--) {
-        const subTexto = palabras.slice(0, n).join(' ');
-        resultados = await this.botTools.buscarProductos(subTexto, ideEmpr);
-        if (resultados.length > 0) {
-          this.logger.log(`[Bot] Búsqueda reducida → "${subTexto}" → ${resultados.length}`);
-          break;
+    const datosConCola: DatosSesion = {
+      ...datos,
+      texto_acumulado: undefined,
+      cola_productos: [...(datos.cola_productos ?? []), ...items],
+    };
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCola, nombreEmpresa, config);
+  }
+
+  /**
+   * Drena la cola de productos extraídos en lote: busca cada ítem en catálogo y
+   * lo agrega directo cuando hay match único + cantidad conocida (sin preguntar nada).
+   * Se detiene y pide al cliente solo cuando algo realmente lo requiere
+   * (desambiguar entre varios productos, pedir cantidad, o preguntar el uso de un
+   * producto de categoría genérica no catalogada).
+   */
+  private async resolverColaProductos(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const cola = [...(datos.cola_productos ?? [])];
+    const productosNuevos: ProductoSesion[] = [...(datos.productos ?? [])];
+    const noEncontrados: string[] = [];
+
+    while (cola.length > 0) {
+      const item = cola.shift()!;
+      const nombreItem = item.producto.trim();
+      if (!nombreItem) continue;
+
+      const nombreLimpio = nombreItem
+        .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|unidad[s]?|galon[s]?|gal[s]?|lb)\b/gi, '')
+        .replace(/\b\d+\b/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim() || nombreItem;
+
+      const esGenerico = REGEX_PRODUCTO_GENERICO.test(nombreItem);
+      let resultados = await this.botTools.buscarProductos(nombreLimpio, ideEmpr);
+
+      // Los fallbacks difusos (reducción progresiva y por palabras) solo se intentan
+      // cuando NO es una categoría genérica — para sabor/color/aceite/etc. queremos
+      // una búsqueda estricta: si no matchea exacto, se trata como no encontrado.
+      if (!resultados.length && !esGenerico) {
+        const palabras = nombreLimpio.split(/\s+/).filter(Boolean);
+        for (let n = palabras.length - 1; n >= 2; n--) {
+          const subTexto = palabras.slice(0, n).join(' ');
+          resultados = await this.botTools.buscarProductos(subTexto, ideEmpr);
+          if (resultados.length > 0) {
+            this.logger.log(`[Bot] Búsqueda reducida → "${subTexto}" → ${resultados.length}`);
+            break;
+          }
+        }
+        if (!resultados.length) {
+          resultados = await this.botTools.buscarProductosPorPalabras(nombreLimpio, ideEmpr);
         }
       }
-    }
 
-    // Fallback 2: palabras significativas
-    if (!resultados.length) {
-      resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado || textoOriginal, ideEmpr);
-    }
+      if (!resultados.length) {
+        if (esGenerico) {
+          const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
+          const nuevosDatos: DatosSesion = {
+            ...datos,
+            productos: productosNuevos,
+            cola_productos: cola,
+            item_cantidad_conocida: item.cantidad,
+            producto_pendiente: {
+              ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+              nombre: nombreItem,
+              siglas_unidad: generico?.siglas_unidad ?? 'UND',
+              nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+              en_catalogo: generico?.en_catalogo ?? false,
+              es_generico: true,
+            },
+          };
+          await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_PRODUCTO, nuevosDatos);
+          await this.sendText(ideEmpr, waId,
+            `Para cotizar *${nombreItem}*, cuéntame ¿para qué uso lo necesitas? 😊`,
+          );
+          return;
+        }
+        this.logger.log(`[Bot] No encontrado en cola: "${nombreItem}"`);
+        noEncontrados.push(nombreItem);
+        continue;
+      }
 
-    if (!resultados.length) {
-      // GPT analiza qué quiso decir el cliente (info, reformulación, irrelevante)
-      const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
-      const clienteYaRegistrado = !!(datos.cliente?.nombres && datos.cliente?.correo);
-      const promptConContexto = (config?.prompt_sistema || '')
-        + (clienteYaRegistrado
-          ? `\n\nYa tienes los datos del cliente: ${datos.cliente?.nombres}, ${datos.cliente?.correo}. NO vuelvas a pedir nombre, correo ni dirección.`
-          : '');
-      const analisis = await this.botGpt.analizarProductoNoEncontrado(
-        textoOriginal, nombresYa, config?.nombre_bot, nombreEmpresa,
-        promptConContexto || undefined,
-      );
-      await this.sendText(ideEmpr, waId, analisis.respuesta);
-      return;
-    }
+      if (resultados.length === 1) {
+        const prod = resultados[0];
+        if (item.cantidad !== null && item.cantidad !== undefined) {
+          productosNuevos.push({
+            ide_inarti: prod.ide_inarti,
+            nombre: this.displayNombreProducto(prod),
+            cantidad: item.cantidad,
+            unidad: prod.nombre_unidad,
+            siglas_unidad: prod.siglas_unidad,
+            en_catalogo: prod.en_catalogo,
+          });
+          continue;
+        }
+        const nuevosDatos: DatosSesion = {
+          ...datos,
+          productos: productosNuevos,
+          cola_productos: cola,
+          producto_pendiente: {
+            ide_inarti: prod.ide_inarti,
+            nombre: this.displayNombreProducto(prod),
+            siglas_unidad: prod.siglas_unidad,
+            nombre_unidad: prod.nombre_unidad,
+            en_catalogo: prod.en_catalogo,
+          },
+        };
+        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
+          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
+        );
+        return;
+      }
 
-    if (resultados.length === 1) {
-      const prod = resultados[0];
+      // Varios resultados → desambiguar con lista numerada
+      const opciones: OpcionProducto[] = resultados.map((p, i) => ({
+        numero: i + 1,
+        ide_inarti: p.ide_inarti,
+        nombre: p.nombre,
+        otro_nombre: p.otro_nombre,
+        matched_by_otro_nombre: p.matched_by_otro_nombre,
+        siglas_unidad: p.siglas_unidad,
+        nombre_unidad: p.nombre_unidad,
+        en_catalogo: p.en_catalogo,
+      }));
       const nuevosDatos: DatosSesion = {
         ...datos,
-        producto_pendiente: {
-          ide_inarti: prod.ide_inarti,
-          nombre: prod.nombre,
-          siglas_unidad: prod.siglas_unidad,
-          nombre_unidad: prod.nombre_unidad,
-          en_catalogo: prod.en_catalogo,
-        },
+        productos: productosNuevos,
+        cola_productos: cola,
+        opciones_producto: opciones,
+        item_cantidad_conocida: item.cantidad,
       };
-      await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
+      const listaTexto = opciones.map(
+        (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
+      ).join('\n');
       await this.sendText(ideEmpr, waId,
-        `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
-        `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
+        `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde solo con el número (1 al ${opciones.length})._`,
       );
       return;
     }
 
-    const opciones: OpcionProducto[] = resultados.map((p, i) => ({
-      numero: i + 1,
-      ide_inarti: p.ide_inarti,
-      nombre: p.nombre,
-      otro_nombre: p.otro_nombre,
-      matched_by_otro_nombre: p.matched_by_otro_nombre,
-      siglas_unidad: p.siglas_unidad,
-      nombre_unidad: p.nombre_unidad,
-      en_catalogo: p.en_catalogo,
-    }));
+    // Cola vacía → cerrar la captura de productos
+    const nuevosDatos: DatosSesion = {
+      ...datos,
+      productos: productosNuevos,
+      cola_productos: undefined,
+      item_cantidad_conocida: undefined,
+    };
+    if (noEncontrados.length) {
+      await this.sendText(ideEmpr, waId,
+        `No encontré en catálogo: ${noEncontrados.join(', ')} — nuestro asesor puede confirmarte disponibilidad 😊`,
+      );
+    }
+    await this.finalizarColeccionProductos(ideEmpr, waId, sesion, nuevosDatos);
+  }
 
-    const nuevosDatos: DatosSesion = { ...datos, opciones_producto: opciones };
-    await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
-
-    // Lista numerada en texto — sin límite de caracteres (ideal para nombres químicos largos)
-    const listaTexto = opciones.map(
-      (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
-    ).join('\n');
-    await this.sendText(ideEmpr, waId,
-      `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde con el *número* del producto que necesitas._`,
-    );
+  /** Cierra la etapa de captura de productos: pide datos del cliente si faltan, o pasa a confirmación. */
+  private async finalizarColeccionProductos(
+    ideEmpr: number, waId: string, sesion: any, datos: DatosSesion,
+  ): Promise<void> {
+    if (!datos.cliente?.nombres) {
+      await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+      await this.sendButtons(ideEmpr, waId,
+        `${this.buildResumenProductos(datos.productos)}\n\nPara preparar tu cotización, necesito unos datos rápidos 😊\n\n${MSG_ES_CLIENTE_BODY}`,
+        BTN_ES_CLIENTE,
+      );
+      return;
+    }
+    await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
+      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+      { id: 'CONF_NO', title: '✏️ Modificar lista' },
+    ]);
   }
 
   private async handleSeleccionMultiple(
@@ -716,19 +810,40 @@ export class BotService implements OnModuleInit {
       await this.responderFallback(
         ideEmpr, waId, texto,
         `El cliente está seleccionando entre estas opciones de producto:\n${listaOpciones}\n` +
-        `Debe responder con el número (1 al ${datos.opciones_producto?.length ?? '?'}) de la opción que desea.`,
+        `Debe responder solo con el número (1 al ${datos.opciones_producto?.length ?? '?'}) de la opción que desea.`,
         config, config?.nombre_bot || 'Asistente', nombreEmpresa,
       );
       return;
     }
 
     const opcion = datos.opciones_producto[num - 1];
+    const cantidadConocida = datos.item_cantidad_conocida;
+
+    // Si GPT ya había detectado la cantidad de este ítem, no se vuelve a preguntar.
+    if (cantidadConocida !== null && cantidadConocida !== undefined) {
+      const nuevosDatos: DatosSesion = {
+        ...datos,
+        opciones_producto: undefined,
+        item_cantidad_conocida: undefined,
+        productos: [...(datos.productos ?? []), {
+          ide_inarti: opcion.ide_inarti,
+          nombre: this.displayNombreProducto(opcion),
+          cantidad: cantidadConocida,
+          unidad: opcion.nombre_unidad,
+          siglas_unidad: opcion.siglas_unidad,
+          en_catalogo: opcion.en_catalogo,
+        }],
+      };
+      await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+      return;
+    }
+
     const nuevosDatos: DatosSesion = {
       ...datos,
       opciones_producto: undefined,
       producto_pendiente: {
         ide_inarti: opcion.ide_inarti,
-        nombre: opcion.nombre,
+        nombre: this.displayNombreProducto(opcion),
         siglas_unidad: opcion.siglas_unidad,
         nombre_unidad: opcion.nombre_unidad,
         en_catalogo: opcion.en_catalogo,
@@ -736,7 +851,7 @@ export class BotService implements OnModuleInit {
     };
     await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
     await this.sendText(ideEmpr, waId,
-      `¡Seleccionaste: *${opcion.nombre}*! ✅\n\n` +
+      `¡Seleccionaste: *${this.displayNombreProducto(opcion)}*! ✅\n\n` +
       `¿Qué cantidad necesitas? _(Ejemplo: 5 ${opcion.nombre_unidad} / 2.5 ${opcion.siglas_unidad})_`,
     );
   }
@@ -783,18 +898,59 @@ export class BotService implements OnModuleInit {
       unidad: prod.nombre_unidad,
       siglas_unidad: prod.siglas_unidad,
       en_catalogo: prod.en_catalogo,
+      uso_generico: prod.uso_generico,
     };
 
     const nuevosDatos: DatosSesion = {
       ...datos,
       productos: [...(datos.productos ?? []), nuevoProducto],
       producto_pendiente: undefined,
+      item_cantidad_conocida: undefined,
     };
 
-    await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+  }
+
+  private async handleEsperandoUsoProducto(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const prod = datos.producto_pendiente;
+
+    if (!prod) {
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, producto_pendiente: undefined });
+      await this.sendText(ideEmpr, waId, MSG_INICIO_COTIZACION);
+      return;
+    }
+
+    const prodConUso = { ...prod, uso_generico: texto.trim() };
+    const cantidadConocida = datos.item_cantidad_conocida;
+
+    // Si GPT ya había detectado la cantidad, se agrega directo sin volver a preguntar.
+    if (cantidadConocida !== null && cantidadConocida !== undefined) {
+      const nuevosDatos: DatosSesion = {
+        ...datos,
+        producto_pendiente: undefined,
+        item_cantidad_conocida: undefined,
+        productos: [...(datos.productos ?? []), {
+          ide_inarti: prodConUso.ide_inarti,
+          nombre: prodConUso.nombre,
+          cantidad: cantidadConocida,
+          unidad: prodConUso.nombre_unidad,
+          siglas_unidad: prodConUso.siglas_unidad,
+          en_catalogo: prodConUso.en_catalogo,
+          uso_generico: prodConUso.uso_generico,
+        }],
+      };
+      await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+      return;
+    }
+
+    const nuevosDatos: DatosSesion = { ...datos, producto_pendiente: prodConUso };
+    await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
     await this.sendText(ideEmpr, waId,
-      `✅ Agregado: *${prod.nombre}* — ${cantidad} ${prod.nombre_unidad}\n\n` +
-      `¿Deseas agregar otro producto o ya terminaste?\n\n_Escribe el nombre del siguiente producto o *FIN* para continuar_`,
+      `¿Qué cantidad de *${prodConUso.nombre}* necesitas? _(Ejemplo: 5 KG, o escribe "cantidad mínima")_`,
     );
   }
 
@@ -1277,9 +1433,12 @@ export class BotService implements OnModuleInit {
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {
-    const lista = productos.map(
-      (p, i) => `${i + 1}. *${p.nombre}* — ${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`,
-    ).join('\n');
+    const lista = productos.map((p, i) => {
+      const cantidadTexto = p.cantidad === 0
+        ? '(cantidad mínima disponible)'
+        : `${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`;
+      return `${i + 1}. *${p.nombre}* — ${cantidadTexto}`;
+    }).join('\n');
 
     return `📋 *Resumen de tu pedido:*\n\n${lista}\n\n¿Confirmamos estos productos?`;
   }

@@ -170,6 +170,64 @@ export class BotGptService {
     }
   }
 
+  /**
+   * Analiza el texto acumulado durante la captura de productos en lote.
+   * Detecta si el cliente ya terminó de listar (FIN literal o cierre semántico)
+   * y extrae todos los pares producto/cantidad mencionados hasta el momento.
+   */
+  async analizarLoteProductos(
+    textoAcumulado: string,
+    productosYaAgregados: string[] = [],
+  ): Promise<{ completo: boolean; items: { producto: string; cantidad: number | null }[] }> {
+    const ctx = productosYaAgregados.length
+      ? `Ya fueron agregados a la cotización (no los repitas): ${productosYaAgregados.join(', ')}.`
+      : '';
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'El cliente está listando productos y cantidades para una cotización, posiblemente en varios mensajes seguidos ' +
+              '(separados por saltos de línea en el texto que recibes). ' +
+              `${ctx}\n` +
+              'Tu tarea:\n' +
+              '1. "completo": true si el texto contiene la palabra FIN (aislada) o si el cliente da a entender que ya terminó de listar ' +
+              '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"). false si parece que puede seguir agregando.\n' +
+              '2. "items": arreglo con cada producto mencionado y su cantidad.\n' +
+              '   - cantidad: número si viene explícita (acepta "3kg"→3, "media docena"→6, "un par"→2, etc).\n' +
+              '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo").\n' +
+              '   - cantidad: null si no menciona ninguna cantidad para ese producto.\n' +
+              'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
+              'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
+          },
+          { role: 'user', content: textoAcumulado },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 400,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return { completo: false, items: [] };
+      const parsed = JSON.parse(content);
+      const items = Array.isArray(parsed.items)
+        ? parsed.items
+          .filter((i: any) => i && typeof i.producto === 'string' && i.producto.trim())
+          .map((i: any) => ({
+            producto: i.producto.trim(),
+            cantidad: (i.cantidad === null || i.cantidad === undefined || isNaN(Number(i.cantidad)))
+              ? null
+              : Number(i.cantidad),
+          }))
+        : [];
+      return { completo: !!parsed.completo, items };
+    } catch (err) {
+      this.logger.error(`analizarLoteProductos error: ${err.message}`);
+      return { completo: false, items: [] };
+    }
+  }
+
   async analizarProductoNoEncontrado(
     texto: string,
     productosYaAgregados: string[] = [],
