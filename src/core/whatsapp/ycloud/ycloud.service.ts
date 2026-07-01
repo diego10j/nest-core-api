@@ -645,15 +645,24 @@ export class YcloudService {
    * incluso cuando la BD local fue purgada o no tiene registros.
    */
   async hasPriorMessages(phoneNumber: string): Promise<boolean> {
+    // YCloud espera el número en formato E.164 con "+" — el resto de llamadas a su API
+    // en este servicio siempre lo mandan así (ver sendText/saveMessageSent). Si llega
+    // sin "+" (ej. el waId derivado del webhook, que se guarda sin el prefijo), la
+    // consulta puede no matchear y devolver falsos negativos (chat tratado como nuevo
+    // aunque sí tenga historial).
+    const normalized = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
     try {
       const resp = await this.apiGet(
-        `/whatsapp/messages?phoneNumber=${encodeURIComponent(phoneNumber)}&limit=1`,
+        `/whatsapp/messages?phoneNumber=${encodeURIComponent(normalized)}&limit=1`,
       );
       const data = resp?.data ?? resp;
       const messages = Array.isArray(data) ? data : (data?.messages ?? []);
-      return messages.length > 0;
-    } catch {
+      const tienePrevios = messages.length > 0;
+      this.logger.debug(`[hasPriorMessages] phoneNumber=${normalized} → ${messages.length} mensaje(s)`);
+      return tienePrevios;
+    } catch (err) {
       // Si la API falla, asumimos que NO es nuevo (conservador: no responder por error)
+      this.logger.warn(`[hasPriorMessages] error consultando ${normalized}: ${err.message} — se asume que SÍ tiene historial`);
       return true;
     }
   }

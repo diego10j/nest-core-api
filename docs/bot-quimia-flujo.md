@@ -274,6 +274,24 @@ Cuando un agente escribe un mensaje directo desde la app nativa de WhatsApp (o W
 
 ---
 
+## Detección de "chat nuevo" (2 capas) y su relación con el toggle global
+
+`processMessage` (`bot.service.ts`) decide si un chat es genuinamente nuevo en 2 capas, para no perder leads cuando la BD local no tiene historial completo (ej. un contacto que ya escribía a DIQUIMEC antes de conectar el webhook):
+
+1. **Capa 1 (local):** ¿existe alguna fila en `wha_bot_sesion` para este chat? Si sí, no es nuevo.
+2. **Capa 2 (YCloud, fuente de verdad):** si no hay sesión local, se consulta `YcloudService.hasPriorMessages(waId)` — `GET /whatsapp/messages?phoneNumber=...` — para ver si YCloud tiene registro de mensajes previos con ese número, aunque nuestra BD no los tenga.
+
+**Bug corregido:** `hasPriorMessages` llamaba a la API de YCloud con el número en formato "solo dígitos" (`waId`, sin `+`), mientras que el resto de llamadas a la API de YCloud en este servicio siempre usan formato E.164 con `+` (ver `sendText`/`saveMessageSent`). Esto podía producir falsos negativos — un chat con historial real quedaba marcado como `esChatNuevo=true`. Corregido: se normaliza a `+<número>` antes de consultar, y se agregó logging (`[hasPriorMessages]`) para diagnosticar futuros casos.
+
+**Comportamiento confirmado (por diseño, no es un bug) — depende del ambiente:**
+
+- **En PROD:** un chat genuinamente nuevo (`esChatNuevo=true`, sin mensajes ni en `wha_bot_sesion`/`wha_mensaje` ni en la API de YCloud) **SIEMPRE** activa el bot y recibe el saludo — sin importar `activo_manual` ni horario. Es el primer contacto real de esa persona con la empresa y no debe perderse aunque el bot esté apagado globalmente en ese momento. El toggle global (`isBotActive`) solo aplica a chats que **ya tienen historial** (`esChatNuevo=false`) — ahí sí gobierna por completo si el bot responde o no.
+- **En DEV:** un chat nuevo **nunca** se auto-activa, sin importar el estado global del bot. En DEV la única forma de que un chat responda es activarlo manualmente por chat desde el front (`bot/toggle-chat`) — igual que el resto del control por ambiente (sección siguiente). El chequeo de `MODE` corre primero, antes de cualquier otra lógica de activación de chat nuevo.
+
+Por eso la corrección del formato en `hasPriorMessages` es crítica en PROD: un falso "no tiene historial" activaría el bot indebidamente incluso con el toggle global apagado — ese fue el bug reportado y corregido.
+
+---
+
 ## Configuración técnica
 
 ### Control por ambiente (`MODE=DEV` / `MODE=PROD`)
@@ -284,6 +302,7 @@ Dos reglas de activación automática del bot solo aplican en producción (`envs
 |-------|-------|------------------------|--------------------------|
 | Auto-activación de chats nuevos | `YcloudService.upsertChat()` | Un chat nuevo siempre arranca con `bot_activo_whcha=FALSE` / `bot_modo_whcha='ASESOR'`, sin importar `activo_manual` ni horario. Hay que activarlo manualmente por chat (`POST bot/toggle-chat` con `activar: true`) para probar el bot. | Un chat nuevo arranca con `bot_activo_whcha = BotConfigService.isBotActive(ideWhcue)` — es decir, `activo_manual OR (usa_horario AND en horario)`. Si la cuenta usa horario, un chat que llega dentro del horario configurado arranca directo en modo BOT aunque `activo_manual` esté en FALSE. |
 | Horario automático | `BotConfigService.isBotActive()` + `BotScheduleService.evaluarHorarioBot()` (cron cada minuto) | `isBotActive()` ignora `usa_horario`/`estaEnHorario` — el bot global solo se activa vía `activo_manual` explícito. El cron de horario ni siquiera se ejecuta. | Funciona con normalidad: `isBotActive()` evalúa horario, y el cron corre cada minuto. |
+| Chat nuevo detectado en runtime (`esChatNuevo`, sección anterior) | `BotService.processMessage()` | El gate de `MODE` corre antes que cualquier otra cosa: nunca se fuerza `bot_activo_whcha=TRUE` ni se responde, sin importar `activo_manual`/horario. Requiere activación manual por chat. | El bot **siempre** responde y fuerza `bot_activo_whcha=TRUE`, sin importar `activo_manual`/horario — es el único caso donde el toggle global no aplica. |
 
 Chats que ya estaban en modo BOT antes de cambiar a DEV (o activados manualmente durante las pruebas) siguen respondiendo con normalidad en cualquier ambiente — `bot_activo_whcha`/`bot_modo_whcha` de un chat existente **nunca** se tocan en el upsert (`ON CONFLICT DO UPDATE` no los incluye); el gate por ambiente solo afecta el valor inicial de chats **nuevos** y la activación por horario, no apaga el bot globalmente ni reescribe chats existentes.
 
@@ -374,6 +393,21 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
 | `BotProformaService` | Creación de proforma + precios + totales cabecera + observación por línea |
 | `YcloudService` | Envío mensajes/botones/documentos, geocodificación inversa (Nominatim) |
 | `FileTempService` | Guardado PDF en whatsapp_media/ |
+
+---
+
+## Métricas diarias (`wha_metrics_diaria`)
+
+`BotScheduleService.generarMetricasDiarias()` corre a diario a las **00:05 (hora del servidor)** vía `@Cron('5 0 * * *')`, calcula métricas del día anterior por empresa (`YcloudMetricsService.generateDailyMetrics`) e inserta/actualiza (`ON CONFLICT (ide_empr, fecha_whmed) DO UPDATE`) una fila en `wha_metrics_diaria`. Requiere `ScheduleModule.forRoot()` registrado (está en `MailModule`, importado por `AppModule` — global para toda la app) y `BotScheduleService` como provider (`whatsapp.module.ts`) — la infraestructura de cron está correctamente cableada.
+
+**Si la tabla está vacía después de varios días en producción**, como es un `INSERT` de una fila agregada sin `GROUP BY`, cualquier ejecución exitosa del cron deja al menos una fila por empresa (aunque todos los contadores sean 0) — una tabla completamente vacía indica que el cron **nunca llegó a ejecutar el INSERT**, no un problema de datos. Causas más probables, en orden de sospecha:
+1. `wha_cuenta.activo_whcue` no está en `TRUE` para la cuenta de producción → el cron loguea `[Metrics] No hay empresas con WhatsApp activo...` y no inserta nada. Verificar el valor directamente en BD.
+2. El proceso Node se reinicia/redeploya sistemáticamente justo alrededor de las 00:00–00:05 (pipeline de despliegue nocturno), perdiendo ese tick del cron todos los días.
+3. Un error de SQL en `generateDailyMetrics` que quedaba silenciado — con el fix de hoy, cada empresa corre en su propio try/catch y loguea `[Metrics] Error generando métricas ide_empr=...` con el mensaje exacto, sin bloquear a las demás empresas.
+
+**Verificación rápida sin esperar al cron:** `GET whatsapp/ycloud/metrics/generate-today` genera (o actualiza) la fila de HOY para la empresa del header — si esto inserta una fila correctamente, la query en sí funciona y el problema es de scheduling (causas 1 o 2); si falla, el log ahora mostrará el error real.
+
+**Nota de diseño (no es la causa de la tabla vacía, pero es una limitación conocida):** `generateDailyMetrics` no filtra explícitamente por `ide_empr` en el `WHERE` de la subconsulta de `wha_mensaje`/`wha_chat` — el `JOIN` es solo por `wa_id_whmem = wa_id_whcha`. Con una sola empresa usando WhatsApp esto no afecta el resultado, pero si en el futuro hay más de una cuenta activa, las métricas por empresa se calcularían sobre el total global, no por cuenta.
 
 ---
 

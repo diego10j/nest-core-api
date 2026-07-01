@@ -101,6 +101,7 @@ export class BotScheduleService {
    */
   @Cron('5 0 * * *')
   async generarMetricasDiarias(): Promise<void> {
+    this.logger.log('[Metrics] Cron generarMetricasDiarias disparado');
     try {
       const ayer = new Date();
       ayer.setDate(ayer.getDate() - 1);
@@ -115,17 +116,24 @@ export class BotScheduleService {
       );
 
       if (!empresas.length) {
-        this.logger.warn('No hay empresas con WhatsApp activo para generar métricas');
+        this.logger.warn('[Metrics] No hay empresas con WhatsApp activo (wha_cuenta.activo_whcue) — nada que generar');
         return;
       }
 
+      let ok = 0;
       for (const { ide_empr } of empresas) {
-        await this.metricsService.generateDailyMetrics(ide_empr as number, fechaAyer);
+        try {
+          await this.metricsService.generateDailyMetrics(ide_empr as number, fechaAyer);
+          ok++;
+        } catch (err) {
+          // No dejar que una empresa con error bloquee a las demás.
+          this.logger.error(`[Metrics] Error generando métricas ide_empr=${ide_empr} fecha=${fechaAyer}: ${err.message}`, err.stack);
+        }
       }
 
-      this.logger.log(`Métricas diarias generadas para ${empresas.length} empresa(s) — fecha: ${fechaAyer}`);
+      this.logger.log(`[Metrics] Métricas diarias generadas para ${ok}/${empresas.length} empresa(s) — fecha: ${fechaAyer}`);
     } catch (error) {
-      this.logger.error(`Error en generarMetricasDiarias: ${error.message}`);
+      this.logger.error(`Error en generarMetricasDiarias: ${error.message}`, error.stack);
     }
   }
 }

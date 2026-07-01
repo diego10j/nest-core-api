@@ -82,9 +82,16 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha=${botActivoWhcha} texto="${texto}"`);
 
-    // ── Chat NUEVO (primer mensaje): el bot SIEMPRE responde ──
-    // No importa si está globalmente inactivo, fuera de horario o deshabilitado por chat.
-    // Se verifica en 2 capas: sesiones previas (local) → API YCloud (fuente de verdad)
+    // ── Chat NUEVO (primer mensaje real, verificado en 2 capas: sesión local +
+    // API de YCloud como fuente de verdad): en PROD el bot SIEMPRE responde, sin
+    // importar el toggle global (activo_manual) ni el horario — es el primer contacto
+    // real de esa persona con la empresa y no debe perderse. En DEV, en cambio, NUNCA
+    // se auto-activa (ver gate de MODE más abajo) — ahí el único modo de que un chat
+    // responda es activarlo manualmente por chat desde el front. La confiabilidad de
+    // esto depende de que hasPriorMessages() detecte bien el historial (ver fix de
+    // formato +E.164 más abajo) — un falso "no tiene historial" activaría el bot
+    // indebidamente, así que ante cualquier duda/error de la API se asume que SÍ tiene
+    // historial (conservador).
     let esChatNuevo = false;
 
     // Capa 1: ¿hay sesiones previas de bot para este chat?
@@ -99,9 +106,18 @@ export class BotService implements OnModuleInit {
       this.logger.log(`[Bot] YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
     }
 
-    // Anti-duplicado: si ya existe una sesión activa para este chat,
-    // es un webhook retransmitido y el bot ya respondió → no responder de nuevo.
     if (esChatNuevo) {
+      // En DEV nunca se auto-activa un chat nuevo, sin importar el estado global del
+      // bot — en DEV la única forma de que un chat responda es activarlo manualmente
+      // por chat desde el front (bot/toggle-chat). Evita que pruebas disparen el bot
+      // a números reales. Este freno NO aplica en PROD (ver comentario arriba).
+      if (envs.mode !== 'PROD') {
+        this.logger.log(`[Bot] Chat nuevo ${ideWhcha} en MODE=${envs.mode} — no se auto-activa (requiere activación manual)`);
+        return;
+      }
+
+      // Anti-duplicado: si ya existe una sesión activa para este chat,
+      // es un webhook retransmitido y el bot ya respondió → no responder de nuevo.
       const sesionDuplicada = await this.dataSource.pool.query(
         `SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
         [ideWhcha],
