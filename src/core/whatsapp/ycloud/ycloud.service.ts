@@ -860,8 +860,11 @@ export class YcloudService {
     // automáticamente (ni por activo_manual ni por horario) — evita que pruebas en DEV
     // disparen respuestas automáticas del bot a números reales; hay que activarlo
     // manualmente por chat (bot/toggle-chat) para probarlo.
+    // Tampoco se auto-activa cuando el chat nace de un mensaje SALIENTE (isInbound=false,
+    // ej. un agente escribe primero a un contacto/proveedor desde la app de WhatsApp):
+    // si un humano ya inició la conversación, el bot no debe tomarla automáticamente.
     let activoInicial = false;
-    if (envs.mode === 'PROD') {
+    if (envs.mode === 'PROD' && isInbound) {
       const cuentaRow = await this.dataSource.pool.query<{ ide_whcue: number }>(
         `SELECT ide_whcue FROM wha_cuenta WHERE id_cuenta_whcue = $1 AND activo_whcue = TRUE LIMIT 1`,
         [phoneNumberId],
@@ -873,6 +876,11 @@ export class YcloudService {
     }
     const modoInicial = activoInicial ? 'BOT' : 'ASESOR';
 
+    // En el UPDATE (chat ya existente), "no leído"/contador y ultimo_ingreso_cliente_whcha
+    // solo deben tocarse cuando el mensaje es entrante (isInbound=true). Si upsertChat se
+    // llama para un echo saliente (agente escribiendo desde la app nativa) sobre un chat
+    // que ya existía, no debe marcarlo como no leído ni pisar la fecha del último mensaje
+    // real del cliente con NULL.
     const sql = `
       INSERT INTO wha_chat (
         wa_id_whcha, phone_number_id_whcha, phone_number_whcha,
@@ -884,18 +892,18 @@ export class YcloudService {
       VALUES ($1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6, $7, $8)
       ON CONFLICT (wa_id_whcha) DO UPDATE SET
         fecha_msg_whcha              = $5,
-        leido_whcha                  = FALSE,
-        no_leidos_whcha              = wha_chat.no_leidos_whcha + 1,
+        leido_whcha                  = CASE WHEN $9 THEN FALSE ELSE wha_chat.leido_whcha END,
+        no_leidos_whcha              = CASE WHEN $9 THEN wha_chat.no_leidos_whcha + 1 ELSE wha_chat.no_leidos_whcha END,
         name_whcha                   = COALESCE($4, wha_chat.name_whcha),
         nombre_whcha                 = COALESCE($4, wha_chat.nombre_whcha),
         phone_number_id_whcha        = EXCLUDED.phone_number_id_whcha,
-        ultimo_ingreso_cliente_whcha = $6
+        ultimo_ingreso_cliente_whcha = COALESCE($6, wha_chat.ultimo_ingreso_cliente_whcha)
       RETURNING ide_whcha
     `;
     const nowStr = now.toISOString();
     const inboundTs = isInbound ? nowStr : null;
     const result = await this.dataSource.pool.query(sql, [
-      waId, phoneNumberId, phoneNumberFrom, profileName, nowStr, inboundTs, activoInicial, modoInicial,
+      waId, phoneNumberId, phoneNumberFrom, profileName, nowStr, inboundTs, activoInicial, modoInicial, isInbound,
     ]);
     return result.rows[0].ide_whcha as number;
   }
@@ -1325,43 +1333,95 @@ export class YcloudService {
   // ─── Sync ─────────────────────────────────────────────────────
 
   /**
-   * Procesa el echo de un mensaje enviado desde WhatsApp Web / App nativa.
-   * Resetea no_leidos_whcha porque el agente leyó y respondió desde esa interfaz.
+   * Procesa el echo de un mensaje enviado desde WhatsApp Web / App nativa (fuera de
+   * nuestra API). Antes solo reseteaba no_leidos_whcha; NO guardaba el mensaje en
+   * wha_mensaje. Eso provocaba que, si un agente escribía primero a un contacto
+   * directo desde la app (sin pasar por el dashboard/bot), el chat no tuviera
+   * registro de intervención humana — el bot lo detectaba como "chat nuevo sin
+   * historial" y se auto-iniciaba con el saludo, aunque la conversación ya llevaba
+   * mensajes. Ahora se persiste el mensaje (direction_whmem=1) y se asegura el chat
+   * (isInbound=false → nunca auto-activa el bot para chats iniciados por un agente).
    */
   private async processEchoMessage(data: YcloudStatusData): Promise<void> {
     try {
-      // data.from = número de la empresa (quien envió)
-      // data.to   = número del cliente (destinatario)
+      // data.from = número de la empresa (quien envió), data.to = número del cliente
       const customerWaId = (data.to || '').replace(/^\+/, '');
-      const businessPhone = (data.from || '').replace(/^\+/, '');
-      if (!customerWaId || !businessPhone) return;
+      const businessPhoneRaw = (data.from || '').replace(/^\+/, '');
+      if (!customerWaId || !businessPhoneRaw) return;
 
-      const result = await this.dataSource.pool.query<{ ide_empr: number }>(
-        `UPDATE wha_chat c
-            SET no_leidos_whcha = 0,
-                leido_whcha     = TRUE
-           FROM wha_cuenta cu
-          WHERE c.wa_id_whcha           = $1
-            AND cu.activo_whcue         = TRUE
-            AND REPLACE(cu.id_telefono_whcue, '+', '') = $2
-            AND c.phone_number_id_whcha = cu.id_cuenta_whcue
-          RETURNING cu.ide_empr`,
-        [customerWaId, businessPhone],
+      const cuentaRow = await this.dataSource.pool.query<{ id_cuenta_whcue: string }>(
+        `SELECT id_cuenta_whcue FROM wha_cuenta
+         WHERE activo_whcue = TRUE AND REPLACE(id_telefono_whcue, '+', '') = $1
+         LIMIT 1`,
+        [businessPhoneRaw],
+      );
+      const phoneNumberId = cuentaRow.rows[0]?.id_cuenta_whcue;
+      if (!phoneNumberId) return; // número de empresa no reconocido
+
+      const now = data.sendTime ? new Date(data.sendTime) : new Date();
+
+      const ideWhcha = await this.upsertChat({
+        waId: customerWaId,
+        phoneNumberId,
+        phoneNumberFrom: data.to,
+        profileName: null,
+        now,
+        isInbound: false,
+      });
+
+      await this.insertMensajeEcho(data, customerWaId, phoneNumberId, ideWhcha, now);
+
+      await this.dataSource.pool.query(
+        `UPDATE wha_chat SET no_leidos_whcha = 0, leido_whcha = TRUE WHERE ide_whcha = $1`,
+        [ideWhcha],
       );
 
-      if (result.rows.length > 0) {
-        const { ide_empr } = result.rows[0];
-        const phoneNumberId = (await this.dataSource.pool.query<{ id_cuenta_whcue: string }>(
-          `SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_empr = $1 AND activo_whcue = TRUE LIMIT 1`,
-          [ide_empr],
-        )).rows[0]?.id_cuenta_whcue;
-
-        if (phoneNumberId) {
-          void this.emitTotalNoLeidos(phoneNumberId);
-        }
-      }
+      void this.emitTotalNoLeidos(phoneNumberId);
     } catch (error) {
       this.logger.error(`Error processEchoMessage: ${error.message}`);
+    }
+  }
+
+  /** Guarda el mensaje saliente detrás de un echo (agente escribiendo desde la app nativa). Dedupe por wamid. */
+  private async insertMensajeEcho(
+    data: YcloudStatusData,
+    customerWaId: string,
+    phoneNumberId: string,
+    ideWhcha: number,
+    now: Date,
+  ): Promise<void> {
+    const wamid = data.wamid || data.id;
+    if (!wamid) return;
+
+    const existsQ = await this.dataSource.pool.query(
+      `SELECT 1 FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`,
+      [wamid],
+    );
+    if (existsQ.rowCount > 0) return;
+
+    const tipo = data.type || 'text';
+    const body = data.text?.body
+      || data.image?.caption || data.video?.caption || data.document?.caption
+      || null;
+
+    const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
+    insertQuery.values.set('ide_whcha', ideWhcha);
+    insertQuery.values.set('phone_number_id_whmem', phoneNumberId);
+    insertQuery.values.set('wa_id_whmem', customerWaId);
+    insertQuery.values.set('id_whmem', wamid);
+    insertQuery.values.set('body_whmem', body);
+    insertQuery.values.set('fecha_whmem', now.toISOString());
+    insertQuery.values.set('content_type_whmem', tipo);
+    insertQuery.values.set('direction_whmem', 1);
+    insertQuery.values.set('leido_whmem', true);
+    insertQuery.values.set('tipo_whmem', 'YCLOUD');
+    insertQuery.values.set('timestamp_whmem', data.sendTime || null);
+
+    try {
+      await this.dataSource.createQuery(insertQuery);
+      this.logger.debug(`[Echo] Guardado wamid=${wamid} tipo=${tipo} chat=${ideWhcha}`);
+    } catch (err) {
+      this.logger.warn(`[insertMensajeEcho] ${wamid}: no se pudo guardar: ${err.message}`);
     }
   }
 

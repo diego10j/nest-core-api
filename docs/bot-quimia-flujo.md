@@ -259,6 +259,21 @@ Cuando el cliente comparte ubicación WhatsApp:
 
 ---
 
+## Echoes de WhatsApp nativo (agente escribiendo fuera del dashboard)
+
+Cuando un agente escribe un mensaje directo desde la app nativa de WhatsApp (o WhatsApp Web) — es decir, sin pasar por el dashboard/API de DIQUIMEC — YCloud reenvía ese mensaje como un evento `whatsapp.smb.message.echoes`, manejado por `YcloudService.processEchoMessage()`.
+
+**Antes:** este handler solo reseteaba `no_leidos_whcha`/`leido_whcha` — **no guardaba el mensaje en `wha_mensaje`**. Eso significaba que si un agente escribía primero a un contacto (ej. un proveedor, o un cliente al que se le hace seguimiento manual) directamente desde la app, el chat quedaba sin ningún registro de que un humano ya había intervenido. Cuando esa persona respondía, el bot corría el chequeo "¿el chat es nuevo?" (`processMessage`, sección `El bot global solo inicia en chats nuevos`), no encontraba historial en `wha_mensaje`, y se auto-iniciaba con el saludo — aunque la conversación en WhatsApp ya llevaba varios mensajes. Peor aún: el chequeo `tieneAgenteHumano` (que corre en **cada** mensaje, no solo al inicio, y es un opt-out **permanente** del bot para ese chat) tampoco detectaba nada, así que el bot podía seguir interviniendo indefinidamente en una conversación que un agente ya estaba llevando manualmente.
+
+**Ahora:** `processEchoMessage()`:
+1. Resuelve la cuenta por `id_telefono_whcue` (formato con el que YCloud manda `data.from` en este tipo de evento) y traduce a `id_cuenta_whcue` (convención usada en el resto del código).
+2. Llama a `upsertChat({..., isInbound: false})` — crea el chat si no existía (ej. el agente inició la conversación) o lo actualiza si ya existía, **sin auto-activar el bot** en ningún caso (los chats que nacen de un mensaje saliente nunca se auto-activan, sin importar `MODE`/horario — un humano ya está a cargo).
+3. Guarda el mensaje en `wha_mensaje` vía `insertMensajeEcho()` (`direction_whmem=1`, deduplicado por `wamid`, igual que los mensajes entrantes).
+
+`upsertChat()` también se corrigió para que, en su rama `ON CONFLICT` (chat ya existente), **solo** marque el chat como no leído / actualice `ultimo_ingreso_cliente_whcha` cuando `isInbound=true` — antes lo hacía siempre, así que una llamada para un echo saliente sobre un chat existente habría marcado el chat como "no leído" y sobrescrito con `NULL` la fecha del último mensaje real del cliente.
+
+---
+
 ## Configuración técnica
 
 ### Control por ambiente (`MODE=DEV` / `MODE=PROD`)
