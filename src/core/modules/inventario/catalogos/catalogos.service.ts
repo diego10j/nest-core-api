@@ -144,11 +144,32 @@ export class CatalogosService extends BaseService {
                 d.fecha_actua,
                 d.hora_actua,
                 a.url_inarti as url,
-                a.notas_inarti  AS tags
+                a.notas_inarti  AS tags,
+                COALESCE((
+                    SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                    FROM inv_det_comp_inve dci
+                    INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                    INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                    INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                    WHERE dci.ide_inarti = d.ide_inarti
+                      AND cci.ide_empr = ${dtoIn.ideEmpr}
+                      AND cci.ide_inepi = 1
+                ), 0) AS stock
             FROM inv_det_catalogo d
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             WHERE d.ide_inccat = $1
-            ORDER BY d.orden_indcat, a.nombre_inarti
+            ORDER BY
+                CASE WHEN COALESCE((
+                    SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                    FROM inv_det_comp_inve dci
+                    INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                    INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                    INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                    WHERE dci.ide_inarti = d.ide_inarti
+                      AND cci.ide_empr = ${dtoIn.ideEmpr}
+                      AND cci.ide_inepi = 1
+                ), 0) > 0 THEN 0 ELSE 1 END,
+                d.orden_indcat, a.nombre_inarti
         `, dtoIn);
         query.addIntParam(1, dtoIn.ide_inccat);
         return this.dataSource.createSelectQuery(query);
@@ -328,7 +349,18 @@ export class CatalogosService extends BaseService {
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
             WHERE ${detWhereClause}
-            ORDER BY d.orden_indcat, a.nombre_inarti
+            ORDER BY
+                CASE WHEN COALESCE((
+                    SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                    FROM inv_det_comp_inve dci
+                    INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                    INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                    INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                    WHERE dci.ide_inarti = d.ide_inarti
+                      AND cci.ide_empr = ${ideEmpr}
+                      AND cci.ide_inepi = 1
+                ), 0) > 0 THEN 0 ELSE 1 END,
+                d.orden_indcat, a.nombre_inarti
         `);
         queryDet.addIntParam(1, cabecera.ide_cata);
         const detalle = await this.dataSource.createSelectQuery(queryDet);
@@ -408,6 +440,7 @@ export class CatalogosService extends BaseService {
                 d.video_indcat           AS video_catp,
                 d.orden_indcat           AS orden,
                 d.url_indcat             AS url,
+                a.notas_inarti           AS tags,
                 COALESCE((
                     SELECT SUM(dci.cantidad_indci * tci.signo_intci)
                     FROM inv_det_comp_inve dci
@@ -478,7 +511,18 @@ export class CatalogosService extends BaseService {
             INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
             WHERE ${detWhereClause}
-            ORDER BY d.orden_indcat, a.nombre_inarti
+            ORDER BY
+                CASE WHEN COALESCE((
+                    SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                    FROM inv_det_comp_inve dci
+                    INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                    INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                    INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                    WHERE dci.ide_inarti = d.ide_inarti
+                      AND cci.ide_empr = ${ideEmpr}
+                      AND cci.ide_inepi = 1
+                ), 0) > 0 THEN 0 ELSE 1 END,
+                d.orden_indcat, a.nombre_inarti
         `);
         queryDet.addIntParam(1, ideInccat);
         const detalle = await this.dataSource.createSelectQuery(queryDet);
@@ -495,21 +539,23 @@ export class CatalogosService extends BaseService {
     async getTagsCatalogo(dtoIn: GetTagsCatalogoDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `
-        SELECT DISTINCT tag
+        SELECT
+            tag,
+            COUNT(DISTINCT a.ide_inarti)::int AS total
         FROM inv_det_catalogo d
         INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
         CROSS JOIN LATERAL jsonb_array_elements_text(a.notas_inarti::jsonb) AS tag
         WHERE d.ide_inccat = ${dtoIn.ide_inccat}
             AND a.notas_inarti IS NOT NULL
             AND a.notas_inarti != 'null'
+        GROUP BY tag
         ORDER BY tag
         `,
             dtoIn,
         );
 
         query.setLazy(false);
-        const rows = await this.dataSource.createSelectQuery(query);
-        return rows.map((r: { tag: string }) => r.tag);
+        return this.dataSource.createSelectQuery(query);
     }
 
     // ─────────────────────────────────────────────────────────────
