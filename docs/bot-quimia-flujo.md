@@ -182,7 +182,10 @@ Cliente escribe cualquier mensaje
     → [FINALIZADO]
 
 [FINALIZADO]
-  NUEVA_COTIZACION → cierra sesión, crea una nueva → [PREGUNTA_ES_CLIENTE]
+  NUEVA_COTIZACION → cierra sesión, crea una nueva:
+    - si el cliente ya se identificó en la sesión que se cierra → conserva cliente
+      (+ provincia) y salta directo a [SELECCION_PRODUCTOS] (no vuelve a preguntar)
+    - si no hay cliente conocido → [PREGUNTA_ES_CLIENTE]
   HABLAR_ASESOR / palabra asesor → deriva a asesor
   Otro mensaje → "¿Puedo ayudarte con algo más?" + botones
 ```

@@ -1346,9 +1346,28 @@ export class BotService implements OnModuleInit {
     const t = texto.trim().toUpperCase();
 
     if (t === 'NUEVA_COTIZACION' || /NUEVA|COTIZAR|OTRO PRODUCTO|OTRA COTIZ/i.test(texto)) {
-      // Cerrar la sesión actual y crear una nueva para empezar de cero
+      // El cliente ya se identificó en la sesión que se está cerrando (se acaba de
+      // generar una cotización con sus datos) — se conserva para no volver a preguntar.
+      const datosAnteriores = sesion.datos_sesion as DatosSesion;
+      const clienteConocido = datosAnteriores?.cliente;
+
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
       const { sesion: nuevaSesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+
+      if (clienteConocido?.nombres) {
+        const nuevosDatos: DatosSesion = {
+          productos: [],
+          cliente: { ...clienteConocido, pendiente_campo: undefined },
+          memoria_cargada: true,
+          envio: datosAnteriores.envio?.provincia ? { provincia: datosAnteriores.envio.provincia } : undefined,
+        };
+        await this.botSession.update(nuevaSesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+        await this.sendText(ideEmpr, waId,
+          `¡Con gusto, *${clienteConocido.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+        );
+        return;
+      }
+
       await this.botSession.update(nuevaSesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
         { productos: [], texto_inicial: '' });
       await this.sendButtons(ideEmpr, waId, `¡Con gusto! 😊 ¿Eres cliente registrado con nosotros?`, [
