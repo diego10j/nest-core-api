@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 
@@ -24,9 +25,11 @@ export class BotScheduleService {
   /**
    * Cada minuto evalúa si las cuentas deben activar o desactivar el bot por horario.
    * Solo actúa cuando detecta un cambio de estado (evita spam en el log).
+   * Solo corre en producción (MODE=PROD) — en DEV el horario automático está deshabilitado.
    */
   @Cron('0 * * * * *')
   async evaluarHorarioBot(): Promise<void> {
+    if (envs.mode !== 'PROD') return;
     try {
       const configs = await this.botConfig.getAllConfigsConHorario();
       for (const cfg of configs) {

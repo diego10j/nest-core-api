@@ -7,6 +7,7 @@ import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
+import { BotConfigService } from '../bot/bot-config.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
 import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
@@ -43,6 +44,7 @@ export class YcloudService {
     private readonly whatsappGateway: WhatsappGateway,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
+    private readonly botConfig: BotConfigService,
   ) {
     this.YCLOUD_API_URL = (envs.ycloudApiUrl || 'https://api.ycloud.com/v2').trim();
     this.YCLOUD_API_KEY = (envs.ycloudApiKey || '').trim();
@@ -850,16 +852,28 @@ export class YcloudService {
   }): Promise<number> {
     const { waId, phoneNumberId, phoneNumberFrom, profileName, now, isInbound } = opts;
 
-    // bot_activo_whcha inicial depende de si el bot global está activo (activo_manual)
+    // bot_activo_whcha inicial de un chat nuevo: replica la misma regla que gobierna el
+    // resto de la conversación — BotConfigService.isBotActive() = activo_manual OR
+    // (usa_horario AND en horario) — para que, en PROD, un chat entrante en horario del
+    // bot arranque directo en modo BOT aunque activo_manual esté en FALSE.
+    // Fuera de producción (MODE != PROD) los chats nuevos NUNCA arrancan en modo BOT
+    // automáticamente (ni por activo_manual ni por horario) — evita que pruebas en DEV
+    // disparen respuestas automáticas del bot a números reales; hay que activarlo
+    // manualmente por chat (bot/toggle-chat) para probarlo.
+    let activoInicial = false;
+    if (envs.mode === 'PROD') {
+      const cuentaRow = await this.dataSource.pool.query<{ ide_whcue: number }>(
+        `SELECT ide_whcue FROM wha_cuenta WHERE id_cuenta_whcue = $1 AND activo_whcue = TRUE LIMIT 1`,
+        [phoneNumberId],
+      );
+      const ideWhcue = cuentaRow.rows[0]?.ide_whcue;
+      if (ideWhcue) {
+        activoInicial = await this.botConfig.isBotActive(ideWhcue);
+      }
+    }
+    const modoInicial = activoInicial ? 'BOT' : 'ASESOR';
+
     const sql = `
-      WITH bot_estado AS (
-        SELECT COALESCE(bc.activo_manual, FALSE) AS activo
-        FROM wha_cuenta cu
-        LEFT JOIN wha_bot_config bc ON bc.ide_whcue = cu.ide_whcue
-        WHERE cu.id_cuenta_whcue = $2
-          AND cu.activo_whcue = TRUE
-        LIMIT 1
-      )
       INSERT INTO wha_chat (
         wa_id_whcha, phone_number_id_whcha, phone_number_whcha,
         name_whcha, nombre_whcha,
@@ -867,10 +881,7 @@ export class YcloudService {
         leido_whcha, no_leidos_whcha,
         ultimo_ingreso_cliente_whcha, bot_activo_whcha, bot_modo_whcha
       )
-      SELECT $1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6,
-             activo,
-             CASE WHEN activo THEN 'BOT' ELSE 'ASESOR' END
-      FROM bot_estado
+      VALUES ($1, $2, $3, $4, $4, $5, $5, FALSE, 1, $6, $7, $8)
       ON CONFLICT (wa_id_whcha) DO UPDATE SET
         fecha_msg_whcha              = $5,
         leido_whcha                  = FALSE,
@@ -884,7 +895,7 @@ export class YcloudService {
     const nowStr = now.toISOString();
     const inboundTs = isInbound ? nowStr : null;
     const result = await this.dataSource.pool.query(sql, [
-      waId, phoneNumberId, phoneNumberFrom, profileName, nowStr, inboundTs,
+      waId, phoneNumberId, phoneNumberFrom, profileName, nowStr, inboundTs, activoInicial, modoInicial,
     ]);
     return result.rows[0].ide_whcha as number;
   }

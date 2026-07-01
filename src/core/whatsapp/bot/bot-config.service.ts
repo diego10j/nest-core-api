@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
@@ -81,6 +82,10 @@ export class BotConfigService {
   /**
    * Devuelve TRUE si el bot debe responder ahora:
    *   activo_manual = TRUE  OR  (usa_horario = TRUE AND estamos en horario del bot)
+   *
+   * El horario automático solo aplica en producción (MODE=PROD). En DEV se ignora
+   * para no interrumpir pruebas con activaciones automáticas fuera de nuestro control —
+   * el bot solo se activa ahí de forma explícita vía `activo_manual`.
    */
   async isBotActive(ideWhcue: number): Promise<boolean> {
     const cached = await this.dataSource.redisClient.get(`${CACHE_ACTIVO}${ideWhcue}`);
@@ -93,7 +98,7 @@ export class BotConfigService {
     }
 
     let enHorario = false;
-    if (config.usa_horario && config.ide_tihor) {
+    if (envs.mode === 'PROD' && config.usa_horario && config.ide_tihor) {
       enHorario = await this.estaEnHorario(config.ide_tihor);
     }
 
@@ -187,7 +192,16 @@ export class BotConfigService {
     q.addIntParam(1, ideWhcue);
     const row = await this.dataSource.createSingleQuery(q);
     const activo = await this.isBotActive(ideWhcue);
-    return { ...row, activo_ahora: activo };
+    return { ...row, activo_ahora: activo, ...this.getEnvironmentInfo() };
+  }
+
+  /**
+   * Info del ambiente del backend (MODE=DEV|PROD), para que el front pueda mostrar
+   * un indicador visual y explicar por qué no se auto-activan chats nuevos ni el
+   * horario automático fuera de producción (ver isBotActive / evaluarHorarioBot).
+   */
+  getEnvironmentInfo(): { mode: string; esDev: boolean } {
+    return { mode: envs.mode, esDev: envs.mode !== 'PROD' };
   }
 
   async getLogs(ideWhcue: number, limit = 50) {

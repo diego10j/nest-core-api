@@ -38,6 +38,12 @@ export class BotController {
     return this.botConfig.getStatus(ideWhcue);
   }
 
+  @Get('environment')
+  @ApiOperation({ summary: 'Ambiente del backend (MODE=DEV|PROD) — para mostrar aviso en el front' })
+  async environment() {
+    return this.botConfig.getEnvironmentInfo();
+  }
+
   @Get('logs/:ideWhcue')
   @ApiOperation({ summary: 'Historial de activaciones del bot' })
   async logs(@Param('ideWhcue', ParseIntPipe) ideWhcue: number) {
@@ -82,7 +88,10 @@ export class BotController {
   @Get('config/:ideWhcue')
   @ApiOperation({ summary: 'Obtener configuración actual del bot' })
   async getConfig(@Param('ideWhcue', ParseIntPipe) ideWhcue: number) {
-    return this.botConfig.getConfig(ideWhcue);
+    const config = await this.botConfig.getConfig(ideWhcue);
+    // mode/esDev se agregan aquí (no en el objeto cacheado) para que nunca queden
+    // desactualizados si el backend cambia de ambiente sin invalidar la caché de config.
+    return config ? { ...config, ...this.botConfig.getEnvironmentInfo() } : config;
   }
 
   @Get('configs')

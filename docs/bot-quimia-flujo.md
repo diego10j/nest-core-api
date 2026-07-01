@@ -257,6 +257,21 @@ Cuando el cliente comparte ubicación WhatsApp:
 
 ## Configuración técnica
 
+### Control por ambiente (`MODE=DEV` / `MODE=PROD`)
+
+Dos reglas de activación automática del bot solo aplican en producción (`envs.mode === 'PROD'`), para no interferir con pruebas en DEV:
+
+| Regla | Dónde | Comportamiento en DEV | Comportamiento en PROD |
+|-------|-------|------------------------|--------------------------|
+| Auto-activación de chats nuevos | `YcloudService.upsertChat()` | Un chat nuevo siempre arranca con `bot_activo_whcha=FALSE` / `bot_modo_whcha='ASESOR'`, sin importar `activo_manual` ni horario. Hay que activarlo manualmente por chat (`POST bot/toggle-chat` con `activar: true`) para probar el bot. | Un chat nuevo arranca con `bot_activo_whcha = BotConfigService.isBotActive(ideWhcue)` — es decir, `activo_manual OR (usa_horario AND en horario)`. Si la cuenta usa horario, un chat que llega dentro del horario configurado arranca directo en modo BOT aunque `activo_manual` esté en FALSE. |
+| Horario automático | `BotConfigService.isBotActive()` + `BotScheduleService.evaluarHorarioBot()` (cron cada minuto) | `isBotActive()` ignora `usa_horario`/`estaEnHorario` — el bot global solo se activa vía `activo_manual` explícito. El cron de horario ni siquiera se ejecuta. | Funciona con normalidad: `isBotActive()` evalúa horario, y el cron corre cada minuto. |
+
+Chats que ya estaban en modo BOT antes de cambiar a DEV (o activados manualmente durante las pruebas) siguen respondiendo con normalidad en cualquier ambiente — `bot_activo_whcha`/`bot_modo_whcha` de un chat existente **nunca** se tocan en el upsert (`ON CONFLICT DO UPDATE` no los incluye); el gate por ambiente solo afecta el valor inicial de chats **nuevos** y la activación por horario, no apaga el bot globalmente ni reescribe chats existentes.
+
+**Nota de diseño en DEV:** la única forma de que el bot responda un chat es que ese chat tenga `bot_activo_whcha=TRUE` y `bot_modo_whcha='BOT'` — ambos campos siempre se escriben juntos (nunca divergen) en todo el código (`upsertChat`, `liberarChat`, `derivarAsesor`, `toggle-chat`), así que en la práctica es un único gate. En DEV nada los pone en `TRUE` automáticamente — solo el toggle manual por chat.
+
+**Endpoint para que el front detecte el ambiente:** `GET whatsapp/bot/environment` → `{ mode: 'DEV'|'PROD', esDev: boolean }`. También viene incluido en `GET whatsapp/bot/status/:ideWhcue` y `GET whatsapp/bot/config/:ideWhcue` (mismos dos campos), para no forzar una llamada extra si el front ya consume esos endpoints.
+
 ### Proforma WhatsApp — constantes
 ```typescript
 IDE_CCTPR_WHATSAPP  = 3   // Tipo proforma WhatsApp
