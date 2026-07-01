@@ -7,7 +7,6 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
 import { ConfigPreciosProductosService } from './config-precios.service';
@@ -15,6 +14,7 @@ import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
 import { CopiarConfigPreciosVentaDto } from './dto/copiar-config-precios.dto';
 import { GeneraConfigPreciosVentaDto } from './dto/genera-config-precio.dto';
+import { GetCatalogoProductosDto } from './dto/get-catalogo-productos.dto';
 import { GetConfigPrecioProductoDto } from './dto/get-config-precios.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
@@ -70,7 +70,7 @@ export class ProductosController {
   @Get('getCatalogoProductos')
   @ApiOperation({ summary: 'Obtener catálogo de productos con precios e imágenes' })
   // @Auth()
-  getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+  getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCatalogoProductosDto) {
     return this.productos.getCatalogoProductos({
       ...headersParams,
       ...dtoIn,

@@ -14,7 +14,6 @@ import { fNumber } from 'src/util/helpers/number-util';
 import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { BaseService } from '../../../../common/base-service';
-import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { UuidDto } from '../../../../common/dto/uuid.dto';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
@@ -25,6 +24,7 @@ import { getExtensionFile } from '../../sistema/files/helpers/fileNamer.helper';
 
 import { CategoriasDto } from './dto/categorias.dto';
 import { ClientesProductoDto } from './dto/clientes-producto.dto';
+import { GetCatalogoProductosDto } from './dto/get-catalogo-productos.dto';
 import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
@@ -115,6 +115,18 @@ export class ProductosService extends BaseService {
             }
         }
 
+        if (res.rowCount > 0) {
+            for (const row of res.rows) {
+                if (row.notas_inarti) {
+                    try {
+                        row.notas_inarti = JSON.parse(row.notas_inarti);
+                    } catch {
+                        row.notas_inarti = [];
+                    }
+                }
+            }
+        }
+
         return {
             row: res.rows[0],
             columns: res.columns,
@@ -174,7 +186,11 @@ export class ProductosService extends BaseService {
         return query;
     }
 
-    async getCatalogoProductos(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getCatalogoProductos(dtoIn: GetCatalogoProductosDto & HeaderParamsDto) {
+        const tagFilter = dtoIn.tag
+            ? `AND a.notas_inarti::jsonb @> $1::jsonb`
+            : '';
+
         const query = new SelectQuery(
             `
         SELECT
@@ -182,7 +198,18 @@ export class ProductosService extends BaseService {
             nombre_inarti,
             foto_inarti,
             a.ide_incate,
-            nombre_incate
+            nombre_incate,
+            COALESCE(
+                (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+                 FROM inv_det_comp_inve dci
+                 INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                 INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                 INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                 WHERE dci.ide_inarti = a.ide_inarti
+                   AND cci.ide_inepi = 1
+                ), 0
+            ) AS stock,
+             a.notas_inarti
         FROM
             inv_articulo a
             LEFT JOIN inv_categoria b ON a.ide_incate = b.ide_incate
@@ -191,12 +218,17 @@ export class ProductosService extends BaseService {
             AND nivel_inarti = 'HIJO'
             AND a.ide_empr  = ${dtoIn.ideEmpr}
             AND activo_inarti = TRUE
-            -- AND a.ide_incate IS NULL
+            ${tagFilter}
         ORDER BY
+            stock DESC,
             unaccent(nombre_inarti)
         `,
             dtoIn,
         );
+
+        if (dtoIn.tag) {
+            query.addParam(1, JSON.stringify([dtoIn.tag]));
+        }
 
         return this.dataSource.createSelectQuery(query);
     }
@@ -317,6 +349,15 @@ export class ProductosService extends BaseService {
         query.addStringParam(1, dtoIn.uuid);
 
         const res = await this.dataSource.createSingleQuery(query);
+
+        if (res && res.notas_inarti) {
+            try {
+                res.notas_inarti = JSON.parse(res.notas_inarti);
+            } catch {
+                res.notas_inarti = [];
+            }
+        }
+
         if (res) {
             const ide_inarti = res.ide_inarti;
             const queryCarac = new SelectQuery(`

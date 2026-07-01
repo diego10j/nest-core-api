@@ -18,6 +18,7 @@ import { CatalogosSaveService } from './catalogos-save.service';
 import { CatalogosService } from './catalogos.service';
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';
 import { GetCatalogosDto } from './dto/get-catalogos.dto';
+import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
 import { IdCatalogoDto } from './dto/id-catalogo.dto';
 import { IdDetCatalogoDto } from './dto/id-det-catalogo.dto';
 import { SaveCatalogoDto } from './dto/save-catalogo.dto';
@@ -97,6 +98,15 @@ export class CatalogosController {
         @Param('ideInccat', ParseIntPipe) ideInccat: number,
     ) {
         return this.service.getCatalogoCompleto({ ...h, ide_inccat: ideInccat } as IdCatalogoDto & HeaderParamsDto);
+    }
+
+    @Public()
+    @Get('getTagsCatalogo/:ideInccat')
+    @ApiOperation({ summary: 'Obtener tags distintos de los productos de un catálogo' })
+    getTagsCatalogo(
+        @Param('ideInccat', ParseIntPipe) ideInccat: number,
+    ) {
+        return this.service.getTagsCatalogo({ ide_inccat: ideInccat } as GetTagsCatalogoDto & HeaderParamsDto);
     }
 
     // ─── SAVE ─────────────────────────────────────────────────────────────────

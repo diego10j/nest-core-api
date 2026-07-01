@@ -635,6 +635,27 @@ export class YcloudService {
     return { messageId };
   }
 
+  // ─── Historial de mensajes (para detección de chat nuevo) ─────
+
+  /**
+   * Consulta la API de YCloud para determinar si un número de teléfono
+   * ha enviado mensajes previamente. Se usa para detectar chats genuinamente nuevos
+   * incluso cuando la BD local fue purgada o no tiene registros.
+   */
+  async hasPriorMessages(phoneNumber: string): Promise<boolean> {
+    try {
+      const resp = await this.apiGet(
+        `/whatsapp/messages?phoneNumber=${encodeURIComponent(phoneNumber)}&limit=1`,
+      );
+      const data = resp?.data ?? resp;
+      const messages = Array.isArray(data) ? data : (data?.messages ?? []);
+      return messages.length > 0;
+    } catch {
+      // Si la API falla, asumimos que NO es nuevo (conservador: no responder por error)
+      return true;
+    }
+  }
+
   // ─── Geocodificación inversa ──────────────────────────────────
 
   async getAddressFromCoords(lat: number, lng: number): Promise<string | null> {
