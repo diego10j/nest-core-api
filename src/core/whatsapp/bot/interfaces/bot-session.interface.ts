@@ -33,6 +33,24 @@ export interface EnvioSesion {
   pendiente_campo?: 'confirmar_envio_guardado' | 'usar_direccion_existente' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
 }
 
+export interface PendienteUso {
+  ide_inarti: number;
+  nombre: string;
+  siglas_unidad: string;
+  nombre_unidad: string;
+  en_catalogo: boolean;
+  cantidad_conocida: number | null;
+}
+
+export interface PendienteCantidad {
+  ide_inarti: number;
+  nombre: string;
+  siglas_unidad: string;
+  nombre_unidad: string;
+  en_catalogo: boolean;
+  uso_generico?: string;
+}
+
 export interface DatosSesion {
   texto_inicial?: string;
   memoria_cargada?: boolean;  // indica que los datos del cliente vienen de sesión anterior
@@ -41,7 +59,7 @@ export interface DatosSesion {
   opciones_producto?: OpcionProducto[];
   producto_pendiente?: {
     ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string;
-    en_catalogo: boolean; es_generico?: boolean; uso_generico?: string;
+    en_catalogo: boolean; uso_generico?: string;
   };
   envio?: EnvioSesion;
   forma_pago?: 'cash' | 'credit';
@@ -51,6 +69,11 @@ export interface DatosSesion {
   texto_acumulado?: string;
   cola_productos?: { producto: string; cantidad: number | null }[];
   item_cantidad_conocida?: number | null;
+  // Ítems que ya se resolvieron contra catálogo (o son genéricos sin match) y quedan
+  // agrupados para preguntar "uso" o "cantidad" de todos juntos en un solo mensaje,
+  // en vez de uno a la vez.
+  pendientes_uso?: PendienteUso[];
+  pendientes_cantidad?: PendienteCantidad[];
 }
 
 export interface OpcionProducto {

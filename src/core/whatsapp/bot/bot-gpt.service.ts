@@ -197,7 +197,9 @@ export class BotGptService {
               '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"). false si parece que puede seguir agregando.\n' +
               '2. "items": arreglo con cada producto mencionado y su cantidad.\n' +
               '   - cantidad: número si viene explícita (acepta "3kg"→3, "media docena"→6, "un par"→2, etc).\n' +
-              '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo").\n' +
+              '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo") ' +
+              'O si pide comprar al por mayor/mayorista sin dar una cifra concreta ("al por mayor", "por mayor", "para revender", "mayorista") — ' +
+              'en ambos casos el asesor define la cantidad real después, se usa 0 como marcador.\n' +
               '   - cantidad: null si no menciona ninguna cantidad para ese producto.\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
               'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
@@ -225,6 +227,90 @@ export class BotGptService {
     } catch (err) {
       this.logger.error(`analizarLoteProductos error: ${err.message}`);
       return { completo: false, items: [] };
+    }
+  }
+
+  /**
+   * Cuando hay que preguntar "para qué uso" de varios productos genéricos a la vez
+   * (sabor/color/fragancia/aceite sin match en catálogo), interpreta la respuesta del
+   * cliente y devuelve el uso de cada producto en el mismo orden que se le preguntaron.
+   * null en la posición de un producto cuyo uso no se pudo identificar en la respuesta.
+   */
+  async extraerUsosPorProducto(productos: string[], respuesta: string): Promise<(string | null)[]> {
+    if (!productos.length) return [];
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Se le preguntó al cliente para qué uso necesita cada uno de estos productos, en este orden:\n' +
+              productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
+              'El cliente puede responder todo junto (ej: "1. repostería 2. ambiental"), en el mismo orden sin ' +
+              'numerar (ej: "repostería y ambiental"), o mencionar solo algunos. ' +
+              'Responde SOLO JSON válido: {"usos": [string|null, ...]} con exactamente ' + productos.length +
+              ' elementos, en el mismo orden que la lista — null en la posición de cualquier producto cuyo uso ' +
+              'no puedas determinar con la respuesta del cliente.',
+          },
+          { role: 'user', content: respuesta },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 300,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return productos.map(() => null);
+      const parsed = JSON.parse(content);
+      const usos = Array.isArray(parsed.usos) ? parsed.usos : [];
+      return productos.map((_, i) => (typeof usos[i] === 'string' && usos[i].trim() ? usos[i].trim() : null));
+    } catch (err) {
+      this.logger.error(`extraerUsosPorProducto error: ${err.message}`);
+      return productos.map(() => null);
+    }
+  }
+
+  /**
+   * Igual que extraerUsosPorProducto pero para cantidades — cuando hay que preguntar
+   * la cantidad de varios productos ya identificados a la vez. Entiende "cantidad
+   * mínima"/"al por mayor" como 0, igual que analizarLoteProductos.
+   */
+  async extraerCantidadesPorProducto(productos: string[], respuesta: string): Promise<(number | null)[]> {
+    if (!productos.length) return [];
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Se le preguntó al cliente la cantidad que necesita de cada uno de estos productos, en este orden:\n' +
+              productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
+              'El cliente puede responder todo junto (ej: "1. 10kg 2. cantidad mínima"), en el mismo orden sin ' +
+              'numerar (ej: "10kg y 5 litros"), o mencionar solo algunos. ' +
+              'Cada cantidad: número si viene explícita (acepta "3kg"→3, "media docena"→6, "un par"→2). ' +
+              '0 si pide cantidad mínima o compra al por mayor/mayorista sin cifra concreta. ' +
+              'null si no se puede determinar la cantidad de ese producto en la respuesta. ' +
+              'Responde SOLO JSON válido: {"cantidades": [number|null, ...]} con exactamente ' + productos.length +
+              ' elementos, en el mismo orden que la lista.',
+          },
+          { role: 'user', content: respuesta },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 200,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return productos.map(() => null);
+      const parsed = JSON.parse(content);
+      const cantidades = Array.isArray(parsed.cantidades) ? parsed.cantidades : [];
+      return productos.map((_, i) => {
+        const c = cantidades[i];
+        return (c === null || c === undefined || isNaN(Number(c))) ? null : Number(c);
+      });
+    } catch (err) {
+      this.logger.error(`extraerCantidadesPorProducto error: ${err.message}`);
+      return productos.map(() => null);
     }
   }
 

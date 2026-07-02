@@ -13,7 +13,9 @@ import { BotGptService } from './bot-gpt.service';
 import { BotProformaService } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
 import { BotToolsService } from './bot-tools.service';
-import { ClienteSesion, DatosSesion, OpcionProducto, ProductoSesion } from './interfaces/bot-session.interface';
+import {
+  ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteUso, ProductoSesion,
+} from './interfaces/bot-session.interface';
 import { BotState } from './interfaces/bot-state.enum';
 
 // ─── Constantes de negocio ────────────────────────────────────────────────────
@@ -248,7 +250,7 @@ export class BotService implements OnModuleInit {
     // Si llega un saludo en un estado distinto de INICIO → resetear sesión
     const estadosQueReinician = [
       BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.ESPERANDO_CANTIDAD,
-      BotState.ESPERANDO_USO_PRODUCTO,
+      BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
       BotState.CONFIRMACION_PRODUCTOS, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
       BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
       BotState.ATENCION_LIBRE,
@@ -289,8 +291,11 @@ export class BotService implements OnModuleInit {
         case BotState.ESPERANDO_CANTIDAD:
           await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
-        case BotState.ESPERANDO_USO_PRODUCTO:
-          await this.handleEsperandoUsoProducto(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
+        case BotState.ESPERANDO_CANTIDAD_LOTE:
+          await this.handleEsperandoCantidadLote(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
+          break;
+        case BotState.ESPERANDO_USO_LOTE:
+          await this.handleEsperandoUsoLote(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.CONFIRMACION_PRODUCTOS:
           await this.handleConfirmacionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
@@ -688,11 +693,22 @@ export class BotService implements OnModuleInit {
   }
 
   /**
-   * Drena la cola de productos extraídos en lote: busca cada ítem en catálogo y
-   * lo agrega directo cuando hay match único + cantidad conocida (sin preguntar nada).
-   * Se detiene y pide al cliente solo cuando algo realmente lo requiere
-   * (desambiguar entre varios productos, pedir cantidad, o preguntar el uso de un
-   * producto de categoría genérica no catalogada).
+   * Resuelve la cola de productos extraídos en lote contra el catálogo, en 2 fases:
+   *
+   * Fase 1 — resolución silenciosa: recorre TODA la cola sin preguntar nada.
+   *   - 1 match + cantidad ya conocida → se agrega directo.
+   *   - 1 match + cantidad desconocida → se guarda en `pendientes_cantidad` (se
+   *     pregunta después, junto con los demás).
+   *   - 0 matches + categoría genérica (sabor/color/fragancia/aceite) → se guarda en
+   *     `pendientes_uso` (se pregunta después, junto con los demás).
+   *   - 0 matches y no genérico → se anota como "no encontrado" (no bloquea).
+   *   - Varios matches → SÍ bloquea de inmediato (necesita que el cliente vea la
+   *     lista numerada para elegir; no tiene sentido diferir esto).
+   *
+   * Fase 2 — preguntas agrupadas: si quedaron `pendientes_uso` y/o `pendientes_cantidad`,
+   * se pregunta TODO en un solo mensaje por tipo de pregunta (uso primero, cantidad
+   * después) en vez de uno a la vez — un asesor ágil no hace 5 preguntas cuando puede
+   * hacer 2. Solo cuando no queda nada pendiente se cierra la captura de productos.
    */
   private async resolverColaProductos(
     waId: string, phoneNumberId: string, ideWhcha: number,
@@ -701,6 +717,8 @@ export class BotService implements OnModuleInit {
     const cola = [...(datos.cola_productos ?? [])];
     const productosNuevos: ProductoSesion[] = [...(datos.productos ?? [])];
     const noEncontrados: string[] = [];
+    const pendientesUso: PendienteUso[] = [...(datos.pendientes_uso ?? [])];
+    const pendientesCantidad: PendienteCantidad[] = [...(datos.pendientes_cantidad ?? [])];
 
     while (cola.length > 0) {
       const item = cola.shift()!;
@@ -737,25 +755,15 @@ export class BotService implements OnModuleInit {
       if (!resultados.length) {
         if (esGenerico) {
           const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
-          const nuevosDatos: DatosSesion = {
-            ...datos,
-            productos: productosNuevos,
-            cola_productos: cola,
-            item_cantidad_conocida: item.cantidad,
-            producto_pendiente: {
-              ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
-              nombre: nombreItem,
-              siglas_unidad: generico?.siglas_unidad ?? 'UND',
-              nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
-              en_catalogo: generico?.en_catalogo ?? false,
-              es_generico: true,
-            },
-          };
-          await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_PRODUCTO, nuevosDatos);
-          await this.sendText(ideEmpr, waId,
-            `Para cotizar *${nombreItem}*, cuéntame ¿para qué uso lo necesitas? 😊`,
-          );
-          return;
+          pendientesUso.push({
+            ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+            nombre: nombreItem,
+            siglas_unidad: generico?.siglas_unidad ?? 'UND',
+            nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+            en_catalogo: generico?.en_catalogo ?? false,
+            cantidad_conocida: item.cantidad,
+          });
+          continue;
         }
         this.logger.log(`[Bot] No encontrado en cola: "${nombreItem}"`);
         noEncontrados.push(nombreItem);
@@ -775,27 +783,18 @@ export class BotService implements OnModuleInit {
           });
           continue;
         }
-        const nuevosDatos: DatosSesion = {
-          ...datos,
-          productos: productosNuevos,
-          cola_productos: cola,
-          producto_pendiente: {
-            ide_inarti: prod.ide_inarti,
-            nombre: this.displayNombreProducto(prod),
-            siglas_unidad: prod.siglas_unidad,
-            nombre_unidad: prod.nombre_unidad,
-            en_catalogo: prod.en_catalogo,
-          },
-        };
-        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
-        await this.sendText(ideEmpr, waId,
-          `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
-          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
-        );
-        return;
+        pendientesCantidad.push({
+          ide_inarti: prod.ide_inarti,
+          nombre: this.displayNombreProducto(prod),
+          siglas_unidad: prod.siglas_unidad,
+          nombre_unidad: prod.nombre_unidad,
+          en_catalogo: prod.en_catalogo,
+        });
+        continue;
       }
 
-      // Varios resultados → desambiguar con lista numerada
+      // Varios resultados → desambiguar con lista numerada (esto sí bloquea de inmediato,
+      // no se difiere: el cliente necesita ver la lista para poder elegir).
       const opciones: OpcionProducto[] = resultados.map((p, i) => ({
         numero: i + 1,
         ide_inarti: p.ide_inarti,
@@ -812,6 +811,8 @@ export class BotService implements OnModuleInit {
         cola_productos: cola,
         opciones_producto: opciones,
         item_cantidad_conocida: item.cantidad,
+        pendientes_uso: pendientesUso,
+        pendientes_cantidad: pendientesCantidad,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
       const listaTexto = opciones.map(
@@ -823,12 +824,61 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // Cola vacía → cerrar la captura de productos
+    // Fase 2a — uso de productos genéricos, todos juntos en un solo mensaje.
+    if (pendientesUso.length > 0) {
+      const nuevosDatos: DatosSesion = {
+        ...datos,
+        productos: productosNuevos,
+        cola_productos: undefined,
+        pendientes_uso: pendientesUso,
+        pendientes_cantidad: pendientesCantidad,
+      };
+      await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_LOTE, nuevosDatos);
+      if (pendientesUso.length === 1) {
+        await this.sendText(ideEmpr, waId,
+          `Para cotizar *${pendientesUso[0].nombre}*, cuéntame ¿para qué uso lo necesitas? 😊`,
+        );
+      } else {
+        const lista = pendientesUso.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          `Estos productos no están en catálogo — para cotizarlos cuéntame brevemente para qué uso necesitas cada uno 😊\n\n${lista}\n\n` +
+          `_Ejemplo: "1. repostería, 2. ambiental"_`,
+        );
+      }
+      return;
+    }
+
+    // Fase 2b — cantidad de productos ya identificados, todos juntos en un solo mensaje.
+    if (pendientesCantidad.length > 0) {
+      const nuevosDatos: DatosSesion = {
+        ...datos,
+        productos: productosNuevos,
+        cola_productos: undefined,
+        pendientes_cantidad: pendientesCantidad,
+      };
+      await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD_LOTE, nuevosDatos);
+      if (pendientesCantidad.length === 1) {
+        const p = pendientesCantidad[0];
+        await this.sendText(ideEmpr, waId,
+          `¿Qué cantidad de *${p.nombre}* necesitas? _(Ejemplo: 5 ${p.nombre_unidad}, o "cantidad mínima")_`,
+        );
+      } else {
+        const lista = pendientesCantidad.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          `¿Qué cantidad necesitas de cada uno? 😊\n\n${lista}\n\n_Ejemplo: "1. 10kg, 2. cantidad mínima"_`,
+        );
+      }
+      return;
+    }
+
+    // Sin nada pendiente → cerrar la captura de productos
     const nuevosDatos: DatosSesion = {
       ...datos,
       productos: productosNuevos,
       cola_productos: undefined,
       item_cantidad_conocida: undefined,
+      pendientes_uso: undefined,
+      pendientes_cantidad: undefined,
     };
     if (noEncontrados.length) {
       await this.sendText(ideEmpr, waId,
@@ -907,22 +957,23 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // Cantidad desconocida: se agrega a las preguntas agrupadas (pendientes_cantidad)
+    // en vez de preguntar ya mismo — así, si quedan más ítems en la cola original o
+    // más productos por desambiguar, todas las preguntas de cantidad se juntan en un
+    // solo mensaje al final en vez de una por una.
     const nuevosDatos: DatosSesion = {
       ...datos,
       opciones_producto: undefined,
-      producto_pendiente: {
+      item_cantidad_conocida: undefined,
+      pendientes_cantidad: [...(datos.pendientes_cantidad ?? []), {
         ide_inarti: opcion.ide_inarti,
         nombre: this.displayNombreProducto(opcion),
         siglas_unidad: opcion.siglas_unidad,
         nombre_unidad: opcion.nombre_unidad,
         en_catalogo: opcion.en_catalogo,
-      },
+      }],
     };
-    await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
-    await this.sendText(ideEmpr, waId,
-      `¡Seleccionaste: *${this.displayNombreProducto(opcion)}*! ✅\n\n` +
-      `¿Qué cantidad necesitas? _(Ejemplo: 5 ${opcion.nombre_unidad} / 2.5 ${opcion.siglas_unidad})_`,
-    );
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
   private async handleEsperandoCantidad(
@@ -980,47 +1031,108 @@ export class BotService implements OnModuleInit {
     await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
-  private async handleEsperandoUsoProducto(
+  /**
+   * Respuesta a la pregunta agrupada de "uso" (uno o varios productos genéricos a la
+   * vez). Usa GPT para mapear la respuesta libre del cliente a cada producto en orden;
+   * los que ya tenían cantidad conocida se agregan directo, el resto pasa a
+   * `pendientes_cantidad` para preguntarse junto con las demás cantidades pendientes.
+   */
+  private async handleEsperandoUsoLote(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-    const prod = datos.producto_pendiente;
+    const pendientes = datos.pendientes_uso ?? [];
 
-    if (!prod) {
-      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, producto_pendiente: undefined });
+    if (!pendientes.length) {
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, pendientes_uso: undefined });
       await this.sendText(ideEmpr, waId, MSG_INICIO_COTIZACION);
       return;
     }
 
-    const prodConUso = { ...prod, uso_generico: texto.trim() };
-    const cantidadConocida = datos.item_cantidad_conocida;
+    const nombres = pendientes.map((p) => p.nombre);
+    const usos = await this.botGpt.extraerUsosPorProducto(nombres, texto);
 
-    // Si GPT ya había detectado la cantidad, se agrega directo sin volver a preguntar.
-    if (cantidadConocida !== null && cantidadConocida !== undefined) {
+    const productosNuevos = [...(datos.productos ?? [])];
+    const pendientesCantidad = [...(datos.pendientes_cantidad ?? [])];
+    const siguenPendientes: typeof pendientes = [];
+
+    pendientes.forEach((p, i) => {
+      const uso = usos[i];
+      if (!uso) { siguenPendientes.push(p); return; }
+      if (p.cantidad_conocida !== null && p.cantidad_conocida !== undefined) {
+        productosNuevos.push({
+          ide_inarti: p.ide_inarti, nombre: p.nombre, cantidad: p.cantidad_conocida,
+          unidad: p.nombre_unidad, siglas_unidad: p.siglas_unidad, en_catalogo: p.en_catalogo, uso_generico: uso,
+        });
+      } else {
+        pendientesCantidad.push({
+          ide_inarti: p.ide_inarti, nombre: p.nombre, siglas_unidad: p.siglas_unidad,
+          nombre_unidad: p.nombre_unidad, en_catalogo: p.en_catalogo, uso_generico: uso,
+        });
+      }
+    });
+
+    if (siguenPendientes.length > 0) {
       const nuevosDatos: DatosSesion = {
-        ...datos,
-        producto_pendiente: undefined,
-        item_cantidad_conocida: undefined,
-        productos: [...(datos.productos ?? []), {
-          ide_inarti: prodConUso.ide_inarti,
-          nombre: prodConUso.nombre,
-          cantidad: cantidadConocida,
-          unidad: prodConUso.nombre_unidad,
-          siglas_unidad: prodConUso.siglas_unidad,
-          en_catalogo: prodConUso.en_catalogo,
-          uso_generico: prodConUso.uso_generico,
-        }],
+        ...datos, productos: productosNuevos,
+        pendientes_uso: siguenPendientes, pendientes_cantidad: pendientesCantidad,
       };
-      await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+      await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_LOTE, nuevosDatos);
+      const lista = siguenPendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+      await this.sendText(ideEmpr, waId, `No logré identificar el uso de estos, ¿me confirmas? 😊\n\n${lista}`);
       return;
     }
 
-    const nuevosDatos: DatosSesion = { ...datos, producto_pendiente: prodConUso };
-    await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
-    await this.sendText(ideEmpr, waId,
-      `¿Qué cantidad de *${prodConUso.nombre}* necesitas? _(Ejemplo: 5 KG, o escribe "cantidad mínima")_`,
-    );
+    const nuevosDatos: DatosSesion = {
+      ...datos, productos: productosNuevos, pendientes_uso: undefined, pendientes_cantidad: pendientesCantidad,
+    };
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+  }
+
+  /**
+   * Respuesta a la pregunta agrupada de "cantidad" (uno o varios productos a la vez,
+   * ya sea porque el catálogo los encontró sin cantidad conocida, o porque venían de
+   * una desambiguación). Igual mecánica que handleEsperandoUsoLote pero con cantidades.
+   */
+  private async handleEsperandoCantidadLote(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const pendientes = datos.pendientes_cantidad ?? [];
+
+    if (!pendientes.length) {
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, pendientes_cantidad: undefined });
+      await this.sendText(ideEmpr, waId, MSG_INICIO_COTIZACION);
+      return;
+    }
+
+    const nombres = pendientes.map((p) => p.nombre);
+    const cantidades = await this.botGpt.extraerCantidadesPorProducto(nombres, texto);
+
+    const productosNuevos = [...(datos.productos ?? [])];
+    const siguenPendientes: typeof pendientes = [];
+
+    pendientes.forEach((p, i) => {
+      const cant = cantidades[i];
+      if (cant === null || cant === undefined) { siguenPendientes.push(p); return; }
+      productosNuevos.push({
+        ide_inarti: p.ide_inarti, nombre: p.nombre, cantidad: cant,
+        unidad: p.nombre_unidad, siglas_unidad: p.siglas_unidad, en_catalogo: p.en_catalogo, uso_generico: p.uso_generico,
+      });
+    });
+
+    if (siguenPendientes.length > 0) {
+      const nuevosDatos: DatosSesion = { ...datos, productos: productosNuevos, pendientes_cantidad: siguenPendientes };
+      await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD_LOTE, nuevosDatos);
+      const lista = siguenPendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+      await this.sendText(ideEmpr, waId, `No logré identificar la cantidad de estos, ¿me confirmas? 😊\n\n${lista}`);
+      return;
+    }
+
+    const nuevosDatos: DatosSesion = { ...datos, productos: productosNuevos, pendientes_cantidad: undefined };
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
   private async handleConfirmacionProductos(

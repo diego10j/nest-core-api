@@ -84,8 +84,12 @@ Cliente escribe cualquier mensaje
   Cuando completo=true, los items pasan a `cola_productos` y arranca resolverColaProductos.
         │
         ▼
-  resolverColaProductos — procesa la cola ítem por ítem, síncrono, hasta vaciarla o
-  toparse con algo que requiera respuesta del cliente:
+  resolverColaProductos — resuelve TODA la cola contra catálogo primero (Fase 1,
+  silenciosa), y solo AL FINAL agrupa las preguntas pendientes por tipo (Fase 2) en vez
+  de preguntar una por una — el objetivo es agilidad: un asesor experto no hace 5
+  preguntas cuando puede resolver todo en 1-2.
+
+  **Fase 1 — resolución silenciosa** (recorre toda la cola sin enviar nada al cliente):
     Búsqueda por ítem:
       - Si el nombre matchea categoría genérica (sabor/saborizante/color/colorante/
         fragancia/aceite/esencia, sing. o plural) → SOLO búsqueda exacta (ILIKE frase
@@ -94,36 +98,51 @@ Cliente escribe cualquier mensaje
       - Si no es categoría genérica → cadena completa: ILIKE exacto → reducción
         progresiva de palabras → palabras significativas con score.
     Resultado del ítem:
-      ├─ 0 resultados + categoría genérica → construye producto_pendiente con
-      │    ide_inarti=2102 (artículo genérico), nombre=texto del cliente,
-      │    es_generico=true → [ESPERANDO_USO_PRODUCTO] (se detiene a preguntar)
-      ├─ 0 resultados + no genérico → se anota en "no encontrados" (aviso breve al
-      │    final) y CONTINÚA con el siguiente ítem de la cola (no bloquea el lote)
+      ├─ 0 resultados + categoría genérica → se agrega a `pendientes_uso[]`
+      │    (ide_inarti=2102, nombre=texto del cliente, cantidad_conocida=la ya detectada)
+      │    — NO bloquea, sigue con el siguiente ítem de la cola
+      ├─ 0 resultados + no genérico → se anota en `noEncontrados` (aviso breve al
+      │    final) y CONTINÚA con el siguiente ítem (no bloquea el lote)
       ├─ 1 resultado + cantidad ya conocida (incl. 0) → se agrega directo a
       │    `productos[]` sin preguntar nada, sigue con el siguiente ítem
-      ├─ 1 resultado + cantidad desconocida → producto_pendiente = ese producto
-      │    → [ESPERANDO_CANTIDAD] (se detiene a preguntar)
-      └─ N resultados (>1) → guarda opciones_producto + item_cantidad_conocida
-           → [SELECCION_MULTIPLE] (se detiene, pide *solo el número*)
-    Cola vacía → finalizarColeccionProductos:
-      - Si falta cliente.nombres → [PREGUNTA_ES_CLIENTE]
-      - Si no → [CONFIRMACION_PRODUCTOS] con resumen
+      ├─ 1 resultado + cantidad desconocida → se agrega a `pendientes_cantidad[]`
+      │    — NO bloquea, sigue con el siguiente ítem
+      └─ N resultados (>1) → ESTO SÍ bloquea de inmediato: guarda opciones_producto
+           (+ pendientes_uso/pendientes_cantidad acumulados hasta ahora) →
+           [SELECCION_MULTIPLE] (pide *solo el número*)
+
+  **Fase 2 — preguntas agrupadas** (solo si la cola se vació sin necesitar desambiguar):
+      ├─ `pendientes_uso.length > 0` → UN solo mensaje listando todos los productos
+      │    genéricos pendientes y pidiendo el uso de cada uno → [ESPERANDO_USO_LOTE]
+      │    (si es 1 solo, la pregunta es igual de natural que antes: "Para cotizar
+      │    X, ¿para qué uso lo necesitas?"; si son varios, lista numerada +
+      │    "Ejemplo: 1. repostería, 2. ambiental")
+      ├─ si no, `pendientes_cantidad.length > 0` → UN solo mensaje pidiendo la
+      │    cantidad de todos los pendientes → [ESPERANDO_CANTIDAD_LOTE]
+      └─ si no queda nada pendiente → finalizarColeccionProductos:
+           - Si falta cliente.nombres → [PREGUNTA_ES_CLIENTE]
+           - Si no → [CONFIRMACION_PRODUCTOS] con resumen
         │
         ├─ [SELECCION_MULTIPLE]
         │    Cliente responde número → si item_cantidad_conocida ya estaba seteado,
-        │    se agrega directo y se sigue drenando la cola (resolverColaProductos);
-        │    si no, → [ESPERANDO_CANTIDAD]
+        │    se agrega directo y se sigue resolviendo (resolverColaProductos); si no,
+        │    se agrega a `pendientes_cantidad[]` (se pregunta agrupado más adelante,
+        │    NO de inmediato) y también se sigue resolviendo.
         │
-        ├─ [ESPERANDO_CANTIDAD]
-        │    Extrae cantidad (regex numérico → fallback GPT `extraerCantidad`)
-        │    Agrega producto a `productos[]` (con uso_generico si aplica) y sigue
-        │    drenando la cola (resolverColaProductos) — ya NO vuelve a preguntar
-        │    "¿otro producto?" si aún quedan ítems pendientes del lote original.
+        ├─ [ESPERANDO_USO_LOTE]  (uno o varios productos genéricos a la vez)
+        │    `BotGptService.extraerUsosPorProducto(nombres, respuesta)` mapea la
+        │    respuesta libre del cliente a cada producto en el mismo orden que se
+        │    preguntaron — puede responder todo junto ("1. repostería 2. ambiental")
+        │    o uno a la vez. Los que ya tenían cantidad conocida se agregan directo;
+        │    el resto pasa a `pendientes_cantidad[]`. Los que GPT no pudo mapear se
+        │    vuelven a preguntar (solo esos) en un mensaje corto de confirmación.
+        │    Al terminar, sigue resolviendo (resolverColaProductos).
         │
-        └─ [ESPERANDO_USO_PRODUCTO]  (solo para ítems de categoría genérica sin match)
-             Pregunta "¿para qué uso lo necesitas?" → guarda uso_generico
-             Si item_cantidad_conocida ya estaba seteado (incl. 0) → agrega directo
-             y sigue drenando la cola; si no → [ESPERANDO_CANTIDAD]
+        └─ [ESPERANDO_CANTIDAD_LOTE]  (uno o varios productos ya identificados)
+             `BotGptService.extraerCantidadesPorProducto(nombres, respuesta)` — misma
+             mecánica que arriba pero para cantidades (entiende número, "cantidad
+             mínima" y "al por mayor"/mayorista → ambos como 0). Al terminar, agrega
+             los productos resueltos y sigue resolviendo (resolverColaProductos).
         │
         ▼
 [CONFIRMACION_PRODUCTOS]  — botones: [✅ Confirmar pedido] [✏️ Modificar lista]
@@ -237,7 +256,7 @@ Cliente escribe cualquier mensaje
 | Saludo (`Hola`, `Buenas`, etc.) en estado activo | Cierra la sesión y arranca una nueva desde INICIO |
 
 **Sesiones** (`BotSessionService`):
-- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_USO_PRODUCTO`, `CONFIRMACION_PRODUCTOS`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
+- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_CANTIDAD_LOTE`, `ESPERANDO_USO_LOTE`, `CONFIRMACION_PRODUCTOS`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
 - `INICIO` / `ESPERANDO_CONFIRMACION` (sesión que no avanzó) expiran a las **4 horas**.
 
 ---
@@ -405,13 +424,16 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
     tiene_precio?: boolean
   }]
   opciones_producto?: [...]           // candidatos durante SELECCION_MULTIPLE
-  producto_pendiente?: {              // ítem en resolución (ESPERANDO_CANTIDAD / ESPERANDO_USO_PRODUCTO)
-    ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo,
-    es_generico?: boolean, uso_generico?: string
+  producto_pendiente?: {              // ítem en resolución (solo ESPERANDO_CANTIDAD, flujo legacy de 1 ítem)
+    ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, uso_generico?: string
   }
   texto_acumulado?: string            // buffer de texto mientras el cliente sigue listando (antes de FIN)
   cola_productos?: [{ producto: string; cantidad: number | null }]  // ítems del lote aún sin resolver
-  item_cantidad_conocida?: number | null  // cantidad ya detectada por GPT para el ítem que bloquea el flujo
+  item_cantidad_conocida?: number | null  // cantidad ya detectada por GPT para el ítem que bloquea SELECCION_MULTIPLE
+  pendientes_uso?: [{ ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, cantidad_conocida: number|null }]
+  // ítems genéricos sin match, agrupados para preguntar el uso de todos juntos (ESPERANDO_USO_LOTE)
+  pendientes_cantidad?: [{ ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, uso_generico?: string }]
+  // ítems ya identificados sin cantidad, agrupados para preguntar todos juntos (ESPERANDO_CANTIDAD_LOTE)
   envio?: {
     direccion?: string
     provincia?: string
