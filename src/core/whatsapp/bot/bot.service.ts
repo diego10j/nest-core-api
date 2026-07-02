@@ -2132,7 +2132,7 @@ export class BotService implements OnModuleInit {
           ...(tieneMemoria ? { cliente: memoria.cliente as ClienteSesion, memoria_cargada: true } : {}),
         };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSesion);
-        await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSesion, nombreEmpresa, config);
+        await this.resolverColaProductos(waId, phone_number_id_whcha, ideWhcha, ideWhcue, ideEmpr, sesion, datosSesion, nombreEmpresa, config);
         this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO delegado a resolverColaProductos`);
         return;
       }
