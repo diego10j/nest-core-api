@@ -176,10 +176,19 @@ Cliente escribe cualquier mensaje
         │
         └─ [ESPERANDO_CANTIDAD_LOTE]  (uno o varios productos ya identificados)
              Mismo chequeo de consulta informativa primero (igual fix). Si no,
-             `BotGptService.extraerCantidadesPorProducto(nombres, respuesta)` — misma
+             `BotGptService.extraerCantidadesPorProducto(pendientes, respuesta)` — misma
              mecánica que arriba pero para cantidades (entiende número, "cantidad
              mínima" y "al por mayor"/mayorista → ambos como 0). Al terminar, agrega
              los productos resueltos y sigue resolviendo (resolverColaProductos).
+             **Conversión de unidad (2026-07-02):** recibe `pendientes: PendienteCantidad[]`
+             completo (no solo nombres) para poder pasarle a GPT la unidad de venta real
+             de cada producto (`siglas_unidad`/`nombre_unidad`) — antes "10ml" se
+             interpretaba como `cantidad=10` a secas y se guardaba como "10 KG" si el
+             producto se vende en KG, sin importar la unidad que usó el cliente. Ahora
+             GPT convierte: equivalencias de masa generales (mg/g/ton/lb → kg), y para
+             productos cuyo nombre indica FRAGANCIA o ESENCIA específicamente, mililitros
+             se tratan como gramos (densidad ≈ 1) antes de convertir a kg. Conteos simples
+             sin unidad de peso ("5 moldes", "media docena") no se tocan.
         │
         ▼
 [CONFIRMACION_PRODUCTOS]  — botones: [✅ Confirmar pedido] [✏️ Modificar lista]

@@ -169,12 +169,21 @@ export class BotGptService {
               'Tu tarea:\n' +
               '1. "completo": true si el texto contiene la palabra FIN (aislada) o si el cliente da a entender que ya terminó de listar ' +
               '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"). false si parece que puede seguir agregando.\n' +
-              '2. "items": arreglo con cada producto mencionado y su cantidad.\n' +
-              '   - cantidad: número si viene explícita (acepta "3kg"→3, "media docena"→6, "un par"→2, etc).\n' +
+              '2. "items": arreglo con cada producto mencionado y su cantidad, normalizada así (el catálogo de esta empresa es ' +
+              'prácticamente todo por peso, en KILOGRAMOS — ceras, parafinas, fragancias, aceites, polvos, etc.):\n' +
+              '   - Si el cliente da la cantidad en una unidad de MASA distinta a kilogramos (gramos, miligramos, toneladas, ' +
+              'libras), CONVIÉRTELA a kilogramos: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, 1 libra (lb) = 0.453592 kg. ' +
+              'Ejemplos: "100g de cera de palma"→cantidad:0.1 | "1 tonelada de parafina"→cantidad:1000.\n' +
+              '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en mililitros (ml), ' +
+              'trátalo como gramos (densidad ≈ 1, 1ml = 1g) y conviértelo a kilogramos igual. ' +
+              'Ejemplo: "10ml de fragancia vainilla"→cantidad:0.01.\n' +
+              '   - Si el cliente da un conteo simple sin unidad de peso (ej: "5 moldes", "3 unidades", "media docena"→6, ' +
+              '"un par"→2), NO apliques conversión de peso — usa el número/conteo tal cual (puede tratarse de un producto que ' +
+              'se vende por unidad, no por peso).\n' +
+              '   - Si no menciona ninguna cantidad para ese producto: cantidad: null.\n' +
               '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo") ' +
               'O si pide comprar al por mayor/mayorista sin dar una cifra concreta ("al por mayor", "por mayor", "para revender", "mayorista") — ' +
               'en ambos casos el asesor define la cantidad real después, se usa 0 como marcador.\n' +
-              '   - cantidad: null si no menciona ninguna cantidad para ese producto.\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
               'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
@@ -249,22 +258,38 @@ export class BotGptService {
    * la cantidad de varios productos ya identificados a la vez. Entiende "cantidad
    * mínima"/"al por mayor" como 0, igual que analizarLoteProductos.
    */
-  async extraerCantidadesPorProducto(productos: string[], respuesta: string): Promise<(number | null)[]> {
+  async extraerCantidadesPorProducto(
+    productos: { nombre: string; siglas_unidad: string; nombre_unidad: string }[],
+    respuesta: string,
+  ): Promise<(number | null)[]> {
     if (!productos.length) return [];
     try {
+      const listaProductos = productos
+        .map((p, i) => `${i + 1}. ${p.nombre} (unidad de venta: ${p.nombre_unidad} / ${p.siglas_unidad})`)
+        .join('\n');
       const resp = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
             content:
-              'Se le preguntó al cliente la cantidad que necesita de cada uno de estos productos, en este orden:\n' +
-              productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
+              'Se le preguntó al cliente la cantidad que necesita de cada uno de estos productos, en este orden ' +
+              '(con su unidad de venta real entre paréntesis):\n' +
+              listaProductos + '\n\n' +
               'El cliente puede responder todo junto (ej: "1. 10kg 2. cantidad mínima"), en el mismo orden sin ' +
-              'numerar (ej: "10kg y 5 litros"), o mencionar solo algunos. ' +
-              'Cada cantidad: número si viene explícita (acepta "3kg"→3, "media docena"→6, "un par"→2). ' +
+              'numerar (ej: "10kg y 5 litros"), o mencionar solo algunos, y puede usar una unidad DISTINTA a la ' +
+              'unidad de venta del producto (ej: gramos, mililitros, toneladas, libras) — debes CONVERTIR el valor ' +
+              'a la unidad de venta real de cada producto:\n' +
+              '   - Equivalencias de masa: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, 1 libra (lb) = 0.453592 kg.\n' +
+              '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en ' +
+              'mililitros (ml), trátalo como gramos (densidad ≈ 1, 1ml = 1g) y luego conviértelo a la unidad de ' +
+              'venta. Ejemplo: "10ml" de una fragancia cuya unidad de venta es KG → 0.010.\n' +
+              '   - Si el cliente no menciona unidad, asume que el número ya está en la unidad de venta del producto.\n' +
+              '   - Si el producto se vende por UNIDADES y el cliente da un conteo simple (ej: "5", "5 unidades"), ' +
+              'no apliques conversión de masa — usa el número tal cual.\n' +
+              'Cada cantidad, YA CONVERTIDA a la unidad de venta del producto: número si viene explícita. ' +
               '0 si pide cantidad mínima o compra al por mayor/mayorista sin cifra concreta. ' +
-              'null si no se puede determinar la cantidad de ese producto en la respuesta. ' +
+              'null si no se puede determinar o convertir con certeza la cantidad de ese producto. ' +
               'Responde SOLO JSON válido: {"cantidades": [number|null, ...]} con exactamente ' + productos.length +
               ' elementos, en el mismo orden que la lista.',
           },

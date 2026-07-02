@@ -1277,8 +1277,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const nombres = pendientes.map((p) => p.nombre);
-    const cantidades = await this.botGpt.extraerCantidadesPorProducto(nombres, texto);
+    const cantidades = await this.botGpt.extraerCantidadesPorProducto(pendientes, texto);
 
     const productosNuevos = [...(datos.productos ?? [])];
     const siguenPendientes: typeof pendientes = [];
