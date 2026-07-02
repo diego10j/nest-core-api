@@ -19,7 +19,8 @@ Cliente escribe cualquier mensaje
 [ESPERANDO_CONFIRMACION]
   NO/ASESOR ──→ Deriva a asesor
   SI ──→ Clasifica texto_inicial (GPT + regex)
-           ├─ PRODUCTO ──────────────────────→ [PREGUNTA_ES_CLIENTE] (o directo a [SELECCION_PRODUCTOS] si hay memoria)
+           ├─ PRODUCTO ──────────────────────→ [PREGUNTA_ES_CLIENTE] (o directo a
+           │     procesarTextoProductos(texto_inicial) si hay memoria — ver nota)
            ├─ UBICACION/HORARIO/ENVIO/CATALOGO → responde info → [ATENCION_LIBRE]
            └─ GENERAL ────────────────────────→ [ATENCION_LIBRE]
         │
@@ -27,8 +28,20 @@ Cliente escribe cualquier mensaje
 [ATENCION_LIBRE]
   Detecta intención (regex rápido + GPT `clasificarConsulta`):
   ├─ UBICACION/HORARIO/ENVIO/CATALOGO → responde con template de `wha_bot_config` (ver más abajo)
-  ├─ PRODUCTO   → [PREGUNTA_ES_CLIENTE] (o directo a [SELECCION_PRODUCTOS] si hay memoria)
+  ├─ PRODUCTO   → [PREGUNTA_ES_CLIENTE] (o directo a procesarTextoProductos(texto) si hay memoria — ver nota)
   └─ GENERAL    → GPT responde en contexto (`prompt_sistema` de la cuenta)
+
+  > **Nota (bug corregido 2026-07-02):** cuando el cliente ya tiene memoria cargada
+  > (`cliente.nombres && memoria_cargada`) y su mensaje se clasifica como PRODUCTO, antes
+  > se cambiaba el estado a `SELECCION_PRODUCTOS` y se mandaba el mensaje genérico
+  > "Dime los productos..." — **descartando** el contenido que el cliente ya había escrito
+  > (ej. "quiero 5kg cera de palma" se ignoraba por completo). Ahora se llama de inmediato
+  > a `procesarTextoProductos()` (lógica extraída de `handleSeleccionProductos`) con ese
+  > mismo texto, así el producto ya mencionado se procesa en el acto sin pedirlo de nuevo.
+  > Pendiente (no corregido aún, caso menos frecuente): cuando el cliente NO tiene memoria
+  > cargada, pasa primero por `PREGUNTA_ES_CLIENTE`/`IDENTIFICACION` y el texto original con
+  > el producto se pierde igual — al llegar a `SELECCION_PRODUCTOS` después de identificarse
+  > vuelve a mostrar el mensaje genérico en vez de recordar lo que pidió al principio.
         │
         ▼
 [PREGUNTA_ES_CLIENTE]  — botones: [✅ Sí, soy cliente] [❌ No]
@@ -257,6 +270,12 @@ Cuando el cliente comparte ubicación WhatsApp:
 
 `YcloudService.insertMensajeInbound()` deduplica por `wamid` (`data.wamid || data.id`) contra `wha_mensaje.id_whmem`. Si YCloud reintenta el mismo webhook (timeout, respuesta no-2xx, etc.), `processInboundMessage()` corta el flujo apenas detecta el duplicado — **no** vuelve a invocar al bot ni a las notificaciones de ventana/gateway. Antes de esta corrección, el insert se deduplicaba correctamente pero el resto del pipeline (incluido `messageHandler` del bot) igual se ejecutaba de nuevo, generando respuestas duplicadas del bot para el mismo mensaje del cliente.
 
+### Serialización por chat (condición de carrera)
+
+Aun con el dedupe de wamid, dos mensajes **distintos** del mismo chat que llegan casi al mismo tiempo (el cliente escribe rápido, dos mensajes separados) se procesaban en **paralelo** — ambos leían `wha_bot_sesion.datos_sesion` antes de que el primero terminara de guardar su resultado, así que el segundo pisaba el progreso del primero al escribir. Síntoma real reportado: cliente envía "5kg de cera de palma" y luego, en un mensaje aparte, "FIN" — el bot respondía "Aún no has agregado ningún producto", como si `texto_acumulado` del primer mensaje nunca se hubiera guardado.
+
+**Fix:** `BotService.processMessage()` ahora es un wrapper delgado que encola la ejecución real (`processMessageInternal`) en `chatLocks: Map<ideWhcha, Promise<void>>` — cada mensaje nuevo de un chat espera a que el anterior del **mismo** chat termine (leer sesión → procesar → guardar) antes de empezar el suyo. Mensajes de chats distintos siguen procesándose en paralelo sin bloquearse entre sí. Es un lock en memoria del proceso Node — cubre condiciones de carrera dentro de la misma instancia; si en el futuro se corre más de una instancia del backend detrás de un balanceador, este lock no protege entre instancias (haría falta uno basado en Redis).
+
 ---
 
 ## Echoes de WhatsApp nativo (agente escribiendo fuera del dashboard)
@@ -400,12 +419,11 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
 
 `BotScheduleService.generarMetricasDiarias()` corre a diario a las **00:05 (hora del servidor)** vía `@Cron('5 0 * * *')`, calcula métricas del día anterior por empresa (`YcloudMetricsService.generateDailyMetrics`) e inserta/actualiza (`ON CONFLICT (ide_empr, fecha_whmed) DO UPDATE`) una fila en `wha_metrics_diaria`. Requiere `ScheduleModule.forRoot()` registrado (está en `MailModule`, importado por `AppModule` — global para toda la app) y `BotScheduleService` como provider (`whatsapp.module.ts`) — la infraestructura de cron está correctamente cableada.
 
-**Si la tabla está vacía después de varios días en producción**, como es un `INSERT` de una fila agregada sin `GROUP BY`, cualquier ejecución exitosa del cron deja al menos una fila por empresa (aunque todos los contadores sean 0) — una tabla completamente vacía indica que el cron **nunca llegó a ejecutar el INSERT**, no un problema de datos. Causas más probables, en orden de sospecha:
-1. `wha_cuenta.activo_whcue` no está en `TRUE` para la cuenta de producción → el cron loguea `[Metrics] No hay empresas con WhatsApp activo...` y no inserta nada. Verificar el valor directamente en BD.
-2. El proceso Node se reinicia/redeploya sistemáticamente justo alrededor de las 00:00–00:05 (pipeline de despliegue nocturno), perdiendo ese tick del cron todos los días.
-3. Un error de SQL en `generateDailyMetrics` que quedaba silenciado — con el fix de hoy, cada empresa corre en su propio try/catch y loguea `[Metrics] Error generando métricas ide_empr=...` con el mensaje exacto, sin bloquear a las demás empresas.
+**Bug confirmado y corregido (2026-07-02):** `generateDailyMetrics` armaba el `INSERT INTO wha_metrics_diaria (...) SELECT ... ON CONFLICT ... DO UPDATE` usando `new SelectQuery(...)` + `dataSource.createQuery()`. Pero `createQuery()` envuelve **cualquier** `SelectQuery` en `prepareBaseQuery()` como `SELECT * FROM (<query>) AS wrapped_query` (pensado para SELECTs paginables/filtrables) — envolver un `INSERT INTO ...` así es SQL inválido. Error real visto en logs de producción: `syntax error at or near "INTO"`. Por eso la tabla quedaba completamente vacía después de varios días: el cron corría bien, pero el INSERT fallaba siempre, en cada empresa, para siempre — no era un problema de scheduling ni de datos. Corregido: `generateDailyMetrics` ahora ejecuta el SQL crudo directo contra `dataSource.pool.query(...)`, sin pasar por `SelectQuery`/`createQuery`.
 
-**Verificación rápida sin esperar al cron:** `GET whatsapp/ycloud/metrics/generate-today` genera (o actualiza) la fila de HOY para la empresa del header — si esto inserta una fila correctamente, la query en sí funciona y el problema es de scheduling (causas 1 o 2); si falla, el log ahora mostrará el error real.
+**Regla general para el resto del código:** `SelectQuery` + `createQuery()`/`createSelectQuery()` es solo para SELECTs (se envuelven para paginación/filtros). Cualquier `INSERT`/`UPDATE` con lógica no soportada por `InsertQuery`/`UpdateQuery` (ej. `INSERT ... SELECT ...`, `ON CONFLICT`, subqueries complejas) debe ejecutarse con `dataSource.pool.query(sql, params)` directo, nunca envuelto en `SelectQuery`.
+
+**Verificación rápida sin esperar al cron:** `GET whatsapp/ycloud/metrics/generate-today` genera (o actualiza) la fila de HOY para la empresa del header.
 
 **Nota de diseño (no es la causa de la tabla vacía, pero es una limitación conocida):** `generateDailyMetrics` no filtra explícitamente por `ide_empr` en el `WHERE` de la subconsulta de `wha_mensaje`/`wha_chat` — el `JOIN` es solo por `wa_id_whmem = wa_id_whcha`. Con una sola empresa usando WhatsApp esto no afecta el resultado, pero si en el futuro hay más de una cuenta activa, las métricas por empresa se calcularían sobre el total global, no por cuenta.
 

@@ -87,7 +87,11 @@ export class YcloudMetricsService {
   }
 
   async generateDailyMetrics(ideEmpr: number, fecha: string): Promise<void> {
-    const query = new SelectQuery(`
+    // No usar SelectQuery/createQuery aquí: createQuery() envuelve cualquier SelectQuery
+    // como `SELECT * FROM (<query>) AS wrapped_query` para poder paginar/filtrar — eso
+    // rompe un INSERT ... SELECT ... ON CONFLICT con "syntax error at or near INTO".
+    // Se ejecuta como query cruda directo contra el pool.
+    await this.dataSource.pool.query(`
       INSERT INTO wha_metrics_diaria (
         ide_empr, fecha_whmed,
         mensajes_enviados, mensajes_recibidos,
@@ -124,10 +128,7 @@ export class YcloudMetricsService {
         templates_enviados = EXCLUDED.templates_enviados,
         mensajes_fallidos = EXCLUDED.mensajes_fallidos,
         hora_actualizacion = NOW()
-    `);
-    query.addIntParam(1, ideEmpr);
-    query.addStringParam(2, fecha);
-    await this.dataSource.createQuery(query);
+    `, [ideEmpr, fecha]);
   }
 
   async logSyncEvent(dto: {

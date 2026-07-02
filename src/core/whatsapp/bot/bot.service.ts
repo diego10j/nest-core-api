@@ -48,6 +48,15 @@ const MSG_ACUSE_LOTE = `Anotado ✅ Sigue agregando o escribe *FIN* cuando termi
 export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
 
+  // Serializa el procesamiento de mensajes por chat: si dos mensajes del mismo
+  // ideWhcha llegan casi al mismo tiempo (doble tap del cliente, reintento de
+  // webhook, etc.), sin esto podían procesarse en paralelo — ambos leen la sesión
+  // ANTES de que el primero termine de guardarla, y el segundo pisa el progreso
+  // del primero (ej. texto_acumulado con el producto se perdía al mandar "FIN"
+  // justo después). Con la cola, cada mensaje espera a que el anterior del mismo
+  // chat termine de leer+procesar+guardar antes de empezar.
+  private readonly chatLocks = new Map<number, Promise<void>>();
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly botConfig: BotConfigService,
@@ -72,6 +81,29 @@ export class BotService implements OnModuleInit {
   // ─── Punto de entrada ─────────────────────────────────────────────────────
 
   async processMessage(
+    waId: string,
+    phoneNumberId: string,
+    ideWhcha: number,
+    ideWhcue: number,
+    ideEmpr: number,
+    texto: string,
+    botActivoWhcha: boolean,
+  ): Promise<void> {
+    const anterior = this.chatLocks.get(ideWhcha) ?? Promise.resolve();
+    const actual = anterior
+      .catch(() => { /* un error en el mensaje anterior no debe bloquear la cola */ })
+      .then(() => this.processMessageInternal(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, botActivoWhcha));
+    this.chatLocks.set(ideWhcha, actual);
+    try {
+      await actual;
+    } finally {
+      if (this.chatLocks.get(ideWhcha) === actual) {
+        this.chatLocks.delete(ideWhcha);
+      }
+    }
+  }
+
+  private async processMessageInternal(
     waId: string,
     phoneNumberId: string,
     ideWhcha: number,
@@ -364,11 +396,11 @@ export class BotService implements OnModuleInit {
 
       if (tipoConsulta === 'PRODUCTO') {
         if (datos.cliente?.nombres && datos.memoria_cargada) {
-          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
-            { ...datos, productos: [] });
-          await this.sendText(ideEmpr, waId,
-            MSG_INICIO_COTIZACION,
-          );
+          const datosNuevos: DatosSesion = { ...datos, productos: [] };
+          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
+          // El mensaje inicial ya traía el producto (ej. "quiero 5kg cera de palma") —
+          // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
+          await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
         } else {
           await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
           await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
@@ -424,11 +456,11 @@ export class BotService implements OnModuleInit {
 
     if (tipoConsulta === 'PRODUCTO') {
       if (datos.cliente?.nombres && datos.memoria_cargada) {
-        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS,
-          { ...datos, productos: [] });
-        await this.sendText(ideEmpr, waId,
-          MSG_INICIO_COTIZACION,
-        );
+        const datosNuevos: DatosSesion = { ...datos, productos: [] };
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
+        // El mensaje ya traía el producto (ej. "quiero 5kg cera de palma") — se procesa
+        // de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
+        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, texto, nombreEmpresa, config);
       } else {
         try {
           await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
@@ -631,13 +663,28 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
+    await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config);
+  }
 
+  /**
+   * Lógica central de captura de productos en lote — extraída de handleSeleccionProductos
+   * para poder invocarla de inmediato con el mensaje actual desde otros estados
+   * (ATENCION_LIBRE, ESPERANDO_CONFIRMACION) cuando GPT ya detectó que el cliente pidió
+   * un producto en ese mismo mensaje (ej. "quiero 5kg cera de palma"). Antes, esos estados
+   * solo cambiaban a SELECCION_PRODUCTOS y mandaban el mensaje genérico "dime los
+   * productos...", descartando el contenido que el cliente ya había escrito.
+   */
+  private async procesarTextoProductos(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
     // Extrae primero el/los producto(s) del mensaje — se prioriza sobre la detección de
     // consulta informativa para que líneas como "cera de coco 10kg, cera en gel 20kg" no
     // se malinterpreten como pregunta de catálogo/ubicación/horario/envío.
     const textoAcumulado = [datos.texto_acumulado, texto.trim()].filter(Boolean).join('\n');
     const nombresYa = (datos.productos ?? []).map((p) => p.nombre);
     const { completo, items } = await this.botGpt.analizarLoteProductos(textoAcumulado, nombresYa);
+    this.logger.debug(`[Bot] procesarTextoProductos chat=${ideWhcha} textoAcumulado="${textoAcumulado}" → completo=${completo} items=${JSON.stringify(items)}`);
 
     // ── Solo si NO se detectó ningún producto en el mensaje: puede ser una consulta
     //    informativa mid-cotización (ubicación, horario, envíos, catálogo) ──
@@ -1379,7 +1426,7 @@ export class BotService implements OnModuleInit {
         };
         await this.botSession.update(nuevaSesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         await this.sendText(ideEmpr, waId,
-          `¡Con gusto, *${clienteConocido.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+          `¡Con gusto! 😊\n\n${MSG_INICIO_COTIZACION}`,
         );
         return;
       }
