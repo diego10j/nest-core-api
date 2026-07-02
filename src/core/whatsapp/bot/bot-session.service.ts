@@ -139,12 +139,16 @@ export class BotSessionService {
     cliente?: import('./interfaces/bot-session.interface').ClienteSesion;
     provincia?: string;
   } | null> {
+    // No se filtra por `estado`: que la cotización haya terminado en FINALIZADO,
+    // CANCELADO o incluso EXPIRADO no dice nada sobre si el nombre/correo del cliente
+    // capturado ahí es válido — si cliente.nombres quedó guardado es porque el cliente
+    // ya se identificó, sin importar qué pasó después en esa sesión (ej. se derivó a
+    // asesor a medio flujo, lo que ahora cierra la sesión como CANCELADO).
     const res = await this.dataSource.pool.query(
       `SELECT datos_sesion
        FROM wha_bot_sesion
        WHERE ide_whcha = $1
          AND activa = FALSE
-         AND estado NOT IN ('EXPIRADO','CANCELADO')
          AND datos_sesion IS NOT NULL
          AND datos_sesion::jsonb -> 'cliente' ->> 'nombres' IS NOT NULL
        ORDER BY hora_actua DESC

@@ -1741,6 +1741,24 @@ export class BotService implements OnModuleInit {
       `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
+
+    // Red de seguridad: si quedó una sesión activa colgada en un estado no terminal
+    // (de antes del fix en derivarAsesor, o de cualquier otro caso no previsto), se
+    // cierra aquí también. Sin esto, iniciarConContextoChat() la encuentra y trata de
+    // "adivinar" el contexto con GPT sobre una conversación abandonada en vez de
+    // esperar en silencio el próximo mensaje real del cliente.
+    try {
+      const activa = await this.dataSource.pool.query<{ ide_whbse: number; estado: string }>(
+        `SELECT ide_whbse, estado FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
+        [ideWhcha],
+      );
+      if (activa.rowCount > 0) {
+        this.logger.warn(`[Bot] liberarChat: sesión activa colgada (ide_whbse=${activa.rows[0].ide_whbse}, estado=${activa.rows[0].estado}) en chat ${ideWhcha} — se cierra`);
+        await this.botSession.cerrar(activa.rows[0].ide_whbse, BotState.CANCELADO);
+      }
+    } catch (err) {
+      this.logger.warn(`[Bot] liberarChat: no se pudo verificar/cerrar sesión colgada de chat ${ideWhcha}: ${err.message}`);
+    }
   }
 
   /**

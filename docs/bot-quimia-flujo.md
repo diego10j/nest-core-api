@@ -211,11 +211,18 @@ Cliente escribe cualquier mensaje
   > `sesion.estado === FINALIZADO` (cotización ya generada con éxito). La rama
   > NUEVA_COTIZACION cerraba esa sesión con `cerrar(ide_whbse, BotState.CANCELADO)` —
   > sobrescribiendo su estado de FINALIZADO a CANCELADO. Como `getMemoriaCliente()`
-  > excluye explícitamente sesiones `CANCELADO`/`EXPIRADO`, esa cotización exitosa dejaba
+  > excluía explícitamente sesiones `CANCELADO`/`EXPIRADO`, esa cotización exitosa dejaba
   > de servir como fuente de memoria para el cliente en conversaciones futuras. Por eso,
   > tras pedir una "Nueva cotización", el bot con el tiempo dejaba de reconocer al cliente
   > (saludo genérico en vez de "¡Hola de nuevo, NOMBRE!", y volvía a pedir identificación).
-  > Corregido: se cierra como `BotState.FINALIZADO` (su estado real), no `CANCELADO`.
+  > Corregido en dos frentes: (1) se cierra como `BotState.FINALIZADO` (su estado real),
+  > no `CANCELADO`; (2) `getMemoriaCliente()` (`bot-session.service.ts`) ya NO filtra por
+  > `estado` — solo exige `cliente.nombres` capturado. El mismo problema volvió a aparecer
+  > por otro lado: los fixes de `derivarAsesor`/`liberarChat` (ver sección de arriba) cierran
+  > sesiones colgadas como `CANCELADO` para evitar el bug de resumen con GPT, pero esas
+  > sesiones podían tener un `cliente.nombres` perfectamente válido capturado antes de
+  > quedar atascadas — que el cliente ya se haya identificado no depende de si la cotización
+  > se completó, canceló o expiró después.
 ```
 
 ---
@@ -290,6 +297,8 @@ Aun con el dedupe de wamid, dos mensajes **distintos** del mismo chat que llegan
 `derivarAsesor()` solo cambiaba `bot_activo_whcha`/`bot_modo_whcha` en `wha_chat` — **no cerraba** la sesión de bot que estuviera activa (`wha_bot_sesion.activa = TRUE`). Si el cliente escribía "ASESOR"/"SALIR" (detección global, la más común) en medio de un flujo — ej. en `DATOS_ENVIO` o `ESPERANDO_CANTIDAD` — la sesión quedaba viva con ese estado intermedio (ni `FINALIZADO` ni `CANCELADO`). Cuando un agente reactivaba el chat después vía `POST bot/liberar-chat/:ideWhcha` (que por defecto llama a `iniciarConContextoChat`), ese método encontraba la sesión colgada en estado no terminal y, en vez de tomar el atajo "sesión anterior finalizada/cancelada → esperar en silencio", intentaba **adivinar el contexto con GPT** usando el historial de mensajes de la conversación abandonada — generando respuestas confusas mezclando datos viejos (ej. "¡Hola, Arleth! ... necesito la dirección de entrega de los 10kg de cera de coco" a partir de una conversación de horas antes que nunca se completó). Como esta lógica no es determinista, cada reactivación podía producir una respuesta ligeramente distinta.
 
 **Corregido:** `derivarAsesor()` ahora cierra (`BotSessionService.cerrar(..., BotState.CANCELADO)`) cualquier sesión activa del chat, sin importar desde qué punto del código se haya llamado. Con la sesión correctamente en `CANCELADO`, `iniciarConContextoChat` toma el atajo esperado (espera en silencio el próximo mensaje real del cliente, que arranca un `INICIO` limpio) en vez de intentar resumir con GPT.
+
+**Red de seguridad adicional en `liberarChat()` (mismo bug, retroactivo):** el fix de `derivarAsesor()` solo previene el problema **hacia adelante** — no corrige sesiones que ya hubieran quedado colgadas de pruebas/uso anterior al fix. Por eso `BotService.liberarChat()` (llamado tanto por `POST bot/toggle-chat` como por `POST bot/liberar-chat/:ideWhcha`, éste último el que dispara `iniciarConContextoChat`) ahora también verifica si existe una sesión `activa=TRUE` para el chat y la cierra como `CANCELADO` antes de continuar — autocorrige cualquier chat con una sesión colgada de antes del fix, sin necesidad de limpiar datos a mano.
 
 **Fix:** `BotService.processMessage()` ahora es un wrapper delgado que encola la ejecución real (`processMessageInternal`) en `chatLocks: Map<ideWhcha, Promise<void>>` — cada mensaje nuevo de un chat espera a que el anterior del **mismo** chat termine (leer sesión → procesar → guardar) antes de empezar el suyo. Mensajes de chats distintos siguen procesándose en paralelo sin bloquearse entre sí. Es un lock en memoria del proceso Node — cubre condiciones de carrera dentro de la misma instancia; si en el futuro se corre más de una instancia del backend detrás de un balanceador, este lock no protege entre instancias (haría falta uno basado en Redis).
 
