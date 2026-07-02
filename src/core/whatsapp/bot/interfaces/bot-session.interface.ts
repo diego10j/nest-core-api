@@ -6,6 +6,7 @@ export interface ProductoSesion {
   siglas_unidad?: string;
   precio_unitario?: number;
   precio_total?: number;
+  costo_promedio?: number | null;
   tiene_precio?: boolean;
   en_catalogo?: boolean;
   uso_generico?: string;

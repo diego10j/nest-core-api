@@ -48,7 +48,7 @@ export class ConfigPreciosProductosService extends BaseService {
             nombre_cndfp,
             dias_cndfp
         FROM
-            f_calcula_precio_venta ($1, $2, $3, $4) a
+            f_calcula_precio_venta ($1, $2, $3, $4, $5, $6) a
             LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
             LEFT JOIN con_cabece_forma_pago cp ON fp.ide_cncfp = cp.ide_cncfp
         `);
@@ -56,6 +56,8 @@ export class ConfigPreciosProductosService extends BaseService {
     query.addParam(2, dtoIn.cantidad);
     query.addParam(3, dtoIn.ide_cndfp);
     query.addParam(4, dtoIn.precio_compra);
+    query.addIntParam(5, dtoIn.ideEmpr);
+    query.addIntParam(6, dtoIn.ideSucu);
     return this.dataSource.createSelectQuery(query);
   }
 

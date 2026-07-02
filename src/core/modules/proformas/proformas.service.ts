@@ -680,13 +680,15 @@ ORDER BY prof.secuencial_cccpr DESC
         nombre_cncfp,
         nombre_cndfp,
         dias_cndfp
-      FROM f_calcula_precio_venta($1, $2, $3, NULL) a
+      FROM f_calcula_precio_venta($1, $2, $3, NULL, $4, $5) a
       LEFT JOIN con_deta_forma_pago fp ON a.forma_pago_config = fp.ide_cndfp
       LEFT JOIN con_cabece_forma_pago cp ON fp.ide_cncfp = cp.ide_cncfp
     `);
     qConfigPrecios.addParam(1, ide_inarti);
     qConfigPrecios.addParam(2, cantidad ?? 1);
     qConfigPrecios.addParam(3, ide_cndfp ?? null);
+    qConfigPrecios.addIntParam(4, dtoIn.ideEmpr);
+    qConfigPrecios.addIntParam(5, dtoIn.ideSucu);
 
     // Facturas del cliente filtradas por ide_geper
     const qVentasCliente = (ide_geper)

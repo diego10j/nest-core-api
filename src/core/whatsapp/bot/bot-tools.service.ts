@@ -29,6 +29,7 @@ export interface PrecioConfigurado {
   precio_venta_con_iva: number;
   porcentaje_iva: number;
   tipo_configuracion: string;
+  costo_promedio: number | null;
 }
 
 @Injectable()
@@ -121,13 +122,15 @@ export class BotToolsService {
     return this.dataSource.createSingleQuery(q);
   }
 
-  async buscarPrecioConfigurado(ideInarti: number, cantidad: number): Promise<PrecioConfigurado | null> {
+  async buscarPrecioConfigurado(ideInarti: number, cantidad: number, ideEmpr: number, ideSucu: number): Promise<PrecioConfigurado | null> {
     const q = new SelectQuery(`
-      SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva, tipo_configuracion
-      FROM f_calcula_precio_venta($1, $2, NULL, NULL)
+      SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva, tipo_configuracion, precio_ultima_compra AS costo_promedio
+      FROM f_calcula_precio_venta($1, $2, NULL, NULL, $3, $4)
     `);
     q.addIntParam(1, ideInarti);
     q.addParam(2, cantidad);
+    q.addIntParam(3, ideEmpr);
+    q.addIntParam(4, ideSucu);
     const row = await this.dataSource.createSingleQuery(q);
     if (!row || row.precio_venta_sin_iva == null) return null;
     return row as PrecioConfigurado;

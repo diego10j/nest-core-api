@@ -4,7 +4,9 @@ CREATE OR REPLACE FUNCTION f_calcula_precio_venta(
     p_ide_inarti INT,
     p_cantidad DECIMAL,
     p_ide_cndfp INT DEFAULT NULL,
-    p_precio_compra DECIMAL(12,2) DEFAULT NULL
+    p_precio_compra DECIMAL(12,2) DEFAULT NULL,
+    p_ide_empr BIGINT DEFAULT NULL,
+    p_ide_sucu BIGINT DEFAULT NULL
 )
 RETURNS TABLE (
     cantidad DECIMAL,
@@ -59,23 +61,18 @@ BEGIN
         v_decim_stock_inarti := 2; 
     END IF;
 
-    -- Obtener precio de compra
+    -- Obtener costo promedio PPMP desde el kardex
     IF p_precio_compra IS NULL THEN
-        SELECT d.precio_indci, c.fecha_trans_incci
+        SELECT pp.costo_unitario, pp.fecha_costo
         INTO v_precio_compra, v_fecha_compra
-        FROM inv_det_comp_inve d
-        JOIN inv_cab_comp_inve c ON d.ide_incci = c.ide_incci
-        WHERE d.ide_inarti = p_ide_inarti
-          AND d.precio_indci > 0
-          AND c.ide_inepi = 1
-          AND c.ide_intti IN (19, 16, 3025)
-          AND EXISTS (
-              SELECT 1 FROM inv_tip_tran_inve t
-              JOIN inv_tip_comp_inve e ON t.ide_intci = e.ide_intci
-              WHERE t.ide_intti = c.ide_intti AND e.signo_intci = 1)
-        ORDER BY c.fecha_trans_incci DESC LIMIT 1;
-        
-        -- Validar que exista precio de compra
+        FROM f_costo_unitario_ppmp(
+            COALESCE(p_ide_empr, 0),
+            COALESCE(p_ide_sucu, 0),
+            p_ide_inarti,
+            CURRENT_DATE
+        ) pp;
+
+        -- Validar que exista costo promedio
         IF v_precio_compra IS NULL OR v_precio_compra <= 0 THEN
             v_precio_compra := NULL;
             v_fecha_compra := NULL;
@@ -83,7 +80,7 @@ BEGIN
     ELSE
         v_precio_compra := p_precio_compra;
         v_fecha_compra := NULL;
-        
+
         -- Validar precio de compra proporcionado
         IF v_precio_compra <= 0 THEN
             RAISE EXCEPTION 'El precio de compra debe ser mayor a cero';

@@ -76,6 +76,7 @@ export class BotProformaService {
     datos: DatosSesion,
     telefonoWa: string,
     ideEmpr: number,
+    ideSucu: number,
     nombreBot: string,
   ): Promise<ResultadoProforma> {
     const productosConPrecio: ProductoSesion[] = [];
@@ -84,7 +85,7 @@ export class BotProformaService {
     let tarifaIva = 15; // fallback
 
     for (const prod of datos.productos) {
-      const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad);
+      const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr, ideSucu);
       this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cant=${prod.cantidad} → ${precioConf ? `sin_iva=${precioConf.precio_venta_sin_iva} con_iva=${precioConf.precio_venta_con_iva} iva=${precioConf.porcentaje_iva}% tipo=${precioConf.tipo_configuracion}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
         tarifaIva = precioConf.porcentaje_iva;
@@ -94,6 +95,7 @@ export class BotProformaService {
           ...prod,
           precio_unitario: precioSinIva,
           precio_total:    totalConIva,
+          costo_promedio:  precioConf.costo_promedio,
           tiene_precio:    true,
         });
       } else {
@@ -134,7 +136,7 @@ export class BotProformaService {
 
     const resultado = await this.proformasService.createProformaWeb({
       ideEmpr,
-      ideSucu: 0,
+      ideSucu,
       login: nombreBot,
       solicitante: {
         fecha: getCurrentDate(),
@@ -253,11 +255,12 @@ export class BotProformaService {
           const totalSinIva = roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES);
           await this.dataSource.pool.query(
             `UPDATE cxc_deta_proforma
-             SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1
+             SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1,
+                 precio_compra_ccdpr = $5
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
-            [p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti],
+            [p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti, p.costo_promedio],
           );
-          this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} (${getPrecioDecimals(p.precio_unitario)} dec) total=${totalSinIva}`);
+          this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} (${getPrecioDecimals(p.precio_unitario)} dec) total=${totalSinIva} costo_promedio=${p.costo_promedio}`);
         } catch (err) {
           this.logger.warn(`[Proforma] No se actualizó detalle ide_inarti=${p.ide_inarti}: ${err.message}`);
         }

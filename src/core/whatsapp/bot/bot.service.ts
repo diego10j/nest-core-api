@@ -1265,7 +1265,7 @@ export class BotService implements OnModuleInit {
 
     try {
       const resultado = await this.botProforma.procesarProforma(
-        nuevosDatos, `+${waId}`, ideEmpr, nombreBot,
+        nuevosDatos, `+${waId}`, ideEmpr, 0, nombreBot,
       );
 
       if (resultado.automatica && resultado.pdfBuffer) {
