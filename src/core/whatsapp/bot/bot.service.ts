@@ -126,18 +126,27 @@ export class BotService implements OnModuleInit {
     // formato +E.164 más abajo) — un falso "no tiene historial" activaría el bot
     // indebidamente, así que ante cualquier duda/error de la API se asume que SÍ tiene
     // historial (conservador).
+    //
+    // Esta detección SOLO corre si el chat todavía NO está activo (botActivoWhcha
+    // false) — existe para decidir si auto-activar un chat que llega inactivo. Si el
+    // chat YA está activo (bot_activo_whcha=TRUE, ya sea por auto-activación previa o
+    // por reactivación manual desde el front), no tiene sentido evaluarla: un chat sin
+    // wha_bot_sesion previa activado manualmente también calificaría como "esChatNuevo"
+    // y el freno de MODE=DEV lo bloquearía, pisando la activación manual explícita.
     let esChatNuevo = false;
 
-    // Capa 1: ¿hay sesiones previas de bot para este chat?
-    const sesionesPrevias = await this.dataSource.pool.query(
-      `SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1 LIMIT 1`,
-      [ideWhcha],
-    );
-    if (sesionesPrevias.rowCount === 0) {
-      // Capa 2: YCloud como fuente de verdad — ¿el número ha escrito antes?
-      const yaEscribioAntes = await this.ycloudService.hasPriorMessages(waId);
-      esChatNuevo = !yaEscribioAntes;
-      this.logger.log(`[Bot] YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
+    if (!botActivoWhcha) {
+      // Capa 1: ¿hay sesiones previas de bot para este chat?
+      const sesionesPrevias = await this.dataSource.pool.query(
+        `SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1 LIMIT 1`,
+        [ideWhcha],
+      );
+      if (sesionesPrevias.rowCount === 0) {
+        // Capa 2: YCloud como fuente de verdad — ¿el número ha escrito antes?
+        const yaEscribioAntes = await this.ycloudService.hasPriorMessages(waId);
+        esChatNuevo = !yaEscribioAntes;
+        this.logger.log(`[Bot] YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
+      }
     }
 
     if (esChatNuevo) {
@@ -716,7 +725,11 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const cola = [...(datos.cola_productos ?? [])];
     const productosNuevos: ProductoSesion[] = [...(datos.productos ?? [])];
-    const noEncontrados: string[] = [];
+    // Se acumula sobre lo ya guardado en la sesión (no solo lo local): si el ítem
+    // "no encontrado" se procesa antes de que otro ítem obligue a pausar (desambiguar,
+    // preguntar uso/cantidad), esta lista debe persistir para el próximo llamado —
+    // de lo contrario el aviso "no encontré X" se pierde en silencio.
+    const noEncontrados: string[] = [...(datos.no_encontrados ?? [])];
     const pendientesUso: PendienteUso[] = [...(datos.pendientes_uso ?? [])];
     const pendientesCantidad: PendienteCantidad[] = [...(datos.pendientes_cantidad ?? [])];
 
@@ -813,6 +826,7 @@ export class BotService implements OnModuleInit {
         item_cantidad_conocida: item.cantidad,
         pendientes_uso: pendientesUso,
         pendientes_cantidad: pendientesCantidad,
+        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
       const listaTexto = opciones.map(
@@ -832,6 +846,7 @@ export class BotService implements OnModuleInit {
         cola_productos: undefined,
         pendientes_uso: pendientesUso,
         pendientes_cantidad: pendientesCantidad,
+        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_LOTE, nuevosDatos);
       if (pendientesUso.length === 1) {
@@ -855,6 +870,7 @@ export class BotService implements OnModuleInit {
         productos: productosNuevos,
         cola_productos: undefined,
         pendientes_cantidad: pendientesCantidad,
+        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD_LOTE, nuevosDatos);
       if (pendientesCantidad.length === 1) {
@@ -879,6 +895,7 @@ export class BotService implements OnModuleInit {
       item_cantidad_conocida: undefined,
       pendientes_uso: undefined,
       pendientes_cantidad: undefined,
+      no_encontrados: undefined,
     };
     if (noEncontrados.length) {
       await this.sendText(ideEmpr, waId,
@@ -1050,6 +1067,21 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // Consulta informativa mid-cotización (mismo chequeo que el resto de estados
+    // intermedios) — sin esto, una pregunta del cliente ("¿cuál es su horario?") se
+    // intentaba mapear como respuesta de uso y fallaba en silencio.
+    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+      const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+      await this.sendText(ideEmpr, waId,
+        pendientes.length === 1
+          ? `¿Continuamos? Cuéntame para qué uso necesitas *${pendientes[0].nombre}*.`
+          : `¿Continuamos? Cuéntame para qué uso necesitas cada uno:\n\n${lista}`,
+      );
+      return;
+    }
+
     const nombres = pendientes.map((p) => p.nombre);
     const usos = await this.botGpt.extraerUsosPorProducto(nombres, texto);
 
@@ -1105,6 +1137,21 @@ export class BotService implements OnModuleInit {
     if (!pendientes.length) {
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, pendientes_cantidad: undefined });
       await this.sendText(ideEmpr, waId, MSG_INICIO_COTIZACION);
+      return;
+    }
+
+    // Consulta informativa mid-cotización (mismo chequeo que el resto de estados
+    // intermedios) — sin esto, una pregunta del cliente se intentaba mapear como
+    // respuesta de cantidad y fallaba en silencio.
+    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+      const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+      await this.sendText(ideEmpr, waId,
+        pendientes.length === 1
+          ? `¿Continuamos? Indica la cantidad de *${pendientes[0].nombre}* que necesitas.`
+          : `¿Continuamos? Indica la cantidad que necesitas de cada uno:\n\n${lista}`,
+      );
       return;
     }
 
@@ -1833,10 +1880,22 @@ export class BotService implements OnModuleInit {
   }
 
   async liberarChat(ideWhcha: number): Promise<void> {
+    // Se lee el estado ANTES de tocarlo: la limpieza de sesión colgada de abajo solo
+    // tiene sentido si el chat estaba en ASESOR — si ya estaba en BOT (llamada
+    // redundante: doble clic, botón del front desactualizado, etc.) puede haber una
+    // conversación real en curso, y cancelarla le borraría el progreso al cliente.
+    const previo = await this.dataSource.pool.query<{ bot_activo_whcha: boolean }>(
+      `SELECT bot_activo_whcha FROM wha_chat WHERE ide_whcha = $1`,
+      [ideWhcha],
+    );
+    const estabaEnAsesor = previo.rows[0]?.bot_activo_whcha === false;
+
     await this.dataSource.pool.query(
       `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
+
+    if (!estabaEnAsesor) return;
 
     // Red de seguridad: si quedó una sesión activa colgada en un estado no terminal
     // (de antes del fix en derivarAsesor, o de cualquier otro caso no previsto), se

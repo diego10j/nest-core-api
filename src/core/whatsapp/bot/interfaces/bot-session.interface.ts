@@ -74,6 +74,10 @@ export interface DatosSesion {
   // en vez de uno a la vez.
   pendientes_uso?: PendienteUso[];
   pendientes_cantidad?: PendienteCantidad[];
+  // Nombres de ítems del lote que no se encontraron en catálogo (no bloquea, se avisa
+  // al final) — se acumula entre llamadas porque resolverColaProductos puede pausarse
+  // varias veces (desambiguación, preguntas agrupadas) antes de llegar al final.
+  no_encontrados?: string[];
 }
 
 export interface OpcionProducto {

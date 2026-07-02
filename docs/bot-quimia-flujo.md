@@ -101,15 +101,19 @@ Cliente escribe cualquier mensaje
       ├─ 0 resultados + categoría genérica → se agrega a `pendientes_uso[]`
       │    (ide_inarti=2102, nombre=texto del cliente, cantidad_conocida=la ya detectada)
       │    — NO bloquea, sigue con el siguiente ítem de la cola
-      ├─ 0 resultados + no genérico → se anota en `noEncontrados` (aviso breve al
-      │    final) y CONTINÚA con el siguiente ítem (no bloquea el lote)
+      ├─ 0 resultados + no genérico → se anota en `datos.no_encontrados[]` (aviso
+      │    breve al final) y CONTINÚA con el siguiente ítem (no bloquea el lote).
+      │    Persistido en la sesión (no solo variable local) — corregido 2026-07-02:
+      │    antes, si este ítem se procesaba ANTES de uno que bloquea (desambiguación
+      │    o pregunta agrupada), el aviso "no encontré X" se perdía en silencio al
+      │    pausar, porque la lista vivía solo en memoria de esa llamada.
       ├─ 1 resultado + cantidad ya conocida (incl. 0) → se agrega directo a
       │    `productos[]` sin preguntar nada, sigue con el siguiente ítem
       ├─ 1 resultado + cantidad desconocida → se agrega a `pendientes_cantidad[]`
       │    — NO bloquea, sigue con el siguiente ítem
       └─ N resultados (>1) → ESTO SÍ bloquea de inmediato: guarda opciones_producto
-           (+ pendientes_uso/pendientes_cantidad acumulados hasta ahora) →
-           [SELECCION_MULTIPLE] (pide *solo el número*)
+           (+ pendientes_uso/pendientes_cantidad/no_encontrados acumulados hasta
+           ahora) → [SELECCION_MULTIPLE] (pide *solo el número*)
 
   **Fase 2 — preguntas agrupadas** (solo si la cola se vació sin necesitar desambiguar):
       ├─ `pendientes_uso.length > 0` → UN solo mensaje listando todos los productos
@@ -130,15 +134,20 @@ Cliente escribe cualquier mensaje
         │    NO de inmediato) y también se sigue resolviendo.
         │
         ├─ [ESPERANDO_USO_LOTE]  (uno o varios productos genéricos a la vez)
-        │    `BotGptService.extraerUsosPorProducto(nombres, respuesta)` mapea la
-        │    respuesta libre del cliente a cada producto en el mismo orden que se
-        │    preguntaron — puede responder todo junto ("1. repostería 2. ambiental")
-        │    o uno a la vez. Los que ya tenían cantidad conocida se agregan directo;
-        │    el resto pasa a `pendientes_cantidad[]`. Los que GPT no pudo mapear se
-        │    vuelven a preguntar (solo esos) en un mensaje corto de confirmación.
-        │    Al terminar, sigue resolviendo (resolverColaProductos).
+        │    Primero chequea consulta informativa (`clasificarConsulta` —
+        │    UBICACION/HORARIO/ENVIO/CATALOGO, mismo patrón que el resto de estados
+        │    intermedios; corregido 2026-07-02 — antes faltaba y una pregunta del
+        │    cliente se intentaba mapear como respuesta de uso y fallaba en silencio).
+        │    Si no es eso, `BotGptService.extraerUsosPorProducto(nombres, respuesta)`
+        │    mapea la respuesta libre del cliente a cada producto en el mismo orden
+        │    que se preguntaron — puede responder todo junto ("1. repostería
+        │    2. ambiental") o uno a la vez. Los que ya tenían cantidad conocida se
+        │    agregan directo; el resto pasa a `pendientes_cantidad[]`. Los que GPT no
+        │    pudo mapear se vuelven a preguntar (solo esos) en un mensaje corto de
+        │    confirmación. Al terminar, sigue resolviendo (resolverColaProductos).
         │
         └─ [ESPERANDO_CANTIDAD_LOTE]  (uno o varios productos ya identificados)
+             Mismo chequeo de consulta informativa primero (igual fix). Si no,
              `BotGptService.extraerCantidadesPorProducto(nombres, respuesta)` — misma
              mecánica que arriba pero para cantidades (entiende número, "cantidad
              mínima" y "al por mayor"/mayorista → ambos como 0). Al terminar, agrega
@@ -319,6 +328,8 @@ Aun con el dedupe de wamid, dos mensajes **distintos** del mismo chat que llegan
 
 **Red de seguridad adicional en `liberarChat()` (mismo bug, retroactivo):** el fix de `derivarAsesor()` solo previene el problema **hacia adelante** — no corrige sesiones que ya hubieran quedado colgadas de pruebas/uso anterior al fix. Por eso `BotService.liberarChat()` (llamado tanto por `POST bot/toggle-chat` como por `POST bot/liberar-chat/:ideWhcha`, éste último el que dispara `iniciarConContextoChat`) ahora también verifica si existe una sesión `activa=TRUE` para el chat y la cierra como `CANCELADO` antes de continuar — autocorrige cualquier chat con una sesión colgada de antes del fix, sin necesidad de limpiar datos a mano.
 
+**Bug corregido en la red de seguridad de arriba:** la limpieza se aplicaba sin verificar el estado *previo* del chat — si `liberarChat` se llamaba sobre un chat que YA estaba en modo BOT (llamada redundante: doble clic, botón del front desactualizado), podía cancelar una conversación real en curso del cliente, borrándole el progreso. Corregido: ahora se lee `bot_activo_whcha` ANTES de actualizarlo, y la limpieza de sesión colgada solo corre si el chat efectivamente estaba en ASESOR.
+
 **Fix:** `BotService.processMessage()` ahora es un wrapper delgado que encola la ejecución real (`processMessageInternal`) en `chatLocks: Map<ideWhcha, Promise<void>>` — cada mensaje nuevo de un chat espera a que el anterior del **mismo** chat termine (leer sesión → procesar → guardar) antes de empezar el suyo. Mensajes de chats distintos siguen procesándose en paralelo sin bloquearse entre sí. Es un lock en memoria del proceso Node — cubre condiciones de carrera dentro de la misma instancia; si en el futuro se corre más de una instancia del backend detrás de un balanceador, este lock no protege entre instancias (haría falta uno basado en Redis).
 
 ---
@@ -355,6 +366,8 @@ Cuando un agente escribe un mensaje directo desde la app nativa de WhatsApp (o W
 Por eso la corrección del formato en `hasPriorMessages` es crítica en PROD: un falso "no tiene historial" activaría el bot indebidamente incluso con el toggle global apagado — ese fue el bug reportado y corregido.
 
 **Código muerto/conflictivo eliminado (2026-07-02):** justo antes de `getOrCreate`, había un bloque legacy (anterior al mecanismo de 2 capas de arriba) que volvía a chequear `wha_bot_sesion` y, si no existía, buscaba CUALQUIER fila en `wha_mensaje` con `direction_whmem != '0'` (cualquier mensaje saliente, de humano o del propio bot) para decidir "omitir inicio automático". Esto no solo era redundante con la Capa 1 — podía **contradecir** la decisión ya tomada por `esChatNuevo`: si `esChatNuevo=true` (confirmado sin sesión local y sin historial en YCloud) pero existía cualquier fila saliente suelta en `wha_mensaje` (ej. un mensaje de campaña previo, o un catch-up de `insertOutboundMessage`), este bloque viejo bloqueaba la respuesta igual, silenciosamente, pisando la regla confirmada de "chat nuevo siempre responde en PROD". Eliminado — la detección de chat nuevo/con historial de asesor ya vive completa en el mecanismo de 2 capas + el chequeo preciso `tieneAgenteHumano` (que sí filtra mensajes del bot vía `es_bot_whmem`, a diferencia del bloque eliminado).
+
+**Bug — la detección de "chat nuevo" pisaba una activación manual explícita (2026-07-02):** las Capas 1/2 (y por lo tanto el freno de `MODE=DEV`) corrían SIEMPRE, sin importar si el chat ya estaba activo. Un chat activado manualmente desde el front (`bot_activo_whcha=TRUE` ya en BD) pero que nunca había tenido una `wha_bot_sesion` (primera interacción real con el bot) calificaba igual como `esChatNuevo=true`, y en DEV el freno lo bloqueaba — pisando la activación manual explícita del usuario. Confirmado en logs de producción: `bot_activo_whcha=true` en `infoRow`, pero igual "Chat nuevo N en MODE=DEV — no se auto-activa". **Corregido:** la detección de Capa 1/2 ahora solo corre `if (!botActivoWhcha)` — si el chat ya está activo (por la razón que sea), se procesa como un chat existente normal, sin pasar por la lógica de auto-activación.
 
 ---
 
