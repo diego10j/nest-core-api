@@ -29,6 +29,7 @@ import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
+import { KpiPreciosDto } from './dto/kpi-precios.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
 import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
@@ -880,6 +881,7 @@ export class ProductosService extends BaseService {
 
     /**
      * Retorna los últimos precios de compra a PROVEEDORES de un producto determinado
+     * desde la tabla de kardex de precio promedio ponderado (inv_kardex_ppmp).
      * @param dtoIn
      * @returns
      */
@@ -888,64 +890,168 @@ export class ProductosService extends BaseService {
             `
         WITH UltimaCompra AS (
             SELECT
+                k.ide_inarti,
+                k.cantidad,
+                k.precio_compra AS precio,
+                ROUND(k.cantidad * k.precio_compra, 6) AS total,
+                k.fecha_mov,
+                k.costo_promedio,
                 cci.ide_geper,
-                dci.ide_inarti,
-                dci.cantidad_indci AS cantidad,
-                dci.precio_indci AS precio,
-                COALESCE(dci.valor_indci, dci.cantidad_indci * dci.precio_indci) AS total,
-                ROW_NUMBER() OVER (PARTITION BY cci.ide_geper ORDER BY cci.fecha_trans_incci DESC) AS rn
-            FROM 
-                inv_det_comp_inve dci
-                INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-                INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-                INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-            WHERE 
-                cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-                AND tci.signo_intci = 1   -- Solo comprobantes de ingreso (compras)
-                AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
-                AND dci.ide_inarti = $1
-                AND dci.precio_indci > 0
+                ROW_NUMBER() OVER (PARTITION BY cci.ide_geper ORDER BY k.fecha_mov DESC, k.orden_mov DESC) AS rn
+            FROM inv_kardex_ppmp k
+            JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+            JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            WHERE k.ide_empr = ${dtoIn.ideEmpr}
+              AND k.ide_inarti = $1
+              AND k.signo = 1
+              AND tci.signo_intci = 1
+              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND k.precio_compra > 0
         )
         SELECT
-            c.ide_geper,
+            uc.ide_geper,
             p.nom_geper,
-            MAX(c.fecha_trans_incci) AS fecha_ultima_compra,
-            f_decimales(uc.cantidad, art.decim_stock_inarti)::numeric as cantidad,
+            uc.fecha_mov AS fecha_ultima_compra,
+            f_decimales(uc.cantidad, art.decim_stock_inarti)::numeric AS cantidad,
             uni.siglas_inuni,
             uc.precio,
-            uc.total
-        FROM 
-            inv_det_comp_inve dci
-            INNER JOIN inv_cab_comp_inve c ON c.ide_incci = dci.ide_incci
-            INNER JOIN gen_persona p ON c.ide_geper = p.ide_geper
-            INNER JOIN inv_articulo art ON dci.ide_inarti = art.ide_inarti
-            LEFT JOIN inv_unidad uni ON art.ide_inuni = uni.ide_inuni
-            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = c.ide_intti
-            INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-            LEFT JOIN UltimaCompra uc ON uc.ide_geper = c.ide_geper AND uc.rn = 1
-        WHERE
-            c.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-            AND tci.signo_intci = 1
-            AND c.ide_intti IN (19, 16, 3025)
-            AND dci.ide_inarti = $2
-            AND dci.precio_indci > 0
-            AND art.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
-            art.ide_inarti,
-            art.decim_stock_inarti,
-            c.ide_geper,
-            p.nom_geper,
-            uc.cantidad,
-            uni.siglas_inuni,
-            uc.precio,
-            uc.total
-        ORDER BY 
-            fecha_ultima_compra DESC
+            uc.total,
+            uc.costo_promedio
+        FROM UltimaCompra uc
+        JOIN gen_persona p ON p.ide_geper = uc.ide_geper
+        JOIN inv_articulo art ON art.ide_inarti = uc.ide_inarti
+        LEFT JOIN inv_unidad uni ON uni.ide_inuni = art.ide_inuni
+        WHERE uc.rn = 1
+        ORDER BY uc.fecha_mov DESC
+        `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Retorna KPI de precios de compra y costo promedio desde inv_kardex_ppmp.
+     * Si no se especifica rango de fechas, se toma por defecto últimos 90 días.
+     * @param dtoIn
+     * @returns
+     */
+    async getKpiPreciosCompras(dtoIn: KpiPreciosDto & HeaderParamsDto) {
+        const fechaInicio = dtoIn.fechaInicio.split('T')[0];
+        const fechaFin = dtoIn.fechaFin.split('T')[0];
+        const duracionDias = Math.round((new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / 86400000);
+        const fechaInicioAnterior = new Date(new Date(fechaInicio).getTime() - duracionDias * 86400000)
+            .toISOString().split('T')[0];
+        const fechaFinAnterior = new Date(new Date(fechaInicio).getTime() - 86400000)
+            .toISOString().split('T')[0];
+
+        const query = new SelectQuery(
+            `
+        WITH ultimo_mov AS (
+            SELECT
+                k.fecha_mov,
+                k.precio_compra AS ultimo_precio,
+                k.costo_promedio AS ultimo_costo_promedio,
+                k.cantidad AS ultima_cantidad,
+                cci.ide_geper,
+                p.nom_geper AS ultimo_proveedor
+            FROM inv_kardex_ppmp k
+            JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+            JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+            JOIN inv_tip_comp_inve tci ON tci.ide_intci = (
+                SELECT ide_intci FROM inv_tip_tran_inve WHERE ide_intti = cci.ide_intti
+            )
+            WHERE k.ide_empr = ${dtoIn.ideEmpr}
+              AND k.ide_inarti = $1
+              AND k.signo = 1
+              AND tci.signo_intci = 1
+              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND k.precio_compra > 0
+            ORDER BY k.fecha_mov DESC, k.orden_mov DESC
+            LIMIT 1
+        ),
+        stats_periodo AS (
+            SELECT
+                COUNT(*) FILTER (WHERE k.precio_compra > 0) AS total_compras,
+                COUNT(DISTINCT cci.ide_geper) FILTER (WHERE k.precio_compra > 0) AS total_proveedores,
+                MIN(k.precio_compra) FILTER (WHERE k.precio_compra > 0) AS precio_minimo,
+                MAX(k.precio_compra) FILTER (WHERE k.precio_compra > 0) AS precio_maximo,
+                ROUND(AVG(k.precio_compra) FILTER (WHERE k.precio_compra > 0), 6) AS precio_promedio,
+                ROUND(AVG(k.costo_promedio) FILTER (WHERE k.precio_compra > 0), 6) AS costo_promedio_promedio,
+                ROUND(STDDEV(k.precio_compra) FILTER (WHERE k.precio_compra > 0), 6) AS precio_desviacion,
+                MIN(k.fecha_mov) AS fecha_primera_compra
+            FROM inv_kardex_ppmp k
+            JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+            JOIN inv_tip_comp_inve tci ON tci.ide_intci = (
+                SELECT ide_intci FROM inv_tip_tran_inve WHERE ide_intti = cci.ide_intti
+            )
+            WHERE k.ide_empr = ${dtoIn.ideEmpr}
+              AND k.ide_inarti = $2
+              AND k.signo = 1
+              AND tci.signo_intci = 1
+              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND k.fecha_mov BETWEEN $4 AND $5
+        ),
+        stats_anterior AS (
+            SELECT
+                ROUND(AVG(k.precio_compra) FILTER (WHERE k.precio_compra > 0), 6) AS precio_promedio_anterior
+            FROM inv_kardex_ppmp k
+            JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+            JOIN inv_tip_comp_inve tci ON tci.ide_intci = (
+                SELECT ide_intci FROM inv_tip_tran_inve WHERE ide_intti = cci.ide_intti
+            )
+            WHERE k.ide_empr = ${dtoIn.ideEmpr}
+              AND k.ide_inarti = $3
+              AND k.signo = 1
+              AND tci.signo_intci = 1
+              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND k.fecha_mov BETWEEN $6 AND $7
+        )
+        SELECT
+            um.fecha_mov AS fecha_ultima_compra,
+            um.ultimo_precio,
+            um.ultimo_costo_promedio,
+            um.ultima_cantidad,
+            um.ide_geper AS ide_ultimo_proveedor,
+            um.ultimo_proveedor,
+            COALESCE(sp.total_compras, 0) AS total_compras,
+            COALESCE(sp.total_proveedores, 0) AS total_proveedores,
+            COALESCE(sp.precio_minimo, 0) AS precio_minimo,
+            COALESCE(sp.precio_maximo, 0) AS precio_maximo,
+            COALESCE(sp.precio_promedio, 0) AS precio_promedio,
+            COALESCE(sp.costo_promedio_promedio, 0) AS costo_promedio_promedio,
+            COALESCE(sp.precio_desviacion, 0) AS precio_desviacion,
+            sp.fecha_primera_compra,
+            CASE
+                WHEN sp.precio_promedio > 0
+                THEN ROUND(((um.ultimo_precio - sp.precio_promedio) / sp.precio_promedio) * 100, 2)
+                ELSE 0
+            END AS porcentaje_vs_promedio,
+            CASE
+                WHEN um.ultimo_precio > sp.precio_promedio THEN 'ALZA'
+                WHEN um.ultimo_precio < sp.precio_promedio THEN 'BAJA'
+                ELSE 'ESTABLE'
+            END AS tendencia,
+            COALESCE(sa.precio_promedio_anterior, 0) AS precio_promedio_anterior,
+            CASE
+                WHEN sa.precio_promedio_anterior > 0
+                THEN ROUND(((sp.precio_promedio - sa.precio_promedio_anterior) / sa.precio_promedio_anterior) * 100, 2)
+                ELSE 0
+            END AS variacion_vs_periodo_anterior
+        FROM stats_periodo sp
+        CROSS JOIN ultimo_mov um
+        CROSS JOIN stats_anterior sa
         `,
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ide_inarti);
         query.addIntParam(2, dtoIn.ide_inarti);
+        query.addIntParam(3, dtoIn.ide_inarti);
+        query.addParam(4, fechaInicio);
+        query.addParam(5, fechaFin);
+        query.addParam(6, fechaInicioAnterior);
+        query.addParam(7, fechaFinAnterior);
         return this.dataSource.createQuery(query);
     }
 
@@ -1746,33 +1852,34 @@ export class ProductosService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    async chartVariacionPreciosCompras(dtoIn: IdProductoDto & HeaderParamsDto) {
+    async chartVariacionPreciosCompras(dtoIn: KpiPreciosDto & HeaderParamsDto) {
+        const fechaInicio = dtoIn.fechaInicio.split('T')[0];
+        const fechaFin = dtoIn.fechaFin.split('T')[0];
         const query = new SelectQuery(
             `
       WITH compras AS (
           SELECT
-              cci.fecha_trans_incci AS fecha,
-              dci.cantidad_indci AS cantidad,
-              dci.precio_indci AS precio,
-              p.ide_geper,
+              k.fecha_mov AS fecha,
+              k.cantidad,
+              k.precio_compra AS precio,
+              k.costo_promedio,
+              cci.ide_geper,
               p.nom_geper
-          FROM
-              inv_det_comp_inve dci
-              INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-              INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
-              LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
-              INNER JOIN gen_persona p ON cci.ide_geper = p.ide_geper
-              INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-              INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-          WHERE
-              dci.ide_inarti = $1
-              AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-              AND cci.ide_empr = ${dtoIn.ideEmpr}
-              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
-              AND tci.signo_intci = 1  -- Solo comprobantes de ingreso (compras)
-              AND dci.precio_indci > 0
-          ORDER BY cci.fecha_trans_incci DESC
-          LIMIT 12
+          FROM inv_kardex_ppmp k
+          JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+          JOIN inv_articulo iart ON iart.ide_inarti = k.ide_inarti
+          JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+          JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+          JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+          WHERE k.ide_inarti = $1
+            AND k.ide_empr = ${dtoIn.ideEmpr}
+            AND k.signo = 1
+            AND tci.signo_intci = 1
+            AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+            AND k.precio_compra > 0
+            AND k.fecha_mov BETWEEN $2 AND $3
+          ORDER BY k.fecha_mov DESC, k.orden_mov DESC
+          LIMIT 24
       )
       SELECT
           fecha,
@@ -1793,33 +1900,48 @@ export class ProductosService extends BaseService {
               WHEN precio > LAG(precio) OVER (ORDER BY fecha) THEN '+'
               WHEN precio < LAG(precio) OVER (ORDER BY fecha) THEN '-'
               ELSE '='
-          END AS variacion
-      FROM
-          compras
-      ORDER BY
-          fecha
+          END AS variacion,
+          costo_promedio,
+          LAG(costo_promedio) OVER (ORDER BY fecha) AS costo_promedio_anterior,
+          ROUND(
+              CASE 
+                  WHEN LAG(costo_promedio) OVER (ORDER BY fecha) IS NULL THEN NULL
+                  ELSE ((costo_promedio - LAG(costo_promedio) OVER (ORDER BY fecha)) / LAG(costo_promedio) OVER (ORDER BY fecha)) * 100 
+              END, 
+              2
+          ) AS porcentaje_variacion_promedio,
+          CASE
+              WHEN LAG(costo_promedio) OVER (ORDER BY fecha) IS NULL THEN NULL
+              WHEN costo_promedio > LAG(costo_promedio) OVER (ORDER BY fecha) THEN '+'
+              WHEN costo_promedio < LAG(costo_promedio) OVER (ORDER BY fecha) THEN '-'
+              ELSE '='
+          END AS variacion_promedio
+      FROM compras
+      ORDER BY fecha
       `,
             dtoIn,
         );
 
         query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, fechaInicio);
+        query.addParam(3, fechaFin);
         const res = await this.dataSource.createSelectQuery(query);
         let charts = [];
 
         if (res) {
-            // Obtener el total (precio del último registro)
             const total = res[res.length - 1]?.precio || 0;
-
-            // Obtener el percent (porcentaje_variacion del último registro)
             const percent = res[res.length - 1]?.porcentaje_variacion || 0;
 
-            // Formatear las fechas para las categorías en el formato 'Ene 2023'
             const categories = res.map((row) => fShortDate(row.fecha));
 
-            // Obtener los precios para la serie
             const series = [
                 {
+                    name: 'Precio Compra',
                     data: res.map((row) => row.precio),
+                },
+                {
+                    name: 'Costo Promedio',
+                    data: res.map((row) => row.costo_promedio),
                 },
             ];
 

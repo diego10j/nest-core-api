@@ -20,6 +20,7 @@ import { GetCostoProductoDto } from './dto/get-costo-producto.dto';
 import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
+import { KpiPreciosDto } from './dto/kpi-precios.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
@@ -177,6 +178,16 @@ export class ProductosController {
     });
   }
 
+  @Get('getKpiPreciosCompras')
+  @ApiOperation({ summary: 'Obtener KPI de precios de compra y costo promedio de un producto' })
+  // @Auth()
+  getKpiPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiPreciosDto) {
+    return this.productos.getKpiPreciosCompras({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getSaldo')
   @ApiOperation({ summary: 'Obtener saldo actual de un producto en inventario' })
   // @Auth()
@@ -260,7 +271,7 @@ export class ProductosController {
   @Get('chartVariacionPreciosCompras')
   @ApiOperation({ summary: 'Obtener datos de variación histórica de precios de compra para gráfico' })
   // @Auth()
-  charVariacionPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
+  charVariacionPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiPreciosDto) {
     return this.productos.chartVariacionPreciosCompras({
       ...headersParams,
       ...dtoIn,
