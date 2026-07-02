@@ -199,12 +199,23 @@ Cliente escribe cualquier mensaje
     → [FINALIZADO]
 
 [FINALIZADO]
-  NUEVA_COTIZACION → cierra sesión, crea una nueva:
+  NUEVA_COTIZACION → cierra la sesión actual como FINALIZADO (no CANCELADO — ver nota)
+    y crea una nueva:
     - si el cliente ya se identificó en la sesión que se cierra → conserva cliente
       (+ provincia) y salta directo a [SELECCION_PRODUCTOS] (no vuelve a preguntar)
     - si no hay cliente conocido → [PREGUNTA_ES_CLIENTE]
   HABLAR_ASESOR / palabra asesor → deriva a asesor
   Otro mensaje → "¿Puedo ayudarte con algo más?" + botones
+
+  > **Nota (bug corregido 2026-07-02):** `handlePostCotizacion` solo se invoca con
+  > `sesion.estado === FINALIZADO` (cotización ya generada con éxito). La rama
+  > NUEVA_COTIZACION cerraba esa sesión con `cerrar(ide_whbse, BotState.CANCELADO)` —
+  > sobrescribiendo su estado de FINALIZADO a CANCELADO. Como `getMemoriaCliente()`
+  > excluye explícitamente sesiones `CANCELADO`/`EXPIRADO`, esa cotización exitosa dejaba
+  > de servir como fuente de memoria para el cliente en conversaciones futuras. Por eso,
+  > tras pedir una "Nueva cotización", el bot con el tiempo dejaba de reconocer al cliente
+  > (saludo genérico en vez de "¡Hola de nuevo, NOMBRE!", y volvía a pedir identificación).
+  > Corregido: se cierra como `BotState.FINALIZADO` (su estado real), no `CANCELADO`.
 ```
 
 ---
@@ -274,6 +285,12 @@ Cuando el cliente comparte ubicación WhatsApp:
 
 Aun con el dedupe de wamid, dos mensajes **distintos** del mismo chat que llegan casi al mismo tiempo (el cliente escribe rápido, dos mensajes separados) se procesaban en **paralelo** — ambos leían `wha_bot_sesion.datos_sesion` antes de que el primero terminara de guardar su resultado, así que el segundo pisaba el progreso del primero al escribir. Síntoma real reportado: cliente envía "5kg de cera de palma" y luego, en un mensaje aparte, "FIN" — el bot respondía "Aún no has agregado ningún producto", como si `texto_acumulado` del primer mensaje nunca se hubiera guardado.
 
+### `derivarAsesor` debe cerrar la sesión activa (bug corregido 2026-07-02)
+
+`derivarAsesor()` solo cambiaba `bot_activo_whcha`/`bot_modo_whcha` en `wha_chat` — **no cerraba** la sesión de bot que estuviera activa (`wha_bot_sesion.activa = TRUE`). Si el cliente escribía "ASESOR"/"SALIR" (detección global, la más común) en medio de un flujo — ej. en `DATOS_ENVIO` o `ESPERANDO_CANTIDAD` — la sesión quedaba viva con ese estado intermedio (ni `FINALIZADO` ni `CANCELADO`). Cuando un agente reactivaba el chat después vía `POST bot/liberar-chat/:ideWhcha` (que por defecto llama a `iniciarConContextoChat`), ese método encontraba la sesión colgada en estado no terminal y, en vez de tomar el atajo "sesión anterior finalizada/cancelada → esperar en silencio", intentaba **adivinar el contexto con GPT** usando el historial de mensajes de la conversación abandonada — generando respuestas confusas mezclando datos viejos (ej. "¡Hola, Arleth! ... necesito la dirección de entrega de los 10kg de cera de coco" a partir de una conversación de horas antes que nunca se completó). Como esta lógica no es determinista, cada reactivación podía producir una respuesta ligeramente distinta.
+
+**Corregido:** `derivarAsesor()` ahora cierra (`BotSessionService.cerrar(..., BotState.CANCELADO)`) cualquier sesión activa del chat, sin importar desde qué punto del código se haya llamado. Con la sesión correctamente en `CANCELADO`, `iniciarConContextoChat` toma el atajo esperado (espera en silencio el próximo mensaje real del cliente, que arranca un `INICIO` limpio) en vez de intentar resumir con GPT.
+
 **Fix:** `BotService.processMessage()` ahora es un wrapper delgado que encola la ejecución real (`processMessageInternal`) en `chatLocks: Map<ideWhcha, Promise<void>>` — cada mensaje nuevo de un chat espera a que el anterior del **mismo** chat termine (leer sesión → procesar → guardar) antes de empezar el suyo. Mensajes de chats distintos siguen procesándose en paralelo sin bloquearse entre sí. Es un lock en memoria del proceso Node — cubre condiciones de carrera dentro de la misma instancia; si en el futuro se corre más de una instancia del backend detrás de un balanceador, este lock no protege entre instancias (haría falta uno basado en Redis).
 
 ---
@@ -308,6 +325,8 @@ Cuando un agente escribe un mensaje directo desde la app nativa de WhatsApp (o W
 - **En DEV:** un chat nuevo **nunca** se auto-activa, sin importar el estado global del bot. En DEV la única forma de que un chat responda es activarlo manualmente por chat desde el front (`bot/toggle-chat`) — igual que el resto del control por ambiente (sección siguiente). El chequeo de `MODE` corre primero, antes de cualquier otra lógica de activación de chat nuevo.
 
 Por eso la corrección del formato en `hasPriorMessages` es crítica en PROD: un falso "no tiene historial" activaría el bot indebidamente incluso con el toggle global apagado — ese fue el bug reportado y corregido.
+
+**Código muerto/conflictivo eliminado (2026-07-02):** justo antes de `getOrCreate`, había un bloque legacy (anterior al mecanismo de 2 capas de arriba) que volvía a chequear `wha_bot_sesion` y, si no existía, buscaba CUALQUIER fila en `wha_mensaje` con `direction_whmem != '0'` (cualquier mensaje saliente, de humano o del propio bot) para decidir "omitir inicio automático". Esto no solo era redundante con la Capa 1 — podía **contradecir** la decisión ya tomada por `esChatNuevo`: si `esChatNuevo=true` (confirmado sin sesión local y sin historial en YCloud) pero existía cualquier fila saliente suelta en `wha_mensaje` (ej. un mensaje de campaña previo, o un catch-up de `insertOutboundMessage`), este bloque viejo bloqueaba la respuesta igual, silenciosamente, pisando la regla confirmada de "chat nuevo siempre responde en PROD". Eliminado — la detección de chat nuevo/con historial de asesor ya vive completa en el mecanismo de 2 capas + el chequeo preciso `tieneAgenteHumano` (que sí filtra mensajes del bot vía `es_bot_whmem`, a diferencia del bloque eliminado).
 
 ---
 

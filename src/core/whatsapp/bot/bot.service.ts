@@ -202,26 +202,6 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // El bot global solo inicia en chats nuevos (sin historial previo de sesión bot).
-    // Chats que ya tienen mensajes de asesor humano se ignoran para no interrumpir
-    // conversaciones activas que no pasaron por el bot.
-    {
-      const sesCheck = await this.dataSource.pool.query<{ exists: boolean }>(
-        `SELECT EXISTS(SELECT 1 FROM wha_bot_sesion WHERE ide_whcha = $1) AS exists`,
-        [ideWhcha],
-      );
-      if (!sesCheck.rows[0]?.exists) {
-        const msgCheck = await this.dataSource.pool.query<{ exists: boolean }>(
-          `SELECT EXISTS(SELECT 1 FROM wha_mensaje WHERE ide_whcha = $1 AND direction_whmem != '0') AS exists`,
-          [ideWhcha],
-        );
-        if (msgCheck.rows[0]?.exists) {
-          this.logger.log(`[Bot] Chat ${ideWhcha} tiene historial de asesor sin sesión bot — se omite inicio automático`);
-          return;
-        }
-      }
-    }
-
     const { sesion: sesionInicial, expirada } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
     let sesion = sesionInicial;
 
@@ -1414,7 +1394,11 @@ export class BotService implements OnModuleInit {
       const datosAnteriores = sesion.datos_sesion as DatosSesion;
       const clienteConocido = datosAnteriores?.cliente;
 
-      await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
+      // handlePostCotizacion solo se llama con sesion.estado === FINALIZADO (cotización
+      // ya generada con éxito) — cerrarla como CANCELADO la volvía inelegible para
+      // getMemoriaCliente() (excluye CANCELADO/EXPIRADO), así que después de pedir una
+      // "Nueva cotización" el bot dejaba de reconocer al cliente en futuras conversaciones.
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
       const { sesion: nuevaSesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
 
       if (clienteConocido?.nombres) {
@@ -1693,6 +1677,24 @@ export class BotService implements OnModuleInit {
       `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
       [ideWhcha],
     );
+
+    // Cierra cualquier sesión de bot que haya quedado activa a medio flujo (ej. el
+    // cliente escribió "ASESOR"/"SALIR" en medio de DATOS_ENVIO). Sin esto, la sesión
+    // quedaba "colgada" en un estado no terminal, y al reactivar el chat más tarde
+    // `iniciarConContextoChat` la encontraba y trataba de "adivinar" el contexto con
+    // GPT usando historial viejo en vez de saludar limpio — generando respuestas
+    // confusas mezclando datos de la conversación abandonada.
+    try {
+      const activa = await this.dataSource.pool.query<{ ide_whbse: number }>(
+        `SELECT ide_whbse FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
+        [ideWhcha],
+      );
+      if (activa.rowCount > 0) {
+        await this.botSession.cerrar(activa.rows[0].ide_whbse, BotState.CANCELADO);
+      }
+    } catch (err) {
+      this.logger.warn(`[Bot] derivarAsesor: no se pudo cerrar sesión activa de chat ${ideWhcha}: ${err.message}`);
+    }
 
     if (mensajeCliente !== null) {
       await this.sendText(ideEmpr, waId,
