@@ -42,7 +42,7 @@ _Ejemplo: "3kg cera de palma, 5kg cera de soya"_
 
 Cuando termines, escribe *FIN*.`;
 
-const MSG_ACUSE_LOTE = `Anotado ✅ Sigue agregando o escribe *FIN* cuando termines.`;
+const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo, o escribe *FIN* para continuar.`;
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -590,34 +590,18 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId, `Por favor ingresa tu nombre completo 😊`);
         return;
       }
+      // Ya no se pide correo — se usa el correo general de la empresa por defecto
+      // (mismo criterio que un cliente existente sin correo registrado).
       const nuevosDatos: DatosSesion = {
         ...datos,
         productos: datos.productos ?? [],
-        cliente: { ...cliente, nombres, pendiente_campo: 'correo' },
-      };
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, nuevosDatos);
-      await this.sendText(ideEmpr, waId,
-        `Gracias, *${nombres.split(' ')[0]}* 😊 ¿Cuál es tu *correo electrónico* para enviarte la cotización? 📧`,
-      );
-      return;
-    }
-
-    if (cliente.pendiente_campo === 'correo') {
-      const correo = texto.trim().toLowerCase();
-      if (!correo.includes('@') || !correo.includes('.')) {
-        await this.sendText(ideEmpr, waId, `Ese correo no parece válido 🤔 Por favor ingresa un correo electrónico correcto.`);
-        return;
-      }
-      const nuevosDatos: DatosSesion = {
-        ...datos,
-        productos: datos.productos ?? [],
-        cliente: { ...cliente, correo, pendiente_campo: undefined },
+        cliente: { ...cliente, nombres, correo: 'info@diquimec.com.ec', pendiente_campo: undefined },
       };
       if (nuevosDatos.producto_pendiente) {
         const prod = nuevosDatos.producto_pendiente;
         await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
         await this.sendText(ideEmpr, waId,
-          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n` +
+          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n` +
           `Encontré: *${prod.nombre}* ✅\n\n` +
           `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
         );
@@ -625,13 +609,13 @@ export class BotService implements OnModuleInit {
         // Tenía productos acumulados antes de registrarse → ir directo a confirmación
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
-          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
+          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
           [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
         );
       } else {
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         await this.sendText(ideEmpr, waId,
-          `¡Todo listo, *${cliente.nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
         );
       }
       return;

@@ -54,11 +54,11 @@ Cliente escribe cualquier mensaje
         │      - Guarda: ide_geper, nombres, correo, telefono, direccion_registrada, ide_getid, ide_vgven
         │      - → [SELECCION_PRODUCTOS] (o directo a [ESPERANDO_CANTIDAD]/[CONFIRMACION_PRODUCTOS]
         │        si ya había un producto pendiente o productos acumulados)
-        │    No encontrado → [DATOS_NUEVO_CLIENTE] (pide nombre + correo)
+        │    No encontrado → [DATOS_NUEVO_CLIENTE] (solo pide nombre)
         │
         └─ [DATOS_NUEVO_CLIENTE]
-             1. Pide nombre completo
-             2. Pide correo electrónico
+             Pide nombre completo (ya NO pide correo — se usa `info@diquimec.com.ec`
+             por defecto, mismo criterio que un cliente existente sin correo registrado)
              Listo ──→ [SELECCION_PRODUCTOS] (mismo criterio de atajo que IDENTIFICACION)
         │
         ▼
