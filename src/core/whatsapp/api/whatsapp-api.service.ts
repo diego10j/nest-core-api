@@ -359,30 +359,26 @@ export class WhatsappApiService {
     return await this.whatsappDb.getTotalMensajes(dto);
   }
 
+  /**
+   * Envía un mensaje de texto — vía YCloud (BSP en producción), no la Cloud API directa
+   * de Meta. Antes llamaba a `sendMessageWhatsApp` (Graph API directo con
+   * WHATSAPP_API_ID/WHATSAPP_API_TOKEN de `wha_cuenta`), que falla en cuentas gestionadas
+   * por YCloud con "Object with ID '<phone_number_id>' does not exist" (code 100,
+   * subcode 33) — el número no es un phone_number_id válido para la Graph API directa
+   * bajo esas credenciales. `enviarMensajeMedia` ya usaba YCloud; esto lo alinea.
+   */
   async enviarMensajeTexto(dtoIn: EnviarMensajeDto & HeaderParamsDto) {
-    const config = await this.getConfigWhatsApp(dtoIn.ideEmpr);
-    const data = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: dtoIn.telefono,
-      type: 'text',
-      text: {
-        preview_url: false,
-        body: dtoIn.texto,
-      },
-    };
     try {
-      const respWts = await this.sendMessageWhatsApp(data, dtoIn.ideEmpr);
-      // Asigna el id del API para el mensaje
-      dtoIn.idWts = respWts.messages[0].id;
-      // Guarda el mensaje
-      const resp = await this.whatsappDb.saveMensajeEnviado(dtoIn);
+      const result = await this.ycloudService.sendText(
+        dtoIn.ideEmpr, dtoIn.telefono, dtoIn.texto, dtoIn.ideUsua, dtoIn.contextMessageId,
+      );
       return {
         mensaje: 'ok',
-        data: resp,
-        id: dtoIn.idWts,
+        id: result.messageId,
+        messageId: result.messageId,
       };
     } catch (error) {
+      this.logger.error(`Error enviando mensaje texto: ${error.message}`);
       throw new InternalServerErrorException(`[ERROR]: enviarMensaje ${error}`);
     }
   }
