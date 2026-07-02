@@ -85,7 +85,13 @@ export class BotProformaService {
     let tarifaIva = 15; // fallback
 
     for (const prod of datos.productos) {
-      const precioConf = await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr, ideSucu);
+      // cantidad=0 es nuestro sentinel de "cantidad mínima" — f_calcula_precio_venta
+      // rechaza cantidad<=0 con excepción ("La cantidad debe ser mayor a cero"), lo que
+      // abortaba toda la proforma. Se trata directo como "sin precio configurado" (pasa
+      // a revisión manual) sin llamar a la función.
+      const precioConf = prod.cantidad === 0
+        ? null
+        : await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr, ideSucu);
       this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cant=${prod.cantidad} → ${precioConf ? `sin_iva=${precioConf.precio_venta_sin_iva} con_iva=${precioConf.precio_venta_con_iva} iva=${precioConf.porcentaje_iva}% tipo=${precioConf.tipo_configuracion}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
         tarifaIva = precioConf.porcentaje_iva;

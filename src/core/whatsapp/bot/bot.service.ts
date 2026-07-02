@@ -14,7 +14,7 @@ import { BotProformaService } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
 import { BotToolsService } from './bot-tools.service';
 import {
-  ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteUso, ProductoSesion,
+  ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteConfirmacion, PendienteUso, ProductoSesion,
 } from './interfaces/bot-session.interface';
 import { BotState } from './interfaces/bot-state.enum';
 
@@ -44,7 +44,11 @@ _Ejemplo: "3kg cera de palma, 5kg cera de soya"_
 
 Cuando termines, escribe *FIN*.`;
 
-const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo, o escribe *FIN* para continuar.`;
+const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo directo, o elige una opción 👇`;
+const BTN_ACUSE_LOTE = [
+  { id: 'LOTE_MAS', title: '➕ Agregar más' },
+  { id: 'LOTE_FIN', title: '✅ Finalizar' },
+];
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -258,8 +262,8 @@ export class BotService implements OnModuleInit {
 
     // Si llega un saludo en un estado distinto de INICIO → resetear sesión
     const estadosQueReinician = [
-      BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.ESPERANDO_CANTIDAD,
-      BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
+      BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.CONFIRMANDO_PRODUCTO_LOTE,
+      BotState.ESPERANDO_CANTIDAD, BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
       BotState.CONFIRMACION_PRODUCTOS, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
       BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
       BotState.ATENCION_LIBRE,
@@ -296,6 +300,9 @@ export class BotService implements OnModuleInit {
           break;
         case BotState.SELECCION_MULTIPLE:
           await this.handleSeleccionMultiple(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
+          break;
+        case BotState.CONFIRMANDO_PRODUCTO_LOTE:
+          await this.handleConfirmandoProductoLote(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.ESPERANDO_CANTIDAD:
           await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
@@ -656,6 +663,20 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
+    // Botones de la Fase de acuse ("Anotado ✅..."): "Agregar más" no aporta texto de
+    // producto, solo confirma que el cliente va a seguir escribiendo — no se toca
+    // texto_acumulado ni se llama a GPT. "Finalizar" equivale a que el cliente hubiera
+    // escrito la palabra FIN — se reusa el mismo detector semántico de cierre de
+    // analizarLoteProductos en vez de duplicar esa lógica acá.
+    const idBoton = texto.trim().toUpperCase();
+    if (idBoton === 'LOTE_MAS') {
+      await this.sendText(ideEmpr, waId, `Dime el producto que quieras agregar 😊`);
+      return;
+    }
+    if (idBoton === 'LOTE_FIN') {
+      texto = 'FIN';
+    }
+
     // Extrae primero el/los producto(s) del mensaje — se prioriza sobre la detección de
     // consulta informativa para que líneas como "cera de coco 10kg, cera en gel 20kg" no
     // se malinterpreten como pregunta de catálogo/ubicación/horario/envío.
@@ -680,7 +701,7 @@ export class BotService implements OnModuleInit {
     if (!completo) {
       const nuevosDatos: DatosSesion = { ...datos, texto_acumulado: textoAcumulado };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId, MSG_ACUSE_LOTE);
+      await this.sendButtons(ideEmpr, waId, MSG_ACUSE_LOTE, BTN_ACUSE_LOTE);
       return;
     }
 
@@ -705,12 +726,16 @@ export class BotService implements OnModuleInit {
    * Resuelve la cola de productos extraídos en lote contra el catálogo, en 2 fases:
    *
    * Fase 1 — resolución silenciosa: recorre TODA la cola sin preguntar nada.
-   *   - 1 match + cantidad ya conocida → se agrega directo.
-   *   - 1 match + cantidad desconocida → se guarda en `pendientes_cantidad` (se
-   *     pregunta después, junto con los demás).
-   *   - 0 matches + categoría genérica (sabor/color/fragancia/aceite) → se guarda en
-   *     `pendientes_uso` (se pregunta después, junto con los demás).
-   *   - 0 matches y no genérico → se anota como "no encontrado" (no bloquea).
+   *   - 1 match por búsqueda EXACTA + cantidad ya conocida → se agrega directo.
+   *   - 1 match por búsqueda EXACTA + cantidad desconocida → se guarda en
+   *     `pendientes_cantidad` (se pregunta después, junto con los demás).
+   *   - 1 match SOLO por fallback difuso (reducción progresiva / por palabras) → no es
+   *     confiable (puede ser falso positivo) → bloquea de inmediato pidiendo que el
+   *     cliente confirme sí/no que es el producto correcto.
+   *   - 0 matches (sea o no categoría genérica sabor/color/fragancia/aceite, sea o no
+   *     un simple error de tipeo) → se guarda en `pendientes_uso` asociado al ítem
+   *     genérico (ide_inarti=2102): nada se pierde en silencio, todo termina en la
+   *     proforma para que un asesor lo revise.
    *   - Varios matches → SÍ bloquea de inmediato (necesita que el cliente vea la
    *     lista numerada para elegir; no tiene sentido diferir esto).
    *
@@ -725,11 +750,6 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const cola = [...(datos.cola_productos ?? [])];
     const productosNuevos: ProductoSesion[] = [...(datos.productos ?? [])];
-    // Se acumula sobre lo ya guardado en la sesión (no solo lo local): si el ítem
-    // "no encontrado" se procesa antes de que otro ítem obligue a pausar (desambiguar,
-    // preguntar uso/cantidad), esta lista debe persistir para el próximo llamado —
-    // de lo contrario el aviso "no encontré X" se pierde en silencio.
-    const noEncontrados: string[] = [...(datos.no_encontrados ?? [])];
     const pendientesUso: PendienteUso[] = [...(datos.pendientes_uso ?? [])];
     const pendientesCantidad: PendienteCantidad[] = [...(datos.pendientes_cantidad ?? [])];
 
@@ -746,10 +766,14 @@ export class BotService implements OnModuleInit {
 
       const esGenerico = REGEX_PRODUCTO_GENERICO.test(nombreItem);
       let resultados = await this.botTools.buscarProductos(nombreLimpio, ideEmpr);
+      let matchExacto = resultados.length > 0;
 
       // Los fallbacks difusos (reducción progresiva y por palabras) solo se intentan
       // cuando NO es una categoría genérica — para sabor/color/aceite/etc. queremos
       // una búsqueda estricta: si no matchea exacto, se trata como no encontrado.
+      // Un match encontrado solo por estos fallbacks es de baja confianza (puede ser
+      // falso positivo por substring, ej. "Jabón de" → "MOLDE ... JABON DE MASAJES")
+      // y no se agrega directo — ver bloque `!matchExacto` más abajo.
       if (!resultados.length && !esGenerico) {
         const palabras = nombreLimpio.split(/\s+/).filter(Boolean);
         for (let n = palabras.length - 1; n >= 2; n--) {
@@ -766,25 +790,54 @@ export class BotService implements OnModuleInit {
       }
 
       if (!resultados.length) {
-        if (esGenerico) {
-          const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
-          pendientesUso.push({
-            ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
-            nombre: nombreItem,
-            siglas_unidad: generico?.siglas_unidad ?? 'UND',
-            nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
-            en_catalogo: generico?.en_catalogo ?? false,
-            cantidad_conocida: item.cantidad,
-          });
-          continue;
-        }
-        this.logger.log(`[Bot] No encontrado en cola: "${nombreItem}"`);
-        noEncontrados.push(nombreItem);
+        // Nada matcheó (ni exacto ni fallbacks difusos) — ya sea porque es una
+        // categoría genérica sin match, o un producto real mal escrito/inexistente en
+        // catálogo. En ambos casos se asocia al ítem genérico y se pregunta "uso" para
+        // que termine en la proforma con el texto literal del cliente — así el asesor
+        // puede resolverlo manualmente en vez de que el pedido se pierda.
+        const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
+        pendientesUso.push({
+          ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+          nombre: nombreItem,
+          siglas_unidad: generico?.siglas_unidad ?? 'UND',
+          nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+          en_catalogo: generico?.en_catalogo ?? false,
+          cantidad_conocida: item.cantidad,
+        });
         continue;
       }
 
       if (resultados.length === 1) {
         const prod = resultados[0];
+
+        if (!matchExacto) {
+          // Match de baja confianza (solo por fallback difuso) — se pausa a confirmar
+          // con el cliente antes de darlo por bueno, en vez de asumirlo y preguntar
+          // directo la cantidad (lo que generaba un producto equivocado en el pedido).
+          const nuevosDatos: DatosSesion = {
+            ...datos,
+            productos: productosNuevos,
+            cola_productos: cola,
+            pendientes_uso: pendientesUso,
+            pendientes_cantidad: pendientesCantidad,
+            pendiente_confirmacion: {
+              ide_inarti: prod.ide_inarti,
+              nombre: this.displayNombreProducto(prod),
+              siglas_unidad: prod.siglas_unidad,
+              nombre_unidad: prod.nombre_unidad,
+              en_catalogo: prod.en_catalogo,
+              texto_original: nombreItem,
+              cantidad_conocida: item.cantidad,
+            },
+          };
+          await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMANDO_PRODUCTO_LOTE, nuevosDatos);
+          await this.sendButtons(ideEmpr, waId,
+            `Para *"${nombreItem}"* encontré: *${this.displayNombreProducto(prod)}*. ¿Es este el producto? 🤔`,
+            [{ id: 'PROD_SI', title: '✅ Sí, es este' }, { id: 'PROD_NO', title: '❌ No es este' }],
+          );
+          return;
+        }
+
         if (item.cantidad !== null && item.cantidad !== undefined) {
           productosNuevos.push({
             ide_inarti: prod.ide_inarti,
@@ -826,14 +879,13 @@ export class BotService implements OnModuleInit {
         item_cantidad_conocida: item.cantidad,
         pendientes_uso: pendientesUso,
         pendientes_cantidad: pendientesCantidad,
-        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, nuevosDatos);
       const listaTexto = opciones.map(
         (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
       ).join('\n');
       await this.sendText(ideEmpr, waId,
-        `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde solo con el número (1 al ${opciones.length})._`,
+        `Para *"${nombreItem}"* encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n_Responde solo con el número (1 al ${opciones.length})._`,
       );
       return;
     }
@@ -846,7 +898,6 @@ export class BotService implements OnModuleInit {
         cola_productos: undefined,
         pendientes_uso: pendientesUso,
         pendientes_cantidad: pendientesCantidad,
-        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_USO_LOTE, nuevosDatos);
       if (pendientesUso.length === 1) {
@@ -870,7 +921,6 @@ export class BotService implements OnModuleInit {
         productos: productosNuevos,
         cola_productos: undefined,
         pendientes_cantidad: pendientesCantidad,
-        no_encontrados: noEncontrados,
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD_LOTE, nuevosDatos);
       if (pendientesCantidad.length === 1) {
@@ -895,14 +945,86 @@ export class BotService implements OnModuleInit {
       item_cantidad_conocida: undefined,
       pendientes_uso: undefined,
       pendientes_cantidad: undefined,
-      no_encontrados: undefined,
     };
-    if (noEncontrados.length) {
-      await this.sendText(ideEmpr, waId,
-        `No encontré en catálogo: ${noEncontrados.join(', ')} — nuestro asesor puede confirmarte disponibilidad 😊`,
-      );
-    }
     await this.finalizarColeccionProductos(ideEmpr, waId, sesion, nuevosDatos);
+  }
+
+  /**
+   * Respuesta a la confirmación sí/no de un match de baja confianza (encontrado solo
+   * por fallback difuso). Sí → se trata como match normal (agrega directo o pasa a
+   * pendientes_cantidad). No → se asocia al ítem genérico (ide_inarti=2102) con el
+   * texto literal del cliente, igual que un producto no encontrado — no se descarta.
+   */
+  private async handleConfirmandoProductoLote(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const pendiente = datos.pendiente_confirmacion;
+
+    if (!pendiente) {
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, { ...datos, pendiente_confirmacion: undefined });
+      await this.sendText(ideEmpr, waId, MSG_INICIO_COTIZACION);
+      return;
+    }
+
+    const t = texto.trim().toUpperCase();
+    let esSi = t === 'PROD_SI';
+    let esNo = t === 'PROD_NO';
+    if (!esSi && !esNo) {
+      const intencion = await this.botGpt.detectarIntencion(texto);
+      esSi = intencion === 'CONFIRMAR';
+      esNo = intencion === 'CANCELAR';
+    }
+
+    if (!esSi && !esNo) {
+      await this.sendButtons(ideEmpr, waId,
+        `Disculpa, ¿*${pendiente.nombre}* es el producto que buscas? 🤔`,
+        [{ id: 'PROD_SI', title: '✅ Sí, es este' }, { id: 'PROD_NO', title: '❌ No es este' }],
+      );
+      return;
+    }
+
+    if (esSi) {
+      const nuevosDatos: DatosSesion = { ...datos, pendiente_confirmacion: undefined };
+      if (pendiente.cantidad_conocida !== null && pendiente.cantidad_conocida !== undefined) {
+        nuevosDatos.productos = [...(datos.productos ?? []), {
+          ide_inarti: pendiente.ide_inarti,
+          nombre: pendiente.nombre,
+          cantidad: pendiente.cantidad_conocida,
+          unidad: pendiente.nombre_unidad,
+          siglas_unidad: pendiente.siglas_unidad,
+          en_catalogo: pendiente.en_catalogo,
+        }];
+      } else {
+        nuevosDatos.pendientes_cantidad = [...(datos.pendientes_cantidad ?? []), {
+          ide_inarti: pendiente.ide_inarti,
+          nombre: pendiente.nombre,
+          siglas_unidad: pendiente.siglas_unidad,
+          nombre_unidad: pendiente.nombre_unidad,
+          en_catalogo: pendiente.en_catalogo,
+        }];
+      }
+      await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
+      return;
+    }
+
+    // No es el producto → se asocia al ítem genérico con el texto literal del cliente,
+    // para no perder el pedido; se pregunta el uso igual que cualquier otro genérico.
+    const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
+    const nuevosDatos: DatosSesion = {
+      ...datos,
+      pendiente_confirmacion: undefined,
+      pendientes_uso: [...(datos.pendientes_uso ?? []), {
+        ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+        nombre: pendiente.texto_original,
+        siglas_unidad: generico?.siglas_unidad ?? 'UND',
+        nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+        en_catalogo: generico?.en_catalogo ?? false,
+        cantidad_conocida: pendiente.cantidad_conocida,
+      }],
+    };
+    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
   /** Cierra la etapa de captura de productos: pide datos del cliente si faltan, o pasa a confirmación. */

@@ -68,6 +68,7 @@ export class BotScheduleService {
         WHERE s.activa = TRUE
           AND s.estado = ANY('{ATENCION_LIBRE,PREGUNTA_ES_CLIENTE,IDENTIFICACION,
                                DATOS_NUEVO_CLIENTE,SELECCION_PRODUCTOS,SELECCION_MULTIPLE,
+                               CONFIRMANDO_PRODUCTO_LOTE,
                                ESPERANDO_CANTIDAD,ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,
                                CONFIRMACION_PRODUCTOS,DATOS_ENVIO,DATOS_PAGO}'::text[])
           AND (NOW() - s.hora_actua) > make_interval(mins => $1)

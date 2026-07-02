@@ -51,6 +51,21 @@ export interface PendienteCantidad {
   uso_generico?: string;
 }
 
+// Un único match encontrado solo por los fallbacks difusos (reducción progresiva de
+// palabras / búsqueda por palabras sueltas), NO por la búsqueda exacta inicial — no es
+// confiable como para agregarlo directo (puede ser un falso positivo, ej. "Jabón de
+// base de glicerina" reducido a "Jabón de" matcheando "MOLDE ... JABON DE MASAJES").
+// Se pausa a confirmar con el cliente antes de continuar.
+export interface PendienteConfirmacion {
+  ide_inarti: number;
+  nombre: string;
+  siglas_unidad: string;
+  nombre_unidad: string;
+  en_catalogo: boolean;
+  texto_original: string;
+  cantidad_conocida: number | null;
+}
+
 export interface DatosSesion {
   texto_inicial?: string;
   memoria_cargada?: boolean;  // indica que los datos del cliente vienen de sesión anterior
@@ -74,10 +89,9 @@ export interface DatosSesion {
   // en vez de uno a la vez.
   pendientes_uso?: PendienteUso[];
   pendientes_cantidad?: PendienteCantidad[];
-  // Nombres de ítems del lote que no se encontraron en catálogo (no bloquea, se avisa
-  // al final) — se acumula entre llamadas porque resolverColaProductos puede pausarse
-  // varias veces (desambiguación, preguntas agrupadas) antes de llegar al final.
-  no_encontrados?: string[];
+  // Ítem con un único match "dudoso" (solo por fallback difuso) a la espera de que el
+  // cliente confirme si es o no el producto que buscaba — bloquea de inmediato.
+  pendiente_confirmacion?: PendienteConfirmacion;
 }
 
 export interface OpcionProducto {

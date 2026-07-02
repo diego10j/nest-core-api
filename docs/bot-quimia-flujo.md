@@ -70,7 +70,14 @@ Cliente escribe cualquier mensaje
   que en un solo call GPT decide:
     - "completo": true si el cliente escribió FIN (aislada) o dio a entender que ya
       terminó de listar ("eso es todo", "ya", "nada más"...). false → sigue acumulando
-      (el bot responde solo un acuse breve "Anotado ✅...", sin tocar la BDD todavía).
+      (el bot responde un acuse breve "Anotado ✅..." con botones **[➕ Agregar más]
+      [✅ Finalizar]** — 2026-07-02, antes solo pedía escribir *FIN* en texto plano.
+      El cliente igual puede seguir escribiendo el siguiente producto directo, sin usar
+      los botones — ambos caminos funcionan). Botón "Agregar más" (`id=LOTE_MAS`) es un
+      no-op conversacional: solo confirma la intención y pide el siguiente producto, sin
+      tocar `texto_acumulado` ni llamar a GPT. Botón "Finalizar" (`id=LOTE_FIN`) se
+      traduce internamente a `texto='FIN'` antes de llamar a `analizarLoteProductos` —
+      reusa el mismo detector de cierre, sin lógica duplicada.
     - "items": arreglo [{producto, cantidad}] con TODOS los productos mencionados hasta
       el momento (cantidad: número si vino explícita, 0 si el cliente pidió "cantidad
       mínima", null si no la mencionó).
@@ -96,24 +103,37 @@ Cliente escribe cualquier mensaje
         completa / otro_nombre exacto), SIN fallbacks difusos. Evita falsos positivos
         tipo "de mango" → "MANTECA DE MANGO".
       - Si no es categoría genérica → cadena completa: ILIKE exacto → reducción
-        progresiva de palabras → palabras significativas con score.
+        progresiva de palabras → palabras significativas con score. Se marca
+        `matchExacto=true` SOLO si el ILIKE exacto (frase completa) encontró algo
+        directamente, sin necesitar la reducción/palabras.
     Resultado del ítem:
-      ├─ 0 resultados + categoría genérica → se agrega a `pendientes_uso[]`
-      │    (ide_inarti=2102, nombre=texto del cliente, cantidad_conocida=la ya detectada)
-      │    — NO bloquea, sigue con el siguiente ítem de la cola
-      ├─ 0 resultados + no genérico → se anota en `datos.no_encontrados[]` (aviso
-      │    breve al final) y CONTINÚA con el siguiente ítem (no bloquea el lote).
-      │    Persistido en la sesión (no solo variable local) — corregido 2026-07-02:
-      │    antes, si este ítem se procesaba ANTES de uno que bloquea (desambiguación
-      │    o pregunta agrupada), el aviso "no encontré X" se perdía en silencio al
-      │    pausar, porque la lista vivía solo en memoria de esa llamada.
-      ├─ 1 resultado + cantidad ya conocida (incl. 0) → se agrega directo a
-      │    `productos[]` sin preguntar nada, sigue con el siguiente ítem
-      ├─ 1 resultado + cantidad desconocida → se agrega a `pendientes_cantidad[]`
-      │    — NO bloquea, sigue con el siguiente ítem
+      ├─ 0 resultados (sea o no categoría genérica, sea o no simple error de tipeo
+      │    del cliente — ej. "percabonato" no matchea "PERCARBONATO DE SODIO" por
+      │    ILIKE substring) → se agrega a `pendientes_uso[]` (ide_inarti=2102,
+      │    nombre=texto literal del cliente, cantidad_conocida=la ya detectada) — NO
+      │    bloquea, sigue con el siguiente ítem. **Unificado 2026-07-02**: antes un
+      │    0-resultados no genérico se anotaba solo como texto informativo
+      │    (`no_encontrados[]`) y NUNCA se agregaba a la proforma — el pedido se
+      │    perdía en silencio. Ahora todo ítem sin match termina en la proforma con
+      │    `ide_inarti=2102` para que el asesor lo revise manualmente.
+      ├─ 1 resultado por búsqueda EXACTA + cantidad ya conocida (incl. 0) → se agrega
+      │    directo a `productos[]` sin preguntar nada, sigue con el siguiente ítem
+      ├─ 1 resultado por búsqueda EXACTA + cantidad desconocida → se agrega a
+      │    `pendientes_cantidad[]` — NO bloquea, sigue con el siguiente ítem
+      ├─ 1 resultado SOLO por fallback difuso (`matchExacto=false`) → **bug corregido
+      │    2026-07-02**: antes se agregaba directo igual que un match exacto, lo que
+      │    causaba falsos positivos (ej. "Jabón de base de glicerina importada"
+      │    reducido a "Jabón de" matcheaba "MOLDE DE SILICONA JABON DE MASAJES 2
+      │    CAVIDADES" — producto totalmente distinto — y el bot preguntaba la
+      │    cantidad de ESE producto sin forma de corregirlo). Ahora bloquea de
+      │    inmediato con botones [✅ Sí, es este] [❌ No es este] →
+      │    [CONFIRMANDO_PRODUCTO_LOTE]
       └─ N resultados (>1) → ESTO SÍ bloquea de inmediato: guarda opciones_producto
-           (+ pendientes_uso/pendientes_cantidad/no_encontrados acumulados hasta
-           ahora) → [SELECCION_MULTIPLE] (pide *solo el número*)
+           (+ pendientes_uso/pendientes_cantidad acumulados hasta ahora) →
+           [SELECCION_MULTIPLE] (pide *solo el número*). El mensaje ahora incluye el
+           texto original buscado: `Para "X" encontré N productos que coinciden 🔍`
+           (antes no decía a qué ítem del lote se refería la lista, confuso cuando
+           el cliente había listado varios productos en un mismo mensaje).
 
   **Fase 2 — preguntas agrupadas** (solo si la cola se vació sin necesitar desambiguar):
       ├─ `pendientes_uso.length > 0` → UN solo mensaje listando todos los productos
@@ -132,6 +152,14 @@ Cliente escribe cualquier mensaje
         │    se agrega directo y se sigue resolviendo (resolverColaProductos); si no,
         │    se agrega a `pendientes_cantidad[]` (se pregunta agrupado más adelante,
         │    NO de inmediato) y también se sigue resolviendo.
+        │
+        ├─ [CONFIRMANDO_PRODUCTO_LOTE]  (match de baja confianza, solo 1 producto)
+        │    Botones [PROD_SI]/[PROD_NO] o texto libre vía `detectarIntencion`
+        │    (CONFIRMAR/CANCELAR). SÍ → se trata como match normal (agrega directo si
+        │    cantidad conocida, si no pasa a `pendientes_cantidad[]`). NO → se agrega
+        │    a `pendientes_uso[]` con `ide_inarti=2102` y el texto literal original
+        │    del cliente (mismo mecanismo que "no encontrado" — no se descarta el
+        │    pedido). En ambos casos sigue resolviendo (resolverColaProductos).
         │
         ├─ [ESPERANDO_USO_LOTE]  (uno o varios productos genéricos a la vez)
         │    Primero chequea consulta informativa (`clasificarConsulta` —
@@ -194,8 +222,19 @@ Cliente escribe cualquier mensaje
 [PROCESANDO PROFORMA]
   "⏳ Espera un momento..."
   Por cada producto:
-    → buscarPrecioConfigurado(ide_inarti, cantidad, ideEmpr)
+    → cantidad=0 ("cantidad mínima") → se salta buscarPrecioConfigurado directo a
+      "sin precio configurado" (ver nota abajo)
+    → si no, buscarPrecioConfigurado(ide_inarti, cantidad, ideEmpr)
     → si precio: calcula con/sin IVA → precio_unitario, precio_total
+
+  > **Nota (bug corregido 2026-07-02):** `f_calcula_precio_venta` (función SQL) lanza
+  > `RAISE EXCEPTION 'La cantidad debe ser mayor a cero'` cuando `cantidad<=0`. Como
+  > cualquier producto con "cantidad mínima" se guarda como `cantidad=0`, llamar a
+  > `buscarPrecioConfigurado` con ese valor abortaba TODA la creación de la proforma
+  > (`procesarProforma` capturaba la excepción y derivaba el chat a asesor sin generar
+  > nada). `bot-proforma.service.ts` ahora evita la llamada cuando `prod.cantidad === 0`
+  > y trata el producto directo como "sin precio configurado" (pasa a revisión manual,
+  > igual que cualquier otro producto sin precio).
   Condiciones:
     AUTOMÁTICA: todos tienen precio AND todos en catálogo
     CON_PRECIO:  todos tienen precio BUT alguno fuera de catálogo (ej. ítems genéricos)
@@ -265,7 +304,7 @@ Cliente escribe cualquier mensaje
 | Saludo (`Hola`, `Buenas`, etc.) en estado activo | Cierra la sesión y arranca una nueva desde INICIO |
 
 **Sesiones** (`BotSessionService`):
-- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_CANTIDAD_LOTE`, `ESPERANDO_USO_LOTE`, `CONFIRMACION_PRODUCTOS`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
+- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `CONFIRMANDO_PRODUCTO_LOTE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_CANTIDAD_LOTE`, `ESPERANDO_USO_LOTE`, `CONFIRMACION_PRODUCTOS`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
 - `INICIO` / `ESPERANDO_CONFIRMACION` (sesión que no avanzó) expiran a las **4 horas**.
 
 ---
@@ -288,16 +327,20 @@ Los templates admiten placeholders `{BOT_NOMBRE}` y `{NOMBRE_EMPRESA}`. Si una c
 ## Búsqueda de productos
 
 **Flujo normal** (nombre de producto no genérico) — 3 niveles:
-1. **ILIKE exacto** — `nombre_inarti ILIKE '%texto%' OR otro_nombre_inarti = texto` (coincidencia exacta sin tildes/mayúsculas)
+1. **ILIKE exacto** — `nombre_inarti ILIKE '%texto%' OR otro_nombre_inarti = texto` (coincidencia exacta sin tildes/mayúsculas). Si este nivel encuentra 1 resultado, se marca como `matchExacto=true` (confiable).
 2. **Reducción progresiva** — quita una palabra del final por iteración hasta encontrar match (mínimo 2 palabras)
 3. **Palabras significativas** — elimina stop words, busca por OR con score ≥ 2 palabras coincidentes
+
+Un match encontrado únicamente por los niveles 2 o 3 se considera de **baja confianza** (`matchExacto=false`): en vez de agregarse directo a la cotización, el bot pausa y pide confirmación sí/no al cliente (ver `CONFIRMANDO_PRODUCTO_LOTE` en el diagrama de flujo) — esto evita falsos positivos por substring como "Jabón de base de glicerina" (reducido a "Jabón de") matcheando "MOLDE DE SILICONA JABON DE MASAJES 2 CAVIDADES", un producto completamente distinto.
 
 **Categorías genéricas** (sabor/saborizante/color/colorante/fragancia/aceite/esencia, singular o plural): **solo** se ejecuta el nivel 1 (ILIKE exacto). Si no hay match, se trata directo como "no encontrado" — no se intentan los niveles 2 y 3, para evitar falsos positivos por coincidencia de una sola palabra (ej. "saborizante de mango" no debe matchear "MANTECA DE MANGO" solo porque comparten "mango").
 
 Cuando coincide por `otro_nombre_inarti` (no por nombre principal) → muestra `NOMBRE / OTRO_NOMBRE`.
 
-### Productos sin match en categoría genérica → ítem genérico
-Si un producto de categoría genérica no tiene match en catálogo, el bot no repite la pregunta ni entra en bucle: pregunta para qué uso lo necesita, pide la cantidad (o usa la ya detectada por GPT) y lo agrega a la cotización asociado al **artículo genérico `ide_inarti = 2102`**, con el nombre tal como lo escribió el cliente. Ese ítem normalmente queda sin precio configurado → la cotización cae en modo BORRADOR y un asesor la completa manualmente. **Prerrequisito de datos**: el artículo `2102` debe existir, estar activo, y (idealmente) sin precio configurado / fuera de catálogo, para que nunca dispare una cotización automática con precio $0.
+**Limitación conocida**: la búsqueda es 100% por substring (`ILIKE`), sin tolerancia a errores de tipeo — "percabonato" (falta la "r") **no** matchea "PERCARBONATO DE SODIO" aunque el producto exista en catálogo. No hay corrección ortográfica ni similitud fonética (`pg_trgm`/Levenshtein) implementada; ver sección "### Productos sin match → ítem genérico" para cómo se maneja esto hoy (queda para revisión de asesor, no se pierde).
+
+### Productos sin match → ítem genérico
+Si un producto no tiene match en catálogo — sea porque es una categoría genérica (sabor/color/aceite/etc.) o simplemente porque el cliente lo escribió mal o no existe (ver limitación de arriba) — el bot no repite la pregunta ni entra en bucle: pregunta para qué uso lo necesita, pide la cantidad (o usa la ya detectada por GPT) y lo agrega a la cotización asociado al **artículo genérico `ide_inarti = 2102`**, con el nombre tal como lo escribió el cliente. Ese ítem normalmente queda sin precio configurado → la cotización cae en modo BORRADOR y un asesor la completa manualmente. **Prerrequisito de datos**: el artículo `2102` debe existir, estar activo, y (idealmente) sin precio configurado / fuera de catálogo, para que nunca dispare una cotización automática con precio $0. Mismo mecanismo cuando el cliente rechaza ("No es este") un match de baja confianza en `CONFIRMANDO_PRODUCTO_LOTE`.
 
 ---
 
@@ -444,9 +487,13 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
   cola_productos?: [{ producto: string; cantidad: number | null }]  // ítems del lote aún sin resolver
   item_cantidad_conocida?: number | null  // cantidad ya detectada por GPT para el ítem que bloquea SELECCION_MULTIPLE
   pendientes_uso?: [{ ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, cantidad_conocida: number|null }]
-  // ítems genéricos sin match, agrupados para preguntar el uso de todos juntos (ESPERANDO_USO_LOTE)
+  // ítems sin match en catálogo (genéricos o no — incl. errores de tipeo), agrupados
+  // para preguntar el uso de todos juntos y asociarlos a ide_inarti=2102 (ESPERANDO_USO_LOTE)
   pendientes_cantidad?: [{ ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, uso_generico?: string }]
   // ítems ya identificados sin cantidad, agrupados para preguntar todos juntos (ESPERANDO_CANTIDAD_LOTE)
+  pendiente_confirmacion?: { ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, texto_original: string, cantidad_conocida: number|null }
+  // único match encontrado SOLO por fallback difuso (no confiable) — bloquea pidiendo
+  // sí/no al cliente antes de darlo por bueno (CONFIRMANDO_PRODUCTO_LOTE)
   envio?: {
     direccion?: string
     provincia?: string
@@ -500,8 +547,12 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
 - ✅ Flujo de "producto genérico" (`ide_inarti=2102`) para categorías sin match, evitando el bucle de "no tenemos X".
 - ✅ Observación de la proforma con el nombre real escrito por el cliente + uso + marca de "cantidad mínima".
 - ✅ Saludo inicial y textos clave más breves y orientados a motivar continuar con el bot.
+- ✅ (2026-07-02) Confirmación sí/no ante matches de baja confianza (solo por fallback difuso) en vez de asumirlos — evita agregar el producto equivocado a la cotización.
+- ✅ (2026-07-02) Ítems sin match en catálogo (típeos incluidos, no solo categorías genéricas) ya no se pierden en silencio — todos terminan asociados a `ide_inarti=2102` en la proforma para revisión del asesor.
+- ✅ (2026-07-02) `cantidad=0` ("cantidad mínima") ya no aborta la creación de la proforma (`f_calcula_precio_venta` rechazaba cantidad≤0).
 
 ### Corto plazo
+- Tolerancia a errores de tipeo en la búsqueda de productos (ej. `pg_trgm`/similitud fonética) — hoy `buscarProductos` es 100% substring (`ILIKE`), así que un producto real mal escrito (ej. "percabonato" vs "PERCARBONATO DE SODIO") no matchea y termina como ítem genérico para revisión manual en vez de resolverse solo.
 1. **Template aprobado**: reemplazar mensaje de texto bienvenida por template WhatsApp Business cuando esté aprobado (pendiente en `handleInicio`).
 2. **Botones interactivos en más pasos**: el paso de provincia podría tener botones con las provincias más frecuentes (Pichincha, Guayas, etc.).
 3. **Resumen previo a pago**: mostrar dirección + provincia + forma de pago antes de crear proforma para que el cliente confirme todo.
