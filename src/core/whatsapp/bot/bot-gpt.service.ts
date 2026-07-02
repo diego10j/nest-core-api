@@ -10,32 +10,6 @@ export class BotGptService {
   private readonly logger = new Logger(BotGptService.name);
   private readonly openai = new OpenAI({ apiKey: envs.openaiApiKey });
 
-  async extractProductoCantidad(texto: string): Promise<{ producto: string; cantidad: number } | null> {
-    try {
-      const resp = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'Extrae el nombre del producto y la cantidad del texto del cliente. '
-              + 'Responde SOLO con JSON válido: {"producto": "nombre del producto", "cantidad": N}. '
-              + 'Si no hay cantidad explícita usa 1. Si no hay producto claro devuelve null.',
-          },
-          { role: 'user', content: texto },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0,
-        max_tokens: 80,
-      });
-      const content = resp.choices[0]?.message?.content;
-      if (!content) return null;
-      return JSON.parse(content);
-    } catch (err) {
-      this.logger.error(`extractProductoCantidad error: ${err.message}`);
-      return null;
-    }
-  }
-
   async generateResponse(
     systemPrompt: string,
     historial: { role: 'user' | 'assistant'; content: string }[],
@@ -314,49 +288,4 @@ export class BotGptService {
     }
   }
 
-  async analizarProductoNoEncontrado(
-    texto: string,
-    productosYaAgregados: string[] = [],
-    nombreBot: string = 'Asistente',
-    nombreEmpresa: string = 'la empresa',
-    promptSistema?: string,
-  ): Promise<{ tipo: 'INFO' | 'PRODUCTO' | 'IRRELEVANTE'; respuesta: string }> {
-    const ctx = productosYaAgregados.length
-      ? `Productos ya cotizados: ${productosYaAgregados.join(', ')}.`
-      : '';
-    const sysBase = promptSistema
-      ? `${promptSistema}\n\n${ctx}`
-      : `Eres ${nombreBot}, asesora comercial de ${nombreEmpresa}. ${ctx}`;
-    try {
-      const resp = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `${sysBase}
-El cliente está cotizando y escribió algo que no coincidió con ningún producto del catálogo.
-Responde en JSON: {"tipo":"INFO|PRODUCTO|IRRELEVANTE","respuesta":"texto para el cliente"}
-INFO = pregunta de ubicación/horario/envíos/catálogo → responde la info y pide continuar cotizando.
-PRODUCTO = nombre de producto poco claro → sugiere escribir solo el nombre principal sin cantidades ni unidades.
-IRRELEVANTE = fuera de contexto → responde brevemente y pide continuar.
-Tono: amable, profesional. Máximo 2 párrafos cortos.`,
-          },
-          { role: 'user', content: texto },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.4,
-        max_tokens: 220,
-      });
-      const parsed = JSON.parse(resp.choices[0]?.message?.content || '{}');
-      if (['INFO', 'PRODUCTO', 'IRRELEVANTE'].includes(parsed.tipo) && parsed.respuesta) {
-        return parsed;
-      }
-    } catch (err) {
-      this.logger.error(`analizarProductoNoEncontrado error: ${err.message}`);
-    }
-    return {
-      tipo: 'PRODUCTO',
-      respuesta: `No encontré ese producto en nuestro catálogo 🤔\n\n💡 Escribe solo el nombre principal del producto, sin cantidades ni unidades.\n_Ej: "cera de palma" en lugar de "cera de palma 25kg"_`,
-    };
-  }
 }

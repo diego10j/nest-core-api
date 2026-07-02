@@ -323,7 +323,7 @@ export class BotService implements OnModuleInit {
           await this.handleDatosPago(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa);
           break;
         case BotState.FINALIZADO:
-          await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot);
+          await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
       }
     } catch (error) {
@@ -432,7 +432,7 @@ export class BotService implements OnModuleInit {
     await this.sendButtons(ideEmpr, waId,
       `Para poder ayudarte, primero selecciona una opción por favor 😊`,
       [
-        { id: 'SI', title: '✅ Continuar con bot' },
+        { id: 'SI', title: '⚡ Continuar' },
         { id: 'NO', title: '👤 Hablar con asesor' },
       ],
     );
@@ -1322,8 +1322,13 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const confirma = t === 'CONF_SI' || (await this.botGpt.detectarIntencion(texto)) === 'CONFIRMAR';
-    const modifica = t === 'CONF_NO' || (await this.botGpt.detectarIntencion(texto)) === 'CANCELAR';
+    let confirma = t === 'CONF_SI';
+    let modifica = t === 'CONF_NO';
+    if (!confirma && !modifica) {
+      const intencion = await this.botGpt.detectarIntencion(texto);
+      confirma = intencion === 'CONFIRMAR';
+      modifica = intencion === 'CANCELAR';
+    }
 
     if (PALABRAS_ASESOR.test(texto)) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
@@ -1569,6 +1574,7 @@ export class BotService implements OnModuleInit {
         const pctIva     = resultado.tarifaIva    ?? 15;
 
         // Enviar PDF como documento usando link público (evita upload a YCloud que falla)
+        let pdfEnviado = false;
         try {
           const filename = await this.fileTempService.saveWhatsAppMedia(
             resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
@@ -1582,12 +1588,31 @@ export class BotService implements OnModuleInit {
             pdfUrl,
           );
           this.logger.log(`[Bot] PDF enviado como documento link: ${pdfUrl}`);
+          pdfEnviado = true;
           // Notificar a agentes via socket que se generó una proforma automática
           this.gateway.emitNuevaProformaBot(
             ideWhcue, resultado.secuencial, nuevosDatos.cliente?.nombres || waId,
           );
         } catch (pdfErr) {
+          // Antes, si esto fallaba, igual se le decía al cliente "Adjuntamos tu
+          // cotización en PDF" — mensaje falso, sin adjunto real, y nadie del equipo se
+          // enteraba. Ahora el texto al cliente cambia (ver `lineas` abajo) y se avisa
+          // al equipo para que la reenvíen manualmente.
           this.logger.error(`Error enviando PDF: ${pdfErr.message}`);
+          try {
+            await this.notificaciones.enviarSistema(
+              'WHATSAPP_PDF_FALLIDO',
+              `⚠️ PDF no enviado — Cotización #${resultado.secuencial}`,
+              `Falló el envío automático del PDF de la cotización #${resultado.secuencial} a ${waId}. El cliente ya recibió el resumen de totales pero no el PDF — reenviar manualmente.`,
+              {
+                tipo: 'text',
+                botones: [{ texto: 'Ver Chat', accion: 'navigate', estilo: 'primary', url: '/dashboard/whatsapp' }],
+              },
+              ideEmpr, 'bot',
+            );
+          } catch (notifErr) {
+            this.logger.error(`[Notif] Error notificando fallo de envío de PDF: ${notifErr.message}`);
+          }
         }
 
         const lineas = [
@@ -1597,7 +1622,9 @@ export class BotService implements OnModuleInit {
           `📋 IVA ${pctIva}%:             *$${iva.toFixed(2)}*`,
           `💰 *Total:               $${totalFinal.toFixed(2)}*`,
           ``,
-          `📄 Adjuntamos tu cotización en PDF con el detalle completo.`,
+          pdfEnviado
+            ? `📄 Adjuntamos tu cotización en PDF con el detalle completo.`
+            : `📄 En un momento te enviamos tu cotización en PDF con el detalle completo.`,
           ``,
           `Uno de nuestros asesores confirmará disponibilidad y coordinará el pago y envío 😊`,
         ];
@@ -1649,11 +1676,32 @@ export class BotService implements OnModuleInit {
 
   private async handlePostCotizacion(
     waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const t = texto.trim().toUpperCase();
 
-    if (t === 'NUEVA_COTIZACION' || /NUEVA|COTIZAR|OTRO PRODUCTO|OTRA COTIZ/i.test(texto)) {
+    if (t === 'HABLAR_ASESOR' || PALABRAS_ASESOR.test(texto)) {
+      // Cerrar sesión antes de derivar para evitar re-procesos
+      await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
+      await this.sendText(ideEmpr, waId,
+        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n¡Que tengas un excelente día! 🌟`,
+      );
+      // null = no enviar mensaje adicional al cliente (ya lo enviamos arriba)
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        null, `Cliente solicitó asesor tras recibir cotización.`,
+      );
+      return;
+    }
+
+    // El clic del botón evita una llamada a GPT innecesaria; cualquier otro texto se
+    // clasifica con el mismo detector que usa el resto del flujo (más robusto que un
+    // regex propio — antes /NUEVA|COTIZAR|OTRO PRODUCTO|OTRA COTIZ/i disparaba con
+    // falsos positivos tipo "ya no quiero cotizar más", y esta pantalla era la única
+    // del flujo sin chequeo de consulta informativa).
+    const esBotonNueva = t === 'NUEVA_COTIZACION';
+    const tipoConsulta = esBotonNueva ? 'PRODUCTO' : await this.botGpt.clasificarConsulta(texto);
+
+    if (tipoConsulta === 'PRODUCTO') {
       // El cliente ya se identificó en la sesión que se está cerrando (se acaba de
       // generar una cotización con sus datos) — se conserva para no volver a preguntar.
       const datosAnteriores = sesion.datos_sesion as DatosSesion;
@@ -1674,9 +1722,16 @@ export class BotService implements OnModuleInit {
           envio: datosAnteriores.envio?.provincia ? { provincia: datosAnteriores.envio.provincia } : undefined,
         };
         await this.botSession.update(nuevaSesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-        await this.sendText(ideEmpr, waId,
-          `¡Con gusto! 😊\n\n${MSG_INICIO_COTIZACION}`,
-        );
+        if (esBotonNueva) {
+          // Solo el clic del botón, sin producto mencionado — pedir la lista normalmente.
+          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊\n\n${MSG_INICIO_COTIZACION}`);
+        } else {
+          // El mensaje ya traía el producto (ej. "otra cotización: 5kg cera de soya") —
+          // se procesa de inmediato en vez de descartarlo (mismo patrón ya usado en
+          // handleAtencionLibre/handleConfirmacion para no perder el texto del cliente).
+          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊`);
+          await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, nuevaSesion, nuevosDatos, texto, nombreEmpresa, config);
+        }
         return;
       }
 
@@ -1689,15 +1744,14 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    if (t === 'HABLAR_ASESOR' || PALABRAS_ASESOR.test(texto)) {
-      // Cerrar sesión antes de derivar para evitar re-procesos
-      await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
-      await this.sendText(ideEmpr, waId,
-        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n¡Que tengas un excelente día! 🌟`,
-      );
-      // null = no enviar mensaje adicional al cliente (ya lo enviamos arriba)
-      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        null, `Cliente solicitó asesor tras recibir cotización.`,
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.sendButtons(ideEmpr, waId,
+        `¿Puedo ayudarte con algo más? 😊`,
+        [
+          { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
+          { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+        ],
       );
       return;
     }
@@ -1828,108 +1882,6 @@ export class BotService implements OnModuleInit {
 - Responde en español. Si no tienes información, invita al cliente a escribir SALIR para hablar con un asesor.
 - NUNCA inventas precios ni información que no tengas.
 - NUNCA asumas que el cliente está insatisfecho o molesto a menos que lo diga explícitamente. No te disculpes sin motivo.`;
-  }
-
-  /** Procesa mensajes pendientes de un chat específico al liberarlo */
-  async procesarPendientesChat(ideWhcha: number): Promise<void> {
-    try {
-      const chatRow = await this.dataSource.pool.query<{
-        wa_id_whcha: string; phone_number_id_whcha: string;
-        no_leidos_whcha: number; ide_whcue: number; ide_empr: number;
-      }>(
-        `SELECT c.wa_id_whcha, c.phone_number_id_whcha, c.no_leidos_whcha,
-                cu.ide_whcue, cu.ide_empr
-         FROM wha_chat c
-         INNER JOIN wha_cuenta cu
-           ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
-           AND cu.activo_whcue = TRUE
-         WHERE c.ide_whcha = $1 LIMIT 1`,
-        [ideWhcha],
-      );
-      if (!chatRow.rowCount) return;
-      const chat = chatRow.rows[0];
-      if (!chat.no_leidos_whcha || chat.no_leidos_whcha <= 0) return;
-
-      const windowCheck = await this.ycloudWindowService.canSendFreeMessage(
-        chat.phone_number_id_whcha, chat.wa_id_whcha,
-      );
-      if (!windowCheck.allowed) {
-        this.logger.log(`[Bot] Chat ${ideWhcha} fuera de ventana 24h — no se procesan pendientes`);
-        return;
-      }
-
-      const msgRow = await this.dataSource.pool.query<{ body_whmem: string }>(
-        `SELECT body_whmem FROM wha_mensaje
-         WHERE ide_whcha = $1 AND direction_whmem = '0'
-           AND body_whmem IS NOT NULL AND content_type_whmem = 'text'
-         ORDER BY ide_whmem DESC LIMIT 1`,
-        [ideWhcha],
-      );
-      if (!msgRow.rowCount || !msgRow.rows[0].body_whmem) return;
-
-      const texto = msgRow.rows[0].body_whmem;
-      this.logger.log(`[Bot] Procesando pendiente chat=${ideWhcha} texto="${texto}"`);
-      await this.processMessage(
-        chat.wa_id_whcha, chat.phone_number_id_whcha,
-        ideWhcha, chat.ide_whcue, chat.ide_empr, texto, true,
-      );
-    } catch (err) {
-      this.logger.error(`[Bot] procesarPendientesChat error chat=${ideWhcha}: ${err.message}`);
-    }
-  }
-
-  /** Procesa mensajes pendientes de todos los chats del bot al activarlo globalmente */
-  async procesarPendientesGlobal(ideWhcue: number, ideEmpr: number): Promise<void> {
-    try {
-      const result = await this.dataSource.pool.query<{
-        ide_whcha: number; wa_id_whcha: string; phone_number_id_whcha: string;
-      }>(
-        `SELECT c.ide_whcha, c.wa_id_whcha, c.phone_number_id_whcha
-         FROM wha_chat c
-         INNER JOIN wha_cuenta cu
-           ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
-           AND cu.ide_whcue = $1 AND cu.activo_whcue = TRUE
-         WHERE c.no_leidos_whcha > 0
-           AND c.bot_activo_whcha = TRUE
-           AND c.ultimo_ingreso_cliente_whcha IS NOT NULL
-           AND (NOW() - c.ultimo_ingreso_cliente_whcha) < INTERVAL '24 hours'
-           AND c.eliminado_whcha = FALSE
-         ORDER BY c.ultimo_ingreso_cliente_whcha DESC
-         LIMIT 20`,
-        [ideWhcue],
-      );
-      if (!result.rowCount) return;
-      this.logger.log(`[Bot] procesarPendientesGlobal: ${result.rowCount} chats pendientes`);
-
-      for (const chat of result.rows) {
-        try {
-          const windowCheck = await this.ycloudWindowService.canSendFreeMessage(
-            chat.phone_number_id_whcha, chat.wa_id_whcha,
-          );
-          if (!windowCheck.allowed) continue;
-
-          const msgRow = await this.dataSource.pool.query<{ body_whmem: string }>(
-            `SELECT body_whmem FROM wha_mensaje
-             WHERE ide_whcha = $1 AND direction_whmem = '0'
-               AND body_whmem IS NOT NULL AND content_type_whmem = 'text'
-             ORDER BY ide_whmem DESC LIMIT 1`,
-            [chat.ide_whcha],
-          );
-          if (!msgRow.rowCount || !msgRow.rows[0].body_whmem) continue;
-
-          this.logger.log(`[Bot] Pendiente global chat=${chat.ide_whcha} texto="${msgRow.rows[0].body_whmem}"`);
-          await this.processMessage(
-            chat.wa_id_whcha, chat.phone_number_id_whcha,
-            chat.ide_whcha, ideWhcue, ideEmpr, msgRow.rows[0].body_whmem, true,
-          );
-          await new Promise((r) => setTimeout(r, 500));
-        } catch (chatErr) {
-          this.logger.error(`[Bot] pendiente global chat=${chat.ide_whcha}: ${chatErr.message}`);
-        }
-      }
-    } catch (err) {
-      this.logger.error(`[Bot] procesarPendientesGlobal error: ${err.message}`);
-    }
   }
 
   async derivarAsesor(
@@ -2157,99 +2109,32 @@ export class BotService implements OnModuleInit {
         return;
       }
 
-      // 7b. Pregunta de producto: buscar en catálogo y usar la unidad real (siglas_unidad)
+      // 7b. Pregunta de producto: delega en resolverColaProductos — la misma cadena de
+      // búsqueda que usa la captura de productos en lote (búsqueda estricta para
+      // categorías genéricas, confirmación sí/no ante matches de baja confianza,
+      // fallback a ide_inarti=2102 si no hay match). Antes este bloque reimplementaba su
+      // propia búsqueda (sin esas protecciones), así que los falsos positivos corregidos
+      // en resolverColaProductos (ej. "Jabón de" matcheando un producto no relacionado)
+      // seguían ocurriendo acá. Al delegar, un fix futuro de búsqueda aplica en los dos
+      // lugares a la vez.
       if (tipoConsulta === 'PRODUCTO') {
-        const extracted = await this.botGpt.extractProductoCantidad(lastClientMsg).catch(() => null);
-        const textoBase = extracted?.producto || lastClientMsg;
-        const nombreBuscado = textoBase
-          .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|galon[s]?|gal[s]?)\b/gi, '')
-          .replace(/\b\d+\b/g, '').replace(/\s{2,}/g, ' ').trim() || textoBase;
+        const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+        const memoria = await this.botSession.getMemoriaCliente(ideWhcha);
+        const tieneMemoria = !!(memoria?.cliente?.nombres);
 
-        let resultados = await this.botTools.buscarProductos(nombreBuscado, ideEmpr);
-
-        if (!resultados.length) {
-          const palabras = nombreBuscado.split(/\s+/).filter(Boolean);
-          for (let n = palabras.length - 1; n >= 2; n--) {
-            resultados = await this.botTools.buscarProductos(palabras.slice(0, n).join(' '), ideEmpr);
-            if (resultados.length) break;
-          }
-        }
-        if (!resultados.length) {
-          resultados = await this.botTools.buscarProductosPorPalabras(nombreBuscado, ideEmpr);
+        if (tieneMemoria) {
+          await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${memoria.cliente.nombres.split(' ')[0]}*! 😊`);
         }
 
-        if (resultados.length > 0) {
-          const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
-          const memoria = await this.botSession.getMemoriaCliente(ideWhcha);
-          const tieneMemoria = !!(memoria?.cliente?.nombres);
-
-          if (resultados.length === 1) {
-            const prod = resultados[0];
-            const productoPendiente = {
-              ide_inarti: prod.ide_inarti,
-              nombre: prod.nombre,
-              siglas_unidad: prod.siglas_unidad,
-              nombre_unidad: prod.nombre_unidad,
-              en_catalogo: prod.en_catalogo,
-            };
-
-            if (tieneMemoria) {
-              // Cliente conocido → ir directamente a pedir cantidad con unidad real
-              const datosSesion: DatosSesion = {
-                productos: [],
-                producto_pendiente: productoPendiente,
-                cliente: { ...memoria.cliente } as ClienteSesion,
-                memoria_cargada: true,
-              };
-              await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, datosSesion);
-              await this.sendText(ideEmpr, waId,
-                `¡Hola de nuevo, *${memoria.cliente.nombres.split(' ')[0]}*! 😊\n\n` +
-                `Encontré: *${this.displayNombreProducto(prod)}* ✅\n\n` +
-                `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_\n\n` +
-                `_Puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_`,
-              );
-            } else {
-              // Cliente desconocido → identificar primero; conservar producto_pendiente
-              const datosSesion: DatosSesion = { productos: [], producto_pendiente: productoPendiente };
-              await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datosSesion);
-              await this.sendButtons(ideEmpr, waId,
-                `Encontré *${this.displayNombreProducto(prod)}* en nuestro catálogo 🧪\n\n` +
-                `Para preparar tu cotización necesito unos datos. ${MSG_ES_CLIENTE_BODY}`,
-                BTN_ES_CLIENTE,
-              );
-            }
-            this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO encontrado (1), unidad=${prod.siglas_unidad}`);
-            return;
-          }
-
-          // Múltiples resultados → mostrar lista numerada
-          const opciones: OpcionProducto[] = resultados.slice(0, 5).map((p, i) => ({
-            numero: i + 1,
-            ide_inarti: p.ide_inarti,
-            nombre: p.nombre,
-            otro_nombre: p.otro_nombre,
-            matched_by_otro_nombre: p.matched_by_otro_nombre,
-            siglas_unidad: p.siglas_unidad,
-            nombre_unidad: p.nombre_unidad,
-            en_catalogo: p.en_catalogo,
-          }));
-          const datosSesion: DatosSesion = {
-            productos: [],
-            opciones_producto: opciones,
-            ...(tieneMemoria ? { cliente: memoria.cliente as ClienteSesion, memoria_cargada: true } : {}),
-          };
-          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_MULTIPLE, datosSesion);
-          const listaTexto = opciones.map(
-            (o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`,
-          ).join('\n');
-          await this.sendText(ideEmpr, waId,
-            `Encontré ${opciones.length} productos que coinciden 🔍\n\n${listaTexto}\n\n` +
-            `_Responde con el *número* del producto que necesitas._`,
-          );
-          this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO múltiple (${opciones.length})`);
-          return;
-        }
-        // Producto no encontrado → cae a respuesta GPT general
+        const datosSesion: DatosSesion = {
+          productos: [],
+          cola_productos: [{ producto: lastClientMsg, cantidad: null }],
+          ...(tieneMemoria ? { cliente: memoria.cliente as ClienteSesion, memoria_cargada: true } : {}),
+        };
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSesion);
+        await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSesion, nombreEmpresa, config);
+        this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — PRODUCTO delegado a resolverColaProductos`);
+        return;
       }
 
       // 7c. GENERAL o producto no encontrado: GPT analiza historial y retoma conversación
