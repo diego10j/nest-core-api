@@ -146,10 +146,29 @@ export class BotService implements OnModuleInit {
         [ideWhcha],
       );
       if (sesionesPrevias.rowCount === 0) {
-        // Capa 2: YCloud como fuente de verdad — ¿el número ha escrito antes?
-        const yaEscribioAntes = await this.ycloudService.hasPriorMessages(waId);
-        esChatNuevo = !yaEscribioAntes;
-        this.logger.log(`[Bot] YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
+        // Capa 2a (local) + Capa 2b (remota) se consultan SIEMPRE las dos, en paralelo,
+        // y se combinan con OR — ninguna reemplaza a la otra:
+        // - La BD local (wha_mensaje) detecta un mensaje saliente humano (agente o "echo"
+        //   de WhatsApp nativo) sin depender de que YCloud lo haya indexado a tiempo en su
+        //   API (causa raíz del bug real: el bot respondió a un proveedor porque
+        //   hasPriorMessages() no reflejó a tiempo un echo ya guardado localmente).
+        // - La API de YCloud sigue siendo necesaria porque puede tener historial de chats
+        //   que NO están en nuestra BD local (BD purgada, migración, mensajes de antes de
+        //   que este backend existiera, etc.) — omitirla perdería esos casos.
+        const [mensajeSalienteHumano, yaEscribioAntes] = await Promise.all([
+          this.dataSource.pool.query(
+            `SELECT 1 FROM wha_mensaje
+             WHERE ide_whcha = $1
+               AND direction_whmem = '1'
+               AND (es_bot_whmem IS NULL OR es_bot_whmem = FALSE)
+             LIMIT 1`,
+            [ideWhcha],
+          ),
+          this.ycloudService.hasPriorMessages(waId),
+        ]);
+        const tieneHistorialLocal = mensajeSalienteHumano.rowCount > 0;
+        esChatNuevo = !(tieneHistorialLocal || yaEscribioAntes);
+        this.logger.log(`[Bot] historialLocal(${ideWhcha})=${tieneHistorialLocal} | YCloud hasPriorMessages(${waId})=${yaEscribioAntes} → esChatNuevo=${esChatNuevo}`);
       }
     }
 
