@@ -14,6 +14,7 @@ import { BotScheduleService } from './bot/bot-schedule.service';
 import { BotService } from './bot/bot.service';
 import { BotSessionService } from './bot/bot-session.service';
 import { BotToolsService } from './bot/bot-tools.service';
+import { ChatLockService } from './chat-lock.service';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
@@ -45,6 +46,7 @@ import { YcloudService } from './ycloud/ycloud.service';
     WhatsappService,
     FileTempService,
     WhatsappCampaniaService,
+    ChatLockService,
     // YCloud
     YcloudService,
     YcloudCampaniaService,

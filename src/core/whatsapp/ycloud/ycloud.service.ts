@@ -8,6 +8,9 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { BotConfigService } from '../bot/bot-config.service';
+import { BotSessionService } from '../bot/bot-session.service';
+import { BotState } from '../bot/interfaces/bot-state.enum';
+import { ChatLockService } from '../chat-lock.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
 import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
@@ -45,6 +48,8 @@ export class YcloudService {
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
     private readonly botConfig: BotConfigService,
+    private readonly botSession: BotSessionService,
+    private readonly chatLock: ChatLockService,
   ) {
     this.YCLOUD_API_URL = (envs.ycloudApiUrl || 'https://api.ycloud.com/v2').trim();
     this.YCLOUD_API_KEY = (envs.ycloudApiKey || '').trim();
@@ -177,6 +182,7 @@ export class YcloudService {
     body: string,
     ideUsua?: number,
     contextMessageId?: string,
+    esBot = false,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -209,6 +215,7 @@ export class YcloudService {
           ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
           : null,
         contextMessageId: contextMessageId || null,
+        esBot,
       },
       config,
     );
@@ -427,6 +434,7 @@ export class YcloudService {
     caption?: string,
     ideUsua?: number,
     link?: string,
+    esBot = false,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -461,6 +469,7 @@ export class YcloudService {
         tiempoRespuesta: windowCheck.lastInbound
           ? Math.floor((Date.now() - windowCheck.lastInbound.getTime()) / 1000)
           : null,
+        esBot,
       },
       config,
     );
@@ -580,6 +589,7 @@ export class YcloudService {
     to: string,
     body: string,
     buttons: { id: string; title: string }[],
+    esBot = false,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -603,7 +613,7 @@ export class YcloudService {
     const messageId = resp.messages?.[0]?.id || resp.id;
 
     await this.saveMessageSent(
-      { telefono: to, tipo: 'interactive', texto: body, idWts: messageId, tiempoRespuesta: null },
+      { telefono: to, tipo: 'interactive', texto: body, idWts: messageId, tiempoRespuesta: null, esBot },
       config,
     );
 
@@ -617,6 +627,7 @@ export class YcloudService {
     longitude: number,
     name?: string,
     address?: string,
+    esBot = false,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -631,7 +642,7 @@ export class YcloudService {
     const messageId = resp.messages?.[0]?.id || resp.id;
 
     await this.saveMessageSent(
-      { telefono: to, tipo: 'location', texto: name || 'Ubicación', idWts: messageId, tiempoRespuesta: null },
+      { telefono: to, tipo: 'location', texto: name || 'Ubicación', idWts: messageId, tiempoRespuesta: null, esBot },
       config,
     );
     return { messageId };
@@ -1268,15 +1279,22 @@ export class YcloudService {
     try {
       const normalizedPhone = data.telefono.replace(/^\+/, '');
       const now = new Date().toISOString();
+      const esBot = data.esBot ?? false;
 
-      // Actualiza wha_chat: fecha, último id y resetea no_leidos porque el agente está respondiendo
-      await this.dataSource.pool.query(
+      // Actualiza wha_chat: fecha, último id y resetea no_leidos porque el agente está
+      // respondiendo. RETURNING el estado previo del bot para el hand-off de abajo: si
+      // quien envía NO es el bot (esBot=false) y el chat estaba en modo BOT, un agente
+      // humano tomó la conversación (vía API/ERP) y hay que derivarla a ASESOR.
+      const chatRow = await this.dataSource.pool.query<{
+        ide_whcha: number; bot_activo_whcha: boolean; bot_modo_whcha: string;
+      }>(
         `UPDATE wha_chat
             SET id_whcha        = $1,
                 fecha_msg_whcha = $2,
                 no_leidos_whcha = 0,
                 leido_whcha     = TRUE
-          WHERE wa_id_whcha = $3`,
+          WHERE wa_id_whcha = $3
+          RETURNING ide_whcha, bot_activo_whcha, bot_modo_whcha`,
         [data.idWts, now, normalizedPhone],
       );
 
@@ -1294,6 +1312,7 @@ export class YcloudService {
       insertQuery.values.set('tipo_whmem', 'YCLOUD');
       insertQuery.values.set('attachment_id_whmem', data.mediaId || null);
       insertQuery.values.set('caption_whmem', data.tipo === 'text' ? null : data.texto);
+      insertQuery.values.set('es_bot_whmem', esBot);
 
       if (data.ideUsua) {
         insertQuery.values.set('ide_usua_whmem', data.ideUsua);
@@ -1308,11 +1327,48 @@ export class YcloudService {
       const res = await this.dataSource.createQuery(insertQuery);
       // Emitir siempre sin + para que coincida con wa_id_whcha en el frontend
       this.whatsappGateway.sendMessageToClients(normalizedPhone);
+
+      const chat = chatRow.rows[0];
+      if (!esBot && chat?.bot_activo_whcha && chat.bot_modo_whcha === 'BOT') {
+        await this.chatLock.runExclusive(chat.ide_whcha, () =>
+          this.derivarPorAgenteHumano(chat.ide_whcha, 'API/ERP'),
+        );
+      }
+
       return res;
     } catch (error) {
       this.logger.error(`Error saveMessageSent: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Error saveMessageSent: ${error.message}`);
     }
+  }
+
+  /**
+   * Un agente humano envió un mensaje (API/ERP, o "echo" de WhatsApp Web/teléfono)
+   * mientras el chat estaba en modo BOT → el agente tomó la conversación: se deriva a
+   * ASESOR y se cierra cualquier sesión de bot activa, para que el bot no vuelva a
+   * responder hasta que alguien lo reactive manualmente. El UPDATE con WHERE
+   * bot_activo_whcha=TRUE AND bot_modo_whcha='BOT' es la guarda atómica: si el estado
+   * ya cambió (otro hand-off concurrente, o el chat ya estaba en ASESOR), no hace nada.
+   */
+  private async derivarPorAgenteHumano(ideWhcha: number, origen: string): Promise<void> {
+    const result = await this.dataSource.pool.query<{ ide_whcha: number }>(
+      `UPDATE wha_chat
+          SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR'
+        WHERE ide_whcha = $1 AND bot_activo_whcha = TRUE AND bot_modo_whcha = 'BOT'
+        RETURNING ide_whcha`,
+      [ideWhcha],
+    );
+    if (result.rowCount === 0) return;
+
+    const activa = await this.dataSource.pool.query<{ ide_whbse: number }>(
+      `SELECT ide_whbse FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
+      [ideWhcha],
+    );
+    if (activa.rowCount > 0) {
+      await this.botSession.cerrar(activa.rows[0].ide_whbse, BotState.CANCELADO);
+    }
+
+    this.logger.log(`[Bot] Agente humano (${origen}) tomó el chat ${ideWhcha} mientras estaba en modo BOT → derivado a ASESOR, sesión cerrada`);
   }
 
   // ─── Validate ─────────────────────────────────────────────────
@@ -1386,6 +1442,13 @@ export class YcloudService {
       );
 
       void this.emitTotalNoLeidos(phoneNumberId);
+
+      // Todo "echo" es 100% humano por construcción (el bot nunca genera este evento) —
+      // si el chat estaba en modo BOT, un agente acaba de responder desde WhatsApp Web/
+      // teléfono y tomó la conversación.
+      await this.chatLock.runExclusive(ideWhcha, () =>
+        this.derivarPorAgenteHumano(ideWhcha, 'WhatsApp Web/teléfono'),
+      );
     } catch (error) {
       this.logger.error(`Error processEchoMessage: ${error.message}`);
     }

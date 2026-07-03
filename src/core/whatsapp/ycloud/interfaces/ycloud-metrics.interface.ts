@@ -44,4 +44,6 @@ export interface MessageSaveData {
   ideUsua?: number;
   tiempoRespuesta?: number | null;
   contextMessageId?: string | null;
+  /** true si lo envió el bot — false/undefined = lo envió un agente humano (API, WhatsApp Web, teléfono). */
+  esBot?: boolean;
 }

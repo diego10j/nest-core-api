@@ -4,6 +4,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { NotificacionesService } from 'src/core/modules/sistema/notificaciones/notificaciones.service';
 
+import { ChatLockService } from '../chat-lock.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 import { YcloudWindowService } from '../ycloud/ycloud-window.service';
 import { YcloudService } from '../ycloud/ycloud.service';
@@ -54,15 +55,6 @@ const BTN_ACUSE_LOTE = [
 export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
 
-  // Serializa el procesamiento de mensajes por chat: si dos mensajes del mismo
-  // ideWhcha llegan casi al mismo tiempo (doble tap del cliente, reintento de
-  // webhook, etc.), sin esto podían procesarse en paralelo — ambos leen la sesión
-  // ANTES de que el primero termine de guardarla, y el segundo pisa el progreso
-  // del primero (ej. texto_acumulado con el producto se perdía al mandar "FIN"
-  // justo después). Con la cola, cada mensaje espera a que el anterior del mismo
-  // chat termine de leer+procesar+guardar antes de empezar.
-  private readonly chatLocks = new Map<number, Promise<void>>();
-
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly botConfig: BotConfigService,
@@ -75,6 +67,13 @@ export class BotService implements OnModuleInit {
     private readonly gateway: WhatsappGateway,
     private readonly fileTempService: FileTempService,
     private readonly notificaciones: NotificacionesService,
+    // Serializa el procesamiento por chat (ide_whcha) — compartido con YcloudService
+    // para que un mensaje del bot y un hand-off a un agente humano (WhatsApp Web/
+    // teléfono o API) nunca se procesen en paralelo y se pisen (sesión de bot,
+    // banderas de wha_chat). Si dos mensajes del mismo chat llegan casi al mismo
+    // tiempo (doble tap del cliente, reintento de webhook, etc.), la cola también
+    // evita que ambos lean la sesión antes de que el primero termine de guardarla.
+    private readonly chatLock: ChatLockService,
   ) {}
 
   onModuleInit() {
@@ -95,18 +94,9 @@ export class BotService implements OnModuleInit {
     texto: string,
     botActivoWhcha: boolean,
   ): Promise<void> {
-    const anterior = this.chatLocks.get(ideWhcha) ?? Promise.resolve();
-    const actual = anterior
-      .catch(() => { /* un error en el mensaje anterior no debe bloquear la cola */ })
-      .then(() => this.processMessageInternal(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, botActivoWhcha));
-    this.chatLocks.set(ideWhcha, actual);
-    try {
-      await actual;
-    } finally {
-      if (this.chatLocks.get(ideWhcha) === actual) {
-        this.chatLocks.delete(ideWhcha);
-      }
-    }
+    await this.chatLock.runExclusive(ideWhcha, () =>
+      this.processMessageInternal(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, botActivoWhcha),
+    );
   }
 
   private async processMessageInternal(
@@ -1604,6 +1594,7 @@ export class BotService implements OnModuleInit {
             `📄 Cotización #${resultado.secuencial} — ${nombreEmpresa}`,
             undefined,
             pdfUrl,
+            true,
           );
           this.logger.log(`[Bot] PDF enviado como documento link: ${pdfUrl}`);
           pdfEnviado = true;
@@ -1825,7 +1816,7 @@ export class BotService implements OnModuleInit {
     if (tipo === 'UBICACION' && config?.lat_empresa && config?.lng_empresa) {
       try {
         await this.ycloudService.sendLocation(
-          ideEmpr, `+${waId}`, config.lat_empresa, config.lng_empresa, nombreEmpresa, '',
+          ideEmpr, `+${waId}`, config.lat_empresa, config.lng_empresa, nombreEmpresa, '', true,
         );
       } catch (err) {
         this.logger.warn(`[Bot] No se pudo enviar pin de ubicación: ${err.message}`);
@@ -2212,13 +2203,9 @@ export class BotService implements OnModuleInit {
   }
 
   private async sendText(ideEmpr: number, waId: string, texto: string): Promise<void> {
-    const result = await this.ycloudService.sendText(ideEmpr, `+${waId}`, texto);
-    if (result?.messageId) {
-      await this.dataSource.pool.query(
-        `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
-        [result.messageId],
-      );
-    }
+    // esBot=true → saveMessageSent marca es_bot_whmem=TRUE en el INSERT y no dispara
+    // el hand-off a ASESOR (ese chequeo es solo para mensajes humanos).
+    await this.ycloudService.sendText(ideEmpr, `+${waId}`, texto, undefined, undefined, true);
   }
 
   private async sendButtons(
@@ -2226,13 +2213,7 @@ export class BotService implements OnModuleInit {
     buttons: { id: string; title: string }[],
   ): Promise<void> {
     try {
-      const result = await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons);
-      if (result?.messageId) {
-        await this.dataSource.pool.query(
-          `UPDATE wha_mensaje SET es_bot_whmem = TRUE WHERE id_whmem = $1`,
-          [result.messageId],
-        );
-      }
+      await this.ycloudService.sendInteractiveButtons(ideEmpr, `+${waId}`, body, buttons, true);
     } catch (btnErr) {
       this.logger.warn(`[Bot] sendInteractiveButtons falló: ${btnErr.message} — usando texto plano`);
       try {
