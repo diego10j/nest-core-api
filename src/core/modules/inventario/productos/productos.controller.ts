@@ -21,6 +21,7 @@ import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { KpiPreciosDto } from './dto/kpi-precios.dto';
+import { KpiVentasProductoDto } from './dto/kpi-ventas-producto.dto';
 import { PrecioVentaProductoDto } from './dto/precio-venta-producto.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { SaveConfigPrecioDto } from './dto/save-config-precios.dto';
@@ -138,6 +139,16 @@ export class ProductosController {
     });
   }
 
+  @Get('getKpiKardexProducto')
+  @ApiOperation({ summary: 'Obtener KPI consolidado del kardex de un producto por período' })
+  // @Auth()
+  getKpiKardexProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
+    return this.productos.getKpiKardexProducto({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getComprasProducto')
   @ApiOperation({ summary: 'Listar compras de un producto por período' })
   // @Auth()
@@ -163,6 +174,16 @@ export class ProductosController {
   // @Auth()
   getVentasProductoUtilidad(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PreciosProductoDto) {
     return this.productos.getVentasProductoUtilidad({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getKpiVentasProducto')
+  @ApiOperation({ summary: 'Obtener KPI de ventas de un producto por período' })
+  // @Auth()
+  getKpiVentasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiVentasProductoDto) {
+    return this.productos.getKpiVentasProducto({
       ...headersParams,
       ...dtoIn,
     });

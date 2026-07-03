@@ -30,6 +30,7 @@ import { GetProductoDto } from './dto/get-productos.dto';
 import { GetSaldoProductoDto } from './dto/get-saldo.dto';
 import { IdProductoDto } from './dto/id-producto.dto';
 import { KpiPreciosDto } from './dto/kpi-precios.dto';
+import { KpiVentasProductoDto } from './dto/kpi-ventas-producto.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
 import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
@@ -359,6 +360,29 @@ export class ProductosService extends BaseService {
             }
         }
 
+        if (res && res.tags_inarti) {
+            if (!Array.isArray(res.tags_inarti)) {
+                try {
+                    res.tags_inarti = JSON.parse(res.tags_inarti);
+                } catch {
+                    res.tags_inarti = [];
+                }
+            }
+            const tagIds = res.tags_inarti.map((t: any) => Number(t)).filter((n: number) => !isNaN(n));
+            if (tagIds.length > 0) {
+                const tagQuery = new SelectQuery(`
+                    SELECT array_agg(nombre_incate ORDER BY nombre_incate) AS tags
+                    FROM inv_categoria
+                    WHERE ide_incate = ANY($1::int[])
+                      AND ide_empr = $2
+                `);
+                tagQuery.addParam(1, tagIds);
+                tagQuery.addIntParam(2, dtoIn.ideEmpr);
+                const tagResult = await this.dataSource.createSingleQuery(tagQuery);
+                res.tags_inarti = tagResult?.tags || [];
+            }
+        }
+
         if (res) {
             const ide_inarti = res.ide_inarti;
             const queryCarac = new SelectQuery(`
@@ -604,6 +628,89 @@ export class ProductosService extends BaseService {
     }
 
     /**
+     * Retorna KPI consolidado del kardex de un producto en un rango de fechas.
+     * @param dtoIn
+     * @returns
+     */
+    async getKpiKardexProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
+        const whereClause = dtoIn.ide_inbod ? ` AND dci.ide_inbod = ${dtoIn.ide_inbod}` : '';
+
+        const query = new SelectQuery(
+            `
+        WITH saldo_inicial AS (
+            SELECT COALESCE(SUM(cantidad_indci * signo_intci), 0) AS saldo
+            FROM inv_det_comp_inve dci
+            INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = dci.ide_inarti
+            WHERE dci.ide_inarti = $1
+              AND fecha_trans_incci < $2
+              AND ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND dci.ide_empr = ${dtoIn.ideEmpr}
+              AND dci.ide_sucu = ${dtoIn.ideSucu}
+              ${whereClause}
+        ),
+        stats AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN signo_intci = 1 THEN cantidad_indci ELSE 0 END), 0) AS ingreso_cant,
+                COALESCE(SUM(CASE WHEN signo_intci = 1 THEN cantidad_indci * precio_indci ELSE 0 END), 0) AS ingreso_valor,
+                COALESCE(SUM(CASE WHEN signo_intci = -1 THEN cantidad_indci ELSE 0 END), 0) AS egreso_cant,
+                COALESCE(SUM(CASE WHEN signo_intci = -1 THEN cantidad_indci * precio_indci ELSE 0 END), 0) AS egreso_valor,
+                COUNT(*) FILTER (WHERE signo_intci = 1) AS total_ingresos,
+                COUNT(*) FILTER (WHERE signo_intci = -1) AS total_egresos,
+                MIN(fecha_trans_incci) AS fecha_primera,
+                MAX(fecha_trans_incci) AS fecha_ultima
+            FROM inv_det_comp_inve dci
+            INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+            INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            LEFT JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+            INNER JOIN inv_articulo arti ON dci.ide_inarti = arti.ide_inarti
+            WHERE dci.ide_inarti = $1
+              AND arti.ide_empr = ${dtoIn.ideEmpr}
+              AND fecha_trans_incci BETWEEN $2 AND $3
+              AND ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND dci.ide_sucu = ${dtoIn.ideSucu}
+              ${whereClause}
+        )
+        SELECT
+            si.saldo AS stock_inicial,
+            si.saldo + s.ingreso_cant - s.egreso_cant AS stock_final,
+            s.ingreso_cant AS total_ingreso_cant,
+            ROUND(s.ingreso_valor, 6) AS total_ingreso_valor,
+            s.egreso_cant AS total_egreso_cant,
+            ROUND(s.egreso_valor, 6) AS total_egreso_valor,
+            s.total_ingresos AS movimientos_ingreso,
+            s.total_egresos AS movimientos_egreso,
+            s.fecha_primera,
+            s.fecha_ultima,
+            CASE WHEN s.ingreso_cant > 0
+                THEN ROUND(s.ingreso_valor / s.ingreso_cant, 6)
+                ELSE 0
+            END AS precio_promedio_ingreso,
+            CASE WHEN s.egreso_cant > 0
+                THEN ROUND(s.egreso_valor / s.egreso_cant, 6)
+                ELSE 0
+            END AS precio_promedio_egreso,
+            CASE
+                WHEN (si.saldo + si.saldo + s.ingreso_cant - s.egreso_cant) > 0
+                THEN ROUND(
+                    s.egreso_cant * 2.0 / NULLIF(si.saldo + si.saldo + s.ingreso_cant - s.egreso_cant, 0),
+                2)
+                ELSE 0
+            END AS rotacion
+        FROM saldo_inicial si
+        CROSS JOIN stats s
+        `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
      * Retorna el kardex con precio promedio ponderado de un producto en un rango de fechas
      * @param dtoIn
      * @returns
@@ -835,47 +942,198 @@ export class ProductosService extends BaseService {
     }
 
     /**
+     * Retorna KPI de ventas de un producto determinado en un rango de fechas.
+     * @param dtoIn
+     * @returns
+     */
+    async getKpiVentasProducto(dtoIn: KpiVentasProductoDto & HeaderParamsDto) {
+        const fechaInicio = dtoIn.fechaInicio;
+        const fechaFin = dtoIn.fechaFin;
+        const duracionDias = Math.round((new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / 86400000);
+        const fechaInicioAnterior = new Date(new Date(fechaInicio).getTime() - duracionDias * 86400000).toISOString();
+        const fechaFinAnterior = new Date(new Date(fechaInicio).getTime() - 86400000).toISOString();
+
+        const query = new SelectQuery(
+            `
+        WITH notas_credito_detalle AS (
+            SELECT
+                cdn.ide_inarti,
+                cf.ide_cccfa,
+                SUM(cdn.valor_cpdno) AS valor_nota_credito,
+                SUM(cdn.cantidad_cpdno) AS cantidad_nota_credito
+            FROM cxp_cabecera_nota cn
+            JOIN cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
+            JOIN cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
+            WHERE cn.fecha_emisi_cpcno BETWEEN LEAST($4::date, $6::date) AND $5::date
+              AND cn.ide_cpeno = 1
+            GROUP BY cdn.ide_inarti, cf.ide_cccfa
+        ),
+        ventas AS (
+            SELECT
+                cf.fecha_emisi_cccfa,
+                cf.ide_geper,
+                p.nom_geper,
+                cdf.cantidad_ccdfa,
+                cdf.precio_ccdfa,
+                cdf.total_ccdfa,
+                COALESCE(ncd.valor_nota_credito, 0) AS valor_nota_credito,
+                COALESCE(ncd.cantidad_nota_credito, 0) AS cantidad_nota_credito,
+                (cdf.cantidad_ccdfa - COALESCE(ncd.cantidad_nota_credito, 0)) AS cantidad_neta,
+                (cdf.total_ccdfa - COALESCE(ncd.valor_nota_credito, 0)) AS total_neto
+            FROM cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            INNER JOIN gen_persona p ON cf.ide_geper = p.ide_geper
+            LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti AND cf.ide_cccfa = ncd.ide_cccfa
+            WHERE cdf.ide_inarti = $1
+              AND iart.ide_empr = ${dtoIn.ideEmpr}
+              AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+              AND cf.fecha_emisi_cccfa BETWEEN $2 AND $3
+        ),
+        ultima_venta AS (
+            SELECT
+                fecha_emisi_cccfa,
+                ide_geper,
+                nom_geper,
+                precio_ccdfa AS ultimo_precio,
+                cantidad_ccdfa AS ultima_cantidad,
+                total_ccdfa AS ultimo_total
+            FROM ventas
+            ORDER BY fecha_emisi_cccfa DESC
+            LIMIT 1
+        ),
+        stats_periodo AS (
+            SELECT
+                COUNT(*) AS total_ventas,
+                COUNT(DISTINCT ide_geper) AS total_clientes,
+                SUM(cantidad_ccdfa) AS cantidad_total,
+                SUM(cantidad_neta) AS cantidad_neta_total,
+                MIN(precio_ccdfa) AS precio_minimo,
+                MAX(precio_ccdfa) AS precio_maximo,
+                ROUND(AVG(precio_ccdfa), 6) AS precio_promedio,
+                ROUND(SUM(total_ccdfa), 6) AS total_ventas_bruto,
+                ROUND(SUM(valor_nota_credito), 6) AS total_notas_credito,
+                ROUND(SUM(total_neto), 6) AS total_ventas_neto,
+                MIN(fecha_emisi_cccfa) AS fecha_primera_venta
+            FROM ventas
+        ),
+        stats_anterior AS (
+            SELECT
+                ROUND(AVG(cdf.precio_ccdfa), 6) AS precio_promedio_anterior,
+                ROUND(SUM(cdf.total_ccdfa - COALESCE(ncd.valor_nota_credito, 0)), 6) AS total_ventas_neto_anterior
+            FROM cxc_deta_factura cdf
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
+            INNER JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+            LEFT JOIN notas_credito_detalle ncd ON cdf.ide_inarti = ncd.ide_inarti AND cf.ide_cccfa = ncd.ide_cccfa
+            WHERE cdf.ide_inarti = $1
+              AND iart.ide_empr = ${dtoIn.ideEmpr}
+              AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+              AND cf.fecha_emisi_cccfa BETWEEN $6::date AND $7::date
+        )
+        SELECT
+            uv.fecha_emisi_cccfa AS fecha_ultima_venta,
+            uv.ultimo_precio,
+            uv.ultima_cantidad,
+            uv.ultimo_total,
+            uv.ide_geper AS ide_ultimo_cliente,
+            uv.nom_geper AS ultimo_cliente,
+            COALESCE(sp.total_ventas, 0) AS total_ventas,
+            COALESCE(sp.total_clientes, 0) AS total_clientes,
+            COALESCE(sp.cantidad_total, 0) AS cantidad_total,
+            COALESCE(sp.cantidad_neta_total, 0) AS cantidad_neta_total,
+            COALESCE(sp.precio_minimo, 0) AS precio_minimo,
+            COALESCE(sp.precio_maximo, 0) AS precio_maximo,
+            COALESCE(sp.precio_promedio, 0) AS precio_promedio,
+            COALESCE(sp.total_ventas_bruto, 0) AS total_ventas_bruto,
+            COALESCE(sp.total_notas_credito, 0) AS total_notas_credito,
+            COALESCE(sp.total_ventas_neto, 0) AS total_ventas_neto,
+            sp.fecha_primera_venta,
+            CASE
+                WHEN sp.precio_promedio > 0
+                THEN ROUND(((uv.ultimo_precio - sp.precio_promedio) / sp.precio_promedio) * 100, 2)
+                ELSE 0
+            END AS porcentaje_vs_promedio,
+            CASE
+                WHEN uv.ultimo_precio > sp.precio_promedio THEN 'ALZA'
+                WHEN uv.ultimo_precio < sp.precio_promedio THEN 'BAJA'
+                ELSE 'ESTABLE'
+            END AS tendencia,
+            COALESCE(sa.precio_promedio_anterior, 0) AS precio_promedio_anterior,
+            CASE
+                WHEN sa.precio_promedio_anterior > 0
+                THEN ROUND(((sp.precio_promedio - sa.precio_promedio_anterior) / sa.precio_promedio_anterior) * 100, 2)
+                ELSE 0
+            END AS variacion_vs_periodo_anterior,
+            COALESCE(sa.total_ventas_neto_anterior, 0) AS total_ventas_neto_anterior,
+            CASE
+                WHEN sa.total_ventas_neto_anterior > 0
+                THEN ROUND(((sp.total_ventas_neto - sa.total_ventas_neto_anterior) / sa.total_ventas_neto_anterior) * 100, 2)
+                ELSE 0
+            END AS variacion_total_neto
+        FROM stats_periodo sp
+        CROSS JOIN ultima_venta uv
+        CROSS JOIN stats_anterior sa
+        `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_inarti);
+        query.addParam(2, fechaInicio);
+        query.addParam(3, fechaFin);
+        query.addParam(4, fechaInicio);
+        query.addParam(5, fechaFin);
+        query.addParam(6, fechaInicioAnterior);
+        query.addParam(7, fechaFinAnterior);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
      * Retorna las facturas de compras de un producto determinado en un rango de fechas
      * @param dtoIn
      * @returns
      */
+
     async getComprasProducto(dtoIn: TrnProductoDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `
-      SELECT
-          dci.ide_indci AS ide_cpdfa,
-          cci.fecha_trans_incci AS fecha_emisi_cpcfa,
-          cci.numero_incci AS numero_cpcfa,
-          p.nom_geper,
-          f_decimales(dci.cantidad_indci, art.decim_stock_inarti)::numeric AS cantidad_cpdfa,
-          uni.siglas_inuni,
-          dci.precio_indci AS precio_cpdfa,
-          COALESCE(dci.valor_indci, dci.cantidad_indci * dci.precio_indci) AS valor_cpdfa,
-          p.uuid
-      FROM
-          inv_det_comp_inve dci
-          INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-          INNER JOIN inv_articulo art ON art.ide_inarti = dci.ide_inarti
-          LEFT JOIN inv_unidad uni ON uni.ide_inuni = art.ide_inuni
-          LEFT JOIN gen_persona p ON cci.ide_geper = p.ide_geper
-          INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-          INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-      WHERE
-          dci.ide_inarti = $1
-          AND art.ide_empr = ${dtoIn.ideEmpr}
-          AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
-          AND tci.signo_intci = 1   -- Solo comprobantes de ingreso (compras)
-          AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
-          AND cci.fecha_trans_incci BETWEEN $2 AND $3
-          AND dci.precio_indci > 0
-      ORDER BY 
-          cci.fecha_trans_incci DESC, cci.numero_incci DESC`,
+        SELECT
+            k.ide_indci AS ide_cpdfa,
+            k.fecha_mov AS fecha_emisi_cpcfa,
+            cci.numero_incci AS numero_cpcfa,
+            p.nom_geper,
+            f_decimales(k.cantidad, art.decim_stock_inarti)::numeric AS cantidad_cpdfa,
+            uni.siglas_inuni,
+            k.precio_compra AS precio_cpdfa,
+            ROUND(k.cantidad * k.precio_compra, 6) AS valor_cpdfa,
+
+            k.costo_promedio,
+            p.uuid
+        FROM
+            inv_kardex_ppmp k
+            JOIN inv_cab_comp_inve cci ON cci.ide_incci = k.ide_incci
+            JOIN inv_articulo art ON art.ide_inarti = k.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = art.ide_inuni
+            LEFT JOIN gen_persona p ON cci.ide_geper = p.ide_geper
+            JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+            JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+        WHERE
+            k.ide_inarti = $1
+            AND k.ide_empr = ${dtoIn.ideEmpr}
+            AND k.signo = 1
+            AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+            AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
+            AND tci.signo_intci = 1
+            AND k.fecha_mov BETWEEN $2 AND $3
+
+            AND k.precio_compra > 0
+
+        ORDER BY 
+            k.fecha_mov DESC, k.orden_mov DESC`,
             dtoIn,
         );
 
         query.addIntParam(1, dtoIn.ide_inarti);
-        query.addParam(2, dtoIn.fechaInicio);
-        query.addParam(3, dtoIn.fechaFin);
+        query.addParam(2, dtoIn.fechaInicio.split('T')[0]);
+        query.addParam(3, dtoIn.fechaFin.split('T')[0]);
         return this.dataSource.createQuery(query);
     }
 
@@ -907,6 +1165,7 @@ export class ProductosService extends BaseService {
               AND k.signo = 1
               AND tci.signo_intci = 1
               AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
               AND k.precio_compra > 0
         )
         SELECT
@@ -938,13 +1197,11 @@ export class ProductosService extends BaseService {
      * @returns
      */
     async getKpiPreciosCompras(dtoIn: KpiPreciosDto & HeaderParamsDto) {
-        const fechaInicio = dtoIn.fechaInicio.split('T')[0];
-        const fechaFin = dtoIn.fechaFin.split('T')[0];
+        const fechaInicio = dtoIn.fechaInicio;
+        const fechaFin = dtoIn.fechaFin;
         const duracionDias = Math.round((new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / 86400000);
-        const fechaInicioAnterior = new Date(new Date(fechaInicio).getTime() - duracionDias * 86400000)
-            .toISOString().split('T')[0];
-        const fechaFinAnterior = new Date(new Date(fechaInicio).getTime() - 86400000)
-            .toISOString().split('T')[0];
+        const fechaInicioAnterior = new Date(new Date(fechaInicio).getTime() - duracionDias * 86400000).toISOString();
+        const fechaFinAnterior = new Date(new Date(fechaInicio).getTime() - 86400000).toISOString();
 
         const query = new SelectQuery(
             `
@@ -967,6 +1224,7 @@ export class ProductosService extends BaseService {
               AND k.signo = 1
               AND tci.signo_intci = 1
               AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
               AND k.precio_compra > 0
             ORDER BY k.fecha_mov DESC, k.orden_mov DESC
             LIMIT 1
@@ -991,6 +1249,7 @@ export class ProductosService extends BaseService {
               AND k.signo = 1
               AND tci.signo_intci = 1
               AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
               AND k.fecha_mov BETWEEN $4 AND $5
         ),
         stats_anterior AS (
@@ -1006,6 +1265,7 @@ export class ProductosService extends BaseService {
               AND k.signo = 1
               AND tci.signo_intci = 1
               AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+              AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
               AND k.fecha_mov BETWEEN $6 AND $7
         )
         SELECT
@@ -1853,8 +2113,8 @@ export class ProductosService extends BaseService {
     }
 
     async chartVariacionPreciosCompras(dtoIn: KpiPreciosDto & HeaderParamsDto) {
-        const fechaInicio = dtoIn.fechaInicio.split('T')[0];
-        const fechaFin = dtoIn.fechaFin.split('T')[0];
+        const fechaInicio = dtoIn.fechaInicio;
+        const fechaFin = dtoIn.fechaFin;
         const query = new SelectQuery(
             `
       WITH compras AS (
@@ -1876,6 +2136,7 @@ export class ProductosService extends BaseService {
             AND k.signo = 1
             AND tci.signo_intci = 1
             AND cci.ide_inepi = ${this.variables.get('p_inv_estado_normal')}
+            AND cci.ide_intti IN (19, 16, 3025) --solo facturas de compra, importaciones
             AND k.precio_compra > 0
             AND k.fecha_mov BETWEEN $2 AND $3
           ORDER BY k.fecha_mov DESC, k.orden_mov DESC
