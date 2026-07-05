@@ -194,8 +194,22 @@ Cliente escribe cualquier mensaje
 [CONFIRMACION_PRODUCTOS]  — botones: [✅ Confirmar pedido] [✏️ Modificar lista]
   Resumen: lista de productos + cantidades (cantidad=0 se muestra como
   "(cantidad mínima disponible)")
-  MODIFICAR → reinicia [SELECCION_PRODUCTOS] (productos=[])
+  MODIFICAR → [MODIFICANDO_LISTA] (conserva la lista — ya NO reinicia de cero)
   CONFIRMAR →
+        │
+[MODIFICANDO_LISTA]  — botones: [➖ Quitar productos] [🔢 Cambiar cantidad] [➕ Agregar más]
+  - MOD_QUITAR / MOD_CANTIDAD → muestra la lista numerada y espera el texto libre
+  - MOD_AGREGAR → vuelve a [SELECCION_PRODUCTOS] conservando productos (el pipeline
+    de lote agrega encima de lo ya resuelto)
+  - Texto libre en cualquier momento → GPT (analizarModificacionLista) extrae
+    {quitar[], cambiar[{indice,cantidad}], agregar} con conversión de unidades:
+      · aplica cambios/quitados → resumen actualizado → [CONFIRMACION_PRODUCTOS]
+      · si trae productos nuevos → aplica lo demás y delega a procesarTextoProductos
+      · si quita todo → [SELECCION_PRODUCTOS] con lista vacía
+      · si no reconoce nada → chequea consulta informativa → intención de confirmar
+        ("así está bien") → o re-pregunta con la lista numerada (no adivina)
+        │
+        ▼ (CONFIRMAR desde CONFIRMACION_PRODUCTOS)
         │
         ├─ Cliente registrado CON dirección/provincia guardada:
         │    "Tengo registrada esta info. ¿La utilizamos?"
@@ -313,7 +327,7 @@ Cliente escribe cualquier mensaje
 | Saludo (`Hola`, `Buenas`, etc.) en estado activo | Cierra la sesión y arranca una nueva desde INICIO |
 
 **Sesiones** (`BotSessionService`):
-- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `CONFIRMANDO_PRODUCTO_LOTE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_CANTIDAD_LOTE`, `ESPERANDO_USO_LOTE`, `CONFIRMACION_PRODUCTOS`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
+- Estados de flujo activo (`SELECCION_PRODUCTOS`, `SELECCION_MULTIPLE`, `CONFIRMANDO_PRODUCTO_LOTE`, `ESPERANDO_CANTIDAD`, `ESPERANDO_CANTIDAD_LOTE`, `ESPERANDO_USO_LOTE`, `CONFIRMACION_PRODUCTOS`, `MODIFICANDO_LISTA`, `DATOS_ENVIO`, `DATOS_PAGO`, `PREGUNTA_ES_CLIENTE`, `IDENTIFICACION`, `DATOS_NUEVO_CLIENTE`, `ATENCION_LIBRE`) expiran a los **20 minutos** de inactividad.
 - `INICIO` / `ESPERANDO_CONFIRMACION` (sesión que no avanzó) expiran a las **4 horas**.
 
 ---
@@ -568,6 +582,17 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
   - Doble llamada a `detectarIntencion` (GPT) en `handleConfirmacionProductos` — mismo patrón de ineficiencia ya corregido antes en `handleConfirmandoProductoLote`.
   - Botón de fallback en `handleConfirmacion` decía "✅ Continuar con bot" en vez de "⚡ Continuar" (inconsistente con el saludo real).
   - Código muerto eliminado: `BotService.procesarPendientesChat`/`procesarPendientesGlobal` (nunca se llamaban desde ningún lado — contradecían además el comentario de `toggle()` sobre que el bot solo responde a mensajes nuevos), `BotGptService.analizarProductoNoEncontrado` (huérfano del rediseño del flujo genérico) y `BotGptService.extractProductoCantidad` (quedó sin uso al delegar `iniciarConContextoChat` en `resolverColaProductos`).
+- ✅ (2026-07-03) **Detección de chat nuevo reforzada**: además de `wha_bot_sesion` (capa 1) y la API de YCloud (`hasPriorMessages`), ahora se consulta SIEMPRE (en paralelo, `Promise.all`) la BD local `wha_mensaje` por mensajes salientes humanos (`direction_whmem='1' AND es_bot_whmem=FALSE`), combinando con OR — un chat al que el negocio escribió primero (ej. un proveedor) nunca se trata como "nuevo" aunque la API remota no refleje el echo a tiempo. Caso real que lo motivó: el bot saludó a un proveedor al que DIQUIMEC escribió primero.
+- ✅ (2026-07-04) **Hand-off automático a ASESOR cuando un agente humano escribe en un chat en modo BOT** (`YcloudService.derivarPorAgenteHumano`): si llega un "echo" (WhatsApp Web/teléfono — siempre humano) o un envío por API/ERP sin marca de bot, y el chat estaba `BOT`, se pasa a `ASESOR` con UPDATE atómico, se cierra la sesión activa como `CANCELADO` y se refresca el front por socket. Los envíos del bot llevan `esBot=true` (que además setea `es_bot_whmem` directo en el INSERT); los de campaña llevan `esCampania=true` y NO disparan el hand-off. Todo serializado con `ChatLockService` (lock en memoria por chat, compartido entre `BotService` y `YcloudService` — válido con 1 sola instancia del backend).
+- ✅ (2026-07-04) **Audio entrante**: se transcribe con `gpt-4o-mini-transcribe` (idioma forzado `es`, ~$0.003/min) SOLO si el chat está en modo BOT; la transcripción se guarda como `body_whmem` (visible en el dashboard) y se procesa como texto normal. Si no se puede transcribir → sentinel `__AUDIO_NO_ENTENDIDO__` → deriva a asesor con "no pude entender el audio". Imagen → `__IMAGEN_RECIBIDA__`; video/documento/sticker → `__ARCHIVO_RECIBIDO__` — ambos derivan a asesor con mensaje explicativo y cierran la sesión (antes todos estos mensajes se ignoraban en silencio, sin respuesta alguna).
+- ✅ (2026-07-04) **"✏️ Modificar lista" ya NO borra los productos** (antes reiniciaba de cero — caso real de cliente con 9 productos que abandonó frustrado). Nuevo estado `MODIFICANDO_LISTA` con botones `[➖ Quitar productos] [🔢 Cambiar cantidad] [➕ Agregar más]` (`MOD_QUITAR`/`MOD_CANTIDAD`/`MOD_AGREGAR`); el cliente también puede escribir directo ("quita el 2", "cambia el karité a 2kg") y `BotGptService.analizarModificacionLista` interpreta las operaciones (con conversión de unidades) y las aplica sobre la lista. "Agregar más" vuelve a `SELECCION_PRODUCTOS` conservando lo ya resuelto.
+- ✅ (2026-07-04) **Un saludo suelto a mitad de flujo ya no borra el progreso**: si la sesión tiene productos/pendientes/datos de envío, un "hola" repite la pregunta del estado actual (`reenviarPromptEstado`) en vez de cancelar la sesión — el reset por saludo solo aplica en sesiones sin progreso.
+- ✅ (2026-07-04) **Provincia con matching tolerante** (`provincias-ecuador.ts`): acepta typos leves (Levenshtein, umbral proporcional al largo), tildes omitidas y ciudades conocidas ("Quito"→Pichincha); guarda siempre el nombre canónico. Si no matchea, chequea consulta informativa y re-pregunta con ejemplo — antes se guardaba cualquier texto como provincia.
+- ✅ (2026-07-04) **Forma de pago**: nota "_solo informativo para tu cotización — un asesor coordinará el pago_" para no confundir al cliente; y las negaciones ("no quiero tarjeta") ya no matchean por substring — se re-pregunta con botones.
+- ✅ (2026-07-04) **Menos GPT innecesario y menos falsos positivos**: los IDs de botón (`CONF_SI`/`CONF_NO`) y el número de la desambiguación se chequean ANTES de llamar `clasificarConsulta`; en `ESPERANDO_USO_LOTE`/`ESPERANDO_CANTIDAD_LOTE` primero se intenta extraer usos/cantidades y solo si nada mapea se evalúa consulta informativa (el orden inverso clasificaba "1. 10kg 2. mínimo" como CATALOGO).
+- ✅ (2026-07-04) **Dedupe de webhook al inicio de `processInboundMessage`**: un reintento de YCloud con el mismo `wamid` ya no incrementa `no_leidos` ni paga una segunda transcripción de audio (antes el dedupe corría después de esos efectos).
+- ✅ (2026-07-04, tarde) **"¿Cuál es el precio del sorbitol?" ya no responde con el template de CATALOGO** (caso real: el atajo regex de `clasificarConsulta` tenía `PRECIO` suelto en CATALOGO, que corre antes que PRODUCTO — el bot mandó los links del catálogo dos veces y la clienta abandonó). Fix: CATALOGO solo matchea pedidos genéricos (`CATÁLOGO|LISTA DE PRECIOS|PRECIOS` plural); `PRECIO` singular, `CUÁNTO CUESTA` y `COSTO DE` pasaron al atajo de PRODUCTO; prompt de GPT ajustado con ejemplos ("precio del sorbitol"→PRODUCTO, "lista de precios"→CATALOGO).
+- ✅ (2026-07-04, tarde) **El producto mencionado antes de identificarse ya no se pierde**: nuevo campo `DatosSesion.producto_texto_pendiente` — cuando un cliente desconocido menciona un producto (se clasifica PRODUCTO) y pasa por `PREGUNTA_ES_CLIENTE`/`IDENTIFICACION`/`DATOS_NUEVO_CLIENTE`, el texto se guarda y al terminar la identificación se procesa automáticamente con `procesarTextoProductos` en vez de pedirle que lo escriba de nuevo (cerraba la brecha documentada como "caso NO corregido" del 2026-07-02).
 
 ### Corto plazo
 - Tolerancia a errores de tipeo en la búsqueda de productos (ej. `pg_trgm`/similitud fonética) — hoy `buscarProductos` es 100% substring (`ILIKE`), así que un producto real mal escrito (ej. "percabonato" vs "PERCARBONATO DE SODIO") no matchea y termina como ítem genérico para revisión manual en vez de resolverse solo.

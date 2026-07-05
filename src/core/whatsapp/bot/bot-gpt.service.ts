@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { envs } from 'src/config/envs';
 
 export type IntencionCliente = 'CONFIRMAR' | 'CANCELAR' | 'ASESOR' | 'LISTO' | 'SALIR' | 'OTRO';
@@ -9,6 +9,37 @@ export type IntencionConsulta = 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' |
 export class BotGptService {
   private readonly logger = new Logger(BotGptService.name);
   private readonly openai = new OpenAI({ apiKey: envs.openaiApiKey });
+
+  /**
+   * Transcribe una nota de voz de WhatsApp (normalmente audio/ogg). Devuelve `null` si
+   * la llamada falla o el resultado viene vacío (silencio/ruido) — en ese caso el
+   * llamador debe tratarlo como "audio no entendido" y derivar a un asesor humano.
+   * Idioma forzado a español (todos los clientes de DIQUIMEC escriben en español) para
+   * mejorar precisión frente a autodetección.
+   */
+  async transcribirAudio(buffer: Buffer, mimeType: string): Promise<string | null> {
+    try {
+      const ext = mimeType.includes('ogg') ? 'ogg'
+        : mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
+        : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'm4a'
+        : mimeType.includes('wav') ? 'wav'
+        : mimeType.includes('webm') ? 'webm'
+        : 'ogg';
+
+      const file = await toFile(buffer, `audio.${ext}`, { type: mimeType });
+      const resp = await this.openai.audio.transcriptions.create({
+        model: 'gpt-4o-mini-transcribe',
+        file,
+        language: 'es',
+      });
+
+      const texto = resp.text?.trim();
+      return texto || null;
+    } catch (err) {
+      this.logger.error(`transcribirAudio error: ${err.message}`);
+      return null;
+    }
+  }
 
   async generateResponse(
     systemPrompt: string,
@@ -79,9 +110,15 @@ export class BotGptService {
     if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA/.test(t)) return 'UBICACION';
     if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
     if (/ENV[IÍ]O|ENV[IÍ]AN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|OTRA CIUDAD/.test(t)) return 'ENVIO';
-    if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIO|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
-    // PRODUCTO: TIENE[N] removido — muy ambiguo (captura "tienen sucursal en X")
-    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|DISPONE[N]?|HAY\s+|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK/.test(t)) return 'PRODUCTO';
+    // CATALOGO solo para pedidos GENÉRICOS de catálogo/lista de precios. "PRECIO" suelto
+    // se quitó de acá: "¿cuál es el precio del sorbitol?" es una pregunta de PRODUCTO
+    // específico y este atajo la clasificaba como CATALOGO (respuesta enlatada con los
+    // links, dos veces seguidas, cliente abandonaba — caso real 2026-07-04).
+    if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIOS\b|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
+    // PRODUCTO: TIENE[N] removido — muy ambiguo (captura "tienen sucursal en X").
+    // PRECIO (singular) va aquí: como CATALOGO se evalúa antes, "lista de precios"
+    // sigue cayendo en CATALOGO, pero "precio de X"/"cuánto cuesta X" llega a PRODUCTO.
+    if (/PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|DISPONE[N]?|HAY\s+|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK|PRECIO\b|CU[AÁ]NTO\s+CUESTA|COSTO\s+DE/.test(t)) return 'PRODUCTO';
 
     try {
       const resp = await this.openai.chat.completions.create({
@@ -94,10 +131,10 @@ export class BotGptService {
               + 'UBICACION = dirección, cómo llegar, si tienen sucursal/sede/local/tienda en otra ciudad.\n'
               + 'HORARIO = horarios de atención, si están abiertos.\n'
               + 'ENVIO = envíos, despacho, costo de envío a otras ciudades.\n'
-              + 'CATALOGO = lista de precios, catálogo de productos.\n'
-              + 'PRODUCTO = disponibilidad, precio o compra de un producto específico. NO incluye preguntas sobre sucursales.\n'
+              + 'CATALOGO = pide el catálogo o la lista de precios EN GENERAL, sin nombrar un producto específico.\n'
+              + 'PRODUCTO = disponibilidad, precio o compra de un producto específico (si nombra un producto concreto, es PRODUCTO aunque pregunte el precio). NO incluye preguntas sobre sucursales.\n'
               + 'GENERAL = saludos u otras consultas.\n'
-              + 'Ejemplos: "tienen sucursal en Cuenca"→UBICACION | "envían a Guayaquil"→ENVIO | "tienen cera de palma"→PRODUCTO | "qué horario tienen"→HORARIO.\n'
+              + 'Ejemplos: "tienen sucursal en Cuenca"→UBICACION | "envían a Guayaquil"→ENVIO | "tienen cera de palma"→PRODUCTO | "cuál es el precio del sorbitol"→PRODUCTO | "me pasas la lista de precios"→CATALOGO | "qué horario tienen"→HORARIO.\n'
               + 'Responde SOLO la categoría en mayúsculas.',
           },
           { role: 'user', content: texto },
@@ -310,6 +347,76 @@ export class BotGptService {
     } catch (err) {
       this.logger.error(`extraerCantidadesPorProducto error: ${err.message}`);
       return productos.map(() => null);
+    }
+  }
+
+  /**
+   * Interpreta una modificación en lenguaje libre sobre la lista de productos ya
+   * armada (ej: "quita el 2", "cambia el karité a 2kg", "quita el alcanfor y agrega
+   * 5kg de cera de soya"). Devuelve las operaciones a aplicar sobre la lista, con
+   * índices 1-based referidos al orden mostrado al cliente. Las cantidades nuevas se
+   * convierten a la unidad de venta real del producto (mismas reglas que
+   * extraerCantidadesPorProducto). Si no se reconoce ninguna operación, devuelve todo
+   * vacío — el llamador debe volver a preguntar en vez de adivinar.
+   */
+  async analizarModificacionLista(
+    productos: { nombre: string; cantidad: number; siglas_unidad?: string; nombre_unidad?: string }[],
+    respuesta: string,
+  ): Promise<{ quitar: number[]; cambiar: { indice: number; cantidad: number }[]; agregar: string | null }> {
+    const vacio = { quitar: [] as number[], cambiar: [] as { indice: number; cantidad: number }[], agregar: null as string | null };
+    if (!productos.length) return vacio;
+    try {
+      const lista = productos
+        .map((p, i) => {
+          const cant = p.cantidad === 0 ? 'cantidad mínima' : `${p.cantidad} ${p.siglas_unidad || ''}`.trim();
+          const unidad = p.nombre_unidad || p.siglas_unidad ? ` (unidad de venta: ${p.nombre_unidad || ''} / ${p.siglas_unidad || ''})` : '';
+          return `${i + 1}. ${p.nombre} — ${cant}${unidad}`;
+        })
+        .join('\n');
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'El cliente está editando su lista de productos para cotizar. Lista actual (numerada, con la ' +
+              'cantidad actual y la unidad de venta real de cada producto):\n' +
+              lista + '\n\n' +
+              'Analiza el mensaje del cliente y extrae las operaciones que pide. Puede referirse a los productos ' +
+              'por número o por nombre (aproximado, con errores de tipeo). Operaciones posibles:\n' +
+              '- QUITAR productos de la lista.\n' +
+              '- CAMBIAR la cantidad de productos que YA están en la lista. Si el cliente usa una unidad distinta ' +
+              'a la unidad de venta, CONVIERTE el valor: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, ' +
+              '1 libra (lb) = 0.453592 kg. Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente ' +
+              'da mililitros (ml), trátalos como gramos (1ml = 1g) y convierte a la unidad de venta. Si no menciona ' +
+              'unidad, asume que ya está en la unidad de venta. Cantidad 0 = pide cantidad mínima.\n' +
+              '- AGREGAR productos NUEVOS que no están en la lista: copia el texto del cliente que los describe ' +
+              '(producto y cantidad tal como los escribió), sin inventar nada.\n' +
+              'Si el mensaje no pide ninguna de estas operaciones con claridad, devuelve todo vacío — NO adivines.\n' +
+              'Responde SOLO JSON válido: {"quitar": [números de la lista], ' +
+              '"cambiar": [{"indice": número de la lista, "cantidad": número ya convertido}], ' +
+              '"agregar": "texto de productos nuevos" o null}',
+          },
+          { role: 'user', content: respuesta },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 300,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return vacio;
+      const parsed = JSON.parse(content);
+      const enRango = (n: any) => Number.isInteger(Number(n)) && Number(n) >= 1 && Number(n) <= productos.length;
+      const quitar = (Array.isArray(parsed.quitar) ? parsed.quitar : [])
+        .filter(enRango).map(Number);
+      const cambiar = (Array.isArray(parsed.cambiar) ? parsed.cambiar : [])
+        .filter((c: any) => c && enRango(c.indice) && c.cantidad !== null && c.cantidad !== undefined && !isNaN(Number(c.cantidad)) && Number(c.cantidad) >= 0)
+        .map((c: any) => ({ indice: Number(c.indice), cantidad: Number(c.cantidad) }));
+      const agregar = typeof parsed.agregar === 'string' && parsed.agregar.trim() ? parsed.agregar.trim() : null;
+      return { quitar, cambiar, agregar };
+    } catch (err) {
+      this.logger.error(`analizarModificacionLista error: ${err.message}`);
+      return vacio;
     }
   }
 

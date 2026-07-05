@@ -70,7 +70,7 @@ export class BotScheduleService {
                                DATOS_NUEVO_CLIENTE,SELECCION_PRODUCTOS,SELECCION_MULTIPLE,
                                CONFIRMANDO_PRODUCTO_LOTE,
                                ESPERANDO_CANTIDAD,ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,
-                               CONFIRMACION_PRODUCTOS,DATOS_ENVIO,DATOS_PAGO}'::text[])
+                               CONFIRMACION_PRODUCTOS,MODIFICANDO_LISTA,DATOS_ENVIO,DATOS_PAGO}'::text[])
           AND (NOW() - s.hora_actua) > make_interval(mins => $1)
           AND c.bot_activo_whcha = TRUE
           AND c.bot_modo_whcha = 'BOT'

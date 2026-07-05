@@ -68,6 +68,11 @@ export interface PendienteConfirmacion {
 
 export interface DatosSesion {
   texto_inicial?: string;
+  // Texto YA clasificado como PRODUCTO que quedó en espera mientras el cliente
+  // desconocido pasa por identificación (PREGUNTA_ES_CLIENTE → IDENTIFICACION /
+  // DATOS_NUEVO_CLIENTE) — al terminar de identificarse se procesa automáticamente
+  // en vez de pedirle que vuelva a escribir el producto.
+  producto_texto_pendiente?: string;
   memoria_cargada?: boolean;  // indica que los datos del cliente vienen de sesión anterior
   cliente?: ClienteSesion;
   productos: ProductoSesion[];

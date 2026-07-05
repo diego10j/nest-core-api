@@ -46,4 +46,6 @@ export interface MessageSaveData {
   contextMessageId?: string | null;
   /** true si lo envió el bot — false/undefined = lo envió un agente humano (API, WhatsApp Web, teléfono). */
   esBot?: boolean;
+  /** true si es un envío de campaña masiva — no cuenta como "asesor tomó el chat" (no dispara el hand-off a ASESOR). */
+  esCampania?: boolean;
 }

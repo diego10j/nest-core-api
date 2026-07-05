@@ -8,6 +8,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { BotConfigService } from '../bot/bot-config.service';
+import { BotGptService } from '../bot/bot-gpt.service';
 import { BotSessionService } from '../bot/bot-session.service';
 import { BotState } from '../bot/interfaces/bot-state.enum';
 import { ChatLockService } from '../chat-lock.service';
@@ -50,6 +51,7 @@ export class YcloudService {
     private readonly botConfig: BotConfigService,
     private readonly botSession: BotSessionService,
     private readonly chatLock: ChatLockService,
+    private readonly botGpt: BotGptService,
   ) {
     this.YCLOUD_API_URL = (envs.ycloudApiUrl || 'https://api.ycloud.com/v2').trim();
     this.YCLOUD_API_KEY = (envs.ycloudApiKey || '').trim();
@@ -796,6 +798,22 @@ export class YcloudService {
       // Si YCloud reintenta el webhook horas después, el mensaje se guarda con su hora original.
       const msgDate = data.sendTime ? new Date(data.sendTime) : new Date();
 
+      // Dedupe ANTES de cualquier efecto: un reintento de webhook para un wamid ya
+      // procesado no debe volver a incrementar no_leidos (upsertChat) ni pagar una
+      // segunda transcripción de audio. insertMensajeInbound mantiene su propio chequeo
+      // como red de seguridad ante carreras.
+      const wamidPre = data.wamid || data.id;
+      if (wamidPre) {
+        const dup = await this.dataSource.pool.query(
+          `SELECT 1 FROM wha_mensaje WHERE id_whmem = $1 LIMIT 1`,
+          [wamidPre],
+        );
+        if (dup.rowCount > 0) {
+          this.logger.debug(`[Bot-diag] wamid duplicado (${wamidPre}) — se omite reprocesamiento`);
+          return;
+        }
+      }
+
       const ideWhcha = await this.upsertChat({
         waId,
         phoneNumberId,
@@ -805,7 +823,36 @@ export class YcloudService {
         isInbound: true,
       });
 
-      const esNuevo = await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, msgDate);
+      // Resolver cuenta/empresa y estado del bot ANTES de derivar el texto — así, si el
+      // mensaje es un audio, solo se paga la transcripción cuando el bot realmente la va
+      // a usar (chat en modo BOT). Si un humano ya atiende el chat, no tiene sentido
+      // gastar la llamada a OpenAI.
+      const infoRow = await this.dataSource.pool.query<{
+        ide_empr: number; ide_whcue: number; bot_activo_whcha: boolean;
+      }>(
+        `SELECT cu.ide_empr, cu.ide_whcue, c.bot_activo_whcha
+         FROM wha_chat c
+         INNER JOIN wha_cuenta cu
+           ON REPLACE(cu.id_telefono_whcue, '+', '') = $2
+          AND cu.activo_whcue = TRUE
+         WHERE c.ide_whcha = $1
+         LIMIT 1`,
+        [ideWhcha, phoneNumberId],
+      );
+      const botActivoParaTranscribir = infoRow.rowCount > 0 && infoRow.rows[0].bot_activo_whcha !== false;
+
+      let transcripcion: string | null = null;
+      if (data.audio && botActivoParaTranscribir) {
+        try {
+          const buffer = await this.downloadMedia(data.audio.id, phoneNumberId);
+          transcripcion = await this.botGpt.transcribirAudio(buffer, data.audio.mime_type);
+        } catch (err) {
+          this.logger.warn(`[Bot-diag] Error descargando/transcribiendo audio: ${err.message}`);
+          transcripcion = null;
+        }
+      }
+
+      const esNuevo = await this.insertMensajeInbound(data, waId, phoneNumberId, ideWhcha, msgDate, transcripcion);
       if (!esNuevo) {
         // YCloud reintentó el webhook para un mensaje ya procesado (mismo wamid) —
         // no volver a invocar el bot ni las notificaciones, o se duplican las respuestas.
@@ -825,35 +872,24 @@ export class YcloudService {
         || (data.location
             ? `__LOCATION__:${data.location.latitude},${data.location.longitude},${data.location.name || ''},${data.location.address || ''}`
             : '')
+        // El bot no puede leer imágenes ni archivos/video — se deriva a asesor (ver
+        // sentinels en BotService.processMessageInternal). El audio, si no se pudo
+        // transcribir (o el bot no estaba activo para intentarlo), sigue el mismo camino.
+        || (data.audio ? (transcripcion || '__AUDIO_NO_ENTENDIDO__') : '')
+        || (data.image ? '__IMAGEN_RECIBIDA__' : '')
+        || ((data.video || data.document || data.sticker) ? '__ARCHIVO_RECIBIDO__' : '')
         || '';
 
       this.logger.debug(`[Bot-diag] ideWhcha=${ideWhcha} phoneNumberId=${phoneNumberId} textoBot="${textoBot}" handlerSet=${!!this.messageHandler}`);
 
-      if (textoBot) {
-        const infoRow = await this.dataSource.pool.query<{
-          ide_empr: number; ide_whcue: number; bot_activo_whcha: boolean;
-        }>(
-          `SELECT cu.ide_empr, cu.ide_whcue, c.bot_activo_whcha
-           FROM wha_chat c
-           INNER JOIN wha_cuenta cu
-             ON REPLACE(cu.id_telefono_whcue, '+', '') = $2
-            AND cu.activo_whcue = TRUE
-           WHERE c.ide_whcha = $1
-           LIMIT 1`,
-          [ideWhcha, phoneNumberId],
-        );
-
-        this.logger.debug(`[Bot-diag] infoRow.rowCount=${infoRow.rowCount} | data=${JSON.stringify(infoRow.rows[0] ?? null)}`);
-
-        if (infoRow.rowCount > 0) {
-          const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
-          if (this.messageHandler) {
-            this.messageHandler(
-              waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
-            ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
-          } else {
-            this.logger.warn(`[Bot-diag] messageHandler no registrado — bot no puede responder`);
-          }
+      if (textoBot && infoRow.rowCount > 0) {
+        const { ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_activo_whcha } = infoRow.rows[0];
+        if (this.messageHandler) {
+          this.messageHandler(
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoBot, bot_activo_whcha !== false,
+          ).catch((err) => this.logger.error(`Bot error: ${err.message}`));
+        } else {
+          this.logger.warn(`[Bot-diag] messageHandler no registrado — bot no puede responder`);
         }
       }
     } catch (error) {
@@ -935,6 +971,7 @@ export class YcloudService {
     phoneNumberId: string,
     ideWhcha: number,
     now: Date,
+    transcripcion?: string | null,
   ): Promise<boolean> {
     const wamid = data.wamid || data.id;
 
@@ -950,6 +987,9 @@ export class YcloudService {
       || data.interactive?.buttonReply?.title
       || data.interactive?.list_reply?.title
       || data.interactive?.listReply?.title
+      // Si es un audio y se pudo transcribir, se guarda el texto transcrito como
+      // cuerpo del mensaje — visible en el dashboard aunque el bot no lo procese.
+      || transcripcion
       || null;
     const caption = data.image?.caption || data.video?.caption || data.document?.caption || null;
 
@@ -1193,6 +1233,7 @@ export class YcloudService {
         idWts: messageId,
         ideUsua,
         tiempoRespuesta: null,
+        esCampania: true,
       },
       config,
     );
@@ -1254,6 +1295,7 @@ export class YcloudService {
         mimeType,
         ideUsua,
         tiempoRespuesta: null,
+        esCampania: true,
       },
       config,
     );
@@ -1328,10 +1370,12 @@ export class YcloudService {
       // Emitir siempre sin + para que coincida con wa_id_whcha en el frontend
       this.whatsappGateway.sendMessageToClients(normalizedPhone);
 
+      // Una campaña masiva NO cuenta como "asesor tomó el chat" — solo el envío 1:1
+      // de un humano (API/ERP) dispara el hand-off.
       const chat = chatRow.rows[0];
-      if (!esBot && chat?.bot_activo_whcha && chat.bot_modo_whcha === 'BOT') {
+      if (!esBot && !data.esCampania && chat?.bot_activo_whcha && chat.bot_modo_whcha === 'BOT') {
         await this.chatLock.runExclusive(chat.ide_whcha, () =>
-          this.derivarPorAgenteHumano(chat.ide_whcha, 'API/ERP'),
+          this.derivarPorAgenteHumano(chat.ide_whcha, 'API/ERP', normalizedPhone),
         );
       }
 
@@ -1350,7 +1394,7 @@ export class YcloudService {
    * bot_activo_whcha=TRUE AND bot_modo_whcha='BOT' es la guarda atómica: si el estado
    * ya cambió (otro hand-off concurrente, o el chat ya estaba en ASESOR), no hace nada.
    */
-  private async derivarPorAgenteHumano(ideWhcha: number, origen: string): Promise<void> {
+  private async derivarPorAgenteHumano(ideWhcha: number, origen: string, waId?: string): Promise<void> {
     const result = await this.dataSource.pool.query<{ ide_whcha: number }>(
       `UPDATE wha_chat
           SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR'
@@ -1366,6 +1410,12 @@ export class YcloudService {
     );
     if (activa.rowCount > 0) {
       await this.botSession.cerrar(activa.rows[0].ide_whbse, BotState.CANCELADO);
+    }
+
+    // Refresca el front (lista de chats / toggle del bot) para que refleje el cambio a
+    // ASESOR sin esperar a que el agente recargue la página.
+    if (waId) {
+      this.whatsappGateway.sendMessageToClients(waId);
     }
 
     this.logger.log(`[Bot] Agente humano (${origen}) tomó el chat ${ideWhcha} mientras estaba en modo BOT → derivado a ASESOR, sesión cerrada`);
@@ -1441,13 +1491,16 @@ export class YcloudService {
         [ideWhcha],
       );
 
+      // El mensaje echo también debe refrescar el chat abierto en el dashboard (antes
+      // solo se actualizaba el contador de no leídos).
+      this.whatsappGateway.sendMessageToClients(customerWaId);
       void this.emitTotalNoLeidos(phoneNumberId);
 
       // Todo "echo" es 100% humano por construcción (el bot nunca genera este evento) —
       // si el chat estaba en modo BOT, un agente acaba de responder desde WhatsApp Web/
       // teléfono y tomó la conversación.
       await this.chatLock.runExclusive(ideWhcha, () =>
-        this.derivarPorAgenteHumano(ideWhcha, 'WhatsApp Web/teléfono'),
+        this.derivarPorAgenteHumano(ideWhcha, 'WhatsApp Web/teléfono', customerWaId),
       );
     } catch (error) {
       this.logger.error(`Error processEchoMessage: ${error.message}`);

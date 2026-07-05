@@ -18,6 +18,7 @@ import {
   ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteConfirmacion, PendienteUso, ProductoSesion,
 } from './interfaces/bot-session.interface';
 import { BotState } from './interfaces/bot-state.enum';
+import { matchProvinciaEcuador } from './provincias-ecuador';
 
 // ─── Constantes de negocio ────────────────────────────────────────────────────
 const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
@@ -49,6 +50,20 @@ const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo
 const BTN_ACUSE_LOTE = [
   { id: 'LOTE_MAS', title: '➕ Agregar más' },
   { id: 'LOTE_FIN', title: '✅ Finalizar' },
+];
+
+// ─── Modificar lista sin perder lo ya ingresado ──────────────────────────────
+const BTN_MODIFICAR_LISTA = [
+  { id: 'MOD_QUITAR',   title: '➖ Quitar productos' },
+  { id: 'MOD_CANTIDAD', title: '🔢 Cambiar cantidad' },
+  { id: 'MOD_AGREGAR',  title: '➕ Agregar más' },
+];
+
+// ─── Forma de pago (dato solo informativo para la cotización) ────────────────
+const MSG_FORMA_PAGO = `¿Cuál es tu forma de pago preferida? 💳\n\n_Este dato es solo informativo para tu cotización — un asesor coordinará contigo el pago al confirmar el pedido_ 😊`;
+const BTN_FORMA_PAGO = [
+  { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
+  { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
 ];
 
 @Injectable()
@@ -213,6 +228,26 @@ export class BotService implements OnModuleInit {
 
     this.logger.log(`[Bot] isBotActive(${ideWhcue})=${botActivo} | esChatNuevo=${esChatNuevo} | override por chat=${botActivoWhcha}`);
 
+    // Detección global: audio no transcribible / imagen / archivo-video (en cualquier
+    // estado) — el bot no puede leerlos, se deriva a un asesor humano de inmediato.
+    // Sentinels seteados en YcloudService.processInboundMessage (mismo patrón que
+    // __LOCATION__: para ubicación).
+    if (texto === '__AUDIO_NO_ENTENDIDO__') {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        'Lo siento, no pude entender el audio 🎙️. Te comunico con un asesor para que te ayude 👤');
+      return;
+    }
+    if (texto === '__IMAGEN_RECIBIDA__') {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        'Por el momento no puedo leer imágenes 📷. Te comunico con un asesor para que te ayude 👤');
+      return;
+    }
+    if (texto === '__ARCHIVO_RECIBIDO__') {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        'Por el momento no puedo revisar archivos o videos por este medio 📎. Te comunico con un asesor para que te ayude 👤');
+      return;
+    }
+
     // Detección global: SALIR (en cualquier estado)
     if (REGEX_SALIR.test(texto.trim())) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
@@ -273,11 +308,29 @@ export class BotService implements OnModuleInit {
     const estadosQueReinician = [
       BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.CONFIRMANDO_PRODUCTO_LOTE,
       BotState.ESPERANDO_CANTIDAD, BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
-      BotState.CONFIRMACION_PRODUCTOS, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
+      BotState.CONFIRMACION_PRODUCTOS, BotState.MODIFICANDO_LISTA, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
       BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
       BotState.ATENCION_LIBRE,
     ];
     if (REGEX_SALUDO.test(texto.trim()) && estadosQueReinician.includes(sesion.estado as BotState)) {
+      // Si el cliente ya lleva progreso (productos, pendientes, datos de envío...), un
+      // saludo suelto suele ser un ping de impaciencia, NO un pedido de empezar de cero
+      // — resetear acá le borraba toda la lista (misma familia del bug de "Modificar
+      // lista"). Se saluda de vuelta y se repite la pregunta del estado actual.
+      const d = sesion.datos_sesion as DatosSesion;
+      const hayProgreso = (d?.productos?.length ?? 0) > 0
+        || (d?.cola_productos?.length ?? 0) > 0
+        || (d?.pendientes_uso?.length ?? 0) > 0
+        || (d?.pendientes_cantidad?.length ?? 0) > 0
+        || !!d?.pendiente_confirmacion
+        || (d?.opciones_producto?.length ?? 0) > 0
+        || !!d?.texto_acumulado
+        || !!d?.envio?.pendiente_campo;
+      if (hayProgreso) {
+        this.logger.log(`[Bot] Saludo en estado ${sesion.estado} con progreso → se repite el prompt sin resetear`);
+        await this.reenviarPromptEstado(ideEmpr, waId, sesion.estado as BotState, d);
+        return;
+      }
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
       const { sesion: sesionNueva } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
       sesion = sesionNueva;
@@ -324,6 +377,9 @@ export class BotService implements OnModuleInit {
           break;
         case BotState.CONFIRMACION_PRODUCTOS:
           await this.handleConfirmacionProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
+          break;
+        case BotState.MODIFICANDO_LISTA:
+          await this.handleModificandoLista(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.DATOS_ENVIO:
           await this.handleDatosEnvio(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, config);
@@ -412,8 +468,12 @@ export class BotService implements OnModuleInit {
           // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
           await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
         } else {
+          // Cliente desconocido: el texto con el producto se guarda para procesarlo
+          // automáticamente al terminar la identificación (antes se perdía y el
+          // cliente tenía que volver a escribirlo).
           await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-          await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+          await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
+            { ...datos, producto_texto_pendiente: textoInicial || undefined });
         }
         return;
       }
@@ -478,7 +538,10 @@ export class BotService implements OnModuleInit {
           this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
           throw e;
         }
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
+        // El mensaje ya traía el producto — se guarda para procesarlo automáticamente
+        // al terminar la identificación (antes se perdía).
+        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
+          { ...datos, producto_texto_pendiente: texto });
       }
       return;
     }
@@ -587,6 +650,15 @@ export class BotService implements OnModuleInit {
           `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
           [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
         );
+      } else if (nuevosDatos.producto_texto_pendiente) {
+        // El cliente ya había dicho qué producto quería ANTES de identificarse
+        // (ej. "¿cuál es el precio del sorbitol?") — se procesa de inmediato en vez
+        // de pedirle que lo escriba de nuevo.
+        const textoProducto = nuevosDatos.producto_texto_pendiente;
+        const datosSinPendiente: DatosSesion = { ...nuevosDatos, producto_texto_pendiente: undefined };
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSinPendiente);
+        await this.sendText(ideEmpr, waId, `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊`);
+        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, textoProducto, config?.nombre_empresa || 'DIQUIMEC', config);
       } else {
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         await this.sendText(ideEmpr, waId,
@@ -642,6 +714,14 @@ export class BotService implements OnModuleInit {
           `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
           [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
         );
+      } else if (nuevosDatos.producto_texto_pendiente) {
+        // El cliente ya había dicho qué producto quería ANTES de registrarse — se
+        // procesa de inmediato en vez de pedirle que lo escriba de nuevo.
+        const textoProducto = nuevosDatos.producto_texto_pendiente;
+        const datosSinPendiente: DatosSesion = { ...nuevosDatos, producto_texto_pendiente: undefined };
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSinPendiente);
+        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres.split(' ')[0]}*! 😊`);
+        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, textoProducto, config?.nombre_empresa || 'DIQUIMEC', config);
       } else {
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         await this.sendText(ideEmpr, waId,
@@ -1061,17 +1141,20 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
 
-    // Consulta informativa mid-cotización
-    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
-      await this.sendText(ideEmpr, waId, `¿Continuamos? Responde con el *número* del producto que necesitas.`);
-      return;
-    }
-
+    // El número de la lista primero — es la respuesta esperada y no necesita GPT
+    // (antes cada "4" pagaba una llamada a clasificarConsulta innecesaria).
     const num = parseInt(texto.trim(), 10);
+    const numValido = !isNaN(num) && num >= 1 && num <= (datos.opciones_producto?.length ?? 0);
 
-    if (isNaN(num) || num < 1 || num > (datos.opciones_producto?.length ?? 0)) {
+    if (!numValido) {
+      // Consulta informativa mid-cotización
+      const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+        await this.sendText(ideEmpr, waId, `¿Continuamos? Responde con el *número* del producto que necesitas.`);
+        return;
+      }
+
       const listaOpciones = (datos.opciones_producto ?? [])
         .map((o, i) => `${i + 1}. ${o.nombre}`).join('\n');
       await this.responderFallback(
@@ -1198,23 +1281,26 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // Consulta informativa mid-cotización (mismo chequeo que el resto de estados
-    // intermedios) — sin esto, una pregunta del cliente ("¿cuál es su horario?") se
-    // intentaba mapear como respuesta de uso y fallaba en silencio.
-    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
-      const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
-      await this.sendText(ideEmpr, waId,
-        pendientes.length === 1
-          ? `¿Continuamos? Cuéntame para qué uso necesitas *${pendientes[0].nombre}*.`
-          : `¿Continuamos? Cuéntame para qué uso necesitas cada uno:\n\n${lista}`,
-      );
-      return;
-    }
-
+    // Extraer los usos PRIMERO; la consulta informativa solo se evalúa si no se logró
+    // mapear ninguno — clasificar antes malinterpreta respuestas con formato de lista
+    // ("1. repostería 2. ambiental") como CATALOGO (misma familia del bug ya corregido
+    // en procesarTextoProductos).
     const nombres = pendientes.map((p) => p.nombre);
     const usos = await this.botGpt.extraerUsosPorProducto(nombres, texto);
+
+    if (usos.every((u) => !u)) {
+      const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+        const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          pendientes.length === 1
+            ? `¿Continuamos? Cuéntame para qué uso necesitas *${pendientes[0].nombre}*.`
+            : `¿Continuamos? Cuéntame para qué uso necesitas cada uno:\n\n${lista}`,
+        );
+        return;
+      }
+    }
 
     const productosNuevos = [...(datos.productos ?? [])];
     const pendientesCantidad = [...(datos.pendientes_cantidad ?? [])];
@@ -1271,22 +1357,25 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // Consulta informativa mid-cotización (mismo chequeo que el resto de estados
-    // intermedios) — sin esto, una pregunta del cliente se intentaba mapear como
-    // respuesta de cantidad y fallaba en silencio.
-    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
-      const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
-      await this.sendText(ideEmpr, waId,
-        pendientes.length === 1
-          ? `¿Continuamos? Indica la cantidad de *${pendientes[0].nombre}* que necesitas.`
-          : `¿Continuamos? Indica la cantidad que necesitas de cada uno:\n\n${lista}`,
-      );
-      return;
-    }
-
+    // Extraer las cantidades PRIMERO; la consulta informativa solo se evalúa si no se
+    // logró mapear ninguna — clasificar antes malinterpreta respuestas con formato de
+    // lista ("1. 10kg 2. mínimo") como CATALOGO (misma familia del bug ya corregido en
+    // procesarTextoProductos).
     const cantidades = await this.botGpt.extraerCantidadesPorProducto(pendientes, texto);
+
+    if (cantidades.every((c) => c === null || c === undefined)) {
+      const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+        const lista = pendientes.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          pendientes.length === 1
+            ? `¿Continuamos? Indica la cantidad de *${pendientes[0].nombre}* que necesitas.`
+            : `¿Continuamos? Indica la cantidad que necesitas de cada uno:\n\n${lista}`,
+        );
+        return;
+      }
+    }
 
     const productosNuevos = [...(datos.productos ?? [])];
     const siguenPendientes: typeof pendientes = [];
@@ -1319,20 +1408,24 @@ export class BotService implements OnModuleInit {
     const datos = sesion.datos_sesion as DatosSesion;
     const t = texto.trim().toUpperCase();
 
-    // Consulta informativa mid-cotización
-    const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfoConf as any, nombreEmpresa, config);
-      await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
-        { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-        { id: 'CONF_NO', title: '✏️ Modificar lista' },
-      ]);
-      return;
-    }
-
+    // IDs de botón primero — son respuestas exactas de WhatsApp, no necesitan GPT
+    // (antes cada clic pagaba una llamada a clasificarConsulta innecesaria, con riesgo
+    // de clasificación errónea de por medio).
     let confirma = t === 'CONF_SI';
     let modifica = t === 'CONF_NO';
+
     if (!confirma && !modifica) {
+      // Consulta informativa mid-cotización
+      const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfoConf as any, nombreEmpresa, config);
+        await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
+          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+          { id: 'CONF_NO', title: '✏️ Modificar lista' },
+        ]);
+        return;
+      }
+
       const intencion = await this.botGpt.detectarIntencion(texto);
       confirma = intencion === 'CONFIRMAR';
       modifica = intencion === 'CANCELAR';
@@ -1345,9 +1438,14 @@ export class BotService implements OnModuleInit {
     }
 
     if (modifica) {
-      const nuevosDatos: DatosSesion = { ...datos, productos: [] };
-      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-      await this.sendText(ideEmpr, waId, `Por supuesto, empecemos de nuevo 😊\n\n${MSG_INICIO_COTIZACION}`);
+      // NO vaciar la lista: antes esto reiniciaba la captura desde cero y el cliente
+      // perdía todo lo ya ingresado (caso real: 9 productos con uso/cantidad resueltos,
+      // el cliente quería ajustar 1 y abandonó frustrado). Ahora se pasa a un modo de
+      // edición que conserva la lista y permite quitar/cambiar/agregar.
+      await this.botSession.update(sesion.ide_whbse, BotState.MODIFICANDO_LISTA, datos);
+      await this.sendButtons(ideEmpr, waId,
+        `Claro, ajustemos tu lista 😊 ¿Qué deseas hacer?\n\n_También puedes escribirlo directo. Ejemplo: "quita el 2" o "cambia el 3 a 5kg"_`,
+        BTN_MODIFICAR_LISTA);
       return;
     }
 
@@ -1390,6 +1488,119 @@ export class BotService implements OnModuleInit {
     ]);
   }
 
+  /**
+   * Modo de edición de la lista de productos (botón "✏️ Modificar lista") — conserva
+   * todo lo ya ingresado. El cliente puede tocar un botón (quitar/cambiar cantidad/
+   * agregar) o escribir directo lo que quiere ("quita el 2", "cambia el karité a 2kg",
+   * "agrega 5kg cera de soya"); GPT interpreta y las operaciones se aplican sobre la
+   * lista actual. Al terminar, se vuelve a mostrar el resumen para confirmar.
+   */
+  private async handleModificandoLista(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const productos = datos.productos || [];
+    const t = texto.trim().toUpperCase();
+
+    if (t === 'MOD_QUITAR') {
+      await this.sendText(ideEmpr, waId,
+        `${this.buildListaProductos(productos)}\n\n¿Cuáles quito? 😊\n\n_Ejemplo: "el 2" o "quita el alcanfor"_`);
+      return; // sigue en MODIFICANDO_LISTA, el próximo mensaje lo interpreta GPT
+    }
+    if (t === 'MOD_CANTIDAD') {
+      await this.sendText(ideEmpr, waId,
+        `${this.buildListaProductos(productos)}\n\nDime las nuevas cantidades 😊\n\n_Ejemplo: "1. 5kg, 3. 2kg"_`);
+      return;
+    }
+    if (t === 'MOD_AGREGAR') {
+      // Volver a la captura en lote SIN tocar los productos ya resueltos — el pipeline
+      // existente agrega sobre datos.productos y al finalizar muestra el resumen completo.
+      const nuevosDatos: DatosSesion = { ...datos, texto_acumulado: undefined, cola_productos: undefined };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+      await this.sendText(ideEmpr, waId, `Dime el producto que quieras agregar 😊`);
+      return;
+    }
+
+    // Texto libre → GPT interpreta las operaciones sobre la lista actual
+    const ops = await this.botGpt.analizarModificacionLista(
+      productos.map((p) => ({
+        nombre: p.nombre, cantidad: p.cantidad,
+        siglas_unidad: p.siglas_unidad, nombre_unidad: p.unidad,
+      })),
+      texto,
+    );
+
+    let nuevos = [...productos];
+    let huboCambios = false;
+
+    // Cambios de cantidad primero (los índices siguen siendo válidos), luego quitar.
+    for (const c of ops.cambiar) {
+      nuevos[c.indice - 1] = { ...nuevos[c.indice - 1], cantidad: c.cantidad };
+      huboCambios = true;
+    }
+    if (ops.quitar.length > 0) {
+      const aQuitar = new Set(ops.quitar);
+      nuevos = nuevos.filter((_, i) => !aQuitar.has(i + 1));
+      huboCambios = true;
+    }
+
+    if (ops.agregar) {
+      // Guardar quitar/cambiar ya aplicados y delegar los productos nuevos al pipeline
+      // de captura en lote (misma ruta que la escritura normal de productos).
+      const nuevosDatos: DatosSesion = { ...datos, productos: nuevos, texto_acumulado: undefined, cola_productos: undefined };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+      const sesionAct = { ...sesion, datos_sesion: nuevosDatos };
+      await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesionAct, nuevosDatos, ops.agregar, nombreEmpresa, config);
+      return;
+    }
+
+    if (!huboCambios) {
+      // Solo cuando NO se reconoció ninguna operación se evalúa si era una consulta
+      // informativa — el orden inverso (clasificar primero) clasifica mal líneas de
+      // edición con cantidades ("1. 5kg, 3. 2kg") como CATALOGO, mismo bug ya corregido
+      // en handleSeleccionProductos.
+      const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+        await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
+        await this.sendButtons(ideEmpr, waId, `Seguimos con tu lista 😊 ¿Qué deseas hacer?`, BTN_MODIFICAR_LISTA);
+        return;
+      }
+
+      // ¿El cliente en realidad dijo que la lista ya está bien?
+      const intencion = await this.botGpt.detectarIntencion(texto);
+      if (intencion === 'CONFIRMAR' || intencion === 'LISTO') {
+        await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
+        await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(productos), [
+          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+          { id: 'CONF_NO', title: '✏️ Modificar lista' },
+        ]);
+        return;
+      }
+      // No se entendió → volver a preguntar mostrando la lista, sin adivinar
+      await this.sendButtons(ideEmpr, waId,
+        `${this.buildListaProductos(productos)}\n\nNo logré identificar el cambio 🤔 ¿Qué deseas hacer?\n\n_Ejemplo: "quita el 2" o "cambia el 3 a 5kg"_`,
+        BTN_MODIFICAR_LISTA);
+      return;
+    }
+
+    if (nuevos.length === 0) {
+      // Quitó todo → reiniciar la captura de productos
+      const nuevosDatos: DatosSesion = { ...datos, productos: [], texto_acumulado: undefined, cola_productos: undefined };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
+      await this.sendText(ideEmpr, waId, `Listo, quité todos los productos ✅\n\n${MSG_INICIO_COTIZACION}`);
+      return;
+    }
+
+    // Cambios aplicados → resumen actualizado y de vuelta a confirmación
+    const nuevosDatos: DatosSesion = { ...datos, productos: nuevos };
+    await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
+    await this.sendButtons(ideEmpr, waId, `¡Listo! ✅\n\n${this.buildResumenProductos(nuevos)}`, [
+      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+      { id: 'CONF_NO', title: '✏️ Modificar lista' },
+    ]);
+  }
+
   private async handleDatosEnvio(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, config: any,
@@ -1405,10 +1616,7 @@ export class BotService implements OnModuleInit {
         const dir = datos.cliente?.direccion_registrada || envio.direccion || '';
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO,
           { ...datos, envio: { ...envio, direccion: dir || undefined, pendiente_campo: undefined } });
-        await this.sendButtons(ideEmpr, waId, `¿Cuál es tu forma de pago preferida? 💳`, [
-          { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
-          { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, MSG_FORMA_PAGO, BTN_FORMA_PAGO);
         return;
       }
       // Quiere cambiar → flujo normal
@@ -1530,12 +1738,22 @@ export class BotService implements OnModuleInit {
 
     // Paso 3 — provincia → directo a pago (sin transporte)
     if (envio.pendiente_campo === 'provincia') {
+      // Matching tolerante (tildes, typos leves, ciudades conocidas) — antes se
+      // guardaba CUALQUIER texto como provincia, incluidas preguntas del cliente.
+      const provincia = matchProvinciaEcuador(texto);
+      if (!provincia) {
+        const tipoInfo = await this.botGpt.clasificarConsulta(texto);
+        if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
+          await this.responderInfo(ideEmpr, waId, tipoInfo as any, config?.nombre_empresa || 'DIQUIMEC', config);
+        }
+        await this.sendText(ideEmpr, waId,
+          `¿En qué *provincia* te encuentras? 🗺️\n\n_Ejemplo: Pichincha, Guayas, Azuay... (también puedes decirme tu ciudad)_`,
+        );
+        return;
+      }
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO,
-        { ...datos, envio: { ...envio, provincia: texto.trim(), pendiente_campo: undefined } });
-      await this.sendButtons(ideEmpr, waId, `¿Cuál es tu forma de pago preferida? 💳`, [
-        { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
-        { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
-      ]);
+        { ...datos, envio: { ...envio, provincia, pendiente_campo: undefined } });
+      await this.sendButtons(ideEmpr, waId, MSG_FORMA_PAGO, BTN_FORMA_PAGO);
       return;
     }
   }
@@ -1548,16 +1766,22 @@ export class BotService implements OnModuleInit {
     const t = texto.trim().toUpperCase();
     let formaPago: 'cash' | 'credit' | null = null;
 
-    if (t === 'PAGO_EFECTIVO' || /EFECTIVO|CASH|\bEFE\b|BILLETES?|DINERO\s*EN\s*EFECTIVO/.test(t)) formaPago = 'cash';
-    else if (t === 'PAGO_TARJETA' || /TARJETA|CR[EÉ]DITO|D[EÉ]BITO|CARD|VISA|MASTERCARD/.test(t)) formaPago = 'credit';
-    // Casos comunes: transferencia / depósito → tratados como efectivo (coordinan aparte)
-    else if (/TRANSFER|DEP[OÓ]SITO|DEPOSITO|BANCO|CHEQUE/.test(t)) formaPago = 'cash';
+    if (t === 'PAGO_EFECTIVO') formaPago = 'cash';
+    else if (t === 'PAGO_TARJETA') formaPago = 'credit';
+    else {
+      // En texto libre, una negación invalida el match por palabra clave — sin esto,
+      // "no quiero tarjeta" matcheaba TARJETA por substring y se registraba como crédito.
+      const hayNegacion = /\b(NO|SIN|NI|TAMPOCO|NADA)\b/.test(t);
+      if (!hayNegacion) {
+        if (/EFECTIVO|CASH|\bEFE\b|BILLETES?|DINERO\s*EN\s*EFECTIVO/.test(t)) formaPago = 'cash';
+        else if (/TARJETA|CR[EÉ]DITO|D[EÉ]BITO|CARD|VISA|MASTERCARD/.test(t)) formaPago = 'credit';
+        // Casos comunes: transferencia / depósito → tratados como efectivo (coordinan aparte)
+        else if (/TRANSFER|DEP[OÓ]SITO|DEPOSITO|BANCO|CHEQUE/.test(t)) formaPago = 'cash';
+      }
+    }
 
     if (!formaPago) {
-      await this.sendButtons(ideEmpr, waId, `💳 ¿Cuál es tu forma de pago preferida?`, [
-        { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
-        { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
-      ]);
+      await this.sendButtons(ideEmpr, waId, MSG_FORMA_PAGO, BTN_FORMA_PAGO);
       return;
     }
 
@@ -1868,15 +2092,110 @@ export class BotService implements OnModuleInit {
     return prod.nombre;
   }
 
-  private buildResumenProductos(productos: ProductoSesion[]): string {
-    const lista = productos.map((p, i) => {
+  /**
+   * Repite la pregunta pendiente del estado actual, precedida de un saludo — se usa
+   * cuando el cliente manda un saludo suelto a mitad de flujo con progreso acumulado
+   * (en vez de resetear la sesión y borrarle todo, ver processMessageInternal).
+   */
+  private async reenviarPromptEstado(
+    ideEmpr: number, waId: string, estado: BotState, datos: DatosSesion,
+  ): Promise<void> {
+    const saludo = `¡Hola! 😊 Seguimos con tu cotización.`;
+    const productos = datos.productos ?? [];
+
+    switch (estado) {
+      case BotState.SELECCION_PRODUCTOS:
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${MSG_ACUSE_LOTE}`, BTN_ACUSE_LOTE);
+        return;
+      case BotState.SELECCION_MULTIPLE: {
+        const lista = (datos.opciones_producto ?? [])
+          .map((o) => `*${o.numero}.* ${this.displayNombreProducto(o)}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          `${saludo}\n\n${lista}\n\n_Responde solo con el número de la opción que necesitas._`);
+        return;
+      }
+      case BotState.CONFIRMANDO_PRODUCTO_LOTE: {
+        const p = datos.pendiente_confirmacion;
+        if (p) {
+          await this.sendButtons(ideEmpr, waId,
+            `${saludo}\n\n¿*${p.nombre}* es el producto que buscas? 🤔`,
+            [{ id: 'PROD_SI', title: '✅ Sí, es este' }, { id: 'PROD_NO', title: '❌ No es este' }]);
+          return;
+        }
+        break;
+      }
+      case BotState.ESPERANDO_USO_LOTE: {
+        const pend = datos.pendientes_uso ?? [];
+        const lista = pend.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          pend.length === 1
+            ? `${saludo}\n\nCuéntame ¿para qué uso necesitas *${pend[0]?.nombre}*?`
+            : `${saludo}\n\nCuéntame para qué uso necesitas cada uno:\n\n${lista}`);
+        return;
+      }
+      case BotState.ESPERANDO_CANTIDAD_LOTE: {
+        const pend = datos.pendientes_cantidad ?? [];
+        const lista = pend.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
+        await this.sendText(ideEmpr, waId,
+          pend.length === 1
+            ? `${saludo}\n\n¿Qué cantidad de *${pend[0]?.nombre}* necesitas?`
+            : `${saludo}\n\n¿Qué cantidad necesitas de cada uno?\n\n${lista}`);
+        return;
+      }
+      case BotState.CONFIRMACION_PRODUCTOS:
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${this.buildResumenProductos(productos)}`, [
+          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
+          { id: 'CONF_NO', title: '✏️ Modificar lista' },
+        ]);
+        return;
+      case BotState.MODIFICANDO_LISTA:
+        await this.sendButtons(ideEmpr, waId,
+          `${saludo}\n\n${this.buildListaProductos(productos)}\n\n¿Qué deseas cambiar?`,
+          BTN_MODIFICAR_LISTA);
+        return;
+      case BotState.PREGUNTA_ES_CLIENTE:
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${MSG_ES_CLIENTE_BODY}`, BTN_ES_CLIENTE);
+        return;
+      case BotState.IDENTIFICACION:
+        await this.sendText(ideEmpr, waId,
+          `${saludo}\n\nPor favor dime tu *número de cédula o RUC* para ubicar tu información.`);
+        return;
+      case BotState.DATOS_NUEVO_CLIENTE:
+        await this.sendText(ideEmpr, waId, `${saludo}\n\n¿Me podrías indicar tu *nombre completo*?`);
+        return;
+      case BotState.DATOS_ENVIO: {
+        const campo = datos.envio?.pendiente_campo;
+        if (campo === 'provincia') {
+          await this.sendText(ideEmpr, waId, `${saludo}\n\n¿En qué *provincia* te encuentras? 🗺️`);
+        } else if (campo === 'direccion_texto') {
+          await this.sendText(ideEmpr, waId, `${saludo}\n\nPor favor escribe tu *dirección completa* y un punto de referencia 📝`);
+        } else if (campo === 'esperar_ubicacion') {
+          await this.sendText(ideEmpr, waId, `${saludo}\n\n📍 Comparte tu ubicación desde WhatsApp:\n_Adjuntar → Ubicación → Enviar ubicación actual_`);
+        } else {
+          await this.sendText(ideEmpr, waId, `${saludo}\n\nContinuemos con la dirección de entrega 📍`);
+        }
+        return;
+      }
+      case BotState.DATOS_PAGO:
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${MSG_FORMA_PAGO}`, BTN_FORMA_PAGO);
+        return;
+      default:
+        break;
+    }
+    await this.sendText(ideEmpr, waId, `${saludo} Continuemos donde quedamos 👇`);
+  }
+
+  private buildListaProductos(productos: ProductoSesion[]): string {
+    return productos.map((p, i) => {
       const cantidadTexto = p.cantidad === 0
         ? '(cantidad mínima disponible)'
         : `${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`;
       return `${i + 1}. *${p.nombre}* — ${cantidadTexto}`;
     }).join('\n');
+  }
 
-    return `📋 *Resumen de tu pedido:*\n\n${lista}\n\n¿Confirmamos estos productos?`;
+  private buildResumenProductos(productos: ProductoSesion[]): string {
+    return `📋 *Resumen de tu pedido:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos estos productos?`;
   }
 
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {

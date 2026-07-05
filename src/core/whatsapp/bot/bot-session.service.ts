@@ -61,7 +61,7 @@ export class BotSessionService {
     const estadosConTimeout = ['ATENCION_LIBRE', 'PREGUNTA_ES_CLIENTE', 'IDENTIFICACION',
       'DATOS_NUEVO_CLIENTE', 'SELECCION_PRODUCTOS', 'SELECCION_MULTIPLE', 'CONFIRMANDO_PRODUCTO_LOTE',
       'ESPERANDO_CANTIDAD', 'ESPERANDO_CANTIDAD_LOTE', 'ESPERANDO_USO_LOTE',
-      'CONFIRMACION_PRODUCTOS', 'DATOS_ENVIO', 'DATOS_PAGO'];
+      'CONFIRMACION_PRODUCTOS', 'MODIFICANDO_LISTA', 'DATOS_ENVIO', 'DATOS_PAGO'];
 
     if (row.hora_actua && estadosConTimeout.includes(row.estado)) {
       const minutosSinActividad = (Date.now() - new Date(row.hora_actua).getTime()) / 60_000;
