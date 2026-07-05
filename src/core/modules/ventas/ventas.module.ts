@@ -9,6 +9,7 @@ import { EmisorService } from '../sri/cel/emisor.service';
 import { SriFacturaService } from '../sri/cel/sri-factura.service';
 import { SriModule } from '../sri/sri.module';
 
+import { ClientesSaveService } from './clientes/clientes-save.service';
 import { ClientesController } from './clientes/clientes.controller';
 import { ClientesService } from './clientes/clientes.service';
 import { VentasBiController } from './data-bi/ventas-bi.controller';
@@ -24,6 +25,7 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
   controllers: [ClientesController, FacturasController, PuntoVentaController, VentasBiController],
   providers: [
     ClientesService,
+    ClientesSaveService,
     AuditService,
     CoreService,
     FacturasService,
