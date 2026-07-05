@@ -40,6 +40,11 @@ export class YcloudWebhookController {
   @ApiOperation({ summary: 'Recibir eventos de webhook de YCloud' })
   async handleWebhook(@Body() body: any, @Res() res: any) {
     res.status(HttpStatus.OK).send({ status: 'ok' });
+    // Log de recepción a nivel de controller: permite distinguir "el webhook nunca
+    // llegó a este servidor" (línea ausente) de "llegó pero se perdió procesándolo"
+    // (línea presente sin efectos) — clave cuando hay más de un endpoint registrado
+    // en YCloud o un túnel inestable en DEV.
+    this.logger.debug(`[Webhook] ${body?.type ?? 'sin type'} | wamid=${body?.whatsappInboundMessage?.wamid ?? body?.whatsappMessage?.wamid ?? 'N/A'}`);
     try {
       await this.ycloudService.handleWebhook(body);
     } catch (error) {
