@@ -398,6 +398,17 @@ export class BotService implements OnModuleInit {
       if (fallos >= maxFallos) {
         await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
           'Tuve algunos inconvenientes procesando tu solicitud. Te comunico con un asesor para que te ayude 😊');
+      } else {
+        // Antes el cliente no recibía NADA hasta acumular maxFallos errores — el chat
+        // simplemente se quedaba mudo (caso real: clic en un botón → excepción → silencio
+        // total). Ahora siempre se le responde algo para que pueda reintentar.
+        try {
+          await this.sendText(ideEmpr, waId,
+            `Disculpa, tuve un inconveniente procesando tu mensaje 😅 ¿Me lo repites, por favor?`,
+          );
+        } catch (notifyErr) {
+          this.logger.error(`BotService: tampoco se pudo notificar el error al cliente: ${notifyErr.message}`);
+        }
       }
     }
   }
@@ -703,7 +714,7 @@ export class BotService implements OnModuleInit {
         const prod = nuevosDatos.producto_pendiente;
         await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
         await this.sendText(ideEmpr, waId,
-          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n` +
+          `¡Gracias, *${nombres}*! 😊\n\n` +
           `Encontré: *${prod.nombre}* ✅\n\n` +
           `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
         );
@@ -711,7 +722,7 @@ export class BotService implements OnModuleInit {
         // Tenía productos acumulados antes de registrarse → ir directo a confirmación
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
-          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
+          `¡Gracias, *${nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
           [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
@@ -720,12 +731,12 @@ export class BotService implements OnModuleInit {
         const textoProducto = nuevosDatos.producto_texto_pendiente;
         const datosSinPendiente: DatosSesion = { ...nuevosDatos, producto_texto_pendiente: undefined };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSinPendiente);
-        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres.split(' ')[0]}*! 😊`);
+        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊`);
         await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, textoProducto, config?.nombre_empresa || 'DIQUIMEC', config);
       } else {
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         await this.sendText(ideEmpr, waId,
-          `¡Gracias, *${nombres.split(' ')[0]}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+          `¡Gracias, *${nombres}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
         );
       }
       return;
@@ -1607,11 +1618,23 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
     const envio = datos.envio ?? {};
+    this.logger.debug(`[Bot] handleDatosEnvio pendiente_campo=${envio.pendiente_campo ?? 'N/A'} texto="${texto}"`);
 
     // Paso -1 — confirmación de datos de envío guardados (provincia + dirección)
     if (envio.pendiente_campo === 'confirmar_envio_guardado') {
       const t = texto.trim().toUpperCase();
-      if (t === 'ENV_MISMO') {
+      // Botones primero; si el cliente escribe texto (ej. "si" porque el botón ya no
+      // se puede volver a tocar tras un webhook perdido), se interpreta la intención —
+      // antes CUALQUIER texto que no fuera el botón se trataba como "cambiar dirección".
+      let usarGuardado = t === 'ENV_MISMO';
+      let cambiar = t === 'ENV_CAMBIAR';
+      if (!usarGuardado && !cambiar) {
+        const intencion = await this.botGpt.detectarIntencion(texto);
+        usarGuardado = intencion === 'CONFIRMAR';
+        cambiar = intencion === 'CANCELAR';
+      }
+
+      if (usarGuardado) {
         // Usar provincia y dirección guardadas → ir directo a pago
         const dir = datos.cliente?.direccion_registrada || envio.direccion || '';
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_PAGO,
@@ -1619,14 +1642,24 @@ export class BotService implements OnModuleInit {
         await this.sendButtons(ideEmpr, waId, MSG_FORMA_PAGO, BTN_FORMA_PAGO);
         return;
       }
-      // Quiere cambiar → flujo normal
-      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
-        { ...datos, envio: { pendiente_campo: 'tipo_direccion' } });
+      if (cambiar) {
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
+          { ...datos, envio: { pendiente_campo: 'tipo_direccion' } });
+        await this.sendButtons(ideEmpr, waId,
+          `¿Cómo prefieres indicar la nueva dirección?`,
+          [
+            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+          ],
+        );
+        return;
+      }
+      // Ambiguo → repetir la pregunta con los botones (no adivinar)
       await this.sendButtons(ideEmpr, waId,
-        `¿Cómo prefieres indicar la nueva dirección?`,
+        `¿Utilizamos la dirección registrada para esta cotización?`,
         [
-          { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
-          { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+          { id: 'ENV_MISMO',   title: '✅ Sí, son correctos' },
+          { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
         ],
       );
       return;
@@ -2400,8 +2433,12 @@ export class BotService implements OnModuleInit {
         return;
       }
 
-      // Sesión anterior completada o cancelada → el bot espera el próximo mensaje sin re-saludar
-      if (ultimoEstado === BotState.FINALIZADO || ultimoEstado === BotState.CANCELADO) {
+      // Sesión anterior completada, cancelada o EXPIRADA por inactividad → el bot espera
+      // el próximo mensaje sin re-saludar. EXPIRADO faltaba en esta lista: al reactivar
+      // el bot horas después, el flujo caía al "retomar contexto" y resucitaba una
+      // cotización abandonada a partir del último mensaje viejo del cliente (caso real:
+      // preguntó la cantidad de CERA DE COCO de una sesión expirada 5 horas antes).
+      if (ultimoEstado === BotState.FINALIZADO || ultimoEstado === BotState.CANCELADO || ultimoEstado === 'EXPIRADO') {
         this.logger.log(`[Bot] iniciarConContextoChat chat=${ideWhcha} — sesión anterior ${ultimoEstado}, sin re-saludo`);
         return;
       }
@@ -2451,7 +2488,9 @@ export class BotService implements OnModuleInit {
         const tieneMemoria = !!(memoria?.cliente?.nombres);
 
         if (tieneMemoria) {
-          await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${memoria.cliente.nombres.split(' ')[0]}*! 😊`);
+          // Nombre completo — la BD guarda "APELLIDOS NOMBRES", así que el primer token
+          // es un apellido ("¡Hola de nuevo, JACOME!" sonaba mal).
+          await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${memoria.cliente.nombres}*! 😊`);
         }
 
         const datosSesion: DatosSesion = {
