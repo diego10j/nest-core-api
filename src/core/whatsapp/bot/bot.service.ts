@@ -22,8 +22,8 @@ import { matchProvinciaEcuador } from './provincias-ecuador';
 
 // ─── Constantes de negocio ────────────────────────────────────────────────────
 const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
-const REGEX_SALIR     = /^SALIR$/i;
-const REGEX_SALUDO    = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
+const REGEX_SALIR = /^SALIR$/i;
+const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
 // Categorías que casi nunca están en el catálogo de materias primas (sabor/color/fragancia/aceite).
 // Cuando la búsqueda coincide con esto, se evita el fallback difuso (evita falsos positivos tipo
@@ -46,7 +46,11 @@ _Ejemplo: "3kg cera de palma, 5kg cera de soya"_
 
 Cuando termines, escribe *FIN*.`;
 
-const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo directo, o elige una opción 👇`;
+// "Anotado ✅" daba una falsa sensación de progreso validado (el ✅ sugiere que el
+// producto ya fue encontrado/confirmado, cuando en realidad el texto solo se acumuló
+// en espera de que el cliente cierre la lista) y no dejaba claro que hacía falta un
+// paso explícito (FIN o el botón) para que el bot revise lo mencionado.
+const MSG_ACUSE_LOTE = `Recibido 📝 ¿Necesitas algún otro producto?\n\nCuando termines, escribe *FIN* o toca "Finalizar" para que revise tu cotización 👇`;
 const BTN_ACUSE_LOTE = [
   { id: 'LOTE_MAS', title: '➕ Agregar más' },
   { id: 'LOTE_FIN', title: '✅ Finalizar' },
@@ -54,16 +58,23 @@ const BTN_ACUSE_LOTE = [
 
 // ─── Modificar lista sin perder lo ya ingresado ──────────────────────────────
 const BTN_MODIFICAR_LISTA = [
-  { id: 'MOD_QUITAR',   title: '➖ Quitar productos' },
+  { id: 'MOD_QUITAR', title: '➖ Quitar productos' },
   { id: 'MOD_CANTIDAD', title: '🔢 Cambiar cantidad' },
-  { id: 'MOD_AGREGAR',  title: '➕ Agregar más' },
+  { id: 'MOD_AGREGAR', title: '➕ Agregar más' },
 ];
 
-// ─── Forma de pago (dato solo informativo para la cotización) ────────────────
-const MSG_FORMA_PAGO = `¿Cuál es tu forma de pago preferida? 💳\n\n_Este dato es solo informativo para tu cotización — un asesor coordinará contigo el pago al confirmar el pedido_ 😊`;
+// ─── Confirmación de cotización (antes decía "pedido" — confundía al cliente,
+// sonaba a compra ya realizada en vez de una cotización por confirmar) ────────
+const BTN_CONFIRMACION_COTIZACION = [
+  { id: 'CONF_SI', title: '✅ Confirmar cotización' },
+  { id: 'CONF_NO', title: '✏️ Modificar lista' },
+];
+
+// ─── Forma de pago (dato solo de referencia, NO implica pago inmediato) ──────
+const MSG_FORMA_PAGO = `Para completar tu cotización, ¿cuál es tu forma de pago de preferencia? 💳\n\n_Es solo un dato de referencia — aquí no se realiza ningún cobro, un asesor lo coordinará contigo más adelante_ 😊`;
 const BTN_FORMA_PAGO = [
   { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
-  { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
+  { id: 'PAGO_TARJETA', title: '💳 Tarjeta de crédito' },
 ];
 
 @Injectable()
@@ -89,7 +100,7 @@ export class BotService implements OnModuleInit {
     // tiempo (doble tap del cliente, reintento de webhook, etc.), la cola también
     // evita que ambos lean la sesión antes de que el primero termine de guardarla.
     private readonly chatLock: ChatLockService,
-  ) {}
+  ) { }
 
   onModuleInit() {
     this.ycloudService.setMessageHandler(
@@ -581,7 +592,7 @@ export class BotService implements OnModuleInit {
     // Los botones devuelven el ID directamente
     const t = texto.trim().toUpperCase();
     let esCliente = t === 'SI_CLIENTE' || /^(SI|SÍ|S[Ii]|YES|YA|YA COMPRÉ)$/i.test(t);
-    let esNuevo   = t === 'NO_CLIENTE' || /^(NO|NUNCA|NUEVO|PRIMERA)$/i.test(t);
+    let esNuevo = t === 'NO_CLIENTE' || /^(NO|NUNCA|NUEVO|PRIMERA)$/i.test(t);
 
     // Si no hay match directo, GPT interpreta el texto libre
     if (!esCliente && !esNuevo) {
@@ -659,7 +670,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
           `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
-          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+          BTN_CONFIRMACION_COTIZACION,
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
         // El cliente ya había dicho qué producto quería ANTES de identificarse
@@ -723,7 +734,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
           `¡Gracias, *${nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
-          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+          BTN_CONFIRMACION_COTIZACION,
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
         // El cliente ya había dicho qué producto quería ANTES de registrarse — se
@@ -763,7 +774,7 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
-    // Botones de la Fase de acuse ("Anotado ✅..."): "Agregar más" no aporta texto de
+    // Botones de la Fase de acuse ("Recibido 📝..."): "Agregar más" no aporta texto de
     // producto, solo confirma que el cliente va a seguir escribiendo — no se toca
     // texto_acumulado ni se llama a GPT. "Finalizar" equivale a que el cliente hubiera
     // escrito la palabra FIN — se reusa el mismo detector semántico de cierre de
@@ -792,7 +803,7 @@ export class BotService implements OnModuleInit {
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
         await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
         await this.sendText(ideEmpr, waId,
-          `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu pedido.`,
+          `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu cotización.`,
         );
         return;
       }
@@ -1140,10 +1151,7 @@ export class BotService implements OnModuleInit {
       return;
     }
     await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), BTN_CONFIRMACION_COTIZACION);
   }
 
   private async handleSeleccionMultiple(
@@ -1430,10 +1438,7 @@ export class BotService implements OnModuleInit {
       const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
         await this.responderInfo(ideEmpr, waId, tipoInfoConf as any, nombreEmpresa, config);
-        await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu cotización?`, BTN_CONFIRMACION_COTIZACION);
         return;
       }
 
@@ -1461,8 +1466,8 @@ export class BotService implements OnModuleInit {
     }
 
     if (confirma) {
-      const provinciaMemoria  = datos.envio?.provincia;
-      const dirRegistrada     = datos.cliente?.direccion_registrada;
+      const provinciaMemoria = datos.envio?.provincia;
+      const dirRegistrada = datos.cliente?.direccion_registrada;
 
       // Si tiene dirección O provincia guardada → confirmar todo en un solo mensaje
       if (dirRegistrada || provinciaMemoria) {
@@ -1475,7 +1480,7 @@ export class BotService implements OnModuleInit {
         await this.sendButtons(ideEmpr, waId,
           `Para el envío, tengo registrada la siguiente información:\n\n${resumen}\n\n¿La utilizamos para esta cotización?`,
           [
-            { id: 'ENV_MISMO',   title: '✅ Sí, son correctos' },
+            { id: 'ENV_MISMO', title: '✅ Sí, son correctos' },
             { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
           ],
         );
@@ -1485,7 +1490,7 @@ export class BotService implements OnModuleInit {
         await this.sendButtons(ideEmpr, waId,
           `Necesito la dirección de entrega. ¿Cómo prefieres indicármela?`,
           [
-            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_TEXTO', title: '📝 Escribir dirección' },
             { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
           ],
         );
@@ -1493,10 +1498,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), BTN_CONFIRMACION_COTIZACION);
   }
 
   /**
@@ -1582,10 +1584,7 @@ export class BotService implements OnModuleInit {
       const intencion = await this.botGpt.detectarIntencion(texto);
       if (intencion === 'CONFIRMAR' || intencion === 'LISTO') {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-        await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(productos), [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(productos), BTN_CONFIRMACION_COTIZACION);
         return;
       }
       // No se entendió → volver a preguntar mostrando la lista, sin adivinar
@@ -1606,10 +1605,7 @@ export class BotService implements OnModuleInit {
     // Cambios aplicados → resumen actualizado y de vuelta a confirmación
     const nuevosDatos: DatosSesion = { ...datos, productos: nuevos };
     await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
-    await this.sendButtons(ideEmpr, waId, `¡Listo! ✅\n\n${this.buildResumenProductos(nuevos)}`, [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, `¡Listo! ✅\n\n${this.buildResumenProductos(nuevos)}`, BTN_CONFIRMACION_COTIZACION);
   }
 
   private async handleDatosEnvio(
@@ -1648,7 +1644,7 @@ export class BotService implements OnModuleInit {
         await this.sendButtons(ideEmpr, waId,
           `¿Cómo prefieres indicar la nueva dirección?`,
           [
-            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_TEXTO', title: '📝 Escribir dirección' },
             { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
           ],
         );
@@ -1658,7 +1654,7 @@ export class BotService implements OnModuleInit {
       await this.sendButtons(ideEmpr, waId,
         `¿Utilizamos la dirección registrada para esta cotización?`,
         [
-          { id: 'ENV_MISMO',   title: '✅ Sí, son correctos' },
+          { id: 'ENV_MISMO', title: '✅ Sí, son correctos' },
           { id: 'ENV_CAMBIAR', title: '📝 Cambiar dirección' },
         ],
       );
@@ -1681,7 +1677,7 @@ export class BotService implements OnModuleInit {
         await this.sendButtons(ideEmpr, waId,
           `¿Cómo prefieres indicar la nueva dirección de entrega?`,
           [
-            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_TEXTO', title: '📝 Escribir dirección' },
             { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
           ],
         );
@@ -1691,8 +1687,8 @@ export class BotService implements OnModuleInit {
       await this.sendButtons(ideEmpr, waId,
         `Por favor selecciona una opción 😊`,
         [
-          { id: 'USAR_DIR_SI',  title: '✅ Sí, usar esta' },
-          { id: 'USAR_DIR_NO',  title: '📝 Ingresar otra' },
+          { id: 'USAR_DIR_SI', title: '✅ Sí, usar esta' },
+          { id: 'USAR_DIR_NO', title: '📝 Ingresar otra' },
         ],
       );
       return;
@@ -1833,10 +1829,10 @@ export class BotService implements OnModuleInit {
       if (resultado.automatica && resultado.pdfBuffer) {
         // ── CASO 1: Automático — mostrar resumen financiero ──
         const baseSinIva = resultado.baseGrabada ?? 0;
-        const tarifa0    = resultado.baseTarifa0  ?? 0;
-        const iva        = resultado.valorIva     ?? 0;
-        const totalFinal = resultado.total        ?? 0;
-        const pctIva     = resultado.tarifaIva    ?? 15;
+        const tarifa0 = resultado.baseTarifa0 ?? 0;
+        const iva = resultado.valorIva ?? 0;
+        const totalFinal = resultado.total ?? 0;
+        const pctIva = resultado.tarifaIva ?? 15;
 
         // Enviar PDF como documento usando link público (evita upload a YCloud que falla)
         let pdfEnviado = false;
@@ -1908,7 +1904,7 @@ export class BotService implements OnModuleInit {
           `¿Hay algo más en que pueda ayudarte? 🧪`,
           [
             { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
-            { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+            { id: 'HABLAR_ASESOR', title: '👤 Hablar con asesor' },
           ],
         );
 
@@ -2016,7 +2012,7 @@ export class BotService implements OnModuleInit {
         `¿Puedo ayudarte con algo más? 😊`,
         [
           { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
-          { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+          { id: 'HABLAR_ASESOR', title: '👤 Hablar con asesor' },
         ],
       );
       return;
@@ -2027,7 +2023,7 @@ export class BotService implements OnModuleInit {
       `¡Gracias por tu mensaje! 😊 ¿Puedo ayudarte con algo más?`,
       [
         { id: 'NUEVA_COTIZACION', title: '🛒 Nueva cotización' },
-        { id: 'HABLAR_ASESOR',    title: '👤 Hablar con asesor' },
+        { id: 'HABLAR_ASESOR', title: '👤 Hablar con asesor' },
       ],
     );
   }
@@ -2053,9 +2049,9 @@ export class BotService implements OnModuleInit {
     // Columnas dedicadas en DB — fuente de verdad, sin parseo de texto
     const colMap: Record<string, string | null> = {
       UBICACION: config?.resp_ubicacion ?? null,
-      HORARIO:   config?.resp_horario   ?? null,
-      ENVIO:     config?.resp_envio     ?? null,
-      CATALOGO:  config?.resp_catalogo  ?? null,
+      HORARIO: config?.resp_horario ?? null,
+      ENVIO: config?.resp_envio ?? null,
+      CATALOGO: config?.resp_catalogo ?? null,
     };
     const template = colMap[tipo] ?? null;
 
@@ -2176,10 +2172,7 @@ export class BotService implements OnModuleInit {
         return;
       }
       case BotState.CONFIRMACION_PRODUCTOS:
-        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${this.buildResumenProductos(productos)}`, [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${this.buildResumenProductos(productos)}`, BTN_CONFIRMACION_COTIZACION);
         return;
       case BotState.MODIFICANDO_LISTA:
         await this.sendButtons(ideEmpr, waId,
@@ -2228,7 +2221,7 @@ export class BotService implements OnModuleInit {
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {
-    return `📋 *Resumen de tu pedido:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos estos productos?`;
+    return `📋 *Resumen de tu cotización:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos tu cotización?`;
   }
 
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {

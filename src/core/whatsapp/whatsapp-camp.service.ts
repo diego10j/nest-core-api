@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { isDefined } from 'class-validator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { DataSourceService } from 'src/core/connection/datasource.service';
 import { extractErrorMessage } from 'src/util/helpers/common-util';
 import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
-import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, UpdateQuery } from '../connection/helpers';
 
 import { WhatsappApiService } from './api/whatsapp-api.service';

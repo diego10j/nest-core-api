@@ -1183,7 +1183,7 @@ export class YcloudService {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
 
   private async processTemplateResponse(data: Record<string, any>): Promise<void> {
   }

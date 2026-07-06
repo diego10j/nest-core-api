@@ -248,7 +248,37 @@ query.addParam(3, dtoIn.ideTeban ?? null);     // ✅ Nullable — use addParam
 query.addParam(4, dtoIn.hacePagos ?? null);    // ✅ Nullable — use addParam
 ```
 
-### Pattern 6: Controller import order (lint-enforced)
+### Pattern 6: Boolean-like GET query params
+
+GET query params always arrive as strings. For boolean flags (true/false), **use `@IsIn(['true', 'false'])` with a string default**, never `@IsBoolean()` with `@Transform`.
+
+```typescript
+// CORRECT — string-based validation, no Transform needed
+@IsIn(['true', 'false'])
+@IsOptional()
+responsable?: string = 'false';
+
+@IsIn(['true', 'false'])
+@IsOptional()
+soloActivos?: string = 'true';
+```
+
+```typescript
+// WRONG — transforms add complexity, inconsistent with query string nature
+@IsBoolean()
+@Transform(({ value }) => value === 'true' || value === true)
+soloActivos?: boolean;
+```
+
+**In the service**, compare against the string literal:
+
+```typescript
+if (dtoIn.responsable === 'true') {
+    conditions.push('AND ide_usua IS NULL');
+}
+```
+
+### Pattern 7: Controller import order (lint-enforced)
 
 ```
 builtin → external → internal (src/) → sibling (./)

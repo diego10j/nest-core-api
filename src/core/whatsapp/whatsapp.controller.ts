@@ -10,22 +10,20 @@ import {
   ParseIntPipe,
   Post,
   Query,
-  Req,
   Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-
-
 import { DataSourceService } from 'src/core/connection/datasource.service';
+
 import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
 
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
@@ -34,18 +32,18 @@ import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
 import { ListContactDto } from './api/dto/list-contact.dto';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
 import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
+import { BotConfigService } from './bot/bot-config.service';
+import { BotService } from './bot/bot.service';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
 import { SaveCampaniaDto } from './dto/save-campania.dto';
-import { TelefonoDto } from './dto/telefono.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
+import { TelefonoDto } from './dto/telefono.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
-import { BotConfigService } from './bot/bot-config.service';
-import { BotService } from './bot/bot.service';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';

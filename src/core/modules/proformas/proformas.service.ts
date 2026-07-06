@@ -84,10 +84,12 @@ proformas_periodo AS MATERIALIZED (
   SELECT
     ide_cccpr, secuencial_cccpr, fecha_cccpr, solicitante_cccpr,
     correo_cccpr, ide_cctpr, ide_vgven, ide_usua,
-    total_cccpr, utilidad_cccpr, anulado_cccpr, enviado_cccpr, fecha_ingre,hora_ingre
+    total_cccpr, utilidad_cccpr, anulado_cccpr, enviado_cccpr, fecha_ingre, hora_ingre,
+    referencia_cccpr
   FROM cxc_cabece_proforma
   WHERE fecha_cccpr BETWEEN $1 AND $2
     AND ide_empr = ${dtoIn.ideEmpr}
+    ${dtoIn.responsable === 'true' ? 'AND ide_usua IS NULL' : ''}
 ),
 
 -- Solo cuenta ítems de LAS proformas del período (no toda la tabla)
@@ -166,7 +168,12 @@ SELECT
     WHEN fv.total_cccfa > prof.total_cccpr THEN 'FACTURA_MAYOR'
     ELSE                                        'PROFORMA_MAYOR'
   END                                                            AS estado_comparativo,
-  prof.fecha_ingre,
+  CASE
+    WHEN prof.referencia_cccpr IS NULL THEN ''
+    WHEN UPPER(prof.referencia_cccpr) = 'WHATSAPP' THEN 'WhatsApp'
+    ELSE 'Página web'
+  END                                                            AS canal,
+    prof.fecha_ingre,
   prof.hora_ingre
 FROM proformas_periodo              prof
 LEFT JOIN sis_usuario              usua ON prof.ide_usua   = usua.ide_usua
@@ -184,7 +191,24 @@ ORDER BY prof.secuencial_cccpr DESC
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
 
-    return this.dataSource.createQuery(query);
+    const countQuery = new SelectQuery(
+      `SELECT COUNT(*)::int AS total_pendientes
+       FROM cxc_cabece_proforma
+       WHERE fecha_cccpr BETWEEN $1 AND $2
+         AND ide_empr = ${dtoIn.ideEmpr}
+         AND ide_usua IS NULL`,
+    );
+    countQuery.addParam(1, dtoIn.fechaInicio);
+    countQuery.addParam(2, dtoIn.fechaFin);
+
+    const [result, totalPendientes] = await Promise.all([
+      this.dataSource.createQuery(query),
+      this.dataSource.createSingleQuery(countQuery),
+    ]);
+
+    result.row = totalPendientes;
+
+    return result;
   }
 
   async getProformaByID(dtoIn: GetProformaDto & HeaderParamsDto) {

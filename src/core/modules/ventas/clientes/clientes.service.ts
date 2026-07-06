@@ -1268,11 +1268,24 @@ export class ClientesService extends BaseService {
             a.movil_gedirp,
             a.longitud_gedirp,
             a.latitud_gedirp ,
+            a.ide_geprov,
             b.nombre_geprov ,
+            a.ide_gecant,
             c.nombre_gecant ,
+            a.ide_getidi,
             d.nombre_getidi,
             a.activo_gedirp,
-            a.defecto_gedirp
+            a.defecto_gedirp,
+            CASE
+              WHEN a.latitud_gedirp IS NULL OR a.longitud_gedirp IS NULL THEN NULL
+              ELSE ROUND(
+                6371 * 2 * ASIN(SQRT(
+                  POWER(SIN(RADIANS((a.latitud_gedirp::numeric - e.latitud_empr) / 2)), 2) +
+                  COS(RADIANS(e.latitud_empr)) * COS(RADIANS(a.latitud_gedirp::numeric)) *
+                  POWER(SIN(RADIANS((a.longitud_gedirp::numeric - e.longitud_empr) / 2)), 2)
+                ))::numeric, 2
+              )
+            END AS distancia_km
         from
             gen_direccion_persona a
         left join gen_provincia b on
@@ -1280,9 +1293,11 @@ export class ClientesService extends BaseService {
         left join gen_canton c on
             a.ide_gecant = c.ide_gecant
         inner join gen_tipo_direccion d on
-            a.ide_getidi = d.ide_getidi 
+            a.ide_getidi = d.ide_getidi
+        cross join sis_empresa e
         where a.ide_geper = $1
         and a.ide_getidi is not null
+        and e.ide_empr = ${dtoIn.ideEmpr}
         order by defecto_gedirp desc, activo_gedirp desc
         `,
             dtoIn,

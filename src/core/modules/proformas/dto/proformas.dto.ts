@@ -1,4 +1,4 @@
-import { IsDateString } from 'class-validator';
+import { IsDateString, IsIn, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class ProformasDto extends QueryOptionsDto {
@@ -7,4 +7,8 @@ export class ProformasDto extends QueryOptionsDto {
 
   @IsDateString()
   fechaFin: string;
+
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  responsable?: string = 'false';
 }
