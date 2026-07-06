@@ -46,7 +46,11 @@ _Ejemplo: "3kg cera de palma, 5kg cera de soya"_
 
 Cuando termines, escribe *FIN*.`;
 
-const MSG_ACUSE_LOTE = `Anotado ✅ ¿Necesitas algún otro producto? Escríbelo directo, o elige una opción 👇`;
+// "Anotado ✅" daba una falsa sensación de progreso validado (el ✅ sugiere que el
+// producto ya fue encontrado/confirmado, cuando en realidad el texto solo se acumuló
+// en espera de que el cliente cierre la lista) y no dejaba claro que hacía falta un
+// paso explícito (FIN o el botón) para que el bot revise lo mencionado.
+const MSG_ACUSE_LOTE = `Recibido 📝 ¿Necesitas algún otro producto?\n\nCuando termines, escribe *FIN* o toca "Finalizar" para que revise tu cotización 👇`;
 const BTN_ACUSE_LOTE = [
   { id: 'LOTE_MAS', title: '➕ Agregar más' },
   { id: 'LOTE_FIN', title: '✅ Finalizar' },
@@ -59,8 +63,15 @@ const BTN_MODIFICAR_LISTA = [
   { id: 'MOD_AGREGAR',  title: '➕ Agregar más' },
 ];
 
-// ─── Forma de pago (dato solo informativo para la cotización) ────────────────
-const MSG_FORMA_PAGO = `¿Cuál es tu forma de pago preferida? 💳\n\n_Este dato es solo informativo para tu cotización — un asesor coordinará contigo el pago al confirmar el pedido_ 😊`;
+// ─── Confirmación de cotización (antes decía "pedido" — confundía al cliente,
+// sonaba a compra ya realizada en vez de una cotización por confirmar) ────────
+const BTN_CONFIRMACION_COTIZACION = [
+  { id: 'CONF_SI', title: '✅ Confirmar cotización' },
+  { id: 'CONF_NO', title: '✏️ Modificar lista' },
+];
+
+// ─── Forma de pago (dato solo de referencia, NO implica pago inmediato) ──────
+const MSG_FORMA_PAGO = `Para completar tu cotización, ¿cuál es tu forma de pago de preferencia? 💳\n\n_Es solo un dato de referencia — aquí no se realiza ningún cobro, un asesor lo coordinará contigo más adelante_ 😊`;
 const BTN_FORMA_PAGO = [
   { id: 'PAGO_EFECTIVO', title: '💵 Efectivo' },
   { id: 'PAGO_TARJETA',  title: '💳 Tarjeta de crédito' },
@@ -659,7 +670,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
           `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
-          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+          BTN_CONFIRMACION_COTIZACION,
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
         // El cliente ya había dicho qué producto quería ANTES de identificarse
@@ -723,7 +734,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
           `¡Gracias, *${nombres}*! 😊\n\n${this.buildResumenProductos(nuevosDatos.productos)}`,
-          [{ id: 'CONF_SI', title: '✅ Confirmar pedido' }, { id: 'CONF_NO', title: '✏️ Modificar lista' }],
+          BTN_CONFIRMACION_COTIZACION,
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
         // El cliente ya había dicho qué producto quería ANTES de registrarse — se
@@ -763,7 +774,7 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
-    // Botones de la Fase de acuse ("Anotado ✅..."): "Agregar más" no aporta texto de
+    // Botones de la Fase de acuse ("Recibido 📝..."): "Agregar más" no aporta texto de
     // producto, solo confirma que el cliente va a seguir escribiendo — no se toca
     // texto_acumulado ni se llama a GPT. "Finalizar" equivale a que el cliente hubiera
     // escrito la palabra FIN — se reusa el mismo detector semántico de cierre de
@@ -792,7 +803,7 @@ export class BotService implements OnModuleInit {
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoPre)) {
         await this.responderInfo(ideEmpr, waId, tipoInfoPre as any, nombreEmpresa, config);
         await this.sendText(ideEmpr, waId,
-          `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu pedido.`,
+          `Espero haber resuelto tu consulta 😊\n\n¿Continuamos? Dime el producto o escribe *FIN* para revisar tu cotización.`,
         );
         return;
       }
@@ -1140,10 +1151,7 @@ export class BotService implements OnModuleInit {
       return;
     }
     await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), BTN_CONFIRMACION_COTIZACION);
   }
 
   private async handleSeleccionMultiple(
@@ -1430,10 +1438,7 @@ export class BotService implements OnModuleInit {
       const tipoInfoConf = await this.botGpt.clasificarConsulta(texto);
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoConf)) {
         await this.responderInfo(ideEmpr, waId, tipoInfoConf as any, nombreEmpresa, config);
-        await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu pedido?`, [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, `¿Confirmamos tu cotización?`, BTN_CONFIRMACION_COTIZACION);
         return;
       }
 
@@ -1493,10 +1498,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(datos.productos), BTN_CONFIRMACION_COTIZACION);
   }
 
   /**
@@ -1582,10 +1584,7 @@ export class BotService implements OnModuleInit {
       const intencion = await this.botGpt.detectarIntencion(texto);
       if (intencion === 'CONFIRMAR' || intencion === 'LISTO') {
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, datos);
-        await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(productos), [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, this.buildResumenProductos(productos), BTN_CONFIRMACION_COTIZACION);
         return;
       }
       // No se entendió → volver a preguntar mostrando la lista, sin adivinar
@@ -1606,10 +1605,7 @@ export class BotService implements OnModuleInit {
     // Cambios aplicados → resumen actualizado y de vuelta a confirmación
     const nuevosDatos: DatosSesion = { ...datos, productos: nuevos };
     await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
-    await this.sendButtons(ideEmpr, waId, `¡Listo! ✅\n\n${this.buildResumenProductos(nuevos)}`, [
-      { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-      { id: 'CONF_NO', title: '✏️ Modificar lista' },
-    ]);
+    await this.sendButtons(ideEmpr, waId, `¡Listo! ✅\n\n${this.buildResumenProductos(nuevos)}`, BTN_CONFIRMACION_COTIZACION);
   }
 
   private async handleDatosEnvio(
@@ -2176,10 +2172,7 @@ export class BotService implements OnModuleInit {
         return;
       }
       case BotState.CONFIRMACION_PRODUCTOS:
-        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${this.buildResumenProductos(productos)}`, [
-          { id: 'CONF_SI', title: '✅ Confirmar pedido' },
-          { id: 'CONF_NO', title: '✏️ Modificar lista' },
-        ]);
+        await this.sendButtons(ideEmpr, waId, `${saludo}\n\n${this.buildResumenProductos(productos)}`, BTN_CONFIRMACION_COTIZACION);
         return;
       case BotState.MODIFICANDO_LISTA:
         await this.sendButtons(ideEmpr, waId,
@@ -2228,7 +2221,7 @@ export class BotService implements OnModuleInit {
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {
-    return `📋 *Resumen de tu pedido:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos estos productos?`;
+    return `📋 *Resumen de tu cotización:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos tu cotización?`;
   }
 
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {

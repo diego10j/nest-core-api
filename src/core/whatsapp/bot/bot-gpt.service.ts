@@ -204,8 +204,12 @@ export class BotGptService {
               '(separados por saltos de línea en el texto que recibes). ' +
               `${ctx}\n` +
               'Tu tarea:\n' +
-              '1. "completo": true si el texto contiene la palabra FIN (aislada) o si el cliente da a entender que ya terminó de listar ' +
-              '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"). false si parece que puede seguir agregando.\n' +
+              '1. "completo": true si el texto contiene la palabra FIN (aislada), si el cliente da a entender que ya terminó de listar ' +
+              '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"), O SI el mensaje es una pregunta o pedido ' +
+              'autocontenido y aislado (ej: "me ayuda con el precio de la cera de soya, gracias", "¿cuánto cuesta X?", "necesito Y por favor") ' +
+              '— en el español latinoamericano terminar con "gracias"/"por favor" es una forma normal y educada de cerrar una petición, NO ' +
+              'significa que vaya a seguir agregando productos. Usa false SOLO si el mensaje deja explícito que seguirá agregando algo más ' +
+              '(ej: "también quiero...", "y además...", "aparte necesito...", o una lista claramente a medias).\n' +
               '2. "items": arreglo con cada producto mencionado y su cantidad, normalizada así (el catálogo de esta empresa es ' +
               'prácticamente todo por peso, en KILOGRAMOS — ceras, parafinas, fragancias, aceites, polvos, etc.):\n' +
               '   - Si el cliente da la cantidad en una unidad de MASA distinta a kilogramos (gramos, miligramos, toneladas, ' +
@@ -221,6 +225,9 @@ export class BotGptService {
               '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo") ' +
               'O si pide comprar al por mayor/mayorista sin dar una cifra concreta ("al por mayor", "por mayor", "para revender", "mayorista") — ' +
               'en ambos casos el asesor define la cantidad real después, se usa 0 como marcador.\n' +
+              '   - Si el cliente menciona VARIANTES o presentaciones distintas de un mismo producto conectadas por "y" (ej. códigos/siglas ' +
+              'como APF, BPF, tipo A, tipo B, u otras presentaciones), trátalas como PRODUCTOS SEPARADOS, uno por variante — NO las combines ' +
+              'en un solo string. Ejemplo: "cera de soya de APF y BPF" → dos ítems: "cera de soya APF" y "cera de soya BPF".\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
               'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
