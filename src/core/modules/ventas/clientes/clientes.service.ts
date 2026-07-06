@@ -181,7 +181,7 @@ export class ClientesService extends BaseService {
         WITH saldo_cte AS (
             SELECT
                 ide_geper,
-                SUM(valor_ccdtr * signo_ccttr) AS saldo
+                SUM(valor_ccdtr * tt.signo_ccttr) AS saldo
             FROM
                 cxc_detall_transa dt
                 LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
@@ -283,7 +283,7 @@ export class ClientesService extends BaseService {
             WITH saldo_inicial AS (
                 SELECT 
                     ide_geper,
-                    COALESCE(SUM(valor_ccdtr * signo_ccttr), 0) AS saldo_inicial
+                    COALESCE(SUM(valor_ccdtr * tt.signo_ccttr), 0) AS saldo_inicial
                 FROM 
                     cxc_detall_transa dt 
                     LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr 
@@ -302,8 +302,8 @@ export class ClientesService extends BaseService {
                     docum_relac_ccdtr, 
                     observacion_ccdtr AS observacion,
                     nombre_ccttr AS transaccion,            
-                    CASE WHEN signo_ccttr = 1 THEN valor_ccdtr END AS debe,
-                    CASE WHEN signo_ccttr = -1 THEN valor_ccdtr END AS haber,
+                    CASE WHEN b.signo_ccttr = 1 THEN valor_ccdtr END AS debe,
+                    CASE WHEN b.signo_ccttr = -1 THEN valor_ccdtr END AS haber,
                     0 as saldo,
                     fecha_venci_ccdtr,
                     ide_teclb,
@@ -365,6 +365,177 @@ export class ClientesService extends BaseService {
         query.addParam(4, dtoIn.fechaInicio);
         query.addParam(5, dtoIn.fechaFin);
         return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Retorna KPI consolidado de transacciones CxC de un cliente en un rango de fechas.
+     * @param dtoIn
+     * @returns
+     */
+    async getKpiTrnCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+        WITH saldo_inicial AS (
+            SELECT COALESCE(SUM(valor_ccdtr * tt.signo_ccttr), 0) AS saldo
+            FROM cxc_detall_transa dt
+            LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            WHERE ide_geper = $1
+              AND fecha_trans_ccdtr < $2
+              AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
+        ),
+        stats AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN tt.signo_ccttr = 1 THEN valor_ccdtr ELSE 0 END), 0) AS total_debe,
+                COALESCE(SUM(CASE WHEN tt.signo_ccttr = -1 THEN valor_ccdtr ELSE 0 END), 0) AS total_haber,
+                COUNT(*) FILTER (WHERE tt.signo_ccttr = 1) AS movimientos_debe,
+                COUNT(*) FILTER (WHERE tt.signo_ccttr = -1) AS movimientos_haber,
+                COUNT(DISTINCT dt.ide_ccctr) AS total_documentos,
+                MIN(fecha_trans_ccdtr) AS fecha_primera,
+                MAX(fecha_trans_ccdtr) AS fecha_ultima
+            FROM cxc_detall_transa dt
+            LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            WHERE ide_geper = $1
+              AND fecha_trans_ccdtr BETWEEN $2 AND $3
+              AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
+        ),
+        pendiente AS (
+            SELECT COALESCE(
+                SUM(
+                    CASE WHEN tt.signo_ccttr = 1 AND fecha_venci_ccdtr < CURRENT_DATE THEN valor_ccdtr ELSE 0 END
+                ) -
+                SUM(
+                    CASE WHEN tt.signo_ccttr = -1 THEN valor_ccdtr ELSE 0 END
+                ), 0
+            ) AS monto_vencido
+            FROM cxc_detall_transa dt
+            LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            WHERE ide_geper = $1
+              AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
+        )
+        SELECT
+            si.saldo AS saldo_inicial,
+            si.saldo + s.total_debe - s.total_haber AS saldo_final,
+            s.total_debe,
+            s.total_haber,
+            s.movimientos_debe,
+            s.movimientos_haber,
+            s.total_documentos,
+            s.fecha_primera,
+            s.fecha_ultima,
+            CASE WHEN s.movimientos_debe > 0
+                THEN ROUND(s.total_debe / s.movimientos_debe, 6)
+                ELSE 0
+            END AS valor_promedio_debe,
+            CASE WHEN s.movimientos_haber > 0
+                THEN ROUND(s.total_haber / s.movimientos_haber, 6)
+                ELSE 0
+            END AS valor_promedio_haber,
+            CASE WHEN s.total_debe > 0
+                THEN ROUND((s.total_haber / s.total_debe) * 100, 2)
+                ELSE 0
+            END AS porcentaje_recuperacion,
+            p.monto_vencido
+        FROM saldo_inicial si
+        CROSS JOIN stats s
+        CROSS JOIN pendiente p
+        `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
+     * Retorna KPI consolidado de productos comprados por un cliente.
+     * @param dtoIn
+     * @returns
+     */
+    async getKpiProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+        const ideEstadoNormal = Number(this.variables.get('p_cxc_estado_factura_normal'));
+        const query = new SelectQuery(
+            `
+        WITH ventas_periodo AS (
+            SELECT
+                df.ide_inarti,
+                cf.ide_cccfa,
+                cf.fecha_emisi_cccfa,
+                df.cantidad_ccdfa,
+                df.precio_ccdfa,
+                (df.cantidad_ccdfa * df.precio_ccdfa) AS subtotal
+            FROM cxc_deta_factura df
+            INNER JOIN cxc_cabece_factura cf ON df.ide_cccfa = cf.ide_cccfa
+            WHERE cf.ide_geper = $1
+              AND cf.ide_ccefa = ${ideEstadoNormal}
+              AND df.ide_empr = ${dtoIn.ideEmpr}
+        ),
+        resumen AS (
+            SELECT
+                COUNT(DISTINCT ide_inarti)::int AS total_productos,
+                COUNT(DISTINCT ide_cccfa)::int AS total_facturas,
+                COALESCE(SUM(cantidad_ccdfa), 0)::numeric(15,2) AS cantidad_total,
+                COALESCE(SUM(subtotal), 0)::numeric(15,2) AS monto_total,
+                MIN(fecha_emisi_cccfa) AS fecha_primera,
+                MAX(fecha_emisi_cccfa) AS fecha_ultima
+            FROM ventas_periodo
+        ),
+        top_productos AS (
+            SELECT
+                vp.ide_inarti,
+                i.nombre_inarti,
+                SUM(vp.cantidad_ccdfa)::numeric(15,2) AS cantidad_total,
+                COUNT(DISTINCT vp.ide_cccfa)::int AS facturas,
+                SUM(vp.subtotal)::numeric(15,2) AS monto_total
+            FROM ventas_periodo vp
+            INNER JOIN inv_articulo i ON vp.ide_inarti = i.ide_inarti
+            GROUP BY vp.ide_inarti, i.nombre_inarti
+            ORDER BY monto_total DESC
+            LIMIT 5
+        ),
+        tendencia_mensual AS (
+            SELECT
+                TO_CHAR(vp.fecha_emisi_cccfa, 'YYYY-MM') AS mes,
+                COUNT(DISTINCT vp.ide_cccfa)::int AS facturas,
+                SUM(vp.subtotal)::numeric(15,2) AS monto
+            FROM ventas_periodo vp
+            WHERE vp.fecha_emisi_cccfa >= (CURRENT_DATE - INTERVAL '12 months')
+            GROUP BY TO_CHAR(vp.fecha_emisi_cccfa, 'YYYY-MM')
+            ORDER BY mes
+        )
+        SELECT
+            r.total_productos,
+            r.total_facturas,
+            r.cantidad_total,
+            r.monto_total,
+            ROUND(r.monto_total / NULLIF(r.total_facturas, 0), 2)::numeric(15,2) AS ticket_promedio,
+            ROUND(r.cantidad_total / NULLIF(r.total_facturas, 0), 1)::numeric(15,2) AS items_por_factura,
+            r.fecha_primera,
+            r.fecha_ultima,
+            (CURRENT_DATE - r.fecha_primera::date)::int AS antiguedad_dias,
+            (CURRENT_DATE - r.fecha_ultima::date)::int AS dias_desde_ultima_compra,
+            COALESCE(
+                (SELECT json_agg(tp ORDER BY tp.monto_total DESC)
+                 FROM top_productos tp),
+                '[]'::json
+            ) AS top_productos,
+            COALESCE(
+                (SELECT json_agg(tm ORDER BY tm.mes)
+                 FROM tendencia_mensual tm),
+                '[]'::json
+            ) AS tendencia_mensual
+        FROM resumen r
+        `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_geper);
+        return this.dataSource.createSingleQuery(query);
     }
 
     /**
@@ -440,7 +611,7 @@ export class ClientesService extends BaseService {
         const query = new SelectQuery(`     
             SELECT 
                 ct.ide_geper,
-                COALESCE(SUM(valor_ccdtr* signo_ccttr), 0) AS saldo
+                COALESCE(SUM(valor_ccdtr* tt.signo_ccttr), 0) AS saldo
             FROM
                 cxc_detall_transa dt
             INNER JOIN cxc_cabece_transa ct on dt.ide_ccctr=ct.ide_ccctr
@@ -455,12 +626,6 @@ export class ClientesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
-    /**
-     * Reorna los productos que compra el cliente, con ultima fecha de compra,
-     * ultimo precio de venta, cantidad, unidad
-     * @param dtoIn
-     * @returns
-     */
     async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `     

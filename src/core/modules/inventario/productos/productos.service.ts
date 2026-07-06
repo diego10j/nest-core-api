@@ -371,13 +371,11 @@ export class ProductosService extends BaseService {
             const tagIds = res.tags_inarti.map((t: any) => Number(t)).filter((n: number) => !isNaN(n));
             if (tagIds.length > 0) {
                 const tagQuery = new SelectQuery(`
-                    SELECT array_agg(nombre_incate ORDER BY nombre_incate) AS tags
-                    FROM inv_categoria
-                    WHERE ide_incate = ANY($1::int[])
-                      AND ide_empr = $2
+                    SELECT COALESCE(jsonb_agg(nombre_inare ORDER BY nombre_inare), '[]'::jsonb) AS tags
+                    FROM inv_area
+                    WHERE ide_inare = ANY($1::int[])
                 `);
                 tagQuery.addParam(1, tagIds);
-                tagQuery.addIntParam(2, dtoIn.ideEmpr);
                 const tagResult = await this.dataSource.createSingleQuery(tagQuery);
                 res.tags_inarti = tagResult?.tags || [];
             }
@@ -1269,12 +1267,12 @@ export class ProductosService extends BaseService {
               AND k.fecha_mov BETWEEN $6 AND $7
         )
         SELECT
-            um.fecha_mov AS fecha_ultima_compra,
-            um.ultimo_precio,
-            um.ultimo_costo_promedio,
-            um.ultima_cantidad,
-            um.ide_geper AS ide_ultimo_proveedor,
-            um.ultimo_proveedor,
+            COALESCE(um.fecha_mov, NULL) AS fecha_ultima_compra,
+            COALESCE(um.ultimo_precio, 0) AS ultimo_precio,
+            COALESCE(um.ultimo_costo_promedio, 0) AS ultimo_costo_promedio,
+            COALESCE(um.ultima_cantidad, 0) AS ultima_cantidad,
+            COALESCE(um.ide_geper, NULL) AS ide_ultimo_proveedor,
+            COALESCE(um.ultimo_proveedor, NULL) AS ultimo_proveedor,
             COALESCE(sp.total_compras, 0) AS total_compras,
             COALESCE(sp.total_proveedores, 0) AS total_proveedores,
             COALESCE(sp.precio_minimo, 0) AS precio_minimo,
@@ -1283,11 +1281,11 @@ export class ProductosService extends BaseService {
             COALESCE(sp.costo_promedio_promedio, 0) AS costo_promedio_promedio,
             COALESCE(sp.precio_desviacion, 0) AS precio_desviacion,
             sp.fecha_primera_compra,
-            CASE
+            COALESCE(CASE
                 WHEN sp.precio_promedio > 0
                 THEN ROUND(((um.ultimo_precio - sp.precio_promedio) / sp.precio_promedio) * 100, 2)
                 ELSE 0
-            END AS porcentaje_vs_promedio,
+            END, 0) AS porcentaje_vs_promedio,
             CASE
                 WHEN um.ultimo_precio > sp.precio_promedio THEN 'ALZA'
                 WHEN um.ultimo_precio < sp.precio_promedio THEN 'BAJA'
@@ -1300,7 +1298,7 @@ export class ProductosService extends BaseService {
                 ELSE 0
             END AS variacion_vs_periodo_anterior
         FROM stats_periodo sp
-        CROSS JOIN ultimo_mov um
+        LEFT JOIN ultimo_mov um ON true
         CROSS JOIN stats_anterior sa
         `,
             dtoIn,
@@ -1987,6 +1985,7 @@ export class ProductosService extends BaseService {
                 END AS fecha_proxima_compra_estimada,
                 CASE
                     WHEN array_length(cu.fechas_compras, 1) = 1 THEN 'Compra única'
+                    WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > 365 THEN 'Esporádico'
                     WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
                          NULLIF((array_length(cu.fechas_compras, 1) - 1), 0)) <= 30 THEN 'Frecuente'
                     WHEN ((cu.fechas_compras[array_length(cu.fechas_compras, 1)] - cu.fechas_compras[1])::numeric / 
@@ -1995,6 +1994,7 @@ export class ProductosService extends BaseService {
                 END AS frecuencia_compra,
                 CASE
                     WHEN cu.meses_con_compras = 1 THEN 'Compra única'
+                    WHEN (CURRENT_DATE - cu.fecha_ultima_compra) > 365 THEN 'Ocasional'
                     WHEN cu.meses_con_compras >= 6 THEN 'Muy frecuente'
                     WHEN cu.meses_con_compras >= 3 THEN 'Frecuente'
                     ELSE 'Ocasional'

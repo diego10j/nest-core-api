@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -8,11 +8,14 @@ import { UuidDto } from 'src/common/dto/uuid.dto';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { SaveDto } from '../../../../common/dto/save.dto';
 
+import { ClientesSaveService } from './clientes-save.service';
 import { ClientesService } from './clientes.service';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
+import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
+import { SetActivoDireccionDto } from './dto/set-activo-direccion.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
@@ -21,7 +24,10 @@ import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
 @ApiBearerAuth('BearerAuth')
 @Controller('ventas/clientes')
 export class ClientesController {
-  constructor(private readonly service: ClientesService) { }
+  constructor(
+    private readonly service: ClientesService,
+    private readonly saveService: ClientesSaveService,
+  ) { }
 
   @Get('getCliente')
   @ApiOperation({ summary: 'Obtener cliente por UUID' })
@@ -86,6 +92,20 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'Cliente guardado exitosamente' })
   save(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDto) {
     return this.service.save({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getKpiTrnCliente')
+  @ApiOperation({ summary: 'Obtener KPIs de transacciones de un cliente por período' })
+  @ApiResponse({ status: 200, description: 'KPIs de transacciones' })
+  getKpiTrnCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnClienteDto) {
+    return this.service.getKpiTrnCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getKpiProductosCliente')
+  @ApiOperation({ summary: 'Obtener KPIs de productos comprados por un cliente' })
+  @ApiResponse({ status: 200, description: 'KPIs de productos del cliente' })
+  getKpiProductosCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdClienteDto) {
+    return this.service.getKpiProductosCliente({ ...headersParams, ...dtoIn });
   }
 
   @Get('getVentasConUtilidad')
@@ -156,5 +176,26 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'Historial de vendedores' })
   getHistoricoVendedoresCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdClienteDto) {
     return this.service.getHistoricoVendedoresCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('saveDireccionPersona')
+  @ApiOperation({ summary: 'Crear o actualizar una dirección o contacto de cliente' })
+  @ApiResponse({ status: 200, description: 'Dirección/contacto guardado exitosamente' })
+  saveDireccionPersona(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDireccionPersonaDto) {
+    return this.saveService.saveDireccionPersona({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('setActivoDireccionPersona')
+  @ApiOperation({ summary: 'Activar o desactivar una dirección o contacto' })
+  @ApiResponse({ status: 200, description: 'Estado actualizado exitosamente' })
+  setActivoDireccionPersona(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetActivoDireccionDto) {
+    return this.saveService.setActivoDireccionPersona({ ...headersParams, ...dtoIn });
+  }
+
+  @Delete('deleteDireccionPersona')
+  @ApiOperation({ summary: 'Eliminar una dirección o contacto de cliente' })
+  @ApiResponse({ status: 200, description: 'Dirección/contacto eliminado exitosamente' })
+  deleteDireccionPersona(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetActivoDireccionDto) {
+    return this.saveService.deleteDireccionPersona({ ...headersParams, ...dtoIn });
   }
 }
