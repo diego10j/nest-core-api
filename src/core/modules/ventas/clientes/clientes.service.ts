@@ -608,21 +608,32 @@ export class ClientesService extends BaseService {
      * @returns
      */
     async getSaldo(dtoIn: IdClienteDto & HeaderParamsDto) {
-        const query = new SelectQuery(`     
-            SELECT 
+        const paramValue = dtoIn.ide_geper || dtoIn.uuid;
+        if (!paramValue) {
+            throw new Error('Se requiere ide_geper o uuid en el DTO de entrada');
+        }
+
+        const joinPersona = dtoIn.ide_geper ? '' : 'INNER JOIN gen_persona p ON ct.ide_geper = p.ide_geper';
+        const whereClause = dtoIn.ide_geper ? 'ct.ide_geper = $1' : 'p.uuid = $1';
+
+        const query = new SelectQuery(`
+            SELECT
                 ct.ide_geper,
-                COALESCE(SUM(valor_ccdtr* tt.signo_ccttr), 0) AS saldo
+                COALESCE(SUM(valor_ccdtr * tt.signo_ccttr), 0) AS saldo
             FROM
                 cxc_detall_transa dt
-            INNER JOIN cxc_cabece_transa ct on dt.ide_ccctr=ct.ide_ccctr
-            INNER JOIN cxc_tipo_transacc tt on tt.ide_ccttr=dt.ide_ccttr
+            INNER JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            ${joinPersona}
             WHERE
-                ct.ide_geper = $1
+                ${whereClause}
                 AND ct.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY   
-                ide_geper
+            GROUP BY
+                ct.ide_geper
             `);
-        query.addIntParam(1, dtoIn.ide_geper);
+
+        query.addParam(1, paramValue);
+
         return this.dataSource.createQuery(query);
     }
 
@@ -1212,20 +1223,8 @@ export class ClientesService extends BaseService {
         }
 
         // validar que el cliente exista
-        const queryClieE = new SelectQuery(`
-        select
-            1
-        from
-            gen_persona
-        where
-            identificac_geper = $1
-        and ide_empr = $2 and ide_geper = $3
-        `);
-        queryClieE.addParam(1, data.identificac_geper);
-        queryClieE.addParam(2, ideEmpr);
-        queryClieE.addParam(3, data.ide_geper);
-        const resClieE = await this.dataSource.createSelectQuery(queryClieE);
-        if (resClieE.length === 0) {
+        const existe = await this.getExisteCliente(data.identificac_geper, ideEmpr, data.ide_geper);
+        if (existe.rowCount === 0) {
             throw new BadRequestException(`El cliente ${data.identificac_geper} no existe`);
         }
 
@@ -1555,7 +1554,7 @@ export class ClientesService extends BaseService {
                 and ide_empr = $2
             `);
         query.addStringParam(1, dto.identificacion);
-        query.addIntParam(1, dto.ideEmpr);
+        query.addIntParam(2, dto.ideEmpr);
         const data = await this.dataSource.createSingleQuery(query);
         return {
             rowCount: data ? 1 : 0,
@@ -1563,6 +1562,31 @@ export class ClientesService extends BaseService {
                 cliente: data,
             },
             message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : 'No existe',
+        } as ResultQuery;
+    }
+
+    async getExisteCliente(identificac_geper: string, ide_empr: number, ide_geper?: number) {
+        const whereIdeGeper = ide_geper != null ? 'AND ide_geper = $3' : '';
+        const query = new SelectQuery(`
+        SELECT
+            nom_geper
+        FROM
+            gen_persona
+        WHERE
+            identificac_geper = $1
+            AND ide_empr = $2
+            ${whereIdeGeper}
+        `);
+        query.addParam(1, identificac_geper);
+        query.addIntParam(2, ide_empr);
+        if (ide_geper != null) {
+            query.addIntParam(3, ide_geper);
+        }
+        const data = await this.dataSource.createSingleQuery(query);
+        return {
+            rowCount: data ? 1 : 0,
+            row: data ?? null,
+            message: data ? `El cliente ${data.nom_geper} ya se encuentra registrado` : '',
         } as ResultQuery;
     }
 

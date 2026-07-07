@@ -8,8 +8,8 @@ import { CoreService } from 'src/core/core.service';
 import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
 import { SetActivoDireccionDto } from './dto/set-activo-direccion.dto';
 
-const TABLE_NAME = 'direccion_persona';
-const FULL_TABLE_NAME = 'gen_direccion_persona';
+const TABLE_NAME = 'gen_direccion_persona';
+const BASE_TABLE_NAME = 'direccion_persona';
 const PRIMARY_KEY = 'ide_gedirp';
 
 @Injectable()
@@ -50,7 +50,7 @@ export class ClientesSaveService extends BaseService {
             listQuery.push({
                 operation: 'update',
                 module: 'gen',
-                tableName: TABLE_NAME,
+                tableName: BASE_TABLE_NAME,
                 primaryKey: PRIMARY_KEY,
                 object,
             });
@@ -60,7 +60,7 @@ export class ClientesSaveService extends BaseService {
             listQuery.push({
                 operation: 'insert',
                 module: 'gen',
-                tableName: TABLE_NAME,
+                tableName: BASE_TABLE_NAME,
                 primaryKey: PRIMARY_KEY,
                 object,
             });
@@ -72,7 +72,7 @@ export class ClientesSaveService extends BaseService {
 
     async setActivoDireccionPersona(dtoIn: SetActivoDireccionDto & HeaderParamsDto) {
         await this.dataSource.pool.query(
-            `UPDATE ${FULL_TABLE_NAME} SET activo_gedirp = $1 WHERE ${PRIMARY_KEY} = $2`,
+            `UPDATE ${TABLE_NAME} SET activo_gedirp = $1 WHERE ${PRIMARY_KEY} = $2`,
             [dtoIn.activo, dtoIn.ide],
         );
         return { message: 'ok' };
@@ -82,7 +82,7 @@ export class ClientesSaveService extends BaseService {
         const listQuery: ObjectQueryDto[] = [{
             operation: 'delete',
             module: 'gen',
-            tableName: TABLE_NAME,
+            tableName: BASE_TABLE_NAME,
             primaryKey: PRIMARY_KEY,
             object: { ide_gedirp: dtoIn.ide },
             condition: `${PRIMARY_KEY} = ${dtoIn.ide}`,
