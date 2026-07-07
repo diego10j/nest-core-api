@@ -136,33 +136,6 @@ export class BotToolsService {
     return row as PrecioConfigurado;
   }
 
-  async getStockProducto(ideInarti: number, ideEmpr: number): Promise<number> {
-    const q = new SelectQuery(`
-      SELECT COALESCE(SUM(
-        CASE WHEN tipo_movinv = 'E' THEN cantidad_inkar ELSE -cantidad_inkar END
-      ), 0) AS saldo
-      FROM inv_kardex
-      WHERE ide_inarti = $1
-        AND ide_empr = $2
-        AND activo_inkar = TRUE
-    `);
-    q.addIntParam(1, ideInarti);
-    q.addIntParam(2, ideEmpr);
-    const row = await this.dataSource.createSingleQuery(q);
-    return Number(row?.saldo ?? 0);
-  }
-
-  async getProvinciaId(nombre: string): Promise<number | null> {
-    const q = new SelectQuery(`
-      SELECT ide_geprov FROM gen_provincia
-      WHERE UNACCENT(UPPER(nombre_geprov)) = UNACCENT(UPPER($1))
-      LIMIT 1
-    `);
-    q.addParam(1, nombre);
-    const row = await this.dataSource.createSingleQuery(q);
-    return row?.ide_geprov ?? null;
-  }
-
   private readonly STOP_WORDS = new Set([
     'de','la','el','los','las','un','una','para','con','del','al','lo','si',
     'por','que','en','y','o','a','su','se','es','son','hay','como','mas','pero',
@@ -217,23 +190,5 @@ export class BotToolsService {
     });
     const rows = await this.dataSource.createSelectQuery(q);
     return rows.filter((r: any) => r.score >= Math.min(2, significativas.length));
-  }
-
-  async getIdeEmprPorPhoneNumberId(phoneNumberId: string): Promise<number | null> {
-    const cacheKey = `wha_empr:${phoneNumberId}`;
-    const cached = await this.dataSource.redisClient.get(cacheKey);
-    if (cached) return parseInt(cached, 10);
-
-    const q = new SelectQuery(`
-      SELECT ide_empr FROM wha_cuenta
-      WHERE REPLACE(id_telefono_whcue, '+', '') = $1
-        AND activo_whcue = TRUE
-      LIMIT 1
-    `);
-    q.addParam(1, phoneNumberId);
-    const row = await this.dataSource.createSingleQuery(q);
-    if (!row) return null;
-    await this.dataSource.redisClient.setex(cacheKey, 3600, String(row.ide_empr));
-    return row.ide_empr as number;
   }
 }

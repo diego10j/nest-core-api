@@ -22,7 +22,7 @@ export interface ClienteSesion {
   ide_getid?: number;
   ide_vgven?: number;
   es_cliente_registrado: boolean;
-  pendiente_campo?: 'nombres' | 'correo';
+  pendiente_campo?: 'nombres';
 }
 
 export interface EnvioSesion {
@@ -30,7 +30,7 @@ export interface EnvioSesion {
   provincia?: string;
   latitud?: number;
   longitud?: number;
-  pendiente_campo?: 'confirmar_envio_guardado' | 'usar_direccion_existente' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
+  pendiente_campo?: 'confirmar_envio_guardado' | 'tipo_direccion' | 'direccion_texto' | 'esperar_ubicacion' | 'provincia';
 }
 
 export interface PendienteUso {
@@ -77,14 +77,8 @@ export interface DatosSesion {
   cliente?: ClienteSesion;
   productos: ProductoSesion[];
   opciones_producto?: OpcionProducto[];
-  producto_pendiente?: {
-    ide_inarti: number; nombre: string; siglas_unidad: string; nombre_unidad: string;
-    en_catalogo: boolean; uso_generico?: string;
-  };
   envio?: EnvioSesion;
   forma_pago?: 'cash' | 'credit';
-  proforma_ide?: number;
-  proforma_secuencial?: string;
   // ─── Captura de productos en lote ──────────────────────────────────────
   texto_acumulado?: string;
   cola_productos?: { producto: string; cantidad: number | null }[];

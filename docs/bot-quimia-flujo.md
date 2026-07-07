@@ -52,8 +52,9 @@ Cliente escribe cualquier mensaje
         │    Pide cédula/RUC → busca en gen_persona
         │    Encontrado:
         │      - Guarda: ide_geper, nombres, correo, telefono, direccion_registrada, ide_getid, ide_vgven
-        │      - → [SELECCION_PRODUCTOS] (o directo a [ESPERANDO_CANTIDAD]/[CONFIRMACION_PRODUCTOS]
-        │        si ya había un producto pendiente o productos acumulados)
+        │      - → [SELECCION_PRODUCTOS] (o directo a [CONFIRMACION_PRODUCTOS] si ya había
+        │        productos acumulados, o se procesa el producto ya mencionado antes de
+        │        identificarse vía `producto_texto_pendiente`)
         │    No encontrado → [DATOS_NUEVO_CLIENTE] (solo pide nombre)
         │
         └─ [DATOS_NUEVO_CLIENTE]
@@ -224,18 +225,16 @@ Cliente escribe cualquier mensaje
   pendiente=confirmar_envio_guardado:
     Usar mismo → toma dirección/provincia guardadas → [DATOS_PAGO]
     Cambiar    → pendiente=tipo_direccion
-  pendiente=usar_direccion_existente (flujo legacy, aún soportado):
-    SI usar → toma direccion_registrada → pendiente=provincia
-    NO usar → pendiente=tipo_direccion
   pendiente=tipo_direccion — botones: [📝 Escribir dirección] [📍 Mi ubicación]
   pendiente=direccion_texto:
-    Pide "dirección completa + punto de referencia" → pendiente=provincia
+    Pide "tu dirección o algún punto de referencia" (ya NO exige dirección exacta —
+    es solo una cotización, un asesor confirma el detalle exacto después) → pendiente=provincia
   pendiente=esperar_ubicacion:
     WhatsApp envía location (lat, lng, name, address)
     → Geocodificación inversa con Nominatim (OSM)
     → muestra dirección obtenida → guarda lat, lng, dirección → pendiente=provincia
   pendiente=provincia:
-    Pide provincia → → [DATOS_PAGO]
+    Pide provincia (matching tolerante, ver provincias-ecuador.ts) → → [DATOS_PAGO]
         │
         ▼
 [DATOS_PAGO]  — botones: [💵 Efectivo] [💳 Tarjeta de crédito]
@@ -503,9 +502,6 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
     tiene_precio?: boolean
   }]
   opciones_producto?: [...]           // candidatos durante SELECCION_MULTIPLE
-  producto_pendiente?: {              // ítem en resolución (solo ESPERANDO_CANTIDAD, flujo legacy de 1 ítem)
-    ide_inarti, nombre, siglas_unidad, nombre_unidad, en_catalogo, uso_generico?: string
-  }
   texto_acumulado?: string            // buffer de texto mientras el cliente sigue listando (antes de FIN)
   cola_productos?: [{ producto: string; cantidad: number | null }]  // ítems del lote aún sin resolver
   item_cantidad_conocida?: number | null  // cantidad ya detectada por GPT para el ítem que bloquea SELECCION_MULTIPLE
@@ -522,12 +518,10 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
     provincia?: string
     latitud?: number
     longitud?: number
-    pendiente_campo?: 'confirmar_envio_guardado' | 'usar_direccion_existente' | 'tipo_direccion' |
+    pendiente_campo?: 'confirmar_envio_guardado' | 'tipo_direccion' |
                       'direccion_texto' | 'esperar_ubicacion' | 'provincia'
   }
   forma_pago?: 'cash' | 'credit'
-  proforma_ide?: number
-  proforma_secuencial?: string
 }
 ```
 
@@ -597,6 +591,10 @@ PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fra
 - ✅ (2026-07-06) **Caso real: pregunta autocontenida ("...precio de la cera de soya de APF y BPF, gracias") se quedaba atascada sin resolverse**: `analizarLoteProductos` solo marcaba `completo:true` ante señales de cierre explícitas (FIN, "eso es todo", "ya", "listo") — un mensaje educado que termina en "gracias"/"por favor" (normal en LatAm) no las incluye, así que el bot nunca llegaba a buscar el producto ni pedir cantidad, solo acumulaba texto indefinidamente hasta expirar por inactividad. Fix: el prompt ahora también trata como `completo:true` una pregunta/pedido autocontenido y aislado, y usa `false` SOLO si el mensaje deja explícito que seguirá agregando algo más ("también quiero...", "y además..."). También se instruyó a separar variantes de un mismo producto conectadas por "y" (códigos como APF/BPF, tipo A/B) en ítems independientes, en vez de combinarlos en un solo string que no matchea el catálogo.
 - ✅ (2026-07-06) **"Anotado ✅" reemplazado por "Recibido 📝"**: el check verde daba una falsa sensación de progreso validado (sugería que el producto ya había sido encontrado/confirmado) cuando en realidad el texto solo se había acumulado en espera de que el cliente cierre la lista. El nuevo mensaje también aclara explícitamente que hace falta escribir *FIN* o tocar "Finalizar" para que el bot revise la cotización.
 - ✅ (2026-07-04, tarde) **El producto mencionado antes de identificarse ya no se pierde**: nuevo campo `DatosSesion.producto_texto_pendiente` — cuando un cliente desconocido menciona un producto (se clasifica PRODUCTO) y pasa por `PREGUNTA_ES_CLIENTE`/`IDENTIFICACION`/`DATOS_NUEVO_CLIENTE`, el texto se guarda y al terminar la identificación se procesa automáticamente con `procesarTextoProductos` en vez de pedirle que lo escriba de nuevo (cerraba la brecha documentada como "caso NO corregido" del 2026-07-02).
+- ✅ (2026-07-07) **La pregunta de "uso" ahora es SOLO para categorías genéricas** (fragancia/saborizante/colorante/aceite/esencia — `REGEX_PRODUCTO_GENERICO`): caso real de 5 químicos sin match en catálogo ("Bentonita blanca", "Bicarbonato de sodio", "Silica antiapelmazante"...) que generaron 5 preguntas de uso confusas — para esos productos el nombre ya es autodescriptivo y el uso no aporta nada. Ahora un ítem sin match NO genérico va directo al artículo 2102 con su cantidad (o a la pregunta agrupada de cantidad si no la dio); solo las categorías genéricas siguen pasando por `ESPERANDO_USO_LOTE` (ahí el uso sí determina qué producto recomendar). Aplicado en `resolverColaProductos` (rama 0-matches) y en la rama "❌ No es este" de `handleConfirmandoProductoLote` (evaluando el texto original). El mensaje agrupado de uso ya no dice "Estos productos no están en catálogo" (revelaba estado interno, sonaba negativo) sino "Para recomendarte la mejor opción, cuéntame para qué uso...".
+- ✅ (2026-07-07) **Un botón viejo tocado por error ya no se acepta como nombre/dirección**: WhatsApp no invalida botones antiguos — siguen tocables en el historial del chat indefinidamente. Caso real: el cliente tocó el botón "❌ No" (id `NO_CLIENTE`) de un paso ya superado mientras el bot esperaba su nombre completo, y el bot respondió "¡Gracias, NO_CLIENTE! 😊" (el ID del botón quedó grabado como nombre real). Fix: `IDS_BOTONES_CONOCIDOS` + `esIdBotonConocido()` (`bot.service.ts`) — si el texto libre recibido en nombre completo o en cualquiera de las 3 rutas que aceptan dirección como texto libre coincide con un ID de botón conocido, se re-pregunta en vez de aceptarlo. Identificación/provincia/cantidad ya eran seguras por otras vías (extraen dígitos/números o usan matching contra listas conocidas).
+- ✅ (2026-07-07) **Limpieza de código muerto** (~150 líneas, auditoría completa del flujo): toda la ruta "cantidad singular" (`BotState.ESPERANDO_CANTIDAD`, `DatosSesion.producto_pendiente`, `handleEsperandoCantidad`, `BotGptService.extraerCantidad`) quedó inalcanzable desde el refactor de `iniciarConContextoChat` (07-02) y se eliminó por completo; el bloque "Paso 0" de `handleDatosEnvio` (`usar_direccion_existente`/botones `USAR_DIR_SI`/`USAR_DIR_NO`) nunca era alcanzado (nada transicionaba hacia ese `pendiente_campo`) y se eliminó; campos `DatosSesion.proforma_ide`/`proforma_secuencial` sin ningún uso; 3 métodos huérfanos en `BotToolsService` (`getStockProducto`, `getProvinciaId` — superado por `matchProvinciaEcuador`, `getIdeEmprPorPhoneNumberId`); opciones muertas en los tipos `ClienteSesion.pendiente_campo` (`'correo'`) y `EnvioSesion.pendiente_campo` (`'usar_direccion_existente'`). Verificado con `grep` en todo `src/core/whatsapp/` antes y después — cero referencias colgantes.
+- ✅ (2026-07-07) **Dirección de entrega ya no exige precisión de despacho**: al ser una cotización (no un envío ya confirmado), pedir "*dirección completa* y *punto de referencia*" sonaba a una exigencia de precisión que no aplica en esta etapa. Los 3 mensajes que piden dirección ahora dicen "Cuéntame tu dirección o algún punto de referencia", aclarando que es solo para la cotización y que un asesor confirma el detalle exacto de entrega más adelante.
 
 ### Corto plazo
 - Tolerancia a errores de tipeo en la búsqueda de productos (ej. `pg_trgm`/similitud fonética) — hoy `buscarProductos` es 100% substring (`ILIKE`), así que un producto real mal escrito (ej. "percabonato" vs "PERCARBONATO DE SODIO") no matchea y termina como ítem genérico para revisión manual en vez de resolverse solo.

@@ -31,6 +31,28 @@ const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|salud
 const REGEX_PRODUCTO_GENERICO = /\b(sabor(?:es|izantes?)?|colorantes?|colores?|fragancias?|aceites?|esencias?)\b/i;
 const PRODUCTO_GENERICO_IDE_INARTI = 2102;
 
+// IDs de todos los botones interactivos usados en el flujo. WhatsApp no invalida un
+// botón viejo cuando la conversación avanza — sigue siendo tocable en el historial del
+// chat indefinidamente. Si el cliente toca uno de un paso anterior mientras el bot ya
+// está en otro estado esperando texto libre (nombre, dirección), el payload llega tal
+// cual (ej. "NO_CLIENTE") y sin este chequeo se aceptaba como si fuera la respuesta real
+// (caso real: "¡Gracias, NO_CLIENTE! 😊" — el ID del botón "❌ No" quedó guardado como
+// nombre del cliente). Se usa como red de seguridad en los campos de texto libre que no
+// tienen otra forma de validación (nombre, dirección — cantidad/provincia ya son seguros
+// por otras vías: no traen dígitos/no matchean ninguna provincia).
+const IDS_BOTONES_CONOCIDOS = new Set([
+  'SI', 'NO', 'SI_CLIENTE', 'NO_CLIENTE', 'CONF_SI', 'CONF_NO',
+  'DIR_TEXTO', 'DIR_UBICACION', 'ENV_MISMO', 'ENV_CAMBIAR',
+  'PAGO_EFECTIVO', 'PAGO_TARJETA',
+  'PROD_SI', 'PROD_NO', 'LOTE_MAS', 'LOTE_FIN',
+  'MOD_QUITAR', 'MOD_CANTIDAD', 'MOD_AGREGAR',
+  'NUEVA_COTIZACION', 'HABLAR_ASESOR',
+]);
+
+function esIdBotonConocido(texto: string): boolean {
+  return IDS_BOTONES_CONOCIDOS.has(texto.trim().toUpperCase());
+}
+
 
 // ─── Mensaje de pregunta si es cliente ───────────────────────────────────────
 const MSG_ES_CLIENTE_BODY = `Para brindarte una atención personalizada 😊\n\n¿Has realizado alguna compra con nosotros anteriormente?`;
@@ -318,7 +340,7 @@ export class BotService implements OnModuleInit {
     // Si llega un saludo en un estado distinto de INICIO → resetear sesión
     const estadosQueReinician = [
       BotState.SELECCION_PRODUCTOS, BotState.SELECCION_MULTIPLE, BotState.CONFIRMANDO_PRODUCTO_LOTE,
-      BotState.ESPERANDO_CANTIDAD, BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
+      BotState.ESPERANDO_CANTIDAD_LOTE, BotState.ESPERANDO_USO_LOTE,
       BotState.CONFIRMACION_PRODUCTOS, BotState.MODIFICANDO_LISTA, BotState.DATOS_ENVIO, BotState.DATOS_PAGO,
       BotState.PREGUNTA_ES_CLIENTE, BotState.IDENTIFICACION, BotState.DATOS_NUEVO_CLIENTE,
       BotState.ATENCION_LIBRE,
@@ -376,9 +398,6 @@ export class BotService implements OnModuleInit {
           break;
         case BotState.CONFIRMANDO_PRODUCTO_LOTE:
           await this.handleConfirmandoProductoLote(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
-          break;
-        case BotState.ESPERANDO_CANTIDAD:
-          await this.handleEsperandoCantidad(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
           break;
         case BotState.ESPERANDO_CANTIDAD_LOTE:
           await this.handleEsperandoCantidadLote(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreEmpresa, config);
@@ -657,15 +676,7 @@ export class BotService implements OnModuleInit {
           es_cliente_registrado: true,
         },
       };
-      if (nuevosDatos.producto_pendiente) {
-        const prod = nuevosDatos.producto_pendiente;
-        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
-        await this.sendText(ideEmpr, waId,
-          `¡Qué gusto verte de nuevo, *${cliente.nombres}*! 😊\n\n` +
-          `Encontré: *${prod.nombre}* ✅\n\n` +
-          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
-        );
-      } else if (nuevosDatos.productos?.length > 0) {
+      if (nuevosDatos.productos?.length > 0) {
         // Tenía productos acumulados antes de identificarse → ir directo a confirmación
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
@@ -710,7 +721,7 @@ export class BotService implements OnModuleInit {
 
     if (cliente.pendiente_campo === 'nombres') {
       const nombres = texto.trim();
-      if (nombres.length < 3) {
+      if (nombres.length < 3 || esIdBotonConocido(nombres)) {
         await this.sendText(ideEmpr, waId, `Por favor ingresa tu nombre completo 😊`);
         return;
       }
@@ -721,15 +732,7 @@ export class BotService implements OnModuleInit {
         productos: datos.productos ?? [],
         cliente: { ...cliente, nombres, correo: 'info@diquimec.com.ec', pendiente_campo: undefined },
       };
-      if (nuevosDatos.producto_pendiente) {
-        const prod = nuevosDatos.producto_pendiente;
-        await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CANTIDAD, nuevosDatos);
-        await this.sendText(ideEmpr, waId,
-          `¡Gracias, *${nombres}*! 😊\n\n` +
-          `Encontré: *${prod.nombre}* ✅\n\n` +
-          `¿Qué cantidad necesitas? _(Ejemplo: 5 ${prod.nombre_unidad} / 2.5 ${prod.siglas_unidad})_`,
-        );
-      } else if (nuevosDatos.productos?.length > 0) {
+      if (nuevosDatos.productos?.length > 0) {
         // Tenía productos acumulados antes de registrarse → ir directo a confirmación
         await this.botSession.update(sesion.ide_whbse, BotState.CONFIRMACION_PRODUCTOS, nuevosDatos);
         await this.sendButtons(ideEmpr, waId,
@@ -901,20 +904,39 @@ export class BotService implements OnModuleInit {
       }
 
       if (!resultados.length) {
-        // Nada matcheó (ni exacto ni fallbacks difusos) — ya sea porque es una
-        // categoría genérica sin match, o un producto real mal escrito/inexistente en
-        // catálogo. En ambos casos se asocia al ítem genérico y se pregunta "uso" para
-        // que termine en la proforma con el texto literal del cliente — así el asesor
-        // puede resolverlo manualmente en vez de que el pedido se pierda.
+        // Nada matcheó (ni exacto ni fallbacks difusos). En ambos casos el ítem se
+        // asocia al artículo genérico (ide_inarti=2102) con el texto literal del
+        // cliente, para que termine en la proforma y el asesor lo resuelva — nada se
+        // pierde. La diferencia está en si se pregunta el "uso":
+        // - Categoría genérica (fragancia/sabor/color/aceite/esencia): SÍ — el uso
+        //   determina qué producto recomendar ("fragancia de vainilla ¿para velas o
+        //   repostería?").
+        // - Cualquier otro producto ("Bentonita blanca", "Bicarbonato de sodio"...):
+        //   NO — el nombre ya es autodescriptivo y la pregunta era fricción pura
+        //   (caso real: 5 químicos sin match generaron 5 preguntas de uso confusas).
+        //   Va directo con su cantidad, o a la pregunta agrupada de cantidad.
         const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
-        pendientesUso.push({
+        const baseGenerico = {
           ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
           nombre: nombreItem,
           siglas_unidad: generico?.siglas_unidad ?? 'UND',
           nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
           en_catalogo: generico?.en_catalogo ?? false,
-          cantidad_conocida: item.cantidad,
-        });
+        };
+        if (esGenerico) {
+          pendientesUso.push({ ...baseGenerico, cantidad_conocida: item.cantidad });
+        } else if (item.cantidad !== null && item.cantidad !== undefined) {
+          productosNuevos.push({
+            ide_inarti: baseGenerico.ide_inarti,
+            nombre: baseGenerico.nombre,
+            cantidad: item.cantidad,
+            unidad: baseGenerico.nombre_unidad,
+            siglas_unidad: baseGenerico.siglas_unidad,
+            en_catalogo: baseGenerico.en_catalogo,
+          });
+        } else {
+          pendientesCantidad.push(baseGenerico);
+        }
         continue;
       }
 
@@ -1018,7 +1040,7 @@ export class BotService implements OnModuleInit {
       } else {
         const lista = pendientesUso.map((p, i) => `${i + 1}. ${p.nombre}`).join('\n');
         await this.sendText(ideEmpr, waId,
-          `Estos productos no están en catálogo — para cotizarlos cuéntame brevemente para qué uso necesitas cada uno 😊\n\n${lista}\n\n` +
+          `Para recomendarte la mejor opción, cuéntame brevemente para qué uso necesitas cada uno 😊\n\n${lista}\n\n` +
           `_Ejemplo: "1. repostería, 2. ambiental"_`,
         );
       }
@@ -1121,20 +1143,35 @@ export class BotService implements OnModuleInit {
     }
 
     // No es el producto → se asocia al ítem genérico con el texto literal del cliente,
-    // para no perder el pedido; se pregunta el uso igual que cualquier otro genérico.
+    // para no perder el pedido. El "uso" solo se pregunta si es una categoría genérica
+    // (fragancia/sabor/color/aceite/esencia) — mismo criterio que resolverColaProductos;
+    // para cualquier otro producto el nombre ya es autodescriptivo y va directo con su
+    // cantidad (o a la pregunta agrupada de cantidad).
     const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
-    const nuevosDatos: DatosSesion = {
-      ...datos,
-      pendiente_confirmacion: undefined,
-      pendientes_uso: [...(datos.pendientes_uso ?? []), {
-        ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
-        nombre: pendiente.texto_original,
-        siglas_unidad: generico?.siglas_unidad ?? 'UND',
-        nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
-        en_catalogo: generico?.en_catalogo ?? false,
-        cantidad_conocida: pendiente.cantidad_conocida,
-      }],
+    const baseGenerico = {
+      ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+      nombre: pendiente.texto_original,
+      siglas_unidad: generico?.siglas_unidad ?? 'UND',
+      nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+      en_catalogo: generico?.en_catalogo ?? false,
     };
+    const nuevosDatos: DatosSesion = { ...datos, pendiente_confirmacion: undefined };
+    if (REGEX_PRODUCTO_GENERICO.test(pendiente.texto_original)) {
+      nuevosDatos.pendientes_uso = [...(datos.pendientes_uso ?? []), {
+        ...baseGenerico, cantidad_conocida: pendiente.cantidad_conocida,
+      }];
+    } else if (pendiente.cantidad_conocida !== null && pendiente.cantidad_conocida !== undefined) {
+      nuevosDatos.productos = [...(datos.productos ?? []), {
+        ide_inarti: baseGenerico.ide_inarti,
+        nombre: baseGenerico.nombre,
+        cantidad: pendiente.cantidad_conocida,
+        unidad: baseGenerico.nombre_unidad,
+        siglas_unidad: baseGenerico.siglas_unidad,
+        en_catalogo: baseGenerico.en_catalogo,
+      }];
+    } else {
+      nuevosDatos.pendientes_cantidad = [...(datos.pendientes_cantidad ?? []), baseGenerico];
+    }
     await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
@@ -1223,61 +1260,6 @@ export class BotService implements OnModuleInit {
         en_catalogo: opcion.en_catalogo,
       }],
     };
-    await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
-  }
-
-  private async handleEsperandoCantidad(
-    waId: string, phoneNumberId: string, ideWhcha: number,
-    ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreEmpresa: string, config: any,
-  ): Promise<void> {
-    const datos = sesion.datos_sesion as DatosSesion;
-    const prod = datos.producto_pendiente;
-
-    // Consulta informativa mid-cotización
-    const tipoInfo = await this.botGpt.clasificarConsulta(texto);
-    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
-      await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
-      await this.sendText(ideEmpr, waId,
-        `¿Continuamos? Indica la cantidad de *${prod?.nombre}* que necesitas.`,
-      );
-      return;
-    }
-
-    // Intenta extraer número con regex; si falla, GPT intenta interpretar lenguaje natural
-    const cantidadMatch = texto.trim().match(/(\d+(?:[.,]\d+)?)/);
-    let cantidad: number | null = cantidadMatch ? parseFloat(cantidadMatch[1].replace(',', '.')) : null;
-
-    if (!cantidad || cantidad <= 0) {
-      cantidad = await this.botGpt.extraerCantidad(texto);
-    }
-
-    if (!cantidad || cantidad <= 0) {
-      await this.responderFallback(
-        ideEmpr, waId, texto,
-        `El cliente está cotizando *${prod?.nombre}*. Debe indicar la cantidad que necesita (número). ` +
-        `Pídele amablemente la cantidad con un ejemplo concreto según la unidad: ${prod?.nombre_unidad}.`,
-        config, config?.nombre_bot || 'Asistente', nombreEmpresa,
-      );
-      return;
-    }
-
-    const nuevoProducto: ProductoSesion = {
-      ide_inarti: prod.ide_inarti,
-      nombre: prod.nombre,
-      cantidad,
-      unidad: prod.nombre_unidad,
-      siglas_unidad: prod.siglas_unidad,
-      en_catalogo: prod.en_catalogo,
-      uso_generico: prod.uso_generico,
-    };
-
-    const nuevosDatos: DatosSesion = {
-      ...datos,
-      productos: [...(datos.productos ?? []), nuevoProducto],
-      producto_pendiente: undefined,
-      item_cantidad_conocida: undefined,
-    };
-
     await this.resolverColaProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, nombreEmpresa, config);
   }
 
@@ -1661,39 +1643,6 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // Paso 0 — cliente con dirección registrada: ¿usarla o no?
-    if (envio.pendiente_campo === 'usar_direccion_existente') {
-      const t = texto.trim().toUpperCase();
-      if (t === 'USAR_DIR_SI') {
-        const dir = datos.cliente?.direccion_registrada || '';
-        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
-          { ...datos, envio: { ...envio, direccion: dir, pendiente_campo: 'provincia' } });
-        await this.sendText(ideEmpr, waId, `Perfecto, usaremos esa dirección 📍\n\n¿En qué *provincia* te encuentras? 🗺️`);
-        return;
-      }
-      if (t === 'USAR_DIR_NO') {
-        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
-          { ...datos, envio: { ...envio, pendiente_campo: 'tipo_direccion' } });
-        await this.sendButtons(ideEmpr, waId,
-          `¿Cómo prefieres indicar la nueva dirección de entrega?`,
-          [
-            { id: 'DIR_TEXTO', title: '📝 Escribir dirección' },
-            { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
-          ],
-        );
-        return;
-      }
-      // Respuesta no reconocida → repetir
-      await this.sendButtons(ideEmpr, waId,
-        `Por favor selecciona una opción 😊`,
-        [
-          { id: 'USAR_DIR_SI', title: '✅ Sí, usar esta' },
-          { id: 'USAR_DIR_NO', title: '📝 Ingresar otra' },
-        ],
-      );
-      return;
-    }
-
     // Paso 1 — elegir cómo indicar la dirección
     if (envio.pendiente_campo === 'tipo_direccion') {
       const t = texto.trim().toUpperCase();
@@ -1701,7 +1650,7 @@ export class BotService implements OnModuleInit {
         await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
           { ...datos, envio: { ...envio, pendiente_campo: 'direccion_texto' } });
         await this.sendText(ideEmpr, waId,
-          `Por favor escribe tu *dirección completa* y un *punto de referencia* 📝\n\n_Ejemplo: Av. Los Shyris N35-150 y Suecia, Quito. Referencia: frente al Parque del Arbolito_`,
+          `Cuéntame tu dirección o algún punto de referencia donde podamos ubicarte 📝\n\n_Ejemplo: Av. Los Shyris y Suecia, Quito — cerca del Parque del Arbolito_\n\nEs solo para tu cotización, un asesor confirmará el detalle exacto de entrega más adelante 😊`,
         );
         return;
       }
@@ -1713,7 +1662,18 @@ export class BotService implements OnModuleInit {
         );
         return;
       }
-      // Si escribió algo libre, tomarlo como dirección directamente
+      // Si escribió algo libre, tomarlo como dirección directamente — salvo que sea el
+      // ID de un botón viejo tocado por error (ver IDS_BOTONES_CONOCIDOS).
+      if (esIdBotonConocido(texto)) {
+        await this.sendButtons(ideEmpr, waId,
+          `¿Cómo prefieres indicar tu dirección de entrega?`,
+          [
+            { id: 'DIR_TEXTO',     title: '📝 Escribir dirección' },
+            { id: 'DIR_UBICACION', title: '📍 Mi ubicación' },
+          ],
+        );
+        return;
+      }
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
         { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
       await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
@@ -1722,6 +1682,12 @@ export class BotService implements OnModuleInit {
 
     // Paso 2a — dirección escrita
     if (envio.pendiente_campo === 'direccion_texto') {
+      if (esIdBotonConocido(texto)) {
+        await this.sendText(ideEmpr, waId,
+          `Cuéntame tu dirección o algún punto de referencia 📝`,
+        );
+        return;
+      }
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
         { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
       await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
@@ -1758,7 +1724,14 @@ export class BotService implements OnModuleInit {
         );
         return;
       }
-      // Si escribió texto en lugar de compartir ubicación, tomarlo como dirección
+      // Si escribió texto en lugar de compartir ubicación, tomarlo como dirección —
+      // salvo que sea el ID de un botón viejo tocado por error.
+      if (esIdBotonConocido(texto)) {
+        await this.sendText(ideEmpr, waId,
+          `📍 Comparte tu ubicación desde WhatsApp:\n_Adjuntar → Ubicación → Enviar ubicación actual_\n\n_O escribe tu dirección directamente_`,
+        );
+        return;
+      }
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_ENVIO,
         { ...datos, envio: { ...envio, direccion: texto.trim(), pendiente_campo: 'provincia' } });
       await this.sendText(ideEmpr, waId, `¿En qué *provincia* te encuentras? 🗺️`);
@@ -2194,7 +2167,7 @@ export class BotService implements OnModuleInit {
         if (campo === 'provincia') {
           await this.sendText(ideEmpr, waId, `${saludo}\n\n¿En qué *provincia* te encuentras? 🗺️`);
         } else if (campo === 'direccion_texto') {
-          await this.sendText(ideEmpr, waId, `${saludo}\n\nPor favor escribe tu *dirección completa* y un punto de referencia 📝`);
+          await this.sendText(ideEmpr, waId, `${saludo}\n\nCuéntame tu dirección o algún punto de referencia 📝`);
         } else if (campo === 'esperar_ubicacion') {
           await this.sendText(ideEmpr, waId, `${saludo}\n\n📍 Comparte tu ubicación desde WhatsApp:\n_Adjuntar → Ubicación → Enviar ubicación actual_`);
         } else {

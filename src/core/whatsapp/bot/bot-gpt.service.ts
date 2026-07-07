@@ -150,38 +150,6 @@ export class BotGptService {
   }
 
   /**
-   * Extrae la cantidad numérica de un texto libre.
-   * Entiende expresiones como "dos kilos", "media docena", "un par", "5".
-   * Devuelve null si no hay una cantidad reconocible.
-   */
-  async extraerCantidad(texto: string): Promise<number | null> {
-    try {
-      const resp = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Extrae la cantidad numérica del texto. Responde SOLO con el número (entero o decimal con punto). '
-              + 'Ejemplos: "quiero 5 kilos"→5, "dos litros"→2, "media docena"→6, "un par"→2, "necesito uno"→1. '
-              + 'Si no hay cantidad clara responde null.',
-          },
-          { role: 'user', content: texto },
-        ],
-        temperature: 0,
-        max_tokens: 10,
-      });
-      const raw = resp.choices[0]?.message?.content?.trim() ?? '';
-      if (!raw || raw.toLowerCase() === 'null') return null;
-      const num = parseFloat(raw.replace(',', '.'));
-      return isNaN(num) || num <= 0 ? null : num;
-    } catch (err) {
-      this.logger.error(`extraerCantidad error: ${err.message}`);
-      return null;
-    }
-  }
-
-  /**
    * Analiza el texto acumulado durante la captura de productos en lote.
    * Detecta si el cliente ya terminó de listar (FIN literal o cierre semántico)
    * y extrae todos los pares producto/cantidad mencionados hasta el momento.

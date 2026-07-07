@@ -69,7 +69,7 @@ export class BotScheduleService {
           AND s.estado = ANY('{ATENCION_LIBRE,PREGUNTA_ES_CLIENTE,IDENTIFICACION,
                                DATOS_NUEVO_CLIENTE,SELECCION_PRODUCTOS,SELECCION_MULTIPLE,
                                CONFIRMANDO_PRODUCTO_LOTE,
-                               ESPERANDO_CANTIDAD,ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,
+                               ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,
                                CONFIRMACION_PRODUCTOS,MODIFICANDO_LISTA,DATOS_ENVIO,DATOS_PAGO}'::text[])
           AND (NOW() - s.hora_actua) > make_interval(mins => $1)
           AND c.bot_activo_whcha = TRUE
