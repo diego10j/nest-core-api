@@ -12,6 +12,7 @@ import { ClientesSaveService } from './clientes-save.service';
 import { ClientesService } from './clientes.service';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetExisteClienteDto } from './dto/get-existe-cliente.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
@@ -141,6 +142,13 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'Resultado de verificación' })
   existCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ExistClienteDto) {
     return this.service.existCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getExisteCliente')
+  @ApiOperation({ summary: 'Verificar si existe un cliente por identificación e ID' })
+  @ApiResponse({ status: 200, description: 'Resultado de verificación' })
+  getExisteCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetExisteClienteDto) {
+    return this.service.getExisteCliente(dtoIn.identificac_geper, headersParams.ideEmpr, dtoIn.ide_geper);
   }
 
   @Get('validarWhatsAppCliente')
