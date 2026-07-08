@@ -605,7 +605,13 @@ export class YcloudService {
         action: {
           buttons: buttons.map((b) => ({
             type: 'reply',
-            reply: { id: b.id, title: b.title },
+            // Meta admite MÁXIMO 20 caracteres en el título — si se excede, rechaza el
+            // mensaje COMPLETO en silencio (YCloud acepta el envío y el fallo llega
+            // después como status asíncrono, así que ni siquiera se dispara el fallback
+            // a texto plano). Se trunca por codepoints para no partir un emoji.
+            // Caso real: "✅ Confirmar cotización" (22 chars) dejó a los clientes
+            // esperando en el resumen sin recibir nunca los botones de confirmación.
+            reply: { id: b.id, title: [...b.title].slice(0, 20).join('') },
           })),
         },
       },
@@ -1075,6 +1081,16 @@ export class YcloudService {
           updateQuery.values.set('leido_whmem', true);
           this.whatsappGateway.sendReadMessageToClients(wamid);
         } else if (data.status === 'failed') {
+          // Log ERROR bien visible: un mensaje que YCloud aceptó pero Meta rechazó
+          // NUNCA llegó al cliente, aunque el dashboard lo muestre como enviado (se
+          // guarda en BD local al enviarlo). Caso real: botón con título >20 chars →
+          // Meta rechazaba el mensaje del resumen de cotización en silencio y los
+          // clientes quedaban esperando sin poder confirmar.
+          const err0 = data.errors?.[0];
+          this.logger.error(
+            `[Delivery] Mensaje ${wamid} a ${data.to} FALLÓ en Meta: ` +
+            `${err0 ? `${err0.code} ${err0.title} — ${err0.error_data?.details || err0.message || ''}` : 'sin detalle de error'}`,
+          );
           if (data.errors && data.errors.length > 0) {
             const errorDetail = (data.errors[0].error_data?.details || data.errors[0].message || '');
             updateQuery.values.set('error_whmem', errorDetail.substring(0, 500));

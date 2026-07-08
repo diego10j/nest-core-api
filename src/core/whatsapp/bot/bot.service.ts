@@ -87,8 +87,14 @@ const BTN_MODIFICAR_LISTA = [
 
 // ─── Confirmación de cotización (antes decía "pedido" — confundía al cliente,
 // sonaba a compra ya realizada en vez de una cotización por confirmar) ────────
+// ⚠️ LÍMITE DE META: el título de un botón interactivo admite MÁXIMO 20 caracteres.
+// "✅ Confirmar cotización" (22) hacía que Meta rechazara el mensaje COMPLETO en
+// silencio — YCloud aceptaba el envío, el dashboard lo mostraba (se guarda en BD
+// local), pero al teléfono nunca llegaba: los clientes quedaban esperando en el
+// resumen sin saber que faltaba confirmar (regresión del 2026-07-06, detectada por
+// simulación del usuario el 07-07). El body del mensaje ya dice "cotización".
 const BTN_CONFIRMACION_COTIZACION = [
-  { id: 'CONF_SI', title: '✅ Confirmar cotización' },
+  { id: 'CONF_SI', title: '✅ Confirmar' },
   { id: 'CONF_NO', title: '✏️ Modificar lista' },
 ];
 
