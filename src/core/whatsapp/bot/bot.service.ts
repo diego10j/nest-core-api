@@ -239,21 +239,18 @@ export class BotService implements OnModuleInit {
       this.logger.log(`[Bot] Chat nuevo ${ideWhcha} → forzado a modo BOT`);
     }
 
-    if (!esChatNuevo) {
-      if (!botActivoWhcha) { this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`); return; }
-
-      const tieneAgenteHumano = await this.dataSource.pool.query(
-        `SELECT 1 FROM wha_mensaje
-         WHERE ide_whcha = $1
-           AND direction_whmem = '1'
-           AND (es_bot_whmem IS NULL OR es_bot_whmem = FALSE)
-         LIMIT 1`,
-        [ideWhcha],
-      );
-      if (tieneAgenteHumano.rowCount > 0) {
-        this.logger.warn(`[Bot] Chat ${ideWhcha} tiene historial con agente humano — bot no responde`);
-        return;
-      }
+    // NOTA: acá existía un "opt-out permanente" (si ALGUNA VEZ hubo un mensaje de
+    // agente humano en el chat, el bot no respondía nunca más). Quedó obsoleto y
+    // dañino desde el hand-off automático (derivarPorAgenteHumano): hoy, cuando un
+    // humano escribe (WhatsApp Web/teléfono o API), el chat pasa a ASESOR al instante
+    // — así que bot_activo_whcha=TRUE ya garantiza que ningún humano intervino desde
+    // la última activación. El chequeo viejo, en cambio, anulaba la activación MANUAL:
+    // un agente devolvía el chat al bot y el bot igual se negaba a responder por un
+    // mensaje humano de semanas atrás (caso real: el propio dueño activó su chat de
+    // pruebas en PROD y el bot no respondió).
+    if (!esChatNuevo && !botActivoWhcha) {
+      this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`);
+      return;
     }
 
     const botActivo = await this.botConfig.isBotActive(ideWhcue);
