@@ -15,7 +15,8 @@
       "Bash(git -C /mnt/d/DIEGO2022/Varios/git/nest-core-api diff HEAD -- src/core/whatsapp/bot/bot.service.ts)",
       "Bash(git *)",
       "Bash(grep -vE \"^[+-]\\\\s*\\(//|$|\\\\*\\)\")",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(node_modules/.bin/tsc --noEmit -p tsconfig.json)"
     ]
   }
 }

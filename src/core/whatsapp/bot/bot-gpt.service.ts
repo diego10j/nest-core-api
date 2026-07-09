@@ -348,6 +348,10 @@ export class BotGptService {
           return `${i + 1}. ${p.nombre} — ${cant}${unidad}`;
         })
         .join('\n');
+      const reglaUnico = productos.length === 1
+        ? 'Como la lista tiene un único producto, si el cliente menciona SOLO una cantidad (sin número ni ' +
+          'nombre de producto), asume que se refiere a ese producto (índice 1).\n'
+        : '';
       const resp = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
@@ -358,7 +362,8 @@ export class BotGptService {
               'cantidad actual y la unidad de venta real de cada producto):\n' +
               lista + '\n\n' +
               'Analiza el mensaje del cliente y extrae las operaciones que pide. Puede referirse a los productos ' +
-              'por número o por nombre (aproximado, con errores de tipeo). Operaciones posibles:\n' +
+              'por número o por nombre (aproximado, con errores de tipeo). ' + reglaUnico +
+              'Operaciones posibles:\n' +
               '- QUITAR productos de la lista.\n' +
               '- CAMBIAR la cantidad de productos que YA están en la lista. Si el cliente usa una unidad distinta ' +
               'a la unidad de venta, CONVIERTE el valor: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, ' +

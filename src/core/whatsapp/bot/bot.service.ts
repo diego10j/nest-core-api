@@ -793,6 +793,12 @@ export class BotService implements OnModuleInit {
     if (idBoton === 'LOTE_FIN') {
       texto = 'FIN';
     }
+    // ID de un botón viejo tocado por error (de un mensaje anterior, ver
+    // IDS_BOTONES_CONOCIDOS) — no es texto de producto, no se llama a GPT.
+    if (idBoton !== 'LOTE_FIN' && esIdBotonConocido(idBoton)) {
+      await this.sendText(ideEmpr, waId, `Dime el producto que quieras agregar 😊`);
+      return;
+    }
 
     // Extrae primero el/los producto(s) del mensaje — se prioriza sobre la detección de
     // consulta informativa para que líneas como "cera de coco 10kg, cera en gel 20kg" no
