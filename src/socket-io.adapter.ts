@@ -15,10 +15,16 @@ export class SocketIoAdapter extends IoAdapter {
           'http://devproerpec.site',
           'https://devproerpec.site',
           'https://proerp.sigafi.com',
-          'https://diquimec.com.ec',
+          'https://devapi.proialab.com',
+        ];
+        // Dominios permitidos por patrón (cualquier subdominio o raíz)
+        const allowedDomains = [
+          /^https?:\/\/([\w-]+\.)?diquimec\.com\.ec$/,
         ];
         if (!origin) return callback(null, true);
         if (whitelist.includes(origin)) return callback(null, true);
+        // www.diquimec.com.ec, diquimec.com.ec, sub.diquimec.com.ec…
+        if (allowedDomains.some((regex) => regex.test(origin))) return callback(null, true);
         if (
           origin.startsWith('http://localhost:') ||
           origin.startsWith('http://127.0.0.1:') ||

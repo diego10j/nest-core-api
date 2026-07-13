@@ -30,12 +30,17 @@ async function bootstrap() {
         'https://devproerpec.site',
         'https://proerp.sigafi.com',
         'https://devapi.proialab.com',
-        'https://diquimec.com.ec',
+      ];
+      // Dominios permitidos por patrón (cualquier subdominio o raíz)
+      const allowedDomains = [
+        /^https?:\/\/([\w-]+\.)?diquimec\.com\.ec$/,
       ];
       // Sin origin (server-to-server, Postman, curl) → permitir
       if (!origin) return callback(null, true);
       // Whitelist explícito
       if (whitelist.includes(origin)) return callback(null, true);
+      // Dominios por patrón (www.diquimec.com.ec, diquimec.com.ec, sub.diquimec.com.ec…)
+      if (allowedDomains.some((regex) => regex.test(origin))) return callback(null, true);
       // IPs privadas / localhost en cualquier puerto (desarrollo)
       if (
         origin.startsWith('http://localhost:') ||
