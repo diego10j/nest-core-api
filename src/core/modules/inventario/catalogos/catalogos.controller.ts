@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
     Body, Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Query, Res, UploadedFile, UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
@@ -14,6 +15,7 @@ import { envs } from 'src/config/envs';
 import { Public } from 'src/core/auth/decorators/public.decorator';
 import { v4 as uuid } from 'uuid';
 
+import { FilesService } from '../../sistema/files/files.service';
 import { CatalogosSaveService } from './catalogos-save.service';
 import { CatalogosService } from './catalogos.service';
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';
@@ -33,6 +35,7 @@ export class CatalogosController {
     constructor(
         private readonly service: CatalogosService,
         private readonly saveService: CatalogosSaveService,
+        private readonly filesService: FilesService,
     ) { }
 
     // ─── CONSULTAS ────────────────────────────────────────────────────────────
@@ -229,16 +232,27 @@ export class CatalogosController {
 
     @Public()
     @Get('downloadImagenCatalogo/:fileName')
-    @ApiOperation({ summary: 'Descargar imagen de catálogo (público)' })
-    downloadImagenCatalogo(
+    @ApiOperation({ summary: 'Descargar imagen de catálogo (público). Soporta ?w=N y ?webp=1' })
+    async downloadImagenCatalogo(
         @Param('fileName') fileName: string,
-        @Res() res: any,
+        @Res() res: Response,
+        @Query('w') width?: string,
+        @Query('webp') toWebp?: string,
     ) {
         const filePath = path.join(CATALOGOS_DIR, fileName);
         if (!fs.existsSync(filePath)) {
             throw new NotFoundException('Imagen no encontrada');
         }
-        res.sendFile(filePath);
+        // Caché agresiva: el nombre de archivo incluye UUID → contenido inmutable
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+        const w = width ? parseInt(width, 10) : undefined;
+        const convertWebp = toWebp === '1';
+
+        if (!w && !convertWebp) {
+            return res.sendFile(filePath);
+        }
+        return this.filesService.serveOptimizedImage(filePath, res, { width: w, toWebp: convertWebp });
     }
 
     @Post('removeImagenCatalogo/:ideInccat')

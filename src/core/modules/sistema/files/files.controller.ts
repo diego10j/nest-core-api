@@ -19,7 +19,7 @@ import { diskStorage, memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
+import { ALLOWED_IMAGE_MIMES, FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
@@ -48,11 +48,27 @@ export class FilesController {
   }
 
   @Get('image/:imageName')
-  @ApiOperation({ summary: 'Servir imagen estática por nombre de archivo' })
-  getStaticImage(@Res() res: Response, @Param('imageName') imageName: string) {
-    const path = this.filesService.getStaticImage(imageName);
+  @ApiOperation({ summary: 'Servir imagen estática. Soporta ?w=N (resize) y ?webp=1 (conversión)' })
+  async getStaticImage(
+    @Res() res: Response,
+    @Param('imageName') imageName: string,
+    @Query('w') width?: string,
+    @Query('webp') toWebp?: string,
+  ) {
+    const imagePath = this.filesService.getStaticImage(imageName);
+    // UUID en el nombre → contenido inmutable → cachear 1 año en browser y CDN
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
-    res.sendFile(path);
+    const w = width ? parseInt(width, 10) : undefined;
+    const convertWebp = toWebp === '1';
+
+    // Sin transformación → sendFile directo (nginx lo interceptará antes)
+    if (!w && !convertWebp) {
+      return res.sendFile(imagePath);
+    }
+
+    // Con transformación → Sharp procesa y responde en memoria
+    return this.filesService.serveOptimizedImage(imagePath, res, { width: w, toWebp: convertWebp });
   }
 
   @Post('deleteFile/:fileName')
@@ -62,27 +78,34 @@ export class FilesController {
   }
 
   @Post('uploadStaticImage')
-  @ApiOperation({ summary: 'Subir imagen estática al servidor' })
+  @ApiOperation({ summary: 'Subir imagen estática (máx 15 MB). Sharp la optimiza automáticamente al subir.' })
   @UseInterceptors(
     FileInterceptor('file', {
-      // limits: { fileSize: 1000 }
+      limits: {
+        fileSize: FILE_STORAGE_CONSTANTS.IMAGE_MAX_SIZE, // 15 MB
+      },
+      fileFilter: (_req, file, cb) => {
+        if (!ALLOWED_IMAGE_MIMES.includes(file.mimetype as any)) {
+          return cb(new BadRequestException(
+            `Tipo de archivo no permitido: ${file.mimetype}. Use: ${ALLOWED_IMAGE_MIMES.join(', ')}`
+          ), false);
+        }
+        cb(null, true);
+      },
       storage: diskStorage({
-        destination: (req, file, cb) => {
-          const folderPath = FILE_STORAGE_CONSTANTS.BASE_PATH
-          cb(null, folderPath);
-        },
+        destination: (_req, _file, cb) => cb(null, FILE_STORAGE_CONSTANTS.BASE_PATH),
         filename: fileNamer,
       }),
     }),
   )
-  uploadStaticImage(@UploadedFile() file: Express.Multer.File) {
+  async uploadStaticImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      throw new BadRequestException('Make sure that the file is an image');
+      throw new BadRequestException('No se recibió ningún archivo de imagen');
     }
+    // Sharp: optimiza la imagen recién subida (escala si es muy grande, sin reemplazar el original)
+    await this.filesService.optimizeUploadedImage(file.path);
 
-    // const secureUrl = `${ file.filename }`;
-    const secureUrl = `${this.configService.get('HOST_API')}/api/files/image/${file.filename}`;
-
+    const secureUrl = `${this.configService.get('HOST_API')}/api/sistema/files/image/${file.filename}`;
     return {
       filename: file.filename,
       url: secureUrl,

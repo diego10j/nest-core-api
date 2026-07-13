@@ -1,4 +1,5 @@
-import { createReadStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs';
+import { createReadStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { join } from 'path';
 
 import { Injectable, BadRequestException } from '@nestjs/common';
@@ -13,6 +14,9 @@ import { toDate, FORMAT_DATETIME_DB, getCurrentDateTime } from 'src/util/helpers
 import { detectMimeType, getStaticImage } from 'src/util/helpers/file-utils';
 
 import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
+
+// Tamaños predefinidos de thumbnail (añadir más según necesidad)
+const THUMB_SIZES = [200, 400, 800] as const;
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
@@ -33,8 +37,9 @@ export class FilesService {
     private readonly dataSource: DataSourceService,
     private readonly tempFilesService: FileTempService,
   ) {
-    if (!existsSync(FILE_STORAGE_CONSTANTS.BASE_PATH)) {
-      mkdirSync(FILE_STORAGE_CONSTANTS.BASE_PATH, { recursive: true });
+    // Crear directorios necesarios al arrancar
+    for (const dir of [FILE_STORAGE_CONSTANTS.BASE_PATH, FILE_STORAGE_CONSTANTS.CACHE_DIR]) {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     }
   }
 
@@ -439,6 +444,103 @@ export class FilesService {
 
   getStaticImage(imageName: string) {
     return getStaticImage(imageName);
+  }
+
+  /**
+   * Optimiza la imagen recién subida con Sharp:
+   * - Si supera IMAGE_MAX_DIMENSION px la escala manteniendo aspect ratio
+   * - Reescribe el archivo original en su lugar
+   */
+  async optimizeUploadedImage(filePath: string): Promise<void> {
+    try {
+      const sharp = (await import('sharp')).default;
+      const meta = await sharp(filePath).metadata();
+      const maxDim = FILE_STORAGE_CONSTANTS.IMAGE_MAX_DIMENSION;
+
+      const needsResize = (meta.width ?? 0) > maxDim || (meta.height ?? 0) > maxDim;
+
+      let pipeline = sharp(filePath);
+      if (needsResize) {
+        pipeline = pipeline.resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true });
+      }
+
+      // Optimización según formato original
+      if (meta.format === 'jpeg' || meta.format === 'jpg') {
+        pipeline = pipeline.jpeg({ quality: 88, progressive: true });
+      } else if (meta.format === 'png') {
+        pipeline = pipeline.png({ compressionLevel: 8 });
+      } else if (meta.format === 'webp') {
+        pipeline = pipeline.webp({ quality: 85 });
+      }
+
+      const optimizedBuffer = await pipeline.toBuffer();
+      writeFileSync(filePath, optimizedBuffer); // sobreescribe el archivo original
+    } catch (err) {
+      // Si Sharp falla (SVG, formato raro) se guarda el original sin procesar
+      this.errorLog.createErrorLog(`optimizeUploadedImage: ${err}`);
+    }
+  }
+
+  /**
+   * Sirve una imagen redimensionada y/o convertida a WebP usando Sharp.
+   * Cachea el resultado en disco: la primera vez procesa, las siguientes lee del caché.
+   *
+   * Parámetros:
+   *   width   — ancho destino en px (respeta aspect ratio, no agranda)
+   *   toWebp  — convierte a WebP (quality 82)
+   */
+  async serveOptimizedImage(
+    originalPath: string,
+    res: Response,
+    options: { width?: number; toWebp?: boolean },
+  ): Promise<void> {
+    try {
+      const sharp = (await import('sharp')).default;
+
+      // ── Construir clave de caché ──────────────────────────────────────
+      const baseName = originalPath.split('/').pop() ?? 'image';
+      const nameNoExt = baseName.replace(/\.[^.]+$/, '');
+      const suffix = [
+        options.width   ? `w${options.width}` : '',
+        options.toWebp  ? 'webp'              : '',
+      ].filter(Boolean).join('_');
+      const ext        = options.toWebp ? 'webp' : (baseName.split('.').pop() ?? 'jpg');
+      const cachedName = `${suffix}_${nameNoExt}.${ext}`;
+      const cachedPath = join(FILE_STORAGE_CONSTANTS.CACHE_DIR, cachedName);
+
+      // ── Generar thumbnail si no existe ───────────────────────────────
+      if (!existsSync(cachedPath)) {
+        // Validar que el width pedido sea uno de los permitidos (evitar flood de archivos)
+        if (options.width && !(THUMB_SIZES as readonly number[]).includes(options.width)) {
+          // Forzar al tamaño permitido más cercano
+          options.width = (THUMB_SIZES as readonly number[]).reduce((prev, curr) =>
+            Math.abs(curr - options.width!) < Math.abs(prev - options.width!) ? curr : prev
+          );
+        }
+
+        let pipeline = sharp(originalPath);
+        if (options.width) {
+          pipeline = pipeline.resize({ width: options.width, withoutEnlargement: true });
+        }
+        if (options.toWebp) {
+          pipeline = pipeline.webp({ quality: 82 });
+        }
+        const buffer = await pipeline.toBuffer();
+        await writeFile(cachedPath, buffer);
+      }
+
+      // ── Responder desde caché ─────────────────────────────────────────
+      const mimeType = options.toWebp ? 'image/webp' : (detectMimeType(baseName) ?? 'image/jpeg');
+      const stat     = statSync(cachedPath);
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Length', stat.size);
+      createReadStream(cachedPath).pipe(res);
+
+    } catch (err) {
+      this.errorLog.createErrorLog(`serveOptimizedImage: ${err}`);
+      // Fallback: imagen original sin procesar
+      res.sendFile(originalPath);
+    }
   }
 
 

@@ -9,6 +9,8 @@ import { BodegasService } from './bodegas/bodegas.service';
 import { CatalogosSaveService } from './catalogos/catalogos-save.service';
 import { CatalogosController } from './catalogos/catalogos.controller';
 import { CatalogosService } from './catalogos/catalogos.service';
+import { FileTempService } from '../sistema/files/file-temp.service';
+import { FilesService } from '../sistema/files/files.service';
 import { CategoriasController } from './categorias/categorias.controller';
 import { CategoriasService } from './categorias/categorias.service';
 import { ComprobantesInvController } from './comprobantes/comprobantes.controller';
@@ -46,6 +48,8 @@ import { ProductosService } from './productos/productos.service';
     EtiquetasSaveService,
     CatalogosService,
     CatalogosSaveService,
+    FilesService,
+    FileTempService,
     HtmlProductService,
     CategoriasService,
   ],

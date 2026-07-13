@@ -5,8 +5,20 @@ import { PATH_DRIVE } from "../helpers/fileNamer.helper";
 export const FILE_STORAGE_CONSTANTS = {
     BASE_PATH: PATH_DRIVE(),
     TEMP_DIR: path.join(PATH_DRIVE(), 'temp_media'),
+    CACHE_DIR: path.join(PATH_DRIVE(), 'cache'),           // thumbnails generados por Sharp
     WHATSAPP_MEDIA_DIR: path.join(PATH_DRIVE(), 'whatsapp_media'),
     IMAGES_HTML_DIR: path.join(PATH_DRIVE(), 'inventario', 'images_html'),
-    MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
-    LARGE_FILE_THRESHOLD: 50 * 1024 * 1024, // 50MB
+    MAX_FILE_SIZE: 200 * 1024 * 1024,                      // 200MB  — docs / videos
+    IMAGE_MAX_SIZE: 15 * 1024 * 1024,                      // 15MB   — imágenes de producto (best practice)
+    IMAGE_MAX_DIMENSION: 4000,                             // px — si supera esto, Sharp lo escala al subir
+    LARGE_FILE_THRESHOLD: 50 * 1024 * 1024,               // 50MB
 } as const;
+
+/** Tipos MIME aceptados en uploads de imagen */
+export const ALLOWED_IMAGE_MIMES = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/svg+xml',
+] as const;
