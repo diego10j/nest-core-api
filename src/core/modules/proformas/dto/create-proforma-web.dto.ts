@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   ValidateNested,
 } from 'class-validator';
@@ -55,12 +56,28 @@ class DetalleItemDto {
   producto: string;
 
   @IsNumber()
+  @IsPositive({ message: 'La cantidad debe ser mayor a cero' })
   cantidad: number;
 
   @IsString()
   @IsOptional()
   unidad?: string;
 
+  // ─── Identificadores del producto ────────────────────────────────────────
+  // Prioridad: ide_prod_erp → ideInarti → uuid_prod_erp → búsqueda por nombre
+  // Si viene al menos uno, `producto` se usa sólo como observación.
+
+  /** ID del artículo enviado por el catálogo web (ide_inarti). */
+  @IsNumber()
+  @IsOptional()
+  ide_prod_erp?: number;
+
+  /** UUID del artículo enviado por el catálogo web. */
+  @IsString()
+  @IsOptional()
+  uuid_prod_erp?: string;
+
+  /** ID del artículo — legado bot WhatsApp (compatible). */
   @IsNumber()
   @IsOptional()
   ideInarti?: number;

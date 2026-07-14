@@ -1075,10 +1075,11 @@ ORDER BY prof.secuencial_cccpr DESC
 
     const ideCndfp = solicitante.formaPago?.toLowerCase() === 'credit' ? 18 : 1;
 
-    const [ideGeprov, unidadMap, articuloMap] = await Promise.all([
+    const [ideGeprov, unidadMap, articuloMap, uuidMap] = await Promise.all([
       this.lookupProvincia(solicitante.provincia),
       this.lookupUnidades(dtoIn.detalles, solicitante.ideEmpr),
       this.lookupArticulos(dtoIn.detalles, solicitante.ideEmpr),
+      this.lookupArticulosByUuid(dtoIn.detalles, solicitante.ideEmpr),
     ]);
 
     const cabeceraQuery = new InsertQuery(SOLICITUD.tableName, SOLICITUD.primaryKey);
@@ -1116,14 +1117,38 @@ ORDER BY prof.secuencial_cccpr DESC
 
     const baseIdeCcdpr = await this.getNextDetalleIds(dtoIn.detalles.length);
 
-    dtoIn.detalles.forEach((detalle, idx) => {
-      const siglas = detalle.unidad?.toUpperCase() ?? null;
-      const ideInuni = siglas ? (unidadMap.get(siglas) ?? null) : null;
+    // ─── Paso 1: resolver ide_inarti para cada detalle ───────────────────────
+    // Prioridad: ide_prod_erp → ideInarti (bot) → uuid_prod_erp → búsqueda por nombre
+    const resolvedDetalles = dtoIn.detalles.map((detalle) => {
+      const siglas     = detalle.unidad?.toUpperCase() ?? null;
+      const ideInuni   = siglas ? (unidadMap.get(siglas) ?? null) : null;
       const nombreProd = detalle.producto?.toUpperCase();
-      // Si el caller ya conoce el ide_inarti (ej. el bot, que ya resolvió el artículo
-      // por búsqueda) se usa directo — evita depender de un match exacto por nombre,
-      // que se rompe si `producto` incluye texto adicional (uso, cantidad mínima, etc).
-      const ideInarti = detalle.ideInarti ?? (nombreProd ? (articuloMap.get(nombreProd) ?? null) : null);
+
+      const ideInarti =
+        detalle.ide_prod_erp
+        ?? detalle.ideInarti
+        ?? (detalle.uuid_prod_erp ? (uuidMap.get(detalle.uuid_prod_erp) ?? null) : null)
+        ?? (nombreProd ? (articuloMap.get(nombreProd) ?? null) : null);
+
+      return { detalle, ideInuni, ideInarti };
+    });
+
+    // ─── Paso 2: obtener configuración de precios en paralelo ────────────────
+    const precioResults = await Promise.all(
+      resolvedDetalles.map(({ detalle, ideInarti }) =>
+        ideInarti != null
+          ? this.lookupPrecioProducto(ideInarti, detalle.cantidad, ideCndfp, solicitante.ideEmpr, 0)
+          : Promise.resolve(null),
+      ),
+    );
+
+    // ─── Paso 3: construir queries de inserción ──────────────────────────────
+    resolvedDetalles.forEach(({ detalle, ideInuni, ideInarti }, idx) => {
+      const precioInfo   = precioResults[idx];
+      const precioCcdpr  = precioInfo?.precio_venta_sin_iva ?? null;
+      const totalCcdpr   = precioCcdpr != null
+        ? +(precioCcdpr * detalle.cantidad).toFixed(4)
+        : null;
 
       const detQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey);
       detQuery.values.set(DETALLES.primaryKey, baseIdeCcdpr + idx);
@@ -1132,9 +1157,9 @@ ORDER BY prof.secuencial_cccpr DESC
       detQuery.values.set('ide_sucu', 0);
       detQuery.values.set('ide_inarti', ideInarti);
       detQuery.values.set('cantidad_ccdpr', detalle.cantidad);
-      detQuery.values.set('precio_ccdpr', null);
-      detQuery.values.set('total_ccdpr', null);
-      detQuery.values.set('iva_inarti_ccdpr', null);
+      detQuery.values.set('precio_ccdpr', precioCcdpr);
+      detQuery.values.set('total_ccdpr', totalCcdpr);
+      detQuery.values.set('iva_inarti_ccdpr', precioInfo?.porcentaje_iva ?? null);
       detQuery.values.set('ide_inuni', ideInuni);
       detQuery.values.set('observacion_ccdpr', detalle.producto);
       detQuery.values.set('usuario_ingre', 'admin');
@@ -1212,9 +1237,9 @@ ORDER BY prof.secuencial_cccpr DESC
     if (siglas.length === 0) return map;
 
     const query = new SelectQuery(`
-      SELECT siglas_inuni, ide_inuni
+      SELECT siglas_inuni, nombre_inuni, ide_inuni
       FROM inv_unidad
-      WHERE UPPER(siglas_inuni) = ANY($1)
+      WHERE (UPPER(siglas_inuni) = ANY($1) OR UPPER(nombre_inuni) = ANY($1))
         AND ide_empr = $2
     `);
     query.addParam(1, siglas);
@@ -1222,18 +1247,24 @@ ORDER BY prof.secuencial_cccpr DESC
 
     const rows = await this.dataSource.createSelectQuery(query);
     for (const row of rows) {
+      // Indexar por siglas Y por nombre para que el match funcione en ambos casos
       map.set(row.siglas_inuni?.toUpperCase(), row.ide_inuni);
+      if (row.nombre_inuni) {
+        map.set(row.nombre_inuni.toUpperCase(), row.ide_inuni);
+      }
     }
 
     return map;
   }
 
   private async lookupArticulos(
-    detalles: { producto: string }[],
+    detalles: { ide_prod_erp?: number; ideInarti?: number; uuid_prod_erp?: string; producto: string }[],
     ideEmpr: number,
   ): Promise<Map<string, number>> {
+    // Solo buscar por nombre los ítems sin ningún identificador directo
     const nombres = Array.from(new Set(
       detalles
+        .filter((d) => !d.ide_prod_erp && !d.ideInarti && !d.uuid_prod_erp)
         .map((d) => d.producto?.toUpperCase())
         .filter((s): s is string => !!s),
     ));
@@ -1256,6 +1287,67 @@ ORDER BY prof.secuencial_cccpr DESC
     }
 
     return map;
+  }
+
+  /** Resuelve ide_inarti a partir del UUID del artículo para los ítems que
+   *  no traen id directo. Hace una sola query batch con todos los UUIDs. */
+  private async lookupArticulosByUuid(
+    detalles: { ide_prod_erp?: number; ideInarti?: number; uuid_prod_erp?: string }[],
+    ideEmpr: number,
+  ): Promise<Map<string, number>> {
+    const uuids = Array.from(new Set(
+      detalles
+        .filter((d) => !d.ide_prod_erp && !d.ideInarti && d.uuid_prod_erp)
+        .map((d) => d.uuid_prod_erp)
+        .filter((u): u is string => !!u),
+    ));
+
+    const map = new Map<string, number>();
+    if (uuids.length === 0) return map;
+
+    const query = new SelectQuery(`
+      SELECT uuid, ide_inarti
+      FROM inv_articulo
+      WHERE uuid = ANY($1)
+        AND ide_empr = $2
+    `);
+    query.addParam(1, uuids);
+    query.addIntParam(2, ideEmpr);
+
+    const rows = await this.dataSource.createSelectQuery(query);
+    for (const row of rows) {
+      map.set(row.uuid, row.ide_inarti);
+    }
+    return map;
+  }
+
+  /** Llama a f_calcula_precio_venta y retorna precio sin IVA y porcentaje IVA.
+   *  Retorna null si el producto no tiene configuración de precios activa. */
+  private async lookupPrecioProducto(
+    ideInarti: number,
+    cantidad: number,
+    ideCndfp: number | null,
+    ideEmpr: number,
+    ideSucu: number,
+  ): Promise<{ precio_venta_sin_iva: number; porcentaje_iva: number } | null> {
+    if (ideInarti <= 0 || cantidad <= 0) return null;
+    try {
+      const q = new SelectQuery(`
+        SELECT precio_venta_sin_iva, porcentaje_iva
+        FROM f_calcula_precio_venta($1, $2, $3, NULL, $4, $5)
+      `);
+      q.addIntParam(1, ideInarti);
+      q.addParam(2, cantidad);
+      q.addParam(3, ideCndfp ?? null);
+      q.addIntParam(4, ideEmpr);
+      q.addIntParam(5, ideSucu);
+      const row = await this.dataSource.createSingleQuery(q);
+      if (!row || row.precio_venta_sin_iva == null) return null;
+      return row as { precio_venta_sin_iva: number; porcentaje_iva: number };
+    } catch {
+      // Precio no configurado → no bloquea la proforma, queda en revisión manual
+      return null;
+    }
   }
 
   private getNextSolicitudId(login: string = 'sa'): Promise<number> {
