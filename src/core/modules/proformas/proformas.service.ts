@@ -1118,16 +1118,16 @@ ORDER BY prof.secuencial_cccpr DESC
     const baseIdeCcdpr = await this.getNextDetalleIds(dtoIn.detalles.length);
 
     // ─── Paso 1: resolver ide_inarti para cada detalle ───────────────────────
-    // Prioridad: ide_prod_erp → ideInarti (bot) → uuid_prod_erp → búsqueda por nombre
+    // Prioridad: ide_prod → ideInarti (bot) → uuid_prod → búsqueda por nombre
     const resolvedDetalles = dtoIn.detalles.map((detalle) => {
       const siglas     = detalle.unidad?.toUpperCase() ?? null;
       const ideInuni   = siglas ? (unidadMap.get(siglas) ?? null) : null;
       const nombreProd = detalle.producto?.toUpperCase();
 
       const ideInarti =
-        detalle.ide_prod_erp
+        detalle.ide_prod
         ?? detalle.ideInarti
-        ?? (detalle.uuid_prod_erp ? (uuidMap.get(detalle.uuid_prod_erp) ?? null) : null)
+        ?? (detalle.uuid_prod ? (uuidMap.get(detalle.uuid_prod) ?? null) : null)
         ?? (nombreProd ? (articuloMap.get(nombreProd) ?? null) : null);
 
       return { detalle, ideInuni, ideInarti };
@@ -1258,13 +1258,13 @@ ORDER BY prof.secuencial_cccpr DESC
   }
 
   private async lookupArticulos(
-    detalles: { ide_prod_erp?: number; ideInarti?: number; uuid_prod_erp?: string; producto: string }[],
+    detalles: { ide_prod?: number; ideInarti?: number; uuid_prod?: string; producto: string }[],
     ideEmpr: number,
   ): Promise<Map<string, number>> {
     // Solo buscar por nombre los ítems sin ningún identificador directo
     const nombres = Array.from(new Set(
       detalles
-        .filter((d) => !d.ide_prod_erp && !d.ideInarti && !d.uuid_prod_erp)
+        .filter((d) => !d.ide_prod && !d.ideInarti && !d.uuid_prod)
         .map((d) => d.producto?.toUpperCase())
         .filter((s): s is string => !!s),
     ));
@@ -1292,13 +1292,13 @@ ORDER BY prof.secuencial_cccpr DESC
   /** Resuelve ide_inarti a partir del UUID del artículo para los ítems que
    *  no traen id directo. Hace una sola query batch con todos los UUIDs. */
   private async lookupArticulosByUuid(
-    detalles: { ide_prod_erp?: number; ideInarti?: number; uuid_prod_erp?: string }[],
+    detalles: { ide_prod?: number; ideInarti?: number; uuid_prod?: string }[],
     ideEmpr: number,
   ): Promise<Map<string, number>> {
     const uuids = Array.from(new Set(
       detalles
-        .filter((d) => !d.ide_prod_erp && !d.ideInarti && d.uuid_prod_erp)
-        .map((d) => d.uuid_prod_erp)
+        .filter((d) => !d.ide_prod && !d.ideInarti && d.uuid_prod)
+        .map((d) => d.uuid_prod)
         .filter((u): u is string => !!u),
     ));
 

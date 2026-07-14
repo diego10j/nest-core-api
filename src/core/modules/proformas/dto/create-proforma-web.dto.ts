@@ -70,12 +70,12 @@ class DetalleItemDto {
   /** ID del artículo enviado por el catálogo web (ide_inarti). */
   @IsNumber()
   @IsOptional()
-  ide_prod_erp?: number;
+  ide_prod?: number;
 
   /** UUID del artículo enviado por el catálogo web. */
   @IsString()
   @IsOptional()
-  uuid_prod_erp?: string;
+  uuid_prod?: string;
 
   /** ID del artículo — legado bot WhatsApp (compatible). */
   @IsNumber()
