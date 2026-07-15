@@ -4,8 +4,8 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { ProformasService } from 'src/core/modules/proformas/proformas.service';
 import { NotificacionesService } from 'src/core/modules/sistema/notificaciones/notificaciones.service';
 import { getCurrentDate } from 'src/util/helpers/date-util';
+import { roundTo, roundPrecio, getPrecioDecimals } from 'src/util/helpers/number-util';
 
-import { BotToolsService } from './bot-tools.service';
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 
 export const IDE_USUA_BOT       = 32;  // Usuario bot para proformas automáticas
@@ -26,24 +26,7 @@ function toLocalPhone(phone: string): string {
   return digits;
 }
 
-// ─── Modelo de cálculo de proformas (idéntico al frontend) ────────────────────
-const MAX_DECIMALES_PRECIO = 4;
-const DECIMALES_TOTALES    = 2;
-
-function roundTo(value: number, decimals: number): number {
-  return Number(value.toFixed(decimals));
-}
-
-/** Determina 2 o 4 decimales para precio_ccdpr según regla del frontend */
-function getPrecioDecimals(precio: number): number {
-  const str4 = Math.abs(precio).toFixed(MAX_DECIMALES_PRECIO);
-  const dec   = str4.split('.')[1] ?? '0000';
-  return (dec[2] === '0' && dec[3] === '0') ? DECIMALES_TOTALES : MAX_DECIMALES_PRECIO;
-}
-
-function roundPrecio(precio: number): number {
-  return roundTo(precio, getPrecioDecimals(precio));
-}
+const DECIMALES_TOTALES = 2;
 
 export interface ResultadoProforma {
   ide_cccpr: number;
@@ -68,7 +51,6 @@ export class BotProformaService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly proformasService: ProformasService,
-    private readonly botTools: BotToolsService,
     private readonly notificaciones: NotificacionesService,
   ) {}
 
@@ -91,7 +73,7 @@ export class BotProformaService {
       // a revisión manual) sin llamar a la función.
       const precioConf = prod.cantidad === 0
         ? null
-        : await this.botTools.buscarPrecioConfigurado(prod.ide_inarti, prod.cantidad, ideEmpr, ideSucu);
+        : await this.proformasService.buscarPrecioProducto(prod.ide_inarti, prod.cantidad, ideEmpr, ideSucu);
       this.logger.log(`[Precio] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cant=${prod.cantidad} → ${precioConf ? `sin_iva=${precioConf.precio_venta_sin_iva} con_iva=${precioConf.precio_venta_con_iva} iva=${precioConf.porcentaje_iva}% tipo=${precioConf.tipo_configuracion}` : 'SIN PRECIO CONFIGURADO'}`);
       if (precioConf) {
         tarifaIva = precioConf.porcentaje_iva;
@@ -272,42 +254,15 @@ export class BotProformaService {
         }
       }
 
-      // Recalcular totales cabecera — modelo idéntico al frontend
+      // Recalcular totales cabecera usando el método compartido de ProformasService
       try {
-        // 1. Acumular totales de línea (ya redondeados a 2 dec en el UPDATE anterior)
-        //    iva_inarti_ccdpr = 1 → baseGrabada | iva_inarti_ccdpr != 1 → baseTarifa0
-        const baseGrabada = productosConPrecio.reduce(
-          (s, p) => s + roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES), 0,
-        );
-        const baseTarifa0 = 0;  // bot solo maneja productos gravados (iva=1)
-
-        // 2. IVA = roundTo(baseGrabada × %IVA/100, 2)
-        const valorIva = roundTo(baseGrabada * (tarifaIva / 100), DECIMALES_TOTALES);
-
-        // 3. Total = suma simple (sin redondeo adicional)
-        const total = baseGrabada + baseTarifa0 + valorIva;
-
-        // Sumar utilidad desde los detalles (si tienen precio_compra configurado)
-        const utilQ = new SelectQuery(`
-          SELECT COALESCE(SUM(COALESCE(utilidad_ccdpr, 0)), 0) AS utilidad
-          FROM cxc_deta_proforma WHERE ide_cccpr = $1
-        `);
-        utilQ.addIntParam(1, ide_cccpr);
-        const utilRow = await this.dataSource.createSingleQuery(utilQ);
-        const utilidad = Number(utilRow?.utilidad ?? 0);
-
-        await this.dataSource.pool.query(
-          `UPDATE cxc_cabece_proforma
-           SET base_grabada_cccpr = $2,
-               base_tarifa0_cccpr = 0,
-               tarifa_iva_cccpr   = $3,
-               valor_iva_cccpr    = $4,
-               total_cccpr        = $5,
-               utilidad_cccpr     = $6
-           WHERE ide_cccpr = $1`,
-          [ide_cccpr, baseGrabada, tarifaIva, valorIva, total, utilidad],
-        );
-        this.logger.log(`[Proforma] Totales → base_grabada=${baseGrabada} tarifa=${tarifaIva}% iva=${valorIva} total=${total} utilidad=${utilidad}`);
+        const itemsTotales = productosConPrecio.map((p) => ({
+          cantidad:       p.cantidad,
+          precio:         p.precio_unitario,
+          porcentaje_iva: tarifaIva,
+        }));
+        await this.proformasService.actualizarTotalesCabecera(ide_cccpr, itemsTotales);
+        this.logger.log(`[Proforma] Totales actualizados ide_cccpr=${ide_cccpr} items=${itemsTotales.length}`);
       } catch (err) {
         this.logger.warn(`[Proforma] No se actualizaron totales de cabecera: ${err.message}`);
       }

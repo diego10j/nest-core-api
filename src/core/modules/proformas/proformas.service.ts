@@ -22,7 +22,7 @@ import { HeaderSection } from 'src/reports/common/sections/header.section';
 import { proformaReport } from 'src/reports/modules/proformas/proforma.report';
 import { isDefined, fCurrency } from 'src/util/helpers/common-util';
 import { fDate, getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/util/helpers/date-util';
-import { fNumber } from 'src/util/helpers/number-util';
+import { fNumber, roundTo, roundPrecio } from 'src/util/helpers/number-util';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 
 import { AssignProformaDto } from './dto/assign-proforma.dto';
@@ -43,6 +43,16 @@ const DETALLES = {
   tableName: 'cxc_deta_proforma',
   primaryKey: 'ide_ccdpr',
 };
+
+
+/** Resultado de f_calcula_precio_venta — compartido con BotProformaService. */
+export interface PrecioConfiguradoProforma {
+  precio_venta_sin_iva: number;
+  precio_venta_con_iva: number;
+  porcentaje_iva: number;
+  tipo_configuracion: string;
+  costo_promedio: number | null;
+}
 
 // Campos opcionales de cabecera que se copian al objeto de base de datos solo si están definidos
 const OPTIONAL_CAB_FIELDS = [
@@ -1137,18 +1147,21 @@ ORDER BY prof.secuencial_cccpr DESC
     const precioResults = await Promise.all(
       resolvedDetalles.map(({ detalle, ideInarti }) =>
         ideInarti != null
-          ? this.lookupPrecioProducto(ideInarti, detalle.cantidad, ideCndfp, solicitante.ideEmpr, 0)
+          ? this.buscarPrecioProducto(ideInarti, detalle.cantidad, solicitante.ideEmpr, 0, ideCndfp)
           : Promise.resolve(null),
       ),
     );
 
     // ─── Paso 3: construir queries de inserción ──────────────────────────────
     resolvedDetalles.forEach(({ detalle, ideInuni, ideInarti }, idx) => {
-      const precioInfo   = precioResults[idx];
-      const precioCcdpr  = precioInfo?.precio_venta_sin_iva ?? null;
-      const totalCcdpr   = precioCcdpr != null
-        ? +(precioCcdpr * detalle.cantidad).toFixed(4)
+      const precioInfo  = precioResults[idx];
+      const precioCcdpr = precioInfo != null ? roundPrecio(precioInfo.precio_venta_sin_iva) : null;
+      const totalCcdpr  = precioCcdpr != null
+        ? +(precioCcdpr * detalle.cantidad).toFixed(2)   // total SIN IVA, 2 decimales
         : null;
+      // iva_inarti_ccdpr = 1 → producto gravado (va a base_grabada)
+      //                  = 0 → producto exento  (va a base_tarifa0)
+      const ivaInarti = precioInfo != null ? (precioInfo.porcentaje_iva > 0 ? 1 : 0) : null;
 
       const detQuery = new InsertQuery(DETALLES.tableName, DETALLES.primaryKey);
       detQuery.values.set(DETALLES.primaryKey, baseIdeCcdpr + idx);
@@ -1159,7 +1172,8 @@ ORDER BY prof.secuencial_cccpr DESC
       detQuery.values.set('cantidad_ccdpr', detalle.cantidad);
       detQuery.values.set('precio_ccdpr', precioCcdpr);
       detQuery.values.set('total_ccdpr', totalCcdpr);
-      detQuery.values.set('iva_inarti_ccdpr', precioInfo?.porcentaje_iva ?? null);
+      detQuery.values.set('iva_inarti_ccdpr', ivaInarti);
+      detQuery.values.set('precio_compra_ccdpr', precioInfo?.costo_promedio ?? null);
       detQuery.values.set('ide_inuni', ideInuni);
       detQuery.values.set('observacion_ccdpr', detalle.producto);
       detQuery.values.set('usuario_ingre', 'admin');
@@ -1170,6 +1184,22 @@ ORDER BY prof.secuencial_cccpr DESC
     });
 
     const resultMessage = await this.dataSource.createListQuery(listQuery);
+
+    // ─── Calcular y actualizar totales de cabecera ────────────────────────
+    const itemsTotales = resolvedDetalles
+      .map(({ detalle }, idx) => ({ detalle, precioInfo: precioResults[idx] }))
+      .filter(({ precioInfo }) => precioInfo != null)
+      .map(({ detalle, precioInfo }) => ({
+        cantidad:      detalle.cantidad,
+        precio:        roundPrecio(precioInfo!.precio_venta_sin_iva),
+        porcentaje_iva: precioInfo!.porcentaje_iva,
+      }));
+
+    try {
+      await this.actualizarTotalesCabecera(ideCccpr, itemsTotales);
+    } catch (err) {
+      this.logger.warn(`[ProformaWeb] No se actualizaron totales cabecera: ${err.message}`);
+    }
 
     // ─── Notificar a todos los usuarios vía push ──────────────────────────
     try {
@@ -1321,19 +1351,23 @@ ORDER BY prof.secuencial_cccpr DESC
     return map;
   }
 
-  /** Llama a f_calcula_precio_venta y retorna precio sin IVA y porcentaje IVA.
-   *  Retorna null si el producto no tiene configuración de precios activa. */
-  private async lookupPrecioProducto(
+  /**
+   * Consulta f_calcula_precio_venta y retorna la configuración de precio completa.
+   * Retorna null si el producto no tiene precio configurado (no bloquea la proforma).
+   * Usado tanto por createProformaWeb como por BotProformaService.
+   */
+  async buscarPrecioProducto(
     ideInarti: number,
     cantidad: number,
-    ideCndfp: number | null,
     ideEmpr: number,
     ideSucu: number,
-  ): Promise<{ precio_venta_sin_iva: number; porcentaje_iva: number } | null> {
+    ideCndfp?: number | null,
+  ): Promise<PrecioConfiguradoProforma | null> {
     if (ideInarti <= 0 || cantidad <= 0) return null;
     try {
       const q = new SelectQuery(`
-        SELECT precio_venta_sin_iva, porcentaje_iva
+        SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva,
+               tipo_configuracion, precio_ultima_compra AS costo_promedio
         FROM f_calcula_precio_venta($1, $2, $3, NULL, $4, $5)
       `);
       q.addIntParam(1, ideInarti);
@@ -1343,11 +1377,52 @@ ORDER BY prof.secuencial_cccpr DESC
       q.addIntParam(5, ideSucu);
       const row = await this.dataSource.createSingleQuery(q);
       if (!row || row.precio_venta_sin_iva == null) return null;
-      return row as { precio_venta_sin_iva: number; porcentaje_iva: number };
+      return row as PrecioConfiguradoProforma;
     } catch {
-      // Precio no configurado → no bloquea la proforma, queda en revisión manual
       return null;
     }
+  }
+
+  /**
+   * Recalcula y persiste los totales de cabecera a partir de los detalles dados.
+   * Usado tanto por createProformaWeb como por BotProformaService.
+   */
+  async actualizarTotalesCabecera(
+    ideCccpr: number,
+    items: Array<{ cantidad: number; precio: number; porcentaje_iva: number }>,
+  ): Promise<void> {
+    const itemsConPrecio = items.filter((i) => i.precio > 0);
+    if (itemsConPrecio.length === 0) return;
+
+    let baseGrabada = 0;
+    let baseTarifa0 = 0;
+    let tarifaIva   = 0;
+
+    for (const item of itemsConPrecio) {
+      const total = roundTo(item.precio * item.cantidad, 2);
+      if (item.porcentaje_iva > 0) {
+        baseGrabada += total;
+        tarifaIva    = item.porcentaje_iva;
+      } else {
+        baseTarifa0 += total;
+      }
+    }
+
+    baseGrabada = roundTo(baseGrabada, 2);
+    baseTarifa0 = roundTo(baseTarifa0, 2);
+    const valorIva = roundTo(baseGrabada * (tarifaIva / 100), 2);
+    const total    = roundTo(baseGrabada + baseTarifa0 + valorIva, 2);
+
+    await this.dataSource.pool.query(
+      `UPDATE cxc_cabece_proforma
+       SET base_grabada_cccpr = $2,
+           base_tarifa0_cccpr = $3,
+           tarifa_iva_cccpr   = $4,
+           valor_iva_cccpr    = $5,
+           total_cccpr        = $6
+       WHERE ide_cccpr = $1`,
+      [ideCccpr, baseGrabada, baseTarifa0, tarifaIva, valorIva, total],
+    );
   }
 
   private getNextSolicitudId(login: string = 'sa'): Promise<number> {
