@@ -17,12 +17,21 @@ import { VentasBiService } from './data-bi/ventas-bi.service';
 import { FacturasSaveService } from './facturas/facturas-save.service';
 import { FacturasController } from './facturas/facturas.controller';
 import { FacturasService } from './facturas/facturas.service';
+import { PosPuntoVentaSaveService } from './pos-punto-venta/pos-punto-venta-save.service';
+import { PosPuntoVentaController } from './pos-punto-venta/pos-punto-venta.controller';
+import { PosPuntoVentaService } from './pos-punto-venta/pos-punto-venta.service';
 import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
 
 @Module({
   imports: [WhatsappModule, SriModule],
-  controllers: [ClientesController, FacturasController, PuntoVentaController, VentasBiController],
+  controllers: [
+    ClientesController,
+    FacturasController,
+    PuntoVentaController,
+    VentasBiController,
+    PosPuntoVentaController,
+  ],
   providers: [
     ClientesService,
     ClientesSaveService,
@@ -32,6 +41,8 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
     FacturasSaveService,
     VentasBiService,
     PuntoVentaService,
+    PosPuntoVentaService,
+    PosPuntoVentaSaveService,
     WhatsappService,
     SriFacturaService,
     ComprobantesElecService,

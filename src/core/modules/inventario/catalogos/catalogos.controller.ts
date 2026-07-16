@@ -4,9 +4,9 @@ import path from 'node:path';
 import {
     Body, Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Query, Res, UploadedFile, UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
-import { Response } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -16,6 +16,7 @@ import { Public } from 'src/core/auth/decorators/public.decorator';
 import { v4 as uuid } from 'uuid';
 
 import { FilesService } from '../../sistema/files/files.service';
+
 import { CatalogosSaveService } from './catalogos-save.service';
 import { CatalogosService } from './catalogos.service';
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';

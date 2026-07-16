@@ -4,8 +4,8 @@ import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
-import { normalizeString } from 'src/util/helpers/sql-util';
 import { getDateFormat, getDateFormatFront } from 'src/util/helpers/date-util';
+import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';

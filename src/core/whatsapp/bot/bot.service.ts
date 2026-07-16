@@ -15,7 +15,7 @@ import { BotProformaService } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
 import { BotToolsService } from './bot-tools.service';
 import {
-  ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteConfirmacion, PendienteUso, ProductoSesion,
+  ClienteSesion, DatosSesion, OpcionProducto, PendienteCantidad, PendienteUso, ProductoSesion,
 } from './interfaces/bot-session.interface';
 import { BotState } from './interfaces/bot-state.enum';
 import { matchProvinciaEcuador } from './provincias-ecuador';
