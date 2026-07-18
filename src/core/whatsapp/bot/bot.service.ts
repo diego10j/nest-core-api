@@ -30,6 +30,7 @@ const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|salud
 // "de mango" → "MANTECA DE MANGO") y, si no hay match exacto, se ofrece cotizar como ítem genérico.
 const REGEX_PRODUCTO_GENERICO = /\b(sabor(?:es|izantes?)?|colorantes?|colores?|fragancias?|aceites?|esencias?)\b/i;
 const PRODUCTO_GENERICO_IDE_INARTI = 2102;
+const LIMITE_COINCIDENCIAS = 3;
 
 // IDs de todos los botones interactivos usados en el flujo. WhatsApp no invalida un
 // botón viejo cuando la conversación avanza — sigue siendo tocable en el historial del
@@ -875,6 +876,39 @@ export class BotService implements OnModuleInit {
     const productosNuevos: ProductoSesion[] = [...(datos.productos ?? [])];
     const pendientesUso: PendienteUso[] = [...(datos.pendientes_uso ?? [])];
     const pendientesCantidad: PendienteCantidad[] = [...(datos.pendientes_cantidad ?? [])];
+
+    if (cola.length > LIMITE_COINCIDENCIAS) {
+      const totalItems = cola.length;
+      const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
+      const baseGenerico = {
+        ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+        nombre: '',
+        siglas_unidad: generico?.siglas_unidad ?? 'UND',
+        nombre_unidad: generico?.nombre_unidad ?? 'Unidad',
+        en_catalogo: generico?.en_catalogo ?? false,
+      };
+
+      for (const item of cola) {
+        const nombreItem = item.producto.trim();
+        if (!nombreItem) continue;
+
+        if (item.cantidad !== null && item.cantidad !== undefined) {
+          productosNuevos.push({
+            ide_inarti: baseGenerico.ide_inarti,
+            nombre: nombreItem,
+            cantidad: item.cantidad,
+            unidad: baseGenerico.nombre_unidad,
+            siglas_unidad: baseGenerico.siglas_unidad,
+            en_catalogo: baseGenerico.en_catalogo,
+          });
+        } else {
+          pendientesCantidad.push({ ...baseGenerico, nombre: nombreItem });
+        }
+      }
+
+      cola.length = 0;
+      this.logger.log(`[Bot] Fast-path: ${totalItems} productos > ${LIMITE_COINCIDENCIAS}, se omite matching`);
+    }
 
     while (cola.length > 0) {
       const item = cola.shift()!;
