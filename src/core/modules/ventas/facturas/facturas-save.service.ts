@@ -4,9 +4,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
-import { SriFacturaService } from 'src/core/modules/sri/cel/sri-factura.service';
+import { generarClaveAcceso } from 'src/core/modules/sri/cel/clave-acceso.util';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
+import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
 import { DetaFacturaDto, SaveFacturaDto } from './dto/save-factura.dto';
 
@@ -35,7 +36,6 @@ export class FacturasSaveService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
-        private readonly sriFacturaService: SriFacturaService,
     ) {
         super();
         this.core
@@ -43,6 +43,7 @@ export class FacturasSaveService extends BaseService {
                 'p_cxc_estado_factura_normal',      // estado normal factura (ide_ccefa)
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
                 'p_inv_estado_normal',              // estado normal de comprobante inventario (ide_inepi)
+                'p_inv_tipo_transaccion_venta',     // tipo transacción inventario venta (ide_intti)
             ])
             .then((result) => {
                 this.variables = result;
@@ -75,6 +76,10 @@ export class FacturasSaveService extends BaseService {
 
     private get ideEstadoNormalInv(): number {
         return this.getVar('p_inv_estado_normal');
+    }
+
+    private get ideTipoTransaccionVenta(): number {
+        return this.getVar('p_inv_tipo_transaccion_venta');
     }
 
     private async getBodegaSucursal(ideSucu: number): Promise<number> {
@@ -131,8 +136,23 @@ export class FacturasSaveService extends BaseService {
 
             const { ptoEmision, cliente } = await this.validarFactura(dtoIn);
 
+            if (!isUpdate) {
+                if (!data.correo_cccfa) throw new BadRequestException('El correo electrónico es obligatorio.');
+                if (!data.telefono_cccfa || data.telefono_cccfa.length < 6)
+                    throw new BadRequestException('El teléfono es obligatorio (mínimo 6 caracteres).');
+                if (!data.observacion_cccfa) throw new BadRequestException('La observación es obligatoria.');
+                this.validarIdentificacion(cliente);
+
+                if (dtoIn.guia) {
+                    if (!dtoIn.guia.placa_gecam) throw new BadRequestException('La placa del vehículo es obligatoria para la guía.');
+                    if (!dtoIn.guia.gen_ide_geper) throw new BadRequestException('El transportista es obligatorio para la guía.');
+                }
+            }
+
             const tarifaIva = isDefined(data.tarifa_iva_cccfa) ? Number(data.tarifa_iva_cccfa) : 15;
             const totales = this.calcularTotales(detalles, tarifaIva);
+
+            if (totales.total <= 0) throw new BadRequestException('El total de la factura debe ser mayor a 0.');
 
             for (const det of detalles) {
                 if (det.cantidad_ccdfa <= 0) {
@@ -208,17 +228,14 @@ export class FacturasSaveService extends BaseService {
         cliente: any,
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ) {
-        const numActual = Number(ptoEmision.num_actual_ccdfa) + 1;
-        const secuencial = String(numActual).padStart(9, '0');
-        data.secuencial_cccfa = secuencial;
-
         // ── 1. Detectar artículos con control de inventario (kardex) ──────────
         const detallesConKardex = await this.getDetallesConKardex(detalles);
         const tieneKardex = detallesConKardex.length > 0;
         const tieneGuia = !!dtoIn.guia;
 
-        // ── 2. Obtener todos los secuenciales secuencialmente (evita race condition en sis_bloqueo)
-        const ideSrcom = await this.sriFacturaService.getSecuencialSriComprobante(dtoIn.login);
+        // ── 2. Obtener todos los secuenciales secuencialmente ──────────────────
+        const ideSrcomFactura = await this.dataSource.getSeqTable('sri_comprobante', 'ide_srcom', 1, dtoIn.login);
+        const ideSrcomGuia = tieneGuia ? await this.dataSource.getSeqTable('sri_comprobante', 'ide_srcom', 1, dtoIn.login) : null;
         const ideCccfa = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login);
         const baseIdeCcdfa = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login);
         const ideCcctr = await this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login);
@@ -228,102 +245,275 @@ export class FacturasSaveService extends BaseService {
         const ideGuia = tieneGuia ? await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login) : null;
 
         data.ide_cccfa = ideCccfa;
-        data.ide_srcom = ideSrcom;
+        data.ide_cntdo = this.ideTipoDocFactura;
+        data.ide_ccefa = this.ideEstadoNormal;
+        data.ide_usua = dtoIn.ideUsua;
 
-        // ── 3. Calcular fecha de vencimiento ──────────────────────────────────
         const diasCredito = data.dias_credito_cccfa ?? 0;
         const fechaVencimiento = this.sumarDias(data.fecha_emisi_cccfa, diasCredito);
-
-        // ── 4. Construir queries en memoria ───────────────────────────────────
-
-        // sri_comprobante
-        const insertSriComp = await this.sriFacturaService.buildSriComprobanteInsert(
-            {
-                ideEmpr      : dtoIn.ideEmpr,
-                ideSucu      : dtoIn.ideSucu,
-                login        : dtoIn.login,
-                ide_sresc    : this.ideSriEstadoCreado,
-                ide_cntdo    : this.ideTipoDocFactura,
-                ide_geper    : data.ide_geper,
-                fecha_emisi  : data.fecha_emisi_cccfa,
-                estab        : ptoEmision.establecimiento_ccdfa,
-                pto_emi      : ptoEmision.pto_emision_ccdfa,
-                secuencial,
-                subtotal0    : totales.base_tarifa0,
-                base_grabada : totales.base_grabada,
-                iva          : totales.valor_iva,
-                total        : totales.total,
-                identificacion: cliente.identificac_geper,
-                forma_cobro  : data.ide_cndfp1 ? String(data.ide_cndfp1) : '01',
-                dias_credito : diasCredito,
-                correo       : data.correo_cccfa ?? cliente.correo_geper,
-            },
-            ideSrcom,
-        );
-
-        // cxc_cabece_factura
-        const insertCabecera = this.buildInsertCabecera(data, totales, tarifaIva, dtoIn);
-
-        // cxc_deta_factura × N
-        const insertDetalles = detalles.map((det, idx) =>
-            this.buildInsertDetalle(ideCccfa, baseIdeCcdfa + idx, det, dtoIn),
-        );
-
-        // cxc_cabece_transa (registro de cargo CxC — genera la cuenta por cobrar)
-        const insertTrnCab = this.buildInsertTrnCabecera(
-            ideCcctr, ideCccfa, cliente.ide_geper, data.fecha_emisi_cccfa, secuencial, dtoIn,
-        );
-
-        // cxc_detall_transa (detalle del cargo: valor total de la factura)
-        const insertTrnDet = this.buildInsertTrnDetalle(
-            ideCcdtr, ideCcctr, ideCccfa, totales.total,
-            data.fecha_emisi_cccfa, fechaVencimiento, secuencial, dtoIn,
-        );
-
-        // inv_cab/det_comp_inve (comprobante de salida de inventario)
-        const ideBodega = tieneKardex ? await this.getBodegaSucursal(dtoIn.ideSucu) : 0;
-        const kardexQueries = tieneKardex && ideIncci !== null && baseIdeIndci !== null
-            ? this.buildKardexQueries(
-                ideIncci, baseIdeIndci, ideCccfa, secuencial,
-                data, cliente, detallesConKardex, dtoIn, ideBodega,
-            )
-            : [];
-
-        // cxc_guia (guía de remisión)
         const guiaQuery = tieneGuia && ideGuia !== null
             ? this.buildInsertGuia(ideGuia, ideCccfa, cliente, data, dtoIn)
             : null;
 
-        // UPDATE cxc_datos_fac → avanzar secuencial del punto de emisión
-        const updatePto = new UpdateQuery('cxc_datos_fac', 'ide_ccdaf', dtoIn);
-        updatePto.values.set('num_actual_ccdfa', numActual);
-        updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
+        // ── 3. TRANSACCIÓN 1: datos de negocio ──────────────────────────────────
+        // Secuencial = NULL inicialmente; se asigna en Transacción 2 desde el SRI
+        data.secuencial_cccfa = null as any;
+        data.ide_srcom = null as any;
 
-        // ── 5. Ejecutar todo en una sola transacción ──────────────────────────
-        await this.dataSource.createListQuery([
-            insertSriComp,
+        const insertCabecera = this.buildInsertCabecera(data, totales, tarifaIva, dtoIn);
+
+        const insertDetalles = detalles.map((det, idx) =>
+            this.buildInsertDetalle(ideCccfa, baseIdeCcdfa + idx, det, dtoIn),
+        );
+
+        const insertTrnCab = this.buildInsertTrnCabecera(
+            ideCcctr, ideCccfa, cliente.ide_geper, data.fecha_emisi_cccfa, '', dtoIn,
+        );
+
+        const insertTrnDet = this.buildInsertTrnDetalle(
+            ideCcdtr, ideCcctr, ideCccfa, totales.total,
+            data.fecha_emisi_cccfa, fechaVencimiento, '', dtoIn,
+        );
+
+        const ideBodega = tieneKardex ? await this.getBodegaSucursal(dtoIn.ideSucu) : 0;
+        const kardexQueries = tieneKardex && ideIncci !== null && baseIdeIndci !== null
+            ? await this.buildKardexQueries(
+                ideIncci, baseIdeIndci, ideCccfa, '',
+                data, cliente, detallesConKardex, dtoIn, ideBodega,
+            )
+            : [];
+
+        // UPDATE gen_persona — solo si algún campo cambió
+        const updCliente = new UpdateQuery('gen_persona', 'ide_geper', dtoIn);
+        let tieneCambios = false;
+
+        if (isDefined(data.direccion_cccfa) && data.direccion_cccfa !== (cliente.direccion_geper ?? '')) {
+            updCliente.values.set('direccion_geper', data.direccion_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.telefono_cccfa) && data.telefono_cccfa !== (cliente.telefono_geper ?? '')) {
+            updCliente.values.set('telefono_geper', data.telefono_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.correo_cccfa) && data.correo_cccfa !== (cliente.correo_geper ?? '')) {
+            updCliente.values.set('correo_geper', data.correo_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.ide_cndfp1) && data.ide_cndfp1 !== (cliente.ide_cndfp ?? null)) {
+            updCliente.values.set('ide_cndfp', data.ide_cndfp1);
+            tieneCambios = true;
+        }
+        if (isDefined(data.ide_geprov) && data.ide_geprov !== (cliente.ide_geprov ?? null)) {
+            updCliente.values.set('ide_geprov', data.ide_geprov);
+            tieneCambios = true;
+        }
+
+        if (tieneCambios) {
+            updCliente.where = `ide_geper = ${data.ide_geper}`;
+        }
+
+        // Ejecutar Transacción 1
+        const transaccion1Queries: any[] = [
             insertCabecera,
             ...insertDetalles,
             insertTrnCab,
             insertTrnDet,
             ...kardexQueries,
-            ...(guiaQuery ? [guiaQuery] : []),
-            updatePto,
-        ]);
+        ];
+        if (guiaQuery) transaccion1Queries.push(guiaQuery);
+        if (tieneCambios) transaccion1Queries.push(updCliente);
+        await this.dataSource.createListQuery(transaccion1Queries);
 
-        return {
-            message: 'ok',
-            rowCount: 1,
-            ide_cccfa: ideCccfa,
-            ide_srcom: ideSrcom,
-            ide_ccctr: ideCcctr,
-            ide_ccgui: ideGuia,
-            secuencial_cccfa: secuencial,
-            numero_completo: `${ptoEmision.establecimiento_ccdfa}-${ptoEmision.pto_emision_ccdfa}-${secuencial}`,
-            total: totales.total,
-            kardex_generado: tieneKardex,
-            guia_generada: tieneGuia,
-        };
+        // ── 4. TRANSACCIÓN 2: SRI comprobantes + asignación de secuenciales ────
+        const queryRunner = await this.dataSource.pool.connect();
+        try {
+            await queryRunner.query('BEGIN');
+
+            // 4-A. Obtener datos del emisor (RUC + ambiente)
+            const emisorQuery = new SelectQuery(`
+                SELECT
+                    su.identicicacion_sucu AS ruc,
+                    se.ambiente_sremi AS ambiente
+                FROM sri_emisor se
+                INNER JOIN sis_sucursal su ON se.ide_sucu = su.ide_sucu
+                WHERE se.ide_sucu = $1
+                LIMIT 1
+            `);
+            emisorQuery.addIntParam(1, dtoIn.ideSucu);
+            await this.dataSource.formatSqlQuery(emisorQuery);
+            const emisorRes = await queryRunner.query(emisorQuery.query, emisorQuery.paramValues);
+            if (!emisorRes.rows || emisorRes.rows.length === 0) {
+                throw new BadRequestException(`No existe configuración de emisor SRI para la sucursal ${dtoIn.ideSucu}`);
+            }
+            const emisor = emisorRes.rows[0];
+            const rucEmisor = emisor.ruc;
+            const ambienteSRI = String(emisor.ambiente || '1');
+
+            const estab = ptoEmision.establecimiento_ccdfa;
+            const ptoEmi = ptoEmision.pto_emision_ccdfa;
+            const serie = `${estab}-${ptoEmi}`;
+
+            // 4-A2. Obtener datos adicionales para infoadicional SRI
+            const qVendedor = new SelectQuery(`
+                SELECT nombre_vgven FROM ven_vendedor WHERE ide_vgven = $1 LIMIT 1
+            `);
+            qVendedor.addIntParam(1, data.ide_vgven ?? 0);
+            await this.dataSource.formatSqlQuery(qVendedor);
+            const vendedorRes = await queryRunner.query(qVendedor.query, qVendedor.paramValues);
+            const nombreVendedor = vendedorRes.rows?.[0]?.nombre_vgven ?? '';
+
+            const qFormaPago = new SelectQuery(`
+                SELECT nombre_cndfp, dias_cndfp FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
+            `);
+            qFormaPago.addIntParam(1, data.ide_cndfp1 ?? 0);
+            await this.dataSource.formatSqlQuery(qFormaPago);
+            const fpRes = await queryRunner.query(qFormaPago.query, qFormaPago.paramValues);
+            const descFormaPago = fpRes.rows?.[0]
+                ? `${fpRes.rows[0].nombre_cndfp} (${fpRes.rows[0].dias_cndfp ?? 0} días)`
+                : '';
+
+            // 4-B. Obtener secuencial SRI factura con lock
+            const secuencialFactura = await this.getNextSriSecuencialLock(
+                queryRunner, '01', estab, ptoEmi, dtoIn.ideEmpr,
+            );
+
+            // 4-C. Generar clave de acceso factura
+            const claveAccesoFactura = generarClaveAcceso({
+                fechaEmision: data.fecha_emisi_cccfa,
+                codDoc: '01',
+                rucEmisor,
+                ambiente: ambienteSRI,
+                estab,
+                ptoEmi,
+                secuencial: secuencialFactura,
+                tipoEmision: '1',
+            });
+
+            // 4-D. Obtener secuencial guía SRI con lock (antes de factura para num_guia_srcom)
+            let secuencialGuia: string | null = null;
+            let claveAccesoGuia: string | null = null;
+            if (tieneGuia && ideSrcomGuia !== null && ideGuia !== null) {
+                secuencialGuia = await this.getNextSriSecuencialLock(
+                    queryRunner, '06', estab, ptoEmi, dtoIn.ideEmpr,
+                );
+
+                claveAccesoGuia = generarClaveAcceso({
+                    fechaEmision: data.fecha_emisi_cccfa,
+                    codDoc: '06',
+                    rucEmisor,
+                    ambiente: ambienteSRI,
+                    estab,
+                    ptoEmi,
+                    secuencial: secuencialGuia,
+                    tipoEmision: '1',
+                });
+            }
+
+            // 4-E. INSERT sri_comprobante FACTURA
+            const numGuiaFactura = secuencialGuia ? `${serie}-${secuencialGuia}` : null;
+
+            const insertSriFac = this.buildSriFullInsert(
+                ideSrcomFactura, '01', data.fecha_emisi_cccfa,
+                estab, ptoEmi, secuencialFactura, claveAccesoFactura,
+                this.ideSriEstadoCreado, dtoIn,
+                totales, data, cliente, diasCredito,
+                null, nombreVendedor, descFormaPago,
+                numGuiaFactura,
+            );
+            await this.dataSource.formatSqlQuery(insertSriFac);
+            await queryRunner.query(insertSriFac.query, insertSriFac.paramValues);
+
+            // 4-E. UPDATE retroactivo de secuenciales factura
+            const updFactura = new UpdateQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
+            updFactura.values.set('secuencial_cccfa', secuencialFactura);
+            updFactura.values.set('ide_srcom', ideSrcomFactura);
+            updFactura.values.delete('usuario_actua');
+            updFactura.values.delete('fecha_actua');
+            updFactura.values.delete('hora_actua');
+            updFactura.where = `${PK_CAB} = $1`;
+            updFactura.addIntParam(1, ideCccfa);
+            await this.dataSource.formatSqlQuery(updFactura);
+            await queryRunner.query(updFactura.query, updFactura.paramValues);
+
+            const updTrnCab = new UpdateQuery(TABLE_TRN_CAB, PK_TRN_CAB, dtoIn);
+            updTrnCab.values.set('observacion_ccctr', `V/. FACTURA ${secuencialFactura}`);
+            updTrnCab.values.delete('usuario_actua');
+            updTrnCab.values.delete('fecha_actua');
+            updTrnCab.values.delete('hora_actua');
+            updTrnCab.where = `${PK_TRN_CAB} = $1`;
+            updTrnCab.addIntParam(1, ideCcctr);
+            await this.dataSource.formatSqlQuery(updTrnCab);
+            await queryRunner.query(updTrnCab.query, updTrnCab.paramValues);
+
+            const updTrnDet = new UpdateQuery(TABLE_TRN_DET, PK_TRN_DET, dtoIn);
+            updTrnDet.values.set('docum_relac_ccdtr', secuencialFactura);
+            updTrnDet.values.set('observacion_ccdtr', `V/. FACTURA ${secuencialFactura}`);
+            updTrnDet.values.delete('usuario_actua');
+            updTrnDet.values.delete('fecha_actua');
+            updTrnDet.values.delete('hora_actua');
+            updTrnDet.where = `${PK_TRN_DET} = $1`;
+            updTrnDet.addIntParam(1, ideCcdtr);
+            await this.dataSource.formatSqlQuery(updTrnDet);
+            await queryRunner.query(updTrnDet.query, updTrnDet.paramValues);
+
+            // 4-F. SRI comprobante + UPDATE guía de remisión
+            if (tieneGuia && ideSrcomGuia !== null && ideGuia !== null && secuencialGuia) {
+                const insertSriGuia = this.buildSriFullInsert(
+                    ideSrcomGuia, '06', data.fecha_emisi_cccfa,
+                    estab, ptoEmi, secuencialGuia, claveAccesoGuia!,
+                    this.ideSriEstadoCreado, dtoIn,
+                    totales, data, cliente, 0,
+                    ideSrcomFactura, '', '', null,
+                );
+                await this.dataSource.formatSqlQuery(insertSriGuia);
+                await queryRunner.query(insertSriGuia.query, insertSriGuia.paramValues);
+
+                const updGuia = new UpdateQuery(TABLE_GUIA, PK_GUIA, dtoIn);
+                updGuia.values.set('numero_ccgui', secuencialGuia);
+                updGuia.values.set('ide_srcom', ideSrcomGuia);
+                updGuia.values.delete('usuario_actua');
+                updGuia.values.delete('fecha_actua');
+                updGuia.values.delete('hora_actua');
+                updGuia.where = `${PK_GUIA} = $1`;
+                updGuia.addIntParam(1, ideGuia);
+                await this.dataSource.formatSqlQuery(updGuia);
+                await queryRunner.query(updGuia.query, updGuia.paramValues);
+            }
+
+            // 4-G. UPDATE cxc_datos_fac (sincronizar num_actual_ccdfa)
+            const updatePto = new UpdateQuery('cxc_datos_fac', 'ide_ccdaf', dtoIn);
+            updatePto.values.set('num_actual_ccdfa', Number(secuencialFactura));
+            updatePto.values.delete('usuario_actua');
+            updatePto.values.delete('fecha_actua');
+            updatePto.values.delete('hora_actua');
+            updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
+            await this.dataSource.formatSqlQuery(updatePto);
+            await queryRunner.query(updatePto.query, updatePto.paramValues);
+
+            await queryRunner.query('COMMIT');
+
+            return {
+                message: 'ok',
+                rowCount: 1,
+                ide_cccfa: ideCccfa,
+                ide_srcom: ideSrcomFactura,
+                ide_ccctr: ideCcctr,
+                ide_ccgui: ideGuia,
+                secuencial_cccfa: secuencialFactura,
+                clave_acceso_factura: claveAccesoFactura,
+                numero_completo: `${serie}-${secuencialFactura}`,
+                total: totales.total,
+                kardex_generado: tieneKardex,
+                guia_generada: tieneGuia,
+                secuencial_guia: secuencialGuia,
+                clave_acceso_guia: claveAccesoGuia,
+            };
+        } catch (error) {
+            await queryRunner.query('ROLLBACK');
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -409,10 +599,9 @@ export class FacturasSaveService extends BaseService {
         q.values.set('ide_geper', data.ide_geper);
         q.values.set('ide_cntdo', data.ide_cntdo);
         q.values.set('ide_ccefa', data.ide_ccefa);
-        q.values.set('ide_srcom', data.ide_srcom);
         q.values.set('ide_usua', data.ide_usua);
         q.values.set('fecha_emisi_cccfa', data.fecha_emisi_cccfa);
-        q.values.set('secuencial_cccfa', data.secuencial_cccfa);
+        q.values.set('fecha_trans_cccfa', getCurrentDate());
         q.values.set('base_no_objeto_iva_cccfa', totales.base_no_objeto_iva);
         q.values.set('base_tarifa0_cccfa', totales.base_tarifa0);
         q.values.set('base_grabada_cccfa', totales.base_grabada);
@@ -421,17 +610,21 @@ export class FacturasSaveService extends BaseService {
         q.values.set('total_cccfa', totales.total);
         q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
         q.values.set('pagado_cccfa', false);
-        q.values.set('solo_guardar_cccfa', false);
+        q.values.set('solo_guardar_cccfa', true);
         q.values.set('usuario_ingre', dtoIn.login);
         q.values.set('fecha_ingre', getCurrentDate());
         q.values.set('hora_ingre', getCurrentTime());
         if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
         if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
+        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp', data.ide_cndfp1);
+        if (isDefined(data.telefono_cccfa)) q.values.set('telefono_cccfa', data.telefono_cccfa);
         if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
         if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
         if (isDefined(data.correo_cccfa)) q.values.set('correo_cccfa', data.correo_cccfa);
         if (isDefined(data.orden_compra_cccfa)) q.values.set('orden_compra_cccfa', data.orden_compra_cccfa);
         if (isDefined(data.num_proforma_cccfa)) q.values.set('num_proforma_cccfa', data.num_proforma_cccfa);
+        if (isDefined(data.secuencial_cccfa)) q.values.set('secuencial_cccfa', data.secuencial_cccfa);
+        if (isDefined(data.ide_srcom)) q.values.set('ide_srcom', data.ide_srcom);
         return q;
     }
 
@@ -458,6 +651,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('hora_actua', getCurrentTime());
         if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
         if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
+        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp', data.ide_cndfp1);
         if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
         if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
         if (isDefined(data.correo_cccfa)) q.values.set('correo_cccfa', data.correo_cccfa);
@@ -489,6 +683,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('hora_ingre', getCurrentTime());
         if (isDefined(det.observacion_ccdfa)) q.values.set('observacion_ccdfa', det.observacion_ccdfa);
         if (isDefined(det.ide_inuni)) q.values.set('ide_inuni', det.ide_inuni);
+        q.values.set('alterno_ccdfa', det.alterno_ccdfa ?? '00');
         return q;
     }
 
@@ -508,6 +703,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('ide_ccctr', ideCcctr);
         q.values.set('ide_geper', ideGeper);
         q.values.set('ide_cccfa', ideCccfa);
+        q.values.set('ide_ccttr', this.ideTipoTransFactura);
         q.values.set('fecha_trans_ccctr', fechaTrans);
         q.values.set('observacion_ccctr', `FACTURA ${secuencial}`);
         q.values.set('usuario_ingre', dtoIn.login);
@@ -540,7 +736,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('ide_usua', dtoIn.ideUsua);
         q.values.set('fecha_trans_ccdtr', fechaTrans);
         q.values.set('fecha_venci_ccdtr', fechaVenci);
-        q.values.set('numero_pago_ccdtr', 1);
+        q.values.set('numero_pago_ccdtr', 0);
         q.values.set('valor_ccdtr', valorTotal);
         q.values.set('docum_relac_ccdtr', secuencial);
         q.values.set('observacion_ccdtr', `FACTURA ${secuencial}`);
@@ -555,9 +751,9 @@ export class FacturasSaveService extends BaseService {
     /**
      * Construye los INSERTs del comprobante de inventario (kardex de salida por venta).
      * Solo se llama para artículos con hace_kardex_inarti = true.
-     * Las cantidades y valores se guardan en NEGATIVO (representan salida de stock).
+     * Aplica conversión de unidades si la línea usa una unidad distinta a la base del producto.
      */
-    private buildKardexQueries(
+    private async buildKardexQueries(
         ideIncci: number,
         baseIdeIndci: number,
         ideCccfa: number,
@@ -567,22 +763,25 @@ export class FacturasSaveService extends BaseService {
         detallesKardex: DetaFacturaDto[],
         dtoIn: SaveFacturaDto & HeaderParamsDto,
         ideBodega: number,
-    ): InsertQuery[] {
+    ): Promise<InsertQuery[]> {
         const queries: InsertQuery[] = [];
+
+        // ── Conversión de unidades ──────────────────────────────────────────
+        const conversiones = await this.getConversionesUnidades(detallesKardex);
 
         // Cabecera del comprobante de inventario
         const qCab = new InsertQuery(TABLE_INV_CAB, PK_INV_CAB, dtoIn);
         qCab.values.set('ide_incci', ideIncci);
         qCab.values.set('ide_geper', cliente.ide_geper);
-        qCab.values.set('ide_intti', 29);
+        qCab.values.set('ide_intti', this.ideTipoTransaccionVenta);
         qCab.values.set('ide_inbod', ideBodega);
         qCab.values.set('ide_inepi', this.ideEstadoNormalInv);
         qCab.values.set('ide_usua', dtoIn.ideUsua);
-        qCab.values.set('numero_incci', secuencial.slice(-10));  // max 10 chars
+        qCab.values.set('numero_incci', secuencial.slice(-10));
         qCab.values.set('fecha_trans_incci', data.fecha_emisi_cccfa);
         qCab.values.set('fecha_efect_incci', data.fecha_emisi_cccfa);
         qCab.values.set('observacion_incci', `VENTA FACTURA ${secuencial}`);
-        qCab.values.set('referencia_incci', secuencial.slice(-12));   // max 12 chars
+        qCab.values.set('referencia_incci', secuencial.slice(-12));
         qCab.values.set('automatico_incci', true);
         qCab.values.set('verifica_incci', false);
         qCab.values.set('usuario_ingre', dtoIn.login);
@@ -592,16 +791,24 @@ export class FacturasSaveService extends BaseService {
 
         // Detalle por cada artículo con kardex
         detallesKardex.forEach((det, idx) => {
+            const key = `${det.ide_inarti}_${det.ide_inuni ?? ''}`;
+            const conversion = conversiones.get(key);
+            const cantidadConvertida = conversion
+                ? Number((det.cantidad_ccdfa * conversion).toFixed(6))
+                : det.cantidad_ccdfa;
+            const valorConvertido = conversion
+                ? Number((Math.abs(det.total_ccdfa) * (cantidadConvertida / det.cantidad_ccdfa)).toFixed(2))
+                : Math.abs(det.total_ccdfa);
+
             const qDet = new InsertQuery(TABLE_INV_DET, PK_INV_DET, dtoIn);
             qDet.values.set('ide_indci', baseIdeIndci + idx);
             qDet.values.set('ide_incci', ideIncci);
             qDet.values.set('ide_inarti', det.ide_inarti);
             qDet.values.set('ide_cccfa', ideCccfa);
             qDet.values.set('secuencial_indci', String(idx + 1).padStart(6, '0'));
-            // Negativo: salida de bodega por venta
-            qDet.values.set('cantidad_indci', -Math.abs(det.cantidad_ccdfa));
+            qDet.values.set('cantidad_indci', Math.abs(cantidadConvertida));
             qDet.values.set('precio_indci', det.precio_ccdfa);
-            qDet.values.set('valor_indci', -Math.abs(det.total_ccdfa));
+            qDet.values.set('valor_indci', Math.abs(valorConvertido));
             qDet.values.set('usuario_ingre', dtoIn.login);
             qDet.values.set('fecha_ingre', getCurrentDate());
             qDet.values.set('hora_ingre', getCurrentTime());
@@ -666,7 +873,8 @@ export class FacturasSaveService extends BaseService {
 
         const qCliente = new SelectQuery(`
             SELECT g.ide_geper, g.nom_geper, g.identificac_geper,
-                   g.correo_geper, g.direccion_geper,
+                   g.correo_geper, g.direccion_geper, g.telefono_geper,
+                   g.ide_geprov, g.ide_cndfp,
                    t.alterno2_getid AS tipo_identificacion
             FROM gen_persona g
             INNER JOIN gen_tipo_identifi t ON g.ide_getid = t.ide_getid
@@ -749,5 +957,184 @@ export class FacturasSaveService extends BaseService {
         const d = new Date(`${fecha}T00:00:00`);
         d.setDate(d.getDate() + dias);
         return d.toISOString().split('T')[0];
+    }
+
+    /**
+     * Obtiene los factores de conversión de unidades para los items del kardex.
+     * Retorna un Map key=${ide_inarti}_${ide_inuni_origen} → factor.
+     * Si la unidad de la línea es igual a la unidad base del producto, no se incluye.
+     * Si no existe conversión configurada, no se incluye (se usa cantidad original).
+     */
+    private async getConversionesUnidades(
+        detallesKardex: DetaFacturaDto[],
+    ): Promise<Map<string, number>> {
+        const result = new Map<string, number>();
+        if (!detallesKardex.length) return result;
+
+        const idsArti = [...new Set(detallesKardex.map(d => d.ide_inarti))];
+
+        const q = new SelectQuery(`
+            SELECT
+                a.ide_inarti,
+                cu.ide_inuni AS ide_inuni_origen,
+                cu.cantidad_incon
+            FROM inv_articulo a
+            INNER JOIN inv_conversion_unidad cu
+                ON cu.ide_inarti = a.ide_inarti
+               AND cu.inv_ide_inuni = a.ide_inuni
+            WHERE a.ide_inarti = ANY($1)
+        `);
+        q.addParam(1, idsArti);
+        const rows = await this.dataSource.createSelectQuery(q);
+
+        for (const row of rows) {
+            if (row.ide_inuni_origen !== null && row.cantidad_incon !== null) {
+                const key = `${row.ide_inarti}_${row.ide_inuni_origen}`;
+                result.set(key, Number(row.cantidad_incon));
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Valida la identificación del cliente (cédula/RUC) usando los validadores
+     * existentes del proyecto (cedula-ruc.ts).
+     */
+    private validarIdentificacion(cliente: any): void {
+        const id = (cliente.identificac_geper || '').trim();
+        if (!id) {
+            throw new BadRequestException('El cliente no tiene identificación (cédula/RUC).');
+        }
+
+        if (id.length === 10) {
+            if (!validateCedula(id)) {
+                throw new BadRequestException(`Cédula inválida: ${id}.`);
+            }
+            return;
+        }
+
+        if (id.length === 13) {
+            const result = validateRUC(id);
+            if (!result.isValid) {
+                throw new BadRequestException(`RUC inválido: ${id}. ${result.type}`);
+            }
+            return;
+        }
+
+        throw new BadRequestException(`Identificación inválida: ${id}. Debe ser cédula (10 dígitos) o RUC (13 dígitos).`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SRI SECUENCIAL + CLAVE DE ACCESO
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Obtiene el siguiente secuencial SRI con lock por advisory lock de PostgreSQL.
+     * El lock es transaccional (pg_advisory_xact_lock) — se libera al COMMIT/ROLLBACK.
+     * Clave única por (ide_empr, coddoc, estab, ptoemi).
+     */
+    private async getNextSriSecuencialLock(
+        queryRunner: any,
+        coddoc: string,
+        estab: string,
+        ptoEmi: string,
+        ideEmpr: number,
+    ): Promise<string> {
+        const lockKey = ideEmpr * 100000000
+            + parseInt(coddoc) * 1000000
+            + parseInt(estab) * 1000
+            + parseInt(ptoEmi);
+
+        await queryRunner.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+
+        const q = new SelectQuery(`
+            SELECT COALESCE(MAX(secuencial_srcom::integer), 0) + 1 AS next_seq
+            FROM sri_comprobante
+            WHERE estab_srcom = $1 AND ptoemi_srcom = $2 AND coddoc_srcom = $3
+              AND ide_empr = $4
+        `);
+        q.addStringParam(1, estab);
+        q.addStringParam(2, ptoEmi);
+        q.addStringParam(3, coddoc);
+        q.addIntParam(4, ideEmpr);
+        await this.dataSource.formatSqlQuery(q);
+        const res = await queryRunner.query(q.query, q.paramValues);
+        const nextSeq = Number(res.rows[0]?.next_seq ?? 1);
+        return String(nextSeq).padStart(9, '0');
+    }
+
+    /**
+     * Construye INSERT completo para sri_comprobante (factura o guía).
+     * Incluye todos los campos que el código Java referencia.
+     */
+    private buildSriFullInsert(
+        ideSrcom: number,
+        coddoc: string,
+        fechaEmision: string,
+        estab: string,
+        ptoEmi: string,
+        secuencial: string,
+        claveAcceso: string,
+        ideSresc: number,
+        dtoIn: SaveFacturaDto & HeaderParamsDto,
+        totales: Totales,
+        data: SaveFacturaDto['data'],
+        cliente: any,
+        diasCredito: number,
+        sriIdeSrcom: number | null,
+        nombreVendedor: string,
+        descFormaPago: string,
+        numGuiaSRI: string | null,
+    ): InsertQuery {
+        const q = new InsertQuery('sri_comprobante', 'ide_srcom');
+        q.values.set('ide_srcom', ideSrcom);
+        q.values.set('coddoc_srcom', coddoc);
+        q.values.set('tipoemision_srcom', '1');
+        q.values.set('fechaemision_srcom', fechaEmision);
+        q.values.set('estab_srcom', estab);
+        q.values.set('ptoemi_srcom', ptoEmi);
+        q.values.set('secuencial_srcom', secuencial);
+        q.values.set('claveacceso_srcom', claveAcceso);
+        q.values.set('ide_sresc', ideSresc);
+        q.values.set('subtotal0_srcom', totales.base_tarifa0);
+        q.values.set('base_grabada_srcom', totales.base_grabada);
+        q.values.set('subtotal_srcom', totales.base_grabada + totales.base_tarifa0);
+        q.values.set('iva_srcom', totales.valor_iva);
+        q.values.set('total_srcom', totales.total);
+        q.values.set('descuento_srcom', 0);
+        q.values.set('identificacion_srcom', cliente.identificac_geper);
+        q.values.set('forma_cobro_srcom', data.ide_cndfp1 ? String(data.ide_cndfp1) : '01');
+        q.values.set('dias_credito_srcom', diasCredito);
+        q.values.set('correo_srcom', data.correo_cccfa ?? cliente.correo_geper ?? null);
+        q.values.set('ide_geper', data.ide_geper);
+        q.values.set('ide_cntdo', this.ideTipoDocFactura);
+        q.values.set('ide_empr', dtoIn.ideEmpr);
+        q.values.set('ide_sucu', dtoIn.ideSucu);
+        q.values.set('orden_compra_srcom', data.orden_compra_cccfa ?? null);
+        q.values.set('reutiliza_srcom', false);
+        q.values.set('en_nube_srcom', false);
+        q.values.set('usuario_ingre', dtoIn.login);
+        q.values.set('fecha_sistema_srcom', getCurrentDate());
+        q.values.set('ip_genera_srcom', dtoIn.ip ?? 'localhost');
+        q.values.set('infoadicional1_srcom', nombreVendedor || null);
+        q.values.set('infoadicional2_srcom', descFormaPago || null);
+        q.values.set('infoadicional3_srcom', data.observacion_cccfa || null);
+        if (numGuiaSRI) {
+            q.values.set('num_guia_srcom', numGuiaSRI);
+        }
+        if (sriIdeSrcom !== null) {
+            q.values.set('sri_ide_srcom', sriIdeSrcom);
+        }
+        if (coddoc === '06') {
+            const guia = dtoIn.guia;
+            if (guia) {
+                q.values.set('placa_srcom', guia.placa_gecam ?? null);
+                q.values.set('direcion_partida_srcom', guia.punto_partida_ccgui ?? null);
+                q.values.set('fecha_ini_trans_srcom', guia.fecha_ini_trasla_ccgui ?? null);
+                q.values.set('fecha_fin_trans_srcom', guia.fecha_fin_trasla_ccgui ?? null);
+            }
+        }
+        return q;
     }
 }

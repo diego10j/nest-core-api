@@ -41,6 +41,15 @@ export class VariablesController {
     });
   }
 
+  @Get('getPorcentajeIVA')
+  @ApiOperation({ summary: 'Obtener porcentaje de IVA activo vigente (con_porcen_impues)' })
+  getPorcentajeIVA(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.service.getPorcentajeIVA(fecha);
+  }
+
   @Post('updateVariables')
   @ApiOperation({ summary: 'Recargar variables del sistema desde base de datos' })
   //@Auth()

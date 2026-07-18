@@ -3,6 +3,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { removeEqualsElements } from 'src/util/helpers/array-util';
+import { getCurrentDate } from 'src/util/helpers/date-util';
 
 import { INVENTARIO_VARS } from './data/1-inv-var';
 import { IMPORTACIONES_VARS } from './data/14-imp-var';
@@ -263,7 +264,25 @@ export class VariablesService {
     };
   }
 
-  async actualizarVariable(dtoIn: ActualizarVariableDto & HeaderParamsDto) {
+    async getPorcentajeIVA(fecha?: string) {
+        const fechaQuery = fecha || getCurrentDate();
+        const query = new SelectQuery(`
+            SELECT porcentaje_cnpim * 100 AS porcentaje
+            FROM con_porcen_impues
+            WHERE $1::date BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+              AND activo_cnpim = TRUE
+            ORDER BY fecha_desde_cnpim DESC
+            LIMIT 1
+        `);
+        query.addStringParam(1, fechaQuery);
+        const result = await this.dataSource.createSingleQuery(query);
+        if (!result) {
+            throw new BadRequestException('No se encontró porcentaje de IVA activo para la fecha ' + fechaQuery);
+        }
+        return result;
+    }
+
+    async actualizarVariable(dtoIn: ActualizarVariableDto & HeaderParamsDto) {
     const nomPara = dtoIn.nom_para.trim();
     const nomParaLower = nomPara.toLowerCase();
 

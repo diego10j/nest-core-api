@@ -54,6 +54,32 @@ export class AdminService {
     return res;
   }
 
+  async getEmpresaSucursal(dtoIn: HeaderParamsDto) {
+    const qe = new SelectQuery(`
+      SELECT ide_empr, nom_empr, nom_corto_empr, identificacion_empr,
+             direccion_empr, telefono_empr, mail_empr, logotipo_empr, pagina_empr
+      FROM sis_empresa
+      WHERE ide_empr = $1
+    `);
+    qe.addIntParam(1, dtoIn.ideEmpr);
+
+    const qs = new SelectQuery(`
+      SELECT ide_sucu, ide_empr, nom_sucu, nombre_comercial_sucu,
+             identicicacion_sucu, direccion_sucu, telefonos_sucu,
+             correo_sucu, logotipo_sucu, pagina_sucu
+      FROM sis_sucursal
+      WHERE ide_sucu = $1
+    `);
+    qs.addIntParam(1, dtoIn.ideSucu);
+
+    const [empresa, sucursal] = await Promise.all([
+      this.dataSource.createSingleQuery(qe),
+      this.dataSource.createSingleQuery(qs),
+    ]);
+
+    return { empresa, sucursal };
+  }
+
   // -------------------------------- SUCURSAL ---------------------------- //
   async getListDataSucursal(dto: QueryOptionsDto & HeaderParamsDto) {
     const condition = `ide_empr = ${dto.ideEmpr}`;

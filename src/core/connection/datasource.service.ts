@@ -560,7 +560,7 @@ export class DataSourceService {
   /**
    * Da formato sql al query dependiendo del tipo
    */
-  private async formatSqlQuery(query: Query) {
+  async formatSqlQuery(query: Query) {
     //Forma sentencia sql
     try {
       if (query instanceof InsertQuery) {
@@ -587,6 +587,7 @@ export class DataSourceService {
           query.values.set('fecha_ingre', getDateFormat(now));
           query.values.set('hora_ingre', getTimeFormat(now));
         }
+        query.values.delete('usuario_actua');
         query.values.delete('hora_actua');
         query.values.delete('fecha_actua');
         getSqlInsert(query);

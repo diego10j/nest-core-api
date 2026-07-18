@@ -91,6 +91,12 @@ export class AdminController {
     });
   }
 
+  @Get('getEmpresaSucursal')
+  @ApiOperation({ summary: 'Obtener datos de empresa y sucursal según headers X-Ide-Empr y X-Ide-Sucu (0 = no filtrar)' })
+  getEmpresaSucursal(@AppHeaders() h: HeaderParamsDto) {
+    return this.adminService.getEmpresaSucursal(h);
+  }
+
   // -------------------------------- OPCIONES ---------------------------- //
 
   @Get('getTableQueryOpcion')

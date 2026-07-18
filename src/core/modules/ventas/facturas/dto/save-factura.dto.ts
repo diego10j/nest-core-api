@@ -5,6 +5,7 @@ import {
     IsArray,
     IsBoolean,
     IsDateString,
+    IsEmail,
     IsInt,
     IsNotEmpty,
     IsNumber,
@@ -13,6 +14,7 @@ import {
     IsString,
     MaxLength,
     Min,
+    MinLength,
     ValidateNested,
 } from 'class-validator';
 import { SaveDto } from 'src/common/dto/save.dto';
@@ -42,7 +44,7 @@ export class DetaFacturaDto {
     total_ccdfa: number;
 
     @ApiProperty({
-        description: 'Indicador de IVA. 0 = tarifa 0% / no objeto, valores > 0 = graba IVA',
+        description: 'Indicador de IVA. 1 = grava IVA, -1 = tarifa 0%, 0 = no objeto de IVA',
     })
     @IsInt()
     iva_inarti_ccdfa: number;
@@ -62,6 +64,12 @@ export class DetaFacturaDto {
     @IsInt()
     @IsOptional()
     ide_inuni?: number;
+
+    @ApiPropertyOptional({ description: 'Nombre alterno del producto para la factura' })
+    @IsString()
+    @IsOptional()
+    @MaxLength(150)
+    alterno_ccdfa?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,21 +111,20 @@ export class GuiaRemisionDto {
     @MaxLength(190)
     destinatario_ccgui?: string;
 
-    @ApiPropertyOptional({
+    @ApiProperty({
         description: 'Placa del vehículo de transporte (gen_camion.placa_gecam). Máx. 15 caracteres',
         maxLength: 15,
     })
     @IsString()
-    @IsOptional()
+    @IsNotEmpty()
     @MaxLength(15)
-    placa_gecam?: string;
+    placa_gecam: string;
 
-    @ApiPropertyOptional({
+    @ApiProperty({
         description: 'ID de la persona transportista (gen_persona.ide_geper)',
     })
     @IsInt()
-    @IsOptional()
-    gen_ide_geper?: number;
+    gen_ide_geper: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,15 +176,23 @@ export class CabeceraFacturaDataDto {
     @MaxLength(180)
     direccion_cccfa?: string;
 
-    @ApiPropertyOptional({ description: 'Correo electrónico del cliente para envío. Máx. 100 caracteres', maxLength: 100 })
-    @IsString()
+    @ApiPropertyOptional({ description: 'Correo electrónico del cliente para envío. Obligatorio para comprobantes electrónicos. Máx. 100 caracteres', maxLength: 100 })
+    @IsEmail()
     @IsOptional()
     @MaxLength(100)
     correo_cccfa?: string;
 
-    @ApiPropertyOptional({ description: 'Observaciones de la factura' })
+    @ApiPropertyOptional({ description: 'Teléfono del cliente. Mínimo 6 caracteres, máximo 20. Obligatorio al crear.' })
     @IsString()
     @IsOptional()
+    @MinLength(6)
+    @MaxLength(20)
+    telefono_cccfa?: string;
+
+    @ApiPropertyOptional({ description: 'Observaciones de la factura. Obligatorio al crear. Máx. 200 caracteres', maxLength: 200 })
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
     observacion_cccfa?: string;
 
     @ApiPropertyOptional({
@@ -202,6 +217,12 @@ export class CabeceraFacturaDataDto {
     @IsOptional()
     @MaxLength(50)
     num_proforma_cccfa?: string;
+
+    @ApiPropertyOptional({ description: 'ID de la provincia del cliente (gen_provincia.ide_geprov)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_geprov?: number;
 
     // ── Campos internos: el servicio los asigna, no enviar desde el frontend ──
     /** @internal Asignado automáticamente por el servicio */

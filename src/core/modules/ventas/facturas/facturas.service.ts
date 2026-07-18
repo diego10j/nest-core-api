@@ -54,8 +54,7 @@ export class FacturasService extends BaseService {
         const qPto = new SelectQuery(`
             SELECT
                 establecimiento_ccdfa,
-                pto_emision_ccdfa,
-                num_actual_ccdfa
+                pto_emision_ccdfa
             FROM cxc_datos_fac
             WHERE ide_ccdaf = $1
               AND ide_empr   = $2
@@ -70,7 +69,16 @@ export class FacturasService extends BaseService {
             );
         }
 
-        const siguiente = Number(pto.num_actual_ccdfa) + 1;
+        const qMaxSec = new SelectQuery(`
+            SELECT COALESCE(MAX(NULLIF(secuencial_cccfa, '')::integer), 0) AS max_sec
+            FROM cxc_cabece_factura
+            WHERE ide_ccdaf = $1 AND ide_empr = $2
+        `);
+        qMaxSec.addIntParam(1, dtoIn.ide_ccdaf);
+        qMaxSec.addIntParam(2, dtoIn.ideEmpr);
+        const maxSecRow = await this.dataSource.createSingleQuery(qMaxSec);
+        const numActual = Number(maxSecRow.max_sec);
+        const siguiente = numActual + 1;
         const secuencial = String(siguiente).padStart(9, '0');
 
         return {
@@ -78,7 +86,7 @@ export class FacturasService extends BaseService {
             row: {
                 establecimiento: pto.establecimiento_ccdfa,
                 pto_emision: pto.pto_emision_ccdfa,
-                num_actual: pto.num_actual_ccdfa,
+                num_actual: numActual,
                 secuencial,
                 serie: `${pto.establecimiento_ccdfa}-${pto.pto_emision_ccdfa}`,
                 numero_completo: `${pto.establecimiento_ccdfa}-${pto.pto_emision_ccdfa}-${secuencial}`,
@@ -144,6 +152,7 @@ export class FacturasService extends BaseService {
         }
         const condEstadoFact = `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`;
         const condEstadoComp = isDefined(dtoIn.ide_sresc) ? `and d.ide_sresc =  ${dtoIn.ide_sresc}` : '';
+        const condTieneSecuencial = 'AND a.secuencial_cccfa IS NOT NULL';
 
         const query = new SelectQuery(
             `
@@ -252,6 +261,7 @@ export class FacturasService extends BaseService {
             ${condPtoEmision}
             ${condEstadoFact}
             ${condEstadoComp}
+            ${condTieneSecuencial}
         ORDER BY
             secuencial_cccfa DESC,
             ide_cccfa DESC
@@ -331,6 +341,7 @@ export class FacturasService extends BaseService {
             WHERE
                 a.fecha_emisi_cccfa BETWEEN $1 AND $2
                 AND a.ide_empr = ${dtoIn.ideEmpr}
+                AND a.secuencial_cccfa IS NOT NULL
                 ${condPtoEmision}
                 ${condEstadoFact}
                 ${condEstadoComp}
@@ -502,6 +513,7 @@ export class FacturasService extends BaseService {
                      OR ct.fecha_trans_ccctr BETWEEN $3 AND $4)
                     AND ct.ide_sucu = $5
                     AND cf.ide_empr = $6
+                    AND cf.secuencial_cccfa IS NOT NULL
                     AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
             ),
             transacciones_abono AS (
@@ -1795,7 +1807,6 @@ export class FacturasService extends BaseService {
                 establecimiento_ccdfa,
                 pto_emision_ccdfa,
                 serie_ccdaf,
-                num_actual_ccdfa,
                 ide_sucu
             FROM cxc_datos_fac
             WHERE ide_ccdaf = $1
@@ -1803,6 +1814,14 @@ export class FacturasService extends BaseService {
         `);
         qPto.addIntParam(1, dtoIn.ide_ccdaf);
         qPto.addIntParam(2, dtoIn.ideEmpr);
+
+        const qMaxSec = new SelectQuery(`
+            SELECT COALESCE(MAX(NULLIF(secuencial_cccfa, '')::integer), 0) AS max_sec
+            FROM cxc_cabece_factura
+            WHERE ide_ccdaf = $1 AND ide_empr = $2
+        `);
+        qMaxSec.addIntParam(1, dtoIn.ide_ccdaf);
+        qMaxSec.addIntParam(2, dtoIn.ideEmpr);
 
         const qFormasPago = new SelectQuery(`
             SELECT
@@ -1819,8 +1838,9 @@ export class FacturasService extends BaseService {
         `);
         qFormasPago.addIntParam(1, dtoIn.ideEmpr);
 
-        const [pto, formasPago] = await Promise.all([
+        const [pto, maxSecRow, formasPago] = await Promise.all([
             this.dataSource.createSingleQuery(qPto),
+            this.dataSource.createSingleQuery(qMaxSec),
             this.dataSource.createSelectQuery(qFormasPago),
         ]);
 
@@ -1830,7 +1850,8 @@ export class FacturasService extends BaseService {
             );
         }
 
-        const siguiente = Number(pto.num_actual_ccdfa) + 1;
+        const numActual = Number(maxSecRow.max_sec);
+        const siguiente = numActual + 1;
         const secuencial = String(siguiente).padStart(9, '0');
 
         return {
@@ -1841,7 +1862,7 @@ export class FacturasService extends BaseService {
                     establecimiento: pto.establecimiento_ccdfa,
                     pto_emision: pto.pto_emision_ccdfa,
                     serie: pto.serie_ccdaf,
-                    num_actual: pto.num_actual_ccdfa,
+                    num_actual: numActual,
                     secuencial,
                     numero_completo: `${pto.establecimiento_ccdfa}-${pto.pto_emision_ccdfa}-${secuencial}`,
                 },
@@ -1943,6 +1964,260 @@ export class FacturasService extends BaseService {
                 ...articulo,
                 saldo_bodega: saldoRow?.saldo ?? 0,
                 ultimo_precio: ultimoPrecioRow?.ultimo_precio ?? null,
+            },
+            message: 'ok',
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CARGAR PROFORMA PARA FACTURA
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Retorna cabecera + detalles de una proforma para pre-llenar el formulario
+     * de nueva factura. Portado de ServicioCuentasCxC.getProforma() y
+     * FacturaCxC.cargarProforma().
+     *
+     * @param numeroProforma número de proforma, se normaliza a 9 dígitos con ceros a la izquierda
+     */
+    async getProformaParaFactura(dtoIn: HeaderParamsDto, numeroProforma: string) {
+        const numProforma = String(numeroProforma).padStart(9, '0');
+
+        const qCab = new SelectQuery(`
+            SELECT
+                c.secuencial_cccpr,
+                c.fecha_cccpr,
+                c.identificac_cccpr,
+                c.direccion_cccpr,
+                c.correo_cccpr,
+                c.telefono_cccpr,
+                c.contacto_cccpr,
+                c.solicitante_cccpr,
+                COALESCE(sol.nom_geper, c.solicitante_cccpr) AS nombre_solicitante,
+                c.observacion_cccpr,
+                c.notas_cccpr,
+                c.referencia_cccpr,
+                c.tarifa_iva_cccpr,
+                c.base_grabada_cccpr,
+                c.base_tarifa0_cccpr,
+                c.valor_iva_cccpr,
+                c.total_cccpr,
+                c.ide_cctpr,
+                c.ide_vgven,
+                c.ide_cndfp,
+                c.ide_geper,
+                c.ide_geprov,
+                fp.dias_cndfp AS dias_credito_cccpr
+            FROM cxc_cabece_proforma c
+            LEFT JOIN con_deta_forma_pago fp ON c.ide_cndfp = fp.ide_cndfp
+            LEFT JOIN gen_persona sol ON c.ide_geper = sol.ide_geper
+            WHERE c.secuencial_cccpr = $1
+              AND c.ide_empr = $2
+            LIMIT 1
+        `);
+        qCab.addStringParam(1, numProforma);
+        qCab.addIntParam(2, dtoIn.ideEmpr);
+
+        const qDet = new SelectQuery(`
+            SELECT
+                d.ide_inarti,
+                a.nombre_inarti,
+                a.codigo_inarti,
+                d.cantidad_ccdpr AS cantidad,
+                d.precio_ccdpr AS precio,
+                d.total_ccdpr AS total,
+                COALESCE(d.iva_inarti_ccdpr, 0) AS iva_inarti,
+                d.ide_inuni,
+                u.siglas_inuni,
+                d.observacion_ccdpr AS observacion
+            FROM cxc_deta_proforma d
+            INNER JOIN cxc_cabece_proforma c ON d.ide_cccpr = c.ide_cccpr
+            LEFT JOIN inv_articulo a ON d.ide_inarti = a.ide_inarti
+            LEFT JOIN inv_unidad u ON d.ide_inuni = u.ide_inuni
+            WHERE c.secuencial_cccpr = $1
+              AND c.ide_empr = $2
+            ORDER BY d.ide_ccdpr
+        `);
+        qDet.addStringParam(1, numProforma);
+        qDet.addIntParam(2, dtoIn.ideEmpr);
+
+        // Resolver cliente por identificación (Java: LIMIT 1 + es_cliente_geper = true)
+        const qCliente = new SelectQuery(`
+            SELECT
+                ide_geper,
+                ide_geprov,
+                nom_geper,
+                identificac_geper,
+                direccion_geper,
+                correo_geper,
+                telefono_geper
+            FROM gen_persona
+            WHERE identificac_geper = (
+                SELECT identificac_cccpr FROM cxc_cabece_proforma
+                WHERE secuencial_cccpr = $1 AND ide_empr = $2 LIMIT 1
+            )
+              AND es_cliente_geper = true
+            LIMIT 1
+        `);
+        qCliente.addStringParam(1, numProforma);
+        qCliente.addIntParam(2, dtoIn.ideEmpr);
+
+        const [cabecera, detalles, cliente] = await Promise.all([
+            this.dataSource.createSingleQuery(qCab),
+            this.dataSource.createSelectQuery(qDet),
+            this.dataSource.createSingleQuery(qCliente),
+        ]);
+
+        if (!cabecera) {
+            throw new BadRequestException(
+                `No se encontró la proforma con número ${numProforma}`,
+            );
+        }
+
+        const detallesResponse = detalles.map((d: any) => ({
+            ide_inarti: Number(d.ide_inarti),
+            nombre_inarti: d.nombre_inarti,
+            codigo_inarti: d.codigo_inarti,
+            cantidad_ccdfa: Number(d.cantidad),
+            precio_ccdfa: Number(d.precio),
+            total_ccdfa: Number(d.total),
+            iva_inarti_ccdfa: Number(d.iva_inarti),
+            ide_inuni: d.ide_inuni ? Number(d.ide_inuni) : undefined,
+            siglas_inuni: d.siglas_inuni,
+            observacion_ccdfa: d.observacion,
+        }));
+
+        return {
+            row: {
+                proforma: {
+                    numero: cabecera.secuencial_cccpr,
+                    fecha: cabecera.fecha_cccpr,
+                    total: Number(cabecera.total_cccpr),
+                    tarifa_iva: Number(cabecera.tarifa_iva_cccpr || 0),
+                    solicitante: cabecera.solicitante_cccpr ?? '',
+                    nombre_solicitante: cabecera.nombre_solicitante ?? '',
+                },
+                cabecera: {
+                    ide_geper: cabecera.ide_geper ?? cliente?.ide_geper ?? null,
+                    ide_geprov: cabecera.ide_geprov ?? cliente?.ide_geprov ?? null,
+                    nom_geper: cliente?.nom_geper ?? cabecera.contacto_cccpr ?? '',
+                    identificac_geper: cliente?.identificac_geper ?? cabecera.identificac_cccpr ?? '',
+                    direccion_cccfa: cabecera.direccion_cccpr ?? cliente?.direccion_geper ?? '',
+                    correo_cccfa: cabecera.correo_cccpr ?? cliente?.correo_geper ?? '',
+                    telefono_cccfa: cabecera.telefono_cccpr ?? cliente?.telefono_geper ?? '',
+                    observacion_cccfa: cabecera.observacion_cccpr ?? '',
+                    ide_cndfp1: cabecera.ide_cndfp ?? null,
+                    ide_vgven: cabecera.ide_vgven ?? null,
+                    dias_credito_cccfa: Number(cabecera.dias_credito_cccpr || 0),
+                    tarifa_iva_cccfa: Number(cabecera.tarifa_iva_cccpr || 0),
+                    num_proforma_cccfa: cabecera.secuencial_cccpr,
+                },
+                detalles: detallesResponse,
+            },
+            message: 'ok',
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // LIST DATA PARA FACTURACIÓN
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Retorna listados combinados para formularios de facturación:
+     * formas de pago (contado), días de crédito (crédito), vendedores,
+     * usuarios activos, tipos de guía y camiones.
+     * Las 6 consultas se ejecutan en paralelo.
+     */
+    async getListDataFactura(dtoIn: HeaderParamsDto) {
+        const qFormasPago = new SelectQuery(`
+            SELECT
+                CAST(ide_cndfp AS VARCHAR) AS value,
+                nombre_cndfp AS label,
+                dias_cndfp
+            FROM con_deta_forma_pago
+            WHERE ide_cncfp != 3
+              AND activo_cndfp = TRUE
+            ORDER BY nombre_cndfp
+        `);
+
+        const qDiasCredito = new SelectQuery(`
+            SELECT
+                CAST(ide_cndfp AS VARCHAR) AS value,
+                nombre_cndfp AS label,
+                dias_cndfp
+            FROM con_deta_forma_pago
+            WHERE ide_cncfp = 3
+              AND activo_cndfp = TRUE
+            ORDER BY nombre_cndfp
+        `);
+
+        const qVendedores = new SelectQuery(`
+            SELECT
+                CAST(ide_vgven AS VARCHAR) AS value,
+                nombre_vgven AS label
+            FROM ven_vendedor
+            WHERE activo_vgven = TRUE
+              AND ide_empr = $1
+            ORDER BY nombre_vgven
+        `);
+        qVendedores.addIntParam(1, dtoIn.ideEmpr);
+
+        const qUsuarios = new SelectQuery(`
+            SELECT
+                CAST(ide_usua AS VARCHAR) AS value,
+                nom_usua AS label
+            FROM sis_usuario
+            WHERE activo_usua = TRUE
+            ORDER BY nom_usua
+        `);
+
+        const qTiposGuia = new SelectQuery(`
+            SELECT
+                CAST(ide_cctgi AS VARCHAR) AS value,
+                nombre_cctgi AS label
+            FROM cxc_tipo_guia
+            ORDER BY nombre_cctgi
+        `);
+
+        const qCamiones = new SelectQuery(`
+            SELECT
+                placa_gecam        AS value,
+                placa_gecam        AS placa,
+                descripcion_gecam  AS label
+            FROM gen_camion
+            WHERE ide_empr = $1
+            ORDER BY descripcion_gecam
+        `);
+        qCamiones.addIntParam(1, dtoIn.ideEmpr);
+
+        const qTransportistas = new SelectQuery(`
+            SELECT
+                CAST(ide_geper AS VARCHAR) AS value,
+                CONCAT(nom_geper, ' - ', COALESCE(identificac_geper, '')) AS label
+            FROM gen_persona
+            WHERE es_empleado_geper = TRUE
+            ORDER BY nom_geper
+        `);
+
+        const [formasPago, diasCredito, vendedores, usuarios, tiposGuia, camiones, transportistas] = await Promise.all([
+            this.dataSource.createSelectQuery(qFormasPago),
+            this.dataSource.createSelectQuery(qDiasCredito),
+            this.dataSource.createSelectQuery(qVendedores),
+            this.dataSource.createSelectQuery(qUsuarios),
+            this.dataSource.createSelectQuery(qTiposGuia),
+            this.dataSource.createSelectQuery(qCamiones),
+            this.dataSource.createSelectQuery(qTransportistas),
+        ]);
+
+        return {
+            row: {
+                formasPago,
+                diasCredito,
+                vendedores,
+                usuarios,
+                tiposGuia,
+                camiones,
+                transportistas,
             },
             message: 'ok',
         };

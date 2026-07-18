@@ -202,4 +202,21 @@ export class FacturasController {
     return this.service.getCatalogos(headersParams);
   }
 
+  @Get('getListDataFactura')
+  @ApiOperation({ summary: 'Listados combinados para facturación: formas de pago (contado), días de crédito, vendedores, usuarios, tipos de guía y camiones' })
+  // @Auth()
+  getListDataFactura(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.service.getListDataFactura(headersParams);
+  }
+
+  @Get('getProformaParaFactura')
+  @ApiOperation({ summary: 'Cargar datos de una proforma para pre-llenar el formulario de nueva factura' })
+  // @Auth()
+  getProformaParaFactura(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query('numeroProforma') numeroProforma: string,
+  ) {
+    return this.service.getProformaParaFactura(headersParams, numeroProforma);
+  }
+
 }
