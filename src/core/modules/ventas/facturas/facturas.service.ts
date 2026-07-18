@@ -143,84 +143,90 @@ export class FacturasService extends BaseService {
         const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
 
         if (isDefined(dtoIn.ide_sresc) && Number(dtoIn.ide_sresc === 0)) {
-            // estado anulado
             dtoIn.ide_ccefa = 1;
         }
         else {
-            // normal 
             dtoIn.ide_ccefa = Number(this.variables.get('p_cxc_estado_factura_normal'))
         }
-        const condEstadoFact = `and a.ide_ccefa =  ${dtoIn.ide_ccefa}`;
+        const condEstadoFactPto = dtoIn.ide_ccdaf ? `AND ide_ccdaf = ${dtoIn.ide_ccdaf}` : '';
         const condEstadoComp = isDefined(dtoIn.ide_sresc) ? `and d.ide_sresc =  ${dtoIn.ide_sresc}` : '';
-        const condTieneSecuencial = 'AND a.secuencial_cccfa IS NOT NULL';
 
         const query = new SelectQuery(
             `
-        WITH pagos_agrupados AS (
+        WITH facturas_filtradas AS (
             SELECT
-                ide_cccfa,
-                SUM(valor_ccdtr) AS total_pagado
-            FROM cxc_detall_transa
-            WHERE numero_pago_ccdtr > 0
-            GROUP BY ide_cccfa
+                ide_cccfa, ide_cncre, total_cccfa, ide_ccdaf, ide_srcom,
+                ide_geper, ide_vgven, ide_cndfp1, ide_cnccc,
+                fecha_emisi_cccfa, secuencial_cccfa,
+                base_grabada_cccfa, base_tarifa0_cccfa, base_no_objeto_iva_cccfa,
+                valor_iva_cccfa, usuario_ingre, fecha_trans_cccfa
+            FROM cxc_cabece_factura
+            WHERE fecha_emisi_cccfa BETWEEN $1 AND $2
+              AND ide_sucu = ${dtoIn.ideSucu}
+              AND ide_ccefa = ${dtoIn.ide_ccefa}
+              ${condEstadoFactPto}
+              AND secuencial_cccfa IS NOT NULL
+        ),
+        pagos_agrupados AS (
+            SELECT
+                dt.ide_cccfa,
+                SUM(dt.valor_ccdtr) AS total_pagado
+            FROM cxc_detall_transa dt
+            INNER JOIN facturas_filtradas ff ON dt.ide_cccfa = ff.ide_cccfa
+            WHERE dt.numero_pago_ccdtr > 0
+            GROUP BY dt.ide_cccfa
         ),
         retenciones_agrupadas AS (
             SELECT
-                cr.ide_cncre,
+                ff.ide_cccfa,
                 SUM(dr.valor_cndre) AS total_retencion
-            FROM con_detall_retenc dr
-            INNER JOIN con_cabece_retenc cr ON dr.ide_cncre = cr.ide_cncre
-            GROUP BY cr.ide_cncre
+            FROM facturas_filtradas ff
+            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = ff.ide_cncre
+            WHERE ff.ide_cncre IS NOT NULL
+            GROUP BY ff.ide_cccfa
         ),
         notas_credito_agrupadas AS (
             SELECT
-                cf.ide_cccfa,
+                nc.ide_cccfa,
                 SUM(nc.total_cpcno) AS total_nc
-            FROM cxc_cabece_factura cf
-            INNER JOIN cxp_cabecera_nota nc ON (
-                nc.ide_cccfa = cf.ide_cccfa
-                AND nc.ide_cpeno = 1
-            )
-            WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-              AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY cf.ide_cccfa
+            FROM cxp_cabecera_nota nc
+            INNER JOIN facturas_filtradas ff ON nc.ide_cccfa = ff.ide_cccfa
+            WHERE nc.ide_cpeno = 1
+            GROUP BY nc.ide_cccfa
         )
         SELECT
             a.ide_cccfa,
             a.ide_ccdaf,
-            fecha_emisi_cccfa,
-            establecimiento_ccdfa,
-            pto_emision_ccdfa,
-            secuencial_cccfa,
-            nombre_sresc AS nombre_ccefa,
-            nom_geper,
-            identificac_geper,
-            base_grabada_cccfa,
-            base_tarifa0_cccfa + base_no_objeto_iva_cccfa AS base0,
-            valor_iva_cccfa,
-            total_cccfa,
-            claveacceso_srcom,
-            nombre_vgven,
-            nombre_cndfp,
+            a.fecha_emisi_cccfa,
+            c.establecimiento_ccdfa,
+            c.pto_emision_ccdfa,
+            a.secuencial_cccfa,
+            COALESCE(f.nombre_sresc, '') AS nombre_ccefa,
+            b.nom_geper,
+            b.identificac_geper,
+            a.base_grabada_cccfa,
+            a.base_tarifa0_cccfa + a.base_no_objeto_iva_cccfa AS base0,
+            a.valor_iva_cccfa,
+            a.total_cccfa,
+            d.claveacceso_srcom,
+            v.nombre_vgven,
+            x.nombre_cndfp,
             cr.numero_cncre AS secuencial_rete,
-            fecha_trans_cccfa,
+            a.fecha_trans_cccfa,
             a.ide_cncre,
             d.ide_srcom,
             a.ide_geper,
             a.ide_cnccc,
             a.usuario_ingre,
 
-            -- Nota de crédito (NULL si no tiene)
-            nca.total_nc AS total_nota_credito,
+            COALESCE(nca.total_nc, 0) AS total_nota_credito,
 
-            -- Totales de pago y retención
             COALESCE(pa.total_pagado, 0)     AS total_pagado,
             COALESCE(re.total_retencion, 0)  AS total_retencion,
             (a.total_cccfa
                 - COALESCE(pa.total_pagado, 0)
                 - COALESCE(re.total_retencion, 0))   AS saldo,
 
-            -- Estado de pago
             CASE
                 WHEN (COALESCE(pa.total_pagado, 0) + COALESCE(re.total_retencion, 0)) = 0
                     THEN 'POR PAGAR'
@@ -234,7 +240,6 @@ export class FacturasService extends BaseService {
                 ELSE 'PAGADO PARCIAL'
             END AS estado_pago,
 
-            -- Color del estado
             CASE
                 WHEN (a.total_cccfa
                         - COALESCE(pa.total_pagado, 0)
@@ -244,7 +249,7 @@ export class FacturasService extends BaseService {
             END AS color_estado
 
         FROM
-            cxc_cabece_factura a
+            facturas_filtradas a
             INNER JOIN gen_persona b           ON a.ide_geper  = b.ide_geper
             INNER JOIN cxc_datos_fac c         ON a.ide_ccdaf  = c.ide_ccdaf
             LEFT  JOIN sri_comprobante d        ON a.ide_srcom  = d.ide_srcom
@@ -253,18 +258,14 @@ export class FacturasService extends BaseService {
             LEFT  JOIN con_deta_forma_pago x    ON a.ide_cndfp1 = x.ide_cndfp
             LEFT  JOIN con_cabece_retenc cr     ON a.ide_cncre  = cr.ide_cncre
             LEFT  JOIN pagos_agrupados pa       ON a.ide_cccfa  = pa.ide_cccfa
-            LEFT  JOIN retenciones_agrupadas re ON a.ide_cncre  = re.ide_cncre
+            LEFT  JOIN retenciones_agrupadas re ON a.ide_cccfa  = re.ide_cccfa
             LEFT  JOIN notas_credito_agrupadas nca ON a.ide_cccfa = nca.ide_cccfa
         WHERE
-            fecha_emisi_cccfa BETWEEN $1 AND $2
-            AND a.ide_sucu = ${dtoIn.ideSucu}
-            ${condPtoEmision}
-            ${condEstadoFact}
+            TRUE
             ${condEstadoComp}
-            ${condTieneSecuencial}
         ORDER BY
-            secuencial_cccfa DESC,
-            ide_cccfa DESC
+            a.secuencial_cccfa DESC,
+            a.ide_cccfa DESC
         `,
             dtoIn,
         );

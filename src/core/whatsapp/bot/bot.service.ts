@@ -270,24 +270,24 @@ export class BotService implements OnModuleInit {
     // __LOCATION__: para ubicación).
     if (texto === '__AUDIO_NO_ENTENDIDO__') {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        'Lo siento, no pude entender el audio 🎙️. Te comunico con un asesor para que te ayude 👤');
+        'Lo siento, no pude entender el audio 🎙️. Te comunico con un asesor para que te ayude 👤\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!');
       return;
     }
     if (texto === '__IMAGEN_RECIBIDA__') {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        'Por el momento no puedo leer imágenes 📷. Te comunico con un asesor para que te ayude 👤');
+        'Por el momento no puedo leer imágenes 📷. Te comunico con un asesor para que te ayude 👤\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!');
       return;
     }
     if (texto === '__ARCHIVO_RECIBIDO__') {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        'Por el momento no puedo revisar archivos o videos por este medio 📎. Te comunico con un asesor para que te ayude 👤');
+        'Por el momento no puedo revisar archivos o videos por este medio 📎. Te comunico con un asesor para que te ayude 👤\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!');
       return;
     }
 
     // Detección global: SALIR (en cualquier estado)
     if (REGEX_SALIR.test(texto.trim())) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        'Enseguida te comunico con uno de nuestros asesores comerciales 👤\nEspera un momento por favor 😊');
+        'Enseguida te comunico con uno de nuestros asesores comerciales 👤\nEspera un momento por favor 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!');
       return;
     }
 
@@ -430,7 +430,7 @@ export class BotService implements OnModuleInit {
       const maxFallos = config?.max_intentos_fallo ?? 3;
       if (fallos >= maxFallos) {
         await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-          'Tuve algunos inconvenientes procesando tu solicitud. Te comunico con un asesor para que te ayude 😊');
+          'Tuve algunos inconvenientes procesando tu solicitud. Te comunico con un asesor para que te ayude 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!');
       } else {
         // Antes el cliente no recibía NADA hasta acumular maxFallos errores — el chat
         // simplemente se quedaba mudo (caso real: clic en un botón → excepción → silencio
@@ -1900,6 +1900,7 @@ export class BotService implements OnModuleInit {
           `✅ *Cotización #${resultado.secuencial} registrada* 😊\n\n` +
           `Uno de nuestros asesores comerciales será asignado para completar tu cotización.\n` +
           `En cuanto esté lista te notificaremos.\n\n` +
+          `⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!\n\n` +
           `*¡Gracias por contactarnos!* 🧪`,
         );
         // null = ya se envió mensaje al cliente; msgAsesor = nota interna solo para log/asesor
@@ -1909,7 +1910,7 @@ export class BotService implements OnModuleInit {
     } catch (err) {
       this.logger.error(`Error creando proforma: ${err.message}`);
       await this.sendText(ideEmpr, waId,
-        `Hubo un inconveniente al generar tu cotización 😔\nUn asesor te contactará en breve para ayudarte.`,
+        `Hubo un inconveniente al generar tu cotización 😔\nUn asesor te contactará en breve para ayudarte.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
       );
       await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
@@ -1928,7 +1929,7 @@ export class BotService implements OnModuleInit {
       // Cerrar sesión antes de derivar para evitar re-procesos
       await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
       await this.sendText(ideEmpr, waId,
-        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n¡Que tengas un excelente día! 🌟`,
+        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!\n\n¡Que tengas un excelente día! 🌟`,
       );
       // null = no enviar mensaje adicional al cliente (ya lo enviamos arriba)
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
@@ -2252,7 +2253,7 @@ export class BotService implements OnModuleInit {
     if (mensajeCliente !== null) {
       await this.sendText(ideEmpr, waId,
         mensajeCliente ||
-        `Enseguida te comunico con uno de nuestros asesores comerciales 👤\nEspera un momento por favor 😊`,
+        `Enseguida te comunico con uno de nuestros asesores comerciales 👤\nEspera un momento por favor 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
       );
     }
 

@@ -83,7 +83,7 @@ export class BotScheduleService {
           await this.botService.derivarAsesor(
             row.wa_id_whcha, row.phone_number_id_whcha,
             row.ide_whcha, row.ide_whcue, row.ide_empr,
-            `Tu sesión ha finalizado por inactividad ⏳\n\nTe estamos comunicando con uno de nuestros asesores comerciales para dar seguimiento a tu consulta 👤\n\n_En breve te atenderán_ 😊`,
+            `Tu sesión ha finalizado por inactividad ⏳\n\nTe estamos comunicando con uno de nuestros asesores comerciales para dar seguimiento a tu consulta 👤\n\n_En breve te atenderán_ 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
             `Chat derivado a asesor por inactividad de ${ttl} min.`,
           );
           this.logger.log(`[Bot] Inactividad: chat=${row.ide_whcha} → ASESOR`);
