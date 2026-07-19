@@ -55,3 +55,8 @@ NestJS backend API for Pro-ERP. Single package, `src/` is source root.
 - Copy `.env.template` → `.env` before starting
 - JWT secrets required (access + refresh, different secrets)
 - `PATH_DRIVE` for local file storage
+
+## FK Null Handling
+- **Use `?? null`** for optional FK fields (e.g., `dtoIn.ide_vgtra ?? null`)
+- **NEVER use `|| null`** — `0` is a valid number, `||` would coerce it to `null` incorrectly
+- If frontend sends `ide_xxx: 0` for a FK that doesn't exist, let the DB FK constraint fail — don't silently convert to null

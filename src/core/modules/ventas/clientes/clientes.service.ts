@@ -1509,6 +1509,8 @@ export class ClientesService extends BaseService {
             p.ide_getip,
             prov.ide_geprov,
             prov.nombre_geprov,
+            cant.ide_gecant,
+            cant.nombre_gecant,
             p.direccion_geper,
             p.telefono_geper,
             p.fecha_ingre_geper,
@@ -1519,6 +1521,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
             LEFT JOIN gen_tipo_persona tp ON p.ide_getip = tp.ide_getip
             LEFT JOIN gen_provincia prov ON p.ide_geprov = prov.ide_geprov
+            LEFT JOIN gen_canton cant ON p.ide_gecant = cant.ide_gecant
         WHERE
             (
                 regexp_replace(unaccent(LOWER(p.nom_geper)), '[^a-z0-9]', '', 'g') LIKE $1

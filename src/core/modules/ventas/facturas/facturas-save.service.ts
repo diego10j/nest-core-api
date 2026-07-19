@@ -307,6 +307,10 @@ export class FacturasSaveService extends BaseService {
             updCliente.values.set('ide_geprov', data.ide_geprov);
             tieneCambios = true;
         }
+        if (isDefined(data.ide_gecant) && data.ide_gecant !== (cliente.ide_gecant ?? null)) {
+            updCliente.values.set('ide_gecant', data.ide_gecant);
+            tieneCambios = true;
+        }
 
         if (tieneCambios) {
             updCliente.where = `ide_geper = ${data.ide_geper}`;
@@ -363,14 +367,17 @@ export class FacturasSaveService extends BaseService {
             const nombreVendedor = vendedorRes.rows?.[0]?.nombre_vgven ?? '';
 
             const qFormaPago = new SelectQuery(`
-                SELECT nombre_cndfp, dias_cndfp FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
+                SELECT nombre_cndfp, dias_cndfp, COALESCE(alterno_ats, '') AS codigo_sri
+                FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
             `);
             qFormaPago.addIntParam(1, data.ide_cndfp1 ?? 0);
             await this.dataSource.formatSqlQuery(qFormaPago);
             const fpRes = await queryRunner.query(qFormaPago.query, qFormaPago.paramValues);
-            const descFormaPago = fpRes.rows?.[0]
-                ? `${fpRes.rows[0].nombre_cndfp} (${fpRes.rows[0].dias_cndfp ?? 0} días)`
+            const fpRow = fpRes.rows?.[0];
+            const descFormaPago = fpRow
+                ? `${fpRow.nombre_cndfp}${Number(fpRow.dias_cndfp) > 0 ? ` (${fpRow.dias_cndfp} días)` : ''}`
                 : '';
+            const codigoSri = (fpRow?.codigo_sri || String(data.ide_cndfp1 ?? 1)).padStart(2, '0');
 
             // 4-B. Obtener secuencial SRI factura con lock
             const secuencialFactura = await this.getNextSriSecuencialLock(
@@ -418,43 +425,26 @@ export class FacturasSaveService extends BaseService {
                 this.ideSriEstadoCreado, dtoIn,
                 totales, data, cliente, diasCredito,
                 null, nombreVendedor, descFormaPago,
-                numGuiaFactura,
+                numGuiaFactura, codigoSri,
             );
             await this.dataSource.formatSqlQuery(insertSriFac);
             await queryRunner.query(insertSriFac.query, insertSriFac.paramValues);
 
             // 4-E. UPDATE retroactivo de secuenciales factura
-            const updFactura = new UpdateQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
-            updFactura.values.set('secuencial_cccfa', secuencialFactura);
-            updFactura.values.set('ide_srcom', ideSrcomFactura);
-            updFactura.values.delete('usuario_actua');
-            updFactura.values.delete('fecha_actua');
-            updFactura.values.delete('hora_actua');
-            updFactura.where = `${PK_CAB} = $1`;
-            updFactura.addIntParam(1, ideCccfa);
-            await this.dataSource.formatSqlQuery(updFactura);
-            await queryRunner.query(updFactura.query, updFactura.paramValues);
+            await queryRunner.query(
+                `UPDATE ${MODULE}_${TABLE_CAB} SET secuencial_cccfa = $1, ide_srcom = $2 WHERE ${PK_CAB} = $3`,
+                [secuencialFactura, ideSrcomFactura, ideCccfa],
+            );
 
-            const updTrnCab = new UpdateQuery(TABLE_TRN_CAB, PK_TRN_CAB, dtoIn);
-            updTrnCab.values.set('observacion_ccctr', `V/. FACTURA ${secuencialFactura}`);
-            updTrnCab.values.delete('usuario_actua');
-            updTrnCab.values.delete('fecha_actua');
-            updTrnCab.values.delete('hora_actua');
-            updTrnCab.where = `${PK_TRN_CAB} = $1`;
-            updTrnCab.addIntParam(1, ideCcctr);
-            await this.dataSource.formatSqlQuery(updTrnCab);
-            await queryRunner.query(updTrnCab.query, updTrnCab.paramValues);
+            await queryRunner.query(
+                `UPDATE ${TABLE_TRN_CAB} SET observacion_ccctr = $1 WHERE ${PK_TRN_CAB} = $2`,
+                [`V/. FACTURA ${secuencialFactura}`, ideCcctr],
+            );
 
-            const updTrnDet = new UpdateQuery(TABLE_TRN_DET, PK_TRN_DET, dtoIn);
-            updTrnDet.values.set('docum_relac_ccdtr', secuencialFactura);
-            updTrnDet.values.set('observacion_ccdtr', `V/. FACTURA ${secuencialFactura}`);
-            updTrnDet.values.delete('usuario_actua');
-            updTrnDet.values.delete('fecha_actua');
-            updTrnDet.values.delete('hora_actua');
-            updTrnDet.where = `${PK_TRN_DET} = $1`;
-            updTrnDet.addIntParam(1, ideCcdtr);
-            await this.dataSource.formatSqlQuery(updTrnDet);
-            await queryRunner.query(updTrnDet.query, updTrnDet.paramValues);
+            await queryRunner.query(
+                `UPDATE ${TABLE_TRN_DET} SET docum_relac_ccdtr = $1, observacion_ccdtr = $2 WHERE ${PK_TRN_DET} = $3`,
+                [secuencialFactura, `V/. FACTURA ${secuencialFactura}`, ideCcdtr],
+            );
 
             // 4-F. SRI comprobante + UPDATE guía de remisión
             if (tieneGuia && ideSrcomGuia !== null && ideGuia !== null && secuencialGuia) {
@@ -463,32 +453,22 @@ export class FacturasSaveService extends BaseService {
                     estab, ptoEmi, secuencialGuia, claveAccesoGuia!,
                     this.ideSriEstadoCreado, dtoIn,
                     totales, data, cliente, 0,
-                    ideSrcomFactura, '', '', null,
+                    ideSrcomFactura, '', '', null, codigoSri,
                 );
                 await this.dataSource.formatSqlQuery(insertSriGuia);
                 await queryRunner.query(insertSriGuia.query, insertSriGuia.paramValues);
 
-                const updGuia = new UpdateQuery(TABLE_GUIA, PK_GUIA, dtoIn);
-                updGuia.values.set('numero_ccgui', secuencialGuia);
-                updGuia.values.set('ide_srcom', ideSrcomGuia);
-                updGuia.values.delete('usuario_actua');
-                updGuia.values.delete('fecha_actua');
-                updGuia.values.delete('hora_actua');
-                updGuia.where = `${PK_GUIA} = $1`;
-                updGuia.addIntParam(1, ideGuia);
-                await this.dataSource.formatSqlQuery(updGuia);
-                await queryRunner.query(updGuia.query, updGuia.paramValues);
+                await queryRunner.query(
+                    `UPDATE ${TABLE_GUIA} SET numero_ccgui = $1, ide_srcom = $2 WHERE ${PK_GUIA} = $3`,
+                    [secuencialGuia, ideSrcomGuia, ideGuia],
+                );
             }
 
             // 4-G. UPDATE cxc_datos_fac (sincronizar num_actual_ccdfa)
-            const updatePto = new UpdateQuery('cxc_datos_fac', 'ide_ccdaf', dtoIn);
-            updatePto.values.set('num_actual_ccdfa', Number(secuencialFactura));
-            updatePto.values.delete('usuario_actua');
-            updatePto.values.delete('fecha_actua');
-            updatePto.values.delete('hora_actua');
-            updatePto.where = `ide_ccdaf = ${data.ide_ccdaf}`;
-            await this.dataSource.formatSqlQuery(updatePto);
-            await queryRunner.query(updatePto.query, updatePto.paramValues);
+            await queryRunner.query(
+                `UPDATE cxc_datos_fac SET num_actual_ccdfa = $1 WHERE ide_ccdaf = $2`,
+                [Number(secuencialFactura), data.ide_ccdaf],
+            );
 
             await queryRunner.query('COMMIT');
 
@@ -874,7 +854,7 @@ export class FacturasSaveService extends BaseService {
         const qCliente = new SelectQuery(`
             SELECT g.ide_geper, g.nom_geper, g.identificac_geper,
                    g.correo_geper, g.direccion_geper, g.telefono_geper,
-                   g.ide_geprov, g.ide_cndfp,
+                   g.ide_geprov, g.ide_gecant, g.ide_cndfp,
                    t.alterno2_getid AS tipo_identificacion
             FROM gen_persona g
             INNER JOIN gen_tipo_identifi t ON g.ide_getid = t.ide_getid
@@ -1086,6 +1066,7 @@ export class FacturasSaveService extends BaseService {
         nombreVendedor: string,
         descFormaPago: string,
         numGuiaSRI: string | null,
+        codigoSri: string,
     ): InsertQuery {
         const q = new InsertQuery('sri_comprobante', 'ide_srcom');
         q.values.set('ide_srcom', ideSrcom);
@@ -1104,7 +1085,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('total_srcom', totales.total);
         q.values.set('descuento_srcom', 0);
         q.values.set('identificacion_srcom', cliente.identificac_geper);
-        q.values.set('forma_cobro_srcom', data.ide_cndfp1 ? String(data.ide_cndfp1) : '01');
+        q.values.set('forma_cobro_srcom', codigoSri);
         q.values.set('dias_credito_srcom', diasCredito);
         q.values.set('correo_srcom', data.correo_cccfa ?? cliente.correo_geper ?? null);
         q.values.set('ide_geper', data.ide_geper);

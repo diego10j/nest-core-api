@@ -62,3 +62,21 @@ CREATE INDEX IF NOT EXISTS idx_ven_usuario_punto_venta_sucu ON public.ven_usuari
 CREATE INDEX IF NOT EXISTS idx_ven_usuario_punto_venta_vgpos ON public.ven_usuario_punto_venta(ide_vgpos);
 CREATE INDEX IF NOT EXISTS idx_ven_usuario_punto_venta_usua ON public.ven_usuario_punto_venta(ide_usua);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ven_usuario_punto_venta ON public.ven_usuario_punto_venta(ide_vgpos, ide_usua);
+
+
+
+
+
+-- Para el filtro principal de fechas + sucursal + estado
+CREATE INDEX idx_cxc_cabece_factura_fecha_sucu_estado 
+    ON cxc_cabece_factura (fecha_emisi_cccfa, ide_sucu, ide_ccefa)
+    WHERE secuencial_cccfa IS NOT NULL;
+
+-- Para pagos agrupados
+CREATE INDEX idx_cxc_detall_transa_pago 
+    ON cxc_detall_transa (ide_cccfa, numero_pago_ccdtr)
+    WHERE numero_pago_ccdtr > 0;
+
+-- Para retenciones
+CREATE INDEX idx_con_detall_retenc_cncre 
+    ON con_detall_retenc (ide_cncre);

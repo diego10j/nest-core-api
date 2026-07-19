@@ -8,6 +8,7 @@ import { ComprobantesElecService } from '../sri/cel/comprobantes-elec.service';
 import { EmisorService } from '../sri/cel/emisor.service';
 import { SriFacturaService } from '../sri/cel/sri-factura.service';
 import { SriModule } from '../sri/sri.module';
+import { FilesModule } from '../sistema/files/files.module';
 
 import { ClientesSaveService } from './clientes/clientes-save.service';
 import { ClientesController } from './clientes/clientes.controller';
@@ -22,15 +23,19 @@ import { PosPuntoVentaController } from './pos-punto-venta/pos-punto-venta.contr
 import { PosPuntoVentaService } from './pos-punto-venta/pos-punto-venta.service';
 import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
+import { TransportesSaveService } from './transportes/transportes-save.service';
+import { TransportesController } from './transportes/transportes.controller';
+import { TransportesService } from './transportes/transportes.service';
 
 @Module({
-  imports: [WhatsappModule, SriModule],
+  imports: [WhatsappModule, SriModule, FilesModule],
   controllers: [
     ClientesController,
     FacturasController,
     PuntoVentaController,
     VentasBiController,
     PosPuntoVentaController,
+    TransportesController,
   ],
   providers: [
     ClientesService,
@@ -43,6 +48,8 @@ import { PuntoVentaService } from './punto-venta/punto-venta.service';
     PuntoVentaService,
     PosPuntoVentaService,
     PosPuntoVentaSaveService,
+    TransportesService,
+    TransportesSaveService,
     WhatsappService,
     SriFacturaService,
     ComprobantesElecService,

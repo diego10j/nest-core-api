@@ -1323,6 +1323,47 @@ export class FacturasService extends BaseService {
         queryEmpresa.addIntParam(1, dtoIn.ideSucu);
         const empresa = await this.dataSource.createSingleQuery(queryEmpresa);
 
+        // ── Datos de transporte / envío ─────────────────────────────────────
+        const queryTransporte = new SelectQuery(`
+            SELECT
+                e.ide_cctfa,
+                e.ide_vgtra,
+                t.nombre_vgtra,
+                t.logo_vgtra,
+                t.flete_cobro_vgtra,
+                e.es_transporte_propio_cctfa,
+                e.ide_gecam,
+                ca.placa_gecam,
+                ca.descripcion_gecam AS vehiculo,
+                e.ide_geper,
+                ch.nom_geper AS chofer,
+                e.ide_cceen,
+                ee.nombre_cceen,
+                ee.color_cceen,
+                ee.icono_cceen,
+                e.fecha_inicio_cctfa,
+                e.fecha_fin_cctfa,
+                e.fecha_fin_real_cctfa,
+                e.path_imagen_guia_cctfa,
+                e.base_flete_cctfa,
+                e.valor_iva_flete_cctfa,
+                e.total_flete_cctfa,
+                e.base_flete_real_cctfa,
+                e.valor_iva_flete_real_cctfa,
+                e.total_flete_real_cctfa,
+                e.flete_pagado_cctfa,
+                e.comentario_cctfa
+            FROM cxc_transporte_factura e
+            LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN gen_camion ca ON e.ide_gecam = ca.placa_gecam
+            LEFT JOIN gen_persona ch ON e.ide_geper = ch.ide_geper
+            LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+            WHERE e.ide_cccfa = $1
+            LIMIT 1
+        `);
+        queryTransporte.addIntParam(1, dtoIn.ide_cccfa);
+        const transporte = await this.dataSource.createSingleQuery(queryTransporte);
+
 
         // Retornar 
         return {
@@ -1350,6 +1391,7 @@ export class FacturasService extends BaseService {
                     total: totalNotasCredito,
                 } : null,
                 empresa,
+                transporte: transporte || null,
                 inventario: resComprobanteInv ?? null,
             },
             message: 'ok',
@@ -2047,6 +2089,7 @@ export class FacturasService extends BaseService {
             SELECT
                 ide_geper,
                 ide_geprov,
+                ide_gecant,
                 nom_geper,
                 identificac_geper,
                 direccion_geper,
@@ -2101,6 +2144,7 @@ export class FacturasService extends BaseService {
                 cabecera: {
                     ide_geper: cabecera.ide_geper ?? cliente?.ide_geper ?? null,
                     ide_geprov: cabecera.ide_geprov ?? cliente?.ide_geprov ?? null,
+                    ide_gecant: cabecera.ide_gecant ?? cliente?.ide_gecant ?? null,
                     nom_geper: cliente?.nom_geper ?? cabecera.contacto_cccpr ?? '',
                     identificac_geper: cliente?.identificac_geper ?? cabecera.identificac_cccpr ?? '',
                     direccion_cccfa: cabecera.direccion_cccpr ?? cliente?.direccion_geper ?? '',

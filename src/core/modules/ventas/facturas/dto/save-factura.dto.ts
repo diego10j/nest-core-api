@@ -224,6 +224,12 @@ export class CabeceraFacturaDataDto {
     @Type(() => Number)
     ide_geprov?: number;
 
+    @ApiPropertyOptional({ description: 'ID del cantón del cliente (gen_canton.ide_gecant)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_gecant?: number;
+
     // ── Campos internos: el servicio los asigna, no enviar desde el frontend ──
     /** @internal Asignado automáticamente por el servicio */
     ide_cntdo?: number;
