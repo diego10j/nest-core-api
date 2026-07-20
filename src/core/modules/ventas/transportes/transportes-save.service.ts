@@ -134,7 +134,6 @@ export class TransportesSaveService extends BaseService {
         const isUpdate = dtoIn.ide_cctfa != null;
         const pk = isUpdate ? dtoIn.ide_cctfa! : await this.dataSource.getSeqTable('cxc_transporte_factura', 'ide_cctfa', 1, dtoIn.login);
 
-        // Si es transporte propio y no se envió vehículo/transportista, heredarlos de la guía
         let ideGecam = dtoIn.ide_gecam ?? null;
         let ideGeper = dtoIn.ide_geper ?? null;
 
@@ -153,32 +152,65 @@ export class TransportesSaveService extends BaseService {
             }
         }
 
+        const object: Record<string, unknown> = {
+            ide_cctfa: pk,
+            ide_cccfa: dtoIn.ide_cccfa,
+            ide_cceen: dtoIn.ide_cceen,
+        };
+
+        const setIfDefined = (key: string, value: unknown, insertDefault: unknown) => {
+            if (isUpdate) {
+                if (value !== undefined) object[key] = value;
+            } else {
+                object[key] = value ?? insertDefault;
+            }
+        };
+
+        if (dtoIn.ide_vgtra !== undefined) {
+            object.ide_vgtra = dtoIn.ide_vgtra;
+        } else if (isUpdate && dtoIn.es_transporte_propio_cctfa) {
+            object.ide_vgtra = null;
+        } else if (!isUpdate) {
+            object.ide_vgtra = null;
+        }
+
+        setIfDefined('es_transporte_propio_cctfa', dtoIn.es_transporte_propio_cctfa, false);
+
+        if (dtoIn.ide_gecam !== undefined) {
+            object.ide_gecam = dtoIn.ide_gecam;
+        } else if (isUpdate && dtoIn.es_transporte_propio_cctfa) {
+            object.ide_gecam = ideGecam;
+        } else if (!isUpdate) {
+            object.ide_gecam = ideGecam;
+        }
+
+        if (dtoIn.ide_geper !== undefined) {
+            object.ide_geper = dtoIn.ide_geper;
+        } else if (isUpdate && dtoIn.es_transporte_propio_cctfa) {
+            object.ide_geper = ideGeper;
+        } else if (!isUpdate) {
+            object.ide_geper = ideGeper;
+        }
+
+        setIfDefined('fecha_inicio_cctfa', dtoIn.fecha_inicio_cctfa, null);
+        setIfDefined('fecha_fin_cctfa', dtoIn.fecha_fin_cctfa, null);
+        setIfDefined('fecha_fin_real_cctfa', dtoIn.fecha_fin_real_cctfa, null);
+        setIfDefined('path_imagen_guia_cctfa', dtoIn.path_imagen_guia_cctfa, null);
+        setIfDefined('base_flete_cctfa', dtoIn.base_flete_cctfa, 0);
+        setIfDefined('valor_iva_flete_cctfa', dtoIn.valor_iva_flete_cctfa, 0);
+        setIfDefined('total_flete_cctfa', dtoIn.total_flete_cctfa, 0);
+        setIfDefined('base_flete_real_cctfa', dtoIn.base_flete_real_cctfa, 0);
+        setIfDefined('valor_iva_flete_real_cctfa', dtoIn.valor_iva_flete_real_cctfa, 0);
+        setIfDefined('total_flete_real_cctfa', dtoIn.total_flete_real_cctfa, 0);
+        setIfDefined('flete_pagado_cctfa', dtoIn.flete_pagado_cctfa, true);
+        setIfDefined('comentario_cctfa', dtoIn.comentario_cctfa, null);
+
         const listQuery = [{
             operation: isUpdate ? 'update' as const : 'insert' as const,
             module: 'cxc',
             tableName: 'transporte_factura',
             primaryKey: 'ide_cctfa',
-            object: {
-                ide_cctfa: pk,
-                ide_cccfa: dtoIn.ide_cccfa,
-                ide_vgtra: dtoIn.ide_vgtra ?? null,
-                es_transporte_propio_cctfa: dtoIn.es_transporte_propio_cctfa ?? false,
-                ide_gecam: ideGecam,
-                ide_geper: ideGeper,
-                ide_cceen: dtoIn.ide_cceen,
-                fecha_inicio_cctfa: dtoIn.fecha_inicio_cctfa ?? null,
-                fecha_fin_cctfa: dtoIn.fecha_fin_cctfa ?? null,
-                fecha_fin_real_cctfa: dtoIn.fecha_fin_real_cctfa ?? null,
-                path_imagen_guia_cctfa: dtoIn.path_imagen_guia_cctfa ?? null,
-                base_flete_cctfa: dtoIn.base_flete_cctfa ?? 0,
-                valor_iva_flete_cctfa: dtoIn.valor_iva_flete_cctfa ?? 0,
-                total_flete_cctfa: dtoIn.total_flete_cctfa ?? 0,
-                base_flete_real_cctfa: dtoIn.base_flete_real_cctfa ?? 0,
-                valor_iva_flete_real_cctfa: dtoIn.valor_iva_flete_real_cctfa ?? 0,
-                total_flete_real_cctfa: dtoIn.total_flete_real_cctfa ?? 0,
-                flete_pagado_cctfa: dtoIn.flete_pagado_cctfa ?? true,
-                comentario_cctfa: dtoIn.comentario_cctfa ?? null,
-            },
+            object,
             condition: isUpdate ? `ide_cctfa = ${pk}` : undefined,
         }];
 
