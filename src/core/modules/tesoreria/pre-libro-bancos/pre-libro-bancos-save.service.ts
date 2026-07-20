@@ -501,10 +501,20 @@ export class PreLibroBancosSaveService extends BaseService {
         if (!numero) return;
 
         const numStr = numero.replace(/\D/g, '');
-        const numIng = parseInt(numStr, 10);
-        if (isNaN(numIng) || numIng <= 0) return;
+        if (!numStr) return;
 
-        // Buscar si ya existe secuencial
+        let numIng: bigint;
+        try {
+            numIng = BigInt(numStr);
+        } catch {
+            return;
+        }
+
+        const PG_BIGINT_MAX = 9223372036854775807n;
+        if (numIng <= 0n || numIng > PG_BIGINT_MAX) return;
+
+        const numValue = Number(numIng);
+
         const existQuery = new SelectQuery(`
             SELECT ide_tesec, secuencial_tesec
             FROM tes_secuencial_trans
@@ -519,13 +529,13 @@ export class PreLibroBancosSaveService extends BaseService {
         if (existente) {
             await this.dataSource.pool.query(
                 `UPDATE tes_secuencial_trans SET secuencial_tesec = $1 WHERE ide_tecba = $2 AND ide_tettb = $3 AND ide_sucu = $4`,
-                [numIng, ideTecba, ideTettb, dtoIn.ideSucu],
+                [numValue, ideTecba, ideTettb, dtoIn.ideSucu],
             );
         } else {
             const ideTesec = await this.dataSource.getSeqTable('tes_secuencial_trans', 'ide_tesec', 1, dtoIn.login);
             await this.dataSource.pool.query(
                 `INSERT INTO tes_secuencial_trans (ide_tesec, ide_tecba, ide_tettb, ide_empr, ide_sucu, secuencial_tesec) VALUES ($1, $2, $3, $4, $5, $6)`,
-                [ideTesec, ideTecba, ideTettb, dtoIn.ideEmpr, dtoIn.ideSucu, numIng],
+                [ideTesec, ideTecba, ideTettb, dtoIn.ideEmpr, dtoIn.ideSucu, numValue],
             );
         }
     }

@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
 import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentTime } from 'src/util/helpers/date-util';
@@ -56,6 +55,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             }
         }
 
+        // ─── PASO 2: OBTENER FACTURA ─────────────────────────────────────────
         const factura = await this.cxcTransaccionesService.getFacturaCxC({
             ideCccfa: dtoIn.ideCccfa,
             ...dtoIn,
@@ -63,7 +63,7 @@ export class CxcTransaccionesSaveService extends BaseService {
 
         const saldoAnterior = Number(factura.saldo_x_pagar);
 
-        // ─── PASO 2: DETERMINAR TIPO TRANSACCION CxC ─────────────────────────
+        // ─── PASO 3: DETERMINAR TIPO TRANSACCION CxC ─────────────────────────
         let ideCcttr: number;
         if (esChequePostfechado) {
             ideCcttr = Number(this.variables.get('p_cxc_tipo_trans_cheque_posfechado'));
@@ -72,51 +72,26 @@ export class CxcTransaccionesSaveService extends BaseService {
         }
 
         const ideCcttrSobrePago = Number(this.variables.get('p_cxc_tipo_trans_sobrepago'));
-
-        // ─── PASO 3: GENERAR LIBRO BANCO ─────────────────────────────────────
         const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
 
+        // ─── PASO 4: OBTENER SECUENCIALES (FUERA DE TRANSACCIÓN) ────────────
         const ideTeclb = await this.dataSource.getSeqTable(
             'tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login,
         );
-
-        const listQuery: ObjectQueryDto[] = [];
-
-        // 3a. INSERT en tes_cab_libr_banc
-        const libroBancoObject: Record<string, unknown> = {
-            ide_teclb: ideTeclb,
-            ide_teelb: ideTeelb,
-            ide_tecba: dtoIn.ideTecba,
-            ide_tettb: dtoIn.ideTettb,
-            valor_teclb: dtoIn.valor,
-            numero_teclb: dtoIn.numero ?? '000000',
-            fecha_trans_teclb: dtoIn.fecha,
-            fecha_venci_teclb: dtoIn.fecha,
-            beneficiari_teclb: factura.nom_geper ?? '',
-            observacion_teclb: dtoIn.observacion,
-            conciliado_teclb: false,
-            fec_cam_est_teclb: dtoIn.fechaEfectivo ?? dtoIn.fecha,
-            num_comprobante_teclb: dtoIn.numCuentaCheque ?? '',
-            ide_teban: dtoIn.ideTeban ?? null,
-            depositado_teclb: false,
-            devuelto_teclb: false,
-            hora_ingre: getCurrentTime(),
-        };
-
-        listQuery.push({
-            operation: 'insert',
-            module: 'tes',
-            tableName: 'cab_libr_banc',
-            primaryKey: 'ide_teclb',
-            object: libroBancoObject,
-        });
-
-        // ─── PASO 4: GENERAR TRANSACCION CxC DETALLE ─────────────────────────
-        const numeroPago = await this.cxcTransaccionesService.getNumeroPagoFactura(factura.ide_ccctr);
         const ideCcdtr = await this.dataSource.getSeqTable(
             'cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login,
         );
+        const numeroPago = await this.cxcTransaccionesService.getNumeroPagoFactura(factura.ide_ccctr);
 
+        const tieneSobrepago = dtoIn.valor > saldoAnterior;
+        const ideCcctrSaldoFavor = tieneSobrepago
+            ? await this.dataSource.getSeqTable('cxc_cabece_transa', 'ide_ccctr', 1, dtoIn.login)
+            : null;
+        const ideCcdtrSaldo = tieneSobrepago
+            ? await this.dataSource.getSeqTable('cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login)
+            : null;
+
+        // ─── PASO 5: CÁLCULOS DE NEGOCIO ─────────────────────────────────────
         const fechaVenci = esChequePostfechado ? (dtoIn.fechaEfectivo ?? dtoIn.fecha) : dtoIn.fecha;
         const documRelacion = dtoIn.numero ?? factura.secuencial_cccfa ?? '';
 
@@ -127,115 +102,99 @@ export class CxcTransaccionesSaveService extends BaseService {
             : dtoIn.observacion
         ).substring(0, 180);
 
-        const detalleObject: Record<string, unknown> = {
-            ide_ccdtr: ideCcdtr,
-            ide_teclb: ideTeclb,
-            ide_cccfa: dtoIn.ideCccfa,
-            ide_ccctr: factura.ide_ccctr,
-            ide_ccttr: ideCcttr,
-            ide_usua: dtoIn.ideUsua,
-            valor_ccdtr: valorPagadoCxC,
-            observacion_ccdtr: observacionDetalle,
-            numero_pago_ccdtr: numeroPago,
-            fecha_trans_ccdtr: dtoIn.fecha,
-            fecha_venci_ccdtr: fechaVenci,
-            docum_relac_ccdtr: documRelacion,
-            hora_ingre: getCurrentTime(),
-        };
+        const saldoRestanteCalculado = saldoAnterior - valorPagadoCxC;
 
-        listQuery.push({
-            operation: 'insert',
-            module: 'cxc',
-            tableName: 'detall_transa',
-            primaryKey: 'ide_ccdtr',
-            object: detalleObject,
-        });
+        // ─── PASO 6: TRANSACCIÓN ÚNICA ───────────────────────────────────────
+        const queryRunner = await this.dataSource.pool.connect();
+        let pagadoTotal = false;
+        let saldoFavorCreado = false;
 
-        // Ejecutar inserts del libro banco y detalle CxC
-        await this.core.save({ ...dtoIn, listQuery, audit: false });
+        try {
+            await queryRunner.query('BEGIN');
 
-        // Actualizar secuencial
+            await queryRunner.query(
+                `INSERT INTO tes_cab_libr_banc (
+                    ide_teclb, ide_teelb, ide_tecba, ide_tettb, valor_teclb,
+                    numero_teclb, fecha_trans_teclb, fecha_venci_teclb, beneficiari_teclb,
+                    observacion_teclb, conciliado_teclb, fec_cam_est_teclb, num_comprobante_teclb,
+                    ide_teban, depositado_teclb, devuelto_teclb,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+                [ideTeclb, ideTeelb, dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.valor,
+                    dtoIn.numero ?? '000000', dtoIn.fecha, dtoIn.fecha, factura.nom_geper ?? '',
+                    dtoIn.observacion, false, dtoIn.fechaEfectivo ?? dtoIn.fecha, dtoIn.numCuentaCheque ?? '',
+                    dtoIn.ideTeban ?? null, false, false,
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+            );
+
+            await queryRunner.query(
+                `INSERT INTO cxc_detall_transa (
+                    ide_ccdtr, ide_teclb, ide_cccfa, ide_ccctr, ide_ccttr,
+                    ide_usua, valor_ccdtr, observacion_ccdtr, numero_pago_ccdtr,
+                    fecha_trans_ccdtr, fecha_venci_ccdtr, docum_relac_ccdtr,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                [ideCcdtr, ideTeclb, dtoIn.ideCccfa, factura.ide_ccctr, ideCcttr,
+                    dtoIn.ideUsua, valorPagadoCxC, observacionDetalle, numeroPago,
+                    dtoIn.fecha, fechaVenci, documRelacion,
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+            );
+
+            await queryRunner.query(
+                `UPDATE cxc_detall_transa SET ide_teclb = $1 WHERE ide_cccfa = $2 AND ide_teclb IS NULL`,
+                [ideTeclb, dtoIn.ideCccfa],
+            );
+
+            if (saldoRestanteCalculado <= 0) {
+                await queryRunner.query(
+                    `UPDATE cxc_cabece_factura SET pagado_cccfa = true WHERE ide_cccfa = $1`,
+                    [dtoIn.ideCccfa],
+                );
+                pagadoTotal = true;
+            }
+
+            if (tieneSobrepago && ideCcctrSaldoFavor != null && ideCcdtrSaldo != null) {
+                const diferencia = dtoIn.valor - saldoAnterior;
+
+                await queryRunner.query(
+                    `INSERT INTO cxc_cabece_transa (
+                        ide_ccctr, ide_geper, fecha_trans_ccctr, observacion_ccctr,
+                        ide_empr, ide_sucu, usuario_ingre, hora_ingre
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                    [ideCcctrSaldoFavor, factura.ide_geper, dtoIn.fecha,
+                        'V/. SALDO A FAVOR PAGO ADICIONAL',
+                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                );
+
+                await queryRunner.query(
+                    `INSERT INTO cxc_detall_transa (
+                        ide_ccdtr, ide_teclb, ide_ccctr, ide_ccttr, ide_usua,
+                        valor_ccdtr, observacion_ccdtr, numero_pago_ccdtr,
+                        fecha_trans_ccdtr, fecha_venci_ccdtr, docum_relac_ccdtr,
+                        ide_empr, ide_sucu, usuario_ingre, hora_ingre
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+                    [ideCcdtrSaldo, ideTeclb, ideCcctrSaldoFavor, ideCcttrSobrePago,
+                        dtoIn.ideUsua, diferencia, 'V/. SALDO A FAVOR PAGO ADICIONAL',
+                        1, dtoIn.fecha, dtoIn.fecha, documRelacion,
+                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                );
+                saldoFavorCreado = true;
+            }
+
+            await queryRunner.query('COMMIT');
+        } catch (error) {
+            await queryRunner.query('ROLLBACK');
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+
+        // ─── PASO 7: ACTUALIZAR SECUENCIAL (FUERA DE TRANSACCIÓN) ────────────
         await this.preLibroBancosSaveService.actualizarSecuencial(
             dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.numero ?? '000000', dtoIn,
         );
 
-        // ─── PASO 5: ACTUALIZAR VINCULO EN cxc_detall_transa ──────────────────
-        await this.dataSource.pool.query(
-            `UPDATE cxc_detall_transa SET ide_teclb = $1 WHERE ide_cccfa = $2 AND ide_teclb IS NULL`,
-            [ideTeclb, dtoIn.ideCccfa],
-        );
-
-        // ─── PASO 6: RECALCULAR SALDO Y MARCAR PAGO ──────────────────────────
-        const saldoRestante = await this.cxcTransaccionesService.getSaldoActual(factura.ide_ccctr);
-        let pagadoTotal = false;
-        let saldoFavorCreado = false;
-
-        if (saldoRestante <= 0) {
-            await this.dataSource.pool.query(
-                `UPDATE cxc_cabece_factura SET pagado_cccfa = true WHERE ide_cccfa = $1`,
-                [dtoIn.ideCccfa],
-            );
-            pagadoTotal = true;
-        }
-
-        // ─── PASO 7: SOBREPAGO - SALDO A FAVOR ────────────────────────────────
-        if (dtoIn.valor > saldoAnterior) {
-            const diferencia = dtoIn.valor - saldoAnterior;
-
-            const ideCcctrSaldoFavor = await this.dataSource.getSeqTable(
-                'cxc_cabece_transa', 'ide_ccctr', 1, dtoIn.login,
-            );
-
-            const cabeceraObject: Record<string, unknown> = {
-                ide_ccctr: ideCcctrSaldoFavor,
-                ide_geper: factura.ide_geper,
-                fecha_trans_ccctr: dtoIn.fecha,
-                observacion_ccctr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
-                hora_ingre: getCurrentTime(),
-            };
-
-            const cabeceraListQuery: ObjectQueryDto[] = [{
-                operation: 'insert',
-                module: 'cxc',
-                tableName: 'cabece_transa',
-                primaryKey: 'ide_ccctr',
-                object: cabeceraObject,
-            }];
-
-            await this.core.save({ ...dtoIn, listQuery: cabeceraListQuery, audit: false });
-
-            const ideCcdtrSaldo = await this.dataSource.getSeqTable(
-                'cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login,
-            );
-
-            const saldoFavorObject: Record<string, unknown> = {
-                ide_ccdtr: ideCcdtrSaldo,
-                ide_teclb: ideTeclb,
-                ide_ccctr: ideCcctrSaldoFavor,
-                ide_ccttr: ideCcttrSobrePago,
-                ide_usua: dtoIn.ideUsua,
-                valor_ccdtr: diferencia,
-                observacion_ccdtr: 'V/. SALDO A FAVOR PAGO ADICIONAL',
-                numero_pago_ccdtr: 1,
-                fecha_trans_ccdtr: dtoIn.fecha,
-                fecha_venci_ccdtr: dtoIn.fecha,
-                docum_relac_ccdtr: documRelacion,
-                hora_ingre: getCurrentTime(),
-            };
-
-            const saldoFavorListQuery: ObjectQueryDto[] = [{
-                operation: 'insert',
-                module: 'cxc',
-                tableName: 'detall_transa',
-                primaryKey: 'ide_ccdtr',
-                object: saldoFavorObject,
-            }];
-
-            await this.core.save({ ...dtoIn, listQuery: saldoFavorListQuery, audit: false });
-            saldoFavorCreado = true;
-        }
-
-        // ─── PASO 8: GENERAR ASIENTO CONTABLE AUTOMATICO ─────────────────────
+        // ─── PASO 8: GENERAR ASIENTO CONTABLE (FUERA DE TRANSACCIÓN) ────────
         let asientoResult: any = { generado: false };
         try {
             asientoResult = await this.asientosAutomaticosService.generarAsientoCobroCxC({
@@ -258,7 +217,7 @@ export class CxcTransaccionesSaveService extends BaseService {
             ide_teclb: ideTeclb,
             ide_ccdtr: ideCcdtr,
             saldo_anterior: saldoAnterior,
-            saldo_restante: saldoRestante,
+            saldo_restante: saldoRestanteCalculado,
             pagado_total: pagadoTotal,
             saldo_favor_creado: saldoFavorCreado,
             ide_cccfa: dtoIn.ideCccfa,
