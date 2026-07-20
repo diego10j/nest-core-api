@@ -13,6 +13,7 @@ import { Public } from 'src/core/auth/decorators/public.decorator';
 import { FilesService } from 'src/core/modules/sistema/files/files.service';
 import { v4 as uuid } from 'uuid';
 
+import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import {
     SaveEnvioDto,
     SaveRutaDetDto,
@@ -67,6 +68,12 @@ export class TransportesController {
     @ApiOperation({ summary: 'Listar tarifas de transporte con paginación y filtros' })
     getTarifasTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
         return this.service.getTarifasTransporte({ ...h, ...dtoIn });
+    }
+
+    @Get('getTarifasByTransporte')
+    @ApiOperation({ summary: 'Listar tarifas de un transporte específico por ide_vgtra' })
+    getTarifasByTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetTarifasByTransporteDto) {
+        return this.service.getTarifasByTransporte({ ...h, ...dtoIn });
     }
 
     // ─── ESTADO ENVÍO ─────────────────────────────────────────────────────────

@@ -6,6 +6,8 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
+import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
+
 @Injectable()
 export class TransportesService extends BaseService {
     constructor(
@@ -86,6 +88,37 @@ export class TransportesService extends BaseService {
             WHERE tf.ide_empr = ${dtoIn.ideEmpr}
             ORDER BY t.nombre_vgtra, p.nombre_geprov, c.nombre_gecant, tf.ciudad_vgttr
         `, dtoIn);
+        q.isLazy = false;
+        return this.dataSource.createQuery(q, 'ven_tarifa_transporte');
+    }
+
+    async getTarifasByTransporte(dtoIn: GetTarifasByTransporteDto & HeaderParamsDto) {
+        const q = new SelectQuery(`
+            SELECT
+                tf.ide_vgttr,
+                tf.ide_vgtra,
+                t.nombre_vgtra,
+                tf.ide_geprov,
+                p.nombre_geprov,
+                tf.ide_gecant,
+                c.nombre_gecant,
+                tf.ciudad_vgttr,
+                tf.nombre1_vgttr, tf.precio1_vgttr, tf.descripcion1_vgttr, tf.activo1_vgttr,
+                tf.nombre2_vgttr, tf.precio2_vgttr, tf.descripcion2_vgttr, tf.activo2_vgttr,
+                tf.nombre3_vgttr, tf.precio3_vgttr, tf.descripcion3_vgttr, tf.activo3_vgttr,
+                tf.nombre4_vgttr, tf.precio4_vgttr, tf.descripcion4_vgttr, tf.activo4_vgttr,
+                tf.comentario_vgttr,
+                tf.activo_vgttr
+            FROM ven_tarifa_transporte tf
+            INNER JOIN ven_transporte t ON tf.ide_vgtra = t.ide_vgtra
+            LEFT JOIN gen_provincia p ON tf.ide_geprov = p.ide_geprov
+            LEFT JOIN gen_canton c ON tf.ide_gecant = c.ide_gecant
+            WHERE tf.ide_vgtra = $1
+              AND tf.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY p.nombre_geprov, c.nombre_gecant, tf.ciudad_vgttr
+        `, dtoIn);
+        q.addIntParam(1, dtoIn.ide_vgtra);
+        q.isLazy = false;
         return this.dataSource.createQuery(q, 'ven_tarifa_transporte');
     }
 
