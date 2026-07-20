@@ -5,13 +5,13 @@ import { Body, Controller, Get, NotFoundException, Param, Post, Query, Res, Uplo
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
-import { v4 as uuid } from 'uuid';
-import { Public } from 'src/core/auth/decorators/public.decorator';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { envs } from 'src/config/envs';
+import { Public } from 'src/core/auth/decorators/public.decorator';
 import { FilesService } from 'src/core/modules/sistema/files/files.service';
+import { v4 as uuid } from 'uuid';
 
 import {
     SaveEnvioDto,

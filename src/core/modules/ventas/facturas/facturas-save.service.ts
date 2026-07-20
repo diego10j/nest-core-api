@@ -367,17 +367,23 @@ export class FacturasSaveService extends BaseService {
             const nombreVendedor = vendedorRes.rows?.[0]?.nombre_vgven ?? '';
 
             const qFormaPago = new SelectQuery(`
-                SELECT nombre_cndfp, dias_cndfp, COALESCE(alterno_ats, '') AS codigo_sri
-                FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
+                SELECT nombre_cndfp FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
             `);
             qFormaPago.addIntParam(1, data.ide_cndfp1 ?? 0);
             await this.dataSource.formatSqlQuery(qFormaPago);
             const fpRes = await queryRunner.query(qFormaPago.query, qFormaPago.paramValues);
             const fpRow = fpRes.rows?.[0];
-            const descFormaPago = fpRow
-                ? `${fpRow.nombre_cndfp}${Number(fpRow.dias_cndfp) > 0 ? ` (${fpRow.dias_cndfp} días)` : ''}`
-                : '';
-            const codigoSri = (fpRow?.codigo_sri || String(data.ide_cndfp1 ?? 1)).padStart(2, '0');
+            const descFormaPago = fpRow?.nombre_cndfp ?? '';
+
+            const qCodigoSri = new SelectQuery(`
+                SELECT COALESCE(alterno_ats, '') AS codigo_sri
+                FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
+            `);
+            qCodigoSri.addIntParam(1, data.ide_cndfp ?? 0);
+            await this.dataSource.formatSqlQuery(qCodigoSri);
+            const csRes = await queryRunner.query(qCodigoSri.query, qCodigoSri.paramValues);
+            const csRow = csRes.rows?.[0];
+            const codigoSri = (csRow?.codigo_sri || String(data.ide_cndfp ?? 1)).padStart(2, '0');
 
             // 4-B. Obtener secuencial SRI factura con lock
             const secuencialFactura = await this.getNextSriSecuencialLock(
@@ -501,11 +507,8 @@ export class FacturasSaveService extends BaseService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Actualiza cabecera + reemplaza detalles + actualiza sri_comprobante.
-     *
-     * ⚠️ NOTA: La actualización NO recrea la transacción CxC ni el kardex de inventario.
-     * Para sistemas ERP productivos se recomienda anular + recrear en lugar de editar
-     * facturas que ya tengan transacciones o movimientos de stock asociados.
+     * Actualiza cabecera + merge de detalles + transacciones CxC + kardex + sri_comprobante.
+     * Compara detalles antiguos vs nuevos: inserta, actualiza y elimina según corresponda.
      */
     private async actualizarFactura(
         ideCccfa: number,
@@ -513,11 +516,13 @@ export class FacturasSaveService extends BaseService {
         detalles: DetaFacturaDto[],
         totales: Totales,
         tarifaIva: number,
-        _cliente: any,
+        cliente: any,
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ) {
         const qExiste = new SelectQuery(
-            `SELECT ide_cccfa, ide_srcom FROM cxc_cabece_factura WHERE ide_cccfa = $1 AND ide_empr = $2`,
+            `SELECT ide_cccfa, ide_srcom, secuencial_cccfa, total_cccfa
+             FROM cxc_cabece_factura
+             WHERE ide_cccfa = $1 AND ide_empr = $2`,
         );
         qExiste.addIntParam(1, ideCccfa);
         qExiste.addIntParam(2, dtoIn.ideEmpr);
@@ -527,32 +532,390 @@ export class FacturasSaveService extends BaseService {
             throw new BadRequestException(`La factura ide_cccfa=${ideCccfa} no existe`);
         }
 
+        const totalAnterior = parseFloat(existe.total_cccfa) || 0;
+        const totalCambio = Math.abs(totales.total - totalAnterior) > 0.001;
+
+        // ── 1. sri_comprobante ──────────────────────────────────────────────
         if (existe.ide_srcom) {
             const updSri = new UpdateQuery('sri_comprobante', 'ide_srcom');
             updSri.values.set('subtotal0_srcom', totales.base_tarifa0);
             updSri.values.set('base_grabada_srcom', totales.base_grabada);
+            updSri.values.set('subtotal_srcom', totales.base_grabada + totales.base_tarifa0);
             updSri.values.set('iva_srcom', totales.valor_iva);
             updSri.values.set('total_srcom', totales.total);
+            updSri.values.set('dias_credito_srcom', data.dias_credito_cccfa ?? 0);
+            updSri.values.set('correo_srcom', data.correo_cccfa || null);
+            updSri.values.set('identificacion_srcom', cliente.identificac_geper);
+            updSri.values.set('usuario_actua', dtoIn.login);
+            updSri.values.set('fecha_actua', getCurrentDate());
+            updSri.values.set('hora_actua', getCurrentTime());
+
+            if (isDefined(data.ide_vgven)) {
+                const qVendedor = new SelectQuery(
+                    `SELECT nombre_vgven FROM ven_vendedor WHERE ide_vgven = $1 LIMIT 1`,
+                );
+                qVendedor.addIntParam(1, data.ide_vgven);
+                const vendedor = await this.dataSource.createSingleQuery(qVendedor);
+                updSri.values.set('infoadicional1_srcom', vendedor?.nombre_vgven || null);
+            }
+            if (isDefined(data.ide_cndfp1)) {
+                const qFp = new SelectQuery(
+                    `SELECT nombre_cndfp FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1`,
+                );
+                qFp.addIntParam(1, data.ide_cndfp1);
+                const fp = await this.dataSource.createSingleQuery(qFp);
+                updSri.values.set('infoadicional2_srcom', fp?.nombre_cndfp ?? null);
+            }
+            if (isDefined(data.ide_cndfp)) {
+                const qCs = new SelectQuery(
+                    `SELECT COALESCE(alterno_ats, '') AS codigo_sri
+                     FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1`,
+                );
+                qCs.addIntParam(1, data.ide_cndfp);
+                const cs = await this.dataSource.createSingleQuery(qCs);
+                const codigoSri = (cs?.codigo_sri || String(data.ide_cndfp ?? 1)).padStart(2, '0');
+                updSri.values.set('forma_cobro_srcom', codigoSri);
+            }
+            if (isDefined(data.observacion_cccfa)) {
+                updSri.values.set('infoadicional3_srcom', data.observacion_cccfa);
+            }
             updSri.where = `ide_srcom = ${existe.ide_srcom}`;
             await this.dataSource.createQuery(updSri);
         }
 
+        // ── 2. Cabecera de la factura ──────────────────────────────────────
         const updCab = this.buildUpdateCabecera(ideCccfa, data, totales, tarifaIva, dtoIn);
         await this.dataSource.createQuery(updCab);
 
+        // ── 2b. Guía de remisión ───────────────────────────────────────────
+        if (dtoIn.guia) {
+            const qGuiaExiste = new SelectQuery(
+                `SELECT ide_ccgui FROM cxc_guia WHERE ide_cccfa = $1 LIMIT 1`,
+            );
+            qGuiaExiste.addIntParam(1, ideCccfa);
+            const guiaExiste = await this.dataSource.createSingleQuery(qGuiaExiste);
+
+            const guia = dtoIn.guia;
+            const fechaIniTrasla = toPgDate(guia.fecha_ini_trasla_ccgui) || data.fecha_emisi_cccfa;
+            const fechaFinTrasla = toPgDate(guia.fecha_fin_trasla_ccgui) || fechaIniTrasla;
+
+            if (guiaExiste) {
+                await this.dataSource.pool.query(
+                    `UPDATE cxc_guia
+                     SET ide_cctgi = $1,
+                         punto_partida_ccgui = $2,
+                         punto_llegada_ccgui = $3,
+                         fecha_emision_ccgui = $4,
+                         fecha_ini_trasla_ccgui = $5,
+                         fecha_fin_trasla_ccgui = $6,
+                         placa_gecam = $7,
+                         gen_ide_geper = $8,
+                         destinatario_ccgui = $9,
+                         usuario_actua = $10,
+                         fecha_actua = $11,
+                         hora_actua = $12
+                     WHERE ide_ccgui = $13`,
+                    [guia.ide_cctgi, guia.punto_partida_ccgui, guia.punto_llegada_ccgui,
+                        data.fecha_emisi_cccfa, fechaIniTrasla, fechaFinTrasla,
+                        guia.placa_gecam, guia.gen_ide_geper,
+                        guia.destinatario_ccgui ?? null,
+                        dtoIn.login, getCurrentDate(), getCurrentTime(),
+                        guiaExiste.ide_ccgui],
+                );
+
+                const qTrsp = new SelectQuery(
+                    `SELECT ide_cctfa, es_transporte_propio_cctfa FROM cxc_transporte_factura WHERE ide_cccfa = $1 LIMIT 1`,
+                );
+                qTrsp.addIntParam(1, ideCccfa);
+                const trspExiste = await this.dataSource.createSingleQuery(qTrsp);
+
+                if (trspExiste && trspExiste.es_transporte_propio_cctfa) {
+                    await this.dataSource.pool.query(
+                        `UPDATE cxc_transporte_factura
+                         SET ide_gecam = $1,
+                             ide_geper = $2,
+                             usuario_actua = $3,
+                             fecha_actua = $4,
+                             hora_actua = $5
+                         WHERE ide_cctfa = $6`,
+                        [guia.placa_gecam, guia.gen_ide_geper,
+                            dtoIn.login, getCurrentDate(), getCurrentTime(),
+                            trspExiste.ide_cctfa],
+                    );
+                }
+            } else {
+                const ideGuia = await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login);
+                const insertGuia = this.buildInsertGuia(ideGuia, ideCccfa, cliente, data, dtoIn);
+                await this.dataSource.createQuery(insertGuia);
+            }
+        }
+
+        // ── 3. Merge de detalles (insert / update / delete) ────────────────
         if (detalles.length > 0) {
+            const qOldDet = new SelectQuery(
+                `SELECT * FROM cxc_deta_factura WHERE ide_cccfa = $1 ORDER BY ide_ccdfa`,
+            );
+            qOldDet.addIntParam(1, ideCccfa);
+            const oldDetalles = await this.dataSource.createSelectQuery(qOldDet);
+
+            const oldMap = new Map<number, any>();
+            for (const od of oldDetalles) {
+                oldMap.set(Number(od.ide_ccdfa), od);
+            }
+
+            const newIds = new Set<number>();
+            for (const det of detalles) {
+                if (det.ide_ccdfa != null) {
+                    newIds.add(det.ide_ccdfa);
+                }
+            }
+
+            // Eliminar detalles que ya no vienen del frontend
+            for (const [oldId, _oldRow] of oldMap) {
+                if (!newIds.has(oldId)) {
+                    await this.dataSource.pool.query(
+                        `DELETE FROM cxc_deta_factura WHERE ide_ccdfa = $1 AND ide_cccfa = $2`,
+                        [oldId, ideCccfa],
+                    );
+                }
+            }
+
+            // Insertar o actualizar cada detalle del frontend
+            for (const det of detalles) {
+                if (det.ide_ccdfa != null && oldMap.has(det.ide_ccdfa)) {
+                    // Update
+                    const oldRow = oldMap.get(det.ide_ccdfa)!;
+                    const cambiaron = det.cantidad_ccdfa !== Number(oldRow.cantidad_ccdfa)
+                        || det.precio_ccdfa !== Number(oldRow.precio_ccdfa)
+                        || det.total_ccdfa !== Number(oldRow.total_ccdfa)
+                        || det.iva_inarti_ccdfa !== Number(oldRow.iva_inarti_ccdfa)
+                        || (det.observacion_ccdfa || '') !== (oldRow.observacion_ccdfa || '')
+                        || (det.ide_inuni ?? null) !== (oldRow.ide_inuni ?? null);
+                    if (cambiaron) {
+                        const updDet = new UpdateQuery('cxc_deta_factura', 'ide_ccdfa');
+                        updDet.values.set('cantidad_ccdfa', det.cantidad_ccdfa);
+                        updDet.values.set('precio_ccdfa', det.precio_ccdfa);
+                        updDet.values.set('total_ccdfa', det.total_ccdfa);
+                        updDet.values.set('iva_inarti_ccdfa', det.iva_inarti_ccdfa);
+                        updDet.values.set('usuario_actua', dtoIn.login);
+                        updDet.values.set('fecha_actua', getCurrentDate());
+                        updDet.values.set('hora_actua', getCurrentTime());
+                        if (isDefined(det.observacion_ccdfa)) updDet.values.set('observacion_ccdfa', det.observacion_ccdfa);
+                        if (isDefined(det.ide_inuni)) updDet.values.set('ide_inuni', det.ide_inuni);
+                        updDet.where = `ide_ccdfa = ${det.ide_ccdfa} AND ide_cccfa = ${ideCccfa}`;
+                        await this.dataSource.createQuery(updDet);
+                    }
+                } else {
+                    // Insert
+                    const ideCcdfa = await this.dataSource.getSeqTable(
+                        `${MODULE}_${TABLE_DET}`, PK_DET, 1, dtoIn.login,
+                    );
+                    const insertDet = this.buildInsertDetalle(ideCccfa, ideCcdfa, det, dtoIn);
+                    await this.dataSource.createQuery(insertDet);
+                }
+            }
+        }
+
+        // ── 4. Transacciones CxC ───────────────────────────────────────────
+        if (totalCambio) {
+            const qTrnCab = new SelectQuery(
+                `SELECT ide_ccctr FROM cxc_cabece_transa WHERE ide_cccfa = $1 LIMIT 1`,
+            );
+            qTrnCab.addIntParam(1, ideCccfa);
+            const trnCab = await this.dataSource.createSingleQuery(qTrnCab);
+
+            if (trnCab) {
+                const secuencial = existe.secuencial_cccfa || '';
+                await this.dataSource.pool.query(
+                    `UPDATE cxc_cabece_transa
+                     SET observacion_ccctr = $1,
+                         usuario_actua = $3,
+                         fecha_actua = $4,
+                         hora_actua = $5
+                     WHERE ide_ccctr = $2`,
+                    [`FACTURA ${secuencial}`, trnCab.ide_ccctr, dtoIn.login, getCurrentDate(), getCurrentTime()],
+                );
+
+                const diasCredito = data.dias_credito_cccfa ?? 0;
+                const fechaVencimiento = this.sumarDias(data.fecha_emisi_cccfa, diasCredito);
+                await this.dataSource.pool.query(
+                    `UPDATE cxc_detall_transa
+                     SET valor_ccdtr = $1,
+                         fecha_venci_ccdtr = $2,
+                         docum_relac_ccdtr = $3,
+                         observacion_ccdtr = $4,
+                         usuario_actua = $5,
+                         fecha_actua = $6,
+                         hora_actua = $7
+                     WHERE ide_cccfa = $8 AND ide_ccttr = $9`,
+                    [totales.total, fechaVencimiento, secuencial, `FACTURA ${secuencial}`,
+                        dtoIn.login, getCurrentDate(), getCurrentTime(),
+                        ideCccfa, this.ideTipoTransFactura],
+                );
+            }
+        }
+
+        // ── 5. Kardex de inventario ────────────────────────────────────────
+        const detallesConKardex = await this.getDetallesConKardex(detalles);
+        const tieneKardex = detallesConKardex.length > 0;
+
+        const qInvExiste = new SelectQuery(
+            `SELECT DISTINCT d.ide_incci
+             FROM inv_det_comp_inve d
+             WHERE d.ide_cccfa = $1
+             LIMIT 1`,
+        );
+        qInvExiste.addIntParam(1, ideCccfa);
+        const invExiste = await this.dataSource.createSingleQuery(qInvExiste);
+
+        if (invExiste && tieneKardex) {
+            const ideIncci = Number(invExiste.ide_incci);
+            const secuencial = existe.secuencial_cccfa || '';
+
             await this.dataSource.pool.query(
-                `DELETE FROM cxc_deta_factura WHERE ide_cccfa = $1`,
-                [ideCccfa],
+                `UPDATE inv_cab_comp_inve
+                 SET fecha_trans_incci = $1,
+                     fecha_efect_incci = $1,
+                     observacion_incci = $2,
+                     referencia_incci = $3,
+                     usuario_actua = $4,
+                     fecha_actua = $5,
+                     hora_actua = $6
+                 WHERE ide_incci = $7`,
+                [data.fecha_emisi_cccfa, `VENTA FACTURA ${secuencial}`,
+                    secuencial.slice(-12), dtoIn.login, getCurrentDate(), getCurrentTime(),
+                    ideIncci],
             );
 
-            for (let idx = 0; idx < detalles.length; idx++) {
-                const ideCcdfa = await this.dataSource.getSeqTable(
-                    `${MODULE}_${TABLE_DET}`, PK_DET, 1, dtoIn.login,
-                );
-                const insertDet = this.buildInsertDetalle(ideCccfa, ideCcdfa, detalles[idx], dtoIn);
-                await this.dataSource.createQuery(insertDet);
+            // Merge de detalles de kardex
+            const conversiones = await this.getConversionesUnidades(detallesConKardex);
+            const qOldInvDet = new SelectQuery(
+                `SELECT * FROM inv_det_comp_inve WHERE ide_incci = $1 ORDER BY ide_indci`,
+            );
+            qOldInvDet.addIntParam(1, ideIncci);
+            const oldInvDet = await this.dataSource.createSelectQuery(qOldInvDet);
+
+            const oldInvMap = new Map<number, any>();
+            for (const od of oldInvDet) {
+                oldInvMap.set(Number(od.ide_inarti), od);
             }
+
+            const newInvIds = new Set<number>();
+            for (const det of detallesConKardex) {
+                newInvIds.add(det.ide_inarti);
+            }
+
+            // Eliminar items de kardex que ya no vienen
+            for (const [artId, od] of oldInvMap) {
+                if (!newInvIds.has(artId)) {
+                    await this.dataSource.pool.query(
+                        `DELETE FROM inv_det_comp_inve WHERE ide_indci = $1 AND ide_incci = $2`,
+                        [od.ide_indci, ideIncci],
+                    );
+                }
+            }
+
+            // Insertar o actualizar items de kardex
+            for (const det of detallesConKardex) {
+                const key = `${det.ide_inarti}_${det.ide_inuni ?? ''}`;
+                const conversion = conversiones.get(key);
+                const cantidadConvertida = conversion
+                    ? Number((det.cantidad_ccdfa * conversion).toFixed(6))
+                    : det.cantidad_ccdfa;
+                const valorConvertido = conversion
+                    ? Number((Math.abs(det.total_ccdfa) * (cantidadConvertida / det.cantidad_ccdfa)).toFixed(2))
+                    : Math.abs(det.total_ccdfa);
+
+                if (oldInvMap.has(det.ide_inarti)) {
+                    const od = oldInvMap.get(det.ide_inarti)!;
+                    await this.dataSource.pool.query(
+                        `UPDATE inv_det_comp_inve
+                         SET cantidad_indci = $1,
+                             precio_indci = $2,
+                             valor_indci = $3,
+                             usuario_actua = $4,
+                             fecha_actua = $5,
+                             hora_actua = $6
+                         WHERE ide_indci = $7 AND ide_incci = $8`,
+                        [Math.abs(cantidadConvertida), det.precio_ccdfa, Math.abs(valorConvertido),
+                            dtoIn.login, getCurrentDate(), getCurrentTime(),
+                            od.ide_indci, ideIncci],
+                    );
+                } else {
+                    const ideIndci = await this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, 1, dtoIn.login);
+                    const qDet = new InsertQuery(TABLE_INV_DET, PK_INV_DET, dtoIn);
+                    qDet.values.set('ide_indci', ideIndci);
+                    qDet.values.set('ide_incci', ideIncci);
+                    qDet.values.set('ide_inarti', det.ide_inarti);
+                    qDet.values.set('ide_cccfa', ideCccfa);
+                    qDet.values.set('secuencial_indci', String(oldInvDet.length + 1).padStart(6, '0'));
+                    qDet.values.set('cantidad_indci', Math.abs(cantidadConvertida));
+                    qDet.values.set('precio_indci', det.precio_ccdfa);
+                    qDet.values.set('valor_indci', Math.abs(valorConvertido));
+                    qDet.values.set('usuario_ingre', dtoIn.login);
+                    qDet.values.set('fecha_ingre', getCurrentDate());
+                    qDet.values.set('hora_ingre', getCurrentTime());
+                    await this.dataSource.createQuery(qDet);
+                }
+            }
+        } else if (!invExiste && tieneKardex) {
+            // Si no existía kardex pero ahora hay items con kardex, crear
+            const secuencial = existe.secuencial_cccfa || '';
+            const ideBodega = await this.getBodegaSucursal(dtoIn.ideSucu);
+            const ideIncci = await this.dataSource.getSeqTable(TABLE_INV_CAB, PK_INV_CAB, 1, dtoIn.login);
+            const baseIdeIndci = await this.dataSource.getSeqTable(TABLE_INV_DET, PK_INV_DET, detallesConKardex.length, dtoIn.login);
+            const kardexQueries = await this.buildKardexQueries(
+                ideIncci, baseIdeIndci, ideCccfa, secuencial,
+                data, cliente, detallesConKardex, dtoIn, ideBodega,
+            );
+            for (const q of kardexQueries) {
+                await this.dataSource.createQuery(q);
+            }
+        } else if (invExiste && !tieneKardex) {
+            // Si antes tenía kardex pero ya no, eliminar
+            const ideIncci = Number(invExiste.ide_incci);
+            await this.dataSource.pool.query(
+                `DELETE FROM inv_det_comp_inve WHERE ide_incci = $1`,
+                [ideIncci],
+            );
+            await this.dataSource.pool.query(
+                `DELETE FROM inv_cab_comp_inve WHERE ide_incci = $1`,
+                [ideIncci],
+            );
+        }
+
+        // ── 6. Actualizar datos del cliente ────────────────────────────────
+        const updCliente = new UpdateQuery('gen_persona', 'ide_geper', dtoIn);
+        let tieneCambios = false;
+
+        if (isDefined(data.direccion_cccfa) && data.direccion_cccfa !== (cliente.direccion_geper ?? '')) {
+            updCliente.values.set('direccion_geper', data.direccion_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.telefono_cccfa) && data.telefono_cccfa !== (cliente.telefono_geper ?? '')) {
+            updCliente.values.set('telefono_geper', data.telefono_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.correo_cccfa) && data.correo_cccfa !== (cliente.correo_geper ?? '')) {
+            updCliente.values.set('correo_geper', data.correo_cccfa);
+            tieneCambios = true;
+        }
+        if (isDefined(data.ide_cndfp1) && data.ide_cndfp1 !== (cliente.ide_cndfp ?? null)) {
+            updCliente.values.set('ide_cndfp', data.ide_cndfp1);
+            tieneCambios = true;
+        }
+        if (isDefined(data.ide_geprov) && data.ide_geprov !== (cliente.ide_geprov ?? null)) {
+            updCliente.values.set('ide_geprov', data.ide_geprov);
+            tieneCambios = true;
+        }
+        if (isDefined(data.ide_gecant) && data.ide_gecant !== (cliente.ide_gecant ?? null)) {
+            updCliente.values.set('ide_gecant', data.ide_gecant);
+            tieneCambios = true;
+        }
+
+        if (tieneCambios) {
+            updCliente.where = `ide_geper = ${data.ide_geper}`;
+            await this.dataSource.createQuery(updCliente);
         }
 
         return {
@@ -596,7 +959,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('hora_ingre', getCurrentTime());
         if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
         if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
-        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp', data.ide_cndfp1);
+        if (isDefined(data.ide_cndfp)) q.values.set('ide_cndfp', data.ide_cndfp);
         if (isDefined(data.telefono_cccfa)) q.values.set('telefono_cccfa', data.telefono_cccfa);
         if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
         if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
@@ -631,7 +994,8 @@ export class FacturasSaveService extends BaseService {
         q.values.set('hora_actua', getCurrentTime());
         if (isDefined(data.ide_vgven)) q.values.set('ide_vgven', data.ide_vgven);
         if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp1', data.ide_cndfp1);
-        if (isDefined(data.ide_cndfp1)) q.values.set('ide_cndfp', data.ide_cndfp1);
+        if (isDefined(data.ide_cndfp)) q.values.set('ide_cndfp', data.ide_cndfp);
+        if (isDefined(data.telefono_cccfa)) q.values.set('telefono_cccfa', data.telefono_cccfa);
         if (isDefined(data.observacion_cccfa)) q.values.set('observacion_cccfa', data.observacion_cccfa);
         if (isDefined(data.direccion_cccfa)) q.values.set('direccion_cccfa', data.direccion_cccfa);
         if (isDefined(data.correo_cccfa)) q.values.set('correo_cccfa', data.correo_cccfa);

@@ -24,6 +24,11 @@ import { SaveDto } from 'src/common/dto/save.dto';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class DetaFacturaDto {
+    @ApiPropertyOptional({ description: 'ID del detalle. Requerido solo para actualizar' })
+    @IsInt()
+    @IsOptional()
+    ide_ccdfa?: number;
+
     @ApiProperty({ description: 'ID del artículo (inv_articulo.ide_inarti)' })
     @IsInt()
     ide_inarti: number;
@@ -163,6 +168,12 @@ export class CabeceraFacturaDataDto {
     @IsOptional()
     @Type(() => Number)
     ide_cndfp1?: number;
+
+    @ApiPropertyOptional({ description: 'ID de la forma de pago secundaria (con_deta_forma_pago.ide_cndfp)' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_cndfp?: number;
 
     @ApiPropertyOptional({ description: 'Días de crédito. Default: 0 (contado)', default: 0 })
     @IsInt()

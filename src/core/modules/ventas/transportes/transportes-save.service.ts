@@ -1,18 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
-import { isDefined } from 'src/util/helpers/common-util';
-import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import {
     SaveEnvioDto,
     SaveRutaDetDto,
     SaveRutaDto,
-    SaveTarifaItemDto,
     SaveTransporteCompletoDto,
     SetActivoTransDto,
 } from './dto/save-transporte.dto';

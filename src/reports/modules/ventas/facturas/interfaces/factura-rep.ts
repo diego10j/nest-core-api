@@ -35,10 +35,16 @@ export interface FacturaCabecera {
     nombre_sresc?: string;
     icono_sresc?: string;
     color_sresc?: string;
+    infoadicional1_srcom?: string;
+    infoadicional2_srcom?: string;
+    infoadicional3_srcom?: string;
 
     // Vendedor y forma de pago
     nombre_vgven?: string;
     nombre_cndfp?: string;
+    nombre_forma_cobro?: string;
+    forma_cobro_srcom?: string;
+    dias_credito_srcom?: number;
 
     // Retención
     ide_cncre?: number;
@@ -54,6 +60,8 @@ export interface FacturaDetalle {
     ide_ccdfa: number;
     ide_inarti: number;
     cantidad_ccdfa: number;
+    cantidad_format?: string;
+    decim_stock_inarti?: number;
     precio_ccdfa: number;
     total_ccdfa: number;
     observacion_ccdfa?: string;
@@ -104,10 +112,41 @@ export interface FacturaRetencionDetalle {
     valor_cndre: number;
 }
 
+export interface TransporteFactura {
+    ide_cctfa?: number;
+    ide_vgtra?: number;
+    nombre_vgtra?: string;
+    logo_vgtra?: string;
+    flete_cobro_vgtra?: boolean;
+    es_transporte_propio_cctfa?: boolean;
+    ide_gecam?: string;
+    placa_gecam?: string;
+    vehiculo?: string;
+    ide_geper?: number;
+    chofer?: string;
+    ide_cceen?: number;
+    nombre_cceen?: string;
+    color_cceen?: string;
+    icono_cceen?: string;
+    fecha_inicio_cctfa?: Date | string;
+    fecha_fin_cctfa?: Date | string;
+    fecha_fin_real_cctfa?: Date | string;
+    path_imagen_guia_cctfa?: string;
+    base_flete_cctfa?: number;
+    valor_iva_flete_cctfa?: number;
+    total_flete_cctfa?: number;
+    base_flete_real_cctfa?: number;
+    valor_iva_flete_real_cctfa?: number;
+    total_flete_real_cctfa?: number;
+    flete_pagado_cctfa?: boolean;
+    comentario_cctfa?: string;
+}
+
 export interface FacturaRep {
     cabecera: FacturaCabecera;
     detalles: FacturaDetalle[];
     pagos: FacturaPago;
     retencion: FacturaRetencion | null;
     guiaremision?: any | null;
+    transporte?: TransporteFactura | null;
 }

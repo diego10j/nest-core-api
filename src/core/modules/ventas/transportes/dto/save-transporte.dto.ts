@@ -1,5 +1,5 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 
 export class SetActivoTransDto {
     @IsInt()

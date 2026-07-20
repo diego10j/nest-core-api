@@ -66,14 +66,27 @@ export class FacturasRepService {
         d.autorizacion_srcomn,
         d.fechaautoriza_srcom,
         d.ide_sresc,
+        d.infoadicional1_srcom,
+        d.infoadicional2_srcom,
+        d.infoadicional3_srcom,
+        d.forma_cobro_srcom,
+        d.dias_credito_srcom,
         -- Estado SRI
         f.nombre_sresc,
         f.icono_sresc,
         f.color_sresc,
         -- Vendedor
         v.nombre_vgven,
-        -- Forma de pago
+        -- Forma de pago (desde nombre_cndfp)
         x.nombre_cndfp,
+        -- Forma de pago resuelta desde forma_cobro_srcom (alterno_ats)
+        (
+          SELECT fp.nombre_cndfp
+          FROM con_deta_forma_pago fp
+          WHERE fp.alterno_ats = d.forma_cobro_srcom
+            AND fp.ide_cncfp = 3
+          LIMIT 1
+        ) AS nombre_forma_cobro,
         -- Número de retención
         (
           SELECT numero_cncre
@@ -97,12 +110,54 @@ export class FacturasRepService {
       throw new NotFoundException(`Factura ${dtoIn.ide_cccfa} no encontrada`);
     }
 
+    // ── Transporte / Envío ────────────────────────────────────────────────
+    const queryTransporte = new SelectQuery(`
+      SELECT
+        e.ide_cctfa,
+        e.ide_vgtra,
+        t.nombre_vgtra,
+        t.logo_vgtra,
+        t.flete_cobro_vgtra,
+        e.es_transporte_propio_cctfa,
+        e.ide_gecam,
+        ca.placa_gecam,
+        ca.descripcion_gecam AS vehiculo,
+        e.ide_geper,
+        ch.nom_geper AS chofer,
+        e.ide_cceen,
+        ee.nombre_cceen,
+        ee.color_cceen,
+        ee.icono_cceen,
+        e.fecha_inicio_cctfa,
+        e.fecha_fin_cctfa,
+        e.fecha_fin_real_cctfa,
+        e.path_imagen_guia_cctfa,
+        e.base_flete_cctfa,
+        e.valor_iva_flete_cctfa,
+        e.total_flete_cctfa,
+        e.base_flete_real_cctfa,
+        e.valor_iva_flete_real_cctfa,
+        e.total_flete_real_cctfa,
+        e.flete_pagado_cctfa,
+        e.comentario_cctfa
+      FROM cxc_transporte_factura e
+      LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+      LEFT JOIN gen_camion ca ON e.ide_gecam = ca.placa_gecam
+      LEFT JOIN gen_persona ch ON e.ide_geper = ch.ide_geper
+      LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+      WHERE e.ide_cccfa = $1
+      LIMIT 1
+    `);
+    queryTransporte.addIntParam(1, dtoIn.ide_cccfa);
+    const transporte = await this.dataSource.createSingleQuery(queryTransporte) ?? null;
+
     // ── Detalles de la factura ────────────────────────────────────────────
     const queryDetalles = new SelectQuery(`
       SELECT
         d.ide_ccdfa,
         d.ide_inarti,
         d.cantidad_ccdfa,
+        f_decimales(d.cantidad_ccdfa, p.decim_stock_inarti) AS cantidad_format,
         d.precio_ccdfa,
         d.total_ccdfa,
         d.observacion_ccdfa,
@@ -110,6 +165,7 @@ export class FacturasRepService {
         p.codigo_inarti,
         p.nombre_inarti,
         p.otro_nombre_inarti,
+        p.decim_stock_inarti,
         u.siglas_inuni,
         cat.nombre_incate
       FROM cxc_deta_factura d
@@ -229,10 +285,17 @@ export class FacturasRepService {
       detalles: detalles ?? [],
       pagos,
       retencion: retencData,
+      transporte,
     };
 
     const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl);
-    return this.printerService.createPdf(docDefinition);
+    try {
+      return this.printerService.createPdf(docDefinition);
+    } catch {
+      // Si falla por imágenes, reintentar sin barcode
+      const docFallback = facturaElectronicaReport(facturaRep, empresa);
+      return this.printerService.createPdf(docFallback);
+    }
   }
 
   /**

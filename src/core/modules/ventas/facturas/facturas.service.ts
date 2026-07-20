@@ -885,6 +885,7 @@ export class FacturasService extends BaseService {
                 a.ide_geper,
                 a.ide_vgven,
                 a.ide_cndfp1,
+                a.ide_cndfp,
                 a.ide_cnccc,
                 a.ide_cncre,
                 a.ide_ccefa,
@@ -903,6 +904,8 @@ export class FacturasService extends BaseService {
                 a.usuario_ingre,
                 a.fecha_ingre,
                 a.hora_ingre,
+                b.ide_geprov,
+                b.ide_gecant,
                 a.direccion_cccfa,
                 a.orden_compra_cccfa,
                 a.correo_cccfa,
@@ -929,6 +932,10 @@ export class FacturasService extends BaseService {
                 d.autorizacion_srcomn,
                 d.fechaautoriza_srcom,
                 d.ide_sresc,
+                d.forma_cobro_srcom,
+                d.infoadicional1_srcom,
+                d.infoadicional2_srcom,
+                d.infoadicional3_srcom,
                 
                 -- Estado del comprobante
                 f.nombre_sresc,
@@ -938,8 +945,15 @@ export class FacturasService extends BaseService {
                 -- Datos del vendedor
                 v.nombre_vgven,
                 v.ide_vgven,
-                -- Forma de pago
+                -- Forma de pago (resuelta desde forma_cobro_srcom via alterno_ats)
                 x.nombre_cndfp,
+                (
+                    SELECT fp.nombre_cndfp
+                    FROM con_deta_forma_pago fp
+                    WHERE fp.alterno_ats = d.forma_cobro_srcom
+                      AND fp.ide_cncfp = 3
+                    LIMIT 1
+                ) AS nombre_forma_cobro,
   
                 
                 -- Número de retención si existe
@@ -971,6 +985,7 @@ export class FacturasService extends BaseService {
                 d.ide_ccdfa,
                 d.ide_inarti,
                 d.cantidad_ccdfa,
+                f_decimales(d.cantidad_ccdfa, p.decim_stock_inarti) AS cantidad_format,
                 d.precio_ccdfa,
                 d.total_ccdfa,
                 d.observacion_ccdfa,
@@ -1161,14 +1176,18 @@ export class FacturasService extends BaseService {
             `
             SELECT
             g.ide_ccgui,
+            g.ide_cctgi,
             cdf.establecimiento_ccdfa,
             cdf.pto_emision_ccdfa,
             g.numero_ccgui,
             g.fecha_emision_ccgui,
             g.fecha_ini_trasla_ccgui,
+            g.fecha_fin_trasla_ccgui,
             g.punto_partida_ccgui,
             g.punto_llegada_ccgui,
+            g.destinatario_ccgui,
             g.placa_gecam,
+            g.gen_ide_geper,
             t.nombre_cctgi,
             c.descripcion_gecam,
             p.nom_geper,
@@ -1218,15 +1237,12 @@ export class FacturasService extends BaseService {
             FROM cxp_cabecera_nota nc
             LEFT JOIN sri_comprobante d        ON nc.ide_srcom  = d.ide_srcom
             LEFT JOIN sri_estado_comprobante e ON d.ide_sresc   = e.ide_sresc
-            WHERE nc.num_doc_mod_cpcno LIKE '%' || lpad($1::text, 9, '0')
+            WHERE nc.ide_cccfa = $1
               AND nc.ide_cpeno = 1
-              AND nc.ide_empr  = d.ide_empr
-              AND nc.ide_sucu  = d.ide_sucu
-              
             ORDER BY nc.fecha_emisi_cpcno
             `,
         );
-        queryNotasCredito.addParam(1, resCabecera.secuencial_cccfa);
+        queryNotasCredito.addIntParam(1, dtoIn.ide_cccfa);
         const resNotasCreditoCabecera = await this.dataSource.createSingleQuery(queryNotasCredito);
 
         const totalNotasCredito = resNotasCreditoCabecera
@@ -1251,13 +1267,12 @@ export class FacturasService extends BaseService {
             INNER JOIN cxp_cabecera_nota nc ON det.ide_cpcno = nc.ide_cpcno
             INNER JOIN inv_articulo       p  ON det.ide_inarti = p.ide_inarti
             LEFT  JOIN inv_unidad         u  ON p.ide_inuni   = u.ide_inuni
-            WHERE nc.num_doc_mod_cpcno LIKE '%' || lpad($1::text, 9, '0')
+            WHERE nc.ide_cccfa = $1
               AND nc.ide_cpeno = 1
-              AND nc.ide_empr  = ${dtoIn.ideEmpr}
             ORDER BY det.ide_cpcno, det.ide_cpdno
             `,
         );
-        queryNotasCreditoDetalles.addParam(1, resCabecera.secuencial_cccfa);
+        queryNotasCreditoDetalles.addIntParam(1, dtoIn.ide_cccfa);
         const resNotasCreditoDetalles = await this.dataSource.createSelectQuery(queryNotasCreditoDetalles);
 
         // comprobante de inventario asociado a la factura
