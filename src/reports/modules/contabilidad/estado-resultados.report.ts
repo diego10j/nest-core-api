@@ -109,19 +109,29 @@ const kpi = (label: string, value: number, positiveColor: boolean): Content => (
   margin: [4, 8, 4, 8],
 });
 
+const getDepth = (codigo: string): number => {
+  if (!codigo) return 0;
+  return codigo.split('.').length - 1;
+};
+
 const row = (
   code: string,
   name: string,
   value: number,
-  level: number,
+  _level: number,
   isParent: boolean,
 ): [Content, Content, Content] => {
-  const pad = level > 0 ? '  '.repeat(level) : '';
+  const depth = getDepth(code);
   const nameStyle = isParent ? { ...styles.tdName, bold: true } : styles.tdName;
   const valStyle = isParent ? { ...styles.tdValue, bold: true } : styles.tdValue;
+
+  const nameCell: Content = depth > 0
+    ? { columns: [{ width: depth * 14, text: '' }, { width: '*', text: name.trimStart(), style: nameStyle }], columnGap: 0 }
+    : { text: name.trimStart(), style: nameStyle };
+
   return [
     { text: code, style: styles.tdCode },
-    { text: `${pad}${name.trim()}`, style: nameStyle },
+    nameCell,
     { text: money(value), style: valStyle },
   ];
 };

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -6,6 +6,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import {
+    CompletarEnvioDto,
     SaveEnvioDto,
     SaveRutaDetDto,
     SaveRutaDto,
@@ -204,6 +205,9 @@ export class TransportesSaveService extends BaseService {
         setIfDefined('total_flete_real_cctfa', dtoIn.total_flete_real_cctfa, 0);
         setIfDefined('flete_pagado_cctfa', dtoIn.flete_pagado_cctfa, true);
         setIfDefined('comentario_cctfa', dtoIn.comentario_cctfa, null);
+        setIfDefined('enviar_por_correo_cctfa', dtoIn.enviar_por_correo_cctfa, false);
+        setIfDefined('correo_cctfa', dtoIn.correo_cctfa, null);
+        setIfDefined('fecha_envio_cctfa', dtoIn.fecha_envio_cctfa, null);
 
         const listQuery = [{
             operation: isUpdate ? 'update' as const : 'insert' as const,
@@ -224,6 +228,78 @@ export class TransportesSaveService extends BaseService {
             [dtoIn.activo ? 1 : 6, dtoIn.ide],
         );
         return { message: 'ok' };
+    }
+
+    async completarEnvio(dtoIn: CompletarEnvioDto & HeaderParamsDto) {
+        const current = await this.dataSource.pool.query(
+            `SELECT ide_cceen, ide_cccfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+
+        if (current.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+
+        const setClauses: string[] = [];
+        const params: unknown[] = [];
+        let paramIdx = 0;
+
+        const addParam = (value: unknown) => {
+            paramIdx++;
+            params.push(value);
+            return paramIdx;
+        };
+
+        setClauses.push(`ide_cceen = $${addParam(dtoIn.ide_cceen)}`);
+
+        if (dtoIn.path_imagen_guia_cctfa !== undefined) {
+            setClauses.push(`path_imagen_guia_cctfa = $${addParam(dtoIn.path_imagen_guia_cctfa)}`);
+        }
+        if (dtoIn.fecha_fin_cctfa !== undefined) {
+            setClauses.push(`fecha_fin_cctfa = $${addParam(dtoIn.fecha_fin_cctfa)}`);
+        }
+        if (dtoIn.fecha_fin_real_cctfa !== undefined) {
+            setClauses.push(`fecha_fin_real_cctfa = $${addParam(dtoIn.fecha_fin_real_cctfa)}`);
+        }
+        if (dtoIn.base_flete_real_cctfa !== undefined) {
+            setClauses.push(`base_flete_real_cctfa = $${addParam(dtoIn.base_flete_real_cctfa)}`);
+        }
+        if (dtoIn.valor_iva_flete_real_cctfa !== undefined) {
+            setClauses.push(`valor_iva_flete_real_cctfa = $${addParam(dtoIn.valor_iva_flete_real_cctfa)}`);
+        }
+        if (dtoIn.total_flete_real_cctfa !== undefined) {
+            setClauses.push(`total_flete_real_cctfa = $${addParam(dtoIn.total_flete_real_cctfa)}`);
+        }
+        if (dtoIn.comentario_cctfa !== undefined) {
+            setClauses.push(`comentario_cctfa = $${addParam(dtoIn.comentario_cctfa)}`);
+        }
+        if (dtoIn.enviar_por_correo_cctfa !== undefined) {
+            setClauses.push(`enviar_por_correo_cctfa = $${addParam(dtoIn.enviar_por_correo_cctfa)}`);
+        }
+        if (dtoIn.correo_cctfa !== undefined) {
+            setClauses.push(`correo_cctfa = $${addParam(dtoIn.correo_cctfa)}`);
+        }
+        if (dtoIn.fecha_envio_cctfa !== undefined) {
+            setClauses.push(`fecha_envio_cctfa = $${addParam(dtoIn.fecha_envio_cctfa)}`);
+        }
+
+        setClauses.push(`usuario_actua = $${addParam(dtoIn.login)}`);
+        setClauses.push(`fecha_actua = CURRENT_DATE`);
+        setClauses.push(`hora_actua = CURRENT_TIME`);
+
+        params.push(dtoIn.ide_cctfa);
+        const whereIdx = params.length;
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura SET ${setClauses.join(', ')} WHERE ide_cctfa = $${whereIdx}`,
+            params,
+        );
+
+        return {
+            message: 'ok',
+            ide_cctfa: dtoIn.ide_cctfa,
+            ide_cceen: dtoIn.ide_cceen,
+        };
     }
 
     // ─── RUTA ─────────────────────────────────────────────────────────────────

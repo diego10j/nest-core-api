@@ -139,7 +139,10 @@ export class FacturasRepService {
         e.valor_iva_flete_real_cctfa,
         e.total_flete_real_cctfa,
         e.flete_pagado_cctfa,
-        e.comentario_cctfa
+        e.comentario_cctfa,
+        e.enviar_por_correo_cctfa,
+        e.correo_cctfa,
+        e.fecha_envio_cctfa
       FROM cxc_transporte_factura e
       LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
       LEFT JOIN gen_camion ca ON e.ide_gecam = ca.placa_gecam

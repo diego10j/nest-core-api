@@ -306,3 +306,19 @@ CREATE INDEX IF NOT EXISTS idx_ven_ruta_gecam ON ven_ruta (ide_gecam);
 CREATE INDEX IF NOT EXISTS idx_ven_ruta_det_vgrta ON ven_ruta_det (ide_vgrta);
 CREATE INDEX IF NOT EXISTS idx_ven_ruta_det_cccfa ON ven_ruta_det (ide_cccfa);
 CREATE INDEX IF NOT EXISTS idx_ven_ruta_det_realizado ON ven_ruta_det (ide_vgrta, realizado_vgrtd);
+
+-- ============================================================================
+-- ALTER TABLE cxc_transporte_factura — Campos para envío por correo
+-- ============================================================================
+ALTER TABLE cxc_transporte_factura
+    ADD COLUMN IF NOT EXISTS enviar_por_correo_cctfa BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE cxc_transporte_factura
+    ADD COLUMN IF NOT EXISTS correo_cctfa VARCHAR(200);
+
+ALTER TABLE cxc_transporte_factura
+    ADD COLUMN IF NOT EXISTS fecha_envio_cctfa TIMESTAMP;
+
+COMMENT ON COLUMN cxc_transporte_factura.enviar_por_correo_cctfa IS 'TRUE = enviar guía de entrega al cliente por correo electrónico';
+COMMENT ON COLUMN cxc_transporte_factura.correo_cctfa IS 'Correo electrónico del destinatario para envío de guía';
+COMMENT ON COLUMN cxc_transporte_factura.fecha_envio_cctfa IS 'Fecha y hora en que se envió la guía por correo';

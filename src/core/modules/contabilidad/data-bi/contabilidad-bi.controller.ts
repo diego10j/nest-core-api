@@ -5,7 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 import { ContabilidadBiService } from './contabilidad-bi.service';
-import { ComparativoPeriodosDto, PeriodoAnioDto, TopCuentasBiDto } from './dto/contabilidad-bi.dto';
+import { ComparativoPeriodosDto, EvolucionPeriodosDto, PeriodoAnioDto, PeriodoContableDto, TopCuentasBiDto } from './dto/contabilidad-bi.dto';
 
 @ApiTags('Contabilidad-DataBI')
 @Controller('contabilidad/data-bi')
@@ -98,5 +98,53 @@ export class ContabilidadBiController {
     // @Auth()
     getResumenPorTipoComprobante(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
         return this.service.getResumenPorTipoComprobante({ ...headersParams, ...dtoIn });
+    }
+
+    // ─── Dashboard ───────────────────────────────────────────────────────────────
+
+    @Get('getDashboardResumen')
+    @ApiOperation({ summary: 'Dashboard ejecutivo: KPIs + composicion balance + top cuentas en una sola llamada' })
+    // @Auth()
+    getDashboardResumen(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+        return this.service.getDashboardResumen({ ...headersParams, ...dtoIn });
+    }
+
+    // ─── Periodos contables ──────────────────────────────────────────────────────
+
+    @Get('getBalancePorPeriodo')
+    @ApiOperation({ summary: 'Balance general para un periodo contable especifico usando con_periodo' })
+    // @Auth()
+    getBalancePorPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoContableDto) {
+        return this.service.getBalancePorPeriodo({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getResultadosPorPeriodo')
+    @ApiOperation({ summary: 'Estado de resultados para un periodo contable especifico usando con_periodo' })
+    // @Auth()
+    getResultadosPorPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoContableDto) {
+        return this.service.getResultadosPorPeriodo({ ...headersParams, ...dtoIn });
+    }
+
+    // ─── Análisis avanzado ──────────────────────────────────────────────────────
+
+    @Get('getEvolucionMargenBruto')
+    @ApiOperation({ summary: 'Evolucion del margen bruto en los ultimos N periodos contables' })
+    // @Auth()
+    getEvolucionMargenBruto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EvolucionPeriodosDto) {
+        return this.service.getEvolucionMargenBruto({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getConcentracionCuentas')
+    @ApiOperation({ summary: 'Analisis de concentracion (Pareto) de cuentas contables' })
+    // @Auth()
+    getConcentracionCuentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopCuentasBiDto) {
+        return this.service.getConcentracionCuentas({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getVariacionMensual')
+    @ApiOperation({ summary: 'Variacion porcentual mes a mes de indicadores clave' })
+    // @Auth()
+    getVariacionMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PeriodoAnioDto) {
+        return this.service.getVariacionMensual({ ...headersParams, ...dtoIn });
     }
 }

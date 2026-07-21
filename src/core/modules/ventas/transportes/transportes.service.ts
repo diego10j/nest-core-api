@@ -182,7 +182,10 @@ export class TransportesService extends BaseService {
                 e.valor_iva_flete_real_cctfa,
                 e.total_flete_real_cctfa,
                 e.flete_pagado_cctfa,
-                e.comentario_cctfa
+                e.comentario_cctfa,
+                e.enviar_por_correo_cctfa,
+                e.correo_cctfa,
+                e.fecha_envio_cctfa
             FROM cxc_transporte_factura e
             INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
@@ -229,7 +232,10 @@ export class TransportesService extends BaseService {
                 e.valor_iva_flete_real_cctfa,
                 e.total_flete_real_cctfa,
                 e.flete_pagado_cctfa,
-                e.comentario_cctfa
+                e.comentario_cctfa,
+                e.enviar_por_correo_cctfa,
+                e.correo_cctfa,
+                e.fecha_envio_cctfa
             FROM cxc_transporte_factura e
             INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper

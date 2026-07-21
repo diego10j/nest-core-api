@@ -31,3 +31,32 @@ export class ComparativoPeriodosDto {
     @Type(() => Number)
     anioAnterior: number;
 }
+
+export class PeriodoContableDto {
+    @IsInt()
+    @Type(() => Number)
+    ideCnper: number;
+}
+
+export class EvolucionPeriodosDto {
+    @IsInt()
+    @Min(1)
+    @Max(60)
+    @Type(() => Number)
+    @IsOptional()
+    cantidad?: number = 12;
+}
+
+export class AnioMesDto {
+    @IsInt()
+    @Min(2000)
+    @Max(2100)
+    @Type(() => Number)
+    anio: number;
+
+    @IsInt()
+    @Min(1)
+    @Max(12)
+    @Type(() => Number)
+    mes: number;
+}

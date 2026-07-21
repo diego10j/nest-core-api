@@ -383,6 +383,7 @@ export class ContabilidadService extends BaseService {
           AND ccc.ide_cneco IN (${estados})
           AND ccc.ide_sucu  = $3
           AND dpc.ide_cntcu IN (${tipos})
+          and   dpc.ide_cncpc = (select ide_cncpc from con_cab_plan_cuen where ide_sucu = $3 and activo_cncpc = true) ---solo plan de cuentas activo de la sucursal
         GROUP BY dpc.ide_cntcu, tc.nombre_cntcu
     `);
         queryTotales.addStringParam(1, dto.fechaInicio);
@@ -707,6 +708,7 @@ export class ContabilidadService extends BaseService {
             WHERE ccc.fecha_trans_cnccc BETWEEN $1 AND $2
               AND ccc.ide_cneco IN (${estados})
               AND ccc.ide_sucu  = $3
+              AND   dpc.ide_cncpc = (select ide_cncpc from con_cab_plan_cuen where ide_sucu = $3 and activo_cncpc = true) ---solo plan de cuentas activo de la sucursal
               AND dpc.ide_cntcu IN (${tiposCuenta})
             GROUP BY
                 dpc.ide_cndpc, dpc.con_ide_cndpc,
@@ -726,6 +728,7 @@ export class ContabilidadService extends BaseService {
             FROM con_det_plan_cuen
             WHERE nivel_cndpc = 'PADRE'
               AND ide_cntcu IN (${tiposCuenta})
+              AND   ide_cncpc = (select ide_cncpc from con_cab_plan_cuen where ide_sucu = $3 and activo_cncpc = true) ---solo plan de cuentas activo de la sucursal
         ),
         todas AS (
             SELECT * FROM movimientos

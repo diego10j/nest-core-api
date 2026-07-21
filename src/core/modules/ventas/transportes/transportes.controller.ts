@@ -15,6 +15,7 @@ import { v4 as uuid } from 'uuid';
 
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import {
+    CompletarEnvioDto,
     SaveEnvioDto,
     SaveRutaDetDto,
     SaveRutaDto,
@@ -26,6 +27,9 @@ import { TransportesService } from './transportes.service';
 
 const TRANSPORTES_DIR = path.join(envs.pathDrive, 'ventas', 'transportes');
 fs.mkdirSync(TRANSPORTES_DIR, { recursive: true });
+
+const IMAGENES_ENVIOS_DIR = path.join(envs.pathDrive, 'ventas', 'envios');
+fs.mkdirSync(IMAGENES_ENVIOS_DIR, { recursive: true });
 
 @ApiTags('Ventas-Transportes')
 @Controller('ventas/transportes')
@@ -120,6 +124,53 @@ export class TransportesController {
     @ApiOperation({ summary: 'Listar facturas que NO tienen registro de envío (retiro en sucursal)' })
     getFacturasSinEnvio(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
         return this.service.getFacturasSinEnvio({ ...h, ...dtoIn });
+    }
+
+    @Post('completarEnvio')
+    @ApiOperation({ summary: 'Completar envío: actualiza estado + datos según tipo (guía, fechas, fletes reales, observación)' })
+    completarEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: CompletarEnvioDto) {
+        return this.saveService.completarEnvio({ ...h, ...dtoIn });
+    }
+
+    @Post('uploadImagenEnvio')
+    @ApiConsumes('multipart/form-data')
+    @ApiOperation({ summary: 'Subir imagen de guía de transporte o evidencia de entrega' })
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: (_req, _file, cb) => cb(null, IMAGENES_ENVIOS_DIR),
+            filename: (_req, file, cb) => {
+                const ext = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
+                cb(null, `${uuid()}.${ext}`);
+            },
+        }),
+    }))
+    uploadImagenEnvio(
+        @AppHeaders() _h: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+    ) {
+        return { message: 'ok', fileName: file.filename };
+    }
+
+    @Public()
+    @Get('downloadImagenEnvio/:fileName')
+    @ApiOperation({ summary: 'Descargar imagen de guía o evidencia de entrega (público). Soporta ?w=N para thumbnail' })
+    async downloadImagenEnvio(
+        @Param('fileName') fileName: string,
+        @Res() res: any,
+        @Query('w') width?: string,
+    ) {
+        const filePath = path.join(IMAGENES_ENVIOS_DIR, fileName);
+        if (!fs.existsSync(filePath)) {
+            throw new NotFoundException(`Imagen no encontrada: ${fileName}`);
+        }
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+        const w = width ? parseInt(width, 10) : undefined;
+        if (!w) {
+            res.sendFile(filePath);
+            return;
+        }
+        return this.filesService.serveOptimizedImage(filePath, res, { width: w });
     }
 
     // ─── RUTAS ────────────────────────────────────────────────────────────────

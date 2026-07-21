@@ -210,6 +210,67 @@ export class SaveEnvioDto {
     @IsString()
     @IsOptional()
     comentario_cctfa?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    enviar_por_correo_cctfa?: boolean;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    correo_cctfa?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_envio_cctfa?: string;
+}
+
+export class CompletarEnvioDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cctfa: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_cceen: number;
+
+    @IsString()
+    @IsOptional()
+    path_imagen_guia_cctfa?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_fin_cctfa?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_fin_real_cctfa?: string;
+
+    @IsOptional()
+    base_flete_real_cctfa?: number;
+
+    @IsOptional()
+    valor_iva_flete_real_cctfa?: number;
+
+    @IsOptional()
+    total_flete_real_cctfa?: number;
+
+    @IsString()
+    @IsOptional()
+    comentario_cctfa?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    enviar_por_correo_cctfa?: boolean;
+
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    correo_cctfa?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_envio_cctfa?: string;
 }
 
 export class SaveRutaDto {

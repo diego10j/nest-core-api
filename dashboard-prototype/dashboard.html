@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProERP - Dashboard Contable</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', sans-serif; }
+  body { background: #f1f5f9; }
+  .card { @apply bg-white rounded-2xl shadow-sm border border-slate-200 p-5; }
+  .kpi-card { @apply bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow cursor-pointer; }
+  .kpi-value { @apply text-2xl font-bold; }
+  .kpi-label { @apply text-xs text-slate-500 font-medium uppercase tracking-wider mt-1; }
+  .kpi-change { @apply text-xs font-medium mt-1; }
+  .badge-green { @apply text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-xs font-medium; }
+  .badge-red { @apply text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs font-medium; }
+  .badge-amber { @apply text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full text-xs font-medium; }
+  .badge-blue { @apply text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full text-xs font-medium; }
+  canvas { max-height: 320px; }
+
+  /* Skeleton loading */
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .skeleton {
+    background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    border-radius: 8px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 3px; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+      <span class="text-white font-bold text-sm">P</span>
+    </div>
+    <div>
+      <h1 class="text-lg font-bold text-slate-800">Dashboard Contable</h1>
+      <p class="text-xs text-slate-500">ProERP · Contabilidad & Finanzas</p>
+    </div>
+  </div>
+  <div class="flex items-center gap-4">
+    <select class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <option>Enero - Diciembre 2025</option>
+      <option>Periodo 2025-01</option>
+      <option>Periodo 2024-12</option>
+      <option>Personalizado...</option>
+    </select>
+    <input type="date" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700" value="2025-01-01">
+    <span class="text-slate-400 text-sm">—</span>
+    <input type="date" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700" value="2025-12-31">
+    <button class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Actualizar</button>
+  </div>
+</nav>
+
+<main class="p-6 space-y-6 max-w-[1600px] mx-auto">
+
+<!-- ═══════════════ SECCIÓN 1: KPIs PRINCIPALES ═══════════════ -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">💰</span>
+      <span class="badge-green">+8.2%</span>
+    </div>
+    <div class="kpi-value text-indigo-600">$ 406,232</div>
+    <div class="kpi-label">Total Activos</div>
+  </div>
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">📋</span>
+      <span class="badge-amber">-3.1%</span>
+    </div>
+    <div class="kpi-value text-amber-600">$ 158,940</div>
+    <div class="kpi-label">Total Pasivos</div>
+  </div>
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">🏛️</span>
+      <span class="badge-green">+12.5%</span>
+    </div>
+    <div class="kpi-value text-emerald-600">$ 247,292</div>
+    <div class="kpi-label">Patrimonio</div>
+  </div>
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">📈</span>
+      <span class="badge-green">+15.3%</span>
+    </div>
+    <div class="kpi-value text-blue-600">$ 523,800</div>
+    <div class="kpi-label">Ingresos Totales</div>
+  </div>
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">📉</span>
+      <span class="badge-red">+6.8%</span>
+    </div>
+    <div class="kpi-value text-red-500">$ 312,450</div>
+    <div class="kpi-label">Gastos + Costos</div>
+  </div>
+  <div class="kpi-card">
+    <div class="flex items-center justify-between">
+      <span class="text-2xl">🎯</span>
+      <span class="badge-green">+22.7%</span>
+    </div>
+    <div class="kpi-value text-emerald-600">$ 211,350</div>
+    <div class="kpi-label">Utilidad Neta</div>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 2: RATIOS FINANCIEROS ═══════════════ -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+  <div class="kpi-card text-center">
+    <div class="text-3xl font-bold text-amber-500">39.1%</div>
+    <div class="kpi-label">Endeudamiento</div>
+    <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3"><div class="bg-amber-500 h-1.5 rounded-full" style="width:39%"></div></div>
+  </div>
+  <div class="kpi-card text-center">
+    <div class="text-3xl font-bold text-emerald-500">60.9%</div>
+    <div class="kpi-label">Autonomía</div>
+    <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3"><div class="bg-emerald-500 h-1.5 rounded-full" style="width:61%"></div></div>
+  </div>
+  <div class="kpi-card text-center">
+    <div class="text-3xl font-bold text-blue-500">40.3%</div>
+    <div class="kpi-label">Margen Neto</div>
+    <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3"><div class="bg-blue-500 h-1.5 rounded-full" style="width:40%"></div></div>
+  </div>
+  <div class="kpi-card text-center">
+    <div class="text-3xl font-bold text-indigo-500">52.1%</div>
+    <div class="kpi-label">Margen Bruto</div>
+    <div class="w-full bg-slate-200 h-1.5 rounded-full mt-3"><div class="bg-indigo-500 h-1.5 rounded-full" style="width:52%"></div></div>
+  </div>
+  <div class="kpi-card text-center">
+    <div class="text-3xl font-bold text-teal-500">1.68x</div>
+    <div class="kpi-label">Cobertura Gastos</div>
+    <div class="text-xs text-slate-400 mt-1">Ingresos / Gastos+Costos</div>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 3: GRÁFICOS PRINCIPALES ═══════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Evolución mensual de resultados -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Evolución Mensual de Resultados</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Ingresos · Costos · Gastos · Utilidad Neta</p>
+      </div>
+      <span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">2025</span>
+    </div>
+    <canvas id="chartEvolucion"></canvas>
+  </div>
+
+  <!-- Composición del Balance -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Composición del Balance</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Activo · Pasivo · Patrimonio</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-6">
+      <div class="w-48 h-48">
+        <canvas id="chartBalance"></canvas>
+      </div>
+      <div class="flex-1 space-y-3">
+        <div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-blue-500"></span><span class="text-sm text-slate-700">Activo</span></div><span class="text-sm font-semibold">$ 406,232</span></div>
+        <div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-amber-500"></span><span class="text-sm text-slate-700">Pasivo</span></div><span class="text-sm font-semibold">$ 158,940</span></div>
+        <div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-emerald-500"></span><span class="text-sm text-slate-700">Patrimonio</span></div><span class="text-sm font-semibold">$ 247,292</span></div>
+        <hr class="border-slate-200">
+        <div class="flex items-center justify-between"><span class="text-sm font-semibold text-slate-800">Total P + P</span><span class="text-sm font-semibold text-slate-800">$ 406,232</span></div>
+        <div class="flex items-center justify-between"><span class="text-xs text-slate-500">Diferencia</span><span class="text-xs text-emerald-600 font-medium">$ 0.00 ✓</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 4: DISTRIBUCIÓN DE GASTOS + INGRESOS ═══════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Distribución de Gastos -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Distribución de Gastos y Costos</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Top 10 cuentas por monto</p>
+      </div>
+    </div>
+    <canvas id="chartGastos"></canvas>
+  </div>
+
+  <!-- Distribución de Ingresos -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Distribución de Ingresos</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Top 10 cuentas por monto</p>
+      </div>
+    </div>
+    <canvas id="chartIngresos"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 5: TENDENCIA BALANCE ═══════════════ -->
+<div class="card">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h3 class="text-sm font-semibold text-slate-800">Tendencia del Balance General</h3>
+      <p class="text-xs text-slate-500 mt-0.5">Evolución mensual de Activos, Pasivos y Patrimonio</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Activos</span>
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Pasivos</span>
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Patrimonio</span>
+    </div>
+  </div>
+  <canvas id="chartTendencia"></canvas>
+</div>
+
+<!-- ═══════════════ SECCIÓN 6: VARIACIÓN MENSUAL ═══════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Variación mensual -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Variación Mes a Mes</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Cambio porcentual de ingresos y utilidad</p>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-200 text-left text-xs text-slate-500 uppercase">
+            <th class="pb-2 font-medium">Mes</th><th class="pb-2 font-medium text-right">Ingresos</th><th class="pb-2 font-medium text-right">Var. Ing.</th><th class="pb-2 font-medium text-right">Utilidad</th><th class="pb-2 font-medium text-right">Var. Util.</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">Ene</td><td class="py-2.5 text-right">$ 38,500</td><td class="py-2.5 text-right"><span class="text-slate-400">—</span></td><td class="py-2.5 text-right">$ 12,300</td><td class="py-2.5 text-right"><span class="text-slate-400">—</span></td></tr>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">Feb</td><td class="py-2.5 text-right">$ 42,100</td><td class="py-2.5 text-right"><span class="badge-green">↑ 9.3%</span></td><td class="py-2.5 text-right">$ 14,800</td><td class="py-2.5 text-right"><span class="badge-green">↑ 20.3%</span></td></tr>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">Mar</td><td class="py-2.5 text-right">$ 45,200</td><td class="py-2.5 text-right"><span class="badge-green">↑ 7.4%</span></td><td class="py-2.5 text-right">$ 16,100</td><td class="py-2.5 text-right"><span class="badge-green">↑ 8.8%</span></td></tr>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">Abr</td><td class="py-2.5 text-right">$ 41,800</td><td class="py-2.5 text-right"><span class="badge-red">↓ 7.5%</span></td><td class="py-2.5 text-right">$ 14,200</td><td class="py-2.5 text-right"><span class="badge-red">↓ 11.8%</span></td></tr>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">May</td><td class="py-2.5 text-right">$ 47,300</td><td class="py-2.5 text-right"><span class="badge-green">↑ 13.2%</span></td><td class="py-2.5 text-right">$ 18,900</td><td class="py-2.5 text-right"><span class="badge-green">↑ 33.1%</span></td></tr>
+          <tr class="border-b border-slate-100"><td class="py-2.5 font-medium">Jun</td><td class="py-2.5 text-right">$ 44,600</td><td class="py-2.5 text-right"><span class="badge-red">↓ 5.7%</span></td><td class="py-2.5 text-right">$ 17,200</td><td class="py-2.5 text-right"><span class="badge-red">↓ 9.0%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Comparativo entre periodos -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Comparativo Interanual</h3>
+        <p class="text-xs text-slate-500 mt-0.5">2025 vs 2024 por mes</p>
+      </div>
+    </div>
+    <canvas id="chartComparativo"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 7: VOLUMEN MOVIMIENTOS + ACTIVIDAD ═══════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Volumen mensual de movimientos -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Volumen Mensual de Movimientos</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Comprobantes · Volumen · Promedio</p>
+      </div>
+    </div>
+    <canvas id="chartVolumen"></canvas>
+  </div>
+
+  <!-- Actividad por día de la semana -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Actividad por Día de la Semana</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Comprobantes y monto por día</p>
+      </div>
+    </div>
+    <canvas id="chartActividadDia"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 8: ANÁLISIS AVANZADO ═══════════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Top cuentas mayor movimiento -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Top Cuentas Mayor Movimiento</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Por número de transacciones</p>
+      </div>
+    </div>
+    <div class="space-y-3">
+      <div class="flex items-center justify-between text-sm"><span class="text-indigo-600 font-medium">1.1.01.01</span><span class="text-slate-700 truncate mx-2">Caja General</span><span class="font-semibold text-slate-800">1,248</span></div>
+      <div class="flex items-center justify-between text-sm"><span class="text-indigo-600 font-medium">1.1.02.01</span><span class="text-slate-700 truncate mx-2">Bco. Pichincha Cta Cte</span><span class="font-semibold text-slate-800">987</span></div>
+      <div class="flex items-center justify-between text-sm"><span class="text-indigo-600 font-medium">4.1.01.01</span><span class="text-slate-700 truncate mx-2">Ventas 12%</span><span class="font-semibold text-slate-800">856</span></div>
+      <div class="flex items-center justify-between text-sm"><span class="text-indigo-600 font-medium">2.1.01.01</span><span class="text-slate-700 truncate mx-2">Proveedores Nacionales</span><span class="font-semibold text-slate-800">742</span></div>
+      <div class="flex items-center justify-between text-sm"><span class="text-indigo-600 font-medium">5.2.01.01</span><span class="text-slate-700 truncate mx-2">Sueldos y Salarios</span><span class="font-semibold text-slate-800">634</span></div>
+    </div>
+  </div>
+
+  <!-- Resumen por tipo de comprobante -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Tipos de Comprobante</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Distribución por tipo</p>
+      </div>
+    </div>
+    <canvas id="chartTipoComprobante"></canvas>
+  </div>
+
+  <!-- Concentración de cuentas (Pareto) -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-800">Análisis de Concentración</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Diagrama de Pareto</p>
+      </div>
+    </div>
+    <canvas id="chartPareto"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════ SECCIÓN 9: MARGEN BRUTO ═══════════════ -->
+<div class="card">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h3 class="text-sm font-semibold text-slate-800">Evolución del Margen Bruto por Periodo</h3>
+      <p class="text-xs text-slate-500 mt-0.5">Últimos 12 periodos contables</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Margen Bruto $</span>
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Margen Neto $</span>
+      <span class="flex items-center gap-1.5 text-xs text-slate-500"><span class="w-2.5 h-2.5 rounded-full bg-amber-500" style="border:2px dashed #f59e0b; background:transparent;"></span> % M. Bruto</span>
+    </div>
+  </div>
+  <canvas id="chartMargenBruto"></canvas>
+</div>
+
+</main>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="border-t border-slate-200 px-6 py-3 bg-white">
+  <div class="flex items-center justify-between text-xs text-slate-400 max-w-[1600px] mx-auto">
+    <span>ProERP · Dashboard Contable · Sucursal: Matriz · Empresa: ProERP Cía. Ltda.</span>
+    <span>API: /api/contabilidad/data-bi/* · 18 endpoints · v3.0</span>
+  </div>
+</footer>
+
+<!-- ═══════════════ CHARTS (Chart.js) ═══════════════ -->
+<script>
+Chart.defaults.font.family = 'Inter';
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#64748b';
+
+const months  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const dias    = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const periodos= ['2024-01','2024-02','2024-03','2024-04','2024-05','2024-06','2024-07','2024-08','2024-09','2024-10','2024-11','2024-12'];
+
+function makeBar(id, labels, datasets) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:true, plugins:{ legend:{ display:false } },
+      scales: { y: { ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } } }
+    }
+  });
+}
+
+function makeLine(id, labels, datasets) {
+  new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+      scales: { y: { ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } } }
+    }
+  });
+}
+
+function makeDoughnut(id, labels, data, colors) {
+  new Chart(document.getElementById(id), {
+    type: 'doughnut',
+    data: { labels, datasets:[{ data, backgroundColor:colors, borderWidth:0, hoverBorderWidth:2, hoverBorderColor:'#fff' }] },
+    options: { responsive:true, maintainAspectRatio:true, cutout:'65%',
+      plugins:{ legend:{ display:false } }
+    }
+  });
+}
+
+function makeCombo(id, labels, barDS, lineDS) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [...barDS, ...lineDS] },
+    options: { responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+      scales: {
+        y: { position:'left', ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } },
+        y1: { position:'right', grid:{ drawOnChartArea:false }, ticks:{ callback:v => v+'%' } }
+      }
+    }
+  });
+}
+
+// 1. Evolución mensual de resultados
+makeLine('chartEvolucion', months, [
+  { label:'Ingresos',  data:[38,42,45,41,47,44,48,52,49,53,56,60], borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.08)', fill:true, tension:0.3, pointRadius:3 },
+  { label:'Costos',    data:[14,16,17,15,18,17,19,21,19,21,22,24], borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.06)',  fill:true, tension:0.3, pointRadius:3 },
+  { label:'Gastos',    data:[10,11,12,11,13,12,13,14,13,14,15,16], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.06)',  fill:true, tension:0.3, pointRadius:3 },
+  { label:'Utilidad Neta', data:[14,15,16,15,16,15,16,17,17,18,19,20], borderColor:'#10b981', borderWidth:2, borderDash:[5,3], tension:0.3, pointRadius:4, pointBackgroundColor:'#10b981' },
+]);
+
+// 2. Composición del Balance (donut)
+makeDoughnut('chartBalance', ['Activo','Pasivo','Patrimonio'], [406232,158940,247292], ['#3b82f6','#f59e0b','#10b981']);
+
+// 3. Distribución de Gastos
+makeBar('chartGastos', ['Sueldos y Sal','Servicios Bás','Mantenimiento','Suministros','Arriendo','Transporte','Seguros','Publicidad','Honorarios','Depreciación'], [
+  { label:'Gasto', data:[48,32,25,21,18,15,12,10,8,6], backgroundColor:'#ef4444', borderRadius:4 },
+]);
+
+// 4. Distribución de Ingresos
+makeBar('chartIngresos', ['Ventas 12%','Ventas 0%','Servicios','Intereses Gan','Comisiones','Arriendos Cob','Dividendos','Otros Ing.','Ventas Act.','Descuentos'], [
+  { label:'Ingreso', data:[156,98,72,45,38,32,25,18,15,12], backgroundColor:'#3b82f6', borderRadius:4 },
+]);
+
+// 5. Tendencia del Balance (áreas)
+new Chart(document.getElementById('chartTendencia'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [
+      { label:'Activos', data:[380,385,390,395,400,405,408,412,418,422,428,435], borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', fill:true, tension:0.3, pointRadius:2 },
+      { label:'Pasivos', data:[140,142,145,148,150,152,155,158,160,162,165,168], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.10)', fill:true, tension:0.3, pointRadius:2 },
+      { label:'Patrimonio', data:[240,243,245,247,250,253,253,254,258,260,263,267], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.10)', fill:true, tension:0.3, pointRadius:2 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+    scales:{ y:{ stacked:true, ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } } }
+  }
+});
+
+// 6. Comparativo interanual
+new Chart(document.getElementById('chartComparativo'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [
+      { label:'Ingresos 2025', data:[38,42,45,41,47,44,48,52,49,53,56,60], backgroundColor:'#3b82f6', borderRadius:3 },
+      { label:'Ingresos 2024', data:[32,35,40,38,42,40,43,46,44,47,50,53], backgroundColor:'#93c5fd', borderRadius:3 },
+      { label:'Utilidad 2025', data:[14,15,16,15,16,15,16,17,17,18,19,20], backgroundColor:'#10b981', borderRadius:3 },
+      { label:'Utilidad 2024', data:[10,12,14,13,15,13,15,16,15,16,18,19], backgroundColor:'#6ee7b7', borderRadius:3 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+    scales:{ y:{ ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } } }
+  }
+});
+
+// 7. Volumen mensual de movimientos (combo: bar + line)
+new Chart(document.getElementById('chartVolumen'), {
+  type: 'bar',
+  data: {
+    labels: months,
+    datasets: [
+      { label:'N° Comprobantes', data:[42,38,55,48,52,45,58,62,55,68,72,65], backgroundColor:'#6366f1', borderRadius:4, order:2, yAxisID:'y' },
+      { label:'Volumen (k)', data:[95,88,125,110,118,102,135,148,128,155,168,150], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.0)', type:'line', tension:0.3, pointRadius:3, borderWidth:2, order:1, yAxisID:'y' },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+    scales:{ y:{ ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } } }
+  }
+});
+
+// 8. Actividad por día de la semana
+new Chart(document.getElementById('chartActividadDia'), {
+  type: 'bar',
+  data: {
+    labels: dias,
+    datasets: [
+      { label:'N° Comprobantes', data:[5,85,78,72,68,82,12], backgroundColor:['#cbd5e0','#6366f1','#6366f1','#6366f1','#6366f1','#6366f1','#cbd5e0'], borderRadius:4 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ display:false } },
+    scales:{ y:{ ticks:{ callback:v => v } } }
+  }
+});
+
+// 9. Tipos de comprobante (donut)
+makeDoughnut('chartTipoComprobante', ['Diario','Ajuste','Cierre','Inicial','Nómina','Ventas'], [280,85,45,30,22,40], ['#6366f1','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6']);
+
+// 10. Pareto - Concentración de cuentas (combo: bar + line)
+new Chart(document.getElementById('chartPareto'), {
+  type: 'bar',
+  data: {
+    labels: ['Caja Gral','Bco. Pich.','Ventas 12%','Prov. Nac.','Sueldos','Serv. Bás.','Mantenim.','Suminist.','Arriendo','Transp.','Seguros','Public.','Honorar.','Deprec.','Intereses'],
+    datasets: [
+      { label:'Monto', data:[85,72,68,58,48,32,25,21,18,15,12,10,8,6,4], backgroundColor:'#6366f1', borderRadius:2, order:2, yAxisID:'y' },
+      { label:'% Acumulado', data:[17,31,45,57,67,73,78,82,86,89,91,93,95,96,100], borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.0)', type:'line', tension:0.2, pointRadius:2, borderWidth:2, order:1, yAxisID:'y1' },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+    scales:{
+      y:{ position:'left', title:{ display:true, text:'Monto ($k)' }, ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } },
+      y1:{ position:'right', min:0, max:100, grid:{ drawOnChartArea:false }, title:{ display:true, text:'% Acumulado' }, ticks:{ callback:v => v+'%' } }
+    }
+  }
+});
+
+// 11. Margen bruto por periodo (combo)
+new Chart(document.getElementById('chartMargenBruto'), {
+  type: 'bar',
+  data: {
+    labels: periodos,
+    datasets: [
+      { label:'Margen Bruto',  data:[42,44,38,41,45,48,43,46,50,47,44,52], backgroundColor:'#818cf8', borderRadius:4, order:2, yAxisID:'y' },
+      { label:'Margen Neto',   data:[22,24,18,21,25,28,23,26,30,27,24,32], backgroundColor:'#6ee7b7', borderRadius:4, order:2, yAxisID:'y' },
+      { label:'% M. Bruto',    data:[48,50,46,47,52,54,50,49,55,53,50,56], borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.0)', type:'line', tension:0.3, pointRadius:3, borderWidth:2, borderDash:[4,2], order:1, yAxisID:'y1' },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true,
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8 } } },
+    scales:{
+      y:{ position:'left', title:{ display:true, text:'$ Miles' }, ticks:{ callback:v => v>=1000 ? (v/1000).toFixed(0)+'k' : v } },
+      y1:{ position:'right', min:0, max:100, grid:{ drawOnChartArea:false }, title:{ display:true, text:'%' }, ticks:{ callback:v => v+'%' } }
+    }
+  }
+});
+</script>
+
+</body>
+</html>
