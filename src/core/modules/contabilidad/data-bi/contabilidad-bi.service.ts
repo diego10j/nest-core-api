@@ -943,7 +943,7 @@ export class ContabilidadBiService extends BaseService {
                     fecha_inicio_cnper,
                     fecha_fin_cnper
                 FROM con_periodo
-                WHERE ide_sucu = $2
+                WHERE ide_sucu = $1
                   AND estado_cnper = true
                 ORDER BY ide_cnper DESC
                 LIMIT ${cantidad}
@@ -960,11 +960,11 @@ export class ContabilidadBiService extends BaseService {
                 FROM periodos p
                 LEFT JOIN con_cab_comp_cont  ccc ON ccc.fecha_trans_cnccc BETWEEN p.fecha_inicio_cnper AND p.fecha_fin_cnper
                                                 AND ccc.ide_cneco IN (${estados})
-                                                AND ccc.ide_sucu = $2
+                                                AND ccc.ide_sucu = $1
                 LEFT JOIN con_det_comp_cont  dcc ON ccc.ide_cnccc = dcc.ide_cnccc
                 LEFT JOIN con_det_plan_cuen  dpc ON dpc.ide_cndpc = dcc.ide_cndpc
                                                 AND dpc.ide_cntcu IN (${ingresos}, ${gastos}, ${costos})
-                                                AND dpc.ide_cncpc = (SELECT ide_cncpc FROM con_cab_plan_cuen WHERE ide_sucu = $2 AND activo_cncpc = true)
+                                                AND dpc.ide_cncpc = (SELECT ide_cncpc FROM con_cab_plan_cuen WHERE ide_sucu = $1 AND activo_cncpc = true)
                 LEFT JOIN con_tipo_cuenta    tc  ON dpc.ide_cntcu = tc.ide_cntcu
                 LEFT JOIN con_signo_cuenta   sc  ON tc.ide_cntcu  = sc.ide_cntcu
                                                 AND dcc.ide_cnlap  = sc.ide_cnlap
@@ -985,8 +985,7 @@ export class ContabilidadBiService extends BaseService {
             FROM movs
             ORDER BY ide_cnper ASC
         `);
-        query.addIntParam(1, cantidad);
-        query.addIntParam(2, dto.ideSucu);
+        query.addIntParam(1, dto.ideSucu);
 
         return this.dataSource.createQuery(query);
     }
