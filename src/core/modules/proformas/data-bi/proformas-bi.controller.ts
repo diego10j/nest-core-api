@@ -7,15 +7,16 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
 
 import { ProformasBiService } from './proformas-bi.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Proformas-DataBI')
 @Controller('proformas/data-bi')
 export class ProformasBiController {
-  constructor(private readonly service: ProformasBiService) {}
+  constructor(private readonly service: ProformasBiService) { }
 
   @Get('getProformasMensuales')
   @ApiOperation({ summary: 'Obtener proformas mensuales por año' })
-  // @Auth()
+  @Auth()
   getProformasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProformasMensualesDto) {
     return this.service.getProformasMensuales({
       ...headersParams,
@@ -25,7 +26,7 @@ export class ProformasBiController {
 
   @Get('getTopProductos')
   @ApiOperation({ summary: 'Obtener top de productos más cotizados en proformas por período' })
-  // @Auth()
+  @Auth()
   getTopProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTopProductos({
       ...headersParams,
@@ -35,7 +36,7 @@ export class ProformasBiController {
 
   @Get('getTopProductosMayorUtilidad')
   @ApiOperation({ summary: 'Obtener top de productos con mayor utilidad en proformas' })
-  // @Auth()
+  @Auth()
   getTopProductosMayorUtilidad(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTopProductosMayorUtilidad({
       ...headersParams,

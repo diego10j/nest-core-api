@@ -18,6 +18,7 @@ import {
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { TreeDto } from './connection/dto/tree-dto';
 import { CoreService } from './core.service';
+import { Auth } from './auth';
 
 @ApiTags('Core')
 @Controller('core')
@@ -26,7 +27,7 @@ export class CoreController {
 
   @Get('getListDataValues')
   @ApiOperation({ summary: 'Obtener valores de lista (combo) desde una tabla de catálogo' })
-  //@Auth()
+  @Auth()
   getListDataValues(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ListDataValuesDto) {
     return this.service.getListDataValues({
       ...headersParams,
@@ -36,7 +37,7 @@ export class CoreController {
 
   @Get('getTableQueryByUuid')
   @ApiOperation({ summary: 'Obtener registro de tabla por UUID' })
-  //@Auth()
+  @Auth()
   getTableQueryByUuid(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FindByUuidDto) {
     return this.service.getTableQueryByUuid({
       ...headersParams,
@@ -46,7 +47,7 @@ export class CoreController {
 
   @Get('getTableQueryById')
   @ApiOperation({ summary: 'Obtener registro de tabla por ID' })
-  //@Auth()
+  @Auth()
   getTableQueryById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FindByIdDto) {
     return this.service.getTableQueryById({
       ...headersParams,
@@ -56,7 +57,7 @@ export class CoreController {
 
   @Get('getTableQuery')
   @ApiOperation({ summary: 'Obtener datos de tabla genérica con filtros y paginación' })
-  //@Auth()
+  @Auth()
   getTableQuery(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TableQueryDto) {
     return this.service.getTableQuery({
       ...headersParams,
@@ -66,7 +67,7 @@ export class CoreController {
 
   @Post('save')
   @ApiOperation({ summary: 'Crear o actualizar registro en una tabla genérica' })
-  //@Auth()
+  @Auth()
   save(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveListDto) {
     return this.service.save({
       ...headersParams,
@@ -76,7 +77,7 @@ export class CoreController {
 
   @Post('isUnique')
   @ApiOperation({ summary: 'Verificar si un valor es único en una columna de tabla' })
-  //@Auth()
+  @Auth()
   isUnique(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UniqueDto) {
     return this.service.isUnique({
       ...headersParams,
@@ -86,7 +87,7 @@ export class CoreController {
 
   @Post('canDelete')
   @ApiOperation({ summary: 'Verificar si un registro puede eliminarse (sin dependencias)' })
-  //@Auth()
+  @Auth()
   isDelete(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: DeleteDto) {
     return this.service.canDelete({
       ...headersParams,
@@ -96,7 +97,7 @@ export class CoreController {
 
   @Post('getSeqTable')
   @ApiOperation({ summary: 'Obtener el siguiente valor de secuencia de una tabla' })
-  //@Auth()
+  @Auth()
   getSeqTable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SeqTableDto) {
     return this.service.getSeqTable({
       ...headersParams,
@@ -106,7 +107,7 @@ export class CoreController {
 
   @Get('findByUuid')
   @ApiOperation({ summary: 'Buscar registro por UUID' })
-  //@Auth()
+  @Auth()
   findByUuid(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FindByUuidDto) {
     return this.service.findByUuid({
       ...headersParams,
@@ -116,7 +117,7 @@ export class CoreController {
 
   @Get('findById')
   @ApiOperation({ summary: 'Buscar registro por ID' })
-  //@Auth()
+  @Auth()
   findById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FindByIdDto) {
     return this.service.findById({
       ...headersParams,
@@ -126,7 +127,7 @@ export class CoreController {
 
   @Get('search')
   @ApiOperation({ summary: 'Buscar registros en tabla por texto (autocomplete genérico)' })
-  //@Auth()
+  @Auth()
   search(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchTableDto) {
     return this.service.search({
       ...headersParams,
@@ -136,7 +137,7 @@ export class CoreController {
 
   @Get('getTableColumns')
   @ApiOperation({ summary: 'Obtener metadatos de columnas de una tabla' })
-  //@Auth()
+  @Auth()
   getTableColumns(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ColumnsTableDto) {
     return this.service.getTableColumns({
       ...headersParams,
@@ -146,7 +147,7 @@ export class CoreController {
 
   @Post('refreshTableColumns')
   @ApiOperation({ summary: 'Refrescar caché de metadatos de columnas de una tabla' })
-  //@Auth()
+  @Auth()
   refreshTableColumns(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ColumnsTableDto) {
     return this.service.refreshTableColumns({
       ...headersParams,
@@ -156,14 +157,14 @@ export class CoreController {
 
   @Post('clearCacheRedis')
   @ApiOperation({ summary: 'Limpiar toda la caché Redis del servidor' })
-  //@Auth()
+  @Auth()
   clearTableColumnsCache() {
     return this.service.clearCacheRedis();
   }
 
   @Get('getTreeModel')
   @ApiOperation({ summary: 'Obtener árbol jerárquico de una tabla con estructura padre-hijo' })
-  //@Auth()
+  @Auth()
   getTreeModel(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TreeDto) {
     return this.service.getTreeModel({
       ...headersParams,
@@ -173,7 +174,7 @@ export class CoreController {
 
   @Post('updateColumns')
   @ApiOperation({ summary: 'Actualizar columnas específicas de un registro de tabla' })
-  //@Auth()
+  @Auth()
   updateColumns(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateColumnsDto) {
     return this.service.updateColumns({
       ...headersParams,

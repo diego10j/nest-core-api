@@ -12,6 +12,7 @@ import { SaveModuloDto } from './dto/save-modulo.dto';
 import { SaveVariableDto } from './dto/save-variable.dto';
 import { ModulosSistemaService } from './modulos-sistema.service';
 import { VariablesService } from './variables.service';
+import { Auth } from '../auth';
 
 @ApiTags('Sistema-Variables')
 @Controller('sistema/variables')
@@ -23,7 +24,7 @@ export class VariablesController {
 
   @Get('getVariable')
   @ApiOperation({ summary: 'Obtener valor de una variable del sistema (texto plano)' })
-  // @Auth()
+  @Auth()
   getVariable(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
     return this.service.getVariable({
       ...headersParams,
@@ -33,7 +34,7 @@ export class VariablesController {
 
   @Get('getVariableDetail')
   @ApiOperation({ summary: 'Obtener detalle completo de una variable: valor, descripcion, scope, cache' })
-  // @Auth()
+  @Auth()
   getVariableDetail(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetVariableDto) {
     return this.service.getVariableDetail({
       ...headersParams,
@@ -52,14 +53,14 @@ export class VariablesController {
 
   @Post('updateVariables')
   @ApiOperation({ summary: 'Recargar variables del sistema desde base de datos' })
-  //@Auth()
+  @Auth()
   updateVariables(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.updateVariables(headersParams);
   }
 
   @Post('saveVariable')
   @ApiOperation({ summary: 'Guardar o actualizar una variable del sistema' })
-  // @Auth()
+  @Auth()
   saveVariable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveVariableDto) {
     return this.service.saveVariable({
       ...headersParams,
@@ -69,7 +70,7 @@ export class VariablesController {
 
   @Post('actualizarVariable')
   @ApiOperation({ summary: 'Actualizar valor de variable por nombre (global o por empresa)' })
-  // @Auth()
+  @Auth()
   actualizarVariable(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ActualizarVariableDto) {
     return this.service.actualizarVariable({
       ...headersParams,
@@ -77,16 +78,16 @@ export class VariablesController {
     });
   }
 
-    @Get('getModulosSistema')
-    @ApiOperation({ summary: 'Obtener listado de modulos del sistema' })
-    // @Auth()
-    getModulosSistema(@AppHeaders() _h: HeaderParamsDto) {
-        return this.service.getModulosSistema();
-    }
+  @Get('getModulosSistema')
+  @ApiOperation({ summary: 'Obtener listado de modulos del sistema' })
+  @Auth()
+  getModulosSistema(@AppHeaders() _h: HeaderParamsDto) {
+    return this.service.getModulosSistema();
+  }
 
   @Get('getVariablesModulo')
   @ApiOperation({ summary: 'Obtener variables de parametrizacion filtradas por modulo' })
-  // @Auth()
+  @Auth()
   getVariablesModulo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dto: GetVariablesModuloDto) {
     return this.service.getVariablesModulo({
       ...headersParams,
@@ -96,7 +97,7 @@ export class VariablesController {
 
   @Get('getConfiguracionTablaVariable')
   @ApiOperation({ summary: 'Obtener registros de tabla de referencia configurada en una variable' })
-  // @Auth()
+  @Auth()
   getConfiguracionTablaVariable(@AppHeaders() headersParams: HeaderParamsDto, @Query() dto: GetConfiguracionTablaVariableDto) {
     return this.service.getConfiguracionTablaVariable({
       ...headersParams,
@@ -106,7 +107,7 @@ export class VariablesController {
 
   @Get('getListDataModulo')
   @ApiOperation({ summary: 'Obtener listado de modulos para dropdown' })
-  // @Auth()
+  @Auth()
   getListDataModulo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.modulosService.getListData({
       ...headersParams,
@@ -116,7 +117,7 @@ export class VariablesController {
 
   @Get('getTableQueryModulo')
   @ApiOperation({ summary: 'Obtener registros de modulos con paginacion' })
-  // @Auth()
+  @Auth()
   getTableQueryModulo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.modulosService.getTableQuery({
       ...headersParams,
@@ -126,7 +127,7 @@ export class VariablesController {
 
   @Post('saveModulo')
   @ApiOperation({ summary: 'Guardar o actualizar un modulo del sistema' })
-  // @Auth()
+  @Auth()
   saveModulo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveModuloDto) {
     return this.modulosService.save({
       ...headersParams,

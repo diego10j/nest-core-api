@@ -958,7 +958,22 @@ export class FacturasService extends BaseService {
                 e.comentario_cctfa,
                 e.flete_pagado_cctfa,
                 e.total_flete_cctfa,
-                e.total_flete_real_cctfa
+                e.total_flete_real_cctfa,
+                CASE
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa != e.total_flete_real_cctfa
+                    THEN ABS(e.total_flete_cctfa - e.total_flete_real_cctfa)
+                    ELSE NULL
+                END AS diferencia_flete,
+                CASE
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa > e.total_flete_real_cctfa
+                    THEN 'Cobro más'
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa < e.total_flete_real_cctfa
+                    THEN 'Cobro menos'
+                    ELSE NULL
+                END AS tipo_diferencia_flete
             FROM cxc_cabece_factura a
             INNER JOIN facturas_ids fi ON a.ide_cccfa = fi.ide_cccfa
             INNER JOIN gen_persona b     ON a.ide_geper = b.ide_geper
@@ -1921,6 +1936,42 @@ export class FacturasService extends BaseService {
         queryDetalle.addIntParam(2, dtoIn.ideEmpr);
         queryDetalle.addIntParam(3, dtoIn.ideSucu);
 
+        // ── 9. Distribución por tipo de envío ──────────────────────────────────
+        const queryPorTipoEnvio = new SelectQuery(`
+            SELECT
+                CASE
+                    WHEN tf.ide_cctfa IS NULL THEN 'SIN REGISTRO'
+                    WHEN tf.es_transporte_propio_cctfa = true THEN 'TRANSPORTE PROPIO'
+                    WHEN tf.ide_vgtra IS NOT NULL THEN 'ENVIADO POR TRANSPORTE'
+                    ELSE 'RETIRO EN OFICINA'
+                END                                           AS nombre,
+                COUNT(a.ide_cccfa)                            AS cantidad,
+                COALESCE(SUM(a.total_cccfa), 0)               AS total
+            FROM cxc_cabece_factura a
+            LEFT JOIN LATERAL (
+                SELECT ide_cctfa, es_transporte_propio_cctfa, ide_vgtra
+                FROM cxc_transporte_factura
+                WHERE ide_cccfa = a.ide_cccfa
+                ORDER BY ide_cctfa DESC
+                LIMIT 1
+            ) tf ON true
+            WHERE a.fecha_emisi_cccfa = $1
+              AND a.ide_empr          = $2
+              AND a.ide_sucu          = $3
+              AND a.ide_ccefa         = ${ideEstadoNormal}
+              ${condPto}
+            GROUP BY CASE
+                WHEN tf.ide_cctfa IS NULL THEN 'SIN REGISTRO'
+                WHEN tf.es_transporte_propio_cctfa = true THEN 'TRANSPORTE PROPIO'
+                WHEN tf.ide_vgtra IS NOT NULL THEN 'ENVIADO POR TRANSPORTE'
+                ELSE 'RETIRO EN OFICINA'
+            END
+            ORDER BY cantidad DESC
+        `);
+        queryPorTipoEnvio.addParam(1, dtoIn.fecha);
+        queryPorTipoEnvio.addIntParam(2, dtoIn.ideEmpr);
+        queryPorTipoEnvio.addIntParam(3, dtoIn.ideSucu);
+
         // ── Ejecutar todo en paralelo ─────────────────────────────────────────
         const [
             metricas,
@@ -1931,6 +1982,7 @@ export class FacturasService extends BaseService {
             topArticulos,
             utilidadDia,
             facturas,
+            porTipoEnvio,
         ] = await Promise.all([
             this.dataSource.createSingleQuery(queryMetricas),
             this.dataSource.createSelectQuery(queryPorEstadoSri),
@@ -1940,6 +1992,7 @@ export class FacturasService extends BaseService {
             this.dataSource.createSelectQuery(queryTopArticulos),
             this.dataSource.createSingleQuery(queryUtilidadDia),
             this.dataSource.createSelectQuery(queryDetalle),
+            this.dataSource.createSelectQuery(queryPorTipoEnvio),
         ]);
 
         return {
@@ -1954,6 +2007,7 @@ export class FacturasService extends BaseService {
                     por_hora: porHora,
                     top_clientes: topClientes,
                     top_articulos: topArticulos,
+                    por_tipo_envio: porTipoEnvio,
                 },
                 facturas,
             },

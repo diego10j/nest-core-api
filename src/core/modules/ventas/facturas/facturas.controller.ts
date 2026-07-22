@@ -15,6 +15,7 @@ import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 import { SaveFacturaDto } from './dto/save-factura.dto';
 import { FacturasSaveService } from './facturas-save.service';
 import { FacturasService } from './facturas.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Ventas-Facturas')
 @Controller('ventas/facturas')
@@ -26,7 +27,7 @@ export class FacturasController {
 
   @Get('getPuntosEmisionFacturas')
   @ApiOperation({ summary: 'Obtener puntos de emisión habilitados para facturas' })
-  // @Auth()
+  @Auth()
   getPuntosEmisionFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PuntosEmisionFacturasDto) {
     return this.service.getPuntosEmisionFacturas({
       ...headersParams,
@@ -36,7 +37,7 @@ export class FacturasController {
 
   @Get('getTableQueryPuntosEmisionFacturas')
   @ApiOperation({ summary: 'Consulta tabla de puntos de emisión para facturas' })
-  // @Auth()
+  @Auth()
   getTableQueryPuntosEmisionFacturas(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: PuntosEmisionFacturasDto,
@@ -49,7 +50,7 @@ export class FacturasController {
 
   @Get('getFacturas')
   @ApiOperation({ summary: 'Listar facturas por período y filtros' })
-  // @Auth()
+  @Auth()
   getFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getFacturas({
       ...headersParams,
@@ -59,7 +60,7 @@ export class FacturasController {
 
   @Get('getFacturasAnuladas')
   @ApiOperation({ summary: 'Listar facturas anuladas por período' })
-  // @Auth()
+  @Auth()
   getFacturasAnuladas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getFacturasAnuladas({
       ...headersParams,
@@ -69,7 +70,7 @@ export class FacturasController {
 
   @Get('getFacturasConNotasCredito')
   @ApiOperation({ summary: 'Listar facturas que tienen notas de crédito asociadas' })
-  // @Auth()
+  @Auth()
   getFacturasConNotasCredito(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getFacturasConNotasCredito({
       ...headersParams,
@@ -79,7 +80,7 @@ export class FacturasController {
 
   @Get('getUtilidadVentas')
   @ApiOperation({ summary: 'Obtener utilidad de ventas por período' })
-  // @Auth()
+  @Auth()
   getUtilidadVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UtilidadVentasDto) {
     return this.service.getUtilidadVentas({
       ...headersParams,
@@ -89,7 +90,7 @@ export class FacturasController {
 
   @Get('getTotalFacturasPorEstado')
   @ApiOperation({ summary: 'Obtener totales de facturas agrupadas por estado' })
-  // @Auth()
+  @Auth()
   getTotalFacturasPorEstado(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getTotalFacturasPorEstado({
       ...headersParams,
@@ -99,7 +100,7 @@ export class FacturasController {
 
   @Get('getFacturasPorCobrar')
   @ApiOperation({ summary: 'Listar facturas pendientes de cobro' })
-  // @Auth()
+  @Auth()
   getFacturasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasDto) {
     return this.service.getFacturasPorCobrar({
       ...headersParams,
@@ -127,7 +128,7 @@ export class FacturasController {
 
   @Get('getFacturaById')
   @ApiOperation({ summary: 'Obtener factura por ID' })
-  // @Auth()
+  @Auth()
   getFacturaById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetFacturaDto) {
     return this.service.getFacturaById({
       ...headersParams,
@@ -137,7 +138,7 @@ export class FacturasController {
 
   @Get('getSecuencialFactura')
   @ApiOperation({ summary: 'Obtener siguiente secuencial para un punto de emisión' })
-  // @Auth()
+  @Auth()
   getSecuencialFactura(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetFacturaDto,
@@ -168,7 +169,7 @@ export class FacturasController {
 
   @Get('getResumenDiarioFacturas')
   @ApiOperation({ summary: 'Obtener resumen diario de facturación' })
-  // @Auth()
+  @Auth()
   getResumenDiarioFacturas(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: ResumenDiarioFacturasDto,
@@ -181,7 +182,7 @@ export class FacturasController {
 
   @Get('getFormularioNuevaFactura')
   @ApiOperation({ summary: 'Datos iniciales para el formulario de nueva factura (punto de emisión, IVA y formas de pago)' })
-  // @Auth()
+  @Auth()
   getFormularioNuevaFactura(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetInitDataDto,
@@ -194,7 +195,7 @@ export class FacturasController {
 
   @Get('getProductoParaDetalle')
   @ApiOperation({ summary: 'Datos de un artículo para agregar al detalle de la factura (info, stock y último precio al cliente)' })
-  // @Auth()
+  @Auth()
   getProductoParaDetalle(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: GetProductoDetalleDto,
@@ -207,21 +208,21 @@ export class FacturasController {
 
   @Get('getCatalogos')
   @ApiOperation({ summary: 'Catálogos para formulario de guía de remisión (tipos de guía, camiones y formas de pago)' })
-  // @Auth()
+  @Auth()
   getCatalogos(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getCatalogos(headersParams);
   }
 
   @Get('getListDataFactura')
   @ApiOperation({ summary: 'Listados combinados para facturación: formas de pago (contado), días de crédito, vendedores, usuarios, tipos de guía y camiones' })
-  // @Auth()
+  @Auth()
   getListDataFactura(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getListDataFactura(headersParams);
   }
 
   @Get('getProformaParaFactura')
   @ApiOperation({ summary: 'Cargar datos de una proforma para pre-llenar el formulario de nueva factura' })
-  // @Auth()
+  @Auth()
   getProformaParaFactura(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query('numeroProforma') numeroProforma: string,

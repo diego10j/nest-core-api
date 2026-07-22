@@ -9,6 +9,7 @@ import { ConfigPasswordDto } from './dto/config-password.dto';
 import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
 import { UsuarioDto } from './dto/usuario.dto';
 import { UsuariosService } from './usuarios.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Sistema-Usuarios')
 @Controller('sistema/usuarios')
@@ -17,7 +18,7 @@ export class UsuariosController {
 
   @Get('getUsuarios')
   @ApiOperation({ summary: 'Listar usuarios del sistema' })
-  // @Auth()
+  @Auth()
   getProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getUsuarios({
       ...headersParams,
@@ -27,7 +28,7 @@ export class UsuariosController {
 
   @Get('getTableQueryUsuarioByUuid')
   @ApiOperation({ summary: 'Obtener datos de un usuario por UUID' })
-  // @Auth()
+  @Auth()
   getTableQueryUsuarioByUuid(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UsuarioDto) {
     return this.service.getTableQueryUsuarioByUuid({
       ...headersParams,
@@ -37,7 +38,7 @@ export class UsuariosController {
 
   @Get('getListDataUsuario')
   @ApiOperation({ summary: 'Obtener listado de usuarios para selector' })
-  // @Auth()
+  @Auth()
   getListDataUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataUsuario({
       ...headersParams,
@@ -48,7 +49,7 @@ export class UsuariosController {
 
   @Get('getTableQueryPerfilesUsuario')
   @ApiOperation({ summary: 'Obtener perfiles asignados a un usuario' })
-  // @Auth()
+  @Auth()
   getTableQueryPerfilesUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
     return this.service.getTableQueryPerfilesUsuario({
       ...headersParams,
@@ -58,7 +59,7 @@ export class UsuariosController {
 
   @Get('getTableQuerySucursalesUsuario')
   @ApiOperation({ summary: 'Obtener sucursales asignadas a un usuario' })
-  // @Auth()
+  @Auth()
   getTableQuerySucursalesUsuario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
     return this.service.getTableQuerySucursalesUsuario({
       ...headersParams,
@@ -68,7 +69,7 @@ export class UsuariosController {
 
   @Get('getConfigPassword')
   @ApiOperation({ summary: 'Obtener configuración de política de contraseñas de un usuario' })
-  // @Auth()
+  @Auth()
   getConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
     return this.service.getConfigPassword({
       ...headersParams,
@@ -78,7 +79,7 @@ export class UsuariosController {
 
   @Post('saveConfigPassword')
   @ApiOperation({ summary: 'Guardar configuración de política de contraseñas para un usuario' })
-  // @Auth()
+  @Auth()
   saveConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ConfigPasswordDto) {
     return this.service.saveConfigPassword({
       ...headersParams,

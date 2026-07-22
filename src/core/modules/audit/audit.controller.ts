@@ -6,15 +6,16 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AuditService } from './audit.service';
 import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Auditoría')
 @Controller('audit')
 export class AuditController {
-  constructor(private readonly service: AuditService) {}
+  constructor(private readonly service: AuditService) { }
 
   @Get('getEventosAuditoria')
   @ApiOperation({ summary: 'Listar eventos de auditoría con filtros de fecha y usuario' })
-  // @Auth()
+  @Auth()
   getEventosAuditoria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EventosAuditoriaDto) {
     return this.service.getEventosAuditoria({
       ...headersParams,
@@ -24,7 +25,7 @@ export class AuditController {
 
   @Post('deleteEventosAuditoria')
   @ApiOperation({ summary: 'Eliminar eventos de auditoría por rango de fechas' })
-  // @Auth()
+  @Auth()
   deleteEventosAuditoria(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: DeleteAuditoriaDto) {
     return this.service.deleteEventosAuditoria({
       ...headersParams,

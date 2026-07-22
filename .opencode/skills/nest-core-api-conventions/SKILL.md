@@ -1,6 +1,6 @@
 ---
 name: nest-core-api-conventions
-description: Use when generating or editing ANY TypeScript file in the nest-core-api NestJS project. Enforces patterns: raw pg SQL with SelectQuery, CoreService.save() for CRUD, DTOs with class-validator, audit fields NEVER in DTOs, GET endpoints with @Query(), POST with @Body(), module structure conventions, and PostgreSQL native patterns.
+description: Use when generating or editing ANY TypeScript file in the nest-core-api NestJS project. Enforces patterns: raw pg SQL with SelectQuery, CoreService.save() for CRUD, DTOs with class-validator, audit fields NEVER in DTOs, GET endpoints with @Query(), POST with @Body(), module structure conventions, @Auth() on every controller method (except @Public()), and PostgreSQL native patterns.
 ---
 
 # NestJS Core API Conventions
@@ -300,6 +300,62 @@ import { envs } from 'src/config/envs';                     // internal
 import { BancosSaveService } from './bancos-save.service';  // sibling
 import { GetBancosDto } from './dto/get-bancos.dto';       // sibling
 ```
+
+### Pattern 8: Auth/Public decorators — `@Auth()` on EVERY method, except `@Public()`
+
+**Every controller method MUST be decorated with `@Auth()`.** Only endpoints explicitly intended to be public (no JWT required) use `@Public()` instead — and must NOT have `@Auth()`.
+
+Rules:
+1. `@Auth()` goes **after** the HTTP method decorator (`@Get`, `@Post`, etc.) and **before** `@ApiOperation`
+2. `@Public()` replaces `@Auth()` entirely — do NOT stack them
+3. No roles argument → `@Auth()` alone means "any authenticated user". Pass roles for role gating: `@Auth(ValidRoles.Admin)`
+4. `@Auth()` is always at the **method level**, never at the class level
+
+```typescript
+// CORRECT — authenticated endpoint
+@Get('getBancos')
+@Auth()
+@ApiOperation({ summary: 'Listar bancos' })
+getBancos(@AppHeaders() h: HeaderParamsDto, @Query() dto: GetBancosDto) { ... }
+
+// CORRECT — public endpoint (no auth)
+@Public()
+@Get('downloadImagenEnvio/:fileName')
+@ApiOperation({ summary: 'Descargar imagen (público)' })
+async downloadImagenEnvio(@Param('fileName') fileName: string, @Res() res: any) { ... }
+
+// CORRECT — role-gated endpoint
+@Post('deleteBanco')
+@Auth(ValidRoles.Admin)
+@ApiOperation({ summary: 'Eliminar banco (solo admin)' })
+deleteBanco(@AppHeaders() h: HeaderParamsDto, @Body() dto: DeleteBancoDto) { ... }
+
+// WRONG — missing @Auth (unless truly public)
+@Get('getBancos')
+@ApiOperation({ summary: 'Listar bancos' })
+getBancos(...) { ... }
+
+// WRONG — @Public with @Auth (contradictory)
+@Public()
+@Auth()
+@Get('getSomething')
+getSomething(...) { ... }
+
+// WRONG — @Auth at class level
+@Controller('bancos')
+@Auth()  // ❌ not supported, must be on each method
+export class BancosController { ... }
+```
+
+**Imports needed:**
+```typescript
+import { Auth } from 'src/core/auth/decorators/auth.decorator';
+import { Public } from 'src/core/auth/decorators/public.decorator';
+// Or from barrel:
+import { Auth, Public } from 'src/core/auth/decorators';
+```
+
+The `@Public()` decorator serves as a **documentation marker** — it signals to other developers that this endpoint is intentionally left unprotected.
 
 ## 4. DTOs Pattern
 

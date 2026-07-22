@@ -10,6 +10,7 @@ import { CedulaDto } from './dto/cedula.dto';
 import { RucDto } from './dto/ruc.dto';
 import { GeneralLdService } from './general-ld.service';
 import { GeneralService } from './general.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Sistema-General')
 @Controller('sistema/general')
@@ -17,11 +18,11 @@ export class GeneralController {
   constructor(
     private readonly service: GeneralService,
     private readonly serviceLd: GeneralLdService,
-  ) {}
+  ) { }
 
   @Get('getListDataPeriodos')
   @ApiOperation({ summary: 'Obtener listado de períodos para selector' })
-  // @Auth()
+  @Auth()
   getListDataPeriodos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.serviceLd.getListDataPeriodos({
       ...headersParams,
@@ -31,7 +32,7 @@ export class GeneralController {
 
   @Get('getListDataProvincias')
   @ApiOperation({ summary: 'Obtener listado de provincias para selector' })
-  // @Auth()
+  @Auth()
   getListDataProvincias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.serviceLd.getListDataProvincias({
       ...headersParams,
@@ -41,7 +42,7 @@ export class GeneralController {
 
   @Get('getListDataCantones')
   @ApiOperation({ summary: 'Obtener listado de cantones de una provincia para selector' })
-  // @Auth()
+  @Auth()
   getListDataCantones(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CantonesDto) {
     return this.serviceLd.getListDataCantones({
       ...headersParams,
@@ -51,7 +52,7 @@ export class GeneralController {
 
   @Get('getListDataTitulosPersona')
   @ApiOperation({ summary: 'Obtener listado de títulos de persona (Sr., Sra., etc.) para selector' })
-  // @Auth()
+  @Auth()
   getListDataTitulosPersona(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.serviceLd.getListDataTitulosPersona({
       ...headersParams,
@@ -61,7 +62,7 @@ export class GeneralController {
 
   @Get('getListDataTiposDireccion')
   @ApiOperation({ summary: 'Obtener listado de tipos de dirección para selector' })
-  // @Auth()
+  @Auth()
   getListDataTiposDireccion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.serviceLd.getListDataTiposDireccion({
       ...headersParams,
@@ -71,7 +72,7 @@ export class GeneralController {
 
   @Get('getListDataTiposIdentificacion')
   @ApiOperation({ summary: 'Obtener listado de tipos de identificación (cédula, RUC, pasaporte) para selector' })
-  // @Auth()
+  @Auth()
   getListDataTiposIdentificacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.serviceLd.getListDataTiposIdentificacion({
       ...headersParams,
@@ -83,14 +84,14 @@ export class GeneralController {
 
   @Get('validateCedula')
   @ApiOperation({ summary: 'Validar número de cédula ecuatoriana' })
-  // @Auth()
+  @Auth()
   validateCedula(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CedulaDto) {
     return this.service.validateCedula(dtoIn.cedula);
   }
 
   @Get('validateRuc')
   @ApiOperation({ summary: 'Validar número de RUC ecuatoriano' })
-  // @Auth()
+  @Auth()
   validateRuc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RucDto) {
     return this.service.validateRuc(dtoIn);
   }

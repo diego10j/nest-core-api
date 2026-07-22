@@ -11,15 +11,16 @@ import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
 import { TopClientesDto } from './dto/top-clientes.dto';
 import { VentasBiService } from './ventas-bi.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Ventas-DataBI')
 @Controller('ventas/data-bi')
 export class VentasBiController {
-  constructor(private readonly service: VentasBiService) {}
+  constructor(private readonly service: VentasBiService) { }
 
   @Get('getTotalVentasPeriodo')
   @ApiOperation({ summary: 'Obtener total de ventas por período mensual/anual' })
-  // @Auth()
+  @Auth()
   getTotalVentasPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.service.getTotalVentasPeriodo({
       ...headersParams,
@@ -29,7 +30,7 @@ export class VentasBiController {
 
   @Get('getVariacionDiariaVentas')
   @ApiOperation({ summary: 'Obtener variación diaria de ventas en un rango de fechas' })
-  // @Auth()
+  @Auth()
   getVariacionDiariaVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasDiariasDto) {
     return this.service.getVariacionDiariaVentas({
       ...headersParams,
@@ -39,7 +40,7 @@ export class VentasBiController {
 
   @Get('getTendenciaVentasDia')
   @ApiOperation({ summary: 'Obtener tendencia de ventas por día en un rango de fechas' })
-  // @Auth()
+  @Auth()
   getTendenciaVentasDia(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTendenciaVentasDia({
       ...headersParams,
@@ -49,7 +50,7 @@ export class VentasBiController {
 
   @Get('getTopVendedores')
   @ApiOperation({ summary: 'Obtener top de vendedores por monto de ventas en un período' })
-  // @Auth()
+  @Auth()
   getTopVendedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTopVendedores({
       ...headersParams,
@@ -59,7 +60,7 @@ export class VentasBiController {
 
   @Get('getTotalVentasPorFormaPago')
   @ApiOperation({ summary: 'Obtener total de ventas agrupado por forma de pago' })
-  // @Auth()
+  @Auth()
   getTotalVentasPorFormaPago(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTotalVentasPorFormaPago({
       ...headersParams,
@@ -69,7 +70,7 @@ export class VentasBiController {
 
   @Get('getTotalVentasPorHora')
   @ApiOperation({ summary: 'Obtener distribución de ventas por hora del día' })
-  // @Auth()
+  @Auth()
   getTotalVentasPorHora(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTotalVentasPorHora({
       ...headersParams,
@@ -79,7 +80,7 @@ export class VentasBiController {
 
   @Get('getTopClientes')
   @ApiOperation({ summary: 'Obtener top de clientes por monto de compras en un período' })
-  // @Auth()
+  @Auth()
   getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
     return this.service.getTopClientes({
       ...headersParams,
@@ -89,7 +90,7 @@ export class VentasBiController {
 
   @Get('getVentasPorCategoriaProducto')
   @ApiOperation({ summary: 'Obtener total de ventas agrupado por categoría de producto' })
-  // @Auth()
+  @Auth()
   getVentasPorCategoriaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getVentasPorCategoriaProducto({
       ...headersParams,
@@ -99,7 +100,7 @@ export class VentasBiController {
 
   @Get('getVentasPorIdCliente')
   @ApiOperation({ summary: 'Obtener total de ventas agrupado por tipo de identificación de cliente' })
-  // @Auth()
+  @Auth()
   getVentasPorIdCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getVentasPorIdCliente({
       ...headersParams,
@@ -109,7 +110,7 @@ export class VentasBiController {
 
   @Get('getTasaCrecimientoMensual')
   @ApiOperation({ summary: 'Obtener tasa de crecimiento mensual de ventas' })
-  // @Auth()
+  @Auth()
   getTasaCrecimientoMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.service.getTasaCrecimientoMensual({
       ...headersParams,
@@ -119,7 +120,7 @@ export class VentasBiController {
 
   @Get('getFacturasMayorValor')
   @ApiOperation({ summary: 'Obtener facturas de mayor valor en un período' })
-  // @Auth()
+  @Auth()
   getFacturasMayorValor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
     return this.service.getFacturasMayorValor({
       ...headersParams,
@@ -129,14 +130,14 @@ export class VentasBiController {
 
   @Get('getResumenVentasPeriodos')
   @ApiOperation({ summary: 'Obtener resumen comparativo de ventas entre períodos (actual, anterior, hace 2 años)' })
-  // @Auth()
+  @Auth()
   getResumenVentasPeriodos(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getResumenVentasPeriodos(headersParams);
   }
 
   @Get('getVariacionVentasPeriodos')
   @ApiOperation({ summary: 'Obtener variación de ventas entre dos períodos seleccionados' })
-  // @Auth()
+  @Auth()
   getVariacionVentasPeriodos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VariacionVentasPeriodoDto) {
     return this.service.getVariacionVentasPeriodos({
       ...headersParams,
@@ -146,7 +147,7 @@ export class VentasBiController {
 
   @Get('getVentasPorDiaDelMes')
   @ApiOperation({ summary: 'Obtener ventas agrupadas por día del mes en un rango de fechas' })
-  // @Auth()
+  @Auth()
   getVentasPorDiaDelMes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getVentasPorDiaDelMes({
       ...headersParams,
@@ -156,7 +157,7 @@ export class VentasBiController {
 
   @Get('getKPIsVentas')
   @ApiOperation({ summary: 'Obtener KPIs principales de ventas (ticket promedio, nuevos clientes, etc.)' })
-  // @Auth()
+  @Auth()
   getKPIsVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getKPIsVentas({
       ...headersParams,
@@ -166,7 +167,7 @@ export class VentasBiController {
 
   @Get('getProductosMasRentables')
   @ApiOperation({ summary: 'Obtener top de productos con mayor utilidad bruta en un período' })
-  // @Auth()
+  @Auth()
   getProductosMasRentables(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
     return this.service.getProductosMasRentables({
       ...headersParams,
@@ -176,14 +177,14 @@ export class VentasBiController {
 
   @Get('getTotalClientesPorProvincia')
   @ApiOperation({ summary: 'Obtener distribución de clientes por provincia' })
-  // @Auth()
+  @Auth()
   getTotalClientesPorProvincia(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getTotalClientesPorProvincia(headersParams);
   }
 
   @Get('getTopClientesFacturas')
   @ApiOperation({ summary: 'Obtener top de clientes por número de facturas emitidas' })
-  // @Auth()
+  @Auth()
   getTopClientesFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesDto) {
     return this.service.getTopClientesFacturas({
       ...headersParams,
@@ -193,14 +194,14 @@ export class VentasBiController {
 
   @Get('getTotalClientesPorPeriodo')
   @ApiOperation({ summary: 'Obtener total de clientes activos comparado por período' })
-  // @Auth()
+  @Auth()
   getTotalClientesPorPeriodo(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getTotalClientesPorPeriodo(headersParams);
   }
 
   @Get('getTotalClientesPorPeriodoVendedor')
   @ApiOperation({ summary: 'Obtener total de clientes activos por período para un vendedor específico' })
-  // @Auth()
+  @Auth()
   getTotalClientesPorPeriodoVendedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
     return this.service.getTotalClientesPorPeriodoVendedor({
       ...headersParams,
@@ -210,7 +211,7 @@ export class VentasBiController {
 
   @Get('getResumenClientesPorVendedor')
   @ApiOperation({ summary: 'Obtener resumen de cartera de clientes por vendedor' })
-  // @Auth()
+  @Auth()
   getResumenClientesPorVendedor(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.getResumenClientesPorVendedor(headersParams);
   }

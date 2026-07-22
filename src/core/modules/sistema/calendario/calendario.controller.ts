@@ -8,15 +8,16 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 import { CalendarioService } from './calendario.service';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEventoDto } from './dto/update-evento.dto';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Sistema-Calendario')
 @Controller('sistema/calendario')
 export class CalendarioController {
-  constructor(private readonly service: CalendarioService) {}
+  constructor(private readonly service: CalendarioService) { }
 
   @Get('getEventos')
   @ApiOperation({ summary: 'Listar eventos del calendario' })
-  // @Auth()
+  @Auth()
   getEventos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getEventos({
       ...headersParams,
@@ -26,7 +27,7 @@ export class CalendarioController {
 
   @Post('createEvento')
   @ApiOperation({ summary: 'Crear un nuevo evento en el calendario' })
-  // @Auth()
+  @Auth()
   createEvento(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CreateEventoDto) {
     return this.service.createEvento({
       ...headersParams,
@@ -36,7 +37,7 @@ export class CalendarioController {
 
   @Post('updateEvento')
   @ApiOperation({ summary: 'Actualizar un evento del calendario' })
-  // @Auth()
+  @Auth()
   updateEvento(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEventoDto) {
     return this.service.updateEvento({
       ...headersParams,
@@ -46,7 +47,7 @@ export class CalendarioController {
 
   @Post('deleteEvento')
   @ApiOperation({ summary: 'Eliminar un evento del calendario' })
-  // @Auth()
+  @Auth()
   deleteEvento(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEventoDto) {
     return this.service.deleteEvento({
       ...headersParams,

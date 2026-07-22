@@ -21,15 +21,16 @@ import { StockProductosDto } from './dto/stock-productos.dto';
 import { UpdateEstadoConteoDto } from './dto/update-estado-conteo.dto';
 import { UpdateEstadoDetalleConteoDto } from './dto/update-estado-deta-conteo.dto';
 import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')
 export class BodegasController {
-  constructor(private readonly service: BodegasService) {}
+  constructor(private readonly service: BodegasService) { }
 
   @Get('getBodegas')
   @ApiOperation({ summary: 'Listar bodegas de la empresa' })
-  // @Auth()
+  @Auth()
   getBodegas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getBodegas({
       ...headersParams,
@@ -39,7 +40,7 @@ export class BodegasController {
 
   @Get('getBodega')
   @ApiOperation({ summary: 'Obtener bodega por ID' })
-  // @Auth()
+  @Auth()
   getBodega(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
     return this.service.getBodega({
       ...headersParams,
@@ -49,7 +50,7 @@ export class BodegasController {
 
   @Get('getMovimientos')
   @ApiOperation({ summary: 'Listar movimientos de inventario por período' })
-  // @Auth()
+  @Auth()
   getMovimientos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: MovimientosInvDto) {
     return this.service.getMovimientos({
       ...headersParams,
@@ -59,7 +60,7 @@ export class BodegasController {
 
   @Get('getMovimientosBodega')
   @ApiOperation({ summary: 'Listar movimientos de una bodega específica' })
-  // @Auth()
+  @Auth()
   getMovimientosBodega(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: MovimientosBodegaDto) {
     return this.service.getMovimientosBodega({
       ...headersParams,
@@ -69,7 +70,7 @@ export class BodegasController {
 
   @Get('getStockProductos')
   @ApiOperation({ summary: 'Obtener stock de productos en bodegas' })
-  // @Auth()
+  @Auth()
   getStockProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: StockProductosDto) {
     return this.service.getStockProductos({
       ...headersParams,
@@ -79,7 +80,7 @@ export class BodegasController {
 
   @Get('getListDataBodegas')
   @ApiOperation({ summary: 'Obtener listado de bodegas para selector' })
-  // @Auth()
+  @Auth()
   getListDataBodegas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataBodegas({
       ...headersParams,
@@ -89,7 +90,7 @@ export class BodegasController {
 
   @Get('getListDataDetalleStock')
   @ApiOperation({ summary: 'Obtener detalle de stock por bodega para selector' })
-  // @Auth()
+  @Auth()
   getListDataDetalleStock(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataDetalleStock({
       ...headersParams,
@@ -99,7 +100,7 @@ export class BodegasController {
 
   @Post('generarConteoInventario')
   @ApiOperation({ summary: 'Generar conteo de inventario físico' })
-  // @Auth()
+  @Auth()
   generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConteoInvDto) {
     return this.service.generarConteoInventario({
       ...headersParams,
@@ -109,7 +110,7 @@ export class BodegasController {
 
   @Post('registrarConteoFisico')
   @ApiOperation({ summary: 'Registrar conteo físico de inventario' })
-  // @Auth()
+  @Auth()
   registrarConteoFisico(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarConteoFisicoDto) {
     return this.service.registrarConteoFisico({
       ...headersParams,
@@ -119,7 +120,7 @@ export class BodegasController {
 
   @Post('registrarReconteoFisico')
   @ApiOperation({ summary: 'Registrar reconteo físico de inventario para ajuste' })
-  // @Auth()
+  @Auth()
   registrarReconteoFisico(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarConteoFisicoDto) {
     return this.service.registrarReconteoFisico({
       ...headersParams,
@@ -129,7 +130,7 @@ export class BodegasController {
 
   @Post('eliminarProductosConteo')
   @ApiOperation({ summary: 'Eliminar productos de un conteo físico de inventario' })
-  // @Auth()
+  @Auth()
   eliminarProductosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
     return this.service.eliminarProductosConteo({
       ...headersParams,
@@ -139,7 +140,7 @@ export class BodegasController {
 
   @Post('agregarProductoConteo')
   @ApiOperation({ summary: 'Agregar producto a un conteo físico de inventario' })
-  // @Auth()
+  @Auth()
   agregarProductoConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AgregaProductoConteoDto) {
     return this.service.agregarProductoConteo({
       ...headersParams,
@@ -149,7 +150,7 @@ export class BodegasController {
 
   @Post('validarDetallesConteo')
   @ApiOperation({ summary: 'Validar cantidades contadas en detalles de conteo' })
-  // @Auth()
+  @Auth()
   validarDetallesConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ValidarDetallesConteoDto) {
     return this.service.validarDetallesConteo({
       ...headersParams,
@@ -159,7 +160,7 @@ export class BodegasController {
 
   @Post('autorizarAjustesConteo')
   @ApiOperation({ summary: 'Autorizar ajustes de inventario generados por diferencias del conteo' })
-  // @Auth()
+  @Auth()
   autorizarAjustesConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AutorizaAjustesConteoDto) {
     return this.service.autorizarAjustesConteo({
       ...headersParams,
@@ -169,7 +170,7 @@ export class BodegasController {
 
   @Post('updateEstadoConteo')
   @ApiOperation({ summary: 'Actualizar estado de un conteo de inventario' })
-  // @Auth()
+  @Auth()
   updateEstadoConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoConteoDto) {
     return this.service.updateEstadoConteo({
       ...headersParams,
@@ -179,7 +180,7 @@ export class BodegasController {
 
   @Post('updateEstadoDetalleConteo')
   @ApiOperation({ summary: 'Actualizar estado de un detalle de conteo físico' })
-  // @Auth()
+  @Auth()
   updateEstadoDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoDetalleConteoDto) {
     return this.service.updateEstadoDetalleConteo({
       ...headersParams,
@@ -189,7 +190,7 @@ export class BodegasController {
 
   @Get('getListDataEstadosDetalleConteo')
   @ApiOperation({ summary: 'Obtener estados de detalle de conteo para selector' })
-  // @Auth()
+  @Auth()
   getListDataEstadosDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataEstadosDetalleConteo({
       ...headersParams,
@@ -199,7 +200,7 @@ export class BodegasController {
 
   @Get('getConteosInventario')
   @ApiOperation({ summary: 'Listar conteos de inventario por período y estado' })
-  // @Auth()
+  @Auth()
   getConteosInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
     return this.service.getConteosInventario({
       ...headersParams,
@@ -209,7 +210,7 @@ export class BodegasController {
 
   @Get('getDetalleConteo')
   @ApiOperation({ summary: 'Obtener detalle de productos de un conteo físico' })
-  // @Auth()
+  @Auth()
   getDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetallesConteoDto) {
     return this.service.getDetalleConteo({
       ...headersParams,
@@ -219,7 +220,7 @@ export class BodegasController {
 
   @Get('getListDataEstadosConteo')
   @ApiOperation({ summary: 'Obtener estados de conteo de inventario para selector' })
-  // @Auth()
+  @Auth()
   getListDataEstadosConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataEstadosConteo({
       ...headersParams,
@@ -229,7 +230,7 @@ export class BodegasController {
 
   @Get('buscarDetalleConteo')
   @ApiOperation({ summary: 'Buscar producto en detalle de conteo por código o nombre' })
-  // @Auth()
+  @Auth()
   buscarDetalleConteo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDetalleConteoDto) {
     return this.service.buscarDetalleConteo({
       ...headersParams,
@@ -239,7 +240,7 @@ export class BodegasController {
 
   @Get('getMisConteosInventario')
   @ApiOperation({ summary: 'Listar conteos de inventario asignados al usuario actual' })
-  // @Auth()
+  @Auth()
   getMisConteosInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConteosInventarioDto) {
     return this.service.getMisConteosInventario({
       ...headersParams,
@@ -249,7 +250,7 @@ export class BodegasController {
 
   @Get('getUltimaFechaConteoProducto')
   @ApiOperation({ summary: 'Obtener la última fecha en que se contó un producto' })
-  // @Auth()
+  @Auth()
   getUltimaFechaConteoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
     return this.service.getUltimaFechaConteoProducto({
       ...headersParams,

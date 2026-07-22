@@ -5,6 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 import { CuentasPorCobrarService } from './cuentas-por-cobrar.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('CuentasPorCobrar')
 @Controller('cuentas-por-cobrar')
@@ -13,7 +14,7 @@ export class CuentasPorCobrarController {
 
   @Get('getCuentasPorCobrar')
   @ApiOperation({ summary: 'Listar cuentas por cobrar en un rango de fechas' })
-  // @Auth()
+  @Auth()
   getCuentasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getCuentasPorCobrar({
       ...headersParams,
@@ -23,7 +24,7 @@ export class CuentasPorCobrarController {
 
   @Get('getMetricasCuentasPorCobrar')
   @ApiOperation({ summary: 'Obtener métricas de cuentas por cobrar (totales, vencidas, al día)' })
-  // @Auth()
+  @Auth()
   getMetricasCuentasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getMetricasCuentasPorCobrar({
       ...headersParams,
@@ -33,7 +34,7 @@ export class CuentasPorCobrarController {
 
   @Get('getClientesPagoDestiempo')
   @ApiOperation({ summary: 'Listar clientes con historial de pagos tardíos' })
-  // @Auth()
+  @Auth()
   getClientesPagoDestiempo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getClientesPagoDestiempo({
       ...headersParams,
@@ -43,7 +44,7 @@ export class CuentasPorCobrarController {
 
   @Get('getResumenCuentasPorCobrar')
   @ApiOperation({ summary: 'Obtener resumen de cuentas por cobrar agrupado por antigüedad' })
-  // @Auth()
+  @Auth()
   getResumenCuentasPorCobrar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getResumenCuentasPorCobrar({
       ...headersParams,
@@ -53,7 +54,7 @@ export class CuentasPorCobrarController {
 
   @Get('getReporteCxCDetallado')
   @ApiOperation({ summary: 'Obtener reporte detallado de cuentas por cobrar' })
-  // @Auth()
+  @Auth()
   getReporteCxCDetallado(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getReporteCxCDetallado({
       ...headersParams,

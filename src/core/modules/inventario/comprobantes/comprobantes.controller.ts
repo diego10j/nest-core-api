@@ -15,6 +15,7 @@ import { LotesProductoDto } from './dto/lotes-producto.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 import { SetComporbantesVerificadosDto } from './dto/set-compro-verificado.dto';
+import { Auth } from 'src/core/auth';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {
@@ -22,7 +23,7 @@ export class ComprobantesInvController {
 
   @Get('getComprobantesInventario')
   @ApiOperation({ summary: 'Listar comprobantes de inventario por período y tipo' })
-  // @Auth()
+  @Auth()
   getComprobantesInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprobantesInvDto) {
     return this.service.getComprobantesInventario({
       ...headersParams,
@@ -32,7 +33,7 @@ export class ComprobantesInvController {
 
   @Get('getComprobantesIngresoPendientes')
   @ApiOperation({ summary: 'Listar comprobantes de ingreso pendientes de verificación' })
-  // @Auth()
+  @Auth()
   getComprobantesIngresoPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprobantesInvDto) {
     return this.service.getComprobantesIngresoPendientes({
       ...headersParams,
@@ -43,7 +44,7 @@ export class ComprobantesInvController {
 
   @Get('getComprobantesEgresoPendientes')
   @ApiOperation({ summary: 'Listar comprobantes de egreso pendientes de verificación' })
-  // @Auth()
+  @Auth()
   getComprobantesEgresoPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprobantesInvDto) {
     return this.service.getComprobantesEgresoPendientes({
       ...headersParams,
@@ -54,7 +55,7 @@ export class ComprobantesInvController {
 
   @Get('getDetComprobanteInventario')
   @ApiOperation({ summary: 'Obtener detalle de un comprobante de inventario' })
-  // @Auth()
+  @Auth()
   getDetComprobanteInventario(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: CabComprobanteInventarioDto,
@@ -67,7 +68,7 @@ export class ComprobantesInvController {
 
   @Get('getCabComprobanteInventario')
   @ApiOperation({ summary: 'Obtener cabecera de un comprobante de inventario' })
-  // @Auth()
+  @Auth()
   getCabComprobanteInventario(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: CabComprobanteInventarioDto,
@@ -81,7 +82,7 @@ export class ComprobantesInvController {
 
   @Post('setComporbantesVerificados')
   @ApiOperation({ summary: 'Marcar comprobantes de inventario como verificados' })
-  //@Auth()
+  @Auth()
   generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetComporbantesVerificadosDto) {
     return this.service.setComporbantesVerificados({
       ...headersParams,
@@ -91,7 +92,7 @@ export class ComprobantesInvController {
 
   @Post('saveDetInvEgreso')
   @ApiOperation({ summary: 'Guardar detalle de egreso de inventario' })
-  //@Auth()
+  @Auth()
   saveDetInvEgreso(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetInvEgresoDto) {
     return this.service.saveDetInvEgreso({
       ...headersParams,
@@ -103,7 +104,7 @@ export class ComprobantesInvController {
 
   @Post('anularComprobante')
   @ApiOperation({ summary: 'Anular un comprobante de inventario' })
-  // @Auth()
+  @Auth()
   anularComprobante(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
     return this.service.anularComprobante({
       ...headersParams,
@@ -113,7 +114,7 @@ export class ComprobantesInvController {
 
   @Post('verificarComprobante')
   @ApiOperation({ summary: 'Verificar y aprobar un comprobante de inventario' })
-  // @Auth()
+  @Auth()
   verificarComprobante(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
     return this.service.verificarComprobante({
       ...headersParams,
@@ -123,7 +124,7 @@ export class ComprobantesInvController {
 
   @Get('getLoteIngreso')
   @ApiOperation({ summary: 'Obtener lotes disponibles para ingreso por producto' })
-  // @Auth()
+  @Auth()
   getLoteIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LoteIngreso) {
     return this.service.getLoteIngreso({
       ...headersParams,
@@ -133,7 +134,7 @@ export class ComprobantesInvController {
 
   @Get('getLoteEgreso')
   @ApiOperation({ summary: 'Obtener lotes con stock disponible para egreso por producto' })
-  // @Auth()
+  @Auth()
   getLoteEgreso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LoteEgreso) {
     return this.service.getLoteEgreso({
       ...headersParams,
@@ -144,7 +145,7 @@ export class ComprobantesInvController {
 
   @Post('saveLoteIngreso')
   @ApiOperation({ summary: 'Registrar ingreso de lote de inventario' })
-  //@Auth()
+  @Auth()
   saveLoteIngreso(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveLoteDto) {
     return this.service.saveLoteIngreso({
       ...headersParams,
@@ -154,7 +155,7 @@ export class ComprobantesInvController {
 
   @Post('saveLoteEgreso')
   @ApiOperation({ summary: 'Registrar egreso de lote de inventario' })
-  //@Auth()
+  @Auth()
   saveLoteEgreso(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveLoteDto) {
     return this.service.saveLoteEgreso({
       ...headersParams,
@@ -164,7 +165,7 @@ export class ComprobantesInvController {
 
   @Post('validarDetallesVerificados')
   @ApiOperation({ summary: 'Validar que todos los detalles de un comprobante estén verificados' })
-  //@Auth()
+  @Auth()
   validarDetallesVerificados(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CabComprobanteInventarioDto) {
     return this.service.validarDetallesVerificados({
       ...headersParams,
@@ -177,7 +178,7 @@ export class ComprobantesInvController {
   // getLotesProductoProveedor  
   @Get('getLotePorProductoProveedor')
   @ApiOperation({ summary: 'Obtener lotes de un producto filtrados por proveedor' })
-  // @Auth()
+  @Auth()
   getLotePorProductoProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LotesProductoProveedorDto) {
     return this.service.getLotePorProductoProveedor({
       ...headersParams,
@@ -188,7 +189,7 @@ export class ComprobantesInvController {
   // ==================================ListData==============================
   @Get('getListDataEstadosComprobantes')
   @ApiOperation({ summary: 'Obtener estados de comprobante de inventario para selector' })
-  // @Auth()
+  @Auth()
   getListDataEstadosComprobantes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataEstadosComprobantes({
       ...headersParams,
@@ -198,7 +199,7 @@ export class ComprobantesInvController {
 
   @Get('getListDataPresentacion')
   @ApiOperation({ summary: 'Obtener unidades de presentación de inventario para selector' })
-  // @Auth()
+  @Auth()
   getListDataPresentacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getListDataPresentacion({
       ...headersParams,
@@ -211,7 +212,7 @@ export class ComprobantesInvController {
 
   @Get('getLotesIngresoProducto')
   @ApiOperation({ summary: 'Listar lotes de ingreso registrados para un producto' })
-  // @Auth()
+  @Auth()
   getLotesIngresoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LotesProductoDto) {
     return this.service.getLotesIngresoProducto({
       ...headersParams,

@@ -6,6 +6,7 @@ import { HeaderParamsDto } from '../../common/dto/common-params.dto';
 
 import { ChartsService } from './charts.service';
 import { RadialBarDto } from './dto/radial-bar.dto';
+import { Auth } from '../auth';
 
 @ApiTags('Charts')
 @Controller('charts')
@@ -14,7 +15,7 @@ export class ChartsController {
 
   @Post('radialBar')
   @ApiOperation({ summary: 'Generar datos para gráfico radialBar' })
-  // @Auth()
+  @Auth()
   radialBar(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RadialBarDto) {
     return this.service.radialBar({
       ...headersParams,
@@ -24,7 +25,7 @@ export class ChartsController {
 
   @Post('pie')
   @ApiOperation({ summary: 'Generar datos para gráfico pie' })
-  // @Auth()
+  @Auth()
   pie(@Body() dtoIn: RadialBarDto, @AppHeaders() headersParams: HeaderParamsDto) {
     return this.service.radialBar({
       ...headersParams,
@@ -34,7 +35,7 @@ export class ChartsController {
 
   @Post('donut')
   @ApiOperation({ summary: 'Generar datos para gráfico donut' })
-  // @Auth()
+  @Auth()
   donut(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RadialBarDto) {
     return this.service.radialBar({
       ...headersParams,

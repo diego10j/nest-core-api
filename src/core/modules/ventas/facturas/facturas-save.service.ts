@@ -1351,6 +1351,12 @@ export class FacturasSaveService extends BaseService {
             throw new BadRequestException('El cliente no tiene identificación (cédula/RUC).');
         }
 
+        // Consumidor final — no se valida
+        if (id === '9999999999999') return;
+
+        // Pasaporte u otros tipos — no se validan si no son cédula (10) o RUC (13)
+        if (id.length !== 10 && id.length !== 13) return;
+
         if (id.length === 10) {
             if (!validateCedula(id)) {
                 throw new BadRequestException(`Cédula inválida: ${id}.`);
@@ -1363,10 +1369,7 @@ export class FacturasSaveService extends BaseService {
             if (!result.isValid) {
                 throw new BadRequestException(`RUC inválido: ${id}. ${result.type}`);
             }
-            return;
         }
-
-        throw new BadRequestException(`Identificación inválida: ${id}. Debe ser cédula (10 dígitos) o RUC (13 dígitos).`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { GetMailQueueDto } from '../dto/get-mail-queue.dto';
 import { SendMailDto } from '../dto/send-mail.dto';
 import { MailService } from '../services/mail.service';
 import { TestMailService } from '../services/test-mail.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Email-Mail')
 @Controller('mail')
@@ -19,28 +20,28 @@ export class MailController {
 
   @Post('send')
   @ApiOperation({ summary: 'Enviar correo electrónico' })
-  // @Auth()
+  @Auth()
   async enviarMensajeTexto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SendMailDto) {
     return await this.mailService.sendMail(dtoIn, headersParams.ideEmpr, headersParams.login);
   }
 
   @Post('process-queue')
   @ApiOperation({ summary: 'Procesar la cola de correos pendientes' })
-  // @Auth()
+  @Auth()
   async processQueue(@AppHeaders() _headersParams: HeaderParamsDto) {
     return await this.mailService.processMailQueue();
   }
 
   @Get('getCuentasCorreo')
   @ApiOperation({ summary: 'Listar cuentas de correo configuradas para la empresa' })
-  // @Auth()
+  @Auth()
   getCuentasCorreo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.mailService.getCuentasCorreo(headersParams);
   }
 
   @Get('getCuentaCorreoPorDefecto')
   @ApiOperation({ summary: 'Obtener la cuenta de correo configurada como predeterminada' })
-  // @Auth()
+  @Auth()
   async getCuentaCorreoPorDefecto(@AppHeaders() headersParams: HeaderParamsDto) {
     return await this.mailService.getCuentaCorreoPorDefecto(headersParams);
   }

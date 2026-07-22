@@ -12,14 +12,12 @@ export class ApiPersonaController {
 
   @Post('consultaCedula')
   @ApiOperation({ summary: 'Consultar datos de persona natural por número de cédula' })
-  // @Auth()
   consultaCedula(@Body() dtoIn: CedulaDto) {
     return this.service.consultaCedula(dtoIn);
   }
 
   @Post('consultaRUC')
   @ApiOperation({ summary: 'Consultar datos de empresa o persona jurídica por número de RUC' })
-  // @Auth()
   consultaRUC(@Body() dtoIn: RucDto) {
     return this.service.consultaRUC(dtoIn);
   }

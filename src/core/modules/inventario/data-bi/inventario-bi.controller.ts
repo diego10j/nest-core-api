@@ -18,6 +18,7 @@ import { ProductosStockBajoDto } from './dto/productos-stock-bajo.dto';
 import { TopProductosDto } from './dto/top-productos';
 import { InventarioBiService } from './inventario-bi.service';
 import { InventarioProductoBiService } from './inventario-prod-bi.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-DataBI')
 @Controller('inventario/data-bi')
@@ -25,11 +26,11 @@ export class InventarioBiController {
   constructor(
     private readonly service: InventarioBiService,
     private readonly serviceProducto: InventarioProductoBiService,
-  ) {}
+  ) { }
 
   @Get('getTopProductos')
   @ApiOperation({ summary: 'Obtener top de productos por cantidad de movimientos en un período' })
-  // @Auth()
+  @Auth()
   getTopProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
     return this.service.getTopProductos({
       ...headersParams,
@@ -39,7 +40,7 @@ export class InventarioBiController {
 
   @Get('getTopProductosVendidos')
   @ApiOperation({ summary: 'Obtener top de productos más vendidos (por cantidad) en un período' })
-  // @Auth()
+  @Auth()
   getTopProductosVendidos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
     return this.service.getTopProductosVendidos({
       ...headersParams,
@@ -49,7 +50,7 @@ export class InventarioBiController {
 
   @Get('getTopProductosFacturados')
   @ApiOperation({ summary: 'Obtener top de productos más facturados (por monto) en un período' })
-  // @Auth()
+  @Auth()
   getTopProductosFacturados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
     return this.service.getTopProductosFacturados({
       ...headersParams,
@@ -59,7 +60,7 @@ export class InventarioBiController {
 
   @Get('getTopProductosMayorRotacion')
   @ApiOperation({ summary: 'Obtener top de productos con mayor rotación de inventario' })
-  // @Auth()
+  @Auth()
   getTopProductosMayorRotacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
     return this.service.getTopProductosMayorRotacion({
       ...headersParams,
@@ -69,7 +70,7 @@ export class InventarioBiController {
 
   @Get('getTotalProductosPorCategoria')
   @ApiOperation({ summary: 'Obtener total de productos agrupado por categoría' })
-  // @Auth()
+  @Auth()
   getTotalProductosPorCategoria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getTotalProductosPorCategoria({
       ...headersParams,
@@ -79,7 +80,7 @@ export class InventarioBiController {
 
   @Get('getTotalVentasProductoPorFormaPago')
   @ApiOperation({ summary: 'Obtener ventas de un producto agrupadas por forma de pago' })
-  // @Auth()
+  @Auth()
   getTotalVentasProductoPorFormaPago(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: ClientesProductoDto,
@@ -92,7 +93,7 @@ export class InventarioBiController {
 
   @Get('getTopVendedoresProducto')
   @ApiOperation({ summary: 'Obtener top de vendedores de un producto específico' })
-  // @Auth()
+  @Auth()
   getTopVendedoresProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.service.getTopVendedoresProducto({
       ...headersParams,
@@ -102,7 +103,7 @@ export class InventarioBiController {
 
   @Get('getTotalVentasProductoPorIdCliente')
   @ApiOperation({ summary: 'Obtener ventas de un producto agrupadas por tipo de identificación de cliente' })
-  // @Auth()
+  @Auth()
   getTotalVentasProductoPorIdCliente(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: ClientesProductoDto,
@@ -115,7 +116,7 @@ export class InventarioBiController {
 
   @Get('getProformasMensualesProducto')
   @ApiOperation({ summary: 'Obtener proformas mensuales de un producto por año' })
-  // @Auth()
+  @Auth()
   getProformasMensualesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.service.getProformasMensualesProducto({
       ...headersParams,
@@ -125,7 +126,7 @@ export class InventarioBiController {
 
   @Get('getTotalVentasMensualesProducto')
   @ApiOperation({ summary: 'Obtener ventas mensuales totales de un producto por año' })
-  // @Auth()
+  @Auth()
   getTotalVentasMensualesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.service.getTotalVentasMensualesProducto({
       ...headersParams,
@@ -135,7 +136,7 @@ export class InventarioBiController {
 
   @Get('getVariacionInventarioProducto')
   @ApiOperation({ summary: 'Obtener variación histórica del inventario de un producto' })
-  // @Auth()
+  @Auth()
   getVariacionInventarioProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
     return this.service.getVariacionInventarioProducto({
       ...headersParams,
@@ -145,7 +146,7 @@ export class InventarioBiController {
 
   @Get('getComprasMensuales')
   @ApiOperation({ summary: 'Obtener compras mensuales de un producto por año' })
-  // @Auth()
+  @Auth()
   getComprasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.service.getComprasMensuales({
       ...headersParams,
@@ -155,7 +156,7 @@ export class InventarioBiController {
 
   @Get('getTopProveedoresProducto')
   @ApiOperation({ summary: 'Obtener top de proveedores de un producto específico' })
-  // @Auth()
+  @Auth()
   getTopProveedoresProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.service.getTopProveedoresProducto({
       ...headersParams,
@@ -165,7 +166,7 @@ export class InventarioBiController {
 
   @Get('getTendenciaVentasDiaProducto')
   @ApiOperation({ summary: 'Obtener tendencia de ventas por día de un producto en un rango de fechas' })
-  // @Auth()
+  @Auth()
   getTendenciaVentasDiaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.service.getTendenciaVentasDiaProducto({
       ...headersParams,
@@ -175,7 +176,7 @@ export class InventarioBiController {
 
   @Get('getResumenVentasPeriodosProducto')
   @ApiOperation({ summary: 'Obtener resumen comparativo de ventas de un producto entre períodos' })
-  // @Auth()
+  @Auth()
   getResumenVentasPeriodosProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.service.getResumenVentasPeriodosProducto({
       ...headersParams,
@@ -185,7 +186,7 @@ export class InventarioBiController {
 
   @Get('getTotalPorTipoTransaccion')
   @ApiOperation({ summary: 'Obtener totales de inventario agrupados por tipo de transacción' })
-  // @Auth()
+  @Auth()
   getTotalPorTipoTransaccion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getTotalPorTipoTransaccion({
       ...headersParams,
@@ -195,7 +196,7 @@ export class InventarioBiController {
 
   @Get('getTotalPorTipoTransaccionProducto')
   @ApiOperation({ summary: 'Obtener totales de un producto agrupados por tipo de transacción' })
-  // @Auth()
+  @Auth()
   getTotalPorTipoTransaccionProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getTotalPorTipoTransaccionProducto({
       ...headersParams,
@@ -205,7 +206,7 @@ export class InventarioBiController {
 
   @Get('getAnalisisRotacionStockProducto')
   @ApiOperation({ summary: 'Obtener análisis de rotación de stock de un producto' })
-  // @Auth()
+  @Auth()
   getAnalisisRotacionStockProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
     return this.serviceProducto.getAnalisisRotacionStockProducto({
       ...headersParams,
@@ -215,7 +216,7 @@ export class InventarioBiController {
 
   @Get('getPrediccionStockMensualProducto')
   @ApiOperation({ summary: 'Obtener predicción de stock mensual de un producto basada en tendencia histórica' })
-  // @Auth()
+  @Auth()
   getPrediccionStockMensualProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisProductoDto) {
     return this.serviceProducto.getPrediccionStockMensualProducto({
       ...headersParams,
@@ -225,7 +226,7 @@ export class InventarioBiController {
 
   @Get('getAnalisisBodegasMensual')
   @ApiOperation({ summary: 'Obtener análisis mensual de movimientos por bodega de un producto' })
-  // @Auth()
+  @Auth()
   getAnalisisBodegasMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.service.getAnalisisBodegasMensual({
       ...headersParams,
@@ -235,7 +236,7 @@ export class InventarioBiController {
 
   @Get('getEvaluacionRotacionProducto')
   @ApiOperation({ summary: 'Obtener evaluación de rotación de un producto (clasificación A/B/C)' })
-  // @Auth()
+  @Auth()
   getEvaluacionRotacionProducto(
     @AppHeaders() headersParams: HeaderParamsDto,
     @Query() dtoIn: EvaluacionRotacionProductoDto,
@@ -248,7 +249,7 @@ export class InventarioBiController {
 
   @Get('getProductosStockBajo')
   @ApiOperation({ summary: 'Obtener productos con stock por debajo del mínimo configurado' })
-  // @Auth()
+  @Auth()
   getProductosStockBajo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosStockBajoDto) {
     return this.service.getProductosStockBajo({
       ...headersParams,
@@ -258,7 +259,7 @@ export class InventarioBiController {
 
   @Get('getProductosMayorStock')
   @ApiOperation({ summary: 'Obtener productos con mayor stock valorizado' })
-  // @Auth()
+  @Auth()
   getProductosMayorStock(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosMayorStockDto) {
     return this.service.getProductosMayorStock({
       ...headersParams,
@@ -268,7 +269,7 @@ export class InventarioBiController {
 
   @Get('getReporteValorInventarioProducto')
   @ApiOperation({ summary: 'Obtener reporte de valor de inventario mensual de un producto' })
-  // @Auth()
+  @Auth()
   getReporteValorInventarioProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.serviceProducto.getReporteValorInventarioProducto({
       ...headersParams,
@@ -278,7 +279,7 @@ export class InventarioBiController {
 
   @Get('getReporteValorInventarioGlobal')
   @ApiOperation({ summary: 'Obtener reporte de valor total del inventario global por período' })
-  // @Auth()
+  @Auth()
   getReporteValorInventarioGlobal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getReporteValorInventarioGlobal({
       ...headersParams,
@@ -288,7 +289,7 @@ export class InventarioBiController {
 
   @Get('getReporteIngresosEgresos')
   @ApiOperation({ summary: 'Obtener reporte de ingresos y egresos de inventario por período' })
-  // @Auth()
+  @Auth()
   getReporteIngresosEgresos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getReporteIngresosEgresos({
       ...headersParams,
@@ -298,7 +299,7 @@ export class InventarioBiController {
 
   @Get('getReporteIngresosEgresosProducto')
   @ApiOperation({ summary: 'Obtener reporte de ingresos y egresos de un producto por período' })
-  // @Auth()
+  @Auth()
   getReporteIngresosEgresosProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getReporteIngresosEgresosProducto({
       ...headersParams,
@@ -308,7 +309,7 @@ export class InventarioBiController {
 
   @Get('getAnalisisABCInventario')
   @ApiOperation({ summary: 'Obtener análisis ABC de inventario por valor acumulado' })
-  // @Auth()
+  @Auth()
   getAnalisisABCInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getAnalisisABCInventario({
       ...headersParams,
@@ -318,7 +319,7 @@ export class InventarioBiController {
 
   @Get('getRotacionInventario')
   @ApiOperation({ summary: 'Obtener índice de rotación de inventario por producto' })
-  // @Auth()
+  @Auth()
   getRotacionInventario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getRotacionInventario({
       ...headersParams,
@@ -328,7 +329,7 @@ export class InventarioBiController {
 
   @Get('getStockSeguridadReorden')
   @ApiOperation({ summary: 'Obtener productos que requieren reorden con cálculo de stock de seguridad' })
-  // @Auth()
+  @Auth()
   getStockSeguridadReorden(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: AnalisisDto) {
     return this.service.getStockSeguridadReorden({
       ...headersParams,
@@ -338,7 +339,7 @@ export class InventarioBiController {
 
   @Get('getProductosObsoletos')
   @ApiOperation({ summary: 'Obtener productos sin movimiento en un período (posiblemente obsoletos)' })
-  // @Auth()
+  @Auth()
   getProductosObsoletos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProductosObsoletosDto) {
     return this.service.getProductosObsoletos({
       ...headersParams,
@@ -348,7 +349,7 @@ export class InventarioBiController {
 
   @Get('getTopProductosAjustados')
   @ApiOperation({ summary: 'Obtener top de productos con más ajustes de inventario registrados' })
-  // @Auth()
+  @Auth()
   getTopProductosAjustados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopProductosDto) {
     return this.service.getTopProductosAjustados({
       ...headersParams,

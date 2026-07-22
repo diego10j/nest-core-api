@@ -5,15 +5,16 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { FirmaService } from './firma.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('SRI-Firma')
 @Controller('sri/cel/firma')
 export class FirmaController {
-  constructor(private readonly service: FirmaService) {}
+  constructor(private readonly service: FirmaService) { }
 
   @Get('getFirma')
   @ApiOperation({ summary: 'Obtener datos de la firma electrónica activa' })
-  // @Auth()
+  @Auth()
   getCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getFirma({
       ...headersParams,
@@ -23,7 +24,7 @@ export class FirmaController {
 
   @Get('getFirmas')
   @ApiOperation({ summary: 'Listar todas las firmas electrónicas configuradas' })
-  // @Auth()
+  @Auth()
   getFirmas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.getFirmas({
       ...headersParams,
@@ -33,7 +34,7 @@ export class FirmaController {
 
   @Post('clearCacheFirma')
   @ApiOperation({ summary: 'Limpiar caché de datos de firma electrónica' })
-  // @Auth()
+  @Auth()
   clearCacheFirma(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: QueryOptionsDto) {
     return this.service.clearCacheFirma({
       ...headersParams,

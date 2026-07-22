@@ -30,6 +30,7 @@ import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
+import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')
@@ -41,7 +42,7 @@ export class ProductosController {
 
   @Get('getProductoByUuid')
   @ApiOperation({ summary: 'Obtener producto por UUID' })
-  // @Auth()
+  @Auth()
   getProductoByUuid(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UuidDto) {
     return this.productos.getProductoByUuid({
       ...headersParams,
@@ -51,7 +52,7 @@ export class ProductosController {
 
   @Get('getProductos')
   @ApiOperation({ summary: 'Listar productos activos con filtros y paginación' })
-  // @Auth()
+  @Auth()
   getProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
     return this.productos.getProductos({
       ...headersParams,
@@ -61,7 +62,7 @@ export class ProductosController {
 
   @Get('getAllProductos')
   @ApiOperation({ summary: 'Listar todos los productos (activos e inactivos) con filtros' })
-  // @Auth()
+  @Auth()
   getAllProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
     return this.productos.getAllProductos({
       ...headersParams,
@@ -71,7 +72,7 @@ export class ProductosController {
 
   @Get('getCatalogoProductos')
   @ApiOperation({ summary: 'Obtener catálogo de productos con precios e imágenes' })
-  // @Auth()
+  @Auth()
   getCatalogoProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCatalogoProductosDto) {
     return this.productos.getCatalogoProductos({
       ...headersParams,
@@ -81,7 +82,7 @@ export class ProductosController {
 
   @Get('getProducto')
   @ApiOperation({ summary: 'Obtener datos completos de un producto por UUID' })
-  // @Auth()
+  @Auth()
   getProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UuidDto) {
     return this.productos.getProducto({
       ...headersParams,
@@ -91,7 +92,7 @@ export class ProductosController {
 
   @Get('getTableQueryCategorias')
   @ApiOperation({ summary: 'Obtener tabla de categorías de productos' })
-  // @Auth()
+  @Auth()
   getTableQueryCategorias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CategoriasDto) {
     return this.productos.getTableQueryCategorias({
       ...headersParams,
@@ -101,7 +102,7 @@ export class ProductosController {
 
   @Get('getTreeModelCategorias')
   @ApiOperation({ summary: 'Obtener árbol jerárquico de categorías de productos' })
-  // @Auth()
+  @Auth()
   getTreeModelCategorias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CategoriasDto) {
     return this.productos.getTreeModelCategorias({
       ...headersParams,
@@ -111,7 +112,7 @@ export class ProductosController {
 
   @Get('searchProducto')
   @ApiOperation({ summary: 'Buscar productos por código o nombre (autocomplete)' })
-  // @Auth()
+  @Auth()
   searchProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDto) {
     return this.productos.searchProducto({
       ...headersParams,
@@ -121,7 +122,7 @@ export class ProductosController {
 
   @Get('getTrnProducto')
   @ApiOperation({ summary: 'Obtener transacciones (movimientos) de un producto por período' })
-  // @Auth()
+  @Auth()
   getTrnProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getTrnProducto({
       ...headersParams,
@@ -131,7 +132,7 @@ export class ProductosController {
 
   @Get('getKardexPrecioPromedio')
   @ApiOperation({ summary: 'Obtener kardex de precio promedio ponderado de un producto' })
-  // @Auth()
+  @Auth()
   getKardexPrecioPromedio(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getKardexPrecioPromedio({
       ...headersParams,
@@ -141,7 +142,7 @@ export class ProductosController {
 
   @Get('getKpiKardexProducto')
   @ApiOperation({ summary: 'Obtener KPI consolidado del kardex de un producto por período' })
-  // @Auth()
+  @Auth()
   getKpiKardexProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getKpiKardexProducto({
       ...headersParams,
@@ -151,7 +152,7 @@ export class ProductosController {
 
   @Get('getComprasProducto')
   @ApiOperation({ summary: 'Listar compras de un producto por período' })
-  // @Auth()
+  @Auth()
   getComprasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnProductoDto) {
     return this.productos.getComprasProducto({
       ...headersParams,
@@ -161,7 +162,7 @@ export class ProductosController {
 
   @Get('getVentasProducto')
   @ApiOperation({ summary: 'Listar ventas de un producto por período' })
-  // @Auth()
+  @Auth()
   getVentasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PreciosProductoDto) {
     return this.productos.getVentasProducto({
       ...headersParams,
@@ -171,7 +172,7 @@ export class ProductosController {
 
   @Get('getVentasProductoUtilidad')
   @ApiOperation({ summary: 'Listar ventas de un producto con cálculo de utilidad por período' })
-  // @Auth()
+  @Auth()
   getVentasProductoUtilidad(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PreciosProductoDto) {
     return this.productos.getVentasProductoUtilidad({
       ...headersParams,
@@ -181,7 +182,7 @@ export class ProductosController {
 
   @Get('getKpiVentasProducto')
   @ApiOperation({ summary: 'Obtener KPI de ventas de un producto por período' })
-  // @Auth()
+  @Auth()
   getKpiVentasProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiVentasProductoDto) {
     return this.productos.getKpiVentasProducto({
       ...headersParams,
@@ -191,7 +192,7 @@ export class ProductosController {
 
   @Get('getUltimosPreciosCompras')
   @ApiOperation({ summary: 'Obtener historial de los últimos precios de compra de un producto' })
-  // @Auth()
+  @Auth()
   getUltimosPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getUltimosPreciosCompras({
       ...headersParams,
@@ -201,7 +202,7 @@ export class ProductosController {
 
   @Get('getKpiPreciosCompras')
   @ApiOperation({ summary: 'Obtener KPI de precios de compra y costo promedio de un producto' })
-  // @Auth()
+  @Auth()
   getKpiPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiPreciosDto) {
     return this.productos.getKpiPreciosCompras({
       ...headersParams,
@@ -211,7 +212,7 @@ export class ProductosController {
 
   @Get('getSaldo')
   @ApiOperation({ summary: 'Obtener saldo actual de un producto en inventario' })
-  // @Auth()
+  @Auth()
   getSaldo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetSaldoProductoDto) {
     return this.productos.getSaldo({
       ...headersParams,
@@ -221,7 +222,7 @@ export class ProductosController {
 
   @Get('getSaldoPorBodega')
   @ApiOperation({ summary: 'Obtener saldo de un producto desglosado por bodega' })
-  // @Auth()
+  @Auth()
   getSaldoPorBodega(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getSaldoPorBodega({
       ...headersParams,
@@ -231,7 +232,7 @@ export class ProductosController {
 
   @Get('getStockMenudeoProducto')
   @ApiOperation({ summary: 'Obtener stock de menudeo de un producto' })
-  // @Auth()
+  @Auth()
   getStockMenudeoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getStockMenudeoProducto({
       ...headersParams,
@@ -241,7 +242,7 @@ export class ProductosController {
 
   @Get('getVentasMensuales')
   @ApiOperation({ summary: 'Obtener ventas mensuales de un producto por año' })
-  // @Auth()
+  @Auth()
   getVentasMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getVentasMensuales({
       ...headersParams,
@@ -251,7 +252,7 @@ export class ProductosController {
 
   @Get('getSumatoriaTrnPeriodo')
   @ApiOperation({ summary: 'Obtener sumatoria de transacciones de un producto en un período' })
-  // @Auth()
+  @Auth()
   getSumatoriaTrnPeriodo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
     return this.productos.getSumatoriaTrnPeriodo({
       ...headersParams,
@@ -261,7 +262,7 @@ export class ProductosController {
 
   @Get('getProveedoresProducto')
   @ApiOperation({ summary: 'Listar proveedores que han suministrado un producto' })
-  // @Auth()
+  @Auth()
   getProveedoresProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getProveedoresProducto({
       ...headersParams,
@@ -271,7 +272,7 @@ export class ProductosController {
 
   @Get('getClientes')
   @ApiOperation({ summary: 'Listar clientes que han comprado un producto' })
-  // @Auth()
+  @Auth()
   getClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ClientesProductoDto) {
     return this.productos.getClientesProducto({
       ...headersParams,
@@ -281,7 +282,7 @@ export class ProductosController {
 
   @Get('getTopClientesProducto')
   @ApiOperation({ summary: 'Obtener top de clientes que más han comprado un producto' })
-  // @Auth()
+  @Auth()
   getTopClientesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TopClientesProductoDto) {
     return this.productos.getTopClientesProducto({
       ...headersParams,
@@ -291,7 +292,7 @@ export class ProductosController {
 
   @Get('chartVariacionPreciosCompras')
   @ApiOperation({ summary: 'Obtener datos de variación histórica de precios de compra para gráfico' })
-  // @Auth()
+  @Auth()
   charVariacionPreciosCompras(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: KpiPreciosDto) {
     return this.productos.chartVariacionPreciosCompras({
       ...headersParams,
@@ -301,7 +302,7 @@ export class ProductosController {
 
   @Get('getActividades')
   @ApiOperation({ summary: 'Obtener actividades recientes de un producto' })
-  // @Auth()
+  @Auth()
   getActividades(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getActividades({
       ...headersParams,
@@ -311,7 +312,7 @@ export class ProductosController {
 
   @Post('saveProducto')
   @ApiOperation({ summary: 'Crear o actualizar un producto' })
-  // @Auth()
+  @Auth()
   saveProducto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveProductoDto) {
     return this.productos.saveProducto({
       ...headersParams,
@@ -323,7 +324,7 @@ export class ProductosController {
 
   @Get('getPrecioVentaProducto')
   @ApiOperation({ summary: 'Obtener precio de venta de un producto para un cliente' })
-  // @Auth()
+  @Auth()
   getPrecioVentaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PrecioVentaProductoDto) {
     return this.configPrecios.getPrecioVentaProducto({
       ...headersParams,
@@ -333,7 +334,7 @@ export class ProductosController {
 
   @Post('generarConfigPreciosVenta')
   @ApiOperation({ summary: 'Generar configuración de precios de venta para un producto' })
-  //@Auth()
+  @Auth()
   generarConfigPreciosVenta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GeneraConfigPreciosVentaDto) {
     return this.configPrecios.generarConfigPreciosVenta({
       ...headersParams,
@@ -343,7 +344,7 @@ export class ProductosController {
 
   @Get('getConfigPreciosProducto')
   @ApiOperation({ summary: 'Obtener configuración de precios de venta de un producto' })
-  // @Auth()
+  @Auth()
   getConfigPreciosProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConfigPrecioProductoDto) {
     return this.configPrecios.getConfigPreciosProducto({
       ...headersParams,
@@ -353,7 +354,7 @@ export class ProductosController {
 
   @Post('saveConfigPrecios')
   @ApiOperation({ summary: 'Guardar configuración de precios de venta para un producto' })
-  // @Auth()
+  @Auth()
   saveConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveConfigPrecioDto) {
     return this.configPrecios.saveConfigPrecios({
       ...headersParams,
@@ -363,7 +364,7 @@ export class ProductosController {
 
   @Get('findConfigPreciosById')
   @ApiOperation({ summary: 'Buscar configuración de precios por ID' })
-  // @Auth()
+  @Auth()
   findConfigPreciosById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDto) {
     return this.configPrecios.findConfigPreciosById({
       ...headersParams,
@@ -373,14 +374,14 @@ export class ProductosController {
 
   @Delete('deleteConfigPrecios')
   @ApiOperation({ summary: 'Eliminar configuraciones de precios por IDs' })
-  // @Auth()
+  @Auth()
   deleteDetailCampaniaById(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: ArrayIdeDto) {
     return this.configPrecios.deleteConfigPrecios(dtoIn);
   }
 
   @Post('copiarConfigPrecios')
   @ApiOperation({ summary: 'Copiar configuración de precios de un producto a otros' })
-  // @Auth()
+  @Auth()
   copiarConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CopiarConfigPreciosVentaDto) {
     return this.configPrecios.copiarConfigPrecios({
       ...headersParams,
@@ -390,7 +391,7 @@ export class ProductosController {
 
   @Get('getAllProductosConfigPrecios')
   @ApiOperation({ summary: 'Listar todos los productos con su configuración de precios' })
-  // @Auth()
+  @Auth()
   getAllProductosConfigPrecios(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProductoDto) {
     return this.configPrecios.getAllProductosConfigPrecios({
       ...headersParams,
@@ -400,7 +401,7 @@ export class ProductosController {
 
   @Get('getCostoProducto')
   @ApiOperation({ summary: 'Obtener costo actual de un producto en un período' })
-  // @Auth()
+  @Auth()
   getCostoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCostoProductoDto) {
     return this.productos.getCostoProducto({
       ...headersParams,
@@ -410,7 +411,7 @@ export class ProductosController {
 
   @Get('getLotesProducto')
   @ApiOperation({ summary: 'Listar lotes registrados de un producto' })
-  // @Auth()
+  @Auth()
   getLotesProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdProductoDto) {
     return this.productos.getLotesProducto({
       ...headersParams,
@@ -420,7 +421,7 @@ export class ProductosController {
 
   @Get('getFilesProductos')
   @ApiOperation({ summary: 'Listar archivos adjuntos de un producto' })
-  //@Auth()
+  @Auth()
   getFilesProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetFilesDto) {
     return this.productos.getFilesProductos({
       ...headersParams,

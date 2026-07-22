@@ -47,6 +47,7 @@ import { UploadMediaDto } from './dto/upload-media.dto';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
+import { Auth } from '../auth';
 
 @Controller('whatsapp')
 export class WhatsappController {
@@ -61,7 +62,7 @@ export class WhatsappController {
 
   // ---------------------------- COMMON
   @Get('getChats')
-  // @Auth()
+  @Auth()
   getChats(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetChatsDto) {
     return this.service.getChats({
       ...headersParams,
@@ -70,13 +71,13 @@ export class WhatsappController {
   }
 
   @Get('getCuenta')
-  // @Auth()
+  @Auth()
   async getCuenta(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.whatsappDbService.getCuenta(headersParams.ideEmpr);
   }
 
   @Get('getMensajes')
-  // @Auth()
+  @Auth()
   async getMensajes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetMensajesDto) {
     return this.service.getMensajes({
       ...headersParams,
@@ -85,7 +86,7 @@ export class WhatsappController {
   }
 
   @Post('enviarMensajeMedia')
-  // @Auth()
+  @Auth()
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(), // Usa memoryStorage importado directamente
@@ -118,7 +119,7 @@ export class WhatsappController {
   }
 
   @Post('uploadMediaFile')
-  // @Auth()
+  @Auth()
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(), // Usa memoryStorage importado directamente
@@ -133,7 +134,7 @@ export class WhatsappController {
   }
 
   @Post('enviarMensajeTexto')
-  // @Auth()
+  @Auth()
   enviarMensajeTexto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EnviarMensajeDto) {
     return this.service.enviarMensajeTexto({
       ...headersParams,
@@ -160,7 +161,7 @@ export class WhatsappController {
   }
 
   @Get('getAgentesCuenta')
-  // @Auth()
+  @Auth()
   getAgentesCuenta(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.whatsappDbService.getAgentesCuenta({
       ...headersParams,
@@ -171,7 +172,7 @@ export class WhatsappController {
   // ==============================
   // ---------------------------- API
   @Get('getListasContacto')
-  // @Auth()
+  @Auth()
   getListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TelefonoDto) {
     return this.service.whatsappApi.getListasContacto({
       ...headersParams,
@@ -180,7 +181,7 @@ export class WhatsappController {
   }
 
   @Get('getListas')
-  // @Auth()
+  @Auth()
   getListas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.whatsappApi.getListas({
       ...headersParams,
@@ -189,7 +190,7 @@ export class WhatsappController {
   }
 
   @Get('getEtiquetas')
-  // @Auth()
+  @Auth()
   getEtiquetas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.whatsappApi.getEtiquetas({
       ...headersParams,
@@ -198,7 +199,7 @@ export class WhatsappController {
   }
 
   @Get('getPermisoAgente')
-  // @Auth()
+  @Auth()
   getPermisoAgente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.whatsappDbService.validarPermisoAgente({
       ...headersParams,
@@ -207,7 +208,7 @@ export class WhatsappController {
   }
 
   @Post('setMensajesLeidosChat')
-  // @Auth()
+  @Auth()
   setMensajesLeidosChat(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GetMensajesDto) {
     return this.service.whatsappApi.setMensajesLeidosChat({
       ...headersParams,
@@ -216,7 +217,7 @@ export class WhatsappController {
   }
 
   @Post('setChatNoLeido')
-  // @Auth()
+  @Auth()
   setChatNoLeido(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatNoLeidoDto) {
     return this.service.whatsappApi.setChatNoLeido({
       ...headersParams,
@@ -225,7 +226,7 @@ export class WhatsappController {
   }
 
   @Post('setChatFavorito')
-  // @Auth()
+  @Auth()
   setChatFavorito(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatFavoritoDto) {
     return this.service.whatsappApi.setChatFavorito({
       ...headersParams,
@@ -234,7 +235,7 @@ export class WhatsappController {
   }
 
   @Post('setEtiquetaChat')
-  // @Auth()
+  @Auth()
   setEtiquetaChat(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatEtiquetaDto) {
     return this.service.whatsappApi.setEtiquetaChat({
       ...headersParams,
@@ -243,7 +244,7 @@ export class WhatsappController {
   }
 
   @Get('getContactosLista')
-  // @Auth()
+  @Auth()
   getContactosLista(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ListaChatDto) {
     return this.service.whatsappApi.getContactosLista({
       ...headersParams,
@@ -252,7 +253,7 @@ export class WhatsappController {
   }
 
   @Get('getTotalMensajes')
-  // @Auth()
+  @Auth()
   getTotalMensajes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.service.whatsappApi.getTotalMensajes({
       ...headersParams,
@@ -261,7 +262,7 @@ export class WhatsappController {
   }
 
   @Get('findContacto')
-  // @Auth()
+  @Auth()
   findContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchChatDto) {
     return this.service.whatsappApi.findContacto({
       ...headersParams,
@@ -270,7 +271,7 @@ export class WhatsappController {
   }
 
   @Get('findTextoMensajes')
-  // @Auth()
+  @Auth()
   findTextoMensajes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchChatDto) {
     return this.service.whatsappApi.findTextoMensajes({
       ...headersParams,
@@ -279,7 +280,7 @@ export class WhatsappController {
   }
 
   @Get('searchContacto')
-  // @Auth()
+  @Auth()
   searchContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchChatDto) {
     return this.service.searchContacto({
       ...headersParams,
@@ -288,7 +289,7 @@ export class WhatsappController {
   }
 
   @Post('saveListasContacto')
-  // @Auth()
+  @Auth()
   saveListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ListContactDto) {
     return this.service.whatsappApi.saveListasContacto({
       ...headersParams,
@@ -297,7 +298,7 @@ export class WhatsappController {
   }
 
   @Post('activarNumero')
-  // @Auth()
+  @Auth()
   activarNumero(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: MensajeChatDto) {
     return this.service.whatsappApi.activarNumero({
       ...headersParams,
@@ -325,7 +326,7 @@ export class WhatsappController {
   // ---------------------------- CAMPAÑAS
 
   @Get('getListaCampanias')
-  // @Auth()
+  @Auth()
   getListaCampanias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.whatsappDbService.getListaCampanias({
       ...headersParams,
@@ -334,7 +335,7 @@ export class WhatsappController {
   }
 
   @Get('getDetalleCampania')
-  // @Auth()
+  @Auth()
   getDetalleCampania(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleCampaniaDto) {
     return this.whatsappDbService.getDetalleCampania({
       ...headersParams,
@@ -343,7 +344,7 @@ export class WhatsappController {
   }
 
   @Post('sendCampania')
-  // @Auth()
+  @Auth()
   sendCampania(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EnviarCampaniaDto) {
     return this.whatsappCamp.sendCampania({
       ...headersParams,
@@ -352,7 +353,7 @@ export class WhatsappController {
   }
 
   @Post('saveCampania')
-  // @Auth()
+  @Auth()
   saveCampania(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveCampaniaDto) {
     return this.whatsappCamp.saveCampania({
       ...headersParams,
@@ -361,19 +362,19 @@ export class WhatsappController {
   }
 
   @Delete('deleteDetailCampaniaById')
-  // @Auth()
+  @Auth()
   deleteDetailCampaniaById(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
     return this.whatsappCamp.deleteDetailCampaniaById(dtoIn.ide);
   }
 
   @Post('updateEstadoCampania')
-  // @Auth()
+  @Auth()
   updateEstadoCampania(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoCampaniaDto) {
     return this.whatsappCamp.updateCampaignStatus(dtoIn.ide_whcenv, dtoIn.ide_whesce);
   }
 
   @Get('getCampaniaById')
-  // @Auth()
+  @Auth()
   getCampaniaById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EnviarCampaniaDto) {
     return this.whatsappDbService.getCampaniaById({
       ...headersParams,
