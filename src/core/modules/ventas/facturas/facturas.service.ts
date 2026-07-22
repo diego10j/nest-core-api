@@ -9,6 +9,7 @@ import { SelectQuery } from '../../../connection/helpers';
 import { SriFacturaService } from '../../sri/cel/sri-factura.service';
 
 import { FacturasDto } from './dto/facturas.dto';
+import { EnviosFacturasDto } from './dto/get-envios-facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
@@ -891,6 +892,95 @@ export class FacturasService extends BaseService {
         if (dtoIn.ideUsuaList && dtoIn.ideUsuaList.length > 0) {
             query.addParam(3, dtoIn.ideUsuaList);
         }
+        return this.dataSource.createQuery(query);
+    }
+
+    async getReporteEnviosFacturas(dtoIn: EnviosFacturasDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const condIdeUsua = dtoIn.ide_usua ? `AND a.ide_usua = ${dtoIn.ide_usua}` : '';
+
+        let condTipo = '';
+        if (dtoIn.tipo === 1) {
+            condTipo = `AND e.es_transporte_propio_cctfa = true`;
+        } else if (dtoIn.tipo === 2) {
+            condTipo = `AND e.ide_vgtra IS NOT NULL AND e.es_transporte_propio_cctfa = false`;
+        } else if (dtoIn.tipo === 3) {
+            condTipo = `AND e.ide_vgtra IS NULL AND e.es_transporte_propio_cctfa = false`;
+        }
+
+        const condIdeCceen = dtoIn.ide_cceen ? `AND e.ide_cceen = ${dtoIn.ide_cceen}` : '';
+
+        const query = new SelectQuery(
+            `
+            WITH facturas_ids AS (
+                SELECT a.ide_cccfa, a.ide_geper
+                FROM cxc_cabece_factura a
+                WHERE a.fecha_emisi_cccfa BETWEEN $1 AND $2
+                  AND a.ide_empr  = ${dtoIn.ideEmpr}
+                  AND a.ide_sucu  = ${dtoIn.ideSucu}
+                  AND a.ide_ccefa = ${estadoNormal}
+                  ${condIdeUsua}
+            )
+            SELECT
+                a.ide_cccfa,
+                a.ide_geper,
+                a.fecha_emisi_cccfa,
+                df.establecimiento_ccdfa,
+                df.pto_emision_ccdfa,
+                df.serie_ccdaf,
+                a.secuencial_cccfa,
+                b.nom_geper AS cliente,
+                b.identificac_geper,
+                a.base_grabada_cccfa,
+                a.base_tarifa0_cccfa + COALESCE(a.base_no_objeto_iva_cccfa, 0) AS base0,
+                a.valor_iva_cccfa,
+                a.total_cccfa,
+                fp.nombre_cndfp AS forma_pago,
+                a.dias_credito_cccfa,
+                v.nombre_vgven AS vendedor,
+                a.usuario_ingre AS usuario_responsable,
+                a.fecha_ingre,
+                a.hora_ingre,
+                e.ide_cctfa,
+                e.es_transporte_propio_cctfa,
+                e.ide_vgtra,
+                t.nombre_vgtra AS nombre_transporte,
+                t.logo_vgtra AS logo_transporte,
+                ee.nombre_cceen AS estado_envio,
+                ee.color_cceen AS color_estado_envio,
+                e.path_imagen_guia_cctfa,
+                e.enviar_por_correo_cctfa,
+                e.correo_cctfa,
+                e.fecha_envio_cctfa,
+                e.fecha_inicio_cctfa,
+                e.fecha_fin_cctfa,
+                e.fecha_fin_real_cctfa,
+                e.comentario_cctfa,
+                e.flete_pagado_cctfa,
+                e.total_flete_cctfa,
+                e.total_flete_real_cctfa
+            FROM cxc_cabece_factura a
+            INNER JOIN facturas_ids fi ON a.ide_cccfa = fi.ide_cccfa
+            INNER JOIN gen_persona b     ON a.ide_geper = b.ide_geper
+            INNER JOIN cxc_datos_fac df  ON a.ide_ccdaf = df.ide_ccdaf
+            LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp1 = fp.ide_cndfp
+            LEFT JOIN ven_vendedor v          ON a.ide_vgven  = v.ide_vgven
+            INNER JOIN cxc_transporte_factura e ON e.ide_cctfa = (
+                SELECT ide_cctfa FROM cxc_transporte_factura
+                WHERE ide_cccfa = a.ide_cccfa
+                ORDER BY ide_cctfa DESC LIMIT 1
+            )
+            LEFT JOIN ven_transporte t     ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN cxc_estado_envio ee  ON e.ide_cceen = ee.ide_cceen
+            WHERE TRUE
+                ${condTipo}
+                ${condIdeCceen}
+            ORDER BY a.fecha_emisi_cccfa DESC, a.secuencial_cccfa DESC
+            `,
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
         return this.dataSource.createQuery(query);
     }
 
