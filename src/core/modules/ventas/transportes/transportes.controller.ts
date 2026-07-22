@@ -16,6 +16,9 @@ import { v4 as uuid } from 'uuid';
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import {
     CompletarEnvioDto,
+    GetFacturasParaRutaDto,
+    GetRutasDto,
+    ReenviarGuiaDto,
     SaveEnvioDto,
     SaveRutaDetDto,
     SaveRutaDto,
@@ -132,6 +135,12 @@ export class TransportesController {
         return this.saveService.completarEnvio({ ...h, ...dtoIn });
     }
 
+    @Post('reenviarGuia')
+    @ApiOperation({ summary: 'Reenviar guía de envío a otro correo. Requiere que el envío ya haya sido completado y enviado previamente.' })
+    reenviarGuia(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: ReenviarGuiaDto) {
+        return this.saveService.reenviarGuiaEmail({ ...h, ...dtoIn });
+    }
+
     @Post('uploadImagenEnvio')
     @ApiConsumes('multipart/form-data')
     @ApiOperation({ summary: 'Subir imagen de guía de transporte o evidencia de entrega' })
@@ -176,15 +185,21 @@ export class TransportesController {
     // ─── RUTAS ────────────────────────────────────────────────────────────────
 
     @Get('getRutas')
-    @ApiOperation({ summary: 'Listar rutas diarias con total de paradas' })
-    getRutas(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+    @ApiOperation({ summary: 'Listar rutas diarias con total de paradas. Filtro opcional por rango de fechas (?fechaDesde=&fechaHasta=)' })
+    getRutas(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetRutasDto) {
         return this.service.getRutas({ ...h, ...dtoIn });
     }
 
     @Get('getRutaById')
-    @ApiOperation({ summary: 'Obtener una ruta por ID con cabecera y detalle de paradas' })
+    @ApiOperation({ summary: 'Obtener una ruta por ID con cabecera y detalle de paradas (joins a factura, envio, transporte)' })
     getRutaById(@AppHeaders() h: HeaderParamsDto, @Query('ide_vgrta') ide_vgrta: string) {
         return this.service.getRutaById({ ...h, ide_vgrta: Number(ide_vgrta) });
+    }
+
+    @Get('getFacturasParaRuta')
+    @ApiOperation({ summary: 'Obtener facturas con envío para agregar a una ruta. Filtra por rango de fecha de emisión y tipo de transporte (todas|propio|externo)' })
+    getFacturasParaRuta(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetFacturasParaRutaDto) {
+        return this.service.getFacturasParaRuta({ ...h, ...dtoIn });
     }
 
     @Post('saveRuta')
@@ -197,6 +212,12 @@ export class TransportesController {
     @ApiOperation({ summary: 'Eliminar una ruta y sus paradas' })
     deleteRuta(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: { ide_vgrta: number }) {
         return this.saveService.deleteRuta({ ...h, ...dtoIn });
+    }
+
+    @Post('setActivoRuta')
+    @ApiOperation({ summary: 'Activar o inactivar una ruta' })
+    setActivoRuta(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: SetActivoTransDto) {
+        return this.saveService.setActivoRuta({ ...h, ...dtoIn });
     }
 
     @Post('saveRutaDet')

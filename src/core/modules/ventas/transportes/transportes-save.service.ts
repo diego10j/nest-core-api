@@ -1,12 +1,23 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import handlebars from 'handlebars';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
+import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
+import { MailService } from 'src/core/email/services/mail.service';
+import { fDate, getCurrentDateTime } from 'src/util/helpers/date-util';
+import { normalizarUrl } from 'src/util/helpers/string-util';
 
 import {
     CompletarEnvioDto,
+    ReenviarGuiaDto,
     SaveEnvioDto,
     SaveRutaDetDto,
     SaveRutaDto,
@@ -16,9 +27,12 @@ import {
 
 @Injectable()
 export class TransportesSaveService extends BaseService {
+    private readonly logger = new Logger(TransportesSaveService.name);
+
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly mailService: MailService,
     ) {
         super();
     }
@@ -295,11 +309,245 @@ export class TransportesSaveService extends BaseService {
             params,
         );
 
-        return {
+        const result: Record<string, unknown> = {
             message: 'ok',
             ide_cctfa: dtoIn.ide_cctfa,
             ide_cceen: dtoIn.ide_cceen,
+            correo_enviado: false,
         };
+
+        const updated = await this.dataSource.pool.query(
+            `SELECT enviar_por_correo_cctfa, correo_cctfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+        const row = updated.rows[0];
+
+        if (row?.enviar_por_correo_cctfa && row?.correo_cctfa) {
+            try {
+                const mailResult = await this.sendGuiaEmail(dtoIn.ide_cctfa, dtoIn);
+                result.correo_enviado = mailResult.enviado;
+                result.message_id = mailResult.messageId;
+            } catch (error) {
+                this.logger.warn(`Error al enviar guía por correo para ide_cctfa=${dtoIn.ide_cctfa}: ${error}`);
+                result.correo_error = String(error);
+            }
+        }
+
+        return result;
+    }
+
+    async reenviarGuiaEmail(dtoIn: ReenviarGuiaDto & HeaderParamsDto) {
+        const current = await this.dataSource.pool.query(
+            `SELECT fecha_envio_cctfa, correo_cctfa, path_imagen_guia_cctfa
+             FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+
+        if (current.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+
+        if (!current.rows[0].fecha_envio_cctfa) {
+            throw new BadRequestException('La guía aún no ha sido enviada por primera vez. Use completarEnvio primero.');
+        }
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura
+             SET correo_cctfa = $1,
+                 fecha_envio_cctfa = $2,
+                 usuario_actua = $3,
+                 fecha_actua = CURRENT_DATE,
+                 hora_actua = CURRENT_TIME
+             WHERE ide_cctfa = $4`,
+            [dtoIn.correo, getCurrentDateTime(), dtoIn.login, dtoIn.ide_cctfa],
+        );
+
+        let mailResult: { enviado: boolean; messageId?: string };
+        try {
+            mailResult = await this.sendGuiaEmail(dtoIn.ide_cctfa, dtoIn);
+        } catch (error) {
+            this.logger.warn(`Error al reenviar guía para ide_cctfa=${dtoIn.ide_cctfa}: ${error}`);
+            throw error;
+        }
+
+        return {
+            message: 'ok',
+            ide_cctfa: dtoIn.ide_cctfa,
+            correo: dtoIn.correo,
+            enviado: mailResult.enviado,
+            message_id: mailResult.messageId,
+        };
+    }
+
+    private async sendGuiaEmail(
+        ideCctfa: number,
+        dtoIn: HeaderParamsDto,
+    ): Promise<{ enviado: boolean; messageId?: string }> {
+        const qEnvio = new SelectQuery(`
+            SELECT
+                e.ide_cctfa,
+                e.ide_cccfa,
+                f.secuencial_cccfa,
+                f.total_cccfa,
+                f.fecha_emisi_cccfa,
+                cl.nom_geper AS cliente,
+                cl.identificac_geper,
+                cl.direccion_geper,
+                cl.telefono_geper,
+                e.ide_vgtra,
+                t.nombre_vgtra,
+                e.es_transporte_propio_cctfa,
+                e.ide_gecam,
+                ca.placa_gecam,
+                ca.descripcion_gecam AS vehiculo,
+                e.ide_geper,
+                ch.nom_geper AS chofer,
+                e.ide_cceen,
+                ee.nombre_cceen,
+                ee.color_cceen,
+                e.fecha_inicio_cctfa,
+                e.fecha_fin_cctfa,
+                e.fecha_fin_real_cctfa,
+                e.path_imagen_guia_cctfa,
+                e.base_flete_cctfa,
+                e.valor_iva_flete_cctfa,
+                e.total_flete_cctfa,
+                e.base_flete_real_cctfa,
+                e.valor_iva_flete_real_cctfa,
+                e.total_flete_real_cctfa,
+                e.flete_pagado_cctfa,
+                e.comentario_cctfa,
+                e.correo_cctfa
+            FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
+            INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+            LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN gen_camion ca ON e.ide_gecam = ca.placa_gecam
+            LEFT JOIN gen_persona ch ON e.ide_geper = ch.ide_geper
+            LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+            WHERE e.ide_cctfa = $1
+        `);
+        qEnvio.addIntParam(1, ideCctfa);
+        const envio = await this.dataSource.createSingleQuery(qEnvio);
+
+        if (!envio) {
+            throw new BadRequestException(`Envío ide_cctfa=${ideCctfa} no encontrado`);
+        }
+
+        const qEmpresa = new SelectQuery(`
+            SELECT ide_empr, nom_empr, direccion_empr, telefono_empr, mail_empr, pagina_empr, logotipo_empr
+            FROM sis_empresa WHERE ide_empr = $1
+        `);
+        qEmpresa.addIntParam(1, dtoIn.ideEmpr);
+        const empresa = await this.dataSource.createSingleQuery(qEmpresa);
+
+        let logoBase64: string | undefined;
+        if (empresa?.logotipo_empr) {
+            const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+            if (fs.existsSync(logoPath)) {
+                logoBase64 = fs.readFileSync(logoPath).toString('base64');
+            }
+        }
+
+        const esTransportePropio = envio.es_transporte_propio_cctfa === true;
+
+        const variables: Record<string, unknown> = {
+            appName: empresa?.nom_empr || 'ProERP',
+            logoBase64,
+            title: `Guía de envío Factura #${envio.secuencial_cccfa}`,
+            currentYear: new Date().getFullYear(),
+            cliente: envio.cliente,
+            identificacion: envio.identificac_geper || '—',
+            secuencial: envio.secuencial_cccfa,
+            fechaEnvio: envio.fecha_inicio_cctfa || envio.fecha_emisi_cccfa,
+            tipoTransporte: esTransportePropio ? 'Transporte Propio' : 'Empresa de Transporte',
+            nombreTransporte: esTransportePropio ? 'Vehículo propio' : (envio.nombre_vgtra || '—'),
+            esTransportePropio,
+            placa: envio.placa_gecam || null,
+            vehiculo: envio.vehiculo || null,
+            chofer: envio.chofer || null,
+            estado: envio.nombre_cceen || '—',
+            fechaTentativa: envio.fecha_fin_cctfa || null,
+            fechaReal: envio.fecha_fin_real_cctfa || null,
+            totalFlete: envio.total_flete_real_cctfa || envio.total_flete_cctfa,
+            muestraFlete: (envio.total_flete_real_cctfa > 0) || (envio.total_flete_cctfa > 0),
+            fletePagado: envio.flete_pagado_cctfa,
+            comentario: envio.comentario_cctfa || null,
+            empresaDireccion: empresa?.direccion_empr || '',
+            empresaTelefono: empresa?.telefono_empr || '',
+            empresaWeb: empresa?.pagina_empr ? normalizarUrl(empresa.pagina_empr) : '',
+            empresaWebDisplay: empresa?.pagina_empr || '',
+            bannerColor: envio.color_cceen === 'error' ? '#FEF2F2' :
+                         envio.color_cceen === 'success' ? '#ECFDF5' :
+                         envio.color_cceen === 'warning' ? '#FFFBEB' : '#EEF3FF',
+            bannerBorder: envio.color_cceen === 'error' ? '#DC2626' :
+                          envio.color_cceen === 'success' ? '#059669' :
+                          envio.color_cceen === 'warning' ? '#E8A000' : '#1A56DB',
+            bannerText: envio.color_cceen === 'error' ? '#991B1B' :
+                        envio.color_cceen === 'success' ? '#065F46' :
+                        envio.color_cceen === 'warning' ? '#6B4F00' : '#1E40AF',
+            bannerIcon: envio.color_cceen === 'error' ? '⚠️' :
+                        envio.color_cceen === 'success' ? '✅' :
+                        envio.color_cceen === 'warning' ? '⏳' : '📦',
+        };
+
+        const htmlContent = this.buildGuiaHtml(variables);
+
+        const adjuntosEnvio: AdjuntoCorreoDto[] = [];
+
+        if (envio.path_imagen_guia_cctfa) {
+            const imagenPath = path.join(envs.pathDrive, 'ventas', 'envios', envio.path_imagen_guia_cctfa);
+            if (fs.existsSync(imagenPath)) {
+                const imagenBuffer = fs.readFileSync(imagenPath);
+                const ext = path.extname(imagenPath).toLowerCase().replace('.', '');
+                const mimeMap: Record<string, string> = {
+                    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+                    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+                };
+                adjuntosEnvio.push({
+                    nombre: `Guia_${envio.secuencial_cccfa}.${ext}`,
+                    tipoMime: mimeMap[ext] || 'image/jpeg',
+                    tamano: imagenBuffer.length,
+                    ruta: '',
+                    contenidoBase64: imagenBuffer.toString('base64'),
+                });
+            }
+        }
+
+        const asunto = `📦 Guía de envío - Factura #${envio.secuencial_cccfa}`;
+
+        const { messageId } = await this.mailService.sendMail(
+            {
+                destinatario: envio.correo_cctfa,
+                asunto,
+                contenido: htmlContent,
+                adjuntos: adjuntosEnvio,
+            },
+            dtoIn.ideEmpr,
+            dtoIn.login,
+        );
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura SET fecha_envio_cctfa = $1 WHERE ide_cctfa = $2`,
+            [getCurrentDateTime(), ideCctfa],
+        );
+
+        return { enviado: true, messageId };
+    }
+
+    private buildGuiaHtml(variables: Record<string, unknown>): string {
+        const templatesBase = path.join(process.cwd(), 'src', 'core', 'email', 'templates');
+        const headerContent = fs.readFileSync(path.join(templatesBase, 'partials', 'header.hbs'), 'utf-8');
+        const footerContent = fs.readFileSync(path.join(templatesBase, 'partials', 'footer.hbs'), 'utf-8');
+
+        handlebars.registerPartial('partials/header', headerContent);
+        handlebars.registerPartial('partials/footer', footerContent);
+
+        registerHelpers(handlebars);
+
+        const bodyContent = fs.readFileSync(path.join(templatesBase, 'transportes', 'guia-envio.hbs'), 'utf-8');
+        const template = handlebars.compile(bodyContent);
+        return template(variables);
     }
 
     // ─── RUTA ─────────────────────────────────────────────────────────────────
@@ -308,23 +556,34 @@ export class TransportesSaveService extends BaseService {
         const isUpdate = dtoIn.ide_vgrta != null;
         const pk = isUpdate ? dtoIn.ide_vgrta! : await this.dataSource.getSeqTable('ven_ruta', 'ide_vgrta', 1, dtoIn.login);
 
+        const object: Record<string, unknown> = {
+            ide_vgrta: pk,
+            ide_gecam: dtoIn.ide_gecam,
+            ide_geper: dtoIn.ide_geper,
+            ide_usua: dtoIn.ide_usua,
+            fecha_ruta_vgrta: dtoIn.fecha_ruta_vgrta,
+        };
+
+        const setIfDefined = (key: string, value: unknown, insertDefault: unknown) => {
+            if (isUpdate) {
+                if (value !== undefined) object[key] = value;
+            } else {
+                object[key] = value ?? insertDefault;
+            }
+        };
+
+        setIfDefined('nombre_vgrta', dtoIn.nombre_vgrta, null);
+        setIfDefined('latitud_inicio_vgrta', dtoIn.latitud_inicio_vgrta, null);
+        setIfDefined('longitud_inicio_vgrta', dtoIn.longitud_inicio_vgrta, null);
+        setIfDefined('direccion_inicio_vgrta', dtoIn.direccion_inicio_vgrta, null);
+        setIfDefined('comentario_vgrta', dtoIn.comentario_vgrta, null);
+
         const listQuery = [{
             operation: isUpdate ? 'update' as const : 'insert' as const,
             module: 'ven',
             tableName: 'ruta',
             primaryKey: 'ide_vgrta',
-            object: {
-                ide_vgrta: pk,
-                ide_gecam: dtoIn.ide_gecam,
-                ide_geper: dtoIn.ide_geper,
-                ide_usua: dtoIn.ide_usua,
-                fecha_ruta_vgrta: dtoIn.fecha_ruta_vgrta,
-                nombre_vgrta: dtoIn.nombre_vgrta ?? null,
-                latitud_inicio_vgrta: dtoIn.latitud_inicio_vgrta ?? null,
-                longitud_inicio_vgrta: dtoIn.longitud_inicio_vgrta ?? null,
-                direccion_inicio_vgrta: dtoIn.direccion_inicio_vgrta ?? null,
-                comentario_vgrta: dtoIn.comentario_vgrta ?? null,
-            },
+            object,
             condition: isUpdate ? `ide_vgrta = ${pk}` : undefined,
         }];
 
@@ -335,6 +594,14 @@ export class TransportesSaveService extends BaseService {
     async deleteRuta(dtoIn: { ide_vgrta: number } & HeaderParamsDto) {
         await this.dataSource.pool.query(`DELETE FROM ven_ruta_det WHERE ide_vgrta = $1`, [dtoIn.ide_vgrta]);
         await this.dataSource.pool.query(`DELETE FROM ven_ruta WHERE ide_vgrta = $1`, [dtoIn.ide_vgrta]);
+        return { message: 'ok' };
+    }
+
+    async setActivoRuta(dtoIn: SetActivoTransDto & HeaderParamsDto) {
+        await this.dataSource.pool.query(
+            `UPDATE ven_ruta SET activo_vgrta = $1 WHERE ide_vgrta = $2`,
+            [dtoIn.activo, dtoIn.ide],
+        );
         return { message: 'ok' };
     }
 

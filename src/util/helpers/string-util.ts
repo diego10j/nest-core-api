@@ -22,3 +22,10 @@ export function fToTitleCase(text: string): string {
     return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
   });
 }
+
+export function normalizarUrl(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}

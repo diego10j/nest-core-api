@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class SetActivoTransDto {
     @IsInt()
@@ -364,4 +365,43 @@ export class SaveRutaDetDto {
     @IsString()
     @IsOptional()
     comentario_vgrtd?: string;
+}
+
+export class GetRutasDto extends QueryOptionsDto {
+    @IsString()
+    @IsOptional()
+    fechaDesde?: string;
+
+    @IsString()
+    @IsOptional()
+    fechaHasta?: string;
+}
+
+export class GetFacturasParaRutaDto extends QueryOptionsDto {
+    @IsString()
+    @IsNotEmpty()
+    fechaDesde: string;
+
+    @IsString()
+    @IsNotEmpty()
+    fechaHasta: string;
+
+    @IsIn(['todas', 'propio', 'externo'])
+    @IsOptional()
+    tipoEnvio?: string;
+
+    @IsInt()
+    @IsOptional()
+    ideVgrta?: number;
+}
+
+export class ReenviarGuiaDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cctfa: number;
+
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(200)
+    correo: string;
 }

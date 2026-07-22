@@ -7,6 +7,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
+import { GetFacturasParaRutaDto, GetRutasDto } from './dto/save-transporte.dto';
 
 @Injectable()
 export class TransportesService extends BaseService {
@@ -253,7 +254,27 @@ export class TransportesService extends BaseService {
 
     // ─── RUTA (ven_ruta) ──────────────────────────────────────────────────────
 
-    async getRutas(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+    async getRutas(dtoIn: GetRutasDto & HeaderParamsDto) {
+        const condFecha = [];
+        const params: number[] = [];
+        let paramIdx = 0;
+
+        if (dtoIn.fechaDesde) {
+            paramIdx++;
+            condFecha.push(`r.fecha_ruta_vgrta >= $${paramIdx}`);
+            params.push(null as any);
+        }
+        if (dtoIn.fechaHasta) {
+            paramIdx++;
+            condFecha.push(`r.fecha_ruta_vgrta <= $${paramIdx}`);
+            params.push(null as any);
+        }
+
+        // Reconstruir params con valores reales
+        let pi = 0;
+        if (dtoIn.fechaDesde) params[pi++] = dtoIn.fechaDesde as any;
+        if (dtoIn.fechaHasta) params[pi++] = dtoIn.fechaHasta as any;
+
         const q = new SelectQuery(`
             SELECT
                 r.ide_vgrta,
@@ -278,8 +299,14 @@ export class TransportesService extends BaseService {
             INNER JOIN gen_persona p ON r.ide_geper = p.ide_geper
             LEFT JOIN sis_usuario u ON r.ide_usua = u.ide_usua
             WHERE r.ide_empr = ${dtoIn.ideEmpr}
+            ${condFecha.length ? 'AND ' + condFecha.join(' AND ') : ''}
             ORDER BY r.fecha_ruta_vgrta DESC, r.ide_vgrta DESC
         `, dtoIn);
+        if (dtoIn.fechaDesde) q.addParam(1, dtoIn.fechaDesde);
+        if (dtoIn.fechaHasta) {
+            const idx = dtoIn.fechaDesde ? 2 : 1;
+            q.addParam(idx, dtoIn.fechaHasta);
+        }
         return this.dataSource.createQuery(q, 'ven_ruta');
     }
 
@@ -301,10 +328,27 @@ export class TransportesService extends BaseService {
                 d.*,
                 f.secuencial_cccfa,
                 f.total_cccfa,
-                cl.nom_geper AS cliente
+                f.fecha_emisi_cccfa,
+                cl.nom_geper AS cliente,
+                cl.identificac_geper,
+                cl.direccion_geper,
+                e.ide_cceen,
+                e.es_transporte_propio_cctfa,
+                e.path_imagen_guia_cctfa,
+                ee.nombre_cceen,
+                ee.color_cceen,
+                t.nombre_vgtra,
+                ca2.placa_gecam AS envio_placa,
+                ca2.descripcion_gecam AS envio_vehiculo,
+                ch2.nom_geper AS envio_chofer
             FROM ven_ruta_det d
             LEFT JOIN cxc_cabece_factura f ON d.ide_cccfa = f.ide_cccfa
             LEFT JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+            LEFT JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
+            LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+            LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN gen_camion ca2 ON e.ide_gecam = ca2.placa_gecam
+            LEFT JOIN gen_persona ch2 ON e.ide_geper = ch2.ide_geper
             WHERE d.ide_vgrta = $1
             ORDER BY d.orden_vgrtd
         `);
@@ -318,6 +362,66 @@ export class TransportesService extends BaseService {
         if (!cabecera) throw new BadRequestException(`Ruta ide_vgrta=${dtoIn.ide_vgrta} no encontrada`);
 
         return { row: { cabecera, detalles }, message: 'ok' };
+    }
+
+    async getFacturasParaRuta(dtoIn: GetFacturasParaRutaDto & HeaderParamsDto) {
+        const condTipo = dtoIn.tipoEnvio === 'propio'
+            ? 'AND e.es_transporte_propio_cctfa = true'
+            : dtoIn.tipoEnvio === 'externo'
+                ? 'AND e.es_transporte_propio_cctfa = false'
+                : '';
+
+        const condExcluir = dtoIn.ideVgrta != null
+            ? `AND NOT EXISTS (SELECT 1 FROM ven_ruta_det rd WHERE rd.ide_cccfa = e.ide_cccfa AND rd.ide_vgrta = ${dtoIn.ideVgrta})`
+            : '';
+
+        const q = new SelectQuery(`
+            SELECT
+                f.ide_cccfa,
+                f.secuencial_cccfa,
+                f.total_cccfa,
+                f.fecha_emisi_cccfa,
+                cl.nom_geper AS cliente,
+                cl.identificac_geper,
+                cl.direccion_geper,
+                e.ide_cctfa,
+                e.ide_vgtra,
+                e.es_transporte_propio_cctfa,
+                e.ide_cceen,
+                ee.nombre_cceen,
+                ee.color_cceen,
+                t.nombre_vgtra,
+                e.ide_gecam,
+                ca.placa_gecam,
+                ca.descripcion_gecam AS vehiculo,
+                e.ide_geper AS ide_chofer,
+                ch.nom_geper AS chofer,
+                e.fecha_inicio_cctfa,
+                e.fecha_fin_cctfa,
+                e.base_flete_cctfa,
+                e.total_flete_cctfa,
+                e.base_flete_real_cctfa,
+                e.total_flete_real_cctfa,
+                e.comentario_cctfa
+            FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
+            INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+            LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+            LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN gen_camion ca ON e.ide_gecam = ca.placa_gecam
+            LEFT JOIN gen_persona ch ON e.ide_geper = ch.ide_geper
+            WHERE f.fecha_emisi_cccfa >= $1
+              AND f.fecha_emisi_cccfa <= $2
+              AND f.ide_empr = ${dtoIn.ideEmpr}
+              AND f.ide_sucu = $3
+              ${condTipo}
+              ${condExcluir}
+            ORDER BY f.secuencial_cccfa
+        `, dtoIn);
+        q.addParam(1, dtoIn.fechaDesde);
+        q.addParam(2, dtoIn.fechaHasta);
+        q.addParam(3, dtoIn.ideSucu);
+        return this.dataSource.createQuery(q, 'cxc_transporte_factura');
     }
 
     // ─── COMBOS ADICIONALES ───────────────────────────────────────────────────

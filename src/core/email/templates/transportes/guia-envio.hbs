@@ -1,25 +1,28 @@
 {{> partials/header
-    title="Tu proforma está lista"
-    heroLabel="Cotización Comercial"
-    subtitle="Revisa los datos principales y el PDF adjunto para el detalle completo."
+    title="Confirmación de envío"
+    heroLabel="Guía de Transporte"
+    subtitle="Adjunto encontrarás la guía de envío con los datos de la entrega."
 }}
 
 <!-- ── Saludo ── -->
 <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#0D1F4E;">
-    Hola, {{capitalizeWords solicitante}} 👋
+    Hola, {{capitalizeWords cliente}} 👋
 </p>
 <p style="margin:0 0 22px;font-size:14px;line-height:1.75;color:#4A5E7A;">
-    Es un gusto atenderte. Tu proforma est&aacute; lista y esperamos que se ajuste a lo que necesitas. Rev&iacute;sala con calma y si tienes alguna pregunta o deseas hacer alg&uacute;n ajuste, estamos aqu&iacute; para ayudarte en lo que necesites.
+    Tu env&iacute;o ha sido registrado. A continuaci&oacute;n te compartimos los datos de la entrega.
+    {{#if esTransportePropio}}
+    El traslado se realiza con veh&iacute;culo propio. La gu&iacute;a firmada se adjunta como comprobante de entrega.
+    {{/if}}
 </p>
 
 <!-- ── Banner de estado ── -->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
        style="border-collapse:collapse;margin:0 0 24px;">
     <tr>
-        <td style="background-color:#ECFDF5;border-left:3px solid #059669;
+        <td style="background-color:{{bannerColor}};border-left:3px solid {{bannerBorder}};
                    border-radius:0 8px 8px 0;padding:12px 16px;">
-            <p style="margin:0;font-size:13px;font-weight:700;color:#065F46;">
-                ✅&nbsp; Proforma emitida y lista para confirmaci&oacute;n comercial
+            <p style="margin:0;font-size:13px;font-weight:700;color:{{bannerText}};">
+                {{bannerIcon}}&nbsp; Estado: {{estado}}
             </p>
         </td>
     </tr>
@@ -28,7 +31,7 @@
 <!-- ── Sección label ── -->
 <p style="font-size:10px;font-weight:700;text-transform:uppercase;
           letter-spacing:0.12em;color:#8898B4;margin:0 0 10px;">
-    Datos de la proforma
+    Datos del env&iacute;o
 </p>
 
 <!-- ── Info card ── -->
@@ -43,17 +46,17 @@
                    border-bottom:1px solid #E2EAF4;
                    font-size:11px;font-weight:700;
                    letter-spacing:0.10em;text-transform:uppercase;color:#1A56DB;">
-            Resumen del Documento
+            Informaci&oacute;n de Entrega
         </td>
     </tr>
 
-    <!-- Fila 1: Número + Fecha -->
+    <!-- Fila 1: Factura + Fecha -->
     <tr>
         <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
                                border-right:1px solid #EEF2F8;vertical-align:top;">
             <span style="display:block;font-size:10px;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">N&uacute;mero</span>
+                         color:#8898B4;margin-bottom:4px;">Factura</span>
             <span style="font-size:13px;font-weight:700;color:#0D1F4E;
                          font-family:'DM Mono',monospace;
                          background-color:#EEF3FF;border-radius:4px;
@@ -66,74 +69,85 @@
             <span style="display:block;font-size:10px;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.07em;
                          color:#8898B4;margin-bottom:4px;">Fecha</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formatDate fecha}}</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formatDate fechaEnvio}}</span>
         </td>
     </tr>
 
-    <!-- Fila 2: Cliente (fila completa) -->
-    <tr>
-        <td colspan="2" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
-                               vertical-align:top;">
-            <span style="display:block;font-size:10px;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">Cliente</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{solicitante}}</span>
-        </td>
-    </tr>
-
-    <!-- Fila 3: Validez + Forma de pago (condicional) -->
-    {{#if validez}}
+    <!-- Fila 2: Cliente -->
     <tr>
         <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
                                border-right:1px solid #EEF2F8;vertical-align:top;">
             <span style="display:block;font-size:10px;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">Validez</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{validez}}</span>
+                         color:#8898B4;margin-bottom:4px;">Cliente</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{cliente}}</span>
         </td>
         <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
                                vertical-align:top;">
             <span style="display:block;font-size:10px;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">Forma de pago</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formaPago}}</span>
+                         color:#8898B4;margin-bottom:4px;">Identificaci&oacute;n</span>
+            <span style="font-size:13px;color:#4A5E7A;">{{identificacion}}</span>
+        </td>
+    </tr>
+
+    <!-- Fila 3: Tipo transporte + Empresa/Propio -->
+    <tr>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               border-right:1px solid #EEF2F8;vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Tipo de transporte</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{tipoTransporte}}</span>
+        </td>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Transporte</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{nombreTransporte}}</span>
+        </td>
+    </tr>
+
+    <!-- Fila 4: Vehículo + Chofer (condicional) -->
+    {{#if placa}}
+    <tr>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               border-right:1px solid #EEF2F8;vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Veh&iacute;culo</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{placa}}{{#if vehiculo}} - {{vehiculo}}{{/if}}</span>
+        </td>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Chofer</span>
+            <span style="font-size:13px;color:#4A5E7A;">{{#if chofer}}{{chofer}}{{else}}—{{/if}}</span>
         </td>
     </tr>
     {{/if}}
 
-    <!-- Fila total — highlight -->
-    <tr>
-        <td colspan="2"
-            style="padding:14px 16px;background-color:#F5F8FF;vertical-align:middle;">
-            <span style="display:block;font-size:10px;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.10em;
-                         color:#8898B4;margin-bottom:6px;">Total de la proforma</span>
-            <span style="font-size:28px;font-weight:800;color:#1A56DB;
-                         letter-spacing:-0.02em;line-height:1;">
-                {{total}}
-            </span>
-        </td>
-    </tr>
 
 </table>
 
-<!-- ── Aviso PDF adjunto ── -->
+<!-- ── Aviso guía adjunta ── -->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
        style="border-collapse:collapse;margin:0 0 20px;">
     <tr>
         <td style="background-color:#F5F8FF;border:1px solid #E2EAF4;
                    border-radius:8px;padding:14px 16px;">
             <p style="margin:0;font-size:13px;line-height:1.75;color:#4A5E7A;">
-                📎&nbsp; El detalle de productos, condiciones comerciales y t&eacute;rminos
-                se encuentran en el
-                <strong style="color:#0D1F4E;">PDF adjunto</strong>.
+                📎&nbsp; La gu&iacute;a de transporte se encuentra en la
+                <strong style="color:#0D1F4E;">imagen adjunta</strong> a este correo.
             </p>
         </td>
     </tr>
 </table>
 
 <!-- ── Observaciones (condicional) ── -->
-{{#if observacion}}
+{{#if comentario}}
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
        style="border-collapse:collapse;margin:0 0 20px;">
     <tr>
@@ -144,7 +158,7 @@
                            text-transform:uppercase;letter-spacing:0.08em;color:#92400E;">
                 Observaciones
             </strong>
-            {{observacion}}
+            {{comentario}}
         </td>
     </tr>
 </table>
@@ -158,29 +172,14 @@
             <p style="margin:0 0 6px;font-size:13px;color:#8898B4;line-height:1.6;">
                 Atentamente,
             </p>
-            {{#if vendedor}}
             <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#0D1F4E;
-                      line-height:1.6;text-transform:capitalize;">
-                {{ capitalizeWords vendedor}}
+                      line-height:1.6;">
+                {{appName}}
             </p>
-            {{/if}}
-            {{#if vendedorCorreo}}
-            <p style="margin:4px 0;font-size:13px;line-height:1.6;">
-                <span style="color:#4A5E7A;">&#9993;&ensp;</span>
-                <a href="mailto:{{vendedorCorreo}}" style="color:#1A56DB;text-decoration:none;">{{vendedorCorreo}}</a>
-            </p>
-            {{/if}}
-            {{#if vendedorMovil}}
-            <p style="margin:4px 0;font-size:13px;line-height:1.6;">
-                <span style="color:#4A5E7A;">&#128241;&ensp;</span>
-                <a href="https://wa.me/{{whatsappNumber vendedorMovil}}" style="color:#25D366;text-decoration:none;font-weight:600;">{{vendedorMovil}}</a>
-                <span style="font-size:10px;color:#94A3B8;margin-left:6px;">WhatsApp</span>
-            </p>
-            {{/if}}
             {{#if empresaWeb}}
             <p style="margin:4px 0 0;font-size:13px;line-height:1.6;">
                 <span style="color:#4A5E7A;">&#127760;&ensp;</span>
-                <a href="{{empresaWeb}}" style="color:#8898B4;text-decoration:none;">{{empresaWebDisplay}}</a>
+                <a href="{{empresaWeb}}" style="color:#1A56DB;text-decoration:none;">{{empresaWebDisplay}}</a>
             </p>
             {{/if}}
         </td>

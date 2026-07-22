@@ -10,7 +10,7 @@
                             <a href="{{empresaWeb}}"
                                style="font-size:12px;font-weight:600;color:#5B80C0;
                                       text-decoration:none;">
-                                {{empresaWeb}}
+                                {{#if empresaWebDisplay}}{{empresaWebDisplay}}{{else}}{{empresaWeb}}{{/if}}
                             </a>
                         </p>
                         {{/if}}

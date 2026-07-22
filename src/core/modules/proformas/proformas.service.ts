@@ -23,6 +23,7 @@ import { proformaReport } from 'src/reports/modules/proformas/proforma.report';
 import { isDefined, fCurrency } from 'src/util/helpers/common-util';
 import { fDate, getCurrentDate, getCurrentDateTime, getCurrentTime } from 'src/util/helpers/date-util';
 import { fNumber, roundTo, roundPrecio } from 'src/util/helpers/number-util';
+import { normalizarUrl } from 'src/util/helpers/string-util';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 
 import { AssignProformaDto } from './dto/assign-proforma.dto';
@@ -2013,7 +2014,8 @@ ORDER BY prof.secuencial_cccpr DESC
       empresaDireccion: empresa?.direccion_empr || '',
       empresaTelefono: empresa?.telefono_empr || '',
       empresaEmail: empresa?.mail_empr || '',
-      empresaWeb: empresa?.pagina_empr || '',
+      empresaWeb: empresa?.pagina_empr ? normalizarUrl(empresa.pagina_empr) : '',
+      empresaWebDisplay: empresa?.pagina_empr || '',
     };
 
     const htmlContent = this.buildEmailHtml(variables);
@@ -2289,7 +2291,8 @@ ORDER BY prof.secuencial_cccpr DESC
       empresaDireccion: empresa?.direccion_empr || '',
       empresaTelefono: empresa?.telefono_empr || '',
       empresaEmail: empresa?.mail_empr || '',
-      empresaWeb: empresa?.pagina_empr || '',
+      empresaWeb: empresa?.pagina_empr ? normalizarUrl(empresa.pagina_empr) : '',
+      empresaWebDisplay: empresa?.pagina_empr || '',
     };
 
     const html = this.buildEmailHtml(variables);

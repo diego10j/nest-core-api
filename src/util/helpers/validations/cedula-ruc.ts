@@ -40,25 +40,23 @@ export function validateRUC(ruc: string) {
   const typeCode = +ruc.slice(2, 3);
   const id = ruc.slice(0, 10);
 
-  if (/^[0-5]$/.test(`${typeCode}`)) {
-    result.isValid = validateCedula(id);
-    result.type = 'RUC de persona natural';
-  }
-
   if (typeCode === 9) {
-    // El SRI no aplica Módulo 11 a S.A.S. (Ley de Emprendimiento 2020).
-    // ~58% de RUC S.A.S. reales fallan el algoritmo, por eso solo se valida
-    // estructura: provincia + sufijo '001'. Se informa si el Módulo 11 pasa o no.
     const passesModulo11 = validateLegalEntityRUC(id);
     result.isValid = true;
     result.type = passesModulo11
       ? 'RUC de persona jurídica'
       : 'RUC de persona jurídica (S.A.S.)';
-  }
-
-  if (typeCode === 6) {
-    result.isValid = validatePublicEntityRUC(ruc);
-    result.type = 'RUC de entidad pública';
+  } else if (typeCode === 6) {
+    if (validatePublicEntityRUC(ruc)) {
+      result.isValid = true;
+      result.type = 'RUC de entidad pública';
+    } else if (validateCedula(id)) {
+      result.isValid = true;
+      result.type = 'RUC de persona natural';
+    }
+  } else if (validateCedula(id)) {
+    result.isValid = true;
+    result.type = 'RUC de persona natural';
   }
 
   return result;
