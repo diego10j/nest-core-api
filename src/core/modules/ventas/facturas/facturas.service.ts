@@ -142,14 +142,20 @@ export class FacturasService extends BaseService {
     async getFacturas(dtoIn: FacturasDto & HeaderParamsDto) {
         const condPtoEmision = dtoIn.ide_ccdaf ? `and a.ide_ccdaf =  ${dtoIn.ide_ccdaf}` : '';
 
-        if (isDefined(dtoIn.ide_sresc) && Number(dtoIn.ide_sresc === 0)) {
-            dtoIn.ide_ccefa = 1;
+        if (isDefined(dtoIn.ide_sresc)) {
+            if (Number(dtoIn.ide_sresc) === 0) {
+                dtoIn.ide_ccefa = 1;
+            } else {
+                dtoIn.ide_ccefa = Number(this.variables.get('p_cxc_estado_factura_normal'));
+            }
+        } else {
+            dtoIn.ide_ccefa = Number(this.variables.get('p_cxc_estado_factura_normal'));
         }
-        else {
-            dtoIn.ide_ccefa = Number(this.variables.get('p_cxc_estado_factura_normal'))
-        }
+        const condIdeCcefa = `AND ide_ccefa = ${dtoIn.ide_ccefa}`;
         const condEstadoFactPto = dtoIn.ide_ccdaf ? `AND ide_ccdaf = ${dtoIn.ide_ccdaf}` : '';
-        const condEstadoComp = isDefined(dtoIn.ide_sresc) ? `and d.ide_sresc =  ${dtoIn.ide_sresc}` : '';
+        const condEstadoComp = (isDefined(dtoIn.ide_sresc) && Number(dtoIn.ide_sresc) !== 0)
+            ? `and d.ide_sresc =  ${dtoIn.ide_sresc}`
+            : '';
 
         const query = new SelectQuery(
             `
@@ -163,9 +169,8 @@ export class FacturasService extends BaseService {
             FROM cxc_cabece_factura
             WHERE fecha_emisi_cccfa BETWEEN $1 AND $2
               AND ide_sucu = ${dtoIn.ideSucu}
-              AND ide_ccefa = ${dtoIn.ide_ccefa}
+              ${condIdeCcefa}
               ${condEstadoFactPto}
-              AND secuencial_cccfa IS NOT NULL
         ),
         pagos_agrupados AS (
             SELECT
@@ -219,6 +224,13 @@ export class FacturasService extends BaseService {
             a.ide_cnccc,
             a.usuario_ingre,
 
+            COALESCE(e.es_transporte_propio_cctfa, NULL) AS es_transporte_propio,
+            tr.nombre_vgtra AS nombre_transporte,
+            tr.logo_vgtra AS logo_transporte,
+            ee.nombre_cceen AS estado_envio,
+            ee.color_cceen AS color_estado_envio,
+            CASE WHEN e.path_imagen_guia_cctfa IS NOT NULL THEN true ELSE false END AS tiene_imagen_guia,
+
             COALESCE(nca.total_nc, 0) AS total_nota_credito,
 
             COALESCE(pa.total_pagado, 0)     AS total_pagado,
@@ -260,6 +272,13 @@ export class FacturasService extends BaseService {
             LEFT  JOIN pagos_agrupados pa       ON a.ide_cccfa  = pa.ide_cccfa
             LEFT  JOIN retenciones_agrupadas re ON a.ide_cccfa  = re.ide_cccfa
             LEFT  JOIN notas_credito_agrupadas nca ON a.ide_cccfa = nca.ide_cccfa
+            LEFT  JOIN cxc_transporte_factura e ON e.ide_cctfa = (
+                SELECT ide_cctfa FROM cxc_transporte_factura
+                WHERE ide_cccfa = a.ide_cccfa
+                ORDER BY ide_cctfa DESC LIMIT 1
+            )
+            LEFT  JOIN cxc_estado_envio ee      ON e.ide_cceen = ee.ide_cceen
+            LEFT  JOIN ven_transporte tr         ON e.ide_vgtra = tr.ide_vgtra
         WHERE
             TRUE
             ${condEstadoComp}
