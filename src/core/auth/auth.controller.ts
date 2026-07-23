@@ -44,7 +44,7 @@ export class AuthController {
   }
 
   @Get('me')
-  // @Auth()
+  @Auth()
   @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Obtener datos del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Datos del usuario' })
@@ -54,7 +54,7 @@ export class AuthController {
   }
 
   @Get('check-status')
-  // @Auth()
+  @Auth()
   @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Verificar estado de autenticación' })
   @ApiResponse({ status: 200, description: 'Estado de autenticación válido' })
