@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
+import { Auth } from 'src/core/auth';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
@@ -21,7 +22,6 @@ import { StockProductosDto } from './dto/stock-productos.dto';
 import { UpdateEstadoConteoDto } from './dto/update-estado-conteo.dto';
 import { UpdateEstadoDetalleConteoDto } from './dto/update-estado-deta-conteo.dto';
 import { ValidarDetallesConteoDto } from './dto/validar_conteo.dto';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-Bodegas')
 @Controller('inventario/bodegas')

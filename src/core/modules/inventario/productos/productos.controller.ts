@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
+import { Auth } from 'src/core/auth';
 
 import { GetFilesDto } from '../../sistema/files/dto/get-files.dto';
 
@@ -30,7 +31,6 @@ import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
 import { ProductosService } from './productos.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-Productos')
 @Controller('inventario/productos')

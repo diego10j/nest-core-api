@@ -3,11 +3,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { Auth } from 'src/core/auth';
 
 import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
 
 import { ProformasBiService } from './proformas-bi.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Proformas-DataBI')
 @Controller('proformas/data-bi')

@@ -4,6 +4,8 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
+import { Auth } from '../auth';
+
 import { ActualizarVariableDto } from './dto/actualizar-variable.dto';
 import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
@@ -12,7 +14,6 @@ import { SaveModuloDto } from './dto/save-modulo.dto';
 import { SaveVariableDto } from './dto/save-variable.dto';
 import { ModulosSistemaService } from './modulos-sistema.service';
 import { VariablesService } from './variables.service';
-import { Auth } from '../auth';
 
 @ApiTags('Sistema-Variables')
 @Controller('sistema/variables')

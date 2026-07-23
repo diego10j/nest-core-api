@@ -2,11 +2,11 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { Auth } from 'src/core/auth';
 
 import { AuditService } from './audit.service';
 import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Auditoría')
 @Controller('audit')

@@ -26,4 +26,8 @@ export class ChangePasswordDto {
         }
     )
     newPassword: string;
+
+    @IsString({ message: 'La confirmación de contraseña debe ser texto' })
+    @IsNotEmpty({ message: 'La confirmación de contraseña es obligatoria' })
+    confirmNewPassword: string;
 }

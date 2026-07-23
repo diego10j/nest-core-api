@@ -3,12 +3,12 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { Auth } from 'src/core/auth';
 
 import { GetMailQueueDto } from '../dto/get-mail-queue.dto';
 import { SendMailDto } from '../dto/send-mail.dto';
 import { MailService } from '../services/mail.service';
 import { TestMailService } from '../services/test-mail.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Email-Mail')
 @Controller('mail')

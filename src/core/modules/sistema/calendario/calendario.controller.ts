@@ -2,13 +2,13 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { Auth } from 'src/core/auth';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { CalendarioService } from './calendario.service';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEventoDto } from './dto/update-evento.dto';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Sistema-Calendario')
 @Controller('sistema/calendario')

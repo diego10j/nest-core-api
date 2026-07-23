@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { isDefined } from 'src/util/helpers/common-util';
@@ -9,8 +10,10 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery, InsertQuery, UpdateQuery } from '../../../connection/helpers';
 import { CoreService } from '../../../core.service';
 
+import { ChangePasswordPerfilDto } from './dto/change-password-perfil.dto';
 import { ConfigPasswordDto } from './dto/config-password.dto';
 import { PerfilUsuarioDto } from './dto/perfil-usuario.dto';
+import { UpdatePerfilUsuarioDto } from './dto/update-perfil-usuario.dto';
 import { UsuarioDto } from './dto/usuario.dto';
 
 @Injectable()
@@ -18,6 +21,7 @@ export class UsuariosService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
+    private readonly configService: ConfigService,
   ) { }
 
   // -------------------------------- USUARIO ---------------------------- //
@@ -276,7 +280,242 @@ export class UsuariosService {
     }
   }
 
+  // -------------------------------- PERFIL USUARIO ---------------------------- //
 
+  async updatePerfilUsuario(dto: UpdatePerfilUsuarioDto, ide_usua: number, login: string) {
+    if (!isDefined(dto.nom_usua) && !isDefined(dto.avatar_usua)) {
+      throw new BadRequestException('Debe enviar al menos nom_usua o avatar_usua para actualizar');
+    }
 
+    const usuarioActual = await this.findUsuarioById(ide_usua);
+
+    const updateQuery = new UpdateQuery('sis_usuario', 'ide_usua');
+
+    if (isDefined(dto.nom_usua)) {
+      updateQuery.values.set('nom_usua', dto.nom_usua);
+    }
+    if (isDefined(dto.avatar_usua)) {
+      updateQuery.values.set('avatar_usua', dto.avatar_usua);
+    }
+
+    updateQuery.values.set('usuario_actua', login);
+    updateQuery.where = 'ide_usua = $1';
+    updateQuery.addNumberParam(1, ide_usua);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    const hostApi = this.configService.get('HOST_API');
+    const avatarFinal = dto.avatar_usua ?? usuarioActual.avatar_usua;
+
+    return {
+      success: true,
+      message: 'Perfil actualizado exitosamente',
+      nom_usua: dto.nom_usua ?? usuarioActual.nom_usua,
+      avatar_usua: avatarFinal,
+      avatarUrl: avatarFinal
+        ? `${hostApi}/api/sistema/usuarios/getAvatar/${avatarFinal}`
+        : null,
+    };
+  }
+
+  async changePasswordPerfil(dto: ChangePasswordPerfilDto, ide_usua: number, login: string) {
+    if (dto.newPassword !== dto.confirmNewPassword) {
+      throw new BadRequestException('La nueva contraseña y la confirmación no coinciden');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+    }
+
+    const queryPass = new SelectQuery(`
+      SELECT password_uscl
+      FROM sis_usuario_clave
+      WHERE ide_usua = $1 AND activo_uscl = true
+    `);
+    queryPass.addNumberParam(1, ide_usua);
+    const passRecord = await this.dataSource.createSingleQuery(queryPass);
+
+    if (!passRecord) {
+      throw new NotFoundException('No se encontró la configuración de contraseña del usuario');
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.currentPassword, passRecord.password_uscl);
+    if (!isPasswordValid) {
+      throw new BadRequestException('La contraseña actual es incorrecta');
+    }
+
+    this.validatePasswordStrength(dto.newPassword);
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    const updateQuery = new UpdateQuery('sis_usuario_clave', 'ide_uscl');
+    updateQuery.values.set('password_uscl', hashedPassword);
+    updateQuery.values.set('clave_uscl', hashedPassword);
+    updateQuery.values.set('usuario_actua', login);
+    updateQuery.where = 'ide_usua = $1 AND activo_uscl = true';
+    updateQuery.addNumberParam(1, ide_usua);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      success: true,
+      message: 'Contraseña actualizada exitosamente',
+    };
+  }
+
+  async getPerfilUsuario(ide_usua: number, ide_empr: number) {
+    const queryUsuario = new SelectQuery(`
+      SELECT
+        a.ide_usua,
+        a.uuid,
+        a.nom_usua,
+        a.nick_usua,
+        a.mail_usua,
+        a.avatar_usua,
+        a.activo_usua,
+        a.bloqueado_usua,
+        a.admin_usua,
+        a.ide_cucor,
+        a.fecha_reg_usua,
+        a.fecha_caduc_usua,
+        a.ide_empr
+      FROM sis_usuario a
+      WHERE a.ide_usua = $1 AND a.ide_empr = $2 AND a.activo_usua = true
+    `);
+    queryUsuario.addNumberParam(1, ide_usua);
+    queryUsuario.addNumberParam(2, ide_empr);
+    const usuario = await this.dataSource.createSingleQuery(queryUsuario);
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const queryPerfiles = new SelectQuery(`
+      SELECT
+        b.ide_perf,
+        b.nom_perf,
+        a.activo_usper
+      FROM sis_usuario_perfil a
+      INNER JOIN sis_perfil b ON a.ide_perf = b.ide_perf
+      WHERE a.ide_usua = $1
+        AND b.activo_perf = true
+        AND b.ide_sist = 2
+      ORDER BY b.nom_perf
+    `);
+    queryPerfiles.addNumberParam(1, ide_usua);
+    const perfiles = await this.dataSource.createSelectQuery(queryPerfiles);
+
+    const querySucursales = new SelectQuery(`
+      SELECT
+        b.ide_sucu,
+        b.nom_sucu,
+        a.activo_ussu
+      FROM sis_usuario_sucursal a
+      INNER JOIN sis_sucursal b ON a.sis_ide_sucu = b.ide_sucu
+      WHERE a.ide_usua = $1
+      ORDER BY b.nom_sucu
+    `);
+    querySucursales.addNumberParam(1, ide_usua);
+    const sucursales = await this.dataSource.createSelectQuery(querySucursales);
+
+    const queryUltimaConexion = new SelectQuery(`
+      SELECT
+        TO_TIMESTAMP(fecha_auac || ' ' || hora_auac, 'YYYY-MM-DD HH24:MI:SS') AS fecha_conexion,
+        ip_auac
+      FROM sis_auditoria_acceso
+      WHERE ide_usua = $1 AND ide_acau = 1
+      ORDER BY ide_auac DESC
+      LIMIT 1
+    `);
+    queryUltimaConexion.addNumberParam(1, ide_usua);
+    const ultimaConexion = await this.dataSource.createSingleQuery(queryUltimaConexion);
+
+    let cuentaCorreo = null;
+    if (isDefined(usuario.ide_cucor)) {
+      const queryCuenta = new SelectQuery(`
+        SELECT
+          ide_cucor,
+          alias_cucor,
+          correo_cucor,
+          nom_correo_cucor,
+          usuario_cucor,
+          activo_cucor
+        FROM sis_cuenta_correo
+        WHERE ide_cucor = $1
+      `);
+      queryCuenta.addNumberParam(1, usuario.ide_cucor);
+      cuentaCorreo = await this.dataSource.createSingleQuery(queryCuenta);
+    }
+
+    const hostApi = this.configService.get('HOST_API');
+
+    return {
+      usuario: {
+        ide_usua: usuario.ide_usua,
+        uuid: usuario.uuid,
+        nom_usua: usuario.nom_usua,
+        nick_usua: usuario.nick_usua,
+        mail_usua: usuario.mail_usua,
+        avatar_usua: usuario.avatar_usua,
+        avatarUrl: usuario.avatar_usua
+          ? `${hostApi}/api/sistema/usuarios/getAvatar/${usuario.avatar_usua}`
+          : null,
+        activo_usua: usuario.activo_usua,
+        bloqueado_usua: usuario.bloqueado_usua,
+        admin_usua: usuario.admin_usua,
+        fecha_reg_usua: usuario.fecha_reg_usua,
+        fecha_caduc_usua: usuario.fecha_caduc_usua,
+        ide_empr: usuario.ide_empr,
+      },
+      perfiles,
+      sucursales,
+      ultimaConexion: ultimaConexion
+        ? {
+          fechaConexion: ultimaConexion.fecha_conexion,
+          ip: ultimaConexion.ip_auac,
+        }
+        : null,
+      cuentaCorreo,
+    };
+  }
+
+  async uploadAvatar(file: Express.Multer.File, ide_usua: number, login: string) {
+    if (!file) {
+      throw new BadRequestException('No se ha enviado ninguna imagen');
+    }
+
+    await this.findUsuarioById(ide_usua);
+
+    const updateQuery = new UpdateQuery('sis_usuario', 'ide_usua');
+    updateQuery.values.set('avatar_usua', file.filename);
+    updateQuery.values.set('usuario_actua', login);
+    updateQuery.where = 'ide_usua = $1';
+    updateQuery.addNumberParam(1, ide_usua);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      success: true,
+      message: 'Avatar actualizado exitosamente',
+      fileName: file.filename,
+      originalName: file.originalname,
+      size: file.size,
+      mimetype: file.mimetype,
+    };
+  }
+
+  private async findUsuarioById(ide_usua: number) {
+    const query = new SelectQuery(`
+      SELECT ide_usua, nom_usua, avatar_usua, nick_usua, mail_usua, activo_usua
+      FROM sis_usuario
+      WHERE ide_usua = $1 AND activo_usua = true
+    `);
+    query.addNumberParam(1, ide_usua);
+    const usuario = await this.dataSource.createSingleQuery(query);
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado o inactivo');
+    }
+    return usuario;
+  }
 
 }

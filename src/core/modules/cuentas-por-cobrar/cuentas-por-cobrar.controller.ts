@@ -3,9 +3,9 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { Auth } from 'src/core/auth';
 
 import { CuentasPorCobrarService } from './cuentas-por-cobrar.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('CuentasPorCobrar')
 @Controller('cuentas-por-cobrar')

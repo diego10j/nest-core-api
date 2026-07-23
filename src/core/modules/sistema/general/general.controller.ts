@@ -2,6 +2,7 @@ import { Query, Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { Auth } from 'src/core/auth';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
@@ -10,7 +11,6 @@ import { CedulaDto } from './dto/cedula.dto';
 import { RucDto } from './dto/ruc.dto';
 import { GeneralLdService } from './general-ld.service';
 import { GeneralService } from './general.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Sistema-General')
 @Controller('sistema/general')

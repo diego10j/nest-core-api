@@ -369,7 +369,7 @@ export class TransportesService extends BaseService {
             this.dataSource.createSelectQuery(qDet),
         ]);
 
-        if (!cabecera) throw new BadRequestException(`Ruta ide_vgrta=${dtoIn.ide_vgrta} no encontrada`);
+        //  if (!cabecera) throw new BadRequestException(`Ruta ide_vgrta=${dtoIn.ide_vgrta} no encontrada`);
 
         return { row: { cabecera, detalles }, message: 'ok' };
     }

@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchTableDto } from 'src/common/dto/search-table.dto';
 
+import { Auth } from './auth';
 import {
   TableQueryDto,
   SaveListDto,
@@ -18,7 +19,6 @@ import {
 import { ColumnsTableDto } from './connection/dto/columns-table.dto';
 import { TreeDto } from './connection/dto/tree-dto';
 import { CoreService } from './core.service';
-import { Auth } from './auth';
 
 @ApiTags('Core')
 @Controller('core')

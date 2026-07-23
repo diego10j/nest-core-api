@@ -12,7 +12,7 @@ import { CoreService } from 'src/core/core.service';
 import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
 import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
 import { MailService } from 'src/core/email/services/mail.service';
-import { fDate, getCurrentDateTime } from 'src/util/helpers/date-util';
+import { getCurrentDateTime } from 'src/util/helpers/date-util';
 import { normalizarUrl } from 'src/util/helpers/string-util';
 
 import {

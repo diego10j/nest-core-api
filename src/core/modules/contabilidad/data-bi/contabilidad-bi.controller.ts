@@ -3,10 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { Auth } from 'src/core/auth';
 
 import { ContabilidadBiService } from './contabilidad-bi.service';
 import { ComparativoPeriodosDto, EvolucionPeriodosDto, PeriodoAnioDto, PeriodoContableDto, TopCuentasBiDto } from './dto/contabilidad-bi.dto';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Contabilidad-DataBI')
 @Controller('contabilidad/data-bi')

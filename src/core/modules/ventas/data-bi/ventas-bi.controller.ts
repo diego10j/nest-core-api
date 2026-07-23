@@ -4,14 +4,15 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
+import { Auth } from 'src/core/auth';
 
 import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dto';
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
+import { RangoFechasSucursalDto } from './dto/rango-fechas-sucursal.dto';
 import { TopClientesDto } from './dto/top-clientes.dto';
 import { VentasBiService } from './ventas-bi.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Ventas-DataBI')
 @Controller('ventas/data-bi')
@@ -33,6 +34,26 @@ export class VentasBiController {
   @Auth()
   getVariacionDiariaVentas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasDiariasDto) {
     return this.service.getVariacionDiariaVentas({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getReportePagosTesoreria')
+  @ApiOperation({ summary: 'Obtener pagos en tesorería agrupados por cuenta bancaria' })
+  @Auth()
+  getReportePagosTesoreria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasSucursalDto) {
+    return this.service.getReportePagosTesoreria({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getReporteEnviosTransporte')
+  @ApiOperation({ summary: 'Obtener facturas agrupadas por tipo de envío (transporte)' })
+  @Auth()
+  getReporteEnviosTransporte(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasSucursalDto) {
+    return this.service.getReporteEnviosTransporte({
       ...headersParams,
       ...dtoIn,
     });

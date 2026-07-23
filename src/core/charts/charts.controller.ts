@@ -3,10 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { AppHeaders } from '../../common/decorators/header-params.decorator';
 import { HeaderParamsDto } from '../../common/dto/common-params.dto';
+import { Auth } from '../auth';
 
 import { ChartsService } from './charts.service';
 import { RadialBarDto } from './dto/radial-bar.dto';
-import { Auth } from '../auth';
 
 @ApiTags('Charts')
 @Controller('charts')

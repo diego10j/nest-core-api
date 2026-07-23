@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Ip, Post, Headers, Req, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiHeaders } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Ip, Post, Headers, Req, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -104,6 +104,9 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Contraseña cambiada exitosamente' })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
   changePassword(@Body() dtoIn: ChangePasswordDto, @GetUser() user: AuthUser) {
+    if (dtoIn.newPassword !== dtoIn.confirmNewPassword) {
+      throw new BadRequestException('La nueva contraseña y la confirmación no coinciden');
+    }
     return this.authService.changePassword(dtoIn, user.ide_usua, user.id);
   }
 

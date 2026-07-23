@@ -2,6 +2,7 @@ import { Query, Controller, Get, Post, Body } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { Auth } from 'src/core/auth';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
@@ -15,7 +16,6 @@ import { LotesProductoDto } from './dto/lotes-producto.dto';
 import { SaveDetInvEgresoDto } from './dto/save-det-inv-ingreso.dto';
 import { SaveLoteDto } from './dto/save-lote.dto';
 import { SetComporbantesVerificadosDto } from './dto/set-compro-verificado.dto';
-import { Auth } from 'src/core/auth';
 @ApiTags('Inventario-Comprobantes')
 @Controller('inventario/comprobantes')
 export class ComprobantesInvController {

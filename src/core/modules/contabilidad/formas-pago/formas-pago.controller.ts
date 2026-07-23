@@ -4,9 +4,9 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { Auth } from 'src/core/auth';
 
 import { FormasPagoService } from './formas-pago.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Contabilidad-FormasPago')
 @Controller('contabilidad/formas-pago')

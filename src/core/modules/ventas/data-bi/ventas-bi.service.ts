@@ -16,6 +16,7 @@ import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dt
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
+import { RangoFechasSucursalDto } from './dto/rango-fechas-sucursal.dto';
 import { TopClientesDto } from './dto/top-clientes.dto';
 
 @Injectable()
@@ -259,6 +260,94 @@ export class VentasBiService extends BaseService {
     LIMIT ${dtoIn.dias}
         `);
         return this.dataSource.createQuery(query);
+    }
+
+    async getReportePagosTesoreria(dtoIn: RangoFechasSucursalDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND f.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
+            SELECT
+                CASE
+                    WHEN sub.tiene_registro THEN sub.nombre_teban
+                    ELSE 'SIN REGISTRAR'
+                END AS nombre_banco,
+                CASE
+                    WHEN sub.tiene_registro THEN sub.nombre_tecba
+                    ELSE NULL
+                END AS nombre_cuenta,
+                COUNT(*) AS cantidad_documentos,
+                COALESCE(SUM(sub.valor_ccdtr), 0) AS total
+            FROM (
+                SELECT
+                    dt.valor_ccdtr,
+                    (dt.ide_teclb IS NOT NULL) AS tiene_registro,
+                    b.ide_teban,
+                    b.nombre_teban,
+                    cb.nombre_tecba
+                FROM cxc_detall_transa dt
+                INNER JOIN cxc_cabece_factura f ON dt.ide_cccfa = f.ide_cccfa
+                LEFT JOIN tes_cab_libr_banc t ON dt.ide_teclb = t.ide_teclb
+                LEFT JOIN tes_cuenta_banco cb ON t.ide_tecba = cb.ide_tecba
+                LEFT JOIN tes_banco b ON cb.ide_teban = b.ide_teban
+                WHERE dt.numero_pago_ccdtr > 0
+                  AND f.fecha_emisi_cccfa BETWEEN $1 AND $2
+                  AND f.ide_empr = ${dtoIn.ideEmpr}
+                  ${whereSucursal}
+            ) sub
+            GROUP BY
+                sub.tiene_registro,
+                sub.ide_teban,
+                sub.nombre_teban,
+                sub.nombre_tecba
+            ORDER BY total DESC
+        `);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    async getReporteEnviosTransporte(dtoIn: RangoFechasSucursalDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND a.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
+            SELECT
+                CASE
+                    WHEN tf.ide_cctfa IS NULL THEN 'SIN REGISTRO'
+                    WHEN tf.es_transporte_propio_cctfa = true THEN 'TRANSPORTE PROPIO'
+                    WHEN tf.ide_vgtra IS NOT NULL THEN 'ENVIADO POR TRANSPORTE'
+                    ELSE 'RETIRO EN OFICINA'
+                END AS nombre,
+                COUNT(a.ide_cccfa) AS cantidad,
+                COALESCE(SUM(a.total_cccfa), 0) AS total
+            FROM cxc_cabece_factura a
+            LEFT JOIN LATERAL (
+                SELECT ide_cctfa, es_transporte_propio_cctfa, ide_vgtra
+                FROM cxc_transporte_factura
+                WHERE ide_cccfa = a.ide_cccfa
+                ORDER BY ide_cctfa DESC
+                LIMIT 1
+            ) tf ON true
+            WHERE a.fecha_emisi_cccfa BETWEEN $1 AND $2
+              AND a.ide_ccefa = ${estadoNormal}
+              AND a.ide_empr = ${dtoIn.ideEmpr}
+              ${whereSucursal}
+            GROUP BY CASE
+                WHEN tf.ide_cctfa IS NULL THEN 'SIN REGISTRO'
+                WHEN tf.es_transporte_propio_cctfa = true THEN 'TRANSPORTE PROPIO'
+                WHEN tf.ide_vgtra IS NOT NULL THEN 'ENVIADO POR TRANSPORTE'
+                ELSE 'RETIRO EN OFICINA'
+            END
+            ORDER BY total DESC
+        `);
+        query.addParam(1, dtoIn.fechaInicio);
+        query.addParam(2, dtoIn.fechaFin);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**

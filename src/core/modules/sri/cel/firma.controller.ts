@@ -3,9 +3,9 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { Auth } from 'src/core/auth';
 
 import { FirmaService } from './firma.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('SRI-Firma')
 @Controller('sri/cel/firma')

@@ -2,10 +2,10 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { Auth } from 'src/core/auth';
 
 import { ComprobantesElecService } from './comprobantes-elec.service';
 import { ClaveAccesoDto } from './dto/clave-acceso.dto';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('SRI-ComprobantesElec')
 @Controller('sri/cel')

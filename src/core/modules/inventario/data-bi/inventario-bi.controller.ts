@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { Auth } from 'src/core/auth';
 
 import { IdProductoDto } from '../productos/dto/id-producto.dto';
 import { TrnProductoDto } from '../productos/dto/trn-producto.dto';
@@ -18,7 +19,6 @@ import { ProductosStockBajoDto } from './dto/productos-stock-bajo.dto';
 import { TopProductosDto } from './dto/top-productos';
 import { InventarioBiService } from './inventario-bi.service';
 import { InventarioProductoBiService } from './inventario-prod-bi.service';
-import { Auth } from 'src/core/auth';
 
 @ApiTags('Inventario-DataBI')
 @Controller('inventario/data-bi')
