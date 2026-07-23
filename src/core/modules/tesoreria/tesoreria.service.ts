@@ -126,6 +126,57 @@ REGLAS CRÍTICAS:
 7. No incluyas explicaciones, markdown, ni texto adicional. SOLO el JSON.`;
 
 /**
+ * Prompt correctivo: se usa cuando el parseo inicial deja cuentaOrigen o cuentaDestino null.
+ * Recibe el texto OCR original y el JSON parcial. Debe re-examinar el texto con más cuidado.
+ */
+const CORRECTIVE_PROMPT = `Eres un analista de comprobantes bancarios. Recibiste el TEXTO CRUDO de un OCR
+y un JSON PARCIAL que ya fue extraído, pero le faltan uno o ambos campos: "cuentaOrigen" o "cuentaDestino".
+
+Tu tarea es RE-EXAMINAR el texto y completar los campos que estén en null.
+
+TEXTO A RE-EXAMINAR:
+
+El OCR a veces extrae labels y valores en BLOQUES SEPARADOS. Ejemplo típico de app Banco Pichincha:
+  Cuenta destino
+  Banco destino
+  Cuenta origen
+  N. de comprobante
+  ****** 7177
+  Banco Pichincha
+  220 667 4532
+  43560587
+
+En este caso los valores aparecen EN EL MISMO ORDEN que los labels:
+  Cuenta destino → ****** 7177
+  Banco destino  → Banco Pichincha
+  Cuenta origen  → 220 667 4532
+  N. de comprobante → 43560587
+
+Busca este patrón de "labels consecutivos sin valor" seguidos de "valores consecutivos".
+Si lo detectas, empareja en orden.
+
+Si hay números de cuenta enmascarados (****** XXXX), son cuentas, no comprobantes.
+El número de comprobante suele ser un número largo sin asteriscos.
+
+REGLAS:
+1. Solo rellena los campos que actualmente son null. NO modifiques los que ya tienen valor.
+2. Si después de re-examinar no encuentras un campo, déjalo como null. NO inventes.
+3. Retorna ÚNICAMENTE un objeto JSON con TODOS los campos (los que ya estaban bien + los corregidos):
+{
+  "tipoTransferencia": string|null,
+  "valor": number|null,
+  "numeroComprobante": string|null,
+  "fecha": string|null,
+  "ordenante": string|null,
+  "cuentaOrigen": string|null,
+  "bancoOrigen": string|null,
+  "beneficiario": string|null,
+  "cuentaDestino": string|null,
+  "bancoDestino": string|null
+}
+4. No incluyas explicaciones, markdown, ni texto adicional. SOLO el JSON.`;
+
+/**
  * Prompt para GPT-4o Vision — lee la imagen DIRECTAMENTE (sin OCR previo).
  * Se usa como fallback cuando OCR no detecta texto, o a petición del frontend.
  */
@@ -364,8 +415,11 @@ export class TesoreriaService extends BaseService {
       }
 
       this.logger.log(`Texto OCR extraído (${textoExtraido.length} caracteres)`);
+      this.logger.debug(`textoExtraido:\n${textoExtraido}`);
 
-      const resultado = await this.gptService.parseTextToJson(PARSE_PROMPT, textoExtraido);
+      let resultado = await this.gptService.parseTextToJson(PARSE_PROMPT, textoExtraido);
+
+      resultado = await this.corregirParseo(textoExtraido, resultado);
 
       return {
         tipoTransferencia: resultado.tipoTransferencia ?? null,
@@ -414,5 +468,50 @@ export class TesoreriaService extends BaseService {
       textoOriginal: null,
       origen,
     };
+  }
+
+  /**
+   * Si el parseo inicial de OCR dejó cuentaOrigen o cuentaDestino como null,
+   * reenvía el texto a GPT con un prompt correctivo enfocado en encontrar esos campos.
+   */
+  private async corregirParseo(
+    textoOriginal: string,
+    resultadoParcial: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const cuentaOrigen = resultadoParcial.cuentaOrigen;
+    const cuentaDestino = resultadoParcial.cuentaDestino;
+
+    if (cuentaOrigen != null && cuentaDestino != null) {
+      return resultadoParcial;
+    }
+
+    const faltantes: string[] = [];
+    if (cuentaOrigen == null) faltantes.push('cuentaOrigen');
+    if (cuentaDestino == null) faltantes.push('cuentaDestino');
+
+    this.logger.warn(
+      `Parseo OCR incompleto: ${faltantes.join(', ')} es null. Reenviando a GPT para corrección.`,
+    );
+
+    try {
+      const correccion = await this.gptService.parseTextToJson(
+        CORRECTIVE_PROMPT,
+        `JSON parcial:\n${JSON.stringify(resultadoParcial, null, 2)}\n\n---\nTexto OCR original:\n${textoOriginal}`,
+      );
+
+      const merged = { ...resultadoParcial };
+
+      for (const campo of faltantes) {
+        if (correccion[campo] != null) {
+          merged[campo] = correccion[campo];
+          this.logger.log(`Corrección OCR: ${campo} = "${correccion[campo]}"`);
+        }
+      }
+
+      return merged;
+    } catch (error) {
+      this.logger.warn(`Corrección OCR falló: ${error.message}. Se retorna resultado parcial.`);
+      return resultadoParcial;
+    }
   }
 }
