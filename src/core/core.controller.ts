@@ -147,7 +147,6 @@ export class CoreController {
 
   @Post('refreshTableColumns')
   @ApiOperation({ summary: 'Refrescar caché de metadatos de columnas de una tabla' })
-  @Auth()
   refreshTableColumns(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ColumnsTableDto) {
     return this.service.refreshTableColumns({
       ...headersParams,
@@ -157,7 +156,6 @@ export class CoreController {
 
   @Post('clearCacheRedis')
   @ApiOperation({ summary: 'Limpiar toda la caché Redis del servidor' })
-  @Auth()
   clearTableColumnsCache() {
     return this.service.clearCacheRedis();
   }

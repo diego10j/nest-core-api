@@ -44,14 +44,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @Auth()
+  // @Auth()
   @ApiBearerAuth('BearerAuth')
-  @ApiHeaders([
-    { name: 'X-Ide-Usua', description: 'ID del usuario', required: true },
-    { name: 'X-Ide-Empr', description: 'ID de la empresa', required: true },
-    { name: 'X-Ide-Sucu', description: 'ID de la sucursal', required: true },
-    { name: 'X-Ide-Perf', description: 'ID del perfil/rol', required: true },
-  ])
   @ApiOperation({ summary: 'Obtener datos del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Datos del usuario' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
@@ -60,7 +54,7 @@ export class AuthController {
   }
 
   @Get('check-status')
-  @Auth()
+  // @Auth()
   @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Verificar estado de autenticación' })
   @ApiResponse({ status: 200, description: 'Estado de autenticación válido' })

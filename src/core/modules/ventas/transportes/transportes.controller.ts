@@ -94,9 +94,16 @@ export class TransportesController {
 
     @Get('getEstadosEnvio')
     @Auth()
-    @ApiOperation({ summary: 'Listar estados de envío (tabla catálogo)' })
+    @ApiOperation({ summary: 'Listar estados de envío activos (tabla catálogo)' })
     getEstadosEnvio(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
         return this.service.getEstadosEnvio({ ...h, ...dtoIn });
+    }
+
+    @Get('getTableQueryEstadoEnvio')
+    @Auth()
+    @ApiOperation({ summary: 'Tabla completa de estados de envío para administración' })
+    getTableQueryEstadoEnvio(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
+        return this.service.getTableQueryEstadoEnvio({ ...h, ...dtoIn });
     }
 
     @Get('getListDataEstadosEnvio')

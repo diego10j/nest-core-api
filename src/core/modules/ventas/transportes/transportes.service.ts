@@ -136,6 +136,16 @@ export class TransportesService extends BaseService {
         });
     }
 
+    async getTableQueryEstadoEnvio(dtoIn: QueryOptionsDto & HeaderParamsDto) {
+        return this.core.getTableQuery({
+            ...dtoIn,
+            module: 'cxc',
+            tableName: 'estado_envio',
+            primaryKey: 'ide_cceen',
+            orderBy: { column: 'orden_cceen' },
+        });
+    }
+
     async getListDataEstadosEnvio(dtoIn: HeaderParamsDto) {
         return this.core.getListDataValues({
             ...dtoIn,
