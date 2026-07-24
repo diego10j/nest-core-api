@@ -748,16 +748,20 @@ export class DocumentosCxPService extends BaseService {
      * Obtiene el porcentaje de IVA a una fecha
      */
     async getPorcentajeIva(fecha: string): Promise<number> {
-        const query = new SelectQuery(`
-            SELECT porcentaje_iva_cncii AS iva
-            FROM con_config_iva
-            WHERE fecha_inicio_cncii <= $1::date
-              AND (fecha_fin_cncii IS NULL OR fecha_fin_cncii >= $1::date)
-            ORDER BY fecha_inicio_cncii DESC
-            LIMIT 1
-        `);
-        query.addStringParam(1, fecha);
-        const result = await this.dataSource.createSingleQuery(query);
-        return result?.iva ?? 0.12;
+        try {
+            const query = new SelectQuery(`
+                SELECT porcentaje_iva_cncii AS iva
+                FROM con_config_iva
+                WHERE fecha_inicio_cncii <= $1::date
+                  AND (fecha_fin_cncii IS NULL OR fecha_fin_cncii >= $1::date)
+                ORDER BY fecha_inicio_cncii DESC
+                LIMIT 1
+            `);
+            query.addStringParam(1, fecha);
+            const result = await this.dataSource.createSingleQuery(query);
+            return result?.iva ?? 0.12;
+        } catch {
+            return 0.12;
+        }
     }
 }

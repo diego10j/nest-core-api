@@ -35,5 +35,9 @@ import { RetencionesCxPService } from './retenciones-cxp.service';
         RetencionesCxPSaveService,
         CoreService,
     ],
+    exports: [
+        DocumentosCxPService,
+        DocumentosCxPSaveService,
+    ],
 })
 export class CuentasPorPagarModule { }

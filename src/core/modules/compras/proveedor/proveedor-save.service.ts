@@ -11,6 +11,8 @@ import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula
 
 import { SetCuentaContableProveedorDto } from './dto/cuenta-contable-proveedor.dto';
 import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
+import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
+import { ObjectQueryDto } from 'src/core/connection/dto';
 
 /** Identificador de configuración contable del proveedor */
 const IDENTIFICADOR_CUENTA_CXP = 'CUENTA POR PAGAR';
@@ -318,6 +320,50 @@ export class ProveedorSaveService extends BaseService {
             );
         }
         return Number(row.ide_cnvca);
+    }
+
+    async saveCtaBancoProveedor(dtoIn: SaveCtaBancoProveedorDto & HeaderParamsDto) {
+        const isUpdate = dtoIn.ideCpcbp != null;
+        const listQuery: ObjectQueryDto[] = [];
+        let ideCpcbp: number;
+
+        const object: Record<string, unknown> = {
+            ide_empr: dtoIn.ideEmpr,
+            ide_sucu: dtoIn.ideSucu,
+            ide_geper: dtoIn.ideGeper,
+            ide_teban: dtoIn.ideTeban ?? null,
+            ide_tetcb: dtoIn.ideTetcb ?? null,
+            numero_cpcbp: dtoIn.numeroCpcbp ?? null,
+            nombre_cpcbp: dtoIn.nombreCpcbp ?? null,
+            observacion_cpcbp: dtoIn.observacionCpcbp ?? null,
+            activo_cpcbp: dtoIn.activoCpcbp ?? true,
+            defecto_cpcbp: dtoIn.defectoCpcbp ?? false,
+        };
+
+        if (isUpdate) {
+            ideCpcbp = dtoIn.ideCpcbp!;
+            object.ide_cpcbp = ideCpcbp;
+            listQuery.push({
+                operation: 'update',
+                module: 'cxp',
+                tableName: 'cta_banco_prove',
+                primaryKey: 'ide_cpcbp',
+                object,
+            });
+        } else {
+            ideCpcbp = await this.dataSource.getSeqTable('cxp_cta_banco_prove', 'ide_cpcbp', 1, dtoIn.login);
+            object.ide_cpcbp = ideCpcbp;
+            listQuery.push({
+                operation: 'insert',
+                module: 'cxp',
+                tableName: 'cta_banco_prove',
+                primaryKey: 'ide_cpcbp',
+                object,
+            });
+        }
+
+        await this.core.save({ ...dtoIn, listQuery, audit: false });
+        return { message: 'ok', ideCpcbp };
     }
 
 }

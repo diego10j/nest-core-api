@@ -1,4 +1,4 @@
-import { Query, Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -8,7 +8,9 @@ import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { CantonesDto } from './dto/cantones.dto';
 import { CedulaDto } from './dto/cedula.dto';
+import { GetPersonasDto } from './dto/get-personas.dto';
 import { RucDto } from './dto/ruc.dto';
+import { SavePersonasDto } from './dto/save-personas.dto';
 import { GeneralLdService } from './general-ld.service';
 import { GeneralService } from './general.service';
 
@@ -94,5 +96,19 @@ export class GeneralController {
   @Auth()
   validateRuc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RucDto) {
     return this.service.validateRuc(dtoIn);
+  }
+
+  @Get('getPersonas')
+  @ApiOperation({ summary: 'Listar personas con filtros y paginación' })
+  @Auth()
+  getPersonas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetPersonasDto) {
+    return this.service.getPersonas({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('savePersonas')
+  @ApiOperation({ summary: 'Actualizar masivamente flags de personas (es_cliente, es_proveedor, es_empleado, activo)' })
+  @Auth()
+  savePersonas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SavePersonasDto) {
+    return this.service.savePersonas({ ...headersParams, ...dtoIn });
   }
 }

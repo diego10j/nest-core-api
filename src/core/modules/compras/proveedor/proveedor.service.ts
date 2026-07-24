@@ -15,6 +15,7 @@ import { ComprasMensualesProveedorDto } from './dto/compras-mensuales-proveedor.
 import { GetProveedoresDto } from './dto/get-proveedores.dto';
 import { IdProveedorDto } from './dto/id-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
+import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
 
 @Injectable()
 export class ProveedorService extends BaseService {
@@ -793,4 +794,65 @@ export class ProveedorService extends BaseService {
     query.addIntParam(2, dtoIn.ideSucu);
     return this.dataSource.createSelectQuery(query);
   }
+
+
+
+  async getCtaBancoProveedor(dtoIn: GetCtaBancoProveedorDto & HeaderParamsDto) {
+    const activeClause = dtoIn.activo === 'true' ? 'AND cb.activo_cpcbp = true' : '';
+    const query = new SelectQuery(
+      `
+        SELECT
+            cb.ide_cpcbp,
+            cb.ide_geper,
+            cb.ide_teban,
+            b.nombre_teban,
+            cb.ide_tetcb,
+            tcb.nombre_tetcb,
+            cb.numero_cpcbp,
+            cb.nombre_cpcbp,
+            cb.observacion_cpcbp,
+            cb.activo_cpcbp,
+            cb.defecto_cpcbp
+        FROM
+            cxp_cta_banco_prove cb
+            LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            LEFT JOIN tes_tip_cuen_banc tcb ON tcb.ide_tetcb = cb.ide_tetcb
+        WHERE
+            cb.ide_geper = $1
+            AND cb.ide_empr = ${dtoIn.ideEmpr}
+            ${activeClause}
+        ORDER BY
+            cb.defecto_cpcbp DESC, cb.nombre_cpcbp
+        `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ideGeper);
+    return this.dataSource.createQuery(query);
+  }
+
+  async getListDataCtaBancoProveedor(dtoIn: GetCtaBancoProveedorDto & HeaderParamsDto) {
+    const activeClause = dtoIn.activo === 'true' ? 'AND cb.activo_cpcbp = true' : '';
+    const query = new SelectQuery(
+      `
+        SELECT
+            CAST(cb.ide_cpcbp AS VARCHAR) AS value,
+            COALESCE(cb.nombre_cpcbp, CONCAT(tcb.nombre_tetcb, ' - ', cb.numero_cpcbp)) AS label
+        FROM
+            cxp_cta_banco_prove cb
+            LEFT JOIN tes_tip_cuen_banc tcb ON tcb.ide_tetcb = cb.ide_tetcb
+        WHERE
+            cb.ide_geper = $1
+            AND cb.ide_empr = ${dtoIn.ideEmpr}
+            ${activeClause}
+        ORDER BY
+            cb.defecto_cpcbp DESC, cb.nombre_cpcbp
+        `,
+    );
+    query.addIntParam(1, dtoIn.ideGeper);
+    return this.dataSource.createSelectQuery(query);
+  }
 }
+
+
+
+

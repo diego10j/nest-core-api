@@ -14,6 +14,9 @@ import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
 import { ProveedorSaveService } from './proveedor-save.service';
 import { ProveedorService } from './proveedor.service';
+import { Auth } from 'src/core/auth';
+import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
+import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
 
 @ApiTags('Compras-Proveedores')
 @ApiBearerAuth('BearerAuth')
@@ -22,7 +25,7 @@ export class ProveedorController {
   constructor(
     private readonly service: ProveedorService,
     private readonly saveService: ProveedorSaveService,
-  ) {}
+  ) { }
 
   @Get('searchProveedor')
   @ApiOperation({ summary: 'Buscar proveedores por nombre o identificación (autocomplete)' })
@@ -153,4 +156,29 @@ export class ProveedorController {
   saveTrnProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveTrnProveedorDto) {
     return this.saveService.saveTrnProveedor({ ...headersParams, ...dtoIn });
   }
+
+  @Get('getCtaBancoProveedor')
+  @Auth()
+  @ApiOperation({ summary: 'Listar cuentas bancarias de un proveedor' })
+  @ApiResponse({ status: 200, description: 'Cuentas bancarias del proveedor' })
+  getCtaBancoProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCtaBancoProveedorDto) {
+    return this.service.getCtaBancoProveedor({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getListDataCtaBancoProveedor')
+  @Auth()
+  @ApiOperation({ summary: 'Listar cuentas bancarias de un proveedor para combos' })
+  @ApiResponse({ status: 200, description: 'Cuentas bancarias para combos' })
+  getListDataCtaBancoProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCtaBancoProveedorDto) {
+    return this.service.getListDataCtaBancoProveedor({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('saveCtaBancoProveedor')
+  @Auth()
+  @ApiOperation({ summary: 'Crear o actualizar cuenta bancaria de un proveedor' })
+  @ApiResponse({ status: 200, description: 'Cuenta bancaria guardada' })
+  saveCtaBancoProveedor(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveCtaBancoProveedorDto) {
+    return this.saveService.saveCtaBancoProveedor({ ...headersParams, ...dtoIn });
+  }
 }
+
