@@ -6,6 +6,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import { GetFacturaCxCDto } from './dto/get-factura-cxc.dto';
+import { GetFacturasPendientesClienteDto } from './dto/get-facturas-pendientes-cliente.dto';
 import { GetTiposTransaccionPositivoDto } from './dto/get-tipos-transaccion-positivo.dto';
 
 @Injectable()
@@ -110,6 +111,82 @@ export class CxcTransaccionesService extends BaseService {
         query.addIntParam(1, ideCcctr);
         const result = await this.dataSource.createSingleQuery(query);
         return Number(result?.saldo ?? 0);
+    }
+
+    /**
+     * Cuentas por cobrar del cliente con saldo pendiente (selección múltiple
+     * para distribuir un cobro). Paridad ServicioCliente.getSqlCuentasPorCobrar.
+     */
+    async getFacturasPendientesCliente(dtoIn: GetFacturasPendientesClienteDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT ct.ide_ccctr,
+                   cf.ide_cccfa,
+                   cf.secuencial_cccfa,
+                   COALESCE(cf.fecha_emisi_cccfa, ct.fecha_trans_ccctr) AS fecha,
+                   cf.total_cccfa,
+                   cf.dias_credito_cccfa,
+                   SUM(dt.valor_ccdtr * tt.signo_ccttr) AS saldo_x_pagar,
+                   COALESCE(cf.observacion_cccfa, ct.observacion_ccctr) AS observacion
+            FROM cxc_detall_transa dt
+            INNER JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            WHERE ct.ide_geper = $1
+              AND ct.ide_sucu = $2
+            GROUP BY ct.ide_ccctr, cf.ide_cccfa, cf.secuencial_cccfa,
+                     cf.fecha_emisi_cccfa, ct.fecha_trans_ccctr, cf.total_cccfa,
+                     cf.dias_credito_cccfa, cf.observacion_cccfa, ct.observacion_ccctr
+            HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) > 0
+            ORDER BY fecha ASC, ct.ide_ccctr ASC
+        `);
+        query.addIntParam(1, dtoIn.ideGeper);
+        query.addIntParam(2, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Información batch (saldo, secuencial, cliente) de un conjunto de
+     * cuentas por cobrar seleccionadas para distribuir un cobro.
+     */
+    async getInfoTransacciones(ideCcctrList: number[]) {
+        const query = new SelectQuery(`
+            SELECT ct.ide_ccctr,
+                   cf.ide_cccfa,
+                   cf.secuencial_cccfa,
+                   ct.ide_geper,
+                   p.nom_geper,
+                   COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0) AS saldo
+            FROM cxc_cabece_transa ct
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+            LEFT JOIN cxc_detall_transa dt ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+            WHERE ct.ide_ccctr = ANY($1)
+            GROUP BY ct.ide_ccctr, cf.ide_cccfa, cf.secuencial_cccfa, ct.ide_geper, p.nom_geper
+        `);
+        query.addParam(1, ideCcctrList);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Cabecera de "saldo a favor" reutilizable del cliente (sobrepago sin
+     * documento asociado), paridad generarTransaccionPagoAdicionalCxC.
+     */
+    async getCabeceraSaldoFavor(ideGeper: number, dtoIn: HeaderParamsDto) {
+        const tipoTransPago = Number(this.variables.get('p_cxc_tipo_trans_pago'));
+        const query = new SelectQuery(`
+            SELECT ide_ccctr
+            FROM cxc_cabece_transa
+            WHERE ide_ccttr = $1
+              AND ide_cccfa IS NULL
+              AND ide_geper = $2
+              AND ide_sucu = $3
+            LIMIT 1
+        `);
+        query.addIntParam(1, tipoTransPago);
+        query.addIntParam(2, ideGeper);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createSingleQuery(query);
     }
 
 }

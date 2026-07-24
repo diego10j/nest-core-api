@@ -17,6 +17,9 @@ import { ComprobanteBancoService } from './comprobante-banco/comprobante-banco.s
 import { CxcTransaccionesSaveService } from './cxc-transacciones/cxc-transacciones-save.service';
 import { CxcTransaccionesController } from './cxc-transacciones/cxc-transacciones.controller';
 import { CxcTransaccionesService } from './cxc-transacciones/cxc-transacciones.service';
+import { CxpTransaccionesSaveService } from './cxp-transacciones/cxp-transacciones-save.service';
+import { CxpTransaccionesController } from './cxp-transacciones/cxp-transacciones.controller';
+import { CxpTransaccionesService } from './cxp-transacciones/cxp-transacciones.service';
 import { PreLibroBancosConciliacionService } from './pre-libro-bancos/pre-libro-bancos-conciliacion.service';
 import { PreLibroBancosSaveService } from './pre-libro-bancos/pre-libro-bancos-save.service';
 import { PreLibroBancosController } from './pre-libro-bancos/pre-libro-bancos.controller';
@@ -39,6 +42,7 @@ import { TesoreriaService } from './tesoreria.service';
         CajasController,
         ComprobanteBancoController,
         CxcTransaccionesController,
+        CxpTransaccionesController,
     ],
     providers: [
         TesoreriaService,
@@ -57,6 +61,8 @@ import { TesoreriaService } from './tesoreria.service';
         ComprobanteBancoSaveService,
         CxcTransaccionesService,
         CxcTransaccionesSaveService,
+        CxpTransaccionesService,
+        CxpTransaccionesSaveService,
         CoreService,
     ],
     exports: [TransaccionesTesoreriaService],

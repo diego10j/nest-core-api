@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsOptional } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class CuentasPorPagarDto extends QueryOptionsDto {
@@ -11,4 +11,9 @@ export class CuentasPorPagarDto extends QueryOptionsDto {
     @IsIn(['true']) // Solo permite estr valor
     @IsOptional()
     activos?: 'true';
+
+    /** FK → gen_persona: filtra las cuentas por pagar de un proveedor */
+    @IsInt()
+    @IsOptional()
+    ide_geper?: number;
 }

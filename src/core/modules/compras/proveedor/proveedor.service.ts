@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
@@ -11,6 +11,7 @@ import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 
+import { ComprasMensualesProveedorDto } from './dto/compras-mensuales-proveedor.dto';
 import { GetProveedoresDto } from './dto/get-proveedores.dto';
 import { IdProveedorDto } from './dto/id-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
@@ -22,9 +23,18 @@ export class ProveedorService extends BaseService {
     private readonly core: CoreService,
   ) {
     super();
-    this.core.getVariables(['p_cxp_estado_factura_normal']).then((result) => {
-      this.variables = result;
-    });
+    this.core
+      .getVariables([
+        'p_cxp_estado_factura_normal',
+        'p_cxp_tipo_trans_anticipo',
+        'p_con_estado_comp_inicial',
+        'p_con_estado_comprobante_normal',
+        'p_con_estado_comp_final',
+        'p_con_lugar_debe',
+      ])
+      .then((result) => {
+        this.variables = result;
+      });
   }
 
   async searchProveedor(dto: SearchDto & HeaderParamsDto) {
@@ -477,6 +487,310 @@ export class ProveedorService extends BaseService {
       dtoIn,
     );
     query.addParam(1, paramValue);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cuenta contable del proveedor
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retorna la cuenta contable configurada del proveedor para el identificador
+   * 'CUENTA POR PAGAR' (con_cab_conf_asie / con_vig_conf_asie / con_det_conf_asie),
+   * subiendo recursivamente por el padre del proveedor si no la tiene asignada.
+   */
+  async getCuentaContableProveedor(dtoIn: IdProveedorDto & HeaderParamsDto) {
+    const ideCndpc = await this.resolverCuentaProveedor(Number(dtoIn.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu, 3);
+    if (!ideCndpc) return { ide_cndpc: null, codig_recur_cndpc: null, nombre_cndpc: null };
+
+    const q = new SelectQuery(`
+        SELECT ide_cndpc, codig_recur_cndpc, nombre_cndpc
+        FROM con_det_plan_cuen
+        WHERE ide_cndpc = $1
+        LIMIT 1
+    `);
+    q.addIntParam(1, ideCndpc);
+    const cuenta = await this.dataSource.createSingleQuery(q);
+    return cuenta ?? { ide_cndpc: ideCndpc, codig_recur_cndpc: null, nombre_cndpc: null };
+  }
+
+  private async resolverCuentaProveedor(
+    ideGeper: number, ideEmpr: number, ideSucu: number, maxNivel: number,
+  ): Promise<number | null> {
+    if (!ideGeper || maxNivel < 0) return null;
+
+    const q = new SelectQuery(`
+        SELECT cn_d.ide_cndpc
+        FROM con_vig_conf_asie cn_v
+        JOIN con_det_conf_asie cn_d ON cn_v.ide_cnvca = cn_d.ide_cnvca
+        JOIN con_cab_conf_asie cn_c ON cn_v.ide_cncca = cn_c.ide_cncca
+        WHERE UPPER(cn_c.nombre_cncca) = 'CUENTA POR PAGAR'
+          AND cn_v.estado_cnvca = true
+          AND cn_d.ide_geper = $1
+          AND cn_v.ide_sucu = $2
+        LIMIT 1
+    `);
+    q.addIntParam(1, ideGeper);
+    q.addIntParam(2, ideSucu);
+    const result = await this.dataSource.createSingleQuery(q);
+    if (result?.ide_cndpc) return Number(result.ide_cndpc);
+
+    const qPadre = new SelectQuery(`
+        SELECT gen_ide_geper FROM gen_persona WHERE ide_geper = $1
+    `);
+    qPadre.addIntParam(1, ideGeper);
+    const padre = await this.dataSource.createSingleQuery(qPadre);
+    if (padre?.gen_ide_geper && Number(padre.gen_ide_geper) !== ideGeper) {
+      return this.resolverCuentaProveedor(Number(padre.gen_ide_geper), ideEmpr, ideSucu, maxNivel - 1);
+    }
+    return null;
+  }
+
+  /**
+   * Movimientos contables del proveedor sobre su cuenta configurada, con saldo
+   * inicial del período contable y saldo corrido (paridad legacy
+   * getSqlMovimientosCuentaPersona + getSaldoInicialCuenta)
+   */
+  async getMovimientosCuentaProveedor(dtoIn: TrnProveedorDto & HeaderParamsDto) {
+    const ideCndpc = await this.resolverCuentaProveedor(Number(dtoIn.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu, 3);
+    if (!ideCndpc) {
+      throw new BadRequestException('El proveedor seleccionado no tiene asociada una cuenta contable');
+    }
+    const estados = [
+      Number(this.variables.get('p_con_estado_comp_inicial')),
+      Number(this.variables.get('p_con_estado_comprobante_normal')),
+      Number(this.variables.get('p_con_estado_comp_final')),
+    ].filter((v) => !Number.isNaN(v));
+    const lugarDebe = Number(this.variables.get('p_con_lugar_debe') || '1');
+
+    const query = new SelectQuery(
+      `
+      WITH periodo AS (
+          SELECT COALESCE(
+              (SELECT fecha_inicio_cnper
+               FROM con_periodo
+               WHERE $1::date BETWEEN fecha_inicio_cnper AND fecha_fin_cnper
+                 AND ide_sucu = $2
+               ORDER BY ide_cnper DESC
+               LIMIT 1),
+              '2012-01-01'::date
+          ) AS fecha_inicio
+      ),
+      saldo_inicial AS (
+          SELECT COALESCE(SUM(dcc.valor_cndcc * sc.signo_cnscu), 0) AS saldo
+          FROM con_cab_comp_cont ccc
+          INNER JOIN con_det_comp_cont dcc ON ccc.ide_cnccc = dcc.ide_cnccc
+          INNER JOIN con_det_plan_cuen dpc ON dpc.ide_cndpc = dcc.ide_cndpc
+          INNER JOIN con_tipo_cuenta tc ON dpc.ide_cntcu = tc.ide_cntcu
+          INNER JOIN con_signo_cuenta sc ON tc.ide_cntcu = sc.ide_cntcu AND dcc.ide_cnlap = sc.ide_cnlap
+          CROSS JOIN periodo
+          WHERE ccc.fecha_trans_cnccc >= periodo.fecha_inicio
+            AND ccc.fecha_trans_cnccc < $3::date
+            AND ccc.ide_cneco = ANY($4)
+            AND ccc.ide_sucu = $5
+            AND ccc.ide_geper = $6
+            AND dpc.ide_cndpc = $7
+      ),
+      movimientos AS (
+          SELECT cab.fecha_trans_cnccc,
+                 cab.ide_cnccc,
+                 perso.nom_geper AS beneficiario,
+                 deta.ide_cnlap,
+                 CASE WHEN deta.ide_cnlap = ${lugarDebe} THEN ABS(deta.valor_cndcc) END AS debe,
+                 CASE WHEN deta.ide_cnlap != ${lugarDebe} THEN deta.valor_cndcc END AS haber,
+                 (deta.valor_cndcc * sc.signo_cnscu) AS valor,
+                 cab.observacion_cnccc AS observacion
+          FROM con_cab_comp_cont cab
+          LEFT JOIN gen_persona perso ON cab.ide_geper = perso.ide_geper
+          INNER JOIN con_det_comp_cont deta ON cab.ide_cnccc = deta.ide_cnccc
+          INNER JOIN con_det_plan_cuen cuenta ON cuenta.ide_cndpc = deta.ide_cndpc
+          INNER JOIN con_tipo_cuenta tc ON cuenta.ide_cntcu = tc.ide_cntcu
+          INNER JOIN con_signo_cuenta sc ON tc.ide_cntcu = sc.ide_cntcu AND deta.ide_cnlap = sc.ide_cnlap
+          WHERE cuenta.ide_cndpc = $8
+            AND cab.fecha_trans_cnccc BETWEEN $9 AND $10
+            AND cab.ide_cneco = ANY($11)
+            AND cab.ide_sucu = $12
+            AND cab.ide_geper = $13
+      )
+      SELECT NULL::date AS fecha_trans_cnccc,
+             NULL::int AS ide_cnccc,
+             'SALDO INICIAL' AS beneficiario,
+             NULL::int AS ide_cnlap,
+             NULL::numeric AS debe,
+             NULL::numeric AS haber,
+             saldo_inicial.saldo AS valor,
+             saldo_inicial.saldo AS saldo,
+             'SALDO INICIAL AL ' || $14 AS observacion
+      FROM saldo_inicial
+      UNION ALL
+      SELECT mov.fecha_trans_cnccc,
+             mov.ide_cnccc,
+             mov.beneficiario,
+             mov.ide_cnlap,
+             mov.debe,
+             mov.haber,
+             mov.valor,
+             (SELECT saldo FROM saldo_inicial) +
+             SUM(mov.valor) OVER (ORDER BY mov.fecha_trans_cnccc, mov.ide_cnccc) AS saldo,
+             mov.observacion
+      FROM movimientos mov
+      ORDER BY fecha_trans_cnccc NULLS FIRST, ide_cnccc
+      `,
+      dtoIn,
+    );
+    query.addStringParam(1, dtoIn.fechaInicio);
+    query.addIntParam(2, dtoIn.ideSucu);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addParam(4, estados);
+    query.addIntParam(5, dtoIn.ideSucu);
+    query.addIntParam(6, dtoIn.ide_geper);
+    query.addIntParam(7, ideCndpc);
+    query.addIntParam(8, ideCndpc);
+    query.addStringParam(9, dtoIn.fechaInicio);
+    query.addStringParam(10, dtoIn.fechaFin);
+    query.addParam(11, estados);
+    query.addIntParam(12, dtoIn.ideSucu);
+    query.addIntParam(13, dtoIn.ide_geper);
+    query.addStringParam(14, dtoIn.fechaInicio);
+    return this.dataSource.createQuery(query);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Informes / combos del proveedor
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Totales de compras del proveedor por mes en un período (gráfico)
+   */
+  async getComprasMensualesProveedor(dtoIn: ComprasMensualesProveedorDto & HeaderParamsDto) {
+    const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const query = new SelectQuery(`
+        SELECT m.nombre_gemes,
+               COUNT(c.ide_cpcfa)                                                  AS num_facturas,
+               COALESCE(SUM(c.base_grabada_cpcfa), 0)                              AS ventas12,
+               COALESCE(SUM(c.base_tarifa0_cpcfa + c.base_no_objeto_iva_cpcfa), 0) AS ventas0,
+               COALESCE(SUM(c.valor_iva_cpcfa), 0)                                 AS iva,
+               COALESCE(SUM(c.total_cpcfa), 0)                                     AS total
+        FROM gen_mes m
+        LEFT JOIN cxp_cabece_factur c
+          ON EXTRACT(MONTH FROM c.fecha_emisi_cpcfa) = m.ide_gemes
+         AND EXTRACT(YEAR FROM c.fecha_emisi_cpcfa) = $1
+         AND c.ide_geper = $2
+         AND c.ide_cpefa = ${estadoNormal}
+         AND c.ide_sucu = $3
+        WHERE m.ide_empr = $4
+        GROUP BY m.ide_gemes, m.nombre_gemes
+        ORDER BY m.ide_gemes
+    `);
+    query.addIntParam(1, dtoIn.periodo);
+    query.addIntParam(2, dtoIn.ide_geper);
+    query.addIntParam(3, dtoIn.ideSucu);
+    query.addIntParam(4, dtoIn.ideEmpr);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Detalle de compras del proveedor por rango de fechas (por artículo)
+   */
+  async getDetalleComprasProveedor(dtoIn: TrnProveedorDto & HeaderParamsDto) {
+    const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const query = new SelectQuery(
+      `
+      SELECT cdf.ide_cpdfa,
+             cf.fecha_emisi_cpcfa,
+             cf.numero_cpcfa,
+             iart.nombre_inarti,
+             cdf.cantidad_cpdfa,
+             cdf.precio_cpdfa,
+             cdf.valor_cpdfa,
+             s.nom_sucu AS empresa
+      FROM cxp_detall_factur cdf
+      LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = cdf.ide_cpcfa
+      LEFT JOIN inv_articulo iart ON iart.ide_inarti = cdf.ide_inarti
+      LEFT JOIN sis_sucursal s ON s.ide_sucu = cf.ide_sucu
+      WHERE cf.ide_geper = $1
+        AND cdf.ide_empr = $2
+        AND cf.fecha_emisi_cpcfa BETWEEN $3 AND $4
+        AND cf.ide_cpefa = ${estadoNormal}
+      ORDER BY cf.fecha_emisi_cpcfa, cf.numero_cpcfa
+      `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addIntParam(2, dtoIn.ideEmpr);
+    query.addStringParam(3, dtoIn.fechaInicio);
+    query.addStringParam(4, dtoIn.fechaFin);
+    return this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Estructura jerárquica de proveedores (árbol gen_persona por gen_ide_geper)
+   */
+  async getArbolProveedores(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(`
+        SELECT ide_geper, gen_ide_geper, nom_geper, nivel_geper, identificac_geper
+        FROM gen_persona
+        WHERE es_proveedo_geper = TRUE
+          AND ide_empr = $1
+        ORDER BY nom_geper
+    `);
+    query.addIntParam(1, dtoIn.ideEmpr);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Combo de años con compras registradas
+   */
+  async getListDataAniosCompras(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(`
+        SELECT DISTINCT CAST(EXTRACT(YEAR FROM fecha_emisi_cpcfa) AS VARCHAR) AS value,
+               CAST(EXTRACT(YEAR FROM fecha_emisi_cpcfa) AS VARCHAR) AS label
+        FROM cxp_cabece_factur
+        WHERE ide_empr = $1
+        ORDER BY 1 DESC
+    `);
+    query.addIntParam(1, dtoIn.ideEmpr);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Combo de tipos de transacción CxP (cxp_tipo_transacc)
+   */
+  async getListDataTiposTransaccionCxP() {
+    const query = new SelectQuery(`
+        SELECT CAST(ide_cpttr AS VARCHAR) AS value,
+               nombre_cpttr AS label,
+               signo_cpttr
+        FROM cxp_tipo_transacc
+        ORDER BY nombre_cpttr
+    `);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Combo de cuentas por pagar pendientes del proveedor (para asociar pagos o
+   * transacciones manuales). Paridad getSqlComboFacturasPorPagar legacy.
+   */
+  async getListDataCuentasPorPagarProveedor(dtoIn: IdProveedorDto & HeaderParamsDto) {
+    const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const query = new SelectQuery(`
+        SELECT CAST(dt.ide_cpctr AS VARCHAR) AS value,
+               COALESCE(co.nombre_cntdo, 'Cuenta por Pagar') || ' ' || COALESCE(cf.numero_cpcfa, '')
+                 || ' - ' || CAST(ROUND(SUM(dt.valor_cpdtr * tt.signo_cpttr)::numeric, 2) AS VARCHAR) AS label,
+               SUM(dt.valor_cpdtr * tt.signo_cpttr) AS saldo_x_pagar
+        FROM cxp_detall_transa dt
+        LEFT JOIN cxp_cabece_transa ct ON dt.ide_cpctr = ct.ide_cpctr
+        LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa AND cf.ide_cpefa = ${estadoNormal}
+        LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+        LEFT JOIN con_tipo_document co ON cf.ide_cntdo = co.ide_cntdo
+        WHERE ct.ide_geper = $1
+          AND ct.ide_sucu = $2
+        GROUP BY dt.ide_cpctr, cf.numero_cpcfa, co.nombre_cntdo, cf.fecha_emisi_cpcfa, ct.fecha_trans_cpctr
+        HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) > 0
+        ORDER BY cf.fecha_emisi_cpcfa ASC, ct.fecha_trans_cpctr ASC, dt.ide_cpctr ASC
+    `);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addIntParam(2, dtoIn.ideSucu);
     return this.dataSource.createSelectQuery(query);
   }
 }

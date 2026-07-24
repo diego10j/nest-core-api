@@ -37,6 +37,7 @@ export class CuentasPorPagarService extends BaseService {
   async getCuentasPorPagar(dtoIn: CuentasPorPagarDto & HeaderParamsDto) {
 
     const soloPendientes = dtoIn.activos ? 'having saldo_x_pagar > 0' : '';
+    const condicionProveedor = dtoIn.ide_geper ? `AND ct.ide_geper = ${Number(dtoIn.ide_geper)}` : '';
     const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
     const query = new SelectQuery(
       `
@@ -122,6 +123,7 @@ export class CuentasPorPagarService extends BaseService {
         )
         AND dt.ide_sucu  = $3
         AND ct.ide_empr  = $4
+        ${condicionProveedor}
 
     GROUP BY
         ct.ide_cpctr,

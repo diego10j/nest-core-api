@@ -6,6 +6,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import { GetChequesNoConciliadosDto } from './dto/get-cheques-no-conciliados.dto';
+import { GetChequesPosfechadosCxPDto } from './dto/get-cheques-posfechados-cxp.dto';
 
 @Injectable()
 export class ChequesService extends BaseService {
@@ -57,8 +58,20 @@ export class ChequesService extends BaseService {
     /**
      * Retorna los cheques posfechados por pagar pendientes (ide_tettb = 14)
      */
-    async getChequesPosfechadosCxPPendientes(dtoIn: HeaderParamsDto) {
+    async getChequesPosfechadosCxPPendientes(dtoIn: GetChequesPosfechadosCxPDto & HeaderParamsDto) {
         const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+
+        // Filtro opcional por proveedor: cheques vinculados a transacciones CxP
+        // del proveedor (paridad getSqlChequesPosfechadosProveedor legacy)
+        const condicionProveedor = dtoIn.ide_geper
+            ? `AND EXISTS (
+                   SELECT 1
+                   FROM cxp_detall_transa c
+                   INNER JOIN cxp_cabece_transa d ON c.ide_cpctr = d.ide_cpctr
+                   WHERE c.ide_teclb = a.ide_teclb
+                     AND d.ide_geper = ${Number(dtoIn.ide_geper)}
+               )`
+            : '';
 
         const query = new SelectQuery(`
             SELECT a.ide_teclb,
@@ -75,6 +88,7 @@ export class ChequesService extends BaseService {
             WHERE a.ide_tettb = 14
               AND a.conciliado_teclb = false
               AND a.ide_sucu = $2
+              ${condicionProveedor}
             ORDER BY a.fec_cam_est_teclb, a.ide_teclb
         `);
         query.addIntParam(1, ideTeelb);

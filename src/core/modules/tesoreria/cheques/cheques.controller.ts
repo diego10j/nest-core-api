@@ -5,6 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { ChequesService } from './cheques.service';
 import { GetChequesNoConciliadosDto } from './dto/get-cheques-no-conciliados.dto';
+import { GetChequesPosfechadosCxPDto } from './dto/get-cheques-posfechados-cxp.dto';
 
 @ApiTags('Tesoreria - Cheques')
 @Controller('tesoreria/cheques')
@@ -18,9 +19,12 @@ export class ChequesController {
     }
 
     @Get('getChequesPosfechadosCxPPendientes')
-    @ApiOperation({ summary: 'Listar cheques posfechados por pagar pendientes' })
-    getChequesPosfechadosCxPPendientes(@AppHeaders() headersParams: HeaderParamsDto) {
-        return this.service.getChequesPosfechadosCxPPendientes(headersParams);
+    @ApiOperation({ summary: 'Listar cheques posfechados por pagar pendientes (filtro opcional por proveedor)' })
+    getChequesPosfechadosCxPPendientes(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetChequesPosfechadosCxPDto,
+    ) {
+        return this.service.getChequesPosfechadosCxPPendientes({ ...headersParams, ...dtoIn });
     }
 
     @Get('getChequesNoConciliados')
