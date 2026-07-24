@@ -12,9 +12,12 @@ import { JwtPayload } from '../interfaces/jwt-payload.interface';
  * Proceso:
  * 1. Verifica firma con JWT_REFRESH_SECRET.
  * 2. Comprueba el JTI en Redis:
- *    - Si está revocado → posible ataque de reuso → invalida todos los tokens del usuario.
+ *    - Si está revocado pero fue rotado legítimamente (token families) → 401 con code REFRESH_RACE.
+ *    - Si está revocado sin vínculo de rotación → posible robo → revoca todos los tokens + 401 con code TOKEN_REUSE.
  *    - Si no existe → token expirado o inválido.
  *    - Si es válido → retorna { id, jti } para que AuthService complete la rotación.
+ *
+ * El lock contra concurrencia se maneja en AuthService.refreshTokens() — acá solo se valida el estado.
  */
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
@@ -40,11 +43,20 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
         const status = await this.refreshTokenService.getStatus(jti);
 
         if (status.isRevoked) {
-            // Token revocado reutilizado → posible robo de token → invalidar todo
+            const isRotated = await this.refreshTokenService.isRotatedToken(jti);
+
+            if (isRotated) {
+                throw new UnauthorizedException({
+                    code: 'REFRESH_RACE',
+                    message: 'Refresh token ya fue renovado. Utilice el nuevo token.',
+                });
+            }
+
             await this.refreshTokenService.revokeAllForUser(userId);
-            throw new UnauthorizedException(
-                'Refresh token reutilizado. Por seguridad se han cerrado todas las sesiones activas.',
-            );
+            throw new UnauthorizedException({
+                code: 'TOKEN_REUSE',
+                message: 'Refresh token reutilizado. Por seguridad se han cerrado todas las sesiones activas.',
+            });
         }
 
         if (!status.userId) {

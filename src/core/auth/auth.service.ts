@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { getCurrentTime, getDayNumber } from '../../util/helpers/date-util';
@@ -174,25 +174,46 @@ export class AuthService {
    * El JTI del token anterior es validado y revocado por JwtRefreshStrategy antes de llegar aquí.
    */
   async refreshTokens(userId: string, oldJti: string): Promise<{ accessToken: string; refreshToken: string }> {
-    // Revocar el refresh token usado
-    await this.refreshTokenService.revoke(oldJti, userId);
+    const lockAcquired = await this.acquireLockWithRetry(oldJti);
+    if (!lockAcquired) {
+      throw new ConflictException('Refresh token está siendo procesado, intente nuevamente');
+    }
 
-    // Generar nuevo par de tokens
-    const accessToken = this.tokenService.generateAccessToken(userId);
-    const newRefreshToken = this.tokenService.generateRefreshToken(userId);
+    try {
+      // Verificar si el JTI ya fue rotado por una request concurrente anterior
+      const status = await this.refreshTokenService.getStatus(oldJti);
+      if (status.isRevoked && await this.refreshTokenService.isRotatedToken(oldJti)) {
+        throw new UnauthorizedException({
+          code: 'REFRESH_RACE',
+          message: 'Refresh token ya fue renovado por otra solicitud concurrente.',
+        });
+      }
 
-    // Registrar el nuevo access token
-    const accessTtl = this.getExpirationSeconds('JWT_SECRET_EXPIRES_TIME', 900);
-    await this.tokenBlacklistService.registerUserToken(userId, accessToken, accessTtl);
+      // Revocar el refresh token usado
+      await this.refreshTokenService.revoke(oldJti, userId);
 
-    // Almacenar el nuevo refresh token
-    const newPayload = this.tokenService.decodeToken(newRefreshToken);
-    const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
-    await this.refreshTokenService.store(newPayload.jti, userId, refreshTtl);
+      // Generar nuevo par de tokens
+      const accessToken = this.tokenService.generateAccessToken(userId);
+      const newRefreshToken = this.tokenService.generateRefreshToken(userId);
 
-    // this.logger.log(`Tokens rotados para usuario ${userId}`);
+      // Registrar el nuevo access token
+      const accessTtl = this.getExpirationSeconds('JWT_SECRET_EXPIRES_TIME', 900);
+      await this.tokenBlacklistService.registerUserToken(userId, accessToken, accessTtl);
 
-    return { accessToken, refreshToken: newRefreshToken };
+      // Almacenar el nuevo refresh token
+      const newPayload = this.tokenService.decodeToken(newRefreshToken);
+      const refreshTtl = this.getExpirationSeconds('JWT_REFRESH_EXPIRES_TIME', 604800);
+      await this.refreshTokenService.store(newPayload.jti, userId, refreshTtl);
+
+      // Registrar vínculo de rotación oldJti → newJti (token families)
+      await this.refreshTokenService.storeRotation(oldJti, newPayload.jti);
+
+      // this.logger.log(`Tokens rotados para usuario ${userId}`);
+
+      return { accessToken, refreshToken: newRefreshToken };
+    } finally {
+      await this.refreshTokenService.releaseLock(oldJti);
+    }
   }
 
   /**
@@ -251,6 +272,21 @@ export class AuthService {
       case 's': return value;
       default: return defaultSeconds;
     }
+  }
+
+  /**
+   * Intenta adquirir lock sobre el JTI con reintentos progresivos.
+   * Hasta 4s total de espera (10 intentos × 400ms) antes de rendirse.
+   */
+  private async acquireLockWithRetry(jti: string, retries = 10, delayMs = 400): Promise<boolean> {
+    for (let i = 0; i < retries; i++) {
+      const acquired = await this.refreshTokenService.acquireLock(jti);
+      if (acquired) return true;
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return false;
   }
 
   // ============= Métodos de soporte (podrían convertirse en use cases) =============
