@@ -5,15 +5,21 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
+import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
+import { SriComprobanteCabeceraService } from 'src/core/modules/sri/cel/sri-comprobante-cabecera.service';
+import { SriEnvioQueueService } from 'src/core/modules/sri/envio/sri-envio-queue.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 
 import { DocumentosCxPService } from './documentos-cxp.service';
 import { AnularDocumentoCxPDto } from './dto/anular-documento-cxp.dto';
+import { EnviarSriDocumentoCxPDto } from './dto/enviar-sri-documento-cxp.dto';
 import {
     CabDocumentoCxPDto,
     DetalleDocumentoCxPDto,
     ReembolsoDocumentoCxPDto,
+    ReembolsoLiquidacionCompraDto,
     SaveDocumentoCxPDto,
 } from './dto/save-documento-cxp.dto';
 
@@ -31,6 +37,9 @@ const TABLE_INV_CAB = 'inv_cab_comp_inve';
 const TABLE_INV_DET = 'inv_det_comp_inve';
 const PK_INV_CAB = 'ide_incci';
 const PK_INV_DET = 'ide_indci';
+/** Reembolso de gastos de Liquidación de Compra (Anexo 17 SRI), tabla ya existente en el core. */
+const TABLE_REEMBOLSO_LIQUIDACION = 'cxp_datos_com_reembolso';
+const PK_REEMBOLSO_LIQUIDACION = 'ide_cpdcr';
 
 // ─── Valores heredados del sistema legacy (ServicioCuentasCxP / ServicioInventario) ──
 /** Tipo de transacción CxP para nota de crédito (hardcoded en el legacy) */
@@ -41,6 +50,8 @@ const IDE_INTTI_REVERSA_NC = 13;
 const MOTIVO_NC_DESCUENTO_PRECIO = 'DESCUENTO EN PRECIO';
 /** Longitudes válidas de la autorización SRI: 10 (física), 37/49 (clave de acceso) */
 const LONGITUDES_AUTORIZACION = [10, 37, 49];
+/** codDoc SRI de Liquidación de Compra (Tabla 4 ficha técnica) */
+const COD_DOC_LIQUIDACION_COMPRA = '03';
 
 // ─── Tipos internos ──────────────────────────────────────────────────────────
 type Totales = ReturnType<DocumentosCxPSaveService['calcularTotales']>;
@@ -69,6 +80,9 @@ export class DocumentosCxPSaveService extends BaseService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
         private readonly consultas: DocumentosCxPService,
+        private readonly emisorService: EmisorService,
+        private readonly sriComprobanteCabeceraService: SriComprobanteCabeceraService,
+        private readonly sriEnvioQueueService: SriEnvioQueueService,
     ) {
         super();
         this.core
@@ -79,6 +93,7 @@ export class DocumentosCxPSaveService extends BaseService {
                 'p_con_estado_comprobante_anulado',
                 'p_con_tipo_documento_nota_credito',
                 'p_con_tipo_documento_reembolso',
+                'p_con_tipo_documento_liquidacion_compra',
                 'p_inv_estado_normal',
                 'p_inv_tipo_transaccion_compra',
             ])
@@ -115,6 +130,10 @@ export class DocumentosCxPSaveService extends BaseService {
         return this.getVar('p_con_tipo_documento_reembolso');
     }
 
+    private get ideTipoDocLiquidacionCompra(): number {
+        return this.getVar('p_con_tipo_documento_liquidacion_compra');
+    }
+
     private get ideEstadoNormalInv(): number {
         return this.getVar('p_inv_estado_normal');
     }
@@ -143,7 +162,18 @@ export class DocumentosCxPSaveService extends BaseService {
 
             const esNotaCredito = cabecera.ide_cntdo === this.ideTipoDocNotaCredito;
             const esReembolso = cabecera.ide_cntdo === this.ideTipoDocReembolso;
+            const esLiquidacionCompra = cabecera.ide_cntdo === this.ideTipoDocLiquidacionCompra;
+            // Reembolso obligatorio (todo el documento es un reembolso, tipo REEMBOLSOS del ATS,
+            // mecanismo self-referencing en cxp_cabece_factur — sin cambios).
             const reembolsos = esReembolso ? (dtoIn.reembolsos ?? []) : [];
+            // Líneas de reembolso opcionales dentro de una Liquidación de Compra (Anexo 17 SRI),
+            // en cxp_datos_com_reembolso (tabla ya existente en el core para este propósito).
+            const reembolsosLiquidacion = esLiquidacionCompra ? (dtoIn.reembolsosLiquidacion ?? []) : [];
+            // Liquidación de Compra electrónica: numero_cpcfa/autorizacio_cpcfa no vienen del
+            // usuario (a diferencia del resto de documentos CxP, recibidos de terceros) — se
+            // generan al guardar mediante el generador de cabecera SRI (paridad Retención CxP).
+            const esElectronica = esLiquidacionCompra && !isUpdate
+                && !cabecera.numero_cpcfa && !cabecera.autorizacio_cpcfa;
 
             // ── Sanitizar fechas ─────────────────────────────────────────────
             cabecera.fecha_emisi_cpcfa = toPgDate(cabecera.fecha_emisi_cpcfa) || getCurrentDate();
@@ -153,6 +183,9 @@ export class DocumentosCxPSaveService extends BaseService {
             }
             for (const r of reembolsos) {
                 r.fecha_emisi_cpcfa = toPgDate(r.fecha_emisi_cpcfa) || cabecera.fecha_emisi_cpcfa;
+            }
+            for (const r of reembolsosLiquidacion) {
+                if (r.fecha) r.fecha = toPgDate(r.fecha) || cabecera.fecha_emisi_cpcfa;
             }
 
             // ── Totales (paridad legacy: el descuento solo reduce la base del IVA) ──
@@ -166,12 +199,75 @@ export class DocumentosCxPSaveService extends BaseService {
                 cabecera.otros_cpcfa ?? 0,
             );
 
-            await this.validarDocumento(cabecera, detalles, reembolsos, totales, esNotaCredito, esReembolso, isUpdate);
+            await this.validarDocumento(
+                cabecera, detalles, reembolsos, reembolsosLiquidacion, totales,
+                esNotaCredito, esReembolso, isUpdate, esElectronica,
+            );
 
             const diasCredito = isDefined(cabecera.dias_credito_cpcfa)
                 ? Number(cabecera.dias_credito_cpcfa)
                 : await this.consultas.getDiasCreditoFormaPago(cabecera.ide_cndfp1);
             const fechaVencimiento = this.sumarDias(cabecera.fecha_emisi_cpcfa, diasCredito);
+
+            // ── Comprobante electrónico SRI (Liquidación de Compra) ──────────
+            // Genera la cabecera sri_comprobante PENDIENTE con su propio secuencial +
+            // clave de acceso, que reemplazan numero_cpcfa/autorizacio_cpcfa del documento.
+            let claveAccesoSri: string | undefined;
+            let ideSrcomElectronico: number | undefined;
+            let sriHeaderQuery: InsertQuery | undefined;
+            if (esElectronica) {
+                if (!dtoIn.ide_ccdaf) {
+                    throw new BadRequestException(
+                        'Debe seleccionar el punto de emisión (ide_ccdaf) para la Liquidación de Compra electrónica.',
+                    );
+                }
+                const qSerie = new SelectQuery(`SELECT serie_ccdaf FROM cxc_datos_fac WHERE ide_ccdaf = $1`);
+                qSerie.addIntParam(1, dtoIn.ide_ccdaf);
+                const serieRow = await this.dataSource.createSingleQuery(qSerie);
+                if (!serieRow?.serie_ccdaf) {
+                    throw new BadRequestException(`No existe el punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf}`);
+                }
+                const serie = String(serieRow.serie_ccdaf);
+                const estab = serie.slice(0, 3);
+                const ptoEmi = serie.slice(3, 6);
+
+                const qProveedor = new SelectQuery(`SELECT identificac_geper, correo_geper FROM gen_persona WHERE ide_geper = $1`);
+                qProveedor.addIntParam(1, cabecera.ide_geper);
+                const proveedor = await this.dataSource.createSingleQuery(qProveedor);
+
+                const emisor = await this.emisorService.getEmisor(dtoIn);
+                const fechaEmisionStr = String(cabecera.fecha_emisi_cpcfa);
+                const periodoFiscal = `${fechaEmisionStr.slice(5, 7)}/${fechaEmisionStr.slice(0, 4)}`;
+
+                const built = await this.sriComprobanteCabeceraService.buildInsertPendiente(
+                    {
+                        ideEmpr: dtoIn.ideEmpr,
+                        ideSucu: dtoIn.ideSucu,
+                        login: dtoIn.login,
+                        ip: dtoIn.ip,
+                        ideSresc: EstadoComprobanteEnum.PENDIENTE.codigo,
+                        ideCntdo: cabecera.ide_cntdo,
+                        ideGeper: cabecera.ide_geper,
+                        coddoc: COD_DOC_LIQUIDACION_COMPRA,
+                        fechaEmision: fechaEmisionStr,
+                        estab,
+                        ptoEmi,
+                        subtotal0: totales.base_tarifa0,
+                        baseGrabada: totales.base_grabada,
+                        iva: totales.valor_iva,
+                        total: totales.total,
+                        identificacion: proveedor?.identificac_geper ?? '',
+                        correo: proveedor?.correo_geper,
+                        periodoFiscal,
+                    },
+                    emisor,
+                );
+                sriHeaderQuery = built.query;
+                claveAccesoSri = built.claveAcceso;
+                ideSrcomElectronico = built.ideSrcom;
+                cabecera.numero_cpcfa = `${estab}-${ptoEmi}-${built.secuencial}`;
+                cabecera.autorizacio_cpcfa = claveAccesoSri;
+            }
 
             // ── Kardex ───────────────────────────────────────────────────────
             // Paridad legacy: si al menos un artículo hace kardex, el comprobante
@@ -194,6 +290,9 @@ export class DocumentosCxPSaveService extends BaseService {
             const baseIdeReembolso = reembolsos.length > 0
                 ? await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, reembolsos.length, dtoIn.login)
                 : null;
+            const baseIdeReembolsoLiquidacion = reembolsosLiquidacion.length > 0
+                ? await this.dataSource.getSeqTable(TABLE_REEMBOLSO_LIQUIDACION, PK_REEMBOLSO_LIQUIDACION, reembolsosLiquidacion.length, dtoIn.login)
+                : null;
             const ideCpctr = trn.ideCpctr ?? await this.dataSource.getSeqTable(TABLE_TRN_CAB, PK_TRN_CAB, 1, dtoIn.login);
             const ideCpdtr = await this.dataSource.getSeqTable(TABLE_TRN_DET, PK_TRN_DET, 1, dtoIn.login);
             const ideIncci = generaComprobanteInv
@@ -210,16 +309,27 @@ export class DocumentosCxPSaveService extends BaseService {
                 listQuery.push(this.buildUpdateCabecera(ideCpcfa, cabecera, totales, tarifaIva, diasCredito, dtoIn));
                 listQuery.push(...this.buildDeleteDependencias(ideCpcfa, trn.ideCpctr));
             } else {
-                listQuery.push(this.buildInsertCabecera(ideCpcfa, cabecera, totales, tarifaIva, diasCredito, dtoIn));
+                listQuery.push(
+                    this.buildInsertCabecera(ideCpcfa, cabecera, totales, tarifaIva, diasCredito, dtoIn, ideSrcomElectronico),
+                );
+            }
+            if (sriHeaderQuery) {
+                listQuery.push(sriHeaderQuery);
             }
 
             detalles.forEach((det, idx) => {
                 listQuery.push(this.buildInsertDetalle(ideCpcfa, baseIdeCpdfa + idx, det, dtoIn));
             });
 
-            reembolsos.forEach((r, idx) => {
-                listQuery.push(this.buildInsertReembolso(ideCpcfa, baseIdeReembolso! + idx, r, cabecera, dtoIn));
-            });
+            for (let idx = 0; idx < reembolsos.length; idx++) {
+                listQuery.push(await this.buildInsertReembolso(ideCpcfa, baseIdeReembolso! + idx, reembolsos[idx], cabecera, dtoIn));
+            }
+
+            for (let idx = 0; idx < reembolsosLiquidacion.length; idx++) {
+                listQuery.push(await this.buildInsertReembolsoLiquidacion(
+                    baseIdeReembolsoLiquidacion! + idx, ideCpcfa, reembolsosLiquidacion[idx], dtoIn,
+                ));
+            }
 
             // Cuenta por pagar: cabecera nueva salvo NC (reutiliza la de la factura
             // original) o compra con anticipo (usa la cabecera del anticipo)
@@ -249,18 +359,44 @@ export class DocumentosCxPSaveService extends BaseService {
             // ── Ejecutar todo en una única transacción ───────────────────────
             await this.dataSource.createListQuery(listQuery);
 
+            // El guardado NO envía automáticamente al SRI: el envío es bajo demanda vía
+            // enviarSRI(ide_cpcfa), que encola (firma + recepción + autorización + correo).
             return {
                 message: 'ok',
                 ide_cpcfa: ideCpcfa,
                 ide_cpctr: ideCpctr,
                 kardex_generado: generaComprobanteInv,
                 totales,
+                clave_acceso_sri: claveAccesoSri,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar el documento CxP: ${msg}`);
         }
+    }
+
+    /**
+     * Envía bajo demanda una Liquidación de Compra electrónica al SRI: resuelve su clave de
+     * acceso y la encola (firma + recepción + autorización); al autorizarse se envía el correo
+     * con PDF+XML automáticamente (ComprobanteAutorizadoEmitter / ComprobanteEmailListener).
+     */
+    async enviarSRI(dtoIn: EnviarSriDocumentoCxPDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT s.claveacceso_srcom
+            FROM cxp_cabece_factur a
+            INNER JOIN sri_comprobante s ON a.ide_srcom = s.ide_srcom
+            WHERE a.ide_cpcfa = $1
+        `);
+        query.addIntParam(1, dtoIn.ide_cpcfa);
+        const row = await this.dataSource.createSingleQuery(query);
+        if (!row?.claveacceso_srcom) {
+            throw new BadRequestException(
+                `El documento ide_cpcfa=${dtoIn.ide_cpcfa} no es una Liquidación de Compra electrónica o no existe.`,
+            );
+        }
+        this.sriEnvioQueueService.encolar(row.claveacceso_srcom, dtoIn);
+        return { message: 'ok', ide_cpcfa: dtoIn.ide_cpcfa, clave_acceso_sri: row.claveacceso_srcom };
     }
 
     /**
@@ -352,10 +488,12 @@ export class DocumentosCxPSaveService extends BaseService {
         cabecera: CabDocumentoCxPDto,
         detalles: DetalleDocumentoCxPDto[],
         reembolsos: ReembolsoDocumentoCxPDto[],
+        reembolsosLiquidacion: ReembolsoLiquidacionCompraDto[],
         totales: Totales,
         esNotaCredito: boolean,
         esReembolso: boolean,
         isUpdate: boolean,
+        esElectronica: boolean,
     ) {
         // Proveedor
         const qProv = new SelectQuery(`
@@ -369,8 +507,13 @@ export class DocumentosCxPSaveService extends BaseService {
             throw new BadRequestException(`El proveedor ide_geper=${cabecera.ide_geper} no existe.`);
         }
 
-        // Autorización SRI
-        this.validarLongitudAutorizacion(cabecera.autorizacio_cpcfa, 'del documento');
+        // Autorización SRI: en Liquidación de Compra electrónica se genera al guardar, no se valida aquí.
+        if (!esElectronica) {
+            if (!cabecera.numero_cpcfa || !cabecera.autorizacio_cpcfa) {
+                throw new BadRequestException('Debe ingresar el número y la autorización del documento.');
+            }
+            this.validarLongitudAutorizacion(cabecera.autorizacio_cpcfa, 'del documento');
+        }
 
         // Detalles
         for (const det of detalles) {
@@ -390,25 +533,28 @@ export class DocumentosCxPSaveService extends BaseService {
             throw new BadRequestException('El total del documento debe ser mayor a 0.');
         }
 
-        // Documento duplicado (mismo número + proveedor + autorización, en estado normal)
-        const qDup = new SelectQuery(`
-            SELECT ide_cpcfa
-            FROM cxp_cabece_factur
-            WHERE numero_cpcfa = $1
-              AND ide_geper = $2
-              AND autorizacio_cpcfa = $3
-              AND ide_cpefa = $4
-            LIMIT 1
-        `);
-        qDup.addStringParam(1, cabecera.numero_cpcfa);
-        qDup.addIntParam(2, cabecera.ide_geper);
-        qDup.addStringParam(3, cabecera.autorizacio_cpcfa);
-        qDup.addIntParam(4, this.ideEstadoNormal);
-        const duplicado = await this.dataSource.createSingleQuery(qDup);
-        if (duplicado && (!isUpdate || Number(duplicado.ide_cpcfa) !== Number(cabecera.ide_cpcfa))) {
-            throw new BadRequestException(
-                `El documento ${cabecera.numero_cpcfa} del proveedor ya se encuentra registrado.`,
-            );
+        // Documento duplicado (mismo número + proveedor + autorización, en estado normal).
+        // No aplica a Liquidación de Compra electrónica: numero/autorización aún no existen.
+        if (!esElectronica) {
+            const qDup = new SelectQuery(`
+                SELECT ide_cpcfa
+                FROM cxp_cabece_factur
+                WHERE numero_cpcfa = $1
+                  AND ide_geper = $2
+                  AND autorizacio_cpcfa = $3
+                  AND ide_cpefa = $4
+                LIMIT 1
+            `);
+            qDup.addStringParam(1, cabecera.numero_cpcfa);
+            qDup.addIntParam(2, cabecera.ide_geper);
+            qDup.addStringParam(3, cabecera.autorizacio_cpcfa);
+            qDup.addIntParam(4, this.ideEstadoNormal);
+            const duplicado = await this.dataSource.createSingleQuery(qDup);
+            if (duplicado && (!isUpdate || Number(duplicado.ide_cpcfa) !== Number(cabecera.ide_cpcfa))) {
+                throw new BadRequestException(
+                    `El documento ${cabecera.numero_cpcfa} del proveedor ya se encuentra registrado.`,
+                );
+            }
         }
 
         // Nota de crédito: datos de la factura original
@@ -426,15 +572,14 @@ export class DocumentosCxPSaveService extends BaseService {
             this.validarLongitudAutorizacion(cabecera.autorizacio_nc_cpcfa, 'de la factura original');
         }
 
-        // Reembolso: filas obligatorias y cuadre de totales
+        // Reembolso (tipo de documento REEMBOLSOS, ATS): filas obligatorias y cuadre de totales
         if (esReembolso) {
             if (reembolsos.length === 0) {
                 throw new BadRequestException('Debe ingresar al menos un comprobante de reembolso.');
             }
             let totalReembolsos = 0;
             for (const r of reembolsos) {
-                this.validarLongitudAutorizacion(r.autorizacio_cpcfa, `del reembolso ${r.numero_cpcfa}`);
-                totalReembolsos += Number(r.total_cpcfa);
+                totalReembolsos += await this.validarLineaReembolso(r);
             }
             if (Math.abs(totalReembolsos - totales.total) > 0.01) {
                 throw new BadRequestException(
@@ -442,6 +587,79 @@ export class DocumentosCxPSaveService extends BaseService {
                 );
             }
         }
+
+        // Líneas de reembolso opcionales dentro de una Liquidación de Compra (Anexo 17 SRI):
+        // no son obligatorias ni deben cuadrar con el total del documento.
+        for (const r of reembolsosLiquidacion) {
+            await this.validarLineaReembolsoLiquidacion(r);
+        }
+    }
+
+    /**
+     * Valida una línea de reembolso y retorna su total. En modo referenciado
+     * (ide_cpcfa_referencia) verifica que el documento CxP exista y no haya
+     * sido reembolsado ya en otro documento; en modo manual valida los campos
+     * ingresados a mano (paridad con el comportamiento original).
+     */
+    private async validarLineaReembolso(r: ReembolsoDocumentoCxPDto): Promise<number> {
+        if (isDefined(r.ide_cpcfa_referencia)) {
+            const qRef = new SelectQuery(`
+                SELECT total_cpcfa, numero_cpcfa, autorizacio_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = $1
+            `);
+            qRef.addIntParam(1, r.ide_cpcfa_referencia);
+            const referencia = await this.dataSource.createSingleQuery(qRef);
+            if (!referencia) {
+                throw new BadRequestException(`El documento de compra ide_cpcfa=${r.ide_cpcfa_referencia} no existe.`);
+            }
+            // Duplicado: ¿ya existe una fila hija de reembolso (ide_rem_cpcfa) con el mismo
+            // número+autorización del documento referenciado?
+            const qDup = new SelectQuery(`
+                SELECT ide_cpcfa FROM cxp_cabece_factur
+                WHERE ide_rem_cpcfa IS NOT NULL AND numero_cpcfa = $1 AND autorizacio_cpcfa = $2
+            `);
+            qDup.addStringParam(1, referencia.numero_cpcfa);
+            qDup.addStringParam(2, referencia.autorizacio_cpcfa);
+            const duplicado = await this.dataSource.createSingleQuery(qDup);
+            if (duplicado) {
+                throw new BadRequestException(`El documento de compra ide_cpcfa=${r.ide_cpcfa_referencia} ya fue reembolsado en otro documento.`);
+            }
+            return Number(referencia.total_cpcfa ?? 0);
+        }
+
+        if (!isDefined(r.ide_cntdo) || !r.identificacion || !r.numero_cpcfa || !r.fecha_emisi_cpcfa || !r.autorizacio_cpcfa) {
+            throw new BadRequestException('Debe ingresar ide_cpcfa_referencia o los datos completos del comprobante de reembolso.');
+        }
+        this.validarLongitudAutorizacion(r.autorizacio_cpcfa, `del reembolso ${r.numero_cpcfa}`);
+        return Number(r.total_cpcfa ?? 0);
+    }
+
+    /**
+     * Valida una línea de reembolso de Liquidación de Compra (Anexo 17 SRI). En modo
+     * referenciado (ide_cpcfa_sustento) verifica que el documento exista y no haya sido
+     * reembolsado ya en otro documento; en modo manual valida los campos ingresados a mano
+     * (paridad con pre_factura_cxp.java).
+     */
+    private async validarLineaReembolsoLiquidacion(r: ReembolsoLiquidacionCompraDto): Promise<void> {
+        if (isDefined(r.ide_cpcfa_sustento)) {
+            const qRef = new SelectQuery(`SELECT ide_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
+            qRef.addIntParam(1, r.ide_cpcfa_sustento);
+            const referencia = await this.dataSource.createSingleQuery(qRef);
+            if (!referencia) {
+                throw new BadRequestException(`El documento de compra ide_cpcfa=${r.ide_cpcfa_sustento} no existe.`);
+            }
+            const qDup = new SelectQuery(`SELECT ide_cpdcr FROM ${TABLE_REEMBOLSO_LIQUIDACION} WHERE ide_cpcfa_sustento = $1`);
+            qDup.addIntParam(1, r.ide_cpcfa_sustento);
+            const duplicado = await this.dataSource.createSingleQuery(qDup);
+            if (duplicado) {
+                throw new BadRequestException(`El documento de compra ide_cpcfa=${r.ide_cpcfa_sustento} ya fue reembolsado en otro documento.`);
+            }
+            return;
+        }
+
+        if (!isDefined(r.ide_cntdo) || !isDefined(r.ide_getid) || !r.identificacion || !r.serie || !r.secuencial || !r.autorizacion || !r.fecha) {
+            throw new BadRequestException('Debe ingresar ide_cpcfa_sustento o los datos completos de la línea de reembolso.');
+        }
+        this.validarLongitudAutorizacion(r.autorizacion, `del reembolso ${r.serie}${r.secuencial}`);
     }
 
     private validarLongitudAutorizacion(autorizacion: string, contexto: string) {
@@ -538,9 +756,11 @@ export class DocumentosCxPSaveService extends BaseService {
         tarifaIva: number,
         diasCredito: number,
         dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+        ideSrcom?: number,
     ): InsertQuery {
         const q = new InsertQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
         q.values.set(PK_CAB, ideCpcfa);
+        q.values.set('ide_srcom', ideSrcom ?? null);
         q.values.set('ide_cntdo', cabecera.ide_cntdo);
         q.values.set('ide_geper', cabecera.ide_geper);
         q.values.set('ide_cpefa', this.ideEstadoNormal);
@@ -637,6 +857,11 @@ export class DocumentosCxPSaveService extends BaseService {
         delReembolsos.addIntParam(1, ideCpcfa);
         queries.push(delReembolsos);
 
+        const delReembolsosLiquidacion = new DeleteQuery(TABLE_REEMBOLSO_LIQUIDACION);
+        delReembolsosLiquidacion.where = `ide_cpcfa = $1`;
+        delReembolsosLiquidacion.addIntParam(1, ideCpcfa);
+        queries.push(delReembolsosLiquidacion);
+
         if (ideCpctr !== null) {
             const delTrnDet = new DeleteQuery(TABLE_TRN_DET);
             delTrnDet.where = `ide_cpctr = $1 AND ide_cpcfa = $2 AND numero_pago_cpdtr = 0`;
@@ -686,38 +911,147 @@ export class DocumentosCxPSaveService extends BaseService {
     }
 
     /**
-     * Fila hija de reembolso en cxp_cabece_factur, enlazada al documento padre
-     * por ide_rem_cpcfa. La identificación del emisor viaja en motivo_nc_cpcfa
-     * (paridad con el legacy).
+     * Fila hija de reembolso en cxp_cabece_factur, enlazada al documento padre por
+     * ide_rem_cpcfa. Usado únicamente por el tipo de documento REEMBOLSOS (ATS) —
+     * excluye estas sub-facturas de ATS/Formulario 103/104 (paridad legacy,
+     * componentes/DocumentoCxP.java). Para Liquidación de Compra ver
+     * buildInsertReembolsoLiquidacion (Anexo 17 SRI, cxp_datos_com_reembolso).
+     *
+     * Modo referenciado (r.ide_cpcfa_referencia): copia proveedor/documento/impuestos
+     * del documento CxP real referenciado — a diferencia del modo manual, ide_geper es
+     * el proveedor REAL del documento reembolsado, no el del documento padre.
+     * Modo manual: comportamiento original (paridad legacy), identificación del emisor
+     * en motivo_nc_cpcfa.
      */
-    private buildInsertReembolso(
+    private async buildInsertReembolso(
         ideCpcfaPadre: number,
         ideCpcfaHijo: number,
         r: ReembolsoDocumentoCxPDto,
         cabecera: CabDocumentoCxPDto,
         dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
-    ): InsertQuery {
+    ): Promise<InsertQuery> {
         const q = new InsertQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
         q.values.set(PK_CAB, ideCpcfaHijo);
         q.values.set('ide_rem_cpcfa', ideCpcfaPadre);
-        q.values.set('ide_cntdo', r.ide_cntdo);
-        q.values.set('ide_geper', cabecera.ide_geper);
         q.values.set('ide_cpefa', this.ideEstadoNormal);
         q.values.set('ide_usua', dtoIn.ideUsua);
-        q.values.set('numero_cpcfa', r.numero_cpcfa);
-        q.values.set('autorizacio_cpcfa', r.autorizacio_cpcfa);
-        q.values.set('fecha_emisi_cpcfa', r.fecha_emisi_cpcfa);
         q.values.set('fecha_trans_cpcfa', getCurrentDate());
-        q.values.set('motivo_nc_cpcfa', r.identificacion);
-        q.values.set('base_grabada_cpcfa', r.base_grabada_cpcfa);
-        q.values.set('base_no_objeto_iva_cpcfa', r.base_no_objeto_iva_cpcfa);
-        q.values.set('base_tarifa0_cpcfa', r.base_tarifa0_cpcfa);
-        q.values.set('valor_iva_cpcfa', r.valor_iva_cpcfa);
-        q.values.set('valor_ice_cpcfa', r.valor_ice_cpcfa);
-        q.values.set('total_cpcfa', r.total_cpcfa);
         q.values.set('pagado_cpcfa', false);
         q.values.set('fecha_ingre', getCurrentDate());
         q.values.set('hora_ingre', getCurrentTime());
+
+        if (isDefined(r.ide_cpcfa_referencia)) {
+            const qDoc = new SelectQuery(`
+                SELECT ide_geper, ide_cntdo, numero_cpcfa, autorizacio_cpcfa, fecha_emisi_cpcfa,
+                       base_grabada_cpcfa, base_no_objeto_iva_cpcfa, base_tarifa0_cpcfa,
+                       valor_iva_cpcfa, valor_ice_cpcfa, total_cpcfa
+                FROM cxp_cabece_factur WHERE ide_cpcfa = $1
+            `);
+            qDoc.addIntParam(1, r.ide_cpcfa_referencia);
+            const doc = await this.dataSource.createSingleQuery(qDoc);
+
+            const qProv = new SelectQuery(`
+                SELECT identificac_geper
+                FROM gen_persona
+                WHERE ide_geper = $1
+            `);
+            qProv.addIntParam(1, doc.ide_geper);
+            const prov = await this.dataSource.createSingleQuery(qProv);
+
+            q.values.set('ide_cntdo', doc.ide_cntdo);
+            q.values.set('ide_geper', doc.ide_geper);
+            q.values.set('numero_cpcfa', doc.numero_cpcfa);
+            q.values.set('autorizacio_cpcfa', doc.autorizacio_cpcfa);
+            q.values.set('fecha_emisi_cpcfa', doc.fecha_emisi_cpcfa);
+            q.values.set('motivo_nc_cpcfa', prov?.identificac_geper ?? null);
+            q.values.set('base_grabada_cpcfa', doc.base_grabada_cpcfa ?? 0);
+            q.values.set('base_no_objeto_iva_cpcfa', doc.base_no_objeto_iva_cpcfa ?? 0);
+            q.values.set('base_tarifa0_cpcfa', doc.base_tarifa0_cpcfa ?? 0);
+            q.values.set('valor_iva_cpcfa', doc.valor_iva_cpcfa ?? 0);
+            q.values.set('valor_ice_cpcfa', doc.valor_ice_cpcfa ?? 0);
+            q.values.set('total_cpcfa', doc.total_cpcfa);
+        } else {
+            q.values.set('ide_cntdo', r.ide_cntdo);
+            q.values.set('ide_geper', cabecera.ide_geper);
+            q.values.set('numero_cpcfa', r.numero_cpcfa);
+            q.values.set('autorizacio_cpcfa', r.autorizacio_cpcfa);
+            q.values.set('fecha_emisi_cpcfa', r.fecha_emisi_cpcfa);
+            q.values.set('motivo_nc_cpcfa', r.identificacion);
+            q.values.set('base_grabada_cpcfa', r.base_grabada_cpcfa ?? 0);
+            q.values.set('base_no_objeto_iva_cpcfa', r.base_no_objeto_iva_cpcfa ?? 0);
+            q.values.set('base_tarifa0_cpcfa', r.base_tarifa0_cpcfa ?? 0);
+            q.values.set('valor_iva_cpcfa', r.valor_iva_cpcfa ?? 0);
+            q.values.set('valor_ice_cpcfa', r.valor_ice_cpcfa ?? 0);
+            q.values.set('total_cpcfa', r.total_cpcfa);
+        }
+        return q;
+    }
+
+    /**
+     * Línea de reembolso de gastos de una Liquidación de Compra (Anexo 17 SRI), en
+     * cxp_datos_com_reembolso (tabla ya existente en el core, usada por
+     * pkg_cuentas_x_pagar/pre_factura_cxp.java del legacy para este mismo propósito).
+     *
+     * Modo referenciado (r.ide_cpcfa_sustento): copia proveedor/documento/impuestos del
+     * documento CxP real referenciado. Modo manual: los campos se ingresan a mano
+     * (paridad legacy). tipoProveedorReembolso (Tabla 26 SRI) no se guarda: se deriva al
+     * armar el XML a partir de ide_getid + identificacion_cpdcr (ver comprobantes-elec.service.ts).
+     */
+    private async buildInsertReembolsoLiquidacion(
+        ideCpdcr: number,
+        ideCpcfaPadre: number,
+        r: ReembolsoLiquidacionCompraDto,
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): Promise<InsertQuery> {
+        const q = new InsertQuery(TABLE_REEMBOLSO_LIQUIDACION, PK_REEMBOLSO_LIQUIDACION, dtoIn);
+        q.values.set(PK_REEMBOLSO_LIQUIDACION, ideCpdcr);
+        q.values.set('ide_cpcfa', ideCpcfaPadre);
+        q.values.set('ide_empr', dtoIn.ideEmpr);
+        q.values.set('ide_sucu', dtoIn.ideSucu);
+        q.values.set('cod_pais_pago_cpdcr', r.cod_pais_pago ?? 593);
+
+        if (isDefined(r.ide_cpcfa_sustento)) {
+            const qDoc = new SelectQuery(`
+                SELECT d.ide_cntdo, d.numero_cpcfa, d.autorizacio_cpcfa, d.fecha_emisi_cpcfa,
+                       d.base_no_objeto_iva_cpcfa, d.base_tarifa0_cpcfa, d.base_grabada_cpcfa,
+                       d.valor_iva_cpcfa, d.valor_ice_cpcfa,
+                       p.identificac_geper, p.ide_getid
+                FROM cxp_cabece_factur d
+                INNER JOIN gen_persona p ON d.ide_geper = p.ide_geper
+                WHERE d.ide_cpcfa = $1
+            `);
+            qDoc.addIntParam(1, r.ide_cpcfa_sustento);
+            const doc = await this.dataSource.createSingleQuery(qDoc);
+
+            const { estab, ptoEmi, secuencial } = this.splitNumeroDocumento(doc.numero_cpcfa);
+            q.values.set('ide_cpcfa_sustento', r.ide_cpcfa_sustento);
+            q.values.set('ide_cntdo', doc.ide_cntdo);
+            q.values.set('ide_getid', doc.ide_getid);
+            q.values.set('identificacion_cpdcr', doc.identificac_geper);
+            q.values.set('serie_cpdcr', `${estab}${ptoEmi}`);
+            q.values.set('secuencial_cpdcr', secuencial);
+            q.values.set('autorizacion_cpdcr', doc.autorizacio_cpcfa);
+            q.values.set('fecha_cpdcr', doc.fecha_emisi_cpcfa);
+            q.values.set('base_no_objeto_cpdcr', doc.base_no_objeto_iva_cpcfa ?? 0);
+            q.values.set('base_tarifa0_cpdcr', doc.base_tarifa0_cpcfa ?? 0);
+            q.values.set('base_imponible_cpdcr', doc.base_grabada_cpcfa ?? 0);
+            q.values.set('valor_iva_cpdcr', doc.valor_iva_cpcfa ?? 0);
+            q.values.set('valor_ice_cpdcr', doc.valor_ice_cpcfa ?? 0);
+        } else {
+            q.values.set('ide_cpcfa_sustento', null);
+            q.values.set('ide_cntdo', r.ide_cntdo);
+            q.values.set('ide_getid', r.ide_getid);
+            q.values.set('identificacion_cpdcr', r.identificacion);
+            q.values.set('serie_cpdcr', r.serie);
+            q.values.set('secuencial_cpdcr', r.secuencial);
+            q.values.set('autorizacion_cpdcr', r.autorizacion);
+            q.values.set('fecha_cpdcr', r.fecha);
+            q.values.set('base_no_objeto_cpdcr', r.base_no_objeto ?? 0);
+            q.values.set('base_tarifa0_cpdcr', r.base_tarifa0 ?? 0);
+            q.values.set('base_imponible_cpdcr', r.base_imponible ?? 0);
+            q.values.set('valor_iva_cpdcr', r.valor_iva ?? 0);
+            q.values.set('valor_ice_cpdcr', r.valor_ice ?? 0);
+        }
         return q;
     }
 
@@ -999,5 +1333,21 @@ export class DocumentosCxPSaveService extends BaseService {
         const d = new Date(`${fecha}T00:00:00`);
         d.setDate(d.getDate() + dias);
         return d.toISOString().split('T')[0];
+    }
+
+    /**
+     * Separa un número de documento en establecimiento/ptoEmisión/secuencial. Soporta tanto
+     * el formato con guiones ("001-001-000000001") como el heredado sin separador (dígitos
+     * contiguos, ancho fijo 3+3+resto).
+     */
+    private splitNumeroDocumento(numero: string | null | undefined): { estab: string; ptoEmi: string; secuencial: string } {
+        const limpio = (numero ?? '').trim();
+        if (limpio.includes('-')) {
+            const partes = limpio.split('-');
+            if (partes.length === 3) {
+                return { estab: partes[0], ptoEmi: partes[1], secuencial: partes[2] };
+            }
+        }
+        return { estab: limpio.slice(0, 3), ptoEmi: limpio.slice(3, 6), secuencial: limpio.slice(6) };
     }
 }

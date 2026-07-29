@@ -11,6 +11,13 @@ import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
+import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
+import {
+    SUSTENTO_FACTURA,
+    SUSTENTO_LIQUIDACION_COMPRA,
+    SUSTENTO_NOTA_CREDITO,
+    SUSTENTO_REEMBOLSO,
+} from './sustento-tributario.util';
 
 /** Tipo de documento "Importaciones" (valor fijo heredado del legacy) */
 const IDE_CNTDO_IMPORTACIONES = 11;
@@ -638,15 +645,34 @@ export class DocumentosCxPService extends BaseService {
     }
 
     /**
-     * Retorna sustento tributario para combo
+     * Retorna sustento tributario para combo, filtrado por tipo de documento
+     * (Tabla 4 SRI - ATS) cuando se indica ide_cntdo; sin filtro retorna todo el catálogo.
      */
-    async getSustentoTributario() {
+    async getSustentoTributario(dtoIn?: SustentoTributarioCxPDto) {
+        const codigos = this.getSustentosPermitidos(dtoIn?.ide_cntdo);
         const query = new SelectQuery(`
             SELECT CAST(ide_srtst AS VARCHAR) AS value, alterno_srtst || ' - ' || nombre_srtst AS label
             FROM sri_tipo_sustento_tributario
+            ${codigos ? 'WHERE alterno_srtst = ANY($1)' : ''}
             ORDER BY alterno_srtst
         `);
+        if (codigos) query.addParam(1, codigos);
         return this.dataSource.createSelectQuery(query);
+    }
+
+    /** Códigos de sustento tributario válidos para el tipo de documento (Tabla 4 SRI - ATS); undefined = sin filtro. */
+    private getSustentosPermitidos(ideCntdo?: number): string[] | undefined {
+        if (!isDefined(ideCntdo)) return undefined;
+        const factura = this.variables.get('p_con_tipo_documento_factura');
+        const notaCredito = this.variables.get('p_con_tipo_documento_nota_credito');
+        const reembolso = this.variables.get('p_con_tipo_documento_reembolso');
+        const liqCompra = this.variables.get('p_con_tipo_documento_liquidacion_compra');
+
+        if (Number(ideCntdo) === Number(factura)) return SUSTENTO_FACTURA;
+        if (Number(ideCntdo) === Number(liqCompra)) return SUSTENTO_LIQUIDACION_COMPRA;
+        if (Number(ideCntdo) === Number(notaCredito)) return SUSTENTO_NOTA_CREDITO;
+        if (Number(ideCntdo) === Number(reembolso)) return SUSTENTO_REEMBOLSO;
+        return undefined;
     }
 
     /**

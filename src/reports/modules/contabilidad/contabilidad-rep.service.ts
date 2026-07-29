@@ -1,17 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { DataSourceService } from 'src/core/connection/datasource.service';
+import { SelectQuery } from 'src/core/connection/helpers';
 import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/comprobante-contabilidad/comprobante-contabilidad.service';
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
+import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { balanceGeneralReport } from './balance-general.report';
 import { comprobanteContabilidadReport } from './comprobante-contabilidad.report';
+import { comprobanteRetencionReport } from './comprobante-retencion.report';
+import { GetComprobanteRetencionDto } from './dto/get-comprobante-retencion.dto';
 import { estadoResultadosReport } from './estado-resultados.report';
 import { flujoEfectivoReport } from './flujo-efectivo.report';
 import { ComprobanteContabilidadData } from './interfaces/comprobante-contabilidad-rep';
+import { ComprobanteRetencionRep, RetencionDetalle } from './interfaces/comprobante-retencion-rep';
 import { FlujoEfectivoData } from './interfaces/flujo-efectivo-rep';
 
 @Injectable()
@@ -21,6 +28,8 @@ export class ContabilidadRepService {
     private readonly contabilidadService: ContabilidadService,
     private readonly comprobanteContabilidadService: ComprobanteContabilidadService,
     private readonly sectionsService: SectionsService,
+    private readonly dataSource: DataSourceService,
+    private readonly empresaRepService: EmpresaRepService,
   ) { }
 
   async reportBalanceGeneral(dtoIn: HeaderParamsDto & EstadosFinancierosDto) {
@@ -134,5 +143,67 @@ export class ContabilidadRepService {
     const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
     const docDefinition = comprobanteContabilidadReport(data, header);
     return this.printerService.createPdf(docDefinition);
+  }
+
+  /** RIDE del comprobante de retención electrónico (Anexo 14 SRI). */
+  async reportComprobanteRetencion(dtoIn: HeaderParamsDto & GetComprobanteRetencionDto) {
+    const queryCabecera = new SelectQuery(`
+      SELECT
+        r.ide_cncre, r.numero_cncre, r.fecha_emisi_cncre, r.observacion_cncre,
+        p.nom_geper, p.identificac_geper, p.direccion_geper, p.telefono_geper, p.correo_geper,
+        doc.numero_cpcfa, doc.fecha_emisi_cpcfa, td.nombre_cntdo,
+        s.claveacceso_srcom, s.autorizacion_srcomn, s.fechaautoriza_srcom, s.periodo_fiscal_srcom
+      FROM con_cabece_retenc r
+      INNER JOIN cxp_cabece_factur doc ON doc.ide_cncre = r.ide_cncre
+      INNER JOIN gen_persona p ON doc.ide_geper = p.ide_geper
+      INNER JOIN con_tipo_document td ON doc.ide_cntdo = td.ide_cntdo
+      LEFT JOIN sri_comprobante s ON r.ide_srcom = s.ide_srcom
+      WHERE r.ide_cncre = $1
+        AND doc.ide_empr = $2
+    `);
+    queryCabecera.addIntParam(1, dtoIn.ide_cncre);
+    queryCabecera.addIntParam(2, dtoIn.ideEmpr);
+    const cabecera = await this.dataSource.createSingleQuery(queryCabecera);
+    if (!cabecera) {
+      throw new NotFoundException(`Comprobante de retención ${dtoIn.ide_cncre} no encontrado`);
+    }
+
+    const queryDetalles = new SelectQuery(`
+      SELECT d.ide_cndre, i.nombre_cncim, i.casillero_cncim, d.porcentaje_cndre, d.base_cndre, d.valor_cndre
+      FROM con_detall_retenc d
+      LEFT JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
+      WHERE d.ide_cncre = $1
+      ORDER BY d.ide_cndre
+    `);
+    queryDetalles.addIntParam(1, dtoIn.ide_cncre);
+    const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as RetencionDetalle[];
+    const total = detalles.reduce((sum, d) => sum + Number(d.valor_cndre ?? 0), 0);
+
+    const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+
+    let barcodeDataUrl: string | undefined;
+    if (cabecera.claveacceso_srcom) {
+      try {
+        const pngBuffer = await bwipjs.toBuffer({
+          bcid: 'code128',
+          text: cabecera.claveacceso_srcom,
+          scale: 2,
+          height: 10,
+          includetext: false,
+        });
+        barcodeDataUrl = `data:image/png;base64,${Buffer.from(pngBuffer).toString('base64')}`;
+      } catch {
+        // Si falla, se omite el barcode sin interrumpir el reporte
+      }
+    }
+
+    const data: ComprobanteRetencionRep = { cabecera, detalles, total };
+    const docDefinition = comprobanteRetencionReport(data, empresa, barcodeDataUrl);
+    try {
+      return this.printerService.createPdf(docDefinition);
+    } catch {
+      const docFallback = comprobanteRetencionReport(data, empresa);
+      return this.printerService.createPdf(docFallback);
+    }
   }
 }

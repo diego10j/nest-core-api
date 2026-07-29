@@ -1,0 +1,144 @@
+{{> partials/header
+    title=title
+    heroLabel=tipoComprobante
+    subtitle="Tu comprobante electrónico fue autorizado por el SRI. Revisa el resumen y el PDF/XML adjuntos."
+}}
+
+<!-- ── Saludo ── -->
+<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#0D1F4E;">
+    Hola, {{capitalizeWords contraparte}} 👋
+</p>
+<p style="margin:0 0 22px;font-size:14px;line-height:1.75;color:#4A5E7A;">
+    Te compartimos tu {{tipoComprobante}} electr&oacute;nica, ya autorizada por el SRI. Encontrar&aacute;s el documento en PDF y el XML autorizado adjuntos a este correo.
+</p>
+
+<!-- ── Banner de estado ── -->
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border-collapse:collapse;margin:0 0 24px;">
+    <tr>
+        <td style="background-color:#ECFDF5;border-left:3px solid #059669;
+                   border-radius:0 8px 8px 0;padding:12px 16px;">
+            <p style="margin:0;font-size:13px;font-weight:700;color:#065F46;">
+                ✅&nbsp; {{tipoComprobante}} autorizada por el SRI
+            </p>
+        </td>
+    </tr>
+</table>
+
+<p style="font-size:10px;font-weight:700;text-transform:uppercase;
+          letter-spacing:0.12em;color:#8898B4;margin:0 0 10px;">
+    Datos del comprobante
+</p>
+
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border-collapse:collapse;border:1px solid #E2EAF4;
+              border-radius:12px;overflow:hidden;margin:0 0 22px;">
+
+    <tr>
+        <td colspan="2"
+            style="background-color:#F5F8FF;padding:10px 16px;
+                   border-bottom:1px solid #E2EAF4;
+                   font-size:11px;font-weight:700;
+                   letter-spacing:0.10em;text-transform:uppercase;color:#1A56DB;">
+            Resumen del Documento
+        </td>
+    </tr>
+
+    <tr>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               border-right:1px solid #EEF2F8;vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">N&uacute;mero</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;
+                         font-family:'DM Mono',monospace;
+                         background-color:#EEF3FF;border-radius:4px;
+                         padding:2px 7px;display:inline-block;">
+                {{numero}}
+            </span>
+        </td>
+        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Fecha de Emisión</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formatDate fecha}}</span>
+        </td>
+    </tr>
+
+    <tr>
+        <td colspan="2" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
+                               vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">{{etiquetaContraparte}}</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{contraparte}}{{#if identificacion}} — {{identificacion}}{{/if}}</span>
+        </td>
+    </tr>
+
+    <tr>
+        <td colspan="2" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">N&uacute;mero de Autorizaci&oacute;n SRI</span>
+            <span style="font-size:11px;color:#0D1F4E;word-break:break-all;">{{numeroAutorizacion}}</span>
+        </td>
+    </tr>
+
+    <tr>
+        <td colspan="2"
+            style="padding:14px 16px;background-color:#F5F8FF;vertical-align:middle;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.10em;
+                         color:#8898B4;margin-bottom:6px;">Valor Total</span>
+            <span style="font-size:28px;font-weight:800;color:#1A56DB;
+                         letter-spacing:-0.02em;line-height:1;">
+                {{total}}
+            </span>
+        </td>
+    </tr>
+
+</table>
+
+<!-- ── Aviso adjuntos ── -->
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border-collapse:collapse;margin:0 0 20px;">
+    <tr>
+        <td style="background-color:#F5F8FF;border:1px solid #E2EAF4;
+                   border-radius:8px;padding:14px 16px;">
+            <p style="margin:0;font-size:13px;line-height:1.75;color:#4A5E7A;">
+                📎&nbsp; Adjuntamos el <strong style="color:#0D1F4E;">PDF (RIDE)</strong> y el
+                <strong style="color:#0D1F4E;">XML autorizado</strong> de este comprobante.
+            </p>
+        </td>
+    </tr>
+</table>
+
+<!-- ── Firma ── -->
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="border-collapse:collapse;border-top:1px solid #E8EEF6;margin-top:28px;">
+    <tr>
+        <td style="padding:20px 0 32px;">
+            <p style="margin:0 0 6px;font-size:13px;color:#8898B4;line-height:1.6;">
+                Atentamente,
+            </p>
+            <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#0D1F4E;line-height:1.6;">
+                {{appName}}
+            </p>
+            {{#if empresaEmail}}
+            <p style="margin:4px 0;font-size:13px;line-height:1.6;">
+                <span style="color:#4A5E7A;">&#9993;&ensp;</span>
+                <a href="mailto:{{empresaEmail}}" style="color:#1A56DB;text-decoration:none;">{{empresaEmail}}</a>
+            </p>
+            {{/if}}
+            {{#if empresaWeb}}
+            <p style="margin:4px 0 0;font-size:13px;line-height:1.6;">
+                <span style="color:#4A5E7A;">&#127760;&ensp;</span>
+                <a href="{{empresaWeb}}" style="color:#8898B4;text-decoration:none;">{{empresaWebDisplay}}</a>
+            </p>
+            {{/if}}
+        </td>
+    </tr>
+</table>
+
+{{> partials/footer}}

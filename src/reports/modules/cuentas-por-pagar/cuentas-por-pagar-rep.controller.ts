@@ -1,0 +1,31 @@
+import { Controller, Get, Query, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+
+import { CuentasPorPagarRepService } from './cuentas-por-pagar-rep.service';
+import { GetLiquidacionCompraDto } from './dto/get-liquidacion-compra.dto';
+
+@ApiTags('Reports-CuentasPorPagar')
+@Controller('reports/cuentas-por-pagar')
+export class CuentasPorPagarRepController {
+    constructor(private readonly cuentasPorPagarRepService: CuentasPorPagarRepService) { }
+
+    @Get('reportLiquidacionCompra')
+    @ApiOperation({ summary: 'Generar reporte PDF de la Liquidación de Compra electrónica' })
+    async reportLiquidacionCompra(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetLiquidacionCompraDto,
+    ) {
+        const pdfDoc = await this.cuentasPorPagarRepService.reportLiquidacionCompra({
+            ...headersParams,
+            ...dtoIn,
+        });
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = 'Liquidación de Compra';
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
+}

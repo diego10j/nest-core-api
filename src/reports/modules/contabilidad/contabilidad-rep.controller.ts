@@ -7,6 +7,7 @@ import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 
 import { ContabilidadRepService } from './contabilidad-rep.service';
+import { GetComprobanteRetencionDto } from './dto/get-comprobante-retencion.dto';
 
 @ApiTags('Reports-Contabilidad')
 @Controller('reports/contabilidad')
@@ -77,6 +78,23 @@ export class ContabilidadRepController {
     });
     response.setHeader('Content-Type', 'application/pdf');
     pdfDoc.info.Title = 'Comprobante de Contabilidad';
+    pdfDoc.pipe(response);
+    pdfDoc.end();
+  }
+
+  @Get('reportComprobanteRetencion')
+  @ApiOperation({ summary: 'Generar reporte PDF del Comprobante de Retención electrónico' })
+  async reportComprobanteRetencion(
+    @Res() response: Response,
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetComprobanteRetencionDto,
+  ) {
+    const pdfDoc = await this.contabilidadRepService.reportComprobanteRetencion({
+      ...headersParams,
+      ...dtoIn,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    pdfDoc.info.Title = 'Comprobante de Retención';
     pdfDoc.pipe(response);
     pdfDoc.end();
   }

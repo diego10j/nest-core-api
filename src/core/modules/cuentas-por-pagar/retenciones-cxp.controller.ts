@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
+import { EnviarSriRetencionCxPDto } from './dto/enviar-sri-retencion-cxp.dto';
 import { AnularRetencionCxPDto, IdDocumentoCxPDto, SaveRetencionCxPDto } from './dto/save-retencion-cxp.dto';
 import { RetencionesCxPSaveService } from './retenciones-cxp-save.service';
 import { RetencionesCxPService } from './retenciones-cxp.service';
@@ -58,6 +59,16 @@ export class RetencionesCxPController {
         @Body() dtoIn: SaveRetencionCxPDto,
     ) {
         return this.saveService.saveRetencion({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('enviarSRI')
+    @Auth()
+    @ApiOperation({ summary: 'Enviar bajo demanda un comprobante de retención al SRI (firma + recepción + autorización + correo)' })
+    enviarSRI(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EnviarSriRetencionCxPDto,
+    ) {
+        return this.saveService.enviarSRI({ ...headersParams, ...dtoIn });
     }
 
     @Post('anularRetencion')

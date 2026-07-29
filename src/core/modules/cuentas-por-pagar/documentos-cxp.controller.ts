@@ -22,12 +22,14 @@ import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { DocumentosCxPService } from './documentos-cxp.service';
 import { AnticiposProveedorCxPDto } from './dto/anticipos-proveedor-cxp.dto';
 import { AnularDocumentoCxPDto } from './dto/anular-documento-cxp.dto';
+import { EnviarSriDocumentoCxPDto } from './dto/enviar-sri-documento-cxp.dto';
 import { GenerarAsientosComprasDto } from './dto/generar-asientos-compras.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SaveDocumentoCxPDto } from './dto/save-documento-cxp.dto';
+import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
 
 @ApiTags('CuentasPorPagar - Documentos')
 @Controller('cuentas-por-pagar/documentos')
@@ -101,9 +103,12 @@ export class DocumentosCxPController {
 
     @Get('getSustentoTributario')
     @Auth()
-    @ApiOperation({ summary: 'Listar sustento tributario para combo' })
-    getSustentoTributario(@AppHeaders() _h: HeaderParamsDto) {
-        return this.service.getSustentoTributario();
+    @ApiOperation({ summary: 'Listar sustento tributario para combo, filtrado por tipo de documento (Tabla 4 SRI - ATS)' })
+    getSustentoTributario(
+        @AppHeaders() _h: HeaderParamsDto,
+        @Query() dtoIn: SustentoTributarioCxPDto,
+    ) {
+        return this.service.getSustentoTributario(dtoIn);
     }
 
     @Get('getProveedoresDocumento')
@@ -293,6 +298,16 @@ export class DocumentosCxPController {
             );
         }
         return resultados;
+    }
+
+    @Post('enviarSRI')
+    @Auth()
+    @ApiOperation({ summary: 'Enviar bajo demanda una Liquidación de Compra al SRI (firma + recepción + autorización + correo)' })
+    enviarSRI(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EnviarSriDocumentoCxPDto,
+    ) {
+        return this.saveService.enviarSRI({ ...headersParams, ...dtoIn });
     }
 
     @Post('anularDocumento')

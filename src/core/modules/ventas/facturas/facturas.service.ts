@@ -6,7 +6,6 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers';
-import { SriFacturaService } from '../../sri/cel/sri-factura.service';
 
 import { FacturasDto } from './dto/facturas.dto';
 import { EnviosFacturasDto } from './dto/get-envios-facturas.dto';
@@ -22,7 +21,6 @@ export class FacturasService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
-        private readonly sriFacturaService: SriFacturaService,
     ) {
         super();
         // obtiene las variables del sistema para el servicio

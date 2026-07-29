@@ -10,6 +10,7 @@ import { AuthModule } from './core/auth/auth.module';
 import { DataSourceModule } from './core/connection/datasource.module';
 import { CoreModule } from './core/core.module';
 import { MailModule } from './core/email/mail.module';
+import { ComprobanteEmailModule } from './core/modules/sri/comprobante-email/comprobante-email.module';
 import { WhatsappModule } from './core/whatsapp/whatsapp.module';
 import { ErrorsModule } from './errors/errors.module';
 import { RedisModule } from './redis/redis.module';
@@ -35,6 +36,7 @@ import { ReportsModule } from './reports/reports.module';
     WhatsappModule,
     ReportsModule,
     MailModule,
+    ComprobanteEmailModule,
   ],
   providers: [
     // Guard global para rate limiting

@@ -4,15 +4,22 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
+import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
+import { SriComprobanteCabeceraService } from 'src/core/modules/sri/cel/sri-comprobante-cabecera.service';
+import { SriEnvioQueueService } from 'src/core/modules/sri/envio/sri-envio-queue.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 
+import { EnviarSriRetencionCxPDto } from './dto/enviar-sri-retencion-cxp.dto';
 import { AnularRetencionCxPDto, DetalleRetencionCxPDto, SaveRetencionCxPDto } from './dto/save-retencion-cxp.dto';
 
 const TABLE_RET_CAB = 'con_cabece_retenc';
 const PK_RET_CAB = 'ide_cncre';
 const TABLE_RET_DET = 'con_detall_retenc';
 const PK_RET_DET = 'ide_cndre';
+/** con_tipo_document.ide_cntdo para "Comprobante de Retención" (mismo valor ya usado en retenciones-cxp.service.ts). */
+const IDE_CNTDO_RETENCION = 8;
 
 /**
  * Persistencia del comprobante de retención en compras. Al guardar genera la
@@ -25,6 +32,9 @@ export class RetencionesCxPSaveService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly emisorService: EmisorService,
+        private readonly sriComprobanteCabeceraService: SriComprobanteCabeceraService,
+        private readonly sriEnvioQueueService: SriEnvioQueueService,
     ) {
         super();
         this.core
@@ -104,6 +114,67 @@ export class RetencionesCxPSaveService extends BaseService {
                 ? await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login)
                 : null;
 
+            // ── Comprobante electrónico SRI ────────────────────────────────────
+            // Solo cuando NO es retención física (numero_cncre/autorizacion_cncre
+            // vienen del usuario). Genera la cabecera sri_comprobante PENDIENTE con
+            // su propio secuencial + clave de acceso, que reemplazan numero_cncre/
+            // autorizacion_cncre de la retención.
+            let claveAccesoSri: string | undefined;
+            let numeroRetencionSri: string | undefined;
+            let sriHeaderQuery: InsertQuery | undefined;
+            const esElectronica = !dtoIn.numero_cncre && !dtoIn.autorizacion_cncre;
+            if (esElectronica) {
+                if (!dtoIn.ide_ccdaf) {
+                    throw new BadRequestException(
+                        'Debe seleccionar el punto de emisión (ide_ccdaf) para la retención electrónica.',
+                    );
+                }
+                const qSerie = new SelectQuery(`SELECT serie_ccdaf FROM cxc_datos_fac WHERE ide_ccdaf = $1`);
+                qSerie.addIntParam(1, dtoIn.ide_ccdaf);
+                const serieRow = await this.dataSource.createSingleQuery(qSerie);
+                if (!serieRow?.serie_ccdaf) {
+                    throw new BadRequestException(`No existe el punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf}`);
+                }
+                const serie = String(serieRow.serie_ccdaf);
+                const estab = serie.slice(0, 3);
+                const ptoEmi = serie.slice(3, 6);
+
+                const qProveedor = new SelectQuery(`SELECT identificac_geper, correo_geper FROM gen_persona WHERE ide_geper = $1`);
+                qProveedor.addIntParam(1, Number(doc.ide_geper));
+                const proveedor = await this.dataSource.createSingleQuery(qProveedor);
+
+                const emisor = await this.emisorService.getEmisor(dtoIn);
+                const fechaEmisionStr = String(fechaEmision);
+                const periodoFiscal = `${fechaEmisionStr.slice(5, 7)}/${fechaEmisionStr.slice(0, 4)}`;
+
+                const built = await this.sriComprobanteCabeceraService.buildInsertPendiente(
+                    {
+                        ideEmpr: dtoIn.ideEmpr,
+                        ideSucu: dtoIn.ideSucu,
+                        login: dtoIn.login,
+                        ip: dtoIn.ip,
+                        ideSresc: EstadoComprobanteEnum.PENDIENTE.codigo,
+                        ideCntdo: IDE_CNTDO_RETENCION,
+                        ideGeper: Number(doc.ide_geper),
+                        coddoc: '07',
+                        fechaEmision: fechaEmisionStr,
+                        estab,
+                        ptoEmi,
+                        subtotal0: 0,
+                        baseGrabada: 0,
+                        iva: 0,
+                        total: totalRetencion,
+                        identificacion: proveedor?.identificac_geper ?? '',
+                        correo: dtoIn.correo_cncre ?? proveedor?.correo_geper,
+                        periodoFiscal,
+                    },
+                    emisor,
+                );
+                sriHeaderQuery = built.query;
+                claveAccesoSri = built.claveAcceso;
+                numeroRetencionSri = `${serie}${built.secuencial}`;
+            }
+
             // ── Construcción de la transacción ───────────────────────────────
             const listQuery: Query[] = [];
 
@@ -112,8 +183,8 @@ export class RetencionesCxPSaveService extends BaseService {
             insCab.values.set('ide_cnere', this.getVar('p_con_estado_comprobante_rete_normal'));
             insCab.values.set('es_venta_cncre', false);
             insCab.values.set('fecha_emisi_cncre', fechaEmision);
-            insCab.values.set('numero_cncre', dtoIn.numero_cncre ?? null);
-            insCab.values.set('autorizacion_cncre', dtoIn.autorizacion_cncre ?? null);
+            insCab.values.set('numero_cncre', numeroRetencionSri ?? dtoIn.numero_cncre ?? null);
+            insCab.values.set('autorizacion_cncre', claveAccesoSri ?? dtoIn.autorizacion_cncre ?? null);
             insCab.values.set(
                 'observacion_cncre',
                 dtoIn.observacion_cncre ?? `Retención Factura N. ${doc.numero_cpcfa}`,
@@ -123,6 +194,9 @@ export class RetencionesCxPSaveService extends BaseService {
             insCab.values.set('fecha_ingre', getCurrentDate());
             insCab.values.set('hora_ingre', getCurrentTime());
             listQuery.push(insCab);
+            if (sriHeaderQuery) {
+                listQuery.push(sriHeaderQuery);
+            }
 
             detalles.forEach((det, idx) => {
                 const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
@@ -167,19 +241,43 @@ export class RetencionesCxPSaveService extends BaseService {
 
             await this.dataSource.createListQuery(listQuery);
 
-            // La emisión electrónica de la retención (sri_comprobante) es un
-            // proceso posterior del módulo SRI a partir del ide_cncre generado
+            // El guardado NO envía automáticamente al SRI: el envío es bajo demanda vía
+            // enviarSRI(ide_cncre), que encola (firma + recepción + autorización + correo).
             return {
                 message: 'ok',
                 ide_cncre: ideCncre,
                 ide_cpcfa: dtoIn.ide_cpcfa,
                 total_retencion: totalRetencion,
+                clave_acceso_sri: claveAccesoSri,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar la retención: ${msg}`);
         }
+    }
+
+    /**
+     * Envía bajo demanda un comprobante de retención electrónico al SRI: resuelve su clave de
+     * acceso y la encola (firma + recepción + autorización); al autorizarse se envía el correo
+     * con PDF+XML automáticamente (ComprobanteAutorizadoEmitter / ComprobanteEmailListener).
+     */
+    async enviarSRI(dtoIn: EnviarSriRetencionCxPDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT s.claveacceso_srcom
+            FROM con_cabece_retenc r
+            INNER JOIN sri_comprobante s ON r.ide_srcom = s.ide_srcom
+            WHERE r.ide_cncre = $1
+        `);
+        query.addIntParam(1, dtoIn.ide_cncre);
+        const row = await this.dataSource.createSingleQuery(query);
+        if (!row?.claveacceso_srcom) {
+            throw new BadRequestException(
+                `El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no es electrónico o no existe.`,
+            );
+        }
+        this.sriEnvioQueueService.encolar(row.claveacceso_srcom, dtoIn);
+        return { message: 'ok', ide_cncre: dtoIn.ide_cncre, clave_acceso_sri: row.claveacceso_srcom };
     }
 
     /**

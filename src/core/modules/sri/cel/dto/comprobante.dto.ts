@@ -1,5 +1,10 @@
+import { ReembolsoLineaDto } from 'src/core/modules/sri/xml/dto/reembolso-linea.dto';
+
 import { ClienteDto } from './cliente.dto';
+import { DestinatarioDto } from './destinatario.dto';
 import { DetalleComprobanteDto } from './detalle-comprobante.dto';
+import { DetalleImpuestoDto } from './detalle-impuesto.dto';
+import { FirmaDto } from './firma.dto';
 
 export class ComprobanteDto {
   codigocomprobante: number;
@@ -24,7 +29,7 @@ export class ComprobanteDto {
   numdocmodificado?: string;
   fechaemisiondocsustento?: string;
   valormodificacion?: number;
-  codigofirma?: any; // Define correctamente según tu implementación para "Firma"
+  codigofirma?: FirmaDto;
   codigoestado?: number;
   oficina?: string;
   fechaautoriza?: string;
@@ -34,7 +39,7 @@ export class ComprobanteDto {
   iva?: number;
   detalle?: DetalleComprobanteDto[];
   enNube?: boolean; // Por defecto es false
-  impuesto?: any[]; // Define correctamente según tu implementación para "DetalleImpuesto"
+  impuesto?: DetalleImpuestoDto[];
   formaCobro?: string; // Por defecto "01" (efectivo)
   motivo?: string;
   diasCredito?: number;
@@ -49,9 +54,11 @@ export class ComprobanteDto {
   fechaIniTransporte?: string;
   fechaFinTransporte?: string;
   placa?: string;
-  destinatario?: any; // Define correctamente según tu implementación para "Destinatario"
+  destinatario?: DestinatarioDto;
   codigoComprobanteFactura?: number;
   telefonos?: string;
   rucEmpresa?: string;
   correoEmpresa?: string;
+  // Reembolso de gastos (Anexo 17 SRI), solo Liquidación de Compra
+  reembolsos?: ReembolsoLineaDto[];
 }

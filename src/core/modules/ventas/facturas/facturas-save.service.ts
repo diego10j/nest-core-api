@@ -647,6 +647,16 @@ export class FacturasSaveService extends BaseService {
                 const ideGuia = await this.dataSource.getSeqTable(TABLE_GUIA, PK_GUIA, 1, dtoIn.login);
                 const insertGuia = this.buildInsertGuia(ideGuia, ideCccfa, cliente, data, dtoIn);
                 await this.dataSource.createQuery(insertGuia);
+
+                // La factura ya existe (y ya fue enviada a crearFactura en su momento, con su
+                // propio sri_comprobante); esta es una guía NUEVA agregada recién ahora en una
+                // edición, así que necesita su propio comprobante SRI (coddoc 06), igual que
+                // crearFactura ya hace para la guía cuando se crea junto con la factura.
+                if (existe.ide_srcom) {
+                    await this.generarSriComprobanteGuiaExistente(
+                        ideGuia, ideCccfa, Number(existe.ide_srcom), data, totales, cliente, dtoIn,
+                    );
+                }
             }
         }
 
@@ -1484,5 +1494,105 @@ export class FacturasSaveService extends BaseService {
             }
         }
         return q;
+    }
+
+    /**
+     * Genera el comprobante SRI (coddoc 06) de una guía de remisión agregada a una factura
+     * YA EXISTENTE (la factura conserva su propio sri_comprobante, generado en crearFactura).
+     * Mismo mecanismo de bloqueo/secuencial/clave de acceso que usa crearFactura para la guía
+     * cuando se crea junto con la factura — extraído aquí porque ese caso no pasa por la
+     * "Transacción 2" de crearFactura (la factura no se vuelve a crear en una edición).
+     */
+    private async generarSriComprobanteGuiaExistente(
+        ideGuia: number,
+        ideCccfa: number,
+        ideSrcomFactura: number,
+        data: SaveFacturaDto['data'],
+        totales: Totales,
+        cliente: any,
+        dtoIn: SaveFacturaDto & HeaderParamsDto,
+    ): Promise<void> {
+        const qPtoEmision = new SelectQuery(`
+            SELECT d.establecimiento_ccdfa, d.pto_emision_ccdfa
+            FROM cxc_cabece_factura f
+            INNER JOIN cxc_datos_fac d ON f.ide_ccdaf = d.ide_ccdaf
+            WHERE f.ide_cccfa = $1
+        `);
+        qPtoEmision.addIntParam(1, ideCccfa);
+        const ptoEmision = await this.dataSource.createSingleQuery(qPtoEmision);
+        if (!ptoEmision) return;
+
+        const estab = ptoEmision.establecimiento_ccdfa;
+        const ptoEmi = ptoEmision.pto_emision_ccdfa;
+
+        const queryRunner = await this.dataSource.pool.connect();
+        try {
+            await queryRunner.query('BEGIN');
+
+            const emisorQuery = new SelectQuery(`
+                SELECT su.identicicacion_sucu AS ruc, se.ambiente_sremi AS ambiente
+                FROM sri_emisor se
+                INNER JOIN sis_sucursal su ON se.ide_sucu = su.ide_sucu
+                WHERE se.ide_sucu = $1
+                LIMIT 1
+            `);
+            emisorQuery.addIntParam(1, dtoIn.ideSucu);
+            await this.dataSource.formatSqlQuery(emisorQuery);
+            const emisorRes = await queryRunner.query(emisorQuery.query, emisorQuery.paramValues);
+            if (!emisorRes.rows || emisorRes.rows.length === 0) {
+                throw new BadRequestException(`No existe configuración de emisor SRI para la sucursal ${dtoIn.ideSucu}`);
+            }
+            const emisor = emisorRes.rows[0];
+
+            const qCs = new SelectQuery(`
+                SELECT COALESCE(alterno_ats, '') AS codigo_sri
+                FROM con_deta_forma_pago WHERE ide_cndfp = $1 LIMIT 1
+            `);
+            qCs.addIntParam(1, data.ide_cndfp ?? 0);
+            await this.dataSource.formatSqlQuery(qCs);
+            const csRes = await queryRunner.query(qCs.query, qCs.paramValues);
+            const codigoSri = (csRes.rows?.[0]?.codigo_sri || String(data.ide_cndfp ?? 1)).padStart(2, '0');
+
+            const ideSrcomGuia = await this.dataSource.getSeqTable('sri_comprobante', 'ide_srcom', 1, dtoIn.login);
+            const secuencialGuia = await this.getNextSriSecuencialLock(queryRunner, '06', estab, ptoEmi, dtoIn.ideEmpr);
+            const claveAccesoGuia = generarClaveAcceso({
+                fechaEmision: data.fecha_emisi_cccfa,
+                codDoc: '06',
+                rucEmisor: emisor.ruc,
+                ambiente: String(emisor.ambiente || '1'),
+                estab,
+                ptoEmi,
+                secuencial: secuencialGuia,
+                tipoEmision: '1',
+            });
+
+            const insertSriGuia = this.buildSriFullInsert(
+                ideSrcomGuia, '06', data.fecha_emisi_cccfa,
+                estab, ptoEmi, secuencialGuia, claveAccesoGuia,
+                this.ideSriEstadoCreado, dtoIn,
+                totales, data, cliente, 0,
+                ideSrcomFactura, '', '', null, codigoSri,
+            );
+            await this.dataSource.formatSqlQuery(insertSriGuia);
+            await queryRunner.query(insertSriGuia.query, insertSriGuia.paramValues);
+
+            await queryRunner.query(
+                `UPDATE ${TABLE_GUIA} SET numero_ccgui = $1, ide_srcom = $2 WHERE ${PK_GUIA} = $3`,
+                [secuencialGuia, ideSrcomGuia, ideGuia],
+            );
+
+            // Denormaliza la referencia de la guía en el comprobante de la factura (paridad legacy)
+            await queryRunner.query(
+                `UPDATE sri_comprobante SET num_guia_srcom = $1 WHERE ide_srcom = $2`,
+                [`${estab}-${ptoEmi}-${secuencialGuia}`, ideSrcomFactura],
+            );
+
+            await queryRunner.query('COMMIT');
+        } catch (error) {
+            await queryRunner.query('ROLLBACK');
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 }

@@ -82,13 +82,15 @@ export class CabDocumentoCxPDto {
     @IsNotEmpty()
     ide_geper: number;
 
+    /** Obligatorio salvo Liquidación de Compra electrónica (se genera al guardar). */
     @IsString()
-    @IsNotEmpty()
-    numero_cpcfa: string;
+    @IsOptional()
+    numero_cpcfa?: string;
 
+    /** Obligatorio salvo Liquidación de Compra electrónica (se genera al guardar). */
     @IsString()
-    @IsNotEmpty()
-    autorizacio_cpcfa: string;
+    @IsOptional()
+    autorizacio_cpcfa?: string;
 
     @IsDateString()
     @IsNotEmpty()
@@ -191,60 +193,157 @@ export class CabDocumentoCxPDto {
 }
 
 /**
- * Comprobante de reembolso (fila hija en cxp_cabece_factur enlazada por ide_rem_cpcfa)
+ * Comprobante de reembolso (fila hija en cxp_cabece_factur enlazada por ide_rem_cpcfa),
+ * usado únicamente por el tipo de documento REEMBOLSOS (mandatorio) del Anexo
+ * Transaccional — excluye estas sub-facturas de ATS/Formulario 103/104 (paridad legacy,
+ * componentes/DocumentoCxP.java). NO se usa para Liquidación de Compra: ver
+ * ReembolsoLiquidacionCompraDto para el Anexo 17 SRI (tabla cxp_datos_com_reembolso).
+ *
+ * Dos modos:
+ *  - Referenciado (ide_cpcfa_referencia): el documento sustento ya existe como su
+ *    propio documento CxP (cxp_cabece_factur) — proveedor, número, fecha,
+ *    autorización e impuestos se copian de ahí, el resto de campos se ignora.
+ *  - Manual (sin ide_cpcfa_referencia): comportamiento original, se ingresan los
+ *    campos a mano.
  */
 export class ReembolsoDocumentoCxPDto {
-    /** FK → con_tipo_document (tipo de comprobante del reembolso) */
+    /** Documento de compra ya registrado que se está reembolsando (cxp_cabece_factur.ide_cpcfa) */
     @IsInt()
-    @IsNotEmpty()
-    ide_cntdo: number;
+    @IsOptional()
+    ide_cpcfa_referencia?: number;
 
-    /** Identificación del emisor del comprobante (se persiste en motivo_nc_cpcfa) */
+    /** FK → con_tipo_document (tipo de comprobante del reembolso). Requerido en modo manual. */
+    @IsInt()
+    @IsOptional()
+    ide_cntdo?: number;
+
+    /** Identificación del emisor del comprobante (se persiste en motivo_nc_cpcfa). Requerido en modo manual. */
     @IsString()
-    @IsNotEmpty()
-    identificacion: string;
+    @IsOptional()
+    identificacion?: string;
 
     @IsString()
-    @IsNotEmpty()
-    numero_cpcfa: string;
+    @IsOptional()
+    numero_cpcfa?: string;
 
     @IsDateString()
-    @IsNotEmpty()
-    fecha_emisi_cpcfa: string;
+    @IsOptional()
+    fecha_emisi_cpcfa?: string;
 
     @IsString()
-    @IsNotEmpty()
-    autorizacio_cpcfa: string;
+    @IsOptional()
+    autorizacio_cpcfa?: string;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    base_no_objeto_iva_cpcfa: number;
+    @IsOptional()
+    base_no_objeto_iva_cpcfa?: number;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    base_tarifa0_cpcfa: number;
+    @IsOptional()
+    base_tarifa0_cpcfa?: number;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    base_grabada_cpcfa: number;
+    @IsOptional()
+    base_grabada_cpcfa?: number;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    valor_iva_cpcfa: number;
+    @IsOptional()
+    valor_iva_cpcfa?: number;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    valor_ice_cpcfa: number;
+    @IsOptional()
+    valor_ice_cpcfa?: number;
 
     @IsNumber()
     @Min(0)
-    @IsNotEmpty()
-    total_cpcfa: number;
+    @IsOptional()
+    total_cpcfa?: number;
+}
+
+/**
+ * Línea de reembolso de gastos de una Liquidación de Compra (Anexo 17 SRI: codDocReemb=41
+ * + <reembolsos>). Persiste en cxp_datos_com_reembolso — tabla ya existente en el core,
+ * usada activamente por el legacy (pkg_cuentas_x_pagar/pre_factura_cxp.java) para este
+ * mismo propósito.
+ *
+ * Dos modos:
+ *  - Referenciado (ide_cpcfa_sustento): el documento sustento ya existe como su propio
+ *    documento CxP — proveedor, número, fecha, autorización e impuestos se copian de ahí.
+ *  - Manual (sin ide_cpcfa_sustento): comportamiento original del legacy, se ingresan los
+ *    campos a mano.
+ */
+export class ReembolsoLiquidacionCompraDto {
+    /** Documento de compra ya registrado que sustenta el reembolso (cxp_cabece_factur.ide_cpcfa) */
+    @IsInt()
+    @IsOptional()
+    ide_cpcfa_sustento?: number;
+
+    /** FK → con_tipo_document (tipo del comprobante reembolsado). Requerido en modo manual. */
+    @IsInt()
+    @IsOptional()
+    ide_cntdo?: number;
+
+    /** FK → gen_tipo_identifi (tipo de identificación del proveedor reembolsado). Requerido en modo manual. */
+    @IsInt()
+    @IsOptional()
+    ide_getid?: number;
+
+    /** Identificación del proveedor reembolsado. Requerido en modo manual. */
+    @IsString()
+    @IsOptional()
+    identificacion?: string;
+
+    /** Establecimiento + punto de emisión del comprobante reembolsado, 6 caracteres. Requerido en modo manual. */
+    @IsString()
+    @IsOptional()
+    serie?: string;
+
+    @IsString()
+    @IsOptional()
+    secuencial?: string;
+
+    @IsString()
+    @IsOptional()
+    autorizacion?: string;
+
+    @IsDateString()
+    @IsOptional()
+    fecha?: string;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    base_no_objeto?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    base_tarifa0?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    base_imponible?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    valor_iva?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    valor_ice?: number;
+
+    /** Código de país de pago (Tabla 25 SRI). Default: 593 (Ecuador). */
+    @IsInt()
+    @IsOptional()
+    cod_pais_pago?: number = 593;
 }
 
 /**
@@ -262,17 +361,33 @@ export class SaveDocumentoCxPDto {
     @IsNotEmpty()
     detalles: DetalleDocumentoCxPDto[];
 
-    /** Comprobantes de reembolso (solo cuando el tipo de documento es reembolso) */
+    /** Comprobantes de reembolso (solo cuando el tipo de documento es REEMBOLSOS del ATS) */
     @IsOptional()
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => ReembolsoDocumentoCxPDto)
     reembolsos?: ReembolsoDocumentoCxPDto[];
 
+    /** Líneas de reembolso de gastos (solo cuando el tipo de documento es Liquidación de Compra, Anexo 17 SRI) */
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => ReembolsoLiquidacionCompraDto)
+    reembolsosLiquidacion?: ReembolsoLiquidacionCompraDto[];
+
     /** Cabecera de transacción del anticipo del proveedor (cxp_cabece_transa) */
     @IsOptional()
     @IsInt()
     ide_cpctr_anticipo?: number;
+
+    /**
+     * FK → cxc_datos_fac (punto de emisión). Requerido solo para Liquidación de
+     * Compra electrónica (cuando numero_cpcfa/autorizacio_cpcfa no se ingresan
+     * a mano): de aquí se toman estab/ptoEmi para generar el comprobante SRI.
+     */
+    @IsOptional()
+    @IsInt()
+    ide_ccdaf?: number;
 
     @IsOptional()
     @IsBoolean()

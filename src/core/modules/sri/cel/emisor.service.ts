@@ -7,6 +7,8 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
 
+import { EmisorDto } from './dto/emisor.dto';
+
 @Injectable()
 export class EmisorService extends BaseService {
   constructor(
@@ -16,8 +18,12 @@ export class EmisorService extends BaseService {
     super();
   }
 
-  async getEmisor(dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    const cacheKey = `emisor_${dtoIn.ideEmpr}`;
+  /**
+   * El emisor SRI se configura por sucursal (un RUC/ambiente por sucursal), no por empresa:
+   * sri_emisor no tiene columnas propias de RUC/razón social, se obtienen de sis_sucursal.
+   */
+  async getEmisor(dtoIn: QueryOptionsDto & HeaderParamsDto): Promise<EmisorDto> {
+    const cacheKey = `emisor_${dtoIn.ideSucu}`;
     // Check cache
     const cachedEmisor = await this.redisClient.get(cacheKey);
     if (cachedEmisor) {
@@ -26,11 +32,23 @@ export class EmisorService extends BaseService {
     const query = new SelectQuery(
       `
         SELECT
-            *
+            se.ide_sremi AS "codigoEmisor",
+            su.identicicacion_sucu AS ruc,
+            su.nom_sucu AS "razonSocial",
+            su.nombre_comercial_sucu AS "nombreComercial",
+            su.direccion_sucu AS "dirMatriz",
+            su.contribuyenteespecial_sucu AS "contribuyenteEspecial",
+            su.obligadocontabilidad_sucu AS "obligadoContabilidad",
+            se.tiempo_espera_sremi AS "tiempoMaxEspera",
+            se.ambiente_sremi AS ambiente,
+            se.wsdl_recep_offline_sremi AS "wsdlRecepcion",
+            se.wsdl_autori_offline_sremi AS "wsdlAutorizacion"
         FROM
-            sri_emisor
+            sri_emisor se
+        INNER JOIN
+            sis_sucursal su ON se.ide_sucu = su.ide_sucu
         WHERE
-            ide_empr = ${dtoIn.ideEmpr}
+            se.ide_sucu = ${dtoIn.ideSucu}
             `,
       dtoIn,
     );
@@ -41,13 +59,13 @@ export class EmisorService extends BaseService {
       await this.redisClient.set(cacheKey, JSON.stringify(res));
       return res;
     } else {
-      throw new BadRequestException(`No existe Emisor: ${dtoIn.ideEmpr}`);
+      throw new BadRequestException(`No existe Emisor SRI para la sucursal: ${dtoIn.ideSucu}`);
     }
   }
 
   async clearCacheEmisor(_dtoIn: QueryOptionsDto & HeaderParamsDto) {
-    // Obtener todas las claves que coinciden con el patrón 'schema:*'
-    const keys = await this.redisClient.keys('emisor_:*');
+    // Obtener todas las claves que coinciden con el patrón 'emisor_*'
+    const keys = await this.redisClient.keys('emisor_*');
 
     // Si se encuentran claves, eliminarlas
     if (keys.length > 0) {

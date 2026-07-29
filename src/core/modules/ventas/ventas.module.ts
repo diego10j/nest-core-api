@@ -5,9 +5,6 @@ import { WhatsappModule } from '../../whatsapp/whatsapp.module';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
 import { AuditService } from '../audit/audit.service';
 import { FilesModule } from '../sistema/files/files.module';
-import { ComprobantesElecService } from '../sri/cel/comprobantes-elec.service';
-import { EmisorService } from '../sri/cel/emisor.service';
-import { SriFacturaService } from '../sri/cel/sri-factura.service';
 import { SriModule } from '../sri/sri.module';
 
 import { ClientesSaveService } from './clientes/clientes-save.service';
@@ -18,6 +15,8 @@ import { VentasBiService } from './data-bi/ventas-bi.service';
 import { FacturasSaveService } from './facturas/facturas-save.service';
 import { FacturasController } from './facturas/facturas.controller';
 import { FacturasService } from './facturas/facturas.service';
+import { NotasCreditoSaveService } from './notas-credito/notas-credito-save.service';
+import { NotasCreditoController } from './notas-credito/notas-credito.controller';
 import { PosPuntoVentaSaveService } from './pos-punto-venta/pos-punto-venta-save.service';
 import { PosPuntoVentaController } from './pos-punto-venta/pos-punto-venta.controller';
 import { PosPuntoVentaService } from './pos-punto-venta/pos-punto-venta.service';
@@ -36,6 +35,7 @@ import { TransportesService } from './transportes/transportes.service';
     VentasBiController,
     PosPuntoVentaController,
     TransportesController,
+    NotasCreditoController,
   ],
   providers: [
     ClientesService,
@@ -51,9 +51,7 @@ import { TransportesService } from './transportes/transportes.service';
     TransportesService,
     TransportesSaveService,
     WhatsappService,
-    SriFacturaService,
-    ComprobantesElecService,
-    EmisorService,
+    NotasCreditoSaveService,
   ],
   exports: [FacturasService, FacturasSaveService],
 })

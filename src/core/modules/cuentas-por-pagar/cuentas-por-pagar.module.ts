@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreService } from 'src/core/core.service';
 
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { SriModule } from '../sri/sri.module';
 import { TesoreriaModule } from '../tesoreria/tesoreria.module';
 
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
@@ -18,7 +19,7 @@ import { RetencionesCxPService } from './retenciones-cxp.service';
 
 
 @Module({
-    imports: [TesoreriaModule, ContabilidadModule],
+    imports: [TesoreriaModule, ContabilidadModule, SriModule],
     controllers: [
         CuentasPorPagarController,
         DocumentosCxPController,
