@@ -483,7 +483,7 @@ export const facturaElectronicaReport = (
             : (d.cantidad_format ?? parseFloat(String(d.cantidad_ccdfa)).toFixed(2));
         return [
             td(cantidadTexto, fill, 'center'),
-            td(d.nombre_inarti, fill),
+            td(d.observacion_ccdfa || d.nombre_inarti, fill),
             td(parseFloat(String(d.precio_ccdfa)).toFixed(4), fill, 'right'),
             td(fCurrency(parseFloat(String(d.total_ccdfa))), fill, 'right'),
         ];

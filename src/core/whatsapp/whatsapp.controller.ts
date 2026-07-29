@@ -199,7 +199,7 @@ export class WhatsappController {
   }
 
   @Get('getPermisoAgente')
-  @Auth()
+  // @Auth()
   getPermisoAgente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
     return this.whatsappDbService.validarPermisoAgente({
       ...headersParams,

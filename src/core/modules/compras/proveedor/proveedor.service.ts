@@ -12,10 +12,10 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ComprasMensualesProveedorDto } from './dto/compras-mensuales-proveedor.dto';
+import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
 import { GetProveedoresDto } from './dto/get-proveedores.dto';
 import { IdProveedorDto } from './dto/id-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
-import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
 
 @Injectable()
 export class ProveedorService extends BaseService {
@@ -165,6 +165,8 @@ export class ProveedorService extends BaseService {
         SELECT
             p.ide_geper,
             p.uuid,
+            p.ide_getip,
+            detalle_getip,
             p.codigo_geper,
             p.nom_geper,
             nombre_getid,
@@ -177,17 +179,31 @@ export class ProveedorService extends BaseService {
             p.correo_geper,
             p.telefono_geper,
             p.movil_geper,
+            p.pagina_web_geper,
+            repre_legal_geper,
             p.observacion_geper,
             p.fecha_ingre_geper,
-            p.activo_geper,
-            p.es_proveedo_geper,
             b.nombre_cndfp,
-            nombre_cntco
+            p.limite_credito_geper,
+            dias_credito_geper,
+            c.nombre_vgven,
+            p.activo_geper,
+            requiere_actua_geper,
+            p.es_proveedo_geper,
+            nombre_getitp,
+            nombre_cntco,
+            p.fecha_ingre,
+            p.fecha_actua,
+            p.usuario_ingre,
+            p.usuario_actua
         FROM
             gen_persona p
             LEFT JOIN con_deta_forma_pago b ON b.ide_cndfp = p.ide_cndfp
+            LEFT JOIN ven_vendedor c ON c.ide_vgven = p.ide_vgven
+            LEFT JOIN gen_tipo_persona d ON p.ide_getip = d.ide_getip
             LEFT JOIN gen_provincia e ON p.ide_geprov = e.ide_geprov
             LEFT JOIN gen_canton f ON p.ide_gecant = f.ide_gecant
+            LEFT JOIN gen_titulo_persona g ON p.ide_getitp = g.ide_getitp
             LEFT JOIN gen_tipo_identifi h ON p.ide_getid = h.ide_getid
             LEFT JOIN con_tipo_contribu i ON p.ide_cntco = i.ide_cntco
         WHERE
@@ -197,11 +213,100 @@ export class ProveedorService extends BaseService {
     query.addStringParam(1, dtoIn.uuid);
 
     const res = await this.dataSource.createSingleQuery(query);
-    return {
-      rowCount: res ? 1 : 0,
-      row: res ?? null,
-      message: res ? 'ok' : 'Proveedor no encontrado',
-    } as ResultQuery;
+    if (res) {
+      const ide_geper = res.ide_geper;
+      const totales = await this.getInfoTotalesProveedor(ide_geper, dtoIn.ideEmpr, dtoIn.ideSucu);
+
+      return {
+        rowCount: 1,
+        row: {
+          proveedor: res,
+        },
+        datos: { totales },
+        message: 'ok',
+      } as ResultQuery;
+    } else {
+      throw new Error('Proveedor no encontrado');
+    }
+  }
+
+  private async getInfoTotalesProveedor(ide_geper: number, ideEmpr: number, ideSucu: number) {
+    const ideEstadoNormal = Number(this.variables.get('p_cxp_estado_factura_normal'));
+    const query = new SelectQuery(`
+        WITH facturas_base AS (
+            SELECT
+                cf.ide_cpcfa,
+                cf.fecha_emisi_cpcfa,
+                cf.total_cpcfa,
+                cf.base_grabada_cpcfa,
+                cf.base_tarifa0_cpcfa,
+                cf.base_no_objeto_iva_cpcfa,
+                cf.valor_iva_cpcfa,
+                cf.numero_cpcfa,
+                cf.ide_empr,
+                cf.ide_sucu
+            FROM cxp_cabece_factur cf
+            WHERE cf.ide_geper = $1
+              AND cf.ide_cpefa  = ${ideEstadoNormal}
+              AND cf.ide_empr   = $2
+              AND cf.ide_sucu   = $3
+        ),
+        pagos AS (
+            SELECT ct.ide_cpcfa, SUM(dt.valor_cpdtr) AS total_pagado
+            FROM cxp_detall_transa dt
+            INNER JOIN cxp_cabece_transa ct ON dt.ide_cpctr = ct.ide_cpctr
+            WHERE dt.numero_pago_cpdtr > 0
+              AND ct.ide_cpcfa IN (SELECT ide_cpcfa FROM facturas_base)
+            GROUP BY ct.ide_cpcfa
+        ),
+        saldos AS (
+            SELECT
+                fb.ide_cpcfa,
+                fb.total_cpcfa,
+                fb.fecha_emisi_cpcfa,
+                COALESCE(p.total_pagado, 0) AS total_pagado,
+                (fb.total_cpcfa - COALESCE(p.total_pagado, 0)) AS saldo
+            FROM facturas_base fb
+            LEFT JOIN pagos p ON fb.ide_cpcfa = p.ide_cpcfa
+        )
+        SELECT
+            COUNT(fb.ide_cpcfa)                                                              AS total_facturas,
+            MAX(fb.fecha_emisi_cpcfa)                                                        AS ultima_compra,
+            MIN(fb.fecha_emisi_cpcfa)                                                        AS primera_compra,
+            COALESCE(SUM(fb.total_cpcfa), 0)                                                AS total_compras,
+            COALESCE(SUM(fb.base_grabada_cpcfa), 0)                                         AS total_base_grabada,
+            COALESCE(SUM(fb.base_tarifa0_cpcfa + fb.base_no_objeto_iva_cpcfa), 0)           AS total_base0,
+            COALESCE(SUM(fb.valor_iva_cpcfa), 0)                                            AS total_iva,
+            CASE WHEN COUNT(fb.ide_cpcfa) > 0
+                 THEN ROUND(SUM(fb.total_cpcfa) / COUNT(fb.ide_cpcfa), 2)
+                 ELSE 0 END                                                                 AS compra_promedio,
+            COALESCE(SUM(s.total_pagado), 0)                                                AS total_pagado,
+            COALESCE(SUM(s.saldo), 0)                                                       AS total_pendiente,
+            COUNT(CASE WHEN s.saldo <= 0 THEN 1 END)                                        AS facturas_pagadas,
+            COUNT(CASE WHEN s.saldo > 0 AND s.total_pagado > 0 THEN 1 END)                  AS facturas_pago_parcial,
+            COUNT(CASE WHEN s.total_pagado = 0 THEN 1 END)                                  AS facturas_por_pagar,
+            (SELECT MAX(ct.fecha_trans_cpctr)
+             FROM cxp_cabece_transa ct
+             WHERE ct.ide_geper = $1
+               AND ct.ide_empr  = $2
+               AND ct.ide_sucu  = $3)                                                       AS ultima_transaccion,
+            COUNT(CASE WHEN fb.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '30 days'  THEN 1 END) AS facturas_ultimo_mes,
+            COUNT(CASE WHEN fb.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '6 months' THEN 1 END) AS facturas_ultimo_semestre,
+            COUNT(CASE WHEN fb.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '12 months' THEN 1 END) AS facturas_ultimo_ano,
+            COALESCE(SUM(CASE WHEN fb.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '12 months' THEN fb.total_cpcfa ELSE 0 END), 0) AS compras_ultimo_ano,
+            (SELECT COUNT(*)
+             FROM cxp_cabece_factur x
+             WHERE x.ide_geper = $1
+               AND x.ide_empr  = $2
+               AND x.ide_sucu  = $3
+               AND x.ide_cpefa = 1)                                                         AS facturas_anuladas
+        FROM facturas_base fb
+        LEFT JOIN saldos s ON fb.ide_cpcfa = s.ide_cpcfa
+    `);
+    query.addIntParam(1, ide_geper);
+    query.addIntParam(2, ideEmpr);
+    query.addIntParam(3, ideSucu);
+    return this.dataSource.createSingleQuery(query);
   }
 
   async getTrnProveedor(dtoIn: TrnProveedorDto & HeaderParamsDto) {
@@ -229,6 +334,7 @@ export class ProveedorService extends BaseService {
                 ${whereClause1}
                 AND fecha_trans_cpdtr < $2
                 AND dt.ide_empr = ${dtoIn.ideEmpr}
+                AND dt.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 ct.ide_geper
         ),
@@ -254,6 +360,7 @@ export class ProveedorService extends BaseService {
                 ${whereClause3}
                 AND fecha_trans_cpdtr BETWEEN $4 AND $5
                 AND a.ide_empr = ${dtoIn.ideEmpr}
+                AND a.ide_sucu = ${dtoIn.ideSucu}
             ORDER BY
                 fecha_trans_cpdtr, a.ide_cpdtr
         )
@@ -326,6 +433,7 @@ export class ProveedorService extends BaseService {
             WHERE ${whereClause}
               AND fecha_trans_cpdtr < $2
               AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
         ),
         stats AS (
             SELECT
@@ -343,6 +451,7 @@ export class ProveedorService extends BaseService {
             WHERE ${whereClause}
               AND fecha_trans_cpdtr BETWEEN $2 AND $3
               AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
         ),
         pendiente AS (
             SELECT COALESCE(
@@ -359,6 +468,7 @@ export class ProveedorService extends BaseService {
             ${joinPersona}
             WHERE ${whereClause}
               AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
         )
         SELECT
             si.saldo AS saldo_inicial,
