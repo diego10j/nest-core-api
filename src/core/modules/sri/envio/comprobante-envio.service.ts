@@ -171,6 +171,29 @@ export class ComprobanteEnvioService extends BaseService {
   }
 
   /**
+   * Reinicia manualmente a PENDIENTE un comprobante que no llegó a autorizarse (ej. DEVUELTA,
+   * RECHAZADO, NO AUTORIZADO). enviarComprobante/enviarComprobanteSincrono solo avanzan un
+   * comprobante en PENDIENTE (firma+recepción) o RECIBIDA (autorización) — uno que quedó en
+   * cualquier otro estado no vuelve a procesarse solo con reintentar el envío, se queda
+   * "atascado". Este método lo regresa a PENDIENTE para poder reintentar desde cero.
+   *
+   * No permite reiniciar un comprobante ya AUTORIZADO: es un documento legal ya emitido ante
+   * el SRI, reiniciarlo y reenviarlo generaría una clave de acceso duplicada.
+   */
+  async reiniciarPendiente(claveAcceso: string, dtoIn: HeaderQueryDto): Promise<{ claveAcceso: string; codigoEstado: number; estado: string }> {
+    const comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso({ ...dtoIn, claveAcceso });
+    if (comprobante.codigoestado === EstadoComprobanteEnum.AUTORIZADO.codigo) {
+      throw new BadRequestException('El comprobante ya está autorizado por el SRI; no se puede reiniciar.');
+    }
+    await this.actualizarEstado(comprobante.codigocomprobante, EstadoComprobanteEnum.PENDIENTE.codigo);
+    return {
+      claveAcceso,
+      codigoEstado: EstadoComprobanteEnum.PENDIENTE.codigo,
+      estado: EstadoComprobanteEnum.PENDIENTE.descripcion,
+    };
+  }
+
+  /**
    * Envío síncrono bajo demanda (firma + recepción + autorización), esperando la respuesta
    * final del SRI dentro de la misma petición — a diferencia de enviarComprobante, que usa
    * SriEnvioQueueService y no retorna nada al llamante original. Ambos coexisten a propósito:

@@ -64,6 +64,12 @@ export function buildFacturaXml(comprobante: ComprobanteDto, emisor: EmisorDto):
 `;
   }
 
+  // guiaRemision es opcional en la Ficha Técnica SRI: si no hay guía asociada, el tag
+  // no debe enviarse (ni siquiera vacío) — el SRI rechaza <guiaRemision></guiaRemision>.
+  const guiaRemisionTag = comprobante.guiaremision
+    ? `			<guiaRemision>${comprobante.guiaremision}</guiaRemision>\n`
+    : '';
+
   const infoAdicional = buildInfoAdicionalComprobante(comprobante, CORREO_POR_DEFECTO);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -86,8 +92,7 @@ ${agenteRetencion}		</infoTributaria>
 			<dirEstablecimiento>${emisor.dirMatriz}</dirEstablecimiento>
 			<obligadoContabilidad>${emisor.obligadoContabilidad}</obligadoContabilidad>
 			<tipoIdentificacionComprador>${comprobante.cliente?.tipoIdentificacion}</tipoIdentificacionComprador>
-			<guiaRemision>${comprobante.guiaremision ?? ''}</guiaRemision>
-			<razonSocialComprador>${comprobante.cliente?.nombreCliente}</razonSocialComprador>
+${guiaRemisionTag}			<razonSocialComprador>${comprobante.cliente?.nombreCliente}</razonSocialComprador>
 			<identificacionComprador>${comprobante.cliente?.identificacion?.trim()}</identificacionComprador>
 			<direccionComprador>${comprobante.cliente?.direccion ?? ''}</direccionComprador>
 			<totalSinImpuestos>${fNumero(totalSinImpuestos)}</totalSinImpuestos>

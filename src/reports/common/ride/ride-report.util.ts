@@ -15,37 +15,42 @@ import { getStaticImage } from 'src/util/helpers/file-utils';
  */
 
 // ── Paleta ────────────────────────────────────────────────────────────────
+// Paleta gris/navy neutral y profesional, alineada a proforma.report.ts: acento único
+// (azul navy) solo en texto/realces puntuales, tablas sin bloques de color sólido —
+// encabezados con texto de color sobre fondo claro, zebra striping gris muy sutil.
 export const RIDE_COLOR = {
-    grisTh: '#e8e8e8',
-    grisFila: '#f7f7f7',
-    grisLinea: '#cccccc',
-    negro: '#1a1a1a',
+    grisTh: '#eef2f7',
+    grisFila: '#f9fafb',
+    grisLinea: '#e5e7eb',
+    negro: '#1a1d27',
     blanco: '#ffffff',
-    grisTexto: '#666666',
-    grisClaro: '#fafafa',
-    /** Fondo de encabezados de tabla (th, forma de pago), en vez de negro puro. */
-    azulNavy: '#1c3d5a',
+    grisTexto: '#6b7280',
+    grisClaro: '#f9fafb',
+    azulNavy: '#1e3a5f',
+    /** Fondo suave para encabezados de tabla y realces (TOTAL), nunca como bloque sólido de color. */
+    accentSurface: '#f5f8fc',
+    accentLine: '#d8e2ef',
 };
 
 // ── Estilos ───────────────────────────────────────────────────────────────
 export const rideStyles: StyleDictionary = {
-    panelLabel: { fontSize: 7.5, bold: true, color: RIDE_COLOR.grisTexto },
+    panelLabel: { fontSize: 7.5, bold: true, color: RIDE_COLOR.grisTexto, characterSpacing: 0.3 },
     panelValue: { fontSize: 7.5, color: RIDE_COLOR.negro },
-    comprobanteTitle: { fontSize: 14, bold: true, color: RIDE_COLOR.negro },
+    comprobanteTitle: { fontSize: 14, bold: true, color: RIDE_COLOR.azulNavy },
     comprobanteNumero: { fontSize: 11, bold: true, color: RIDE_COLOR.negro, alignment: 'right' },
     authLabel: { fontSize: 7, bold: true, color: RIDE_COLOR.grisTexto, margin: [0, 3, 0, 1] as [number, number, number, number] },
     authValue: { fontSize: 7.5, color: RIDE_COLOR.negro, margin: [0, 0, 0, 2] as [number, number, number, number] },
     claveAccesoText: { fontSize: 6.5, color: RIDE_COLOR.grisTexto, characterSpacing: 0.8, alignment: 'center' },
     campoLabel: { fontSize: 7.5, bold: true, color: RIDE_COLOR.grisTexto },
     campoValor: { fontSize: 7.5, color: RIDE_COLOR.negro },
-    thTexto: { fontSize: 7.5, bold: true, color: RIDE_COLOR.blanco, alignment: 'center' },
+    thTexto: { fontSize: 8, bold: true, color: RIDE_COLOR.azulNavy, alignment: 'center', characterSpacing: 0.3 },
     tdTexto: { fontSize: 7.5, color: RIDE_COLOR.negro },
-    sectionTitle: { fontSize: 9, bold: true, color: RIDE_COLOR.negro, margin: [0, 0, 0, 6] as [number, number, number, number] },
+    sectionTitle: { fontSize: 9, bold: true, color: RIDE_COLOR.azulNavy, margin: [0, 0, 0, 6] as [number, number, number, number] },
     sectionSubtitle: { fontSize: 8, bold: true, color: RIDE_COLOR.grisTexto, margin: [0, 0, 0, 4] as [number, number, number, number] },
-    totalLabel: { fontSize: 8, color: RIDE_COLOR.negro, alignment: 'left', margin: [4, 2, 4, 2] as [number, number, number, number] },
+    totalLabel: { fontSize: 8, color: RIDE_COLOR.grisTexto, alignment: 'left', margin: [4, 2, 4, 2] as [number, number, number, number] },
     totalValor: { fontSize: 8, color: RIDE_COLOR.negro, alignment: 'right', margin: [4, 2, 4, 2] as [number, number, number, number] },
-    totalGrandLabel: { fontSize: 10, bold: true, color: RIDE_COLOR.negro, alignment: 'left', margin: [4, 4, 4, 4] as [number, number, number, number] },
-    totalGrandValor: { fontSize: 10, bold: true, color: RIDE_COLOR.negro, alignment: 'right', margin: [4, 4, 4, 4] as [number, number, number, number] },
+    totalGrandLabel: { fontSize: 10, bold: true, color: RIDE_COLOR.azulNavy, alignment: 'left', margin: [4, 4, 4, 4] as [number, number, number, number] },
+    totalGrandValor: { fontSize: 10, bold: true, color: RIDE_COLOR.azulNavy, alignment: 'right', margin: [4, 4, 4, 4] as [number, number, number, number] },
 };
 
 // ── Helpers de formato ──────────────────────────────────────────────────────
@@ -74,11 +79,16 @@ export const th = (text: string, align: 'left' | 'center' | 'right' = 'center'):
     text,
     style: 'thTexto',
     alignment: align,
-    fillColor: RIDE_COLOR.azulNavy,
+    fillColor: RIDE_COLOR.accentSurface,
     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-    margin: [4, 5, 4, 5] as [number, number, number, number],
+    margin: [4, 7, 4, 7] as [number, number, number, number],
 });
 
+/**
+ * Celda de detalle sin borde propio: las líneas horizontales las dibuja el `layout` de la
+ * tabla contenedora (ver `hairlineTableLayout`), no cada celda — evita el efecto de "rejilla"
+ * y deja solo líneas finas entre filas, estilo proforma.report.ts.
+ */
 export const td = (
     text: string | number,
     fill: string,
@@ -91,10 +101,25 @@ export const td = (
     bold,
     alignment: align,
     fillColor: fill,
-    border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-    borderColor: ['', '', '', RIDE_COLOR.grisLinea] as [string, string, string, string],
-    margin: [4, 3, 4, 3] as [number, number, number, number],
+    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+    margin: [4, 5, 4, 5] as [number, number, number, number],
 });
+
+/**
+ * Layout de tabla "hairline": sin líneas verticales, encabezado separado por una línea de
+ * acento, filas separadas por líneas grises muy finas y sin línea de cierre al final —
+ * mismo criterio que detailTable() en proforma.report.ts.
+ */
+export const hairlineTableLayout = {
+    hLineWidth: (i: number, node: { table: { body: unknown[] } }) =>
+        i === node.table.body.length ? 0 : i === 0 ? 0.6 : i === 1 ? 1 : 0.4,
+    hLineColor: (i: number) => (i <= 1 ? RIDE_COLOR.accentLine : RIDE_COLOR.grisLinea),
+    vLineWidth: () => 0,
+    paddingTop: () => 1,
+    paddingBottom: () => 1,
+    paddingLeft: () => 4,
+    paddingRight: () => 4,
+};
 
 const VALID_IMG_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const MIME_MAP: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
@@ -287,15 +312,15 @@ export function buildEncabezadoRide(params: EncabezadoRideParams): Content {
                         ...colComprobante,
                         border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
                         borderColor: ['', RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea] as [string, string, string, string],
-                        fillColor: RIDE_COLOR.grisClaro,
+                        fillColor: RIDE_COLOR.accentSurface,
                         margin: [10, 0, 8, 8] as [number, number, number, number],
                     },
                 ],
             ],
         },
         layout: {
-            hLineWidth: () => 0.6,
-            vLineWidth: () => 0.6,
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
             hLineColor: () => RIDE_COLOR.grisLinea,
             vLineColor: () => RIDE_COLOR.grisLinea,
             paddingTop: () => 0,
@@ -332,8 +357,8 @@ export function buildPanelContraparte(izquierda: object[], derecha: object[]): C
             ],
         },
         layout: {
-            hLineWidth: () => 0.6,
-            vLineWidth: () => 0.6,
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
             hLineColor: () => RIDE_COLOR.grisLinea,
             vLineColor: () => RIDE_COLOR.grisLinea,
             paddingTop: () => 0,

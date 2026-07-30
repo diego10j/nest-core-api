@@ -6,6 +6,7 @@ import {
     buildPanelContraparte,
     campoTexto,
     fmtNumero,
+    hairlineTableLayout,
     rideStyles,
     td,
     th,
@@ -95,15 +96,7 @@ export const guiaRemisionReport = (
                 ...cuerpoDetalles,
             ],
         },
-        layout: {
-            hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4),
-            vLineWidth: () => 0,
-            hLineColor: () => RIDE_COLOR.grisLinea,
-            paddingTop: () => 0,
-            paddingBottom: () => 0,
-            paddingLeft: () => 0,
-            paddingRight: () => 0,
-        },
+        layout: hairlineTableLayout,
         margin: [0, 0, 0, 6] as [number, number, number, number],
     };
 

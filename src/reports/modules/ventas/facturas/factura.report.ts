@@ -11,15 +11,16 @@ import { getStaticImage } from 'src/util/helpers/file-utils';
 import { FacturaDetalle, FacturaRep, TransporteFactura } from './interfaces/factura-rep';
 
 // ── Paleta ────────────────────────────────────────────────────────────────
-// Escala de grises fría, bordes suaves y un solo acento oscuro (azul navy) para
-// jerarquía (encabezados de tabla y total general), inspirada en RIDEs de sistemas
-// ERP/facturación electrónica ecuatorianos: sobrio, alto contraste texto/fondo.
-const NEGRO = '#1a1a1a';
-const AZUL_NAVY = '#1c3d5a';
-const GRIS_FILA = '#f8f9fa';
-const GRIS_LINEA = '#e1e3e6';
-const GRIS_TEXTO = '#5f6b7a';
-const GRIS_CLARO = '#fafbfc';
+// Paleta gris/navy neutral y profesional (misma que ride-report.util.ts / proforma.report.ts):
+// acento único (azul navy) solo en texto/realces puntuales, sin bloques de color sólido —
+// encabezados de tabla con texto de color sobre fondo claro, zebra striping gris muy sutil.
+const NEGRO = '#1a1d27';
+const AZUL_NAVY = '#1e3a5f';
+const GRIS_FILA = '#f9fafb';
+const GRIS_LINEA = '#e5e7eb';
+const GRIS_TEXTO = '#6b7280';
+const ACCENT_SURFACE = '#f5f8fc';
+const ACCENT_LINE = '#d8e2ef';
 const BLANCO = '#ffffff';
 const AMBAR_PRUEBAS = '#b45309';
 
@@ -37,7 +38,7 @@ const styles: StyleDictionary = {
     facturaTitle: {
         fontSize: 16,
         bold: true,
-        color: NEGRO,
+        color: AZUL_NAVY,
     },
     facturaNumero: {
         fontSize: 11,
@@ -72,10 +73,11 @@ const styles: StyleDictionary = {
         color: NEGRO,
     },
     thTexto: {
-        fontSize: 7.5,
+        fontSize: 8,
         bold: true,
-        color: BLANCO,
+        color: AZUL_NAVY,
         alignment: 'center',
+        characterSpacing: 0.3,
     },
     tdTexto: {
         fontSize: 7.5,
@@ -108,14 +110,14 @@ const styles: StyleDictionary = {
     totalGrandLabel: {
         fontSize: 10,
         bold: true,
-        color: NEGRO,
+        color: AZUL_NAVY,
         alignment: 'left',
         margin: [4, 4, 4, 4] as [number, number, number, number],
     },
     totalGrandValor: {
         fontSize: 10,
         bold: true,
-        color: NEGRO,
+        color: AZUL_NAVY,
         alignment: 'right',
         margin: [4, 4, 4, 4] as [number, number, number, number],
     },
@@ -146,11 +148,12 @@ const th = (text: string, align: 'left' | 'center' | 'right' = 'center'): object
     text,
     style: 'thTexto',
     alignment: align,
-    fillColor: AZUL_NAVY,
+    fillColor: ACCENT_SURFACE,
     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-    margin: [5, 6, 5, 6] as [number, number, number, number],
+    margin: [5, 7, 5, 7] as [number, number, number, number],
 });
 
+/** Celda sin borde propio: las líneas horizontales las dibuja el `layout` de la tabla (hairline). */
 const td = (
     text: string | number,
     fill: string,
@@ -163,10 +166,21 @@ const td = (
     bold,
     alignment: align,
     fillColor: fill,
-    border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-    borderColor: ['', '', '', GRIS_LINEA] as [string, string, string, string],
-    margin: [5, 4, 5, 4] as [number, number, number, number],
+    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+    margin: [5, 5, 5, 5] as [number, number, number, number],
 });
+
+/** Layout "hairline" de tabla: sin verticales, separador de acento bajo el header, filas con línea fina. */
+const hairlineLayout = {
+    hLineWidth: (i: number, node: { table: { body: unknown[] } }) =>
+        i === node.table.body.length ? 0 : i === 0 ? 0.6 : i === 1 ? 1 : 0.4,
+    hLineColor: (i: number) => (i <= 1 ? ACCENT_LINE : GRIS_LINEA),
+    vLineWidth: () => 0,
+    paddingTop: () => 1,
+    paddingBottom: () => 1,
+    paddingLeft: () => 4,
+    paddingRight: () => 4,
+};
 
 const VALID_IMG_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 const MIME_MAP: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
@@ -203,11 +217,11 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
 
     const ttHeader = (text: string): object => ({
         text,
-        fontSize: 7,
+        fontSize: 7.5,
         bold: true,
-        color: BLANCO,
+        color: AZUL_NAVY,
         alignment: 'center',
-        fillColor: AZUL_NAVY,
+        fillColor: ACCENT_SURFACE,
         border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [3, 5, 3, 5] as [number, number, number, number],
     });
@@ -218,8 +232,7 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
         color: NEGRO,
         alignment: align,
         fillColor: BLANCO,
-        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-        borderColor: ['', '', '', GRIS_LINEA] as [string, string, string, string],
+        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [3, 4, 3, 4] as [number, number, number, number],
     });
 
@@ -245,9 +258,9 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
                     ],
                 },
                 layout: {
-                    hLineWidth: () => 0.5,
+                    hLineWidth: (i: number) => (i === 1 ? 1 : 0),
                     vLineWidth: () => 0,
-                    hLineColor: () => GRIS_LINEA,
+                    hLineColor: () => ACCENT_LINE,
                     paddingTop: () => 0,
                     paddingBottom: () => 0,
                     paddingLeft: () => 0,
@@ -434,7 +447,7 @@ export const facturaElectronicaReport = (
                         ...colComprobante,
                         border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
                         borderColor: ['', GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
-                        fillColor: GRIS_CLARO,
+                        fillColor: ACCENT_SURFACE,
                         margin: [10, 0, 8, 8] as [number, number, number, number],
                     },
                 ],
@@ -547,16 +560,7 @@ export const facturaElectronicaReport = (
                 ...cuerpoDetalles,
             ],
         },
-        layout: {
-            hLineWidth: (i: number, node: any) => i === 0 || i === 1 || i === node.table.body.length ? 0.6 : 0.4,
-            vLineWidth: () => 0,
-            hLineColor: () => GRIS_LINEA,
-            vLineColor: () => GRIS_LINEA,
-            paddingTop: () => 0,
-            paddingBottom: () => 0,
-            paddingLeft: () => 0,
-            paddingRight: () => 0,
-        },
+        layout: hairlineLayout,
         margin: [0, 0, 0, 8] as [number, number, number, number],
     };
 
@@ -573,15 +577,13 @@ export const facturaElectronicaReport = (
         {
             text: label,
             style: 'totalLabel',
-            border: [true, false, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: [GRIS_LINEA, '', GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
             fillColor: BLANCO,
         },
         {
             text: fCurrency(valor),
             style: 'totalValor',
-            border: [false, false, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: ['', '', GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
             fillColor: BLANCO,
         },
     ];
@@ -630,13 +632,13 @@ export const facturaElectronicaReport = (
 
     const fpHeader = (text: string): object => ({
         text,
-        fontSize: 7,
+        fontSize: 7.5,
         bold: true,
-        color: BLANCO,
+        color: AZUL_NAVY,
         alignment: 'center',
-        fillColor: AZUL_NAVY,
+        fillColor: ACCENT_SURFACE,
         border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-        margin: [3, 4, 3, 4] as [number, number, number, number],
+        margin: [3, 5, 3, 5] as [number, number, number, number],
     });
 
     const fpCell = (text: string, align: 'left' | 'center' | 'right' = 'left'): object => ({
@@ -644,9 +646,8 @@ export const facturaElectronicaReport = (
         fontSize: 7.5,
         color: NEGRO,
         alignment: align,
-        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-        borderColor: ['', '', '', GRIS_LINEA] as [string, string, string, string],
-        margin: [3, 3, 3, 3] as [number, number, number, number],
+        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        margin: [3, 4, 3, 4] as [number, number, number, number],
     });
 
     const formaPagoBody = [
@@ -669,9 +670,9 @@ export const facturaElectronicaReport = (
                     body: formaPagoBody,
                 },
                 layout: {
-                    hLineWidth: () => 0.5,
+                    hLineWidth: (i: number) => (i === 1 ? 1 : 0),
                     vLineWidth: () => 0,
-                    hLineColor: () => GRIS_LINEA,
+                    hLineColor: () => ACCENT_LINE,
                     paddingTop: () => 0,
                     paddingBottom: () => 0,
                     paddingLeft: () => 0,
@@ -688,15 +689,13 @@ export const facturaElectronicaReport = (
         {
             text: label,
             style: 'totalLabel',
-            border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: [GRIS_LINEA, GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
             fillColor: BLANCO,
         },
         {
             text: fCurrency(valor),
             style: 'totalValor',
-            border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: ['', GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
             fillColor: BLANCO,
         },
     ];
@@ -715,32 +714,25 @@ export const facturaElectronicaReport = (
                     {
                         text: 'VALOR TOTAL',
                         style: 'totalGrandLabel',
-                        color: BLANCO,
-                        fillColor: AZUL_NAVY,
-                        border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: [AZUL_NAVY, AZUL_NAVY, AZUL_NAVY, AZUL_NAVY] as [string, string, string, string],
+                        fillColor: ACCENT_SURFACE,
+                        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
                     },
                     {
                         text: fCurrency(total),
                         style: 'totalGrandValor',
-                        bold: true,
-                        color: BLANCO,
-                        fillColor: AZUL_NAVY,
-                        border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: ['', AZUL_NAVY, AZUL_NAVY, AZUL_NAVY] as [string, string, string, string],
+                        fillColor: ACCENT_SURFACE,
+                        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
                     },
                 ],
             ],
         },
         layout: {
-            hLineWidth: () => 0.4,
-            vLineWidth: () => 0.4,
-            hLineColor: () => GRIS_LINEA,
-            vLineColor: () => GRIS_LINEA,
-            paddingTop: () => 1,
-            paddingBottom: () => 1,
-            paddingLeft: () => 2,
-            paddingRight: () => 2,
+            hLineWidth: () => 0,
+            vLineWidth: () => 0,
+            paddingTop: () => 3,
+            paddingBottom: () => 3,
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
         },
     };
 

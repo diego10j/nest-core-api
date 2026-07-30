@@ -56,6 +56,18 @@ export class ComprobanteEnvioController {
   }
 
   /**
+   * Reinicia manualmente a PENDIENTE un comprobante que quedó DEVUELTO/RECHAZADO/NO AUTORIZADO,
+   * para poder reintentar el envío desde cero (ver ComprobanteEnvioService.reiniciarPendiente).
+   * Rechaza el reinicio si el comprobante ya está AUTORIZADO.
+   */
+  @Post('reiniciarPendiente')
+  @ApiOperation({ summary: 'Reiniciar a PENDIENTE un comprobante no autorizado, para poder reenviarlo al SRI' })
+  @Auth()
+  reiniciarPendiente(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ClaveAccesoDto) {
+    return this.comprobanteEnvioService.reiniciarPendiente(dtoIn.claveAcceso, { ...headersParams, ...dtoIn });
+  }
+
+  /**
    * Devuelve el último XML guardado para un comprobante (firmado o autorizado), junto con
    * su estado y, si no está AUTORIZADO (ej. DEVUELTA/RECHAZADO), el mensaje de recepción
    * y/o autorización que explica el motivo — vienen en la misma fila del historial.

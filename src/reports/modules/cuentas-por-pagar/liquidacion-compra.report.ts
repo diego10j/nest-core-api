@@ -7,6 +7,7 @@ import {
     buildPanelContraparte,
     campoTexto,
     fmtNumero,
+    hairlineTableLayout,
     rideStyles,
     splitNumeroDocumento,
     td,
@@ -82,15 +83,7 @@ export const liquidacionCompraReport = (
                 ...cuerpoDetalles,
             ],
         },
-        layout: {
-            hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4),
-            vLineWidth: () => 0,
-            hLineColor: () => RIDE_COLOR.grisLinea,
-            paddingTop: () => 0,
-            paddingBottom: () => 0,
-            paddingLeft: () => 0,
-            paddingRight: () => 0,
-        },
+        layout: hairlineTableLayout,
         margin: [0, 0, 0, 6] as [number, number, number, number],
     };
 
@@ -108,15 +101,13 @@ export const liquidacionCompraReport = (
             text: label,
             style: destacado ? 'totalGrandLabel' : 'totalLabel',
             fillColor: destacado ? RIDE_COLOR.grisTh : RIDE_COLOR.blanco,
-            border: [true, false, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: [RIDE_COLOR.grisLinea, '', RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         },
         {
             text: fCurrency(valor),
             style: destacado ? 'totalGrandValor' : 'totalValor',
             fillColor: destacado ? RIDE_COLOR.grisTh : RIDE_COLOR.blanco,
-            border: [false, false, true, true] as [boolean, boolean, boolean, boolean],
-            borderColor: ['', '', RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea] as [string, string, string, string],
+            border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         },
     ];
 
@@ -125,8 +116,8 @@ export const liquidacionCompraReport = (
             widths: ['*', 80],
             body: [
                 [
-                    { text: 'SUBTOTAL SIN IMPUESTOS', style: 'totalLabel', border: [true, true, true, true] as [boolean, boolean, boolean, boolean], borderColor: [RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea] as [string, string, string, string] },
-                    { text: fCurrency(subtotalSinImpuestos), style: 'totalValor', border: [false, true, true, true] as [boolean, boolean, boolean, boolean], borderColor: ['', RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea, RIDE_COLOR.grisLinea] as [string, string, string, string] },
+                    { text: 'SUBTOTAL SIN IMPUESTOS', style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                    { text: fCurrency(subtotalSinImpuestos), style: 'totalValor', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
                 ],
                 filaResumen('SUBTOTAL 0%', base0),
                 filaResumen('SUBTOTAL NO OBJETO IVA', baseNoObjeto),
@@ -136,28 +127,25 @@ export const liquidacionCompraReport = (
             ],
         },
         layout: {
-            hLineWidth: () => 0.4,
-            vLineWidth: () => 0.4,
-            hLineColor: () => RIDE_COLOR.grisLinea,
-            vLineColor: () => RIDE_COLOR.grisLinea,
-            paddingTop: () => 1,
-            paddingBottom: () => 1,
-            paddingLeft: () => 2,
-            paddingRight: () => 2,
+            hLineWidth: () => 0,
+            vLineWidth: () => 0,
+            paddingTop: () => 3,
+            paddingBottom: () => 3,
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
         },
     };
 
     // Forma de pago
     const fpHeader = (text: string): object => ({
-        text, fontSize: 7, bold: true, color: RIDE_COLOR.blanco, alignment: 'center',
-        fillColor: RIDE_COLOR.azulNavy, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-        margin: [3, 4, 3, 4] as [number, number, number, number],
+        text, fontSize: 7.5, bold: true, color: RIDE_COLOR.azulNavy, alignment: 'center',
+        fillColor: RIDE_COLOR.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        margin: [3, 5, 3, 5] as [number, number, number, number],
     });
     const fpCell = (text: string, align: 'left' | 'center' | 'right' = 'left'): object => ({
         text, fontSize: 7.5, color: RIDE_COLOR.negro, alignment: align,
-        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-        borderColor: ['', '', '', RIDE_COLOR.grisLinea] as [string, string, string, string],
-        margin: [3, 3, 3, 3] as [number, number, number, number],
+        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        margin: [3, 4, 3, 4] as [number, number, number, number],
     });
 
     const colIzquierda: Content = {
@@ -188,9 +176,9 @@ export const liquidacionCompraReport = (
                     ],
                 },
                 layout: {
-                    hLineWidth: () => 0.6,
+                    hLineWidth: (i: number) => (i === 1 ? 1 : 0),
                     vLineWidth: () => 0,
-                    hLineColor: () => RIDE_COLOR.grisLinea,
+                    hLineColor: () => RIDE_COLOR.accentLine,
                     paddingTop: () => 0,
                     paddingBottom: () => 0,
                     paddingLeft: () => 0,
