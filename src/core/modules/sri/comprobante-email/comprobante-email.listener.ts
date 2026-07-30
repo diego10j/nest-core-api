@@ -4,6 +4,7 @@ import path from 'node:path';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as handlebars from 'handlebars';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
@@ -19,6 +20,7 @@ import { FacturasRepService } from 'src/reports/modules/ventas/facturas/facturas
 import { GetNotaCreditoDto } from 'src/reports/modules/ventas/notas-credito/dto/get-nota-credito.dto';
 import { NotasCreditoRepService } from 'src/reports/modules/ventas/notas-credito/notas-credito-rep.service';
 import { fCurrency } from 'src/util/helpers/common-util';
+import { normalizarUrl } from 'src/util/helpers/string-util';
 
 import { ComprobanteAutorizadoEmitter, ComprobanteAutorizadoEvent } from '../envio/comprobante-autorizado.emitter';
 import { SriXmlComprobanteService } from '../envio/sri-xml-comprobante.service';
@@ -29,6 +31,9 @@ const CODDOC_FACTURA = '01';
 const CODDOC_NOTA_CREDITO = '04';
 const CODDOC_LIQUIDACION_COMPRA = '03';
 const CODDOCS_SOPORTADOS = [CODDOC_FACTURA, CODDOC_NOTA_CREDITO, CODDOC_LIQUIDACION_COMPRA];
+
+/** Alias de sis_cuenta_correo desde el que se envían los comprobantes electrónicos autorizados. */
+const ALIAS_CUENTA_COMPROBANTES = 'comprobantes';
 
 interface ContraparteComprobante {
     ideNegocio: number;
@@ -106,8 +111,11 @@ export class ComprobanteEmailListener implements OnModuleInit {
             throw new BadRequestException(`Reenvío por correo no soportado para el tipo de comprobante ${coddoc}.`);
         }
 
+        // El historial ya guarda el envoltorio de autorización completo (estado/numeroAutorizacion/
+        // fechaAutorizacion/ambiente + comprobante en CDATA) tal como lo entrega el SRI: se adjunta
+        // tal cual, sin extraer el comprobante — es el mismo XML que recibe el correo automático.
         const historial = await this.xmlComprobanteService.getUltimo(Number(comprobante.ide_srcom), dtoIn);
-        const xmlAutorizado = extraerXmlDelHistorial(historial?.xmlComprobante);
+        const xmlAutorizado = historial?.xmlComprobante;
 
         await this.enviarCorreoComprobante(
             Number(comprobante.ide_srcom), coddoc, dtoIn.claveAcceso, xmlAutorizado, dtoIn, dtoIn.correo,
@@ -135,13 +143,24 @@ export class ComprobanteEmailListener implements OnModuleInit {
             return;
         }
 
+        await this.verificarCuentaComprobantes(dtoIn.ideEmpr);
+
         const { tipoComprobante, etiquetaContraparte, nombreDocumento } = this.metadataPorCoddoc(coddoc);
         const pdfBuffer = await this.generarPdfBuffer(coddoc, contexto.ideNegocio, dtoIn);
 
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
 
+        let logoBase64: string | undefined;
+        if (empresa?.logotipo_empr) {
+            const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+            if (fs.existsSync(logoPath)) {
+                logoBase64 = fs.readFileSync(logoPath).toString('base64');
+            }
+        }
+
         const html = this.buildEmailHtml({
             appName: empresa?.nom_empr || 'ProERP',
+            logoBase64,
             title: `${tipoComprobante} ${contexto.numero}`,
             tipoComprobante,
             etiquetaContraparte,
@@ -152,7 +171,7 @@ export class ComprobanteEmailListener implements OnModuleInit {
             numeroAutorizacion: claveAcceso,
             total: fCurrency(contexto.total),
             empresaEmail: empresa?.mail_empr || '',
-            empresaWeb: empresa?.pagina_empr || '',
+            empresaWeb: empresa?.pagina_empr ? normalizarUrl(empresa.pagina_empr) : '',
             empresaWebDisplay: empresa?.pagina_empr || '',
         });
 
@@ -182,10 +201,37 @@ export class ComprobanteEmailListener implements OnModuleInit {
                 asunto: `${tipoComprobante} ${contexto.numero} — autorizada por el SRI`,
                 contenido: html,
                 adjuntos,
+                alias_corr: ALIAS_CUENTA_COMPROBANTES,
             },
             dtoIn.ideEmpr,
             dtoIn.login,
         );
+    }
+
+    /**
+     * Los comprobantes electrónicos deben enviarse siempre desde la cuenta dedicada
+     * (alias_cucor='comprobantes' en sis_cuenta_correo), no desde la cuenta 'default'.
+     * A diferencia de MailService.getCuentaCorreo (que cae de vuelta a 'default' si no
+     * encuentra el alias pedido), aquí se exige que la cuenta exista explícitamente.
+     */
+    private async verificarCuentaComprobantes(ideEmpr: number): Promise<void> {
+        const query = new SelectQuery(`
+            SELECT ide_cucor
+            FROM sis_cuenta_correo
+            WHERE alias_cucor = $1
+              AND activo_cucor = true
+              AND (ide_empr = $2 OR ide_empr = 0)
+            ORDER BY CASE WHEN ide_empr = $2 THEN 0 ELSE 1 END, ide_cucor
+            LIMIT 1
+        `);
+        query.addStringParam(1, ALIAS_CUENTA_COMPROBANTES);
+        query.addIntParam(2, ideEmpr);
+        const cuenta = await this.dataSource.createSingleQuery(query);
+        if (!cuenta) {
+            throw new BadRequestException(
+                `Cuenta de comprobantes no configurada: no existe una cuenta de correo activa con alias "${ALIAS_CUENTA_COMPROBANTES}" en sis_cuenta_correo.`,
+            );
+        }
     }
 
     private metadataPorCoddoc(coddoc: string): { tipoComprobante: string; etiquetaContraparte: string; nombreDocumento: string } {
@@ -324,16 +370,4 @@ function streamToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
         doc.on('error', reject);
         doc.end();
     });
-}
-
-/**
- * sri_xml_comprobante guarda, tras la autorización, el envoltorio `buildXmlAutorizacion`
- * (`<autorizacion>...<comprobante><![CDATA[...]]></comprobante></autorizacion>`), no el XML
- * puro del comprobante. Extrae el contenido del CDATA para adjuntar el mismo XML que se envió
- * en el correo automático; si no hay envoltorio (formato inesperado), se adjunta tal cual.
- */
-function extraerXmlDelHistorial(xmlGuardado: string | undefined): string | undefined {
-    if (!xmlGuardado) return undefined;
-    const match = /<comprobante><!\[CDATA\[([\s\S]*?)\]\]><\/comprobante>/.exec(xmlGuardado);
-    return match ? match[1] : xmlGuardado;
 }

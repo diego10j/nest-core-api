@@ -7,6 +7,8 @@ import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/co
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
+import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
+import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
@@ -30,7 +32,18 @@ export class ContabilidadRepService {
     private readonly sectionsService: SectionsService,
     private readonly dataSource: DataSourceService,
     private readonly empresaRepService: EmpresaRepService,
+    private readonly emisorService: EmisorService,
   ) { }
+
+  /** Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal emisora, para el encabezado del RIDE. */
+  private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto): Promise<string> {
+    try {
+      const emisor = await this.emisorService.getEmisor(dtoIn);
+      return ambienteRideTexto(emisor.ambiente);
+    } catch {
+      return ambienteRideTexto(undefined);
+    }
+  }
 
   async reportBalanceGeneral(dtoIn: HeaderParamsDto & EstadosFinancierosDto) {
     const result = await this.contabilidadService.getBalanceGeneral(dtoIn);
@@ -180,6 +193,7 @@ export class ContabilidadRepService {
     const total = detalles.reduce((sum, d) => sum + Number(d.valor_cndre ?? 0), 0);
 
     const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+    const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn);
 
     let barcodeDataUrl: string | undefined;
     if (cabecera.claveacceso_srcom) {
@@ -198,11 +212,11 @@ export class ContabilidadRepService {
     }
 
     const data: ComprobanteRetencionRep = { cabecera, detalles, total };
-    const docDefinition = comprobanteRetencionReport(data, empresa, barcodeDataUrl);
+    const docDefinition = comprobanteRetencionReport(data, empresa, barcodeDataUrl, ambienteTexto);
     try {
       return this.printerService.createPdf(docDefinition);
     } catch {
-      const docFallback = comprobanteRetencionReport(data, empresa);
+      const docFallback = comprobanteRetencionReport(data, empresa, undefined, ambienteTexto);
       return this.printerService.createPdf(docFallback);
     }
   }

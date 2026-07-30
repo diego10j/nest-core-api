@@ -23,6 +23,7 @@ export const comprobanteRetencionReport = (
     data: ComprobanteRetencionRep,
     empresa: Empresa,
     barcodeDataUrl?: string,
+    ambienteTexto?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, total } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cncre);
@@ -36,6 +37,7 @@ export const comprobanteRetencionReport = (
         numeroAutorizacion: cabecera.autorizacion_srcomn,
         fechaAutorizacion: cabecera.fechaautoriza_srcom,
         barcodeDataUrl,
+        ambiente: ambienteTexto,
     });
 
     const panelContraparte = buildPanelContraparte(

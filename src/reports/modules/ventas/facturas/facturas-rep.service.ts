@@ -3,9 +3,11 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
 import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 import { FacturasService } from 'src/core/modules/ventas/facturas/facturas.service';
+import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
@@ -23,7 +25,18 @@ export class FacturasRepService {
     private readonly empresaRepService: EmpresaRepService,
     private readonly facturasService: FacturasService,
     private readonly sectionsService: SectionsService,
+    private readonly emisorService: EmisorService,
   ) { }
+
+  /** Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal emisora, para el encabezado del RIDE. */
+  private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto): Promise<string> {
+    try {
+      const emisor = await this.emisorService.getEmisor(dtoIn);
+      return ambienteRideTexto(emisor.ambiente);
+    } catch {
+      return ambienteRideTexto(undefined);
+    }
+  }
 
   async reportFacturaElectronica(dtoIn: GetFacturaDto & HeaderParamsDto) {
     // ── Cabecera de la factura ────────────────────────────────────────────
@@ -264,6 +277,7 @@ export class FacturasRepService {
 
     // ── Datos de empresa ──────────────────────────────────────────────────
     const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+    const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn);
 
     // ── Código de barras Code128 de la clave de acceso ────────────────────
     let barcodeDataUrl: string | undefined;
@@ -291,12 +305,12 @@ export class FacturasRepService {
       transporte,
     };
 
-    const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl);
+    const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl, ambienteTexto);
     try {
       return this.printerService.createPdf(docDefinition);
     } catch {
       // Si falla por imágenes, reintentar sin barcode
-      const docFallback = facturaElectronicaReport(facturaRep, empresa);
+      const docFallback = facturaElectronicaReport(facturaRep, empresa, undefined, ambienteTexto);
       return this.printerService.createPdf(docFallback);
     }
   }

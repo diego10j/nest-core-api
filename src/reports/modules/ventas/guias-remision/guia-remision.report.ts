@@ -20,6 +20,7 @@ export const guiaRemisionReport = (
     data: GuiaRemisionRep,
     empresa: Empresa,
     barcodeDataUrl?: string,
+    ambienteTexto?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles } = data;
     const numero = (cabecera.estab_srcom && cabecera.ptoemi_srcom && cabecera.secuencial_srcom)
@@ -35,6 +36,7 @@ export const guiaRemisionReport = (
         numeroAutorizacion: cabecera.autorizacion_srcomn,
         fechaAutorizacion: cabecera.fechaautoriza_srcom,
         barcodeDataUrl,
+        ambiente: ambienteTexto,
     });
 
     const transportistaTexto = cabecera.es_transporte_propio_cctfa

@@ -128,7 +128,19 @@ export interface EncabezadoRideParams {
     numeroAutorizacion?: string;
     fechaAutorizacion?: Date | string | null;
     barcodeDataUrl?: string;
+    /** "PRODUCCIÓN" / "PRUEBAS", según sri_emisor.ambiente_sremi de la sucursal emisora (ver ambienteRideTexto). */
+    ambiente?: string;
     /** "R.U.C.:" a la izquierda es siempre el emisor; alguna vez el label difiere (ej. proveedor en liquidación de compra) — no aplica aquí, el panel izquierdo es siempre el emisor del comprobante. */
+}
+
+/**
+ * Texto de ambiente para el encabezado RIDE, a partir de sri_emisor.ambiente_sremi (EmisorDto.ambiente):
+ * 1 = pruebas, 2 = producción (mismo criterio que el XML <infoTributaria><ambiente> y buildXmlAutorizacion).
+ */
+export function ambienteRideTexto(ambiente: number | null | undefined): string {
+    if (ambiente === 2) return 'PRODUCCIÓN';
+    if (ambiente === 1) return 'PRUEBAS';
+    return '---';
 }
 
 /**
@@ -137,7 +149,7 @@ export interface EncabezadoRideParams {
  * estructura al de factura.report.ts, parametrizado para los demás tipos de comprobante.
  */
 export function buildEncabezadoRide(params: EncabezadoRideParams): Content {
-    const { titulo, numero, empresa, claveAcceso, numeroAutorizacion, fechaAutorizacion, barcodeDataUrl } = params;
+    const { titulo, numero, empresa, claveAcceso, numeroAutorizacion, fechaAutorizacion, barcodeDataUrl, ambiente } = params;
     const empresaLogoDataUrl = getEmpresaLogoDataUrl(empresa);
 
     const colEmpresa: Content = {
@@ -222,7 +234,7 @@ export function buildEncabezadoRide(params: EncabezadoRideParams): Content {
                 ]),
             {
                 columns: [
-                    { stack: [{ text: 'Ambiente:', style: 'authLabel' }, { text: 'PRODUCCIÓN', style: 'authValue' }], width: '50%' },
+                    { stack: [{ text: 'Ambiente:', style: 'authLabel' }, { text: ambiente ?? '---', style: 'authValue' }], width: '50%' },
                     { stack: [{ text: 'Emisión:', style: 'authLabel' }, { text: 'NORMAL', style: 'authValue' }], width: '50%' },
                 ],
             },

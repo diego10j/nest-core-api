@@ -23,6 +23,7 @@ export const liquidacionCompraReport = (
     data: LiquidacionCompraRep,
     empresa: Empresa,
     barcodeDataUrl?: string,
+    ambienteTexto?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, reembolsos } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cpcfa);
@@ -36,6 +37,7 @@ export const liquidacionCompraReport = (
         numeroAutorizacion: cabecera.autorizacion_srcomn,
         fechaAutorizacion: cabecera.fechaautoriza_srcom,
         barcodeDataUrl,
+        ambiente: ambienteTexto,
     });
 
     const panelProveedor = buildPanelContraparte(

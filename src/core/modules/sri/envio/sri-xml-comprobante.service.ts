@@ -53,6 +53,24 @@ export class SriXmlComprobanteService extends BaseService {
     return res ?? undefined;
   }
 
+  /** Último XML (firmado o autorizado, según el estado más reciente) de un comprobante, por clave de acceso. */
+  async getXmlPorClaveAcceso(claveAcceso: string, dtoIn: QueryOptionsDto & HeaderParamsDto): Promise<string | undefined> {
+    const query = new SelectQuery(
+      `
+        SELECT x.xml_srxmc AS "xmlComprobante"
+        FROM sri_xml_comprobante x
+        INNER JOIN sri_comprobante s ON x.ide_srcom = s.ide_srcom
+        WHERE s.claveacceso_srcom = $1
+        ORDER BY x.fecha_hora_srxmc DESC
+        LIMIT 1
+        `,
+      dtoIn,
+    );
+    query.addStringParam(1, claveAcceso);
+    const res = await this.dataSource.createSingleQuery(query);
+    return res?.xmlComprobante ?? undefined;
+  }
+
   /** Inserta un registro nuevo si no se pasa ideSrxmc, o actualiza el existente (paridad con XmlComprobanteDAOImp.guardar). */
   async guardar(data: GuardarXmlComprobanteData): Promise<void> {
     if (!data.ideSrxmc) {

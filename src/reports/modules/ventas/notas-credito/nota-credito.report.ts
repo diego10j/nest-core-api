@@ -23,6 +23,7 @@ export const notaCreditoReport = (
     data: NotaCreditoRep,
     empresa: Empresa,
     barcodeDataUrl?: string,
+    ambienteTexto?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cpcno);
@@ -37,6 +38,7 @@ export const notaCreditoReport = (
         numeroAutorizacion: cabecera.autorizacion_srcomn,
         fechaAutorizacion: cabecera.fechaautoriza_srcom,
         barcodeDataUrl,
+        ambiente: ambienteTexto,
     });
 
     const panelCliente = buildPanelContraparte(

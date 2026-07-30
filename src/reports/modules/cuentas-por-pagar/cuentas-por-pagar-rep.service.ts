@@ -3,6 +3,8 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
+import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
@@ -21,7 +23,18 @@ export class CuentasPorPagarRepService {
         private readonly printerService: PrinterService,
         private readonly dataSource: DataSourceService,
         private readonly empresaRepService: EmpresaRepService,
+        private readonly emisorService: EmisorService,
     ) { }
+
+    /** Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal emisora, para el encabezado del RIDE. */
+    private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto): Promise<string> {
+        try {
+            const emisor = await this.emisorService.getEmisor(dtoIn);
+            return ambienteRideTexto(emisor.ambiente);
+        } catch {
+            return ambienteRideTexto(undefined);
+        }
+    }
 
     /** RIDE de la Liquidación de Compra electrónica. */
     async reportLiquidacionCompra(dtoIn: HeaderParamsDto & GetLiquidacionCompraDto) {
@@ -72,6 +85,7 @@ export class CuentasPorPagarRepService {
         const reembolsos = (await this.dataSource.createSelectQuery(queryReembolsos)) as LiquidacionCompraReembolso[];
 
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+        const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn);
 
         let barcodeDataUrl: string | undefined;
         if (cabecera.claveacceso_srcom) {
@@ -90,11 +104,11 @@ export class CuentasPorPagarRepService {
         }
 
         const data: LiquidacionCompraRep = { cabecera, detalles, reembolsos };
-        const docDefinition = liquidacionCompraReport(data, empresa, barcodeDataUrl);
+        const docDefinition = liquidacionCompraReport(data, empresa, barcodeDataUrl, ambienteTexto);
         try {
             return this.printerService.createPdf(docDefinition);
         } catch {
-            const docFallback = liquidacionCompraReport(data, empresa);
+            const docFallback = liquidacionCompraReport(data, empresa, undefined, ambienteTexto);
             return this.printerService.createPdf(docFallback);
         }
     }

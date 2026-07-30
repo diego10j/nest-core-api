@@ -11,14 +11,17 @@ import { getStaticImage } from 'src/util/helpers/file-utils';
 import { FacturaDetalle, FacturaRep, TransporteFactura } from './interfaces/factura-rep';
 
 // ── Paleta ────────────────────────────────────────────────────────────────
-const GRIS_TH = '#e8e8e8';
-const GRIS_FILA = '#f7f7f7';
-const GRIS_LINEA = '#cccccc';
+// Escala de grises fría, bordes suaves y un solo acento oscuro para jerarquía
+// (encabezados y total general), inspirada en RIDEs de sistemas ERP/facturación
+// electrónica ecuatorianos: sobrio, alto contraste texto/fondo, sin colores de marca.
 const NEGRO = '#1a1a1a';
+const GRIS_OSCURO = '#2e3238';
+const GRIS_FILA = '#f8f9fa';
+const GRIS_LINEA = '#e1e3e6';
+const GRIS_TEXTO = '#5f6b7a';
+const GRIS_CLARO = '#fafbfc';
 const BLANCO = '#ffffff';
-const GRIS_TEXTO = '#666666';
-const GRIS_CLARO = '#fafafa';
-const AZUL = '#2563eb';
+const AMBAR_PRUEBAS = '#b45309';
 
 // ── Estilos ────────────────────────────────────────────────────────────────
 const styles: StyleDictionary = {
@@ -145,7 +148,7 @@ const th = (text: string, align: 'left' | 'center' | 'right' = 'center'): object
     alignment: align,
     fillColor: NEGRO,
     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-    margin: [4, 5, 4, 5] as [number, number, number, number],
+    margin: [5, 6, 5, 6] as [number, number, number, number],
 });
 
 const td = (
@@ -162,7 +165,7 @@ const td = (
     fillColor: fill,
     border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
     borderColor: ['', '', '', GRIS_LINEA] as [string, string, string, string],
-    margin: [4, 3, 4, 3] as [number, number, number, number],
+    margin: [5, 4, 5, 4] as [number, number, number, number],
 });
 
 const VALID_IMG_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
@@ -188,40 +191,68 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
     const isPropio = transporte.es_transporte_propio_cctfa === true;
     const isFletePagado = transporte.flete_pagado_cctfa === true;
 
-    const detailParts: Content[] = [];
+    const responsable = isPropio ? (transporte.chofer || '---') : (transporte.nombre_vgtra || '---');
+    const vehiculo = isPropio ? (transporte.placa_gecam || transporte.vehiculo || '---') : '---';
+    const estadoFlete = isFletePagado ? 'PAGADO' : 'AL COBRO';
+    const observacion = transporte.comentario_cctfa || '---';
 
-    if (isPropio && transporte.placa_gecam) {
-        detailParts.push({ text: `Placa: ${transporte.placa_gecam}`, fontSize: 7, color: NEGRO });
-    }
-    if (isPropio && transporte.chofer) {
-        detailParts.push({ text: `Chofer: ${transporte.chofer}`, fontSize: 7, color: NEGRO });
-    }
-    if (!isPropio && transporte.nombre_vgtra) {
-        detailParts.push({ text: `Transportista: ${transporte.nombre_vgtra}`, fontSize: 7, color: NEGRO });
-    }
-    if (transporte.comentario_cctfa) {
-        detailParts.push({ text: `Obs: ${transporte.comentario_cctfa}`, fontSize: 7, color: NEGRO });
-    }
+    const ttHeader = (text: string): object => ({
+        text,
+        fontSize: 7,
+        bold: true,
+        color: BLANCO,
+        alignment: 'center',
+        fillColor: NEGRO,
+        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        margin: [3, 5, 3, 5] as [number, number, number, number],
+    });
 
-    const fleteLabel = isFletePagado ? 'FLETE PAGADO' : 'FLETE AL COBRO';
-    detailParts.push({ text: fleteLabel, fontSize: 7.5, bold: true, color: NEGRO });
-
-    const pipeSep = { text: ' | ', fontSize: 7, color: GRIS_TEXTO };
-
-    const inlineItems: Content[] = [];
-    detailParts.forEach((part, idx) => {
-        if (idx > 0) inlineItems.push(pipeSep);
-        inlineItems.push(part);
+    const ttCell = (text: string, align: 'left' | 'center' | 'right' = 'left'): object => ({
+        text,
+        fontSize: 7.5,
+        color: NEGRO,
+        alignment: align,
+        fillColor: BLANCO,
+        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
+        borderColor: ['', '', '', GRIS_LINEA] as [string, string, string, string],
+        margin: [3, 4, 3, 4] as [number, number, number, number],
     });
 
     return {
         stack: [
-            { text: 'Transporte / Envío', style: 'sectionTitle', margin: [0, 0, 0, 2] as [number, number, number, number] },
             {
-                text: inlineItems,
-                lineHeight: 1.3,
-                margin: [0, 0, 0, 2] as [number, number, number, number],
+                text: isPropio ? 'Transporte Propio' : 'Transporte / Envío',
+                style: 'sectionTitle',
+                margin: [0, 0, 0, 3] as [number, number, number, number],
             },
+            {
+                table: {
+                    widths: ['*', '18%', '18%', '*'],
+                    body: [
+                        [
+                            ttHeader(isPropio ? 'Chofer' : 'Transportista'),
+                            ttHeader('Placa'),
+                            ttHeader('Flete'),
+                            ttHeader('Observación'),
+                        ],
+                        [
+                            ttCell(responsable),
+                            ttCell(vehiculo, 'center'),
+                            ttCell(estadoFlete, 'center'),
+                            ttCell(observacion),
+                        ],
+                    ],
+                },
+                layout: {
+                    hLineWidth: () => 0.5,
+                    vLineWidth: () => 0,
+                    hLineColor: () => GRIS_LINEA,
+                    paddingTop: () => 0,
+                    paddingBottom: () => 0,
+                    paddingLeft: () => 0,
+                    paddingRight: () => 0,
+                },
+            } as Content,
         ],
         margin: [0, 4, 0, 0] as [number, number, number, number],
     } as Content;
@@ -232,6 +263,7 @@ export const facturaElectronicaReport = (
     data: FacturaRep,
     empresa: Empresa,
     barcodeDataUrl?: string,
+    ambienteTexto?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, pagos, transporte } = data;
 
@@ -339,7 +371,18 @@ export const facturaElectronicaReport = (
                 ]),
             {
                 columns: [
-                    { stack: [{ text: 'Ambiente:', style: 'authLabel' }, { text: 'PRODUCCIÓN', style: 'authValue' }], width: '50%' },
+                    {
+                        stack: [
+                            { text: 'Ambiente:', style: 'authLabel' },
+                            {
+                                text: ambienteTexto ?? '---',
+                                style: 'authValue',
+                                bold: ambienteTexto === 'PRUEBAS',
+                                color: ambienteTexto === 'PRUEBAS' ? AMBAR_PRUEBAS : NEGRO,
+                            },
+                        ],
+                        width: '50%',
+                    },
                     { stack: [{ text: 'Emisión:', style: 'authLabel' }, { text: 'NORMAL', style: 'authValue' }], width: '50%' },
                 ],
             },
@@ -397,8 +440,8 @@ export const facturaElectronicaReport = (
             ],
         },
         layout: {
-            hLineWidth: () => 0.6,
-            vLineWidth: () => 0.6,
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
             hLineColor: () => GRIS_LINEA,
             vLineColor: () => GRIS_LINEA,
             paddingTop: () => 0,
@@ -406,7 +449,7 @@ export const facturaElectronicaReport = (
             paddingLeft: () => 0,
             paddingRight: () => 0,
         },
-        margin: [0, 0, 0, 6] as [number, number, number, number],
+        margin: [0, 0, 0, 8] as [number, number, number, number],
     };
 
     // ── 2. DATOS DEL COMPRADOR ─────────────────────────────────────────────
@@ -463,8 +506,8 @@ export const facturaElectronicaReport = (
             ],
         },
         layout: {
-            hLineWidth: () => 0.6,
-            vLineWidth: () => 0.6,
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
             hLineColor: () => GRIS_LINEA,
             vLineColor: () => GRIS_LINEA,
             paddingTop: () => 0,
@@ -472,7 +515,7 @@ export const facturaElectronicaReport = (
             paddingLeft: () => 0,
             paddingRight: () => 0,
         },
-        margin: [0, 0, 0, 6] as [number, number, number, number],
+        margin: [0, 0, 0, 8] as [number, number, number, number],
     };
 
     // ── 3. TABLA DE DETALLES ───────────────────────────────────────────────
@@ -504,7 +547,7 @@ export const facturaElectronicaReport = (
             ],
         },
         layout: {
-            hLineWidth: (i: number, node: any) => i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4,
+            hLineWidth: (i: number, node: any) => i === 0 || i === 1 || i === node.table.body.length ? 0.6 : 0.4,
             vLineWidth: () => 0,
             hLineColor: () => GRIS_LINEA,
             vLineColor: () => GRIS_LINEA,
@@ -513,7 +556,7 @@ export const facturaElectronicaReport = (
             paddingLeft: () => 0,
             paddingRight: () => 0,
         },
-        margin: [0, 0, 0, 6] as [number, number, number, number],
+        margin: [0, 0, 0, 8] as [number, number, number, number],
     };
 
     // ── 4. BOTTOM: info adicional + transporte + pagos (izq) | totales (der) ─
@@ -625,7 +668,7 @@ export const facturaElectronicaReport = (
                     body: formaPagoBody,
                 },
                 layout: {
-                    hLineWidth: () => 0.6,
+                    hLineWidth: () => 0.5,
                     vLineWidth: () => 0,
                     hLineColor: () => GRIS_LINEA,
                     paddingTop: () => 0,
@@ -671,17 +714,19 @@ export const facturaElectronicaReport = (
                     {
                         text: 'VALOR TOTAL',
                         style: 'totalGrandLabel',
-                        fillColor: GRIS_TH,
+                        color: BLANCO,
+                        fillColor: GRIS_OSCURO,
                         border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: [GRIS_LINEA, GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+                        borderColor: [GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO] as [string, string, string, string],
                     },
                     {
                         text: fCurrency(total),
                         style: 'totalGrandValor',
                         bold: true,
-                        fillColor: GRIS_TH,
+                        color: BLANCO,
+                        fillColor: GRIS_OSCURO,
                         border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: ['', GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
+                        borderColor: ['', GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO] as [string, string, string, string],
                     },
                 ],
             ],

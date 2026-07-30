@@ -116,11 +116,14 @@ export class ComprobanteEnvioService extends BaseService {
       await this.guardarHistorialXml(comprobante.codigocomprobante, nuevoEstado, xmlAutorizacion, undefined, mensajesTexto, dtoIn);
       // Notifica para que quien esté interesado (envío de correo con PDF+XML) reaccione,
       // sin acoplar este módulo a reportes/correo (ver ComprobanteAutorizadoEmitter).
+      // Se adjunta el envoltorio de autorización completo (estado/numeroAutorizacion/
+      // fechaAutorizacion/ambiente + comprobante), no solo el comprobante firmado: es el
+      // mismo XML que el SRI entrega como "autorizado" y el que se guarda en el historial.
       this.autorizadoEmitter.emitAutorizado({
         ideSrcom: comprobante.codigocomprobante,
         claveAcceso,
         coddoc: comprobante.coddoc,
-        xmlAutorizado: resultado.comprobanteAutorizado,
+        xmlAutorizado: xmlAutorizacion,
         dtoIn,
       });
     } else {
