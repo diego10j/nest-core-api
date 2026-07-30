@@ -3,11 +3,10 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
-import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
 import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 import { FacturasService } from 'src/core/modules/ventas/facturas/facturas.service';
-import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
+import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
@@ -25,22 +24,7 @@ export class FacturasRepService {
     private readonly empresaRepService: EmpresaRepService,
     private readonly facturasService: FacturasService,
     private readonly sectionsService: SectionsService,
-    private readonly emisorService: EmisorService,
   ) { }
-
-  /**
-   * Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal EMISORA del documento, para el
-   * encabezado del RIDE. Usa ide_sucu del propio documento (no dtoIn.ideSucu, que es la
-   * sucursal activa del usuario que está viendo/imprimiendo el reporte, y puede ser otra).
-   */
-  private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto, ideSucuDocumento?: number): Promise<string> {
-    try {
-      const emisor = await this.emisorService.getEmisor({ ...dtoIn, ideSucu: ideSucuDocumento ?? dtoIn.ideSucu });
-      return ambienteRideTexto(emisor.ambiente);
-    } catch {
-      return ambienteRideTexto(undefined);
-    }
-  }
 
   async reportFacturaElectronica(dtoIn: GetFacturaDto & HeaderParamsDto) {
     // ── Cabecera de la factura ────────────────────────────────────────────
@@ -54,7 +38,6 @@ export class FacturasRepService {
         a.ide_cncre,
         a.ide_ccefa,
         a.ide_srcom,
-        a.ide_sucu,
         a.fecha_emisi_cccfa,
         a.secuencial_cccfa,
         a.dias_credito_cccfa,
@@ -282,7 +265,7 @@ export class FacturasRepService {
 
     // ── Datos de empresa ──────────────────────────────────────────────────
     const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-    const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn, cabecera.ide_sucu);
+    const ambienteTexto = ambienteDesdeClaveAcceso(cabecera.claveacceso_srcom);
 
     // ── Código de barras Code128 de la clave de acceso ────────────────────
     let barcodeDataUrl: string | undefined;

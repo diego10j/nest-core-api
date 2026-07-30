@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { SriModule } from 'src/core/modules/sri/sri.module';
 import { VentasModule } from 'src/core/modules/ventas/ventas.module';
 
 import { FacturasRepController } from './facturas/facturas-rep.controller';
@@ -10,7 +9,7 @@ import { NotasCreditoRepController } from './notas-credito/notas-credito-rep.con
 import { NotasCreditoRepService } from './notas-credito/notas-credito-rep.service';
 
 @Module({
-    imports: [VentasModule, SriModule],
+    imports: [VentasModule],
     controllers: [FacturasRepController, NotasCreditoRepController, GuiasRemisionRepController],
     providers: [FacturasRepService, NotasCreditoRepService, GuiasRemisionRepService],
     exports: [FacturasRepService, NotasCreditoRepService, GuiasRemisionRepService],

@@ -1,6 +1,5 @@
 export interface LiquidacionCompraCabecera {
     ide_cpcfa: number;
-    ide_sucu?: number;
     numero_cpcfa: string;
     fecha_emisi_cpcfa: Date | string;
     observacion_cpcfa?: string;

@@ -3,8 +3,7 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
-import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
-import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
+import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
@@ -18,28 +17,13 @@ export class NotasCreditoRepService {
         private readonly printerService: PrinterService,
         private readonly dataSource: DataSourceService,
         private readonly empresaRepService: EmpresaRepService,
-        private readonly emisorService: EmisorService,
     ) { }
-
-    /**
-     * Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal EMISORA del documento, para el
-     * encabezado del RIDE. Usa ide_sucu del propio documento (no dtoIn.ideSucu, que es la
-     * sucursal activa del usuario que está viendo/imprimiendo el reporte, y puede ser otra).
-     */
-    private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto, ideSucuDocumento?: number): Promise<string> {
-        try {
-            const emisor = await this.emisorService.getEmisor({ ...dtoIn, ideSucu: ideSucuDocumento ?? dtoIn.ideSucu });
-            return ambienteRideTexto(emisor.ambiente);
-        } catch {
-            return ambienteRideTexto(undefined);
-        }
-    }
 
     /** RIDE de la Nota de Crédito de venta electrónica. */
     async reportNotaCredito(dtoIn: HeaderParamsDto & GetNotaCreditoDto) {
         const queryCabecera = new SelectQuery(`
             SELECT
-                a.ide_cpcno, a.ide_sucu, a.numero_cpcno, a.fecha_emisi_cpcno, a.observacion_cpcno,
+                a.ide_cpcno, a.numero_cpcno, a.fecha_emisi_cpcno, a.observacion_cpcno,
                 a.num_doc_mod_cpcno, a.fecha_emision_mod_cpcno, a.valor_mod_cpcno,
                 a.base_grabada_cpcno, a.base_tarifa0_cpcno, a.base_no_objeto_iva_cpcno,
                 a.valor_iva_cpcno, a.tarifa_iva_cpcno, a.total_cpcno,
@@ -75,7 +59,7 @@ export class NotasCreditoRepService {
         const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as NotaCreditoDetalle[];
 
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-        const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn, cabecera.ide_sucu);
+        const ambienteTexto = ambienteDesdeClaveAcceso(cabecera.claveacceso_srcom);
 
         let barcodeDataUrl: string | undefined;
         if (cabecera.claveacceso_srcom) {

@@ -7,8 +7,7 @@ import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/co
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
-import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
-import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
+import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
@@ -32,22 +31,7 @@ export class ContabilidadRepService {
     private readonly sectionsService: SectionsService,
     private readonly dataSource: DataSourceService,
     private readonly empresaRepService: EmpresaRepService,
-    private readonly emisorService: EmisorService,
   ) { }
-
-  /**
-   * Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal EMISORA del documento, para el
-   * encabezado del RIDE. Usa ide_sucu del propio documento (no dtoIn.ideSucu, que es la
-   * sucursal activa del usuario que está viendo/imprimiendo el reporte, y puede ser otra).
-   */
-  private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto, ideSucuDocumento?: number): Promise<string> {
-    try {
-      const emisor = await this.emisorService.getEmisor({ ...dtoIn, ideSucu: ideSucuDocumento ?? dtoIn.ideSucu });
-      return ambienteRideTexto(emisor.ambiente);
-    } catch {
-      return ambienteRideTexto(undefined);
-    }
-  }
 
   async reportBalanceGeneral(dtoIn: HeaderParamsDto & EstadosFinancierosDto) {
     const result = await this.contabilidadService.getBalanceGeneral(dtoIn);
@@ -166,7 +150,7 @@ export class ContabilidadRepService {
   async reportComprobanteRetencion(dtoIn: HeaderParamsDto & GetComprobanteRetencionDto) {
     const queryCabecera = new SelectQuery(`
       SELECT
-        r.ide_cncre, r.numero_cncre, r.fecha_emisi_cncre, r.observacion_cncre, doc.ide_sucu,
+        r.ide_cncre, r.numero_cncre, r.fecha_emisi_cncre, r.observacion_cncre,
         p.nom_geper, p.identificac_geper, p.direccion_geper, p.telefono_geper, p.correo_geper,
         doc.numero_cpcfa, doc.fecha_emisi_cpcfa, td.nombre_cntdo,
         s.claveacceso_srcom, s.autorizacion_srcomn, s.fechaautoriza_srcom, s.periodo_fiscal_srcom
@@ -197,7 +181,7 @@ export class ContabilidadRepService {
     const total = detalles.reduce((sum, d) => sum + Number(d.valor_cndre ?? 0), 0);
 
     const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-    const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn, cabecera.ide_sucu);
+    const ambienteTexto = ambienteDesdeClaveAcceso(cabecera.claveacceso_srcom);
 
     let barcodeDataUrl: string | undefined;
     if (cabecera.claveacceso_srcom) {

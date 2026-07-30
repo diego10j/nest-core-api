@@ -3,8 +3,7 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
-import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
-import { ambienteRideTexto } from 'src/reports/common/ride/ride-report.util';
+import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
@@ -18,22 +17,7 @@ export class GuiasRemisionRepService {
         private readonly printerService: PrinterService,
         private readonly dataSource: DataSourceService,
         private readonly empresaRepService: EmpresaRepService,
-        private readonly emisorService: EmisorService,
     ) { }
-
-    /**
-     * Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal EMISORA del documento, para el
-     * encabezado del RIDE. Usa ide_sucu del propio documento (no dtoIn.ideSucu, que es la
-     * sucursal activa del usuario que está viendo/imprimiendo el reporte, y puede ser otra).
-     */
-    private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto, ideSucuDocumento?: number): Promise<string> {
-        try {
-            const emisor = await this.emisorService.getEmisor({ ...dtoIn, ideSucu: ideSucuDocumento ?? dtoIn.ideSucu });
-            return ambienteRideTexto(emisor.ambiente);
-        } catch {
-            return ambienteRideTexto(undefined);
-        }
-    }
 
     /**
      * RIDE de la Guía de Remisión. Nota: cxc_guia.ide_srcom aún no se puebla al
@@ -50,7 +34,7 @@ export class GuiasRemisionRepService {
                 tg.nombre_cctgi,
                 dest.identificac_geper AS destinatario_identificacion,
                 dest.direccion_geper AS destinatario_direccion,
-                cf.ide_sucu, cf.secuencial_cccfa, cf.fecha_emisi_cccfa,
+                cf.secuencial_cccfa, cf.fecha_emisi_cccfa,
                 df.establecimiento_ccdfa, df.pto_emision_ccdfa,
                 sFact.autorizacion_srcomn AS factura_autorizacion,
                 t.es_transporte_propio_cctfa,
@@ -94,7 +78,7 @@ export class GuiasRemisionRepService {
         const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as GuiaRemisionDetalle[];
 
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-        const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn, cabecera.ide_sucu);
+        const ambienteTexto = ambienteDesdeClaveAcceso(cabecera.claveacceso_srcom);
 
         let barcodeDataUrl: string | undefined;
         if (cabecera.claveacceso_srcom) {
