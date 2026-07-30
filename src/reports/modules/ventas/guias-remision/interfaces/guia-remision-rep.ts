@@ -1,6 +1,7 @@
 export interface GuiaRemisionCabecera {
     ide_ccgui: number;
     ide_cccfa: number;
+    ide_sucu?: number;
     fecha_emision_ccgui: Date | string;
     fecha_ini_trasla_ccgui: Date | string;
     fecha_fin_trasla_ccgui: Date | string;

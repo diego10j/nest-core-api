@@ -1,6 +1,7 @@
 export interface FacturaCabecera {
     ide_cccfa: number;
     ide_ccdaf: number;
+    ide_sucu?: number;
     fecha_emisi_cccfa: Date | string;
     secuencial_cccfa: string;
     dias_credito_cccfa: number;

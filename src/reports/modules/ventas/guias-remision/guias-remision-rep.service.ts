@@ -21,10 +21,14 @@ export class GuiasRemisionRepService {
         private readonly emisorService: EmisorService,
     ) { }
 
-    /** Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal emisora, para el encabezado del RIDE. */
-    private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto): Promise<string> {
+    /**
+     * Ambiente real (PRODUCCIÓN/PRUEBAS) de la sucursal EMISORA del documento, para el
+     * encabezado del RIDE. Usa ide_sucu del propio documento (no dtoIn.ideSucu, que es la
+     * sucursal activa del usuario que está viendo/imprimiendo el reporte, y puede ser otra).
+     */
+    private async obtenerAmbienteTexto(dtoIn: HeaderParamsDto, ideSucuDocumento?: number): Promise<string> {
         try {
-            const emisor = await this.emisorService.getEmisor(dtoIn);
+            const emisor = await this.emisorService.getEmisor({ ...dtoIn, ideSucu: ideSucuDocumento ?? dtoIn.ideSucu });
             return ambienteRideTexto(emisor.ambiente);
         } catch {
             return ambienteRideTexto(undefined);
@@ -46,7 +50,7 @@ export class GuiasRemisionRepService {
                 tg.nombre_cctgi,
                 dest.identificac_geper AS destinatario_identificacion,
                 dest.direccion_geper AS destinatario_direccion,
-                cf.secuencial_cccfa, cf.fecha_emisi_cccfa,
+                cf.ide_sucu, cf.secuencial_cccfa, cf.fecha_emisi_cccfa,
                 df.establecimiento_ccdfa, df.pto_emision_ccdfa,
                 sFact.autorizacion_srcomn AS factura_autorizacion,
                 t.es_transporte_propio_cctfa,
@@ -90,7 +94,7 @@ export class GuiasRemisionRepService {
         const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as GuiaRemisionDetalle[];
 
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
-        const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn);
+        const ambienteTexto = await this.obtenerAmbienteTexto(dtoIn, cabecera.ide_sucu);
 
         let barcodeDataUrl: string | undefined;
         if (cabecera.claveacceso_srcom) {

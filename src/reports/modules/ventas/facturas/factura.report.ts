@@ -189,12 +189,17 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
     }
 
     const isPropio = transporte.es_transporte_propio_cctfa === true;
+    // Sin registro de transportista propio ni de terceros: es retiro en sucursal
+    // (mismo criterio que TransporteSection en el frontend), no hay nada que mostrar.
+    const esRetiroSucursal = !isPropio && !transporte.ide_vgtra && !transporte.nombre_vgtra;
+    if (esRetiroSucursal) {
+        return { text: '', margin: [0, 0, 0, 0] as [number, number, number, number] };
+    }
+
     const isFletePagado = transporte.flete_pagado_cctfa === true;
 
     const responsable = isPropio ? (transporte.chofer || '---') : (transporte.nombre_vgtra || '---');
-    const vehiculo = isPropio ? (transporte.placa_gecam || transporte.vehiculo || '---') : '---';
     const estadoFlete = isFletePagado ? 'PAGADO' : 'AL COBRO';
-    const observacion = transporte.comentario_cctfa || '---';
 
     const ttHeader = (text: string): object => ({
         text,
@@ -227,19 +232,15 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
             },
             {
                 table: {
-                    widths: ['*', '18%', '18%', '*'],
+                    widths: ['*', '25%'],
                     body: [
                         [
                             ttHeader(isPropio ? 'Chofer' : 'Transportista'),
-                            ttHeader('Placa'),
                             ttHeader('Flete'),
-                            ttHeader('Observación'),
                         ],
                         [
                             ttCell(responsable),
-                            ttCell(vehiculo, 'center'),
                             ttCell(estadoFlete, 'center'),
-                            ttCell(observacion),
                         ],
                     ],
                 },
@@ -676,7 +677,7 @@ export const facturaElectronicaReport = (
                     paddingLeft: () => 0,
                     paddingRight: () => 0,
                 },
-                margin: [0, 0, 0, 4] as [number, number, number, number],
+                margin: [0, 8, 0, 4] as [number, number, number, number],
             } as Content,
             buildTransportSection(transporte),
         ],

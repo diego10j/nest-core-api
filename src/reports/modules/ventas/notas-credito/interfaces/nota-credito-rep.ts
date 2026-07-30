@@ -1,5 +1,6 @@
 export interface NotaCreditoCabecera {
     ide_cpcno: number;
+    ide_sucu?: number;
     numero_cpcno: string;
     fecha_emisi_cpcno: Date | string;
     observacion_cpcno?: string;
