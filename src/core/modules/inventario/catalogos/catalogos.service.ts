@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Redis } from 'ioredis';
 
 import { BaseService } from '../../../../common/base-service';
 import { HeaderParamsDto } from '../../../../common/dto/common-params.dto';
@@ -19,6 +20,7 @@ export class CatalogosService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        @Inject('REDIS_CLIENT') private readonly redis: Redis,
     ) {
         super();
     }
@@ -63,6 +65,18 @@ export class CatalogosService extends BaseService {
     }
 
     async getListaCatalogos(dtoIn: GetCatalogosDto) {
+        const ideEmpr = dtoIn.ideEmpr && dtoIn.ideEmpr > 0 ? dtoIn.ideEmpr : 0;
+        const cacheKey = `catalogo:lista:${ideEmpr}`;
+
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        } catch (err) {
+            this.logger.warn(`Redis get failed for ${cacheKey}`, err);
+        }
+
         const conditions: string[] = ['c.estado_inccat = true'];
         if (dtoIn.ideEmpr && dtoIn.ideEmpr > 0) {
             conditions.push(`c.ide_empr = ${dtoIn.ideEmpr}`);
@@ -89,7 +103,15 @@ export class CatalogosService extends BaseService {
             ORDER BY c.orden_inccat, c.nombre_inccat
         `, dtoIn);
         query.isLazy = false;
-        return this.dataSource.createQuery(query);
+        const result = await this.dataSource.createQuery(query);
+
+        try {
+            await this.redis.set(cacheKey, JSON.stringify(result), 'EX', 300);
+        } catch (err) {
+            this.logger.warn(`Redis set failed for ${cacheKey}`, err);
+        }
+
+        return result;
     }
 
     async getCatalogoById(dtoIn: IdCatalogoDto & HeaderParamsDto) {
@@ -184,14 +206,36 @@ export class CatalogosService extends BaseService {
     // ─────────────────────────────────────────────────────────────
 
     async getCatalogoByPath(dtoIn: GetCatalogoByPathDto) {
-        const ideEmpr = dtoIn.ideEmpr && dtoIn.ideEmpr > 0 ? dtoIn.ideEmpr : undefined;
+        const ideEmpr = dtoIn.ideEmpr && dtoIn.ideEmpr > 0 ? dtoIn.ideEmpr : 0;
+        const cacheKey = `catalogo:path:${dtoIn.path}:${ideEmpr}`;
+
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached) {
+                this.dataSource.pool.query(
+                    `UPDATE inv_cab_catalogo SET vistas_inccat = COALESCE(vistas_inccat, 0) + 1 WHERE path_inccat = $1`,
+                    [dtoIn.path],
+                ).catch(() => {});
+                return JSON.parse(cached);
+            }
+        } catch (err) {
+            this.logger.warn(`Redis get failed for ${cacheKey}`, err);
+        }
+
         const result = await this.fetchCatalogoByPath(dtoIn.path, ideEmpr, true);
         if (result) {
-            await this.dataSource.pool.query(
+            this.dataSource.pool.query(
                 `UPDATE inv_cab_catalogo SET vistas_inccat = COALESCE(vistas_inccat, 0) + 1 WHERE path_inccat = $1`,
                 [dtoIn.path],
-            );
+            ).catch(() => {});
+
+            try {
+                await this.redis.set(cacheKey, JSON.stringify(result), 'EX', 600);
+            } catch (err) {
+                this.logger.warn(`Redis set failed for ${cacheKey}`, err);
+            }
         }
+
         return result;
     }
 
@@ -537,6 +581,17 @@ export class CatalogosService extends BaseService {
     // ─────────────────────────────────────────────────────────────
 
     async getTagsCatalogo(dtoIn: GetTagsCatalogoDto & HeaderParamsDto) {
+        const cacheKey = `catalogo:tags:${dtoIn.ide_inccat}`;
+
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        } catch (err) {
+            this.logger.warn(`Redis get failed for ${cacheKey}`, err);
+        }
+
         const query = new SelectQuery(
             `
         SELECT
@@ -555,7 +610,15 @@ export class CatalogosService extends BaseService {
         );
 
         query.setLazy(false);
-        return this.dataSource.createSelectQuery(query);
+        const result = await this.dataSource.createSelectQuery(query);
+
+        try {
+            await this.redis.set(cacheKey, JSON.stringify(result), 'EX', 300);
+        } catch (err) {
+            this.logger.warn(`Redis set failed for ${cacheKey}`, err);
+        }
+
+        return result;
     }
 
     // ─────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { Redis } from 'ioredis';
 
 import { BaseService } from '../../../../common/base-service';
 import { HeaderParamsDto } from '../../../../common/dto/common-params.dto';
@@ -19,8 +20,20 @@ export class CatalogosSaveService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        @Inject('REDIS_CLIENT') private readonly redis: Redis,
     ) {
         super();
+    }
+
+    private async invalidateCatalogCache() {
+        try {
+            const keys = await this.redis.keys('catalogo:*');
+            if (keys.length > 0) {
+                await this.redis.del(...keys);
+            }
+        } catch (err) {
+            this.logger.warn('Failed to invalidate catalog cache', err);
+        }
     }
 
     private buildCabeceraObject(dtoIn: SaveCatalogoDto & HeaderParamsDto, ideInccat: number, isUpdate: boolean) {
@@ -183,6 +196,7 @@ export class CatalogosSaveService extends BaseService {
         }
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });
+        await this.invalidateCatalogCache();
         return { message: 'ok', ideInccat };
     }
 
@@ -195,6 +209,7 @@ export class CatalogosSaveService extends BaseService {
             `DELETE FROM inv_cab_catalogo WHERE ide_inccat = $1`,
             [dtoIn.ide_inccat],
         );
+        await this.invalidateCatalogCache();
         return { message: 'ok', rowCount: 1 };
     }
 
@@ -203,6 +218,7 @@ export class CatalogosSaveService extends BaseService {
             `DELETE FROM inv_det_catalogo WHERE ide_indcat = $1`,
             [dtoIn.ide_indcat],
         );
+        await this.invalidateCatalogCache();
         return { message: 'ok', rowCount: 1 };
     }
 
@@ -216,6 +232,7 @@ export class CatalogosSaveService extends BaseService {
              WHERE ide_inccat = $2`,
             [dtoIn.activo, dtoIn.ide, dtoIn.login, getCurrentDate(), getCurrentTime()],
         );
+        await this.invalidateCatalogCache();
         return { message: 'ok' };
     }
 
@@ -229,6 +246,7 @@ export class CatalogosSaveService extends BaseService {
              WHERE ide_indcat = $2`,
             [dtoIn.activo, dtoIn.ide, dtoIn.login, getCurrentDate(), getCurrentTime()],
         );
+        await this.invalidateCatalogCache();
         return { message: 'ok' };
     }
 
@@ -248,6 +266,7 @@ export class CatalogosSaveService extends BaseService {
             condition: `ide_inccat = ${ideInccat}`,
         }];
         await this.core.save({ ...dtoIn, listQuery, audit: false });
+        await this.invalidateCatalogCache();
         return { message: 'ok', ideInccat, imagen: fileName };
     }
 
@@ -284,6 +303,7 @@ export class CatalogosSaveService extends BaseService {
             condition: `ide_inccat = ${ideInccat}`,
         }];
         await this.core.save({ ...dtoIn, listQuery, audit: false });
+        await this.invalidateCatalogCache();
         return { message: 'ok', ideInccat, imagenes: nuevasImagenes };
     }
 
@@ -320,6 +340,7 @@ export class CatalogosSaveService extends BaseService {
             condition: `ide_inccat = ${ideInccat}`,
         }];
         await this.core.save({ ...dtoIn, listQuery, audit: false });
+        await this.invalidateCatalogCache();
         return { message: 'ok', ideInccat, imagenes: imagenesFiltradas };
     }
 

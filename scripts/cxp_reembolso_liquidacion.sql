@@ -17,16 +17,6 @@
 -- y sigue funcionando igual.
 -- ============================================================================
 
--- Revierte las 3 columnas agregadas a cxp_cabece_factur en la iteración
--- anterior de este mismo feature (nunca llegaron a usarse en producción).
-ALTER TABLE cxp_cabece_factur
-    DROP CONSTRAINT IF EXISTS fk_cxp_cabece_factur_referencia;
-ALTER TABLE cxp_cabece_factur
-    DROP COLUMN IF EXISTS ide_referencia_cpcfa;
-ALTER TABLE cxp_cabece_factur
-    DROP COLUMN IF EXISTS tipo_proveedor_cpcfa;
-ALTER TABLE cxp_cabece_factur
-    DROP COLUMN IF EXISTS cod_pais_pago_cpcfa;
 
 -- ── cxp_datos_com_reembolso: ampliar columnas insuficientes para SRI ────────
 -- secuencial_cpdcr(6) no alcanza para un secuencial SRI (siempre 9 dígitos).

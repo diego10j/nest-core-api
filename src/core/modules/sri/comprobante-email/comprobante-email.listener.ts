@@ -198,7 +198,7 @@ export class ComprobanteEmailListener implements OnModuleInit {
         await this.mailService.sendMail(
             {
                 destinatario: correo,
-                asunto: `${tipoComprobante} ${contexto.numero} — autorizada por el SRI`,
+                asunto: `✅ ${tipoComprobante} ${contexto.numero}`,
                 contenido: html,
                 adjuntos,
                 alias_corr: ALIAS_CUENTA_COMPROBANTES,
