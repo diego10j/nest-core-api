@@ -11,11 +11,11 @@ import { getStaticImage } from 'src/util/helpers/file-utils';
 import { FacturaDetalle, FacturaRep, TransporteFactura } from './interfaces/factura-rep';
 
 // ── Paleta ────────────────────────────────────────────────────────────────
-// Escala de grises fría, bordes suaves y un solo acento oscuro para jerarquía
-// (encabezados y total general), inspirada en RIDEs de sistemas ERP/facturación
-// electrónica ecuatorianos: sobrio, alto contraste texto/fondo, sin colores de marca.
+// Escala de grises fría, bordes suaves y un solo acento oscuro (azul navy) para
+// jerarquía (encabezados de tabla y total general), inspirada en RIDEs de sistemas
+// ERP/facturación electrónica ecuatorianos: sobrio, alto contraste texto/fondo.
 const NEGRO = '#1a1a1a';
-const GRIS_OSCURO = '#2e3238';
+const AZUL_NAVY = '#1c3d5a';
 const GRIS_FILA = '#f8f9fa';
 const GRIS_LINEA = '#e1e3e6';
 const GRIS_TEXTO = '#5f6b7a';
@@ -146,7 +146,7 @@ const th = (text: string, align: 'left' | 'center' | 'right' = 'center'): object
     text,
     style: 'thTexto',
     alignment: align,
-    fillColor: NEGRO,
+    fillColor: AZUL_NAVY,
     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
     margin: [5, 6, 5, 6] as [number, number, number, number],
 });
@@ -207,7 +207,7 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
         bold: true,
         color: BLANCO,
         alignment: 'center',
-        fillColor: NEGRO,
+        fillColor: AZUL_NAVY,
         border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [3, 5, 3, 5] as [number, number, number, number],
     });
@@ -634,7 +634,7 @@ export const facturaElectronicaReport = (
         bold: true,
         color: BLANCO,
         alignment: 'center',
-        fillColor: NEGRO,
+        fillColor: AZUL_NAVY,
         border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [3, 4, 3, 4] as [number, number, number, number],
     });
@@ -716,18 +716,18 @@ export const facturaElectronicaReport = (
                         text: 'VALOR TOTAL',
                         style: 'totalGrandLabel',
                         color: BLANCO,
-                        fillColor: GRIS_OSCURO,
+                        fillColor: AZUL_NAVY,
                         border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: [GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO] as [string, string, string, string],
+                        borderColor: [AZUL_NAVY, AZUL_NAVY, AZUL_NAVY, AZUL_NAVY] as [string, string, string, string],
                     },
                     {
                         text: fCurrency(total),
                         style: 'totalGrandValor',
                         bold: true,
                         color: BLANCO,
-                        fillColor: GRIS_OSCURO,
+                        fillColor: AZUL_NAVY,
                         border: [false, true, true, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: ['', GRIS_OSCURO, GRIS_OSCURO, GRIS_OSCURO] as [string, string, string, string],
+                        borderColor: ['', AZUL_NAVY, AZUL_NAVY, AZUL_NAVY] as [string, string, string, string],
                     },
                 ],
             ],

@@ -23,7 +23,8 @@ export const RIDE_COLOR = {
     blanco: '#ffffff',
     grisTexto: '#666666',
     grisClaro: '#fafafa',
-    azul: '#2563eb',
+    /** Fondo de encabezados de tabla (th, forma de pago), en vez de negro puro. */
+    azulNavy: '#1c3d5a',
 };
 
 // ── Estilos ───────────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ export const th = (text: string, align: 'left' | 'center' | 'right' = 'center'):
     text,
     style: 'thTexto',
     alignment: align,
-    fillColor: RIDE_COLOR.negro,
+    fillColor: RIDE_COLOR.azulNavy,
     border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
     margin: [4, 5, 4, 5] as [number, number, number, number],
 });

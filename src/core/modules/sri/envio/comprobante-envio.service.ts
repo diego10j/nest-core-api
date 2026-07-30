@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { UpdateQuery } from 'src/core/connection/helpers';
+import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
@@ -22,6 +22,16 @@ import { ComprobanteAutorizadoEmitter } from './comprobante-autorizado.emitter';
 import { SriXmlComprobanteService } from './sri-xml-comprobante.service';
 
 type HeaderQueryDto = QueryOptionsDto & HeaderParamsDto;
+
+export interface ResultadoEnvioSincrono {
+  claveAcceso: string;
+  autorizado: boolean;
+  codigoEstado: number;
+  estado: string;
+  numeroAutorizacion?: string;
+  fechaAutorizacion?: Date | string;
+  mensaje?: string;
+}
 
 const XML_BUILDER_BY_CODDOC: Record<string, (c: ComprobanteDto, e: EmisorDto) => string> = {
   '01': buildFacturaXml,
@@ -158,6 +168,68 @@ export class ComprobanteEnvioService extends BaseService {
         throw new BadRequestException(`El comprobante ${claveAcceso} no pudo ser autorizado por el SRI`);
       }
     }
+  }
+
+  /**
+   * Envío síncrono bajo demanda (firma + recepción + autorización), esperando la respuesta
+   * final del SRI dentro de la misma petición — a diferencia de enviarComprobante, que usa
+   * SriEnvioQueueService y no retorna nada al llamante original. Ambos coexisten a propósito:
+   * la cola sigue disponible para flujos futuros (ej. reintentos en segundo plano), y este
+   * método es el que usa el botón "Enviar al SRI" del frontend para mostrar en pantalla si
+   * la autorización fue exitosa o no, sin esperar un mutate/polling posterior.
+   *
+   * A diferencia de enviarComprobante, NO lanza excepción cuando el SRI devuelve o rechaza
+   * el comprobante (DEVUELTA/RECHAZADO/NO AUTORIZADO): es un resultado de negocio válido que
+   * el llamador necesita mostrar con su detalle, no un error de sistema. Sí propaga
+   * excepciones reales (fallo de red/SOAP al SRI, comprobante no encontrado, etc.).
+   *
+   * El envío del correo de notificación sigue siendo en segundo plano igual que en el flujo
+   * de la cola: enviarAutorizacion() emite el evento 'autorizado' vía ComprobanteAutorizadoEmitter
+   * (EventEmitter de Node), y ComprobanteEmailListener lo procesa con un .catch() sin await —
+   * nunca bloquea esta respuesta (ver comprobante-email.listener.ts::onModuleInit).
+   */
+  async enviarComprobanteSincrono(claveAcceso: string, dtoIn: HeaderQueryDto): Promise<ResultadoEnvioSincrono> {
+    let comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso({ ...dtoIn, claveAcceso });
+
+    if (comprobante.codigoestado === EstadoComprobanteEnum.PENDIENTE.codigo) {
+      await this.enviarRecepcion(claveAcceso, dtoIn);
+      comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso({ ...dtoIn, claveAcceso });
+    }
+
+    if (comprobante.codigoestado === EstadoComprobanteEnum.RECIBIDA.codigo) {
+      await this.enviarAutorizacion(claveAcceso, dtoIn);
+      comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso({ ...dtoIn, claveAcceso });
+    }
+
+    return this.buildResultadoEnvio(claveAcceso, comprobante.codigocomprobante, comprobante.codigoestado, dtoIn);
+  }
+
+  private async buildResultadoEnvio(
+    claveAcceso: string,
+    ideSrcom: number,
+    codigoEstado: number | undefined,
+    dtoIn: HeaderQueryDto,
+  ): Promise<ResultadoEnvioSincrono> {
+    const estadoFinal = codigoEstado ?? EstadoComprobanteEnum.DEVUELTA.codigo;
+    const historial = await this.xmlComprobanteService.getUltimo(ideSrcom, dtoIn);
+
+    const query = new SelectQuery(`
+      SELECT autorizacion_srcomn, fechaautoriza_srcom
+      FROM sri_comprobante
+      WHERE ide_srcom = $1
+    `);
+    query.addIntParam(1, ideSrcom);
+    const row = await this.dataSource.createSingleQuery(query);
+
+    return {
+      claveAcceso,
+      autorizado: estadoFinal === EstadoComprobanteEnum.AUTORIZADO.codigo,
+      codigoEstado: estadoFinal,
+      estado: EstadoComprobanteEnum.getDescripcion(estadoFinal) ?? 'DESCONOCIDO',
+      numeroAutorizacion: row?.autorizacion_srcomn ?? undefined,
+      fechaAutorizacion: row?.fechaautoriza_srcom ?? undefined,
+      mensaje: historial?.mensajeAutorizacion || historial?.mensajeRecepcion,
+    };
   }
 
   private async actualizarEstado(ideSrcom: number, estado: number): Promise<void> {

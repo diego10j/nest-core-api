@@ -150,7 +150,7 @@ export const liquidacionCompraReport = (
     // Forma de pago
     const fpHeader = (text: string): object => ({
         text, fontSize: 7, bold: true, color: RIDE_COLOR.blanco, alignment: 'center',
-        fillColor: RIDE_COLOR.negro, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        fillColor: RIDE_COLOR.azulNavy, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [3, 4, 3, 4] as [number, number, number, number],
     });
     const fpCell = (text: string, align: 'left' | 'center' | 'right' = 'left'): object => ({
