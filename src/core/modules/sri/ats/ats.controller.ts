@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
+import { buildAtsResumen } from './ats-resumen.util';
 import { buildAtsXml } from './ats-xml.builder';
 import { AtsService } from './ats.service';
 import { AtsQueryDto } from './dto/ats.dto';
@@ -22,6 +23,7 @@ export class AtsController {
         return {
             nombre: `AT${mes}${dtoIn.anio}.xml`,
             xml: buildAtsXml(anexo),
+            resumen: buildAtsResumen(anexo),
         };
     }
 }
