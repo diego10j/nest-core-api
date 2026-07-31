@@ -311,13 +311,13 @@ export class AtsService extends BaseService {
         const mapa = new Map<number, AtsAirDetalleDto[]>();
         if (ideRetenciones.length === 0) return mapa;
         const query = new SelectQuery(`
-            SELECT impuesto.casillero_cncim, SUM(base_cndre) AS base_cndre, porcentaje_cndre,
+            SELECT impuesto.casillero_cncim, impuesto.nombre_cncim, SUM(base_cndre) AS base_cndre, porcentaje_cndre,
                 SUM(valor_cndre) AS valor_cndre, cabece.ide_cncre
             FROM con_cabece_retenc cabece
             INNER JOIN con_detall_retenc detalle ON detalle.ide_cncre = cabece.ide_cncre
             INNER JOIN con_cabece_impues impuesto ON detalle.ide_cncim = impuesto.ide_cncim
             WHERE impuesto.ide_cnimp = $1 AND cabece.ide_cncre = ANY($2)
-            GROUP BY impuesto.casillero_cncim, porcentaje_cndre, cabece.ide_cncre
+            GROUP BY impuesto.casillero_cncim, impuesto.nombre_cncim, porcentaje_cndre, cabece.ide_cncre
             ORDER BY cabece.ide_cncre
         `);
         query.addIntParam(1, IDE_CNIMP_RENTA);
@@ -333,6 +333,7 @@ export class AtsService extends BaseService {
                 baseImpAir: base,
                 porcentajeAir: porcentaje,
                 valRetAir: Number(((porcentaje > 0 ? porcentaje / 100 : 0) * base).toFixed(2)),
+                nombreConcepto: fila.nombre_cncim ?? undefined,
             };
             const lista = mapa.get(ideCncre) ?? [];
             lista.push(detalle);

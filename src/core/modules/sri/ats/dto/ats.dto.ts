@@ -26,6 +26,8 @@ export interface AtsAirDetalleDto {
     baseImpAir: number;
     porcentajeAir: number;
     valRetAir: number;
+    /** con_cabece_impues.nombre_cncim — solo para el resumen/talón, no viaja en el XML del ATS. */
+    nombreConcepto?: string;
 }
 
 export interface AtsReembolsoDto {
