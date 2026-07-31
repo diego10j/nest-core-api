@@ -5,6 +5,7 @@ import { DestinatarioDto } from './destinatario.dto';
 import { DetalleComprobanteDto } from './detalle-comprobante.dto';
 import { DetalleImpuestoDto } from './detalle-impuesto.dto';
 import { FirmaDto } from './firma.dto';
+import { TransportistaDto } from './transportista.dto';
 
 export class ComprobanteDto {
   codigocomprobante: number;
@@ -54,6 +55,7 @@ export class ComprobanteDto {
   fechaIniTransporte?: string;
   fechaFinTransporte?: string;
   placa?: string;
+  transportista?: TransportistaDto;
   destinatario?: DestinatarioDto;
   codigoComprobanteFactura?: number;
   telefonos?: string;

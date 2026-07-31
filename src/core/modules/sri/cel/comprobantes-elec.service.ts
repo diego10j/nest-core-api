@@ -15,6 +15,7 @@ import { ComprobanteDto } from './dto/comprobante.dto';
 import { DestinatarioDto } from './dto/destinatario.dto';
 import { DetalleComprobanteDto } from './dto/detalle-comprobante.dto';
 import { DetalleImpuestoDto } from './dto/detalle-impuesto.dto';
+import { TransportistaDto } from './dto/transportista.dto';
 import { TipoComprobanteEnum } from './enum/tipo-comprobante.enum';
 
 type HeaderQueryDto = QueryOptionsDto & HeaderParamsDto;
@@ -217,6 +218,7 @@ export class ComprobantesElecService extends BaseService {
     } else if (comprobante.coddoc === TipoComprobanteEnum.GUIA_DE_REMISION.codigo) {
       comprobante.destinatario = await this.getDestinatarioGuia(comprobante.codigocomprobante);
       comprobante.detalle = await this.getDetalleGuia(comprobante.codigoComprobanteFactura);
+      comprobante.transportista = await this.getTransportistaGuia(comprobante.codigocomprobante);
     } else if (comprobante.coddoc === TipoComprobanteEnum.COMPROBANTE_DE_RETENCION.codigo) {
       comprobante.impuesto = await this.getImpuestosRetencion(comprobante.codigocomprobante);
     } else if (comprobante.coddoc === TipoComprobanteEnum.LIQUIDACION_DE_COMPRAS.codigo) {
@@ -360,6 +362,13 @@ export class ComprobantesElecService extends BaseService {
     };
   }
 
+  /**
+   * Detalle de la guía: solo artículos que hacen kardex (hace_kardex_inarti = true), ya que
+   * la guía de remisión declara al SRI el traslado físico de bienes — servicios u otros
+   * ítems que no afectan inventario no se transportan y no deben figurar aquí. Debe
+   * mantenerse en paridad con el filtro del RIDE (guias-remision-rep.service.ts) para que el
+   * documento impreso represente fielmente el XML autorizado.
+   */
   private async getDetalleGuia(ideSrcomFactura: number | undefined): Promise<DetalleComprobanteDto[]> {
     if (!ideSrcomFactura) return [];
     const query = new SelectQuery(`
@@ -371,6 +380,7 @@ export class ComprobantesElecService extends BaseService {
             INNER JOIN inv_articulo f ON c.ide_inarti = f.ide_inarti
             LEFT JOIN inv_unidad g ON c.ide_inuni = g.ide_inuni
             WHERE a.ide_srcom = ${ideSrcomFactura}
+              AND f.hace_kardex_inarti = true
             ORDER BY observacion_ccdfa
         `);
     const res = await this.dataSource.createSelectQuery(query);
@@ -422,6 +432,42 @@ export class ComprobantesElecService extends BaseService {
       numDocSustento: obj.numero_cpcfa,
       fechaEmisionDocSustento: obj.fecha_emisi_cpcfa,
     }));
+  }
+
+  /**
+   * Datos del transportista para <infoGuiaRemision> (razonSocialTransportista/rucTransportista):
+   * si el traslado es en vehículo propio, el "transportista" es el chofer (gen_persona vía
+   * cxc_transporte_factura.ide_geper); si es tercerizado, es la empresa de ven_transporte
+   * (identificación real vía su gen_persona, no el cliente/destinatario de la factura).
+   */
+  private async getTransportistaGuia(ideSrcom: number): Promise<TransportistaDto | undefined> {
+    const query = new SelectQuery(`
+            SELECT
+                t.es_transporte_propio_cctfa,
+                tr.nombre_vgtra,
+                trp.identificac_geper AS transportista_identificacion,
+                trtid.alterno2_getid AS transportista_tipo_identificacion,
+                ch.nom_geper AS chofer,
+                ch.identificac_geper AS chofer_identificacion,
+                chtid.alterno2_getid AS chofer_tipo_identificacion
+            FROM cxc_guia a
+            INNER JOIN cxc_transporte_factura t ON t.ide_cccfa = a.ide_cccfa
+            LEFT JOIN ven_transporte tr ON t.ide_vgtra = tr.ide_vgtra
+            LEFT JOIN gen_persona trp ON tr.ide_geper = trp.ide_geper
+            LEFT JOIN gen_tipo_identifi trtid ON trp.ide_getid = trtid.ide_getid
+            LEFT JOIN gen_persona ch ON t.ide_geper = ch.ide_geper
+            LEFT JOIN gen_tipo_identifi chtid ON ch.ide_getid = chtid.ide_getid
+            WHERE a.ide_srcom = ${ideSrcom}
+        `);
+    const res = await this.dataSource.createSingleQuery(query);
+    if (!res) return undefined;
+
+    const esPropio = res.es_transporte_propio_cctfa as boolean;
+    return {
+      razonSocial: ((esPropio ? res.chofer : res.nombre_vgtra) as string | undefined)?.trim(),
+      tipoIdentificacion: (esPropio ? res.chofer_tipo_identificacion : res.transportista_tipo_identificacion) as string | undefined,
+      identificacion: ((esPropio ? res.chofer_identificacion : res.transportista_identificacion) as string | undefined)?.trim(),
+    };
   }
 
   private async getDestinatarioGuia(ideSrcom: number): Promise<DestinatarioDto | undefined> {

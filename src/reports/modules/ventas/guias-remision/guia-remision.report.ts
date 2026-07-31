@@ -40,15 +40,18 @@ export const guiaRemisionReport = (
         ambiente: ambienteTexto,
     });
 
-    const transportistaTexto = cabecera.es_transporte_propio_cctfa
-        ? `${cabecera.chofer ?? ''} ${cabecera.vehiculo ? `(${cabecera.vehiculo})` : ''}`.trim()
+    const transportistaNombre = cabecera.es_transporte_propio_cctfa
+        ? (cabecera.chofer ?? '')
         : (cabecera.nombre_vgtra ?? '');
+    const transportistaIdentificacion = cabecera.es_transporte_propio_cctfa
+        ? cabecera.chofer_identificacion
+        : cabecera.transportista_identificacion;
 
     const panelTransporte = buildPanelContraparte(
         [
-            campoTexto('Identificación (Transportista)', transportistaTexto || '---'),
+            campoTexto('Transportista', transportistaNombre || '---'),
+            campoTexto('Identificación (Transportista)', transportistaIdentificacion || '---'),
             campoTexto('Placa', cabecera.placa_gecam ?? ''),
-            campoTexto('Punto de Partida', cabecera.punto_partida_ccgui ?? ''),
             campoTexto('Motivo Traslado', cabecera.nombre_cctgi ?? ''),
         ],
         [

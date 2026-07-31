@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -33,6 +33,9 @@ export interface ResultadoEnvioSincrono {
   mensaje?: string;
 }
 
+const CODDOC_FACTURA = '01';
+const CODDOC_GUIA = '06';
+
 const XML_BUILDER_BY_CODDOC: Record<string, (c: ComprobanteDto, e: EmisorDto) => string> = {
   '01': buildFacturaXml,
   '04': buildNotaCreditoXml,
@@ -49,11 +52,18 @@ const XML_BUILDER_BY_CODDOC: Record<string, (c: ComprobanteDto, e: EmisorDto) =>
  * Simplificaciones intencionales respecto al legacy (ver plan de migración):
  *  - No se porta la regeneración de clave de acceso por "más de 59 minutos": esa lógica estaba
  *    deshabilitada en el legacy (claveTieneMasDe59Minutos siempre retornaba false).
- *  - No se porta el encadenamiento automático factura->guía de remisión: el módulo de guías de
- *    remisión de ventas aún no existe en nest-core-api (no hay cabecera sri_comprobante que encadenar).
+ *
+ * Encadenamiento factura -> guía de remisión: cuando se envía una factura (coddoc '01') que
+ * tiene una guía asociada (sri_comprobante.sri_ide_srcom apunta a la factura, coddoc '06'), la
+ * guía se envía también en la misma llamada — un solo clic en "Enviar al SRI" autoriza ambos
+ * comprobantes. El correo de notificación NO se ve afectado por esto: ComprobanteEmailListener
+ * ya filtra por coddoc y solo envía Factura/Nota de Crédito/Liquidación de Compra, así que la
+ * guía nunca dispara un correo aparte aunque quede autorizada.
  */
 @Injectable()
 export class ComprobanteEnvioService extends BaseService {
+  private readonly logger = new Logger(ComprobanteEnvioService.name);
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly comprobantesElecService: ComprobantesElecService,
@@ -168,6 +178,10 @@ export class ComprobanteEnvioService extends BaseService {
         throw new BadRequestException(`El comprobante ${claveAcceso} no pudo ser autorizado por el SRI`);
       }
     }
+
+    if (comprobante.coddoc === CODDOC_FACTURA) {
+      await this.enviarGuiaVinculada(comprobante.codigocomprobante, dtoIn);
+    }
   }
 
   /**
@@ -224,7 +238,37 @@ export class ComprobanteEnvioService extends BaseService {
       comprobante = await this.comprobantesElecService.getComprobantePorClaveAcceso({ ...dtoIn, claveAcceso });
     }
 
+    if (comprobante.coddoc === CODDOC_FACTURA) {
+      await this.enviarGuiaVinculada(comprobante.codigocomprobante, dtoIn);
+    }
+
     return this.buildResultadoEnvio(claveAcceso, comprobante.codigocomprobante, comprobante.codigoestado, dtoIn);
+  }
+
+  /**
+   * Envía también la guía de remisión asociada a una factura (si existe y aún no está
+   * AUTORIZADA), reutilizando el mismo flujo síncrono. No propaga errores: si la guía falla
+   * (rechazo del SRI o error de red), la factura ya autorizada/procesada no debe reportarse
+   * como fallida — la guía simplemente queda para reintento manual (botón "Cambiar a Pendiente").
+   */
+  private async enviarGuiaVinculada(ideSrcomFactura: number, dtoIn: HeaderQueryDto): Promise<void> {
+    const query = new SelectQuery(`
+      SELECT claveacceso_srcom, ide_sresc
+      FROM sri_comprobante
+      WHERE sri_ide_srcom = $1
+        AND coddoc_srcom = '${CODDOC_GUIA}'
+    `);
+    query.addIntParam(1, ideSrcomFactura);
+    const guia = await this.dataSource.createSingleQuery(query);
+    if (!guia || Number(guia.ide_sresc) === EstadoComprobanteEnum.AUTORIZADO.codigo) {
+      return;
+    }
+    try {
+      await this.enviarComprobanteSincrono(guia.claveacceso_srcom, dtoIn);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Error al enviar la guía de remisión vinculada a la factura ${ideSrcomFactura}: ${msg}`);
+    }
   }
 
   private async buildResultadoEnvio(

@@ -25,7 +25,9 @@ export interface GuiaRemisionCabecera {
     placa_gecam?: string;
     vehiculo?: string;
     nombre_vgtra?: string;
+    transportista_identificacion?: string;
     chofer?: string;
+    chofer_identificacion?: string;
 
     // Comprobante electrónico SRI (guía propia)
     claveacceso_srcom?: string;

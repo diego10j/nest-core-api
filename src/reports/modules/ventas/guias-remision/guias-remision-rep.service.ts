@@ -40,7 +40,9 @@ export class GuiasRemisionRepService {
                 t.es_transporte_propio_cctfa,
                 ca.descripcion_gecam AS vehiculo,
                 tr.nombre_vgtra,
+                trp.identificac_geper AS transportista_identificacion,
                 ch.nom_geper AS chofer,
+                ch.identificac_geper AS chofer_identificacion,
                 sGuia.claveacceso_srcom, sGuia.autorizacion_srcomn, sGuia.fechaautoriza_srcom,
                 sGuia.estab_srcom, sGuia.ptoemi_srcom, sGuia.secuencial_srcom
             FROM cxc_guia g
@@ -51,6 +53,7 @@ export class GuiasRemisionRepService {
             LEFT JOIN cxc_transporte_factura t ON t.ide_cccfa = g.ide_cccfa
             LEFT JOIN gen_camion ca ON g.placa_gecam = ca.placa_gecam
             LEFT JOIN ven_transporte tr ON t.ide_vgtra = tr.ide_vgtra
+            LEFT JOIN gen_persona trp ON tr.ide_geper = trp.ide_geper
             LEFT JOIN gen_persona ch ON t.ide_geper = ch.ide_geper
             LEFT JOIN sri_comprobante sFact ON cf.ide_srcom = sFact.ide_srcom
             LEFT JOIN sri_comprobante sGuia ON g.ide_srcom = sGuia.ide_srcom
@@ -72,6 +75,7 @@ export class GuiasRemisionRepService {
             INNER JOIN inv_articulo f ON d.ide_inarti = f.ide_inarti
             LEFT JOIN inv_unidad u ON f.ide_inuni = u.ide_inuni
             WHERE d.ide_cccfa = $1
+              AND f.hace_kardex_inarti = true
             ORDER BY d.ide_ccdfa
         `);
         queryDetalles.addIntParam(1, cabecera.ide_cccfa);

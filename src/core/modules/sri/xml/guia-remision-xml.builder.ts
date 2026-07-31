@@ -13,6 +13,9 @@ const CORREO_POR_DEFECTO = 'nodispone@produquimic.com.ec';
  * del cliente en vez del propio destinatario; aquí se usa el valor correcto del destinatario
  * (no hay caller de este builder aún en nest-core-api, así que no hay comportamiento en
  * producción que replicar con el bug incluido).
+ * Nota 2: razonSocialTransportista/tipoIdentificacionTransportista/rucTransportista deben
+ * describir al transportista real (chofer propio o empresa de transporte tercerizada), no al
+ * cliente/destinatario de la factura — ver comprobante.transportista (comprobantes-elec.service.ts).
  */
 export function buildGuiaRemisionXml(comprobante: ComprobanteDto, emisor: EmisorDto): string {
   const destinatario = comprobante.destinatario;
@@ -63,9 +66,9 @@ ${agenteRetencion}		</infoTributaria>
 		<infoGuiaRemision>
 			<dirEstablecimiento>${emisor.dirMatriz}</dirEstablecimiento>
 			<dirPartida>${comprobante.dirPartida ?? ''}</dirPartida>
-			<razonSocialTransportista>${comprobante.cliente?.nombreCliente}</razonSocialTransportista>
-			<tipoIdentificacionTransportista>${comprobante.cliente?.tipoIdentificacion}</tipoIdentificacionTransportista>
-			<rucTransportista>${comprobante.cliente?.identificacion?.trim()}</rucTransportista>
+			<razonSocialTransportista>${comprobante.transportista?.razonSocial ?? ''}</razonSocialTransportista>
+			<tipoIdentificacionTransportista>${comprobante.transportista?.tipoIdentificacion ?? ''}</tipoIdentificacionTransportista>
+			<rucTransportista>${comprobante.transportista?.identificacion ?? ''}</rucTransportista>
 			<obligadoContabilidad>${emisor.obligadoContabilidad}</obligadoContabilidad>
 			<fechaIniTransporte>${formatFechaSri(comprobante.fechaIniTransporte)}</fechaIniTransporte>
 			<fechaFinTransporte>${formatFechaSri(comprobante.fechaFinTransporte)}</fechaFinTransporte>

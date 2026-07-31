@@ -203,16 +203,21 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
     }
 
     const isPropio = transporte.es_transporte_propio_cctfa === true;
-    // Sin registro de transportista propio ni de terceros: es retiro en sucursal
+    // Transporte propio: no se cobra flete ni hay transportista/guía de remisión que declarar
+    // en el RIDE, así que la sección completa se omite.
+    if (isPropio) {
+        return { text: '', margin: [0, 0, 0, 0] as [number, number, number, number] };
+    }
+    // Sin registro de transportista de terceros: es retiro en sucursal
     // (mismo criterio que TransporteSection en el frontend), no hay nada que mostrar.
-    const esRetiroSucursal = !isPropio && !transporte.ide_vgtra && !transporte.nombre_vgtra;
+    const esRetiroSucursal = !transporte.ide_vgtra && !transporte.nombre_vgtra;
     if (esRetiroSucursal) {
         return { text: '', margin: [0, 0, 0, 0] as [number, number, number, number] };
     }
 
     const isFletePagado = transporte.flete_pagado_cctfa === true;
 
-    const responsable = isPropio ? (transporte.chofer || '---') : (transporte.nombre_vgtra || '---');
+    const responsable = transporte.nombre_vgtra || '---';
     const estadoFlete = isFletePagado ? 'PAGADO' : 'AL COBRO';
 
     const ttHeader = (text: string): object => ({
@@ -239,7 +244,7 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
     return {
         stack: [
             {
-                text: isPropio ? 'Transporte Propio' : 'Transporte / Envío',
+                text: 'Transporte / Envío',
                 style: 'sectionTitle',
                 margin: [0, 0, 0, 3] as [number, number, number, number],
             },
@@ -248,7 +253,7 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
                     widths: ['*', '25%'],
                     body: [
                         [
-                            ttHeader(isPropio ? 'Chofer' : 'Transportista'),
+                            ttHeader('Transportista'),
                             ttHeader('Flete'),
                         ],
                         [
