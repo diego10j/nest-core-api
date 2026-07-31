@@ -172,7 +172,7 @@ export class AtsService extends BaseService {
         const query = new SelectQuery(`
             SELECT
                 cabece.ide_cpcfa, cabece.ide_cncre, cabece.ide_cntdo,
-                suste.alterno_srtst, iden.alterno1_getid, prove.identificac_geper, docu.alter_tribu_cntdo,
+                suste.alterno_srtst, iden.alterno1_getid, prove.identificac_geper, docu.alter_tribu_cntdo, docu.nombre_cntdo,
                 cabece.numero_cpcfa, cabece.fecha_emisi_cpcfa, cabece.autorizacio_cpcfa,
                 cabece.total_cpcfa, cabece.valor_ice_cpcfa,
                 cabece.base_grabada_cpcfa, cabece.base_tarifa0_cpcfa, cabece.base_no_objeto_iva_cpcfa, cabece.valor_iva_cpcfa,
@@ -221,6 +221,7 @@ export class AtsService extends BaseService {
                 tpIdProv: fila.alterno1_getid ?? '',
                 idProv: fila.identificac_geper ?? '',
                 tipoComprobante: fila.alter_tribu_cntdo ?? '',
+                nombreTipoComprobante: fila.nombre_cntdo ?? undefined,
                 parteRel: 'NO',
                 fechaRegistro: fila.fecha_emisi_cncre ?? fila.fecha_emisi_cpcfa,
                 establecimiento: estab,

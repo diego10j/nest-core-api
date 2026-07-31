@@ -76,6 +76,8 @@ export interface AtsCompraDto {
     tpIdProv: string;
     idProv: string;
     tipoComprobante: string;
+    /** con_tipo_document.nombre_cntdo — solo para el resumen/talón, no viaja en el XML del ATS. */
+    nombreTipoComprobante?: string;
     parteRel: string;
     fechaRegistro: string;
     establecimiento: string;

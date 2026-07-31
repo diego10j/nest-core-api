@@ -1,6 +1,25 @@
 import { AtsAnexoDto } from './dto/ats.dto';
 
 /**
+ * Desglose de compras por tipo de comprobante (con_tipo_document.alter_tribu_cntdo/nombre_cntdo),
+ * paridad con el "Talón Resumen de Anexo Transaccional" que emite el validador del SRI
+ * (rep_talon_anexo_transaccional.jrxml / sub_rep_compras_anexo.jrxml del legacy): agrupa por
+ * código de transacción y desglosa base 0%, base gravada, base no objeto de IVA e IVA.
+ * `baseGravada` es la suma de `base_grabada_cpcfa` tal cual está en cada comprobante — la tarifa
+ * de IVA es configurable por transacción (tarifa_iva_cccfa, hoy 15%, antes 12%), así que esta
+ * base NO asume un porcentaje fijo; solo agrupa "gravado a la tarifa vigente en cada documento".
+ */
+export interface AtsResumenCompraDetalleDto {
+    codigo: string;
+    nombre: string;
+    numeroComprobantes: number;
+    base0: number;
+    baseGravada: number;
+    baseNoGraIva: number;
+    montoIva: number;
+}
+
+/**
  * Resumen del Anexo Transaccional Simplificado (ATS), equivalente al panel de totales que
  * muestra el validador/DIMM Anexos del SRI antes de subir el XML — pensado para que el
  * contador revise las cifras del período sin tener que abrir/leer el XML.
@@ -18,6 +37,7 @@ export interface AtsResumenDto {
         montoIce: number;
         retencionRenta: number;
         total: number;
+        detalle: AtsResumenCompraDetalleDto[];
     };
     ventas: {
         numeroComprobantes: number;
@@ -59,6 +79,27 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
         },
     );
 
+    const detallePorTipo = new Map<string, AtsResumenCompraDetalleDto>();
+    for (const c of anexo.compras) {
+        const codigo = c.tipoComprobante || '---';
+        const fila = detallePorTipo.get(codigo) ?? {
+            codigo,
+            nombre: c.nombreTipoComprobante || codigo,
+            numeroComprobantes: 0,
+            base0: 0,
+            baseGravada: 0,
+            baseNoGraIva: 0,
+            montoIva: 0,
+        };
+        fila.numeroComprobantes += 1;
+        fila.base0 += Number(c.baseImponible ?? 0);
+        fila.baseGravada += Number(c.baseImpGrav ?? 0);
+        fila.baseNoGraIva += Number(c.baseNoGraIva ?? 0);
+        fila.montoIva += Number(c.montoIva ?? 0);
+        detallePorTipo.set(codigo, fila);
+    }
+    const detalle = [...detallePorTipo.values()].sort((a, b) => a.codigo.localeCompare(b.codigo));
+
     const ventas = anexo.ventas.reduce(
         (acc, v) => {
             acc.numeroComprobantes += Number(v.numeroComprobantes ?? 0);
@@ -79,6 +120,7 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
         compras: {
             ...compras,
             total: compras.baseImponible + compras.baseNoGraIva + compras.baseImpExe + compras.montoIva + compras.montoIce,
+            detalle,
         },
         ventas: {
             ...ventas,
