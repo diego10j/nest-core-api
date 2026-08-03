@@ -3,4 +3,5 @@ export const enum EventAudit {
   LOGIN_ERROR = 1, //FALLO INGRESO
   LOGOUT = 8, //SALIO SISTEMA,
   DELETE_AUDIT = 0, //BORRA AUDITORIA
+  PAGE_VIEW = 11, //VISITA A PANTALLA (detalle_auac = ide_opci)
 }

@@ -4,12 +4,12 @@ import path from 'node:path';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as handlebars from 'handlebars';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
 import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
 import { MailService } from 'src/core/email/services/mail.service';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
 import { fmtNumero, splitNumeroDocumento } from 'src/reports/common/ride/ride-report.util';
@@ -20,6 +20,7 @@ import { FacturasRepService } from 'src/reports/modules/ventas/facturas/facturas
 import { GetNotaCreditoDto } from 'src/reports/modules/ventas/notas-credito/dto/get-nota-credito.dto';
 import { NotasCreditoRepService } from 'src/reports/modules/ventas/notas-credito/notas-credito-rep.service';
 import { fCurrency } from 'src/util/helpers/common-util';
+import { detectMimeType } from 'src/util/helpers/file-utils';
 import { normalizarUrl } from 'src/util/helpers/string-util';
 
 import { ComprobanteAutorizadoEmitter, ComprobanteAutorizadoEvent } from '../envio/comprobante-autorizado.emitter';
@@ -151,16 +152,25 @@ export class ComprobanteEmailListener implements OnModuleInit {
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
 
         let logoBase64: string | undefined;
+        let logoMimeType: string | undefined;
         if (empresa?.logotipo_empr) {
-            const logoPath = path.join(envs.pathDrive, empresa.logotipo_empr);
+            // Misma base de resolución que usa el PDF (getStaticImage), pero sin su fallback a
+            // no-image.png: si el logo real no existe, se omite y la plantilla usa su propio
+            // ícono por defecto en vez de mostrar el placeholder genérico como si fuera el logo.
+            const logoPath = path.join(FILE_STORAGE_CONSTANTS.BASE_PATH, empresa.logotipo_empr);
             if (fs.existsSync(logoPath)) {
                 logoBase64 = fs.readFileSync(logoPath).toString('base64');
+                // El mime se detectaba como PNG a la fuerza en la plantilla — si el logo real es
+                // JPEG/GIF/WEBP, el data URI quedaba mal declarado y algunos clientes de correo
+                // no lo renderizaban.
+                logoMimeType = detectMimeType(logoPath) || 'image/png';
             }
         }
 
         const html = this.buildEmailHtml({
             appName: empresa?.nom_empr || 'ProERP',
             logoBase64,
+            logoMimeType,
             title: `${tipoComprobante} ${contexto.numero}`,
             tipoComprobante,
             etiquetaContraparte,

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { isDefined } from '../../../util/helpers/common-util';
@@ -12,7 +13,10 @@ import { EventAudit } from './enum/event-audit';
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly dataSource: DataSourceService) {}
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * Guarda una accion de Auditoria
@@ -153,5 +157,54 @@ export class AuditService {
     query.addStringParam(1, tableName);
     query.addIntParam(2, valor);
     return query;
+  }
+
+  /**
+   * Registra la visita a una pantalla del menú (para armar "páginas más usadas" en el inicio).
+   * Solo se registra si el path corresponde a una opción real de sis_opcion — las rutas de
+   * detalle/edición (con id dinámico) no coinciden con ninguna opción y se ignoran en silencio.
+   */
+  async registrarVisitaPantalla(headers: HeaderParamsDto, path: string) {
+    const queryOpcion = new SelectQuery(
+      `SELECT ide_opci FROM sis_opcion WHERE tipo_opci = $1 AND ide_sist = $2`,
+    );
+    queryOpcion.addStringParam(1, path);
+    queryOpcion.addNumberParam(2, this.configService.get('ID_SISTEMA'));
+    const opcion = await this.dataSource.createSingleQuery(queryOpcion);
+    if (!opcion) return;
+
+    await this.saveEventoAuditoria(
+      headers.ideUsua,
+      EventAudit.PAGE_VIEW,
+      headers.ip,
+      String(opcion.ide_opci),
+      headers.device,
+    );
+  }
+
+  /**
+   * Páginas más visitadas por el usuario, limitadas a las opciones que su perfil actual todavía
+   * tiene permitidas (paridad con el menú real que devuelve auth.getMenuByRol).
+   */
+  async getPaginasMasUsadas(headers: HeaderParamsDto, limit: number) {
+    const query = new SelectQuery(`
+      SELECT o.ide_opci, o.nom_opci AS title, o.tipo_opci AS path, o.icono_opci AS icon,
+        COUNT(*) AS visitas
+      FROM sis_auditoria_acceso a
+      INNER JOIN sis_opcion o ON o.ide_opci = CAST(a.detalle_auac AS INTEGER)
+      INNER JOIN sis_perfil_opcion po ON po.ide_opci = o.ide_opci AND po.ide_perf = $1
+      WHERE a.ide_acau = ${EventAudit.PAGE_VIEW}
+        AND a.ide_usua = $2
+        AND o.ide_sist = $3
+        AND a.detalle_auac ~ '^\\d+$'
+      GROUP BY o.ide_opci, o.nom_opci, o.tipo_opci, o.icono_opci
+      ORDER BY visitas DESC
+      LIMIT $4
+    `);
+    query.addNumberParam(1, headers.idePerf);
+    query.addNumberParam(2, headers.ideUsua);
+    query.addNumberParam(3, this.configService.get('ID_SISTEMA'));
+    query.addNumberParam(4, limit);
+    return this.dataSource.createSelectQuery(query);
   }
 }

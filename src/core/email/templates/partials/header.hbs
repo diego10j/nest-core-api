@@ -178,7 +178,7 @@
                                 <!-- Logo icon -->
                                 <td width="42" valign="middle">
                                     {{#if logoBase64}}
-                                    <img src="data:image/png;base64,{{logoBase64}}"
+                                    <img src="data:{{#if logoMimeType}}{{logoMimeType}}{{else}}image/png{{/if}};base64,{{logoBase64}}"
                                          alt="{{appName}}"
                                          width="42" height="42"
                                          style="display:block;width:42px;height:42px;border-radius:10px;" />

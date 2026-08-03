@@ -7,6 +7,8 @@ import { Auth } from 'src/core/auth';
 import { AuditService } from './audit.service';
 import { DeleteAuditoriaDto } from './dto/delete-auditoria.dto';
 import { EventosAuditoriaDto } from './dto/eventos-auditoria.dto';
+import { PaginasMasUsadasDto } from './dto/paginas-mas-usadas.dto';
+import { RegistrarVisitaDto } from './dto/registrar-visita.dto';
 
 @ApiTags('Auditoría')
 @Controller('audit')
@@ -31,5 +33,19 @@ export class AuditController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Post('registrarVisita')
+  @ApiOperation({ summary: 'Registra la visita del usuario a una pantalla (para páginas más usadas)' })
+  @Auth()
+  registrarVisita(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: RegistrarVisitaDto) {
+    return this.service.registrarVisitaPantalla(headersParams, dtoIn.path);
+  }
+
+  @Get('paginasMasUsadas')
+  @ApiOperation({ summary: 'Páginas más usadas por el usuario, dentro de las que su perfil aún tiene permitidas' })
+  @Auth()
+  paginasMasUsadas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PaginasMasUsadasDto) {
+    return this.service.getPaginasMasUsadas(headersParams, dtoIn.limit);
   }
 }
