@@ -122,6 +122,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 ct.ide_geper,
                 p.nom_geper                         AS nombre_proveedor,
                 p.identificac_geper,
+                ti.nombre_getid                     AS identificacion_tipo,
                 -- Campos de pago
                 det.fecha_pago_cpcdop,
                 det.num_comprobante_cpcdop,
@@ -149,6 +150,7 @@ export class CuentasPorPagarOrdenService extends BaseService {
             JOIN cxp_cabece_transa        ct  ON ct.ide_cpctr  = det.ide_cpctr
             LEFT JOIN cxp_cabece_factur   cf  ON cf.ide_cpcfa  = ct.ide_cpcfa
             LEFT JOIN gen_persona          p  ON p.ide_geper   = ct.ide_geper
+            LEFT JOIN gen_tipo_identifi   ti ON p.ide_getid  = ti.ide_getid
             LEFT JOIN tes_cuenta_banco   ban  ON ban.ide_tecba = det.ide_tecba
             LEFT JOIN tes_tip_tran_banc  ttb  ON ttb.ide_tettb = det.ide_tettb
             LEFT JOIN tes_banco             b   ON b.ide_teban   = ban.ide_teban
@@ -157,7 +159,34 @@ export class CuentasPorPagarOrdenService extends BaseService {
         `);
         detQuery.addIntParam(1, dtoIn.ide_cpcop);
         const detalles = await this.dataSource.createSelectQuery(detQuery);
-        return { cabecera, detalles };
+
+        // Cuentas bancarias de los proveedores (max 5 activas por proveedor)
+        const ctasQuery = new SelectQuery(`
+            SELECT sub.ide_cpcbp, sub.ide_geper, sub.nombre_cpcbp, sub.numero_cpcbp,
+                   sub.nombre_teban, sub.nombre_tetcb
+            FROM (
+                SELECT cb.ide_cpcbp, cb.ide_geper, cb.nombre_cpcbp, cb.numero_cpcbp,
+                       b.nombre_teban, tc.nombre_tetcb,
+                       ROW_NUMBER() OVER (PARTITION BY cb.ide_geper ORDER BY cb.defecto_cpcbp DESC, cb.nombre_cpcbp) AS rn
+                FROM cxp_cta_banco_prove cb
+                LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+                LEFT JOIN tes_tip_cuen_banc tc ON tc.ide_tetcb = cb.ide_tetcb
+                WHERE cb.ide_geper IN (
+                    SELECT DISTINCT ct.ide_geper
+                    FROM cxp_det_orden_pago det2
+                    JOIN cxp_cabece_transa ct ON ct.ide_cpctr = det2.ide_cpctr
+                    WHERE det2.ide_cpcop = $1
+                )
+                  AND cb.activo_cpcbp = true
+                  AND cb.ide_empr = ${dtoIn.ideEmpr}
+                  AND cb.ide_sucu = ${dtoIn.ideSucu}
+            ) sub
+            WHERE sub.rn <= 5
+            ORDER BY sub.ide_geper, sub.rn
+        `);
+        ctasQuery.addIntParam(1, dtoIn.ide_cpcop);
+        const cuentasBancarias = await this.dataSource.createSelectQuery(ctasQuery);
+        return { cabecera, detalles, cuentasBancarias };
     }
 
     /**

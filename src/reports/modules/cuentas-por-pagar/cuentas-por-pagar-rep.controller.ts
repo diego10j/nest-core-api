@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { CuentasPorPagarRepService } from './cuentas-por-pagar-rep.service';
 import { GetLiquidacionCompraDto } from './dto/get-liquidacion-compra.dto';
+import { GetOrdenPagoDto } from './dto/get-orden-pago.dto';
 
 @ApiTags('Reports-CuentasPorPagar')
 @Controller('reports/cuentas-por-pagar')
@@ -25,6 +26,23 @@ export class CuentasPorPagarRepController {
         });
         response.setHeader('Content-Type', 'application/pdf');
         pdfDoc.info.Title = 'Liquidación de Compra';
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
+
+    @Get('reportOrdenPago')
+    @ApiOperation({ summary: 'Generar reporte PDF de la Orden de Pago' })
+    async reportOrdenPago(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetOrdenPagoDto,
+    ) {
+        const pdfDoc = await this.cuentasPorPagarRepService.reportOrdenPago({
+            ...headersParams,
+            ...dtoIn,
+        });
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = 'Orden de Pago';
         pdfDoc.pipe(response);
         pdfDoc.end();
     }

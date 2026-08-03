@@ -8,13 +8,22 @@ import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.servi
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { GetLiquidacionCompraDto } from './dto/get-liquidacion-compra.dto';
+import { GetOrdenPagoDto } from './dto/get-orden-pago.dto';
 import {
     LiquidacionCompraCabecera,
     LiquidacionCompraDetalle,
     LiquidacionCompraRep,
     LiquidacionCompraReembolso,
 } from './interfaces/liquidacion-compra-rep';
+import {
+    CuentaBancoProveedor,
+    OrdenPagoCabecera,
+    OrdenPagoDetalle,
+    OrdenPagoGrupoProveedor,
+    OrdenPagoRep,
+} from './interfaces/orden-pago-rep';
 import { liquidacionCompraReport } from './liquidacion-compra.report';
+import { ordenPagoReport } from './orden-pago.report';
 
 @Injectable()
 export class CuentasPorPagarRepService {
@@ -99,5 +108,133 @@ export class CuentasPorPagarRepService {
             const docFallback = liquidacionCompraReport(data, empresa, undefined, ambienteTexto);
             return this.printerService.createPdf(docFallback);
         }
+    }
+
+    /** Reporte de Orden de Pago. */
+    async reportOrdenPago(dtoIn: HeaderParamsDto & GetOrdenPagoDto) {
+        const queryCabecera = new SelectQuery(`
+            SELECT
+                cab.ide_cpcop,
+                cab.secuencial_cpcop,
+                cab.ide_cpeo,
+                est.nombre_cpeo                 AS estado,
+                est.color_cpeo,
+                cab.fecha_genera_cpcop,
+                cab.fecha_pago_cpcop,
+                cab.fecha_efectiva_pago_cpcop,
+                cab.referencia_cpcop,
+                cab.activo_cpcop,
+                cab.ide_usua,
+                u.nom_usua                      AS nombre_usuario,
+                cab.ide_empr,
+                cab.ide_sucu
+            FROM cxp_cab_orden_pago cab
+            JOIN cxp_estado_orden est    ON est.ide_cpeo = cab.ide_cpeo
+            LEFT JOIN sis_usuario u      ON u.ide_usua   = cab.ide_usua
+            WHERE cab.ide_cpcop = $1
+              AND cab.ide_empr  = ${dtoIn.ideEmpr}
+              AND cab.ide_sucu  = ${dtoIn.ideSucu}
+        `);
+        queryCabecera.addIntParam(1, dtoIn.ide_cpcop);
+        const cabecera = await this.dataSource.createSingleQuery(queryCabecera) as OrdenPagoCabecera;
+        if (!cabecera) {
+            throw new NotFoundException(`Orden de pago ${dtoIn.ide_cpcop} no encontrada`);
+        }
+
+        const queryDetalles = new SelectQuery(`
+            SELECT
+                det.ide_cpcdop,
+                det.ide_cpcop,
+                det.ide_cpctr,
+                ct.ide_cpcfa,
+                cf.numero_cpcfa,
+                cf.total_cpcfa,
+                ct.ide_geper,
+                p.nom_geper                         AS nombre_proveedor,
+                p.identificac_geper,
+                ti.nombre_getid                     AS identificacion_tipo,
+                det.valor_pagado_cpcdop,
+                det.activo_cpcdop
+            FROM cxp_det_orden_pago det
+            JOIN cxp_cabece_transa        ct  ON ct.ide_cpctr  = det.ide_cpctr
+            LEFT JOIN cxp_cabece_factur   cf  ON cf.ide_cpcfa  = ct.ide_cpcfa
+            LEFT JOIN gen_persona          p  ON p.ide_geper   = ct.ide_geper
+            LEFT JOIN gen_tipo_identifi   ti ON p.ide_getid  = ti.ide_getid
+            WHERE det.ide_cpcop = $1
+            ORDER BY det.ide_cpcdop
+        `);
+        queryDetalles.addIntParam(1, dtoIn.ide_cpcop);
+        const detalles = await this.dataSource.createSelectQuery(queryDetalles) as OrdenPagoDetalle[];
+
+        const queryCtas = new SelectQuery(`
+            SELECT sub.ide_cpcbp, sub.ide_geper, sub.nombre_cpcbp, sub.numero_cpcbp,
+                   sub.nombre_teban, sub.nombre_tetcb
+            FROM (
+                SELECT cb.ide_cpcbp, cb.ide_geper, cb.nombre_cpcbp, cb.numero_cpcbp,
+                       b.nombre_teban, tc.nombre_tetcb,
+                       ROW_NUMBER() OVER (PARTITION BY cb.ide_geper ORDER BY cb.defecto_cpcbp DESC, cb.nombre_cpcbp) AS rn
+                FROM cxp_cta_banco_prove cb
+                LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+                LEFT JOIN tes_tip_cuen_banc tc ON tc.ide_tetcb = cb.ide_tetcb
+                WHERE cb.ide_geper IN (
+                    SELECT DISTINCT ct.ide_geper
+                    FROM cxp_det_orden_pago det2
+                    JOIN cxp_cabece_transa ct ON ct.ide_cpctr = det2.ide_cpctr
+                    WHERE det2.ide_cpcop = $1
+                )
+                  AND cb.activo_cpcbp = true
+                  AND cb.ide_empr = ${dtoIn.ideEmpr}
+                  AND cb.ide_sucu = ${dtoIn.ideSucu}
+            ) sub
+            WHERE sub.rn <= 5
+            ORDER BY sub.ide_geper, sub.rn
+        `);
+        queryCtas.addIntParam(1, dtoIn.ide_cpcop);
+        const cuentasBancarias = await this.dataSource.createSelectQuery(queryCtas) as CuentaBancoProveedor[];
+
+        const ctasPorProveedor = new Map<number, CuentaBancoProveedor[]>();
+        for (const cta of cuentasBancarias) {
+            const list = ctasPorProveedor.get(cta.ide_geper) || [];
+            list.push(cta);
+            ctasPorProveedor.set(cta.ide_geper, list);
+        }
+
+        const detalleMap = new Map<number, { proveedor: string; identificacion: string; facturas: string[]; total: number }>();
+        for (const det of detalles) {
+            if (!det.activo_cpcdop) continue;
+            const key = det.ide_geper;
+            if (!detalleMap.has(key)) {
+                const tipoId = det.identificacion_tipo || '';
+                const numId = det.identificac_geper || '';
+                const ident = tipoId && numId ? `${tipoId}: ${numId}` : numId || tipoId || '---';
+                detalleMap.set(key, { proveedor: det.nombre_proveedor, identificacion: ident, facturas: [], total: 0 });
+            }
+            const entry = detalleMap.get(key)!;
+            if (det.numero_cpcfa && !entry.facturas.includes(det.numero_cpcfa)) {
+                entry.facturas.push(det.numero_cpcfa);
+            }
+            entry.total += Number(det.valor_pagado_cpcdop) || 0;
+        }
+
+        const gruposProveedor: OrdenPagoGrupoProveedor[] = [];
+        let numPago = 1;
+        let totalGeneral = 0;
+        for (const [ideGeper, info] of detalleMap) {
+            gruposProveedor.push({
+                numPago: numPago++,
+                nombreProveedor: info.proveedor,
+                identificacion: info.identificacion,
+                facturas: info.facturas.join(', ') || '---',
+                valorTotal: info.total,
+                cuentasBancarias: ctasPorProveedor.get(ideGeper) || [],
+            });
+            totalGeneral += info.total;
+        }
+
+        const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+
+        const data: OrdenPagoRep = { cabecera, gruposProveedor, totalGeneral };
+        const docDefinition = ordenPagoReport(data, empresa);
+        return this.printerService.createPdf(docDefinition);
     }
 }
