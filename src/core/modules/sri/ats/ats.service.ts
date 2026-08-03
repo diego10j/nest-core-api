@@ -467,7 +467,7 @@ export class AtsService extends BaseService {
 
     private async getVentas(fechaInicio: string, fechaFin: string, ideSucu: number): Promise<AtsVentaDto[]> {
         const query = new SelectQuery(`
-            SELECT tide.alterno2_getid, cli.identificac_geper, COUNT(cab.ide_geper) AS numcomprobantes,
+            SELECT tide.alterno2_getid, TRIM(cli.identificac_geper) AS identificac_geper, COUNT(cab.ide_geper) AS numcomprobantes,
                 SUM(cab.base_tarifa0_cccfa) AS base_tarifa0, SUM(cab.base_grabada_cccfa) AS base_grabada,
                 SUM(cab.base_no_objeto_iva_cccfa) AS base_no_objeto_iva,
                 SUM(cab.valor_iva_cccfa) AS valor_iva, SUM(cab.ret_iva_cccfa) AS retiva, SUM(cab.ret_fuente_cccfa) AS retrenta
@@ -477,7 +477,7 @@ export class AtsService extends BaseService {
             WHERE cab.fecha_emisi_cccfa BETWEEN $1 AND $2
               AND cab.ide_ccefa = $3
               AND cab.ide_sucu = $4
-            GROUP BY tide.alterno2_getid, cli.identificac_geper
+            GROUP BY tide.alterno2_getid, TRIM(cli.identificac_geper)
         `);
         query.addStringParam(1, fechaInicio);
         query.addStringParam(2, fechaFin);
@@ -509,7 +509,7 @@ export class AtsService extends BaseService {
 
     private async getNotasCreditoVenta(fechaInicio: string, fechaFin: string, ideSucu: number): Promise<AtsVentaDto[]> {
         const query = new SelectQuery(`
-            SELECT tide.alterno2_getid, cli.identificac_geper, COUNT(cab.ide_geper) AS numcomprobantes,
+            SELECT tide.alterno2_getid, TRIM(cli.identificac_geper) AS identificac_geper, COUNT(cab.ide_geper) AS numcomprobantes,
                 SUM(cab.base_tarifa0_cpcno) AS base_tarifa0, SUM(cab.base_grabada_cpcno) AS base_grabada,
                 SUM(cab.base_no_objeto_iva_cpcno) AS base_no_objeto_iva, SUM(cab.valor_iva_cpcno) AS valor_iva
             FROM cxp_cabecera_nota cab
@@ -518,7 +518,7 @@ export class AtsService extends BaseService {
             WHERE cab.fecha_emisi_cpcno BETWEEN $1 AND $2
               AND cab.ide_cpeno = $3
               AND cab.ide_sucu = $4
-            GROUP BY tide.alterno2_getid, cli.identificac_geper
+            GROUP BY tide.alterno2_getid, TRIM(cli.identificac_geper)
         `);
         query.addStringParam(1, fechaInicio);
         query.addStringParam(2, fechaFin);
@@ -561,7 +561,7 @@ export class AtsService extends BaseService {
                 SELECT cli.nom_geper, tcon.alter_tribu_cntco
                 FROM gen_persona cli
                 LEFT JOIN con_tipo_contribu tcon ON cli.ide_cntco = tcon.ide_cntco
-                WHERE cli.identificac_geper = $1
+                WHERE TRIM(cli.identificac_geper) = $1
             `);
             query.addStringParam(1, identificacion);
             const persona = await this.dataSource.createSingleQuery(query);
