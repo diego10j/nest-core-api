@@ -9,6 +9,7 @@ import { getCurrentDate } from 'src/util/helpers/date-util';
 import { ExisteNumTransaccionDto } from './dto/existe-num-transaccion.dto';
 import { GetDetalleTransaccionDto } from './dto/get-detalle-transaccion.dto';
 import { GetSaldoCuentaDto } from './dto/get-saldo-cuenta.dto';
+import { GetTransaccionesCuentaKPIDto } from './dto/get-transacciones-cuenta-kpi.dto';
 import { GetTransaccionesCuentaDto } from './dto/get-transacciones-cuenta.dto';
 
 @Injectable()
@@ -37,47 +38,95 @@ export class PreLibroBancosService extends BaseService {
     }
 
     /**
-     * Retorna las transacciones de una cuenta bancaria en un rango de fechas
+     * Retorna las transacciones de una cuenta bancaria en un rango de fechas.
+     * - modo=1 (default): lista plana, saldo=NULL
+     * - modo=2: lista con saldo calculado (inicial + acumulado por fila)
      */
     async getTransaccionesCuenta(dtoIn: GetTransaccionesCuentaDto & HeaderParamsDto) {
         const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
         const condicionConcilia = dtoIn.soloNoConciliados ? 'AND a.conciliado_teclb = false' : '';
+        const modo = dtoIn.modo ?? 1;
 
-        const query = new SelectQuery(`
-            SELECT
-                a.fecha_trans_teclb,
-                a.ide_cnccc,
-                a.numero_teclb,
-                b.nombre_tettb,
-                a.beneficiari_teclb,
-                CASE WHEN b.signo_tettb = 1  THEN a.valor_teclb END AS ingresos,
-                CASE WHEN b.signo_tettb = -1 THEN a.valor_teclb END AS egresos,
-                a.observacion_teclb,
-                a.ide_teclb,
-                a.fec_cam_est_teclb    AS fecha_efectivo,
-                a.num_comprobante_teclb AS num_comprobante,
-                a.conciliado_teclb     AS conciliado,
-                a.usuario_ingre,
-                a.usuario_actua,
-                a.fecha_ingre,
-                a.hora_ingre,
-                a.fecha_actua,
-                a.hora_actua
+        const columnasBeforeSaldo = `
+            a.ide_teclb,
+            a.fecha_trans_teclb,
+            a.numero_teclb,
+            b.nombre_tettb,
+            a.beneficiari_teclb,
+            CASE WHEN b.signo_tettb = 1  THEN a.valor_teclb END AS ingresos,
+            CASE WHEN b.signo_tettb = -1 THEN a.valor_teclb END AS egresos`;
+
+        const columnasAfterSaldo = `
+            a.observacion_teclb,
+            a.fec_cam_est_teclb    AS fecha_efectivo,
+            a.num_comprobante_teclb AS num_comprobante,
+            a.conciliado_teclb     AS conciliado,
+            ban.foto_teban,
+            ban.color_teban,
+            a.usuario_ingre,
+            a.usuario_actua,
+            a.fecha_ingre,
+            a.hora_ingre,
+            a.fecha_actua,
+            a.hora_actua,
+            a.ide_cnccc`;
+
+        const joins = `
             FROM tes_cab_libr_banc a
             INNER JOIN tes_tip_tran_banc b ON a.ide_tettb = b.ide_tettb
+            INNER JOIN tes_cuenta_banco cb ON a.ide_tecba = cb.ide_tecba
+            INNER JOIN tes_banco ban ON cb.ide_teban = ban.ide_teban`;
+
+        const where = `
             WHERE a.ide_tecba  = $1
               AND a.ide_teelb  = $2
               AND a.ide_sucu   = $3
               AND a.fecha_trans_teclb BETWEEN $4 AND $5
-              ${condicionConcilia}
+              ${condicionConcilia}`;
+
+        if (modo === 2) {
+            const query = new SelectQuery(`
+                WITH saldo_inicial AS (
+                    SELECT COALESCE(SUM(a2.valor_teclb * b2.signo_tettb), 0) AS saldo_inicial
+                    FROM tes_cab_libr_banc a2
+                    INNER JOIN tes_tip_tran_banc b2 ON a2.ide_tettb = b2.ide_tettb
+                    WHERE a2.ide_tecba = $1
+                      AND a2.ide_teelb  = $2
+                      AND a2.ide_sucu   = $3
+                      AND a2.fecha_trans_teclb < $4
+                )
+                SELECT
+                    ${columnasBeforeSaldo},
+                    (si.saldo_inicial + SUM(a.valor_teclb * b.signo_tettb) OVER (ORDER BY a.fecha_trans_teclb, a.ide_teclb))::NUMERIC(15,2) AS saldo,
+                    ${columnasAfterSaldo}
+                ${joins}
+                CROSS JOIN saldo_inicial si
+                ${where}
+                ORDER BY a.fecha_trans_teclb, a.ide_teclb
+            `, dtoIn);
+            query.addIntParam(1, dtoIn.ideTecba);
+            query.addIntParam(2, ideTeelb);
+            query.addIntParam(3, dtoIn.ideSucu);
+            query.addStringParam(4, dtoIn.fechaInicio);
+            query.addStringParam(5, dtoIn.fechaFin);
+            return this.dataSource.createQuery(query);
+        }
+
+        const query = new SelectQuery(`
+            SELECT
+                ${columnasBeforeSaldo},
+                NULL::NUMERIC(15,2) AS saldo,
+                ${columnasAfterSaldo}
+            ${joins}
+            ${where}
             ORDER BY a.fecha_trans_teclb, a.ide_teclb
-        `);
+        `, dtoIn);
         query.addIntParam(1, dtoIn.ideTecba);
         query.addIntParam(2, ideTeelb);
         query.addIntParam(3, dtoIn.ideSucu);
         query.addStringParam(4, dtoIn.fechaInicio);
         query.addStringParam(5, dtoIn.fechaFin);
-        return this.dataSource.createSelectQuery(query);
+        return this.dataSource.createQuery(query);
     }
 
     /**
@@ -85,6 +134,69 @@ export class PreLibroBancosService extends BaseService {
      */
     async getTransaccionesCuentaNoConciliado(dtoIn: GetTransaccionesCuentaDto & HeaderParamsDto) {
         return this.getTransaccionesCuenta({ ...dtoIn, soloNoConciliados: true });
+    }
+
+    /**
+     * Retorna KPIs de una cuenta bancaria en un rango de fechas
+     */
+    async getTransaccionesCuentaKPI(dtoIn: GetTransaccionesCuentaKPIDto & HeaderParamsDto) {
+        const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+
+        const query = new SelectQuery(`
+            WITH inicial AS (
+                SELECT COALESCE(SUM(a.valor_teclb * b.signo_tettb), 0) AS saldo_inicial
+                FROM tes_cab_libr_banc a
+                INNER JOIN tes_tip_tran_banc b ON a.ide_tettb = b.ide_tettb
+                WHERE a.ide_tecba = $1
+                  AND a.ide_teelb  = $2
+                  AND a.ide_sucu   = $3
+                  AND a.fecha_trans_teclb < $4
+            ),
+            periodo AS (
+                SELECT
+                    COUNT(*)                                                                     AS num_total_transacciones,
+                    COUNT(*) FILTER (WHERE b.signo_tettb = 1)                                    AS num_ingresos,
+                    COUNT(*) FILTER (WHERE b.signo_tettb = -1)                                    AS num_egresos,
+                    COALESCE(SUM(a.valor_teclb) FILTER (WHERE b.signo_tettb = 1), 0)             AS total_ingresos,
+                    COALESCE(SUM(a.valor_teclb) FILTER (WHERE b.signo_tettb = -1), 0)             AS total_egresos,
+                    COALESCE(SUM(a.valor_teclb * b.signo_tettb), 0)                              AS flujo_neto
+                FROM tes_cab_libr_banc a
+                INNER JOIN tes_tip_tran_banc b ON a.ide_tettb = b.ide_tettb
+                WHERE a.ide_tecba = $1
+                  AND a.ide_teelb  = $2
+                  AND a.ide_sucu   = $3
+                  AND a.fecha_trans_teclb BETWEEN $4 AND $5
+            )
+            SELECT
+                i.saldo_inicial,
+                i.saldo_inicial + p.flujo_neto                                                  AS saldo_final,
+                p.num_total_transacciones,
+                p.num_ingresos,
+                p.num_egresos,
+                p.total_ingresos,
+                p.total_egresos,
+                p.flujo_neto,
+                CASE WHEN p.num_ingresos > 0 THEN (p.total_ingresos / p.num_ingresos)::NUMERIC(15,2) ELSE 0 END AS promedio_ingreso,
+                CASE WHEN p.num_egresos > 0 THEN (p.total_egresos / p.num_egresos)::NUMERIC(15,2) ELSE 0 END AS promedio_egreso,
+                ((i.saldo_inicial + (i.saldo_inicial + p.flujo_neto)) / 2.0)::NUMERIC(15,2)     AS saldo_promedio,
+                ($5::DATE - $4::DATE)                                                           AS dias_periodo
+            FROM inicial i, periodo p
+        `);
+        query.addIntParam(1, dtoIn.ideTecba);
+        query.addIntParam(2, ideTeelb);
+        query.addIntParam(3, dtoIn.ideSucu);
+        query.addStringParam(4, dtoIn.fechaInicio);
+        query.addStringParam(5, dtoIn.fechaFin);
+        const result = await this.dataSource.createSingleQuery(query);
+
+        const dias = Number(result.dias_periodo);
+        return {
+            ...result,
+            dias_periodo: dias,
+            transacciones_por_dia: dias > 0 ? Number((Number(result.num_total_transacciones) / dias).toFixed(2)) : 0,
+            fecha_inicio: dtoIn.fechaInicio,
+            fecha_fin: dtoIn.fechaFin,
+        };
     }
 
     /**
@@ -97,7 +209,13 @@ export class PreLibroBancosService extends BaseService {
                    c.fecha_trans_teclb AS fecha_tran,
                    b.nombre_inarti    AS descripcion,
                    a.concepto_tedlb   AS concepto,
-                   a.valor_tedlb      AS valor
+                   a.valor_tedlb      AS valor,
+                   a.usuario_ingre,
+                   a.fecha_ingre,
+                   a.hora_ingre,
+                   a.usuario_actua,
+                   a.fecha_actua,
+                   a.hora_actua
             FROM tes_det_libr_banc a
             INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
             INNER JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
@@ -107,7 +225,13 @@ export class PreLibroBancosService extends BaseService {
                    fecha_trans_cpdtr,
                    'PAGO',
                    observacion_cpdtr,
-                   valor_cpdtr
+                   valor_cpdtr,
+                   usuario_ingre,
+                   fecha_ingre,
+                   hora_ingre,
+                   NULL::VARCHAR AS usuario_actua,
+                   NULL::DATE    AS fecha_actua,
+                   NULL::TIME    AS hora_actua
             FROM cxp_detall_transa
             WHERE ide_teclb = $1
               AND ide_cpttr IN (3, 19)
@@ -116,7 +240,13 @@ export class PreLibroBancosService extends BaseService {
                    fecha_trans_ccdtr,
                    'PAGO',
                    observacion_ccdtr,
-                   valor_ccdtr
+                   valor_ccdtr,
+                   usuario_ingre,
+                   fecha_ingre,
+                   hora_ingre,
+                   NULL::VARCHAR AS usuario_actua,
+                   NULL::DATE    AS fecha_actua,
+                   NULL::TIME    AS hora_actua
             FROM cxc_detall_transa
             WHERE ide_teclb = $1
               AND ide_ccttr IN (0, 10)
@@ -125,7 +255,13 @@ export class PreLibroBancosService extends BaseService {
                    fecha_trans_teclb,
                    h.nombre_tettb || '   -   ' || COALESCE(g.numero_teclb, ''),
                    g.beneficiari_teclb || ' - ' || g.observacion_teclb,
-                   g.valor_teclb
+                   g.valor_teclb,
+                   g.usuario_ingre,
+                   g.fecha_ingre,
+                   g.hora_ingre,
+                   g.usuario_actua,
+                   g.fecha_actua,
+                   g.hora_actua
             FROM tes_cab_libr_banc g
             INNER JOIN tes_tip_tran_banc h ON g.ide_tettb = h.ide_tettb
             WHERE g.tes_ide_teclb = $1

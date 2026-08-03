@@ -6,6 +6,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
+import { decrypt } from '../configuracion/crypto.util';
 
 @Injectable()
 export class FirmaService extends BaseService {
@@ -53,6 +54,7 @@ export class FirmaService extends BaseService {
 
     const res = await this.dataSource.createSingleQuery(query);
     if (res) {
+      res.claveFirma = decrypt(res.claveFirma);
       // Save cache
       await this.redisClient.set(cacheKey, JSON.stringify(res));
       return res;

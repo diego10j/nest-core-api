@@ -3,6 +3,7 @@ import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaveDto } from 'src/common/dto/save.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { ObjectQueryDto } from 'src/core/connection/dto';
 import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
@@ -10,9 +11,8 @@ import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
 import { SetCuentaContableProveedorDto } from './dto/cuenta-contable-proveedor.dto';
-import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
 import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
-import { ObjectQueryDto } from 'src/core/connection/dto';
+import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
 
 /** Identificador de configuración contable del proveedor */
 const IDENTIFICADOR_CUENTA_CXP = 'CUENTA POR PAGAR';
@@ -55,47 +55,55 @@ export class ProveedorSaveService extends BaseService {
 
             this.validarIdentificacionProveedor(data);
 
+            let ideGeper: number;
+
             if (dtoIn.isUpdate) {
                 if (!isDefined(data.ide_geper)) {
                     throw new BadRequestException('Se requiere ide_geper para actualizar el proveedor');
                 }
-                const ideGeper = Number(data.ide_geper);
+                ideGeper = Number(data.ide_geper);
                 await this.validarDuplicado(data.identificac_geper, dtoIn.ideEmpr, ideGeper);
+
+                const listQuery: ObjectQueryDto[] = [{
+                    operation: 'update',
+                    module: 'gen',
+                    tableName: 'persona',
+                    primaryKey: 'ide_geper',
+                    object: data,
+                    condition: `ide_geper = ${ideGeper}`,
+                }];
+                await this.appendDireccionPrincipalQuery(listQuery, data, ideGeper, dtoIn.login);
+
                 return this.core.save({
                     ...dtoIn,
-                    listQuery: [{
-                        operation: 'update',
-                        module: 'gen',
-                        tableName: 'persona',
-                        primaryKey: 'ide_geper',
-                        object: data,
-                        condition: `ide_geper = ${ideGeper}`,
-                    }],
+                    listQuery,
                     audit: false,
                 });
             }
 
-            // Crear
             if (!data.identificac_geper) throw new BadRequestException('La identificación es obligatoria');
             if (!data.nom_geper) throw new BadRequestException('El nombre del proveedor es obligatorio');
             if (!isDefined(data.ide_getid)) throw new BadRequestException('Debe seleccionar el tipo de identificación');
             if (!isDefined(data.ide_cntco)) throw new BadRequestException('Debe seleccionar el tipo de contribuyente');
             await this.validarDuplicado(data.identificac_geper, dtoIn.ideEmpr);
 
-            const ideGeper = await this.dataSource.getSeqTable('gen_persona', 'ide_geper', 1, dtoIn.login);
+            ideGeper = await this.dataSource.getSeqTable('gen_persona', 'ide_geper', 1, dtoIn.login);
             data.ide_geper = ideGeper;
             data.nivel_geper = data.nivel_geper ?? 'HIJO';
             data.activo_geper = data.activo_geper ?? true;
 
+            const listQuery: ObjectQueryDto[] = [{
+                operation: 'insert',
+                module: 'gen',
+                tableName: 'persona',
+                primaryKey: 'ide_geper',
+                object: data,
+            }];
+            await this.appendDireccionPrincipalQuery(listQuery, data, ideGeper, dtoIn.login);
+
             await this.core.save({
                 ...dtoIn,
-                listQuery: [{
-                    operation: 'insert',
-                    module: 'gen',
-                    tableName: 'persona',
-                    primaryKey: 'ide_geper',
-                    object: data,
-                }],
+                listQuery,
                 audit: true,
             });
 
@@ -298,6 +306,66 @@ export class ProveedorSaveService extends BaseService {
         const existente = await this.dataSource.createSingleQuery(q);
         if (existente && (!isDefined(excluirIdeGeper) || Number(existente.ide_geper) !== excluirIdeGeper)) {
             throw new BadRequestException(`Ya existe una persona registrada con la identificación ${identificacion}`);
+        }
+    }
+
+    private async appendDireccionPrincipalQuery(
+        listQuery: ObjectQueryDto[],
+        data: Record<string, any>,
+        ideGeper: number,
+        login: string,
+    ): Promise<void> {
+        const hasContactInfo =
+            data.direccion_geper != null ||
+            data.telefono_geper != null ||
+            data.correo_geper != null ||
+            data.movil_geper != null;
+        if (!hasContactInfo) return;
+
+        const dirObject: Record<string, unknown> = {
+            ide_geper: ideGeper,
+            ide_getidi: 1,
+            ide_gepais: 1,
+            ide_geprov: data.ide_geprov ?? null,
+            ide_gecant: data.ide_gecant ?? null,
+            nombre_dir_gedirp: 'Principal',
+            direccion_gedirp: data.direccion_geper ?? null,
+            telefono_gedirp: data.telefono_geper ?? null,
+            movil_gedirp: data.movil_geper ? String(data.movil_geper).substring(0, 10) : null,
+            correo_gedirp: data.correo_geper ?? null,
+            activo_gedirp: true,
+            defecto_gedirp: true,
+        };
+
+        const qExist = new SelectQuery(`
+            SELECT ide_gedirp FROM gen_direccion_persona
+            WHERE ide_geper = $1 AND defecto_gedirp = true
+            LIMIT 1
+        `);
+        qExist.addIntParam(1, ideGeper);
+        const existDir = await this.dataSource.createSingleQuery(qExist);
+
+        if (existDir) {
+            const ideGedirp = existDir.ide_gedirp;
+            dirObject.ide_gedirp = ideGedirp;
+            listQuery.push({
+                operation: 'update',
+                module: 'gen',
+                tableName: 'direccion_persona',
+                primaryKey: 'ide_gedirp',
+                object: dirObject,
+                condition: `ide_gedirp = ${ideGedirp}`,
+            });
+        } else {
+            const ideGedirp = await this.dataSource.getSeqTable('gen_direccion_persona', 'ide_gedirp', 1, login);
+            dirObject.ide_gedirp = ideGedirp;
+            listQuery.push({
+                operation: 'insert',
+                module: 'gen',
+                tableName: 'direccion_persona',
+                primaryKey: 'ide_gedirp',
+                object: dirObject,
+            });
         }
     }
 

@@ -5,18 +5,18 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaveDto } from 'src/common/dto/save.dto';
 import { SearchDto } from 'src/common/dto/search.dto';
 import { UuidDto } from 'src/common/dto/uuid.dto';
+import { Auth } from 'src/core/auth';
 
 import { ComprasMensualesProveedorDto } from './dto/compras-mensuales-proveedor.dto';
 import { SetCuentaContableProveedorDto } from './dto/cuenta-contable-proveedor.dto';
+import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
 import { GetProveedoresDto } from './dto/get-proveedores.dto';
 import { IdProveedorDto } from './dto/id-proveedor.dto';
+import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
 import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
 import { ProveedorSaveService } from './proveedor-save.service';
 import { ProveedorService } from './proveedor.service';
-import { Auth } from 'src/core/auth';
-import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
-import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
 
 @ApiTags('Compras-Proveedores')
 @ApiBearerAuth('BearerAuth')

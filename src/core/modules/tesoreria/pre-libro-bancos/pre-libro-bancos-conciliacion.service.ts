@@ -155,6 +155,8 @@ export class PreLibroBancosConciliacionService extends BaseService {
             SELECT
                 a.ide_tecba,
                 b.nombre_teban,
+                b.foto_teban,
+                b.color_teban,
                 a.nombre_tecba,
                 c.nombre_tetcb,
                 a.ide_cndpc,
@@ -169,7 +171,6 @@ export class PreLibroBancosConciliacionService extends BaseService {
                     WHERE ccc.fecha_trans_cnccc BETWEEN $2 AND $3
                       AND ccc.ide_cneco = ANY($4)
                       AND dpc.ide_cndpc = a.ide_cndpc
-                      AND ccc.activo_cnccc = true
                 ) AS saldo_contable,
                 COALESCE((
                     SELECT SUM(aa.valor_teclb * bb.signo_tettb)

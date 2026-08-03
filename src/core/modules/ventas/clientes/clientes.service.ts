@@ -909,43 +909,103 @@ export class ClientesService extends BaseService {
 
     async save(dtoIn: SaveDto & HeaderParamsDto) {
         if (dtoIn.isUpdate === true) {
-            // Actualiza el cliente
             const isValid = await this.validateUpdateCliente(dtoIn.data, dtoIn.ideEmpr);
             if (isValid) {
                 const ide_geper = dtoIn.data.ide_geper;
-                // delete dtoIn.data.ide_geper;
-                // delete dtoIn.data.uuid;
-                const objQuery = {
+                const listQuery: ObjectQueryDto[] = [{
                     operation: 'update',
                     module: 'gen',
                     tableName: 'persona',
                     primaryKey: 'ide_geper',
                     object: dtoIn.data,
                     condition: `ide_geper = ${ide_geper}`,
-                } as ObjectQueryDto;
+                }];
+                await this.appendDireccionPrincipalQuery(listQuery, dtoIn.data, ide_geper, dtoIn.login);
                 return await this.core.save({
                     ...dtoIn,
-                    listQuery: [objQuery],
+                    listQuery,
                     audit: false,
                 });
             }
         } else {
-            // Crea el cliente
             const isValid = await this.validateInsertCliente(dtoIn.data, dtoIn.ideEmpr);
             if (isValid === true) {
-                const objQuery = {
+                const ide_geper = await this.dataSource.getSeqTable('gen_persona', 'ide_geper', 1, dtoIn.login);
+                dtoIn.data.ide_geper = ide_geper;
+                const listQuery: ObjectQueryDto[] = [{
                     operation: 'insert',
                     module: 'gen',
                     tableName: 'persona',
                     primaryKey: 'ide_geper',
                     object: dtoIn.data,
-                } as ObjectQueryDto;
+                }];
+                await this.appendDireccionPrincipalQuery(listQuery, dtoIn.data, ide_geper, dtoIn.login);
                 return await this.core.save({
                     ...dtoIn,
-                    listQuery: [objQuery],
+                    listQuery,
                     audit: true,
                 });
             }
+        }
+    }
+
+    private async appendDireccionPrincipalQuery(
+        listQuery: ObjectQueryDto[],
+        data: any,
+        ide_geper: number,
+        login: string,
+    ): Promise<void> {
+        const hasContactInfo =
+            data.direccion_geper != null ||
+            data.telefono_geper != null ||
+            data.correo_geper != null ||
+            data.movil_geper != null;
+        if (!hasContactInfo) return;
+
+        const dirObject: Record<string, unknown> = {
+            ide_geper,
+            ide_getidi: 1,
+            ide_gepais: 1,
+            ide_geprov: data.ide_geprov ?? null,
+            ide_gecant: data.ide_gecant ?? null,
+            nombre_dir_gedirp: 'Direccion Principal',
+            direccion_gedirp: data.direccion_geper ?? null,
+            telefono_gedirp: data.telefono_geper ?? null,
+            movil_gedirp: data.movil_geper ? String(data.movil_geper).substring(0, 10) : null,
+            correo_gedirp: data.correo_geper ?? null,
+            activo_gedirp: true,
+            defecto_gedirp: true,
+        };
+
+        const qExist = new SelectQuery(`
+            SELECT ide_gedirp FROM gen_direccion_persona
+            WHERE ide_geper = $1 AND defecto_gedirp = true
+            LIMIT 1
+        `);
+        qExist.addIntParam(1, ide_geper);
+        const existDir = await this.dataSource.createSingleQuery(qExist);
+
+        if (existDir) {
+            const ide_gedirp = existDir.ide_gedirp;
+            dirObject.ide_gedirp = ide_gedirp;
+            listQuery.push({
+                operation: 'update',
+                module: 'gen',
+                tableName: 'direccion_persona',
+                primaryKey: 'ide_gedirp',
+                object: dirObject,
+                condition: `ide_gedirp = ${ide_gedirp}`,
+            });
+        } else {
+            const ide_gedirp = await this.dataSource.getSeqTable('gen_direccion_persona', 'ide_gedirp', 1, login);
+            dirObject.ide_gedirp = ide_gedirp;
+            listQuery.push({
+                operation: 'insert',
+                module: 'gen',
+                tableName: 'direccion_persona',
+                primaryKey: 'ide_gedirp',
+                object: dirObject,
+            });
         }
     }
 

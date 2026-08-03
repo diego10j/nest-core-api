@@ -9,6 +9,7 @@ import { ConciliarMovimientosDto } from './dto/conciliar-movimientos.dto';
 import { ExisteNumTransaccionDto } from './dto/existe-num-transaccion.dto';
 import { GetDetalleTransaccionDto } from './dto/get-detalle-transaccion.dto';
 import { GetSaldoCuentaDto } from './dto/get-saldo-cuenta.dto';
+import { GetTransaccionesCuentaKPIDto } from './dto/get-transacciones-cuenta-kpi.dto';
 import { GetTransaccionesCuentaDto } from './dto/get-transacciones-cuenta.dto';
 import { GetPosicionConsolidadaDto } from './dto/posicion-consolidada.dto';
 import { ReversarTransaccionDto } from './dto/reversar-transaccion.dto';
@@ -46,6 +47,15 @@ export class PreLibroBancosController {
         @Query() dtoIn: GetTransaccionesCuentaDto,
     ) {
         return this.service.getTransaccionesCuentaNoConciliado({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTransaccionesCuentaKPI')
+    @ApiOperation({ summary: 'KPI de movimientos de una cuenta bancaria en rango de fechas' })
+    getTransaccionesCuentaKPI(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetTransaccionesCuentaKPIDto,
+    ) {
+        return this.service.getTransaccionesCuentaKPI({ ...headersParams, ...dtoIn });
     }
 
     @Get('getDetalleTransaccion')
