@@ -196,7 +196,11 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
         (acc, v) => {
             // Mismo criterio que en compras: las notas de crédito de venta restan del neto del período.
             const signo = v.tipoComprobante === CODIGO_NOTA_CREDITO ? -1 : 1;
-            acc.numeroComprobantes += Number(v.numeroComprobantes ?? 0);
+            // "No. Registros" del talón cuenta filas del XML (una por cliente agregado), no la
+            // suma del campo numeroComprobantes de cada fila (que es el total de facturas
+            // individuales agrupadas bajo ese cliente) — paridad con el conteo que hace el
+            // validador/DIMM del SRI.
+            acc.numeroComprobantes += 1;
             acc.base0 += signo * Number(v.baseImponible ?? 0);
             acc.baseGravada += signo * Number(v.baseImpGrav ?? 0);
             acc.montoIva += signo * Number(v.montoIva ?? 0);
@@ -220,7 +224,7 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
             baseNoGraIva: 0,
             montoIva: 0,
         };
-        fila.numeroComprobantes += Number(v.numeroComprobantes ?? 0);
+        fila.numeroComprobantes += 1;
         fila.base0 += Number(v.baseImponible ?? 0);
         fila.baseGravada += Number(v.baseImpGrav ?? 0);
         fila.baseNoGraIva += Number(v.baseNoGraIva ?? 0);
