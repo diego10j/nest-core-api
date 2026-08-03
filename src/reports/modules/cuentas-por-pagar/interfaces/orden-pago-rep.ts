@@ -57,6 +57,7 @@ export interface CuentaBancoProveedor {
     numero_cpcbp: string;
     nombre_teban: string | null;
     nombre_tetcb: string | null;
+    observacion_cpcbp: string | null;
 }
 
 export interface OrdenPagoGrupoProveedor {

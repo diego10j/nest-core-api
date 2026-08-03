@@ -168,10 +168,10 @@ export class CuentasPorPagarRepService {
 
         const queryCtas = new SelectQuery(`
             SELECT sub.ide_cpcbp, sub.ide_geper, sub.nombre_cpcbp, sub.numero_cpcbp,
-                   sub.nombre_teban, sub.nombre_tetcb
+                   sub.nombre_teban, sub.nombre_tetcb, sub.observacion_cpcbp
             FROM (
                 SELECT cb.ide_cpcbp, cb.ide_geper, cb.nombre_cpcbp, cb.numero_cpcbp,
-                       b.nombre_teban, tc.nombre_tetcb,
+                       b.nombre_teban, tc.nombre_tetcb, cb.observacion_cpcbp,
                        ROW_NUMBER() OVER (PARTITION BY cb.ide_geper ORDER BY cb.defecto_cpcbp DESC, cb.nombre_cpcbp) AS rn
                 FROM cxp_cta_banco_prove cb
                 LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban

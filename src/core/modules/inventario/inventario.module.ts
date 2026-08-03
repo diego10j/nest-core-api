@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
 import { IntegrationModule } from '../../integration/integration.module';
@@ -31,7 +32,7 @@ import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
 
 @Module({
-  imports: [IntegrationModule],
+  imports: [ConfigModule, IntegrationModule],
   controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController],
   providers: [
     ProductosService,

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
 import { AuditService } from '../audit/audit.service';
@@ -22,7 +23,7 @@ import { FirmaXmlService } from './firma/firma-xml.service';
 import { SriSoapClientService } from './soap/sri-soap-client.service';
 
 @Module({
-  imports: [ConfiguracionModule],
+  imports: [ConfigModule, ConfiguracionModule],
   controllers: [ComprobantesElecController, FirmaController, EmisorController, ComprobanteEnvioController, AtsController],
   providers: [
     AuditService,

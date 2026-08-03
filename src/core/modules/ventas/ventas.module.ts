@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
 import { WhatsappModule } from '../../whatsapp/whatsapp.module';
@@ -27,7 +28,7 @@ import { TransportesController } from './transportes/transportes.controller';
 import { TransportesService } from './transportes/transportes.service';
 
 @Module({
-  imports: [WhatsappModule, SriModule, FilesModule],
+  imports: [ConfigModule, WhatsappModule, SriModule, FilesModule],
   controllers: [
     ClientesController,
     FacturasController,

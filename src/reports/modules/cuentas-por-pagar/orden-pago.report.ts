@@ -114,9 +114,20 @@ export const ordenPagoReport = (
                 if (c.nombre_teban) partes.push(c.nombre_teban);
                 if (c.numero_cpcbp) partes.push(`Nro. ${c.numero_cpcbp}`);
                 if (c.nombre_tetcb) partes.push(`(${c.nombre_tetcb})`);
-                return partes.join(' ');
-            }).join(' | ')
-            : '---';
+                return {
+                    stack: [
+                        { text: partes.join(' ') || '---', fontSize: 7.5, color: COLOR.ink },
+                        ...(c.observacion_cpcbp ? [{ text: c.observacion_cpcbp, fontSize: 6, color: COLOR.muted, margin: [0, 1, 0, 0] as [number, number, number, number] }] : []),
+                    ],
+                };
+            }).reduce<Content[]>((acc, stack, idx, arr) => {
+                acc.push(stack);
+                if (idx < arr.length - 1) {
+                    acc.push({ text: ' | ', fontSize: 7.5, color: COLOR.muted });
+                }
+                return acc;
+            }, [])
+            : [{ text: '---', fontSize: 7.5, color: COLOR.ink }];
 
         return [
             td(g.numPago, fill, 'center'),
@@ -130,7 +141,12 @@ export const ordenPagoReport = (
             },
             td(g.facturas, fill),
             td(fCurrency(g.valorTotal), fill, 'right'),
-            td(cuentasTexto, fill),
+            {
+                stack: cuentasTexto,
+                fillColor: fill,
+                border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                margin: [4, 5, 4, 5] as [number, number, number, number],
+            },
         ];
     });
 
