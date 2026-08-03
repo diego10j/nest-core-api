@@ -144,6 +144,18 @@ export interface AtsAnuladoDto {
     autorizacion: string;
 }
 
+/**
+ * Una línea de retención de IVA por concepto/porcentaje (con_cabece_impues.casillero_cncim/
+ * nombre_cncim, filtrado por con_impuesto.codigo_fe_cnimp = IVA), agregada para todo el período —
+ * solo para el Talón Resumen (no viaja en el XML del ATS, que ya reporta esto vía valorRetBienes/
+ * valorRetServicios/valRetServ100 por comprobante).
+ */
+export interface AtsRetencionIvaConceptoDto {
+    codigo: string;
+    nombre: string;
+    valor: number;
+}
+
 /** Anexo Transaccional Simplificado completo, listo para armar el XML. */
 export interface AtsAnexoDto {
     anio: string;
@@ -157,4 +169,5 @@ export interface AtsAnexoDto {
     ventas: AtsVentaDto[];
     ventasEstablecimiento: AtsVentaEstablecimientoDto[];
     anulados: AtsAnuladoDto[];
+    retencionIvaCompras: AtsRetencionIvaConceptoDto[];
 }

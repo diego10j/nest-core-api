@@ -45,17 +45,38 @@ export interface AtsResumenRetencionDetalleDto {
 }
 
 /**
+ * Retención reportada por operación (COMPRA/VENTA) y concepto, paridad con las tablas
+ * "RETENCIÓN EN LA FUENTE DE IVA" y "RESUMEN DE RETENCIONES QUE LE EFECTUARON EN EL PERIODO"
+ * del Talón Resumen del SRI.
+ */
+export interface AtsResumenRetencionOperacionDto {
+    operacion: 'COMPRA' | 'VENTA';
+    concepto: string;
+    valor: number;
+}
+
+/**
  * Resumen del Anexo Transaccional Simplificado (ATS), equivalente al panel de totales que
  * muestra el validador/DIMM Anexos del SRI antes de subir el XML — pensado para que el
  * contador revise las cifras del período sin tener que abrir/leer el XML.
  */
 export interface AtsResumenDto {
+    /** Formato legible, ej. "Marzo 2026". */
     periodo: string;
+    /** Año calendario, ej. "2026" — paridad con el "Periodo: MM-YYYY" del talón oficial del SRI. */
+    anio: string;
+    /** Mes calendario de 2 dígitos, ej. "03". */
+    mes: string;
     ruc: string;
     razonSocial: string;
     compras: {
         numeroComprobantes: number;
+        /** Neto del período (BI tarifa 0% + BI tarifa diferente 0%), notas de crédito restadas. */
         baseImponible: number;
+        /** BI tarifa 0% neta del período — columna "BI tarifa 0%" del talón. */
+        base0: number;
+        /** BI tarifa diferente de 0% neta del período — columna "BI tarifa diferente 0%" del talón. */
+        baseGravada: number;
         baseNoGraIva: number;
         baseImpExe: number;
         montoIva: number;
@@ -69,6 +90,8 @@ export interface AtsResumenDto {
     ventas: {
         numeroComprobantes: number;
         baseImponible: number;
+        base0: number;
+        baseGravada: number;
         montoIva: number;
         montoIce: number;
         retencionIva: number;
@@ -78,6 +101,10 @@ export interface AtsResumenDto {
     };
     anulados: number;
     establecimientos: number;
+    /** Tabla "RETENCIÓN EN LA FUENTE DE IVA" del talón — retenciones de IVA aplicadas en compras, por porcentaje/concepto. */
+    retencionIvaCompras: AtsResumenRetencionOperacionDto[];
+    /** Tabla "RESUMEN DE RETENCIONES QUE LE EFECTUARON EN EL PERIODO" del talón — IVA y Renta que le retuvieron en ventas. */
+    retencionesRecibidas: AtsResumenRetencionOperacionDto[];
 }
 
 const MESES = [
@@ -91,6 +118,13 @@ const NOMBRE_TIPO_VENTA: Record<string, string> = {
     '18': 'Documentos Autorizados en Ventas Excepto NC',
 };
 
+/**
+ * Código de tipo de comprobante "Notas de Crédito" (con_tipo_document.alter_tribu_cntdo). El
+ * Talón Resumen del SRI muestra estas filas con magnitud positiva en el detalle, pero las RESTA
+ * del TOTAL de la sección (compras/ventas netas del período) — no las suma como un documento más.
+ */
+const CODIGO_NOTA_CREDITO = '04';
+
 /** Arma el resumen de totales del anexo a partir del mismo AtsAnexoDto usado para construir el XML. */
 export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
     const mesIndex = Number(anexo.mes) - 1;
@@ -98,12 +132,16 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
 
     const compras = anexo.compras.reduce(
         (acc, c) => {
+            // Las notas de crédito de compra reducen las compras netas del período (paridad con
+            // el TOTAL del talón oficial), aunque su fila propia en el detalle se muestre positiva.
+            const signo = c.tipoComprobante === CODIGO_NOTA_CREDITO ? -1 : 1;
             acc.numeroComprobantes += 1;
-            acc.baseImponible += Number(c.baseImponible ?? 0) + Number(c.baseImpGrav ?? 0);
-            acc.baseNoGraIva += Number(c.baseNoGraIva ?? 0);
-            acc.baseImpExe += Number(c.baseImpExe ?? 0);
-            acc.montoIva += Number(c.montoIva ?? 0);
-            acc.montoIce += Number(c.montoIce ?? 0);
+            acc.base0 += signo * Number(c.baseImponible ?? 0);
+            acc.baseGravada += signo * Number(c.baseImpGrav ?? 0);
+            acc.baseNoGraIva += signo * Number(c.baseNoGraIva ?? 0);
+            acc.baseImpExe += signo * Number(c.baseImpExe ?? 0);
+            acc.montoIva += signo * Number(c.montoIva ?? 0);
+            acc.montoIce += signo * Number(c.montoIce ?? 0);
             // Retención de IVA (30%/70%/100% del IVA pagado) — distinta de la retención de Renta.
             acc.retencionIva += Number(c.valorRetBienes ?? 0) + Number(c.valorRetServicios ?? 0) + Number(c.valRetServ100 ?? 0);
             // Retención de Renta: viaja en el detalle `air[]` de cada compra, no en valorRetBienes/etc.
@@ -111,7 +149,7 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
             return acc;
         },
         {
-            numeroComprobantes: 0, baseImponible: 0, baseNoGraIva: 0, baseImpExe: 0,
+            numeroComprobantes: 0, base0: 0, baseGravada: 0, baseNoGraIva: 0, baseImpExe: 0,
             montoIva: 0, montoIce: 0, retencionIva: 0, retencionRenta: 0,
         },
     );
@@ -156,15 +194,18 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
 
     const ventas = anexo.ventas.reduce(
         (acc, v) => {
+            // Mismo criterio que en compras: las notas de crédito de venta restan del neto del período.
+            const signo = v.tipoComprobante === CODIGO_NOTA_CREDITO ? -1 : 1;
             acc.numeroComprobantes += Number(v.numeroComprobantes ?? 0);
-            acc.baseImponible += Number(v.baseImponible ?? 0) + Number(v.baseImpGrav ?? 0);
-            acc.montoIva += Number(v.montoIva ?? 0);
-            acc.montoIce += Number(v.montoIce ?? 0);
+            acc.base0 += signo * Number(v.baseImponible ?? 0);
+            acc.baseGravada += signo * Number(v.baseImpGrav ?? 0);
+            acc.montoIva += signo * Number(v.montoIva ?? 0);
+            acc.montoIce += signo * Number(v.montoIce ?? 0);
             acc.retencionIva += Number(v.valorRetIva ?? 0);
             acc.retencionRenta += Number(v.valorRetRenta ?? 0);
             return acc;
         },
-        { numeroComprobantes: 0, baseImponible: 0, montoIva: 0, montoIce: 0, retencionIva: 0, retencionRenta: 0 },
+        { numeroComprobantes: 0, base0: 0, baseGravada: 0, montoIva: 0, montoIce: 0, retencionIva: 0, retencionRenta: 0 },
     );
 
     const ventasDetallePorTipo = new Map<string, AtsResumenVentaDetalleDto>();
@@ -188,22 +229,39 @@ export function buildAtsResumen(anexo: AtsAnexoDto): AtsResumenDto {
     }
     const ventasDetalle = [...ventasDetallePorTipo.values()].sort((a, b) => a.codigo.localeCompare(b.codigo));
 
+    const retencionIvaCompras: AtsResumenRetencionOperacionDto[] = anexo.retencionIvaCompras.map((r) => ({
+        operacion: 'COMPRA',
+        concepto: r.nombre || r.codigo,
+        valor: r.valor,
+    }));
+
+    const retencionesRecibidas: AtsResumenRetencionOperacionDto[] = [
+        { operacion: 'VENTA', concepto: 'Valor de IVA que le han retenido', valor: ventas.retencionIva },
+        { operacion: 'VENTA', concepto: 'Valor de Renta que le han retenido', valor: ventas.retencionRenta },
+    ];
+
     return {
         periodo: `${nombreMes} ${anexo.anio}`,
+        anio: anexo.anio,
+        mes: anexo.mes,
         ruc: anexo.ruc,
         razonSocial: anexo.razonSocial,
         compras: {
             ...compras,
-            total: compras.baseImponible + compras.baseNoGraIva + compras.baseImpExe + compras.montoIva + compras.montoIce,
+            baseImponible: compras.base0 + compras.baseGravada,
+            total: compras.base0 + compras.baseGravada + compras.baseNoGraIva + compras.baseImpExe + compras.montoIva + compras.montoIce,
             detalle,
             retenciones,
         },
         ventas: {
             ...ventas,
-            total: ventas.baseImponible + ventas.montoIva + ventas.montoIce,
+            baseImponible: ventas.base0 + ventas.baseGravada,
+            total: ventas.base0 + ventas.baseGravada + ventas.montoIva + ventas.montoIce,
             detalle: ventasDetalle,
         },
         anulados: anexo.anulados.length,
         establecimientos: anexo.ventasEstablecimiento.length,
+        retencionIvaCompras,
+        retencionesRecibidas,
     };
 }

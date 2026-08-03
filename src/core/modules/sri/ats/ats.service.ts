@@ -13,12 +13,15 @@ import {
     AtsCompraDto,
     AtsQueryDto,
     AtsReembolsoDto,
+    AtsRetencionIvaConceptoDto,
     AtsVentaDto,
     AtsVentaEstablecimientoDto,
 } from './dto/ats.dto';
 
 /** Renta (con_impuesto.ide_cnimp) — no existe como variable de sistema, hardcoded igual que el legacy. */
 const IDE_CNIMP_RENTA = 1;
+/** con_impuesto.codigo_fe_cnimp para IVA (catálogo SRI de impuestos, TipoImpuestoCodigo.IVA). */
+const CODIGO_FE_CNIMP_IVA = '2';
 /** con_tipo_document.ide_cntdo "Importaciones": no se reporta en el ATS (paridad legacy). */
 const IDE_CNTDO_IMPORTACIONES = '11';
 /** cxp_cabecera_nota (notas de crédito de venta) — estado "normal", hardcoded igual que el legacy. */
@@ -89,6 +92,9 @@ export class AtsService extends BaseService {
         const incluyeVentas = opcion === '1' || opcion === '3';
 
         const compras = incluyeCompras ? await this.getCompras(fechaInicio, fechaFin, dtoIn.ideSucu) : null;
+        const retencionIvaCompras = incluyeCompras
+            ? await this.getRetencionIvaPorConcepto(fechaInicio, fechaFin, dtoIn.ideSucu)
+            : [];
 
         let ventas: AtsVentaDto[] | null = null;
         let ventasEstablecimiento: AtsVentaEstablecimientoDto[] | null = null;
@@ -119,6 +125,7 @@ export class AtsService extends BaseService {
             ventas: ventas ?? [],
             ventasEstablecimiento: ventasEstablecimiento ?? [],
             anulados,
+            retencionIvaCompras,
         };
     }
 
@@ -340,6 +347,43 @@ export class AtsService extends BaseService {
             mapa.set(ideCncre, lista);
         }
         return mapa;
+    }
+
+    /**
+     * Retención de IVA del período agrupada por concepto/porcentaje (10%, 20%, 30%, 50%, 70%,
+     * 100%, NC, etc. — lo que esté configurado en con_cabece_impues bajo el impuesto IVA), para
+     * la sección "RETENCIÓN EN LA FUENTE DE IVA" del Talón Resumen. Consulta independiente del
+     * loop de getCompras(): mismo filtro base de período/sucursal/estado, pero solo para el
+     * resumen visual — no afecta el XML del ATS.
+     */
+    private async getRetencionIvaPorConcepto(fechaInicio: string, fechaFin: string, ideSucu: number): Promise<AtsRetencionIvaConceptoDto[]> {
+        const ideEstadoNormalCxp = this.getVar('p_cxp_estado_factura_normal');
+        const query = new SelectQuery(`
+            SELECT impuesto.casillero_cncim AS codigo, impuesto.nombre_cncim AS nombre, SUM(detalle.valor_cndre) AS valor
+            FROM cxp_cabece_factur cabece
+            INNER JOIN con_cabece_retenc rete ON cabece.ide_cncre = rete.ide_cncre
+            INNER JOIN con_detall_retenc detalle ON detalle.ide_cncre = rete.ide_cncre
+            INNER JOIN con_cabece_impues impuesto ON detalle.ide_cncim = impuesto.ide_cncim
+            INNER JOIN con_impuesto ci ON impuesto.ide_cnimp = ci.ide_cnimp
+            WHERE cabece.fecha_emisi_cpcfa BETWEEN $1 AND $2
+              AND cabece.ide_rem_cpcfa IS NULL
+              AND cabece.ide_cpefa = $3
+              AND cabece.ide_sucu = $4
+              AND ci.codigo_fe_cnimp = $5
+            GROUP BY impuesto.casillero_cncim, impuesto.nombre_cncim
+            ORDER BY impuesto.casillero_cncim
+        `);
+        query.addStringParam(1, fechaInicio);
+        query.addStringParam(2, fechaFin);
+        query.addIntParam(3, ideEstadoNormalCxp);
+        query.addIntParam(4, ideSucu);
+        query.addStringParam(5, CODIGO_FE_CNIMP_IVA);
+        const filas = await this.dataSource.createSelectQuery(query);
+        return filas.map((f) => ({
+            codigo: f.codigo ?? '',
+            nombre: f.nombre ?? '',
+            valor: Number(f.valor ?? 0),
+        }));
     }
 
     private async getTotalBasesReembolso(ideCpcfaPadre: number, ideEstadoNormalCxp: number): Promise<number> {
