@@ -97,6 +97,7 @@ export class DocumentosCxPSaveService extends BaseService {
                 'p_con_tipo_documento_reembolso',
                 'p_con_tipo_documento_liquidacion_compra',
                 'p_inv_estado_normal',
+                'p_inv_estado_anulado',
                 'p_inv_tipo_transaccion_compra',
             ])
             .then((result) => {
@@ -142,6 +143,10 @@ export class DocumentosCxPSaveService extends BaseService {
 
     private get ideEstadoNormalInv(): number {
         return this.getVar('p_inv_estado_normal');
+    }
+
+    private get ideEstadoAnuladoInv(): number {
+        return this.getVar('p_inv_estado_anulado');
     }
 
     private get ideTipoTransaccionCompraInv(): number {
@@ -514,11 +519,11 @@ export class DocumentosCxPSaveService extends BaseService {
         // 4. Anular comprobante de inventario si existe
         await this.dataSource.pool.query(
             `UPDATE inv_cab_comp_inve
-             SET ide_inepi = 4
+             SET ide_inepi = $2
              WHERE ide_incci IN (
                  SELECT ide_incci FROM inv_det_comp_inve WHERE ide_cpcfa = $1 GROUP BY ide_incci
              )`,
-            [dtoIn.ide_cpcfa],
+            [dtoIn.ide_cpcfa, this.ideEstadoAnuladoInv],
         );
 
         return this.core.save({ ...dtoIn, listQuery, audit: false });
