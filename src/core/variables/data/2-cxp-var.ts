@@ -12,4 +12,15 @@ export const CUENTAS_POR_PAGAR_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_PAGAR.ID,
+    nom_para: 'p_cxp_articulo_servicios_logisticos',
+    descripcion_para: 'Artículo por defecto (COMPRAS SERVICIOS LOGISTICOS) para crear el documento por pagar del flete al cargar el XML desde el Reporte de Envío de Facturas ',
+    valor_para: '4751',
+    tabla_para: 'inv_articulo',
+    campo_codigo_para: 'ide_inarti',
+    campo_nombre_para: 'nombre_inarti',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

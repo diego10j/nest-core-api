@@ -944,6 +944,7 @@ export class FacturasService extends BaseService {
                 e.ide_vgtra,
                 t.nombre_vgtra AS nombre_transporte,
                 t.logo_vgtra AS logo_transporte,
+                t.ide_geper AS ide_geper_transporte,
                 ee.nombre_cceen AS estado_envio,
                 ee.color_cceen AS color_estado_envio,
                 e.path_imagen_guia_cctfa,
@@ -957,6 +958,9 @@ export class FacturasService extends BaseService {
                 e.flete_pagado_cctfa,
                 e.total_flete_cctfa,
                 e.total_flete_real_cctfa,
+                e.ide_cpcfa AS ide_cpcfa_flete,
+                cf.numero_cpcfa AS numero_factura_flete,
+                cf.total_cpcfa AS total_factura_flete,
                 CASE
                     WHEN e.flete_pagado_cctfa = true
                          AND e.total_flete_cctfa != e.total_flete_real_cctfa
@@ -985,6 +989,7 @@ export class FacturasService extends BaseService {
             )
             LEFT JOIN ven_transporte t     ON e.ide_vgtra = t.ide_vgtra
             LEFT JOIN cxc_estado_envio ee  ON e.ide_cceen = ee.ide_cceen
+            LEFT JOIN cxp_cabece_factur cf ON e.ide_cpcfa = cf.ide_cpcfa
             WHERE TRUE
                 ${condTipo}
                 ${condIdeCceen}
