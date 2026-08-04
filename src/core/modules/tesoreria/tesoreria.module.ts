@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreService } from 'src/core/core.service';
 import { IntegrationModule } from 'src/core/integration/integration.module';
 import { ContabilidadModule } from 'src/core/modules/contabilidad/contabilidad.module';
+import { FilesModule } from 'src/core/modules/sistema/files/files.module';
 
 import { BancosSaveService } from './bancos/bancos-save.service';
 import { BancosController } from './bancos/bancos.controller';
@@ -32,7 +33,7 @@ import { TesoreriaController } from './tesoreria.controller';
 import { TesoreriaService } from './tesoreria.service';
 
 @Module({
-    imports: [IntegrationModule, ContabilidadModule],
+    imports: [IntegrationModule, ContabilidadModule, FilesModule],
     controllers: [
         TesoreriaController,
         PreLibroBancosController,
