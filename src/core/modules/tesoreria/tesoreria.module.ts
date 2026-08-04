@@ -66,6 +66,6 @@ import { TesoreriaService } from './tesoreria.service';
         CxpTransaccionesSaveService,
         CoreService,
     ],
-    exports: [TransaccionesTesoreriaService],
+    exports: [TransaccionesTesoreriaService, PreLibroBancosSaveService],
 })
 export class TesoreriaModule { }

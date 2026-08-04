@@ -9,6 +9,7 @@ import { EmisorService } from 'src/core/modules/sri/cel/emisor.service';
 import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
 import { SriComprobanteCabeceraService } from 'src/core/modules/sri/cel/sri-comprobante-cabecera.service';
 import { SriEnvioQueueService } from 'src/core/modules/sri/envio/sri-envio-queue.service';
+import { PreLibroBancosSaveService } from 'src/core/modules/tesoreria/pre-libro-bancos/pre-libro-bancos-save.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 
@@ -83,6 +84,7 @@ export class DocumentosCxPSaveService extends BaseService {
         private readonly emisorService: EmisorService,
         private readonly sriComprobanteCabeceraService: SriComprobanteCabeceraService,
         private readonly sriEnvioQueueService: SriEnvioQueueService,
+        private readonly preLibroBancosSaveService: PreLibroBancosSaveService,
     ) {
         super();
         this.core
@@ -116,6 +118,10 @@ export class DocumentosCxPSaveService extends BaseService {
 
     private get ideEstadoNormal(): number {
         return this.getVar('p_cxp_estado_factura_normal');
+    }
+
+    private get ideEstadoAnulada(): number {
+        return this.getVar('p_cxp_estado_factura_anulada');
     }
 
     private get ideTipoTransFactura(): number {
@@ -410,21 +416,48 @@ export class DocumentosCxPSaveService extends BaseService {
     }
 
     /**
-     * Anula un documento CxP: cambia estado, anula asiento contable,
-     * elimina transacciones CxP y de inventario asociadas
+     * Anula un documento CxP: cambia estado, anula asiento contable, reversa los
+     * pagos de tesorería ya registrados (si existen) y elimina transacciones CxP
+     * y de inventario asociadas.
      */
     async anularDocumento(dtoIn: AnularDocumentoCxPDto & HeaderParamsDto) {
         // El documento no puede anularse si tiene un comprobante de retención
         // registrado: primero debe anularse la retención (paridad legacy)
-        const qRetencion = new SelectQuery(`
-            SELECT ide_cncre FROM cxp_cabece_factur WHERE ide_cpcfa = $1
+        const qDoc = new SelectQuery(`
+            SELECT ide_cncre, ide_cpefa FROM cxp_cabece_factur WHERE ide_cpcfa = $1
         `);
-        qRetencion.addIntParam(1, dtoIn.ide_cpcfa);
-        const doc = await this.dataSource.createSingleQuery(qRetencion);
-        if (doc?.ide_cncre) {
+        qDoc.addIntParam(1, dtoIn.ide_cpcfa);
+        const doc = await this.dataSource.createSingleQuery(qDoc);
+        if (!doc) {
+            throw new BadRequestException(`El documento ide_cpcfa=${dtoIn.ide_cpcfa} no existe.`);
+        }
+        if (doc.ide_cncre) {
             throw new BadRequestException(
                 'El documento tiene una retención registrada. Primero anule el comprobante de retención.',
             );
+        }
+        if (Number(doc.ide_cpefa) === this.ideEstadoAnulada) {
+            throw new BadRequestException('El documento ya se encuentra anulado.');
+        }
+
+        // Reversar primero los pagos de tesorería ya registrados contra este documento
+        // (si existen): cada uno cambia de estado tes_cab_libr_banc, anula su propio
+        // asiento contable y elimina su fila de aplicación en cxp_detall_transa. Sin este
+        // paso, la eliminación masiva del punto 3 dejaría esos movimientos de banco/caja
+        // huérfanos (activos, con asiento vigente) sin ninguna cuenta por pagar que los
+        // respalde — paridad con pre_factura_cxp.eliminarFactura() del legacy.
+        const pagosQuery = new SelectQuery(`
+            SELECT DISTINCT ide_teclb
+            FROM cxp_detall_transa
+            WHERE ide_cpcfa = $1 AND numero_pago_cpdtr > 0 AND ide_teclb IS NOT NULL
+        `);
+        pagosQuery.addIntParam(1, dtoIn.ide_cpcfa);
+        const pagos = await this.dataSource.createSelectQuery(pagosQuery);
+        for (const pago of pagos) {
+            await this.preLibroBancosSaveService.anularMovimiento({
+                ...dtoIn,
+                ideTeclb: Number(pago.ide_teclb),
+            });
         }
 
         const listQuery: ObjectQueryDto[] = [];
@@ -437,7 +470,7 @@ export class DocumentosCxPSaveService extends BaseService {
             primaryKey: 'ide_cpcfa',
             object: {
                 ide_cpcfa: dtoIn.ide_cpcfa,
-                ide_cpefa: 1,
+                ide_cpefa: this.ideEstadoAnulada,
             },
         });
 
@@ -466,7 +499,9 @@ export class DocumentosCxPSaveService extends BaseService {
             );
         }
 
-        // 3. Eliminar transacciones CxP de detalle y cabecera
+        // 3. Eliminar transacciones CxP de detalle y cabecera (a esta altura ya sin
+        //    filas de pago activas: solo queda el cargo original y, si aplica, la
+        //    retención)
         await this.dataSource.pool.query(
             `DELETE FROM cxp_detall_transa WHERE ide_cpcfa = $1`,
             [dtoIn.ide_cpcfa],

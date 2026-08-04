@@ -118,6 +118,77 @@ export class DocumentosCxPService extends BaseService {
     }
 
     /**
+     * Retorna el listado de documentos CxP en un rango de fechas con saldo pendiente y
+     * estado de pago (Pagado / Parcial / Pendiente), para la página "Documentos por
+     * Pagar" (Compras) — paridad de columnas con ventas/facturas.getFacturas.
+     */
+    async getReporteDocumentos(dtoIn: GetDocumentosCxPDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
+        const condicionTipo = dtoIn.ide_cntdo ? `AND a.ide_cntdo = ${dtoIn.ide_cntdo}` : '';
+
+        const query = new SelectQuery(
+            `
+            WITH documentos_filtrados AS (
+                SELECT a.ide_cpcfa, a.ide_cntdo, a.fecha_emisi_cpcfa, a.numero_cpcfa,
+                       a.autorizacio_cpcfa, a.ide_geper, a.ide_cnccc, a.ide_cncre, a.pagado_cpcfa,
+                       a.base_grabada_cpcfa,
+                       a.base_tarifa0_cpcfa + a.base_no_objeto_iva_cpcfa AS base0,
+                       a.valor_iva_cpcfa, a.total_cpcfa, a.observacion_cpcfa, a.fecha_trans_cpcfa
+                FROM cxp_cabece_factur a
+                WHERE a.fecha_emisi_cpcfa BETWEEN $1 AND $2
+                  AND a.ide_cpefa = ${estadoNormal}
+                  AND a.ide_sucu = $3
+                  AND a.ide_rem_cpcfa IS NULL
+                  ${condicionTipo}
+            ),
+            saldos AS (
+                SELECT dt.ide_cpcfa, SUM(dt.valor_cpdtr * tt.signo_cpttr) AS saldo
+                FROM cxp_detall_transa dt
+                INNER JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+                WHERE dt.ide_cpcfa IN (SELECT ide_cpcfa FROM documentos_filtrados)
+                GROUP BY dt.ide_cpcfa
+            )
+            SELECT d.ide_cpcfa,
+                   d.ide_cntdo,
+                   e.nombre_cntdo,
+                   d.fecha_emisi_cpcfa,
+                   d.numero_cpcfa,
+                   d.autorizacio_cpcfa,
+                   p.nom_geper,
+                   p.identificac_geper,
+                   d.base_grabada_cpcfa AS ventas12,
+                   d.base0 AS ventas0,
+                   d.valor_iva_cpcfa,
+                   d.total_cpcfa,
+                   COALESCE(d.total_cpcfa - s.saldo, d.total_cpcfa) AS total_pagado,
+                   COALESCE(s.saldo, d.total_cpcfa) AS saldo,
+                   CASE
+                       WHEN d.pagado_cpcfa THEN 'Pagado'
+                       WHEN COALESCE(s.saldo, d.total_cpcfa) >= d.total_cpcfa THEN 'Pendiente'
+                       WHEN COALESCE(s.saldo, d.total_cpcfa) <= 0 THEN 'Pagado'
+                       ELSE 'Parcial'
+                   END AS estado_pago,
+                   d.ide_cnccc,
+                   d.ide_cncre,
+                   f.numero_cncre,
+                   d.observacion_cpcfa,
+                   d.fecha_trans_cpcfa
+            FROM documentos_filtrados d
+            INNER JOIN gen_persona p ON d.ide_geper = p.ide_geper
+            INNER JOIN con_tipo_document e ON d.ide_cntdo = e.ide_cntdo
+            LEFT JOIN con_cabece_retenc f ON d.ide_cncre = f.ide_cncre
+            LEFT JOIN saldos s ON s.ide_cpcfa = d.ide_cpcfa
+            ORDER BY d.fecha_emisi_cpcfa DESC, d.numero_cpcfa DESC, d.ide_cpcfa DESC
+            `,
+            dtoIn,
+        );
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
      * Retorna los documentos CxP anulados en un rango de fechas
      */
     async getDocumentosAnulados(dtoIn: GetDocumentosCxPDto & HeaderParamsDto) {

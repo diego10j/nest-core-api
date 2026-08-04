@@ -62,6 +62,16 @@ export class DocumentosCxPController {
         return this.service.getDocumentos({ ...headersParams, ...dtoIn });
     }
 
+    @Get('getReporteDocumentos')
+    @Auth()
+    @ApiOperation({ summary: 'Listar documentos CxP con saldo y estado de pago (página Documentos por Pagar)' })
+    getReporteDocumentos(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetDocumentosCxPDto,
+    ) {
+        return this.service.getReporteDocumentos({ ...headersParams, ...dtoIn });
+    }
+
     @Get('getDocumentoById/:ide_cpcfa')
     @Auth()
     @ApiOperation({ summary: 'Obtener documento CxP completo por ID' })
@@ -387,5 +397,17 @@ export class DocumentosCxPController {
     ) {
         if (!file) throw new BadRequestException('Debe seleccionar un archivo XML');
         return this.envioFacturaService.prepararFacturaFleteDesdeXml(Number(ideCctfa), file.buffer, headersParams);
+    }
+
+    @Post('envios/:ideCctfa/anularFacturaFlete')
+    @Auth()
+    @ApiOperation({
+        summary: 'Anula la factura de flete de un envío (documento CxP + pago de tesorería si existe) y desvincula el envío',
+    })
+    anularFacturaFleteEnvio(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Param('ideCctfa') ideCctfa: string,
+    ) {
+        return this.envioFacturaService.anularFacturaFlete(Number(ideCctfa), headersParams);
     }
 }

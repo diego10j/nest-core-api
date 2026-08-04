@@ -4,6 +4,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
+import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto';
 
@@ -67,6 +68,7 @@ export class EnvioFacturaCxPService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
         private readonly xmlService: DocumentosCxPXmlService,
+        private readonly documentosCxPSaveService: DocumentosCxPSaveService,
     ) { }
 
     async prepararFacturaFleteDesdeXml(
@@ -116,6 +118,40 @@ export class EnvioFacturaCxPService {
             ide_cndfp1: ideCndfp1,
             ide_srtst: ideSrtst,
             productos,
+        };
+    }
+
+    /**
+     * Anula la factura de flete de un envío y deja todo listo para volver a cargar un XML
+     * y registrar un nuevo pago:
+     *  1. Anula el documento CxP (cxp_cabece_factur) vía DocumentosCxPSaveService.anularDocumento:
+     *     estado anulado, reversa el/los pago(s) de tesorería ya registrados si existen (cambia
+     *     de estado tes_cab_libr_banc, anula su asiento contable), anula el asiento propio del
+     *     documento si tiene, borra la cuenta por pagar (cxp_cabece_transa/detalle) y anula el
+     *     kardex si generó inventario.
+     *  2. Desvincula el envío de la factura anulada (cxc_transporte_factura.ide_cpcfa = NULL).
+     */
+    async anularFacturaFlete(ideCctfa: number, dtoIn: HeaderParamsDto) {
+        const envio = await this.getEnvio(ideCctfa);
+        if (!envio) {
+            throw new BadRequestException(`El envío ide_cctfa=${ideCctfa} no existe.`);
+        }
+        if (!envio.ide_cpcfa) {
+            throw new BadRequestException('Este envío no tiene una factura por pagar registrada.');
+        }
+        const ideCpcfa = envio.ide_cpcfa;
+
+        await this.documentosCxPSaveService.anularDocumento({ ...dtoIn, ide_cpcfa: ideCpcfa });
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura SET ide_cpcfa = NULL WHERE ide_cctfa = $1`,
+            [ideCctfa],
+        );
+
+        return {
+            message: 'ok',
+            ide_cpcfa: ideCpcfa,
+            ide_cctfa: ideCctfa,
         };
     }
 

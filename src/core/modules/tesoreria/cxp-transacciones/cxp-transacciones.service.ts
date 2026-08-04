@@ -78,6 +78,9 @@ export class CxpTransaccionesService extends BaseService {
         const query = new SelectQuery(`
             SELECT dt.ide_cpctr,
                    ct.ide_cpcfa,
+                   ct.ide_geper,
+                   p.nom_geper,
+                   p.identificac_geper,
                    cf.numero_cpcfa,
                    co.nombre_cntdo,
                    COALESCE(cf.fecha_emisi_cpcfa, ct.fecha_trans_cpctr) AS fecha,
@@ -87,12 +90,14 @@ export class CxpTransaccionesService extends BaseService {
                    COALESCE(cf.observacion_cpcfa, ct.observacion_cpctr) AS observacion
             FROM cxp_detall_transa dt
             INNER JOIN cxp_cabece_transa ct ON dt.ide_cpctr = ct.ide_cpctr
+            INNER JOIN gen_persona p ON p.ide_geper = ct.ide_geper
             LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
             LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
             LEFT JOIN con_tipo_document co ON cf.ide_cntdo = co.ide_cntdo
             WHERE ct.ide_geper = $1
               AND ct.ide_sucu = $2
-            GROUP BY dt.ide_cpctr, ct.ide_cpcfa, cf.numero_cpcfa, co.nombre_cntdo,
+            GROUP BY dt.ide_cpctr, ct.ide_cpcfa, ct.ide_geper, p.nom_geper, p.identificac_geper,
+                     cf.numero_cpcfa, co.nombre_cntdo,
                      cf.fecha_emisi_cpcfa, ct.fecha_trans_cpctr, cf.total_cpcfa,
                      cf.dias_credito_cpcfa, cf.observacion_cpcfa, ct.observacion_cpctr
             HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) > 0
