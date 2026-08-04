@@ -8,7 +8,7 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers';
 
 import { FacturasDto } from './dto/facturas.dto';
-import { EnviosFacturasDto } from './dto/get-envios-facturas.dto';
+import { EnviosFacturasDto, GetEnvioFacturaDetalleDto } from './dto/get-envios-facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
@@ -1000,6 +1000,83 @@ export class FacturasService extends BaseService {
         query.addParam(1, dtoIn.fechaInicio);
         query.addParam(2, dtoIn.fechaFin);
         return this.dataSource.createQuery(query);
+    }
+
+    /** Detalle de un envío puntual (misma forma que getReporteEnviosFacturas), para la página de detalle. */
+    async getEnvioFacturaDetalleById(dtoIn: GetEnvioFacturaDetalleDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+            SELECT
+                a.ide_cccfa,
+                a.ide_geper,
+                a.fecha_emisi_cccfa,
+                df.establecimiento_ccdfa,
+                df.pto_emision_ccdfa,
+                df.serie_ccdaf,
+                a.secuencial_cccfa,
+                b.nom_geper AS cliente,
+                b.identificac_geper,
+                a.base_grabada_cccfa,
+                a.base_tarifa0_cccfa + COALESCE(a.base_no_objeto_iva_cccfa, 0) AS base0,
+                a.valor_iva_cccfa,
+                a.total_cccfa,
+                fp.nombre_cndfp AS forma_pago,
+                a.dias_credito_cccfa,
+                v.nombre_vgven AS vendedor,
+                a.usuario_ingre AS usuario_responsable,
+                a.fecha_ingre,
+                a.hora_ingre,
+                e.ide_cctfa,
+                e.es_transporte_propio_cctfa,
+                e.ide_vgtra,
+                t.nombre_vgtra AS nombre_transporte,
+                t.logo_vgtra AS logo_transporte,
+                t.ide_geper AS ide_geper_transporte,
+                ee.nombre_cceen AS estado_envio,
+                ee.color_cceen AS color_estado_envio,
+                e.path_imagen_guia_cctfa,
+                e.enviar_por_correo_cctfa,
+                e.correo_cctfa,
+                e.fecha_envio_cctfa,
+                e.fecha_inicio_cctfa,
+                e.fecha_fin_cctfa,
+                e.fecha_fin_real_cctfa,
+                e.comentario_cctfa,
+                e.flete_pagado_cctfa,
+                e.total_flete_cctfa,
+                e.total_flete_real_cctfa,
+                e.ide_cpcfa AS ide_cpcfa_flete,
+                cf.numero_cpcfa AS numero_factura_flete,
+                cf.total_cpcfa AS total_factura_flete,
+                CASE
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa != e.total_flete_real_cctfa
+                    THEN ABS(e.total_flete_cctfa - e.total_flete_real_cctfa)
+                    ELSE NULL
+                END AS diferencia_flete,
+                CASE
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa > e.total_flete_real_cctfa
+                    THEN 'Cobro más'
+                    WHEN e.flete_pagado_cctfa = true
+                         AND e.total_flete_cctfa < e.total_flete_real_cctfa
+                    THEN 'Cobro menos'
+                    ELSE NULL
+                END AS tipo_diferencia_flete
+            FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura a ON a.ide_cccfa = e.ide_cccfa
+            INNER JOIN gen_persona b     ON a.ide_geper = b.ide_geper
+            INNER JOIN cxc_datos_fac df  ON a.ide_ccdaf = df.ide_ccdaf
+            LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp1 = fp.ide_cndfp
+            LEFT JOIN ven_vendedor v          ON a.ide_vgven  = v.ide_vgven
+            LEFT JOIN ven_transporte t     ON e.ide_vgtra = t.ide_vgtra
+            LEFT JOIN cxc_estado_envio ee  ON e.ide_cceen = ee.ide_cceen
+            LEFT JOIN cxp_cabece_factur cf ON e.ide_cpcfa = cf.ide_cpcfa
+            WHERE e.ide_cctfa = $1
+            `,
+        );
+        query.addIntParam(1, dtoIn.ide_cctfa);
+        return this.dataSource.createSingleQuery(query);
     }
 
     async getFacturaById(dtoIn: GetFacturaDto & HeaderParamsDto) {

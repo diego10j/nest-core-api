@@ -4,13 +4,13 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
-import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto';
-import { DetalleDocumentoCxPDto } from './dto/save-documento-cxp.dto';
 
 /** Variable del sistema: artículo por defecto (COMPRAS SERVICIOS LOGISTICOS) para el flete */
 const VAR_ARTICULO_LOGISTICA = 'p_cxp_articulo_servicios_logisticos';
+/** Código ATS de sustento tributario preseleccionado por defecto (crédito tributario para IVA) */
+const SUSTENTO_DEFAULT = '01';
 
 export interface ArticuloLogistica {
     ide_inarti: number;
@@ -29,12 +29,37 @@ interface EnvioParaFactura {
     secuencial_cccfa: string;
 }
 
+export interface ProductoPreFactura {
+    ide_inarti: number;
+    ide_inuni: number | null;
+    siglas_inuni: string | null;
+    nombre_inarti: string;
+    codigo_inarti: string | null;
+    cantidad: number;
+    precio_unitario: number;
+    observacion: string;
+    iva: 'SI' | 'NO';
+}
+
+export interface PrefillFacturaFlete {
+    ide_geper: number;
+    nom_geper: string;
+    identificac_geper: string;
+    ide_cntdo: number;
+    numero_cpcfa: string;
+    autorizacio_cpcfa: string;
+    fecha_emisi_cpcfa: string;
+    ide_cndfp: number;
+    ide_cndfp1: number;
+    ide_srtst: number;
+    productos: ProductoPreFactura[];
+}
+
 /**
- * Crea la factura por pagar (flete) de un envío del Reporte de Envío de Facturas,
- * a partir del XML de la factura electrónica del transportista. Migrado del flujo
- * "seleccionar XML → crear documento" pero fijando el artículo al de servicios
- * logísticos (variable p_cxp_articulo_servicios_logisticos), ya que la factura de
- * flete no tiene productos de inventario propios.
+ * Parsea y valida el XML de la factura electrónica del transportista de un envío del
+ * Reporte de Envío de Facturas, y arma la data lista para precargar el diálogo común
+ * "Crear Factura de Compra" (CrearFacturaCxPDialog). NO persiste nada: el guardado real
+ * lo hace el flujo estándar (saveDocumento) cuando el usuario confirma en el diálogo.
  */
 @Injectable()
 export class EnvioFacturaCxPService {
@@ -42,14 +67,13 @@ export class EnvioFacturaCxPService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
         private readonly xmlService: DocumentosCxPXmlService,
-        private readonly saveService: DocumentosCxPSaveService,
     ) { }
 
-    async crearFacturaFleteDesdeXml(
+    async prepararFacturaFleteDesdeXml(
         ideCctfa: number,
         fileBuffer: Buffer,
         dtoIn: HeaderParamsDto,
-    ) {
+    ): Promise<PrefillFacturaFlete> {
         const envio = await this.getEnvio(ideCctfa);
         if (!envio) {
             throw new BadRequestException(`El envío ide_cctfa=${ideCctfa} no existe.`);
@@ -72,34 +96,30 @@ export class EnvioFacturaCxPService {
         }
 
         const articulo = await this.getArticuloLogisticaDefault();
-        const detalles = this.buildDetalles(parsed, articulo);
+        const productos = this.buildProductos(parsed, articulo);
 
-        const [ideCndfp, ideCndfp1] = await Promise.all([
+        const [ideCndfp, ideCndfp1, ideSrtst] = await Promise.all([
             this.resolverFormaPago(parsed.ide_cndfp),
             this.resolverDiasCredito(parsed.ide_cndfp1),
+            this.resolverSustentoTributario(),
         ]);
 
-        const result = await this.saveService.saveDocumento({
-            ...dtoIn,
-            cabecera: {
-                ide_cntdo: parsed.ide_cntdo,
-                ide_geper: parsed.ide_geper,
-                numero_cpcfa: parsed.numero_cpcfa,
-                autorizacio_cpcfa: parsed.autorizacio_cpcfa,
-                fecha_emisi_cpcfa: parsed.fecha_emisi_cpcfa,
-                ide_cndfp: ideCndfp,
-                ide_cndfp1: ideCndfp1,
-                observacion_cpcfa: `Flete envío factura #${envio.secuencial_cccfa}`,
-            },
-            detalles,
-        });
-
-        await this.linkFacturaAlEnvio(ideCctfa, result.ide_cpcfa);
-
-        return { ...result, ide_cctfa: ideCctfa };
+        return {
+            ide_geper: parsed.ide_geper,
+            nom_geper: parsed.nom_geper,
+            identificac_geper: parsed.identificac_geper,
+            ide_cntdo: parsed.ide_cntdo,
+            numero_cpcfa: parsed.numero_cpcfa,
+            autorizacio_cpcfa: parsed.autorizacio_cpcfa,
+            fecha_emisi_cpcfa: parsed.fecha_emisi_cpcfa,
+            ide_cndfp: ideCndfp,
+            ide_cndfp1: ideCndfp1,
+            ide_srtst: ideSrtst,
+            productos,
+        };
     }
 
-    /** Retorna el artículo por defecto de servicios logísticos, para mostrarlo en el frontend antes de cargar el XML. */
+    /** Artículo por defecto de servicios logísticos (variable p_cxp_articulo_servicios_logisticos). */
     async getArticuloLogisticaDefault(): Promise<ArticuloLogistica> {
         const variables = await this.core.getVariables([VAR_ARTICULO_LOGISTICA]);
         const ideInarti = Number(variables.get(VAR_ARTICULO_LOGISTICA));
@@ -124,32 +144,31 @@ export class EnvioFacturaCxPService {
         return articulo;
     }
 
-    private buildDetalles(
+    private buildProductos(
         parsed: ImportarXmlCxPResult,
         articulo: ArticuloLogistica,
-    ): DetalleDocumentoCxPDto[] {
-        const buckets: { monto: number; iva: '1' | '-1' | '0' }[] = [
-            { monto: parsed.totales.base_grabada, iva: '1' },
-            { monto: parsed.totales.base_tarifa0, iva: '-1' },
-            { monto: parsed.totales.base_no_objeto_iva, iva: '0' },
+    ): ProductoPreFactura[] {
+        const buckets: { monto: number; iva: 'SI' | 'NO' }[] = [
+            { monto: parsed.totales.base_grabada, iva: 'SI' },
+            { monto: parsed.totales.base_tarifa0 + parsed.totales.base_no_objeto_iva, iva: 'NO' },
         ];
 
-        const detalles: DetalleDocumentoCxPDto[] = [];
-        let secuencial = 1;
+        const productos: ProductoPreFactura[] = [];
         for (const bucket of buckets) {
             if (bucket.monto <= 0) continue;
-            detalles.push({
+            productos.push({
                 ide_inarti: articulo.ide_inarti,
-                ide_inuni: articulo.ide_inuni ?? undefined,
-                cantidad_cpdfa: 1,
-                precio_cpdfa: bucket.monto,
-                iva_inarti_cpdfa: bucket.iva,
-                observacion_cpdfa: `${articulo.nombre_inarti} - Flete factura ${parsed.numero_cpcfa}`,
-                secuencial_cpdfa: String(secuencial++),
-                alter_tribu_cpdfa: '00',
+                ide_inuni: articulo.ide_inuni,
+                siglas_inuni: articulo.siglas_inuni,
+                nombre_inarti: articulo.nombre_inarti,
+                codigo_inarti: articulo.codigo_inarti,
+                cantidad: 1,
+                precio_unitario: bucket.monto,
+                observacion: `Flete factura ${parsed.numero_cpcfa}`,
+                iva: bucket.iva,
             });
         }
-        return detalles;
+        return productos;
     }
 
     /** Forma de pago (medio) por defecto cuando el XML no trae un `formaPago` mapeable. */
@@ -181,6 +200,21 @@ export class EnvioFacturaCxPService {
         return Number(row.ide_cndfp);
     }
 
+    /** Sustento tributario por defecto (crédito tributario para IVA), con fallback al primero disponible. */
+    private async resolverSustentoTributario(): Promise<number> {
+        const q = new SelectQuery(`
+            SELECT ide_srtst FROM sri_tipo_sustento_tributario
+            ORDER BY (alterno_srtst = $1) DESC, alterno_srtst
+            LIMIT 1
+        `);
+        q.addStringParam(1, SUSTENTO_DEFAULT);
+        const row = await this.dataSource.createSingleQuery(q);
+        if (!row) {
+            throw new BadRequestException('No se encontró un sustento tributario configurado para asignar por defecto.');
+        }
+        return Number(row.ide_srtst);
+    }
+
     private async getEnvio(ideCctfa: number): Promise<EnvioParaFactura | undefined> {
         const q = new SelectQuery(`
             SELECT
@@ -197,12 +231,5 @@ export class EnvioFacturaCxPService {
         `);
         q.addIntParam(1, ideCctfa);
         return this.dataSource.createSingleQuery(q);
-    }
-
-    private async linkFacturaAlEnvio(ideCctfa: number, ideCpcfa: number): Promise<void> {
-        await this.dataSource.pool.query(
-            `UPDATE cxc_transporte_factura SET ide_cpcfa = $1 WHERE ide_cctfa = $2`,
-            [ideCpcfa, ideCctfa],
-        );
     }
 }

@@ -6,7 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
 import { FacturasDto } from './dto/facturas.dto';
-import { EnviosFacturasDto } from './dto/get-envios-facturas.dto';
+import { EnviosFacturasDto, GetEnvioFacturaDetalleDto } from './dto/get-envios-facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
@@ -121,6 +121,19 @@ export class FacturasController {
   @ApiOperation({ summary: 'Listar facturas con informacion de envio (transporte)' })
   getReporteEnviosFacturas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EnviosFacturasDto) {
     return this.service.getReporteEnviosFacturas({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getEnvioFacturaDetalleById')
+  @Auth()
+  @ApiOperation({ summary: 'Detalle de un envío puntual (página de detalle del Reporte de Envío de Facturas)' })
+  getEnvioFacturaDetalleById(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetEnvioFacturaDetalleDto,
+  ) {
+    return this.service.getEnvioFacturaDetalleById({
       ...headersParams,
       ...dtoIn,
     });

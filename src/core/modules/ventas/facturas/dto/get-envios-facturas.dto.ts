@@ -20,3 +20,8 @@ export class EnviosFacturasDto extends QueryOptionsDto {
   @IsOptional()
   ide_cceen?: number;
 }
+
+export class GetEnvioFacturaDetalleDto {
+  @IsInt()
+  ide_cctfa: number;
+}

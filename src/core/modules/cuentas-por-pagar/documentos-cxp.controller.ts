@@ -355,17 +355,10 @@ export class DocumentosCxPController {
         return this.xmlService.parseFacturaXml(file.buffer, headersParams);
     }
 
-    @Get('articuloLogisticaDefault')
-    @Auth()
-    @ApiOperation({ summary: 'Artículo por defecto (servicios logísticos) usado al crear la factura de flete de un envío' })
-    getArticuloLogisticaDefault(@AppHeaders() _headersParams: HeaderParamsDto) {
-        return this.envioFacturaService.getArticuloLogisticaDefault();
-    }
-
-    @Post('envios/:ideCctfa/facturaFlete')
+    @Post('envios/:ideCctfa/prepararFacturaFlete')
     @Auth()
     @ApiOperation({
-        summary: 'Crea la factura por pagar del flete de un envío a partir del XML del transportista (artículo servicios logísticos)',
+        summary: 'Parsea y valida el XML del transportista de un envío, y arma la data para precargar el diálogo de creación de factura (no guarda)',
     })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
@@ -387,12 +380,12 @@ export class DocumentosCxPController {
             cb(esXml ? null : new BadRequestException('Solo se permiten archivos XML'), esXml);
         },
     }))
-    crearFacturaFleteEnvio(
+    prepararFacturaFleteEnvio(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Param('ideCctfa') ideCctfa: string,
         @UploadedFile() file: Express.Multer.File,
     ) {
         if (!file) throw new BadRequestException('Debe seleccionar un archivo XML');
-        return this.envioFacturaService.crearFacturaFleteDesdeXml(Number(ideCctfa), file.buffer, headersParams);
+        return this.envioFacturaService.prepararFacturaFleteDesdeXml(Number(ideCctfa), file.buffer, headersParams);
     }
 }

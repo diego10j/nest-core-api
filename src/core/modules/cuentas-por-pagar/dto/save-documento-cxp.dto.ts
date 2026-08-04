@@ -389,6 +389,15 @@ export class SaveDocumentoCxPDto {
     @IsInt()
     ide_ccdaf?: number;
 
+    /**
+     * FK → cxc_transporte_factura (envío del Reporte de Envío de Facturas). Cuando se
+     * provee (solo en creación), enlaza el envío con la factura recién creada y
+     * actualiza sus valores reales de flete (base/IVA/total) en la misma transacción.
+     */
+    @IsOptional()
+    @IsInt()
+    ide_cctfa?: number;
+
     @IsOptional()
     @IsBoolean()
     isUpdate?: boolean;

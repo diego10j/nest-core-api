@@ -204,6 +204,10 @@ export class DocumentosCxPSaveService extends BaseService {
                 esNotaCredito, esReembolso, isUpdate, esElectronica,
             );
 
+            if (isDefined(dtoIn.ide_cctfa) && !isUpdate) {
+                await this.validarEnvioTransporte(dtoIn.ide_cctfa);
+            }
+
             const diasCredito = isDefined(cabecera.dias_credito_cpcfa)
                 ? Number(cabecera.dias_credito_cpcfa)
                 : await this.consultas.getDiasCreditoFormaPago(cabecera.ide_cndfp1);
@@ -354,6 +358,12 @@ export class DocumentosCxPSaveService extends BaseService {
                 ));
             } else if (tieneKardex && esNcDescuentoPrecio) {
                 listQuery.push(...await this.buildNcDescuentoPrecioQueries(cabecera, detalles));
+            }
+
+            // Envío del Reporte de Envío de Facturas (flete): enlaza la factura recién
+            // creada y actualiza los valores reales de flete cobrados por el transportista
+            if (isDefined(dtoIn.ide_cctfa) && !isUpdate) {
+                listQuery.push(this.buildUpdateEnvioTransporte(dtoIn.ide_cctfa!, ideCpcfa, totales, dtoIn));
             }
 
             // ── Ejecutar todo en una única transacción ───────────────────────
@@ -668,6 +678,41 @@ export class DocumentosCxPSaveService extends BaseService {
                 `La autorización ${contexto} debe tener 10, 37 o 49 dígitos.`,
             );
         }
+    }
+
+    /** Valida que el envío exista y todavía no tenga una factura de flete registrada. */
+    private async validarEnvioTransporte(ideCctfa: number): Promise<void> {
+        const q = new SelectQuery(`SELECT ide_cpcfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`);
+        q.addIntParam(1, ideCctfa);
+        const envio = await this.dataSource.createSingleQuery(q);
+        if (!envio) {
+            throw new BadRequestException(`El envío ide_cctfa=${ideCctfa} no existe.`);
+        }
+        if (envio.ide_cpcfa) {
+            throw new BadRequestException('Este envío ya tiene una factura por pagar registrada.');
+        }
+    }
+
+    /**
+     * Enlaza la factura recién creada al envío y traslada los valores reales del
+     * flete (lo que efectivamente facturó el transportista) a cxc_transporte_factura.
+     */
+    private buildUpdateEnvioTransporte(
+        ideCctfa: number,
+        ideCpcfa: number,
+        totales: Totales,
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): UpdateQuery {
+        const q = new UpdateQuery('cxc_transporte_factura', 'ide_cctfa', dtoIn);
+        q.values.set('ide_cpcfa', ideCpcfa);
+        q.values.set('base_flete_real_cctfa', totales.base_grabada + totales.base_tarifa0 + totales.base_no_objeto_iva);
+        q.values.set('valor_iva_flete_real_cctfa', totales.valor_iva);
+        q.values.set('total_flete_real_cctfa', totales.total);
+        q.values.set('fecha_actua', getCurrentDate());
+        q.values.set('hora_actua', getCurrentTime());
+        q.where = `ide_cctfa = $1`;
+        q.addIntParam(1, ideCctfa);
+        return q;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
