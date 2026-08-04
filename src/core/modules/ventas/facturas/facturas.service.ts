@@ -961,6 +961,7 @@ export class FacturasService extends BaseService {
                 e.ide_cpcfa AS ide_cpcfa_flete,
                 cf.numero_cpcfa AS numero_factura_flete,
                 cf.total_cpcfa AS total_factura_flete,
+                cf.pagado_cpcfa AS pagado_factura_flete,
                 CASE
                     WHEN e.flete_pagado_cctfa = true
                          AND e.total_flete_cctfa != e.total_flete_real_cctfa
@@ -1048,6 +1049,7 @@ export class FacturasService extends BaseService {
                 e.ide_cpcfa AS ide_cpcfa_flete,
                 cf.numero_cpcfa AS numero_factura_flete,
                 cf.total_cpcfa AS total_factura_flete,
+                cf.pagado_cpcfa AS pagado_factura_flete,
                 CASE
                     WHEN e.flete_pagado_cctfa = true
                          AND e.total_flete_cctfa != e.total_flete_real_cctfa

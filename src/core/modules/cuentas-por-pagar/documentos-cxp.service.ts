@@ -572,7 +572,8 @@ export class DocumentosCxPService extends BaseService {
                    a.valor_cpdtr,
                    d.nombre_tecba || ' ' || e.nombre_teban AS destino,
                    a.observacion_cpdtr AS observacion,
-                   c.ide_tecba
+                   c.ide_tecba,
+                   a.ide_teclb
             FROM cxp_detall_transa a
             LEFT JOIN cxp_tipo_transacc b ON a.ide_cpttr = b.ide_cpttr
             LEFT JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
