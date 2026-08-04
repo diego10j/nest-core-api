@@ -493,6 +493,7 @@ export class DocumentosCxPService extends BaseService {
                    a.ide_cncre,
                    a.ide_cnccc,
                    a.ide_rem_cpcfa,
+                   a.pagado_cpcfa,
                    a.numero_cpcfa,
                    a.autorizacio_cpcfa,
                    a.fecha_emisi_cpcfa,
@@ -516,10 +517,17 @@ export class DocumentosCxPService extends BaseService {
                    a.motivo_nc_cpcfa,
                    p.nom_geper,
                    p.identificac_geper,
-                   t.nombre_cntdo
+                   t.nombre_cntdo,
+                   fp.nombre_cndfp AS nombre_forma_pago,
+                   dc.nombre_cndfp AS nombre_dias_credito,
+                   st.alterno_srtst,
+                   st.nombre_srtst
             FROM cxp_cabece_factur a
             INNER JOIN gen_persona p ON a.ide_geper = p.ide_geper
             INNER JOIN con_tipo_document t ON a.ide_cntdo = t.ide_cntdo
+            LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp = fp.ide_cndfp
+            LEFT JOIN con_deta_forma_pago dc ON a.ide_cndfp1 = dc.ide_cndfp
+            LEFT JOIN sri_tipo_sustento_tributario st ON a.ide_srtst = st.ide_srtst
             WHERE a.ide_cpcfa = $1
         `);
         cabQuery.addIntParam(1, ide_cpcfa);

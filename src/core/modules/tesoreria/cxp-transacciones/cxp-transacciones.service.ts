@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
+import { GetFacturaCxPDto } from './dto/get-factura-cxp.dto';
 import { GetFacturasPendientesProveedorDto } from './dto/get-facturas-pendientes-proveedor.dto';
 
 /**
@@ -26,6 +27,47 @@ export class CxpTransaccionesService extends BaseService {
             .then((result) => {
                 this.variables = result;
             });
+    }
+
+    /**
+     * Documento CxP puntual con su saldo pendiente y el ide_cpctr de su cuenta por
+     * pagar, para precargar el diálogo "Registrar Pago" (paridad getFacturaCxC).
+     */
+    async getFacturaCxP(dtoIn: GetFacturaCxPDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                cf.ide_cpcfa,
+                cf.ide_geper,
+                p.nom_geper,
+                p.identificac_geper,
+                cf.numero_cpcfa,
+                cf.total_cpcfa,
+                cf.fecha_emisi_cpcfa,
+                cf.dias_credito_cpcfa,
+                COALESCE(cf.observacion_cpcfa, ct.observacion_cpctr) AS observacion,
+                ct.ide_cpctr,
+                COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0) AS saldo_x_pagar,
+                cf.pagado_cpcfa
+            FROM cxp_cabece_factur cf
+            JOIN cxp_cabece_transa ct ON ct.ide_cpcfa = cf.ide_cpcfa
+            LEFT JOIN cxp_detall_transa dt ON dt.ide_cpctr = ct.ide_cpctr
+            LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+            LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+            WHERE cf.ide_cpcfa = $1
+              AND cf.ide_empr = $2
+              AND cf.ide_sucu = $3
+            GROUP BY cf.ide_cpcfa, p.nom_geper, p.identificac_geper, ct.ide_cpctr
+        `);
+        query.addIntParam(1, dtoIn.ideCpcfa);
+        query.addIntParam(2, dtoIn.ideEmpr);
+        query.addIntParam(3, dtoIn.ideSucu);
+        const factura = await this.dataSource.createSingleQuery(query);
+
+        if (!factura) {
+            throw new NotFoundException('Documento no encontrado');
+        }
+
+        return factura;
     }
 
     /**
