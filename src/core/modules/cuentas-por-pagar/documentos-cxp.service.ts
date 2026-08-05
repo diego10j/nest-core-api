@@ -628,7 +628,27 @@ export class DocumentosCxPService extends BaseService {
         detQuery.addIntParam(1, ide_cpcfa);
         const detalles = await this.dataSource.createSelectQuery(detQuery);
 
-        return { cabecera, detalles };
+        const remQuery = new SelectQuery(`
+            SELECT r.ide_cpcfa,
+                   r.ide_cntdo,
+                   r.motivo_nc_cpcfa AS identificacion,
+                   r.numero_cpcfa,
+                   r.fecha_emisi_cpcfa,
+                   r.autorizacio_cpcfa,
+                   r.base_grabada_cpcfa,
+                   r.base_no_objeto_iva_cpcfa,
+                   r.base_tarifa0_cpcfa,
+                   r.valor_iva_cpcfa,
+                   r.valor_ice_cpcfa,
+                   r.total_cpcfa
+            FROM cxp_cabece_factur r
+            WHERE r.ide_rem_cpcfa = $1
+            ORDER BY r.ide_cpcfa
+        `);
+        remQuery.addIntParam(1, ide_cpcfa);
+        const reembolsos = await this.dataSource.createSelectQuery(remQuery);
+
+        return { cabecera, detalles, reembolsos };
     }
 
     /**
@@ -679,7 +699,7 @@ export class DocumentosCxPService extends BaseService {
      */
     async getFormasPago() {
         const query = new SelectQuery(`
-            SELECT CAST(ide_cndfp AS VARCHAR) AS value, nombre_cndfp AS label, dias_cndfp
+            SELECT CAST(ide_cndfp AS VARCHAR) AS value, nombre_cndfp AS label, dias_cndfp, alterno_ats
             FROM con_deta_forma_pago
             WHERE ide_cncfp = 3
             ORDER BY nombre_cndfp
