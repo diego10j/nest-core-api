@@ -200,10 +200,11 @@ export class HeaderSection {
   private static buildTitleBlock(title: string, subTitle?: string): Content {
     const stack: Content[] = [
       {
-        text: title,
+        text: title.toUpperCase(),
         fontSize: 15,
         bold: true,
         color: COLOR.ink,
+        characterSpacing: 0.5,
         margin: [0, 0, 0, subTitle ? 4 : 0] as [number, number, number, number],
       },
     ];
@@ -218,8 +219,8 @@ export class HeaderSection {
 
     return {
       stack,
-      alignment: 'left' as const,
-      margin: [4, 6, 12, 16] as [number, number, number, number],
+      alignment: 'center' as const,
+      margin: [0, 6, 0, 16] as [number, number, number, number],
     };
   }
 

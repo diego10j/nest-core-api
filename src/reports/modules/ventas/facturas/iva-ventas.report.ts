@@ -126,7 +126,10 @@ const buildTabla = (rows: VentaMensualRow[], etiquetaVacio: string): Content => 
   return {
     table: {
       headerRows: 1,
-      widths: ['auto', 'auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
+      // Fecha con ancho fijo (no 'auto'): a 'auto' quedaba angosta y el texto de la
+      // fecha se partía en 2 líneas. 'Cliente' sigue flexible ('*') pero al crecer
+      // Fecha le queda automáticamente un poco menos de espacio, como se pidió.
+      widths: [65, 'auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
       body,
     },
     layout: {
