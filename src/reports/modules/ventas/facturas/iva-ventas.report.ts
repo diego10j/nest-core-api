@@ -150,12 +150,17 @@ export const ivaVentasReport = (data: IvaVentasRep, headerSection: Content): TDo
   return {
     pageSize: 'A4',
     pageOrientation: 'landscape',
-    pageMargins: [30, 130, 30, 40],
+    // Margen superior normal (no reservado para header): la cabecera va como
+    // contenido normal del flujo (ver `content` abajo), así que en la hoja 2+ no
+    // queda un espacio vacío donde antes se repetía el `header` de página.
+    pageMargins: [30, 30, 30, 40],
     info: { title: 'IVA en Ventas' },
-    // La cabecera (logo + empresa + título) solo se muestra en la primera hoja.
-    header: (currentPage: number) => (currentPage === 1 ? headerSection : null),
     footer: (currentPage: number, pageCount: number) => footerSection(currentPage, pageCount, false),
     content: [
+      // La cabecera (logo + empresa + título) se agrega como contenido normal, no como
+      // `header` de página: así solo aparece una vez (al inicio del flujo, hoja 1) y no
+      // reserva espacio fijo en las hojas siguientes ni se recorta por falta de alto.
+      headerSection,
       {
         text: `Período: ${MESES[data.mes - 1] ?? data.mes} ${data.periodo}`,
         fontSize: 9,

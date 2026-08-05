@@ -26,15 +26,19 @@ const LOGO = { width: 81, height: 64 };
 // ─── HeaderSection ──────────────────────────────────────────────────────────
 export class HeaderSection {
 
-  /** Cabecera completa + bloque de título (una sola llamada). */
+  /**
+   * Cabecera completa + bloque de título (una sola llamada). Sin líneas divisorias:
+   * la separación entre la franja logo/empresa y el título es solo espaciado, no un
+   * `canvas` con línea — mejor práctica de UI moderna (menos ruido visual, las
+   * secciones se distinguen por jerarquía tipográfica, no por bordes).
+   */
   static createReportHeader(empresa: Empresa, options: HeaderOptions): Content {
     return {
       stack: [
         this.buildTopStrip(empresa, options),
-        this.buildDivider(),
         ...(options.title ? [this.buildTitleBlock(options.title, options.subTitle)] : []),
       ],
-      margin: [0, 0, 0, 10] as [number, number, number, number],
+      margin: [0, 0, 0, 14] as [number, number, number, number],
     };
   }
 
@@ -60,7 +64,7 @@ export class HeaderSection {
 
     return {
       columns,
-      margin: [0, 18, 12, 0] as [number, number, number, number],
+      margin: [4, 18, 12, 0] as [number, number, number, number],
     };
   }
 
@@ -143,7 +147,8 @@ export class HeaderSection {
     };
   }
 
-  // Usuario que generó el reporte (opcional) + fecha de impresión
+  // Usuario que generó el reporte (opcional) + fecha de impresión — texto chico,
+  // es metadata secundaria, no debe competir visualmente con el nombre de la empresa.
   private static buildMetaCell(usuario?: string): Content {
     const stack: Content[] = [];
 
@@ -151,17 +156,17 @@ export class HeaderSection {
       stack.push(
         {
           text: 'USUARIO',
-          fontSize: 7,
+          fontSize: 6,
           color: COLOR.hint,
-          characterSpacing: 1.4,
-          margin: [0, 4, 0, 2] as [number, number, number, number],
+          characterSpacing: 1.2,
+          margin: [0, 4, 0, 1] as [number, number, number, number],
         },
         {
           text: usuario,
-          fontSize: 10,
+          fontSize: 8,
           bold: true,
           color: COLOR.ink,
-          margin: [0, 0, 0, 8] as [number, number, number, number],
+          margin: [0, 0, 0, 6] as [number, number, number, number],
         },
       );
     }
@@ -169,14 +174,14 @@ export class HeaderSection {
     stack.push(
       {
         text: 'FECHA DE IMPRESIÓN',
-        fontSize: 7,
+        fontSize: 6,
         color: COLOR.hint,
-        characterSpacing: 1.4,
-        margin: [0, usuario ? 0 : 4, 0, 2] as [number, number, number, number],
+        characterSpacing: 1.2,
+        margin: [0, usuario ? 0 : 4, 0, 1] as [number, number, number, number],
       },
       {
         text: fDate(new Date()),
-        fontSize: 10,
+        fontSize: 8,
         bold: true,
         color: COLOR.ink,
       },
@@ -189,24 +194,9 @@ export class HeaderSection {
     };
   }
 
-  // ── Línea divisora con segmento de acento ──────────────────────────────
-  private static buildDivider(): Content {
-    // A4 (595pt) − margen izq (38) − margen der (38) = 519
-    return {
-      canvas: [
-        {
-          type: 'line',
-          x1: 0, y1: 0,
-          x2: 519, y2: 0,
-          lineWidth: 0.75,
-          lineColor: COLOR.rule,
-        },
-      ],
-      margin: [0, 0, 0, 12] as [number, number, number, number],
-    };
-  }
-
-  // ── Bloque de título ───────────────────────────────────────────────────
+  // ── Bloque de título ─────────────────────────────────────────────────────
+  // Sin línea encima: se separa de la franja superior solo con espaciado (el
+  // propio peso/tamaño de la tipografía ya lo distingue como su propia sección).
   private static buildTitleBlock(title: string, subTitle?: string): Content {
     const stack: Content[] = [
       {
@@ -229,7 +219,7 @@ export class HeaderSection {
     return {
       stack,
       alignment: 'left' as const,
-      margin: [12, 12, 12, 16] as [number, number, number, number],
+      margin: [4, 6, 12, 16] as [number, number, number, number],
     };
   }
 
