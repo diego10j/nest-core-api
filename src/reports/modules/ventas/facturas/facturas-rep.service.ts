@@ -355,6 +355,8 @@ export class FacturasRepService {
     const header = await this.sectionsService.createReportHeader({
       ideEmpr: dtoIn.ideEmpr,
       title: 'IVA en Ventas',
+      showDate: true,
+      usuario: dtoIn.login,
     });
 
     const docDefinition = ivaVentasReport(

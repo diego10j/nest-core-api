@@ -1,4 +1,4 @@
-import { Content, TableCell } from 'pdfmake/interfaces';
+import { Content } from 'pdfmake/interfaces';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
 import { fDate } from 'src/util/helpers/date-util';
 import { getStaticImage } from 'src/util/helpers/file-utils';
@@ -38,45 +38,34 @@ export class HeaderSection {
     };
   }
 
-  // ── Franja superior: logo | info empresa | fecha ────────────────────────
+  // ── Franja superior: logo | info empresa | usuario/fecha ─────────────────
+  // Se arma con `columns` (no `table`): un `table` de pdfmake puede terminar
+  // dibujando líneas de celda por defecto en algunos visores/combinaciones aunque
+  // el `layout` las ponga en 0 — `columns` es un layout puro, sin ninguna semántica
+  // de borde posible, así que es la forma más segura de garantizar "sin líneas".
   private static buildTopStrip(empresa: Empresa, options: HeaderOptions): Content {
-    const { showLogo = true, showDate = false } = options;  // ← false por defecto
+    const { showLogo = true, showDate = false, usuario } = options; // ← showDate false por defecto
 
-    // columna de fecha: solo se agrega si showDate es true
-    const dateWidth = showDate ? 84 : 0;
-
-    const cells: TableCell[] = [];
-    const widths: (string | number)[] = [];
+    const columns: Content[] = [];
 
     if (showLogo) {
-      cells.push(this.buildLogoCell(empresa));
-      widths.push(LOGO.width + 16);
+      columns.push({ width: LOGO.width + 16, ...this.buildLogoCell(empresa) });
     }
 
-    cells.push(this.buildCompanyInfoCell(empresa));
-    widths.push('*');
+    columns.push({ width: '*', ...this.buildCompanyInfoCell(empresa) });
 
     if (showDate) {
-      cells.push(this.buildDateCell());
-      widths.push(84);
+      columns.push({ width: 130, ...this.buildMetaCell(usuario) });
     }
 
     return {
-      table: { widths, body: [cells] },
-      layout: {
-        hLineWidth: () => 0,
-        vLineWidth: () => 0,
-        paddingLeft: () => 0,
-        paddingRight: () => 0,
-        paddingTop: () => 0,
-        paddingBottom: () => 0,
-      },
+      columns,
       margin: [0, 18, 12, 0] as [number, number, number, number],
     };
   }
 
   // Logo enmarcado con fondo y borde redondeado
-  private static buildLogoCell(empresa: Empresa): TableCell {
+  private static buildLogoCell(empresa: Empresa): Content {
     const logoPath = getStaticImage(empresa?.logotipo_empr || 'no-image');
 
     return {
@@ -109,7 +98,7 @@ export class HeaderSection {
     };
   }
   // Información de la empresa
-  private static buildCompanyInfoCell(empresa: Empresa): TableCell {
+  private static buildCompanyInfoCell(empresa: Empresa): Content {
     const lines: Content[] = [
       {
         text: empresa.nom_empr,
@@ -154,25 +143,47 @@ export class HeaderSection {
     };
   }
 
-  // Fecha de generación
-  private static buildDateCell(): TableCell {
-    return {
-      stack: [
+  // Usuario que generó el reporte (opcional) + fecha de impresión
+  private static buildMetaCell(usuario?: string): Content {
+    const stack: Content[] = [];
+
+    if (usuario) {
+      stack.push(
         {
-          text: 'GENERADO',
+          text: 'USUARIO',
           fontSize: 7,
           color: COLOR.hint,
-          bold: false,
           characterSpacing: 1.4,
-          margin: [0, 4, 0, 4] as [number, number, number, number],
+          margin: [0, 4, 0, 2] as [number, number, number, number],
         },
         {
-          text: fDate(new Date()),
-          fontSize: 11,
+          text: usuario,
+          fontSize: 10,
           bold: true,
           color: COLOR.ink,
+          margin: [0, 0, 0, 8] as [number, number, number, number],
         },
-      ],
+      );
+    }
+
+    stack.push(
+      {
+        text: 'FECHA DE IMPRESIÓN',
+        fontSize: 7,
+        color: COLOR.hint,
+        characterSpacing: 1.4,
+        margin: [0, usuario ? 0 : 4, 0, 2] as [number, number, number, number],
+      },
+      {
+        text: fDate(new Date()),
+        fontSize: 10,
+        bold: true,
+        color: COLOR.ink,
+      },
+    );
+
+    return {
+      stack,
       alignment: 'right' as const,
       margin: [0, 0, 0, 14] as [number, number, number, number],
     };

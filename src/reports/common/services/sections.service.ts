@@ -12,32 +12,22 @@ export class SectionsService {
   constructor(private readonly empresaRepService: EmpresaRepService) { }
 
   /**
-   * Crea un header completo para reportes con título integrado
+   * Crea un header completo para reportes con título integrado.
+   *
+   * El título (si `options.title` viene definido) ya lo renderiza internamente
+   * `HeaderSection.createReportHeader` (bloque integrado al resto del header, mismo
+   * espaciado/estilo) — no se debe volver a agregar un bloque de título aparte acá,
+   * eso duplicaba el título en pantalla. Por eso casi ningún caller pasa `title`
+   * hoy (ver `resumen-diario-facturas`, que lo dejaba comentado a propósito).
    */
   async createReportHeader(options: HeaderOptions): Promise<Content> {
-    const { title, ideEmpr } = options;
+    const { ideEmpr } = options;
 
     // 1. Obtener datos de la empresa desde el servicio
     const empresa = await this.empresaRepService.getEmpresaById(ideEmpr);
 
     // 2. Crear header usando solo el diseño (sin inyección de dependencias)
-    const header = HeaderSection.createHeader(empresa, options);
-
-    return {
-      stack: [
-        header,
-        {
-          text: title,
-          style: {
-            fontSize: 16,
-            bold: true,
-            color: '#2d3748',
-            alignment: 'center' as const,
-            margin: [0, 0, 0, 0] as [number, number, number, number],
-          },
-        },
-      ],
-    };
+    return HeaderSection.createHeader(empresa, options);
   }
 
   async createLogoWatermark(ideEmpr: number): Promise<NonNullable<TDocumentDefinitions['background']>> {

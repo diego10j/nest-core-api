@@ -68,7 +68,7 @@ const td = (
   color: C.body,
   fillColor,
   alignment,
-  border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
+  border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
   margin: [4, 4, 4, 4] as [number, number, number, number],
 });
 
@@ -112,14 +112,14 @@ const buildTabla = (rows: VentaMensualRow[], etiquetaVacio: string): Content => 
     [
       {
         text: `Subtotal (${rows.length})`, colSpan: 4, bold: true, fontSize: 8, color: C.ink,
-        fillColor: C.accentSurface, border: [false, true, false, false] as [boolean, boolean, boolean, boolean],
+        fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [4, 5, 4, 5],
       },
       {}, {}, {},
-      { text: fCurrency(totales.ventas12), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, true, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
-      { text: fCurrency(totales.ventas0), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, true, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
-      { text: fCurrency(totales.valor_iva), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, true, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
-      { text: fCurrency(totales.total), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, true, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
+      { text: fCurrency(totales.ventas12), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
+      { text: fCurrency(totales.ventas0), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
+      { text: fCurrency(totales.valor_iva), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
+      { text: fCurrency(totales.total), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
     ],
   ];
 
@@ -130,9 +130,8 @@ const buildTabla = (rows: VentaMensualRow[], etiquetaVacio: string): Content => 
       body,
     },
     layout: {
-      hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
+      hLineWidth: () => 0,
       vLineWidth: () => 0,
-      hLineColor: () => C.rule,
     },
     margin: [0, 0, 0, 4],
   };
@@ -153,7 +152,8 @@ export const ivaVentasReport = (data: IvaVentasRep, headerSection: Content): TDo
     pageOrientation: 'landscape',
     pageMargins: [30, 130, 30, 40],
     info: { title: 'IVA en Ventas' },
-    header: headerSection,
+    // La cabecera (logo + empresa + título) solo se muestra en la primera hoja.
+    header: (currentPage: number) => (currentPage === 1 ? headerSection : null),
     footer: (currentPage: number, pageCount: number) => footerSection(currentPage, pageCount, false),
     content: [
       {
@@ -182,9 +182,8 @@ export const ivaVentasReport = (data: IvaVentasRep, headerSection: Content): TDo
           ],
         },
         layout: {
-          hLineWidth: () => 1,
+          hLineWidth: () => 0,
           vLineWidth: () => 0,
-          hLineColor: () => C.ink,
           fillColor: () => C.accentSurface,
         },
       },
