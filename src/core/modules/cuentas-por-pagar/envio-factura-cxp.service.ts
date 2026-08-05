@@ -10,8 +10,10 @@ import { ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto';
 
 /** Variable del sistema: artículo por defecto (COMPRAS SERVICIOS LOGISTICOS) para el flete */
 const VAR_ARTICULO_LOGISTICA = 'p_cxp_articulo_servicios_logisticos';
-/** Código ATS de sustento tributario preseleccionado por defecto (crédito tributario para IVA) */
-const SUSTENTO_DEFAULT = '01';
+/** Código ATS de sustento tributario preseleccionado por defecto (costo o gasto para Impuesto a la Renta) */
+const SUSTENTO_DEFAULT = '02';
+/** Fragmento (case-insensitive) para ubicar la forma de pago "Otros con utilización del Sistema Financiero" por defecto */
+const FORMA_PAGO_DEFAULT_FRAGMENTO = '%SISTEMA FINANCIERO%';
 
 export interface ArticuloLogistica {
     ide_inarti: number;
@@ -180,18 +182,34 @@ export class EnvioFacturaCxPService {
         return articulo;
     }
 
+    /**
+     * Agrupa los detalles reales del XML por tratamiento de IVA (grava / no grava) en, como
+     * máximo, 2 líneas con el artículo fijo de servicios logísticos — la observación de cada
+     * línea es la concatenación de las descripciones de detalle del XML que caen en ese grupo
+     * (no un texto genérico), para que quede visible qué facturó el transportista.
+     */
     private buildProductos(
         parsed: ImportarXmlCxPResult,
         articulo: ArticuloLogistica,
     ): ProductoPreFactura[] {
-        const buckets: { monto: number; iva: 'SI' | 'NO' }[] = [
-            { monto: parsed.totales.base_grabada, iva: 'SI' },
-            { monto: parsed.totales.base_tarifa0 + parsed.totales.base_no_objeto_iva, iva: 'NO' },
-        ];
+        const grupos: Record<'SI' | 'NO', { monto: number; descripciones: string[] }> = {
+            SI: { monto: 0, descripciones: [] },
+            NO: { monto: 0, descripciones: [] },
+        };
+
+        for (const det of parsed.detalles) {
+            const clave: 'SI' | 'NO' = det.iva_inarti_cpdfa === '1' ? 'SI' : 'NO';
+            grupos[clave].monto += det.valor_cpdfa;
+            const descripcion = det.observacion_cpdfa?.trim();
+            if (descripcion && !grupos[clave].descripciones.includes(descripcion)) {
+                grupos[clave].descripciones.push(descripcion);
+            }
+        }
 
         const productos: ProductoPreFactura[] = [];
-        for (const bucket of buckets) {
-            if (bucket.monto <= 0) continue;
+        (['SI', 'NO'] as const).forEach((iva) => {
+            const grupo = grupos[iva];
+            if (grupo.monto <= 0) return;
             productos.push({
                 ide_inarti: articulo.ide_inarti,
                 ide_inuni: articulo.ide_inuni,
@@ -199,20 +217,28 @@ export class EnvioFacturaCxPService {
                 nombre_inarti: articulo.nombre_inarti,
                 codigo_inarti: articulo.codigo_inarti,
                 cantidad: 1,
-                precio_unitario: bucket.monto,
-                observacion: `Flete factura ${parsed.numero_cpcfa}`,
-                iva: bucket.iva,
+                precio_unitario: Number(grupo.monto.toFixed(2)),
+                observacion: grupo.descripciones.join(', ') || `Flete factura ${parsed.numero_cpcfa}`,
+                iva,
             });
-        }
+        });
         return productos;
     }
 
-    /** Forma de pago (medio) por defecto cuando el XML no trae un `formaPago` mapeable. */
+    /**
+     * Forma de pago (medio) por defecto cuando el XML no trae un `formaPago` mapeable:
+     * prioriza "Otros con utilización del Sistema Financiero" (medio bancarizado, el más
+     * usual para pagos a transportistas) y cae al primer medio "contado" si no existe.
+     */
     private async resolverFormaPago(ideCndfp: number | null): Promise<number> {
         if (ideCndfp) return ideCndfp;
         const q = new SelectQuery(`
-            SELECT ide_cndfp FROM con_deta_forma_pago WHERE ide_cncfp = 3 ORDER BY ide_cndfp LIMIT 1
+            SELECT ide_cndfp FROM con_deta_forma_pago
+            WHERE ide_cncfp = 3
+            ORDER BY (nombre_cndfp ILIKE $1) DESC, ide_cndfp
+            LIMIT 1
         `);
+        q.addStringParam(1, FORMA_PAGO_DEFAULT_FRAGMENTO);
         const row = await this.dataSource.createSingleQuery(q);
         if (!row) {
             throw new BadRequestException('No se encontró una forma de pago configurada para asignar por defecto.');

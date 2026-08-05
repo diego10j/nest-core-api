@@ -14,6 +14,7 @@ import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
+import { ReporteVentasMensualesDto } from './dto/reporte-ventas-mensuales.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 
 @Injectable()
@@ -1079,6 +1080,78 @@ export class FacturasService extends BaseService {
         );
         query.addIntParam(1, dtoIn.ide_cctfa);
         return this.dataSource.createSingleQuery(query);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // REPORTE DE VENTAS MENSUALES (IVA EN VENTAS)
+    // Migrado de ServicioCuentasCxC.getSqlVentasMensuales/getSqlNotasCreditoMensuales
+    // (legacy sigafi-war/paq_cuentas_x_cobrar/pre_facturasCxC.java)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Facturas y notas de crédito de ventas de un mes/año determinado, con
+     * columnas normalizadas (misma forma para ambos listados). Sirve tanto al
+     * endpoint de consulta como al reporte PDF "IVA en Ventas".
+     */
+    async getReporteVentasMensuales(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+        const [facturas, notasCredito] = await Promise.all([
+            this.getFacturasMensuales(dtoIn),
+            this.getNotasCreditoVentaMensuales(dtoIn),
+        ]);
+        return { facturas, notasCredito };
+    }
+
+    private async getFacturasMensuales(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const query = new SelectQuery(`
+            SELECT a.ide_cccfa AS ide,
+                   a.fecha_emisi_cccfa AS fecha,
+                   a.secuencial_cccfa AS numero,
+                   b.nom_geper,
+                   b.identificac_geper,
+                   a.base_grabada_cccfa AS ventas12,
+                   a.base_tarifa0_cccfa + a.base_no_objeto_iva_cccfa AS ventas0,
+                   a.valor_iva_cccfa AS valor_iva,
+                   a.total_cccfa AS total,
+                   a.observacion_cccfa AS observacion
+            FROM cxc_cabece_factura a
+            INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
+            WHERE EXTRACT(MONTH FROM a.fecha_emisi_cccfa) = $1
+              AND EXTRACT(YEAR FROM a.fecha_emisi_cccfa) = $2
+              AND a.ide_sucu = $3
+              AND a.ide_ccefa = ${estadoNormal}
+            ORDER BY a.secuencial_cccfa, a.ide_cccfa DESC
+        `);
+        query.addIntParam(1, dtoIn.mes);
+        query.addIntParam(2, dtoIn.periodo);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    private async getNotasCreditoVentaMensuales(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT a.ide_cpcno AS ide,
+                   a.fecha_emisi_cpcno AS fecha,
+                   a.numero_cpcno AS numero,
+                   b.nom_geper,
+                   b.identificac_geper,
+                   a.base_grabada_cpcno AS ventas12,
+                   a.base_tarifa0_cpcno + a.base_no_objeto_iva_cpcno AS ventas0,
+                   a.valor_iva_cpcno AS valor_iva,
+                   a.total_cpcno AS total,
+                   a.observacion_cpcno AS observacion
+            FROM cxp_cabecera_nota a
+            INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
+            WHERE EXTRACT(MONTH FROM a.fecha_emisi_cpcno) = $1
+              AND EXTRACT(YEAR FROM a.fecha_emisi_cpcno) = $2
+              AND a.ide_sucu = $3
+              AND a.ide_cpeno = 1
+            ORDER BY a.numero_cpcno, a.ide_cpcno DESC
+        `);
+        query.addIntParam(1, dtoIn.mes);
+        query.addIntParam(2, dtoIn.periodo);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async getFacturaById(dtoIn: GetFacturaDto & HeaderParamsDto) {

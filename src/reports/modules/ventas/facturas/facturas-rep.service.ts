@@ -4,6 +4,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
+import { ReporteVentasMensualesDto } from 'src/core/modules/ventas/facturas/dto/reporte-ventas-mensuales.dto';
 import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 import { FacturasService } from 'src/core/modules/ventas/facturas/facturas.service';
 import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
@@ -14,6 +15,7 @@ import { PrinterService } from 'src/reports/printer/printer.service';
 import { facturaElectronicaReport } from './factura.report';
 import { FacturaCabecera, FacturaDetalle, FacturaPago, FacturaRep } from './interfaces/factura-rep';
 import { ResumenDiarioRep } from './interfaces/resumen-diario-rep';
+import { ivaVentasReport } from './iva-ventas.report';
 import { resumenDiarioFacturasReport } from './resumen-diario.report';
 
 @Injectable()
@@ -339,6 +341,26 @@ export class FacturasRepService {
 
     // Generar el documento PDF
     const docDefinition = resumenDiarioFacturasReport(resumenData, header);
+    return this.printerService.createPdf(docDefinition);
+  }
+
+  /**
+   * Genera el reporte PDF "IVA en Ventas": facturas y notas de crédito de ventas
+   * de un mes/año determinado. Reutiliza la misma consulta (getReporteVentasMensuales)
+   * que el listado en pantalla del Reporte de Ventas Mensuales.
+   */
+  async reportIvaVentas(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+    const { facturas, notasCredito } = await this.facturasService.getReporteVentasMensuales(dtoIn);
+
+    const header = await this.sectionsService.createReportHeader({
+      ideEmpr: dtoIn.ideEmpr,
+      title: 'IVA en Ventas',
+    });
+
+    const docDefinition = ivaVentasReport(
+      { mes: dtoIn.mes, periodo: dtoIn.periodo, facturas, notasCredito },
+      header,
+    );
     return this.printerService.createPdf(docDefinition);
   }
 }

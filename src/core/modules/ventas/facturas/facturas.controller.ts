@@ -12,6 +12,7 @@ import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
+import { ReporteVentasMensualesDto } from './dto/reporte-ventas-mensuales.dto';
 import { ResumenDiarioFacturasDto } from './dto/resumen-diario-facturas.dto';
 import { SaveFacturaDto } from './dto/save-factura.dto';
 import { FacturasSaveService } from './facturas-save.service';
@@ -134,6 +135,19 @@ export class FacturasController {
     @Query() dtoIn: GetEnvioFacturaDetalleDto,
   ) {
     return this.service.getEnvioFacturaDetalleById({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getReporteVentasMensuales')
+  @ApiOperation({ summary: 'Facturas y notas de crédito de ventas de un mes/año (Reporte de Ventas Mensuales / IVA en Ventas)' })
+  @Auth()
+  getReporteVentasMensuales(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ReporteVentasMensualesDto,
+  ) {
+    return this.service.getReporteVentasMensuales({
       ...headersParams,
       ...dtoIn,
     });

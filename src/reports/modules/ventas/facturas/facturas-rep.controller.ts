@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { GetFacturaDto } from 'src/core/modules/ventas/facturas/dto/get-factura.dto';
+import { ReporteVentasMensualesDto } from 'src/core/modules/ventas/facturas/dto/reporte-ventas-mensuales.dto';
 import { ResumenDiarioFacturasDto } from 'src/core/modules/ventas/facturas/dto/resumen-diario-facturas.dto';
 
 import { FacturasRepService } from './facturas-rep.service';
@@ -45,6 +46,24 @@ export class FacturasRepController {
 
         response.setHeader('Content-Type', 'application/pdf');
         pdfDoc.info.Title = 'Resumen Diario de Ventas';
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
+
+    @Get('reportIvaVentas')
+    @ApiOperation({ summary: 'Generar reporte PDF "IVA en Ventas" (facturas + notas de crédito de un mes/año)' })
+    async getReportIvaVentas(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteVentasMensualesDto,
+    ) {
+        const pdfDoc = await this.facturasRepService.reportIvaVentas({
+            ...headersParams,
+            ...dtoIn,
+        });
+
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = 'IVA en Ventas';
         pdfDoc.pipe(response);
         pdfDoc.end();
     }
