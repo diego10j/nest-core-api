@@ -171,7 +171,7 @@ export class AuditService {
     queryOpcion.addStringParam(1, path);
     queryOpcion.addNumberParam(2, this.configService.get('ID_SISTEMA'));
     const opcion = await this.dataSource.createSingleQuery(queryOpcion);
-    if (!opcion) return;
+    if (!opcion) return { ok: false, error: false };
 
     await this.saveEventoAuditoria(
       headers.ideUsua,
@@ -180,6 +180,7 @@ export class AuditService {
       String(opcion.ide_opci),
       headers.device,
     );
+    return { ok: true, error: false };
   }
 
   /**

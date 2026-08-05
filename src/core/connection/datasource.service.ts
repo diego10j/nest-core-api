@@ -45,6 +45,11 @@ export class DataSourceService {
     // ssl: {
     //     rejectUnauthorized: false, // If you're connecting to an SSL-enabled database
     // },
+    // Sin estos dos, `pg` usa sus defaults (max: 10, connectionTimeoutMillis: 0 = sin
+    // límite): si las 10 conexiones compartidas por toda la app se agotan, cualquier
+    // query nueva queda esperando en silencio, indefinidamente, sin error visible.
+    max: 20,
+    connectionTimeoutMillis: 15000,
   });
   private TYPE_DATESTAMP = 1082;
   private TYPE_TIMESTAMP = 1114;
