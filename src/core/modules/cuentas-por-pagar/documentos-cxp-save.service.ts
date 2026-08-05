@@ -1321,9 +1321,12 @@ export class DocumentosCxPSaveService extends BaseService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Calcula bases, IVA y total (migrado de calcularTotalDocumento del legacy).
-     * El descuento solo reduce la base gravada para el IVA; NO se resta del
-     * total. La tarifa se maneja como fracción (ej. 0.15).
+     * Calcula bases, IVA y total. El descuento reduce tanto la base gravada usada para
+     * el IVA como el total del documento (a diferencia de calcularTotalDocumento del
+     * legacy, que solo lo aplicaba al IVA y dejaba el campo como puramente informativo —
+     * un defecto heredado: Descuento/Otros Valores existen para poder cuadrar el total
+     * contra la factura real del proveedor, así que sí deben afectar el total). La
+     * tarifa se maneja como fracción (ej. 0.15).
      */
     private calcularTotales(
         detalles: DetalleDocumentoCxPDto[],
@@ -1351,7 +1354,9 @@ export class DocumentosCxPSaveService extends BaseService {
         }
 
         const valorIva = Number(((baseGrabada - descuento) * tarifaIva).toFixed(2));
-        const total = Number((baseGrabada + baseNoObjeto + baseTarifa0 + valorIva + otros).toFixed(2));
+        const total = Number(
+            (baseGrabada - descuento + baseNoObjeto + baseTarifa0 + valorIva + otros).toFixed(2),
+        );
 
         return {
             base_grabada: Number(baseGrabada.toFixed(2)),
