@@ -20,7 +20,7 @@ CREATE INDEX idx_uuid_inv_doc_producto ON inv_doc_producto(uuid);
 
 --- correo defecto
 INSERT INTO "public"."sis_correo" ("ide_corr", "alias_corr", "smtp_corr", "puerto_corr", "usuario_corr", "correo_corr", "nom_correo_corr", "clave_corr", "secure_corr", "activo_corr", "observacion_corr", "ide_sucu", "ide_empr") VALUES
-(1, 'default', 'mail.produquimic.com.ec ', '465', 'Notificaciones', 'notificacion@produquimic.com.ec', 'notificacion@produquimic.com.ec', 'xxxxxxxx', 't', 't', 'Cuenta de Correo por defecto', 2, 0);
+(1, 'default', 'mail.xxxxx.com.ec ', '465', 'Notificaciones', 'notificacion@xxxxx.com.ec', 'notificacion@xxxxx.com.ec', 'xxxxxxxx', 't', 't', 'Cuenta de Correo por defecto', 2, 0);
 
 
 
@@ -468,7 +468,7 @@ ADD COLUMN "ide_empr" int;
 
 
 INSERT INTO "public"."sis_correo" ("ide_corr", "alias_corr", "clave_corr", "ide_sucu", "ide_empr", "correo_corr") VALUES
-(1, 'default', 're_RyvYeSUf_Fh8iMkLx3ugsG1e4kSNovMwg', 2, 0, 'admin@produquimic.com.ec');
+(1, 'default', 'xxxxxxxxxx', 2, 0, 'admin@xxxxxx.com.ec');
 
 
 
