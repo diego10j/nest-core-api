@@ -5,7 +5,7 @@ export class OrderByDto {
   @ApiProperty({ description: 'Columna para ordenar', example: 'nombre' })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^\S*$/, { message: 'column no debe contener espacios' })
+  @Matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/, { message: 'column debe ser un identificador de columna válido' })
   column: string;
 
   @ApiPropertyOptional({ description: 'Dirección de ordenamiento', example: 'ASC', default: 'ASC' })

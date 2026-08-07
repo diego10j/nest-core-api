@@ -64,8 +64,6 @@ export class FilterService {
         switch (filter.operator) {
             case 'ILIKE':
                 return `${column}::text ILIKE '%${filter.value}%'`;
-            case 'LIKE':
-                return `${column}::text LIKE '%${filter.value}%'`;
             case '=':
             case '!=':
             case '>':

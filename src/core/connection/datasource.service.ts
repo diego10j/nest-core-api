@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-import { Injectable, InternalServerErrorException, Inject, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { Pool, types } from 'pg';
 import { envs } from 'src/config/envs';
@@ -63,6 +63,32 @@ export class DataSourceService {
 
   private SIZE_DEFAULT = 100;
 
+  // Whitelist de operadores permitidos en filtros lazy - cualquier otro valor se rechaza
+  // antes de tocar SQL, ya que el operador se interpola como texto (no se puede parametrizar).
+  private static readonly ALLOWED_FILTER_OPERATORS = [
+    '=',
+    '!=',
+    '>',
+    '>=',
+    '<',
+    '<=',
+    'ILIKE',
+    'NOT ILIKE',
+    'IN',
+    'NOT IN',
+    'BETWEEN',
+  ];
+
+  // Nombres de columna/identificadores: sólo se interpolan si matchean esto (no se pueden
+  // parametrizar identificadores en SQL). Bloquea comillas, espacios, punto y coma, comentarios, etc.
+  private static readonly IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+  private assertValidIdentifier(name: string, context: string): void {
+    if (typeof name !== 'string' || !DataSourceService.IDENTIFIER_REGEX.test(name)) {
+      throw new BadRequestException(`Nombre de columna inválido en ${context}: ${name}`);
+    }
+  }
+
   constructor(
     private readonly errorsLoggerService: ErrorsLoggerService,
     @Inject('REDIS_CLIENT') public readonly redisClient: Redis,
@@ -115,6 +141,12 @@ export class DataSourceService {
       // Handle SelectQuery specific logic
       if (query instanceof SelectQuery) {
         const selectQuery = query as SelectQuery;
+
+        // Cortocircuito: valores únicos de una columna (filtro por columna estilo Excel en
+        // tablas lazy), en vez del flujo normal de datos paginados + esquema.
+        if (selectQuery.distinctColumn) {
+          return await this.getDistinctColumnValues(selectQuery);
+        }
 
         // Initialize default pagination if needed
         if (!selectQuery.pagination && selectQuery.isLazy) {
@@ -225,33 +257,146 @@ export class DataSourceService {
   private applyFiltersAndOrdering(selectQuery: SelectQuery, baseQuery: string): string {
     let query = baseQuery;
 
+    // Los valores de filtro/búsqueda se parametrizan ($n); columnas y operadores no se pueden
+    // parametrizar en SQL, por eso se validan contra whitelists antes de interpolarlos.
+    let paramIndex = selectQuery.params.length + 1;
+    const pushParam = (value: any): string => {
+      const idx = paramIndex++;
+      selectQuery.addParam(idx, value);
+      return `$${idx}`;
+    };
+
     // Apply individual filters
     if (selectQuery.filters?.length > 0) {
       const filterConditions = selectQuery.filters
-        .map((filter) =>
-          filter.operator === 'ILIKE'
-            ? `wrapped_query.${filter.column}::text ILIKE '%${filter.value}%'`
-            : `wrapped_query.${filter.column} ${filter.operator} ${filter.value}`,
-        )
+        .map((filter) => {
+          this.assertValidIdentifier(filter.column, 'filters[].column');
+          const operator = (filter.operator || 'ILIKE').toUpperCase();
+          if (!DataSourceService.ALLOWED_FILTER_OPERATORS.includes(operator)) {
+            throw new BadRequestException(`Operador de filtro no permitido: ${filter.operator}`);
+          }
+          const column = `wrapped_query.${filter.column}`;
+
+          if (operator === 'ILIKE' || operator === 'NOT ILIKE') {
+            const placeholder = pushParam(`%${filter.value}%`);
+            return `${column}::text ${operator} ${placeholder}`;
+          }
+          if (operator === 'IN' || operator === 'NOT IN') {
+            const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+            if (values.length === 0) return '1=1';
+            const placeholders = values.map((value) => pushParam(value)).join(', ');
+            return `${column} ${operator} (${placeholders})`;
+          }
+          if (operator === 'BETWEEN') {
+            const [from, to] = Array.isArray(filter.value) ? filter.value : [filter.value, filter.value];
+            const fromPlaceholder = pushParam(from);
+            const toPlaceholder = pushParam(to);
+            return `${column} BETWEEN ${fromPlaceholder} AND ${toPlaceholder}`;
+          }
+          // =, !=, >, >=, <, <=
+          const placeholder = pushParam(filter.value);
+          return `${column} ${operator} ${placeholder}`;
+        })
         .join(' AND ');
       query += ` WHERE ${filterConditions}`;
     }
 
     // Apply global filter
     if (selectQuery.globalFilter) {
+      selectQuery.globalFilter.columns.forEach((column) =>
+        this.assertValidIdentifier(column, 'globalFilter.columns'),
+      );
+      const placeholder = pushParam(`%${selectQuery.globalFilter.value}%`);
       const globalFilterConditions = selectQuery.globalFilter.columns
-        .map((column) => `wrapped_query.${column}::text ILIKE '%${selectQuery.globalFilter.value}%'`)
+        .map((column) => `wrapped_query.${column}::text ILIKE ${placeholder}`)
         .join(' OR ');
       query += selectQuery.filters?.length ? ` AND (${globalFilterConditions})` : ` WHERE (${globalFilterConditions})`;
     }
 
     // Apply ordering
     if (selectQuery.orderBy) {
-      const direction = selectQuery.orderBy.direction || 'ASC';
+      this.assertValidIdentifier(selectQuery.orderBy.column, 'orderBy.column');
+      const direction = selectQuery.orderBy.direction === 'DESC' ? 'DESC' : 'ASC';
       query += ` ORDER BY wrapped_query.${selectQuery.orderBy.column} ${direction}`;
     }
 
     return query;
+  }
+
+  /**
+   * Retorna hasta 500 valores únicos de `selectQuery.distinctColumn`, respetando los demás
+   * filtros/búsqueda global ya activos (excepto el filtro sobre la misma columna) y un texto
+   * de búsqueda opcional (`distinctSearch`). Usado por el filtro por columna estilo Excel en
+   * tablas con paginación server-side, donde el dataset completo no está en el cliente.
+   */
+  private async getDistinctColumnValues(selectQuery: SelectQuery): Promise<ResultQuery> {
+    this.assertValidIdentifier(selectQuery.distinctColumn, 'distinctColumn');
+
+    let baseSql = selectQuery.query.trim();
+    if (baseSql.endsWith(';')) {
+      baseSql = baseSql.slice(0, -1);
+    }
+    const column = `wrapped_query.${selectQuery.distinctColumn}`;
+
+    let paramIndex = selectQuery.params.length + 1;
+    const pushParam = (value: any): string => {
+      const idx = paramIndex++;
+      selectQuery.addParam(idx, value);
+      return `$${idx}`;
+    };
+
+    const conditions: string[] = [];
+
+    // Reutiliza los filtros activos (excepto el de la propia columna, convención "Excel":
+    // no te auto-filtras al abrir tu propio panel de valores) y el filtro global.
+    const otherFilters = (selectQuery.filters || []).filter((f) => f.column !== selectQuery.distinctColumn);
+    otherFilters.forEach((filter) => {
+      this.assertValidIdentifier(filter.column, 'filters[].column');
+      const operator = (filter.operator || 'ILIKE').toUpperCase();
+      if (!DataSourceService.ALLOWED_FILTER_OPERATORS.includes(operator)) {
+        throw new BadRequestException(`Operador de filtro no permitido: ${filter.operator}`);
+      }
+      const filterColumn = `wrapped_query.${filter.column}`;
+      if (operator === 'ILIKE' || operator === 'NOT ILIKE') {
+        conditions.push(`${filterColumn}::text ${operator} ${pushParam(`%${filter.value}%`)}`);
+      } else if (operator === 'IN' || operator === 'NOT IN') {
+        const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+        if (values.length > 0) {
+          conditions.push(`${filterColumn} ${operator} (${values.map((value) => pushParam(value)).join(', ')})`);
+        }
+      } else if (operator === 'BETWEEN') {
+        const [from, to] = Array.isArray(filter.value) ? filter.value : [filter.value, filter.value];
+        conditions.push(`${filterColumn} BETWEEN ${pushParam(from)} AND ${pushParam(to)}`);
+      } else {
+        conditions.push(`${filterColumn} ${operator} ${pushParam(filter.value)}`);
+      }
+    });
+
+    if (selectQuery.globalFilter) {
+      selectQuery.globalFilter.columns.forEach((col) => this.assertValidIdentifier(col, 'globalFilter.columns'));
+      const placeholder = pushParam(`%${selectQuery.globalFilter.value}%`);
+      const globalConditions = selectQuery.globalFilter.columns
+        .map((col) => `wrapped_query.${col}::text ILIKE ${placeholder}`)
+        .join(' OR ');
+      conditions.push(`(${globalConditions})`);
+    }
+
+    if (selectQuery.distinctSearch) {
+      conditions.push(`${column}::text ILIKE ${pushParam(`%${selectQuery.distinctSearch}%`)}`);
+    }
+
+    let query = `SELECT DISTINCT ${column} AS value FROM (${baseSql}) AS wrapped_query`;
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ` ORDER BY 1 LIMIT 500`;
+
+    const res = await this.pool.query(
+      query,
+      selectQuery.params.map((_param) => _param.value),
+    );
+
+    return { rows: res.rows, rowCount: res.rowCount, message: 'ok' } as ResultQuery;
   }
 
   // calcular los totales

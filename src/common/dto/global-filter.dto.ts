@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsString, IsArray } from 'class-validator';
+import { IsString, IsArray, Matches } from 'class-validator';
 
 export class GlobalFilterDto {
   @ApiProperty({ description: 'Valor de búsqueda global', example: 'Diego' })
@@ -20,5 +20,6 @@ export class GlobalFilterDto {
   @ApiProperty({ description: 'Columnas donde buscar', example: ['nombre', 'email'] })
   @IsArray()
   @IsString({ each: true })
+  @Matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/, { each: true, message: 'columns debe contener identificadores de columna válidos' })
   columns: string[];
 }

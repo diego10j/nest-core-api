@@ -28,6 +28,9 @@ export class SelectQuery extends Query {
 
   lastPage?: boolean;
 
+  distinctColumn?: string;
+  distinctSearch?: string;
+
   constructor(query: string, dto?: QueryOptionsDto) {
     super();
     this.isSchema = true; // Por defecto retorna el esquema de la consulta
@@ -36,10 +39,19 @@ export class SelectQuery extends Query {
     this.lastPage = false; // para cargar la ultima página
     if (dto) {
       // Asigna valores paginador
-      const { pagination, globalFilter, orderBy, filters, lazy } = dto;
+      const { pagination, globalFilter, orderBy, filters, lazy, schema, distinctColumn, distinctSearch } = dto;
 
       if (isDefined(lazy)) {
         this.isLazy = lazy === 'true';
+      }
+      if (isDefined(schema)) {
+        this.isSchema = schema === 'true';
+      }
+      if (isDefined(distinctColumn)) {
+        this.distinctColumn = distinctColumn;
+      }
+      if (isDefined(distinctSearch)) {
+        this.distinctSearch = distinctSearch;
       }
       if (this.isLazy === true) {
         if (isDefined(pagination)) {
