@@ -21,6 +21,7 @@ import {
   FindByIdDto,
   UpdateColumnsDto,
   ALLOWED_PERSONALIZACION_COMPONENTS,
+  CODE_ONLY_COMPONENTS,
 } from './connection/dto';
 import { TreeDto } from './connection/dto/tree-dto';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
@@ -367,8 +368,17 @@ export class CoreService {
     // necesita también los metadatos de la PK.
     const columnsToSave = dtoIn.columns;
 
+    // Sólo se rechaza un `component` realmente desconocido. Los valores "code-only" (Render/
+    // Label/Link) llegan legítimamente en columnas que la página define vía `customColumns` -
+    // el usuario nunca los elige desde el diálogo (que sólo ofrece ALLOWED_PERSONALIZACION_COMPONENTS),
+    // pero el frontend los vuelve a aplicar en cada carga sin importar lo guardado, así que
+    // persistirlos es inofensivo.
     columnsToSave.forEach((column) => {
-      if (column.component && !ALLOWED_PERSONALIZACION_COMPONENTS.includes(column.component)) {
+      if (
+        column.component &&
+        !ALLOWED_PERSONALIZACION_COMPONENTS.includes(column.component) &&
+        !CODE_ONLY_COMPONENTS.includes(column.component)
+      ) {
         throw new BadRequestException(`component no permitido: ${column.component}`);
       }
     });

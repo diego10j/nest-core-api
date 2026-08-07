@@ -219,6 +219,23 @@ export class ComprobantesElecService extends BaseService {
       comprobante.destinatario = await this.getDestinatarioGuia(comprobante.codigocomprobante);
       comprobante.detalle = await this.getDetalleGuia(comprobante.codigoComprobanteFactura);
       comprobante.transportista = await this.getTransportistaGuia(comprobante.codigocomprobante);
+
+      // El SRI rechaza el XML de la guía si falta cualquiera de estos - validar antes de
+      // construir/enviar el XML da un error claro y accionable en vez del ERROR.35/ERROR.69
+      // genérico del SRI después de que ya se intentó el envío.
+      if (!comprobante.transportista?.razonSocial) {
+        throw new BadRequestException(
+          `La guía de remisión ${comprobante.claveacceso} no tiene transportista/chofer asignado ` +
+          `(o su registro de persona no tiene nombre). Complete esos datos antes de generarla/reenviarla.`,
+        );
+      }
+      if (comprobante.destinatario?.identificacionDestinatario === '9999999999999') {
+        throw new BadRequestException(
+          `La guía de remisión ${comprobante.claveacceso} tiene como destinatario a Consumidor Final. ` +
+          `El SRI no permite emitir guías de remisión para Consumidor Final; ` +
+          `asigne la identificación real del destinatario.`,
+        );
+      }
     } else if (comprobante.coddoc === TipoComprobanteEnum.COMPROBANTE_DE_RETENCION.codigo) {
       comprobante.impuesto = await this.getImpuestosRetencion(comprobante.codigocomprobante);
     } else if (comprobante.coddoc === TipoComprobanteEnum.LIQUIDACION_DE_COMPRAS.codigo) {

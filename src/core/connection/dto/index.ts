@@ -8,4 +8,4 @@ export { TableQueryDto } from './table-query.dto';
 export { UniqueDto } from './unique.dto';
 export { FindByUuidDto } from './find-by-uuid.dto';
 export { FindByIdDto } from './find-by-id.dto';
-export { UpdateColumnsDto, ALLOWED_PERSONALIZACION_COMPONENTS } from './update-columns.dto';
+export { UpdateColumnsDto, ALLOWED_PERSONALIZACION_COMPONENTS, CODE_ONLY_COMPONENTS } from './update-columns.dto';

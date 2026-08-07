@@ -66,6 +66,11 @@ export class FacturasSaveService extends BaseService {
         return 3;  // FACTURA
     }
 
+    /** con_tipo_document.ide_cntdo para "Guía de Remisión" (paridad legacy: ServicioComprobanteElectronico.java, ide_cntdo=7). */
+    private get ideTipoDocGuia(): number {
+        return 7;  // GUIA DE REMISION
+    }
+
     private get ideSriEstadoCreado(): number {
         return 5;
     }
@@ -146,6 +151,7 @@ export class FacturasSaveService extends BaseService {
                 if (dtoIn.guia) {
                     if (!dtoIn.guia.placa_gecam) throw new BadRequestException('La placa del vehículo es obligatoria para la guía.');
                     if (!dtoIn.guia.gen_ide_geper) throw new BadRequestException('El transportista es obligatorio para la guía.');
+                    this.validarGuiaConsumidorFinal(cliente);
                 }
             }
 
@@ -589,6 +595,8 @@ export class FacturasSaveService extends BaseService {
 
         // ── 2b. Guía de remisión ───────────────────────────────────────────
         if (dtoIn.guia) {
+            this.validarGuiaConsumidorFinal(cliente);
+
             const qGuiaExiste = new SelectQuery(
                 `SELECT ide_ccgui FROM cxc_guia WHERE ide_cccfa = $1 LIMIT 1`,
             );
@@ -1352,6 +1360,23 @@ export class FacturasSaveService extends BaseService {
     }
 
     /**
+     * El SRI rechaza (ERROR.69 "ERROR EN LA IDENTIFICACION DEL RECEPTOR") toda Guía de Remisión
+     * cuyo destinatario sea Consumidor Final (9999999999999) — a diferencia de la factura, la
+     * guía es un documento de traslado de mercadería y exige identificación real del receptor.
+     * La guía siempre hereda ide_geper del cliente de la factura (ver buildInsertGuia), así que
+     * se valida ANTES de intentar crear/emitir la guía, no después de que el SRI la rechace.
+     */
+    private validarGuiaConsumidorFinal(cliente: any): void {
+        const id = (cliente.identificac_geper || '').trim();
+        if (id === '9999999999999') {
+            throw new BadRequestException(
+                'No se puede generar una Guía de Remisión para Consumidor Final. ' +
+                'Seleccione o registre la identificación real del destinatario para emitirla.',
+            );
+        }
+    }
+
+    /**
      * Valida la identificación del cliente (cédula/RUC) usando los validadores
      * existentes del proyecto (cedula-ruc.ts).
      */
@@ -1466,7 +1491,9 @@ export class FacturasSaveService extends BaseService {
         q.values.set('dias_credito_srcom', diasCredito);
         q.values.set('correo_srcom', data.correo_cccfa ?? cliente.correo_geper ?? null);
         q.values.set('ide_geper', data.ide_geper);
-        q.values.set('ide_cntdo', this.ideTipoDocFactura);
+        // Paridad legacy: ide_cntdo distingue factura (3) de guía de remisión (7) - antes se
+        // guardaba siempre como factura, incluso para el sri_comprobante de una guía (coddoc '06').
+        q.values.set('ide_cntdo', coddoc === '06' ? this.ideTipoDocGuia : this.ideTipoDocFactura);
         q.values.set('ide_empr', dtoIn.ideEmpr);
         q.values.set('ide_sucu', dtoIn.ideSucu);
         q.values.set('orden_compra_srcom', data.orden_compra_cccfa ?? null);
