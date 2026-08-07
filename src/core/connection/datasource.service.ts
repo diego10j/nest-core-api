@@ -74,6 +74,8 @@ export class DataSourceService {
     '<=',
     'ILIKE',
     'NOT ILIKE',
+    'STARTS_WITH',
+    'ENDS_WITH',
     'IN',
     'NOT IN',
     'BETWEEN',
@@ -330,6 +332,14 @@ export class DataSourceService {
             const placeholder = pushParam(`%${filter.value}%`);
             return `${column}::text ${operator} ${placeholder}`;
           }
+          if (operator === 'STARTS_WITH') {
+            const placeholder = pushParam(`${filter.value}%`);
+            return `${column}::text ILIKE ${placeholder}`;
+          }
+          if (operator === 'ENDS_WITH') {
+            const placeholder = pushParam(`%${filter.value}`);
+            return `${column}::text ILIKE ${placeholder}`;
+          }
           if (operator === 'IN' || operator === 'NOT IN') {
             const values = Array.isArray(filter.value) ? filter.value : [filter.value];
             if (values.length === 0) return '1=1';
@@ -408,6 +418,10 @@ export class DataSourceService {
       const filterColumn = `wrapped_query.${filter.column}`;
       if (operator === 'ILIKE' || operator === 'NOT ILIKE') {
         conditions.push(`${filterColumn}::text ${operator} ${pushParam(`%${filter.value}%`)}`);
+      } else if (operator === 'STARTS_WITH') {
+        conditions.push(`${filterColumn}::text ILIKE ${pushParam(`${filter.value}%`)}`);
+      } else if (operator === 'ENDS_WITH') {
+        conditions.push(`${filterColumn}::text ILIKE ${pushParam(`%${filter.value}`)}`);
       } else if (operator === 'IN' || operator === 'NOT IN') {
         const values = Array.isArray(filter.value) ? filter.value : [filter.value];
         if (values.length > 0) {
@@ -909,6 +923,88 @@ export class DataSourceService {
     return `schema:${queryName}`;
   }
 
+  async invalidateSchemaCache(queryName: string): Promise<void> {
+    await this.redisClient.del(this.getCacheKeySchemaQuery(queryName));
+  }
+
+  /**
+   * Reconstruye el array de columnas COMPLETO únicamente desde sis_tabla/sis_campo (guardado
+   * por CoreService.updateColumns), sin volver a introspectar la BD (getColumnsSchema). Una vez
+   * que el usuario personalizó una tabla al menos una vez, sis_campo ya tiene todos los metadatos
+   * de cada columna (incluida la primaryKey, guardada como snapshot inmutable - nunca editable
+   * desde el diálogo "Personalizar Tabla") y se vuelve la fuente autoritativa: evita repetir la
+   * consulta a information_schema en cada recomputo de caché. Retorna null si la tabla nunca fue
+   * personalizada (createQuery cae entonces al cómputo por introspección de siempre).
+   */
+  private async buildColumnsFromPersonalizacion(queryName: string): Promise<any[] | null> {
+    const tableQuery = new SelectQuery('SELECT ide_tabl, primaria_tabl FROM sis_tabla WHERE query_name_tabl = $1');
+    tableQuery.setFindSchema(false);
+    tableQuery.setLazy(false);
+    tableQuery.addStringParam(1, queryName);
+    const tabla = await this.createSingleQuery(tableQuery);
+    if (!isDefined(tabla)) {
+      return null;
+    }
+
+    const fieldsQuery = new SelectQuery(`
+      SELECT nom_camp, table_id_camp, data_type_id_camp, data_type_camp, orden_camp, nom_visual_camp,
+             requerido_camp, visible_camp, length_camp, precision_camp, decimals_camp, lectura_camp,
+             filtro_camp, filtro_global_camp, comentario_camp, size_camp, align_camp, defecto_camp,
+             mayuscula_camp, mascara_camp, component_camp, unique_camp, orderable_camp, sum_camp
+      FROM sis_campo
+      WHERE ide_tabl = $1
+      ORDER BY orden_camp
+    `);
+    fieldsQuery.setFindSchema(false);
+    fieldsQuery.setLazy(false);
+    fieldsQuery.addIntParam(1, tabla.ide_tabl);
+    const rows = await this.createSelectQuery(fieldsQuery);
+    if (!rows || rows.length === 0) {
+      return null;
+    }
+
+    const columns = rows.map((row) => ({
+      name: row.nom_camp,
+      tableID: row.table_id_camp,
+      dataTypeID: row.data_type_id_camp,
+      dataType: row.data_type_camp,
+      order: 0, // reasignado abajo tras ordenar con la PK primero
+      label: row.nom_visual_camp ?? row.nom_camp,
+      required: !!row.requerido_camp,
+      visible: !!row.visible_camp,
+      length: row.length_camp,
+      precision: row.precision_camp,
+      decimals: row.decimals_camp,
+      disabled: !!row.lectura_camp,
+      filter: !!row.filtro_camp,
+      comment: row.comentario_camp ?? '',
+      component: row.component_camp || 'Text',
+      upperCase: !!row.mayuscula_camp,
+      unique: !!row.unique_camp,
+      orderable: isDefined(row.orderable_camp) ? row.orderable_camp : true,
+      sum: !!row.sum_camp,
+      size: row.size_camp,
+      align: row.align_camp,
+      defaultValue: row.defecto_camp,
+      mask: row.mascara_camp,
+      header: row.nom_visual_camp ?? row.nom_camp,
+      accessorKey: row.nom_camp,
+      filterFn: getTypeFilterColumn(row.data_type_camp),
+      globalFilter: !!row.filtro_global_camp,
+    }));
+
+    // La columna PK (sis_tabla.primaria_tabl) siempre primero - snapshot inmutable, nunca
+    // personalizada por el usuario. El resto respeta el orden guardado (ORDER BY orden_camp).
+    const pkCol = columns.find((col) => col.name === tabla.primaria_tabl);
+    const rest = columns.filter((col) => col.name !== tabla.primaria_tabl);
+    const ordered = pkCol ? [pkCol, ...rest] : rest;
+    ordered.forEach((col, index) => {
+      col.order = index;
+    });
+
+    return ordered;
+  }
+
   async getSchemaQuery(queryName: string, primaryKey: string, res: any): Promise<any[]> {
     const cacheKey = this.getCacheKeySchemaQuery(queryName);
     // Check cache
@@ -916,6 +1012,15 @@ export class DataSourceService {
     if (cachedSchema) {
       return JSON.parse(cachedSchema);
     }
+
+    // Si la tabla ya fue personalizada, sis_campo es autoritativo - evita la introspección
+    // (getColumnsSchema) por completo en cada recomputo de caché.
+    const personalizedColumns = await this.buildColumnsFromPersonalizacion(queryName);
+    if (personalizedColumns) {
+      await this.redisClient.set(cacheKey, JSON.stringify(personalizedColumns));
+      return personalizedColumns;
+    }
+
     const columnsNames: string[] = res.fields.map((field) => field.name);
     const tablesID: number[] = res.fields.map((field) => field.tableID);
     const resSchema = await this.getColumnsSchema(removeEqualsElements(columnsNames), removeEqualsElements(tablesID));

@@ -14,11 +14,13 @@ export interface Column {
   defaultValue: any;
   mask: string;
   filter: boolean;
+  globalFilter?: boolean;
   comment: string;
   component: string;
   upperCase: boolean;
   unique: boolean;
   orderable: boolean;
+  sum?: boolean;
   size: number;
   align: string;
   header: string;

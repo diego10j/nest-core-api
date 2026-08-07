@@ -20,6 +20,7 @@ import {
   FindByUuidDto,
   FindByIdDto,
   UpdateColumnsDto,
+  ALLOWED_PERSONALIZACION_COMPONENTS,
 } from './connection/dto';
 import { TreeDto } from './connection/dto/tree-dto';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
@@ -335,6 +336,8 @@ export class CoreService {
             AND ide_opci ${dtoIn.ide_opci ? '= $2' : 'IS NULL'}`;
 
     const sq = new SelectQuery(baseQuery);
+    sq.setFindSchema(false);
+    sq.setLazy(false);
     sq.addStringParam(1, dtoIn.queryName);
     if (dtoIn.ide_opci) {
       sq.addNumberParam(2, dtoIn.ide_opci);
@@ -357,6 +360,19 @@ export class CoreService {
       ide_tabl = result.ide_tabl;
     }
 
+    // El primer campo (primaryKey, ej. ide_xxx) nunca es editable por el usuario - el frontend
+    // (ConfigDataTable) nunca lo pasa por edición, pero SÍ se guarda su snapshot en sis_campo:
+    // una vez personalizada, la tabla se reconstruye ÍNTEGRAMENTE desde sis_campo sin volver a
+    // introspectar la BD (ver DataSourceService.buildColumnsFromPersonalizacion), y para eso
+    // necesita también los metadatos de la PK.
+    const columnsToSave = dtoIn.columns;
+
+    columnsToSave.forEach((column) => {
+      if (column.component && !ALLOWED_PERSONALIZACION_COMPONENTS.includes(column.component)) {
+        throw new BadRequestException(`component no permitido: ${column.component}`);
+      }
+    });
+
     const listQuery: Query[] = [];
     // Elimina columnas existentes
 
@@ -366,9 +382,9 @@ export class CoreService {
     listQuery.push(dq);
 
     // inserta columnas
-    let ide_camp = await this.dataSource.getSeqTable('sis_campo', 'ide_camp', dtoIn.columns.length, dtoIn.login);
+    let ide_camp = await this.dataSource.getSeqTable('sis_campo', 'ide_camp', columnsToSave.length, dtoIn.login);
 
-    dtoIn.columns.forEach((column) => {
+    columnsToSave.forEach((column) => {
       const insertQuery = new InsertQuery('sis_campo', 'ide_camp');
       insertQuery.values.set('ide_camp', ide_camp);
       insertQuery.values.set('ide_tabl', ide_tabl);
@@ -384,19 +400,28 @@ export class CoreService {
       insertQuery.values.set('precision_camp', column.precision);
       insertQuery.values.set('decimals_camp', column.decimals);
       insertQuery.values.set('lectura_camp', column.disabled);
-      // insertQuery.values.set('filtro_camp', column.filter);
+      insertQuery.values.set('filtro_camp', column.filter);
+      insertQuery.values.set('filtro_global_camp', column.globalFilter);
       insertQuery.values.set('comentario_camp', column.comment);
       insertQuery.values.set('size_camp', column.size);
       insertQuery.values.set('align_camp', column.align);
       insertQuery.values.set('defecto_camp', column.defaultValue);
       insertQuery.values.set('mayuscula_camp', column.upperCase);
       insertQuery.values.set('mascara_camp', column.mask);
+      insertQuery.values.set('component_camp', column.component);
+      insertQuery.values.set('unique_camp', column.unique);
+      insertQuery.values.set('orderable_camp', column.orderable);
+      insertQuery.values.set('sum_camp', column.sum);
       insertQuery.values.set('usuario_ingre', dtoIn.login);
       listQuery.push(insertQuery);
       ide_camp = ide_camp + 1;
     });
     // Ejecuta querys
     const messages = await this.dataSource.createListQuery(listQuery);
+
+    // Invalida el esquema cacheado para que la próxima consulta recalcule con la
+    // personalización recién guardada.
+    await this.dataSource.invalidateSchemaCache(dtoIn.queryName);
 
     return {
       message: 'ok',

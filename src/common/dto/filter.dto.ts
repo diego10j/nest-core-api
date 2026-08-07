@@ -4,7 +4,21 @@ import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator
 // Debe coincidir con DataSourceService.ALLOWED_FILTER_OPERATORS (datasource.service.ts) -
 // el operador se interpola directo en el SQL (no se puede parametrizar), por eso ambos lados
 // validan contra la misma whitelist.
-export const FILTER_OPERATORS = ['=', '!=', '>', '>=', '<', '<=', 'ILIKE', 'NOT ILIKE', 'IN', 'NOT IN', 'BETWEEN'] as const;
+export const FILTER_OPERATORS = [
+  '=',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+  'ILIKE',
+  'NOT ILIKE',
+  'STARTS_WITH',
+  'ENDS_WITH',
+  'IN',
+  'NOT IN',
+  'BETWEEN',
+] as const;
 
 export class FilterDto {
   @ApiProperty({ description: 'Nombre de columna', example: 'nombre' })
