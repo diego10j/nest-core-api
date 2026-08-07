@@ -138,6 +138,9 @@ export class DataSourceService {
       let finalQuery = query.query;
       let totalRecords: number | undefined;
       let totalFilterRecords: number | undefined;
+      let hasFilters = false;
+      let windowCountInjected = false;
+      let filteredQueryBeforePagination: string | undefined;
       // Handle SelectQuery specific logic
       if (query instanceof SelectQuery) {
         const selectQuery = query as SelectQuery;
@@ -156,16 +159,34 @@ export class DataSourceService {
         // Prepare base query
         finalQuery = this.prepareBaseQuery(selectQuery);
 
+        // Snapshot de los params de negocio ANTES de que applyFiltersAndOrdering agregue los
+        // suyos (filtros/búsqueda global). calculateTotalRecordsWithoutFilters ejecuta el SQL
+        // ORIGINAL (sin esos placeholders extra) - pasarle el array completo de params hace
+        // que Postgres rechace el bind ("supplies N parameters, but prepared statement requires M").
+        const businessParamValues = selectQuery.params.map((_param) => _param.value);
+
         // Apply filters and ordering
         finalQuery = this.applyFiltersAndOrdering(selectQuery, finalQuery);
 
+        hasFilters = (selectQuery.filters?.length ?? 0) > 0 || !!selectQuery.globalFilter;
+
         // Calculate total records
         if (selectQuery.isLazy) {
-          // Total sin filtros (totalRecords)
-          totalRecords = await this.calculateTotalRecordsWithoutFilters(selectQuery);
+          // Total sin filtros (totalRecords) - requiere su propio WHERE (o ausencia de él),
+          // no se puede fusionar con la query de datos filtrada.
+          totalRecords = await this.calculateTotalRecordsWithoutFilters(selectQuery, businessParamValues);
 
-          // Total con filtros (totalFilterRecords) solo si hay filtros aplicados
-          if (selectQuery.filters?.length > 0 || selectQuery.globalFilter) {
+          // Fusiona el total filtrado vía COUNT(1) OVER() en vez de una query COUNT aparte -
+          // ahorra un round-trip en el caso más común. No se fusiona si además hay que resolver
+          // el esquema (selectQuery.isSchema): la columna auxiliar del window function no debe
+          // colarse en getSchemaQuery/caché de columnas - ese combo (schema + filters a la vez)
+          // no ocurre en el flujo normal del frontend, pero se mantiene el camino separado por
+          // seguridad.
+          if (hasFilters && !selectQuery.isSchema) {
+            filteredQueryBeforePagination = finalQuery;
+            finalQuery = this.injectTotalCountWindow(finalQuery);
+            windowCountInjected = true;
+          } else if (hasFilters) {
             totalFilterRecords = await this.calculateTotalRecordsWithFilters(selectQuery, finalQuery);
           }
         }
@@ -190,6 +211,23 @@ export class DataSourceService {
       // Set total records for non-lazy select queries
       if (query instanceof SelectQuery && !query.isLazy) {
         totalRecords = res.rowCount;
+      }
+
+      // Extrae el total filtrado fusionado vía COUNT(1) OVER() (ver arriba). Si no hay filas
+      // (el offset cayó más allá del total filtrado, ej. se filtró estando en una página
+      // avanzada) el window function no viaja en ninguna fila - único caso donde se recalcula
+      // con la query COUNT aparte que se había evitado.
+      if (query instanceof SelectQuery && query.isLazy && windowCountInjected) {
+        const windowCount = res.rows[0]?.__dtq_total_count__;
+        if (windowCount !== undefined) {
+          totalFilterRecords = parseInt(windowCount, 10);
+          res.rows = res.rows.map((row: Record<string, unknown>) => {
+            const { __dtq_total_count__, ...rest } = row;
+            return rest;
+          });
+        } else if (filteredQueryBeforePagination) {
+          totalFilterRecords = await this.calculateTotalRecordsWithFilters(query, filteredQueryBeforePagination);
+        }
       }
 
       // Set appropriate message based on query type
@@ -252,6 +290,17 @@ export class DataSourceService {
       query = query.slice(0, -1);
     }
     return `SELECT * FROM (${query}) AS wrapped_query`;
+  }
+
+  /**
+   * Agrega COUNT(1) OVER() a la query filtrada (antes de paginar) para obtener el total
+   * filtrado en la MISMA query de datos, en vez de una query COUNT aparte. Sólo reemplaza la
+   * primera ocurrencia de "SELECT * FROM" - la del wrapper propio de prepareBaseQuery, siempre
+   * en la posición 0 del texto - por lo que es seguro sin importar el contenido de la query
+   * de negocio interna.
+   */
+  private injectTotalCountWindow(query: string): string {
+    return query.replace('SELECT * FROM', 'SELECT *, COUNT(1) OVER() AS __dtq_total_count__ FROM');
   }
 
   private applyFiltersAndOrdering(selectQuery: SelectQuery, baseQuery: string): string {
@@ -400,17 +449,14 @@ export class DataSourceService {
   }
 
   // calcular los totales
-  private async calculateTotalRecordsWithoutFilters(selectQuery: SelectQuery): Promise<number> {
-    const countQuery = `SELECT COUNT(*) FROM (${selectQuery.query}) AS count_query`;
-    const countResult = await this.pool.query(
-      countQuery,
-      selectQuery.params.map((_param) => _param.value),
-    );
+  private async calculateTotalRecordsWithoutFilters(selectQuery: SelectQuery, paramValues: any[]): Promise<number> {
+    const countQuery = `SELECT COUNT(1) FROM (${selectQuery.query}) AS count_query`;
+    const countResult = await this.pool.query(countQuery, paramValues);
     return parseInt(countResult.rows[0].count, 10);
   }
 
   private async calculateTotalRecordsWithFilters(selectQuery: SelectQuery, filteredQuery: string): Promise<number> {
-    const countQuery = `SELECT COUNT(*) FROM (${filteredQuery}) AS count_query`;
+    const countQuery = `SELECT COUNT(1) FROM (${filteredQuery}) AS count_query`;
     const countResult = await this.pool.query(
       countQuery,
       selectQuery.params.map((_param) => _param.value),
