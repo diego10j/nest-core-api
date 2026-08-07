@@ -220,6 +220,16 @@ export class VentasBiController {
     return this.service.getTotalClientesPorPeriodo(headersParams);
   }
 
+  @Get('getClientesMensuales')
+  @ApiOperation({ summary: 'Obtener clientes nuevos y activos por mes en un año' })
+  @Auth()
+  getClientesMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: VentasMensualesDto) {
+    return this.service.getClientesMensuales({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getTotalClientesPorPeriodoVendedor')
   @ApiOperation({ summary: 'Obtener total de clientes activos por período para un vendedor específico' })
   @Auth()
