@@ -2404,6 +2404,49 @@ ORDER BY
         return this.dataSource.createQuery(query);
     }
 
+    async getClientesMensuales(dtoIn: VentasMensualesDto & HeaderParamsDto) {
+
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
+    WITH ClientesNuevos AS (
+        SELECT
+            EXTRACT(MONTH FROM COALESCE(fecha_ingre_geper, fecha_ingre)) AS mes,
+            COUNT(ide_geper) AS nuevos
+        FROM gen_persona
+        WHERE EXTRACT(YEAR FROM COALESCE(fecha_ingre_geper, fecha_ingre)) = $1
+            AND ide_empr = ${dtoIn.ideEmpr}
+            AND es_cliente_geper = true
+            AND COALESCE(fecha_ingre_geper, fecha_ingre) IS NOT NULL
+        GROUP BY EXTRACT(MONTH FROM COALESCE(fecha_ingre_geper, fecha_ingre))
+    ),
+    ClientesActivos AS (
+        SELECT
+            EXTRACT(MONTH FROM fecha_emisi_cccfa) AS mes,
+            COUNT(DISTINCT ide_geper) AS activos
+        FROM cxc_cabece_factura
+        WHERE EXTRACT(YEAR FROM fecha_emisi_cccfa) = $1
+            AND ide_empr = ${dtoIn.ideEmpr}
+            AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            ${whereSucursal}
+        GROUP BY EXTRACT(MONTH FROM fecha_emisi_cccfa)
+    )
+    SELECT
+        gm.ide_gemes,
+        gm.nombre_gemes,
+        COALESCE(cn.nuevos, 0)  AS clientes_nuevos,
+        COALESCE(ca.activos, 0) AS clientes_activos
+    FROM gen_mes gm
+    LEFT JOIN ClientesNuevos  cn ON gm.ide_gemes = cn.mes
+    LEFT JOIN ClientesActivos ca ON gm.ide_gemes = ca.mes
+    ORDER BY gm.ide_gemes
+        `);
+        query.addIntParam(1, dtoIn.periodo);
+        return this.dataSource.createQuery(query);
+    }
+
     async getTotalClientesPorPeriodo(dtoIn: HeaderParamsDto) {
         const query = new SelectQuery(`
             WITH periodos AS (
