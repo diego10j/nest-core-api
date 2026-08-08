@@ -36,6 +36,11 @@ export class AuditService {
     fin_auac: boolean = true,
   ) {
     try {
+      // ide_auac NO se asigna acá: la columna tiene DEFAULT nextval('sis_auditoria_acceso_ide_auac_seq').
+      // Paridad con el legacy (ServicioSeguridad.crearSQLAuditoriaAcceso, que tampoco la incluye
+      // en el INSERT) - usar getSeqTable()/sis_bloqueo acá desincroniza la secuencia nativa del
+      // MAX(ide_auac) real, con riesgo de duplicate key en cuanto algo más inserte confiando en
+      // el DEFAULT (como el propio legacy, si corre contra la misma BD).
       const insertQuery = new InsertQuery('sis_auditoria_acceso', 'ide_auac');
       insertQuery.values.set('ide_usua', ide_usua);
       insertQuery.values.set('ide_acau', ide_acau);
@@ -45,7 +50,6 @@ export class AuditService {
       insertQuery.values.set('fin_auac', fin_auac);
       insertQuery.values.set('id_session_auac', dispositivo);
       insertQuery.values.set('detalle_auac', detalle_auac);
-      insertQuery.values.set('ide_auac', await this.dataSource.getSeqTable('sis_auditoria_acceso', 'ide_auac'));
       await this.dataSource.createQuery(insertQuery);
     } catch (error) {
       console.error('[AuditService] Error al guardar evento de auditoría:', error);
