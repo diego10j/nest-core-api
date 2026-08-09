@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentTime } from 'src/util/helpers/date-util';
@@ -35,10 +36,37 @@ export class CxcTransaccionesSaveService extends BaseService {
                 'p_cxc_tipo_trans_pago',
                 'p_cxc_tipo_trans_cheque_posfechado',
                 'p_cxc_tipo_trans_sobrepago',
+                'p_cxc_monto_max_efectivo', // monto máximo (USD) cobrable en Efectivo
             ])
             .then((result) => {
                 this.variables = result;
             });
+    }
+
+    /**
+     * p_cxc_monto_max_efectivo: tope de riesgo/control para cobros en Efectivo. "Efectivo" se
+     * determina por el nombre del tipo de transacción (tes_tip_tran_banc.nombre_tettb) - el
+     * mismo criterio que ya usa el frontend (registrar-cobro-dialog.tsx) para filtrar esa
+     * lista por forma de pago, ya que ideTettb no tiene un id fijo reservado para efectivo
+     * (a diferencia de cheque posfechado === 13).
+     */
+    private async validarMontoMaximoEfectivo(ideTettb: number, valor: number): Promise<void> {
+        const query = new SelectQuery(`SELECT nombre_tettb FROM tes_tip_tran_banc WHERE ide_tettb = $1`);
+        query.setFindSchema(false);
+        query.setLazy(false);
+        query.addIntParam(1, ideTettb);
+        const tipo = await this.dataSource.createSingleQuery(query);
+
+        const esEfectivo = (tipo?.nombre_tettb ?? '').toUpperCase().includes('EFECTIVO');
+        if (!esEfectivo) return;
+
+        const maximo = Number(this.variables.get('p_cxc_monto_max_efectivo') ?? 500);
+        if (valor > maximo) {
+            throw new BadRequestException(
+                `No se puede cobrar en Efectivo un monto mayor a $${maximo.toFixed(2)} ` +
+                `(valor: $${valor.toFixed(2)}). Utilice Transferencia u otro medio de pago.`,
+            );
+        }
     }
 
     async saveCobroCxC(dtoIn: SaveCobroCxCDto & HeaderParamsDto) {
@@ -60,6 +88,8 @@ export class CxcTransaccionesSaveService extends BaseService {
                 throw new BadRequestException('Cheque posfechado requiere numCuentaCheque');
             }
         }
+
+        await this.validarMontoMaximoEfectivo(dtoIn.ideTettb, dtoIn.valor);
 
         // ─── PASO 2: OBTENER FACTURA ─────────────────────────────────────────
         const factura = await this.cxcTransaccionesService.getFacturaCxC({
@@ -266,6 +296,8 @@ export class CxcTransaccionesSaveService extends BaseService {
                 throw new BadRequestException('Cheque posfechado requiere numCuentaCheque');
             }
         }
+
+        await this.validarMontoMaximoEfectivo(dtoIn.ideTettb, dtoIn.valor);
 
         const numero = dtoIn.numero ?? '000000';
         const { existe } = await this.preLibroBancosService.existeNumTransaccion({

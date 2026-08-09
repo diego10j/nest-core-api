@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class SaveBancoDto {
     @IsInt()
@@ -24,4 +24,8 @@ export class SaveBancoDto {
     @IsString()
     @IsOptional()
     colorTeban?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    esTarjetaTeban?: boolean;
 }

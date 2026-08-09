@@ -152,7 +152,14 @@ export class TransportesSaveService extends BaseService {
         let ideGecam = dtoIn.ide_gecam ?? null;
         let ideGeper = dtoIn.ide_geper ?? null;
 
-        if (dtoIn.es_transporte_propio_cctfa && (!ideGecam || !ideGeper)) {
+        // La guía de remisión (cxc_guia.gen_ide_geper) puede traer su propio transportista
+        // seleccionado independientemente de este guardado de Envío - p.ej. "Retira en
+        // sucursal" (es_transporte_propio_cctfa=false, sin ide_vgtra) con la guía reactivada
+        // manualmente por el vendedor. Sin este fallback, cxc_transporte_factura.ide_geper
+        // queda NULL y el SRI rechaza el XML (razonSocialTransportista vacío, ERROR.35) aunque
+        // la guía sí tenga un transportista asignado.
+        const necesitaGeperDeGuia = !ideGeper && !dtoIn.ide_vgtra;
+        if ((dtoIn.es_transporte_propio_cctfa && !ideGecam) || necesitaGeperDeGuia) {
             const qGuia = new SelectQuery(`
                 SELECT placa_gecam, gen_ide_geper
                 FROM cxc_guia

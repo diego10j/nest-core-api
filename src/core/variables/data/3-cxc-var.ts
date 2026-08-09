@@ -31,4 +31,20 @@ export const CUENTAS_POR_COBRAR_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'p_cxc_monto_max_consumidor_final',
+    descripcion_para: 'Monto máximo (USD) permitido para facturar a Consumidor Final',
+    valor_para: '50',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'p_cxc_monto_max_efectivo',
+    descripcion_para: 'Monto máximo (USD) permitido para cobrar en Efectivo',
+    valor_para: '500',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

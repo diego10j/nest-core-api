@@ -44,6 +44,7 @@ export class FacturasSaveService extends BaseService {
                 'p_cxc_tipo_trans_factura',         // tipo transacción cargo CxC (ide_ccttr)
                 'p_inv_estado_normal',              // estado normal de comprobante inventario (ide_inepi)
                 'p_inv_tipo_transaccion_venta',     // tipo transacción inventario venta (ide_intti)
+                'p_cxc_monto_max_consumidor_final', // monto máximo (USD) facturable a Consumidor Final
             ])
             .then((result) => {
                 this.variables = result;
@@ -58,8 +59,21 @@ export class FacturasSaveService extends BaseService {
         return Number(val);
     }
 
+    /** Igual que getVar pero no revienta si la variable todavía no existe en sis_parametros
+     * (ej. recién agregada al código, pendiente de sincronizar vía "Actualizar Variables") -
+     * usa `fallback` para no interrumpir la operación mientras tanto. */
+    private getVarOptional(name: string, fallback: number): number {
+        const val = this.variables.get(name);
+        return val ? Number(val) : fallback;
+    }
+
     private get ideEstadoNormal(): number {
         return this.getVar('p_cxc_estado_factura_normal');
+    }
+
+    /** p_cxc_monto_max_consumidor_final - default 50 si aún no está configurada en sis_parametros. */
+    private get montoMaxConsumidorFinal(): number {
+        return this.getVarOptional('p_cxc_monto_max_consumidor_final', 50);
     }
 
     private get ideTipoDocFactura(): number {
@@ -159,6 +173,7 @@ export class FacturasSaveService extends BaseService {
             const totales = this.calcularTotales(detalles, tarifaIva);
 
             if (totales.total <= 0) throw new BadRequestException('El total de la factura debe ser mayor a 0.');
+            this.validarMontoMaximoConsumidorFinal(cliente, totales.total);
 
             for (const det of detalles) {
                 if (det.cantidad_ccdfa <= 0) {
@@ -305,10 +320,11 @@ export class FacturasSaveService extends BaseService {
             updCliente.values.set('correo_geper', data.correo_cccfa);
             tieneCambios = true;
         }
-        if (isDefined(data.ide_cndfp1) && data.ide_cndfp1 !== (cliente.ide_cndfp ?? null)) {
-            updCliente.values.set('ide_cndfp', data.ide_cndfp1);
-            tieneCambios = true;
-        }
+        // NO se sincroniza ide_cndfp1 -> gen_persona.ide_cndfp (forma de pago default del
+        // cliente): a diferencia de dirección/teléfono/correo (correcciones de datos reales
+        // del cliente), la forma de pago es una elección POR FACTURA. Un cliente con crédito
+        // configurado a 30/45 días puede pagar una factura puntual de contado (radio Efectivo/
+        // Transferencia/Crédito/Tarjeta) sin que eso cambie su condición general de crédito.
         if (isDefined(data.ide_geprov) && data.ide_geprov !== (cliente.ide_geprov ?? null)) {
             updCliente.values.set('ide_geprov', data.ide_geprov);
             tieneCambios = true;
@@ -918,10 +934,11 @@ export class FacturasSaveService extends BaseService {
             updCliente.values.set('correo_geper', data.correo_cccfa);
             tieneCambios = true;
         }
-        if (isDefined(data.ide_cndfp1) && data.ide_cndfp1 !== (cliente.ide_cndfp ?? null)) {
-            updCliente.values.set('ide_cndfp', data.ide_cndfp1);
-            tieneCambios = true;
-        }
+        // NO se sincroniza ide_cndfp1 -> gen_persona.ide_cndfp (forma de pago default del
+        // cliente): a diferencia de dirección/teléfono/correo (correcciones de datos reales
+        // del cliente), la forma de pago es una elección POR FACTURA. Un cliente con crédito
+        // configurado a 30/45 días puede pagar una factura puntual de contado (radio Efectivo/
+        // Transferencia/Crédito/Tarjeta) sin que eso cambie su condición general de crédito.
         if (isDefined(data.ide_geprov) && data.ide_geprov !== (cliente.ide_geprov ?? null)) {
             updCliente.values.set('ide_geprov', data.ide_geprov);
             tieneCambios = true;
@@ -1372,6 +1389,25 @@ export class FacturasSaveService extends BaseService {
             throw new BadRequestException(
                 'No se puede generar una Guía de Remisión para Consumidor Final. ' +
                 'Seleccione o registre la identificación real del destinatario para emitirla.',
+            );
+        }
+    }
+
+    /**
+     * p_cxc_monto_max_consumidor_final: tope regulatorio para facturar a Consumidor Final
+     * (9999999999999) - por encima de ese monto el cliente debe identificarse con cédula/RUC
+     * real. Se valida en create Y en edición (ambas pueden cambiar total/cliente), no sólo al
+     * crear como otras validaciones de esta clase.
+     */
+    private validarMontoMaximoConsumidorFinal(cliente: any, total: number): void {
+        const id = (cliente.identificac_geper || '').trim();
+        if (id !== '9999999999999') return;
+
+        const maximo = this.montoMaxConsumidorFinal;
+        if (total > maximo) {
+            throw new BadRequestException(
+                `No se puede facturar a Consumidor Final por un monto mayor a $${maximo.toFixed(2)} ` +
+                `(total: $${total.toFixed(2)}). Registre la identificación real del cliente para continuar.`,
             );
         }
     }

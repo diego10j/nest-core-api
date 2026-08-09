@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -7,6 +7,7 @@ import { CoreService } from 'src/core/core.service';
 
 import { GetBancosDto } from './dto/get-bancos.dto';
 import { GetCuentasBancoDto } from './dto/get-cuentas-banco.dto';
+import { SimuladorCuentaTarjetaDto } from './dto/simulador-cuenta-tarjeta.dto';
 
 @Injectable()
 export class BancosService extends BaseService {
@@ -29,6 +30,7 @@ export class BancosService extends BaseService {
                 b.es_caja_teban,
                 b.foto_teban,
                 b.color_teban,
+                b.es_tarjeta_teban,
         (select count(1) from tes_cuenta_banco cb where cb.ide_teban = b.ide_teban and cb.ide_empr = $1 and cb.ide_sucu = $2) as cantidad_cuentas
             FROM tes_banco b
             WHERE b.ide_empr = $1
@@ -44,7 +46,8 @@ export class BancosService extends BaseService {
         const query = new SelectQuery(`
             SELECT
                 CAST(b.ide_teban AS VARCHAR) AS value,
-                b.nombre_teban              AS label
+                b.nombre_teban              AS label,
+                b.es_tarjeta_teban
             FROM tes_banco b
             WHERE b.ide_empr = $1
               AND b.es_caja_teban = false
@@ -63,7 +66,8 @@ export class BancosService extends BaseService {
                 b.telefono_teban,
                 b.es_caja_teban,
                 b.foto_teban,
-                b.color_teban
+                b.color_teban,
+                b.es_tarjeta_teban
             FROM tes_banco b
             WHERE b.ide_teban = $1
         `);
@@ -89,7 +93,10 @@ export class BancosService extends BaseService {
                 cb.activo_tecba,
                 b.nombre_teban,
                 b.color_teban,
-                b.foto_teban
+                b.foto_teban,
+                b.es_tarjeta_teban,
+                cb.porcentaje_comision_tecba,
+                cb.permite_diferido_tecba
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             LEFT JOIN con_det_plan_cuen cta ON cta.ide_cndpc = cb.ide_cndpc
@@ -137,12 +144,138 @@ export class BancosService extends BaseService {
                 cb.hace_pagos_tecba,
                 cb.hace_cheque_tecba,
                 cb.activo_tecba,
-                b.nombre_teban
+                b.nombre_teban,
+                b.es_tarjeta_teban,
+                cb.porcentaje_comision_tecba,
+                cb.permite_diferido_tecba,
+                cb.porcentaje_comision_diferido_tecba,
+                cb.iva_comision_tecba,
+                cb.retiene_iva_tecba,
+                cb.porcentaje_retencion_iva_tecba,
+                cb.retiene_renta_tecba,
+                cb.porcentaje_retencion_renta_tecba
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             WHERE cb.ide_tecba = $1
         `);
         query.addIntParam(1, ideTecba);
         return this.dataSource.createSingleQuery(query);
+    }
+
+    // ─── CUENTAS TARJETA (tes_cuenta_banco de bancos con es_tarjeta_teban) ──
+
+    async getCuentasTarjeta(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                cb.ide_tecba,
+                cb.nombre_tecba,
+                b.nombre_teban,
+                cb.porcentaje_comision_tecba,
+                cb.permite_diferido_tecba,
+                cb.porcentaje_comision_diferido_tecba,
+                cb.iva_comision_tecba,
+                cb.retiene_iva_tecba,
+                cb.retiene_renta_tecba
+            FROM tes_cuenta_banco cb
+            INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            WHERE cb.ide_empr = $1
+              AND cb.ide_sucu = $2
+              AND cb.activo_tecba = true
+              AND b.es_tarjeta_teban = true
+            ORDER BY b.nombre_teban, cb.nombre_tecba
+        `);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    async getConfiguracionCuentaTarjeta(ideTecba: number) {
+        const query = new SelectQuery(`
+            SELECT
+                cb.ide_tecba,
+                cb.nombre_tecba,
+                cb.ide_teban,
+                b.nombre_teban,
+                b.es_tarjeta_teban,
+                cb.porcentaje_comision_tecba,
+                cb.permite_diferido_tecba,
+                cb.porcentaje_comision_diferido_tecba,
+                cb.iva_comision_tecba,
+                cb.retiene_iva_tecba,
+                cb.porcentaje_retencion_iva_tecba,
+                cb.retiene_renta_tecba,
+                cb.porcentaje_retencion_renta_tecba,
+                cb.activo_tecba
+            FROM tes_cuenta_banco cb
+            INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            WHERE cb.ide_tecba = $1
+        `);
+        query.addIntParam(1, ideTecba);
+        const cuenta = await this.dataSource.createSingleQuery(query);
+        if (!cuenta) {
+            throw new BadRequestException('Cuenta de tarjeta no encontrada');
+        }
+        if (!cuenta.es_tarjeta_teban) {
+            throw new BadRequestException(`La cuenta "${cuenta.nombre_tecba}" no pertenece a un banco marcado como tarjeta (es_tarjeta_teban)`);
+        }
+        return cuenta;
+    }
+
+    /**
+     * Simula la comisión que cobra el procesador de tarjeta (Datafast/Banco de Ecuador,
+     * Payphone link de pagos, etc.) sobre un cobro con tarjeta, para saber cuánto se recibe
+     * neto y cuánto conviene aumentar en la factura para no perder margen.
+     *
+     * La tarifa de IVA se deriva de baseImponible/valorIva (no se asume una fija) porque el
+     * sistema maneja distintas tarifas según el artículo (0%/12%/15%) - la comisión del
+     * procesador se grava con esa misma tarifa general vigente en la venta.
+     */
+    async simuladorCuentaTarjeta(dtoIn: SimuladorCuentaTarjetaDto & HeaderParamsDto) {
+        const cuenta = await this.getConfiguracionCuentaTarjeta(dtoIn.ideTecba);
+
+        const { baseImponible, valorIva, total, diferido } = dtoIn;
+
+        const porcentajeComision = diferido && cuenta.permite_diferido_tecba
+            ? Number(cuenta.porcentaje_comision_diferido_tecba ?? 0)
+            : Number(cuenta.porcentaje_comision_tecba ?? 0);
+
+        const tarifaIvaGeneral = baseImponible > 0 ? (valorIva / baseImponible) * 100 : 0;
+
+        const valorComisionSinIva = total * (porcentajeComision / 100);
+        const valorIvaComision = cuenta.iva_comision_tecba
+            ? valorComisionSinIva * (tarifaIvaGeneral / 100)
+            : 0;
+        const valorComisionTotal = valorComisionSinIva + valorIvaComision;
+
+        const valorRetencionIva = cuenta.retiene_iva_tecba
+            ? valorIvaComision * (Number(cuenta.porcentaje_retencion_iva_tecba ?? 0) / 100)
+            : 0;
+        const valorRetencionRenta = cuenta.retiene_renta_tecba
+            ? valorComisionSinIva * (Number(cuenta.porcentaje_retencion_renta_tecba ?? 0) / 100)
+            : 0;
+
+        const valorNetoRecibir = total - valorComisionTotal + valorRetencionIva + valorRetencionRenta;
+        const valorSugeridoAumentar = valorComisionTotal - valorRetencionIva - valorRetencionRenta;
+        const porcentajeSugeridoAumentar = total > 0 ? (valorSugeridoAumentar / total) * 100 : 0;
+
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+
+        return {
+            ideTecba: cuenta.ide_tecba,
+            nombreTecba: cuenta.nombre_tecba,
+            nombreTeban: cuenta.nombre_teban,
+            diferido: !!diferido && !!cuenta.permite_diferido_tecba,
+            porcentajeComisionAplicado: porcentajeComision,
+            tarifaIvaGeneral: round2(tarifaIvaGeneral),
+            valorComisionSinIva: round2(valorComisionSinIva),
+            valorIvaComision: round2(valorIvaComision),
+            valorComisionTotal: round2(valorComisionTotal),
+            valorRetencionIva: round2(valorRetencionIva),
+            valorRetencionRenta: round2(valorRetencionRenta),
+            valorNetoRecibir: round2(valorNetoRecibir),
+            valorSugeridoAumentar: round2(valorSugeridoAumentar),
+            porcentajeSugeridoAumentar: round2(porcentajeSugeridoAumentar),
+            totalSugeridoFactura: round2(total + valorSugeridoAumentar),
+        };
     }
 }

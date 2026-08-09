@@ -72,3 +72,31 @@ CREATE INDEX idx_tipo_trns ON tes_info_comprobante_banco(tipo_trns_teincb);
 --     ADD COLUMN es_efectivo_teincb BOOLEAN DEFAULT FALSE,
 --     ADD COLUMN valor_entregado_teincb NUMERIC(12,2),
 --     ADD COLUMN cambio_teincb NUMERIC(12,2);
+
+
+-- Migración: cuentas tipo tarjeta (Datafast/Banco de Ecuador, Payphone link de pagos, etc.)
+-- es_tarjeta_teban identifica al banco/procesador como emisor de cuentas de tarjeta, para
+-- filtrarlo en getCuentasTarjeta sin depender del nombre.
+ALTER TABLE tes_banco ADD COLUMN es_tarjeta_teban BOOLEAN DEFAULT FALSE;
+
+-- Configuración de comisión de la cuenta de tarjeta - permite parametrizar el descuento que
+-- cobra el procesador (Datafast, Payphone, etc.) para calcular cuánto se recibe neto y cuánto
+-- hay que aumentar en la factura para no perder margen:
+--  - porcentaje_comision_tecba: % de descuento/comisión que cobra el procesador sobre el total
+--    cobrado con tarjeta (pago corriente, un solo pago).
+--  - permite_diferido_tecba / porcentaje_comision_diferido_tecba: si la cuenta admite pagos
+--    diferidos (cuotas), suele tener una comisión distinta (normalmente mayor) a la corriente.
+--  - iva_comision_tecba: si el procesador grava IVA sobre su comisión (caso normal, default true).
+--  - retiene_iva_tecba / porcentaje_retencion_iva_tecba: si el comercio actúa como agente de
+--    retención de IVA sobre la comisión del procesador (retención a favor del comercio).
+--  - retiene_renta_tecba / porcentaje_retencion_renta_tecba: idem para retención de Impuesto a
+--    la Renta sobre el valor de la comisión.
+ALTER TABLE tes_cuenta_banco
+    ADD COLUMN porcentaje_comision_tecba NUMERIC(6,3) DEFAULT 0,
+    ADD COLUMN permite_diferido_tecba BOOLEAN DEFAULT FALSE,
+    ADD COLUMN porcentaje_comision_diferido_tecba NUMERIC(6,3) DEFAULT 0,
+    ADD COLUMN iva_comision_tecba BOOLEAN DEFAULT TRUE,
+    ADD COLUMN retiene_iva_tecba BOOLEAN DEFAULT FALSE,
+    ADD COLUMN porcentaje_retencion_iva_tecba NUMERIC(6,3) DEFAULT 0,
+    ADD COLUMN retiene_renta_tecba BOOLEAN DEFAULT FALSE,
+    ADD COLUMN porcentaje_retencion_renta_tecba NUMERIC(6,3) DEFAULT 0;

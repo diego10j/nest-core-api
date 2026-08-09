@@ -1046,16 +1046,25 @@ ORDER BY prof.secuencial_cccpr DESC
   }
 
 
-  async getListDataFormaPago(dto?: QueryOptionsDto & HeaderParamsDto) {
-    const dtoIn = {
-      ...dto,
-      module: 'con',
-      tableName: 'deta_forma_pago',
-      primaryKey: 'ide_cndfp',
-      columnLabel: 'nombre_cndfp',
-      condition: `ide_cncfp != 3 and activo_cndfp = true`,
-    };
-    return this.core.getListDataValues(dtoIn);
+  /**
+   * Catálogo real de forma de pago (con_deta_forma_pago.ide_cncfp != 3), igual que
+   * facturas.service.ts#getListDataFactura. Se usa una query propia (no el helper genérico
+   * getListDataValues) porque el frontend necesita dias_cndfp para la selección simplificada
+   * de forma de pago (Efectivo/Transferencia/Crédito/Tarjeta, ver forma-pago-tipo.ts) - el
+   * helper genérico sólo trae value/label.
+   */
+  async getListDataFormaPago(_dto?: QueryOptionsDto & HeaderParamsDto) {
+    const query = new SelectQuery(`
+      SELECT
+        CAST(ide_cndfp AS VARCHAR) AS value,
+        nombre_cndfp AS label,
+        dias_cndfp
+      FROM con_deta_forma_pago
+      WHERE ide_cncfp != 3
+        AND activo_cndfp = TRUE
+      ORDER BY nombre_cndfp
+    `);
+    return this.dataSource.createSelectQuery(query);
   }
 
 

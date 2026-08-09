@@ -19,6 +19,7 @@ import { GetCuentasBancoDto } from './dto/get-cuentas-banco.dto';
 import { SaveBancoDto } from './dto/save-banco.dto';
 import { SaveCuentaBancoDto } from './dto/save-cuenta-banco.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
+import { SimuladorCuentaTarjetaDto } from './dto/simulador-cuenta-tarjeta.dto';
 
 const BANCOS_DIR = path.join(envs.pathDrive, 'tesoreria');
 fs.mkdirSync(BANCOS_DIR, { recursive: true });
@@ -155,5 +156,31 @@ export class BancosController {
         @Body() dto: SetActivoDto,
     ) {
         return this.saveService.setActivoCuentaBanco({ ...h, ...dto });
+    }
+
+    // ─── CUENTAS TARJETA (tes_cuenta_banco de bancos con es_tarjeta_teban) ──
+
+    @Get('getCuentasTarjeta')
+    @ApiOperation({ summary: 'Listar cuentas bancarias tipo tarjeta (Datafast/Banco de Ecuador, Payphone, etc.) para combos' })
+    getCuentasTarjeta(@AppHeaders() h: HeaderParamsDto) {
+        return this.service.getCuentasTarjeta(h);
+    }
+
+    @Get('getConfiguracionCuentaTarjeta/:ideTecba')
+    @ApiOperation({ summary: 'Obtener la configuración de comisión de una cuenta tipo tarjeta' })
+    getConfiguracionCuentaTarjeta(
+        @AppHeaders() _h: HeaderParamsDto,
+        @Param('ideTecba', ParseIntPipe) ideTecba: number,
+    ) {
+        return this.service.getConfiguracionCuentaTarjeta(ideTecba);
+    }
+
+    @Post('simuladorCuentaTarjeta')
+    @ApiOperation({ summary: 'Simular la comisión de una cuenta tipo tarjeta (neto a recibir y % sugerido a aumentar en la factura)' })
+    simuladorCuentaTarjeta(
+        @AppHeaders() h: HeaderParamsDto,
+        @Body() dto: SimuladorCuentaTarjetaDto,
+    ) {
+        return this.service.simuladorCuentaTarjeta({ ...h, ...dto });
     }
 }

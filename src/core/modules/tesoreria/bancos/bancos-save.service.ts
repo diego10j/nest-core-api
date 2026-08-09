@@ -34,6 +34,7 @@ export class BancosSaveService extends BaseService {
             es_caja_teban: false,
             foto_teban: dtoIn.fotoTeban ?? null,
             color_teban: dtoIn.colorTeban ?? null,
+            es_tarjeta_teban: dtoIn.esTarjetaTeban ?? false,
         };
 
         if (isUpdate) {
@@ -92,6 +93,14 @@ export class BancosSaveService extends BaseService {
             hace_pagos_tecba: dtoIn.hacePagosTecba ?? false,
             hace_cheque_tecba: dtoIn.haceChequeTecba ?? false,
             activo_tecba: dtoIn.activoTecba ?? true,
+            porcentaje_comision_tecba: dtoIn.porcentajeComisionTecba ?? 0,
+            permite_diferido_tecba: dtoIn.permiteDiferidoTecba ?? false,
+            porcentaje_comision_diferido_tecba: dtoIn.porcentajeComisionDiferidoTecba ?? 0,
+            iva_comision_tecba: dtoIn.ivaComisionTecba ?? true,
+            retiene_iva_tecba: dtoIn.retieneIvaTecba ?? false,
+            porcentaje_retencion_iva_tecba: dtoIn.porcentajeRetencionIvaTecba ?? 0,
+            retiene_renta_tecba: dtoIn.retieneRentaTecba ?? false,
+            porcentaje_retencion_renta_tecba: dtoIn.porcentajeRetencionRentaTecba ?? 0,
         };
 
         if (isUpdate) {
