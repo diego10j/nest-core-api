@@ -383,10 +383,16 @@ export class DataSourceService {
   }
 
   /**
-   * Retorna hasta 500 valores únicos de `selectQuery.distinctColumn`, respetando los demás
-   * filtros/búsqueda global ya activos (excepto el filtro sobre la misma columna) y un texto
-   * de búsqueda opcional (`distinctSearch`). Usado por el filtro por columna estilo Excel en
-   * tablas con paginación server-side, donde el dataset completo no está en el cliente.
+   * Retorna una PÁGINA de valores únicos de `selectQuery.distinctColumn`, respetando los demás
+   * filtros/búsqueda global ya activos (excepto el filtro sobre la misma columna) y un texto de
+   * búsqueda opcional (`distinctSearch`). Usado por el filtro por columna estilo Excel en tablas
+   * con paginación server-side, donde el dataset completo no está en el cliente.
+   *
+   * Pagina con el mismo `selectQuery.pagination` (pageSize/pageIndex) que ya usa la consulta
+   * principal - el frontend simplemente reenvía `pagination` junto con `distinctColumn`. El
+   * total de valores distintos (para "cargar más"/paginador) se calcula en la MISMA query vía
+   * COUNT(1) OVER() sobre el resultado YA deduplicado (no sobre las filas base), evitando un
+   * round-trip aparte.
    */
   private async getDistinctColumnValues(selectQuery: SelectQuery): Promise<ResultQuery> {
     this.assertValidIdentifier(selectQuery.distinctColumn, 'distinctColumn');
@@ -448,18 +454,47 @@ export class DataSourceService {
       conditions.push(`${column}::text ILIKE ${pushParam(`%${selectQuery.distinctSearch}%`)}`);
     }
 
-    let query = `SELECT DISTINCT ${column} AS value FROM (${baseSql}) AS wrapped_query`;
+    // Máximo 500 por página (mismo tope que antes, ahora por página en vez de para todo el
+    // dataset) - evita que un pageSize desmedido en el request cueste una página gigante.
+    const pageSize = Math.min(Math.max(selectQuery.pagination?.pageSize ?? 100, 1), 500);
+    const pageIndex = Math.max(selectQuery.pagination?.pageIndex ?? 0, 0);
+    const offset = pageIndex * pageSize;
+
+    let distinctSubquery = `SELECT DISTINCT ${column} AS value FROM (${baseSql}) AS wrapped_query`;
     if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(' AND ')}`;
+      distinctSubquery += ` WHERE ${conditions.join(' AND ')}`;
     }
-    query += ` ORDER BY 1 LIMIT 500`;
+
+    // COUNT(1) OVER() corre sobre las filas YA deduplicadas (subquery interno), no sobre las
+    // filas base - da el total real de valores distintos, no el de filas del negocio.
+    const query = `
+      SELECT value, COUNT(1) OVER() AS __distinct_total_count__
+      FROM (${distinctSubquery}) AS distinct_values
+      ORDER BY 1
+      LIMIT ${pageSize} OFFSET ${offset}
+    `;
 
     const res = await this.pool.query(
       query,
       selectQuery.params.map((_param) => _param.value),
     );
 
-    return { rows: res.rows, rowCount: res.rowCount, message: 'ok' } as ResultQuery;
+    const totalRecords = res.rows.length > 0 ? parseInt(res.rows[0].__distinct_total_count__, 10) : 0;
+    const totalPages = Math.ceil(totalRecords / pageSize);
+
+    return {
+      rows: res.rows.map(({ value }) => ({ value })),
+      rowCount: res.rows.length,
+      totalRecords,
+      pagination: {
+        pageSize,
+        pageIndex,
+        totalPages,
+        hasNextPage: pageIndex + 1 < totalPages,
+        hasPreviousPage: pageIndex > 0,
+      },
+      message: 'ok',
+    } as ResultQuery;
   }
 
   // calcular los totales

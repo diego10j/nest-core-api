@@ -10,8 +10,8 @@ import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { envs } from 'src/config/envs';
 import { Public } from 'src/core/auth/decorators/public.decorator';
+import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { FilesService } from 'src/core/modules/sistema/files/files.service';
 import { v4 as uuid } from 'uuid';
 
@@ -22,13 +22,12 @@ import { SaveComprobanteBancoDto } from './dto/save-comprobante-banco.dto';
 import { SetActivoDto } from './dto/set-activo.dto';
 
 /**
- * Carpeta permanente en PATH_DRIVE para las fotos de comprobantes de cobro/pago
- * (tes_info_comprobante_banco.foto_teincb). Antes se subían con uploadTmpFile,
- * cuya carpeta temporal se limpia por completo en cada reinicio/deploy del
- * servidor — perdiendo la evidencia de cobros y pagos ya registrados.
+ * Fotos de comprobantes de cobro/pago (tes_info_comprobante_banco.foto_teincb): tanto el
+ * upload como el download leen/escriben en FILE_STORAGE_CONSTANTS.TEMP_DIR (temp_media),
+ * la misma carpeta que usa el resto del manejo de archivos de la app - decisión explícita
+ * para manejar todos los archivos de forma unificada en ese path.
  */
-const COMPROBANTES_DIR = path.join(envs.pathDrive, 'tesoreria', 'comprobantes');
-fs.mkdirSync(COMPROBANTES_DIR, { recursive: true });
+fs.mkdirSync(FILE_STORAGE_CONSTANTS.TEMP_DIR, { recursive: true });
 
 @ApiTags('Tesoreria - Comprobantes Banco')
 @Controller('tesoreria/comprobante-banco')
@@ -41,10 +40,10 @@ export class ComprobanteBancoController {
 
     @Post('uploadComprobante')
     @ApiConsumes('multipart/form-data')
-    @ApiOperation({ summary: 'Subir la foto de un comprobante de cobro/pago (almacenamiento permanente)' })
+    @ApiOperation({ summary: 'Subir la foto de un comprobante de cobro/pago (temp_media)' })
     @UseInterceptors(FileInterceptor('file', {
         storage: diskStorage({
-            destination: (_req, _file, cb) => cb(null, COMPROBANTES_DIR),
+            destination: (_req, _file, cb) => cb(null, FILE_STORAGE_CONSTANTS.TEMP_DIR),
             filename: (_req, file, cb) => {
                 const ext = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
                 cb(null, `${uuid()}.${ext}`);
@@ -66,7 +65,7 @@ export class ComprobanteBancoController {
         @Res() res: any,
         @Query('w') width?: string,
     ) {
-        const filePath = path.join(COMPROBANTES_DIR, fileName);
+        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
         if (!fs.existsSync(filePath)) {
             throw new NotFoundException(`Imagen no encontrada: ${fileName}`);
         }
