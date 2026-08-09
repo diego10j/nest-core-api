@@ -59,13 +59,13 @@ export class ComprobanteBancoController {
 
     @Public()
     @Get('downloadComprobante/:fileName')
-    @ApiOperation({ summary: 'Descargar la foto de un comprobante de cobro/pago (público). Soporta ?w=N para thumbnail' })
+    @ApiOperation({ summary: 'Descargar la foto de un comprobante de cobro/pago (público). Soporta ?w=N para thumbnail. Fallback a carpeta temporal si no existe en la permanente.' })
     async downloadComprobante(
         @Param('fileName') fileName: string,
         @Res() res: any,
         @Query('w') width?: string,
     ) {
-        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
+        const filePath = path.join(COMPROBANTES_DIR, fileName);
         if (!fs.existsSync(filePath)) {
             throw new NotFoundException(`Imagen no encontrada: ${fileName}`);
         }

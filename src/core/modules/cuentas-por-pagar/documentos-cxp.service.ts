@@ -664,13 +664,30 @@ export class DocumentosCxPService extends BaseService {
                    d.nombre_tecba || ' ' || e.nombre_teban AS destino,
                    a.observacion_cpdtr AS observacion,
                    c.ide_tecba,
-                   a.ide_teclb
+                   a.ide_teclb,
+                   icb.foto_teincb                 AS comprobante_foto,
+                   icb.num_comprobante_teincb      AS comprobante_numero,
+                   icb.tipo_trns_teincb            AS comprobante_tipo,
+                   icb.ordenante_teincb            AS comprobante_ordenante,
+                   icb.cuenta_origen_teincb        AS comprobante_cuenta_origen,
+                   icb.banco_origen_teincb         AS comprobante_banco_origen,
+                   icb.beneficiario_teincb         AS comprobante_beneficiario,
+                   icb.cuenta_destino_teincb       AS comprobante_cuenta_destino,
+                   icb.banco_destino_teincb        AS comprobante_banco_destino,
+                   icb.texto_original_teincb       AS comprobante_texto_original,
+                   icb.por_ocr_teincb              AS comprobante_por_ocr,
+                   icb.por_ia_teincb               AS comprobante_por_ia,
+                   icb.validado_teincb             AS comprobante_validado,
+                   icb.es_efectivo_teincb          AS comprobante_es_efectivo,
+                   icb.valor_entregado_teincb      AS comprobante_valor_entregado,
+                   icb.cambio_teincb               AS comprobante_cambio
             FROM cxp_detall_transa a
             LEFT JOIN cxp_tipo_transacc b ON a.ide_cpttr = b.ide_cpttr
             LEFT JOIN tes_cab_libr_banc c ON a.ide_teclb = c.ide_teclb
             LEFT JOIN tes_cuenta_banco d ON c.ide_tecba = d.ide_tecba
             LEFT JOIN tes_banco e ON d.ide_teban = e.ide_teban
             LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb = f.ide_tettb
+            LEFT JOIN tes_info_comprobante_banco icb ON icb.ide_teclb = a.ide_teclb
             WHERE a.numero_pago_cpdtr > 0
               AND a.ide_cpcfa = $1
             ORDER BY a.fecha_trans_cpdtr

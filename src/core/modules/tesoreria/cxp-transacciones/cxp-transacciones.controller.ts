@@ -5,7 +5,6 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { CxpTransaccionesSaveService } from './cxp-transacciones-save.service';
 import { CxpTransaccionesService } from './cxp-transacciones.service';
-import { GetFacturaCxPDto } from './dto/get-factura-cxp.dto';
 import { GetFacturasPendientesProveedorDto } from './dto/get-facturas-pendientes-proveedor.dto';
 import { SaveAnticipoCxPDto } from './dto/save-anticipo-cxp.dto';
 import { SavePagoCxPDto } from './dto/save-pago-cxp.dto';

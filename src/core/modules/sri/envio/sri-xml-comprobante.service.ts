@@ -84,9 +84,7 @@ export class SriXmlComprobanteService extends BaseService {
   /** Inserta un registro nuevo si no se pasa ideSrxmc, o actualiza el existente (paridad con XmlComprobanteDAOImp.guardar). */
   async guardar(data: GuardarXmlComprobanteData): Promise<void> {
     if (!data.ideSrxmc) {
-      const ideSrxmc = await this.dataSource.getSeqTable('sri_xml_comprobante', 'ide_srxmc', 1);
       const ins = new InsertQuery('sri_xml_comprobante', 'ide_srxmc');
-      ins.values.set('ide_srxmc', ideSrxmc);
       ins.values.set('ide_srcom', data.ideSrcom);
       ins.values.set('ide_sresc', data.codigoEstado);
       ins.values.set('xml_srxmc', data.xmlComprobante ?? null);
