@@ -157,6 +157,23 @@ export class FacturasRepService {
     queryTransporte.addIntParam(1, dtoIn.ide_cccfa);
     const transporte = await this.dataSource.createSingleQuery(queryTransporte) ?? null;
 
+    // ── Guía de remisión asociada ────────────────────────────────────────
+    const queryGuiaRemision = new SelectQuery(`
+      SELECT
+        g.ide_ccgui,
+        cdf.establecimiento_ccdfa,
+        cdf.pto_emision_ccdfa,
+        g.numero_ccgui,
+        g.fecha_emision_ccgui
+      FROM cxc_guia g
+      INNER JOIN cxc_datos_fac cdf ON g.ide_ccdaf = cdf.ide_ccdaf
+      WHERE g.ide_cccfa = $1
+      ORDER BY g.ide_ccgui DESC
+      LIMIT 1
+    `);
+    queryGuiaRemision.addIntParam(1, dtoIn.ide_cccfa);
+    const guiaremision = (await this.dataSource.createSingleQuery(queryGuiaRemision)) ?? null;
+
     // ── Detalles de la factura ────────────────────────────────────────────
     const queryDetalles = new SelectQuery(`
       SELECT
@@ -292,6 +309,7 @@ export class FacturasRepService {
       detalles: detalles ?? [],
       pagos,
       retencion: retencData,
+      guiaremision,
       transporte,
     };
 

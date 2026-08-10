@@ -142,11 +142,19 @@ export interface TransporteFactura {
     comentario_cctfa?: string;
 }
 
+export interface GuiaRemisionFactura {
+    ide_ccgui: number;
+    establecimiento_ccdfa: string;
+    pto_emision_ccdfa: string;
+    numero_ccgui: string;
+    fecha_emision_ccgui?: Date | string;
+}
+
 export interface FacturaRep {
     cabecera: FacturaCabecera;
     detalles: FacturaDetalle[];
     pagos: FacturaPago;
     retencion: FacturaRetencion | null;
-    guiaremision?: any | null;
+    guiaremision?: GuiaRemisionFactura | null;
     transporte?: TransporteFactura | null;
 }

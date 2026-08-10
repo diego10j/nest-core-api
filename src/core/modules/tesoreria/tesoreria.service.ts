@@ -288,6 +288,7 @@ export class TesoreriaService extends BaseService {
         AND cb.ide_sucu = $2
         AND activo_tecba = true
         AND es_caja_teban = false
+        AND COALESCE(b.es_tarjeta_teban, false) = false
       ORDER BY cb.nombre_tecba
       `,
     );
@@ -314,6 +315,7 @@ export class TesoreriaService extends BaseService {
         AND cb.ide_sucu = $2
         AND activo_tecba = true
         AND es_caja_teban = false
+        AND COALESCE(b.es_tarjeta_teban, false) = false
       ORDER BY cb.nombre_tecba
       `,
     );
@@ -339,6 +341,7 @@ export class TesoreriaService extends BaseService {
         AND cb.ide_sucu = $2
         AND activo_tecba = true
         AND es_caja_teban = false
+        AND COALESCE(b.es_tarjeta_teban, false) = false
       ORDER BY cb.nombre_tecba
       `,
     );
