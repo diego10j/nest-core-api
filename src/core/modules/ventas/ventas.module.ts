@@ -16,6 +16,9 @@ import { VentasBiService } from './data-bi/ventas-bi.service';
 import { FacturasSaveService } from './facturas/facturas-save.service';
 import { FacturasController } from './facturas/facturas.controller';
 import { FacturasService } from './facturas/facturas.service';
+import { RetencionVentaSaveService } from './facturas/retencion-venta-save.service';
+import { RetencionVentaXmlService } from './facturas/retencion-venta-xml.service';
+import { RetencionVentaController } from './facturas/retencion-venta.controller';
 import { NotasCreditoSaveService } from './notas-credito/notas-credito-save.service';
 import { NotasCreditoController } from './notas-credito/notas-credito.controller';
 import { PosPuntoVentaSaveService } from './pos-punto-venta/pos-punto-venta-save.service';
@@ -37,6 +40,7 @@ import { TransportesService } from './transportes/transportes.service';
     PosPuntoVentaController,
     TransportesController,
     NotasCreditoController,
+    RetencionVentaController,
   ],
   providers: [
     ClientesService,
@@ -53,6 +57,8 @@ import { TransportesService } from './transportes/transportes.service';
     TransportesSaveService,
     WhatsappService,
     NotasCreditoSaveService,
+    RetencionVentaXmlService,
+    RetencionVentaSaveService,
   ],
   exports: [FacturasService, FacturasSaveService],
 })

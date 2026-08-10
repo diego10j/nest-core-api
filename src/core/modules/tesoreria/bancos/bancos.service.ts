@@ -170,6 +170,8 @@ export class BancosService extends BaseService {
                 cb.ide_tecba,
                 cb.nombre_tecba,
                 b.nombre_teban,
+                b.foto_teban,
+                b.color_teban,
                 cb.porcentaje_comision_tecba,
                 cb.permite_diferido_tecba,
                 cb.porcentaje_comision_diferido_tecba,
@@ -247,15 +249,26 @@ export class BancosService extends BaseService {
             : 0;
         const valorComisionTotal = valorComisionSinIva + valorIvaComision;
 
+        // Retención IVA/Renta: el procesador de tarjeta es agente de retención SOBRE EL PAGO
+        // A LA CUENTA DEL COMERCIO (no sobre su propia comisión) - por norma SRI, las entidades
+        // emisoras/procesadoras de tarjeta retienen IVA/Renta de lo que pagan a sus comercios
+        // afiliados. Por eso la base es el IVA y la base imponible DE LA VENTA (valorIva /
+        // baseImponible), no los de la comisión. Validado contra el simulador oficial de Bendo
+        // (Régimen General, venta $15 = base $13.04 + IVA $1.96): retención IVA = 70% × $1.96 =
+        // $1.37, retención Renta = 3% × $13.04 = $0.39, recibes = 15 - 0.69 - 1.37 - 0.39 =
+        // $12.55 - coincide exacto. (Con retención 0% - RIMPE Negocio Popular - da $14.31,
+        // que coincide con una transacción real verificada en dispositivo físico.)
         const valorRetencionIva = cuenta.retiene_iva_tecba
-            ? valorIvaComision * (Number(cuenta.porcentaje_retencion_iva_tecba ?? 0) / 100)
+            ? valorIva * (Number(cuenta.porcentaje_retencion_iva_tecba ?? 0) / 100)
             : 0;
         const valorRetencionRenta = cuenta.retiene_renta_tecba
-            ? valorComisionSinIva * (Number(cuenta.porcentaje_retencion_renta_tecba ?? 0) / 100)
+            ? baseImponible * (Number(cuenta.porcentaje_retencion_renta_tecba ?? 0) / 100)
             : 0;
 
-        const valorNetoRecibir = total - valorComisionTotal + valorRetencionIva + valorRetencionRenta;
-        const valorSugeridoAumentar = valorComisionTotal - valorRetencionIva - valorRetencionRenta;
+        const valorNetoRecibir = total - valorComisionTotal - valorRetencionIva - valorRetencionRenta;
+        // Para no perder margen hay que cubrir comisión + IVA de comisión + las retenciones,
+        // ya que las tres cosas reducen lo que realmente se deposita en la cuenta.
+        const valorSugeridoAumentar = valorComisionTotal + valorRetencionIva + valorRetencionRenta;
         const porcentajeSugeridoAumentar = total > 0 ? (valorSugeridoAumentar / total) * 100 : 0;
 
         const round2 = (n: number) => Math.round(n * 100) / 100;
