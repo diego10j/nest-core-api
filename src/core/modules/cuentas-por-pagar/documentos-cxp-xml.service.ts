@@ -101,6 +101,13 @@ export class DocumentosCxPXmlService {
             }
 
             // ── Totales (recalculados localmente, paridad legacy) ────────────
+            // <infoFactura><totalDescuento> - suma de los <descuento> de cada línea (Ficha
+            // Técnica SRI). Los detalles ya llegan netos (valor_cpdfa = precioTotalSinImpuesto,
+            // que ya resta el descuento de esa línea), así que este total no se vuelve a restar
+            // de las bases aquí - sólo se expone para que el documento CxP lo registre
+            // (cxp_cabece_factur.descuento_cpcfa), que hoy se guardaba en 0 aunque el XML sí
+            // traía descuento.
+            const descuentoXml = this.numero(this.texto($, 'totalDescuento'));
             const tarifaIva = await this.consultas.getPorcentajeIva(fechaEmision);
             const totales = this.calcularTotales(detalles, tarifaIva);
 
@@ -118,7 +125,7 @@ export class DocumentosCxPXmlService {
                 ide_cndfp1: ideCndfp1 !== null ? Number(ideCndfp1) : null,
                 dias_credito_cpcfa: diasCredito,
                 detalles,
-                totales: { ...totales, tarifa_iva: tarifaIva },
+                totales: { ...totales, tarifa_iva: tarifaIva, descuento: descuentoXml },
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;

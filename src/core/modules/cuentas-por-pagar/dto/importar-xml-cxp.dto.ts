@@ -20,6 +20,8 @@ export interface TotalesXmlCxP {
     valor_iva: number;
     total: number;
     tarifa_iva: number;
+    /** <infoFactura><totalDescuento> del XML - suma de los <descuento> de cada línea. */
+    descuento: number;
 }
 
 export interface ImportarXmlCxPResult {

@@ -13,6 +13,7 @@ export function buildFacturaXml(comprobante: ComprobanteDto, emisor: EmisorDto):
   const baseTarifa0 = Number(comprobante.subtotal0 ?? 0);
   const baseGrabada = Number(comprobante.subtotal ?? 0);
   const totalSinImpuestos = baseTarifa0 + baseGrabada;
+  const totalDescuento = Number(comprobante.totaldescuento ?? 0);
   const iva = Number(comprobante.iva ?? 0);
   const porcentajeIva = baseGrabada > 0 ? (iva * 100) / baseGrabada : 0;
 
@@ -96,7 +97,7 @@ ${guiaRemisionTag}			<razonSocialComprador>${comprobante.cliente?.nombreCliente}
 			<identificacionComprador>${comprobante.cliente?.identificacion?.trim()}</identificacionComprador>
 			<direccionComprador>${comprobante.cliente?.direccion ?? ''}</direccionComprador>
 			<totalSinImpuestos>${fNumero(totalSinImpuestos)}</totalSinImpuestos>
-			<totalDescuento>${fNumero(0)}</totalDescuento>
+			<totalDescuento>${fNumero(totalDescuento)}</totalDescuento>
 			<totalConImpuestos>
 ${subtotales}			</totalConImpuestos>
 			<propina>${fNumero(0)}</propina>

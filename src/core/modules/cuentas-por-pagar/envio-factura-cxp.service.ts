@@ -56,6 +56,8 @@ export interface PrefillFacturaFlete {
     ide_cndfp1: number;
     ide_srtst: number;
     productos: ProductoPreFactura[];
+    /** <infoFactura><totalDescuento> del XML - ver DocumentosCxPXmlService.parseFacturaXml. */
+    descuento_cpcfa: number;
 }
 
 /**
@@ -120,6 +122,7 @@ export class EnvioFacturaCxPService {
             ide_cndfp1: ideCndfp1,
             ide_srtst: ideSrtst,
             productos,
+            descuento_cpcfa: parsed.totales.descuento,
         };
     }
 

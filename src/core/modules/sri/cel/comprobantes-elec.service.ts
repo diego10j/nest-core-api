@@ -250,7 +250,8 @@ export class ComprobantesElecService extends BaseService {
     const query = new SelectQuery(`
             SELECT f.ide_inarti, codigo_inarti,
                 COALESCE(nombre_inuni,'') || ' ' || observacion_ccdfa AS nombre_inarti,
-                cantidad_ccdfa, precio_ccdfa, iva_inarti_ccdfa, total_ccdfa, tarifa_iva_cccfa
+                cantidad_ccdfa, precio_ccdfa, iva_inarti_ccdfa, total_ccdfa, tarifa_iva_cccfa,
+                descuento_ccdfa
             FROM cxc_cabece_factura a
             INNER JOIN cxc_deta_factura c ON a.ide_cccfa = c.ide_cccfa
             INNER JOIN inv_articulo f ON c.ide_inarti = f.ide_inarti
@@ -259,7 +260,7 @@ export class ComprobantesElecService extends BaseService {
             ORDER BY observacion_ccdfa
         `);
     const res = await this.dataSource.createSelectQuery(query);
-    return res.map((obj) => this.toDetalle(obj, 'precio_ccdfa', 'total_ccdfa', 'iva_inarti_ccdfa', 'tarifa_iva_cccfa'));
+    return res.map((obj) => this.toDetalle(obj, 'precio_ccdfa', 'total_ccdfa', 'iva_inarti_ccdfa', 'tarifa_iva_cccfa', 'descuento_ccdfa'));
   }
 
   private async getDetalleNotaCredito(ideSrcom: number): Promise<DetalleComprobanteDto[]> {
@@ -410,6 +411,7 @@ export class ComprobantesElecService extends BaseService {
     totalCol: string,
     ivaFlagCol: string,
     tarifaIvaCol: string,
+    descuentoCol?: string,
   ): DetalleComprobanteDto {
     const ivaFlag = String(obj[ivaFlagCol]);
     return {
@@ -418,7 +420,7 @@ export class ComprobantesElecService extends BaseService {
       descripciondet: ((obj.nombre_inarti as string) ?? 'SIN DESCRIPCION').trim(),
       cantidad: Number(obj.cantidad_ccdfa ?? obj.cantidad_cpdno ?? obj.cantidad_cpdfa ?? 0),
       preciounitario: Number(obj[precioCol] ?? 0),
-      descuento: 0,
+      descuento: descuentoCol ? Number(obj[descuentoCol] ?? 0) : 0,
       preciototalsinimpuesto: Number(obj[totalCol] ?? 0),
       porcentajeiva: ivaFlag === '1' ? Number(obj[tarifaIvaCol] ?? 0) : 0,
     };

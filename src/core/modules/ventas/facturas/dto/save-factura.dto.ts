@@ -43,10 +43,22 @@ export class DetaFacturaDto {
     @Min(0)
     precio_ccdfa: number;
 
-    @ApiProperty({ description: 'Total de la línea (cantidad × precio). Mínimo: 0', minimum: 0 })
+    @ApiProperty({ description: 'Total de la línea (cantidad × precio - descuento). Mínimo: 0', minimum: 0 })
     @IsNumber()
     @Min(0)
     total_ccdfa: number;
+
+    @ApiPropertyOptional({ description: 'Valor de descuento de la línea (cantidad × precio × porcentaje / 100). Default: 0', minimum: 0 })
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    descuento_ccdfa?: number = 0;
+
+    @ApiPropertyOptional({ description: 'Porcentaje de descuento de la línea (0-100). Sólo informativo/UI - el SRI recibe el valor ya calculado. Default: 0', minimum: 0, maximum: 100 })
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    porcentaje_descuento_ccdfa?: number = 0;
 
     @ApiProperty({
         description: 'Indicador de IVA. 1 = grava IVA, -1 = tarifa 0%, 0 = no objeto de IVA',

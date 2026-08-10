@@ -32,6 +32,16 @@ export class DetaProformaDto {
     @IsOptional()
     total_ccdpr?: number;
 
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    descuento_ccdpr?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    porcentaje_descuento_ccdpr?: number;
+
     @IsInt()
     iva_inarti_ccdpr: number;
 

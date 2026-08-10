@@ -237,6 +237,7 @@ ORDER BY prof.secuencial_cccpr DESC
         c.base_tarifa0_cccpr,
         c.valor_iva_cccpr,
         c.total_cccpr,
+        c.descuento_cccpr,
         c.tarifa_iva_cccpr,
         c.observacion_cccpr,
         c.notas_cccpr,
@@ -305,6 +306,8 @@ ORDER BY prof.secuencial_cccpr DESC
         f_decimales(cantidad_ccdpr, a.decim_stock_inarti) AS cantidad_formateada,
         d.precio_ccdpr,
         d.total_ccdpr,
+        d.descuento_ccdpr,
+        d.porcentaje_descuento_ccdpr,
         COALESCE(d.iva_inarti_ccdpr, 0) AS aplica_iva_ccdpr,
         CASE
           WHEN COALESCE(d.iva_inarti_ccdpr, 0) = 1 THEN COALESCE(c.tarifa_iva_cccpr, 0)
@@ -451,6 +454,7 @@ ORDER BY prof.secuencial_cccpr DESC
     let baseTarifa0 = 0;
     let baseGrabada = 0;
     let utilidad = 0;
+    let descuento = 0;
 
     for (const det of detalles) {
       const cantidad = Number(det.cantidad_ccdpr);
@@ -464,6 +468,8 @@ ORDER BY prof.secuencial_cccpr DESC
       } else {
         baseTarifa0 += totalDetalle;
       }
+
+      descuento += Number(det.descuento_ccdpr ?? 0);
 
       if (isDefined(det.utilidad_ccdpr)) {
         utilidad += Number(det.utilidad_ccdpr);
@@ -479,6 +485,7 @@ ORDER BY prof.secuencial_cccpr DESC
       base_tarifa0: Number(baseTarifa0.toFixed(2)),
       base_grabada: Number(baseGrabada.toFixed(2)),
       valor_iva: valorIva,
+      descuento: Number(descuento.toFixed(2)),
       total,
       utilidad: Number(utilidad.toFixed(2)),
     };
@@ -559,6 +566,7 @@ ORDER BY prof.secuencial_cccpr DESC
         base_tarifa0_cccpr: totales.base_tarifa0,
         valor_iva_cccpr: totales.valor_iva,
         total_cccpr: totales.total,
+        descuento_cccpr: totales.descuento,
         tarifa_iva_cccpr: tarifaIva,
         ide_cctpr: cab.ide_cctpr,
         utilidad_cccpr: totales.utilidad,
@@ -602,6 +610,7 @@ ORDER BY prof.secuencial_cccpr DESC
         base_tarifa0_cccpr: totales.base_tarifa0,
         valor_iva_cccpr: totales.valor_iva,
         total_cccpr: totales.total,
+        descuento_cccpr: totales.descuento,
         tarifa_iva_cccpr: tarifaIva,
         ide_cctpr: cab.ide_cctpr,
         anulado_cccpr: false,
@@ -641,6 +650,8 @@ ORDER BY prof.secuencial_cccpr DESC
         cantidad_ccdpr: det.cantidad_ccdpr,
         precio_ccdpr: det.precio_ccdpr,
         total_ccdpr: totalDetalle,
+        descuento_ccdpr: det.descuento_ccdpr ?? 0,
+        porcentaje_descuento_ccdpr: det.porcentaje_descuento_ccdpr ?? 0,
         iva_inarti_ccdpr: det.iva_inarti_ccdpr,
         precio_sugerido_ccdpr: det.precio_sugerido_ccdpr,
         fecha_ingre: getCurrentDate(),

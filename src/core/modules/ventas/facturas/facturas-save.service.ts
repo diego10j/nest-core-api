@@ -565,6 +565,7 @@ export class FacturasSaveService extends BaseService {
             updSri.values.set('subtotal_srcom', totales.base_grabada + totales.base_tarifa0);
             updSri.values.set('iva_srcom', totales.valor_iva);
             updSri.values.set('total_srcom', totales.total);
+            updSri.values.set('descuento_srcom', totales.descuento);
             updSri.values.set('dias_credito_srcom', data.dias_credito_cccfa ?? 0);
             updSri.values.set('correo_srcom', data.correo_cccfa || null);
             updSri.values.set('identificacion_srcom', cliente.identificac_geper);
@@ -722,6 +723,8 @@ export class FacturasSaveService extends BaseService {
                     const cambiaron = det.cantidad_ccdfa !== Number(oldRow.cantidad_ccdfa)
                         || det.precio_ccdfa !== Number(oldRow.precio_ccdfa)
                         || det.total_ccdfa !== Number(oldRow.total_ccdfa)
+                        || (det.descuento_ccdfa ?? 0) !== Number(oldRow.descuento_ccdfa ?? 0)
+                        || (det.porcentaje_descuento_ccdfa ?? 0) !== Number(oldRow.porcentaje_descuento_ccdfa ?? 0)
                         || det.iva_inarti_ccdfa !== Number(oldRow.iva_inarti_ccdfa)
                         || (det.observacion_ccdfa || '') !== (oldRow.observacion_ccdfa || '')
                         || (det.ide_inuni ?? null) !== (oldRow.ide_inuni ?? null);
@@ -730,6 +733,8 @@ export class FacturasSaveService extends BaseService {
                         updDet.values.set('cantidad_ccdfa', det.cantidad_ccdfa);
                         updDet.values.set('precio_ccdfa', det.precio_ccdfa);
                         updDet.values.set('total_ccdfa', det.total_ccdfa);
+                        updDet.values.set('descuento_ccdfa', det.descuento_ccdfa ?? 0);
+                        updDet.values.set('porcentaje_descuento_ccdfa', det.porcentaje_descuento_ccdfa ?? 0);
                         updDet.values.set('iva_inarti_ccdfa', det.iva_inarti_ccdfa);
                         updDet.values.set('usuario_actua', dtoIn.login);
                         updDet.values.set('fecha_actua', getCurrentDate());
@@ -986,6 +991,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('valor_iva_cccfa', totales.valor_iva);
         q.values.set('tarifa_iva_cccfa', tarifaIva);
         q.values.set('total_cccfa', totales.total);
+        q.values.set('descuento_cccfa', totales.descuento);
         q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
         q.values.set('pagado_cccfa', false);
         q.values.set('solo_guardar_cccfa', true);
@@ -1023,6 +1029,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('valor_iva_cccfa', totales.valor_iva);
         q.values.set('tarifa_iva_cccfa', tarifaIva);
         q.values.set('total_cccfa', totales.total);
+        q.values.set('descuento_cccfa', totales.descuento);
         q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
         q.values.set('usuario_actua', dtoIn.login);
         q.values.set('fecha_actua', getCurrentDate());
@@ -1055,6 +1062,8 @@ export class FacturasSaveService extends BaseService {
         q.values.set('cantidad_ccdfa', det.cantidad_ccdfa);
         q.values.set('precio_ccdfa', det.precio_ccdfa);
         q.values.set('total_ccdfa', det.total_ccdfa);
+        q.values.set('descuento_ccdfa', det.descuento_ccdfa ?? 0);
+        q.values.set('porcentaje_descuento_ccdfa', det.porcentaje_descuento_ccdfa ?? 0);
         q.values.set('iva_inarti_ccdfa', det.iva_inarti_ccdfa);
         q.values.set('credito_tributario_ccdfa', det.credito_tributario_ccdfa ?? false);
         q.values.set('usuario_ingre', dtoIn.login);
@@ -1284,6 +1293,7 @@ export class FacturasSaveService extends BaseService {
     private calcularTotales(detalles: DetaFacturaDto[], tarifaIva: number) {
         let baseTarifa0 = 0;
         let baseGrabada = 0;
+        let descuento = 0;
 
         for (const det of detalles) {
             if (det.iva_inarti_ccdfa > 0) {
@@ -1291,6 +1301,7 @@ export class FacturasSaveService extends BaseService {
             } else {
                 baseTarifa0 += Number(det.total_ccdfa);
             }
+            descuento += Number(det.descuento_ccdfa ?? 0);
         }
 
         const valorIva = Number((baseGrabada * (tarifaIva / 100)).toFixed(2));
@@ -1301,6 +1312,7 @@ export class FacturasSaveService extends BaseService {
             base_tarifa0: Number(baseTarifa0.toFixed(2)),
             base_grabada: Number(baseGrabada.toFixed(2)),
             valor_iva: valorIva,
+            descuento: Number(descuento.toFixed(2)),
             total,
         };
     }
@@ -1521,7 +1533,7 @@ export class FacturasSaveService extends BaseService {
         q.values.set('subtotal_srcom', totales.base_grabada + totales.base_tarifa0);
         q.values.set('iva_srcom', totales.valor_iva);
         q.values.set('total_srcom', totales.total);
-        q.values.set('descuento_srcom', 0);
+        q.values.set('descuento_srcom', totales.descuento);
         q.values.set('identificacion_srcom', cliente.identificac_geper);
         q.values.set('forma_cobro_srcom', codigoSri);
         q.values.set('dias_credito_srcom', diasCredito);
