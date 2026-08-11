@@ -208,83 +208,79 @@ const qtyWithUnit = (d: ProformaRepDetalle): string => {
 };
 
 // ─── Tabla de detalles ────────────────────────────────────────────────────────
-const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => ({
-    table: {
-        headerRows: 1,
-        widths: ['*', 72, 72, 72],
-        body: [
-            // ── Cabeceras ────────────────────────────────────────────────────
-            [
-                {
-                    text: 'Descripción', style: 'tableHeader',
-                    color: C.accent,
-                    fillColor: C.accentSurface,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 8, 0, 8] as [number, number, number, number],
-                },
-                {
-                    text: 'Cantidad', style: 'tableHeader', alignment: 'left',
-                    color: C.accent,
-                    fillColor: C.accentSurface,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 8, 0, 8] as [number, number, number, number],
-                },
-                {
-                    text: 'P. Unit.', style: 'tableHeader', alignment: 'right',
-                    color: C.accent,
-                    fillColor: C.accentSurface,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 8, 0, 8] as [number, number, number, number],
-                },
-                {
-                    text: 'Subtotal', style: 'tableHeader', alignment: 'right',
-                    color: C.accent,
-                    fillColor: C.accentSurface,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 8, 0, 8] as [number, number, number, number],
-                },
-            ],
+// La columna de descuento sólo se agrega si al menos una línea tiene descuento - evita
+// ensuciar la tabla con una columna de ceros en el caso común (proforma sin descuentos).
+const detailTable = (detalles: ProformaRepDetalle[]): ContentTable => {
+    const tieneDescuentos = detalles.some((d) => Number(d.descuento_ccdpr ?? 0) > 0);
+    const headerCell = (text: string, alignment: 'left' | 'right') => ({
+        text,
+        style: 'tableHeader',
+        alignment,
+        color: C.accent,
+        fillColor: C.accentSurface,
+        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+        margin: [0, 8, 0, 8] as [number, number, number, number],
+    });
 
-            // ── Filas ────────────────────────────────────────────────────────
-            ...detalles.map((d, i) => {
-                const isEvenRow = i % 2 === 0;
-                const cell = (
-                    text: string,
-                    style: string = 'tableCell',
-                    alignment: string = 'left',
-                    extra: object = {},
-                ) => ({
-                    text,
-                    style,
-                    alignment,
-                    fillColor: isEvenRow ? C.white : C.bg,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 7, 0, 7] as [number, number, number, number],
-                    ...extra,
-                });
-                return [
-                    cell(buildDesc(d), 'tableCell', 'left'),
-                    cell(qtyWithUnit(d), 'tableCell', 'left'),
-                    cell(unitPrice(d.precio_ccdpr), 'tableCell', 'right'),
-                    cell(money(d.total_ccdpr), 'tableCell', 'right', { bold: true, color: C.ink }),
-                ];
-            }),
-        ],
-    },
-    layout: {
-        hLineWidth: (index: number, node: { table: { body: unknown[] } }) => {
-            if (index === node.table.body.length) return 0;
-            if (index === 0) return 0.6;
-            return index === 1 ? 1 : 0.45;
+    return {
+        table: {
+            headerRows: 1,
+            widths: tieneDescuentos ? ['*', 60, 64, 62, 68] : ['*', 72, 72, 72],
+            body: [
+                // ── Cabeceras ────────────────────────────────────────────────────
+                [
+                    headerCell('Descripción', 'left'),
+                    headerCell('Cantidad', 'left'),
+                    headerCell('P. Unit.', 'right'),
+                    ...(tieneDescuentos ? [headerCell('Desc.', 'right')] : []),
+                    headerCell('Subtotal', 'right'),
+                ],
+
+                // ── Filas ────────────────────────────────────────────────────────
+                ...detalles.map((d, i) => {
+                    const isEvenRow = i % 2 === 0;
+                    const cell = (
+                        text: string,
+                        style: string = 'tableCell',
+                        alignment: string = 'left',
+                        extra: object = {},
+                    ) => ({
+                        text,
+                        style,
+                        alignment,
+                        fillColor: isEvenRow ? C.white : C.bg,
+                        border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                        margin: [0, 7, 0, 7] as [number, number, number, number],
+                        ...extra,
+                    });
+                    const descuentoLinea = Number(d.descuento_ccdpr ?? 0);
+                    return [
+                        cell(buildDesc(d), 'tableCell', 'left'),
+                        cell(qtyWithUnit(d), 'tableCell', 'left'),
+                        cell(unitPrice(d.precio_ccdpr), 'tableCell', 'right'),
+                        ...(tieneDescuentos
+                            ? [cell(descuentoLinea > 0 ? money(descuentoLinea) : '-', 'tableCell', 'right')]
+                            : []),
+                        cell(money(d.total_ccdpr), 'tableCell', 'right', { bold: true, color: C.ink }),
+                    ];
+                }),
+            ],
         },
-        hLineColor: (index: number) => (index <= 1 ? C.accentLine : C.rule),
-        vLineWidth: () => 0,
-        paddingBottom: (index: number) => (index === 0 ? 2 : 1),
-        paddingTop: (index: number) => (index === 0 ? 2 : 1),
-        paddingLeft: () => 8,
-        paddingRight: () => 8,
-    },
-});
+        layout: {
+            hLineWidth: (index: number, node: { table: { body: unknown[] } }) => {
+                if (index === node.table.body.length) return 0;
+                if (index === 0) return 0.6;
+                return index === 1 ? 1 : 0.45;
+            },
+            hLineColor: (index: number) => (index <= 1 ? C.accentLine : C.rule),
+            vLineWidth: () => 0,
+            paddingBottom: (index: number) => (index === 0 ? 2 : 1),
+            paddingTop: (index: number) => (index === 0 ? 2 : 1),
+            paddingLeft: () => 8,
+            paddingRight: () => 8,
+        },
+    };
+};
 
 // ─── Documento principal ──────────────────────────────────────────────────────
 export const proformaReport = (
@@ -406,6 +402,12 @@ export const proformaReport = (
                             { text: `Base gravada ${pct(cabecera.tarifa_iva_cccpr)}`, style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
                             { text: money(cabecera.base_grabada_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
                         ],
+                        ...(Number(cabecera.descuento_cccpr ?? 0) > 0
+                            ? [[
+                                { text: 'Descuento', style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                                { text: money(cabecera.descuento_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+                            ]]
+                            : []),
                         [
                             { text: `IVA ${pct(cabecera.tarifa_iva_cccpr)}`, style: 'totalLabel', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
                             { text: money(cabecera.valor_iva_cccpr), style: 'totalValue', border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },

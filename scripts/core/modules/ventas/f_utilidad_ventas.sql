@@ -197,13 +197,17 @@ BEGIN
             WHEN dc.dc_hace_kardex = false OR COALESCE(fn.fn_valor_nota, 0) <> 0 THEN 0
             ELSE (dc.dc_precio_venta - dc.dc_precio_compra)
         END AS utilidad,
+        -- utilidad_neta usa dc_total (cxc_deta_factura.total_ccdfa, YA neto de descuento de
+        -- línea) en vez de precio_venta*cantidad - de lo contrario la utilidad queda inflada
+        -- exactamente en el valor del descuento otorgado.
         CASE
             WHEN dc.dc_hace_kardex = false OR COALESCE(fn.fn_valor_nota, 0) <> 0 THEN 0
-            ELSE ROUND((dc.dc_precio_venta - dc.dc_precio_compra) * dc.dc_cantidad, 2)
+            ELSE ROUND(dc.dc_total - (dc.dc_precio_compra * dc.dc_cantidad), 2)
         END AS utilidad_neta,
         CASE
             WHEN dc.dc_hace_kardex = false OR COALESCE(fn.fn_valor_nota, 0) <> 0 THEN 0
-            WHEN dc.dc_precio_compra > 0 THEN ROUND(((dc.dc_precio_venta - dc.dc_precio_compra) / dc.dc_precio_compra) * 100, 2)
+            WHEN dc.dc_precio_compra > 0 AND dc.dc_cantidad > 0 THEN
+                ROUND(((dc.dc_total - (dc.dc_precio_compra * dc.dc_cantidad)) / (dc.dc_precio_compra * dc.dc_cantidad)) * 100, 2)
             ELSE 0
         END AS porcentaje_utilidad,
         COALESCE(fn.fn_valor_nota, 0) AS nota_credito,
@@ -383,20 +387,23 @@ BEGIN
             THEN 0
             ELSE (dc.dc_precio_venta - dc.dc_precio_compra)
         END AS utilidad,
+        -- utilidad_neta usa dc_total (cxc_deta_factura.total_ccdfa, YA neto de descuento de
+        -- línea) en vez de precio_venta*cantidad - de lo contrario la utilidad queda inflada
+        -- exactamente en el valor del descuento otorgado.
         CASE
             WHEN dc.dc_hace_kardex = false
               OR COALESCE(fn.fn_valor_nota, 0) <> 0
               OR dc.dc_metodo_costo IN ('SIN_COSTO', 'SIN_PRECIO_COMPRA')
             THEN 0
-            ELSE ROUND((dc.dc_precio_venta - dc.dc_precio_compra) * dc.dc_cantidad, 2)
+            ELSE ROUND(dc.dc_total - (dc.dc_precio_compra * dc.dc_cantidad), 2)
         END AS utilidad_neta,
         CASE
             WHEN dc.dc_hace_kardex = false
               OR COALESCE(fn.fn_valor_nota, 0) <> 0
               OR dc.dc_metodo_costo IN ('SIN_COSTO', 'SIN_PRECIO_COMPRA')
             THEN 0
-            WHEN dc.dc_precio_compra > 0
-            THEN ROUND(((dc.dc_precio_venta - dc.dc_precio_compra) / dc.dc_precio_compra) * 100, 2)
+            WHEN dc.dc_precio_compra > 0 AND dc.dc_cantidad > 0
+            THEN ROUND(((dc.dc_total - (dc.dc_precio_compra * dc.dc_cantidad)) / (dc.dc_precio_compra * dc.dc_cantidad)) * 100, 2)
             ELSE 0
         END AS porcentaje_utilidad,
         COALESCE(fn.fn_valor_nota, 0)  AS nota_credito,

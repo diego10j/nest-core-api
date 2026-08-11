@@ -554,15 +554,23 @@ export const facturaElectronicaReport = (
     };
 
     // ── 3. TABLA DE DETALLES ───────────────────────────────────────────────
+    // La columna de descuento sólo se agrega si al menos una línea tiene descuento - evita
+    // ensuciar la tabla con una columna de ceros en el caso común (factura sin descuentos).
+    const tieneDescuentos = detalles.some((d) => parseFloat(String(d.descuento_ccdfa ?? 0)) > 0);
+
     const cuerpoDetalles = detalles.map((d: FacturaDetalle, i: number) => {
         const fill = i % 2 === 0 ? BLANCO : GRIS_FILA;
         const cantidadTexto = d.siglas_inuni
             ? `${d.cantidad_format ?? parseFloat(String(d.cantidad_ccdfa)).toFixed(2)} ${d.siglas_inuni}`
             : (d.cantidad_format ?? parseFloat(String(d.cantidad_ccdfa)).toFixed(2));
+        const descuentoLinea = parseFloat(String(d.descuento_ccdfa ?? 0));
         return [
             td(cantidadTexto, fill, 'center'),
             td(d.observacion_ccdfa || d.nombre_inarti, fill),
             td(parseFloat(String(d.precio_ccdfa)).toFixed(4), fill, 'right'),
+            ...(tieneDescuentos
+                ? [td(descuentoLinea > 0 ? fCurrency(descuentoLinea) : '-', fill, 'right')]
+                : []),
             td(fCurrency(parseFloat(String(d.total_ccdfa))), fill, 'right'),
         ];
     });
@@ -570,12 +578,15 @@ export const facturaElectronicaReport = (
     const tablaDetalles: Content = {
         table: {
             headerRows: 1,
-            widths: ['15%', '*', '13%', '13%'],
+            widths: tieneDescuentos
+                ? ['13%', '*', '12%', '12%', '13%']
+                : ['15%', '*', '13%', '13%'],
             body: [
                 [
                     th('Cantidad'),
                     th('Descripción'),
                     th('Precio Unit.', 'right'),
+                    ...(tieneDescuentos ? [th('Desc.', 'right')] : []),
                     th('Total', 'right'),
                 ],
                 ...cuerpoDetalles,
@@ -592,6 +603,7 @@ export const facturaElectronicaReport = (
     const valorIva = parseFloat(String(cabecera.valor_iva_cccfa ?? 0));
     const total = parseFloat(String(cabecera.total_cccfa ?? 0));
     const tarifa = parseFloat(String(cabecera.tarifa_iva_cccfa ?? 0));
+    const descuentoTotal = parseFloat(String(cabecera.descuento_cccfa ?? 0));
     const subtotalSinImp = base0 + baseNoObjeto + baseGrabada;
 
     const filaResumen = (label: string, valor: number): object[] => [
@@ -728,7 +740,7 @@ export const facturaElectronicaReport = (
             body: [
                 filaResumenTop(`Subtotal ${tarifa}%:`, tarifa > 0 ? baseGrabada : 0),
                 filaResumen('Subtotal 0%:', base0),
-                filaResumen('Descuentos:', 0),
+                filaResumen('Descuentos:', descuentoTotal),
                 ...(tarifa > 0
                     ? [filaResumen(`IVA ${tarifa}%:`, valorIva)]
                     : []),

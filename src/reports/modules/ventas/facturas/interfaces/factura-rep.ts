@@ -26,6 +26,7 @@ export interface FacturaCabecera {
     valor_iva_cccfa: number;
     tarifa_iva_cccfa: number;
     total_cccfa: number;
+    descuento_cccfa?: number;
 
     // Comprobante electrónico SRI
     claveacceso_srcom?: string;
@@ -64,6 +65,8 @@ export interface FacturaDetalle {
     decim_stock_inarti?: number;
     precio_ccdfa: number;
     total_ccdfa: number;
+    descuento_ccdfa?: number;
+    porcentaje_descuento_ccdfa?: number;
     observacion_ccdfa?: string;
     iva_inarti_ccdfa: number;
     codigo_inarti: string;

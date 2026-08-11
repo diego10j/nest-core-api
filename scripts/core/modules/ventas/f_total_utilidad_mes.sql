@@ -97,7 +97,8 @@ BEGIN
             cdf.ide_inarti          AS vm_ide_inarti,
             cf.fecha_emisi_cccfa    AS vm_fecha_venta,
             cdf.precio_ccdfa        AS vm_precio_venta,
-            cdf.cantidad_ccdfa      AS vm_cantidad
+            cdf.cantidad_ccdfa      AS vm_cantidad,
+            cdf.total_ccdfa         AS vm_total
         FROM cxc_deta_factura cdf
         JOIN cxc_cabece_factura cf ON cf.ide_cccfa    = cdf.ide_cccfa
         JOIN inv_articulo iart      ON iart.ide_inarti = cdf.ide_inarti
@@ -147,8 +148,10 @@ BEGIN
         LEFT JOIN precio_pasado pp ON pp.vm_ide_inarti = fu.vm_ide_inarti AND pp.vm_fecha_venta = fu.vm_fecha_venta
         LEFT JOIN ultima_compra  uc ON uc.uc_ide_inarti = fu.vm_ide_inarti
     )
+    -- vm_total (cxc_deta_factura.total_ccdfa) ya viene neto de descuento de línea - restar el
+    -- costo directamente evita inflar la utilidad en el valor del descuento otorgado.
     SELECT COALESCE(SUM(
-        ROUND((vm.vm_precio_venta - pr.precio_compra) * vm.vm_cantidad, 2)
+        ROUND(vm.vm_total - (pr.precio_compra * vm.vm_cantidad), 2)
     ), 0)
     INTO sumatoria
     FROM ventas_mes vm
@@ -215,7 +218,8 @@ BEGIN
             cf.ide_sucu          AS vm_ide_sucu,
             cf.fecha_emisi_cccfa AS vm_fecha_venta,
             cdf.precio_ccdfa     AS vm_precio_venta,
-            cdf.cantidad_ccdfa   AS vm_cantidad
+            cdf.cantidad_ccdfa   AS vm_cantidad,
+            cdf.total_ccdfa      AS vm_total
         FROM cxc_deta_factura cdf
         JOIN cxc_cabece_factura cf ON cf.ide_cccfa    = cdf.ide_cccfa
         JOIN inv_articulo iart      ON iart.ide_inarti = cdf.ide_inarti
@@ -234,11 +238,13 @@ BEGIN
     )
     -- ═══ Suma de utilidad usando f_costo_unitario_ppmp via LATERAL ═══
     -- Si costo PPMP = 0 → utilidad 0 (no infla), la fila sigue existiendo.
+    -- vm_total (cxc_deta_factura.total_ccdfa) ya viene neto de descuento de línea - restar el
+    -- costo directamente evita inflar la utilidad en el valor del descuento otorgado.
     SELECT COALESCE(SUM(
         CASE
             WHEN COALESCE(ppmp.costo_unitario, 0) = 0 THEN 0
             ELSE ROUND(
-                (vm.vm_precio_venta - ppmp.costo_unitario) * vm.vm_cantidad,
+                vm.vm_total - (ppmp.costo_unitario * vm.vm_cantidad),
                 2
             )
         END

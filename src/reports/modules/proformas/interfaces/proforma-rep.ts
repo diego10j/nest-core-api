@@ -12,6 +12,7 @@ export interface ProformaRepCabecera {
     valor_iva_cccpr: number;
     total_cccpr: number;
     tarifa_iva_cccpr: number;
+    descuento_cccpr?: number;
     observacion_cccpr?: string;
     referencia_cccpr?: string;
     anulado_cccpr?: boolean;
@@ -51,6 +52,8 @@ export interface ProformaRepDetalle {
     cantidad_formateada: string;
     precio_ccdpr: number;
     total_ccdpr: number;
+    descuento_ccdpr?: number;
+    porcentaje_descuento_ccdpr?: number;
     iva_inarti_ccdpr: number;
     ide_inuni?: number;
     siglas_inuni?: string;
