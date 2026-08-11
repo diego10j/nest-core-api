@@ -238,6 +238,7 @@ ORDER BY prof.secuencial_cccpr DESC
         c.valor_iva_cccpr,
         c.total_cccpr,
         c.descuento_cccpr,
+        c.ide_tecba_cccpr AS ide_cuenta_tarjeta,
         c.tarifa_iva_cccpr,
         c.observacion_cccpr,
         c.notas_cccpr,
@@ -567,6 +568,10 @@ ORDER BY prof.secuencial_cccpr DESC
         valor_iva_cccpr: totales.valor_iva,
         total_cccpr: totales.total,
         descuento_cccpr: totales.descuento,
+        // Cuenta de tarjeta (fija según el % de comisión al momento de cotizar) - se setea
+        // siempre (no sólo si viene definida) para que se limpie a null si la proforma deja
+        // de ser pago con tarjeta al editarla, igual que factura con fact_mig_cccfa.
+        ide_tecba_cccpr: cab.ide_cuenta_tarjeta ?? null,
         tarifa_iva_cccpr: tarifaIva,
         ide_cctpr: cab.ide_cctpr,
         utilidad_cccpr: totales.utilidad,
@@ -611,6 +616,7 @@ ORDER BY prof.secuencial_cccpr DESC
         valor_iva_cccpr: totales.valor_iva,
         total_cccpr: totales.total,
         descuento_cccpr: totales.descuento,
+        ide_tecba_cccpr: cab.ide_cuenta_tarjeta ?? null,
         tarifa_iva_cccpr: tarifaIva,
         ide_cctpr: cab.ide_cctpr,
         anulado_cccpr: false,

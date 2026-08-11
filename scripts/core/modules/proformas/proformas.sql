@@ -8,3 +8,9 @@ ALTER TABLE cxc_deta_proforma
 
 ALTER TABLE cxc_cabece_proforma
     ADD COLUMN descuento_cccpr NUMERIC(12,2) DEFAULT 0;
+
+-- Cuenta de tarjeta (tes_cuenta_banco.ide_tecba) usada al cotizar con tarjeta - permite revertir
+-- correctamente el recargo de tarjeta (ya horneado en precio_ccdpr) al editar la proforma,
+-- mismo patrón que factura usa con fact_mig_cccfa (ver scripts/core/modules/ventas/facturas.sql).
+ALTER TABLE cxc_cabece_proforma
+    ADD COLUMN ide_tecba_cccpr INT8;

@@ -114,7 +114,12 @@ export class CabProformaDto {
     @IsOptional()
     ide_cndfp?: number;
 
-
+    /** Cuenta de tarjeta (tes_cuenta_banco.ide_tecba) cuando la forma de pago es tarjeta - se
+     * guarda en ide_tecba_cccpr para poder revertir el recargo de tarjeta al editar. */
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_cuenta_tarjeta?: number;
 
     @IsString()
     @IsOptional()
