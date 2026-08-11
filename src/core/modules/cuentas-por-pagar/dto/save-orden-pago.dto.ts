@@ -1,9 +1,12 @@
 // tabla: cxp_cab_orden_pago / cxp_det_orden_pago
 import { Type } from 'class-transformer';
 import {
+    ArrayMaxSize,
+    ArrayNotEmpty,
     IsArray,
     IsBoolean,
     IsDateString,
+    IsEmail,
     IsInt,
     IsNotEmpty,
     IsNumber,
@@ -214,4 +217,34 @@ export class SaveDetallesOrdenDto {
     @ValidateNested({ each: true })
     @Type(() => SaveDetalleOrdenDto)
     detalles: SaveDetalleOrdenDto[];
+
+    /**
+     * Correos a notificar del pago (proveedor). Todos los `detalles` de este payload
+     * pertenecen al mismo proveedor (agrupados en el diálogo "Registrar pago"), por eso
+     * el destino se define acá y no por detalle.
+     */
+    @IsArray()
+    @IsOptional()
+    @ArrayMaxSize(10)
+    @IsEmail({}, { each: true })
+    correos_notificacion?: string[];
+}
+
+/**
+ * DTO para reenviar la notificación de pago (ya registrado) de un proveedor de una orden.
+ */
+export class ReenviarNotificacionPagoDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cpcop: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_geper: number;
+
+    @IsArray()
+    @ArrayNotEmpty()
+    @ArrayMaxSize(10)
+    @IsEmail({}, { each: true })
+    correos: string[];
 }

@@ -12,6 +12,7 @@ import { TransaccionesTesoreriaService } from '../tesoreria/tesoreria-transaccio
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
 import { SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { PagoOrdenEmailService } from './pago-orden-email.service';
 
 
 @Injectable()
@@ -21,6 +22,7 @@ export class CuentasPorPagarSaveService extends BaseService {
         private readonly core: CoreService,
         private readonly ordenService: CuentasPorPagarOrdenService,
         private readonly transaccionesTesoreria: TransaccionesTesoreriaService,
+        private readonly pagoOrdenEmailService: PagoOrdenEmailService,
     ) {
         super();
     }
@@ -417,6 +419,11 @@ export class CuentasPorPagarSaveService extends BaseService {
         // Guardar/actualizar movimiento bancario y transacción CxP en tesorería
         const ide_cpcdop_list = detalles.map((d) => d.ide_cpcdop);
         await this.transaccionesTesoreria.saveTransaccionOrdenPagoCxP({ ...dtoIn, ide_cpcop, ide_cpcdop_list });
+
+        // Notificar al proveedor por correo (best-effort: no revierte ni bloquea el pago si falla)
+        if (detalles.some((d) => d.notifica_cpcdop)) {
+            await this.pagoOrdenEmailService.enviarNotificacion(ide_cpcdop_list, dtoIn.correos_notificacion, dtoIn);
+        }
 
         return { message: 'ok', rowCount: detalles.length, cerrada };
     }

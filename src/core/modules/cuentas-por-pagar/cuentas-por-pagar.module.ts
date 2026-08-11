@@ -14,6 +14,7 @@ import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { DocumentosCxPController } from './documentos-cxp.controller';
 import { DocumentosCxPService } from './documentos-cxp.service';
 import { EnvioFacturaCxPService } from './envio-factura-cxp.service';
+import { PagoOrdenEmailService } from './pago-orden-email.service';
 import { RetencionesCxPSaveService } from './retenciones-cxp-save.service';
 import { RetencionesCxPController } from './retenciones-cxp.controller';
 import { RetencionesCxPService } from './retenciones-cxp.service';
@@ -34,6 +35,7 @@ import { RetencionesCxPService } from './retenciones-cxp.service';
         DocumentosCxPSaveService,
         DocumentosCxPXmlService,
         EnvioFacturaCxPService,
+        PagoOrdenEmailService,
         RetencionesCxPService,
         RetencionesCxPSaveService,
         CoreService,

@@ -11,8 +11,9 @@ import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
-import { SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
+import { ReenviarNotificacionPagoDto, SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
 import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
+import { PagoOrdenEmailService } from './pago-orden-email.service';
 
 @ApiTags('CuentasPorPagar')
 @Controller('cuentas-por-pagar')
@@ -21,6 +22,7 @@ export class CuentasPorPagarController {
         private readonly service: CuentasPorPagarService,
         private readonly saveService: CuentasPorPagarSaveService,
         private readonly ordenService: CuentasPorPagarOrdenService,
+        private readonly pagoOrdenEmailService: PagoOrdenEmailService,
     ) { }
 
     // ─── CONSULTAS CXP ────────────────────────────────────────────────────────
@@ -133,6 +135,12 @@ export class CuentasPorPagarController {
     @ApiOperation({ summary: 'Guardar o actualizar detalle de una orden de pago' })
     saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetallesOrdenDto) {
         return this.saveService.saveDetalleOrden({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('reenviarNotificacionPago')
+    @ApiOperation({ summary: 'Reenviar por correo la notificación de un pago ya registrado a un proveedor' })
+    reenviarNotificacionPago(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ReenviarNotificacionPagoDto) {
+        return this.pagoOrdenEmailService.reenviar({ ...headersParams, ...dtoIn });
     }
 
     @Get('getReporteCxPDetallado')
