@@ -8,7 +8,7 @@ import { fCurrency } from 'src/util/helpers/common-util';
 import { fDate } from 'src/util/helpers/date-util';
 import { getStaticImage } from 'src/util/helpers/file-utils';
 
-import { FacturaDetalle, FacturaRep, GuiaRemisionFactura, TransporteFactura } from './interfaces/factura-rep';
+import { FacturaDetalle, FacturaRep, TransporteFactura } from './interfaces/factura-rep';
 
 // ── Paleta ────────────────────────────────────────────────────────────────
 // Paleta gris/navy neutral y profesional (misma que ride-report.util.ts / proforma.report.ts):
@@ -277,21 +277,6 @@ function buildTransportSection(transporte: TransporteFactura | null | undefined)
     } as Content;
 }
 
-function buildGuiaSection(guia: GuiaRemisionFactura | null | undefined): Content {
-    if (!guia) {
-        return { text: '', margin: [0, 0, 0, 0] as [number, number, number, number] };
-    }
-
-    const numeroGuia = fmtNumero(guia.establecimiento_ccdfa, guia.pto_emision_ccdfa, guia.numero_ccgui);
-
-    return {
-        columns: [
-            { text: 'Guía de Remisión: ', style: 'transportLabel', width: 'auto' },
-            { text: numeroGuia, style: 'transportValue', width: 'auto', bold: true },
-        ],
-        margin: [0, 4, 0, 0] as [number, number, number, number],
-    } as Content;
-}
 
 // ── Función principal ──────────────────────────────────────────────────────
 export const facturaElectronicaReport = (
@@ -642,6 +627,16 @@ export const facturaElectronicaReport = (
             { text: cabecera.infoadicional3_srcom, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
         ]);
     }
+    if (guiaremision) {
+        const numeroGuia = fmtNumero(guiaremision.establecimiento_ccdfa, guiaremision.pto_emision_ccdfa, guiaremision.numero_ccgui);
+        const valorGuia = guiaremision.fecha_emision_ccgui
+            ? `${numeroGuia}   (${fDate(guiaremision.fecha_emision_ccgui, 'dd/MM/yyyy')})`
+            : numeroGuia;
+        infoAdicRows.push([
+            { text: 'Guía de Remisión:', fontSize: 7.5, bold: true, color: GRIS_TEXTO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], width: '30%' },
+            { text: valorGuia, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+        ]);
+    }
 
     const infoAdicionalSection: Content = {
         stack: [
@@ -713,7 +708,6 @@ export const facturaElectronicaReport = (
                 },
                 margin: [0, 8, 0, 4] as [number, number, number, number],
             } as Content,
-            buildGuiaSection(guiaremision),
             buildTransportSection(transporte),
         ],
     };
