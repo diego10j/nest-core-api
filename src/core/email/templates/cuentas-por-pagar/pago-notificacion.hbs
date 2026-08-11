@@ -45,23 +45,24 @@
               border-radius:12px;overflow:hidden;margin:0 0 4px;">
     <tr>
         <td style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
-                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:30%;">Fecha</td>
-        <td style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
                    text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;">Documento</td>
+        <td style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
+                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:26%;">Fecha Emisión</td>
         <td align="right" style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
-                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:22%;">Importe</td>
+                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:24%;">Importe</td>
     </tr>
     {{#each documentos}}
     <tr>
+        <td style="padding:10px 14px;
+                   border-top:1px solid #EEF2F8;{{#unless @last}}border-bottom:1px solid #EEF2F8;{{/unless}}
+                   background-color:{{this.bg}};">
+            <span style="font-size:9px;font-weight:700;color:#8898B4;letter-spacing:0.05em;">{{this.tipoDocumento}}</span>
+            <span style="font-size:12px;font-weight:600;color:#0D1F4E;">{{this.numero}}</span>
+        </td>
         <td style="padding:10px 14px;font-size:12px;color:#4A5E7A;
                    border-top:1px solid #EEF2F8;{{#unless @last}}border-bottom:1px solid #EEF2F8;{{/unless}}
                    background-color:{{this.bg}};">
-            {{formatDate this.fecha}}
-        </td>
-        <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#0D1F4E;
-                   border-top:1px solid #EEF2F8;{{#unless @last}}border-bottom:1px solid #EEF2F8;{{/unless}}
-                   background-color:{{this.bg}};">
-            {{this.numero}}
+            {{this.fecha}}
         </td>
         <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;
                    color:{{#if this.negativo}}#B42318{{else}}#0D1F4E{{/if}};

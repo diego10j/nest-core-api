@@ -12,6 +12,7 @@ import { MailService } from 'src/core/email/services/mail.service';
 import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { fCurrency } from 'src/util/helpers/common-util';
+import { fDate } from 'src/util/helpers/date-util';
 import { detectMimeType, getStaticImage } from 'src/util/helpers/file-utils';
 import { normalizarUrl } from 'src/util/helpers/string-util';
 
@@ -29,7 +30,7 @@ interface DatosNotificacionPago {
     numComprobante: string;
     documentoReferencia?: string;
     fotoPath?: string;
-    documentos: { fecha: string | Date; numero: string; importe: number }[];
+    documentos: { numero: string; tipoDocumento: string; fecha: string | Date; importe: number }[];
     total: number;
 }
 
@@ -122,11 +123,13 @@ export class PagoOrdenEmailService {
                 p.identificac_geper,
                 cf.numero_cpcfa,
                 cf.fecha_emisi_cpcfa,
+                ctd.nombre_cntdo                    AS tipo_documento,
                 cab.secuencial_cpcop
             FROM cxp_det_orden_pago det
             JOIN cxp_cab_orden_pago cab   ON cab.ide_cpcop = det.ide_cpcop
             JOIN cxp_cabece_transa ct     ON ct.ide_cpctr  = det.ide_cpctr
             LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa  = ct.ide_cpcfa
+            LEFT JOIN con_tipo_document ctd ON ctd.ide_cntdo = cf.ide_cntdo
             LEFT JOIN gen_persona p        ON p.ide_geper   = ct.ide_geper
             LEFT JOIN tes_tip_tran_banc ttb ON ttb.ide_tettb = det.ide_tettb
             WHERE det.ide_cpcdop = ANY($1)
@@ -152,8 +155,9 @@ export class PagoOrdenEmailService {
             documentoReferencia: primera.observacion_cpcdop,
             fotoPath: primera.foto_cpcdop,
             documentos: rows.map((r: any) => ({
-                fecha: r.fecha_emisi_cpcfa,
                 numero: r.numero_cpcfa ?? '---',
+                tipoDocumento: r.tipo_documento ?? 'Documento',
+                fecha: r.fecha_emisi_cpcfa,
                 importe: Number(r.valor_pagado_cpcdop ?? 0) || Number(r.valor_pagado_banco_cpcdop ?? 0),
             })),
             total,
@@ -186,8 +190,9 @@ export class PagoOrdenEmailService {
             numComprobante: datos.numComprobante,
             documentoReferencia: datos.documentoReferencia ?? '',
             documentos: datos.documentos.map((d, i) => ({
-                fecha: d.fecha,
                 numero: d.numero,
+                tipoDocumento: d.tipoDocumento,
+                fecha: fDate(d.fecha, 'dd/MM/yyyy'),
                 importe: fCurrency(d.importe),
                 negativo: d.importe < 0,
                 bg: i % 2 === 1 ? '#F9FBFF' : '#ffffff',
