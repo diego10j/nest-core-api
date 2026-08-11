@@ -505,6 +505,10 @@ export const facturaElectronicaReport = (
                                 cabecera.fecha_emisi_cccfa
                                     ? fDate(cabecera.fecha_emisi_cccfa, 'dd/MM/yyyy')
                                     : '---'),
+                            ...(guiaremision
+                                ? [campoCliente('Guía de Remisión',
+                                    fmtNumero(guiaremision.establecimiento_ccdfa, guiaremision.pto_emision_ccdfa, guiaremision.numero_ccgui))]
+                                : []),
                         ],
                         border: [true, true, true, true] as [boolean, boolean, boolean, boolean],
                         borderColor: [GRIS_LINEA, GRIS_LINEA, GRIS_LINEA, GRIS_LINEA] as [string, string, string, string],
@@ -627,17 +631,6 @@ export const facturaElectronicaReport = (
             { text: cabecera.infoadicional3_srcom, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
         ]);
     }
-    if (guiaremision) {
-        const numeroGuia = fmtNumero(guiaremision.establecimiento_ccdfa, guiaremision.pto_emision_ccdfa, guiaremision.numero_ccgui);
-        const valorGuia = guiaremision.fecha_emision_ccgui
-            ? `${numeroGuia}   (${fDate(guiaremision.fecha_emision_ccgui, 'dd/MM/yyyy')})`
-            : numeroGuia;
-        infoAdicRows.push([
-            { text: 'Guía de Remisión:', fontSize: 7.5, bold: true, color: GRIS_TEXTO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], width: '30%' },
-            { text: valorGuia, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
-        ]);
-    }
-
     const infoAdicionalSection: Content = {
         stack: [
             { text: 'Información Adicional', style: 'sectionTitle' },
