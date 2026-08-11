@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light only">
     <meta name="supported-color-schemes" content="light only">
+    <!-- Evita que Apple Mail/Outlook conviertan números tipo "001-001-000000251" en enlaces
+         de teléfono automáticos (se ven subrayados/azules como si fueran un link). -->
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
     <title>{{title}} - {{appName}}</title>
     <style>
         :root { color-scheme: light only; }
