@@ -740,7 +740,7 @@ export const facturaElectronicaReport = (
             body: [
                 filaResumenTop(`Subtotal ${tarifa}%:`, tarifa > 0 ? baseGrabada : 0),
                 filaResumen('Subtotal 0%:', base0),
-                filaResumen('Descuentos:', descuentoTotal),
+                ...(descuentoTotal > 0 ? [filaResumen('Descuentos:', descuentoTotal)] : []),
                 ...(tarifa > 0
                     ? [filaResumen(`IVA ${tarifa}%:`, valorIva)]
                     : []),
