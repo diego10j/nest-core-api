@@ -187,6 +187,12 @@ export class CabeceraFacturaDataDto {
     @Type(() => Number)
     ide_cndfp?: number;
 
+    @ApiPropertyOptional({ description: 'ID de la cuenta de tarjeta (tes_cuenta_banco.ide_tecba) cuando la forma de pago es tarjeta - se guarda en fact_mig_cccfa para preseleccionarla al registrar el cobro' })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_cuenta_tarjeta?: number;
+
     @ApiPropertyOptional({ description: 'Días de crédito. Default: 0 (contado)', default: 0 })
     @IsInt()
     @IsOptional()

@@ -1009,6 +1009,10 @@ export class FacturasSaveService extends BaseService {
         if (isDefined(data.num_proforma_cccfa)) q.values.set('num_proforma_cccfa', data.num_proforma_cccfa);
         if (isDefined(data.secuencial_cccfa)) q.values.set('secuencial_cccfa', data.secuencial_cccfa);
         if (isDefined(data.ide_srcom)) q.values.set('ide_srcom', data.ide_srcom);
+        // fact_mig_cccfa (int8) ya no se usa para la migración del sistema de escritorio JR
+        // (descontinuado) - se reutiliza para guardar la cuenta de tarjeta (ide_tecba) de
+        // facturas pagadas con tarjeta, y así preseleccionarla al registrar el cobro.
+        if (isDefined(data.ide_cuenta_tarjeta)) q.values.set('fact_mig_cccfa', data.ide_cuenta_tarjeta);
         return q;
     }
 
@@ -1031,6 +1035,11 @@ export class FacturasSaveService extends BaseService {
         q.values.set('total_cccfa', totales.total);
         q.values.set('descuento_cccfa', totales.descuento);
         q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
+        // fact_mig_cccfa (int8) ya no se usa para la migración del sistema de escritorio JR
+        // (descontinuado) - se reutiliza para guardar la cuenta de tarjeta (ide_tecba) de
+        // facturas pagadas con tarjeta. Se setea siempre (no gateado por isDefined) para que
+        // se limpie a null si la factura deja de ser pago con tarjeta al editarla.
+        q.values.set('fact_mig_cccfa', data.ide_cuenta_tarjeta ?? null);
         q.values.set('usuario_actua', dtoIn.login);
         q.values.set('fecha_actua', getCurrentDate());
         q.values.set('hora_actua', getCurrentTime());

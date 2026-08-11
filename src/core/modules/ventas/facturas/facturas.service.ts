@@ -1180,6 +1180,7 @@ export class FacturasService extends BaseService {
                 a.tarifa_iva_cccfa,
                 a.total_cccfa,
                 a.descuento_cccfa,
+                a.fact_mig_cccfa AS ide_cuenta_tarjeta,
                 a.fecha_trans_cccfa,
                 a.usuario_ingre,
                 a.fecha_ingre,
