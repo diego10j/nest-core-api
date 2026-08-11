@@ -10,6 +10,7 @@ import { AdjuntoCorreoDto } from 'src/core/email/dto/adjunto-dto';
 import { registerHelpers } from 'src/core/email/helpers/handlebars.helpers';
 import { MailService } from 'src/core/email/services/mail.service';
 import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
+import { fmtNumero, splitNumeroDocumento } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { fCurrency } from 'src/util/helpers/common-util';
 import { fDate } from 'src/util/helpers/date-util';
@@ -154,12 +155,15 @@ export class PagoOrdenEmailService {
             numComprobante: primera.num_comprobante_cpcdop ?? '---',
             documentoReferencia: primera.observacion_cpcdop,
             fotoPath: primera.foto_cpcdop,
-            documentos: rows.map((r: any) => ({
-                numero: r.numero_cpcfa ?? '---',
-                tipoDocumento: r.tipo_documento ?? 'Documento',
-                fecha: r.fecha_emisi_cpcfa,
-                importe: Number(r.valor_pagado_cpcdop ?? 0) || Number(r.valor_pagado_banco_cpcdop ?? 0),
-            })),
+            documentos: rows.map((r: any) => {
+                const { estab, ptoEmi, secuencial } = splitNumeroDocumento(r.numero_cpcfa);
+                return {
+                    numero: r.numero_cpcfa ? fmtNumero(estab, ptoEmi, secuencial) : '---',
+                    tipoDocumento: r.tipo_documento ?? 'Documento',
+                    fecha: r.fecha_emisi_cpcfa,
+                    importe: Number(r.valor_pagado_cpcdop ?? 0) || Number(r.valor_pagado_banco_cpcdop ?? 0),
+                };
+            }),
             total,
         };
     }
@@ -185,7 +189,7 @@ export class PagoOrdenEmailService {
             numeroRecibo: datos.numeroRecibo,
             contraparte: datos.contraparte,
             identificacion: datos.identificacion ?? '',
-            fechaPago: datos.fechaPago,
+            fechaPago: fDate(datos.fechaPago, 'dd/MM/yyyy'),
             formaPago: datos.formaPago,
             numComprobante: datos.numComprobante,
             documentoReferencia: datos.documentoReferencia ?? '',
