@@ -255,9 +255,9 @@ export class BancosService extends BaseService {
         // afiliados. Por eso la base es el IVA y la base imponible DE LA VENTA (valorIva /
         // baseImponible), no los de la comisión. Validado contra el simulador oficial de Bendo
         // (Régimen General, venta $15 = base $13.04 + IVA $1.96): retención IVA = 70% × $1.96 =
-        // $1.37, retención Renta = 3% × $13.04 = $0.39, recibes = 15 - 0.69 - 1.37 - 0.39 =
-        // $12.55 - coincide exacto. (Con retención 0% - RIMPE Negocio Popular - da $14.31,
-        // que coincide con una transacción real verificada en dispositivo físico.)
+        // $1.37, retención Renta = 3% × $13.04 = $0.39 - coincide exacto con lo que Bendo
+        // reporta como retenido (aunque, a diferencia de Bendo, aquí no se resta de "recibes"
+        // porque es recuperable como crédito tributario, no una pérdida real - ver más abajo).
         const valorRetencionIva = cuenta.retiene_iva_tecba
             ? valorIva * (Number(cuenta.porcentaje_retencion_iva_tecba ?? 0) / 100)
             : 0;
@@ -265,10 +265,12 @@ export class BancosService extends BaseService {
             ? baseImponible * (Number(cuenta.porcentaje_retencion_renta_tecba ?? 0) / 100)
             : 0;
 
-        const valorNetoRecibir = total - valorComisionTotal - valorRetencionIva - valorRetencionRenta;
-        // Para no perder margen hay que cubrir comisión + IVA de comisión + las retenciones,
-        // ya que las tres cosas reducen lo que realmente se deposita en la cuenta.
-        const valorSugeridoAumentar = valorComisionTotal + valorRetencionIva + valorRetencionRenta;
+        // Las retenciones de IVA/Renta son recuperables (crédito tributario a favor en la
+        // declaración de impuestos) - NO son una pérdida real como sí lo es la comisión, así que
+        // no se restan de "recibes" ni se suman a la sugerencia de aumento de precio. Se
+        // devuelven sólo como dato informativo (valorRetencionIva/valorRetencionRenta).
+        const valorNetoRecibir = total - valorComisionTotal;
+        const valorSugeridoAumentar = valorComisionTotal;
         const porcentajeSugeridoAumentar = total > 0 ? (valorSugeridoAumentar / total) * 100 : 0;
 
         const round2 = (n: number) => Math.round(n * 100) / 100;
