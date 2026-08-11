@@ -404,24 +404,29 @@ export class CoreService {
       insertQuery.values.set('data_type_camp', column.dataType);
       insertQuery.values.set('orden_camp', column.order);
       insertQuery.values.set('nom_visual_camp', column.label);
-      insertQuery.values.set('requerido_camp', column.required);
-      insertQuery.values.set('visible_camp', column.visible);
+      // Coerción explícita a boolean: `column` viene de un payload de red (JSON del diálogo
+      // "Personalizar Tabla"), no de un DTO con @ValidateNested - Nest no valida el tipo real
+      // de estos campos item por item. `Boolean(...)` evita que un valor inesperado (ej. un
+      // valor no-boolean) llegue crudo a una columna `bool` de Postgres y rompa el INSERT con
+      // "invalid input syntax for type boolean".
+      insertQuery.values.set('requerido_camp', Boolean(column.required));
+      insertQuery.values.set('visible_camp', Boolean(column.visible));
       insertQuery.values.set('length_camp', column.length);
       insertQuery.values.set('precision_camp', column.precision);
       insertQuery.values.set('decimals_camp', column.decimals);
-      insertQuery.values.set('lectura_camp', column.disabled);
-      insertQuery.values.set('filtro_camp', column.filter);
-      insertQuery.values.set('filtro_global_camp', column.globalFilter);
+      insertQuery.values.set('lectura_camp', Boolean(column.disabled));
+      insertQuery.values.set('filtro_camp', Boolean(column.filter));
+      insertQuery.values.set('filtro_global_camp', Boolean(column.globalFilter));
       insertQuery.values.set('comentario_camp', column.comment);
       insertQuery.values.set('size_camp', column.size);
       insertQuery.values.set('align_camp', column.align);
       insertQuery.values.set('defecto_camp', column.defaultValue);
-      insertQuery.values.set('mayuscula_camp', column.upperCase);
+      insertQuery.values.set('mayuscula_camp', Boolean(column.upperCase));
       insertQuery.values.set('mascara_camp', column.mask);
       insertQuery.values.set('component_camp', column.component);
-      insertQuery.values.set('unique_camp', column.unique);
-      insertQuery.values.set('orderable_camp', column.orderable);
-      insertQuery.values.set('sum_camp', column.sum);
+      insertQuery.values.set('unique_camp', Boolean(column.unique));
+      insertQuery.values.set('orderable_camp', Boolean(column.orderable));
+      insertQuery.values.set('sum_camp', Boolean(column.sum));
       insertQuery.values.set('usuario_ingre', dtoIn.login);
       listQuery.push(insertQuery);
       ide_camp = ide_camp + 1;
