@@ -17,8 +17,8 @@ import { normalizarUrl } from 'src/util/helpers/string-util';
 
 import { ReenviarNotificacionPagoDto } from './dto/save-orden-pago.dto';
 
-/** Alias de sis_cuenta_correo desde el que se notifican los pagos a proveedores (misma cuenta que los comprobantes SRI, ej. erp@diquimec.com.ec). */
-const ALIAS_CUENTA_NOTIFICACION_PAGO = 'comprobantes';
+/** Alias de sis_cuenta_correo desde el que se notifican los pagos a proveedores (erp@diquimec.com.ec - 'comprobantes' resuelve a otra cuenta distinta). */
+const ALIAS_CUENTA_NOTIFICACION_PAGO = 'default';
 
 interface DatosNotificacionPago {
     numeroRecibo: string;
@@ -177,7 +177,7 @@ export class PagoOrdenEmailService {
             appName: empresa?.nom_empr || 'ProERP',
             logoBase64,
             logoMimeType,
-            title: `Recibo de Pago ${datos.numeroRecibo}`,
+            title: 'Recibo de Pago',
             numeroRecibo: datos.numeroRecibo,
             contraparte: datos.contraparte,
             identificacion: datos.identificacion ?? '',

@@ -1,97 +1,43 @@
 {{> partials/header
-    title=title
-    heroLabel="NOTIFICACIÓN DE PAGO"
-    subtitle="Hemos procesado tu pago. Revisa el resumen a continuación; el comprobante va adjunto a este correo."
+    title="Recibo de Pago"
+    subtitle="Detalle del pago procesado a su cuenta."
 }}
 
 <!-- ── Saludo ── -->
 <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#0D1F4E;">
-    Hola, {{capitalizeWords contraparte}} 👋
+    Estimado(a) {{capitalizeWords contraparte}},
 </p>
 <p style="margin:0 0 22px;font-size:14px;line-height:1.75;color:#4A5E7A;">
-    Por medio de la presente, {{appName}} te notifica el detalle del pago realizado
-    {{#if documentoReferencia}}por concepto de <strong style="color:#0D1F4E;">{{documentoReferencia}}</strong>{{/if}}.
+    Le informamos que hemos procesado el pago a su cuenta. A continuación encontrará el detalle correspondiente.
 </p>
 
-<!-- ── Banner de estado ── -->
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-       style="border-collapse:collapse;margin:0 0 24px;">
-    <tr>
-        <td style="background-color:#ECFDF5;border-left:3px solid #059669;
-                   border-radius:0 8px 8px 0;padding:12px 16px;">
-            <p style="margin:0;font-size:13px;font-weight:700;color:#065F46;">
-                ✅&nbsp; Pago procesado correctamente
-            </p>
-        </td>
-    </tr>
-</table>
-
-<p style="font-size:10px;font-weight:700;text-transform:uppercase;
-          letter-spacing:0.12em;color:#8898B4;margin:0 0 10px;">
-    Datos del pago
-</p>
-
+<!-- ── Referencia + Fecha ── -->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
        style="border-collapse:collapse;border:1px solid #E2EAF4;
-              border-radius:12px;overflow:hidden;margin:0 0 22px;">
-
+              border-radius:12px;overflow:hidden;margin:0 0 24px;">
     <tr>
-        <td colspan="2"
-            style="background-color:#F5F8FF;padding:10px 16px;
-                   border-bottom:1px solid #E2EAF4;
-                   font-size:11px;font-weight:700;
-                   letter-spacing:0.10em;text-transform:uppercase;color:#1A56DB;">
-            Recibo de Pago {{numeroRecibo}}
+        <td width="50%" style="padding:14px 16px;border-right:1px solid #EEF2F8;vertical-align:top;">
+            <span style="display:block;font-size:10px;font-weight:700;
+                         text-transform:uppercase;letter-spacing:0.07em;
+                         color:#8898B4;margin-bottom:4px;">Referencia</span>
+            <span style="font-size:13px;font-weight:700;color:#0D1F4E;
+                         font-family:'DM Mono',monospace;">
+                {{numeroRecibo}}
+            </span>
         </td>
-    </tr>
-
-    <tr>
-        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
-                               border-right:1px solid #EEF2F8;vertical-align:top;">
+        <td width="50%" style="padding:14px 16px;vertical-align:top;">
             <span style="display:block;font-size:10px;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.07em;
                          color:#8898B4;margin-bottom:4px;">Fecha de Pago</span>
             <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formatDate fechaPago}}</span>
         </td>
-        <td width="50%" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
-                               vertical-align:top;">
-            <span style="display:block;font-size:10px;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">Forma de Pago</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{formaPago}}</span>
-        </td>
     </tr>
-
-    <tr>
-        <td colspan="2" style="padding:11px 16px;border-bottom:1px solid #EEF2F8;
-                               vertical-align:top;">
-            <span style="display:block;font-size:10px;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">Proveedor</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;">{{contraparte}}{{#if identificacion}} — {{identificacion}}{{/if}}</span>
-        </td>
-    </tr>
-
-    <tr>
-        <td colspan="2" style="padding:11px 16px;vertical-align:top;">
-            <span style="display:block;font-size:10px;font-weight:700;
-                         text-transform:uppercase;letter-spacing:0.07em;
-                         color:#8898B4;margin-bottom:4px;">N&uacute;mero de Comprobante</span>
-            <span style="font-size:13px;font-weight:700;color:#0D1F4E;
-                         font-family:'DM Mono',monospace;
-                         background-color:#EEF3FF;border-radius:4px;
-                         padding:2px 7px;display:inline-block;">
-                {{numComprobante}}
-            </span>
-        </td>
-    </tr>
-
 </table>
 
 {{#if documentos}}
 <p style="font-size:10px;font-weight:700;text-transform:uppercase;
           letter-spacing:0.12em;color:#8898B4;margin:0 0 10px;">
-    Detalle aplicado
+    Detalle
 </p>
 
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
@@ -99,7 +45,7 @@
               border-radius:12px;overflow:hidden;margin:0 0 4px;">
     <tr>
         <td style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
-                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:16%;">Fecha</td>
+                   text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;width:30%;">Fecha</td>
         <td style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
                    text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;">Documento</td>
         <td align="right" style="background-color:#0D1F4E;padding:9px 14px;font-size:10px;font-weight:700;
@@ -118,7 +64,7 @@
             {{this.numero}}
         </td>
         <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;
-                   color:{{#if this.negativo}}#DC2626{{else}}#0D1F4E{{/if}};
+                   color:{{#if this.negativo}}#B42318{{else}}#0D1F4E{{/if}};
                    border-top:1px solid #EEF2F8;{{#unless @last}}border-bottom:1px solid #EEF2F8;{{/unless}}
                    background-color:{{this.bg}};
                    white-space:nowrap;">
@@ -133,12 +79,12 @@
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
        style="border-collapse:collapse;margin:0 0 22px;">
     <tr>
-        <td style="background-color:#1A56DB;border-radius:0 0 12px 12px;padding:14px 16px;">
+        <td style="background-color:#0D1F4E;border-radius:0 0 12px 12px;padding:14px 16px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
                 <tr>
                     <td style="font-size:12px;font-weight:700;letter-spacing:0.08em;
-                               text-transform:uppercase;color:#C7D9FF;">Total Pagado</td>
-                    <td align="right" style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">
+                               text-transform:uppercase;color:#8FAACC;">Total Pagado</td>
+                    <td align="right" style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">
                         {{total}}
                     </td>
                 </tr>
@@ -148,17 +94,9 @@
 </table>
 
 <!-- ── Aviso adjunto ── -->
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-       style="border-collapse:collapse;margin:0 0 20px;">
-    <tr>
-        <td style="background-color:#F5F8FF;border:1px solid #E2EAF4;
-                   border-radius:8px;padding:14px 16px;">
-            <p style="margin:0;font-size:13px;line-height:1.75;color:#4A5E7A;">
-                📎&nbsp; Adjuntamos el <strong style="color:#0D1F4E;">comprobante de pago</strong> como respaldo de esta transacción.
-            </p>
-        </td>
-    </tr>
-</table>
+<p style="margin:0 0 20px;font-size:13px;line-height:1.75;color:#4A5E7A;">
+    Adjuntamos el comprobante de la transacción como respaldo de este pago.
+</p>
 
 <!-- ── Firma ── -->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
@@ -173,13 +111,13 @@
             </p>
             {{#if empresaEmail}}
             <p style="margin:4px 0;font-size:13px;line-height:1.6;">
-                <span style="color:#4A5E7A;">&#9993;&ensp;</span>
+                <span style="color:#4A5E7A;">Correo:&ensp;</span>
                 <a href="mailto:{{empresaEmail}}" style="color:#1A56DB;text-decoration:none;">{{empresaEmail}}</a>
             </p>
             {{/if}}
             {{#if empresaWeb}}
             <p style="margin:4px 0 0;font-size:13px;line-height:1.6;">
-                <span style="color:#4A5E7A;">&#127760;&ensp;</span>
+                <span style="color:#4A5E7A;">Sitio web:&ensp;</span>
                 <a href="{{empresaWeb}}" style="color:#8898B4;text-decoration:none;">{{empresaWebDisplay}}</a>
             </p>
             {{/if}}
