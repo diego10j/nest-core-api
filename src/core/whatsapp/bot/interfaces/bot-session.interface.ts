@@ -7,6 +7,8 @@ export interface ProductoSesion {
   precio_unitario?: number;
   precio_total?: number;
   costo_promedio?: number | null;
+  utilidad_ccdpr?: number | null;
+  porcentaje_util_ccdpr?: number | null;
   tiene_precio?: boolean;
   en_catalogo?: boolean;
   uso_generico?: string;

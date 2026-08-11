@@ -84,6 +84,8 @@ export class BotProformaService {
           precio_unitario: precioSinIva,
           precio_total:    totalConIva,
           costo_promedio:  precioConf.costo_promedio,
+          utilidad_ccdpr:  precioConf.utilidad_neta ?? null,
+          porcentaje_util_ccdpr: precioConf.porcentaje_utilidad ?? null,
           tiene_precio:    true,
         });
       } else {
@@ -244,9 +246,12 @@ export class BotProformaService {
           await this.dataSource.pool.query(
             `UPDATE cxc_deta_proforma
              SET precio_ccdpr = $1, total_ccdpr = $2, iva_inarti_ccdpr = 1,
-                 precio_compra_ccdpr = $5
+                 precio_compra_ccdpr = $5, utilidad_ccdpr = $6, porcentaje_util_ccdpr = $7
              WHERE ide_cccpr = $3 AND ide_inarti = $4`,
-            [p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti, p.costo_promedio],
+            [
+              p.precio_unitario, totalSinIva, ide_cccpr, p.ide_inarti, p.costo_promedio,
+              p.utilidad_ccdpr ?? null, p.porcentaje_util_ccdpr ?? null,
+            ],
           );
           this.logger.log(`[Proforma] Detalle ide_inarti=${p.ide_inarti} precio=${p.precio_unitario} (${getPrecioDecimals(p.precio_unitario)} dec) total=${totalSinIva} costo_promedio=${p.costo_promedio}`);
         } catch (err) {
@@ -260,6 +265,7 @@ export class BotProformaService {
           cantidad:       p.cantidad,
           precio:         p.precio_unitario,
           porcentaje_iva: tarifaIva,
+          utilidad:       p.utilidad_ccdpr ?? null,
         }));
         await this.proformasService.actualizarTotalesCabecera(ide_cccpr, itemsTotales);
         this.logger.log(`[Proforma] Totales actualizados ide_cccpr=${ide_cccpr} items=${itemsTotales.length}`);

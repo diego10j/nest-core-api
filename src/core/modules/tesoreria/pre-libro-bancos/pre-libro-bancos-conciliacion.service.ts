@@ -157,6 +157,7 @@ export class PreLibroBancosConciliacionService extends BaseService {
                 b.nombre_teban,
                 b.foto_teban,
                 b.color_teban,
+                b.es_tarjeta_teban,
                 a.nombre_tecba,
                 c.nombre_tetcb,
                 a.ide_cndpc,

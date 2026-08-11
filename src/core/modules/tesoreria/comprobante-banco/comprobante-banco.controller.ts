@@ -1,8 +1,7 @@
 import fs from 'node:fs';
-import path from 'node:path';
 
 import {
-    Body, Controller, Delete, Get, NotFoundException, Param, ParseIntPipe, Post,
+    Body, Controller, Delete, Get, Param, ParseIntPipe, Post,
     Query, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -13,6 +12,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Public } from 'src/core/auth/decorators/public.decorator';
 import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 import { FilesService } from 'src/core/modules/sistema/files/files.service';
+import { getStaticImage } from 'src/util/helpers/file-utils';
 import { v4 as uuid } from 'uuid';
 
 import { ComprobanteBancoSaveService } from './comprobante-banco-save.service';
@@ -65,10 +65,10 @@ export class ComprobanteBancoController {
         @Res() res: any,
         @Query('w') width?: string,
     ) {
-        const filePath = path.join(FILE_STORAGE_CONSTANTS.TEMP_DIR, fileName);
-        if (!fs.existsSync(filePath)) {
-            throw new NotFoundException(`Imagen no encontrada: ${fileName}`);
-        }
+        // getStaticImage busca en temp_media (isTmp=true) y, si el archivo no existe, cae a
+        // no-image.png en vez de fallar - evita que el frontend reciba un 404 cuando el
+        // comprobante fue borrado o nunca se subió.
+        const filePath = getStaticImage(fileName, true);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
         const w = width ? parseInt(width, 10) : undefined;

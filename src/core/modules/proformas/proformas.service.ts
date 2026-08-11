@@ -53,6 +53,12 @@ export interface PrecioConfiguradoProforma {
   porcentaje_iva: number;
   tipo_configuracion: string;
   costo_promedio: number | null;
+  /** cantidad × (precio_venta_sin_iva - costo), SIN descuento de línea - createProformaWeb no
+   * soporta descuento_ccdpr hoy. Si se agrega descuento a este flujo, recalcular en vez de
+   * reusar este valor tal cual (ver utilidadNeta() en proforma-form.tsx). */
+  utilidad_neta: number | null;
+  /** (precio_venta_sin_iva - costo) / costo * 100. NULL si no hay costo_promedio conocido. */
+  porcentaje_utilidad: number | null;
 }
 
 // Campos opcionales de cabecera que se copian al objeto de base de datos solo si están definidos
@@ -1201,6 +1207,8 @@ ORDER BY prof.secuencial_cccpr DESC
       detQuery.values.set('total_ccdpr', totalCcdpr);
       detQuery.values.set('iva_inarti_ccdpr', ivaInarti);
       detQuery.values.set('precio_compra_ccdpr', precioInfo?.costo_promedio ?? null);
+      detQuery.values.set('utilidad_ccdpr', precioInfo?.utilidad_neta ?? null);
+      detQuery.values.set('porcentaje_util_ccdpr', precioInfo?.porcentaje_utilidad ?? null);
       detQuery.values.set('ide_inuni', ideInuni);
       detQuery.values.set('observacion_ccdpr', detalle.producto);
       detQuery.values.set('usuario_ingre', 'admin');
@@ -1220,6 +1228,7 @@ ORDER BY prof.secuencial_cccpr DESC
         cantidad:      detalle.cantidad,
         precio:        roundPrecio(precioInfo!.precio_venta_sin_iva),
         porcentaje_iva: precioInfo!.porcentaje_iva,
+        utilidad:      precioInfo!.utilidad_neta ?? null,
       }));
 
     try {
@@ -1394,7 +1403,8 @@ ORDER BY prof.secuencial_cccpr DESC
     try {
       const q = new SelectQuery(`
         SELECT precio_venta_sin_iva, precio_venta_con_iva, porcentaje_iva,
-               tipo_configuracion, precio_ultima_compra AS costo_promedio
+               tipo_configuracion, precio_ultima_compra AS costo_promedio,
+               utilidad_neta, porcentaje_utilidad
         FROM f_calcula_precio_venta($1, $2, $3, NULL, $4, $5)
       `);
       q.addIntParam(1, ideInarti);
@@ -1416,7 +1426,7 @@ ORDER BY prof.secuencial_cccpr DESC
    */
   async actualizarTotalesCabecera(
     ideCccpr: number,
-    items: Array<{ cantidad: number; precio: number; porcentaje_iva: number }>,
+    items: Array<{ cantidad: number; precio: number; porcentaje_iva: number; utilidad?: number | null }>,
   ): Promise<void> {
     const itemsConPrecio = items.filter((i) => i.precio > 0);
     if (itemsConPrecio.length === 0) return;
@@ -1424,6 +1434,10 @@ ORDER BY prof.secuencial_cccpr DESC
     let baseGrabada = 0;
     let baseTarifa0 = 0;
     let tarifaIva   = 0;
+    let utilidadTotal = 0;
+    // Distingue "utilidad desconocida" (ningún ítem trajo costo_promedio) de "utilidad
+    // genuinamente cero" - evita escribir 0 en utilidad_cccpr cuando en realidad no se sabe.
+    let utilidadConocida = false;
 
     for (const item of itemsConPrecio) {
       const total = roundTo(item.precio * item.cantidad, 2);
@@ -1433,12 +1447,17 @@ ORDER BY prof.secuencial_cccpr DESC
       } else {
         baseTarifa0 += total;
       }
+      if (item.utilidad != null) {
+        utilidadTotal += item.utilidad;
+        utilidadConocida = true;
+      }
     }
 
     baseGrabada = roundTo(baseGrabada, 2);
     baseTarifa0 = roundTo(baseTarifa0, 2);
     const valorIva = roundTo(baseGrabada * (tarifaIva / 100), 2);
     const total    = roundTo(baseGrabada + baseTarifa0 + valorIva, 2);
+    const utilidadCccpr = utilidadConocida ? roundTo(utilidadTotal, 2) : null;
 
     await this.dataSource.pool.query(
       `UPDATE cxc_cabece_proforma
@@ -1446,9 +1465,10 @@ ORDER BY prof.secuencial_cccpr DESC
            base_tarifa0_cccpr = $3,
            tarifa_iva_cccpr   = $4,
            valor_iva_cccpr    = $5,
-           total_cccpr        = $6
+           total_cccpr        = $6,
+           utilidad_cccpr     = $7
        WHERE ide_cccpr = $1`,
-      [ideCccpr, baseGrabada, baseTarifa0, tarifaIva, valorIva, total],
+      [ideCccpr, baseGrabada, baseTarifa0, tarifaIva, valorIva, total, utilidadCccpr],
     );
   }
 
