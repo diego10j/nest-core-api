@@ -146,7 +146,10 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 det.usuario_ingre,
                 det.hora_ingre,
                 det.usuario_actua,
-                det.hora_actua
+                det.hora_actua,
+                -- Asiento contable generado al pagar (best-effort, puede ser NULL)
+                dt.ide_cnccc,
+                cc.numero_cnccc
             FROM cxp_det_orden_pago det
             JOIN cxp_estado_orden        est  ON est.ide_cpeo  = det.ide_cpeo
             JOIN cxp_cabece_transa        ct  ON ct.ide_cpctr  = det.ide_cpctr
@@ -156,6 +159,8 @@ export class CuentasPorPagarOrdenService extends BaseService {
             LEFT JOIN tes_cuenta_banco   ban  ON ban.ide_tecba = det.ide_tecba
             LEFT JOIN tes_tip_tran_banc  ttb  ON ttb.ide_tettb = det.ide_tettb
             LEFT JOIN tes_banco             b   ON b.ide_teban   = ban.ide_teban
+            LEFT JOIN cxp_detall_transa   dt  ON dt.ide_cpctr = det.ide_cpctr AND dt.numero_pago_cpdtr = 1
+            LEFT JOIN con_cab_comp_cont   cc  ON cc.ide_cnccc = dt.ide_cnccc
             WHERE det.ide_cpcop = $1
             ORDER BY det.ide_cpcdop
         `);

@@ -216,6 +216,94 @@ export class AsientosAutomaticosService extends BaseService {
      *   Ingreso (signo_tettb=1, ej. nota de crédito bancaria): proveedor=HABER, banco=DEBE
      */
     async generarAsientoPagoCxP(dtoIn: GenerarAsientoPagoCxPDto & HeaderParamsDto): Promise<AsientoPagoResult> {
+        const datos = await this.resolverDatosAsientoPagoCxP(dtoIn);
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                ...datos.saveDto,
+            };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2`,
+                [ideCnccc, dtoIn.ideTeclb],
+            );
+            await this.dataSource.pool.query(
+                `UPDATE cxp_detall_transa SET ide_cnccc = $1 WHERE ide_teclb = $2 AND numero_pago_cpdtr > 0 AND ide_cnccc IS NULL`,
+                [ideCnccc, dtoIn.ideTeclb],
+            );
+
+            return {
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcProveedor != null,
+                advertencias: datos.advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de pago CxP para ide_teclb=${dtoIn.ideTeclb}: ${error}`);
+            return {
+                generado: false,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcProveedor != null,
+                advertencias: [...datos.advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Actualiza el asiento contable de un pago CxP ya generado (mismo ide_cnccc), re-resolviendo
+     * las cuentas de proveedor/banco por si cambiaron en la edición (ej. se cambió la cuenta
+     * bancaria de origen o el proveedor del pago) y reemplazando el valor. Usado cuando se edita
+     * un pago de tesorería que ya tenía un asiento — evita dejarlo desactualizado o duplicarlo.
+     */
+    async actualizarAsientoPagoCxP(
+        dtoIn: GenerarAsientoPagoCxPDto & { ideCnccc: number } & HeaderParamsDto,
+    ): Promise<AsientoPagoResult> {
+        const datos = await this.resolverDatosAsientoPagoCxP(dtoIn);
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                ...datos.saveDto,
+                data: { ...datos.saveDto.data, ide_cnccc: dtoIn.ideCnccc },
+            };
+            const result = await this.comprobanteService.actualizarAutomatico(comprobanteDto);
+
+            return {
+                ide_cnccc: result.ide_cnccc,
+                generado: true,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcProveedor != null,
+                advertencias: datos.advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al actualizar asiento de pago CxP ide_cnccc=${dtoIn.ideCnccc}: ${error}`);
+            return {
+                ide_cnccc: dtoIn.ideCnccc,
+                generado: false,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcProveedor != null,
+                advertencias: [...datos.advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Resuelve cuentas contables, signo, lugares (DEBE/HABER) y arma el SaveComprobanteDto para
+     * un asiento de pago CxP — compartido entre generarAsientoPagoCxP y actualizarAsientoPagoCxP
+     * para no duplicar la lógica de resolución de cuentas.
+     */
+    private async resolverDatosAsientoPagoCxP(dtoIn: GenerarAsientoPagoCxPDto & HeaderParamsDto): Promise<{
+        advertencias: string[];
+        ideCndpcBanco: number | null;
+        ideCndpcProveedor: number | null;
+        saveDto: SaveComprobanteDto;
+    }> {
         const advertencias: string[] = [];
 
         const signoQuery = new SelectQuery(`
@@ -279,38 +367,7 @@ export class AsientosAutomaticosService extends BaseService {
             ],
         } as SaveComprobanteDto;
 
-        try {
-            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = { ...dtoIn, ...saveDto };
-            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
-
-            const ideCnccc = result.ide_cnccc;
-
-            await this.dataSource.pool.query(
-                `UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2`,
-                [ideCnccc, dtoIn.ideTeclb],
-            );
-            await this.dataSource.pool.query(
-                `UPDATE cxp_detall_transa SET ide_cnccc = $1 WHERE ide_teclb = $2 AND numero_pago_cpdtr > 0 AND ide_cnccc IS NULL`,
-                [ideCnccc, dtoIn.ideTeclb],
-            );
-
-            return {
-                ide_cnccc: ideCnccc,
-                numero_cnccc: result.numero_cnccc,
-                generado: true,
-                banco_encontrado: ideCndpcBanco != null,
-                proveedor_encontrado: ideCndpcProveedor != null,
-                advertencias,
-            };
-        } catch (error) {
-            this.logger.warn(`Error al generar asiento de pago CxP para ide_teclb=${dtoIn.ideTeclb}: ${error}`);
-            return {
-                generado: false,
-                banco_encontrado: ideCndpcBanco != null,
-                proveedor_encontrado: ideCndpcProveedor != null,
-                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
-            };
-        }
+        return { advertencias, ideCndpcBanco, ideCndpcProveedor, saveDto };
     }
 
     /**

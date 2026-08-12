@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 /** ide_tettb para cheque posfechado (hardcoded en el sistema legado) */
@@ -14,9 +15,12 @@ const IDE_CPTTR_CHEQUE_POSFECHADO = 19;
 
 @Injectable()
 export class TransaccionesTesoreriaService extends BaseService {
+    private readonly logger = new Logger(TransaccionesTesoreriaService.name);
+
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly asientosAutomaticosService: AsientosAutomaticosService,
     ) {
         super();
         // Carga variables del sistema al iniciar el servicio
@@ -57,6 +61,7 @@ export class TransaccionesTesoreriaService extends BaseService {
                 det.observacion_cpcdop,
                 det.fecha_cheque_cpcdop,
                 ct.ide_cpcfa,
+                ct.ide_geper,
                 COALESCE(p.nom_geper, '')      AS beneficiari_teclb,
                 COALESCE(cf.numero_cpcfa, '')  AS num_documento_factura
             FROM  cxp_det_orden_pago  det
@@ -84,18 +89,24 @@ export class TransaccionesTesoreriaService extends BaseService {
             const fecha_venci_cpdtr = esChequePosf ? det.fecha_cheque_cpcdop : getCurrentDate();
             const numero = det.num_comprobante_cpcdop ?? '000000';
             const doc_relac = det.num_comprobante_cpcdop || det.num_documento_factura || '';
+            let ideTeclbParaAsiento: number;
 
             // Busca el registro de PAGO (numero_pago_cpdtr = 1) para este ide_cpctr.
             // El registro de la factura original NO se toca; solo se trabaja con el de pago.
             const existeQuery = new SelectQuery(`
-                SELECT ide_cpdtr, ide_teclb
-                FROM   cxp_detall_transa
-                WHERE  ide_cpctr         = $1
-                  AND  numero_pago_cpdtr = 1
+                SELECT det.ide_cpdtr, det.ide_teclb, lb.ide_cnccc
+                FROM   cxp_detall_transa det
+                LEFT JOIN tes_cab_libr_banc lb ON lb.ide_teclb = det.ide_teclb
+                WHERE  det.ide_cpctr         = $1
+                  AND  det.numero_pago_cpdtr = 1
                 LIMIT  1
             `);
             existeQuery.addIntParam(1, det.ide_cpctr);
             const existe = await this.dataSource.createSingleQuery(existeQuery);
+            // Si el movimiento bancario ya tiene un asiento contable generado, no se regenera al
+            // editar (mismo criterio que anularTransaccionesOrdenPagoCxP: una vez contabilizado,
+            // no se toca desde este flujo — evitaría un asiento duplicado/huérfano).
+            const yaContabilizado = !!existe?.ide_cnccc;
 
             if (existe) {
                 // ─── UPDATE ──────────────────────────────────────────────────────────
@@ -194,6 +205,7 @@ export class TransaccionesTesoreriaService extends BaseService {
                     ide_cpdtr: existe.ide_cpdtr,
                     operacion: 'update',
                 });
+                ideTeclbParaAsiento = ide_teclb_efectivo;
             } else {
                 // ─── INSERT ──────────────────────────────────────────────────────────
 
@@ -261,6 +273,38 @@ export class TransaccionesTesoreriaService extends BaseService {
                 await this.core.save({ ...dtoIn, listQuery: [cxpIns], audit: false });
 
                 results.push({ ide_cpctr: det.ide_cpctr, ide_teclb, ide_cpdtr, operacion: 'insert' });
+                ideTeclbParaAsiento = ide_teclb;
+            }
+
+            // ─── ASIENTO CONTABLE (BEST-EFFORT) ────────────────────────────────────
+            // Proveedor vs Banco, mismo patrón ya usado en CxpTransaccionesSaveService
+            // (pago CxP directo) — antes este flujo de Orden de Pago no generaba ningún
+            // asiento. No bloquea el pago si falla: se registra en log y sigue.
+            // Si ya existe un asiento (edición de un pago ya contabilizado) se actualiza en
+            // vez de generar uno nuevo, para reflejar el valor/cuenta corregidos sin duplicar.
+            try {
+                const datosAsiento = {
+                    ideTeclb: ideTeclbParaAsiento,
+                    fecha: det.fecha_pago_cpcdop,
+                    ideTecba: det.ide_tecba,
+                    ideTettb: det.ide_tettb,
+                    ideGeper: det.ide_geper,
+                    valor: det.valor_pagado_banco_cpcdop,
+                    observacion: det.observacion_cpcdop || `Pago orden ${dtoIn.ide_cpcop}`,
+                    ...dtoIn,
+                };
+                if (yaContabilizado) {
+                    await this.asientosAutomaticosService.actualizarAsientoPagoCxP({
+                        ...datosAsiento,
+                        ideCnccc: existe.ide_cnccc,
+                    });
+                } else {
+                    await this.asientosAutomaticosService.generarAsientoPagoCxP(datosAsiento);
+                }
+            } catch (error) {
+                this.logger.warn(
+                    `Error en asiento automático de pago de orden CxP para ide_teclb=${ideTeclbParaAsiento}: ${error}`,
+                );
             }
         }
         console.log('Resultados de transacciones guardadas/actualizadas:', results);

@@ -467,6 +467,63 @@ export class ComprobanteContabilidadService extends BaseService {
     }
 
     /**
+     * Actualiza un comprobante automático ya existente (mismo ide_cnccc, mismo numero_cnccc) —
+     * usado cuando se edita un pago/cobro de tesorería que ya tenía un asiento generado, para no
+     * dejar el asiento desactualizado ni crear uno duplicado. A diferencia de save()/isUpdate no
+     * valida balance ni exige cuenta contable no nula, igual que saveAutomatico().
+     */
+    async actualizarAutomatico(dtoIn: SaveComprobanteDto & HeaderParamsDto) {
+        try {
+            const { data, detalles } = dtoIn;
+            if (!data.ide_cnccc) {
+                throw new BadRequestException('ide_cnccc es requerido para actualizar el comprobante automático');
+            }
+
+            if (!(await this.isPeriodoValido(data.fecha_trans_cnccc, dtoIn.ideSucu))) {
+                throw new BadRequestException(
+                    `No existe un periodo contable activo que contenga la fecha ${data.fecha_trans_cnccc}`,
+                );
+            }
+
+            const ideCnccc = data.ide_cnccc;
+            const detallesResumidos = this.resumirDetalles(detalles ?? []);
+
+            const updQuery: ObjectQueryDto = {
+                operation: 'update',
+                module: MODULE,
+                tableName: TABLE_CAB,
+                primaryKey: PK_CAB,
+                object: {
+                    ide_geper: data.ide_geper,
+                    fecha_trans_cnccc: data.fecha_trans_cnccc,
+                    observacion_cnccc: data.observacion_cnccc,
+                    usuario_actua: dtoIn.login,
+                    fecha_actua: getCurrentDate(),
+                    hora_actua: getCurrentTime(),
+                },
+                condition: `${PK_CAB} = ${ideCnccc} AND ide_sucu = ${dtoIn.ideSucu}`,
+            };
+            await this.core.save({ ...dtoIn, listQuery: [updQuery], audit: true });
+
+            // El detalle de un asiento automático son siempre las mismas 2 líneas
+            // (ej. proveedor/cliente vs banco) — se reemplaza completo en vez de intentar
+            // emparejar filas, es más simple y no hay riesgo de arrastrar una cuenta vieja.
+            const delDet = new DeleteQuery(`${MODULE}_${TABLE_DET}`);
+            delDet.where = `ide_cnccc = $1`;
+            delDet.addParam(1, ideCnccc);
+            await this.dataSource.createQuery(delDet);
+
+            await this.insertarDetalles(ideCnccc, detallesResumidos, dtoIn);
+
+            return { message: 'ok', rowCount: 1, ide_cnccc: ideCnccc };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al actualizar el comprobante automatico: ${msg}`);
+        }
+    }
+
+    /**
      * Anula un comprobante contable cambiando su estado a ANULADO.
      * Busca automáticamente el ID del estado ANULADO si no se proporciona.
      */
