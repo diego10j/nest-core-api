@@ -136,6 +136,8 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 -- Banco
                 det.ide_tecba,
                 b.nombre_teban                        AS nombre_banco,
+                b.color_teban                         AS color_banco,
+                b.foto_teban                          AS foto_banco,
                 ban.nombre_tecba                    AS cuenta_banco,
                 det.ide_tettb,
                 ttb.nombre_tettb                    AS tipo_transaccion_banco,
