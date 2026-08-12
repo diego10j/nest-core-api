@@ -13,17 +13,34 @@ export class ApiPersonaService extends BaseService {
   }
 
   /**
-   * El servicio del Registro Civil (SECAP) devuelve el error de negocio (ej. "CEDULA INVALIDA")
-   * a veces con un status HTTP de error y a veces con 200 OK — en ambos casos el cuerpo trae
-   * `mensaje`/`error`/`codigoError`. Se extrae el texto limpio para no propagar un blob JSON
-   * genérico envuelto en un 500 (el frontend lo mostraba tal cual, confundiendo al usuario).
+   * El endpoint de SECAP a veces responde con Content-Type que no es application/json (ej.
+   * text/html) aunque el body sea JSON válido — axios en ese caso NO lo parsea y entrega el
+   * string crudo en resp.data. Sin esto, `payload.mensaje` fallaba silenciosamente sobre un
+   * string (nunca hay excepción, simplemente da `undefined`) y el error real ("CEDULA
+   * INVALIDA") se perdía, cayendo en el mensaje genérico de "no se encontraron datos".
+   */
+  private parsearRespuesta(data: any): any {
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch {
+        return data;
+      }
+    }
+    return data;
+  }
+
+  /**
+   * El servicio del Registro Civil (SECAP) devuelve el error de negocio (ej. "04:CEDULA
+   * INVALIDA") a veces con un status HTTP de error y a veces con 200 OK — en ambos casos el
+   * cuerpo trae `mensaje`/`error`/`codigoError`. Se devuelve tal cual (sin recortar el código),
+   * para que el usuario vea el mensaje completo que realmente respondió el servicio.
    */
   private extraerMensajeError(payload: any): string | undefined {
-    if (!payload) return undefined;
-    const mensaje = payload.mensaje || payload.error;
-    if (!mensaje) return undefined;
-    // Los mensajes vienen con prefijo tipo "04:CEDULA INVALIDA" — se quita el código.
-    return String(mensaje).replace(/^\d+:\s*/, '');
+    const item = this.parsearRespuesta(payload);
+    if (!item || typeof item !== 'object') return undefined;
+    const mensaje = item.mensaje || item.error;
+    return mensaje ? String(mensaje) : undefined;
   }
 
   async consultaCedula(dtoIn: CedulaDto) {
@@ -49,27 +66,30 @@ export class ApiPersonaService extends BaseService {
       };
 
       const resp = await this.httpService.axiosRef.post(URL, data, requestConfig);
+      const parsed = this.parsearRespuesta(resp.data);
 
       // El Registro Civil a veces responde 200 OK con el error de negocio embebido en el body
       // (ej. cédula inválida) en vez de un status HTTP de error.
-      const mensajeNegocio = this.extraerMensajeError(resp.data);
+      const mensajeNegocio = this.extraerMensajeError(parsed);
       if (mensajeNegocio) {
-        throw new BadRequestException(mensajeNegocio);
+        throw new BadRequestException(`No se encontraron datos para la cédula ingresada: ${mensajeNegocio}`);
       }
       // Defensa adicional: si no vino un error explícito pero tampoco vino el dato esperado
       // (ej. el servicio respondió un shape inesperado), no se devuelve un objeto a medias —
       // eso rompía el frontend con "Cannot read properties of undefined" en vez de mostrar un
       // mensaje claro.
-      if (!resp.data || typeof resp.data !== 'object' || !resp.data.nombre) {
+      if (!parsed || typeof parsed !== 'object' || !parsed.nombre) {
         throw new BadRequestException('No se encontraron datos para la cédula ingresada.');
       }
 
-      return resp.data;
+      return parsed;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       const mensaje = this.extraerMensajeError(error.response?.data);
       console.error('❌ Error en consultaCedula:', error.response?.data || error.message);
-      if (mensaje) throw new BadRequestException(mensaje);
+      if (mensaje) {
+        throw new BadRequestException(`No se encontraron datos para la cédula ingresada: ${mensaje}`);
+      }
       throw new InternalServerErrorException('No se pudo consultar la cédula. Intente nuevamente.');
     }
   }
@@ -90,21 +110,24 @@ export class ApiPersonaService extends BaseService {
         },
       };
       const resp = await this.httpService.axiosRef.get(URL, requestConfig);
+      const parsed = this.parsearRespuesta(resp.data);
 
-      const mensajeNegocio = this.extraerMensajeError(resp.data);
+      const mensajeNegocio = this.extraerMensajeError(parsed);
       if (mensajeNegocio) {
-        throw new BadRequestException(mensajeNegocio);
+        throw new BadRequestException(`No se encontraron datos para el RUC ingresado: ${mensajeNegocio}`);
       }
-      if (!resp.data || typeof resp.data !== 'object' || !resp.data.razonSocial) {
+      if (!parsed || typeof parsed !== 'object' || !parsed.razonSocial) {
         throw new BadRequestException('No se encontraron datos para el RUC ingresado.');
       }
 
-      return resp.data;
+      return parsed;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       const mensaje = this.extraerMensajeError(error.response?.data);
       console.error('❌ Error en consultaRUC:', error.response?.data || error.message);
-      if (mensaje) throw new BadRequestException(mensaje);
+      if (mensaje) {
+        throw new BadRequestException(`No se encontraron datos para el RUC ingresado: ${mensaje}`);
+      }
       throw new InternalServerErrorException('No se pudo consultar el RUC. Intente nuevamente.');
     }
   }
