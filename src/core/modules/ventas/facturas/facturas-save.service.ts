@@ -5,6 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { generarClaveAcceso } from 'src/core/modules/sri/cel/clave-acceso.util';
+import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
@@ -155,12 +156,17 @@ export class FacturasSaveService extends BaseService {
 
             const { ptoEmision, cliente } = await this.validarFactura(dtoIn);
 
+            // Se valida en create Y en edición: una edición puede reasignar el cliente (ej.
+            // reemplazar Consumidor Final por uno recién creado) y esa identificación debe ser
+            // igual de válida que en una creación nueva — de lo contrario el XML que ya se
+            // declaró al SRI puede terminar divergiendo de lo que muestra la factura en el ERP.
+            this.validarIdentificacion(cliente);
+
             if (!isUpdate) {
                 if (!data.correo_cccfa) throw new BadRequestException('El correo electrónico es obligatorio.');
                 if (!data.telefono_cccfa || data.telefono_cccfa.length < 6)
                     throw new BadRequestException('El teléfono es obligatorio (mínimo 6 caracteres).');
                 if (!data.observacion_cccfa) throw new BadRequestException('La observación es obligatoria.');
-                this.validarIdentificacion(cliente);
 
                 if (dtoIn.guia) {
                     if (!dtoIn.guia.placa_gecam) throw new BadRequestException('La placa del vehículo es obligatoria para la guía.');
@@ -542,9 +548,11 @@ export class FacturasSaveService extends BaseService {
         dtoIn: SaveFacturaDto & HeaderParamsDto,
     ) {
         const qExiste = new SelectQuery(
-            `SELECT ide_cccfa, ide_srcom, secuencial_cccfa, total_cccfa
-             FROM cxc_cabece_factura
-             WHERE ide_cccfa = $1 AND ide_empr = $2`,
+            `SELECT c.ide_cccfa, c.ide_srcom, c.secuencial_cccfa, c.total_cccfa, c.ide_geper,
+                    s.ide_sresc
+             FROM cxc_cabece_factura c
+             LEFT JOIN sri_comprobante s ON s.ide_srcom = c.ide_srcom
+             WHERE c.ide_cccfa = $1 AND c.ide_empr = $2`,
         );
         qExiste.addIntParam(1, ideCccfa);
         qExiste.addIntParam(2, dtoIn.ideEmpr);
@@ -552,6 +560,25 @@ export class FacturasSaveService extends BaseService {
 
         if (!existe) {
             throw new BadRequestException(`La factura ide_cccfa=${ideCccfa} no existe`);
+        }
+
+        // Un comprobante AUTORIZADO por el SRI es un documento legal ya emitido e inmutable: el
+        // XML que el SRI tiene autorizado no se puede alterar con un UPDATE local. Reasignar el
+        // cliente (u otro dato que afecte el total) sobre una factura ya autorizada dejaría la
+        // BD/UI mostrando un cliente distinto al que realmente se declaró — exactamente el
+        // incidente de producción que motivó este chequeo. La corrección legal correcta es una
+        // Nota de Crédito + nueva factura, no una edición silenciosa.
+        const yaAutorizado = Number(existe.ide_sresc) === EstadoComprobanteEnum.AUTORIZADO.codigo;
+        if (yaAutorizado) {
+            const cambiaCliente = Number(existe.ide_geper) !== Number(cliente.ide_geper);
+            const cambiaTotal = Math.abs(totales.total - (parseFloat(existe.total_cccfa) || 0)) > 0.001;
+            if (cambiaCliente || cambiaTotal) {
+                throw new BadRequestException(
+                    'Esta factura ya fue autorizada por el SRI: no se puede cambiar el cliente ni los ' +
+                    'valores. El comprobante electrónico ya es un documento legal inmutable — para ' +
+                    'corregirlo emita una Nota de Crédito y, si corresponde, una nueva factura.',
+                );
+            }
         }
 
         const totalAnterior = parseFloat(existe.total_cccfa) || 0;
@@ -569,6 +596,12 @@ export class FacturasSaveService extends BaseService {
             updSri.values.set('dias_credito_srcom', data.dias_credito_cccfa ?? 0);
             updSri.values.set('correo_srcom', data.correo_cccfa || null);
             updSri.values.set('identificacion_srcom', cliente.identificac_geper);
+            // ide_geper es la FK que realmente lee ComprobantesElecService al armar el XML del
+            // SRI (join sri_comprobante -> gen_persona). Si al editar la factura se reasigna el
+            // cliente, este UPDATE debe sincronizarlo aquí — de lo contrario el XML sigue
+            // reflejando el cliente anterior (ej. Consumidor Final) aunque cxc_cabece_factura y
+            // la UI ya muestren el cliente correcto (causa raíz de un incidente en producción).
+            updSri.values.set('ide_geper', cliente.ide_geper);
             updSri.values.set('usuario_actua', dtoIn.login);
             updSri.values.set('fecha_actua', getCurrentDate());
             updSri.values.set('hora_actua', getCurrentTime());
@@ -1434,8 +1467,13 @@ export class FacturasSaveService extends BaseService {
     }
 
     /**
-     * Valida la identificación del cliente (cédula/RUC) usando los validadores
-     * existentes del proyecto (cedula-ruc.ts).
+     * Valida la identificación del cliente (cédula/RUC) usando los validadores existentes del
+     * proyecto (cedula-ruc.ts). Se discrimina el tipo por `cliente.tipo_identificacion`
+     * (gen_tipo_identifi.alterno2_getid, el código SRI: 04=RUC, 05=Cédula, 06=Pasaporte,
+     * 07=Consumidor Final) en vez de solo la longitud del string — con longitud, una cédula mal
+     * tecleada con un dígito de menos (ej. 9 dígitos) caía en la rama "otros tipos, no se
+     * valida" y se colaba sin error (causa raíz de un incidente en producción: un cliente con
+     * identificación inválida terminó facturado sin que nada lo bloqueara).
      */
     private validarIdentificacion(cliente: any): void {
         const id = (cliente.identificac_geper || '').trim();
@@ -1443,25 +1481,43 @@ export class FacturasSaveService extends BaseService {
             throw new BadRequestException('El cliente no tiene identificación (cédula/RUC).');
         }
 
+        const tipo = String(cliente.tipo_identificacion || '').trim();
+
         // Consumidor final — no se valida
-        if (id === '9999999999999') return;
+        if (tipo === '07' || id === '9999999999999') return;
 
-        // Pasaporte u otros tipos — no se validan si no son cédula (10) o RUC (13)
-        if (id.length !== 10 && id.length !== 13) return;
-
-        if (id.length === 10) {
-            if (!validateCedula(id)) {
+        if (tipo === '05') {
+            if (id.length !== 10 || !validateCedula(id)) {
                 throw new BadRequestException(`Cédula inválida: ${id}.`);
             }
             return;
         }
 
-        if (id.length === 13) {
+        if (tipo === '04') {
+            if (id.length !== 13) {
+                throw new BadRequestException(`RUC inválido: ${id}. Debe tener 13 dígitos.`);
+            }
             const result = validateRUC(id);
             if (!result.isValid) {
                 throw new BadRequestException(`RUC inválido: ${id}. ${result.type}`);
             }
+            return;
         }
+
+        // Tipo desconocido/no configurado (alterno2_getid vacío en gen_tipo_identifi) — respaldo
+        // por longitud para no dejar de validar cédulas/RUC reales solo por un catálogo incompleto.
+        if (!tipo) {
+            if (id.length === 10 && !validateCedula(id)) {
+                throw new BadRequestException(`Cédula inválida: ${id}.`);
+            } else if (id.length === 13) {
+                const result = validateRUC(id);
+                if (!result.isValid) {
+                    throw new BadRequestException(`RUC inválido: ${id}. ${result.type}`);
+                }
+            }
+        }
+
+        // Pasaporte (06) u otros tipos reales — no se validan con módulo 10/11.
     }
 
     // ─────────────────────────────────────────────────────────────────────────
