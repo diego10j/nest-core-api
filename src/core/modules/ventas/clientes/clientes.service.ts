@@ -1217,6 +1217,11 @@ export class ClientesService extends BaseService {
             'nombre_compl_geper',
             'codigo_geper',
             'ide_getid',
+            // Natural(1)/Jurídica(2) — sin esto quedaba NULL en producción: el frontend permitía
+            // guardar sin elegir el tipo de persona (el switch "Cliente Activo" solo, ya
+            // habilitaba el botón Guardar). El frontend ya lo bloquea ahora, esto es la garantía
+            // real del lado servidor.
+            'ide_getip',
             'ide_cntco',
             'direccion_geper',
             'telefono_geper',
@@ -1261,7 +1266,7 @@ export class ClientesService extends BaseService {
     }
 
     private async validateUpdateCliente(data: any, ideEmpr: number) {
-        const colReq = ['ide_geper', 'ide_getid', 'identificac_geper'];
+        const colReq = ['ide_geper', 'ide_getid', 'ide_getip', 'identificac_geper'];
 
         const resColReq = validateDataRequiere(data, colReq);
 
