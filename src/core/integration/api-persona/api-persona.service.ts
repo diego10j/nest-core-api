@@ -35,10 +35,19 @@ export class ApiPersonaService extends BaseService {
    * INVALIDA") a veces con un status HTTP de error y a veces con 200 OK — en ambos casos el
    * cuerpo trae `mensaje`/`error`/`codigoError`. Se devuelve tal cual (sin recortar el código),
    * para que el usuario vea el mensaje completo que realmente respondió el servicio.
+   *
+   * OJO: `error`/`mensaje` vienen poblados TAMBIÉN en una consulta exitosa — probado en vivo con
+   * una cédula válida, la respuesta trae `"error":"CONSULTA REALIZADA","respuesta":1` junto con
+   * los datos de la persona. El campo que realmente distingue éxito/fallo es `respuesta`
+   * (1 = éxito, 0 = falló) — o `codigoError` poblado (solo aparece en fallos, ej. "04").
    */
   private extraerMensajeError(payload: any): string | undefined {
     const item = this.parsearRespuesta(payload);
     if (!item || typeof item !== 'object') return undefined;
+
+    const fallo = Number(item.respuesta) === 0 || !!item.codigoError;
+    if (!fallo) return undefined;
+
     const mensaje = item.mensaje || item.error;
     return mensaje ? String(mensaje) : undefined;
   }
