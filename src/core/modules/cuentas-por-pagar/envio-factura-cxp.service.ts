@@ -191,7 +191,7 @@ export class EnvioFacturaCxPService {
      * línea es la concatenación de las descripciones de detalle del XML que caen en ese grupo
      * (no un texto genérico), para que quede visible qué facturó el transportista.
      */
-    private buildProductos(
+    buildProductos(
         parsed: ImportarXmlCxPResult,
         articulo: ArticuloLogistica,
     ): ProductoPreFactura[] {
@@ -233,7 +233,7 @@ export class EnvioFacturaCxPService {
      * prioriza "Otros con utilización del Sistema Financiero" (medio bancarizado, el más
      * usual para pagos a transportistas) y cae al primer medio "contado" si no existe.
      */
-    private async resolverFormaPago(ideCndfp: number | null): Promise<number> {
+    async resolverFormaPago(ideCndfp: number | null): Promise<number> {
         if (ideCndfp) return ideCndfp;
         const q = new SelectQuery(`
             SELECT ide_cndfp FROM con_deta_forma_pago
@@ -250,7 +250,7 @@ export class EnvioFacturaCxPService {
     }
 
     /** Plazo de crédito por defecto (el de menor días, típicamente "Contado") cuando el proveedor no tiene uno configurado. */
-    private async resolverDiasCredito(ideCndfp1: number | null): Promise<number> {
+    async resolverDiasCredito(ideCndfp1: number | null): Promise<number> {
         if (ideCndfp1) return ideCndfp1;
         const q = new SelectQuery(`
             SELECT ide_cndfp FROM con_deta_forma_pago
@@ -266,7 +266,7 @@ export class EnvioFacturaCxPService {
     }
 
     /** Sustento tributario por defecto (crédito tributario para IVA), con fallback al primero disponible. */
-    private async resolverSustentoTributario(): Promise<number> {
+    async resolverSustentoTributario(): Promise<number> {
         const q = new SelectQuery(`
             SELECT ide_srtst FROM sri_tipo_sustento_tributario
             ORDER BY (alterno_srtst = $1) DESC, alterno_srtst
