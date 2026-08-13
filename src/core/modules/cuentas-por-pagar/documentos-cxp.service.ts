@@ -616,8 +616,6 @@ export class DocumentosCxPService extends BaseService {
                    d.observacion_cpdfa,
                    d.secuencial_cpdfa,
                    d.alter_tribu_cpdfa,
-                   d.descuento_cpdfa,
-                   d.tarifa_iva_cpdfa,
                    i.nombre_inarti,
                    i.codigo_inarti,
                    u.siglas_inuni
