@@ -91,6 +91,13 @@ export class CxcTransaccionesSaveService extends BaseService {
 
         await this.validarMontoMaximoEfectivo(dtoIn.ideTettb, dtoIn.valor);
 
+        // Número de comprobante: si el usuario no ingresa uno (típico en efectivo), se genera
+        // automáticamente (mismo mecanismo que CxpTransaccionesSaveService.savePagoCxP).
+        const numero = dtoIn.numero
+            || await this.preLibroBancosSaveService.generarNumeroAutomatico(
+                dtoIn.ideTecba, dtoIn.ideTettb, dtoIn,
+            );
+
         // ─── PASO 2: OBTENER FACTURA ─────────────────────────────────────────
         const factura = await this.cxcTransaccionesService.getFacturaCxC({
             ideCccfa: dtoIn.ideCccfa,
@@ -157,7 +164,7 @@ export class CxcTransaccionesSaveService extends BaseService {
                     ide_empr, ide_sucu, usuario_ingre, hora_ingre
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
                 [ideTeclb, ideTeelb, dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.valor,
-                    dtoIn.numero ?? '000000', dtoIn.fecha, dtoIn.fecha, factura.nom_geper ?? '',
+                    numero, dtoIn.fecha, dtoIn.fecha, factura.nom_geper ?? '',
                     dtoIn.observacion, false, dtoIn.fechaEfectivo ?? dtoIn.fecha, dtoIn.numCuentaCheque ?? '',
                     dtoIn.ideTeban ?? null, false, false,
                     dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
@@ -227,7 +234,7 @@ export class CxcTransaccionesSaveService extends BaseService {
 
         // ─── PASO 7: ACTUALIZAR SECUENCIAL (FUERA DE TRANSACCIÓN) ────────────
         await this.preLibroBancosSaveService.actualizarSecuencial(
-            dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.numero ?? '000000', dtoIn,
+            dtoIn.ideTecba, dtoIn.ideTettb, numero, dtoIn,
         );
 
         // ─── PASO 8: GENERAR ASIENTO CONTABLE (FUERA DE TRANSACCIÓN) ────────
