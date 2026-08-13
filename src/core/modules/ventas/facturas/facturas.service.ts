@@ -1029,6 +1029,7 @@ export class FacturasService extends BaseService {
                 a.fecha_ingre,
                 a.hora_ingre,
                 e.ide_cctfa,
+                e.ide_cceen,
                 e.es_transporte_propio_cctfa,
                 e.ide_vgtra,
                 t.nombre_vgtra AS nombre_transporte,

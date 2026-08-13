@@ -35,14 +35,22 @@ export class DocumentosCxPXmlService {
         _dtoIn: HeaderParamsDto,
     ): Promise<ImportarXmlCxPResult> {
         try {
-            // Los XML de autorización del SRI traen el comprobante escapado
-            // dentro de <comprobante>; se des-escapa igual que el legacy
-            const xml = fileBuffer
+            // Los XML de autorización del SRI traen el comprobante real anidado
+            // dentro de <comprobante>, ya sea escapado con entities (&lt;factura&gt;)
+            // o envuelto en CDATA (<![CDATA[<factura>...]]>). En ambos casos el
+            // comprobante interno no queda navegable en el árbol del documento
+            // exterior, así que si existe ese wrapper se re-parsea su contenido
+            // como el documento real a consultar.
+            const xmlExterior = fileBuffer
                 .toString('utf8')
                 .replace(/&gt;/g, '>')
                 .replace(/&lt;/g, '<');
 
-            const $ = cheerio.load(xml, { xml: true });
+            let $ = cheerio.load(xmlExterior, { xml: true });
+            const comprobanteInterior = $('comprobante').first().text().trim();
+            if (comprobanteInterior) {
+                $ = cheerio.load(comprobanteInterior, { xml: true });
+            }
 
             // ── Validaciones ─────────────────────────────────────────────────
             const codDoc = this.texto($, 'codDoc');

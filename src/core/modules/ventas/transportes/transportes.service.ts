@@ -498,6 +498,7 @@ export class TransportesService extends BaseService {
                 t.logo_vgtra,
                 t.cobertura_nacional_vgtra,
                 t.flete_cobro_vgtra,
+                t.ide_geper,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -537,7 +538,7 @@ export class TransportesService extends BaseService {
                ${condCiudad}
             LEFT JOIN gen_provincia p ON tf.ide_geprov = p.ide_geprov
             LEFT JOIN gen_canton ca ON tf.ide_gecant = ca.ide_gecant
-            GROUP BY t.ide_vgtra, t.nombre_vgtra, t.logo_vgtra, t.cobertura_nacional_vgtra, t.flete_cobro_vgtra
+            GROUP BY t.ide_vgtra, t.nombre_vgtra, t.logo_vgtra, t.cobertura_nacional_vgtra, t.flete_cobro_vgtra, t.ide_geper
             ORDER BY COUNT(tf.ide_vgttr) DESC, t.nombre_vgtra
         `);
         if (tieneProv) q.addIntParam(1, dtoIn.ide_geprov!);
