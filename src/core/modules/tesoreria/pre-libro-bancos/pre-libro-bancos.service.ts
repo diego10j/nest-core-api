@@ -362,6 +362,53 @@ export class PreLibroBancosService extends BaseService {
     }
 
     /**
+     * Máximo número YA USADO realmente en tes_cab_libr_banc (no la tabla de seguimiento
+     * tes_secuencial_trans, que solo se actualiza al final de un guardado exitoso y puede
+     * quedar desincronizada - p.ej. movimientos cargados por otra vía, o números antiguos
+     * repetidos como "000000" antes de existir la generación automática). Solo considera
+     * numero_teclb puramente numérico (ignora formatos como "TRF-2024-0012345" o "CH-000123"
+     * que no aplican al secuencial de 8 dígitos).
+     */
+    private async getMaximoNumeroUsado(
+        ideTecba: number, ideTettb: number, ideSucu: number,
+    ): Promise<number> {
+        const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+        const query = new SelectQuery(`
+            SELECT COALESCE(MAX(numero_teclb::int), 0) AS maximo
+            FROM tes_cab_libr_banc
+            WHERE ide_tettb = $1
+              AND ide_sucu  = $2
+              AND ide_tecba = $3
+              AND ide_teelb = $4
+              AND numero_teclb ~ '^[0-9]+$'
+        `);
+        query.addIntParam(1, ideTettb);
+        query.addIntParam(2, ideSucu);
+        query.addIntParam(3, ideTecba);
+        query.addIntParam(4, ideTeelb);
+        const row = await this.dataSource.createSingleQuery(query);
+        return Number(row?.maximo ?? 0);
+    }
+
+    /**
+     * Siguiente número de comprobante automático (8 dígitos con ceros a la izquierda) para
+     * una cuenta + tipo de transacción. Arranca del mayor entre lo que dice la tabla de
+     * seguimiento (tes_secuencial_trans) y lo realmente usado en tes_cab_libr_banc, para no
+     * proponer un número que ya esté tomado por desincronización entre ambas fuentes.
+     */
+    async getSiguienteNumeroTransaccion(
+        ideTecba: number, ideTettb: number, ideSucu: number,
+    ): Promise<string> {
+        const [row, maximoUsado] = await Promise.all([
+            this.getNumMaximoTipoTransaccion(ideTecba, ideTettb, ideSucu),
+            this.getMaximoNumeroUsado(ideTecba, ideTettb, ideSucu),
+        ]);
+        const siguienteTrackeado = Number(row?.secuencial ?? 1);
+        const siguiente = Math.max(siguienteTrackeado, maximoUsado + 1);
+        return String(siguiente).padStart(8, '0');
+    }
+
+    /**
      * Valida si ya existe un numero de transaccion para la cuenta y tipo
      */
     async existeNumTransaccion(dtoIn: ExisteNumTransaccionDto & HeaderParamsDto) {

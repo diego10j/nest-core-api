@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -80,7 +80,8 @@ export class CxpTransaccionesSaveService extends BaseService {
             }
         }
 
-        const numero = dtoIn.numero ?? '000000';
+        const numero = dtoIn.numero
+            ?? await this.generarNumeroAutomatico(dtoIn.ideTecba, dtoIn.ideTettb, dtoIn);
         const { existe } = await this.preLibroBancosService.existeNumTransaccion({
             ...dtoIn,
             ideTecba: dtoIn.ideTecba,
@@ -281,6 +282,41 @@ export class CxpTransaccionesSaveService extends BaseService {
             valor_saldo_favor: tieneSaldoFavor ? diferencia : 0,
             asiento_contable: asientoResult,
         };
+    }
+
+    /**
+     * Número de comprobante automático cuando el usuario no ingresa uno (típicamente pagos
+     * en efectivo). PreLibroBancosService.getSiguienteNumeroTransaccion ya calcula el máximo
+     * real usado en tes_cab_libr_banc (no solo la tabla de seguimiento), así que en el caso
+     * normal el primer candidato es válido. Si de todas formas ya existe - solo puede pasar
+     * por una carrera real entre dos guardados simultáneos para la misma cuenta+tipo -, la
+     * fila que causó el choque ya quedó insertada, así que basta con volver a pedir el máximo
+     * real (ya la va a "ver" y devolver el siguiente correcto): no hace falta incrementar a
+     * mano ni poner un número de intentos arbitrario.
+     */
+    private async generarNumeroAutomatico(
+        ideTecba: number, ideTettb: number, dtoIn: HeaderParamsDto,
+    ): Promise<string> {
+        let numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
+            ideTecba, ideTettb, dtoIn.ideSucu,
+        );
+        const { existe } = await this.preLibroBancosService.existeNumTransaccion({
+            ...dtoIn, ideTecba, ideTettb, numero,
+        });
+        if (existe) {
+            numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
+                ideTecba, ideTettb, dtoIn.ideSucu,
+            );
+            const { existe: sigueExistiendo } = await this.preLibroBancosService.existeNumTransaccion({
+                ...dtoIn, ideTecba, ideTettb, numero,
+            });
+            if (sigueExistiendo) {
+                throw new InternalServerErrorException(
+                    'No se pudo generar un número de comprobante automático disponible.',
+                );
+            }
+        }
+        return numero;
     }
 
     /**

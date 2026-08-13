@@ -16,6 +16,7 @@ import { ReversarTransaccionDto } from './dto/reversar-transaccion.dto';
 import { SaveDepositoCajaDto } from './dto/save-deposito-caja.dto';
 import { SaveLibroBancoDto } from './dto/save-libro-banco.dto';
 import { SaveTransferenciaDto } from './dto/save-transferencia.dto';
+import { SiguienteNumeroTransaccionDto } from './dto/siguiente-numero-transaccion.dto';
 import { PreLibroBancosConciliacionService } from './pre-libro-bancos-conciliacion.service';
 import { PreLibroBancosSaveService } from './pre-libro-bancos-save.service';
 import { PreLibroBancosService } from './pre-libro-bancos.service';
@@ -92,6 +93,18 @@ export class PreLibroBancosController {
         @Query() dtoIn: ExisteNumTransaccionDto,
     ) {
         return this.service.existeNumTransaccion({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getSiguienteNumeroTransaccion')
+    @ApiOperation({ summary: 'Sugerir el siguiente número de comprobante automático para una cuenta y tipo de transacción (vista previa, no reserva el número)' })
+    async getSiguienteNumeroTransaccion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: SiguienteNumeroTransaccionDto,
+    ) {
+        const numero = await this.service.getSiguienteNumeroTransaccion(
+            dtoIn.ideTecba, dtoIn.ideTettb, headersParams.ideSucu,
+        );
+        return { numero };
     }
 
     @Get('getComboTipoIdentificacion')

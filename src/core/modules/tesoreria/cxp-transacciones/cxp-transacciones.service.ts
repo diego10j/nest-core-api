@@ -47,16 +47,18 @@ export class CxpTransaccionesService extends BaseService {
                 COALESCE(cf.observacion_cpcfa, ct.observacion_cpctr) AS observacion,
                 ct.ide_cpctr,
                 COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0) AS saldo_x_pagar,
-                cf.pagado_cpcfa
+                cf.pagado_cpcfa,
+                co.nombre_cntdo
             FROM cxp_cabece_factur cf
             JOIN cxp_cabece_transa ct ON ct.ide_cpcfa = cf.ide_cpcfa
             LEFT JOIN cxp_detall_transa dt ON dt.ide_cpctr = ct.ide_cpctr
             LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
             LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+            LEFT JOIN con_tipo_document co ON co.ide_cntdo = cf.ide_cntdo
             WHERE cf.ide_cpcfa = $1
               AND cf.ide_empr = $2
               AND cf.ide_sucu = $3
-            GROUP BY cf.ide_cpcfa, p.nom_geper, p.identificac_geper, ct.ide_cpctr
+            GROUP BY cf.ide_cpcfa, p.nom_geper, p.identificac_geper, ct.ide_cpctr, co.nombre_cntdo
         `);
         query.addIntParam(1, dtoIn.ideCpcfa);
         query.addIntParam(2, dtoIn.ideEmpr);

@@ -10,6 +10,8 @@ import { DetalleXmlCxP, ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto'
 
 /** Código SRI de comprobante tipo factura */
 const COD_DOC_FACTURA = '01';
+/** Longitudes válidas de autorización SRI (10 física, 37/49 clave de acceso) - mismo criterio que documentos-cxp-save.service.ts */
+const LONGITUDES_AUTORIZACION = [10, 37, 49];
 /** Código SRI de porcentaje IVA 0% */
 const COD_PORCENTAJE_IVA_0 = '0';
 /** Código SRI de no objeto de impuesto */
@@ -35,21 +37,28 @@ export class DocumentosCxPXmlService {
         _dtoIn: HeaderParamsDto,
     ): Promise<ImportarXmlCxPResult> {
         try {
-            // Los XML de autorización del SRI traen el comprobante real anidado
-            // dentro de <comprobante>, ya sea escapado con entities (&lt;factura&gt;)
-            // o envuelto en CDATA (<![CDATA[<factura>...]]>). En ambos casos el
-            // comprobante interno no queda navegable en el árbol del documento
-            // exterior, así que si existe ese wrapper se re-parsea su contenido
-            // como el documento real a consultar.
+            // Los XML de autorización del SRI traen el comprobante real anidado dentro de
+            // <comprobante>, con dos formatos posibles según el emisor/herramienta:
+            //  a) escapado con entities (&lt;factura&gt;...&lt;/factura&gt;) - el unescape
+            //     global de abajo ya lo deja como elementos reales, navegables de una.
+            //  b) envuelto en CDATA (<![CDATA[<factura>...]]>) - el contenido nunca se
+            //     parsea como elementos hijos (queda como nodo de texto/CDATA), así que
+            //     $('codDoc') no lo encuentra en el primer intento.
+            // Por eso el re-parseo del contenido de <comprobante> es un FALLBACK: solo se
+            // usa cuando el primer intento no encontró codDoc, nunca incondicional - hacerlo
+            // siempre rompe el caso (a), porque para ese caso el texto ya viene "aplanado"
+            // (sin tags) por el momento en que se llega a leerlo con .text().
             const xmlExterior = fileBuffer
                 .toString('utf8')
                 .replace(/&gt;/g, '>')
                 .replace(/&lt;/g, '<');
 
             let $ = cheerio.load(xmlExterior, { xml: true });
-            const comprobanteInterior = $('comprobante').first().text().trim();
-            if (comprobanteInterior) {
-                $ = cheerio.load(comprobanteInterior, { xml: true });
+            if (!this.texto($, 'codDoc')) {
+                const comprobanteInterior = $('comprobante').first().text().trim();
+                if (comprobanteInterior) {
+                    $ = cheerio.load(comprobanteInterior, { xml: true });
+                }
             }
 
             // ── Validaciones ─────────────────────────────────────────────────
@@ -70,6 +79,11 @@ export class DocumentosCxPXmlService {
             const autorizacion = this.texto($, 'numeroAutorizacion') || this.texto($, 'claveAcceso');
             if (!autorizacion) {
                 throw new BadRequestException('El XML no contiene número de autorización ni clave de acceso.');
+            }
+            if (!LONGITUDES_AUTORIZACION.includes(autorizacion.length)) {
+                throw new BadRequestException(
+                    `El número de autorización del XML es inválido: tiene ${autorizacion.length} dígitos (debe tener 10, 37 o 49). El archivo puede estar truncado o corrupto.`,
+                );
             }
             const { existe } = await this.consultas.existeDocumentoElectronico(autorizacion);
             if (existe) {
