@@ -25,6 +25,7 @@ import {
     SaveRutaDto,
     SaveTransporteCompletoDto,
     SetActivoTransDto,
+    ActualizarTransportistaEnvioDto,
 } from './dto/save-transporte.dto';
 import { TransportesSaveService } from './transportes-save.service';
 import { TransportesService } from './transportes.service';
@@ -134,6 +135,16 @@ export class TransportesController {
     @ApiOperation({ summary: 'Crear o actualizar un registro de envío' })
     saveEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: SaveEnvioDto) {
         return this.saveService.saveEnvio({ ...h, ...dtoIn });
+    }
+
+    @Post('actualizarTransportistaEnvio')
+    @Auth()
+    @ApiOperation({ summary: 'Corregir la empresa de transporte de un envío ya creado, sin tocar el resto de sus datos' })
+    actualizarTransportistaEnvio(
+        @AppHeaders() h: HeaderParamsDto,
+        @Body() dtoIn: ActualizarTransportistaEnvioDto,
+    ) {
+        return this.saveService.actualizarTransportistaEnvio({ ...h, ...dtoIn });
     }
 
     @Post('setActivoEnvio')

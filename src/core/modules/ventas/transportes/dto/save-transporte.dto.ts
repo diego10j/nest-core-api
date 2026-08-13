@@ -226,6 +226,22 @@ export class SaveEnvioDto {
     fecha_envio_cctfa?: string;
 }
 
+/** Actualiza únicamente la empresa de transporte de un envío ya creado, sin tocar
+ * el resto de sus datos (fechas, flete, comentario, etc.) ni requerir reenviarlos. */
+export class ActualizarTransportistaEnvioDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cctfa: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    ide_vgtra: number;
+
+    @IsInt()
+    @IsOptional()
+    ide_geper?: number | null;
+}
+
 export class CompletarEnvioDto {
     @IsInt()
     @IsNotEmpty()

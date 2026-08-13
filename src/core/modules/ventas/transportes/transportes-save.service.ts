@@ -23,6 +23,7 @@ import {
     SaveRutaDto,
     SaveTransporteCompletoDto,
     SetActivoTransDto,
+    ActualizarTransportistaEnvioDto,
 } from './dto/save-transporte.dto';
 
 @Injectable()
@@ -241,6 +242,28 @@ export class TransportesSaveService extends BaseService {
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });
         return { message: 'ok', ide_cctfa: pk };
+    }
+
+    /** Corrige la empresa de transporte de un envío ya creado (p.ej. el vendedor eligió
+     * la equivocada) sin necesidad de reenviar el resto de campos de `saveEnvio`. */
+    async actualizarTransportistaEnvio(dtoIn: ActualizarTransportistaEnvioDto & HeaderParamsDto) {
+        const existe = await this.dataSource.pool.query(
+            `SELECT 1 FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+        if (existe.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura
+                SET ide_vgtra = $1,
+                    ide_geper = $2,
+                    es_transporte_propio_cctfa = false
+              WHERE ide_cctfa = $3`,
+            [dtoIn.ide_vgtra, dtoIn.ide_geper ?? null, dtoIn.ide_cctfa],
+        );
+        return { message: 'ok' };
     }
 
     async setActivoEnvio(dtoIn: SetActivoTransDto & HeaderParamsDto) {
