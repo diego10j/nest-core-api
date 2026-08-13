@@ -6,7 +6,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
-import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
+import { CuentasPorPagarDto, GetCuentasPorPagarProveedorPendientesDto } from './dto/cuentas-por-pagar.dto';
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
 import { TopCuentasPorPagarDto } from './dto/top-cxp.dto';
 
@@ -158,6 +158,111 @@ export class CuentasPorPagarService extends BaseService {
     query.addParam(2, dtoIn.fechaFin);
     query.addParam(3, dtoIn.ideSucu);
     query.addParam(4, dtoIn.ideEmpr);
+    return this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Cuentas por pagar pendientes (saldo > 0) de un proveedor, ordenadas por
+   * urgencia de pago. Paridad con ServicioProveedor.getSqlCuentasPorPagar del
+   * legacy, pero sin el filtro artificial por rango de fechas: se listan TODAS
+   * las obligaciones vigentes del proveedor (incluye documentos con fecha de
+   * emisión antigua o futura). Usa createQuery para integrarse con DataTableQuery.
+   */
+  async getCuentasPorPagarProveedorPendientes(dtoIn: GetCuentasPorPagarProveedorPendientesDto & HeaderParamsDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const query = new SelectQuery(
+      `
+    SELECT
+        ct.ide_cpctr,
+        ct.ide_cpcfa,
+        ct.ide_geper,
+        CASE
+            WHEN cf.fecha_emisi_cpcfa IS NOT NULL THEN cf.fecha_emisi_cpcfa
+            ELSE ct.fecha_trans_cpctr
+        END AS fecha,
+        cf.numero_cpcfa,
+        cf.total_cpcfa,
+        p.nom_geper,
+        p.identificac_geper,
+        p.uuid,
+        SUM(dt.valor_cpdtr * tt.signo_cpttr)                                    AS saldo_x_pagar,
+        cf.total_cpcfa - COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0)      AS abonado,
+        ROUND(
+            (COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0) / NULLIF(cf.total_cpcfa, 0) * 100),
+            2
+        )                                                                         AS porcentaje_pagado,
+        cf.dias_credito_cpcfa                                                     AS dias_credito,
+        TO_CHAR(
+            cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa * INTERVAL '1 day',
+            'YYYY-MM-DD'
+        )                                                                         AS fecha_vence,
+        CASE
+            WHEN cf.fecha_emisi_cpcfa IS NOT NULL AND cf.dias_credito_cpcfa > 0 THEN
+                GREATEST(0, (CURRENT_DATE - (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa))::integer)
+            ELSE 0
+        END                                                                       AS dias_vencido,
+        CASE
+            WHEN cf.dias_credito_cpcfa = 0 OR cf.dias_credito_cpcfa IS NULL THEN 'CONTADO'
+            WHEN cf.fecha_emisi_cpcfa IS NULL                                THEN 'SIN FECHA'
+            WHEN CURRENT_DATE > (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa) THEN 'VENCIDA'
+            ELSE 'POR VENCER'
+        END                                                                       AS estado_obligacion,
+        CASE
+            WHEN cf.dias_credito_cpcfa = 0 OR cf.dias_credito_cpcfa IS NULL THEN 'CONTADO'
+            WHEN cf.fecha_emisi_cpcfa IS NULL                                THEN 'SIN DATOS'
+            WHEN CURRENT_DATE <= (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa) THEN 'BAJA'
+            WHEN (CURRENT_DATE - (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa)) <= 30  THEN 'MEDIA'
+            WHEN (CURRENT_DATE - (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa)) <= 60  THEN 'ALTA'
+            WHEN (CURRENT_DATE - (cf.fecha_emisi_cpcfa + cf.dias_credito_cpcfa)) <= 90  THEN 'URGENTE'
+            ELSE 'CRITICA'
+        END                                                                       AS prioridad_pago,
+        COALESCE(cf.observacion_cpcfa, ct.observacion_cpctr, '')                  AS observacion,
+        (CURRENT_DATE - cf.fecha_emisi_cpcfa)                                     AS dias_desde_emision
+
+    FROM cxp_detall_transa dt
+    LEFT JOIN cxp_cabece_transa ct  ON dt.ide_cpctr = ct.ide_cpctr
+    LEFT JOIN cxp_cabece_factur cf  ON cf.ide_cpcfa = ct.ide_cpcfa
+        AND cf.ide_cpefa = ${estadoFacturaNormal}
+    LEFT JOIN cxp_tipo_transacc tt  ON tt.ide_cpttr = dt.ide_cpttr
+    LEFT JOIN gen_persona       p   ON ct.ide_geper = p.ide_geper
+
+    WHERE
+        ct.ide_geper = $1
+        AND dt.ide_sucu = $2
+        AND ct.ide_empr = $3
+
+    GROUP BY
+        ct.ide_cpctr,
+        ct.ide_cpcfa,
+        ct.ide_geper,
+        cf.numero_cpcfa,
+        cf.observacion_cpcfa,
+        ct.observacion_cpctr,
+        cf.fecha_emisi_cpcfa,
+        ct.fecha_trans_cpctr,
+        cf.total_cpcfa,
+        p.nom_geper,
+        p.identificac_geper,
+        p.uuid,
+        cf.dias_credito_cpcfa,
+        ct.usuario_ingre,
+        ct.fecha_ingre,
+        ct.ide_empr,
+        ct.ide_sucu
+
+    HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) > 0
+
+    ORDER BY
+        dias_vencido DESC,
+        saldo_x_pagar DESC,
+        fecha_vence ASC
+    `,
+      dtoIn,
+    );
+
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addIntParam(2, dtoIn.ideSucu);
+    query.addIntParam(3, dtoIn.ideEmpr);
     return this.dataSource.createQuery(query);
   }
 

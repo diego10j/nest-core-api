@@ -7,7 +7,7 @@ import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { GetEnviosSinFacturaDto } from './dto/get-envios-sin-factura.dto';
 import { GetFletesConsolidadosDto } from './dto/get-fletes-consolidados.dto';
-import { EnvioFacturaCxPService, ProductoPreFactura } from './envio-factura-cxp.service';
+import { EnvioFacturaCxPService, ArticuloLogistica } from './envio-factura-cxp.service';
 
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
 export interface EnvioParaConsolidar {
@@ -18,9 +18,15 @@ export interface EnvioParaConsolidar {
     total_flete_cctfa: number;
 }
 
-/** Envío ya emparejado con una línea del XML, listo para el visualizador de confirmación. */
+/** Envío ya emparejado con una línea del XML, listo para el visualizador de confirmación.
+ * `valor_matched` incluye IVA (para reflejar el valor real del envío, igual que
+ * `total_flete_real_cctfa` en el flujo de un solo envío); `valor_base_matched`/`iva_matched`
+ * son la base y el flag de esa misma línea SIN IVA, necesarios para armar un renglón de
+ * detalle de factura por envío sin duplicar el cálculo del impuesto. */
 export interface EnvioConsolidadoMatch extends EnvioParaConsolidar {
     valor_matched: number;
+    valor_base_matched: number;
+    iva_matched: 'SI' | 'NO';
     observacion_matched: string;
 }
 
@@ -35,10 +41,12 @@ export interface PrefillFacturaFleteConsolidada {
     ide_cndfp: number;
     ide_cndfp1: number;
     ide_srtst: number;
-    /** Líneas ya agrupadas por IVA (≤2), listas para guardar la factura - mismo criterio que
-     * el flujo de un solo envío (EnvioFacturaCxPService.buildProductos). */
-    productos: ProductoPreFactura[];
+    /** Artículo fijo de servicios logísticos con el que se factura cada envío (mismo para
+     * las N líneas de detalle, una por envío). */
+    articulo: ArticuloLogistica;
     descuento_cpcfa: number;
+    /** Total de la factura del XML (base + IVA), para mostrar en el visualizador. */
+    total_cpcfa: number;
     /** Un renglón por envío seleccionado, con el emparejamiento propuesto, para el visualizador. */
     envios: EnvioConsolidadoMatch[];
 }
@@ -133,7 +141,6 @@ export class FleteConsolidadoService {
         }
 
         const articulo = await this.envioFacturaCxPService.getArticuloLogisticaDefault();
-        const productos = this.envioFacturaCxPService.buildProductos(parsed, articulo);
 
         const [ideCndfp, ideCndfp1, ideSrtst] = await Promise.all([
             this.envioFacturaCxPService.resolverFormaPago(parsed.ide_cndfp),
@@ -153,12 +160,17 @@ export class FleteConsolidadoService {
         // valor_matched incluye IVA cuando la línea grava (parsed.totales.tarifa_iva) - así
         // representa el "valor real" completo del envío, mismo criterio que
         // total_flete_real_cctfa en el flujo de un solo envío (totales.total, no la base).
+        // valor_base_matched/iva_matched son la base y el flag SIN IVA de esa misma línea, para
+        // poder armar un renglón de detalle de factura por envío (ver crearFacturaFleteConsolidada
+        // en el frontend) sin volver a aplicar el IVA sobre un valor que ya lo incluye.
         const tarifaIva = parsed.totales.tarifa_iva;
         const enviosConMatch: EnvioConsolidadoMatch[] = envios.map((envio) => {
             const match = matches.find((m) => m.ide_cctfa === envio.ide_cctfa);
             const linea = match ? parsed.detalles[match.indexLinea] : undefined;
+            const ivaMatched: 'SI' | 'NO' = linea?.iva_inarti_cpdfa === '1' ? 'SI' : 'NO';
+            const valorBase = linea ? Number(linea.valor_cpdfa.toFixed(2)) : 0;
             const valorConIva = linea
-                ? Number((linea.valor_cpdfa * (linea.iva_inarti_cpdfa === '1' ? 1 + tarifaIva : 1)).toFixed(2))
+                ? Number((linea.valor_cpdfa * (ivaMatched === 'SI' ? 1 + tarifaIva : 1)).toFixed(2))
                 : 0;
             return {
                 ide_cctfa: envio.ide_cctfa,
@@ -167,6 +179,8 @@ export class FleteConsolidadoService {
                 fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
                 total_flete_cctfa: envio.total_flete_cctfa,
                 valor_matched: valorConIva,
+                valor_base_matched: valorBase,
+                iva_matched: ivaMatched,
                 observacion_matched: linea?.observacion_cpdfa ?? '',
             };
         });
@@ -182,8 +196,9 @@ export class FleteConsolidadoService {
             ide_cndfp: ideCndfp,
             ide_cndfp1: ideCndfp1,
             ide_srtst: ideSrtst,
-            productos,
+            articulo,
             descuento_cpcfa: parsed.totales.descuento,
+            total_cpcfa: parsed.totales.total,
             envios: enviosConMatch,
         };
     }

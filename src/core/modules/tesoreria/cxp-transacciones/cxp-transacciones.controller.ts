@@ -6,8 +6,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { CxpTransaccionesSaveService } from './cxp-transacciones-save.service';
 import { CxpTransaccionesService } from './cxp-transacciones.service';
 import { GetFacturasPendientesProveedorDto } from './dto/get-facturas-pendientes-proveedor.dto';
+import { NotificarPagoCxPDto } from './dto/notificar-pago-cxp.dto';
 import { SaveAnticipoCxPDto } from './dto/save-anticipo-cxp.dto';
 import { SavePagoCxPDto } from './dto/save-pago-cxp.dto';
+import { PagoCxPEmailService } from './pago-cxp-email.service';
 
 @ApiTags('Tesoreria - Pagos CxP')
 @Controller('tesoreria/cxp-transacciones')
@@ -15,6 +17,7 @@ export class CxpTransaccionesController {
     constructor(
         private readonly service: CxpTransaccionesService,
         private readonly saveService: CxpTransaccionesSaveService,
+        private readonly pagoCxPEmailService: PagoCxPEmailService,
     ) { }
 
     @Get('getFacturaCxP/:ideCpcfa')
@@ -51,5 +54,23 @@ export class CxpTransaccionesController {
         @Body() dtoIn: SaveAnticipoCxPDto,
     ) {
         return this.saveService.saveAnticipoCxP({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('notificarPagoCxP')
+    @ApiOperation({ summary: 'Notificar por correo un pago directo CxP ya registrado (best-effort)' })
+    notificarPagoCxP(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: NotificarPagoCxPDto,
+    ) {
+        return this.pagoCxPEmailService.notificarPago({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('reenviarNotificacionPagoCxP')
+    @ApiOperation({ summary: 'Reenviar por correo la notificación de un pago directo CxP' })
+    reenviarNotificacionPagoCxP(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: NotificarPagoCxPDto,
+    ) {
+        return this.pagoCxPEmailService.reenviar({ ...headersParams, ...dtoIn });
     }
 }

@@ -8,7 +8,7 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
-import { CuentasPorPagarDto } from './dto/cuentas-por-pagar.dto';
+import { CuentasPorPagarDto, GetCuentasPorPagarProveedorPendientesDto } from './dto/cuentas-por-pagar.dto';
 import { FechaCorteDto } from './dto/fecha-corte-cxp.dto';
 import { IdOrdenPagoDto, IdsDetalleOrdenPagoDto } from './dto/id-orden-pago.dto';
 import { ReenviarNotificacionPagoDto, SaveDetallesOrdenDto, SaveOrdenPagoDto } from './dto/save-orden-pago.dto';
@@ -31,6 +31,12 @@ export class CuentasPorPagarController {
     @ApiOperation({ summary: 'Listar cuentas por pagar con filtros' })
     getCuentasPorPagar(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: CuentasPorPagarDto) {
         return this.service.getCuentasPorPagar({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getCuentasPorPagarProveedorPendientes')
+    @ApiOperation({ summary: 'Cuentas por pagar pendientes de un proveedor, ordenadas por urgencia (sin rango de fechas)' })
+    getCuentasPorPagarProveedorPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCuentasPorPagarProveedorPendientesDto) {
+        return this.service.getCuentasPorPagarProveedorPendientes({ ...headersParams, ...dtoIn });
     }
 
     @Get('getMetricasCuentasPorPagar')
