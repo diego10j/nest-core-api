@@ -22,17 +22,20 @@ SELECT nom_geper, ide_getip
 FROM gen_persona
 WHERE nom_geper ~* 
     '\m(LTDA\.?|S\.A\.S\.?|S\.A\.?|C\.A\.?|B\.I\.C\.?|BIC|S\.C\.C\.?|SCC|N\.C\.?|NC|S\.E\.M\.?|SEM)\s*$'
+    and ide_getip is null   
 ORDER BY nom_geper;
 
 
 -- Por defecto todos tipo persona
-UPDATE gen_persona SET ide_getip = 1;
+UPDATE gen_persona SET ide_getip = 1 where ide_getip is null;
 
 -- Tipo empresa - siglas al final con o sin punto final y posibles espacios
 UPDATE gen_persona
 SET ide_getip = 2
 WHERE nom_geper ~* 
-    '\m(LTDA\.?|S\.A\.S\.?|S\.A\.?|C\.A\.?|B\.I\.C\.?|BIC|S\.C\.C\.?|SCC|N\.C\.?|NC|S\.E\.M\.?|SEM)\s*$';
+    '\m(LTDA\.?|S\.A\.S\.?|S\.A\.?|C\.A\.?|B\.I\.C\.?|BIC|S\.C\.C\.?|SCC|N\.C\.?|NC|S\.E\.M\.?|SEM)\s*$'
+and ide_getip is null    
+    ;
 
 
 -----------------------------------------------
