@@ -366,7 +366,7 @@ export class TesoreriaService extends BaseService {
         AND cb.ide_sucu = $2
         AND activo_tecba = true
         AND es_caja_teban = true
-        and upper(nombre_tecba) like '%GENERAL%' 
+        and (upper(nombre_tecba) like '%GENERAL%' or upper(nombre_tecba) like '%CAJA CHICA%')
       ORDER BY cb.nombre_tecba
       `,
     );
