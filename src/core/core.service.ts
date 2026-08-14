@@ -399,7 +399,23 @@ export class CoreService {
       insertQuery.values.set('ide_camp', ide_camp);
       insertQuery.values.set('ide_tabl', ide_tabl);
       insertQuery.values.set('nom_camp', column.name);
-      insertQuery.values.set('table_id_camp', column.tableID);
+      // table_id_camp es una columna entera - las columnas "externas"/calculadas (que no
+      // existen en la BD, ej. renderComponent de customColumns) llegan con tableID '' desde el
+      // frontend, no un número. Sin esto, "invalid input syntax for type integer" tumbaba TODO
+      // el guardado (una sola transacción para todas las columnas), incluido el reorden de las
+      // columnas reales - por eso "Personalizar" parecía guardar pero el orden no cambiaba.
+      // Casteado a unknown: tableID está tipado `number` pero, igual que el resto de esta
+      // función, el valor real en runtime viene de JSON sin validar por item y puede llegar
+      // como '' (string) en columnas externas.
+      const tableIdRaw = column.tableID as unknown;
+      const tableIdCamp =
+        tableIdRaw === '' || tableIdRaw === null || tableIdRaw === undefined
+          ? null
+          : Number(tableIdRaw);
+      insertQuery.values.set(
+        'table_id_camp',
+        tableIdCamp !== null && Number.isFinite(tableIdCamp) ? tableIdCamp : null,
+      );
       insertQuery.values.set('data_type_id_camp', column.dataTypeID);
       insertQuery.values.set('data_type_camp', column.dataType);
       insertQuery.values.set('orden_camp', column.order);
