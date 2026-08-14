@@ -30,7 +30,6 @@ import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SaveDocumentoCxPDto } from './dto/save-documento-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
-import { EnvioFacturaCxPService } from './envio-factura-cxp.service';
 
 @ApiTags('CuentasPorPagar - Documentos')
 @Controller('cuentas-por-pagar/documentos')
@@ -40,7 +39,6 @@ export class DocumentosCxPController {
         private readonly saveService: DocumentosCxPSaveService,
         private readonly xmlService: DocumentosCxPXmlService,
         private readonly asientosService: AsientosAutomaticosService,
-        private readonly envioFacturaService: EnvioFacturaCxPService,
     ) { }
 
     // ─── CONSULTAS ────────────────────────────────────────────────────────────
@@ -365,49 +363,4 @@ export class DocumentosCxPController {
         return this.xmlService.parseFacturaXml(file.buffer, headersParams);
     }
 
-    @Post('envios/:ideCctfa/prepararFacturaFlete')
-    @Auth()
-    @ApiOperation({
-        summary: 'Parsea y valida el XML del transportista de un envío, y arma la data para precargar el diálogo de creación de factura (no guarda)',
-    })
-    @ApiConsumes('multipart/form-data')
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                file: { type: 'string', format: 'binary' },
-            },
-            required: ['file'],
-        },
-    })
-    @UseInterceptors(FileInterceptor('file', {
-        storage: memoryStorage(),
-        limits: { fileSize: 1024 * 1024 },
-        fileFilter: (_req, file, cb) => {
-            const esXml = file.originalname.toLowerCase().endsWith('.xml')
-                || file.mimetype === 'text/xml'
-                || file.mimetype === 'application/xml';
-            cb(esXml ? null : new BadRequestException('Solo se permiten archivos XML'), esXml);
-        },
-    }))
-    prepararFacturaFleteEnvio(
-        @AppHeaders() headersParams: HeaderParamsDto,
-        @Param('ideCctfa') ideCctfa: string,
-        @UploadedFile() file: Express.Multer.File,
-    ) {
-        if (!file) throw new BadRequestException('Debe seleccionar un archivo XML');
-        return this.envioFacturaService.prepararFacturaFleteDesdeXml(Number(ideCctfa), file.buffer, headersParams);
-    }
-
-    @Post('envios/:ideCctfa/anularFacturaFlete')
-    @Auth()
-    @ApiOperation({
-        summary: 'Anula la factura de flete de un envío (documento CxP + pago de tesorería si existe) y desvincula el envío',
-    })
-    anularFacturaFleteEnvio(
-        @AppHeaders() headersParams: HeaderParamsDto,
-        @Param('ideCctfa') ideCctfa: string,
-    ) {
-        return this.envioFacturaService.anularFacturaFlete(Number(ideCctfa), headersParams);
-    }
 }

@@ -1053,6 +1053,11 @@ export class FacturasService extends BaseService {
                 cf.numero_cpcfa AS numero_factura_flete,
                 cf.total_cpcfa AS total_factura_flete,
                 cf.pagado_cpcfa AS pagado_factura_flete,
+                -- Si este envío quedó agrupado en un proceso de "Registrar Pago Consolidado"
+                -- activo (no anulado), su factura (cf) es compartida con otros envíos: anularla
+                -- desde acá afectaría a todos. La UI usa esto para ocultar "Anular" y redirigir
+                -- al proceso consolidado; ver también el guard en anularFacturaFlete (backend).
+                fc.ide_cpcfc AS ide_cpcfc_consolidado,
                 CASE
                     WHEN e.flete_pagado_cctfa = true
                          AND e.total_flete_cctfa != e.total_flete_real_cctfa
@@ -1077,6 +1082,8 @@ export class FacturasService extends BaseService {
             LEFT JOIN ven_transporte t     ON e.ide_vgtra = t.ide_vgtra
             LEFT JOIN cxc_estado_envio ee  ON e.ide_cceen = ee.ide_cceen
             LEFT JOIN cxp_cabece_factur cf ON e.ide_cpcfa = cf.ide_cpcfa
+            LEFT JOIN cxp_det_flete_cons dfc ON dfc.ide_cctfa = e.ide_cctfa
+            LEFT JOIN cxp_cab_flete_cons fc  ON fc.ide_cpcfc = dfc.ide_cpcfc AND fc.ide_cpefc != 3
             WHERE e.ide_cctfa = $1
             `,
         );

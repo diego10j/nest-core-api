@@ -1,11 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
-import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
-import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto';
 
 /** Variable del sistema: artículo por defecto (COMPRAS SERVICIOS LOGISTICOS) para el flete */
@@ -23,15 +20,6 @@ export interface ArticuloLogistica {
     siglas_inuni: string | null;
 }
 
-interface EnvioParaFactura {
-    ide_cctfa: number;
-    ide_vgtra: number | null;
-    ide_geper_transporte: number | null;
-    nombre_vgtra: string | null;
-    ide_cpcfa: number | null;
-    secuencial_cccfa: string;
-}
-
 export interface ProductoPreFactura {
     ide_inarti: number;
     ide_inuni: number | null;
@@ -44,121 +32,20 @@ export interface ProductoPreFactura {
     iva: 'SI' | 'NO';
 }
 
-export interface PrefillFacturaFlete {
-    ide_geper: number;
-    nom_geper: string;
-    identificac_geper: string;
-    ide_cntdo: number;
-    numero_cpcfa: string;
-    autorizacio_cpcfa: string;
-    fecha_emisi_cpcfa: string;
-    ide_cndfp: number;
-    ide_cndfp1: number;
-    ide_srtst: number;
-    productos: ProductoPreFactura[];
-    /** <infoFactura><totalDescuento> del XML - ver DocumentosCxPXmlService.parseFacturaXml. */
-    descuento_cpcfa: number;
-}
-
 /**
- * Parsea y valida el XML de la factura electrónica del transportista de un envío del
- * Reporte de Envío de Facturas, y arma la data lista para precargar el diálogo común
- * "Crear Factura de Compra" (CrearFacturaCxPDialog). NO persiste nada: el guardado real
- * lo hace el flujo estándar (saveDocumento) cuando el usuario confirma en el diálogo.
+ * Helpers compartidos para armar una factura de flete a partir del XML del transportista:
+ * artículo fijo de servicios logísticos, agrupado de líneas por IVA, y resolución de forma de
+ * pago/plazo/sustento tributario por defecto. El flujo de creación en sí (parseo + validación +
+ * emparejamiento con él o los envíos + guardado) vive en FleteConsolidadoService/
+ * FleteConsolidadoSaveService, que reusan estos métodos tanto para 1 envío como para varios -
+ * ver "Registrar Envíos" en Ventas > Transportes.
  */
 @Injectable()
 export class EnvioFacturaCxPService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
-        private readonly xmlService: DocumentosCxPXmlService,
-        private readonly documentosCxPSaveService: DocumentosCxPSaveService,
     ) { }
-
-    async prepararFacturaFleteDesdeXml(
-        ideCctfa: number,
-        fileBuffer: Buffer,
-        dtoIn: HeaderParamsDto,
-    ): Promise<PrefillFacturaFlete> {
-        const envio = await this.getEnvio(ideCctfa);
-        if (!envio) {
-            throw new BadRequestException(`El envío ide_cctfa=${ideCctfa} no existe.`);
-        }
-        if (!envio.ide_vgtra || !envio.ide_geper_transporte) {
-            throw new BadRequestException(
-                'Este envío no tiene una empresa de transporte asignada: transporte propio o retiro en sucursal no requieren factura por pagar.',
-            );
-        }
-        if (envio.ide_cpcfa) {
-            throw new BadRequestException('Este envío ya tiene una factura por pagar registrada.');
-        }
-
-        const parsed = await this.xmlService.parseFacturaXml(fileBuffer, dtoIn);
-
-        if (Number(parsed.ide_geper) !== Number(envio.ide_geper_transporte)) {
-            throw new BadRequestException(
-                `La factura del XML pertenece a "${parsed.nom_geper}", pero el transportista asignado a este envío es "${envio.nombre_vgtra}".`,
-            );
-        }
-
-        const articulo = await this.getArticuloLogisticaDefault();
-        const productos = this.buildProductos(parsed, articulo);
-
-        const [ideCndfp, ideCndfp1, ideSrtst] = await Promise.all([
-            this.resolverFormaPago(parsed.ide_cndfp),
-            this.resolverDiasCredito(parsed.ide_cndfp1),
-            this.resolverSustentoTributario(),
-        ]);
-
-        return {
-            ide_geper: parsed.ide_geper,
-            nom_geper: parsed.nom_geper,
-            identificac_geper: parsed.identificac_geper,
-            ide_cntdo: parsed.ide_cntdo,
-            numero_cpcfa: parsed.numero_cpcfa,
-            autorizacio_cpcfa: parsed.autorizacio_cpcfa,
-            fecha_emisi_cpcfa: parsed.fecha_emisi_cpcfa,
-            ide_cndfp: ideCndfp,
-            ide_cndfp1: ideCndfp1,
-            ide_srtst: ideSrtst,
-            productos,
-            descuento_cpcfa: parsed.totales.descuento,
-        };
-    }
-
-    /**
-     * Anula la factura de flete de un envío y deja todo listo para volver a cargar un XML
-     * y registrar un nuevo pago:
-     *  1. Anula el documento CxP (cxp_cabece_factur) vía DocumentosCxPSaveService.anularDocumento:
-     *     estado anulado, reversa el/los pago(s) de tesorería ya registrados si existen (cambia
-     *     de estado tes_cab_libr_banc, anula su asiento contable), anula el asiento propio del
-     *     documento si tiene, borra la cuenta por pagar (cxp_cabece_transa/detalle) y anula el
-     *     kardex si generó inventario.
-     *  2. Desvincula el envío de la factura anulada (cxc_transporte_factura.ide_cpcfa = NULL).
-     */
-    async anularFacturaFlete(ideCctfa: number, dtoIn: HeaderParamsDto) {
-        const envio = await this.getEnvio(ideCctfa);
-        if (!envio) {
-            throw new BadRequestException(`El envío ide_cctfa=${ideCctfa} no existe.`);
-        }
-        if (!envio.ide_cpcfa) {
-            throw new BadRequestException('Este envío no tiene una factura por pagar registrada.');
-        }
-        const ideCpcfa = envio.ide_cpcfa;
-
-        await this.documentosCxPSaveService.anularDocumento({ ...dtoIn, ide_cpcfa: ideCpcfa });
-
-        await this.dataSource.pool.query(
-            `UPDATE cxc_transporte_factura SET ide_cpcfa = NULL WHERE ide_cctfa = $1`,
-            [ideCctfa],
-        );
-
-        return {
-            message: 'ok',
-            ide_cpcfa: ideCpcfa,
-            ide_cctfa: ideCctfa,
-        };
-    }
 
     /** Artículo por defecto de servicios logísticos (variable p_cxp_articulo_servicios_logisticos). */
     async getArticuloLogisticaDefault(): Promise<ArticuloLogistica> {
@@ -278,23 +165,5 @@ export class EnvioFacturaCxPService {
             throw new BadRequestException('No se encontró un sustento tributario configurado para asignar por defecto.');
         }
         return Number(row.ide_srtst);
-    }
-
-    private async getEnvio(ideCctfa: number): Promise<EnvioParaFactura | undefined> {
-        const q = new SelectQuery(`
-            SELECT
-                e.ide_cctfa,
-                e.ide_vgtra,
-                t.ide_geper AS ide_geper_transporte,
-                t.nombre_vgtra,
-                e.ide_cpcfa,
-                f.secuencial_cccfa
-            FROM cxc_transporte_factura e
-            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
-            LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
-            WHERE e.ide_cctfa = $1
-        `);
-        q.addIntParam(1, ideCctfa);
-        return this.dataSource.createSingleQuery(q);
     }
 }

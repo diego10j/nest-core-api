@@ -24,7 +24,7 @@ import { PrepararXmlFleteConsolidadoDto } from './dto/preparar-xml-flete-consoli
 import { FleteConsolidadoSaveService } from './flete-consolidado-save.service';
 import { FleteConsolidadoService } from './flete-consolidado.service';
 
-@ApiTags('CuentasPorPagar - Factura Consolidada de Flete')
+@ApiTags('CuentasPorPagar - Registrar Envíos (factura de flete)')
 @Controller('cuentas-por-pagar/flete-consolidado')
 export class FleteConsolidadoController {
     constructor(

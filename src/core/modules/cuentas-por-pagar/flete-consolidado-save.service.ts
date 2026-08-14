@@ -28,8 +28,8 @@ export class FleteConsolidadoSaveService {
     ) { }
 
     async crearFacturaFleteConsolidada(dtoIn: CrearFacturaFleteConsolidadaDto & HeaderParamsDto) {
-        if (dtoIn.envios.length < 2) {
-            throw new BadRequestException('Debe incluir al menos 2 envíos para una factura consolidada.');
+        if (dtoIn.envios.length < 1) {
+            throw new BadRequestException('Debe incluir al menos 1 envío.');
         }
         const ideCctfaSet = new Set(dtoIn.envios.map((e) => e.ide_cctfa));
         if (ideCctfaSet.size !== dtoIn.envios.length) {
@@ -74,11 +74,14 @@ export class FleteConsolidadoSaveService {
             detQuery.values.set('ide_cpdfc', baseIdeCpdfc + idx);
             detQuery.values.set('ide_cpcfc', ideCpcfc);
             detQuery.values.set('ide_cctfa', envio.ide_cctfa);
-            // Vínculo real a la línea de la factura (mismo orden que dtoIn.detalles, ambos
-            // construidos por el frontend a partir del mismo enviosState) - "valor facturado"
-            // se lee siempre en vivo desde cxp_detall_factur vía este ide_cpdfa, nunca de una
-            // copia (ver flete-consolidado.service.ts getFleteConsolidadoById/getFletesConsolidados).
-            detQuery.values.set('ide_cpdfa', detallesIdeCpdfa[idx]);
+            // Vínculo real a la línea de la factura. Con 2+ envíos, dtoIn.detalles trae
+            // exactamente 1 línea por envío en el mismo orden (ambos construidos por el
+            // frontend a partir del mismo enviosState) - detallesIdeCpdfa[idx] es esa línea.
+            // Con 1 solo envío, el XML puede haber quedado agrupado en 1-2 líneas por IVA (sin
+            // ambigüedad posible, todo pertenece a este único envío) - se usa la primera; el
+            // "valor facturado" para ese caso se compara contra el total de la factura, no
+            // contra esta línea puntual (ver getFleteConsolidadoById/getFletesConsolidados).
+            detQuery.values.set('ide_cpdfa', dtoIn.envios.length === 1 ? detallesIdeCpdfa[0] : detallesIdeCpdfa[idx]);
             listQuery.push(detQuery);
 
             // total_flete_real_cctfa: mismo campo que ya usa el flujo de un solo envío para

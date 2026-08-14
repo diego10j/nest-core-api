@@ -7,7 +7,7 @@ import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { GetEnviosSinFacturaDto } from './dto/get-envios-sin-factura.dto';
 import { GetFletesConsolidadosDto } from './dto/get-fletes-consolidados.dto';
-import { EnvioFacturaCxPService, ArticuloLogistica } from './envio-factura-cxp.service';
+import { EnvioFacturaCxPService, ArticuloLogistica, ProductoPreFactura } from './envio-factura-cxp.service';
 
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
 export interface EnvioParaConsolidar {
@@ -49,6 +49,15 @@ export interface PrefillFacturaFleteConsolidada {
     total_cpcfa: number;
     /** Un renglón por envío seleccionado, con el emparejamiento propuesto, para el visualizador. */
     envios: EnvioConsolidadoMatch[];
+    /** Solo con 1 envío: líneas ya agrupadas por IVA (igual que el flujo viejo de 1 envío,
+     * `EnvioFacturaCxPService.buildProductos`), para guardar la factura sin perder el desglose
+     * si el XML trae más de una línea para este único envío. Con 2+ envíos no se usa (ahí
+     * cada línea de detalle sale 1 a 1 de `envios`, ver crearFacturaFleteConsolidada). */
+    productos?: ProductoPreFactura[];
+    /** Aviso no bloqueante: con 1 solo envío no se exige que el XML traiga exactamente 1 línea
+     * (no hay ambigüedad posible con un único envío candidato) - si trae más de una, se avisa
+     * pero se continúa igual, agrupando todo contra ese envío. */
+    advertencia?: string;
 }
 
 /**
@@ -134,7 +143,11 @@ export class FleteConsolidadoService {
             );
         }
 
-        if (parsed.detalles.length !== envios.length) {
+        // Con 2+ envíos no hay forma de saber a cuál pertenece cada línea sin que coincidan
+        // en cantidad (se resuelve el emparejamiento por GPT más abajo). Con 1 solo envío no
+        // existe esa ambigüedad - todo el XML es de ese envío, sin importar cuántas líneas
+        // traiga - así que esta validación estricta no aplica a ese caso (ver más abajo).
+        if (envios.length > 1 && parsed.detalles.length !== envios.length) {
             throw new BadRequestException(
                 `El XML trae ${parsed.detalles.length} línea(s) de detalle, pero seleccionaste ${envios.length} envío(s). Deben coincidir 1 a 1.`,
             );
@@ -147,6 +160,46 @@ export class FleteConsolidadoService {
             this.envioFacturaCxPService.resolverDiasCredito(parsed.ide_cndfp1),
             this.envioFacturaCxPService.resolverSustentoTributario(),
         ]);
+
+        const prefillBase = {
+            ide_geper: parsed.ide_geper,
+            nom_geper: parsed.nom_geper,
+            identificac_geper: parsed.identificac_geper,
+            ide_cntdo: parsed.ide_cntdo,
+            numero_cpcfa: parsed.numero_cpcfa,
+            autorizacio_cpcfa: parsed.autorizacio_cpcfa,
+            fecha_emisi_cpcfa: parsed.fecha_emisi_cpcfa,
+            ide_cndfp: ideCndfp,
+            ide_cndfp1: ideCndfp1,
+            ide_srtst: ideSrtst,
+            articulo,
+            descuento_cpcfa: parsed.totales.descuento,
+            total_cpcfa: parsed.totales.total,
+        };
+
+        if (envios.length === 1) {
+            // Sin ambigüedad posible (un solo envío candidato): se agrupa el XML completo por
+            // IVA, igual que hacía el flujo viejo de un solo envío (EnvioFacturaCxPService.
+            // buildProductos), en vez de exigir 1 línea = 1 envío.
+            const envio = envios[0];
+            const productos = this.envioFacturaCxPService.buildProductos(parsed, articulo);
+            const advertencia = parsed.detalles.length !== 1
+                ? `El XML trae ${parsed.detalles.length} línea(s) de detalle para este envío; se registran todas contra él.`
+                : undefined;
+            const enviosConMatch: EnvioConsolidadoMatch[] = [{
+                ide_cctfa: envio.ide_cctfa,
+                cliente: envio.cliente,
+                numero_factura_venta: envio.numero_factura_venta,
+                fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
+                total_flete_cctfa: envio.total_flete_cctfa,
+                valor_matched: parsed.totales.total,
+                valor_base_matched: parsed.totales.base_grabada + parsed.totales.base_tarifa0
+                    + parsed.totales.base_no_objeto_iva,
+                iva_matched: parsed.totales.base_grabada > 0 ? 'SI' : 'NO',
+                observacion_matched: parsed.detalles.map((d) => d.observacion_cpdfa).filter(Boolean).join(', '),
+            }];
+            return { ...prefillBase, productos, advertencia, envios: enviosConMatch };
+        }
 
         const matches = await this.emparejarConGpt(
             parsed.detalles.map((d, index) => ({
@@ -185,22 +238,7 @@ export class FleteConsolidadoService {
             };
         });
 
-        return {
-            ide_geper: parsed.ide_geper,
-            nom_geper: parsed.nom_geper,
-            identificac_geper: parsed.identificac_geper,
-            ide_cntdo: parsed.ide_cntdo,
-            numero_cpcfa: parsed.numero_cpcfa,
-            autorizacio_cpcfa: parsed.autorizacio_cpcfa,
-            fecha_emisi_cpcfa: parsed.fecha_emisi_cpcfa,
-            ide_cndfp: ideCndfp,
-            ide_cndfp1: ideCndfp1,
-            ide_srtst: ideSrtst,
-            articulo,
-            descuento_cpcfa: parsed.totales.descuento,
-            total_cpcfa: parsed.totales.total,
-            envios: enviosConMatch,
-        };
+        return { ...prefillBase, envios: enviosConMatch };
     }
 
     async getFletesConsolidados(dtoIn: GetFletesConsolidadosDto & HeaderParamsDto) {
@@ -220,12 +258,22 @@ export class FleteConsolidadoService {
                 cf.total_cpcfa,
                 (SELECT COUNT(*) FROM cxp_det_flete_cons d WHERE d.ide_cpcfc = cc.ide_cpcfc) AS num_envios,
                 (
-                    SELECT COALESCE(SUM(ABS(e.total_flete_cctfa - cd.valor_cpdfa)), 0)
+                    -- Con 1 solo envío el ide_cpdfa vinculado puede ser solo una de varias
+                    -- líneas agrupadas por IVA (no toda la factura) - ahí se compara contra el
+                    -- total de la factura (cf.total_cpcfa) en vez de esa línea puntual. Con 2+
+                    -- envíos cada línea sí es 1 a 1, se compara normal.
+                    SELECT CASE
+                        WHEN COUNT(*) = 1 THEN
+                            CASE WHEN MAX(e.total_flete_cctfa) != cf.total_cpcfa
+                                 THEN ABS(MAX(e.total_flete_cctfa) - cf.total_cpcfa) ELSE 0 END
+                        ELSE
+                            COALESCE(SUM(ABS(e.total_flete_cctfa - cd.valor_cpdfa))
+                                     FILTER (WHERE e.total_flete_cctfa != cd.valor_cpdfa), 0)
+                    END
                     FROM cxp_det_flete_cons d
                     INNER JOIN cxp_detall_factur cd     ON d.ide_cpdfa = cd.ide_cpdfa
                     INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
                     WHERE d.ide_cpcfc = cc.ide_cpcfc
-                      AND e.total_flete_cctfa != cd.valor_cpdfa
                 ) AS diferencia_total,
                 cc.hora_ingre
             FROM cxp_cab_flete_cons cc
@@ -308,6 +356,18 @@ export class FleteConsolidadoService {
         `);
         qDet.addIntParam(1, ideCpcfc);
         const envios = await this.dataSource.createSelectQuery(qDet);
+
+        // Con 1 solo envío el ide_cpdfa vinculado puede ser solo una de varias líneas
+        // agrupadas por IVA (no toda la factura) - ahí "facturado" es el total de la factura,
+        // no esa línea puntual. Con 2+ envíos cada línea sí es 1 a 1, se deja tal cual.
+        if (envios.length === 1) {
+            const totalFactura = Number(cabecera.total_cpcfa);
+            const cobrado = Number(envios[0].total_flete_cctfa);
+            envios[0].valor_cpdfc = totalFactura;
+            envios[0].diferencia_flete = cobrado !== totalFactura ? Math.abs(cobrado - totalFactura) : null;
+            envios[0].tipo_diferencia_flete =
+                cobrado > totalFactura ? 'Cobro más' : cobrado < totalFactura ? 'Cobro menos' : null;
+        }
 
         return { ...cabecera, envios };
     }
