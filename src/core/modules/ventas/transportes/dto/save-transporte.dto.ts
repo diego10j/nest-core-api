@@ -12,6 +12,25 @@ export class SetActivoTransDto {
     activo: boolean;
 }
 
+/** Reemplaza la imagen de guía de un envío ya subida por error, sin tocar su estado. */
+export class ActualizarImagenEnvioDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cctfa: number;
+
+    @IsString()
+    @IsNotEmpty()
+    path_imagen_guia_cctfa: string;
+}
+
+/** Borra la imagen de guía de un envío y lo regresa a PENDIENTE (ide_cceen = 1) para poder
+ * volver a subirla desde el detalle de la factura de venta. */
+export class EliminarImagenEnvioDto {
+    @IsInt()
+    @IsNotEmpty()
+    ide_cctfa: number;
+}
+
 // ─── Tarifa individual (usado en el array del save completo) ──────
 
 export class SaveTarifaItemDto {

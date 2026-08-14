@@ -25,6 +25,8 @@ import {
     SaveRutaDto,
     SaveTransporteCompletoDto,
     SetActivoTransDto,
+    EliminarImagenEnvioDto,
+    ActualizarImagenEnvioDto,
     ActualizarTransportistaEnvioDto,
 } from './dto/save-transporte.dto';
 import { TransportesSaveService } from './transportes-save.service';
@@ -152,6 +154,20 @@ export class TransportesController {
     @ApiOperation({ summary: 'Cambiar estado de un envío (activo = PENDIENTE, inactivo = PROBLEMA)' })
     setActivoEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: SetActivoTransDto) {
         return this.saveService.setActivoEnvio({ ...h, ...dtoIn });
+    }
+
+    @Post('actualizarImagenEnvio')
+    @Auth()
+    @ApiOperation({ summary: 'Reemplaza la imagen de guía de un envío ya subida por error (subida previa vía uploadImagenEnvio)' })
+    actualizarImagenEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: ActualizarImagenEnvioDto) {
+        return this.saveService.actualizarImagenEnvio({ ...h, ...dtoIn });
+    }
+
+    @Post('eliminarImagenEnvio')
+    @Auth()
+    @ApiOperation({ summary: 'Borra la imagen de guía de un envío y lo regresa a PENDIENTE para poder volver a subirla' })
+    eliminarImagenEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: EliminarImagenEnvioDto) {
+        return this.saveService.eliminarImagenEnvio({ ...h, ...dtoIn });
     }
 
     @Get('getFacturasSinEnvio')

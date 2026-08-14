@@ -23,8 +23,14 @@ import {
     SaveRutaDto,
     SaveTransporteCompletoDto,
     SetActivoTransDto,
+    EliminarImagenEnvioDto,
+    ActualizarImagenEnvioDto,
     ActualizarTransportistaEnvioDto,
 } from './dto/save-transporte.dto';
+
+/** ide_cceen = 1 (PENDIENTE, ver script ven_transporte.sql) - estado al que se regresa un
+ * envío cuando se le borra la imagen de guía, para que quede pendiente de subir una nueva. */
+const ESTADO_ENVIO_PENDIENTE = 1;
 
 @Injectable()
 export class TransportesSaveService extends BaseService {
@@ -271,6 +277,53 @@ export class TransportesSaveService extends BaseService {
             `UPDATE cxc_transporte_factura SET ide_cceen = $1 WHERE ide_cctfa = $2`,
             [dtoIn.activo ? 1 : 6, dtoIn.ide],
         );
+        return { message: 'ok' };
+    }
+
+    /** Borra el archivo de una imagen de guía/evidencia de envío en disco, si existe. */
+    private eliminarArchivoImagenEnvio(fileName: string | null) {
+        if (!fileName) return;
+        const imagenPath = path.join(envs.pathDrive, 'ventas', 'envios', fileName);
+        if (fs.existsSync(imagenPath)) {
+            fs.unlinkSync(imagenPath);
+        }
+    }
+
+    /** Reemplaza la imagen de guía de un envío ya subida por error (subida previa vía
+     * uploadImagenEnvio) - no toca el estado, solo actualiza el path y borra el archivo viejo. */
+    async actualizarImagenEnvio(dtoIn: ActualizarImagenEnvioDto & HeaderParamsDto) {
+        const actual = await this.dataSource.pool.query(
+            `SELECT path_imagen_guia_cctfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+        if (actual.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura SET path_imagen_guia_cctfa = $1 WHERE ide_cctfa = $2`,
+            [dtoIn.path_imagen_guia_cctfa, dtoIn.ide_cctfa],
+        );
+        this.eliminarArchivoImagenEnvio(actual.rows[0].path_imagen_guia_cctfa);
+        return { message: 'ok' };
+    }
+
+    /** Borra la imagen de guía de un envío (queda en NULL) y lo regresa a PENDIENTE, para que
+     * se pueda volver a subir una nueva desde el detalle de la factura de venta. */
+    async eliminarImagenEnvio(dtoIn: EliminarImagenEnvioDto & HeaderParamsDto) {
+        const actual = await this.dataSource.pool.query(
+            `SELECT path_imagen_guia_cctfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            [dtoIn.ide_cctfa],
+        );
+        if (actual.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura
+                SET path_imagen_guia_cctfa = NULL, ide_cceen = $1
+              WHERE ide_cctfa = $2`,
+            [ESTADO_ENVIO_PENDIENTE, dtoIn.ide_cctfa],
+        );
+        this.eliminarArchivoImagenEnvio(actual.rows[0].path_imagen_guia_cctfa);
         return { message: 'ok' };
     }
 
