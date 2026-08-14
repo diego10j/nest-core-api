@@ -592,17 +592,26 @@ export class DocumentosCxPService extends BaseService {
                    fp.nombre_cndfp AS nombre_forma_pago,
                    dc.nombre_cndfp AS nombre_dias_credito,
                    st.alterno_srtst,
-                   st.nombre_srtst
+                   st.nombre_srtst,
+                   c.nombre_cpefa AS estado_cpcfa
             FROM cxp_cabece_factur a
             INNER JOIN gen_persona p ON a.ide_geper = p.ide_geper
             INNER JOIN con_tipo_document t ON a.ide_cntdo = t.ide_cntdo
             LEFT JOIN con_deta_forma_pago fp ON a.ide_cndfp = fp.ide_cndfp
             LEFT JOIN con_deta_forma_pago dc ON a.ide_cndfp1 = dc.ide_cndfp
             LEFT JOIN sri_tipo_sustento_tributario st ON a.ide_srtst = st.ide_srtst
+            LEFT JOIN cxp_estado_factur c ON a.ide_cpefa = c.ide_cpefa
             WHERE a.ide_cpcfa = $1
         `);
         cabQuery.addIntParam(1, ide_cpcfa);
         const cabecera = await this.dataSource.createSingleQuery(cabQuery);
+        if (cabecera) {
+            // Anulada se resuelve contra la variable de sistema (no un valor fijo) para no
+            // desincronizarse si algún ambiente la reconfigura, igual que el resto de queries
+            // de este servicio que filtran por p_cxp_estado_factura_anulada.
+            cabecera.anulada =
+                Number(cabecera.ide_cpefa) === Number(this.variables.get('p_cxp_estado_factura_anulada'));
+        }
 
         const detQuery = new SelectQuery(`
             SELECT d.ide_cpdfa,
@@ -665,6 +674,8 @@ export class DocumentosCxPService extends BaseService {
                    a.observacion_cpdtr AS observacion,
                    c.ide_tecba,
                    a.ide_teclb,
+                   c.ide_cnccc,
+                   ccc.numero_cnccc,
                    icb.foto_teincb                 AS comprobante_foto,
                    icb.num_comprobante_teincb      AS comprobante_numero,
                    icb.tipo_trns_teincb            AS comprobante_tipo,
@@ -688,6 +699,7 @@ export class DocumentosCxPService extends BaseService {
             LEFT JOIN tes_banco e ON d.ide_teban = e.ide_teban
             LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb = f.ide_tettb
             LEFT JOIN tes_info_comprobante_banco icb ON icb.ide_teclb = a.ide_teclb
+            LEFT JOIN con_cab_comp_cont ccc ON ccc.ide_cnccc = c.ide_cnccc
             WHERE a.numero_pago_cpdtr > 0
               AND a.ide_cpcfa = $1
             ORDER BY a.fecha_trans_cpdtr
