@@ -302,17 +302,33 @@ export class FleteConsolidadoService {
                 cc.ide_geper,
                 p.nom_geper AS proveedor,
                 p.identificac_geper,
+                t.logo_vgtra AS logo_transportista,
                 cc.fecha_desde_cpcfc,
                 cc.fecha_hasta_cpcfc,
                 cc.ide_cpcfa,
                 cf.numero_cpcfa,
                 cf.total_cpcfa,
                 cf.pagado_cpcfa,
+                cf.ide_cnccc,
+                ccc.numero_cnccc,
                 cc.ide_teclb
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
+            -- El logo se resuelve por ide_vgtra (PK real de ven_transporte, igual que en
+            -- getEnviosParaFacturar/facturas.service.ts), NO por ide_geper: ven_transporte.ide_geper
+            -- no está garantizado poblado para todo transportista, a diferencia de ide_vgtra que
+            -- ya viene enlazado desde el envío (cxc_transporte_factura) que originó este proceso.
+            LEFT JOIN LATERAL (
+                SELECT d.ide_cctfa
+                FROM cxp_det_flete_cons d
+                WHERE d.ide_cpcfc = cc.ide_cpcfc
+                LIMIT 1
+            ) pe ON TRUE
+            LEFT JOIN cxc_transporte_factura ctf ON ctf.ide_cctfa = pe.ide_cctfa
+            LEFT JOIN ven_transporte t          ON t.ide_vgtra = ctf.ide_vgtra
             INNER JOIN cxp_cabece_factur cf     ON cc.ide_cpcfa = cf.ide_cpcfa
+            LEFT JOIN con_cab_comp_cont ccc     ON ccc.ide_cnccc = cf.ide_cnccc
             WHERE cc.ide_cpcfc = $1
               AND cc.ide_empr = $2
               AND cc.ide_sucu = $3
