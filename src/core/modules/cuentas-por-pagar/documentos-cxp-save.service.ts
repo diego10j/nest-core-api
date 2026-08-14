@@ -301,7 +301,11 @@ export class DocumentosCxPSaveService extends BaseService {
             const ideCpcfa = isUpdate
                 ? Number(cabecera.ide_cpcfa)
                 : await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, 1, dtoIn.login);
-            const baseIdeCpdfa = await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login);
+            // En update, el detalle se reconcilia diferencialmente (ver buildDiffDetalle) y
+            // reserva sus propios PKs nuevos ahí mismo, solo para las líneas realmente nuevas.
+            const baseIdeCpdfa = !isUpdate
+                ? await this.dataSource.getSeqTable(`${MODULE}_${TABLE_DET}`, PK_DET, detalles.length, dtoIn.login)
+                : null;
             const baseIdeReembolso = reembolsos.length > 0
                 ? await this.dataSource.getSeqTable(`${MODULE}_${TABLE_CAB}`, PK_CAB, reembolsos.length, dtoIn.login)
                 : null;
@@ -332,9 +336,15 @@ export class DocumentosCxPSaveService extends BaseService {
                 listQuery.push(sriHeaderQuery);
             }
 
-            detalles.forEach((det, idx) => {
-                listQuery.push(this.buildInsertDetalle(ideCpcfa, baseIdeCpdfa + idx, det, dtoIn));
-            });
+            let detallesIdeCpdfa: number[] | undefined;
+            if (isUpdate) {
+                listQuery.push(...(await this.buildDiffDetalle(ideCpcfa, detalles, dtoIn)));
+            } else {
+                detallesIdeCpdfa = detalles.map((_, idx) => baseIdeCpdfa! + idx);
+                detalles.forEach((det, idx) => {
+                    listQuery.push(this.buildInsertDetalle(ideCpcfa, baseIdeCpdfa! + idx, det, dtoIn));
+                });
+            }
 
             for (let idx = 0; idx < reembolsos.length; idx++) {
                 listQuery.push(await this.buildInsertReembolso(ideCpcfa, baseIdeReembolso! + idx, reembolsos[idx], cabecera, dtoIn));
@@ -389,6 +399,10 @@ export class DocumentosCxPSaveService extends BaseService {
                 kardex_generado: generaComprobanteInv,
                 totales,
                 clave_acceso_sri: claveAccesoSri,
+                // Solo en creación: ide_cpdfa generado por línea, en el mismo orden que
+                // dtoIn.detalles - permite a callers como crearFacturaFleteConsolidada
+                // vincular cada línea recién creada sin adivinar el PK.
+                detalles_ide_cpdfa: detallesIdeCpdfa,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -925,17 +939,14 @@ export class DocumentosCxPSaveService extends BaseService {
     }
 
     /**
-     * En update se recrean las dependencias del documento: detalles, filas de
-     * reembolso, el detalle de la transacción CxP (solo el cargo original,
-     * numero_pago = 0) y el comprobante de inventario.
+     * En update se recrean las dependencias del documento: filas de reembolso, el
+     * detalle de la transacción CxP (solo el cargo original, numero_pago = 0) y el
+     * comprobante de inventario. El detalle (cxp_detall_factur) NO se recrea acá -
+     * se actualiza de forma diferencial en buildDiffDetalle para preservar el
+     * ide_cpdfa de las líneas que no cambiaron (ver saveDocumento).
      */
     private buildDeleteDependencias(ideCpcfa: number, ideCpctr: number | null): DeleteQuery[] {
         const queries: DeleteQuery[] = [];
-
-        const delDetalles = new DeleteQuery(`${MODULE}_${TABLE_DET}`);
-        delDetalles.where = `${PK_CAB} = $1`;
-        delDetalles.addIntParam(1, ideCpcfa);
-        queries.push(delDetalles);
 
         const delReembolsos = new DeleteQuery(`${MODULE}_${TABLE_CAB}`);
         delReembolsos.where = `ide_rem_cpcfa = $1`;
@@ -993,6 +1004,148 @@ export class DocumentosCxPSaveService extends BaseService {
         q.values.set('fecha_ingre', getCurrentDate());
         q.values.set('hora_ingre', getCurrentTime());
         return q;
+    }
+
+    private buildUpdateDetalle(
+        ideCpcfa: number,
+        ideCpdfa: number,
+        det: DetalleDocumentoCxPDto,
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): UpdateQuery {
+        const q = new UpdateQuery(`${MODULE}_${TABLE_DET}`, PK_DET, dtoIn);
+        q.where = `${PK_DET} = $1 AND ${PK_CAB} = $2`;
+        q.addIntParam(1, ideCpdfa);
+        q.addIntParam(2, ideCpcfa);
+        q.values.set('ide_inarti', det.ide_inarti);
+        q.values.set('ide_inuni', det.ide_inuni ?? null);
+        q.values.set('cantidad_cpdfa', det.cantidad_cpdfa);
+        q.values.set('precio_cpdfa', det.precio_cpdfa);
+        q.values.set('valor_cpdfa', Number(((det.cantidad_cpdfa || 0) * (det.precio_cpdfa || 0)).toFixed(2)));
+        q.values.set('iva_inarti_cpdfa', det.iva_inarti_cpdfa);
+        q.values.set('observacion_cpdfa', det.observacion_cpdfa ?? null);
+        q.values.set('secuencial_cpdfa', det.secuencial_cpdfa ?? null);
+        q.values.set('alter_tribu_cpdfa', det.alter_tribu_cpdfa ?? '00');
+        return q;
+    }
+
+    /**
+     * Antes de borrar líneas de cxp_detall_factur (ver buildDiffDetalle), verifica que
+     * ninguna esté vinculada a un proceso de "Registrar Pago Consolidado" activo
+     * (cxp_det_flete_cons.ide_cpdfa, ON DELETE RESTRICT) y lanza un error claro en vez
+     * de dejar que reviente como violación de FK cruda contra el usuario.
+     */
+    private async validarSinReferenciasHijas(ideCpdfaEliminar: number[]): Promise<void> {
+        const q = new SelectQuery(
+            `SELECT ide_cpcfc FROM cxp_det_flete_cons WHERE ide_cpdfa = ANY($1) LIMIT 1`,
+        );
+        q.addParam(1, ideCpdfaEliminar);
+        const row = await this.dataSource.createSingleQuery(q);
+        if (row) {
+            throw new BadRequestException(
+                `Esta línea pertenece al proceso de Pago Consolidado de Flete #${row.ide_cpcfc}. ` +
+                'Anule ese proceso primero si necesita modificarla o eliminarla.',
+            );
+        }
+    }
+
+    /**
+     * Actualización diferencial de cxp_detall_factur para el update de un documento:
+     * a diferencia de las demás dependencias (ver buildDeleteDependencias), el detalle
+     * NO se borra y recrea completo en cada edición - se compara contra lo que ya
+     * existe en la BD para preservar el ide_cpdfa de las líneas no tocadas. Esto es lo
+     * que permite que otras tablas (como cxp_det_flete_cons) puedan referenciar una
+     * línea de factura de forma estable entre ediciones.
+     *  - Línea entrante CON ide_cpdfa que ya existe en este documento → UPDATE en el
+     *    lugar (mismo PK).
+     *  - Línea entrante SIN ide_cpdfa → INSERT (PK nuevo).
+     *  - Línea existente en BD que no vino en el payload → DELETE (solo esa fila).
+     *  - Línea entrante CON ide_cpdfa que NO pertenece a este documento (payload
+     *    manipulado o repetido) → rechazada de una, sin escribir nada.
+     */
+    /**
+     * true si `det` no aporta ningún cambio real respecto a la fila ya guardada - en ese caso
+     * buildDiffDetalle se salta el UPDATE por completo. Sin esto, guardar una edición sin tocar
+     * una línea igual la marcaría como "modificada" (UpdateQuery pisa usuario_actua/hora_actua
+     * de forma automática, ver update-query.ts) y generaría una escritura MVCC sin necesidad.
+     */
+    private detalleSinCambios(det: DetalleDocumentoCxPDto, existente: Record<string, any>): boolean {
+        const norm = (v: unknown) => (v === undefined ? null : v);
+        return (
+            Number(det.ide_inarti) === Number(existente.ide_inarti) &&
+            Number(norm(det.ide_inuni) ?? -1) === Number(existente.ide_inuni ?? -1) &&
+            Number(det.cantidad_cpdfa) === Number(existente.cantidad_cpdfa) &&
+            Number(det.precio_cpdfa) === Number(existente.precio_cpdfa) &&
+            Number(det.iva_inarti_cpdfa) === Number(existente.iva_inarti_cpdfa) &&
+            String(norm(det.observacion_cpdfa) ?? '') === String(existente.observacion_cpdfa ?? '') &&
+            String(norm(det.secuencial_cpdfa) ?? '') === String(existente.secuencial_cpdfa ?? '') &&
+            String(det.alter_tribu_cpdfa ?? '00') === String(existente.alter_tribu_cpdfa ?? '00')
+        );
+    }
+
+    private async buildDiffDetalle(
+        ideCpcfa: number,
+        detalles: DetalleDocumentoCxPDto[],
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): Promise<Query[]> {
+        const qExistentes = new SelectQuery(`
+            SELECT ${PK_DET}, ide_inarti, ide_inuni, cantidad_cpdfa, precio_cpdfa, iva_inarti_cpdfa,
+                   observacion_cpdfa, secuencial_cpdfa, alter_tribu_cpdfa
+            FROM ${MODULE}_${TABLE_DET}
+            WHERE ${PK_CAB} = $1
+        `);
+        qExistentes.addIntParam(1, ideCpcfa);
+        const existentes: Record<string, any>[] = await this.dataSource.createSelectQuery(qExistentes);
+        const existentesPorId = new Map(existentes.map((r) => [Number(r.ide_cpdfa), r]));
+        const idsExistentes = new Set(existentesPorId.keys());
+
+        const toUpdate = detalles.filter((d) => isDefined(d.ide_cpdfa));
+        const toInsert = detalles.filter((d) => !isDefined(d.ide_cpdfa));
+
+        const idsIncoming = new Set<number>();
+        for (const d of toUpdate) {
+            const id = Number(d.ide_cpdfa);
+            if (!idsExistentes.has(id)) {
+                throw new BadRequestException(
+                    `La línea ide_cpdfa=${id} no pertenece al documento ide_cpcfa=${ideCpcfa}.`,
+                );
+            }
+            if (idsIncoming.has(id)) {
+                throw new BadRequestException(`La línea ide_cpdfa=${id} está repetida en el detalle enviado.`);
+            }
+            idsIncoming.add(id);
+        }
+
+        const toDeleteIds = [...idsExistentes].filter((id) => !idsIncoming.has(id));
+        if (toDeleteIds.length > 0) {
+            await this.validarSinReferenciasHijas(toDeleteIds);
+        }
+
+        const queries: Query[] = [];
+
+        if (toDeleteIds.length > 0) {
+            const delDetalles = new DeleteQuery(`${MODULE}_${TABLE_DET}`);
+            delDetalles.where = `${PK_DET} = ANY($1) AND ${PK_CAB} = $2`;
+            delDetalles.addParam(1, toDeleteIds);
+            delDetalles.addIntParam(2, ideCpcfa);
+            queries.push(delDetalles);
+        }
+
+        for (const d of toUpdate) {
+            const id = Number(d.ide_cpdfa);
+            if (this.detalleSinCambios(d, existentesPorId.get(id)!)) continue;
+            queries.push(this.buildUpdateDetalle(ideCpcfa, id, d, dtoIn));
+        }
+
+        if (toInsert.length > 0) {
+            const baseIdeCpdfaNuevo = await this.dataSource.getSeqTable(
+                `${MODULE}_${TABLE_DET}`, PK_DET, toInsert.length, dtoIn.login,
+            );
+            toInsert.forEach((det, idx) => {
+                queries.push(this.buildInsertDetalle(ideCpcfa, baseIdeCpdfaNuevo + idx, det, dtoIn));
+            });
+        }
+
+        return queries;
     }
 
     /**

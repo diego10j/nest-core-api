@@ -220,11 +220,12 @@ export class FleteConsolidadoService {
                 cf.total_cpcfa,
                 (SELECT COUNT(*) FROM cxp_det_flete_cons d WHERE d.ide_cpcfc = cc.ide_cpcfc) AS num_envios,
                 (
-                    SELECT COALESCE(SUM(ABS(e.total_flete_cctfa - d.valor_cpdfc)), 0)
+                    SELECT COALESCE(SUM(ABS(e.total_flete_cctfa - cd.valor_cpdfa)), 0)
                     FROM cxp_det_flete_cons d
+                    INNER JOIN cxp_detall_factur cd     ON d.ide_cpdfa = cd.ide_cpdfa
                     INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
                     WHERE d.ide_cpcfc = cc.ide_cpcfc
-                      AND e.total_flete_cctfa != d.valor_cpdfc
+                      AND e.total_flete_cctfa != cd.valor_cpdfa
                 ) AS diferencia_total,
                 cc.hora_ingre
             FROM cxp_cab_flete_cons cc
@@ -280,24 +281,25 @@ export class FleteConsolidadoService {
             SELECT
                 d.ide_cpdfc,
                 d.ide_cctfa,
-                d.valor_cpdfc,
-                d.observacion_cpdfc,
+                cd.valor_cpdfa       AS valor_cpdfc,
+                cd.observacion_cpdfa AS observacion_cpdfc,
                 e.total_flete_cctfa,
                 b.nom_geper AS cliente,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 CASE
-                    WHEN e.total_flete_cctfa != d.valor_cpdfc
-                    THEN ABS(e.total_flete_cctfa - d.valor_cpdfc)
+                    WHEN e.total_flete_cctfa != cd.valor_cpdfa
+                    THEN ABS(e.total_flete_cctfa - cd.valor_cpdfa)
                     ELSE NULL
                 END AS diferencia_flete,
                 CASE
-                    WHEN e.total_flete_cctfa > d.valor_cpdfc THEN 'Cobro más'
-                    WHEN e.total_flete_cctfa < d.valor_cpdfc THEN 'Cobro menos'
+                    WHEN e.total_flete_cctfa > cd.valor_cpdfa THEN 'Cobro más'
+                    WHEN e.total_flete_cctfa < cd.valor_cpdfa THEN 'Cobro menos'
                     ELSE NULL
                 END AS tipo_diferencia_flete
             FROM cxp_det_flete_cons d
-            INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
+            INNER JOIN cxp_detall_factur cd      ON d.ide_cpdfa = cd.ide_cpdfa
+            INNER JOIN cxc_transporte_factura e  ON d.ide_cctfa = e.ide_cctfa
             INNER JOIN cxc_cabece_factura f      ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN cxc_datos_fac df          ON f.ide_ccdaf = df.ide_ccdaf
             INNER JOIN gen_persona b             ON f.ide_geper = b.ide_geper

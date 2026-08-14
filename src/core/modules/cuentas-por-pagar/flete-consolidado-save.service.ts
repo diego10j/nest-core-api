@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
@@ -45,6 +45,12 @@ export class FleteConsolidadoSaveService {
             isUpdate: false,
         });
         const ideCpcfa = resultado.ide_cpcfa;
+        const detallesIdeCpdfa = resultado.detalles_ide_cpdfa;
+        if (!detallesIdeCpdfa || detallesIdeCpdfa.length !== dtoIn.detalles.length) {
+            throw new InternalServerErrorException(
+                'No se pudo determinar el ide_cpdfa de las líneas creadas para la factura consolidada.',
+            );
+        }
 
         // 2. Vincular los N envíos + tabla de control, en su propia transacción.
         const ideCpcfc = await this.dataSource.getSeqTable('cxp_cab_flete_cons', 'ide_cpcfc', 1, dtoIn.login);
@@ -68,8 +74,11 @@ export class FleteConsolidadoSaveService {
             detQuery.values.set('ide_cpdfc', baseIdeCpdfc + idx);
             detQuery.values.set('ide_cpcfc', ideCpcfc);
             detQuery.values.set('ide_cctfa', envio.ide_cctfa);
-            detQuery.values.set('valor_cpdfc', envio.valor);
-            detQuery.values.set('observacion_cpdfc', envio.observacion ?? null);
+            // Vínculo real a la línea de la factura (mismo orden que dtoIn.detalles, ambos
+            // construidos por el frontend a partir del mismo enviosState) - "valor facturado"
+            // se lee siempre en vivo desde cxp_detall_factur vía este ide_cpdfa, nunca de una
+            // copia (ver flete-consolidado.service.ts getFleteConsolidadoById/getFletesConsolidados).
+            detQuery.values.set('ide_cpdfa', detallesIdeCpdfa[idx]);
             listQuery.push(detQuery);
 
             // total_flete_real_cctfa: mismo campo que ya usa el flujo de un solo envío para
