@@ -1325,6 +1325,10 @@ export class FacturasService extends BaseService {
         if (!resCabecera) {
             throw new Error(`No se encontró la factura con ide_cccfa: ${dtoIn.ide_cccfa}`);
         }
+        // ide_ccefa = 1 es el valor fijo de "anulada" para cxc_cabece_factura en todo este
+        // servicio (ver filtros "AND ide_ccefa = 1" más arriba) - no es una variable de sistema
+        // como p_cxc_estado_factura_normal, así que se compara directo contra el literal.
+        resCabecera.anulada = Number(resCabecera.ide_ccefa) === 1;
 
         // Pagos asociados a la factura — valores desde tesorería (tes_cab_libr_banc),
         // anclados por cxc_detall_transa para garantizar imputación correcta por factura.
