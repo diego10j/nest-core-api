@@ -66,6 +66,23 @@ export class CxpTransaccionesService extends BaseService {
         const factura = await this.dataSource.createSingleQuery(query);
 
         if (!factura) {
+            // El JOIN contra cxp_cabece_transa falla tanto si el documento no existe como si
+            // existe pero ya no tiene transacción CxP activa (anularDocumento la borra al
+            // anular) - se distingue para no reportar "no encontrado" sobre un documento que
+            // sí existe, solo que ya no es pagable.
+            const docQuery = new SelectQuery(`
+                SELECT ide_cpcfa FROM cxp_cabece_factur
+                WHERE ide_cpcfa = $1 AND ide_empr = $2 AND ide_sucu = $3
+            `);
+            docQuery.addIntParam(1, dtoIn.ideCpcfa);
+            docQuery.addIntParam(2, dtoIn.ideEmpr);
+            docQuery.addIntParam(3, dtoIn.ideSucu);
+            const doc = await this.dataSource.createSingleQuery(docQuery);
+            if (doc) {
+                throw new NotFoundException(
+                    'El documento está anulado (o no tiene una cuenta por pagar activa) y no admite registrar un pago.',
+                );
+            }
             throw new NotFoundException('Documento no encontrado');
         }
 

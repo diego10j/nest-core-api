@@ -6,7 +6,7 @@ import { ArrayMinSize, IsArray, IsInt } from 'class-validator';
  * el binario del archivo. */
 export class PrepararXmlFleteConsolidadoDto {
     @IsArray()
-    @ArrayMinSize(2, { message: 'Debe seleccionar al menos 2 envíos para consolidar en una factura' })
+    @ArrayMinSize(1, { message: 'Debe seleccionar al menos un envío' })
     @IsInt({ each: true })
     @Transform(({ value }) =>
         Array.isArray(value)
