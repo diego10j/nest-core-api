@@ -19,12 +19,22 @@ export class CuentasPorPagarDto extends QueryOptionsDto {
 }
 
 /**
- * Cuentas por pagar pendientes (saldo > 0) de un proveedor, sin filtro de fechas.
- * Hereda las opciones de paginación/orden/filtro para integrarse con DataTableQuery.
+ * Cuentas por pagar pendientes (saldo > 0) de un proveedor. El rango de fechas es opcional
+ * (filtra por fecha de emisión de la factura) - si no se envía, se listan TODAS las
+ * obligaciones vigentes del proveedor, igual que antes. Hereda las opciones de
+ * paginación/orden/filtro para integrarse con DataTableQuery.
  */
 export class GetCuentasPorPagarProveedorPendientesDto extends QueryOptionsDto {
     /** FK → gen_persona: proveedor del que se listan las obligaciones pendientes */
     @IsInt()
     @IsNotEmpty()
     ide_geper: number;
+
+    @IsDateString()
+    @IsOptional()
+    fechaInicio?: string;
+
+    @IsDateString()
+    @IsOptional()
+    fechaFin?: string;
 }

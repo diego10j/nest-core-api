@@ -162,14 +162,17 @@ export class CuentasPorPagarService extends BaseService {
   }
 
   /**
-   * Cuentas por pagar pendientes (saldo > 0) de un proveedor, ordenadas por
-   * urgencia de pago. Paridad con ServicioProveedor.getSqlCuentasPorPagar del
-   * legacy, pero sin el filtro artificial por rango de fechas: se listan TODAS
-   * las obligaciones vigentes del proveedor (incluye documentos con fecha de
-   * emisión antigua o futura). Usa createQuery para integrarse con DataTableQuery.
+   * Cuentas por pagar pendientes (saldo > 0) de un proveedor, ordenadas por urgencia de pago.
+   * Paridad con ServicioProveedor.getSqlCuentasPorPagar del legacy. El rango de fechas
+   * (fecha de emisión) es OPCIONAL: si no se envía, se listan TODAS las obligaciones vigentes
+   * del proveedor (incluye documentos con fecha de emisión antigua o futura) - a propósito,
+   * para no ocultar deuda vieja por defecto. Usa createQuery para integrarse con DataTableQuery.
    */
   async getCuentasPorPagarProveedorPendientes(dtoIn: GetCuentasPorPagarProveedorPendientesDto & HeaderParamsDto) {
     const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
+    const filtroFecha = dtoIn.fechaInicio && dtoIn.fechaFin
+      ? 'AND COALESCE(cf.fecha_emisi_cpcfa, ct.fecha_trans_cpctr) BETWEEN $4 AND $5'
+      : '';
     const query = new SelectQuery(
       `
     SELECT
@@ -230,6 +233,7 @@ export class CuentasPorPagarService extends BaseService {
         ct.ide_geper = $1
         AND dt.ide_sucu = $2
         AND ct.ide_empr = $3
+        ${filtroFecha}
 
     GROUP BY
         ct.ide_cpctr,
@@ -263,6 +267,10 @@ export class CuentasPorPagarService extends BaseService {
     query.addIntParam(1, dtoIn.ide_geper);
     query.addIntParam(2, dtoIn.ideSucu);
     query.addIntParam(3, dtoIn.ideEmpr);
+    if (dtoIn.fechaInicio && dtoIn.fechaFin) {
+      query.addStringParam(4, dtoIn.fechaInicio);
+      query.addStringParam(5, dtoIn.fechaFin);
+    }
     return this.dataSource.createQuery(query);
   }
 
