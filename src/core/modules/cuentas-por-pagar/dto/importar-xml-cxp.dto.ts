@@ -11,6 +11,11 @@ export interface DetalleXmlCxP {
     /** '1' = grava IVA, '-1' = tarifa 0, '0' = no objeto */
     iva_inarti_cpdfa: '1' | '-1' | '0';
     codigo_principal?: string;
+    /** <detalle><codigoAuxiliar> - solo para mostrar en el RIDE, no se persiste. */
+    codigo_auxiliar?: string;
+    /** <detalle><descuento> de esa línea - solo para mostrar en el RIDE, no se persiste
+     * (los detalles ya llegan netos en valor_cpdfa, ver nota de totalDescuento abajo). */
+    descuento_cpdfa?: number;
 }
 
 export interface TotalesXmlCxP {
@@ -22,6 +27,37 @@ export interface TotalesXmlCxP {
     tarifa_iva: number;
     /** <infoFactura><totalDescuento> del XML - suma de los <descuento> de cada línea. */
     descuento: number;
+}
+
+/** Datos del emisor (proveedor) tal como vienen en el propio XML - solo para el RIDE, ya que
+ * el proveedor real a usar en el documento CxP es el que ya existe en gen_persona (ver
+ * getProveedorPorRuc). */
+export interface EmisorXmlCxP {
+    ruc: string;
+    razonSocial: string;
+    nombreComercial?: string;
+    direccion?: string;
+}
+
+/** Metadatos del comprobante electrónico para el RIDE (clave de acceso, autorización,
+ * ambiente) - autorizacio_cpcfa (el campo que sí se persiste) puede ser la clave de acceso o
+ * el número de autorización corto según lo que traiga el XML; acá se separan para mostrar
+ * ambos si están disponibles. */
+export interface ComprobanteXmlCxP {
+    tipo: string;
+    numero: string;
+    claveAcceso: string;
+    autorizacion: string;
+    fechaEmision: string;
+    fechaAutorizacion?: string;
+    ambiente?: string;
+}
+
+/** Comprador tal como viene en el XML (no necesariamente el mismo "cliente" del envío en el
+ * flujo de Registrar Envíos) - puramente informativo para el RIDE. */
+export interface CompradorXmlCxP {
+    razonSocial?: string;
+    identificacion?: string;
 }
 
 export interface ImportarXmlCxPResult {
@@ -42,4 +78,8 @@ export interface ImportarXmlCxPResult {
     // Detalles
     detalles: DetalleXmlCxP[];
     totales: TotalesXmlCxP;
+    // Solo para el RIDE (vista previa) - no se usan al guardar el documento
+    emisor: EmisorXmlCxP;
+    comprobante: ComprobanteXmlCxP;
+    comprador: CompradorXmlCxP;
 }

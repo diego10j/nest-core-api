@@ -7,6 +7,13 @@ import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { GetEnviosSinFacturaDto } from './dto/get-envios-sin-factura.dto';
 import { GetFletesConsolidadosDto } from './dto/get-fletes-consolidados.dto';
+import {
+    DetalleXmlCxP,
+    TotalesXmlCxP,
+    EmisorXmlCxP,
+    ComprobanteXmlCxP,
+    CompradorXmlCxP,
+} from './dto/importar-xml-cxp.dto';
 import { EnvioFacturaCxPService, ArticuloLogistica, ProductoPreFactura } from './envio-factura-cxp.service';
 
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
@@ -58,6 +65,16 @@ export interface PrefillFacturaFleteConsolidada {
      * (no hay ambigüedad posible con un único envío candidato) - si trae más de una, se avisa
      * pero se continúa igual, agrupando todo contra ese envío. */
     advertencia?: string;
+    /** Data cruda del XML tal cual viene en el comprobante, solo para el RIDE (vista previa) -
+     * no se usa para armar/guardar la factura (eso sigue viniendo de los campos de arriba,
+     * ya resueltos contra la BD). */
+    preview: {
+        emisor: EmisorXmlCxP;
+        comprobante: ComprobanteXmlCxP;
+        comprador: CompradorXmlCxP;
+        detalles: DetalleXmlCxP[];
+        totales: TotalesXmlCxP;
+    };
 }
 
 /**
@@ -175,6 +192,13 @@ export class FleteConsolidadoService {
             articulo,
             descuento_cpcfa: parsed.totales.descuento,
             total_cpcfa: parsed.totales.total,
+            preview: {
+                emisor: parsed.emisor,
+                comprobante: parsed.comprobante,
+                comprador: parsed.comprador,
+                detalles: parsed.detalles,
+                totales: parsed.totales,
+            },
         };
 
         if (envios.length === 1) {

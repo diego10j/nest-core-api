@@ -54,6 +54,14 @@ export class DocumentosCxPXmlService {
                 .replace(/&lt;/g, '<');
 
             let $ = cheerio.load(xmlExterior, { xml: true });
+
+            // El sobre <autorizacion> (fechaAutorizacion, ambiente en texto PRODUCCION/PRUEBAS)
+            // nunca viene en CDATA - solo <comprobante> puede estarlo - así que estos dos se
+            // leen del primer parseo, antes de reasignar $ más abajo (si el fallback CDATA
+            // reemplaza $ por el <factura> interior, el sobre <autorizacion> ya no es alcanzable).
+            const fechaAutorizacionSobre = this.texto($, 'fechaAutorizacion');
+            const ambienteSobre = this.texto($, 'ambiente');
+
             if (!this.texto($, 'codDoc')) {
                 const comprobanteInterior = $('comprobante').first().text().trim();
                 if (comprobanteInterior) {
@@ -116,6 +124,8 @@ export class DocumentosCxPXmlService {
                     valor_cpdfa: this.numero(det.find('precioTotalSinImpuesto').first().text()),
                     iva_inarti_cpdfa: ivaInarti,
                     codigo_principal: det.find('codigoPrincipal').first().text().trim() || undefined,
+                    codigo_auxiliar: det.find('codigoAuxiliar').first().text().trim() || undefined,
+                    descuento_cpdfa: this.numero(det.find('descuento').first().text()),
                 });
             });
             if (detalles.length === 0) {
@@ -135,6 +145,16 @@ export class DocumentosCxPXmlService {
 
             const variables = await this.core.getVariables([VAR_TIPO_DOC_FACTURA]);
 
+            // Solo para el RIDE (vista previa) - el proveedor real a usar en el documento CxP
+            // sigue siendo el de gen_persona (getProveedorPorRuc), estos campos son tal cual
+            // vienen en el XML.
+            const claveAcceso = this.texto($, 'claveAcceso');
+            const razonSocialEmisor = this.texto($, 'razonSocial');
+            const nombreComercialEmisor = this.texto($, 'nombreComercial');
+            const direccionEmisor = this.texto($, 'dirEstablecimiento') || this.texto($, 'dirMatriz');
+            const razonSocialComprador = this.texto($, 'razonSocialComprador');
+            const identificacionComprador = this.texto($, 'identificacionComprador');
+
             return {
                 ide_geper: Number(proveedor.ide_geper),
                 nom_geper: proveedor.nom_geper,
@@ -148,6 +168,25 @@ export class DocumentosCxPXmlService {
                 dias_credito_cpcfa: diasCredito,
                 detalles,
                 totales: { ...totales, tarifa_iva: tarifaIva, descuento: descuentoXml },
+                emisor: {
+                    ruc,
+                    razonSocial: razonSocialEmisor || proveedor.nom_geper,
+                    nombreComercial: nombreComercialEmisor || undefined,
+                    direccion: direccionEmisor || undefined,
+                },
+                comprobante: {
+                    tipo: 'FACTURA',
+                    numero,
+                    claveAcceso: claveAcceso || autorizacion,
+                    autorizacion,
+                    fechaEmision,
+                    fechaAutorizacion: fechaAutorizacionSobre || undefined,
+                    ambiente: this.mapAmbiente(ambienteSobre),
+                },
+                comprador: {
+                    razonSocial: razonSocialComprador || undefined,
+                    identificacion: identificacionComprador || undefined,
+                },
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -204,6 +243,16 @@ export class DocumentosCxPXmlService {
         q.addStringParam(1, codigoSri);
         const row = await this.dataSource.createSingleQuery(q);
         return row ? Number(row.ide_cndfp) : null;
+    }
+
+    /** El sobre <autorizacion> trae "PRODUCCION"/"PRUEBAS" en texto; <infoTributaria> (fallback
+     * CDATA) lo trae como código numérico '1'/'2' - se normaliza a texto legible para el RIDE. */
+    private mapAmbiente(valor: string): string | undefined {
+        if (!valor) return undefined;
+        const v = valor.trim().toUpperCase();
+        if (v === '1') return 'PRUEBAS';
+        if (v === '2') return 'PRODUCCIÓN';
+        return v;
     }
 
     /** Mismo cálculo que el save: el IVA se recalcula localmente por tipo de línea */
