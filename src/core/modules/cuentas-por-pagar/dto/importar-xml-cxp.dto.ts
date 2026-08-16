@@ -36,7 +36,8 @@ export interface EmisorXmlCxP {
     ruc: string;
     razonSocial: string;
     nombreComercial?: string;
-    direccion?: string;
+    direccionMatriz?: string;
+    direccionEstablecimiento?: string;
 }
 
 /** Metadatos del comprobante electrónico para el RIDE (clave de acceso, autorización,
@@ -51,6 +52,8 @@ export interface ComprobanteXmlCxP {
     fechaEmision: string;
     fechaAutorizacion?: string;
     ambiente?: string;
+    /** 'NORMAL' | 'INDISPONIBILIDAD DEL SISTEMA' (<tipoEmision> del XML, normalizado a texto) */
+    emision?: string;
 }
 
 /** Comprador tal como viene en el XML (no necesariamente el mismo "cliente" del envío en el
@@ -58,6 +61,13 @@ export interface ComprobanteXmlCxP {
 export interface CompradorXmlCxP {
     razonSocial?: string;
     identificacion?: string;
+}
+
+/** <infoAdicional><campoAdicional nombre="..."> - campos libres que cada emisor define a su
+ * gusto (local, vendedor, zona, etc). Puramente informativo para el RIDE. */
+export interface InfoAdicionalXmlCxP {
+    nombre: string;
+    valor: string;
 }
 
 export interface ImportarXmlCxPResult {
@@ -82,4 +92,5 @@ export interface ImportarXmlCxPResult {
     emisor: EmisorXmlCxP;
     comprobante: ComprobanteXmlCxP;
     comprador: CompradorXmlCxP;
+    infoAdicional: InfoAdicionalXmlCxP[];
 }

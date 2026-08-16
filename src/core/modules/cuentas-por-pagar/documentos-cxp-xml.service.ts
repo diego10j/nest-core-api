@@ -151,9 +151,19 @@ export class DocumentosCxPXmlService {
             const claveAcceso = this.texto($, 'claveAcceso');
             const razonSocialEmisor = this.texto($, 'razonSocial');
             const nombreComercialEmisor = this.texto($, 'nombreComercial');
-            const direccionEmisor = this.texto($, 'dirEstablecimiento') || this.texto($, 'dirMatriz');
+            const dirMatrizEmisor = this.texto($, 'dirMatriz');
+            const dirEstablecimientoEmisor = this.texto($, 'dirEstablecimiento');
+            const tipoEmisionRaw = this.texto($, 'tipoEmision');
             const razonSocialComprador = this.texto($, 'razonSocialComprador');
             const identificacionComprador = this.texto($, 'identificacionComprador');
+
+            const infoAdicional: { nombre: string; valor: string }[] = [];
+            $('infoAdicional campoAdicional').each((_, el) => {
+                const campo = $(el);
+                const nombre = (campo.attr('nombre') || '').trim();
+                const valor = campo.text().trim();
+                if (nombre && valor) infoAdicional.push({ nombre, valor });
+            });
 
             return {
                 ide_geper: Number(proveedor.ide_geper),
@@ -172,7 +182,11 @@ export class DocumentosCxPXmlService {
                     ruc,
                     razonSocial: razonSocialEmisor || proveedor.nom_geper,
                     nombreComercial: nombreComercialEmisor || undefined,
-                    direccion: direccionEmisor || undefined,
+                    direccionMatriz: dirMatrizEmisor || undefined,
+                    direccionEstablecimiento:
+                        dirEstablecimientoEmisor && dirEstablecimientoEmisor !== dirMatrizEmisor
+                            ? dirEstablecimientoEmisor
+                            : undefined,
                 },
                 comprobante: {
                     tipo: 'FACTURA',
@@ -182,11 +196,13 @@ export class DocumentosCxPXmlService {
                     fechaEmision,
                     fechaAutorizacion: fechaAutorizacionSobre || undefined,
                     ambiente: this.mapAmbiente(ambienteSobre),
+                    emision: this.mapTipoEmision(tipoEmisionRaw),
                 },
                 comprador: {
                     razonSocial: razonSocialComprador || undefined,
                     identificacion: identificacionComprador || undefined,
                 },
+                infoAdicional,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -253,6 +269,13 @@ export class DocumentosCxPXmlService {
         if (v === '1') return 'PRUEBAS';
         if (v === '2') return 'PRODUCCIÓN';
         return v;
+    }
+
+    /** <tipoEmision> del SRI: '1' = NORMAL, cualquier otro valor (o vacío) también se muestra
+     * como NORMAL - es la inmensa mayoría de los casos; la contingencia offline es un caso muy
+     * raro que no vale la pena distinguir en el RIDE. */
+    private mapTipoEmision(valor: string): string {
+        return !valor || valor.trim() === '1' ? 'NORMAL' : valor.trim();
     }
 
     /** Mismo cálculo que el save: el IVA se recalcula localmente por tipo de línea */

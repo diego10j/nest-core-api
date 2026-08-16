@@ -13,6 +13,7 @@ import {
     EmisorXmlCxP,
     ComprobanteXmlCxP,
     CompradorXmlCxP,
+    InfoAdicionalXmlCxP,
 } from './dto/importar-xml-cxp.dto';
 import { EnvioFacturaCxPService, ArticuloLogistica, ProductoPreFactura } from './envio-factura-cxp.service';
 
@@ -74,6 +75,7 @@ export interface PrefillFacturaFleteConsolidada {
         comprador: CompradorXmlCxP;
         detalles: DetalleXmlCxP[];
         totales: TotalesXmlCxP;
+        infoAdicional: InfoAdicionalXmlCxP[];
     };
 }
 
@@ -198,6 +200,7 @@ export class FleteConsolidadoService {
                 comprador: parsed.comprador,
                 detalles: parsed.detalles,
                 totales: parsed.totales,
+                infoAdicional: parsed.infoAdicional,
             },
         };
 
