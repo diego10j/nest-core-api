@@ -35,6 +35,7 @@ export class NotasCreditoService extends BaseService {
                    a.numero_cpcno,
                    a.fecha_emisi_cpcno,
                    a.ide_cnccc,
+                   a.ide_cnccc_costo,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cpcno AS ventas12,

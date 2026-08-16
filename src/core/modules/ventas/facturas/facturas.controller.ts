@@ -185,6 +185,25 @@ export class FacturasController {
     return resultados;
   }
 
+  @Post('generarAsientosFacturasCosto')
+  @ApiOperation({ summary: 'Generar el asiento de costo de venta de una o varias facturas de VENTAS (Mayorizar)' })
+  @Auth()
+  async generarAsientosFacturasCosto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto,
+  ) {
+    const resultados = [];
+    for (const ideCccfa of dtoIn.ide) {
+      resultados.push(
+        await this.asientosService.generarAsientoCostoVenta({
+          ...headersParams,
+          ide_cccfa: ideCccfa,
+        }),
+      );
+    }
+    return resultados;
+  }
+
   @Get('getFacturaById')
   @ApiOperation({ summary: 'Obtener factura por ID' })
   @Auth()

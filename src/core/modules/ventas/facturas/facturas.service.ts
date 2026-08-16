@@ -1181,6 +1181,7 @@ export class FacturasService extends BaseService {
                    a.secuencial_cccfa,
                    a.fecha_emisi_cccfa,
                    a.ide_cnccc,
+                   a.ide_cnccc_costo,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cccfa AS ventas12,

@@ -82,6 +82,30 @@ export interface AsientoNotaCreditoResult {
     advertencias: string[];
 }
 
+export interface GenerarAsientoCostoVentaDto {
+    ide_cccfa: number;
+}
+
+export interface AsientoCostoVentaResult {
+    ide_cccfa: number;
+    ide_cnccc_costo?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    advertencias: string[];
+}
+
+export interface GenerarAsientoCostoNotaCreditoDto {
+    ide_cpcno: number;
+}
+
+export interface AsientoCostoNotaCreditoResult {
+    ide_cpcno: number;
+    ide_cnccc_costo?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    advertencias: string[];
+}
+
 /** Tipo de comprobante DIARIO (hardcoded en el legacy generarAsientoComprasCxP) */
 const IDE_CNTCM_DIARIO = 0;
 
@@ -881,6 +905,251 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de nota de crédito ide_cpcno=${dtoIn.ide_cpcno}: ${error}`);
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Genera el asiento de COSTO DE VENTA de una factura (paridad
+     * ServicioComprobanteContabilidad.generarAsientoCostoDeVenta legacy): un asiento SEPARADO
+     * del de venta (columna propia ide_cnccc_costo en cxc_cabece_factura), que traslada del
+     * inventario al costo de ventas el costo (PPMP, vía la función SQL f_costo_unitario_ppmp)
+     * de cada línea con kardex (hace_kardex_inarti = true) de la factura:
+     *
+     *   CUENTA                              DEBE    HABER
+     *   Costo en Ventas (por artículo)        X            (cantidad * costo_unitario PPMP)
+     *   Inventario Producto Terminado                 X    (por artículo)
+     *
+     * Si la factura no tiene líneas con kardex (servicios, artículos sin control de
+     * inventario), no hay nada que trasladar - no se genera asiento (paridad legacy).
+     */
+    async generarAsientoCostoVenta(
+        dtoIn: GenerarAsientoCostoVentaDto & HeaderParamsDto,
+    ): Promise<AsientoCostoVentaResult> {
+        const advertencias: string[] = [];
+
+        const qDoc = new SelectQuery(`
+            SELECT a.ide_cccfa, a.ide_geper, a.secuencial_cccfa, a.fecha_emisi_cccfa, a.ide_cnccc_costo
+            FROM cxc_cabece_factura a
+            WHERE a.ide_cccfa = $1
+        `);
+        qDoc.addIntParam(1, dtoIn.ide_cccfa);
+        const doc = await this.dataSource.createSingleQuery(qDoc);
+        if (!doc) {
+            return { ide_cccfa: dtoIn.ide_cccfa, generado: false, advertencias: ['La factura no existe'] };
+        }
+        if (doc.ide_cnccc_costo) {
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                ide_cnccc_costo: Number(doc.ide_cnccc_costo),
+                generado: false,
+                advertencias: ['La factura ya tiene asiento de costo'],
+            };
+        }
+
+        const qDet = new SelectQuery(`
+            SELECT b.ide_inarti, c.nombre_inarti, b.cantidad_ccdfa, f.costo_unitario,
+                   ROUND((b.cantidad_ccdfa * f.costo_unitario)::numeric, 4) AS costo_total
+            FROM cxc_deta_factura b
+            INNER JOIN inv_articulo c ON b.ide_inarti = c.ide_inarti
+            LEFT JOIN LATERAL f_costo_unitario_ppmp($1, $2, b.ide_inarti, $3) f ON TRUE
+            WHERE b.ide_cccfa = $4
+              AND c.hace_kardex_inarti = true
+        `);
+        qDet.addIntParam(1, dtoIn.ideEmpr);
+        qDet.addIntParam(2, dtoIn.ideSucu);
+        qDet.addStringParam(3, doc.fecha_emisi_cccfa);
+        qDet.addIntParam(4, dtoIn.ide_cccfa);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        if (!detalles || detalles.length === 0) {
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                generado: false,
+                advertencias: ['La factura no tiene artículos con control de kardex: no aplica asiento de costo'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        for (const linea of detalles) {
+            const valorCosto = Number(Number(linea.costo_total || 0).toFixed(2));
+            const ideInarti = Number(linea.ide_inarti);
+
+            const cuentaCosto = await this.buscarCuentaProducto('COSTO EN VENTAS', ideInarti, dtoIn.ideSucu);
+            if (!cuentaCosto) advertencias.push(`Cuenta COSTO EN VENTAS no configurada para "${linea.nombre_inarti}"`);
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuentaCosto ?? 0, valor_cndcc: valorCosto,
+                observacion_cndcc: `${linea.nombre_inarti} (${linea.cantidad_ccdfa} x ${linea.costo_unitario})`,
+            });
+
+            const cuentaInventario = await this.buscarCuentaProducto('INVENTARIO PRODUCTO TERMINADO', ideInarti, dtoIn.ideSucu);
+            if (!cuentaInventario) advertencias.push(`Cuenta INVENTARIO PRODUCTO TERMINADO no configurada para "${linea.nombre_inarti}"`);
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuentaInventario ?? 0, valor_cndcc: valorCosto,
+                observacion_cndcc: linea.nombre_inarti,
+            });
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: Number(doc.ide_geper),
+                fecha_trans_cnccc: doc.fecha_emisi_cccfa,
+                observacion_cnccc: `V/. COSTO FACTURA N.${doc.secuencial_cccfa}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = { ...dtoIn, ...saveDto };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE cxc_cabece_factura SET ide_cnccc_costo = $1 WHERE ide_cccfa = $2`,
+                [ideCnccc, dtoIn.ide_cccfa],
+            );
+
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                ide_cnccc_costo: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de costo ide_cccfa=${dtoIn.ide_cccfa}: ${error}`);
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Genera el asiento de reverso de COSTO DE VENTA de una nota de crédito (paridad
+     * ServicioComprobanteContabilidad.generarAsientoCostoDeVentaNotaCredito legacy): mismo
+     * concepto que generarAsientoCostoVenta pero con DEBE/HABER invertidos (el artículo
+     * vuelve al inventario, se revierte el costo de venta ya registrado).
+     *
+     * Desviación deliberada del legacy: el Java calcula el valor a revertir como
+     * `cantidad * precio_venta` (usa el PRECIO de venta de la línea, no el costo PPMP) - una
+     * inconsistencia que no se replica acá porque mezclaría precio de venta con costo y
+     * distorsionaría el costo de ventas neto. Se usa `cantidad * costo_unitario` (mismo
+     * criterio que generarAsientoCostoVenta) para que la reversa cuadre con lo generado
+     * originalmente.
+     */
+    async generarAsientoCostoNotaCredito(
+        dtoIn: GenerarAsientoCostoNotaCreditoDto & HeaderParamsDto,
+    ): Promise<AsientoCostoNotaCreditoResult> {
+        const advertencias: string[] = [];
+
+        const qDoc = new SelectQuery(`
+            SELECT a.ide_cpcno, a.ide_geper, a.numero_cpcno, a.fecha_emisi_cpcno, a.ide_cnccc_costo
+            FROM cxp_cabecera_nota a
+            WHERE a.ide_cpcno = $1
+        `);
+        qDoc.addIntParam(1, dtoIn.ide_cpcno);
+        const nota = await this.dataSource.createSingleQuery(qDoc);
+        if (!nota) {
+            return { ide_cpcno: dtoIn.ide_cpcno, generado: false, advertencias: ['La nota de crédito no existe'] };
+        }
+        if (nota.ide_cnccc_costo) {
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                ide_cnccc_costo: Number(nota.ide_cnccc_costo),
+                generado: false,
+                advertencias: ['La nota de crédito ya tiene asiento de costo'],
+            };
+        }
+
+        const qDet = new SelectQuery(`
+            SELECT b.ide_inarti, c.nombre_inarti, b.cantidad_cpdno, f.costo_unitario,
+                   ROUND((b.cantidad_cpdno * f.costo_unitario)::numeric, 4) AS costo_total
+            FROM cxp_detalle_nota b
+            INNER JOIN inv_articulo c ON b.ide_inarti = c.ide_inarti
+            LEFT JOIN LATERAL f_costo_unitario_ppmp($1, $2, b.ide_inarti, $3) f ON TRUE
+            WHERE b.ide_cpcno = $4
+              AND c.hace_kardex_inarti = true
+        `);
+        qDet.addIntParam(1, dtoIn.ideEmpr);
+        qDet.addIntParam(2, dtoIn.ideSucu);
+        qDet.addStringParam(3, nota.fecha_emisi_cpcno);
+        qDet.addIntParam(4, dtoIn.ide_cpcno);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        if (!detalles || detalles.length === 0) {
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                generado: false,
+                advertencias: ['La nota no tiene artículos con control de kardex: no aplica asiento de costo'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        for (const linea of detalles) {
+            const valorCosto = Number(Number(linea.costo_total || 0).toFixed(2));
+            const ideInarti = Number(linea.ide_inarti);
+
+            const cuentaInventario = await this.buscarCuentaProducto('INVENTARIO PRODUCTO TERMINADO', ideInarti, dtoIn.ideSucu);
+            if (!cuentaInventario) advertencias.push(`Cuenta INVENTARIO PRODUCTO TERMINADO no configurada para "${linea.nombre_inarti}"`);
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuentaInventario ?? 0, valor_cndcc: valorCosto,
+                observacion_cndcc: linea.nombre_inarti,
+            });
+
+            const cuentaCosto = await this.buscarCuentaProducto('COSTO EN VENTAS', ideInarti, dtoIn.ideSucu);
+            if (!cuentaCosto) advertencias.push(`Cuenta COSTO EN VENTAS no configurada para "${linea.nombre_inarti}"`);
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuentaCosto ?? 0, valor_cndcc: valorCosto,
+                observacion_cndcc: `${linea.nombre_inarti} (${linea.cantidad_cpdno} x ${linea.costo_unitario})`,
+            });
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: Number(nota.ide_geper),
+                fecha_trans_cnccc: nota.fecha_emisi_cpcno,
+                observacion_cnccc: `V/. COSTO NOTA DE CREDITO N.${nota.numero_cpcno}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = { ...dtoIn, ...saveDto };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE cxp_cabecera_nota SET ide_cnccc_costo = $1 WHERE ide_cpcno = $2`,
+                [ideCnccc, dtoIn.ide_cpcno],
+            );
+
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                ide_cnccc_costo: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de costo ide_cpcno=${dtoIn.ide_cpcno}: ${error}`);
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
                 generado: false,

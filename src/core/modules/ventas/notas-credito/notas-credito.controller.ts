@@ -51,6 +51,25 @@ export class NotasCreditoController {
         return resultados;
     }
 
+    @Post('generarAsientosNotasCreditoCosto')
+    @Auth()
+    @ApiOperation({ summary: 'Generar el asiento de reverso de costo de una o varias notas de crédito de VENTAS (Mayorizar)' })
+    async generarAsientosNotasCreditoCosto(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ArrayIdeDto,
+    ) {
+        const resultados = [];
+        for (const ideCpcno of dtoIn.ide) {
+            resultados.push(
+                await this.asientosService.generarAsientoCostoNotaCredito({
+                    ...headersParams,
+                    ide_cpcno: ideCpcno,
+                }),
+            );
+        }
+        return resultados;
+    }
+
     @Post('saveNotaCredito')
     @Auth()
     @ApiOperation({ summary: 'Crear una nota de crédito de venta (reversa una factura, genera comprobante SRI)' })
