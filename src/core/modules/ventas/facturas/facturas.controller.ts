@@ -10,6 +10,7 @@ import { FacturasDto } from './dto/facturas.dto';
 import { EnviosFacturasDto, GetEnvioFacturaDetalleDto } from './dto/get-envios-facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
+import { GetNoContabilizadosDto } from './dto/get-no-contabilizados.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
@@ -156,11 +157,11 @@ export class FacturasController {
   }
 
   @Get('getFacturasNoContabilizadas')
-  @ApiOperation({ summary: 'Listar facturas de VENTAS sin asiento contable en un mes/período (Mayorizar)' })
+  @ApiOperation({ summary: 'Listar facturas de VENTAS de un mes/período por estado de contabilización (Mayorizar)' })
   @Auth()
   getFacturasNoContabilizadas(
     @AppHeaders() headersParams: HeaderParamsDto,
-    @Query() dtoIn: ReporteVentasMensualesDto,
+    @Query() dtoIn: GetNoContabilizadosDto,
   ) {
     return this.service.getFacturasNoContabilizadas({ ...headersParams, ...dtoIn });
   }

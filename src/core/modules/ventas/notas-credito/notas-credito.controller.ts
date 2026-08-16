@@ -6,7 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 
-import { ReporteVentasMensualesDto } from '../facturas/dto/reporte-ventas-mensuales.dto';
+import { GetNoContabilizadosDto } from '../facturas/dto/get-no-contabilizados.dto';
 
 import { EnviarSriNotaCreditoDto } from './dto/enviar-sri-nota-credito.dto';
 import { AnularNotaCreditoDto, SaveNotaCreditoDto } from './dto/save-nota-credito.dto';
@@ -24,10 +24,10 @@ export class NotasCreditoController {
 
     @Get('getNotasNoContabilizadas')
     @Auth()
-    @ApiOperation({ summary: 'Listar notas de crédito de VENTAS sin asiento contable en un mes/período (Mayorizar)' })
+    @ApiOperation({ summary: 'Listar notas de crédito de VENTAS de un mes/período por estado de contabilización (Mayorizar)' })
     getNotasNoContabilizadas(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Query() dtoIn: ReporteVentasMensualesDto,
+        @Query() dtoIn: GetNoContabilizadosDto,
     ) {
         return this.service.getNotasNoContabilizadas({ ...headersParams, ...dtoIn });
     }

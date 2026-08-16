@@ -4,7 +4,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 
-import { ReporteVentasMensualesDto } from '../facturas/dto/reporte-ventas-mensuales.dto';
+import { GetNoContabilizadosDto } from '../facturas/dto/get-no-contabilizados.dto';
 
 /** Estado "normal" de cxp_cabecera_nota.ide_cpeno (paridad con notas-credito-save.service.ts) */
 const IDE_CPENO_NORMAL = 1;
@@ -20,14 +20,21 @@ export class NotasCreditoService extends BaseService {
     }
 
     /**
-     * Retorna las notas de crédito de VENTAS sin asiento contable en un mes/período
-     * (para el proceso de generación de asientos / Mayorizar)
+     * Retorna las notas de crédito de VENTAS de un mes/período, filtradas por estado de
+     * contabilización (para el proceso de generación de asientos / Mayorizar)
      */
-    async getNotasNoContabilizadas(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+    async getNotasNoContabilizadas(dtoIn: GetNoContabilizadosDto & HeaderParamsDto) {
+        const condicionEstado =
+            dtoIn.estado === 'CON_ASIENTO'
+                ? 'AND a.ide_cnccc IS NOT NULL'
+                : dtoIn.estado === 'TODAS'
+                    ? ''
+                    : 'AND a.ide_cnccc IS NULL';
         const query = new SelectQuery(`
             SELECT a.ide_cpcno,
                    a.numero_cpcno,
                    a.fecha_emisi_cpcno,
+                   a.ide_cnccc,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cpcno AS ventas12,
@@ -44,7 +51,7 @@ export class NotasCreditoService extends BaseService {
               AND EXTRACT(YEAR FROM a.fecha_emisi_cpcno) = $2
               AND a.ide_sucu = $3
               AND a.ide_cpeno = ${IDE_CPENO_NORMAL}
-              AND a.ide_cnccc IS NULL
+              ${condicionEstado}
             ORDER BY a.numero_cpcno DESC, a.ide_cpcno DESC
         `);
         query.addIntParam(1, dtoIn.mes);

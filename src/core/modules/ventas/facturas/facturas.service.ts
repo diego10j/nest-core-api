@@ -11,6 +11,7 @@ import { FacturasDto } from './dto/facturas.dto';
 import { EnviosFacturasDto, GetEnvioFacturaDetalleDto } from './dto/get-envios-facturas.dto';
 import { GetFacturaDto } from './dto/get-factura.dto';
 import { GetInitDataDto, GetProductoDetalleDto } from './dto/get-init-data.dto';
+import { GetNoContabilizadosDto } from './dto/get-no-contabilizados.dto';
 import { PagosFacturasDto } from './dto/get-pagos-facturas.dto';
 import { UtilidadVentasDto } from './dto/get-util-ventas';
 import { PuntosEmisionFacturasDto } from './dto/pto-emision-fac.dto';
@@ -1167,12 +1168,19 @@ export class FacturasService extends BaseService {
      * Retorna las facturas de VENTAS sin asiento contable en un mes/período
      * (para el proceso de generación de asientos / Mayorizar)
      */
-    async getFacturasNoContabilizadas(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+    async getFacturasNoContabilizadas(dtoIn: GetNoContabilizadosDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const condicionEstado =
+            dtoIn.estado === 'CON_ASIENTO'
+                ? 'AND a.ide_cnccc IS NOT NULL'
+                : dtoIn.estado === 'TODAS'
+                    ? ''
+                    : 'AND a.ide_cnccc IS NULL';
         const query = new SelectQuery(`
             SELECT a.ide_cccfa,
                    a.secuencial_cccfa,
                    a.fecha_emisi_cccfa,
+                   a.ide_cnccc,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cccfa AS ventas12,
@@ -1188,7 +1196,7 @@ export class FacturasService extends BaseService {
               AND EXTRACT(YEAR FROM a.fecha_emisi_cccfa) = $2
               AND a.ide_sucu = $3
               AND a.ide_ccefa = ${estadoNormal}
-              AND a.ide_cnccc IS NULL
+              ${condicionEstado}
             ORDER BY a.secuencial_cccfa DESC, a.ide_cccfa DESC
         `);
         query.addIntParam(1, dtoIn.mes);

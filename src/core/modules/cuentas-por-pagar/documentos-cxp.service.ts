@@ -240,6 +240,12 @@ export class DocumentosCxPService extends BaseService {
     async getDocumentosNoContabilizados(dtoIn: PeriodoMesCxPDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
         const condicionTipo = dtoIn.ide_cntdo ? `AND a.ide_cntdo = ${dtoIn.ide_cntdo}` : '';
+        const condicionEstado =
+            dtoIn.estado === 'CON_ASIENTO'
+                ? 'AND a.ide_cnccc IS NOT NULL'
+                : dtoIn.estado === 'TODAS'
+                    ? ''
+                    : 'AND a.ide_cnccc IS NULL';
 
         const query = new SelectQuery(
             `
@@ -248,6 +254,7 @@ export class DocumentosCxPService extends BaseService {
                    e.nombre_cntdo,
                    a.numero_cpcfa,
                    a.ide_cpefa,
+                   a.ide_cnccc,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cpcfa  AS ventas12,
@@ -264,9 +271,9 @@ export class DocumentosCxPService extends BaseService {
             WHERE EXTRACT(MONTH FROM a.fecha_emisi_cpcfa) = $1
               AND EXTRACT(YEAR FROM a.fecha_emisi_cpcfa) = $2
               AND a.ide_sucu = $3
-              AND a.ide_cnccc IS NULL
               AND a.ide_cpefa = ${estadoNormal}
               AND a.ide_rem_cpcfa IS NULL
+              ${condicionEstado}
               ${condicionTipo}
             ORDER BY a.fecha_emisi_cpcfa DESC, a.numero_cpcfa DESC, a.ide_cpcfa DESC
             `,
