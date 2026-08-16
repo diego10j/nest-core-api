@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
+import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 
 import { FacturasDto } from './dto/facturas.dto';
 import { EnviosFacturasDto, GetEnvioFacturaDetalleDto } from './dto/get-envios-facturas.dto';
@@ -24,6 +25,7 @@ export class FacturasController {
   constructor(
     private readonly service: FacturasService,
     private readonly saveService: FacturasSaveService,
+    private readonly asientosService: AsientosAutomaticosService,
   ) { }
 
   @Get('getPuntosEmisionFacturas')
@@ -151,6 +153,35 @@ export class FacturasController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Get('getFacturasNoContabilizadas')
+  @ApiOperation({ summary: 'Listar facturas de VENTAS sin asiento contable en un mes/período (Mayorizar)' })
+  @Auth()
+  getFacturasNoContabilizadas(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ReporteVentasMensualesDto,
+  ) {
+    return this.service.getFacturasNoContabilizadas({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('generarAsientosFacturas')
+  @ApiOperation({ summary: 'Generar el asiento contable de una o varias facturas de VENTAS (Mayorizar)' })
+  @Auth()
+  async generarAsientosFacturas(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto,
+  ) {
+    const resultados = [];
+    for (const ideCccfa of dtoIn.ide) {
+      resultados.push(
+        await this.asientosService.generarAsientoFacturaCxC({
+          ...headersParams,
+          ide_cccfa: ideCccfa,
+        }),
+      );
+    }
+    return resultados;
   }
 
   @Get('getFacturaById')

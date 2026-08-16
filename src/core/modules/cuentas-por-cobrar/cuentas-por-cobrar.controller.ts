@@ -6,6 +6,7 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { Auth } from 'src/core/auth';
 
 import { CuentasPorCobrarService } from './cuentas-por-cobrar.service';
+import { GetCuentasPorCobrarClientePendientesDto } from './dto/get-cuentas-por-cobrar-cliente-pendientes.dto';
 
 @ApiTags('CuentasPorCobrar')
 @Controller('cuentas-por-cobrar')
@@ -20,6 +21,16 @@ export class CuentasPorCobrarController {
       ...headersParams,
       ...dtoIn,
     });
+  }
+
+  @Get('getCuentasPorCobrarClientePendientes')
+  @ApiOperation({ summary: 'Cuentas por cobrar pendientes de un cliente, ordenadas por urgencia (rango de fechas opcional)' })
+  @Auth()
+  getCuentasPorCobrarClientePendientes(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetCuentasPorCobrarClientePendientesDto,
+  ) {
+    return this.service.getCuentasPorCobrarClientePendientes({ ...headersParams, ...dtoIn });
   }
 
   @Get('getMetricasCuentasPorCobrar')

@@ -58,6 +58,30 @@ export interface AsientoCompraResult {
     advertencias: string[];
 }
 
+export interface GenerarAsientoFacturaCxCDto {
+    ide_cccfa: number;
+}
+
+export interface AsientoFacturaCxCResult {
+    ide_cccfa: number;
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    advertencias: string[];
+}
+
+export interface GenerarAsientoNotaCreditoDto {
+    ide_cpcno: number;
+}
+
+export interface AsientoNotaCreditoResult {
+    ide_cpcno: number;
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    advertencias: string[];
+}
+
 /** Tipo de comprobante DIARIO (hardcoded en el legacy generarAsientoComprasCxP) */
 const IDE_CNTCM_DIARIO = 0;
 
@@ -544,16 +568,343 @@ export class AsientosAutomaticosService extends BaseService {
     }
 
     /**
+     * Genera el asiento contable de una factura de VENTAS (paridad
+     * ServicioComprobanteContabilidad.generarAsientoFacturaCxC legacy):
+     *
+     *   CUENTA                          DEBE    HABER
+     *   Retención renta por cobrar        X            (si aplica)
+     *   Retención IVA por cobrar          X            (si aplica)
+     *   Cuenta por cobrar (cliente)       X       (total − retenciones)
+     *   Ventas 12% / Transporte c/IVA              X
+     *   Ventas 0%  / Transporte s/IVA               X
+     *   IVA en ventas                              X
+     *
+     * "Transporte en ventas" separa la porción de líneas de artículo
+     * "SERVICIOS LOGISTICOS%" del resto de Ventas 12%/0% (paridad legacy: fletes
+     * facturados junto a la mercadería van a una cuenta contable distinta).
+     */
+    async generarAsientoFacturaCxC(
+        dtoIn: GenerarAsientoFacturaCxCDto & HeaderParamsDto,
+    ): Promise<AsientoFacturaCxCResult> {
+        const advertencias: string[] = [];
+
+        const qDoc = new SelectQuery(`
+            SELECT
+                a.ide_cccfa, a.ide_geper, a.secuencial_cccfa, a.fecha_emisi_cccfa,
+                a.total_cccfa, a.base_grabada_cccfa, a.base_tarifa0_cccfa, a.valor_iva_cccfa, a.ide_cnccc,
+                retRenta.valor_cndre AS ret_renta, retRenta.ide_cncim AS ide_cncim_renta,
+                retIva.valor_cndre AS ret_iva, retIva.ide_cncim AS ide_cncim_iva,
+                COALESCE((
+                    SELECT SUM(d.precio_ccdfa * d.cantidad_ccdfa)
+                    FROM cxc_deta_factura d
+                    INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti
+                    WHERE d.ide_cccfa = a.ide_cccfa
+                      AND art.nombre_inarti ILIKE 'SERVICIOS LOGISTICOS%'
+                      AND d.iva_inarti_ccdfa = 1
+                ), 0) AS transporte_base,
+                COALESCE((
+                    SELECT SUM(d.precio_ccdfa * d.cantidad_ccdfa)
+                    FROM cxc_deta_factura d
+                    INNER JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti
+                    WHERE d.ide_cccfa = a.ide_cccfa
+                      AND art.nombre_inarti ILIKE 'SERVICIOS LOGISTICOS%'
+                      AND d.iva_inarti_ccdfa != 1
+                ), 0) AS transporte_tarifa0
+            FROM cxc_cabece_factura a
+            LEFT JOIN (
+                SELECT d.ide_cncre, d.valor_cndre, f.ide_cncim
+                FROM con_detall_retenc d
+                INNER JOIN con_cabece_impues f ON d.ide_cncim = f.ide_cncim
+                WHERE f.ide_cnimp = 1
+            ) retRenta ON a.ide_cncre = retRenta.ide_cncre
+            LEFT JOIN (
+                SELECT d.ide_cncre, d.valor_cndre, f.ide_cncim
+                FROM con_detall_retenc d
+                INNER JOIN con_cabece_impues f ON d.ide_cncim = f.ide_cncim
+                WHERE f.ide_cnimp = 0
+            ) retIva ON a.ide_cncre = retIva.ide_cncre
+            WHERE a.ide_cccfa = $1
+        `);
+        qDoc.addIntParam(1, dtoIn.ide_cccfa);
+        const doc = await this.dataSource.createSingleQuery(qDoc);
+        if (!doc) {
+            return { ide_cccfa: dtoIn.ide_cccfa, generado: false, advertencias: ['La factura no existe'] };
+        }
+        if (doc.ide_cnccc) {
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                ide_cnccc: Number(doc.ide_cnccc),
+                generado: false,
+                advertencias: ['La factura ya tiene asiento contable'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        let totalRetenciones = 0;
+        if (doc.ret_renta != null) {
+            const cuenta = await this.buscarCuentaConfig(
+                'RETENCION RENTA POR COBRAR',
+                { ideCncim: doc.ide_cncim_renta ? Number(doc.ide_cncim_renta) : undefined },
+                dtoIn.ideSucu,
+            );
+            if (!cuenta) advertencias.push('Cuenta RETENCION RENTA POR COBRAR no configurada');
+            const valor = Number(Number(doc.ret_renta || 0).toFixed(2));
+            totalRetenciones += valor;
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valor,
+                observacion_cndcc: 'RETENCION RENTA POR COBRAR',
+            });
+        }
+        if (doc.ret_iva != null) {
+            const cuenta = await this.buscarCuentaConfig(
+                'RETENCION IVA POR COBRAR',
+                { ideCncim: doc.ide_cncim_iva ? Number(doc.ide_cncim_iva) : undefined },
+                dtoIn.ideSucu,
+            );
+            if (!cuenta) advertencias.push('Cuenta RETENCION IVA POR COBRAR no configurada');
+            const valor = Number(Number(doc.ret_iva || 0).toFixed(2));
+            totalRetenciones += valor;
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valor,
+                observacion_cndcc: 'RETENCION IVA POR COBRAR',
+            });
+        }
+
+        const cuentaCxC = await this.getCuentaPersona('CUENTA POR COBRAR', Number(doc.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
+        if (!cuentaCxC) advertencias.push('Cuenta por cobrar del cliente no configurada en con_det_conf_asie');
+        const valorCxC = Number((Number(doc.total_cccfa || 0) - totalRetenciones).toFixed(2));
+        detallesAsiento.push({
+            ide_cnlap: this.lugarDebe, ide_cndpc: cuentaCxC ?? 0, valor_cndcc: valorCxC,
+            observacion_cndcc: 'CUENTA POR COBRAR',
+        });
+
+        const transporteBase = Number(doc.transporte_base || 0);
+        const transporteTarifa0 = Number(doc.transporte_tarifa0 || 0);
+
+        const valorVenta12 = Number((Number(doc.base_grabada_cccfa || 0) - transporteBase).toFixed(2));
+        if (valorVenta12 > 0) {
+            const cuenta = await this.buscarCuentaConfig('VENTAS', { idePorcentaje: 2 }, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta VENTAS (12%) no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: valorVenta12,
+                observacion_cndcc: 'VENTAS',
+            });
+        }
+        if (transporteBase > 0) {
+            const cuenta = await this.buscarCuentaConfig('TRANSPORTE EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta TRANSPORTE EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(transporteBase.toFixed(2)),
+                observacion_cndcc: 'TRANSPORTE EN VENTAS',
+            });
+        }
+
+        const valorVenta0 = Number((Number(doc.base_tarifa0_cccfa || 0) - transporteTarifa0).toFixed(2));
+        if (valorVenta0 > 0) {
+            const cuenta = await this.buscarCuentaConfig('VENTAS', { idePorcentaje: 0 }, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta VENTAS (0%) no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: valorVenta0,
+                observacion_cndcc: 'VENTAS',
+            });
+        }
+        if (transporteTarifa0 > 0) {
+            const cuenta = await this.buscarCuentaConfig('TRANSPORTE EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta TRANSPORTE EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(transporteTarifa0.toFixed(2)),
+                observacion_cndcc: 'TRANSPORTE EN VENTAS',
+            });
+        }
+
+        const valorIva = Number(doc.valor_iva_cccfa || 0);
+        if (valorIva > 0) {
+            const cuenta = await this.buscarCuentaConfig('IVA EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta IVA EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(valorIva.toFixed(2)),
+                observacion_cndcc: 'IVA EN VENTAS',
+            });
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: Number(doc.ide_geper),
+                fecha_trans_cnccc: doc.fecha_emisi_cccfa,
+                observacion_cnccc: `V/. FACTURA N.${doc.secuencial_cccfa}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                ...saveDto,
+            };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE cxc_cabece_factura SET ide_cnccc = $1 WHERE ide_cccfa = $2`,
+                [ideCnccc, dtoIn.ide_cccfa],
+            );
+            await this.dataSource.pool.query(
+                `UPDATE cxc_detall_transa SET ide_cnccc = $1 WHERE ide_cccfa = $2 AND numero_pago_ccdtr = 0`,
+                [ideCnccc, dtoIn.ide_cccfa],
+            );
+
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de factura ide_cccfa=${dtoIn.ide_cccfa}: ${error}`);
+            return {
+                ide_cccfa: dtoIn.ide_cccfa,
+                generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Genera el asiento contable de una nota de crédito de VENTAS (paridad
+     * ServicioComprobanteContabilidad.generarAsientoNotaCreditoDiquimec legacy - la variante
+     * que efectivamente usa la pantalla de notas de crédito, no la genérica
+     * generarAsientoNotaCredito que reversa a cuentas VENTAS):
+     *
+     *   CUENTA                          DEBE    HABER
+     *   Notas de crédito ventas           X            (base 12% + base 0%)
+     *   IVA en ventas                     X            (si aplica)
+     *   Cuenta por cobrar (cliente)                X   (total de la nota)
+     */
+    async generarAsientoNotaCredito(
+        dtoIn: GenerarAsientoNotaCreditoDto & HeaderParamsDto,
+    ): Promise<AsientoNotaCreditoResult> {
+        const advertencias: string[] = [];
+
+        const qNota = new SelectQuery(`
+            SELECT a.ide_cpcno, a.ide_geper, a.numero_cpcno, a.fecha_emisi_cpcno,
+                   a.total_cpcno, a.base_grabada_cpcno, a.base_tarifa0_cpcno, a.valor_iva_cpcno, a.ide_cnccc
+            FROM cxp_cabecera_nota a
+            WHERE a.ide_cpcno = $1
+        `);
+        qNota.addIntParam(1, dtoIn.ide_cpcno);
+        const nota = await this.dataSource.createSingleQuery(qNota);
+        if (!nota) {
+            return { ide_cpcno: dtoIn.ide_cpcno, generado: false, advertencias: ['La nota de crédito no existe'] };
+        }
+        if (nota.ide_cnccc) {
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                ide_cnccc: Number(nota.ide_cnccc),
+                generado: false,
+                advertencias: ['La nota de crédito ya tiene asiento contable'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        const cuentaCxC = await this.getCuentaPersona('CUENTA POR COBRAR', Number(nota.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
+        if (!cuentaCxC) advertencias.push('Cuenta por cobrar del cliente no configurada en con_det_conf_asie');
+        const valorCxC = Number(Number(nota.total_cpcno || 0).toFixed(2));
+        detallesAsiento.push({
+            ide_cnlap: this.lugarHaber, ide_cndpc: cuentaCxC ?? 0, valor_cndcc: valorCxC,
+            observacion_cndcc: 'CUENTA POR COBRAR',
+        });
+
+        const totalDev = Number((Number(nota.base_grabada_cpcno || 0) + Number(nota.base_tarifa0_cpcno || 0)).toFixed(2));
+        if (totalDev > 0) {
+            const cuenta = await this.buscarCuentaConfig('NOTAS DE CREDITO VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta NOTAS DE CREDITO VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: totalDev,
+                observacion_cndcc: 'NOTAS DE CREDITO VENTAS',
+            });
+        }
+
+        const valorIva = Number(nota.valor_iva_cpcno || 0);
+        if (valorIva > 0) {
+            const cuenta = await this.buscarCuentaConfig('IVA EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta IVA EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(valorIva.toFixed(2)),
+                observacion_cndcc: 'IVA EN VENTAS',
+            });
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: Number(nota.ide_geper),
+                fecha_trans_cnccc: nota.fecha_emisi_cpcno,
+                observacion_cnccc: `V/. NOTA DE CREDITO N..${nota.numero_cpcno}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                ...saveDto,
+            };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE cxp_cabecera_nota SET ide_cnccc = $1 WHERE ide_cpcno = $2`,
+                [ideCnccc, dtoIn.ide_cpcno],
+            );
+            // Nota: el legacy además actualiza masivamente TODA fila cxc_detall_transa sin
+            // asiento con ide_ccttr=1 (sin acotar por esta nota) - eso es un bug latente
+            // documentado en la investigación de migración, no se replica aquí a propósito.
+
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de nota de crédito ide_cpcno=${dtoIn.ide_cpcno}: ${error}`);
+            return {
+                ide_cpcno: dtoIn.ide_cpcno,
+                generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
      * Busca la cuenta contable de un identificador de configuración
      * (con_cab_conf_asie / con_vig_conf_asie / con_det_conf_asie), opcionalmente
-     * filtrando por impuesto (ide_cncim)
+     * filtrando por impuesto (ide_cncim) y/o por código de porcentaje de impuesto
+     * (ide_cnpim - distingue p.ej. "VENTAS" 12% de "VENTAS" 0% bajo el mismo
+     * identificador, paridad cls_contabilidad.buscarCuenta(...porcentajeImpuesto...)).
      */
     private async buscarCuentaConfig(
         identificador: string,
-        filtros: { ideCncim?: number },
+        filtros: { ideCncim?: number; idePorcentaje?: number },
         ideSucu: number,
     ): Promise<number | null> {
         const condicionImpuesto = filtros.ideCncim ? `AND cn_d.ide_cncim = ${Number(filtros.ideCncim)}` : '';
+        const condicionPorcentaje = filtros.idePorcentaje !== undefined
+            ? `AND cn_d.ide_cnpim = ${Number(filtros.idePorcentaje)}`
+            : '';
         const q = new SelectQuery(`
             SELECT cn_d.ide_cndpc
             FROM con_vig_conf_asie cn_v
@@ -563,6 +914,7 @@ export class AsientosAutomaticosService extends BaseService {
               AND cn_v.estado_cnvca = true
               AND cn_v.ide_sucu = $2
               ${condicionImpuesto}
+              ${condicionPorcentaje}
             LIMIT 1
         `);
         q.addStringParam(1, identificador);

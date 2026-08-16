@@ -1,17 +1,55 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
+import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
+
+import { ReporteVentasMensualesDto } from '../facturas/dto/reporte-ventas-mensuales.dto';
 
 import { EnviarSriNotaCreditoDto } from './dto/enviar-sri-nota-credito.dto';
 import { AnularNotaCreditoDto, SaveNotaCreditoDto } from './dto/save-nota-credito.dto';
 import { NotasCreditoSaveService } from './notas-credito-save.service';
+import { NotasCreditoService } from './notas-credito.service';
 
 @ApiTags('Ventas - Notas de Crédito')
 @Controller('ventas/notas-credito')
 export class NotasCreditoController {
-    constructor(private readonly saveService: NotasCreditoSaveService) { }
+    constructor(
+        private readonly saveService: NotasCreditoSaveService,
+        private readonly service: NotasCreditoService,
+        private readonly asientosService: AsientosAutomaticosService,
+    ) { }
+
+    @Get('getNotasNoContabilizadas')
+    @Auth()
+    @ApiOperation({ summary: 'Listar notas de crédito de VENTAS sin asiento contable en un mes/período (Mayorizar)' })
+    getNotasNoContabilizadas(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteVentasMensualesDto,
+    ) {
+        return this.service.getNotasNoContabilizadas({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('generarAsientosNotasCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Generar el asiento contable de una o varias notas de crédito de VENTAS (Mayorizar)' })
+    async generarAsientosNotasCredito(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ArrayIdeDto,
+    ) {
+        const resultados = [];
+        for (const ideCpcno of dtoIn.ide) {
+            resultados.push(
+                await this.asientosService.generarAsientoNotaCredito({
+                    ...headersParams,
+                    ide_cpcno: ideCpcno,
+                }),
+            );
+        }
+        return resultados;
+    }
 
     @Post('saveNotaCredito')
     @Auth()

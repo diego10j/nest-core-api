@@ -1163,6 +1163,40 @@ export class FacturasService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /**
+     * Retorna las facturas de VENTAS sin asiento contable en un mes/período
+     * (para el proceso de generación de asientos / Mayorizar)
+     */
+    async getFacturasNoContabilizadas(dtoIn: ReporteVentasMensualesDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxc_estado_factura_normal');
+        const query = new SelectQuery(`
+            SELECT a.ide_cccfa,
+                   a.secuencial_cccfa,
+                   a.fecha_emisi_cccfa,
+                   b.nom_geper,
+                   b.identificac_geper,
+                   a.base_grabada_cccfa AS ventas12,
+                   a.base_tarifa0_cccfa + a.base_no_objeto_iva_cccfa AS ventas0,
+                   a.valor_iva_cccfa,
+                   a.total_cccfa,
+                   a.observacion_cccfa,
+                   a.fecha_trans_cccfa,
+                   a.ide_geper
+            FROM cxc_cabece_factura a
+            INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
+            WHERE EXTRACT(MONTH FROM a.fecha_emisi_cccfa) = $1
+              AND EXTRACT(YEAR FROM a.fecha_emisi_cccfa) = $2
+              AND a.ide_sucu = $3
+              AND a.ide_ccefa = ${estadoNormal}
+              AND a.ide_cnccc IS NULL
+            ORDER BY a.secuencial_cccfa DESC, a.ide_cccfa DESC
+        `);
+        query.addIntParam(1, dtoIn.mes);
+        query.addIntParam(2, dtoIn.periodo);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createQuery(query);
+    }
+
     async getFacturaById(dtoIn: GetFacturaDto & HeaderParamsDto) {
         // Consulta para obtener la cabecera de la factura con todos los joins
         const queryCabecera = new SelectQuery(

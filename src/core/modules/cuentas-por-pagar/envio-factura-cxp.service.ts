@@ -11,6 +11,17 @@ const VAR_ARTICULO_LOGISTICA = 'p_cxp_articulo_servicios_logisticos';
 const SUSTENTO_DEFAULT = '02';
 /** Fragmento (case-insensitive) para ubicar la forma de pago "Otros con utilización del Sistema Financiero" por defecto */
 const FORMA_PAGO_DEFAULT_FRAGMENTO = '%SISTEMA FINANCIERO%';
+/** cxp_detall_factur.observacion_cpdfa es varchar(200) - un XML con varias líneas (varias
+ * guías) puede generar una concatenación más larga que eso y el INSERT falla en seco. */
+const MAX_OBSERVACION_LEN = 200;
+
+/** Recorta a lo que entra en las columnas varchar(200) de observación de este flujo
+ * (cxp_detall_factur.observacion_cpdfa, cxp_det_flete_cons.observacion_cpdfc) - un INSERT con
+ * un texto más largo falla en seco en vez de truncar solo. */
+export function truncarObservacion(texto: string): string {
+    if (texto.length <= MAX_OBSERVACION_LEN) return texto;
+    return `${texto.slice(0, MAX_OBSERVACION_LEN - 1)}…`;
+}
 
 export interface ArticuloLogistica {
     ide_inarti: number;
@@ -108,7 +119,9 @@ export class EnvioFacturaCxPService {
                 codigo_inarti: articulo.codigo_inarti,
                 cantidad: 1,
                 precio_unitario: Number(grupo.monto.toFixed(2)),
-                observacion: grupo.descripciones.join(', ') || `Flete factura ${parsed.numero_cpcfa}`,
+                observacion: truncarObservacion(
+                    grupo.descripciones.join(', ') || `Flete factura ${parsed.numero_cpcfa}`,
+                ),
                 iva,
             });
         });

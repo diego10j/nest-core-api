@@ -15,7 +15,12 @@ import {
     CompradorXmlCxP,
     InfoAdicionalXmlCxP,
 } from './dto/importar-xml-cxp.dto';
-import { EnvioFacturaCxPService, ArticuloLogistica, ProductoPreFactura } from './envio-factura-cxp.service';
+import {
+    EnvioFacturaCxPService,
+    ArticuloLogistica,
+    ProductoPreFactura,
+    truncarObservacion,
+} from './envio-factura-cxp.service';
 
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
 export interface EnvioParaConsolidar {
@@ -223,7 +228,9 @@ export class FleteConsolidadoService {
                 valor_base_matched: parsed.totales.base_grabada + parsed.totales.base_tarifa0
                     + parsed.totales.base_no_objeto_iva,
                 iva_matched: parsed.totales.base_grabada > 0 ? 'SI' : 'NO',
-                observacion_matched: parsed.detalles.map((d) => d.observacion_cpdfa).filter(Boolean).join(', '),
+                observacion_matched: truncarObservacion(
+                    parsed.detalles.map((d) => d.observacion_cpdfa).filter(Boolean).join(', '),
+                ),
             }];
             return { ...prefillBase, productos, advertencia, envios: enviosConMatch };
         }
