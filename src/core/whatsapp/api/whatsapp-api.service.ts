@@ -9,7 +9,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 import { isDefined } from 'src/util/helpers/common-util';
 
-import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from '../../connection/helpers';
+import { DeleteQuery, InsertQuery, Query } from '../../connection/helpers';
 import { EnviarMensajeDto } from '../dto/enviar-mensaje.dto';
 import { GetChatsDto } from '../dto/get-chats.dto';
 import { GetMensajesDto } from '../dto/get-mensajes.dto';
@@ -177,73 +177,6 @@ export class WhatsappApiService {
     } catch (error) {
       this.logger.error(`Error en download: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Error al descargar el archivo multimedia');
-    }
-  }
-
-  /**
-   * Descarga un archivo desde una URL con autenticación
-   */
-  /**
-   * Guarda los mensajes recibidos por el API de Whatsapp
-   *  @param body
-   */
-  async saveReceivedMessage(body: any) {
-    if (!body || !body) {
-      this.logger.warn('No se encontró ninguna entrada válida en la solicitud.');
-      return;
-    }
-    const { entry } = body;
-
-    if (entry && entry.length > 0 && entry[0].changes && entry[0].changes.length > 0) {
-      if (entry[0].changes[0].value.statuses) {
-        // actualiza el estado de los mensajes enviados
-        const statuses: any = entry[0].changes[0].value.statuses[0];
-        if (statuses) {
-          try {
-            const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
-            updateQuery.values.set('status_whmem', statuses.status);
-            if (statuses.status === 'sent') {
-              updateQuery.values.set('timestamp_whmem', `${statuses.timestamp}`);
-            } else if (statuses.status === 'delivered') {
-              updateQuery.values.set('timestamp_sent_whmem', new Date(Number(statuses.timestamp) * 1000).toISOString());
-            } else if (statuses.status === 'read') {
-              updateQuery.values.set('timestamp_read_whmem', new Date(Number(statuses.timestamp) * 1000).toISOString());
-              updateQuery.values.set('leido_whmem', true);
-              this.whatsappGateway.sendReadMessageToClients(statuses.id); // Emitir el mensaje recibido a los clientes WebSocket
-            } else if (statuses.status === 'failed') {
-              updateQuery.values.set('timestamp_whmem', `${statuses.timestamp}`);
-              updateQuery.values.set('error_whmem', statuses?.errors[0].error_data.details);
-              updateQuery.values.set('code_error_whmem', `${statuses?.errors[0].code} - ${statuses?.errors[0].title}`);
-            }
-            updateQuery.where = 'id_whmem = $1';
-            updateQuery.addParam(1, statuses.id);
-            this.dataSource.createQuery(updateQuery);
-          } catch (error) {
-            this.logger.error('Error al actualizar estado del mensaje', error);
-          }
-        }
-      } else {
-        // guarda mensaje recibido
-        const jsonMsg = JSON.stringify(body);
-        try {
-          const query = new SelectQuery(`SELECT mensaje_whatsapp('${jsonMsg}'::jsonb) AS wa_id`);
-          const res = await this.dataSource.createSingleQuery(query);
-          // Emitir el mensaje a través de WebSocket
-          this.whatsappGateway.sendMessageToClients((res.wa_id || '').replace(/^\+/, ''));
-          // Emitir total de chats no leídos para actualizar el badge del icono
-          const phoneNumberId = body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-          if (phoneNumberId) {
-            const noLeidos = await this.whatsappDb.getTotalChatsNoLeidosByPhoneId(phoneNumberId);
-            if (noLeidos) {
-              this.whatsappGateway.emitTotalChatsNoLeidos(noLeidos.ideEmpr, noLeidos.total);
-            }
-          }
-        } catch (error) {
-          this.logger.error('Error al guardar el mensaje', error);
-        }
-      }
-    } else {
-      this.logger.error('El mensaje no cumple con la estructura');
     }
   }
 

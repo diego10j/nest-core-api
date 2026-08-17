@@ -4,7 +4,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { ProformasModule } from '../modules/proformas/proformas.module';
 import { FileTempService } from '../modules/sistema/files/file-temp.service';
 
-import { WebhookController } from './api/webhook.controller';
 import { WhatsappApiService } from './api/whatsapp-api.service';
 import { BotConfigService } from './bot/bot-config.service';
 import { BotGptService } from './bot/bot-gpt.service';
@@ -34,7 +33,6 @@ import { YcloudService } from './ycloud/ycloud.service';
   ],
   controllers: [
     WhatsappController,
-    WebhookController,
     YcloudController,
     YcloudWebhookController,
     BotController,
