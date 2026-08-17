@@ -37,6 +37,7 @@ import { BotConfigService } from './bot/bot-config.service';
 import { BotService } from './bot/bot.service';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
+import { GetChatsPorFiltroDto } from './dto/get-chats-por-filtro.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
 import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
@@ -426,11 +427,16 @@ export class WhatsappController {
    * filtro: 'todos' | 'bot' | 'asesor' | 'sin_asignar' | 'asignado_a_mi'
    */
   @Get('getChatsPorFiltro')
-  @ApiOperation({ summary: 'Chats filtrados por modo bot/asesor/asignación' })
+  @ApiOperation({ summary: 'Chats filtrados por modo bot/asesor/asignación (paginado por cursor)' })
   async getChatsPorFiltro(
     @AppHeaders() h: HeaderParamsDto,
-    @Query('filtro') filtro: string,
+    @Query() dtoIn: GetChatsPorFiltroDto,
   ) {
-    return this.whatsappDbService.getChatsPorFiltro(h.ideEmpr, h.ideUsua, filtro || 'todos');
+    return this.whatsappDbService.getChatsPorFiltro(
+      h.ideEmpr,
+      h.ideUsua,
+      dtoIn.filtro || 'todos',
+      dtoIn,
+    );
   }
 }

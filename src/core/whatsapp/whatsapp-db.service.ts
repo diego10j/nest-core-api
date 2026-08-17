@@ -940,7 +940,12 @@ export class WhatsappDbService {
      * Lista de chats filtrada por modo bot / agente / estado.
      * filtro: 'todos' | 'bot' | 'asesor' | 'sin_asignar' | 'asignado_a_mi'
      */
-    async getChatsPorFiltro(ideEmpr: number, ideUsua: number, filtro: string) {
+    async getChatsPorFiltro(
+        ideEmpr: number,
+        ideUsua: number,
+        filtro: string,
+        paginacion?: GetChatsDto,
+    ): Promise<{ data: any[]; hasMore: boolean }> {
         const filtroCond = {
             todos: '',
             bot: `AND c.bot_modo_whcha = 'BOT'`,
@@ -948,6 +953,19 @@ export class WhatsappDbService {
             sin_asignar: `AND c.ide_usua_asignado_whcha IS NULL`,
             asignado_a_mi: `AND c.ide_usua_asignado_whcha = ${ideUsua}`,
         }[filtro] || '';
+
+        const limit = Math.min(paginacion?.limit ?? 25, 100);
+        const hasCursor = paginacion?.beforeDate != null && paginacion?.beforeId != null;
+        // Mismo cursor compuesto (fecha_msg_whcha, ide_whcha) que getChats(), para evitar
+        // que un GET sin LIMIT (ni cursor) traiga TODA la tabla de chats — con LATERAL join
+        // por fila — en cada carga inicial, cambio de filtro y evento de socket.
+        const cursorClause = hasCursor
+            ? `AND (
+                COALESCE(c.fecha_msg_whcha, '1970-01-01'::timestamp) < COALESCE($2::timestamp, '1970-01-01'::timestamp)
+                OR (COALESCE(c.fecha_msg_whcha, '1970-01-01'::timestamp) = COALESCE($2::timestamp, '1970-01-01'::timestamp)
+                    AND c.ide_whcha < $3)
+               )`
+            : '';
 
         const query = new SelectQuery(`
             SELECT
@@ -995,9 +1013,21 @@ export class WhatsappDbService {
             LEFT JOIN sis_usuario  u  ON u.ide_usua   = c.ide_usua_asignado_whcha
             WHERE c.eliminado_whcha = FALSE
             ${filtroCond}
-            ORDER BY c.fecha_msg_whcha DESC NULLS LAST
+            ${cursorClause}
+            ORDER BY COALESCE(c.fecha_msg_whcha, '1970-01-01'::timestamp) DESC, c.ide_whcha DESC
+            LIMIT ${limit + 1}
         `);
         query.addIntParam(1, ideEmpr);
-        return this.dataSource.createSelectQuery(query);
+        if (hasCursor) {
+            query.addParam(2, paginacion.beforeDate);
+            query.addParam(3, paginacion.beforeId);
+        }
+
+        const rows = await this.dataSource.createSelectQuery(query);
+        const hasMore = rows.length > limit;
+        return {
+            data: hasMore ? rows.slice(0, limit) : rows,
+            hasMore,
+        };
     }
 }

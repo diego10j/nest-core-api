@@ -56,7 +56,13 @@ BEGIN
             trim(both '"' from msg ->> 'from'),
             trim(both '"' from msg #>> '{context,id}'), -- Puede ser NULL si no hay contexto
             trim(both '"' from msg #>> '{text,body}'),  -- Solo para texto, NULL si es imagen
-            to_timestamp((trim(both '"' from msg ->> 'timestamp'))::BIGINT) AT TIME ZONE 'America/Guayaquil',
+            -- fecha_whmem se guarda en UTC (AT TIME ZONE 'UTC', no session timezone),
+            -- igual que el resto del código (ycloud.service.ts usa new Date().toISOString()).
+            -- El front convierte a America/Guayaquil al mostrar (src/utils/date-chat.ts).
+            -- Convertir aquí a hora LOCAL y guardarla en una columna TIMESTAMP (sin zona)
+            -- hacía que el driver de pg la releyera como si fuese UTC y el front le
+            -- restara otras 5h más, mostrando la hora 5h antes de la real.
+            to_timestamp((trim(both '"' from msg ->> 'timestamp'))::BIGINT) AT TIME ZONE 'UTC',
             trim(both '"' from msg ->> 'timestamp'),
             trim(both '"' from msg ->> 'type'),
             CASE WHEN trim(both '"' from msg ->> 'from') = v_wa_id_whcha THEN '0' ELSE '1' END,
