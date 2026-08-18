@@ -26,6 +26,7 @@ import { fNumber, roundTo, roundPrecio } from 'src/util/helpers/number-util';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 import { normalizarUrl } from 'src/util/helpers/string-util';
 
+import { AnularProformaDto } from './dto/anular-proforma.dto';
 import { AssignProformaDto } from './dto/assign-proforma.dto';
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
@@ -1563,6 +1564,61 @@ ORDER BY prof.secuencial_cccpr DESC
     return {
       success: true,
       message: 'Proforma abierta correctamente',
+    };
+  }
+
+  /**
+   * Anula una proforma. No se permite si ya fue convertida en factura (existe una factura
+   * en estado normal cuyo num_proforma_cccfa coincide con el secuencial de la proforma).
+   */
+  async anularProforma(dtoIn: AnularProformaDto & HeaderParamsDto) {
+    const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
+
+    const checkQuery = new SelectQuery(`
+      SELECT ide_cccpr, secuencial_cccpr, anulado_cccpr
+      FROM cxc_cabece_proforma
+      WHERE ide_cccpr = $1
+        AND ide_empr = ${dtoIn.ideEmpr}
+      LIMIT 1
+    `);
+    checkQuery.addIntParam(1, dtoIn.ide_cccpr);
+
+    const proforma = await this.dataSource.createSingleQuery(checkQuery);
+    if (!proforma) {
+      throw new BadRequestException(`No se encontró la proforma ide_cccpr=${dtoIn.ide_cccpr}`);
+    }
+    if (proforma.anulado_cccpr) {
+      throw new BadRequestException('La proforma ya se encuentra anulada');
+    }
+
+    const facturaQuery = new SelectQuery(`
+      SELECT f.ide_cccfa
+      FROM cxc_cabece_factura f
+      WHERE f.num_proforma_cccfa = $1
+        AND f.ide_empr = ${dtoIn.ideEmpr}
+        AND f.ide_ccefa = ${estadoFacturaNormal}
+      LIMIT 1
+    `);
+    facturaQuery.addStringParam(1, proforma.secuencial_cccpr);
+
+    const factura = await this.dataSource.createSingleQuery(facturaQuery);
+    if (factura) {
+      throw new BadRequestException('No se puede anular: la proforma ya fue convertida en factura.');
+    }
+
+    const updateQuery = new UpdateQuery(SOLICITUD.tableName, SOLICITUD.primaryKey, dtoIn);
+    updateQuery.values.set('anulado_cccpr', true);
+    updateQuery.values.set('usuario_actua', dtoIn.login);
+    updateQuery.values.set('fecha_actua', getCurrentDate());
+    updateQuery.values.set('hora_actua', getCurrentTime());
+    updateQuery.where = 'ide_cccpr = $1 AND anulado_cccpr = false';
+    updateQuery.addIntParam(1, dtoIn.ide_cccpr);
+
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      success: true,
+      message: 'Proforma anulada correctamente',
     };
   }
 
