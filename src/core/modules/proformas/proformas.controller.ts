@@ -7,6 +7,7 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { Auth } from 'src/core/auth';
 import { Public } from 'src/core/auth/decorators';
 
+import { AnularProformaDto } from './dto/anular-proforma.dto';
 import { AssignProformaDto } from './dto/assign-proforma.dto';
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
 import { GetPrecioClienteDto } from './dto/get-precio-cliente.dto';
@@ -123,6 +124,16 @@ export class ProformasController {
   @ApiOperation({ summary: 'Registrar apertura de proforma web por un usuario autenticado' })
   openProformaWeb(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
     return this.service.openProformaWeb(dtoIn.ide, headersParams);
+  }
+
+  @Post('anularProforma')
+  @ApiOperation({ summary: 'Anular una proforma (no aplica si ya fue convertida en factura)' })
+  @Auth()
+  anularProforma(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AnularProformaDto) {
+    return this.service.anularProforma({
+      ...headersParams,
+      ...dtoIn,
+    });
   }
 
   @Post('updateOpenSolicitud')
