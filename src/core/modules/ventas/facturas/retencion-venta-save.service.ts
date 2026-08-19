@@ -14,6 +14,10 @@ const PK_RET_CAB = 'ide_cncre';
 const TABLE_RET_DET = 'con_detall_retenc';
 const PK_RET_DET = 'ide_cndre';
 
+// con_deta_forma_pago.ide_cncfp = 3 (catálogo SRI de 4 opciones): valor fijo de "Tarjeta
+// crédito", igual que IDE_CNDFP_FIJO_POR_TIPO.tarjeta en el frontend (src/utils/forma-pago-tipo.ts).
+const IDE_CNDFP_TARJETA = 4;
+
 /**
  * Persistencia del comprobante de retención recibido en una venta (con_cabece_retenc,
  * es_venta_cncre=true) - ej. retención de Bendo/procesador de tarjeta sobre el depósito de una
@@ -66,7 +70,7 @@ export class RetencionVentaSaveService extends BaseService {
             // ── Factura ──────────────────────────────────────────────────────
             const qFac = new SelectQuery(`
                 SELECT ide_cccfa, ide_geper, secuencial_cccfa, fecha_trans_cccfa,
-                       total_cccfa, ide_cncre, ide_ccefa, ide_cnccc, fact_mig_cccfa
+                       total_cccfa, ide_cncre, ide_ccefa, ide_cnccc, fact_mig_cccfa, ide_cndfp
                 FROM cxc_cabece_factura
                 WHERE ide_cccfa = $1
             `);
@@ -110,8 +114,15 @@ export class RetencionVentaSaveService extends BaseService {
             // tarjeta ya liquidó el 100% del valor, así que la retención NO debe generar una
             // transacción CxC adicional (dejaría el saldo en negativo, un saldo a favor
             // artificial que no existe realmente).
+            // "Pagada con tarjeta" se detecta por ide_cndfp (catálogo SRI, valor fijo) en vez
+            // de fact_mig_cccfa: ese campo solo se guarda si la tarjeta se elige AL EMITIR la
+            // factura, y queda null cuando el cobro con tarjeta se registra después vía
+            // "Registrar cobro" (el caso más común) - fact_mig_cccfa se revisa igual como señal
+            // adicional, por si acaso, pero ide_cndfp es la fuente confiable.
+            const esPagoTarjeta =
+                Number(factura.ide_cndfp) === IDE_CNDFP_TARJETA || isDefined(factura.fact_mig_cccfa);
             let saldoActual = 0;
-            if (isDefined(factura.fact_mig_cccfa)) {
+            if (esPagoTarjeta) {
                 const qSaldo = new SelectQuery(`
                     SELECT COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0) AS saldo
                     FROM cxc_detall_transa dt
@@ -122,7 +133,7 @@ export class RetencionVentaSaveService extends BaseService {
                 const rowSaldo = await this.dataSource.createSingleQuery(qSaldo);
                 saldoActual = Number(rowSaldo?.saldo ?? 0);
             }
-            const soloDocumental = isDefined(factura.fact_mig_cccfa) && saldoActual <= 0;
+            const soloDocumental = esPagoTarjeta && saldoActual <= 0;
 
             // ── Secuenciales ─────────────────────────────────────────────────
             const ideCncre = await this.dataSource.getSeqTable(TABLE_RET_CAB, PK_RET_CAB, 1, dtoIn.login);

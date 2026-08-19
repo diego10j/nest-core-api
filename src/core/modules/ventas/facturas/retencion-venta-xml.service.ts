@@ -32,7 +32,24 @@ export class RetencionVentaXmlService {
                 .replace(/&gt;/g, '>')
                 .replace(/&lt;/g, '<');
 
-            const $ = cheerio.load(xml, { xml: true });
+            let $ = cheerio.load(xml, { xml: true });
+
+            // Los XML de autorización del SRI traen el comprobante real anidado dentro de
+            // <comprobante>, con dos formatos posibles según el emisor/herramienta:
+            //  a) escapado con entities (&lt;comprobanteRetencion&gt;...) - el unescape global
+            //     de arriba ya lo deja como elementos reales, navegables de una.
+            //  b) envuelto en CDATA (<![CDATA[<comprobanteRetencion>...]]>) - el contenido
+            //     nunca se parsea como elementos hijos (queda como nodo de texto/CDATA), así
+            //     que $('codDoc') no lo encuentra en el primer intento (caso Bendo).
+            // Por eso el re-parseo del contenido de <comprobante> es un FALLBACK: solo se usa
+            // cuando el primer intento no encontró codDoc (mismo patrón que
+            // DocumentosCxPXmlService).
+            if (!this.texto($, 'codDoc')) {
+                const comprobanteInterior = $('comprobante').first().text().trim();
+                if (comprobanteInterior) {
+                    $ = cheerio.load(comprobanteInterior, { xml: true });
+                }
+            }
 
             const codDoc = this.texto($, 'codDoc');
             if (codDoc !== COD_DOC_RETENCION) {
@@ -59,7 +76,12 @@ export class RetencionVentaXmlService {
             await this.validarSujetoRetenido(identificacionSujetoRetenido, dtoIn.ideEmpr);
 
             const detalles: DetalleXmlRetencion[] = [];
-            const impuestoEls = $('impuestos > impuesto').toArray();
+            // El esquema comprobanteRetencion v1.0.0 agrupa las líneas retenidas bajo
+            // <impuestos><impuesto>; la v2.0.0 (multi-documento sustento, caso Bendo) las
+            // agrupa bajo <docSustento><retenciones><retencion> - mismo contenido
+            // (codigoRetencion/baseImponible/porcentajeRetener/valorRetenido), tag distinto
+            // según versión. Se aceptan ambos.
+            const impuestoEls = $('impuestos > impuesto, retenciones > retencion').toArray();
             for (const el of impuestoEls) {
                 const det = $(el);
                 const codigoRetencion = det.find('codigoRetencion').first().text().trim();
