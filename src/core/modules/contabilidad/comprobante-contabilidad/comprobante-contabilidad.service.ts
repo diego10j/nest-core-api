@@ -524,6 +524,26 @@ export class ComprobanteContabilidadService extends BaseService {
     }
 
     /**
+     * Elimina (cabecera + detalles) un comprobante automático recién generado. Es la
+     * compensación usada por CxcTransaccionesSaveService/CxpTransaccionesSaveService cuando el
+     * asiento se genera correctamente pero el guardado de tesorería/CxC/CxP que lo originó
+     * falla justo después (ver comentario "todo o nada" en esos servicios) - deja la
+     * contabilidad sin rastro del intento fallido en vez de un comprobante huérfano.
+     */
+    async eliminarAutomatico(ideCnccc: number, dtoIn: HeaderParamsDto): Promise<void> {
+        const delDet = new DeleteQuery(`${MODULE}_${TABLE_DET}`);
+        delDet.where = `ide_cnccc = $1`;
+        delDet.addParam(1, ideCnccc);
+        await this.dataSource.createQuery(delDet);
+
+        const delCab = new DeleteQuery(`${MODULE}_${TABLE_CAB}`);
+        delCab.where = `${PK_CAB} = $1 AND ide_sucu = $2`;
+        delCab.addParam(1, ideCnccc);
+        delCab.addIntParam(2, dtoIn.ideSucu);
+        await this.dataSource.createQuery(delCab);
+    }
+
+    /**
      * Anula un comprobante contable cambiando su estado a ANULADO.
      * Busca automáticamente el ID del estado ANULADO si no se proporciona.
      */

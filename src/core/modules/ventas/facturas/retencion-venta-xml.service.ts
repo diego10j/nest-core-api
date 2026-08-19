@@ -22,7 +22,7 @@ export class RetencionVentaXmlService {
 
     async parseRetencionXml(
         fileBuffer: Buffer,
-        _dtoIn: HeaderParamsDto,
+        dtoIn: HeaderParamsDto,
     ): Promise<ImportarXmlRetencionResult> {
         try {
             // Los XML de autorización del SRI traen el comprobante escapado dentro de
@@ -54,6 +54,9 @@ export class RetencionVentaXmlService {
 
             const numero = `${this.texto($, 'estab')}-${this.texto($, 'ptoEmi')}-${this.texto($, 'secuencial')}`;
             const fechaEmision = this.parseFecha(this.texto($, 'fechaEmision'));
+
+            const identificacionSujetoRetenido = this.texto($, 'identificacionSujetoRetenido');
+            await this.validarSujetoRetenido(identificacionSujetoRetenido, dtoIn.ideEmpr);
 
             const detalles: DetalleXmlRetencion[] = [];
             const impuestoEls = $('impuestos > impuesto').toArray();
@@ -93,7 +96,7 @@ export class RetencionVentaXmlService {
                 numero_cncre: numero,
                 autorizacion_cncre: autorizacion,
                 fecha_emisi_cncre: fechaEmision,
-                identificacion_sujeto_retenido: this.texto($, 'identificacionSujetoRetenido'),
+                identificacion_sujeto_retenido: identificacionSujetoRetenido,
                 razon_social_sujeto_retenido: this.texto($, 'razonSocialSujetoRetenido'),
                 detalles,
                 total_retencion: totalRetencion,
@@ -125,6 +128,35 @@ export class RetencionVentaXmlService {
             throw new BadRequestException(`La fecha de emisión del XML no es válida: ${fecha}`);
         }
         return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+
+    /**
+     * El sujeto retenido del comprobante (identificacionSujetoRetenido) debe ser el RUC de la
+     * propia empresa - de lo contrario el XML cargado no corresponde a esta compañía (ej. se
+     * subió por error el comprobante de otro cliente/establecimiento).
+     */
+    private async validarSujetoRetenido(identificacionSujetoRetenido: string, ideEmpr: number) {
+        if (!identificacionSujetoRetenido) {
+            throw new BadRequestException(
+                'El XML no contiene la identificación del sujeto retenido (identificacionSujetoRetenido).',
+            );
+        }
+
+        const q = new SelectQuery(`SELECT identificacion_empr FROM sis_empresa WHERE ide_empr = $1`);
+        q.addIntParam(1, ideEmpr);
+        const empresa = await this.dataSource.createSingleQuery(q);
+        if (!empresa?.identificacion_empr) {
+            throw new InternalServerErrorException('No se encontró el RUC configurado para la empresa (sis_empresa).');
+        }
+
+        const rucEmpresa = String(empresa.identificacion_empr).trim();
+        if (identificacionSujetoRetenido.trim() !== rucEmpresa) {
+            throw new BadRequestException(
+                `El comprobante de retención fue emitido a nombre de la identificación ` +
+                `${identificacionSujetoRetenido} y no corresponde al RUC de la empresa (${rucEmpresa}). ` +
+                `Verifique que el XML cargado sea el correcto.`,
+            );
+        }
     }
 
     private async existeRetencionVenta(autorizacion: string): Promise<boolean> {

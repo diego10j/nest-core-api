@@ -141,6 +141,21 @@ export class AsientosAutomaticosService extends BaseService {
         return Number(this.variables.get('p_con_lugar_haber') || '0');
     }
 
+    /**
+     * Revierte (best-effort) un asiento automático ya generado - usado como compensación por
+     * CxcTransaccionesSaveService/CxpTransaccionesSaveService cuando el asiento se generó
+     * correctamente pero el guardado de tesorería/CxC/CxP que lo originó falló justo después.
+     * Nunca lanza: si la reversión falla, sólo se registra en el log (el caller ya está
+     * propagando el error original y no debe perderse por un fallo secundario de limpieza).
+     */
+    async eliminarAsiento(ideCnccc: number, dtoIn: HeaderParamsDto): Promise<void> {
+        try {
+            await this.comprobanteService.eliminarAutomatico(ideCnccc, dtoIn);
+        } catch (error) {
+            this.logger.error(`No se pudo revertir el asiento automático ide_cnccc=${ideCnccc}: ${error}`);
+        }
+    }
+
     async generarAsientoCobroCxC(dtoIn: GenerarAsientoCobroCxCDto & HeaderParamsDto): Promise<AsientoCobroResult> {
         const advertencias: string[] = [];
 

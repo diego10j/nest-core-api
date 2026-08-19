@@ -3,10 +3,7 @@ import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { CoreService } from 'src/core/core.service';
-import {
-    AsientoPagoResult,
-    AsientosAutomaticosService,
-} from 'src/core/modules/contabilidad/asientos-automaticos.service';
+import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentTime } from 'src/util/helpers/date-util';
 
 import { PreLibroBancosSaveService } from '../pre-libro-bancos/pre-libro-bancos-save.service';
@@ -159,7 +156,26 @@ export class CxpTransaccionesSaveService extends BaseService {
             ? await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login)
             : null;
 
-        // ─── PASO 5: TRANSACCIÓN ÚNICA ────────────────────────────────────────
+        // ─── PASO 5: GENERAR ASIENTO CONTABLE (ANTES de tocar tesorería/CxP) ─
+        // Se genera primero y de forma estricta (lanza si falla) para lograr "todo o nada":
+        // si no se puede contabilizar (ej. cuenta contable no configurada), no se guarda NADA
+        // de tesorería/CxP. Antes se generaba DESPUÉS del commit en modo best-effort, lo que
+        // dejaba pagos registrados con ide_cnccc null cuando fallaba, invisible para el
+        // usuario salvo un warning en el log del servidor.
+        const asientoResult = await this.asientosAutomaticosService.generarAsientoPagoCxP({
+            ideTeclb, fecha: dtoIn.fecha, ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb,
+            ideGeper: dtoIn.ideGeper, valor: dtoIn.valor, observacion: dtoIn.observacion,
+            ...dtoIn,
+        });
+
+        if (!asientoResult.generado) {
+            throw new BadRequestException(
+                `No se pudo generar el asiento contable del pago (${(asientoResult.advertencias ?? []).join('; ') || 'error desconocido'}). El pago no fue registrado.`,
+            );
+        }
+        const ideCnccc = asientoResult.ide_cnccc ?? null;
+
+        // ─── PASO 6: TRANSACCIÓN ÚNICA (tesorería + CxP, ya con el asiento vinculado) ─
         const queryRunner = await this.dataSource.pool.connect();
         const detalleFacturas: Array<{
             ide_cpctr: number; ide_cpcfa: number; valor: number;
@@ -175,13 +191,13 @@ export class CxpTransaccionesSaveService extends BaseService {
                     numero_teclb, fecha_trans_teclb, fecha_venci_teclb, beneficiari_teclb,
                     observacion_teclb, conciliado_teclb, fec_cam_est_teclb, num_comprobante_teclb,
                     ide_teban, depositado_teclb, devuelto_teclb,
-                    ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [ideTeclb, ideTeelb, dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.valor,
                     numero, dtoIn.fecha, dtoIn.fecha, beneficiario,
                     dtoIn.observacion, false, dtoIn.fechaEfectivo ?? dtoIn.fecha, dtoIn.numCuentaCheque ?? '',
                     dtoIn.ideTeban ?? null, false, false,
-                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );
 
             for (let i = 0; i < dtoIn.facturas.length; i += 1) {
@@ -202,12 +218,12 @@ export class CxpTransaccionesSaveService extends BaseService {
                         ide_cpdtr, ide_teclb, ide_cpcfa, ide_cpctr, ide_cpttr,
                         ide_usua, valor_cpdtr, observacion_cpdtr, numero_pago_cpdtr,
                         fecha_trans_cpdtr, fecha_venci_cpdtr, docum_relac_cpdtr, valor_anticipo_cpdtr,
-                        ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                        ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
                     [ideCpdtr, ideTeclb, f.ide_cpcfa, f.ide_cpctr, ideCpttr,
                         dtoIn.ideUsua, f.valor, dtoIn.observacion, numerosPago[i],
                         dtoIn.fecha, fechaVenceCuota, docRelacion, 0,
-                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
                 );
 
                 const pagadoTotal = saldoRestante <= 0.01;
@@ -242,37 +258,29 @@ export class CxpTransaccionesSaveService extends BaseService {
                         ide_cpdtr, ide_teclb, ide_cpctr, ide_cpttr, ide_usua,
                         valor_cpdtr, observacion_cpdtr, numero_pago_cpdtr,
                         fecha_trans_cpdtr, fecha_venci_cpdtr, docum_relac_cpdtr, valor_anticipo_cpdtr,
-                        ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                        ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
                     [ideCpdtrSaldoFavor, ideTeclb, ideCpctrSaldoFavor, ideCpttr, dtoIn.ideUsua,
                         diferencia, 'V/. SALDO A FAVOR PAGO ADICIONAL', 1,
                         dtoIn.fecha, fechaVenceCuota, numero, 0,
-                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                        dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
                 );
             }
 
             await queryRunner.query('COMMIT');
         } catch (error) {
             await queryRunner.query('ROLLBACK');
+            // El asiento ya se había generado y confirmado (en su propia transacción) antes de
+            // llegar aquí - si tesorería/CxP falla ahora, se revierte también para no dejar un
+            // comprobante contable huérfano sin pago asociado ("todo o nada").
+            if (ideCnccc != null) await this.asientosAutomaticosService.eliminarAsiento(ideCnccc, dtoIn);
             throw error;
         } finally {
             queryRunner.release();
         }
 
-        // ─── PASO 6: ACTUALIZAR SECUENCIAL (FUERA DE TRANSACCIÓN) ────────────
+        // ─── PASO 7: ACTUALIZAR SECUENCIAL (FUERA DE TRANSACCIÓN) ────────────
         await this.preLibroBancosSaveService.actualizarSecuencial(dtoIn.ideTecba, dtoIn.ideTettb, numero, dtoIn);
-
-        // ─── PASO 7: ASIENTO CONTABLE (BEST-EFFORT, FUERA DE TRANSACCIÓN) ────
-        let asientoResult: AsientoPagoResult = { generado: false, banco_encontrado: false, proveedor_encontrado: false, advertencias: [] };
-        try {
-            asientoResult = await this.asientosAutomaticosService.generarAsientoPagoCxP({
-                ideTeclb, fecha: dtoIn.fecha, ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb,
-                ideGeper: dtoIn.ideGeper, valor: dtoIn.valor, observacion: dtoIn.observacion,
-                ...dtoIn,
-            });
-        } catch (error) {
-            this.logger.warn(`Error en asiento automatico de pago CxP para ide_teclb=${ideTeclb}: ${error}`);
-        }
 
         return {
             message: 'ok',
@@ -328,6 +336,25 @@ export class CxpTransaccionesSaveService extends BaseService {
         const ideCpctr = await this.dataSource.getSeqTable('cxp_cabece_transa', 'ide_cpctr', 1, dtoIn.login);
         const ideCpdtr = await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login);
 
+        // ─── GENERAR ASIENTO CONTABLE (ANTES de tocar tesorería/CxP) ─────────
+        // Se genera primero y de forma estricta (lanza si falla) para lograr "todo o nada":
+        // si no se puede contabilizar (ej. cuenta contable no configurada), no se guarda NADA
+        // de tesorería/CxP. Antes se generaba DESPUÉS del commit en modo best-effort, lo que
+        // dejaba anticipos registrados con ide_cnccc null cuando fallaba, invisible para el
+        // usuario salvo un warning en el log del servidor.
+        const asientoResult = await this.asientosAutomaticosService.generarAsientoPagoCxP({
+            ideTeclb, fecha: dtoIn.fecha, ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb,
+            ideGeper: dtoIn.ideGeper, valor: dtoIn.valor, observacion: dtoIn.observacion,
+            ...dtoIn,
+        });
+
+        if (!asientoResult.generado) {
+            throw new BadRequestException(
+                `No se pudo generar el asiento contable del anticipo (${(asientoResult.advertencias ?? []).join('; ') || 'error desconocido'}). El anticipo no fue registrado.`,
+            );
+        }
+        const ideCnccc = asientoResult.ide_cnccc ?? null;
+
         const queryRunner = await this.dataSource.pool.connect();
         try {
             await queryRunner.query('BEGIN');
@@ -338,13 +365,13 @@ export class CxpTransaccionesSaveService extends BaseService {
                     numero_teclb, fecha_trans_teclb, fecha_venci_teclb, beneficiari_teclb,
                     observacion_teclb, conciliado_teclb, fec_cam_est_teclb, num_comprobante_teclb,
                     ide_teban, depositado_teclb, devuelto_teclb,
-                    ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [ideTeclb, ideTeelb, dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.valor,
                     numero, dtoIn.fecha, dtoIn.fecha, '',
                     dtoIn.observacion, false, dtoIn.fechaEfectivo ?? dtoIn.fecha, dtoIn.numCuentaCheque ?? '',
                     dtoIn.ideTeban ?? null, false, false,
-                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );
 
             await queryRunner.query(
@@ -361,34 +388,27 @@ export class CxpTransaccionesSaveService extends BaseService {
                     ide_cpdtr, ide_teclb, ide_cpctr, ide_cpttr, ide_usua,
                     valor_cpdtr, observacion_cpdtr, numero_pago_cpdtr,
                     fecha_trans_cpdtr, fecha_venci_cpdtr, docum_relac_cpdtr, valor_anticipo_cpdtr,
-                    ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
                 [ideCpdtr, ideTeclb, ideCpctr, ideCpttrAnticipo, dtoIn.ideUsua,
                     dtoIn.valor, dtoIn.observacion, 0,
                     dtoIn.fecha, fechaVenceCuota, numero, 0,
-                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );
 
             await queryRunner.query('COMMIT');
         } catch (error) {
             await queryRunner.query('ROLLBACK');
+            // El asiento ya se había generado y confirmado (en su propia transacción) antes de
+            // llegar aquí - si tesorería/CxP falla ahora, se revierte también para no dejar un
+            // comprobante contable huérfano sin anticipo asociado ("todo o nada").
+            if (ideCnccc != null) await this.asientosAutomaticosService.eliminarAsiento(ideCnccc, dtoIn);
             throw error;
         } finally {
             queryRunner.release();
         }
 
         await this.preLibroBancosSaveService.actualizarSecuencial(dtoIn.ideTecba, dtoIn.ideTettb, numero, dtoIn);
-
-        let asientoResult: AsientoPagoResult = { generado: false, banco_encontrado: false, proveedor_encontrado: false, advertencias: [] };
-        try {
-            asientoResult = await this.asientosAutomaticosService.generarAsientoPagoCxP({
-                ideTeclb, fecha: dtoIn.fecha, ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb,
-                ideGeper: dtoIn.ideGeper, valor: dtoIn.valor, observacion: dtoIn.observacion,
-                ...dtoIn,
-            });
-        } catch (error) {
-            this.logger.warn(`Error en asiento automatico de anticipo CxP para ide_teclb=${ideTeclb}: ${error}`);
-        }
 
         return {
             message: 'ok',
