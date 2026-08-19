@@ -5,7 +5,6 @@ import { HeaderParamsDto } from '../../../../common/dto/common-params.dto';
 import { getCurrentDate, getCurrentTime } from '../../../../util/helpers/date-util';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { ObjectQueryDto } from '../../../connection/dto';
-import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
 
 import { ConfirmarImpresionDto } from './dto/confirmar-impresion.dto';
@@ -59,40 +58,48 @@ export class EtiquetasSaveService extends BaseService {
             };
             listQuery.push(objQuery);
         } else {
-            // Verificar que no exista ya la etiqueta para este producto + tipo
-            const checkQuery = new SelectQuery(`
-                SELECT COUNT(1) AS total
-                FROM inv_etiqueta
-                WHERE ide_inarti = $1 AND tipo_ineta = $2
-            `);
-            checkQuery.addIntParam(1, dtoIn.data.ide_inarti);
-            checkQuery.addParam(2, dtoIn.data.tipo_ineta);
-            const exists = await this.dataSource.createSingleQuery(checkQuery);
-            if (exists && Number(exists.total) > 0) {
-                throw new BadRequestException(
-                    'Este producto ya tiene una etiqueta configurada para este tipo',
-                );
-            }
-
+            // INSERT atómico vía ON CONFLICT DO NOTHING: reemplaza el antiguo
+            // SELECT COUNT(1) + INSERT genérico (dos conexiones separadas), que dejaba una
+            // ventana de condición de carrera entre el check y el insert bajo requests
+            // concurrentes, violando la restricción UNIQUE (ide_inarti, tipo_ineta).
             dtoIn.data.ide_ineta = await this.dataSource.getSeqTable(
                 `${module}_${tableName}`,
                 primaryKey,
                 1,
                 dtoIn.login,
             );
-            const objQuery: ObjectQueryDto = {
-                operation: 'insert',
-                module,
-                tableName,
-                primaryKey,
-                object: {
-                    ...dtoIn.data,
-                    usuario_ingre: dtoIn.login,
-                    fecha_ingre: getCurrentDate(),
-                    hora_ingre: getCurrentTime(),
-                },
-            };
-            listQuery.push(objQuery);
+
+            const result = await this.dataSource.pool.query(
+                `INSERT INTO inv_etiqueta (
+                    ide_ineta, ide_inarti, nombre_ineta, tipo_ineta, peso_ineta,
+                    unidad_medida_ineta, lote_ineta, fecha_elaboracion_ineta, fecha_vence_ineta,
+                    notas_ineta, usuario_ingre, fecha_ingre, hora_ingre
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                ON CONFLICT (ide_inarti, tipo_ineta) DO NOTHING`,
+                [
+                    dtoIn.data.ide_ineta,
+                    dtoIn.data.ide_inarti,
+                    dtoIn.data.nombre_ineta,
+                    dtoIn.data.tipo_ineta,
+                    dtoIn.data.peso_ineta ?? null,
+                    dtoIn.data.unidad_medida_ineta ?? null,
+                    dtoIn.data.lote_ineta ?? null,
+                    dtoIn.data.fecha_elaboracion_ineta ?? null,
+                    dtoIn.data.fecha_vence_ineta ?? null,
+                    dtoIn.data.notas_ineta ?? null,
+                    dtoIn.login,
+                    getCurrentDate(),
+                    getCurrentTime(),
+                ],
+            );
+
+            if (result.rowCount === 0) {
+                throw new BadRequestException(
+                    'Este producto ya tiene una etiqueta configurada para este tipo',
+                );
+            }
+
+            return { message: 'ok', rowCount: 1 };
         }
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });

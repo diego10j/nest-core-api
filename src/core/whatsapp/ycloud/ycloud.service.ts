@@ -1063,7 +1063,7 @@ export class YcloudService {
 
       if (existing) {
         const updateQuery = new UpdateQuery('wha_mensaje', 'uuid');
-        updateQuery.values.set('status_whmem', data.status);
+        updateQuery.values.set('status_whmem', String(data.status ?? '').substring(0, 20));
 
         // Normalise id_whmem to the WhatsApp WAMID on first status update.
         // saveMessageSent stores resp.id (YCloud internal ID); after this update
@@ -1164,7 +1164,7 @@ export class YcloudService {
       q.values.set('direction_whmem', 1);
       q.values.set('content_type_whmem', tipo);
       q.values.set('body_whmem', body);
-      q.values.set('status_whmem', data.status);
+      q.values.set('status_whmem', String(data.status ?? '').substring(0, 20));
       q.values.set('fecha_whmem', data.sendTime || data.createTime || new Date().toISOString());
       q.values.set('tipo_whmem', 'YCLOUD');
       q.values.set('leido_whmem', false);

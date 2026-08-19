@@ -280,6 +280,9 @@ export class DataSourceService {
       // console.error(query);
       // console.error(error);
       this.errorsLoggerService.createErrorLog(`[ERROR] createQuery`, error);
+      if ((error as { code?: string })?.code === '23505') {
+        throw new BadRequestException('Ya existe un registro con esos datos');
+      }
       throw new InternalServerErrorException(`${error}`);
     }
   }
@@ -643,6 +646,9 @@ export class DataSourceService {
       console.error(error);
       await queryRunner.query('ROLLBACK');
       this.errorsLoggerService.createErrorLog(`[ERROR] createQueryList`, error);
+      if ((error as { code?: string })?.code === '23505') {
+        throw new BadRequestException('Ya existe un registro con esos datos');
+      }
       throw new InternalServerErrorException(`[ERROR] createQueryList - ${error}`);
     } finally {
       await queryRunner.release();

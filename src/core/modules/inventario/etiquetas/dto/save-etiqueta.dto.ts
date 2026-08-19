@@ -1,6 +1,7 @@
 import { Type, Transform } from 'class-transformer';
 import {
     IsBoolean,
+    IsDateString,
     IsInt,
     IsNotEmpty,
     IsNumber,
@@ -47,12 +48,12 @@ export class InvEtiqueta {
     lote_ineta?: string;
 
     @IsOptional()
-    @IsString()
+    @IsDateString()
     @Transform(({ value }) => value || null)
     fecha_elaboracion_ineta?: string;
 
     @IsOptional()
-    @IsString()
+    @IsDateString()
     @Transform(({ value }) => value || null)
     fecha_vence_ineta?: string;
 
