@@ -125,8 +125,10 @@ export interface AtsVentaDto {
     montoIce: number;
     valorRetIva: number;
     valorRetRenta: number;
-    /** Solo ventas (no notas de crédito) */
-    formaPago?: string;
+    /** Solo ventas (no notas de crédito). Uno o más códigos ATS (con_deta_forma_pago.alterno_ats)
+     * realmente usados por las facturas del cliente agregadas en esta fila - el ATS exige
+     * reportar cada forma de pago usada cuando el cliente pagó de más de una forma en el período. */
+    formaPago?: string[];
 }
 
 export interface AtsVentaEstablecimientoDto {

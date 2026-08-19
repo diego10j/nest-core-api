@@ -104,9 +104,12 @@ export class AtsService extends BaseService {
             ventas.push(...await this.getNotasCreditoVenta(fechaInicio, fechaFin, dtoIn.ideSucu));
             ventasEstablecimiento = establecimientos.map((e) => ({
                 codEstab: e.establecimiento,
-                // Paridad legacy: el cálculo real de ventas/iva compensado está deshabilitado en el
-                // origen (comentado) y siempre se reporta 0.00.
-                ventasEstab: 0,
+                ventasEstab: Number(e.ventas_estab ?? 0),
+                // ivaComp: "IVA Compensado en el establecimiento por ventas - Ley de
+                // Solidaridad" (ficha técnica del ATS) - obligatorio solo "al tener valores
+                // por compensaciones" bajo ese mecanismo específico (régimen de 2016
+                // post-terremoto). 0.00 es el valor correcto salvo que el contribuyente
+                // efectivamente tenga compensaciones de IVA por Ley de Solidaridad.
                 ivaComp: 0,
             }));
         }
@@ -141,12 +144,21 @@ export class AtsService extends BaseService {
         return this.dataSource.createSingleQuery(query);
     }
 
-    /** Establecimientos con ventas en el período (agrupado por los 3 primeros dígitos de la serie de facturación). */
+    /**
+     * Establecimientos con ventas en el período (agrupado por los 3 primeros dígitos de la
+     * serie de facturación), con el total de ventas de cada uno (ventasEstab del ATS: campo
+     * "obligatorio" según la ficha técnica, sumatoria de base_tarifa0 + base_grabada +
+     * base_no_objeto_iva de las facturas de ese establecimiento). No incluye notas de crédito
+     * de venta a propósito: la ficha técnica exige que la suma de ventasEstab de todos los
+     * establecimientos "no puede ser mayor" a totalVentas (que sí las incluye) - dejarlas fuera
+     * aquí garantiza esa regla sin necesitar una segunda query de notas por establecimiento.
+     */
     private async getEstablecimientos(
         fechaInicio: string, fechaFin: string, ideSucu: number,
-    ): Promise<{ establecimiento: string }[]> {
+    ): Promise<{ establecimiento: string; ventas_estab: number }[]> {
         const query = new SelectQuery(`
-            SELECT SUBSTR(df.serie_ccdaf, 1, 3) AS establecimiento
+            SELECT SUBSTR(df.serie_ccdaf, 1, 3) AS establecimiento,
+                SUM(cf.base_tarifa0_cccfa + cf.base_grabada_cccfa + cf.base_no_objeto_iva_cccfa) AS ventas_estab
             FROM cxc_cabece_factura cf
             LEFT JOIN cxc_datos_fac df ON df.ide_ccdaf = cf.ide_ccdaf
             WHERE cf.fecha_emisi_cccfa BETWEEN $1 AND $2
@@ -470,10 +482,12 @@ export class AtsService extends BaseService {
             SELECT tide.alterno2_getid, TRIM(cli.identificac_geper) AS identificac_geper, COUNT(cab.ide_geper) AS numcomprobantes,
                 SUM(cab.base_tarifa0_cccfa) AS base_tarifa0, SUM(cab.base_grabada_cccfa) AS base_grabada,
                 SUM(cab.base_no_objeto_iva_cccfa) AS base_no_objeto_iva,
-                SUM(cab.valor_iva_cccfa) AS valor_iva, SUM(cab.ret_iva_cccfa) AS retiva, SUM(cab.ret_fuente_cccfa) AS retrenta
+                SUM(cab.valor_iva_cccfa) AS valor_iva, SUM(cab.ret_iva_cccfa) AS retiva, SUM(cab.ret_fuente_cccfa) AS retrenta,
+                array_agg(DISTINCT dpa.alterno_ats) FILTER (WHERE dpa.alterno_ats IS NOT NULL) AS formas_pago
             FROM cxc_cabece_factura cab
             LEFT JOIN gen_persona cli ON cab.ide_geper = cli.ide_geper
             LEFT JOIN gen_tipo_identifi tide ON cli.ide_getid = tide.ide_getid
+            LEFT JOIN con_deta_forma_pago dpa ON cab.ide_cndfp1 = dpa.ide_cndfp
             WHERE cab.fecha_emisi_cccfa BETWEEN $1 AND $2
               AND cab.ide_ccefa = $3
               AND cab.ide_sucu = $4
@@ -488,10 +502,36 @@ export class AtsService extends BaseService {
         const ventas: AtsVentaDto[] = [];
         for (const fila of filas) {
             const cliente = await this.buildClienteVenta(fila.alterno2_getid, fila.identificac_geper);
+            // formaPago se arma con los códigos ATS realmente usados por las facturas de este
+            // cliente en el período (con_deta_forma_pago.alterno_ats vía cab.ide_cndfp1) - antes
+            // era el literal fijo '20' para todos los clientes, sin relación con la forma de
+            // pago real de cada factura. Como esta fila agrega N facturas del mismo cliente
+            // (numeroComprobantes), puede haber más de un código distinto en el período; el ATS
+            // exige reportar todas las formas de pago usadas cuando difieren (no una sola
+            // "genérica"), por eso <formasDePago> admite varios <formaPago>. Set (no array
+            // simple) para garantizar que nunca salgan códigos duplicados, incluido el caso del
+            // fallback de abajo.
+            const formasPagoSet = new Set(
+                ((fila.formas_pago as (string | null)[] | null) ?? []).filter((v): v is string => !!v),
+            );
+            if (formasPagoSet.size === 0) {
+                // Ninguna factura del cliente en el período resolvió una forma de pago real
+                // (ide_cndfp1 nulo, o sin alterno_ats configurado en el catálogo) - el ATS exige
+                // el campo igual, así que se reporta "20" (Otros con utilización del sistema
+                // financiero) como código genérico de respaldo en vez de omitir <formasDePago>
+                // por completo. Al partir de un Set vacío no puede duplicar nada.
+                formasPagoSet.add('20');
+            }
+            const formasPago = Array.from(formasPagoSet);
             ventas.push({
                 ...cliente,
-                // Hardcoded "18" (limitación heredada del legacy: no usa el tipo real del comprobante).
-                tipoComprobante: '18',
+                // Tabla 4 (TIPOS COMPROBANTES AUTORIZADOS) de la ficha técnica del ATS: código 1 =
+                // Factura. getVentas() solo lee cxc_cabece_factura (facturas de venta
+                // electrónicas), así que es el código correcto para todas sus filas - antes
+                // tenía el literal "18" ("Documentos autorizados... excepto N/C N/D", un
+                // catch-all genérico, no específico de factura). getNotasCreditoVenta() ya usa
+                // el código correcto ('04') para su propio tipo de comprobante.
+                tipoComprobante: '1',
                 tipoEmision: 'E',
                 numeroComprobantes: Number(fila.numcomprobantes ?? 0),
                 baseNoGraIva: Number(fila.base_no_objeto_iva ?? 0),
@@ -501,7 +541,7 @@ export class AtsService extends BaseService {
                 montoIce: 0,
                 valorRetIva: Number(fila.retiva ?? 0),
                 valorRetRenta: Number(fila.retrenta ?? 0),
-                formaPago: '20',
+                formaPago: formasPago,
             });
         }
         return ventas;

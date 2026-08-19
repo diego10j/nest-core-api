@@ -24,6 +24,14 @@ export function buildAtsXml(anexo: AtsAnexoDto): string {
             + `\t<ventasEstablecimiento>\n${ventasEstabXml}\t</ventasEstablecimiento>\n`;
     }
 
+    // totalVentas = suma de baseNoGraIva + baseImponible + baseImpGrav de TODOS los
+    // <detalleVentas> (facturas + notas de crédito de venta, ver getNotasCreditoVenta) -
+    // exigido por la ficha técnica del ATS. Antes era el literal fijo 0, sin relación con las
+    // ventas reales del anexo.
+    const totalVentas = incluyeVentas
+        ? anexo.ventas.reduce((sum, v) => sum + v.baseNoGraIva + v.baseImponible + v.baseImpGrav, 0)
+        : 0;
+
     const anuladosXml = `\t<anulados>\n${anexo.anulados.map((a) => `\t\t<detalleAnulados>
 \t\t\t<tipoComprobante>${tag(a.tipoComprobante)}</tipoComprobante>
 \t\t\t<establecimiento>${tag(a.establecimiento)}</establecimiento>
@@ -41,7 +49,7 @@ export function buildAtsXml(anexo: AtsAnexoDto): string {
 \t<Anio>${tag(anexo.anio)}</Anio>
 \t<Mes>${tag(anexo.mes)}</Mes>
 \t<numEstabRuc>${tag(anexo.numEstabRuc)}</numEstabRuc>
-\t<totalVentas>${fNumero(0)}</totalVentas>
+\t<totalVentas>${fNumero(totalVentas)}</totalVentas>
 \t<codigoOperativo>IVA</codigoOperativo>
 ${comprasXml}${ventasXml}${anuladosXml}</iva>`;
 }
@@ -155,10 +163,8 @@ function buildDetalleVenta(v: AtsVentaDto): string {
 \t\t\t<montoIce>${fNumero(v.montoIce)}</montoIce>
 \t\t\t<valorRetIva>${fNumero(v.valorRetIva)}</valorRetIva>
 \t\t\t<valorRetRenta>${fNumero(v.valorRetRenta)}</valorRetRenta>\n`;
-    if (v.formaPago) {
-        xml += `\t\t\t<formasDePago>
-\t\t\t\t<formaPago>${tag(v.formaPago)}</formaPago>
-\t\t\t</formasDePago>\n`;
+    if (v.formaPago && v.formaPago.length > 0) {
+        xml += `\t\t\t<formasDePago>\n${v.formaPago.map((fp) => `\t\t\t\t<formaPago>${tag(fp)}</formaPago>\n`).join('')}\t\t\t</formasDePago>\n`;
     }
     xml += '\t\t</detalleVentas>\n';
     return xml;
