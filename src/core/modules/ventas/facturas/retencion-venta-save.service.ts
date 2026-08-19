@@ -66,7 +66,7 @@ export class RetencionVentaSaveService extends BaseService {
             // ── Factura ──────────────────────────────────────────────────────
             const qFac = new SelectQuery(`
                 SELECT ide_cccfa, ide_geper, secuencial_cccfa, fecha_trans_cccfa,
-                       total_cccfa, ide_cncre, ide_ccefa, ide_cnccc
+                       total_cccfa, ide_cncre, ide_ccefa, ide_cnccc, fact_mig_cccfa
                 FROM cxc_cabece_factura
                 WHERE ide_cccfa = $1
             `);
@@ -105,6 +105,25 @@ export class RetencionVentaSaveService extends BaseService {
                 throw new BadRequestException('La factura no tiene transacción de cuenta por cobrar asociada.');
             }
 
+            // Si la factura se pagó con tarjeta y ya no tiene saldo pendiente, el comprobante
+            // de retención llega solo como respaldo documental/tributario (SRI) - el cobro por
+            // tarjeta ya liquidó el 100% del valor, así que la retención NO debe generar una
+            // transacción CxC adicional (dejaría el saldo en negativo, un saldo a favor
+            // artificial que no existe realmente).
+            let saldoActual = 0;
+            if (isDefined(factura.fact_mig_cccfa)) {
+                const qSaldo = new SelectQuery(`
+                    SELECT COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0) AS saldo
+                    FROM cxc_detall_transa dt
+                    JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+                    WHERE dt.ide_ccctr = $1
+                `);
+                qSaldo.addIntParam(1, Number(trn.ide_ccctr));
+                const rowSaldo = await this.dataSource.createSingleQuery(qSaldo);
+                saldoActual = Number(rowSaldo?.saldo ?? 0);
+            }
+            const soloDocumental = isDefined(factura.fact_mig_cccfa) && saldoActual <= 0;
+
             // ── Secuenciales ─────────────────────────────────────────────────
             const ideCncre = await this.dataSource.getSeqTable(TABLE_RET_CAB, PK_RET_CAB, 1, dtoIn.login);
             const baseIdeCndre = await this.dataSource.getSeqTable(TABLE_RET_DET, PK_RET_DET, detalles.length, dtoIn.login);
@@ -141,23 +160,27 @@ export class RetencionVentaSaveService extends BaseService {
                 listQuery.push(insDet);
             });
 
-            // Transacción CxC de retención (disminuye el saldo por cobrar de la factura)
-            const insTrn = new InsertQuery('cxc_detall_transa', 'ide_ccdtr', dtoIn);
-            insTrn.values.set('ide_ccdtr', ideCcdtr);
-            insTrn.values.set('ide_ccctr', Number(trn.ide_ccctr));
-            insTrn.values.set('ide_cccfa', dtoIn.ide_cccfa);
-            insTrn.values.set('ide_ccttr', this.getVar('p_cxc_tipo_trans_retencion'));
-            insTrn.values.set('ide_usua', dtoIn.ideUsua);
-            insTrn.values.set('fecha_trans_ccdtr', factura.fecha_trans_cccfa ?? getCurrentDate());
-            insTrn.values.set('fecha_venci_ccdtr', factura.fecha_trans_cccfa ?? getCurrentDate());
-            insTrn.values.set('valor_ccdtr', totalRetencion);
-            insTrn.values.set('observacion_ccdtr', `V/. RETENCIÓN FACTURA N. ${factura.secuencial_cccfa}`);
-            insTrn.values.set('numero_pago_ccdtr', 0);
-            insTrn.values.set('docum_relac_ccdtr', factura.secuencial_cccfa);
-            insTrn.values.set('ide_cnccc', factura.ide_cnccc ?? null);
-            insTrn.values.set('fecha_ingre', getCurrentDate());
-            insTrn.values.set('hora_ingre', getCurrentTime());
-            listQuery.push(insTrn);
+            // Transacción CxC de retención (disminuye el saldo por cobrar de la factura) - se
+            // omite cuando es solo respaldo documental de una factura ya liquidada con tarjeta
+            // (ver "soloDocumental" arriba), para no dejar un saldo a favor artificial.
+            if (!soloDocumental) {
+                const insTrn = new InsertQuery('cxc_detall_transa', 'ide_ccdtr', dtoIn);
+                insTrn.values.set('ide_ccdtr', ideCcdtr);
+                insTrn.values.set('ide_ccctr', Number(trn.ide_ccctr));
+                insTrn.values.set('ide_cccfa', dtoIn.ide_cccfa);
+                insTrn.values.set('ide_ccttr', this.getVar('p_cxc_tipo_trans_retencion'));
+                insTrn.values.set('ide_usua', dtoIn.ideUsua);
+                insTrn.values.set('fecha_trans_ccdtr', factura.fecha_trans_cccfa ?? getCurrentDate());
+                insTrn.values.set('fecha_venci_ccdtr', factura.fecha_trans_cccfa ?? getCurrentDate());
+                insTrn.values.set('valor_ccdtr', totalRetencion);
+                insTrn.values.set('observacion_ccdtr', `V/. RETENCIÓN FACTURA N. ${factura.secuencial_cccfa}`);
+                insTrn.values.set('numero_pago_ccdtr', 0);
+                insTrn.values.set('docum_relac_ccdtr', factura.secuencial_cccfa);
+                insTrn.values.set('ide_cnccc', factura.ide_cnccc ?? null);
+                insTrn.values.set('fecha_ingre', getCurrentDate());
+                insTrn.values.set('hora_ingre', getCurrentTime());
+                listQuery.push(insTrn);
+            }
 
             // Vincular la retención a la factura
             const updFac = new UpdateQuery('cxc_cabece_factura', 'ide_cccfa', dtoIn);
@@ -173,6 +196,7 @@ export class RetencionVentaSaveService extends BaseService {
                 ide_cncre: ideCncre,
                 ide_cccfa: dtoIn.ide_cccfa,
                 total_retencion: totalRetencion,
+                solo_documental: soloDocumental,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
