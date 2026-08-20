@@ -98,11 +98,16 @@ export class ClientesSaveService extends BaseService {
      * Marca a un cliente como seguidor en redes sociales (Instagram/TikTok/Facebook, campo
      * único genérico). Es de una sola vía: el WHERE exige que todavía esté en false, así que
      * nunca revierte a false y una segunda llamada no encuentra fila que actualizar.
+     *
+     * Junto con la marca, otorga el beneficio de descuento_seguidor_geper = true: un 5% de
+     * descuento aplicable en una sola factura (ver FacturasSaveService.aplicarDescuentoSeguidor),
+     * que se consume (pasa a false) la primera vez que se usa.
      */
     async marcarSeguidorRedes(dtoIn: MarcarSeguidorDto & HeaderParamsDto) {
         const result = await this.dataSource.pool.query(
             `UPDATE gen_persona
-             SET es_seguidor_geper = true, fecha_seguidor_geper = $1, usuario_seguidor_geper = $2
+             SET es_seguidor_geper = true, fecha_seguidor_geper = $1, usuario_seguidor_geper = $2,
+                 descuento_seguidor_geper = true
              WHERE ide_geper = $3 AND (es_seguidor_geper IS NOT TRUE)
              RETURNING fecha_seguidor_geper, usuario_seguidor_geper`,
             [getCurrentDateTime(), dtoIn.login, dtoIn.ide_geper],

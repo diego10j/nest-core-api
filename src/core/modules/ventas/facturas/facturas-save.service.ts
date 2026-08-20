@@ -162,6 +162,15 @@ export class FacturasSaveService extends BaseService {
             // declaró al SRI puede terminar divergiendo de lo que muestra la factura en el ERP.
             this.validarIdentificacion(cliente);
 
+            // Descuento seguidor: beneficio de una sola vez, sólo válido al CREAR la factura -
+            // en edición no se re-valida ni re-consume (evita que reabrir/editar una factura ya
+            // guardada intente cobrar el beneficio dos veces o lo rechace sin razón).
+            if (dtoIn.aplicarDescuentoSeguidor && !isUpdate && !cliente.descuento_seguidor_geper) {
+                throw new BadRequestException(
+                    'El cliente no tiene disponible el descuento de seguidor (5%) o ya fue utilizado.',
+                );
+            }
+
             if (!isUpdate) {
                 if (!data.correo_cccfa) throw new BadRequestException('El correo electrónico es obligatorio.');
                 if (!data.telefono_cccfa || data.telefono_cccfa.length < 6)
@@ -505,6 +514,17 @@ export class FacturasSaveService extends BaseService {
             );
 
             await queryRunner.query('COMMIT');
+
+            // Consumir el descuento seguidor (una sola vez) - se hace FUERA de la transacción
+            // SRI a propósito: si esto fallara no debe revertir una factura ya autorizada/creada;
+            // en el peor caso el beneficio queda disponible una vez más, no se pierde la venta.
+            if (dtoIn.aplicarDescuentoSeguidor) {
+                await this.dataSource.pool.query(
+                    `UPDATE gen_persona SET descuento_seguidor_geper = false
+                     WHERE ide_geper = $1 AND descuento_seguidor_geper IS TRUE`,
+                    [data.ide_geper],
+                );
+            }
 
             return {
                 message: 'ok',
@@ -1305,6 +1325,7 @@ export class FacturasSaveService extends BaseService {
             SELECT g.ide_geper, g.nom_geper, g.identificac_geper,
                    g.correo_geper, g.direccion_geper, g.telefono_geper,
                    g.ide_geprov, g.ide_gecant, g.ide_cndfp,
+                   COALESCE(g.descuento_seguidor_geper, false) AS descuento_seguidor_geper,
                    t.alterno2_getid AS tipo_identificacion
             FROM gen_persona g
             INNER JOIN gen_tipo_identifi t ON g.ide_getid = t.ide_getid

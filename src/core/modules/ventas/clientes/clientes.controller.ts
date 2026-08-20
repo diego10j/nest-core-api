@@ -75,6 +75,13 @@ export class ClientesController {
     return this.service.getSaldo({ ...headersParams, ...dtoIn });
   }
 
+  @Get('getEstadoSeguidorCliente')
+  @ApiOperation({ summary: 'Estado mínimo de seguidor/descuento de un cliente (para refrescar con revalidateOnFocus el botón de descuento en Facturación)' })
+  @ApiResponse({ status: 200, description: 'descuento_seguidor_geper: true si el cliente aún no ha usado el descuento de bienvenida' })
+  getEstadoSeguidorCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdClienteDto) {
+    return this.service.getEstadoSeguidorCliente({ ...headersParams, ...dtoIn });
+  }
+
   @Get('getProductosCliente')
   @ApiOperation({ summary: 'Listar productos comprados por un cliente' })
   @ApiResponse({ status: 200, description: 'Productos comprados' })

@@ -308,4 +308,15 @@ export class SaveFacturaDto extends SaveDto {
     @ValidateNested()
     @Type(() => GuiaRemisionDto)
     guia?: GuiaRemisionDto;
+
+    @ApiPropertyOptional({
+        description:
+            'Si true, consume el 5% de descuento de bienvenida por seguidor (gen_persona.descuento_seguidor_geper). ' +
+            'El detalle ya debe venir con el descuento aplicado (descuento_ccdfa/total_ccdfa) - este flag sólo ' +
+            'autoriza y consume el beneficio (una sola vez, sólo al crear la factura).',
+        default: false,
+    })
+    @IsBoolean()
+    @IsOptional()
+    aplicarDescuentoSeguidor?: boolean = false;
 }

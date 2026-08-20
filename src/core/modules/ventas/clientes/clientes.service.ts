@@ -639,6 +639,31 @@ export class ClientesService extends BaseService {
         return this.dataSource.createQuery(query);
     }
 
+    /**
+     * Estado puntual y mínimo para el botón "Aplicar descuento seguidor" de Facturación: si el
+     * cliente es seguidor Y todavía no ha usado el descuento de bienvenida en una factura
+     * (gen_persona.descuento_seguidor_geper - se pone en false apenas se consume, ver
+     * FacturasSaveService.aplicarDescuentoSeguidor). Endpoint dedicado y liviano (no el
+     * genérico getTableQueryById) para poder llamarse con revalidateOnFocus sin traer toda la
+     * fila del cliente.
+     */
+    async getEstadoSeguidorCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
+        if (!dtoIn.ide_geper) {
+            throw new BadRequestException('Se requiere ide_geper');
+        }
+
+        const query = new SelectQuery(`
+            SELECT COALESCE(descuento_seguidor_geper, false) AS descuento_seguidor_geper
+            FROM gen_persona
+            WHERE ide_geper = $1
+        `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.setLazy(false);
+
+        const row = await this.dataSource.createSingleQuery(query);
+        return { descuento_seguidor_geper: Boolean(row?.descuento_seguidor_geper) };
+    }
+
     async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {
         const query = new SelectQuery(
             `     
@@ -1582,7 +1607,8 @@ export class ClientesService extends BaseService {
             p.telefono_geper,
             p.fecha_ingre_geper,
             p.ide_cndfp,
-            p.ide_vgven
+            p.ide_vgven,
+            COALESCE(p.descuento_seguidor_geper, false) AS descuento_seguidor_geper
         FROM
             gen_persona p
             LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
