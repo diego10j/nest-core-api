@@ -15,6 +15,7 @@ import { GetClientesDto } from './dto/get-clientes.dto';
 import { GetExisteClienteDto } from './dto/get-existe-cliente.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
+import { MarcarSeguidorDto } from './dto/marcar-seguidor.dto';
 import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
 import { SetActivoDireccionDto } from './dto/set-activo-direccion.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
@@ -205,5 +206,12 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'Dirección/contacto eliminado exitosamente' })
   deleteDireccionPersona(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetActivoDireccionDto) {
     return this.saveService.deleteDireccionPersona({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('marcarSeguidorRedes')
+  @ApiOperation({ summary: 'Marca a un cliente como seguidor en redes sociales (una sola vez, no reversible)' })
+  @ApiResponse({ status: 200, description: 'Cliente marcado como seguidor' })
+  marcarSeguidorRedes(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: MarcarSeguidorDto) {
+    return this.saveService.marcarSeguidorRedes({ ...headersParams, ...dtoIn });
   }
 }

@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
+import { getCurrentDateTime } from 'src/util/helpers/date-util';
 
+import { MarcarSeguidorDto } from './dto/marcar-seguidor.dto';
 import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
 import { SetActivoDireccionDto } from './dto/set-activo-direccion.dto';
 
@@ -90,5 +92,24 @@ export class ClientesSaveService extends BaseService {
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });
         return { message: 'ok' };
+    }
+
+    /**
+     * Marca a un cliente como seguidor en redes sociales (Instagram/TikTok/Facebook, campo
+     * único genérico). Es de una sola vía: el WHERE exige que todavía esté en false, así que
+     * nunca revierte a false y una segunda llamada no encuentra fila que actualizar.
+     */
+    async marcarSeguidorRedes(dtoIn: MarcarSeguidorDto & HeaderParamsDto) {
+        const result = await this.dataSource.pool.query(
+            `UPDATE gen_persona
+             SET es_seguidor_geper = true, fecha_seguidor_geper = $1, usuario_seguidor_geper = $2
+             WHERE ide_geper = $3 AND (es_seguidor_geper IS NOT TRUE)
+             RETURNING fecha_seguidor_geper, usuario_seguidor_geper`,
+            [getCurrentDateTime(), dtoIn.login, dtoIn.ide_geper],
+        );
+        if (result.rows.length === 0) {
+            throw new BadRequestException('El cliente ya está marcado como seguidor o no existe.');
+        }
+        return { message: 'ok', ...result.rows[0] };
     }
 }

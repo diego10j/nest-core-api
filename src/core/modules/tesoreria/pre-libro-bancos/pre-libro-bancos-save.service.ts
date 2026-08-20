@@ -39,9 +39,25 @@ export class PreLibroBancosSaveService extends BaseService {
 
     /**
      * Anula un movimiento del libro bancos: cambia estado, marca asiento anulado,
-     * elimina transacciones CxC/CxP asociadas, y desmarca deposito/devuelto
+     * elimina transacciones CxC/CxP asociadas (y su comprobante-banco), desmarca
+     * deposito/devuelto, y recalcula pagado_cccfa/pagado_cpcfa de las facturas afectadas.
+     * Sirve tanto para movimientos de cobro (CxC) como de pago (CxP): un movimiento de
+     * banco es genérico, así que esta cascada cubre ambos casos sin duplicar lógica.
      */
     async anularMovimiento(dtoIn: AnularMovimientoDto & HeaderParamsDto) {
+        // 0. Validar que exista y que no esté conciliado (antes solo se validaba en la UI)
+        const movQuery = new SelectQuery(
+            `SELECT conciliado_teclb FROM tes_cab_libr_banc WHERE ide_teclb = $1`,
+        );
+        movQuery.addIntParam(1, dtoIn.ideTeclb);
+        const mov = await this.dataSource.createSingleQuery(movQuery);
+        if (!mov) {
+            throw new BadRequestException('El movimiento indicado no existe.');
+        }
+        if (mov.conciliado_teclb) {
+            throw new BadRequestException('No se puede anular un movimiento ya conciliado.');
+        }
+
         const listQuery: ObjectQueryDto[] = [];
 
         // 1. Cambiar estado a ANULADO (ide_teelb = 1)
@@ -89,7 +105,18 @@ export class PreLibroBancosSaveService extends BaseService {
             );
         }
 
-        // 4. Eliminar transacciones CxC y CxP
+        // 4. Capturar las facturas CxC/CxP afectadas antes de borrar el detalle de pago,
+        // para poder recalcular su flag pagado_* después
+        const facturasCxc = await this.dataSource.pool.query(
+            `SELECT DISTINCT ide_cccfa FROM cxc_detall_transa WHERE ide_teclb = $1 AND numero_pago_ccdtr > 0`,
+            [dtoIn.ideTeclb],
+        );
+        const facturasCxp = await this.dataSource.pool.query(
+            `SELECT DISTINCT ide_cpcfa FROM cxp_detall_transa WHERE ide_teclb = $1 AND numero_pago_cpdtr > 0`,
+            [dtoIn.ideTeclb],
+        );
+
+        // 5. Eliminar transacciones CxC y CxP
         await this.dataSource.pool.query(
             `DELETE FROM cxc_detall_transa WHERE ide_teclb = $1 AND numero_pago_ccdtr > 0`,
             [dtoIn.ideTeclb],
@@ -98,6 +125,33 @@ export class PreLibroBancosSaveService extends BaseService {
             `DELETE FROM cxp_detall_transa WHERE ide_teclb = $1 AND numero_pago_cpdtr > 0`,
             [dtoIn.ideTeclb],
         );
+
+        // 6. Eliminar el/los comprobante(s)-banco (foto + datos OCR/IA) ligados al movimiento
+        await this.dataSource.pool.query(
+            `DELETE FROM tes_info_comprobante_banco WHERE ide_teclb = $1`,
+            [dtoIn.ideTeclb],
+        );
+
+        // 7. Recalcular pagado_cccfa/pagado_cpcfa de las facturas afectadas: al borrar el
+        // pago, la factura no debe seguir marcada como pagada si ya no tiene pagos aplicados
+        for (const f of facturasCxc.rows) {
+            await this.dataSource.pool.query(
+                `UPDATE cxc_cabece_factura SET pagado_cccfa = false
+                 WHERE ide_cccfa = $1 AND NOT EXISTS (
+                     SELECT 1 FROM cxc_detall_transa WHERE ide_cccfa = $1 AND numero_pago_ccdtr > 0
+                 )`,
+                [f.ide_cccfa],
+            );
+        }
+        for (const f of facturasCxp.rows) {
+            await this.dataSource.pool.query(
+                `UPDATE cxp_cabece_factur SET pagado_cpcfa = false
+                 WHERE ide_cpcfa = $1 AND NOT EXISTS (
+                     SELECT 1 FROM cxp_detall_transa WHERE ide_cpcfa = $1 AND numero_pago_cpdtr > 0
+                 )`,
+                [f.ide_cpcfa],
+            );
+        }
 
         return this.core.save({ ...dtoIn, listQuery, audit: false });
     }
