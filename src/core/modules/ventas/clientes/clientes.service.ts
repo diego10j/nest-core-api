@@ -81,6 +81,8 @@ export class ClientesService extends BaseService {
             c.nombre_vgven,
             activo_geper,
             requiere_actua_geper,
+            es_seguidor_geper,
+            fecha_seguidor_geper,
             nombre_getitp,
             nombre_cntco,
             p.fecha_ingre,
