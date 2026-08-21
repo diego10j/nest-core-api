@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  Max,
+  Min,
   IsBoolean,
   IsIn,
   IsInt,
@@ -75,6 +77,13 @@ export class SaveArticuloDto {
   @IsInt()
   @IsOptional()
   ideCcat?: number | null;
+
+  // Matiz HSL 0-345, en pasos de 15° (24 colores posibles) — ver src/utils/note-colors en el frontend.
+  @IsInt()
+  @Min(0)
+  @Max(345)
+  @IsOptional()
+  color?: number | null;
 
   @IsBoolean()
   @IsOptional()

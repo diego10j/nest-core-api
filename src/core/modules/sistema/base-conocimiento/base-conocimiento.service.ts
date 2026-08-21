@@ -104,9 +104,11 @@ export class BaseConocimientoService {
         c.contenido_cono,
         c.ide_ccat,
         cc.nombre_ccat AS categoria_cono,
+        c.color_cono,
         c.favorito_cono,
         c.vistas_cono,
         c.usuario_ingre,
+        c.usuario_actua,
         c.fecha_reg_cono,
         c.fecha_actua_cono,
         COALESCE((
@@ -141,9 +143,11 @@ export class BaseConocimientoService {
         c.contenido_cono,
         c.ide_ccat,
         cc.nombre_ccat AS categoria_cono,
+        c.color_cono,
         c.favorito_cono,
         c.vistas_cono,
         c.usuario_ingre,
+        c.usuario_actua,
         c.fecha_reg_cono,
         c.fecha_actua_cono,
         COALESCE((
@@ -171,7 +175,7 @@ export class BaseConocimientoService {
   }
 
   async saveArticulo(dto: SaveArticuloDto & HeaderParamsDto): Promise<ResultQuery> {
-    const { uuid, titulo, contenido, ideCcat, favorito, tags = [], relaciones = [], archivos = [] } = dto;
+    const { uuid, titulo, contenido, ideCcat, color, favorito, tags = [], relaciones = [], archivos = [] } = dto;
     const textoPlano = [titulo, stripHtml(contenido), tags.join(' ')].filter(Boolean).join(' ').slice(0, 20000);
 
     const listQuery: Query[] = [];
@@ -196,6 +200,7 @@ export class BaseConocimientoService {
       updateQuery.values.set('contenido_cono', contenido || null);
       updateQuery.values.set('texto_plano_cono', textoPlano);
       updateQuery.values.set('ide_ccat', ideCcat || null);
+      updateQuery.values.set('color_cono', isDefined(color) ? color : null);
       if (isDefined(favorito)) updateQuery.values.set('favorito_cono', favorito);
       updateQuery.values.set('fecha_actua_cono', new Date());
       updateQuery.where = `ide_cono = ${ideCono}`;
@@ -208,6 +213,7 @@ export class BaseConocimientoService {
       insertQuery.values.set('contenido_cono', contenido || null);
       insertQuery.values.set('texto_plano_cono', textoPlano);
       insertQuery.values.set('ide_ccat', ideCcat || null);
+      insertQuery.values.set('color_cono', isDefined(color) ? color : null);
       insertQuery.values.set('favorito_cono', favorito ?? false);
       insertQuery.values.set('estado_cono', 'ACTIVO');
       insertQuery.values.set('vistas_cono', 0);

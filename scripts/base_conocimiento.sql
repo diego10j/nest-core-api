@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS sis_conocimiento (
     contenido_cono    TEXT,
     texto_plano_cono  TEXT,
     ide_ccat          INTEGER REFERENCES sis_conocimiento_categoria(ide_ccat),
+    color_cono        SMALLINT, -- matiz HSL 0-345 (24 colores, pasos de 15°); NULL = sin color
     favorito_cono     BOOLEAN DEFAULT FALSE,
     estado_cono       VARCHAR(20) DEFAULT 'ACTIVO', -- ACTIVO | ARCHIVADO
     vistas_cono       INTEGER DEFAULT 0,
