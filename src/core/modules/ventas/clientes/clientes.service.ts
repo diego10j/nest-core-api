@@ -20,6 +20,7 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
@@ -46,6 +47,7 @@ export class ClientesService extends BaseService {
                 'p_cxp_estado_factura_normal', // 0
                 'p_gen_tipo_identificacion_ruc', //  1
                 'p_gen_tipo_identificacion_cedula', // 0
+                'p_cxc_descuento_seguidor', // 5
             ])
             .then((result) => {
                 this.variables = result;
@@ -661,7 +663,111 @@ export class ClientesService extends BaseService {
         query.setLazy(false);
 
         const row = await this.dataSource.createSingleQuery(query);
-        return { descuento_seguidor_geper: Boolean(row?.descuento_seguidor_geper) };
+        const porcentajeDescuentoSeguidor = Number(this.variables.get('p_cxc_descuento_seguidor') ?? 5);
+        return {
+            descuento_seguidor_geper: Boolean(row?.descuento_seguidor_geper),
+            porcentaje_descuento_seguidor: porcentajeDescuentoSeguidor,
+        };
+    }
+
+    /**
+     * Reporte de Seguidores (ventas/reportes/seguidores): listado de clientes marcados como
+     * seguidores en redes sociales dentro del rango de fechas, junto con si ya usaron el
+     * beneficio de descuento y (si lo usaron) en qué factura y por cuánto. Retorna en una sola
+     * llamada: el listado para el DataTableQuery (createQuery), las métricas puntuales y los
+     * datos del gráfico (seguidores registrados por mes).
+     */
+    async getReporteSeguidores(dtoIn: ReporteSeguidoresDto & HeaderParamsDto) {
+        const porcentajeDescuento = Number(this.variables.get('p_cxc_descuento_seguidor') ?? 5);
+
+        // ── 1. Listado para la tabla ────────────────────────────────────────────
+        const queryDetalle = new SelectQuery(
+            `
+            SELECT
+                p.ide_geper,
+                p.nom_geper AS cliente,
+                p.identificac_geper,
+                CASE
+                    WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%cedula%' THEN 'CEDULA'
+                    WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%ruc%' THEN 'RUC'
+                    WHEN regexp_replace(unaccent(LOWER(COALESCE(ti.nombre_getid, ''))), '[^a-z0-9]', '', 'g') LIKE '%pasaporte%' THEN 'PASAPORTE'
+                    ELSE COALESCE(ti.nombre_getid, '')
+                END AS tipo_identificacion,
+                p.fecha_seguidor_geper,
+                p.usuario_seguidor_geper,
+                (COALESCE(p.descuento_seguidor_geper, false) IS NOT TRUE) AS ha_usado_beneficio,
+                df.establecimiento_ccdfa,
+                df.pto_emision_ccdfa,
+                f.secuencial_cccfa,
+                f.total_cccfa AS valor_factura,
+                COALESCE(f.valor_descuento_seguidor_cccfa, 0) AS valor_descuento
+            FROM gen_persona p
+            LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
+            LEFT JOIN LATERAL (
+                SELECT ccf.ide_cccfa, ccf.secuencial_cccfa, ccf.total_cccfa,
+                       ccf.valor_descuento_seguidor_cccfa, ccf.ide_ccdaf
+                FROM cxc_cabece_factura ccf
+                WHERE ccf.ide_geper = p.ide_geper
+                  AND ccf.descuento_seguidor_cccfa = true
+                ORDER BY ccf.fecha_emisi_cccfa DESC
+                LIMIT 1
+            ) f ON true
+            LEFT JOIN cxc_datos_fac df ON f.ide_ccdaf = df.ide_ccdaf
+            WHERE p.es_seguidor_geper = true
+              AND p.fecha_seguidor_geper::date BETWEEN $1::date AND $2::date
+              AND p.ide_empr = ${dtoIn.ideEmpr}
+            ORDER BY p.fecha_seguidor_geper DESC
+            `,
+            dtoIn,
+        );
+        queryDetalle.addParam(1, dtoIn.fechaInicio);
+        queryDetalle.addParam(2, dtoIn.fechaFin);
+
+        // ── 2. Métricas puntuales ───────────────────────────────────────────────
+        const queryMetricas = new SelectQuery(`
+            SELECT
+                COUNT(*)                                                          AS total_seguidores,
+                COUNT(*) FILTER (WHERE p.fecha_seguidor_geper::date BETWEEN $1::date AND $2::date) AS nuevos_periodo,
+                COUNT(*) FILTER (WHERE COALESCE(p.descuento_seguidor_geper, false) IS NOT TRUE)     AS usaron_beneficio,
+                COUNT(*) FILTER (WHERE COALESCE(p.descuento_seguidor_geper, false) = true)          AS beneficio_disponible
+            FROM gen_persona p
+            WHERE p.es_seguidor_geper = true
+              AND p.ide_empr = ${dtoIn.ideEmpr}
+        `);
+        queryMetricas.addParam(1, dtoIn.fechaInicio);
+        queryMetricas.addParam(2, dtoIn.fechaFin);
+
+        // ── 3. Seguidores registrados por mes (gráfico de barras/línea) ──────────
+        const queryGrafico = new SelectQuery(`
+            SELECT
+                TO_CHAR(p.fecha_seguidor_geper, 'YYYY-MM')                AS periodo,
+                EXTRACT(YEAR FROM p.fecha_seguidor_geper)::int             AS anio,
+                EXTRACT(MONTH FROM p.fecha_seguidor_geper)::int            AS mes,
+                COUNT(*)                                                   AS total
+            FROM gen_persona p
+            WHERE p.es_seguidor_geper = true
+              AND p.fecha_seguidor_geper::date BETWEEN $1::date AND $2::date
+              AND p.ide_empr = ${dtoIn.ideEmpr}
+            GROUP BY periodo, anio, mes
+            ORDER BY periodo
+        `);
+        queryGrafico.addParam(1, dtoIn.fechaInicio);
+        queryGrafico.addParam(2, dtoIn.fechaFin);
+
+        const [detalle, metricas, grafico] = await Promise.all([
+            this.dataSource.createQuery(queryDetalle),
+            this.dataSource.createSingleQuery(queryMetricas),
+            this.dataSource.createSelectQuery(queryGrafico),
+        ]);
+
+        return {
+            ...detalle,
+            metricas: {
+                ...metricas,
+                porcentaje_descuento: porcentajeDescuento,
+            },
+            grafico,
+        };
     }
 
     async getProductosCliente(dtoIn: IdClienteDto & HeaderParamsDto) {

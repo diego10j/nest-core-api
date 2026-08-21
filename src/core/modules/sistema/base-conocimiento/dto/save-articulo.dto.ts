@@ -15,9 +15,9 @@ import {
 } from 'class-validator';
 
 export class RelacionItem {
-  @IsIn(['PRODUCTO', 'PERSONA'])
+  @IsIn(['PRODUCTO', 'PERSONA', 'NOTA'])
   @IsNotEmpty()
-  tipoRelacion: 'PRODUCTO' | 'PERSONA';
+  tipoRelacion: 'PRODUCTO' | 'PERSONA' | 'NOTA';
 
   @IsInt()
   @IsNotEmpty()

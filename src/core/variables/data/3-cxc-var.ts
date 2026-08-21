@@ -47,4 +47,12 @@ export const CUENTAS_POR_COBRAR_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_COBRAR.ID,
+    nom_para: 'p_cxc_descuento_seguidor',
+    descripcion_para: 'Porcentaje de descuento de bienvenida para clientes seguidores (aplicable en una sola factura)',
+    valor_para: '5',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

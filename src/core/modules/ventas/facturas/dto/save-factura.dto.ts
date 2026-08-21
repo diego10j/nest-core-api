@@ -311,7 +311,7 @@ export class SaveFacturaDto extends SaveDto {
 
     @ApiPropertyOptional({
         description:
-            'Si true, consume el 5% de descuento de bienvenida por seguidor (gen_persona.descuento_seguidor_geper). ' +
+            'Si true, consume el % de descuento de bienvenida por seguidor (gen_persona.descuento_seguidor_geper). ' +
             'El detalle ya debe venir con el descuento aplicado (descuento_ccdfa/total_ccdfa) - este flag sólo ' +
             'autoriza y consume el beneficio (una sola vez, sólo al crear la factura).',
         default: false,
@@ -319,4 +319,14 @@ export class SaveFacturaDto extends SaveDto {
     @IsBoolean()
     @IsOptional()
     aplicarDescuentoSeguidor?: boolean = false;
+
+    @ApiPropertyOptional({
+        description:
+            'Monto del descuento seguidor aplicado a esta factura (sólo informativo/UI, calculado en el front). ' +
+            'Se persiste en cxc_cabece_factura.valor_descuento_seguidor_cccfa para el Reporte de Seguidores.',
+        default: 0,
+    })
+    @IsNumber()
+    @IsOptional()
+    valorDescuentoSeguidor?: number = 0;
 }

@@ -15,9 +15,9 @@ export class GetArticulosDto {
   @IsOptional()
   tag?: string;
 
-  @IsIn(['PRODUCTO', 'PERSONA'])
+  @IsIn(['PRODUCTO', 'PERSONA', 'NOTA'])
   @IsOptional()
-  tipoRelacion?: 'PRODUCTO' | 'PERSONA';
+  tipoRelacion?: 'PRODUCTO' | 'PERSONA' | 'NOTA';
 
   @Type(() => Number)
   @IsInt()
@@ -27,4 +27,8 @@ export class GetArticulosDto {
   @IsIn(['true', 'false'])
   @IsOptional()
   favorito?: 'true' | 'false';
+
+  @IsIn(['reciente', 'antiguo', 'vistas', 'alfabetico'])
+  @IsOptional()
+  orderBy?: 'reciente' | 'antiguo' | 'vistas' | 'alfabetico';
 }

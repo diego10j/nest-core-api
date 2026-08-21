@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS sis_conocimiento_tag (
     UNIQUE(ide_cono, tag)
 );
 
--- 3. Relaciones polimórficas: PRODUCTO (ide_inarti) | PERSONA (ide_geper)
+-- 3. Relaciones polimórficas: PRODUCTO (ide_inarti) | PERSONA (ide_geper) | NOTA (otro sis_conocimiento.ide_cono)
 CREATE TABLE IF NOT EXISTS sis_conocimiento_relacion (
     ide_crel            SERIAL PRIMARY KEY,
     ide_cono            INTEGER NOT NULL REFERENCES sis_conocimiento(ide_cono) ON DELETE CASCADE,
-    tipo_relacion       VARCHAR(20) NOT NULL, -- PRODUCTO | PERSONA
+    tipo_relacion       VARCHAR(20) NOT NULL, -- PRODUCTO | PERSONA | NOTA
     ide_referencia      INTEGER NOT NULL,
     nombre_referencia   VARCHAR(200),
     subtipo_referencia  VARCHAR(30) -- cliente | proveedor | contacto | empleado (solo cuando tipo_relacion = PERSONA)

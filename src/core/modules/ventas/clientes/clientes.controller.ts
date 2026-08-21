@@ -13,6 +13,7 @@ import { ClientesService } from './clientes.service';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
 import { GetExisteClienteDto } from './dto/get-existe-cliente.dto';
+import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
 import { MarcarSeguidorDto } from './dto/marcar-seguidor.dto';
@@ -80,6 +81,13 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'descuento_seguidor_geper: true si el cliente aún no ha usado el descuento de bienvenida' })
   getEstadoSeguidorCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdClienteDto) {
     return this.service.getEstadoSeguidorCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getReporteSeguidores')
+  @ApiOperation({ summary: 'Reporte de clientes seguidores en redes sociales: listado, métricas y seguidores registrados por mes' })
+  @ApiResponse({ status: 200, description: 'Listado de seguidores con métricas y datos de gráfico' })
+  getReporteSeguidores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ReporteSeguidoresDto) {
+    return this.service.getReporteSeguidores({ ...headersParams, ...dtoIn });
   }
 
   @Get('getProductosCliente')

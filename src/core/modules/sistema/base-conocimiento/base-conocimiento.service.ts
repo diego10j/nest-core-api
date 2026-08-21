@@ -27,6 +27,14 @@ const stripHtml = (html: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Whitelist — nunca interpolar el orderBy del cliente directo en el SQL.
+const ORDER_BY_SQL: Record<string, string> = {
+  reciente: 'COALESCE(c.fecha_actua_cono, c.fecha_reg_cono) DESC',
+  antiguo: 'COALESCE(c.fecha_actua_cono, c.fecha_reg_cono) ASC',
+  vistas: 'c.vistas_cono DESC',
+  alfabetico: 'c.titulo_cono ASC',
+};
+
 @Injectable()
 export class BaseConocimientoService {
   private tableName = 'sis_conocimiento';
@@ -42,7 +50,7 @@ export class BaseConocimientoService {
   }
 
   async getArticulos(dtoIn: GetArticulosDto & HeaderParamsDto): Promise<ResultQuery> {
-    const { query, ideCcat, tag, tipoRelacion, ideReferencia, favorito } = dtoIn;
+    const { query, ideCcat, tag, tipoRelacion, ideReferencia, favorito, orderBy } = dtoIn;
     const conditions: string[] = [`c.ide_empr = ${dtoIn.ideEmpr}`, `c.estado_cono = 'ACTIVO'`];
     const params: unknown[] = [];
     let pIdx = 1;
@@ -119,14 +127,17 @@ export class BaseConocimientoService {
             'tipoRelacion', r.tipo_relacion,
             'ideReferencia', r.ide_referencia,
             'nombreReferencia', r.nombre_referencia,
-            'subtipoReferencia', r.subtipo_referencia
+            'subtipoReferencia', r.subtipo_referencia,
+            'uuidReferencia', CASE WHEN r.tipo_relacion = 'NOTA'
+              THEN (SELECT cn.uuid FROM sis_conocimiento cn WHERE cn.ide_cono = r.ide_referencia)
+              ELSE NULL END
           )) FROM sis_conocimiento_relacion r WHERE r.ide_cono = c.ide_cono
         ), '[]') AS relaciones,
         (SELECT COUNT(*) FROM sis_conocimiento_archivo a WHERE a.ide_cono = c.ide_cono) AS num_archivos
       FROM sis_conocimiento c
       LEFT JOIN sis_conocimiento_categoria cc ON cc.ide_ccat = c.ide_ccat
       WHERE ${conditions.join(' AND ')}
-      ORDER BY c.favorito_cono DESC, COALESCE(c.fecha_actua_cono, c.fecha_reg_cono) DESC
+      ORDER BY c.favorito_cono DESC, ${ORDER_BY_SQL[orderBy ?? 'reciente']}
       LIMIT 200
       `);
     params.forEach((p, i) => query_.addParam(i + 1, p));
@@ -158,9 +169,18 @@ export class BaseConocimientoService {
             'tipoRelacion', r.tipo_relacion,
             'ideReferencia', r.ide_referencia,
             'nombreReferencia', r.nombre_referencia,
-            'subtipoReferencia', r.subtipo_referencia
+            'subtipoReferencia', r.subtipo_referencia,
+            'uuidReferencia', CASE WHEN r.tipo_relacion = 'NOTA'
+              THEN (SELECT cn.uuid FROM sis_conocimiento cn WHERE cn.ide_cono = r.ide_referencia)
+              ELSE NULL END
           )) FROM sis_conocimiento_relacion r WHERE r.ide_cono = c.ide_cono
-        ), '[]') AS relaciones
+        ), '[]') AS relaciones,
+        COALESCE((
+          SELECT json_agg(json_build_object('uuid', c2.uuid, 'titulo', c2.titulo_cono))
+          FROM sis_conocimiento_relacion r2
+          INNER JOIN sis_conocimiento c2 ON c2.ide_cono = r2.ide_cono
+          WHERE r2.tipo_relacion = 'NOTA' AND r2.ide_referencia = c.ide_cono AND c2.estado_cono = 'ACTIVO'
+        ), '[]') AS backlinks
       FROM sis_conocimiento c
       LEFT JOIN sis_conocimiento_categoria cc ON cc.ide_ccat = c.ide_ccat
       WHERE c.uuid = $1 AND c.ide_empr = $2
@@ -199,8 +219,10 @@ export class BaseConocimientoService {
       updateQuery.values.set('titulo_cono', titulo);
       updateQuery.values.set('contenido_cono', contenido || null);
       updateQuery.values.set('texto_plano_cono', textoPlano);
-      updateQuery.values.set('ide_ccat', ideCcat || null);
-      updateQuery.values.set('color_cono', isDefined(color) ? color : null);
+      // ideCcat/color: solo se tocan si el caller los envió explícitamente (permite hacer saves
+      // parciales, ej. togglear favorito, sin borrar por accidente la categoría o el color).
+      if (dto.ideCcat !== undefined) updateQuery.values.set('ide_ccat', ideCcat || null);
+      if (dto.color !== undefined) updateQuery.values.set('color_cono', color);
       if (isDefined(favorito)) updateQuery.values.set('favorito_cono', favorito);
       updateQuery.values.set('fecha_actua_cono', new Date());
       updateQuery.where = `ide_cono = ${ideCono}`;

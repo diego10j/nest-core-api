@@ -466,7 +466,7 @@ export class BotService implements OnModuleInit {
       : `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}*.\n\nCon gusto te ayudo con: 🧪 cotizaciones, 📦 catálogo y precios, 📍 ubicación y 🚚 envíos.\n\n¿Empezamos?`;
 
     await this.sendButtons(ideEmpr, waId, saludo, [
-      { id: 'SI', title: '⚡ Continuar' },
+      { id: 'SI', title: '🤖 Continuar con bot' },
       { id: 'NO', title: '👤 Hablar con asesor' },
     ]);
   }
