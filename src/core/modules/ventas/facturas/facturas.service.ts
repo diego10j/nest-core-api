@@ -2447,6 +2447,7 @@ export class FacturasService extends BaseService {
                 c.ide_geper,
                 c.ide_geprov,
                 c.ide_tecba_cccpr AS ide_cuenta_tarjeta,
+                c.descuento_seguidor_cccpr,
                 fp.dias_cndfp AS dias_credito_cccpr
             FROM cxc_cabece_proforma c
             LEFT JOIN con_deta_forma_pago fp ON c.ide_cndfp = fp.ide_cndfp
@@ -2563,6 +2564,10 @@ export class FacturasService extends BaseService {
                     // revertir el recargo antes de re-aplicarlo, y así no duplicar la comisión al
                     // convertir la proforma a factura.
                     ide_cuenta_tarjeta: cabecera.ide_cuenta_tarjeta ?? null,
+                    // Si esta proforma ya incluyó el 5% de descuento seguidor, el beneficio se
+                    // consumió al guardarla (ver ProformasService.saveProforma) - handleCargarProforma
+                    // (frontend) lo usa sólo para mostrar un aviso informativo, no vuelve a aplicarlo.
+                    descuento_seguidor_cccpr: cabecera.descuento_seguidor_cccpr === true,
                     ide_vgven: cabecera.ide_vgven ?? null,
                     dias_credito_cccfa: Number(cabecera.dias_credito_cccpr || 0),
                     tarifa_iva_cccfa: Number(cabecera.tarifa_iva_cccpr || 0),

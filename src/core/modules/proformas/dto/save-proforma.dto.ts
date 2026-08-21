@@ -121,6 +121,14 @@ export class CabProformaDto {
     @Type(() => Number)
     ide_cuenta_tarjeta?: number;
 
+    /** Descuento seguidor (5%, una sola vez): sólo válido al CREAR una proforma nueva (no en
+     * edición) y sólo si el cliente tiene gen_persona.descuento_seguidor_geper = true. A
+     * diferencia de facturas, aquí se consume de inmediato al guardar la proforma (no se espera
+     * a que se convierta en factura) - ver ProformasService.saveProforma. */
+    @IsBoolean()
+    @IsOptional()
+    aplicarDescuentoSeguidor?: boolean;
+
     @IsString()
     @IsOptional()
     @MaxLength(50)

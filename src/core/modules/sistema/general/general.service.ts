@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers/select-query';
+import { normalizeString } from 'src/util/helpers/sql-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
 import { GetPersonasDto } from './dto/get-personas.dto';
@@ -88,6 +90,52 @@ export class GeneralService {
 
         params.forEach((p, i) => query.addParam(i + 1, p));
         return this.dataSource.createQuery(query, 'gen_persona');
+    }
+
+    /**
+     * Búsqueda unificada de personas sin filtrar por rol (cliente/proveedor/contacto/empleado/transportista).
+     * "Transporte" en este ERP se resuelve siempre a un gen_persona (ven_transporte.ide_geper), por lo que
+     * no requiere un buscador propio: se cubre aquí.
+     */
+    async searchPersona(dto: SearchDto & HeaderParamsDto) {
+        if (dto.value === '') {
+            return [];
+        }
+
+        const normalizedSearchValue = normalizeString(dto.value.trim());
+        const sqlSearchValue = `%${normalizedSearchValue}%`;
+
+        const query = new SelectQuery(
+            `
+        SELECT
+            p.ide_geper,
+            p.uuid,
+            p.identificac_geper,
+            p.nom_geper,
+            p.correo_geper,
+            p.es_cliente_geper,
+            p.es_proveedo_geper,
+            p.es_empleado_geper,
+            p.es_contacto_geper
+        FROM
+            gen_persona p
+        WHERE
+            (
+                regexp_replace(unaccent(LOWER(p.nom_geper)), '[^a-z0-9]', '', 'g') LIKE $1
+                OR regexp_replace(unaccent(LOWER(p.identificac_geper)), '[^a-z0-9]', '', 'g') LIKE $2
+            )
+            AND p.ide_empr = ${dto.ideEmpr}
+            AND p.activo_geper = true
+            AND p.nivel_geper = 'HIJO'
+        ORDER BY
+            p.nom_geper
+        LIMIT ${dto.limit}
+        `,
+            dto,
+        );
+        query.addStringParam(1, sqlSearchValue);
+        query.addStringParam(2, sqlSearchValue);
+        return this.dataSource.createSelectQuery(query);
     }
 
     async savePersonas(dtoIn: SavePersonasDto & HeaderParamsDto) {

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { SearchDto } from 'src/common/dto/search.dto';
 import { Auth } from 'src/core/auth';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
@@ -110,5 +111,12 @@ export class GeneralController {
   @Auth()
   savePersonas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SavePersonasDto) {
     return this.service.savePersonas({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('searchPersona')
+  @ApiOperation({ summary: 'Buscar personas por nombre/identificación sin filtrar por rol (cliente/proveedor/contacto/transportista)' })
+  @Auth()
+  searchPersona(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDto) {
+    return this.service.searchPersona({ ...headersParams, ...dtoIn });
   }
 }

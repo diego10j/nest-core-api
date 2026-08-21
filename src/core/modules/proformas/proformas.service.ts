@@ -246,6 +246,7 @@ ORDER BY prof.secuencial_cccpr DESC
         c.total_cccpr,
         c.descuento_cccpr,
         c.ide_tecba_cccpr AS ide_cuenta_tarjeta,
+        c.descuento_seguidor_cccpr,
         c.tarifa_iva_cccpr,
         c.observacion_cccpr,
         c.notas_cccpr,
@@ -528,6 +529,23 @@ ORDER BY prof.secuencial_cccpr DESC
     if (!tipo) {
       throw new BadRequestException(`El tipo de proforma ide_cctpr=${dtoIn.data.ide_cctpr} no existe.`);
     }
+
+    // Descuento seguidor: beneficio de una sola vez, sólo válido al CREAR la proforma - en
+    // edición no se re-valida ni re-consume (mismo criterio que FacturasSaveService).
+    if (dtoIn.data.aplicarDescuentoSeguidor && dtoIn.isUpdate !== true) {
+      const qSeguidor = new SelectQuery(`
+        SELECT COALESCE(descuento_seguidor_geper, false) AS descuento_seguidor_geper
+        FROM gen_persona
+        WHERE ide_geper = $1
+      `);
+      qSeguidor.addIntParam(1, dtoIn.data.ide_geper);
+      const cliente = await this.dataSource.createSingleQuery(qSeguidor);
+      if (!cliente?.descuento_seguidor_geper) {
+        throw new BadRequestException(
+          'El cliente no tiene disponible el descuento de seguidor (5%) o ya fue utilizado.',
+        );
+      }
+    }
   }
 
   async saveProforma(dtoIn: SaveProformaDto & HeaderParamsDto) {
@@ -624,6 +642,10 @@ ORDER BY prof.secuencial_cccpr DESC
         total_cccpr: totales.total,
         descuento_cccpr: totales.descuento,
         ide_tecba_cccpr: cab.ide_cuenta_tarjeta ?? null,
+        // Registro informativo de que ESTA proforma incluyó el 5% de descuento seguidor - el
+        // beneficio ya se consume abajo (gen_persona.descuento_seguidor_geper) al guardar, no al
+        // convertir a factura (ver dto aplicarDescuentoSeguidor).
+        descuento_seguidor_cccpr: cab.aplicarDescuentoSeguidor === true,
         tarifa_iva_cccpr: tarifaIva,
         ide_cctpr: cab.ide_cctpr,
         anulado_cccpr: false,
@@ -686,6 +708,18 @@ ORDER BY prof.secuencial_cccpr DESC
       listQuery,
       audit: false,
     });
+
+    // Consumir el descuento seguidor (una sola vez) - fuera de la transacción de guardado a
+    // propósito: si esto fallara no debe revertir la proforma ya creada; en el peor caso el
+    // beneficio queda disponible una vez más, no se pierde la cotización (mismo criterio que
+    // FacturasSaveService).
+    if (!isUpdate && cab.aplicarDescuentoSeguidor) {
+      await this.dataSource.pool.query(
+        `UPDATE gen_persona SET descuento_seguidor_geper = false
+         WHERE ide_geper = $1 AND descuento_seguidor_geper IS TRUE`,
+        [cab.ide_geper],
+      );
+    }
 
     return {
       rowCount: 1,
