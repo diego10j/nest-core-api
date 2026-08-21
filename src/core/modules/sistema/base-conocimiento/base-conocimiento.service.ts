@@ -324,9 +324,11 @@ export class BaseConocimientoService {
   }
 
   async registrarVista(dto: ArticuloUuidDto & HeaderParamsDto): Promise<ResultQuery> {
-    const query = new SelectQuery(`UPDATE sis_conocimiento SET vistas_cono = vistas_cono + 1 WHERE uuid = $1`);
-    query.addStringParam(1, dto.uuid);
-    await this.dataSource.createSelectQuery(query);
+    // UPDATE con expresión (vistas_cono + 1): SelectQuery envuelve todo en
+    // "SELECT * FROM (...)", inválido para un UPDATE — se ejecuta directo contra el pool.
+    await this.dataSource.pool.query(`UPDATE sis_conocimiento SET vistas_cono = vistas_cono + 1 WHERE uuid = $1`, [
+      dto.uuid,
+    ]);
     return { message: 'ok' } as ResultQuery;
   }
 

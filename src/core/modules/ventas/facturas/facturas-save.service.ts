@@ -1046,7 +1046,6 @@ export class FacturasSaveService extends BaseService {
         q.values.set('total_cccfa', totales.total);
         q.values.set('descuento_cccfa', totales.descuento);
         q.values.set('descuento_seguidor_cccfa', dtoIn.aplicarDescuentoSeguidor === true);
-        q.values.set('valor_descuento_seguidor_cccfa', dtoIn.valorDescuentoSeguidor ?? 0);
         q.values.set('dias_credito_cccfa', data.dias_credito_cccfa ?? 0);
         q.values.set('pagado_cccfa', false);
         q.values.set('solo_guardar_cccfa', true);

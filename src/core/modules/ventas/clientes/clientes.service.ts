@@ -700,12 +700,12 @@ export class ClientesService extends BaseService {
                 df.pto_emision_ccdfa,
                 f.secuencial_cccfa,
                 f.total_cccfa AS valor_factura,
-                COALESCE(f.valor_descuento_seguidor_cccfa, 0) AS valor_descuento
+                COALESCE(f.descuento_cccfa, 0) AS valor_descuento
             FROM gen_persona p
             LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
             LEFT JOIN LATERAL (
                 SELECT ccf.ide_cccfa, ccf.secuencial_cccfa, ccf.total_cccfa,
-                       ccf.valor_descuento_seguidor_cccfa, ccf.ide_ccdaf
+                       ccf.descuento_cccfa, ccf.ide_ccdaf
                 FROM cxc_cabece_factura ccf
                 WHERE ccf.ide_geper = p.ide_geper
                   AND ccf.descuento_seguidor_cccfa = true

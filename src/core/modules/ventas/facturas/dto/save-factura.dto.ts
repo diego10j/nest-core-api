@@ -319,14 +319,4 @@ export class SaveFacturaDto extends SaveDto {
     @IsBoolean()
     @IsOptional()
     aplicarDescuentoSeguidor?: boolean = false;
-
-    @ApiPropertyOptional({
-        description:
-            'Monto del descuento seguidor aplicado a esta factura (sólo informativo/UI, calculado en el front). ' +
-            'Se persiste en cxc_cabece_factura.valor_descuento_seguidor_cccfa para el Reporte de Seguidores.',
-        default: 0,
-    })
-    @IsNumber()
-    @IsOptional()
-    valorDescuentoSeguidor?: number = 0;
 }
