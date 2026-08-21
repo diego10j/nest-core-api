@@ -700,12 +700,23 @@ export class ClientesService extends BaseService {
                 df.pto_emision_ccdfa,
                 f.secuencial_cccfa,
                 f.total_cccfa AS valor_factura,
-                COALESCE(f.descuento_cccfa, 0) AS valor_descuento
+                COALESCE(f.valor_descuento_seguidor, 0) AS valor_descuento
             FROM gen_persona p
             LEFT JOIN gen_tipo_identifi ti ON p.ide_getid = ti.ide_getid
             LEFT JOIN LATERAL (
-                SELECT ccf.ide_cccfa, ccf.secuencial_cccfa, ccf.total_cccfa,
-                       ccf.descuento_cccfa, ccf.ide_ccdaf
+                SELECT
+                    ccf.ide_cccfa, ccf.secuencial_cccfa, ccf.total_cccfa, ccf.ide_ccdaf,
+                    -- Monto exacto del 5% seguidor, reconstruido matemáticamente: se aplica
+                    -- siempre como último paso y uniforme por línea
+                    -- (total_final = total_previo * (1 - pct/100)), así que no depende de si la
+                    -- factura también tiene descuentos manuales de línea (a diferencia de
+                    -- descuento_cccfa, que es el descuento TOTAL de la factura - ver
+                    -- FacturasSaveService.calcularTotales).
+                    ROUND(
+                        (SELECT COALESCE(SUM(d.total_ccdfa), 0)::numeric
+                         FROM cxc_deta_factura d WHERE d.ide_cccfa = ccf.ide_cccfa)
+                        * (${porcentajeDescuento}::numeric / (100 - ${porcentajeDescuento}::numeric)),
+                    2) AS valor_descuento_seguidor
                 FROM cxc_cabece_factura ccf
                 WHERE ccf.ide_geper = p.ide_geper
                   AND ccf.descuento_seguidor_cccfa = true
