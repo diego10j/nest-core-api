@@ -2446,6 +2446,7 @@ export class FacturasService extends BaseService {
                 c.ide_cndfp,
                 c.ide_geper,
                 c.ide_geprov,
+                c.ide_tecba_cccpr AS ide_cuenta_tarjeta,
                 fp.dias_cndfp AS dias_credito_cccpr
             FROM cxc_cabece_proforma c
             LEFT JOIN con_deta_forma_pago fp ON c.ide_cndfp = fp.ide_cndfp
@@ -2551,7 +2552,17 @@ export class FacturasService extends BaseService {
                     correo_cccfa: cabecera.correo_cccpr ?? cliente?.correo_geper ?? '',
                     telefono_cccfa: cabecera.telefono_cccpr ?? cliente?.telefono_geper ?? '',
                     observacion_cccfa: cabecera.observacion_cccpr ?? '',
+                    // ide_cndfp: catálogo real (16 opciones) de la PROFORMA - lo lee
+                    // handleCargarProforma (frontend) para inferir tarjeta/crédito. ide_cndfp1
+                    // se mantiene por compatibilidad con el nombre histórico de este endpoint.
+                    ide_cndfp: cabecera.ide_cndfp ?? null,
                     ide_cndfp1: cabecera.ide_cndfp ?? null,
+                    // Cuenta de tarjeta con la que se cotizó/cobró la proforma (si aplica) - el
+                    // precio_ccdfa de cada línea YA trae el recargo horneado con esta cuenta (ver
+                    // ProformasService); handleCargarProforma (frontend) necesita este dato para
+                    // revertir el recargo antes de re-aplicarlo, y así no duplicar la comisión al
+                    // convertir la proforma a factura.
+                    ide_cuenta_tarjeta: cabecera.ide_cuenta_tarjeta ?? null,
                     ide_vgven: cabecera.ide_vgven ?? null,
                     dias_credito_cccfa: Number(cabecera.dias_credito_cccpr || 0),
                     tarifa_iva_cccfa: Number(cabecera.tarifa_iva_cccpr || 0),
