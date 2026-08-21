@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS sis_conocimiento (
     fecha_actua_cono  TIMESTAMP
 );
 
+-- 1b. Migración — si sis_conocimiento ya existía de una corrida anterior de este script
+--     (antes de que ide_ccat/color_cono existieran), agrega lo que falte sin tocar datos.
+--     Seguro de re-correr: CREATE TABLE de arriba no hace nada si la tabla ya existe.
+ALTER TABLE sis_conocimiento ADD COLUMN IF NOT EXISTS ide_ccat INTEGER REFERENCES sis_conocimiento_categoria(ide_ccat);
+ALTER TABLE sis_conocimiento ADD COLUMN IF NOT EXISTS color_cono SMALLINT;
+
 -- 2. Tags (etiquetas), varias por artículo
 CREATE TABLE IF NOT EXISTS sis_conocimiento_tag (
     ide_ctag      SERIAL PRIMARY KEY,
