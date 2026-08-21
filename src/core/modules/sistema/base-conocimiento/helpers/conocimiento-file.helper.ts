@@ -13,6 +13,12 @@ export const getExtensionFile = (fileName: string): string => {
   return fileName.substring(lastDotIndex + 1).toLowerCase();
 };
 
+/** El nombre en disco es `${uuid}.${extension}` (ver conocimientoFileNamer) — recupera el uuid. */
+export const getUuidFromFilename = (fileName: string): string => {
+  const lastDotIndex = fileName.lastIndexOf('.');
+  return lastDotIndex === -1 ? fileName : fileName.substring(0, lastDotIndex);
+};
+
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
 
 export const isImageExtension = (extension: string): boolean => IMAGE_EXTENSIONS.includes(extension.toLowerCase());

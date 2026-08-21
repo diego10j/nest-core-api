@@ -1,7 +1,18 @@
 -- ============================================================
 -- Módulo: Base de Conocimiento (Wiki interno)
--- Tablas: sis_conocimiento, sis_conocimiento_tag, sis_conocimiento_relacion, sis_conocimiento_archivo
+-- Tablas: sis_conocimiento_categoria, sis_conocimiento, sis_conocimiento_tag,
+--         sis_conocimiento_relacion, sis_conocimiento_archivo
 -- ============================================================
+
+-- 0. Categorías (catálogo simple, compartido — gestionado desde el propio formulario vía
+--    el componente genérico Field.Catalog: core/getListDataValues + core/save + core/canDelete,
+--    sin endpoints propios)
+CREATE TABLE IF NOT EXISTS sis_conocimiento_categoria (
+    ide_ccat        SERIAL PRIMARY KEY,
+    nombre_ccat     VARCHAR(100) NOT NULL UNIQUE,
+    usuario_ingre   VARCHAR(50),
+    fecha_reg_ccat  TIMESTAMP DEFAULT NOW()
+);
 
 -- 1. Artículos
 CREATE TABLE IF NOT EXISTS sis_conocimiento (
@@ -10,7 +21,7 @@ CREATE TABLE IF NOT EXISTS sis_conocimiento (
     titulo_cono       VARCHAR(200) NOT NULL,
     contenido_cono    TEXT,
     texto_plano_cono  TEXT,
-    categoria_cono    VARCHAR(100),
+    ide_ccat          INTEGER REFERENCES sis_conocimiento_categoria(ide_ccat),
     favorito_cono     BOOLEAN DEFAULT FALSE,
     estado_cono       VARCHAR(20) DEFAULT 'ACTIVO', -- ACTIVO | ARCHIVADO
     vistas_cono       INTEGER DEFAULT 0,
@@ -56,7 +67,7 @@ CREATE TABLE IF NOT EXISTS sis_conocimiento_archivo (
 
 -- Índices para consultas frecuentes
 CREATE INDEX IF NOT EXISTS idx_cono_empr           ON sis_conocimiento(ide_empr, estado_cono);
-CREATE INDEX IF NOT EXISTS idx_cono_categoria       ON sis_conocimiento(categoria_cono);
+CREATE INDEX IF NOT EXISTS idx_cono_categoria       ON sis_conocimiento(ide_ccat);
 CREATE INDEX IF NOT EXISTS idx_ctag_ide_cono         ON sis_conocimiento_tag(ide_cono);
 CREATE INDEX IF NOT EXISTS idx_ctag_tag              ON sis_conocimiento_tag(tag);
 CREATE INDEX IF NOT EXISTS idx_crel_ide_cono         ON sis_conocimiento_relacion(ide_cono);

@@ -1,5 +1,16 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 
 export class RelacionItem {
   @IsIn(['PRODUCTO', 'PERSONA'])
@@ -19,6 +30,35 @@ export class RelacionItem {
   subtipoReferencia?: string;
 }
 
+export class ArchivoPendienteItem {
+  @IsUUID()
+  @IsNotEmpty()
+  uuid: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nombreOriginal: string;
+
+  // Nombre físico en disco (uuid + extensión), generado por uploadArchivo — se valida el
+  // formato para evitar path traversal al usarlo luego en un join() de ruta.
+  @Matches(/^[a-zA-Z0-9-]+\.[a-zA-Z0-9]+$/)
+  @IsNotEmpty()
+  nombreDisco: string;
+
+  @IsString()
+  @IsOptional()
+  mime?: string;
+
+  @IsString()
+  @IsOptional()
+  extension?: string;
+
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  peso?: number;
+}
+
 export class SaveArticuloDto {
   @IsUUID()
   @IsOptional()
@@ -32,9 +72,9 @@ export class SaveArticuloDto {
   @IsOptional()
   contenido?: string;
 
-  @IsString()
+  @IsInt()
   @IsOptional()
-  categoria?: string;
+  ideCcat?: number | null;
 
   @IsBoolean()
   @IsOptional()
@@ -48,4 +88,11 @@ export class SaveArticuloDto {
   @Type(() => RelacionItem)
   @IsOptional()
   relaciones?: RelacionItem[];
+
+  // Adjuntos ya subidos a disco (vía uploadArchivo) pero aún no vinculados a ningún artículo
+  // — se vinculan recién aquí, en la misma transacción que crea/actualiza el artículo.
+  @ValidateNested({ each: true })
+  @Type(() => ArchivoPendienteItem)
+  @IsOptional()
+  archivos?: ArchivoPendienteItem[];
 }

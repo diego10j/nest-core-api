@@ -20,10 +20,10 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { BaseConocimientoService } from './base-conocimiento.service';
 import { CONOCIMIENTO_STORAGE } from './constants/base-conocimiento.constants';
 import { ArticuloUuidDto } from './dto/articulo-uuid.dto';
+import { DeleteArchivoTempDto } from './dto/delete-archivo-temp.dto';
 import { GetArchivosDto } from './dto/get-archivos.dto';
 import { GetArticulosDto } from './dto/get-articulos.dto';
 import { SaveArticuloDto } from './dto/save-articulo.dto';
-import { UploadArchivoDto } from './dto/upload-archivo.dto';
 import { conocimientoFileNamer } from './helpers/conocimiento-file.helper';
 
 @ApiTags('Sistema-BaseConocimiento')
@@ -61,12 +61,6 @@ export class BaseConocimientoController {
     return this.service.registrarVista({ ...headersParams, ...dtoIn });
   }
 
-  @Get('getCategorias')
-  @ApiOperation({ summary: 'Listar categorías existentes (para autocomplete)' })
-  getCategorias(@AppHeaders() headersParams: HeaderParamsDto) {
-    return this.service.getCategorias(headersParams);
-  }
-
   @Get('getTags')
   @ApiOperation({ summary: 'Listar tags existentes (para autocomplete)' })
   getTags(@AppHeaders() headersParams: HeaderParamsDto, @Query('value') value?: string) {
@@ -76,7 +70,11 @@ export class BaseConocimientoController {
   // ------------------------------------------------------- Adjuntos propios (no sis_archivo)
 
   @Post('uploadArchivo')
-  @ApiOperation({ summary: 'Subir un adjunto de un artículo (máx 25MB, almacenamiento propio)' })
+  @ApiOperation({
+    summary:
+      'Subir un adjunto (máx 25MB, almacenamiento propio). No lo vincula a ningún artículo todavía: ' +
+      'el uuid/nombreDisco devueltos se envían luego en saveArticulo.archivos para vincularlo.',
+  })
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: CONOCIMIENTO_STORAGE.MAX_FILE_SIZE },
@@ -86,15 +84,17 @@ export class BaseConocimientoController {
       }),
     }),
   )
-  uploadArchivo(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dtoIn: UploadArchivoDto,
-  ) {
+  uploadArchivo(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
-    return this.service.uploadArchivo(Number(dtoIn.ideCono), file, headersParams);
+    return this.service.uploadArchivo(file);
+  }
+
+  @Post('deleteArchivoTemp')
+  @ApiOperation({ summary: 'Eliminar un adjunto subido pero aún no vinculado a ningún artículo' })
+  deleteArchivoTemp(@Body() dtoIn: DeleteArchivoTempDto) {
+    return this.service.deleteArchivoTemp(dtoIn.nombreDisco);
   }
 
   @Get('getArchivos')

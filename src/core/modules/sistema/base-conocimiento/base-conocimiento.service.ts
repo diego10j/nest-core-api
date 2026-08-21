@@ -17,7 +17,7 @@ import { ArticuloUuidDto } from './dto/articulo-uuid.dto';
 import { GetArchivosDto } from './dto/get-archivos.dto';
 import { GetArticulosDto } from './dto/get-articulos.dto';
 import { SaveArticuloDto } from './dto/save-articulo.dto';
-import { getExtensionFile, isImageExtension } from './helpers/conocimiento-file.helper';
+import { getExtensionFile, isImageExtension, getUuidFromFilename } from './helpers/conocimiento-file.helper';
 
 const stripHtml = (html: string): string =>
   (html || '')
@@ -42,7 +42,7 @@ export class BaseConocimientoService {
   }
 
   async getArticulos(dtoIn: GetArticulosDto & HeaderParamsDto): Promise<ResultQuery> {
-    const { query, categoria, tag, tipoRelacion, ideReferencia, favorito } = dtoIn;
+    const { query, ideCcat, tag, tipoRelacion, ideReferencia, favorito } = dtoIn;
     const conditions: string[] = [`c.ide_empr = ${dtoIn.ideEmpr}`, `c.estado_cono = 'ACTIVO'`];
     const params: unknown[] = [];
     let pIdx = 1;
@@ -67,9 +67,9 @@ export class BaseConocimientoService {
       pIdx++;
     }
 
-    if (categoria) {
-      conditions.push(`c.categoria_cono = $${pIdx}`);
-      params.push(categoria);
+    if (isDefined(ideCcat)) {
+      conditions.push(`c.ide_ccat = $${pIdx}`);
+      params.push(ideCcat);
       pIdx++;
     }
 
@@ -102,7 +102,8 @@ export class BaseConocimientoService {
         c.uuid,
         c.titulo_cono,
         c.contenido_cono,
-        c.categoria_cono,
+        c.ide_ccat,
+        cc.nombre_ccat AS categoria_cono,
         c.favorito_cono,
         c.vistas_cono,
         c.usuario_ingre,
@@ -121,6 +122,7 @@ export class BaseConocimientoService {
         ), '[]') AS relaciones,
         (SELECT COUNT(*) FROM sis_conocimiento_archivo a WHERE a.ide_cono = c.ide_cono) AS num_archivos
       FROM sis_conocimiento c
+      LEFT JOIN sis_conocimiento_categoria cc ON cc.ide_ccat = c.ide_ccat
       WHERE ${conditions.join(' AND ')}
       ORDER BY c.favorito_cono DESC, COALESCE(c.fecha_actua_cono, c.fecha_reg_cono) DESC
       LIMIT 200
@@ -137,7 +139,8 @@ export class BaseConocimientoService {
         c.uuid,
         c.titulo_cono,
         c.contenido_cono,
-        c.categoria_cono,
+        c.ide_ccat,
+        cc.nombre_ccat AS categoria_cono,
         c.favorito_cono,
         c.vistas_cono,
         c.usuario_ingre,
@@ -155,6 +158,7 @@ export class BaseConocimientoService {
           )) FROM sis_conocimiento_relacion r WHERE r.ide_cono = c.ide_cono
         ), '[]') AS relaciones
       FROM sis_conocimiento c
+      LEFT JOIN sis_conocimiento_categoria cc ON cc.ide_ccat = c.ide_ccat
       WHERE c.uuid = $1 AND c.ide_empr = $2
     `);
     query.addStringParam(1, dto.uuid);
@@ -167,7 +171,7 @@ export class BaseConocimientoService {
   }
 
   async saveArticulo(dto: SaveArticuloDto & HeaderParamsDto): Promise<ResultQuery> {
-    const { uuid, titulo, contenido, categoria, favorito, tags = [], relaciones = [] } = dto;
+    const { uuid, titulo, contenido, ideCcat, favorito, tags = [], relaciones = [], archivos = [] } = dto;
     const textoPlano = [titulo, stripHtml(contenido), tags.join(' ')].filter(Boolean).join(' ').slice(0, 20000);
 
     const listQuery: Query[] = [];
@@ -191,7 +195,7 @@ export class BaseConocimientoService {
       updateQuery.values.set('titulo_cono', titulo);
       updateQuery.values.set('contenido_cono', contenido || null);
       updateQuery.values.set('texto_plano_cono', textoPlano);
-      updateQuery.values.set('categoria_cono', categoria || null);
+      updateQuery.values.set('ide_ccat', ideCcat || null);
       if (isDefined(favorito)) updateQuery.values.set('favorito_cono', favorito);
       updateQuery.values.set('fecha_actua_cono', new Date());
       updateQuery.where = `ide_cono = ${ideCono}`;
@@ -203,7 +207,7 @@ export class BaseConocimientoService {
       insertQuery.values.set('titulo_cono', titulo);
       insertQuery.values.set('contenido_cono', contenido || null);
       insertQuery.values.set('texto_plano_cono', textoPlano);
-      insertQuery.values.set('categoria_cono', categoria || null);
+      insertQuery.values.set('ide_ccat', ideCcat || null);
       insertQuery.values.set('favorito_cono', favorito ?? false);
       insertQuery.values.set('estado_cono', 'ACTIVO');
       insertQuery.values.set('vistas_cono', 0);
@@ -249,6 +253,23 @@ export class BaseConocimientoService {
       });
     }
 
+    // Adjuntos subidos antes de guardar (uploadArchivo) — se vinculan al artículo recién ahora
+    if (archivos.length > 0) {
+      const seqArc = await this.dataSource.getSeqTable('sis_conocimiento_archivo', 'ide_carc', archivos.length, dto.login);
+      archivos.forEach((archivo, i) => {
+        const insertArc = new InsertQuery('sis_conocimiento_archivo', 'ide_carc');
+        insertArc.values.set('ide_carc', seqArc + i);
+        insertArc.values.set('ide_cono', ideCono);
+        insertArc.values.set('uuid', archivo.uuid ?? getUuidFromFilename(archivo.nombreDisco));
+        insertArc.values.set('nombre_original_carc', archivo.nombreOriginal);
+        insertArc.values.set('nombre_disco_carc', archivo.nombreDisco);
+        insertArc.values.set('mime_carc', archivo.mime || null);
+        insertArc.values.set('extension_carc', archivo.extension || getExtensionFile(archivo.nombreDisco));
+        insertArc.values.set('peso_carc', archivo.peso || null);
+        listQuery.push(insertArc);
+      });
+    }
+
     await this.dataSource.createListQuery(listQuery);
 
     const saved = await this.dataSource.createSingleQuery(
@@ -281,17 +302,6 @@ export class BaseConocimientoService {
     return { message: 'ok' } as ResultQuery;
   }
 
-  async getCategorias(dto: HeaderParamsDto) {
-    const query = new SelectQuery(`
-      SELECT DISTINCT categoria_cono AS categoria
-      FROM sis_conocimiento
-      WHERE ide_empr = $1 AND estado_cono = 'ACTIVO' AND categoria_cono IS NOT NULL
-      ORDER BY categoria_cono
-    `);
-    query.addParam(1, dto.ideEmpr);
-    return this.dataSource.createSelectQuery(query);
-  }
-
   async getTags(dto: HeaderParamsDto & { value?: string }) {
     const query = new SelectQuery(`
       SELECT DISTINCT t.tag
@@ -309,19 +319,36 @@ export class BaseConocimientoService {
 
   // ------------------------------------------------------- Adjuntos (propios, sin sis_archivo)
 
-  async uploadArchivo(ideCono: number, file: Express.Multer.File, dto: HeaderParamsDto): Promise<ResultQuery> {
+  /**
+   * Sube el archivo físico a disco y devuelve su metadata, SIN vincularlo a ningún artículo
+   * todavía (no toca la BD). El vínculo real ocurre en saveArticulo, vía `archivos` — así el
+   * usuario puede adjuntar imágenes mientras redacta un artículo nuevo, antes de guardarlo.
+   */
+  uploadArchivo(file: Express.Multer.File): ResultQuery {
     const extension = getExtensionFile(file.filename);
-    const ideCarc = await this.dataSource.getSeqTable('sis_conocimiento_archivo', 'ide_carc', 1, dto.login);
-    const insertQuery = new InsertQuery('sis_conocimiento_archivo', 'ide_carc', dto);
-    insertQuery.values.set('ide_carc', ideCarc);
-    insertQuery.values.set('ide_cono', ideCono);
-    insertQuery.values.set('nombre_original_carc', file.originalname);
-    insertQuery.values.set('nombre_disco_carc', file.filename);
-    insertQuery.values.set('mime_carc', file.mimetype);
-    insertQuery.values.set('extension_carc', extension);
-    insertQuery.values.set('peso_carc', file.size);
-    await this.dataSource.createQuery(insertQuery);
-    return { message: 'Adjunto subido exitosamente' } as ResultQuery;
+    return {
+      message: 'Archivo subido exitosamente',
+      row: {
+        uuid: getUuidFromFilename(file.filename),
+        nombreOriginal: file.originalname,
+        nombreDisco: file.filename,
+        mime: file.mimetype,
+        extension,
+        peso: file.size,
+        esImagen: isImageExtension(extension),
+      },
+    } as unknown as ResultQuery;
+  }
+
+  /** Borra un archivo físico aún no vinculado (el usuario lo quitó antes de guardar el artículo). */
+  deleteArchivoTemp(nombreDisco: string): ResultQuery {
+    const filePath = join(CONOCIMIENTO_STORAGE.BASE_PATH, nombreDisco);
+    try {
+      unlinkSync(filePath);
+    } catch (error) {
+      this.errorLog.createErrorLog(`No se pudo borrar el adjunto temporal ${filePath}: ${error}`);
+    }
+    return { message: 'Adjunto temporal eliminado' } as ResultQuery;
   }
 
   async getArchivos(dto: GetArchivosDto & HeaderParamsDto) {

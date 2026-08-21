@@ -6,9 +6,10 @@ export class GetArticulosDto {
   @IsOptional()
   query?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
   @IsOptional()
-  categoria?: string;
+  ideCcat?: number;
 
   @IsString()
   @IsOptional()
