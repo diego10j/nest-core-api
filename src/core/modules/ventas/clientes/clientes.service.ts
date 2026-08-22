@@ -292,11 +292,12 @@ export class ClientesService extends BaseService {
                     cxc_detall_transa dt 
                     LEFT JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr 
                     LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr 
-                WHERE 
+                WHERE
                     ide_geper = $1
                     AND fecha_trans_ccdtr < $2
                     AND dt.ide_empr = ${dtoIn.ideEmpr}
-                GROUP BY 
+                    AND dt.ide_sucu = ${dtoIn.ideSucu}
+                GROUP BY
                     ide_geper
             ),
             movimientos AS (
@@ -316,11 +317,12 @@ export class ClientesService extends BaseService {
                     cxc_detall_transa a
                     INNER JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
                     INNER JOIN cxc_cabece_transa d ON a.ide_ccctr = d.ide_ccctr
-                WHERE 
+                WHERE
                     ide_geper = $3
                     AND fecha_trans_ccdtr BETWEEN $4 AND $5
                     AND a.ide_sucu = ${dtoIn.ideSucu}
-                ORDER BY 
+                    AND a.ide_empr = ${dtoIn.ideEmpr}
+                ORDER BY
                     fecha_trans_ccdtr, a.ide_ccdtr
             )
             SELECT 
@@ -632,6 +634,7 @@ export class ClientesService extends BaseService {
             WHERE
                 ${whereClause}
                 AND ct.ide_empr = ${dtoIn.ideEmpr}
+                AND dt.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 ct.ide_geper
             `);
