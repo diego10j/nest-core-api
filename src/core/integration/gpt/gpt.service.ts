@@ -13,12 +13,15 @@ import {
   OrthographyDto,
   ProsConsDiscusserDto,
   TextToAudioDto,
+  TextToolDto,
   TranslateDto,
 } from './dtos';
 import {
   audioToTextUseCase,
+  correctSpellingUseCase,
   imageGenerationUseCase,
   imageVariationUseCase,
+  improveTextUseCase,
   orthographyCheckUseCase,
   prosConsDicusserStreamUseCase,
   prosConsDicusserUseCase,
@@ -94,6 +97,14 @@ export class GptService {
 
   async generateContentProduct({ product }: ContentProductDto) {
     return await contentProductUseCase(this.openai, { product });
+  }
+
+  async correctSpelling({ prompt }: TextToolDto) {
+    return await correctSpellingUseCase(this.openai, { prompt });
+  }
+
+  async improveText({ prompt }: TextToolDto) {
+    return await improveTextUseCase(this.openai, { prompt });
   }
 
   async parseTextToJson(prompt: string, text: string) {

@@ -27,6 +27,7 @@ import {
   OrthographyDto,
   ProsConsDiscusserDto,
   TextToAudioDto,
+  TextToolDto,
   TranslateDto,
 } from './dtos';
 import { GptService } from './gpt.service';
@@ -181,5 +182,23 @@ export class GptController {
     @Body() contentProductDto: ContentProductDto,
   ) {
     return this.gptService.generateContentProduct(contentProductDto);
+  }
+
+  @Post('correct-spelling')
+  @ApiOperation({ summary: 'Corregir ortografía y gramática de un texto (HTML) usando GPT' })
+  correctSpelling(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() textToolDto: TextToolDto,
+  ) {
+    return this.gptService.correctSpelling(textToolDto);
+  }
+
+  @Post('improve-text')
+  @ApiOperation({ summary: 'Mejorar y complementar la redacción de un texto (HTML) usando GPT' })
+  improveText(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() textToolDto: TextToolDto,
+  ) {
+    return this.gptService.improveText(textToolDto);
   }
 }

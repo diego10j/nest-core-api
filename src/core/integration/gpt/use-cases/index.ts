@@ -7,3 +7,5 @@ export * from './pros-cons-stream.use-case';
 export * from './text-to-audio.use-case';
 export * from './translate.use-case';
 export * from './content-product.use-case';
+export * from './correct-spelling.use-case';
+export * from './improve-text.use-case';
