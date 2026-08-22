@@ -751,22 +751,29 @@ export class ClientesService extends BaseService {
         queryMetricas.addParam(1, dtoIn.fechaInicio);
         queryMetricas.addParam(2, dtoIn.fechaFin);
 
-        // ── 3. Seguidores registrados por mes (gráfico de barras/línea) ──────────
+        // ── 3. Seguidores registrados por mes (gráfico) - SIEMPRE los últimos 6 meses
+        // contados desde fechaFin, sin importar cuán amplio sea el rango del reporte (fechaInicio
+        // no se usa acá) - los meses sin seguidores nuevos se rellenan en 0 en vez de omitirse
+        // (generate_series + LEFT JOIN, no un GROUP BY plano que solo trae meses con datos).
         const queryGrafico = new SelectQuery(`
+            WITH meses AS (
+                SELECT date_trunc('month', $1::date) - (n || ' months')::interval AS mes_ini
+                FROM generate_series(0, 5) AS n
+            )
             SELECT
-                TO_CHAR(p.fecha_seguidor_geper, 'YYYY-MM')                AS periodo,
-                EXTRACT(YEAR FROM p.fecha_seguidor_geper)::int             AS anio,
-                EXTRACT(MONTH FROM p.fecha_seguidor_geper)::int            AS mes,
-                COUNT(*)                                                   AS total
-            FROM gen_persona p
-            WHERE p.es_seguidor_geper = true
-              AND p.fecha_seguidor_geper::date BETWEEN $1::date AND $2::date
-              AND p.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY periodo, anio, mes
-            ORDER BY periodo
+                TO_CHAR(m.mes_ini, 'YYYY-MM')      AS periodo,
+                EXTRACT(YEAR FROM m.mes_ini)::int   AS anio,
+                EXTRACT(MONTH FROM m.mes_ini)::int  AS mes,
+                COUNT(p.ide_geper)                  AS total
+            FROM meses m
+            LEFT JOIN gen_persona p
+                ON p.es_seguidor_geper = true
+               AND p.ide_empr = ${dtoIn.ideEmpr}
+               AND date_trunc('month', p.fecha_seguidor_geper) = m.mes_ini
+            GROUP BY m.mes_ini
+            ORDER BY m.mes_ini
         `);
-        queryGrafico.addParam(1, dtoIn.fechaInicio);
-        queryGrafico.addParam(2, dtoIn.fechaFin);
+        queryGrafico.addParam(1, dtoIn.fechaFin);
 
         const [detalle, metricas, grafico] = await Promise.all([
             this.dataSource.createQuery(queryDetalle),
