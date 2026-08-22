@@ -1400,6 +1400,8 @@ export class ClientesService extends BaseService {
         }
 
         // validar que no exista el cliente en la misma empresa
+        // (solo considera registros marcados como cliente; un proveedor con la misma
+        // identificacion no debe bloquear la creacion del cliente)
         const queryClie = new SelectQuery(`
             select
                 1
@@ -1408,6 +1410,7 @@ export class ClientesService extends BaseService {
             where
                 identificac_geper = $1
             and ide_empr = $2
+            and es_cliente_geper = true
             `);
         queryClie.addParam(1, data.identificac_geper);
         queryClie.addParam(2, ideEmpr);
@@ -1448,6 +1451,8 @@ export class ClientesService extends BaseService {
         }
 
         // validar que algun otro cliente no tenga la misma identificacion
+        // (solo considera registros marcados como cliente; un proveedor con la misma
+        // identificacion no debe bloquear la edicion del cliente)
         const queryClie = new SelectQuery(`
             select
                 1
@@ -1457,6 +1462,7 @@ export class ClientesService extends BaseService {
                 identificac_geper = $1
             and ide_empr = $2
             and ide_geper != $3
+            and es_cliente_geper = true
             `);
         queryClie.addParam(1, data.identificac_geper);
         queryClie.addParam(2, ideEmpr);
