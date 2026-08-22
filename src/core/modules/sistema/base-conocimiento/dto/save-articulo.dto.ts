@@ -30,6 +30,12 @@ export class RelacionItem {
   @IsString()
   @IsOptional()
   subtipoReferencia?: string;
+
+  // Presente solo en relaciones de tipo NOTA (para navegación entre notas) — se recibe
+  // de vuelta tal cual la entrega getArticulo/getArticulos, no se usa para guardar.
+  @IsUUID()
+  @IsOptional()
+  uuidReferencia?: string | null;
 }
 
 export class ArchivoPendienteItem {
