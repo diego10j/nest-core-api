@@ -110,12 +110,25 @@ export class DocumentosCxPXmlService {
 
             // ── Detalles ─────────────────────────────────────────────────────
             const detalles: DetalleXmlCxP[] = [];
+            // Tarifa de IVA declarada en la PRIMERA línea gravada del XML (<impuesto><tarifa>,
+            // ej. "15.00") - se usa como tarifa del documento en vez de recalcularla contra
+            // con_config_iva (ver más abajo): el XML ya trae la tarifa que el SRI autorizó para
+            // ESE comprobante puntual, así que confiar en con_config_iva puede quedar
+            // desactualizado (ej. changio de tarifa 12%->15%) y descuadrar el IVA en centavos
+            // frente al valor real que el emisor cobró.
+            let tarifaIvaXml: number | undefined;
             $('detalles > detalle').each((_, el) => {
                 const det = $(el);
                 const codigoPorcentaje = det.find('impuestos impuesto codigoPorcentaje').first().text().trim();
                 let ivaInarti: DetalleXmlCxP['iva_inarti_cpdfa'] = '1';
                 if (codigoPorcentaje === COD_PORCENTAJE_IVA_0) ivaInarti = '-1';
                 else if (codigoPorcentaje === COD_PORCENTAJE_NO_OBJETO) ivaInarti = '0';
+
+                if (ivaInarti === '1' && tarifaIvaXml === undefined) {
+                    const tarifaTexto = det.find('impuestos impuesto tarifa').first().text().trim();
+                    const tarifaNum = this.numero(tarifaTexto);
+                    if (tarifaTexto && tarifaNum >= 0) tarifaIvaXml = tarifaNum / 100;
+                }
 
                 detalles.push({
                     cantidad_cpdfa: this.numero(det.find('cantidad').first().text(), 3),
@@ -140,7 +153,7 @@ export class DocumentosCxPXmlService {
             // (cxp_cabece_factur.descuento_cpcfa), que hoy se guardaba en 0 aunque el XML sí
             // traía descuento.
             const descuentoXml = this.numero(this.texto($, 'totalDescuento'));
-            const tarifaIva = await this.consultas.getPorcentajeIva(fechaEmision);
+            const tarifaIva = tarifaIvaXml ?? await this.consultas.getPorcentajeIva(fechaEmision);
             const totales = this.calcularTotales(detalles, tarifaIva);
 
             const variables = await this.core.getVariables([VAR_TIPO_DOC_FACTURA]);

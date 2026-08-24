@@ -84,4 +84,14 @@ export class SaveCuentaBancoDto {
     @IsInt()
     @IsOptional()
     ideTecbaDestinoAcredit?: number;
+
+    /**
+     * FK → gen_persona: proveedor/procesador de tarjeta (ej. Bendo) que EMITE la factura de
+     * comisión y el comprobante de retención sobre esta cuenta - el comercio solo los
+     * registra. Solo aplica a cuentas de bancos con es_tarjeta_teban = true. Precarga el
+     * campo "Proveedor" del wizard de Devolución de Cobros con Tarjeta (editable).
+     */
+    @IsInt()
+    @IsOptional()
+    ideGeperComisionTecba?: number;
 }

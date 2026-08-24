@@ -31,8 +31,15 @@ export class BancosService extends BaseService {
                 b.foto_teban,
                 b.color_teban,
                 b.es_tarjeta_teban,
+                b.ide_geper_comision_teban,
+                p.nom_geper AS nom_geper_comision_teban,
+                p.identificac_geper AS identificac_geper_comision_teban,
+                b.ide_tecba_destino_acredit_teban,
+                cbd.nombre_tecba AS nombre_tecba_destino_acredit_teban,
         (select count(1) from tes_cuenta_banco cb where cb.ide_teban = b.ide_teban and cb.ide_empr = $1 and cb.ide_sucu = $2) as cantidad_cuentas
             FROM tes_banco b
+            LEFT JOIN gen_persona p ON p.ide_geper = b.ide_geper_comision_teban
+            LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = b.ide_tecba_destino_acredit_teban
             WHERE b.ide_empr = $1
               AND b.es_caja_teban = false
             ORDER BY b.nombre_teban
@@ -67,8 +74,15 @@ export class BancosService extends BaseService {
                 b.es_caja_teban,
                 b.foto_teban,
                 b.color_teban,
-                b.es_tarjeta_teban
+                b.es_tarjeta_teban,
+                b.ide_geper_comision_teban,
+                p.nom_geper AS nom_geper_comision_teban,
+                p.identificac_geper AS identificac_geper_comision_teban,
+                b.ide_tecba_destino_acredit_teban,
+                cbd.nombre_tecba AS nombre_tecba_destino_acredit_teban
             FROM tes_banco b
+            LEFT JOIN gen_persona p ON p.ide_geper = b.ide_geper_comision_teban
+            LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = b.ide_tecba_destino_acredit_teban
             WHERE b.ide_teban = $1
         `);
         query.addIntParam(1, ideTeban);
@@ -155,10 +169,14 @@ export class BancosService extends BaseService {
                 cb.retiene_renta_tecba,
                 cb.porcentaje_retencion_renta_tecba,
                 cb.ide_tecba_destino_acredit,
-                cbd.nombre_tecba AS nombre_tecba_destino_acredit
+                cbd.nombre_tecba AS nombre_tecba_destino_acredit,
+                cb.ide_geper_comision_tecba,
+                p.nom_geper AS nom_geper_comision_tecba,
+                p.identificac_geper AS identificac_geper_comision_tecba
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = cb.ide_tecba_destino_acredit
+            LEFT JOIN gen_persona p ON p.ide_geper = cb.ide_geper_comision_tecba
             WHERE cb.ide_tecba = $1
         `);
         query.addIntParam(1, ideTecba);
@@ -168,6 +186,9 @@ export class BancosService extends BaseService {
     // ─── CUENTAS TARJETA (tes_cuenta_banco de bancos con es_tarjeta_teban) ──
 
     async getCuentasTarjeta(dtoIn: HeaderParamsDto) {
+        // COALESCE cuenta -> banco: si la cuenta puntual no tiene su propio proveedor/cuenta
+        // destino configurado, hereda el default configurado a nivel de banco (ver migración -
+        // "Gestión de Bancos" ofrece los mismos 2 campos como default para todas sus cuentas).
         const query = new SelectQuery(`
             SELECT
                 cb.ide_tecba,
@@ -181,9 +202,14 @@ export class BancosService extends BaseService {
                 cb.iva_comision_tecba,
                 cb.retiene_iva_tecba,
                 cb.retiene_renta_tecba,
-                cb.ide_tecba_destino_acredit
+                COALESCE(cb.ide_tecba_destino_acredit, b.ide_tecba_destino_acredit_teban) AS ide_tecba_destino_acredit,
+                COALESCE(cb.ide_geper_comision_tecba, b.ide_geper_comision_teban) AS ide_geper_comision_tecba,
+                p.nom_geper AS nom_geper_comision_tecba,
+                p.identificac_geper AS identificac_geper_comision_tecba
             FROM tes_cuenta_banco cb
             INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            LEFT JOIN gen_persona p
+                ON p.ide_geper = COALESCE(cb.ide_geper_comision_tecba, b.ide_geper_comision_teban)
             WHERE cb.ide_empr = $1
               AND cb.ide_sucu = $2
               AND cb.activo_tecba = true

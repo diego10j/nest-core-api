@@ -30,6 +30,51 @@ COMMENT ON COLUMN tes_cuenta_banco.ide_tecba_destino_acredit IS
     'FK a tes_cuenta_banco: cuenta bancaria real donde el procesador de tarjeta acredita el neto de los cobros (ej. Banco Guayaquil). Solo aplica a cuentas de bancos con es_tarjeta_teban = true.';
 
 -- ============================================================
+-- 1b. Proveedor que emite la factura de comisión y la retención (tes_cuenta_banco)
+-- ============================================================
+-- Solo tiene sentido para cuentas cuyo banco está marcado como tarjeta - identifica al
+-- procesador (ej. Bendo) que EMITE la factura de comisión y el comprobante de retención (el
+-- comercio solo los registra, nunca los emite). Precarga el campo "Proveedor" del wizard de
+-- Devolución de Cobros con Tarjeta, editable en cada ejecución.
+ALTER TABLE tes_cuenta_banco
+    ADD COLUMN IF NOT EXISTS ide_geper_comision_tecba BIGINT;
+
+ALTER TABLE tes_cuenta_banco
+    ADD CONSTRAINT tes_cuenta_banco_geper_comision_fkey
+    FOREIGN KEY (ide_geper_comision_tecba) REFERENCES gen_persona(ide_geper)
+    ON DELETE SET NULL ON UPDATE RESTRICT;
+
+COMMENT ON COLUMN tes_cuenta_banco.ide_geper_comision_tecba IS
+    'FK a gen_persona: proveedor/procesador de tarjeta (ej. Bendo) que emite la factura de comisión y el comprobante de retención sobre esta cuenta. Solo aplica a cuentas de bancos con es_tarjeta_teban = true.';
+
+-- ============================================================
+-- 1c. Mismos 2 campos, a nivel de BANCO (tes_banco) - configuración por defecto
+-- ============================================================
+-- Un banco/procesador de tarjeta (ej. "BENDO") normalmente tiene una sola cuenta bajo él, pero
+-- estos campos se ofrecen también a nivel de banco como default: si una cuenta de tarjeta no
+-- tiene su propio ide_geper_comision_tecba / ide_tecba_destino_acredit, se usa el del banco al
+-- que pertenece (ver COALESCE en BancosService.getCuentasTarjeta/getCuentaBancoById) - configura
+-- una vez en "Gestión de Bancos" y aplica a todas las cuentas de ese banco.
+ALTER TABLE tes_banco
+    ADD COLUMN IF NOT EXISTS ide_geper_comision_teban BIGINT,
+    ADD COLUMN IF NOT EXISTS ide_tecba_destino_acredit_teban BIGINT;
+
+ALTER TABLE tes_banco
+    ADD CONSTRAINT tes_banco_geper_comision_fkey
+    FOREIGN KEY (ide_geper_comision_teban) REFERENCES gen_persona(ide_geper)
+    ON DELETE SET NULL ON UPDATE RESTRICT;
+
+ALTER TABLE tes_banco
+    ADD CONSTRAINT tes_banco_destino_acredit_fkey
+    FOREIGN KEY (ide_tecba_destino_acredit_teban) REFERENCES tes_cuenta_banco(ide_tecba)
+    ON DELETE SET NULL ON UPDATE RESTRICT;
+
+COMMENT ON COLUMN tes_banco.ide_geper_comision_teban IS
+    'FK a gen_persona: proveedor/procesador de tarjeta (ej. Bendo) por defecto para todas las cuentas de este banco - se usa cuando la cuenta puntual no tiene su propio ide_geper_comision_tecba.';
+COMMENT ON COLUMN tes_banco.ide_tecba_destino_acredit_teban IS
+    'FK a tes_cuenta_banco: cuenta destino de acreditación por defecto para todas las cuentas de este banco - se usa cuando la cuenta puntual no tiene su propio ide_tecba_destino_acredit.';
+
+-- ============================================================
 -- 2. Cabecera de Devolución de Cobro con Tarjeta
 -- ============================================================
 CREATE TABLE IF NOT EXISTS tes_cab_devol_cobro_tarjeta (
