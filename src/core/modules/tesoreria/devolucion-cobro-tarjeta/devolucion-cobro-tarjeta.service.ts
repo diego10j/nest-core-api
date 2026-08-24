@@ -159,19 +159,51 @@ export class DevolucionCobroTarjetaService extends BaseService {
     }
 
     /**
-     * ide_cncre de una factura de venta, si tiene un comprobante de retención registrado - usado
-     * por el wizard para recuperar el id tras guardar la retención con el diálogo ya existente
-     * de Ventas (RegistrarRetencionVentaDialog), que no lo devuelve directamente.
+     * Retención de una factura de venta, si tiene un comprobante ya registrado - usado por el
+     * wizard tanto para recuperar el id tras guardar la retención con el diálogo ya existente de
+     * Ventas (RegistrarRetencionVentaDialog, que no lo devuelve directamente) como para detectar
+     * ANTES de mostrar ese diálogo que la factura ya tiene retención (una factura solo admite
+     * UNA), y en ese caso mostrar el detalle ya cargado en vez de ofrecer cargar otra.
      */
     async getRetencionIdPorFactura(ideCccfa: number, dtoIn: HeaderParamsDto) {
-        const query = new SelectQuery(`
+        const qFac = new SelectQuery(`
             SELECT ide_cncre FROM cxc_cabece_factura
             WHERE ide_cccfa = $1 AND ide_empr = $2 AND ide_sucu = $3
         `);
-        query.addIntParam(1, ideCccfa);
-        query.addIntParam(2, dtoIn.ideEmpr);
-        query.addIntParam(3, dtoIn.ideSucu);
-        const row = await this.dataSource.createSingleQuery(query);
-        return { ide_cncre: row?.ide_cncre ? Number(row.ide_cncre) : null };
+        qFac.addIntParam(1, ideCccfa);
+        qFac.addIntParam(2, dtoIn.ideEmpr);
+        qFac.addIntParam(3, dtoIn.ideSucu);
+        const factura = await this.dataSource.createSingleQuery(qFac);
+        const ideCncre = factura?.ide_cncre ? Number(factura.ide_cncre) : null;
+        if (!ideCncre) return { ide_cncre: null };
+
+        const qCab = new SelectQuery(`
+            SELECT numero_cncre, autorizacion_cncre, fecha_emisi_cncre
+            FROM con_cabece_retenc
+            WHERE ide_cncre = $1
+        `);
+        qCab.addIntParam(1, ideCncre);
+        const cabecera = await this.dataSource.createSingleQuery(qCab);
+
+        const qDet = new SelectQuery(`
+            SELECT d.ide_cncim, i.nombre_cncim, i.casillero_cncim,
+                   d.base_cndre, d.porcentaje_cndre, d.valor_cndre
+            FROM con_detall_retenc d
+            INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
+            WHERE d.ide_cncre = $1
+            ORDER BY d.ide_cndre
+        `);
+        qDet.addIntParam(1, ideCncre);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+        const totalRetencion = detalles.reduce((sum, d) => sum + Number(d.valor_cndre || 0), 0);
+
+        return {
+            ide_cncre: ideCncre,
+            numero_cncre: cabecera?.numero_cncre ?? null,
+            autorizacion_cncre: cabecera?.autorizacion_cncre ?? null,
+            fecha_emisi_cncre: cabecera?.fecha_emisi_cncre ?? null,
+            detalles,
+            total_retencion: Number(totalRetencion.toFixed(2)),
+        };
     }
 }
