@@ -6,8 +6,11 @@ import { Auth } from 'src/core/auth';
 
 import { DevolucionCobroTarjetaSaveService } from './devolucion-cobro-tarjeta-save.service';
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
+import { AnularDevolucionTarjetaDto } from './dto/anular-devolucion-tarjeta.dto';
 import { FinalizarDevolucionTarjetaDto } from './dto/finalizar-devolucion-tarjeta.dto';
+import { GetDevolucionesTarjetaDto } from './dto/get-devoluciones-tarjeta.dto';
 import { GetFacturasTarjetaPendientesDto } from './dto/get-facturas-tarjeta-pendientes.dto';
+import { GetReporteCobrosTarjetaDto } from './dto/get-reporte-cobros-tarjeta.dto';
 
 /**
  * Devolución de Cobros con Tarjeta: liquida el ciclo de un cobro con tarjeta (factura de venta
@@ -54,5 +57,46 @@ export class DevolucionCobroTarjetaController {
         @Body() dtoIn: FinalizarDevolucionTarjetaDto,
     ) {
         return this.saveService.finalizar({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getDevolucionesTarjeta')
+    @Auth()
+    @ApiOperation({ summary: 'Listado de ciclos de Devolución de Cobros con Tarjeta ya registrados' })
+    getDevolucionesTarjeta(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetDevolucionesTarjetaDto,
+    ) {
+        return this.service.getDevolucionesTarjeta({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getDevolucionTarjetaById/:ideTecdt')
+    @Auth()
+    @ApiOperation({ summary: 'Detalle de un ciclo de Devolución de Cobros con Tarjeta (cabecera + facturas cubiertas)' })
+    getDevolucionTarjetaById(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Param('ideTecdt') ideTecdt: string,
+    ) {
+        return this.service.getDevolucionTarjetaById(Number(ideTecdt), headersParams);
+    }
+
+    @Get('getReporteCobrosTarjeta')
+    @Auth()
+    @ApiOperation({ summary: 'Reporte de todas las facturas de venta cobradas con tarjeta (liquidadas o no), con comisión/retención/neto prorrateados y diferencias' })
+    getReporteCobrosTarjeta(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetReporteCobrosTarjetaDto,
+    ) {
+        return this.service.getReporteCobrosTarjeta({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('anular/:ideTecdt')
+    @Auth()
+    @ApiOperation({ summary: 'Anula un ciclo de Devolución de Cobros con Tarjeta para permitir reingresarlo' })
+    anular(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Param('ideTecdt') ideTecdt: string,
+        @Body() dtoIn: AnularDevolucionTarjetaDto,
+    ) {
+        return this.saveService.anular(Number(ideTecdt), { ...headersParams, ...dtoIn });
     }
 }

@@ -8,8 +8,10 @@ import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asient
 import { ComprobanteBancoSaveService } from 'src/core/modules/tesoreria/comprobante-banco/comprobante-banco-save.service';
 import { CxpTransaccionesSaveService } from 'src/core/modules/tesoreria/cxp-transacciones/cxp-transacciones-save.service';
 import { PreLibroBancosSaveService } from 'src/core/modules/tesoreria/pre-libro-bancos/pre-libro-bancos-save.service';
+import { toPgTimestampNow } from 'src/util/helpers/date-util';
 
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
+import { AnularDevolucionTarjetaDto } from './dto/anular-devolucion-tarjeta.dto';
 import { FinalizarDevolucionTarjetaDto } from './dto/finalizar-devolucion-tarjeta.dto';
 
 /** Tipo de impuesto renta en con_cabece_impues.ide_cnimp (paridad AsientosAutomaticosService) */
@@ -366,5 +368,77 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             this.logger.error(`Error al finalizar devolución de cobros con tarjeta: ${error}`);
             throw error;
         }
+    }
+
+    /**
+     * Anula un ciclo completo de Devolución de Cobros con Tarjeta, para permitir reingresarlo
+     * desde cero (patrón "anular todo" de flete-consolidado). Reutiliza
+     * PreLibroBancosSaveService.anularMovimiento (misma primitiva genérica que usa el resto de
+     * Tesorería) sobre cada movimiento de libro banco generado por finalizar(): reversa su propio
+     * asiento contable, elimina la aplicación de pago CxP/CxC asociada y el comprobante-banco
+     * ligado, y recalcula pagado_cpcfa. El retiro y el ingreso de la transferencia comparten un
+     * mismo asiento (ver generarTransferencia) - anularlo dos veces es inofensivo (solo
+     * UPDATE/zeroing idempotentes), pero cada fila de tes_cab_libr_banc sí necesita su propia
+     * llamada para quedar marcada anulada individualmente.
+     *
+     * La factura de comisión (cxp_cabece_factur) y la retención SRI (con_cabece_retenc) del
+     * proveedor NO se anulan/eliminan: son documentos reales que el proveedor ya emitió. Solo se
+     * revierte su PAGO (vía anularMovimiento sobre ide_teclb_pago_comision, que deja
+     * pagado_cpcfa = false), para que al reingresar el proceso se pueda re-seleccionar/pagar la
+     * MISMA factura sin tener que volver a cargar el XML. La retención sí se desvincula de la
+     * factura de venta ancla (cxc_cabece_factura.ide_cncre = NULL) para que
+     * getRetencionIdPorFactura dejе de bloquear una nueva carga, pero el comprobante de retención
+     * en sí queda intacto (huérfano) para no perder el registro tributario ya recibido del SRI.
+     */
+    async anular(ideTecdt: number, dtoIn: AnularDevolucionTarjetaDto & HeaderParamsDto) {
+        const cab = await this.consultas.getDevolucionTarjetaById(ideTecdt, dtoIn);
+        if (!cab) {
+            throw new BadRequestException(`La devolución de cobros con tarjeta ide_tecdt=${ideTecdt} no existe`);
+        }
+        if (cab.anulado_tecdt) {
+            throw new BadRequestException('Esta devolución de cobros con tarjeta ya se encuentra anulada');
+        }
+
+        // Orden: ingreso/retiro de la transferencia primero, luego débito de la retención (si
+        // hay), luego el pago de la comisión - cada movimiento es independiente entre sí.
+        await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_ingreso });
+        await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_retiro });
+        if (cab.ide_teclb_debito_retencion) {
+            await this.preLibroBancosSaveService.anularMovimiento({
+                ...dtoIn,
+                ideTeclb: cab.ide_teclb_debito_retencion,
+            });
+        }
+        await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_pago_comision });
+
+        if (cab.ide_cncre) {
+            await this.dataSource.pool.query(
+                `UPDATE cxc_cabece_factura SET ide_cncre = NULL WHERE ide_cncre = $1`,
+                [cab.ide_cncre],
+            );
+        }
+
+        // Libera las facturas de venta cubiertas para que vuelvan a aparecer como pendientes
+        await this.dataSource.pool.query(
+            `DELETE FROM tes_det_devol_cobro_tarjeta_fact WHERE ide_tecdt = $1`,
+            [ideTecdt],
+        );
+
+        const listQuery: ObjectQueryDto[] = [{
+            operation: 'update',
+            module: 'tes',
+            tableName: 'cab_devol_cobro_tarjeta',
+            primaryKey: 'ide_tecdt',
+            object: {
+                ide_tecdt: ideTecdt,
+                anulado_tecdt: true,
+                fecha_anula_tecdt: toPgTimestampNow(),
+                motivo_anula_tecdt: dtoIn.motivo ?? null,
+                usuario_anula: dtoIn.login,
+            },
+        }];
+        await this.core.save({ ...dtoIn, listQuery, audit: false });
+
+        return { message: 'ok', ide_tecdt: ideTecdt };
     }
 }

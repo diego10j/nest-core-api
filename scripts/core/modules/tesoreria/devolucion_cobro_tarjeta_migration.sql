@@ -115,6 +115,14 @@ CREATE TABLE IF NOT EXISTS tes_cab_devol_cobro_tarjeta (
 
     observacion_tecdt VARCHAR(300),
 
+    -- El ciclo completo se genera atómicamente en finalizar() (no hay estado intermedio
+    -- "pendiente de pago" como en flete-consolidado) - solo existen 2 estados: activo (default)
+    -- o anulado, para permitir reingresar el proceso si algo quedó mal.
+    anulado_tecdt BOOLEAN NOT NULL DEFAULT FALSE,
+    fecha_anula_tecdt TIMESTAMP,
+    usuario_anula VARCHAR(50),
+    motivo_anula_tecdt VARCHAR(300),
+
     usuario_ingre VARCHAR(50),
     hora_ingre TIMESTAMP DEFAULT NOW(),
     usuario_actua VARCHAR(50),
@@ -158,6 +166,15 @@ CREATE TABLE IF NOT EXISTS tes_cab_devol_cobro_tarjeta (
         FOREIGN KEY (ide_teclb_ingreso) REFERENCES tes_cab_libr_banc(ide_teclb)
         ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+
+-- Columnas de anulación agregadas después de una primera corrida de este script en algún
+-- ambiente donde la tabla ya se hubiera creado sin ellas (CREATE TABLE IF NOT EXISTS de arriba
+-- sería un no-op en ese caso) - idempotente igual que el resto del script.
+ALTER TABLE tes_cab_devol_cobro_tarjeta
+    ADD COLUMN IF NOT EXISTS anulado_tecdt BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS fecha_anula_tecdt TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS usuario_anula VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS motivo_anula_tecdt VARCHAR(300);
 
 COMMENT ON TABLE tes_cab_devol_cobro_tarjeta IS
     'Cabecera de un ciclo de devolución/liquidación de cobros con tarjeta: amarra las facturas de venta cobradas con tarjeta con la factura de comisión del procesador, su retención (opcional) y la transferencia del neto, dejando la cuenta del procesador en cero.';
