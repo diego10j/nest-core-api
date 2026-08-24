@@ -61,7 +61,9 @@ export class DevolucionCobroTarjetaService extends BaseService {
         query.addIntParam(3, dtoIn.ideSucu);
         query.addParam(4, dtoIn.fechaDesde ?? null);
         query.addParam(5, dtoIn.fechaHasta ?? null);
-        return this.dataSource.createSelectQuery(query);
+        // createQuery (no createSelectQuery) - DataTableQuery/useDataTableQuery en el frontend
+        // exige la forma paginada { rows, columns, pagination, ... }, no un array plano.
+        return this.dataSource.createQuery(query);
     }
 
     /**
