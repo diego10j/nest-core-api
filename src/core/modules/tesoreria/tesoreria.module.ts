@@ -68,6 +68,11 @@ import { TesoreriaService } from './tesoreria.service';
         PagoCxPEmailService,
         CoreService,
     ],
-    exports: [TransaccionesTesoreriaService, PreLibroBancosSaveService],
+    exports: [
+        TransaccionesTesoreriaService,
+        PreLibroBancosSaveService,
+        CxpTransaccionesSaveService,
+        ComprobanteBancoSaveService,
+    ],
 })
 export class TesoreriaModule { }

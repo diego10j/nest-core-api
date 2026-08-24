@@ -40,6 +40,12 @@ export class TesoreriaController {
         return this.service.getCuentasBanco(headersParams);
     }
 
+    @Get('getCuentasTransferencia')
+    @ApiOperation({ summary: 'Listar cuentas propias (bancos + cajas) con su cuenta contable, para Transferencia entre Cuentas' })
+    getCuentasTransferencia(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getCuentasTransferencia(headersParams);
+    }
+
     @Get('getCuentasBancoCheques')
     @ApiOperation({ summary: 'Listar cuentas bancarias habilitadas para emisión de cheques' })
     getCuentasBancoCheques(@AppHeaders() headersParams: HeaderParamsDto) {

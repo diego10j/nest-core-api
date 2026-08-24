@@ -74,4 +74,14 @@ export class SaveCuentaBancoDto {
     @Min(0)
     @IsOptional()
     porcentajeRetencionRentaTecba?: number;
+
+    /**
+     * FK → tes_cuenta_banco: cuenta bancaria real donde el procesador de tarjeta
+     * acredita el neto de los cobros (ej. Banco Guayaquil). Solo aplica a cuentas
+     * de bancos con es_tarjeta_teban = true. Precarga el campo "cuenta destino"
+     * del wizard de Devolución de Cobros con Tarjeta (editable en cada ejecución).
+     */
+    @IsInt()
+    @IsOptional()
+    ideTecbaDestinoAcredit?: number;
 }

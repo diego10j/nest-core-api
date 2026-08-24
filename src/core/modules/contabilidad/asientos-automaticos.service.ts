@@ -46,6 +46,48 @@ export interface AsientoPagoResult {
     advertencias: string[];
 }
 
+export interface GenerarAsientoTransferenciaDto {
+    fecha: string;
+    ideTecbaOrigen: number;
+    ideTecbaDestino: number;
+    valor: number;
+    observacion: string;
+}
+
+export interface AsientoTransferenciaResult {
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    cuenta_origen_encontrada: boolean;
+    cuenta_destino_encontrada: boolean;
+    advertencias: string[];
+}
+
+export interface GenerarAsientoRetencionTarjetaDto {
+    /** Movimiento de nota de débito ya creado en tes_cab_libr_banc (cuenta del procesador de tarjeta) */
+    ideTeclb: number;
+    fecha: string;
+    /** FK → tes_cuenta_banco (cuenta del procesador de tarjeta, ej. Bendo) */
+    ideTecba: number;
+    /** FK → gen_persona (proveedor/procesador de tarjeta) */
+    ideGeper: number;
+    valorRetencionIva: number;
+    valorRetencionRenta: number;
+    /** FK → con_cabece_impues de la línea de retención IVA del comprobante recibido, si aplica */
+    ideCncimIva?: number | null;
+    /** FK → con_cabece_impues de la línea de retención Renta del comprobante recibido, si aplica */
+    ideCncimRenta?: number | null;
+    observacion: string;
+}
+
+export interface AsientoRetencionTarjetaResult {
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    banco_encontrado: boolean;
+    advertencias: string[];
+}
+
 export interface GenerarAsientoComprasCxPDto {
     ide_cpcfa: number;
 }
@@ -357,6 +399,98 @@ export class AsientosAutomaticosService extends BaseService {
     }
 
     /**
+     * Genera el asiento contable de una transferencia entre 2 cuentas de tesorería propias
+     * (banco/caja a banco/caja). A diferencia de CobroCxC/PagoCxP no hay cuentas puente
+     * "TRANSFERENCIA (-)/(+)" configuradas en con_det_conf_asie: se usa directamente la cuenta
+     * contable de cada cuenta bancaria (tes_cuenta_banco.ide_cndpc) — DEBE en la cuenta destino,
+     * HABER en la cuenta origen. Si a cualquiera de las 2 le falta la cuenta contable, NO se
+     * genera nada (a diferencia del resto del motor, aquí se bloquea en vez de generar con
+     * advertencia: en una transferencia ambas cuentas son igual de indispensables, no hay un
+     * "lado secundario" tolerable).
+     */
+    async generarAsientoTransferencia(
+        dtoIn: GenerarAsientoTransferenciaDto & HeaderParamsDto,
+    ): Promise<AsientoTransferenciaResult> {
+        const advertencias: string[] = [];
+
+        const ctaQuery = new SelectQuery(`
+            SELECT ide_tecba, ide_cndpc FROM tes_cuenta_banco WHERE ide_tecba IN ($1, $2)
+        `);
+        ctaQuery.addIntParam(1, dtoIn.ideTecbaOrigen);
+        ctaQuery.addIntParam(2, dtoIn.ideTecbaDestino);
+        const cuentas = await this.dataSource.createSelectQuery(ctaQuery);
+        const ideCndpcOrigen = cuentas?.find((c: any) => c.ide_tecba === dtoIn.ideTecbaOrigen)?.ide_cndpc ?? null;
+        const ideCndpcDestino = cuentas?.find((c: any) => c.ide_tecba === dtoIn.ideTecbaDestino)?.ide_cndpc ?? null;
+
+        const cuentaOrigenEncontrada = ideCndpcOrigen != null;
+        const cuentaDestinoEncontrada = ideCndpcDestino != null;
+
+        if (!cuentaOrigenEncontrada) {
+            advertencias.push('Cuenta contable de la cuenta origen no configurada en tes_cuenta_banco');
+        }
+        if (!cuentaDestinoEncontrada) {
+            advertencias.push('Cuenta contable de la cuenta destino no configurada en tes_cuenta_banco');
+        }
+        if (!cuentaOrigenEncontrada || !cuentaDestinoEncontrada) {
+            return {
+                generado: false,
+                cuenta_origen_encontrada: cuentaOrigenEncontrada,
+                cuenta_destino_encontrada: cuentaDestinoEncontrada,
+                advertencias,
+            };
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: Number(this.variables.get('p_con_beneficiario_empresa')),
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] TRANSFERENCIA: ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: [
+                {
+                    ide_cnlap: this.lugarDebe,
+                    ide_cndpc: ideCndpcDestino,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'TRANSFERENCIA - CUENTA DESTINO',
+                },
+                {
+                    ide_cnlap: this.lugarHaber,
+                    ide_cndpc: ideCndpcOrigen,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'TRANSFERENCIA - CUENTA ORIGEN',
+                },
+            ],
+        } as SaveComprobanteDto;
+
+        try {
+            const result = await this.comprobanteService.saveAutomatico({
+                ...dtoIn,
+                ...saveDto,
+            } as any);
+
+            return {
+                ide_cnccc: result.ide_cnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                cuenta_origen_encontrada: true,
+                cuenta_destino_encontrada: true,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de transferencia (origen=${dtoIn.ideTecbaOrigen}, destino=${dtoIn.ideTecbaDestino}): ${error}`);
+            return {
+                generado: false,
+                cuenta_origen_encontrada: true,
+                cuenta_destino_encontrada: true,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
      * Resuelve cuentas contables, signo, lugares (DEBE/HABER) y arma el SaveComprobanteDto para
      * un asiento de pago CxP — compartido entre generarAsientoPagoCxP y actualizarAsientoPagoCxP
      * para no duplicar la lógica de resolución de cuentas.
@@ -431,6 +565,130 @@ export class AsientosAutomaticosService extends BaseService {
         } as SaveComprobanteDto;
 
         return { advertencias, ideCndpcBanco, ideCndpcProveedor, saveDto };
+    }
+
+    /**
+     * Genera el asiento contable del descuento por retención en la cuenta del procesador de
+     * tarjeta (ej. Bendo), usado por el flujo de "Devolución de Cobros con Tarjeta": cuando el
+     * procesador emite un comprobante de retención SRI sobre el depósito de una venta con
+     * tarjeta, ese valor se descuenta de lo que finalmente acredita a la cuenta bancaria real
+     * (ver RetencionVentaSaveService, que registra el comprobante pero NO genera asiento propio
+     * - solo referencia el ide_cnccc de la factura de venta). Este método sí genera un asiento
+     * nuevo, enlazado a la nota de débito registrada en tes_cab_libr_banc contra la cuenta del
+     * procesador (generarLibroBancoOtros):
+     *
+     *   CUENTA                              DEBE    HABER
+     *   Retención IVA por cobrar              X            (crédito tributario recuperable)
+     *   Retención Renta por cobrar            X            (crédito tributario recuperable)
+     *   Cuenta del procesador de tarjeta               X   (se reduce lo que acredita a la empresa)
+     *
+     * Reutiliza los mismos identificadores de configuración contable ("RETENCION IVA POR
+     * COBRAR" / "RETENCION RENTA POR COBRAR") que generarAsientoFacturaCxC usa para las
+     * retenciones normales de venta - conceptualmente es el mismo tipo de activo.
+     */
+    async generarAsientoRetencionTarjeta(
+        dtoIn: GenerarAsientoRetencionTarjetaDto & HeaderParamsDto,
+    ): Promise<AsientoRetencionTarjetaResult> {
+        const advertencias: string[] = [];
+
+        const ctaBancoQuery = new SelectQuery(`
+            SELECT ide_cndpc FROM tes_cuenta_banco WHERE ide_tecba = $1 LIMIT 1
+        `);
+        ctaBancoQuery.addIntParam(1, dtoIn.ideTecba);
+        const ctaBancoRow = await this.dataSource.createSingleQuery(ctaBancoQuery);
+        const ideCndpcBanco = ctaBancoRow?.ide_cndpc ?? null;
+        if (!ideCndpcBanco) {
+            advertencias.push('Cuenta contable de la cuenta de tarjeta no configurada en tes_cuenta_banco');
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        let totalRetenciones = 0;
+        const valorRetencionIva = Number((dtoIn.valorRetencionIva || 0).toFixed(2));
+        if (valorRetencionIva > 0) {
+            const cuenta = await this.buscarCuentaConfig(
+                'RETENCION IVA POR COBRAR',
+                { ideCncim: dtoIn.ideCncimIva ?? undefined },
+                dtoIn.ideSucu,
+            );
+            if (!cuenta) advertencias.push('Cuenta RETENCION IVA POR COBRAR no configurada');
+            totalRetenciones += valorRetencionIva;
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valorRetencionIva,
+                observacion_cndcc: 'RETENCION IVA POR COBRAR (TARJETA)',
+            });
+        }
+        const valorRetencionRenta = Number((dtoIn.valorRetencionRenta || 0).toFixed(2));
+        if (valorRetencionRenta > 0) {
+            const cuenta = await this.buscarCuentaConfig(
+                'RETENCION RENTA POR COBRAR',
+                { ideCncim: dtoIn.ideCncimRenta ?? undefined },
+                dtoIn.ideSucu,
+            );
+            if (!cuenta) advertencias.push('Cuenta RETENCION RENTA POR COBRAR no configurada');
+            totalRetenciones += valorRetencionRenta;
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valorRetencionRenta,
+                observacion_cndcc: 'RETENCION RENTA POR COBRAR (TARJETA)',
+            });
+        }
+
+        if (totalRetenciones <= 0) {
+            return {
+                generado: false,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias: [...advertencias, 'No hay valores de retención para contabilizar'],
+            };
+        }
+
+        detallesAsiento.push({
+            ide_cnlap: this.lugarHaber,
+            ide_cndpc: ideCndpcBanco ?? 0,
+            valor_cndcc: Number(totalRetenciones.toFixed(2)),
+            observacion_cndcc: 'CUENTA TARJETA (DESCUENTO RETENCION)',
+        });
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: dtoIn.ideGeper,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const result = await this.comprobanteService.saveAutomatico({
+                ...dtoIn,
+                ...saveDto,
+            } as any);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2`,
+                [ideCnccc, dtoIn.ideTeclb],
+            );
+
+            return {
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de retención de tarjeta para ide_teclb=${dtoIn.ideTeclb}: ${error}`);
+            return {
+                generado: false,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
     }
 
     /**

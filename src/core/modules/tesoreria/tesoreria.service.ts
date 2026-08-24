@@ -324,6 +324,37 @@ export class TesoreriaService extends BaseService {
     return this.dataSource.createSelectQuery(query);
   }
 
+  /**
+   * Catálogo de cuentas propias (bancos + cajas) para Transferencia entre Cuentas. A diferencia
+   * de getCuentasBanco/getCuentasCaja (que solo alimentan combos simples) incluye ide_cndpc: el
+   * frontend lo necesita para advertir ANTES del submit si a una cuenta le falta la cuenta
+   * contable asociada (el backend bloquea la transferencia completa en ese caso).
+   */
+  async getCuentasTransferencia(dtoIn: HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+      SELECT
+        cb.ide_tecba,
+        cb.nombre_tecba,
+        b.nombre_teban,
+        b.foto_teban,
+        b.color_teban,
+        COALESCE(b.es_caja_teban, false) AS es_caja_teban,
+        cb.ide_cndpc
+      FROM tes_cuenta_banco cb
+      LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+      WHERE cb.ide_empr = $1
+        AND cb.ide_sucu = $2
+        AND activo_tecba = true
+        AND COALESCE(b.es_tarjeta_teban, false) = false
+      ORDER BY es_caja_teban, b.nombre_teban, cb.nombre_tecba
+      `,
+    );
+    query.addIntParam(1, dtoIn.ideEmpr);
+    query.addIntParam(2, dtoIn.ideSucu);
+    return this.dataSource.createSelectQuery(query);
+  }
+
 
   async getCuentasBancoCheques(dtoIn: HeaderParamsDto) {
     const query = new SelectQuery(

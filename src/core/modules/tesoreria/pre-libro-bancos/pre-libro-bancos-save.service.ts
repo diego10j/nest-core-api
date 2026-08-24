@@ -5,6 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import { AnularMovimientoDto } from './dto/anular-movimiento.dto';
@@ -20,6 +21,7 @@ export class PreLibroBancosSaveService extends BaseService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
         private readonly preLibroBancosService: PreLibroBancosService,
+        private readonly asientosAutomaticosService: AsientosAutomaticosService,
     ) {
         super();
         this.core
@@ -349,81 +351,166 @@ export class PreLibroBancosSaveService extends BaseService {
     }
 
     /**
-     * Genera 2 movimientos de libro banco: retiro de cuenta origen + ingreso a cuenta destino
+     * Genera una transferencia entre 2 cuentas de tesorería propias: un asiento contable
+     * atómico (DEBE cuenta destino / HABER cuenta origen) + 2 movimientos de libro banco
+     * (retiro origen "TRANSFERENCIA (-)" + ingreso destino "TRANSFERENCIA (+)") + opcionalmente
+     * el comprobante (foto ya subida) - todo o nada.
+     *
+     * El asiento se genera PRIMERO y de forma estricta (lanza si no se puede contabilizar,
+     * ej. cuenta contable no configurada): así nunca se registra tesorería sin su contrapartida
+     * contable. Los 2 movimientos + el comprobante van luego en una sola transacción SQL (mismo
+     * mecanismo core.save con listQuery multi-fila que usa el resto del sistema); si esa parte
+     * falla después de generado el asiento, se revierte (compensación best-effort) para no dejar
+     * un asiento automático huérfano - mismo patrón "todo o nada" que saveCobroCxC/savePagoCxP.
      */
     async generarTransferencia(dtoIn: SaveTransferenciaDto & HeaderParamsDto) {
-        const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
-        const ideTettbMas = Number(this.variables.get('p_tes_tran_transferencia_mas'));
+        if (dtoIn.ideTecbaOrigen === dtoIn.ideTecbaDestino) {
+            throw new BadRequestException('La cuenta origen y la cuenta destino no pueden ser la misma.');
+        }
 
-        // Buscar beneficiario empresa
-        const ideBenef = Number(this.variables.get('p_con_beneficiario_empresa'));
-        const persQuery = new SelectQuery(
-            `SELECT nom_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`,
-        );
-        persQuery.addIntParam(1, ideBenef);
-        const persona = await this.dataSource.createSingleQuery(persQuery);
-        const beneficiario = persona?.nom_geper ?? '';
+        const asientoResult = await this.asientosAutomaticosService.generarAsientoTransferencia({
+            ...dtoIn,
+            fecha: dtoIn.fecha,
+            ideTecbaOrigen: dtoIn.ideTecbaOrigen,
+            ideTecbaDestino: dtoIn.ideTecbaDestino,
+            valor: dtoIn.valor,
+            observacion: dtoIn.observacion ?? '',
+        });
 
-        const ideRetiro = await this.dataSource.getSeqTable(
-            'tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login,
-        );
-        const ideIngreso = await this.dataSource.getSeqTable(
-            'tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login,
-        );
+        if (!asientoResult.generado) {
+            throw new BadRequestException(
+                `No se pudo generar el asiento contable de la transferencia (${(asientoResult.advertencias ?? []).join('; ')}). Verifique que ambas cuentas tengan una cuenta contable configurada. La transferencia no fue registrada.`,
+            );
+        }
+        const ideCnccc = asientoResult.ide_cnccc as number;
 
-        const listQuery: ObjectQueryDto[] = [
-            // Retiro de cuenta origen
-            {
-                operation: 'insert',
-                module: 'tes',
-                tableName: 'cab_libr_banc',
-                primaryKey: 'ide_teclb',
-                object: {
-                    ide_teclb: ideRetiro,
-                    ide_teelb: ideTeelb,
-                    ide_tecba: dtoIn.ideTecbaOrigen,
-                    ide_tettb: dtoIn.ideTettb,
-                    valor_teclb: dtoIn.valor,
-                    numero_teclb: dtoIn.numero ?? '000000',
-                    fecha_trans_teclb: dtoIn.fecha,
-                    fecha_venci_teclb: dtoIn.fecha,
-                    beneficiari_teclb: beneficiario,
-                    observacion_teclb: dtoIn.observacion ?? '',
-                    conciliado_teclb: false,
-                    depositado_teclb: false,
-                    devuelto_teclb: false,
-                    hora_ingre: getCurrentTime(),
+        try {
+            const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+            const ideTettbMenos = Number(this.variables.get('p_tes_tran_transferencia_menos'));
+            const ideTettbMas = Number(this.variables.get('p_tes_tran_transferencia_mas'));
+
+            // Buscar beneficiario empresa
+            const ideBenef = Number(this.variables.get('p_con_beneficiario_empresa'));
+            const persQuery = new SelectQuery(
+                `SELECT nom_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`,
+            );
+            persQuery.addIntParam(1, ideBenef);
+            const persona = await this.dataSource.createSingleQuery(persQuery);
+            const beneficiario = persona?.nom_geper ?? '';
+
+            const ideRetiro = await this.dataSource.getSeqTable(
+                'tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login,
+            );
+            const ideIngreso = await this.dataSource.getSeqTable(
+                'tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login,
+            );
+
+            const listQuery: ObjectQueryDto[] = [
+                // Retiro de cuenta origen - TRANSFERENCIA (-)
+                {
+                    operation: 'insert',
+                    module: 'tes',
+                    tableName: 'cab_libr_banc',
+                    primaryKey: 'ide_teclb',
+                    object: {
+                        ide_teclb: ideRetiro,
+                        ide_teelb: ideTeelb,
+                        ide_tecba: dtoIn.ideTecbaOrigen,
+                        ide_tettb: ideTettbMenos,
+                        ide_cnccc: ideCnccc,
+                        valor_teclb: dtoIn.valor,
+                        numero_teclb: dtoIn.numero,
+                        fecha_trans_teclb: dtoIn.fecha,
+                        fecha_venci_teclb: dtoIn.fecha,
+                        beneficiari_teclb: beneficiario,
+                        observacion_teclb: dtoIn.observacion ?? '',
+                        conciliado_teclb: false,
+                        depositado_teclb: false,
+                        devuelto_teclb: false,
+                        hora_ingre: getCurrentTime(),
+                    },
                 },
-            },
-            // Ingreso a cuenta destino
-            {
-                operation: 'insert',
-                module: 'tes',
-                tableName: 'cab_libr_banc',
-                primaryKey: 'ide_teclb',
-                object: {
-                    ide_teclb: ideIngreso,
-                    ide_teelb: ideTeelb,
-                    ide_tecba: dtoIn.ideTecbaDestino,
-                    ide_tettb: ideTettbMas,
-                    valor_teclb: dtoIn.valor,
-                    numero_teclb: dtoIn.numero ?? '000000',
-                    fecha_trans_teclb: dtoIn.fecha,
-                    fecha_venci_teclb: dtoIn.fecha,
-                    beneficiari_teclb: beneficiario,
-                    observacion_teclb: dtoIn.observacion ?? '',
-                    conciliado_teclb: false,
-                    depositado_teclb: false,
-                    devuelto_teclb: false,
-                    hora_ingre: getCurrentTime(),
+                // Ingreso a cuenta destino - TRANSFERENCIA (+)
+                {
+                    operation: 'insert',
+                    module: 'tes',
+                    tableName: 'cab_libr_banc',
+                    primaryKey: 'ide_teclb',
+                    object: {
+                        ide_teclb: ideIngreso,
+                        ide_teelb: ideTeelb,
+                        ide_tecba: dtoIn.ideTecbaDestino,
+                        ide_tettb: ideTettbMas,
+                        ide_cnccc: ideCnccc,
+                        valor_teclb: dtoIn.valor,
+                        numero_teclb: dtoIn.numero,
+                        fecha_trans_teclb: dtoIn.fecha,
+                        fecha_venci_teclb: dtoIn.fecha,
+                        beneficiari_teclb: beneficiario,
+                        observacion_teclb: dtoIn.observacion ?? '',
+                        conciliado_teclb: false,
+                        depositado_teclb: false,
+                        devuelto_teclb: false,
+                        hora_ingre: getCurrentTime(),
+                    },
                 },
-            },
-        ];
+            ];
 
-        const result = await this.core.save({ ...dtoIn, listQuery, audit: false });
-        await this.actualizarSecuencial(dtoIn.ideTecbaOrigen, dtoIn.ideTettb, dtoIn.numero, dtoIn);
+            let ideTeincb: number | undefined;
+            if (dtoIn.comprobante?.fotoFileName) {
+                ideTeincb = await this.dataSource.getSeqTable(
+                    'tes_info_comprobante_banco', 'ide_teincb', 1, dtoIn.login,
+                );
+                listQuery.push({
+                    operation: 'insert',
+                    module: 'tes',
+                    tableName: 'info_comprobante_banco',
+                    primaryKey: 'ide_teincb',
+                    object: {
+                        ide_teincb: ideTeincb,
+                        ide_empr: dtoIn.ideEmpr,
+                        ide_sucu: dtoIn.ideSucu,
+                        ide_teclb: ideRetiro,
+                        foto_teincb: dtoIn.comprobante.fotoFileName,
+                        tipo_trns_teincb: 'enviada',
+                        valor_teincb: dtoIn.valor,
+                        num_comprobante_teincb: dtoIn.numero,
+                        fecha_teincb: dtoIn.fecha,
+                        ordenante_teincb: dtoIn.comprobante.ordenante ?? null,
+                        cuenta_origen_teincb: dtoIn.comprobante.cuentaOrigen ?? null,
+                        banco_origen_teincb: dtoIn.comprobante.bancoOrigen ?? null,
+                        beneficiario_teincb: dtoIn.comprobante.beneficiario ?? null,
+                        cuenta_destino_teincb: dtoIn.comprobante.cuentaDestino ?? null,
+                        banco_destino_teincb: dtoIn.comprobante.bancoDestino ?? null,
+                        texto_original_teincb: dtoIn.comprobante.textoOriginal ?? null,
+                        por_ocr_teincb: dtoIn.comprobante.porOcr ?? false,
+                        por_ia_teincb: dtoIn.comprobante.porIa ?? false,
+                        validado_teincb: false,
+                        activo_teincb: true,
+                    },
+                });
+            }
 
-        return { ...result, ide_teclb_retiro: ideRetiro, ide_teclb_ingreso: ideIngreso };
+            // Atómico: 2 movimientos + (opcional) comprobante, todo o nada, en una sola
+            // transacción SQL (Patrón A: core.save con listQuery multi-tabla).
+            await this.core.save({ ...dtoIn, listQuery, audit: false });
+            await this.actualizarSecuencial(dtoIn.ideTecbaOrigen, ideTettbMenos, dtoIn.numero, dtoIn);
+
+            return {
+                message: 'ok',
+                ide_teclb_retiro: ideRetiro,
+                ide_teclb_ingreso: ideIngreso,
+                ide_cnccc: ideCnccc,
+                numero_cnccc: asientoResult.numero_cnccc,
+                ide_teincb: ideTeincb,
+            };
+        } catch (error) {
+            // El asiento ya se generó y comiteó (transacción propia); si el paso de tesorería/
+            // comprobante falla después hay que revertirlo para no dejar un asiento automático
+            // huérfano sin movimientos asociados.
+            await this.asientosAutomaticosService.eliminarAsiento(ideCnccc, dtoIn);
+            throw error;
+        }
     }
 
     /**

@@ -9,6 +9,7 @@ import { ComprasModule } from './modules/compras/compras.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
 import { CuentasPorCobrarModule } from './modules/cuentas-por-cobrar/cuentas-por-cobrar.module';
 import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-pagar.module';
+import { DevolucionCobroTarjetaModule } from './modules/tesoreria/devolucion-cobro-tarjeta/devolucion-cobro-tarjeta.module';
 import { ImportacionesModule } from './modules/importaciones/importaciones.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProformasModule } from './modules/proformas/proformas.module';
@@ -37,6 +38,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     ComprasModule,
     TesoreriaModule,
     ImportacionesModule,
+    DevolucionCobroTarjetaModule,
   ],
   providers: [CoreService, ModulosSistemaService],
 

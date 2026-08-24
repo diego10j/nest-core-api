@@ -153,9 +153,12 @@ export class BancosService extends BaseService {
                 cb.retiene_iva_tecba,
                 cb.porcentaje_retencion_iva_tecba,
                 cb.retiene_renta_tecba,
-                cb.porcentaje_retencion_renta_tecba
+                cb.porcentaje_retencion_renta_tecba,
+                cb.ide_tecba_destino_acredit,
+                cbd.nombre_tecba AS nombre_tecba_destino_acredit
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = cb.ide_tecba_destino_acredit
             WHERE cb.ide_tecba = $1
         `);
         query.addIntParam(1, ideTecba);
@@ -177,7 +180,8 @@ export class BancosService extends BaseService {
                 cb.porcentaje_comision_diferido_tecba,
                 cb.iva_comision_tecba,
                 cb.retiene_iva_tecba,
-                cb.retiene_renta_tecba
+                cb.retiene_renta_tecba,
+                cb.ide_tecba_destino_acredit
             FROM tes_cuenta_banco cb
             INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             WHERE cb.ide_empr = $1
