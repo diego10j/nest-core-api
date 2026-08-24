@@ -8,6 +8,7 @@ import { AnularMovimientoDto } from './dto/anular-movimiento.dto';
 import { ConciliarMovimientosDto } from './dto/conciliar-movimientos.dto';
 import { ExisteNumTransaccionDto } from './dto/existe-num-transaccion.dto';
 import { GetDetalleTransaccionDto } from './dto/get-detalle-transaccion.dto';
+import { GetDiferenciasContablesDto } from './dto/get-diferencias-contables.dto';
 import { GetSaldoCuentaDto } from './dto/get-saldo-cuenta.dto';
 import { GetTransaccionesCuentaKPIDto } from './dto/get-transacciones-cuenta-kpi.dto';
 import { GetTransaccionesCuentaDto } from './dto/get-transacciones-cuenta.dto';
@@ -18,6 +19,7 @@ import { SaveLibroBancoDto } from './dto/save-libro-banco.dto';
 import { SaveTransferenciaDto } from './dto/save-transferencia.dto';
 import { SiguienteNumeroTransaccionDto } from './dto/siguiente-numero-transaccion.dto';
 import { PreLibroBancosConciliacionService } from './pre-libro-bancos-conciliacion.service';
+import { PreLibroBancosDiferenciasService } from './pre-libro-bancos-diferencias.service';
 import { PreLibroBancosSaveService } from './pre-libro-bancos-save.service';
 import { PreLibroBancosService } from './pre-libro-bancos.service';
 
@@ -28,6 +30,7 @@ export class PreLibroBancosController {
         private readonly service: PreLibroBancosService,
         private readonly saveService: PreLibroBancosSaveService,
         private readonly conciliacionService: PreLibroBancosConciliacionService,
+        private readonly diferenciasService: PreLibroBancosDiferenciasService,
     ) { }
 
     // ─── CONSULTAS ────────────────────────────────────────────────────────────────
@@ -251,5 +254,16 @@ export class PreLibroBancosController {
         @Query() dtoIn: GetPosicionConsolidadaDto,
     ) {
         return this.conciliacionService.getPosicionConsolidada({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getDiferenciasContables')
+    @ApiOperation({
+        summary: 'Detecta las diferencias entre saldo contable y saldo registrado de las cuentas bancarias',
+    })
+    getDiferenciasContables(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetDiferenciasContablesDto,
+    ) {
+        return this.diferenciasService.getDiferenciasContables({ ...headersParams, ...dtoIn });
     }
 }

@@ -23,6 +23,7 @@ import { CxpTransaccionesController } from './cxp-transacciones/cxp-transaccione
 import { CxpTransaccionesService } from './cxp-transacciones/cxp-transacciones.service';
 import { PagoCxPEmailService } from './cxp-transacciones/pago-cxp-email.service';
 import { PreLibroBancosConciliacionService } from './pre-libro-bancos/pre-libro-bancos-conciliacion.service';
+import { PreLibroBancosDiferenciasService } from './pre-libro-bancos/pre-libro-bancos-diferencias.service';
 import { PreLibroBancosSaveService } from './pre-libro-bancos/pre-libro-bancos-save.service';
 import { PreLibroBancosController } from './pre-libro-bancos/pre-libro-bancos.controller';
 import { PreLibroBancosService } from './pre-libro-bancos/pre-libro-bancos.service';
@@ -53,6 +54,7 @@ import { TesoreriaService } from './tesoreria.service';
         PreLibroBancosService,
         PreLibroBancosSaveService,
         PreLibroBancosConciliacionService,
+        PreLibroBancosDiferenciasService,
         ChequesService,
         ReportesTesoreriaService,
         BancosService,
