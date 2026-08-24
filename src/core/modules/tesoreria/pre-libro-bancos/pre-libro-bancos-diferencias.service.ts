@@ -210,7 +210,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
         fechaInicio: string,
         fechaFin: string,
     ) {
-        const condicionCuenta = dtoIn.ideTecba ? 'AND cb.ide_tecba = $5' : '';
+        const condicionCuenta = dtoIn.ideTecba ? 'AND cb.ide_tecba = $6' : '';
 
         const query = new SelectQuery(`
             SELECT ccc.ide_cnccc,
@@ -239,7 +239,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
               AND NOT EXISTS (
                   SELECT 1 FROM tes_cab_libr_banc m
                   WHERE m.ide_cnccc = ccc.ide_cnccc
-                    AND m.ide_teelb = $6
+                    AND m.ide_teelb = $5
               )
             GROUP BY ccc.ide_cnccc, ccc.numero_cnccc, ccc.fecha_trans_cnccc,
                      ccc.observacion_cnccc, eco.nombre_cneco,
@@ -250,10 +250,10 @@ export class PreLibroBancosDiferenciasService extends BaseService {
         query.addStringParam(2, fechaFin);
         query.addArrayNumberParam(3, estadosContables);
         query.addIntParam(4, dtoIn.ideSucu);
+        query.addIntParam(5, ideTeelb);
         if (dtoIn.ideTecba) {
-            query.addIntParam(5, dtoIn.ideTecba);
+            query.addIntParam(6, dtoIn.ideTecba);
         }
-        query.addIntParam(6, ideTeelb);
         const rows = await this.dataSource.createSelectQuery(query);
         return rows.map((r: Record<string, any>): Record<string, any> => ({
             ...r,
@@ -371,7 +371,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
         ideTeelb: number,
         fechaFin: string,
     ) {
-        const condicionCuenta = dtoIn.ideTecba ? 'AND a.ide_tecba = $6' : '';
+        const condicionCuenta = dtoIn.ideTecba ? 'AND a.ide_tecba = $5' : '';
 
         const query = new SelectQuery(`
             SELECT a.ide_teclb,
@@ -387,7 +387,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
                    ccc.numero_cnccc    AS numero_asiento,
                    ccc.fecha_trans_cnccc > $2::date AS asiento_fecha_futura,
                    CASE
-                       WHEN ccc.ide_cneco IS NULL OR ccc.ide_cneco = ANY($5) THEN false
+                       WHEN ccc.ide_cneco IS NULL OR ccc.ide_cneco = ANY($4) THEN false
                        ELSE true
                    END AS asiento_inactivo,
                    'MOVIMIENTO_CON_FECHA_FUTURA' AS tipo_diferencia
@@ -405,13 +405,13 @@ export class PreLibroBancosDiferenciasService extends BaseService {
         query.addIntParam(1, ideTeelb);
         query.addStringParam(2, fechaFin);
         query.addIntParam(3, dtoIn.ideSucu);
-        query.addArrayNumberParam(5, [
+        query.addArrayNumberParam(4, [
             Number(this.variables.get('p_con_estado_comp_inicial')),
             Number(this.variables.get('p_con_estado_comprobante_normal')),
             Number(this.variables.get('p_con_estado_comp_final')),
         ]);
         if (dtoIn.ideTecba) {
-            query.addIntParam(6, dtoIn.ideTecba);
+            query.addIntParam(5, dtoIn.ideTecba);
         }
         const rows = await this.dataSource.createSelectQuery(query);
         return rows.map((r: Record<string, any>): Record<string, any> => ({
