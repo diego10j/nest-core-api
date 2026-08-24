@@ -385,6 +385,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
                    a.fecha_trans_teclb > $2::date AS fecha_futura,
                    a.ide_cnccc,
                    ccc.numero_cnccc    AS numero_asiento,
+                   eco.nombre_cneco    AS estado_asiento,
                    ccc.fecha_trans_cnccc > $2::date AS asiento_fecha_futura,
                    CASE
                        WHEN ccc.ide_cneco IS NULL OR ccc.ide_cneco = ANY($4) THEN false
@@ -396,6 +397,7 @@ export class PreLibroBancosDiferenciasService extends BaseService {
             INNER JOIN tes_cuenta_banco cb ON a.ide_tecba = cb.ide_tecba
             INNER JOIN tes_banco b ON cb.ide_teban = b.ide_teban
             LEFT JOIN con_cab_comp_cont ccc ON ccc.ide_cnccc = a.ide_cnccc
+            LEFT JOIN con_estado_compro eco ON ccc.ide_cneco = eco.ide_cneco
             WHERE a.ide_teelb = $1
               AND a.ide_sucu = $3
               AND a.fecha_trans_teclb > $2::date
