@@ -16,6 +16,18 @@ import { FinalizarDevolucionTarjetaDto } from './dto/finalizar-devolucion-tarjet
 const IDE_CNIMP_RENTA = 1;
 
 /**
+ * Aritmética monetaria en centavos enteros: JS no representa exactamente todos los decimales
+ * en binario (ej. 0.1 + 0.2 === 0.30000000000000004), así que sumar/restar dólares en punto
+ * flotante y solo redondear al final puede arrastrar centavos de diferencia cuando hay varias
+ * facturas o porcentajes que no cierran limpio. Todo el cálculo del neto de esta orquestación
+ * se hace en centavos (enteros, sin ese problema) y solo se vuelve a dólares al final, para
+ * persistir/mostrar/comparar - garantiza que el resultado nunca difiera en centavos por
+ * redondeo intermedio.
+ */
+const toCents = (value: number | string | null | undefined): number => Math.round(Number(value || 0) * 100);
+const centsToAmount = (cents: number): number => Number((cents / 100).toFixed(2));
+
+/**
  * Orquesta el ciclo completo de una Devolución de Cobros con Tarjeta (ver plan de
  * implementación): factura(s) de venta cobradas con tarjeta -> factura de comisión del
  * procesador (CxP) -> retención SRI recibida (opcional) -> transferencia del neto a la cuenta
@@ -87,9 +99,8 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                 );
             }
         }
-        const valorTotalCobros = Number(
-            dtoIn.facturas.reduce((sum, f) => sum + Number(f.valor), 0).toFixed(2),
-        );
+        const valorTotalCobrosCents = dtoIn.facturas.reduce((sum, f) => sum + toCents(f.valor), 0);
+        const valorTotalCobros = centsToAmount(valorTotalCobrosCents);
 
         const ideTettbNotaDebito = Number(this.variables.get('p_tes_nota_debito'));
 
@@ -150,8 +161,8 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             // antes de llamar a este endpoint. La trazabilidad real multi-factura vive en
             // tes_det_devol_cobro_tarjeta_fact (PASO 8), no en ese vínculo.
             let ideCncre: number | null = null;
-            let valorRetencionIva = 0;
-            let valorRetencionRenta = 0;
+            let valorRetencionIvaCents = 0;
+            let valorRetencionRentaCents = 0;
             let ideCncimIva: number | null = null;
             let ideCncimRenta: number | null = null;
 
@@ -163,18 +174,21 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                 ideCncre = dtoIn.ideCncre;
                 for (const d of detalle.detalles) {
                     if (Number(d.ide_cnimp) === IDE_CNIMP_RENTA) {
-                        valorRetencionRenta += Number(d.valor_cndre);
+                        valorRetencionRentaCents += toCents(d.valor_cndre);
                         ideCncimRenta = Number(d.ide_cncim);
                     } else {
-                        valorRetencionIva += Number(d.valor_cndre);
+                        valorRetencionIvaCents += toCents(d.valor_cndre);
                         ideCncimIva = Number(d.ide_cncim);
                     }
                 }
             }
 
-            const totalRetencion = Number((valorRetencionIva + valorRetencionRenta).toFixed(2));
+            const valorRetencionIva = centsToAmount(valorRetencionIvaCents);
+            const valorRetencionRenta = centsToAmount(valorRetencionRentaCents);
+            const totalRetencionCents = valorRetencionIvaCents + valorRetencionRentaCents;
+            const totalRetencion = centsToAmount(totalRetencionCents);
             let ideTeclbDebitoRetencion: number | null = null;
-            if (totalRetencion > 0) {
+            if (totalRetencionCents > 0) {
                 const numeroDebito = await this.preLibroBancosSaveService.generarNumeroAutomatico(
                     dtoIn.ideTecba, ideTettbNotaDebito, dtoIn,
                 );
@@ -211,17 +225,21 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             }
 
             // ─── PASO 5: CALCULAR NETO Y COMPARAR CONTRA EL COMPROBANTE ────────
-            const valorComisionTotal = Number(facturaComision.total_cpcfa || 0);
-            const valorIvaComision = Number(facturaComision.valor_iva_cpcfa || 0);
-            const valorNetoCalculado = Number(
-                (valorTotalCobros - valorComisionTotal - valorRetencionIva - valorRetencionRenta).toFixed(2),
-            );
+            // Total cobrado − comisión (con IVA) − retenciones, todo en centavos (ver toCents)
+            // para que el resultado nunca difiera en centavos por redondeo intermedio.
+            const valorComisionTotalCents = toCents(facturaComision.total_cpcfa);
+            const valorIvaComisionCents = toCents(facturaComision.valor_iva_cpcfa);
+            const valorComisionTotal = centsToAmount(valorComisionTotalCents);
+            const valorIvaComision = centsToAmount(valorIvaComisionCents);
+            const valorNetoCalculadoCents =
+                valorTotalCobrosCents - valorComisionTotalCents - totalRetencionCents;
+            const valorNetoCalculado = centsToAmount(valorNetoCalculadoCents);
 
             const advertencias: string[] = [];
-            const diferencia = Number((dtoIn.comprobante.valorTeincb - valorNetoCalculado).toFixed(2));
-            if (Math.abs(diferencia) > 0.01) {
+            const diferenciaCents = toCents(dtoIn.comprobante.valorTeincb) - valorNetoCalculadoCents;
+            if (Math.abs(diferenciaCents) > 1) {
                 advertencias.push(
-                    `El valor transferido (${dtoIn.comprobante.valorTeincb.toFixed(2)}) difiere del neto calculado por el sistema (${valorNetoCalculado.toFixed(2)}). Diferencia: ${diferencia.toFixed(2)}.`,
+                    `El valor transferido (${dtoIn.comprobante.valorTeincb.toFixed(2)}) difiere del neto calculado por el sistema (${valorNetoCalculado.toFixed(2)}). Diferencia: ${centsToAmount(diferenciaCents).toFixed(2)}.`,
                 );
             }
 
@@ -300,7 +318,7 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                         ide_teclb_ingreso: transferencia.ide_teclb_ingreso,
                         fecha_tecdt: dtoIn.fecha,
                         valor_total_cobros_tecdt: valorTotalCobros,
-                        valor_comision_tecdt: Number((valorComisionTotal - valorIvaComision).toFixed(2)),
+                        valor_comision_tecdt: centsToAmount(valorComisionTotalCents - valorIvaComisionCents),
                         valor_iva_comision_tecdt: valorIvaComision,
                         valor_retencion_iva_tecdt: valorRetencionIva,
                         valor_retencion_renta_tecdt: valorRetencionRenta,
