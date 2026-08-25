@@ -7,6 +7,7 @@ import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/co
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
+import { LibroMayorDto } from 'src/core/modules/contabilidad/dto/libro-mayor.dto';
 import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
@@ -21,6 +22,7 @@ import { flujoEfectivoReport } from './flujo-efectivo.report';
 import { ComprobanteContabilidadData } from './interfaces/comprobante-contabilidad-rep';
 import { ComprobanteRetencionRep, RetencionDetalle } from './interfaces/comprobante-retencion-rep';
 import { FlujoEfectivoData } from './interfaces/flujo-efectivo-rep';
+import { libroMayorReport } from './libro-mayor.report';
 
 @Injectable()
 export class ContabilidadRepService {
@@ -126,6 +128,58 @@ export class ContabilidadRepService {
     const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
 
     const docDefinition = flujoEfectivoReport(data, header);
+    return this.printerService.createPdf(docDefinition);
+  }
+
+
+  async reportLibroMayor(dtoIn: HeaderParamsDto & LibroMayorDto) {
+    const queryCuenta = new SelectQuery(`
+      SELECT dpc.ide_cndpc, dpc.codig_recur_cndpc, dpc.nombre_cndpc
+      FROM con_det_plan_cuen dpc
+      WHERE dpc.ide_cndpc = $1
+    `);
+    queryCuenta.addIntParam(1, dtoIn.ideCndpc);
+    const cuenta = await this.dataSource.createSingleQuery(queryCuenta);
+    if (!cuenta) {
+      throw new NotFoundException(`Cuenta contable ${dtoIn.ideCndpc} no encontrada`);
+    }
+
+    // lazy=false: el reporte necesita TODAS las filas (sin paginación de 100 reg.)
+    // y sin COUNT(1) OVER() / esquema que agrega el modo lazy.
+    const result = await this.contabilidadService.getLibroMayor({
+      ...dtoIn,
+      lazy: 'false',
+      schema: 'false',
+    });
+
+    const movimientos = (result.rows ?? (result as unknown)) as Array<{
+      ide_cnccc: number | null;
+      fecha_trans_cnccc: string;
+      numero_cnccc: string | null;
+      beneficiario: string;
+      ide_cnlap: number | null;
+      debe: number;
+      haber: number;
+      observacion: string;
+      saldo: number;
+    }>;
+
+    const data = {
+      cuenta,
+      movimientos,
+      totales: {
+        debe: Number(result.row?.debe ?? 0),
+        haber: Number(result.row?.haber ?? 0),
+        saldo: Number(result.row?.saldo ?? 0),
+        saldoInicial: Number(result.row?.saldoInicial ?? 0),
+      },
+      fechaInicio: dtoIn.fechaInicio,
+      fechaFin: dtoIn.fechaFin,
+    };
+
+    const header = await this.sectionsService.createReportHeader({ ideEmpr: dtoIn.ideEmpr });
+
+    const docDefinition = libroMayorReport(data, header);
     return this.printerService.createPdf(docDefinition);
   }
 

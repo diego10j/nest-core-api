@@ -5,6 +5,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
+import { LibroMayorDto } from 'src/core/modules/contabilidad/dto/libro-mayor.dto';
 
 import { ContabilidadRepService } from './contabilidad-rep.service';
 import { GetComprobanteRetencionDto } from './dto/get-comprobante-retencion.dto';
@@ -61,6 +62,23 @@ export class ContabilidadRepController {
     });
     response.setHeader('Content-Type', 'application/pdf');
     pdfDoc.info.Title = 'Estado de Flujo de Efectivo';
+    pdfDoc.pipe(response);
+    pdfDoc.end();
+  }
+
+  @Get('reportLibroMayor')
+  @ApiOperation({ summary: 'Generar reporte PDF del Libro Mayor por cuenta contable' })
+  async reportLibroMayor(
+    @Res() response: Response,
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: LibroMayorDto,
+  ) {
+    const pdfDoc = await this.contabilidadRepService.reportLibroMayor({
+      ...headersParams,
+      ...dtoIn,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    pdfDoc.info.Title = 'Libro Mayor';
     pdfDoc.pipe(response);
     pdfDoc.end();
   }

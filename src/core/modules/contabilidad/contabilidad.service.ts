@@ -114,8 +114,7 @@ export class ContabilidadService extends BaseService {
                 FROM   con_cab_comp_cont  ccc
                 JOIN   con_det_comp_cont  dcc  ON ccc.ide_cnccc  = dcc.ide_cnccc
                 JOIN   con_det_plan_cuen  dpc  ON dpc.ide_cndpc  = dcc.ide_cndpc
-                JOIN   con_tipo_cuenta    tc   ON dpc.ide_cntcu  = tc.ide_cntcu
-                JOIN   con_signo_cuenta   sc   ON tc.ide_cntcu   = sc.ide_cntcu
+                JOIN   con_signo_cuenta   sc   ON dpc.ide_cntcu  = sc.ide_cntcu
                                               AND dcc.ide_cnlap  = sc.ide_cnlap
                 CROSS JOIN periodo
                 WHERE  ccc.fecha_trans_cnccc >= periodo.fecha_inicio
@@ -144,8 +143,7 @@ export class ContabilidadService extends BaseService {
                 LEFT  JOIN gen_persona        per  ON cab.ide_geper   = per.ide_geper
                 JOIN  con_det_comp_cont  det  ON cab.ide_cnccc    = det.ide_cnccc
                 JOIN  con_det_plan_cuen  cta  ON cta.ide_cndpc    = det.ide_cndpc
-                JOIN  con_tipo_cuenta    tc   ON cta.ide_cntcu    = tc.ide_cntcu
-                JOIN  con_signo_cuenta   sc   ON tc.ide_cntcu     = sc.ide_cntcu
+                JOIN  con_signo_cuenta   sc   ON cta.ide_cntcu    = sc.ide_cntcu
                                              AND det.ide_cnlap    = sc.ide_cnlap
                 WHERE  cta.ide_cndpc           = $4
                   AND  cab.fecha_trans_cnccc BETWEEN $1 AND $5
@@ -227,8 +225,7 @@ export class ContabilidadService extends BaseService {
                 FROM   con_cab_comp_cont  ccc
                 JOIN   con_det_comp_cont  dcc  ON ccc.ide_cnccc = dcc.ide_cnccc
                 JOIN   con_det_plan_cuen  dpc  ON dpc.ide_cndpc = dcc.ide_cndpc
-                JOIN   con_tipo_cuenta    tc   ON dpc.ide_cntcu = tc.ide_cntcu
-                JOIN   con_signo_cuenta   sc   ON tc.ide_cntcu  = sc.ide_cntcu
+                JOIN   con_signo_cuenta   sc   ON dpc.ide_cntcu = sc.ide_cntcu
                                              AND dcc.ide_cnlap  = sc.ide_cnlap
                 CROSS JOIN periodo
                 WHERE  ccc.fecha_trans_cnccc >= periodo.fecha_inicio
@@ -250,8 +247,7 @@ export class ContabilidadService extends BaseService {
                 LEFT  JOIN gen_persona       per ON cab.ide_geper  = per.ide_geper
                 JOIN  con_det_comp_cont  det ON cab.ide_cnccc    = det.ide_cnccc
                 JOIN  con_det_plan_cuen  cta ON cta.ide_cndpc    = det.ide_cndpc
-                JOIN  con_tipo_cuenta    tc  ON cta.ide_cntcu    = tc.ide_cntcu
-                JOIN  con_signo_cuenta   sc  ON tc.ide_cntcu     = sc.ide_cntcu
+                JOIN  con_signo_cuenta   sc  ON cta.ide_cntcu    = sc.ide_cntcu
                                            AND det.ide_cnlap     = sc.ide_cnlap
                 WHERE  cta.ide_cndpc           = $4
                   AND  cab.fecha_trans_cnccc BETWEEN $1 AND $5
