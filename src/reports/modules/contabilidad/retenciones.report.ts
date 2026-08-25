@@ -80,8 +80,7 @@ const buildTabla = (rows: RetencionRow[], personaLabel: string): Content => {
   const body: Content[][] = [
     [
       th('Fecha'),
-      th('N° Retención'),
-      th('Autorización'),
+      th('N° Retención / Autorización'),
       th(personaLabel),
       th('N° Documento'),
       th('Base Renta', 'right'),
@@ -94,18 +93,19 @@ const buildTabla = (rows: RetencionRow[], personaLabel: string): Content => {
       const fill = i % 2 === 0 ? C.white : C.bg;
       return [
         td(fDate(r.fecha), 'left', fill),
-        r.es_pago_tarjeta
-          ? {
-              stack: [
-                { text: r.numero, fontSize: 8, color: C.body },
-                { text: 'Pago con tarjeta', fontSize: 6.5, italics: true, color: C.accent },
-              ],
-              fillColor: fill,
-              border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-              margin: [4, 4, 4, 4] as [number, number, number, number],
-            }
-          : td(r.numero, 'left', fill),
-        td(r.autorizacion, 'left', fill),
+        {
+          stack: [
+            {
+              text: r.es_pago_tarjeta ? [r.numero, { text: '  💳', fontSize: 8 }] : r.numero,
+              fontSize: 8,
+              color: C.body,
+            },
+            { text: r.autorizacion, fontSize: 6.5, color: C.muted },
+          ],
+          fillColor: fill,
+          border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+          margin: [4, 4, 4, 4] as [number, number, number, number],
+        },
         td(r.nom_geper ?? '', 'left', fill),
         td(r.numero_documento ?? '', 'left', fill),
         td(fCurrency(Number(r.base_renta || 0)), 'right', fill),
@@ -117,11 +117,11 @@ const buildTabla = (rows: RetencionRow[], personaLabel: string): Content => {
     }),
     [
       {
-        text: `Total (${rows.length})`, colSpan: 5, bold: true, fontSize: 8, color: C.ink,
+        text: `Total (${rows.length})`, colSpan: 4, bold: true, fontSize: 8, color: C.ink,
         fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
         margin: [4, 5, 4, 5],
       },
-      {}, {}, {}, {},
+      {}, {}, {},
       { text: fCurrency(totales.base_renta), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
       { text: fCurrency(totales.ret_renta), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
       { text: fCurrency(totales.base_iva), bold: true, fontSize: 8, color: C.ink, alignment: 'right', fillColor: C.accentSurface, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], margin: [4, 5, 4, 5] },
@@ -133,7 +133,7 @@ const buildTabla = (rows: RetencionRow[], personaLabel: string): Content => {
   return {
     table: {
       headerRows: 1,
-      widths: [60, 'auto', 'auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+      widths: [60, 100, '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
       body,
     },
     layout: {
