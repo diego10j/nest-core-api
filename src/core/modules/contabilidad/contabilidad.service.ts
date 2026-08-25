@@ -844,7 +844,10 @@ export class ContabilidadService extends BaseService {
                 COALESCE((
                     SELECT SUM(d.valor_cndre) FROM con_detall_retenc d
                     WHERE d.ide_cncre = a.ide_cncre
-                ), 0) AS total_retenido
+                ), 0) AS total_retenido,
+                EXISTS (
+                    SELECT 1 FROM tes_cab_devol_cobro_tarjeta t WHERE t.ide_cncre = a.ide_cncre
+                ) AS es_pago_tarjeta
             FROM con_cabece_retenc a
             ${joinDocumento}
             LEFT JOIN gen_persona p ON doc.ide_geper = p.ide_geper

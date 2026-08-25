@@ -29,4 +29,7 @@ export type RetencionRow = {
     ret_iva: number;
     total_retenido: number;
     observacion: string | null;
+    /** true si la retención está ligada a una devolución de cobro con tarjeta
+     * (tes_cab_devol_cobro_tarjeta) — ej. retención de Bendo/procesador sobre el depósito. */
+    es_pago_tarjeta: boolean;
 };

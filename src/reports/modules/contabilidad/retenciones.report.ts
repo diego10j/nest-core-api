@@ -94,7 +94,17 @@ const buildTabla = (rows: RetencionRow[], personaLabel: string): Content => {
       const fill = i % 2 === 0 ? C.white : C.bg;
       return [
         td(fDate(r.fecha), 'left', fill),
-        td(r.numero, 'left', fill),
+        r.es_pago_tarjeta
+          ? {
+              stack: [
+                { text: r.numero, fontSize: 8, color: C.body },
+                { text: 'Pago con tarjeta', fontSize: 6.5, italics: true, color: C.accent },
+              ],
+              fillColor: fill,
+              border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+              margin: [4, 4, 4, 4] as [number, number, number, number],
+            }
+          : td(r.numero, 'left', fill),
         td(r.autorizacion, 'left', fill),
         td(r.nom_geper ?? '', 'left', fill),
         td(r.numero_documento ?? '', 'left', fill),
