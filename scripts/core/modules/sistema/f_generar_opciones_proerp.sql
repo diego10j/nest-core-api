@@ -22,6 +22,7 @@ DECLARE
     v_current_item JSONB;
     v_current_parent INT8;
     v_current_nivel INTEGER;
+    v_current_orden INTEGER;
     v_item_id INT8;
     v_existing_id INT8;
     v_full_path VARCHAR(255);
@@ -56,7 +57,8 @@ BEGIN
         id SERIAL PRIMARY KEY,
         item JSONB,
         parent_id INT8,
-        nivel INTEGER
+        nivel INTEGER,
+        orden INTEGER
     ) ON COMMIT DROP;
 
     CREATE TEMP TABLE IF NOT EXISTS temp_existing_ids (
@@ -68,15 +70,15 @@ BEGIN
 
     -- Cargar nivel 0 (subheaders)
     FOR v_i IN 0..jsonb_array_length(p_json) - 1 LOOP
-        INSERT INTO temp_stack (item, parent_id, nivel)
-        VALUES (p_json->v_i, NULL, 0);
+        INSERT INTO temp_stack (item, parent_id, nivel, orden)
+        VALUES (p_json->v_i, NULL, 0, v_i);
     END LOOP;
 
     -- Procesar stack
     WHILE EXISTS (SELECT 1 FROM temp_stack) LOOP
 
-        SELECT item, parent_id, nivel
-        INTO v_current_item, v_current_parent, v_current_nivel
+        SELECT item, parent_id, nivel, orden
+        INTO v_current_item, v_current_parent, v_current_nivel, v_current_orden
         FROM temp_stack ORDER BY id LIMIT 1;
 
         DELETE FROM temp_stack
@@ -136,6 +138,7 @@ BEGIN
                 activo_opci   = TRUE,
                 refe_opci     = NULL,
                 icono_opci    = v_icon,
+                orden_opci    = v_current_orden + 1,
                 fecha_actua   = CURRENT_TIMESTAMP,
                 usuario_actua = v_seq_login
             WHERE ide_opci = v_item_id;
@@ -157,14 +160,14 @@ BEGIN
                 refe_opci, activo_opci,
                 usuario_ingre, fecha_ingre,
                 usuario_actua, fecha_actua,
-                icono_opci
+                icono_opci, orden_opci
             ) VALUES (
                 v_item_id, v_current_parent, v_title, v_full_path,
                 NULL, FALSE, NULL, 2,
                 NULL, TRUE,
                 v_seq_login, CURRENT_TIMESTAMP,
                 v_seq_login, CURRENT_TIMESTAMP,
-                v_icon
+                v_icon, v_current_orden + 1
             );
 
             v_inserted_count := v_inserted_count + 1;
@@ -188,8 +191,8 @@ BEGIN
 
             IF v_children IS NOT NULL AND jsonb_array_length(v_children) > 0 THEN
                 FOR v_j IN 0..jsonb_array_length(v_children) - 1 LOOP
-                    INSERT INTO temp_stack (item, parent_id, nivel)
-                    VALUES (v_children->v_j, v_item_id, v_current_nivel + 1);
+                    INSERT INTO temp_stack (item, parent_id, nivel, orden)
+                    VALUES (v_children->v_j, v_item_id, v_current_nivel + 1, v_j);
                 END LOOP;
             END IF;
         END IF;

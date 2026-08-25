@@ -93,7 +93,7 @@ const isSaldoInicial = (m: MovimientoMayor): boolean =>
 const movimientoRow = (m: MovimientoMayor): Content[] => {
   if (isSaldoInicial(m)) {
     return [
-      { text: fDate(m.fecha_trans_cnccc), style: styles.tdDate },
+      { text: fDate(m.fecha_trans_cnccc, 'dd/MM/yyyy'), style: styles.tdDate },
       { text: '', style: styles.tdCode },
       { text: '', style: styles.tdName },
       { text: 'SALDO INICIAL', style: styles.saldoInicialLabel, colSpan: 3 },
@@ -108,7 +108,7 @@ const movimientoRow = (m: MovimientoMayor): Content[] => {
     : m.numero_cnccc || '';
 
   return [
-    { text: fDate(m.fecha_trans_cnccc), style: styles.tdDate },
+    { text: fDate(m.fecha_trans_cnccc, 'dd/MM/yyyy'), style: styles.tdDate },
     { text: m.ide_cnccc != null ? String(m.ide_cnccc) : '', style: styles.tdCode },
     { text: m.beneficiario || '', style: styles.tdName },
     { text: observacion, style: styles.tdName },
@@ -131,7 +131,7 @@ const buildMovimientosTable = (data: LibroMayorData): Content => {
     table: {
       headerRows: 1,
       dontBreakRows: true,
-      widths: ['10%', '7%', '17%', '32%', '11%', '11%', '12%'],
+      widths: ['10%', '9%', '17%', '30%', '11%', '11%', '12%'],
       body: [
         [
           { text: 'FECHA', style: 'th' },

@@ -126,7 +126,7 @@ export class AdminService {
       tableName: 'opcion',
       primaryKey: 'ide_opci',
       condition: `${whereClause}`,
-      orderBy: { column: 'nom_opci' },
+      orderBy: { column: 'orden_opci' },
     };
     return this.core.getTableQuery(dtoIn);
   }
@@ -141,7 +141,7 @@ export class AdminService {
       columnName: 'nom_opci',
       columnNode: 'sis_ide_opci',
       condition: `${whereClause}`,
-      orderBy: { column: 'nom_opci' },
+      orderBy: { column: 'orden_opci' },
     };
     return this.core.getTreeModel(dtoIn);
   }
