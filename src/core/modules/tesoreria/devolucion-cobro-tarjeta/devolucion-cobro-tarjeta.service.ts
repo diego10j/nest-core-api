@@ -348,16 +348,17 @@ export class DevolucionCobroTarjetaService extends BaseService {
     }
 
     /**
-     * Reporte "Cobros con Tarjeta" (Ventas > Reportes): TODAS las facturas de venta cobradas con
-     * tarjeta en el rango (liquidadas o no), para detectar errores de facturación con tarjeta y
-     * diferencias entre lo que debió acreditarse y lo realmente depositado.
+     * Reporte "Cobros con Tarjeta" (Ventas > Reportes): SOLO las facturas de venta ya cubiertas
+     * por un ciclo de Devolución de Cobros con Tarjeta registrado en
+     * tes_det_devol_cobro_tarjeta_fact/tes_cab_devol_cobro_tarjeta - a propósito NO incluye
+     * facturas cobradas con tarjeta anteriores a este módulo (nunca pasarán por el nuevo proceso,
+     * así que mostrarlas como "pendientes" para siempre solo sería ruido).
      *
-     * Cuando la factura ya fue cubierta por un ciclo de Devolución de Cobros con Tarjeta (no
-     * anulado), la comisión/IVA/retención/neto del ciclo (que es por CICLO, no por factura - un
-     * mismo comprobante de comisión puede amparar varias facturas) se prorratean según el peso de
-     * esta factura dentro del total cobrado del ciclo: valor_cobrado_tarjeta / valor_total_cobros.
-     * Si aún no está liquidada, esos campos vienen NULL y estado = 'Pendiente' - así el usuario ve
-     * de una vez qué facturas cobradas con tarjeta todavía no se han conciliado.
+     * La comisión/IVA/retención/neto del ciclo (que es por CICLO, no por factura - un mismo
+     * comprobante de comisión puede amparar varias facturas) se prorratea según el peso de esta
+     * factura dentro del total cobrado del ciclo: valor_cccfa_tedtf / valor_total_cobros_tecdt.
+     * El rango de fechas filtra por la fecha del CICLO (fecha_tecdt), no por la fecha de emisión
+     * de la factura - es cuándo se registró en la nueva tabla, según lo pedido.
      */
     async getReporteCobrosTarjeta(dtoIn: GetReporteCobrosTarjetaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
@@ -370,55 +371,38 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     cf.ide_geper,
                     p.nom_geper AS cliente,
                     p.identificac_geper,
-                    lb.ide_tecba,
+                    c.ide_tecba,
                     cb.nombre_tecba,
                     b.nombre_teban,
                     b.foto_teban,
                     b.color_teban,
-                    SUM(dt.valor_ccdtr) AS valor_cobrado_tarjeta,
+                    tdf.valor_cccfa_tedtf AS valor_cobrado_tarjeta,
                     c.ide_tecdt,
+                    c.fecha_tecdt,
                     c.anulado_tecdt,
-                    CASE
-                        WHEN c.ide_tecdt IS NULL THEN 'Pendiente'
-                        WHEN c.anulado_tecdt THEN 'Anulada'
-                        ELSE 'Liquidada'
-                    END AS estado,
-                    CASE
-                        WHEN c.ide_tecdt IS NULL THEN 'warning'
-                        WHEN c.anulado_tecdt THEN 'default'
-                        ELSE 'success'
-                    END AS color_estado,
-                    ROUND((c.valor_comision_tecdt * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_comision,
-                    ROUND((c.valor_iva_comision_tecdt * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_iva_comision,
-                    ROUND(((c.valor_retencion_iva_tecdt + c.valor_retencion_renta_tecdt) * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_retencion,
-                    ROUND((c.valor_neto_calculado_tecdt * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_calculado,
-                    ROUND((c.valor_neto_transferido_tecdt * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_acreditado,
-                    ROUND(((c.valor_neto_transferido_tecdt - c.valor_neto_calculado_tecdt) * SUM(dt.valor_ccdtr) / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS diferencia
-                FROM cxc_detall_transa dt
-                INNER JOIN tes_cab_libr_banc lb ON lb.ide_teclb = dt.ide_teclb
-                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = dt.ide_cccfa
-                INNER JOIN tes_cuenta_banco cb ON cb.ide_tecba = lb.ide_tecba
+                    CASE WHEN c.anulado_tecdt THEN 'Anulada' ELSE 'Liquidada' END AS estado,
+                    CASE WHEN c.anulado_tecdt THEN 'default' ELSE 'success' END AS color_estado,
+                    ROUND((c.valor_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_comision,
+                    ROUND((c.valor_iva_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_iva_comision,
+                    ROUND(((c.valor_retencion_iva_tecdt + c.valor_retencion_renta_tecdt) * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_retencion,
+                    ROUND((c.valor_neto_calculado_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_calculado,
+                    ROUND((c.valor_neto_transferido_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_acreditado,
+                    ROUND(((c.valor_neto_transferido_tecdt - c.valor_neto_calculado_tecdt) * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS diferencia
+                FROM tes_det_devol_cobro_tarjeta_fact tdf
+                INNER JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = tdf.ide_tecdt
+                INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = tdf.ide_cccfa
+                INNER JOIN tes_cuenta_banco cb ON cb.ide_tecba = c.ide_tecba
                 INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
                 LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
-                LEFT JOIN tes_det_devol_cobro_tarjeta_fact tdf ON tdf.ide_cccfa = cf.ide_cccfa
-                LEFT JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = tdf.ide_tecdt
-                WHERE dt.numero_pago_ccdtr > 0
-                  AND dt.ide_cccfa IS NOT NULL
-                  AND cf.ide_empr = $1
-                  AND cf.ide_sucu = $2
-                  AND ($3::date IS NULL OR cf.fecha_emisi_cccfa >= $3)
-                  AND ($4::date IS NULL OR cf.fecha_emisi_cccfa <= $4)
-                  AND ($5::bigint IS NULL OR lb.ide_tecba = $5)
-                GROUP BY cf.ide_cccfa, cf.secuencial_cccfa, cf.fecha_emisi_cccfa, cf.total_cccfa,
-                         cf.ide_geper, p.nom_geper, p.identificac_geper, lb.ide_tecba, cb.nombre_tecba,
-                         b.nombre_teban, b.foto_teban, b.color_teban, c.ide_tecdt, c.anulado_tecdt,
-                         c.valor_comision_tecdt, c.valor_iva_comision_tecdt, c.valor_retencion_iva_tecdt,
-                         c.valor_retencion_renta_tecdt, c.valor_neto_calculado_tecdt,
-                         c.valor_neto_transferido_tecdt, c.valor_total_cobros_tecdt
+                WHERE c.ide_empr = $1
+                  AND c.ide_sucu = $2
+                  AND ($3::date IS NULL OR c.fecha_tecdt >= $3)
+                  AND ($4::date IS NULL OR c.fecha_tecdt <= $4)
+                  AND ($5::bigint IS NULL OR c.ide_tecba = $5)
             )
             SELECT * FROM base
             WHERE ($6::boolean IS NOT TRUE OR ABS(COALESCE(diferencia, 0)) > 0.01)
-            ORDER BY fecha_emisi_cccfa DESC, ide_cccfa DESC
+            ORDER BY fecha_tecdt DESC, ide_cccfa DESC
         `);
         query.addIntParam(1, dtoIn.ideEmpr);
         query.addIntParam(2, dtoIn.ideSucu);
