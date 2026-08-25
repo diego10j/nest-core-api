@@ -27,6 +27,7 @@ import { GenerarAsientosComprasDto } from './dto/generar-asientos-compras.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
+import { ReporteComprasMensualesDto } from './dto/reporte-compras-mensuales.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SaveDocumentoCxPDto } from './dto/save-documento-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
@@ -68,6 +69,16 @@ export class DocumentosCxPController {
         @Query() dtoIn: GetDocumentosCxPDto,
     ) {
         return this.service.getReporteDocumentos({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getReporteComprasMensuales')
+    @ApiOperation({ summary: 'Facturas y notas de crédito de compras de un mes/año (Reporte de Compras Mensuales / IVA en Compras)' })
+    @Auth()
+    getReporteComprasMensuales(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteComprasMensualesDto,
+    ) {
+        return this.service.getReporteComprasMensuales({ ...headersParams, ...dtoIn });
     }
 
     @Get('getDocumentoById/:ide_cpcfa')

@@ -10,6 +10,7 @@ import { AnticiposProveedorCxPDto } from './dto/anticipos-proveedor-cxp.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
+import { ReporteComprasMensualesDto } from './dto/reporte-compras-mensuales.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
 import {
@@ -115,6 +116,21 @@ export class DocumentosCxPService extends BaseService {
         query.addStringParam(2, dtoIn.fechaFin);
         query.addIntParam(3, dtoIn.ideSucu);
         return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Facturas y notas de crédito de compras de un mes/año (Reporte de Compras Mensuales /
+     * IVA en Compras). Reutiliza `getComprasMensuales` / `getNotasCreditoMensuales`
+     * (mismo par usado por `getDocumentosMensualesPorTipo`, diferenciadas por ide_cntdo ya
+     * que a diferencia de ventas, compras no tiene una tabla de notas aparte). El mismo
+     * resultado alimenta tanto el endpoint de consulta como el reporte PDF "IVA en Compras".
+     */
+    async getReporteComprasMensuales(dtoIn: ReporteComprasMensualesDto & HeaderParamsDto) {
+        const [facturas, notasCredito] = await Promise.all([
+            this.getComprasMensuales(dtoIn),
+            this.getNotasCreditoMensuales(dtoIn),
+        ]);
+        return { facturas, notasCredito };
     }
 
     /**
@@ -394,18 +410,17 @@ export class DocumentosCxPService extends BaseService {
         ideCntdo: number,
     ) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
-        const query = new SelectQuery(
-            `
-            SELECT a.ide_cpcfa,
-                   a.fecha_emisi_cpcfa,
-                   a.numero_cpcfa,
+        const query = new SelectQuery(`
+            SELECT a.ide_cpcfa AS ide,
+                   a.fecha_emisi_cpcfa AS fecha,
+                   a.numero_cpcfa AS numero,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cpcfa AS ventas12,
                    a.base_tarifa0_cpcfa + a.base_no_objeto_iva_cpcfa AS ventas0,
-                   a.valor_iva_cpcfa,
-                   a.total_cpcfa,
-                   a.observacion_cpcfa
+                   a.valor_iva_cpcfa AS valor_iva,
+                   a.total_cpcfa AS total,
+                   a.observacion_cpcfa AS observacion
             FROM cxp_cabece_factur a
             INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
             WHERE EXTRACT(MONTH FROM a.fecha_emisi_cpcfa) = $1
@@ -413,14 +428,13 @@ export class DocumentosCxPService extends BaseService {
               AND a.ide_sucu = $3
               AND a.ide_cpefa = ${estadoNormal}
               AND a.ide_cntdo = ${ideCntdo}
-            ORDER BY a.fecha_emisi_cpcfa, b.nom_geper
-            `,
-            dtoIn,
-        );
+              AND a.ide_rem_cpcfa IS NULL
+            ORDER BY a.numero_cpcfa, a.ide_cpcfa DESC
+        `);
         query.addIntParam(1, dtoIn.mes);
         query.addIntParam(2, dtoIn.periodo);
         query.addIntParam(3, dtoIn.ideSucu);
-        return this.dataSource.createQuery(query);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**

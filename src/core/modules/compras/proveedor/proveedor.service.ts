@@ -152,6 +152,7 @@ export class ProveedorService extends BaseService {
         WHERE
             ${whereClause}
             AND ct.ide_empr = ${dtoIn.ideEmpr}
+            AND dt.ide_sucu = ${dtoIn.ideSucu}
         GROUP BY
             ct.ide_geper
         `);

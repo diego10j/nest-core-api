@@ -3,8 +3,11 @@ import * as bwipjs from 'bwip-js';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { DocumentosCxPService } from 'src/core/modules/cuentas-por-pagar/documentos-cxp.service';
+import { ReporteComprasMensualesDto } from 'src/core/modules/cuentas-por-pagar/dto/reporte-compras-mensuales.dto';
 import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
+import { SectionsService } from 'src/reports/common/services/sections.service';
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { GetLiquidacionCompraDto } from './dto/get-liquidacion-compra.dto';
@@ -22,6 +25,7 @@ import {
     OrdenPagoGrupoProveedor,
     OrdenPagoRep,
 } from './interfaces/orden-pago-rep';
+import { ivaComprasReport } from './iva-compras.report';
 import { liquidacionCompraReport } from './liquidacion-compra.report';
 import { ordenPagoReport } from './orden-pago.report';
 
@@ -31,6 +35,8 @@ export class CuentasPorPagarRepService {
         private readonly printerService: PrinterService,
         private readonly dataSource: DataSourceService,
         private readonly empresaRepService: EmpresaRepService,
+        private readonly sectionsService: SectionsService,
+        private readonly documentosCxPService: DocumentosCxPService,
     ) { }
 
     /** RIDE de la Liquidación de Compra electrónica. */
@@ -235,6 +241,28 @@ export class CuentasPorPagarRepService {
 
         const data: OrdenPagoRep = { cabecera, gruposProveedor, totalGeneral };
         const docDefinition = ordenPagoReport(data, empresa);
+        return this.printerService.createPdf(docDefinition);
+    }
+
+    /**
+     * Reporte PDF "IVA en Compras": facturas y notas de crédito de compras de un mes/año.
+     * Reutiliza la misma consulta (DocumentosCxPService.getReporteComprasMensuales)
+     * que el listado en pantalla del Reporte de Compras Mensuales.
+     */
+    async reportIvaCompras(dtoIn: ReporteComprasMensualesDto & HeaderParamsDto) {
+        const { facturas, notasCredito } = await this.documentosCxPService.getReporteComprasMensuales(dtoIn);
+
+        const header = await this.sectionsService.createReportHeader({
+            ideEmpr: dtoIn.ideEmpr,
+            title: 'IVA en Compras',
+            showDate: true,
+            usuario: dtoIn.login,
+        });
+
+        const docDefinition = ivaComprasReport(
+            { mes: dtoIn.mes, periodo: dtoIn.periodo, facturas, notasCredito },
+            header,
+        );
         return this.printerService.createPdf(docDefinition);
     }
 }

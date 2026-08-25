@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { ReporteComprasMensualesDto } from 'src/core/modules/cuentas-por-pagar/dto/reporte-compras-mensuales.dto';
 
 import { CuentasPorPagarRepService } from './cuentas-por-pagar-rep.service';
 import { GetLiquidacionCompraDto } from './dto/get-liquidacion-compra.dto';
@@ -43,6 +44,24 @@ export class CuentasPorPagarRepController {
         });
         response.setHeader('Content-Type', 'application/pdf');
         pdfDoc.info.Title = 'Orden de Pago';
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
+
+    @Get('reportIvaCompras')
+    @ApiOperation({ summary: 'Generar reporte PDF "IVA en Compras" (facturas + notas de crédito de un mes/año)' })
+    async getReportIvaCompras(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteComprasMensualesDto,
+    ) {
+        const pdfDoc = await this.cuentasPorPagarRepService.reportIvaCompras({
+            ...headersParams,
+            ...dtoIn,
+        });
+
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = 'IVA en Compras';
         pdfDoc.pipe(response);
         pdfDoc.end();
     }
