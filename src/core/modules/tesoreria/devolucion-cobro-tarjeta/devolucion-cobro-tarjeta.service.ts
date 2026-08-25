@@ -284,6 +284,9 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 c.ide_geper,
                 p.nom_geper AS proveedor,
                 p.identificac_geper,
+                p.direccion_geper,
+                p.telefono_geper,
+                p.correo_geper,
                 c.ide_cpcfa,
                 cf.numero_cpcfa,
                 cf.total_cpcfa,
@@ -291,14 +294,21 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 c.ide_cncre,
                 r.numero_cncre,
                 r.autorizacion_cncre,
+                r.fecha_emisi_cncre,
                 c.ide_teincb,
                 ti.foto_teincb,
                 c.ide_tecba_destino,
                 cbd.nombre_tecba AS nombre_tecba_destino,
+                bd.nombre_teban AS nombre_teban_destino,
+                bd.foto_teban AS foto_teban_destino,
+                bd.color_teban AS color_teban_destino,
                 c.ide_teclb_pago_comision,
                 c.ide_teclb_debito_retencion,
                 c.ide_teclb_retiro,
                 c.ide_teclb_ingreso,
+                lbp.ide_cnccc AS ide_cnccc_pago_comision,
+                lbr.ide_cnccc AS ide_cnccc_retencion,
+                lbt.ide_cnccc AS ide_cnccc_transferencia,
                 c.valor_total_cobros_tecdt,
                 c.valor_comision_tecdt,
                 c.valor_iva_comision_tecdt,
@@ -315,7 +325,11 @@ export class DevolucionCobroTarjetaService extends BaseService {
             LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = c.ide_cpcfa
             LEFT JOIN con_cabece_retenc r ON r.ide_cncre = c.ide_cncre
             LEFT JOIN tes_info_comprobante_banco ti ON ti.ide_teincb = c.ide_teincb
+            LEFT JOIN tes_cab_libr_banc lbp ON lbp.ide_teclb = c.ide_teclb_pago_comision
+            LEFT JOIN tes_cab_libr_banc lbr ON lbr.ide_teclb = c.ide_teclb_debito_retencion
+            LEFT JOIN tes_cab_libr_banc lbt ON lbt.ide_teclb = c.ide_teclb_retiro
             LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = c.ide_tecba_destino
+            LEFT JOIN tes_banco bd ON bd.ide_teban = cbd.ide_teban
             WHERE c.ide_tecdt = $1
               AND c.ide_empr = $2
               AND c.ide_sucu = $3
@@ -344,7 +358,37 @@ export class DevolucionCobroTarjetaService extends BaseService {
         qDet.addIntParam(1, ideTecdt);
         const facturas = await this.dataSource.createSelectQuery(qDet);
 
-        return { ...cabecera, facturas };
+        let retencion: {
+            ide_cncre: number;
+            numero_cncre: string | null;
+            autorizacion_cncre: string | null;
+            fecha_emisi_cncre: string | null;
+            detalles: unknown[];
+            total_retencion: number;
+        } | null = null;
+        if (cabecera.ide_cncre) {
+            const qRetDet = new SelectQuery(`
+                SELECT d.ide_cncim, i.nombre_cncim, i.casillero_cncim,
+                       d.base_cndre, d.porcentaje_cndre, d.valor_cndre
+                FROM con_detall_retenc d
+                INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
+                WHERE d.ide_cncre = $1
+                ORDER BY d.ide_cndre
+            `);
+            qRetDet.addIntParam(1, cabecera.ide_cncre);
+            const detalles = await this.dataSource.createSelectQuery(qRetDet);
+            const totalRetencion = detalles.reduce((sum, d) => sum + Number(d.valor_cndre || 0), 0);
+            retencion = {
+                ide_cncre: cabecera.ide_cncre,
+                numero_cncre: cabecera.numero_cncre ?? null,
+                autorizacion_cncre: cabecera.autorizacion_cncre ?? null,
+                fecha_emisi_cncre: cabecera.fecha_emisi_cncre ?? null,
+                detalles,
+                total_retencion: Number(totalRetencion.toFixed(2)),
+            };
+        }
+
+        return { ...cabecera, facturas, retencion };
     }
 
     /**
