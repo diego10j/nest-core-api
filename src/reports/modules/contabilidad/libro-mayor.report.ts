@@ -43,6 +43,13 @@ const styles: StyleDictionary = {
     fillColor: C.surfaceAlt,
     alignment: 'center',
   },
+  thLeft: {
+    bold: true,
+    fontSize: 8.5,
+    color: C.ink,
+    fillColor: C.surfaceAlt,
+    alignment: 'left',
+  },
   tdDate: { fontSize: 8.5, color: C.body, alignment: 'left' },
   tdCode: { fontSize: 8.5, color: C.muted, alignment: 'left' },
   tdName: { fontSize: 8.5, color: C.ink, alignment: 'left' },
