@@ -8,6 +8,7 @@ import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
+import { ReporteRetencionesDto } from './dto/reporte-retenciones.dto';
 
 @ApiTags('Contabilidad')
 @Controller('contabilidad')
@@ -60,6 +61,24 @@ export class ContabilidadController {
     @ApiOperation({ summary: 'Obtener estado de flujo de efectivo por período (NIC 7 — Método Indirecto)' })
     getFlujosEfectivo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EstadosFinancierosDto) {
         return this.contabilidadService.getFlujosEfectivo({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getReporteRetencionesCompras')
+    @ApiOperation({ summary: 'Obtener reporte de Retenciones en Compras (emitidas a proveedores) por período' })
+    getReporteRetencionesCompras(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteRetencionesDto,
+    ) {
+        return this.contabilidadService.getReporteRetencionesCompras({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getReporteRetencionesVentas')
+    @ApiOperation({ summary: 'Obtener reporte de Retenciones en Ventas (recibidas de clientes) por período' })
+    getReporteRetencionesVentas(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: ReporteRetencionesDto,
+    ) {
+        return this.contabilidadService.getReporteRetencionesVentas({ ...headersParams, ...dtoIn });
     }
 }
 

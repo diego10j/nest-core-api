@@ -9,6 +9,7 @@ import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
+import { ReporteRetencionesDto } from './dto/reporte-retenciones.dto';
 
 @Injectable()
 export class ContabilidadService extends BaseService {
@@ -29,6 +30,7 @@ export class ContabilidadService extends BaseService {
                 'p_con_tipo_cuenta_ingresos',
                 'p_con_tipo_cuenta_gastos',
                 'p_con_tipo_cuenta_costos',
+                'p_con_estado_comprobante_rete_anulado',
             ])
             .then((result) => {
                 this.variables = result;
@@ -780,6 +782,84 @@ export class ContabilidadService extends BaseService {
         query.addIntParam(3, ideSucu);
         query.isLazy = false; // Para que no intente paginar esta consulta
         return query;
+    }
+
+    /**
+     * Reporte "Retenciones en Compras": comprobantes de retención EMITIDOS por la empresa a sus
+     * proveedores (con_cabece_retenc.es_venta_cncre = false), ligados a su documento de compra
+     * (cxp_cabece_factur). Migrado de ServicioRetenciones.getSqlRetenciones del legacy, con el
+     * mismo desglose Renta/IVA que getSqlRetencionesVentas (con_cabece_impues.ide_cnimp: 1 =
+     * renta, cualquier otro = IVA) para que ambos reportes tengan columnas comparables.
+     */
+    async getReporteRetencionesCompras(dtoIn: ReporteRetencionesDto & HeaderParamsDto) {
+        return this.getReporteRetenciones(dtoIn, false);
+    }
+
+    /**
+     * Reporte "Retenciones en Ventas": comprobantes de retención RECIBIDOS de clientes sobre
+     * facturas de venta (con_cabece_retenc.es_venta_cncre = true), ligados a la factura
+     * (cxc_cabece_factura). Migrado de ServicioRetenciones.getSqlRetencionesVentas del legacy.
+     */
+    async getReporteRetencionesVentas(dtoIn: ReporteRetencionesDto & HeaderParamsDto) {
+        return this.getReporteRetenciones(dtoIn, true);
+    }
+
+    private async getReporteRetenciones(dtoIn: ReporteRetencionesDto & HeaderParamsDto, esVenta: boolean) {
+        const estadoAnulado = this.variables.get('p_con_estado_comprobante_rete_anulado');
+        const joinDocumento = esVenta
+            ? 'LEFT JOIN cxc_cabece_factura doc ON a.ide_cncre = doc.ide_cncre'
+            : 'LEFT JOIN cxp_cabece_factur doc ON a.ide_cncre = doc.ide_cncre';
+        const numeroDocumento = esVenta ? 'doc.secuencial_cccfa' : 'doc.numero_cpcfa';
+
+        const query = new SelectQuery(`
+            SELECT
+                a.ide_cncre,
+                a.fecha_emisi_cncre AS fecha,
+                a.numero_cncre AS numero,
+                a.autorizacion_cncre AS autorizacion,
+                a.observacion_cncre AS observacion,
+                p.nom_geper,
+                p.identificac_geper,
+                ${numeroDocumento} AS numero_documento,
+                COALESCE((
+                    SELECT SUM(d.base_cndre) FROM con_detall_retenc d
+                    INNER JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
+                    WHERE d.ide_cncre = a.ide_cncre AND i.ide_cnimp = 1
+                ), 0) AS base_renta,
+                COALESCE((
+                    SELECT SUM(d.valor_cndre) FROM con_detall_retenc d
+                    INNER JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
+                    WHERE d.ide_cncre = a.ide_cncre AND i.ide_cnimp = 1
+                ), 0) AS ret_renta,
+                COALESCE((
+                    SELECT SUM(d.base_cndre) FROM con_detall_retenc d
+                    INNER JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
+                    WHERE d.ide_cncre = a.ide_cncre AND i.ide_cnimp != 1
+                ), 0) AS base_iva,
+                COALESCE((
+                    SELECT SUM(d.valor_cndre) FROM con_detall_retenc d
+                    INNER JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
+                    WHERE d.ide_cncre = a.ide_cncre AND i.ide_cnimp != 1
+                ), 0) AS ret_iva,
+                COALESCE((
+                    SELECT SUM(d.valor_cndre) FROM con_detall_retenc d
+                    WHERE d.ide_cncre = a.ide_cncre
+                ), 0) AS total_retenido
+            FROM con_cabece_retenc a
+            ${joinDocumento}
+            LEFT JOIN gen_persona p ON doc.ide_geper = p.ide_geper
+            WHERE a.ide_empr = $1
+              AND a.ide_sucu = $2
+              AND a.fecha_emisi_cncre BETWEEN $3 AND $4
+              AND a.es_venta_cncre = ${esVenta}
+              AND a.ide_cnere != ${estadoAnulado}
+            ORDER BY a.fecha_emisi_cncre DESC, a.ide_cncre DESC
+        `);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.ideSucu);
+        query.addStringParam(3, dtoIn.fechaInicio);
+        query.addStringParam(4, dtoIn.fechaFin);
+        return this.dataSource.createSelectQuery(query);
     }
 
 }

@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante-contabilidad/dto/comprobante-contabilidad.dto';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 import { LibroMayorDto } from 'src/core/modules/contabilidad/dto/libro-mayor.dto';
+import { ReporteRetencionesDto } from 'src/core/modules/contabilidad/dto/reporte-retenciones.dto';
 
 import { ContabilidadRepService } from './contabilidad-rep.service';
 import { GetComprobanteRetencionDto } from './dto/get-comprobante-retencion.dto';
@@ -113,6 +114,40 @@ export class ContabilidadRepController {
     });
     response.setHeader('Content-Type', 'application/pdf');
     pdfDoc.info.Title = 'Comprobante de Retención';
+    pdfDoc.pipe(response);
+    pdfDoc.end();
+  }
+
+  @Get('reportRetencionesCompras')
+  @ApiOperation({ summary: 'Generar reporte PDF "Retenciones en Compras" (emitidas a proveedores) de un período' })
+  async reportRetencionesCompras(
+    @Res() response: Response,
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ReporteRetencionesDto,
+  ) {
+    const pdfDoc = await this.contabilidadRepService.reportRetencionesCompras({
+      ...headersParams,
+      ...dtoIn,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    pdfDoc.info.Title = 'Retenciones en Compras';
+    pdfDoc.pipe(response);
+    pdfDoc.end();
+  }
+
+  @Get('reportRetencionesVentas')
+  @ApiOperation({ summary: 'Generar reporte PDF "Retenciones en Ventas" (recibidas de clientes) de un período' })
+  async reportRetencionesVentas(
+    @Res() response: Response,
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: ReporteRetencionesDto,
+  ) {
+    const pdfDoc = await this.contabilidadRepService.reportRetencionesVentas({
+      ...headersParams,
+      ...dtoIn,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    pdfDoc.info.Title = 'Retenciones en Ventas';
     pdfDoc.pipe(response);
     pdfDoc.end();
   }

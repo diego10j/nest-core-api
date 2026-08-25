@@ -8,6 +8,7 @@ import { GetComprobanteByIdDto } from 'src/core/modules/contabilidad/comprobante
 import { ContabilidadService } from 'src/core/modules/contabilidad/contabilidad.service';
 import { EstadosFinancierosDto } from 'src/core/modules/contabilidad/dto/estados-financieros.dto';
 import { LibroMayorDto } from 'src/core/modules/contabilidad/dto/libro-mayor.dto';
+import { ReporteRetencionesDto } from 'src/core/modules/contabilidad/dto/reporte-retenciones.dto';
 import { ambienteDesdeClaveAcceso } from 'src/reports/common/ride/ride-report.util';
 import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
 import { SectionsService } from 'src/reports/common/services/sections.service';
@@ -23,6 +24,7 @@ import { ComprobanteContabilidadData } from './interfaces/comprobante-contabilid
 import { ComprobanteRetencionRep, RetencionDetalle } from './interfaces/comprobante-retencion-rep';
 import { FlujoEfectivoData } from './interfaces/flujo-efectivo-rep';
 import { libroMayorReport } from './libro-mayor.report';
+import { retencionesVentasReport, retencionesComprasReport } from './retenciones.report';
 
 @Injectable()
 export class ContabilidadRepService {
@@ -261,5 +263,37 @@ export class ContabilidadRepService {
       const docFallback = comprobanteRetencionReport(data, empresa, undefined, ambienteTexto);
       return this.printerService.createPdf(docFallback);
     }
+  }
+
+  /** Reporte PDF "Retenciones en Compras": comprobantes emitidos a proveedores en un período. */
+  async reportRetencionesCompras(dtoIn: HeaderParamsDto & ReporteRetencionesDto) {
+    const rows = await this.contabilidadService.getReporteRetencionesCompras(dtoIn);
+    const header = await this.sectionsService.createReportHeader({
+      ideEmpr: dtoIn.ideEmpr,
+      title: 'Retenciones en Compras',
+      showDate: true,
+      usuario: dtoIn.login,
+    });
+    const docDefinition = retencionesComprasReport(
+      { fechaInicio: dtoIn.fechaInicio, fechaFin: dtoIn.fechaFin, rows },
+      header,
+    );
+    return this.printerService.createPdf(docDefinition);
+  }
+
+  /** Reporte PDF "Retenciones en Ventas": comprobantes recibidos de clientes en un período. */
+  async reportRetencionesVentas(dtoIn: HeaderParamsDto & ReporteRetencionesDto) {
+    const rows = await this.contabilidadService.getReporteRetencionesVentas(dtoIn);
+    const header = await this.sectionsService.createReportHeader({
+      ideEmpr: dtoIn.ideEmpr,
+      title: 'Retenciones en Ventas',
+      showDate: true,
+      usuario: dtoIn.login,
+    });
+    const docDefinition = retencionesVentasReport(
+      { fechaInicio: dtoIn.fechaInicio, fechaFin: dtoIn.fechaFin, rows },
+      header,
+    );
+    return this.printerService.createPdf(docDefinition);
   }
 }

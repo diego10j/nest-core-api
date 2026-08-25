@@ -260,15 +260,30 @@ export class ProveedorService extends BaseService {
               AND ct.ide_cpcfa IN (SELECT ide_cpcfa FROM facturas_base)
             GROUP BY ct.ide_cpcfa
         ),
+        -- Saldo real por factura: suma de TODAS sus transacciones (factura, pagos,
+        -- retenciones y notas de crédito de compra) ponderadas por signo_cpttr — mismo
+        -- mecanismo que ProveedorService.getSaldo / getTrnProveedor. A diferencia de
+        -- "pagos" (solo numero_pago_cpdtr > 0, pagos en efectivo/banco), esto también
+        -- captura retenciones-cxp y notas de crédito de compra, que se registran como
+        -- filas de cxp_detall_transa con numero_pago_cpdtr = 0 ligadas a esta misma
+        -- factura (ide_cpcfa) y por eso "pagos" las ignora.
+        saldo_detalle AS (
+            SELECT dt.ide_cpcfa, SUM(dt.valor_cpdtr * tt.signo_cpttr) AS saldo
+            FROM cxp_detall_transa dt
+            INNER JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+            WHERE dt.ide_cpcfa IN (SELECT ide_cpcfa FROM facturas_base)
+            GROUP BY dt.ide_cpcfa
+        ),
         saldos AS (
             SELECT
                 fb.ide_cpcfa,
                 fb.total_cpcfa,
                 fb.fecha_emisi_cpcfa,
                 COALESCE(p.total_pagado, 0) AS total_pagado,
-                (fb.total_cpcfa - COALESCE(p.total_pagado, 0)) AS saldo
+                COALESCE(sd.saldo, fb.total_cpcfa) AS saldo
             FROM facturas_base fb
             LEFT JOIN pagos p ON fb.ide_cpcfa = p.ide_cpcfa
+            LEFT JOIN saldo_detalle sd ON fb.ide_cpcfa = sd.ide_cpcfa
         )
         SELECT
             COUNT(fb.ide_cpcfa)                                                              AS total_facturas,
@@ -284,8 +299,8 @@ export class ProveedorService extends BaseService {
             COALESCE(SUM(s.total_pagado), 0)                                                AS total_pagado,
             COALESCE(SUM(s.saldo), 0)                                                       AS total_pendiente,
             COUNT(CASE WHEN s.saldo <= 0 THEN 1 END)                                        AS facturas_pagadas,
-            COUNT(CASE WHEN s.saldo > 0 AND s.total_pagado > 0 THEN 1 END)                  AS facturas_pago_parcial,
-            COUNT(CASE WHEN s.total_pagado = 0 THEN 1 END)                                  AS facturas_por_pagar,
+            COUNT(CASE WHEN s.saldo > 0 AND s.saldo < fb.total_cpcfa THEN 1 END)             AS facturas_pago_parcial,
+            COUNT(CASE WHEN s.saldo >= fb.total_cpcfa THEN 1 END)                            AS facturas_por_pagar,
             (SELECT MAX(ct.fecha_trans_cpctr)
              FROM cxp_cabece_transa ct
              WHERE ct.ide_geper = $1
