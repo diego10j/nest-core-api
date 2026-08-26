@@ -6,12 +6,15 @@ import FormData from 'form-data';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
 
 import { BotConfigService } from '../bot/bot-config.service';
 import { BotGptService } from '../bot/bot-gpt.service';
 import { BotSessionService } from '../bot/bot-session.service';
 import { BotState } from '../bot/interfaces/bot-state.enum';
 import { ChatLockService } from '../chat-lock.service';
+import { getFileExtension } from '../helpers/media-util';
+import { WhatsappDbService } from '../whatsapp-db.service';
 import { WhatsappGateway } from '../whatsapp.gateway';
 
 import { YcloudSendResponse, YcloudUploadResponse } from './interfaces/ycloud-api-response.interface';
@@ -52,6 +55,8 @@ export class YcloudService {
     private readonly botSession: BotSessionService,
     private readonly chatLock: ChatLockService,
     private readonly botGpt: BotGptService,
+    private readonly fileTempService: FileTempService,
+    private readonly whatsappDb: WhatsappDbService,
   ) {
     this.YCLOUD_API_URL = (envs.ycloudApiUrl || 'https://api.ycloud.com/v2').trim();
     this.YCLOUD_API_KEY = (envs.ycloudApiKey || '').trim();
@@ -759,6 +764,38 @@ export class YcloudService {
     }
   }
 
+  /**
+   * Descarga un adjunto entrante y lo guarda en el servidor propio (attachment_url_whmem),
+   * apenas llega el webhook — no espera a que un agente lo abra en el chat. El media ID de
+   * WhatsApp/YCloud deja de servir la descarga pasado un tiempo corto (visto en producción:
+   * la descarga bajo demanda fallaba con 404 "No message available" para adjuntos de horas
+   * antes), así que cachear tarde ya no sirve — hay que hacerlo aquí, mientras el ID sigue
+   * vigente. Fire-and-forget: nunca debe interrumpir el procesamiento del webhook ni la
+   * respuesta del bot si falla.
+   */
+  private async cacheInboundMediaAsync(
+    mediaId: string,
+    phoneNumberId: string,
+    mimeType?: string,
+    filename?: string,
+  ): Promise<void> {
+    try {
+      const existing = await this.whatsappDb.getFile(mediaId);
+      if (existing?.attachment_url_whmem) return; // ya cacheado (reintento de webhook)
+
+      const fileData = await this.downloadMedia(mediaId, phoneNumberId);
+      const fileExtension = getFileExtension(mimeType || '', filename);
+      const savedName = await this.fileTempService.saveWhatsAppMedia(fileData, fileExtension);
+      const publicUrl = `${envs.hostApi}/api/whatsapp/media/${savedName}`;
+      await this.whatsappDb.updateUrlFile(mediaId, publicUrl);
+      this.logger.debug(`[Inbound] Adjunto cacheado de inmediato: mediaId=${mediaId} -> ${savedName}`);
+    } catch (err) {
+      // No relanzar: el adjunto queda con attachment_url_whmem = NULL y se intentará
+      // de nuevo bajo demanda vía /api/whatsapp/download (mismo comportamiento previo).
+      this.logger.warn(`[Inbound] No se pudo cachear el adjunto mediaId=${mediaId} de inmediato: ${err.message}`);
+    }
+  }
+
   // ─── Webhook ──────────────────────────────────────────────────
 
   async handleWebhook(payload: YcloudWebhookPayload): Promise<void> {
@@ -868,6 +905,24 @@ export class YcloudService {
       await this.windowService.registerInboundMessage(waId, phoneNumberId);
       this.whatsappGateway.sendMessageToClients(waId);
       void this.emitTotalNoLeidos(phoneNumberId);
+
+      // Descarga y cachea el adjunto YA (en vez de esperar a que alguien lo abra en el
+      // chat): el media ID que reporta el webhook de WhatsApp/YCloud deja de ser
+      // descargable pasado un tiempo corto (confirmado en logs de prod: "No message
+      // available" / 404 al intentar bajarlo desde /api/whatsapp/download). Si un agente
+      // recién abre el chat horas después, el archivo/imagen que envió el cliente ya no
+      // se puede recuperar. Se descarga apenas llega el webhook, mientras el media ID
+      // sigue vigente, y se guarda localmente (attachment_url_whmem) para que la vista
+      // del chat SIEMPRE lo sirva desde nuestro servidor, sin depender de YCloud después.
+      const inboundMedia = data.image || data.video || data.audio || data.document || data.sticker;
+      if (inboundMedia?.id) {
+        void this.cacheInboundMediaAsync(
+          inboundMedia.id,
+          phoneNumberId,
+          inboundMedia.mime_type,
+          data.document?.filename,
+        );
+      }
 
       const textoBot = data.text?.body
         || data.button?.payload

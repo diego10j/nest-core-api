@@ -29,6 +29,28 @@ export class WhatsappDbService {
     ) { }
 
     /**
+     * wha_chat/wha_mensaje guardan sus fechas en columnas `timestamp without time zone`
+     * pensadas como UTC (el código de escritura usa `new Date().toISOString()`), pero la
+     * sesión de Postgres tiene configurado TimeZone=America/Guayaquil: al insertar un valor
+     * con offset, Postgres lo convierte a la zona de la sesión ANTES de guardarlo como
+     * "naive" — lo que queda en la columna son en realidad las cifras de hora LOCAL de
+     * Ecuador, no UTC. Devueltas tal cual, el parser nativo de `pg` para TIMESTAMP (OID
+     * 1114) las reinterpreta usando el TZ del proceso Node (UTC en producción) y el
+     * resultado queda ~5 horas por debajo de la hora real (confirmado con el usuario:
+     * un mensaje de las 14:00 Ecuador se mostraba como 09:00).
+     * Este helper evita la ambigüedad: interpreta la columna EXPLÍCITAMENTE como hora de
+     * Guayaquil, la convierte a UTC, y la devuelve ya formateada como texto ISO con
+     * sufijo 'Z' — así el driver nunca vuelve a tocarla con su parser de timestamp, y el
+     * frontend (que ya asume "sin offset = UTC" en date-chat.ts) la muestra correcta.
+     * No usar en columnas que participan en cursores de paginación (fecha_msg_whcha en
+     * los WHERE de getChats/getChatsPorFiltro): el cast `$n::timestamp` de esos cursores
+     * ya hace la conversión correcta vía el TimeZone de la sesión, sin pasar por `pg`.
+     */
+    private utcIso(column: string): string {
+        return `to_char((${column} AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+    }
+
+    /**
      * Retorna la cuanta de whatsapp configurada para la empresa
      * @param dto
      * @returns
@@ -139,8 +161,8 @@ export class WhatsappDbService {
         SELECT
             a.ide_whcha,
             a.wa_id_whcha,
-            fecha_crea_whcha,
-            fecha_msg_whcha,
+            ${this.utcIso('fecha_crea_whcha')} AS fecha_crea_whcha,
+            ${this.utcIso('fecha_msg_whcha')} AS fecha_msg_whcha,
             name_whcha,
             nombre_whcha,
             phone_number_whcha,
@@ -149,7 +171,7 @@ export class WhatsappDbService {
             -- Último mensaje
             m.body_whmem,
             m.caption_whmem,
-            m.fecha_whmem,
+            ${this.utcIso('m.fecha_whmem')} AS fecha_whmem,
             m.content_type_whmem,
             m.direction_whmem,
             m.es_bot_whmem,
@@ -332,6 +354,7 @@ export class WhatsappDbService {
 
         const BASE_COLS = `
                 m.*,
+                ${this.utcIso('m.fecha_whmem')} AS fecha_whmem,
                 m.es_bot_whmem,
                 u.nom_usua    AS nombre_agente,
                 u.avatar_usua AS avatar_agente,
@@ -427,15 +450,15 @@ export class WhatsappDbService {
         const query = new SelectQuery(`
     SELECT
         a.ide_whcha,
-        fecha_crea_whcha,
-        fecha_msg_whcha,
+        ${this.utcIso('fecha_crea_whcha')} AS fecha_crea_whcha,
+        ${this.utcIso('fecha_msg_whcha')} AS fecha_msg_whcha,
         name_whcha,
         nombre_whcha,
         phone_number_whcha,
         leido_whcha,
         favorito_whcha,
         m.body_whmem,
-        m.fecha_whmem,
+        ${this.utcIso('m.fecha_whmem')} AS fecha_whmem,
         m.content_type_whmem,
         m.direction_whmem,
         no_leidos_whcha,
@@ -508,8 +531,8 @@ export class WhatsappDbService {
         const query = new SelectQuery(`
             SELECT
                 a.ide_whcha,
-                a.fecha_crea_whcha,
-                a.fecha_msg_whcha,
+                ${this.utcIso('a.fecha_crea_whcha')} AS fecha_crea_whcha,
+                ${this.utcIso('a.fecha_msg_whcha')} AS fecha_msg_whcha,
                 a.name_whcha,
                 a.nombre_whcha,
                 a.phone_number_whcha,
@@ -898,8 +921,8 @@ export class WhatsappDbService {
                 c.phone_number_whcha,
                 c.name_whcha,
                 c.nombre_whcha,
-                c.fecha_crea_whcha,
-                c.fecha_msg_whcha,
+                ${this.utcIso('c.fecha_crea_whcha')} AS fecha_crea_whcha,
+                ${this.utcIso('c.fecha_msg_whcha')} AS fecha_msg_whcha,
                 c.leido_whcha,
                 c.favorito_whcha,
                 c.notas_whcha,
@@ -974,7 +997,7 @@ export class WhatsappDbService {
                 c.name_whcha,
                 c.nombre_whcha,
                 c.phone_number_whcha,
-                c.fecha_msg_whcha,
+                ${this.utcIso('c.fecha_msg_whcha')} AS fecha_msg_whcha,
                 c.leido_whcha,
                 c.favorito_whcha,
                 c.no_leidos_whcha,
@@ -990,7 +1013,7 @@ export class WhatsappDbService {
                 m.content_type_whmem,
                 m.direction_whmem,
                 m.es_bot_whmem,
-                m.fecha_whmem,
+                ${this.utcIso('m.fecha_whmem')} AS fecha_whmem,
                 -- Ventana
                 CASE
                   WHEN c.ultimo_ingreso_cliente_whcha IS NULL THEN FALSE
