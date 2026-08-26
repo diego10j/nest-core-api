@@ -28,6 +28,8 @@ import { PosPuntoVentaController } from './pos-punto-venta/pos-punto-venta.contr
 import { PosPuntoVentaService } from './pos-punto-venta/pos-punto-venta.service';
 import { PuntoVentaController } from './punto-venta/punto-venta.controller';
 import { PuntoVentaService } from './punto-venta/punto-venta.service';
+import { TransportesBiController } from './transportes/data-bi/transportes-bi.controller';
+import { TransportesBiService } from './transportes/data-bi/transportes-bi.service';
 import { TransportesSaveService } from './transportes/transportes-save.service';
 import { TransportesController } from './transportes/transportes.controller';
 import { TransportesService } from './transportes/transportes.service';
@@ -41,6 +43,7 @@ import { TransportesService } from './transportes/transportes.service';
     VentasBiController,
     PosPuntoVentaController,
     TransportesController,
+    TransportesBiController,
     NotasCreditoController,
     RetencionVentaController,
   ],
@@ -57,6 +60,7 @@ import { TransportesService } from './transportes/transportes.service';
     PosPuntoVentaSaveService,
     TransportesService,
     TransportesSaveService,
+    TransportesBiService,
     WhatsappService,
     NotasCreditoSaveService,
     NotasCreditoService,

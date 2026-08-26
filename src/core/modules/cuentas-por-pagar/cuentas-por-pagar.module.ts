@@ -10,6 +10,8 @@ import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarController } from './cuentas-por-pagar.controller';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
+import { ComprasBiController } from './data-bi/compras-bi.controller';
+import { ComprasBiService } from './data-bi/compras-bi.service';
 import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { DocumentosCxPController } from './documentos-cxp.controller';
@@ -31,6 +33,7 @@ import { RetencionesCxPService } from './retenciones-cxp.service';
         DocumentosCxPController,
         RetencionesCxPController,
         FleteConsolidadoController,
+        ComprasBiController,
     ],
     providers: [
         CuentasPorPagarService,
@@ -45,6 +48,7 @@ import { RetencionesCxPService } from './retenciones-cxp.service';
         RetencionesCxPSaveService,
         FleteConsolidadoService,
         FleteConsolidadoSaveService,
+        ComprasBiService,
         CoreService,
     ],
     exports: [

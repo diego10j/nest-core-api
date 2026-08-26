@@ -22,6 +22,8 @@ import { CxpTransaccionesSaveService } from './cxp-transacciones/cxp-transaccion
 import { CxpTransaccionesController } from './cxp-transacciones/cxp-transacciones.controller';
 import { CxpTransaccionesService } from './cxp-transacciones/cxp-transacciones.service';
 import { PagoCxPEmailService } from './cxp-transacciones/pago-cxp-email.service';
+import { TesoreriaBiController } from './data-bi/tesoreria-bi.controller';
+import { TesoreriaBiService } from './data-bi/tesoreria-bi.service';
 import { PreLibroBancosConciliacionService } from './pre-libro-bancos/pre-libro-bancos-conciliacion.service';
 import { PreLibroBancosDiferenciasService } from './pre-libro-bancos/pre-libro-bancos-diferencias.service';
 import { PreLibroBancosSaveService } from './pre-libro-bancos/pre-libro-bancos-save.service';
@@ -46,6 +48,7 @@ import { TesoreriaService } from './tesoreria.service';
         ComprobanteBancoController,
         CxcTransaccionesController,
         CxpTransaccionesController,
+        TesoreriaBiController,
     ],
     providers: [
         TesoreriaService,
@@ -68,6 +71,7 @@ import { TesoreriaService } from './tesoreria.service';
         CxpTransaccionesService,
         CxpTransaccionesSaveService,
         PagoCxPEmailService,
+        TesoreriaBiService,
         CoreService,
     ],
     exports: [
