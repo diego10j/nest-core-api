@@ -33,7 +33,8 @@ export class DepositoCajaService extends BaseService {
      */
     async getMovimientosPendientes(dtoIn: GetMovimientosPendientesDepositoDto & HeaderParamsDto) {
         const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
-        const query = new SelectQuery(`
+        const query = new SelectQuery(
+            `
             SELECT
                 a.ide_teclb,
                 a.fecha_trans_teclb,
@@ -57,7 +58,9 @@ export class DepositoCajaService extends BaseService {
                   WHERE dm.ide_teclb = a.ide_teclb AND dc.anulado_tedca = false
               )
             ORDER BY a.fecha_trans_teclb, a.ide_teclb
-        `);
+            `,
+            dtoIn,
+        );
         query.addIntParam(1, dtoIn.ideTecba);
         query.addIntParam(2, ideTeelb);
         query.addIntParam(3, dtoIn.ideSucu);
@@ -140,7 +143,8 @@ export class DepositoCajaService extends BaseService {
      * "Devolución Cobros Tarjeta"): 3 estados posibles (Generado/Completado/Anulado).
      */
     async getDepositosCaja(dtoIn: GetDepositosCajaDto & HeaderParamsDto) {
-        const query = new SelectQuery(`
+        const query = new SelectQuery(
+            `
             SELECT
                 c.ide_tedca,
                 c.fecha_genera_tedca,
@@ -178,7 +182,9 @@ export class DepositoCajaService extends BaseService {
               AND ($3::date IS NULL OR c.fecha_genera_tedca >= $3)
               AND ($4::date IS NULL OR c.fecha_genera_tedca <= $4)
             ORDER BY c.hora_ingre DESC
-        `);
+            `,
+            dtoIn,
+        );
         query.addIntParam(1, dtoIn.ideEmpr);
         query.addIntParam(2, dtoIn.ideSucu);
         query.addParam(3, dtoIn.fechaDesde ?? null);
