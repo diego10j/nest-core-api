@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS tes_cab_deposito_caja (
 
     -- Caja origen del depósito (cuenta de tipo caja) - elegida al generar
     ide_tecba_origen BIGINT NOT NULL,
-    -- Cuenta bancaria real destino del depósito - elegida al generar
-    ide_tecba_destino BIGINT NOT NULL,
+    -- Cuenta bancaria real destino del depósito - se elige al COMPLETAR (junto
+    -- con el comprobante), no siempre se sabe todavía a qué banco se va a
+    -- llevar el efectivo cuando solo se está reservando/generando el depósito
+    ide_tecba_destino BIGINT,
 
     -- Movimientos de libro banco generados al COMPLETAR (NULL mientras está
     -- solo "generado")
@@ -92,6 +94,10 @@ COMMENT ON TABLE tes_cab_deposito_caja IS
 
 CREATE INDEX IF NOT EXISTS idx_tedca_tecba_origen ON tes_cab_deposito_caja(ide_tecba_origen);
 CREATE INDEX IF NOT EXISTS idx_tedca_empr_sucu ON tes_cab_deposito_caja(ide_empr, ide_sucu);
+
+-- Idempotente para instalaciones donde la tabla ya existía con
+-- ide_tecba_destino NOT NULL (banco destino ahora se elige al COMPLETAR).
+ALTER TABLE tes_cab_deposito_caja ALTER COLUMN ide_tecba_destino DROP NOT NULL;
 
 -- ============================================================
 -- 2. Detalle: movimientos de ingreso de caja cubiertos por el depósito

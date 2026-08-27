@@ -175,8 +175,8 @@ export class DepositoCajaService extends BaseService {
                 c.hora_ingre
             FROM tes_cab_deposito_caja c
             INNER JOIN tes_cuenta_banco co ON co.ide_tecba = c.ide_tecba_origen
-            INNER JOIN tes_cuenta_banco cd ON cd.ide_tecba = c.ide_tecba_destino
-            INNER JOIN tes_banco bd ON bd.ide_teban = cd.ide_teban
+            LEFT JOIN tes_cuenta_banco cd ON cd.ide_tecba = c.ide_tecba_destino
+            LEFT JOIN tes_banco bd ON bd.ide_teban = cd.ide_teban
             WHERE c.ide_empr = $1
               AND c.ide_sucu = $2
               AND ($3::date IS NULL OR c.fecha_genera_tedca >= $3)
@@ -235,8 +235,8 @@ export class DepositoCajaService extends BaseService {
                 c.hora_ingre
             FROM tes_cab_deposito_caja c
             INNER JOIN tes_cuenta_banco co ON co.ide_tecba = c.ide_tecba_origen
-            INNER JOIN tes_cuenta_banco cd ON cd.ide_tecba = c.ide_tecba_destino
-            INNER JOIN tes_banco bd ON bd.ide_teban = cd.ide_teban
+            LEFT JOIN tes_cuenta_banco cd ON cd.ide_tecba = c.ide_tecba_destino
+            LEFT JOIN tes_banco bd ON bd.ide_teban = cd.ide_teban
             LEFT JOIN tes_info_comprobante_banco ti ON ti.ide_teincb = c.ide_teincb
             LEFT JOIN tes_cab_libr_banc lbr ON lbr.ide_teclb = c.ide_teclb_retiro
             WHERE c.ide_tedca = $1

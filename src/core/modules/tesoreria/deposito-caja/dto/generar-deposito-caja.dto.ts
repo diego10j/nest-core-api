@@ -27,20 +27,16 @@ export class MovimientoDepositoCajaDto {
 
 /**
  * Payload de la etapa "Generar" del wizard de Depósitos de Caja: solo reserva los movimientos
- * de ingreso seleccionados contra la caja/banco elegidos - no genera todavía movimientos en el
- * libro bancos ni asiento contable (eso ocurre en "Completar", cuando el usuario ya hizo el
- * depósito físico y tiene el comprobante). Ver DepositoCajaSaveService.generar.
+ * de ingreso seleccionados contra la caja elegida - no genera todavía movimientos en el libro
+ * bancos ni asiento contable. El banco real destino no se pide aquí: muchas veces todavía no se
+ * sabe a qué banco se va a llevar el efectivo, y se elige recién en "Completar" (junto con el
+ * comprobante del depósito físico). Ver DepositoCajaSaveService.generar.
  */
 export class GenerarDepositoCajaDto {
     /** FK → tes_cuenta_banco (caja origen) */
     @IsInt()
     @IsNotEmpty()
     ideTecbaOrigen: number;
-
-    /** FK → tes_cuenta_banco (banco real destino) */
-    @IsInt()
-    @IsNotEmpty()
-    ideTecbaDestino: number;
 
     @IsArray()
     @ArrayNotEmpty()

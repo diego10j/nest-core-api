@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
     IsBoolean,
     IsDateString,
+    IsInt,
     IsNotEmpty,
     IsNumber,
     IsOptional,
@@ -75,8 +76,15 @@ export class ComprobanteDepositoCajaDto {
  * Payload de la etapa "Completar" del wizard de Depósitos de Caja - se llama sobre un depósito
  * ya generado, cuando el usuario ya hizo el depósito físico en el banco. Aquí sí se generan el
  * retiro de caja + el ingreso a banco + el asiento contable (ver DepositoCajaSaveService.completar).
+ * El banco real destino se elige recién aquí (no en "Generar") porque recién ahora se sabe con
+ * certeza a qué cuenta bancaria se llevó el efectivo.
  */
 export class CompletarDepositoCajaDto {
+    /** FK → tes_cuenta_banco (banco real destino del depósito) */
+    @IsInt()
+    @IsNotEmpty()
+    ideTecbaDestino: number;
+
     /** Fecha real del depósito */
     @IsDateString()
     @IsNotEmpty()
@@ -86,6 +94,11 @@ export class CompletarDepositoCajaDto {
     @IsString()
     @IsOptional()
     numero?: string;
+
+    /** Observación del depósito - editable/opcional en esta etapa */
+    @IsString()
+    @IsOptional()
+    observacion?: string;
 
     @ValidateNested()
     @Type(() => ComprobanteDepositoCajaDto)

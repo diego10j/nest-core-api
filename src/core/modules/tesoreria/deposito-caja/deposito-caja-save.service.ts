@@ -27,14 +27,16 @@ const centsToAmount = (cents: number): number => Number((cents / 100).toFixed(2)
  * Cobros Tarjeta, que finaliza todo en una sola llamada): el comprobante del depósito físicamente
  * no existe hasta después de ir al banco.
  *
- * 1. generar(): el usuario elige la caja, el banco destino y qué movimientos de ingreso
- *    pendientes va a llevar a depositar - solo RESERVA esos movimientos (quedan excluidos de la
- *    lista de pendientes de cualquier otro depósito vía DepositoCajaService.getMovimientosPendientes).
- *    Todavía no se toca tes_cab_libr_banc ni se genera asiento.
+ * 1. generar(): el usuario elige la caja y qué movimientos de ingreso pendientes va a llevar a
+ *    depositar - solo RESERVA esos movimientos (quedan excluidos de la lista de pendientes de
+ *    cualquier otro depósito vía DepositoCajaService.getMovimientosPendientes). Todavía no se
+ *    toca tes_cab_libr_banc ni se genera asiento; el banco real destino AÚN NO SE PIDE (muchas
+ *    veces no se sabe todavía a qué banco se va a llevar el efectivo).
  * 2. completar(): sobre un depósito ya generado, cuando el usuario ya hizo el depósito físico y
- *    tiene fecha/número/imagen del comprobante - genera el retiro de caja + el ingreso a banco +
- *    el asiento contable (AsientosAutomaticosService.generarAsientoTransferencia, HABER caja /
- *    DEBE banco), y marca los movimientos cubiertos depositado_teclb=true.
+ *    tiene el banco destino real + fecha/número/imagen del comprobante - genera el retiro de
+ *    caja + el ingreso a banco + el asiento contable (AsientosAutomaticosService.
+ *    generarAsientoTransferencia, HABER caja / DEBE banco), y marca los movimientos cubiertos
+ *    depositado_teclb=true.
  *
  * anular() libera los movimientos reservados en cualquiera de las 2 etapas; si ya estaba
  * completado, además reversa los movimientos y el asiento (reutilizando
@@ -67,9 +69,6 @@ export class DepositoCajaSaveService extends BaseService {
     }
 
     async generar(dtoIn: GenerarDepositoCajaDto & HeaderParamsDto) {
-        if (dtoIn.ideTecbaOrigen === dtoIn.ideTecbaDestino) {
-            throw new BadRequestException('La cuenta origen (caja) y la cuenta destino (banco) no pueden ser la misma.');
-        }
         if (!dtoIn.movimientos?.length) {
             throw new BadRequestException('Debe seleccionar al menos un movimiento de ingreso de caja para depositar');
         }
@@ -77,10 +76,6 @@ export class DepositoCajaSaveService extends BaseService {
         const esCaja = await this.consultas.esCuentaCaja(dtoIn.ideTecbaOrigen, dtoIn);
         if (!esCaja) {
             throw new BadRequestException('La cuenta origen seleccionada no es una caja');
-        }
-        const esBanco = await this.consultas.esCuentaBanco(dtoIn.ideTecbaDestino, dtoIn);
-        if (!esBanco) {
-            throw new BadRequestException('La cuenta destino seleccionada no es un banco');
         }
 
         const ideTeclbList = dtoIn.movimientos.map((m) => m.ide_teclb);
@@ -121,7 +116,6 @@ export class DepositoCajaSaveService extends BaseService {
                     ide_empr: dtoIn.ideEmpr,
                     ide_sucu: dtoIn.ideSucu,
                     ide_tecba_origen: dtoIn.ideTecbaOrigen,
-                    ide_tecba_destino: dtoIn.ideTecbaDestino,
                     valor_tedca: valor,
                     observacion_tedca: dtoIn.observacion ?? null,
                     usuario_ingre: dtoIn.login,
@@ -157,6 +151,13 @@ export class DepositoCajaSaveService extends BaseService {
         if (cab.completado_tedca) {
             throw new BadRequestException('Este depósito de caja ya se encuentra completado');
         }
+        if (cab.ide_tecba_origen === dtoIn.ideTecbaDestino) {
+            throw new BadRequestException('La cuenta origen (caja) y la cuenta destino (banco) no pueden ser la misma.');
+        }
+        const esBanco = await this.consultas.esCuentaBanco(dtoIn.ideTecbaDestino, dtoIn);
+        if (!esBanco) {
+            throw new BadRequestException('La cuenta destino seleccionada no es un banco');
+        }
 
         const valor = Number(cab.valor_tedca);
         const diferenciaCents = toCents(dtoIn.comprobante.valorTeincb) - toCents(valor);
@@ -173,9 +174,9 @@ export class DepositoCajaSaveService extends BaseService {
                 ...dtoIn,
                 fecha: dtoIn.fecha,
                 ideTecbaOrigen: cab.ide_tecba_origen,
-                ideTecbaDestino: cab.ide_tecba_destino,
+                ideTecbaDestino: dtoIn.ideTecbaDestino,
                 valor,
-                observacion: cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
+                observacion: dtoIn.observacion ?? cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
             });
             if (!asientoResult.generado) {
                 throw new BadRequestException(
@@ -216,7 +217,7 @@ export class DepositoCajaSaveService extends BaseService {
                         fecha_trans_teclb: dtoIn.fecha,
                         fecha_venci_teclb: dtoIn.fecha,
                         beneficiari_teclb: beneficiario,
-                        observacion_teclb: cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
+                        observacion_teclb: dtoIn.observacion ?? cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
                         conciliado_teclb: false,
                         depositado_teclb: false,
                         devuelto_teclb: false,
@@ -232,7 +233,7 @@ export class DepositoCajaSaveService extends BaseService {
                     object: {
                         ide_teclb: ideIngreso,
                         ide_teelb: ideTeelb,
-                        ide_tecba: cab.ide_tecba_destino,
+                        ide_tecba: dtoIn.ideTecbaDestino,
                         ide_tettb: ideTettbDeposito,
                         ide_cnccc: ideCnccc,
                         valor_teclb: valor,
@@ -240,7 +241,7 @@ export class DepositoCajaSaveService extends BaseService {
                         fecha_trans_teclb: dtoIn.fecha,
                         fecha_venci_teclb: dtoIn.fecha,
                         beneficiari_teclb: beneficiario,
-                        observacion_teclb: cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
+                        observacion_teclb: dtoIn.observacion ?? cab.observacion_tedca ?? 'DEPÓSITO DE CAJA',
                         conciliado_teclb: false,
                         depositado_teclb: false,
                         devuelto_teclb: false,
@@ -292,6 +293,8 @@ export class DepositoCajaSaveService extends BaseService {
                     primaryKey: 'ide_tedca',
                     object: {
                         ide_tedca: ideTedca,
+                        ide_tecba_destino: dtoIn.ideTecbaDestino,
+                        observacion_tedca: dtoIn.observacion ?? cab.observacion_tedca ?? null,
                         ide_teclb_retiro: ideRetiro,
                         ide_teclb_ingreso: ideIngreso,
                         ide_teincb: (comprobanteGuardado as any).ideTeincb ?? null,
