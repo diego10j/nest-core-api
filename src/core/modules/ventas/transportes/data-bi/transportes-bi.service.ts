@@ -40,7 +40,7 @@ export class TransportesBiService extends BaseService {
                     ) AS entregas_retrasadas,
                     COUNT(DISTINCT e.ide_vgtra) FILTER (WHERE e.es_transporte_propio_cctfa = false) AS transportistas_activos,
                     COALESCE(SUM(e.total_flete_real_cctfa), 0) AS total_flete,
-                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa - e.fecha_inicio_cctfa)) / 86400)
+                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - e.fecha_inicio_cctfa::timestamp)) / 86400)
                         FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL AND e.fecha_inicio_cctfa IS NOT NULL) AS promedio_dias_entrega
                 FROM cxc_transporte_factura e
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
@@ -144,7 +144,7 @@ export class TransportesBiService extends BaseService {
                             AND e.fecha_fin_real_cctfa <= e.fecha_fin_cctfa
                     ) AS a_tiempo,
                     COALESCE(SUM(e.total_flete_real_cctfa), 0) AS total_flete,
-                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa - e.fecha_inicio_cctfa)) / 86400)
+                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - e.fecha_inicio_cctfa::timestamp)) / 86400)
                         FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS promedio_dias
                 FROM cxc_transporte_factura e
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
