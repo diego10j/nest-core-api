@@ -40,17 +40,19 @@ export class TransportesBiService extends BaseService {
                     ) AS entregas_retrasadas,
                     COUNT(DISTINCT e.ide_vgtra) FILTER (WHERE e.es_transporte_propio_cctfa = false) AS transportistas_activos,
                     COALESCE(SUM(e.total_flete_real_cctfa), 0) AS total_flete,
-                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - e.fecha_inicio_cctfa::timestamp)) / 86400)
-                        FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL AND e.fecha_inicio_cctfa IS NOT NULL) AS promedio_dias_entrega
+                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)::timestamp)) / 86400)
+                        FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS promedio_dias_entrega
                 FROM cxc_transporte_factura e
+                INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                    AND e.fecha_inicio_cctfa BETWEEN $1 AND $2
+                    AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN $1 AND $2
             ),
             envios_periodo_anterior AS (
                 SELECT COUNT(e.ide_cctfa) AS total_envios_anterior
                 FROM cxc_transporte_factura e
+                INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                    AND e.fecha_inicio_cctfa BETWEEN $3 AND $4
+                    AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN $3 AND $4
             )
             SELECT
                 ep.total_envios,
@@ -105,14 +107,15 @@ export class TransportesBiService extends BaseService {
             ),
             envios_dia AS (
                 SELECT
-                    e.fecha_inicio_cctfa::date AS fecha,
+                    COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)::date AS fecha,
                     COUNT(e.ide_cctfa) AS num_envios,
                     COUNT(*) FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS entregados,
                     COALESCE(SUM(e.total_flete_real_cctfa), 0) AS total_flete
                 FROM cxc_transporte_factura e
+                INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                    AND e.fecha_inicio_cctfa BETWEEN (${fecha}::date - INTERVAL '30 days') AND ${fecha}::date
-                GROUP BY e.fecha_inicio_cctfa::date
+                    AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN (${fecha}::date - INTERVAL '30 days') AND ${fecha}::date
+                GROUP BY COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)::date
                 HAVING COUNT(e.ide_cctfa) > 0
             )
             SELECT
@@ -136,7 +139,7 @@ export class TransportesBiService extends BaseService {
         const query = new SelectQuery(`
             WITH envios_mes AS (
                 SELECT
-                    EXTRACT(MONTH FROM e.fecha_inicio_cctfa) AS mes,
+                    EXTRACT(MONTH FROM COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)) AS mes,
                     COUNT(e.ide_cctfa) AS num_envios,
                     COUNT(*) FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS entregados,
                     COUNT(*) FILTER (
@@ -144,12 +147,13 @@ export class TransportesBiService extends BaseService {
                             AND e.fecha_fin_real_cctfa <= e.fecha_fin_cctfa
                     ) AS a_tiempo,
                     COALESCE(SUM(e.total_flete_real_cctfa), 0) AS total_flete,
-                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - e.fecha_inicio_cctfa::timestamp)) / 86400)
+                    AVG(EXTRACT(EPOCH FROM (e.fecha_fin_real_cctfa::timestamp - COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)::timestamp)) / 86400)
                         FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS promedio_dias
                 FROM cxc_transporte_factura e
+                INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
                 WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                    AND e.fecha_inicio_cctfa BETWEEN $1 AND $2
-                GROUP BY EXTRACT(MONTH FROM e.fecha_inicio_cctfa)
+                    AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN $1 AND $2
+                GROUP BY EXTRACT(MONTH FROM COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa))
             )
             SELECT
                 gm.ide_gemes,
@@ -194,9 +198,10 @@ export class TransportesBiService extends BaseService {
                     )::numeric / NULLIF(COUNT(*) FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL), 0) * 100,
                 2) AS porcentaje_a_tiempo
             FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
             WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                AND e.fecha_inicio_cctfa BETWEEN $1 AND $2
+                AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN $1 AND $2
             GROUP BY 1, 2
             ORDER BY num_envios DESC
             LIMIT ${dtoIn.limit}
@@ -219,9 +224,10 @@ export class TransportesBiService extends BaseService {
                 COALESCE(ee.color_cceen, '#9CA3AF') AS color,
                 COUNT(e.ide_cctfa) AS num_envios
             FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
             WHERE e.ide_empr = ${dtoIn.ideEmpr}
-                AND e.fecha_inicio_cctfa BETWEEN $1 AND $2
+                AND COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) BETWEEN $1 AND $2
             GROUP BY COALESCE(ee.ide_cceen, -1), COALESCE(ee.nombre_cceen, 'SIN ESTADO'), COALESCE(ee.color_cceen, '#9CA3AF')
             ORDER BY num_envios DESC
         `);
@@ -270,7 +276,7 @@ export class TransportesBiService extends BaseService {
     async getResumenEnviosPeriodos(dtoIn: HeaderParamsDto) {
         const query = new SelectQuery(`
             SELECT
-                EXTRACT(YEAR FROM e.fecha_inicio_cctfa) AS anio,
+                EXTRACT(YEAR FROM COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa)) AS anio,
                 COUNT(e.ide_cctfa) AS total_envios,
                 COUNT(*) FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL) AS entregados,
                 COUNT(*) FILTER (
@@ -286,8 +292,9 @@ export class TransportesBiService extends BaseService {
                     )::numeric / NULLIF(COUNT(*) FILTER (WHERE e.fecha_fin_real_cctfa IS NOT NULL), 0) * 100,
                 2) AS porcentaje_a_tiempo
             FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             WHERE e.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY EXTRACT(YEAR FROM e.fecha_inicio_cctfa)
+            GROUP BY EXTRACT(YEAR FROM COALESCE(e.fecha_inicio_cctfa, f.fecha_emisi_cccfa))
             ORDER BY anio DESC
         `);
         return this.dataSource.createQuery(query);
