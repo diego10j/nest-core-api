@@ -103,6 +103,34 @@ export class DepositoCajaService extends BaseService {
     }
 
     /**
+     * Cajas elegibles como origen de un Depósito de Caja: Caja General y Caja Cheques Diferidos -
+     * a diferencia de TesoreriaService.getCuentasCaja (que además incluye Caja Chica, para
+     * pagos/cobros en efectivo menores), acá se excluye Caja Chica porque ese fondo no se
+     * deposita físicamente al banco.
+     */
+    async getCuentasCajaOrigenDeposito(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                cb.ide_tecba,
+                cb.nombre_tecba,
+                b.nombre_teban,
+                b.foto_teban,
+                b.color_teban
+            FROM tes_cuenta_banco cb
+            LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
+            WHERE cb.ide_empr = $1
+              AND cb.ide_sucu = $2
+              AND cb.activo_tecba = true
+              AND b.es_caja_teban = true
+              AND (UPPER(cb.nombre_tecba) LIKE '%GENERAL%' OR UPPER(cb.nombre_tecba) LIKE '%CHEQUES%')
+            ORDER BY cb.nombre_tecba
+        `);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
      * Retorna, para una cuenta puntual, si es de tipo caja (tes_banco.es_caja_teban) - usado
      * para validar que la cuenta origen elegida en el wizard realmente sea una caja.
      */
@@ -229,6 +257,8 @@ export class DepositoCajaService extends BaseService {
                 c.ide_teclb_ingreso,
                 c.ide_teincb,
                 ti.foto_teincb,
+                ti.valor_teincb,
+                ti.num_comprobante_teincb,
                 lbr.ide_cnccc,
                 c.valor_tedca,
                 c.observacion_tedca,

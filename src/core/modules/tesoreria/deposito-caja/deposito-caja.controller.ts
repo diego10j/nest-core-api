@@ -27,6 +27,13 @@ export class DepositoCajaController {
         private readonly saveService: DepositoCajaSaveService,
     ) { }
 
+    @Get('getCuentasCajaOrigenDeposito')
+    @Auth()
+    @ApiOperation({ summary: 'Cajas elegibles como origen de un Depósito de Caja (General y Cheques Diferidos, excluye Caja Chica)' })
+    getCuentasCajaOrigenDeposito(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getCuentasCajaOrigenDeposito(headersParams);
+    }
+
     @Get('getMovimientosPendientes')
     @Auth()
     @ApiOperation({ summary: 'Movimientos de ingreso de una caja aún no depositados ni reservados por ningún depósito' })
