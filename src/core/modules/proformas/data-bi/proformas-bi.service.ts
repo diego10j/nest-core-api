@@ -138,27 +138,28 @@ export class ProformasBiService extends BaseService {
 
   // 2. Productos con mayor utilidad
   async getTopProductosMayorUtilidad(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
-        SELECT 
+    const query = new SelectQuery(`
+        SELECT
             a.ide_inarti,
             b.nombre_inarti,
             f.siglas_inuni,
             SUM(a.utilidad_ccdpr) AS utilidad_total,
             SUM(a.total_ccdpr) AS valor_total,
-            ROUND((SUM(a.utilidad_ccdpr) / SUM(a.total_ccdpr)) * 100, 2) AS margen_utilidad
-        FROM 
+            ROUND((SUM(a.utilidad_ccdpr) / NULLIF(SUM(a.total_ccdpr), 0)) * 100, 2) AS margen_utilidad
+        FROM
             cxc_deta_proforma a
         INNER JOIN inv_articulo b ON a.ide_inarti = b.ide_inarti
         INNER JOIN cxc_cabece_proforma c ON a.ide_cccpr = c.ide_cccpr
         LEFT JOIN inv_unidad f ON b.ide_inuni = f.ide_inuni
-        WHERE 
+        WHERE
             c.fecha_cccpr BETWEEN $1 AND $2
             AND c.anulado_cccpr = false
             AND c.ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
+            AND a.utilidad_ccdpr IS NOT NULL
+        GROUP BY
             a.ide_inarti, b.nombre_inarti, f.siglas_inuni
-        ORDER BY 
-            utilidad_total DESC
+        ORDER BY
+            utilidad_total DESC NULLS LAST
         LIMIT 10
         `);
     query.addParam(1, dtoIn.fechaInicio);
