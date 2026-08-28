@@ -5,17 +5,21 @@
  *
  * Consultas en bloque (no una por tabla) - con ~500 tablas corre en segundos, no en horas.
  *
- * Uso (valores por defecto pensados para correr en el servidor Debian, donde nest-core-api
- * y erp-knowledge viven en el mismo host - ver erp-knowledge/_Schema-Completo/README.md):
+ * Uso — reutiliza la MISMA conexión que ya usa la app (DB_URL_POOL de nest-core-api/.env),
+ * no hace falta un usuario ni un archivo de configuración aparte:
  *
- *   node scripts/generar-notas-obsidian.mjs
+ *   OUT_DIR=/ruta/al/vault/_Schema-Completo node --env-file=.env scripts/generar-notas-obsidian.mjs
  *
- * Variables de entorno (todas opcionales, con default razonable para el servidor):
- *   PGHOST      default: /var/run/postgresql (socket local, peer auth)
- *   PGDATABASE  default: sigafi_dbo
- *   PGUSER      default: el usuario del proceso (postgres si se corre con sudo -u postgres)
- *   OUT_DIR     default: ../erp-knowledge/_Schema-Completo (asume ambos repos como
- *               hermanos dentro de /proerp - ajustar si la estructura real es otra)
+ * (con `yarn schema:notas` ya está armado así - ver package.json)
+ *
+ * Variables de entorno:
+ *   DB_URL_POOL default: la que ya está en .env (postgresql://user:pass@host/db) - se
+ *               reusa tal cual, misma que usa la app en producción.
+ *   PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD - alternativa si no hay DB_URL_POOL
+ *               (ej. para correr fuera del servidor). Si DB_URL_POOL está seteada, tiene
+ *               prioridad y estas se ignoran.
+ *   OUT_DIR     obligatorio en la práctica (no hay forma de adivinar dónde está el vault
+ *               en cada máquina) - ruta a la carpeta _Schema-Completo/ del vault.
  *   AUTO_COMMIT default: "true" - si el OUT_DIR es parte de un repo git, hace
  *               add+commit+push automático al terminar (poner "false" para desactivar)
  */
@@ -47,14 +51,16 @@ function groupBy(rows, key) {
 }
 
 async function main() {
-  const client = new Client({
-    host: process.env.PGHOST || '/var/run/postgresql',
-    database: process.env.PGDATABASE || 'sigafi_dbo',
-    port: process.env.PGPORT ? Number(process.env.PGPORT) : 5432,
-    user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
-    connectionTimeoutMillis: 10000,
-  });
+  const client = process.env.DB_URL_POOL
+    ? new Client({ connectionString: process.env.DB_URL_POOL, connectionTimeoutMillis: 10000 })
+    : new Client({
+        host: process.env.PGHOST || '/var/run/postgresql',
+        database: process.env.PGDATABASE || 'sigafi_dbo',
+        port: process.env.PGPORT ? Number(process.env.PGPORT) : 5432,
+        user: process.env.PGUSER,
+        password: process.env.PGPASSWORD,
+        connectionTimeoutMillis: 10000,
+      });
   await client.connect();
   console.log(`Conectado. Introspectando schema "${SCHEMA}" (consultas en bloque)...`);
 
