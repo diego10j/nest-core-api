@@ -667,6 +667,7 @@ export class TransportesService extends BaseService {
                 SELECT
                     e.ide_cctfa,
                     e.ide_cccfa,
+                    e.ide_cpcfa,
                     f.secuencial_cccfa,
                     COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) AS fecha_envio,
                     cl.nom_geper AS cliente,
@@ -680,6 +681,7 @@ export class TransportesService extends BaseService {
                     e.total_flete_cctfa AS costo_estimado,
                     e.total_flete_real_cctfa AS costo_real,
                     e.flete_pagado_cctfa,
+                    e.path_imagen_guia_cctfa,
                     COALESCE(du.detalle_unidades, '[]'::json) AS detalle_unidades,
                     -- cantidad enviada en la unidad buscada (NULL si no aplica/no tiene) - usada
                     -- para filtrar por tolerancia y para ordenar por mejor coincidencia primero
