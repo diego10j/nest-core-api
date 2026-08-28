@@ -20,5 +20,8 @@ import { DepositoCajaService } from './deposito-caja.service';
         DepositoCajaSaveService,
         CoreService,
     ],
+    exports: [
+        DepositoCajaSaveService,
+    ],
 })
 export class DepositoCajaModule { }
