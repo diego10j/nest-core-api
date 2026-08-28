@@ -93,14 +93,3 @@ sudo -i -u postgres
 psql -U postgres -d sigafi_dbo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 gunzip -c /proerp/sigafi_dbo.gz | psql -d sigafi_dbo
-
-
-
-
-
-# Sacar schema 
-  -- una sola vez, con sudo -u postgres psql:
-  CREATE ROLE lector_schema LOGIN PASSWORD 'XXXXXXXXXXXXXXXXXXXXXX' NOSUPERUSER;
-  GRANT CONNECT ON DATABASE sigafi_dbo TO lector_schema;
-  GRANT USAGE ON SCHEMA public TO lector_schema;
-  GRANT SELECT ON ALL TABLES IN SCHEMA public TO lector_schema;
