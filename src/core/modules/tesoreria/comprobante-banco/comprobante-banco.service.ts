@@ -89,6 +89,15 @@ export class ComprobanteBancoService extends BaseService {
         return this.dataSource.createSingleQuery(query);
     }
 
+    /**
+     * Comprobantes de un movimiento de libro bancos - incluye también el comprobante del
+     * movimiento "hermano" que comparte el mismo asiento contable (ide_cnccc): en flujos que
+     * generan un PAR de movimientos para una misma transacción física (Depósito de Caja:
+     * retiro de caja + ingreso a banco; Transferencia entre Cuentas: igual) el comprobante solo
+     * se guarda ligado a UNO de los 2 (ver DepositoCajaSaveService.completar, que lo liga solo a
+     * ideRetiro) - sin este fallback, consultar el detalle del movimiento del otro lado (ej. el
+     * ingreso al banco) no mostraba ninguna imagen aunque sí existiera.
+     */
     async getComprobantesByBanco(ideTeclb: number, dtoIn: GetComprobantesBancoDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             SELECT
@@ -118,6 +127,15 @@ export class ComprobanteBancoService extends BaseService {
                 c.cambio_teincb
             FROM tes_info_comprobante_banco c
             WHERE c.ide_teclb = $1
+               OR c.ide_teclb IN (
+                    SELECT hermano.ide_teclb
+                    FROM tes_cab_libr_banc actual
+                    INNER JOIN tes_cab_libr_banc hermano
+                        ON hermano.ide_cnccc = actual.ide_cnccc
+                       AND hermano.ide_teclb != actual.ide_teclb
+                    WHERE actual.ide_teclb = $1
+                      AND actual.ide_cnccc IS NOT NULL
+               )
             ORDER BY c.fecha_teincb DESC, c.ide_teincb DESC
         `, dtoIn);
         query.addIntParam(1, ideTeclb);
