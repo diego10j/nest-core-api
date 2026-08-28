@@ -177,6 +177,13 @@ export class TransportesController {
         return this.service.getFacturasSinEnvio({ ...h, ...dtoIn });
     }
 
+    @Get('getEnviosPorTransporte')
+    @Auth()
+    @ApiOperation({ summary: 'Envíos ya realizados por un transportista, con detalle de kardex agrupado por unidad y flete - para ver a quién se ha enviado y referenciar costo de envíos similares' })
+    getEnviosPorTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetTarifasByTransporteDto) {
+        return this.service.getEnviosPorTransporte({ ...h, ...dtoIn });
+    }
+
     @Post('completarEnvio')
     @Auth()
     @ApiOperation({ summary: 'Completar envío: actualiza estado + datos según tipo (guía, fechas, fletes reales, observación)' })

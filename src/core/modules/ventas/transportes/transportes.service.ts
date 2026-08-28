@@ -499,6 +499,12 @@ export class TransportesService extends BaseService {
                 t.cobertura_nacional_vgtra,
                 t.flete_cobro_vgtra,
                 t.ide_geper,
+                (
+                    SELECT COUNT(*)
+                    FROM cxc_transporte_factura e
+                    WHERE e.ide_vgtra = t.ide_vgtra
+                      AND e.ide_empr = t.ide_empr
+                ) AS num_envios,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -539,11 +545,65 @@ export class TransportesService extends BaseService {
             LEFT JOIN gen_provincia p ON tf.ide_geprov = p.ide_geprov
             LEFT JOIN gen_canton ca ON tf.ide_gecant = ca.ide_gecant
             GROUP BY t.ide_vgtra, t.nombre_vgtra, t.logo_vgtra, t.cobertura_nacional_vgtra, t.flete_cobro_vgtra, t.ide_geper
-            ORDER BY COUNT(tf.ide_vgttr) DESC, t.nombre_vgtra
+            ORDER BY num_envios DESC, COUNT(tf.ide_vgttr) DESC, t.nombre_vgtra
         `);
         if (tieneProv) q.addIntParam(1, dtoIn.ide_geprov!);
         if (tieneCanton) q.addIntParam(tieneProv ? 2 : 1, dtoIn.ide_gecant!);
         q.addIntParam(tieneProv ? (tieneCanton ? 3 : 2) : (tieneCanton ? 2 : 1), dtoIn.ideEmpr);
+        return this.dataSource.createSelectQuery(q);
+    }
+
+    /**
+     * Envíos ya realizados por un transportista puntual, ordenados por fecha (más reciente
+     * primero) - para ver a quién se le ha enviado, con el detalle de qué se envió (productos
+     * que hacen kardex, agrupados y sumados por unidad - ej. "30 kg" aunque la factura tenga
+     * varios productos en kg) y el flete cobrado, como referencia de costo para envíos similares.
+     */
+    async getEnviosPorTransporte(dtoIn: { ide_vgtra: number } & HeaderParamsDto) {
+        const q = new SelectQuery(`
+            SELECT
+                e.ide_cctfa,
+                e.ide_cccfa,
+                f.secuencial_cccfa,
+                f.fecha_emisi_cccfa,
+                f.total_cccfa,
+                e.fecha_inicio_cctfa,
+                e.fecha_envio_cctfa,
+                cl.nom_geper AS cliente,
+                cl.identificac_geper,
+                ee.nombre_cceen AS estado_envio,
+                ee.color_cceen,
+                e.total_flete_cctfa,
+                e.total_flete_real_cctfa,
+                e.flete_pagado_cctfa,
+                COALESCE(du.detalle_unidades, '[]'::json) AS detalle_unidades
+            FROM cxc_transporte_factura e
+            INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
+            INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+            LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
+            LEFT JOIN LATERAL (
+                SELECT json_agg(
+                    json_build_object('unidad', s.siglas_inuni, 'cantidad', s.total)
+                    ORDER BY s.total DESC
+                ) AS detalle_unidades
+                FROM (
+                    SELECT
+                        COALESCE(u.siglas_inuni, 'unid.') AS siglas_inuni,
+                        SUM(d.cantidad_ccdfa) AS total
+                    FROM cxc_deta_factura d
+                    INNER JOIN inv_articulo p ON d.ide_inarti = p.ide_inarti
+                    LEFT JOIN inv_unidad u ON p.ide_inuni = u.ide_inuni
+                    WHERE d.ide_cccfa = e.ide_cccfa
+                      AND p.hace_kardex_inarti = true
+                    GROUP BY COALESCE(u.siglas_inuni, 'unid.')
+                ) s
+            ) du ON true
+            WHERE e.ide_vgtra = $1
+              AND e.ide_empr = $2
+            ORDER BY COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) DESC
+        `);
+        q.addIntParam(1, dtoIn.ide_vgtra);
+        q.addIntParam(2, dtoIn.ideEmpr);
         return this.dataSource.createSelectQuery(q);
     }
 
