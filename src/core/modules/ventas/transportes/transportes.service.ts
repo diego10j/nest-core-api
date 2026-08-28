@@ -6,6 +6,8 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
+import { ConsultarTarifasDto } from './dto/consultar-tarifas.dto';
+import { GetEnviosPorTransporteDto } from './dto/get-envios-transporte.dto';
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import { GetFacturasParaRutaDto, GetRutasDto } from './dto/save-transporte.dto';
 
@@ -37,7 +39,11 @@ export class TransportesService extends BaseService {
                     WHEN t.cobertura_nacional_vgtra = TRUE
                     THEN (SELECT COUNT(*) FROM gen_provincia)
                     ELSE COALESCE(pc.provincias, 0)
-                END AS provincias
+                END AS provincias,
+                (
+                    SELECT COUNT(*) FROM cxc_transporte_factura e
+                    WHERE e.ide_vgtra = t.ide_vgtra AND e.ide_empr = t.ide_empr
+                ) AS num_envios
             FROM ven_transporte t
             INNER JOIN gen_persona p ON t.ide_geper = p.ide_geper
             LEFT JOIN (
@@ -554,12 +560,12 @@ export class TransportesService extends BaseService {
     }
 
     /**
-     * Envíos ya realizados por un transportista puntual, ordenados por fecha (más reciente
-     * primero) - para ver a quién se le ha enviado, con el detalle de qué se envió (productos
-     * que hacen kardex, agrupados y sumados por unidad - ej. "30 kg" aunque la factura tenga
-     * varios productos en kg) y el flete cobrado, como referencia de costo para envíos similares.
+     * Envíos ya realizados por un transportista puntual en un rango de fechas, ordenados por
+     * fecha (más reciente primero) - para ver a quién se le ha enviado, con el detalle de qué
+     * se envió (productos que hacen kardex, agrupados y sumados por unidad - ej. "30 kg" aunque
+     * la factura tenga varios productos en kg) y el flete cobrado.
      */
-    async getEnviosPorTransporte(dtoIn: { ide_vgtra: number } & HeaderParamsDto) {
+    async getEnviosPorTransporte(dtoIn: GetEnviosPorTransporteDto & HeaderParamsDto) {
         const q = new SelectQuery(`
             SELECT
                 e.ide_cctfa,
@@ -600,10 +606,111 @@ export class TransportesService extends BaseService {
             ) du ON true
             WHERE e.ide_vgtra = $1
               AND e.ide_empr = $2
+              AND ($3::date IS NULL OR COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) >= $3)
+              AND ($4::date IS NULL OR COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) <= $4)
             ORDER BY COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) DESC
-        `);
+        `, dtoIn);
         q.addIntParam(1, dtoIn.ide_vgtra);
         q.addIntParam(2, dtoIn.ideEmpr);
+        q.addParam(3, dtoIn.fechaInicio ?? null);
+        q.addParam(4, dtoIn.fechaFin ?? null);
+        return this.dataSource.createQuery(q, 'cxc_transporte_factura');
+    }
+
+    /**
+     * "Consultar Tarifas": búsqueda dinámica sobre los envíos YA REGISTRADOS (histórico real,
+     * no la tarifa de catálogo) para que un vendedor pueda cotizar un costo referencial de
+     * transporte - por destino (provincia/cantón/descripción libre, todos combinables) y/o por
+     * peso aproximado con tolerancia (el destino del envío se toma de la dirección registrada
+     * del cliente en gen_persona, no hay campo de destino propio en cxc_transporte_factura).
+     * Devuelve costo_real (flete ya cobrado) y costo_estimado (flete calculado al generar el
+     * envío) para que el vendedor vea cuál es más confiable. Limitado a los 300 más recientes
+     * para no devolver el histórico completo sin acotar cuando la búsqueda es muy amplia.
+     */
+    async consultarTarifas(dtoIn: ConsultarTarifasDto & HeaderParamsDto) {
+        const tienePeso = dtoIn.peso != null && dtoIn.peso > 0 && dtoIn.ide_inuni != null;
+        const tolerancia = dtoIn.tolerancia ?? 30;
+
+        const q = new SelectQuery(`
+            WITH envios AS (
+                SELECT
+                    e.ide_cctfa,
+                    e.ide_cccfa,
+                    f.secuencial_cccfa,
+                    COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) AS fecha_envio,
+                    cl.nom_geper AS cliente,
+                    cl.identificac_geper,
+                    cl.direccion_geper,
+                    prov.nombre_geprov,
+                    cant.nombre_gecant,
+                    t.ide_vgtra,
+                    t.nombre_vgtra,
+                    t.logo_vgtra,
+                    e.total_flete_cctfa AS costo_estimado,
+                    e.total_flete_real_cctfa AS costo_real,
+                    e.flete_pagado_cctfa,
+                    COALESCE(du.detalle_unidades, '[]'::json) AS detalle_unidades,
+                    -- cantidad enviada en la unidad buscada (NULL si no aplica/no tiene) - usada
+                    -- para filtrar por tolerancia y para ordenar por mejor coincidencia primero
+                    du.cantidad_unidad_buscada
+                FROM cxc_transporte_factura e
+                INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
+                INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+                LEFT JOIN gen_provincia prov ON cl.ide_geprov = prov.ide_geprov
+                LEFT JOIN gen_canton cant ON cl.ide_gecant = cant.ide_gecant
+                LEFT JOIN ven_transporte t ON e.ide_vgtra = t.ide_vgtra
+                LEFT JOIN LATERAL (
+                    SELECT
+                        json_agg(
+                            json_build_object(
+                                'ide_inuni', s.ide_inuni, 'unidad', s.siglas_inuni, 'cantidad', s.total
+                            ) ORDER BY s.total DESC
+                        ) AS detalle_unidades,
+                        MAX(s.total) FILTER (WHERE s.ide_inuni = $6::int) AS cantidad_unidad_buscada
+                    FROM (
+                        SELECT
+                            u.ide_inuni,
+                            COALESCE(u.siglas_inuni, 'unid.') AS siglas_inuni,
+                            SUM(d.cantidad_ccdfa) AS total
+                        FROM cxc_deta_factura d
+                        INNER JOIN inv_articulo p ON d.ide_inarti = p.ide_inarti
+                        LEFT JOIN inv_unidad u ON p.ide_inuni = u.ide_inuni
+                        WHERE d.ide_cccfa = e.ide_cccfa
+                          AND p.hace_kardex_inarti = true
+                        GROUP BY u.ide_inuni, COALESCE(u.siglas_inuni, 'unid.')
+                    ) s
+                ) du ON true
+                WHERE e.ide_empr = $1
+                  AND ($2::int IS NULL OR cl.ide_geprov = $2)
+                  AND ($3::int IS NULL OR cl.ide_gecant = $3)
+                  AND ($4::varchar IS NULL OR (
+                        prov.nombre_geprov ILIKE '%' || $4 || '%'
+                        OR cant.nombre_gecant ILIKE '%' || $4 || '%'
+                        OR cl.direccion_geper ILIKE '%' || $4 || '%'
+                    ))
+            )
+            SELECT *
+            FROM envios en
+            WHERE (
+                $5::boolean IS NOT TRUE
+                OR (
+                    en.cantidad_unidad_buscada IS NOT NULL
+                    AND en.cantidad_unidad_buscada BETWEEN $7 * (1 - $8 / 100.0) AND $7 * (1 + $8 / 100.0)
+                )
+            )
+            ORDER BY
+                CASE WHEN $5::boolean IS TRUE THEN ABS(en.cantidad_unidad_buscada - $7) END ASC NULLS LAST,
+                fecha_envio DESC
+            LIMIT 300
+        `, dtoIn);
+        q.addIntParam(1, dtoIn.ideEmpr);
+        q.addParam(2, dtoIn.ide_geprov ?? null);
+        q.addParam(3, dtoIn.ide_gecant ?? null);
+        q.addParam(4, dtoIn.descripcion?.trim() || null);
+        q.addParam(5, tienePeso);
+        q.addParam(6, dtoIn.ide_inuni ?? null);
+        q.addParam(7, dtoIn.peso ?? null);
+        q.addParam(8, tolerancia);
         return this.dataSource.createSelectQuery(q);
     }
 

@@ -14,6 +14,8 @@ import { Public } from 'src/core/auth/decorators/public.decorator';
 import { FilesService } from 'src/core/modules/sistema/files/files.service';
 import { v4 as uuid } from 'uuid';
 
+import { ConsultarTarifasDto } from './dto/consultar-tarifas.dto';
+import { GetEnviosPorTransporteDto } from './dto/get-envios-transporte.dto';
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import {
     CompletarEnvioDto,
@@ -179,9 +181,16 @@ export class TransportesController {
 
     @Get('getEnviosPorTransporte')
     @Auth()
-    @ApiOperation({ summary: 'Envíos ya realizados por un transportista, con detalle de kardex agrupado por unidad y flete - para ver a quién se ha enviado y referenciar costo de envíos similares' })
-    getEnviosPorTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetTarifasByTransporteDto) {
+    @ApiOperation({ summary: 'Envíos ya realizados por un transportista en un rango de fechas, con detalle de kardex agrupado por unidad y flete' })
+    getEnviosPorTransporte(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: GetEnviosPorTransporteDto) {
         return this.service.getEnviosPorTransporte({ ...h, ...dtoIn });
+    }
+
+    @Get('consultarTarifas')
+    @Auth()
+    @ApiOperation({ summary: 'Búsqueda dinámica de envíos ya registrados por destino y/o peso aproximado, para cotizar un costo referencial de transporte' })
+    consultarTarifas(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: ConsultarTarifasDto) {
+        return this.service.consultarTarifas({ ...h, ...dtoIn });
     }
 
     @Post('completarEnvio')
