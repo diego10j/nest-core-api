@@ -645,7 +645,9 @@ export class TransportesService extends BaseService {
      * transporte - por destino (provincia/cantón/descripción libre, al menos uno obligatorio) y/o
      * por peso aproximado (requiere unidad) con tolerancia asimétrica fija (el destino del envío
      * se toma de la dirección registrada del cliente en gen_persona, no hay campo de destino
-     * propio en cxc_transporte_factura). Devuelve costo_real (flete ya cobrado) y costo_estimado
+     * propio en cxc_transporte_factura). Excluye envíos con transporte propio/retiro en sucursal
+     * (es_transporte_propio_cctfa = true) - no representan un costo de flete a un transportista,
+     * así que no sirven como referencia para cotizar uno. Devuelve costo_real (flete ya cobrado) y costo_estimado
      * (flete calculado al generar el envío) para que el vendedor vea cuál es más confiable.
      * Limitado a los 300 más recientes para no devolver el histórico completo sin acotar cuando
      * la búsqueda es muy amplia. Cuando se busca por peso+unidad y hay más de 10 resultados, se
@@ -714,6 +716,7 @@ export class TransportesService extends BaseService {
                     ) s
                 ) du ON true
                 WHERE e.ide_empr = $1
+                  AND e.es_transporte_propio_cctfa = false
                   AND ($2::int IS NULL OR cl.ide_geprov = $2)
                   AND ($3::int IS NULL OR cl.ide_gecant = $3)
                   AND ($4::varchar IS NULL OR (
