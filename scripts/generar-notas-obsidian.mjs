@@ -50,6 +50,9 @@ async function main() {
   const client = new Client({
     host: process.env.PGHOST || '/var/run/postgresql',
     database: process.env.PGDATABASE || 'sigafi_dbo',
+    port: process.env.PGPORT ? Number(process.env.PGPORT) : 5432,
+    user: process.env.PGUSER,
+    password: process.env.PGPASSWORD,
     connectionTimeoutMillis: 10000,
   });
   await client.connect();
