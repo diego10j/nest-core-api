@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
 import { CxcTransaccionesSaveService } from './cxc-transacciones-save.service';
 import { CxcTransaccionesService } from './cxc-transacciones.service';
@@ -48,6 +49,15 @@ export class CxcTransaccionesController {
         @Query() dto: GetFacturasPendientesClienteDto,
     ) {
         return this.service.getFacturasPendientesCliente({ ...h, ...dto });
+    }
+
+    @Get('getChequesDiferidosPorCobrar')
+    @ApiOperation({ summary: 'Reporte de cheques diferidos (posfechados) de clientes: fecha de entrega, fecha efectiva, fecha real de depósito y estado' })
+    getChequesDiferidosPorCobrar(
+        @AppHeaders() h: HeaderParamsDto,
+        @Query() dto: RangoFechasDto,
+    ) {
+        return this.service.getChequesDiferidosPorCobrar({ ...h, ...dto });
     }
 
     @Post('savePagoMultipleCxC')

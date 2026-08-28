@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
@@ -8,6 +9,10 @@ import { CoreService } from 'src/core/core.service';
 import { GetFacturaCxCDto } from './dto/get-factura-cxc.dto';
 import { GetFacturasPendientesClienteDto } from './dto/get-facturas-pendientes-cliente.dto';
 import { GetTiposTransaccionPositivoDto } from './dto/get-tipos-transaccion-positivo.dto';
+
+/** Tipo de transacción bancaria "cheque posfechado" CxC (legacy: ide_tettb === 13) - mismo
+ * criterio hardcodeado que CxcTransaccionesSaveService.IDE_TETTB_CHEQUE_POSFECHADO_CXC. */
+const IDE_TETTB_CHEQUE_POSFECHADO_CXC = 13;
 
 @Injectable()
 export class CxcTransaccionesService extends BaseService {
@@ -187,6 +192,64 @@ export class CxcTransaccionesService extends BaseService {
         query.addIntParam(2, ideGeper);
         query.addIntParam(3, dtoIn.ideSucu);
         return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
+     * Reporte "Cheques Diferidos por Cobrar": cheques posfechados de clientes en un rango de
+     * fechas con sus 3 fechas relevantes - entrega (fecha_trans_teclb), efectiva/vencimiento
+     * (fec_cam_est_teclb) y depósito real (fecha_tedca del Depósito de Caja que lo cubrió, si
+     * ya se completó) - y su estado (Pendiente/Vencido/En depósito/Depositado/Devuelto).
+     * Enlaza con Depósito de Caja vía tes_det_deposito_caja_mov (FK única por ide_teclb).
+     */
+    async getChequesDiferidosPorCobrar(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                a.ide_teclb,
+                a.numero_teclb AS numero_comprobante,
+                a.num_comprobante_teclb AS num_cuenta_cheque,
+                a.fecha_trans_teclb AS fecha_entrega,
+                a.fec_cam_est_teclb AS fecha_efectiva,
+                a.valor_teclb AS valor,
+                a.beneficiari_teclb AS cliente,
+                a.observacion_teclb AS observacion,
+                cb.nombre_tecba AS caja,
+                tb.nombre_teban AS banco_cheque,
+                a.depositado_teclb,
+                a.devuelto_teclb,
+                dc.ide_tedca,
+                dc.completado_tedca,
+                dc.fecha_tedca AS fecha_deposito_real,
+                dc.numero_tedca AS numero_deposito,
+                CASE
+                    WHEN a.devuelto_teclb THEN 'Devuelto'
+                    WHEN dc.completado_tedca THEN 'Depositado'
+                    WHEN dc.ide_tedca IS NOT NULL THEN 'En depósito'
+                    WHEN a.fec_cam_est_teclb < CURRENT_DATE THEN 'Vencido'
+                    ELSE 'Pendiente'
+                END AS estado,
+                CASE
+                    WHEN a.devuelto_teclb THEN 'error'
+                    WHEN dc.completado_tedca THEN 'success'
+                    WHEN dc.ide_tedca IS NOT NULL THEN 'info'
+                    WHEN a.fec_cam_est_teclb < CURRENT_DATE THEN 'warning'
+                    ELSE 'default'
+                END AS color_estado
+            FROM tes_cab_libr_banc a
+            INNER JOIN tes_cuenta_banco cb ON cb.ide_tecba = a.ide_tecba
+            LEFT JOIN tes_banco tb ON tb.ide_teban = a.ide_teban
+            LEFT JOIN tes_det_deposito_caja_mov ddm ON ddm.ide_teclb = a.ide_teclb
+            LEFT JOIN tes_cab_deposito_caja dc ON dc.ide_tedca = ddm.ide_tedca
+            WHERE a.ide_tettb = ${IDE_TETTB_CHEQUE_POSFECHADO_CXC}
+              AND a.ide_empr = $1
+              AND a.ide_sucu = $2
+              AND a.fecha_trans_teclb BETWEEN $3 AND $4
+            ORDER BY a.fec_cam_est_teclb
+        `);
+        query.addIntParam(1, dtoIn.ideEmpr);
+        query.addIntParam(2, dtoIn.ideSucu);
+        query.addParam(3, dtoIn.fechaInicio);
+        query.addParam(4, dtoIn.fechaFin);
+        return this.dataSource.createQuery(query);
     }
 
 }

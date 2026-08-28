@@ -105,6 +105,8 @@ export class BancosSaveService extends BaseService {
             porcentaje_retencion_renta_tecba: dtoIn.porcentajeRetencionRentaTecba ?? 0,
             ide_tecba_destino_acredit: dtoIn.ideTecbaDestinoAcredit ?? null,
             ide_geper_comision_tecba: dtoIn.ideGeperComisionTecba ?? null,
+            comision_cheque_devuelto_tecba: dtoIn.comisionChequeDevueltoTecba ?? null,
+            iva_comision_cheque_tecba: dtoIn.ivaComisionChequeTecba ?? true,
         };
 
         if (isUpdate) {

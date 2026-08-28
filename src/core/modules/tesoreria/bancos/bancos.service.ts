@@ -110,7 +110,9 @@ export class BancosService extends BaseService {
                 b.foto_teban,
                 b.es_tarjeta_teban,
                 cb.porcentaje_comision_tecba,
-                cb.permite_diferido_tecba
+                cb.permite_diferido_tecba,
+                cb.comision_cheque_devuelto_tecba,
+                cb.iva_comision_cheque_tecba
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             LEFT JOIN con_det_plan_cuen cta ON cta.ide_cndpc = cb.ide_cndpc
@@ -172,7 +174,9 @@ export class BancosService extends BaseService {
                 cbd.nombre_tecba AS nombre_tecba_destino_acredit,
                 cb.ide_geper_comision_tecba,
                 p.nom_geper AS nom_geper_comision_tecba,
-                p.identificac_geper AS identificac_geper_comision_tecba
+                p.identificac_geper AS identificac_geper_comision_tecba,
+                cb.comision_cheque_devuelto_tecba,
+                cb.iva_comision_cheque_tecba
             FROM tes_cuenta_banco cb
             LEFT JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = cb.ide_tecba_destino_acredit

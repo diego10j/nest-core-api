@@ -94,4 +94,19 @@ export class SaveCuentaBancoDto {
     @IsInt()
     @IsOptional()
     ideGeperComisionTecba?: number;
+
+    // ── Configuración de comisión por cheque devuelto (sólo aplica a cuentas con
+    // hace_cheque_tecba) ─────────────────────────────────────────────────────
+
+    /** Valor por defecto que este banco cobra por cada cheque devuelto - se prellena
+     * (editable) al registrar la devolución. */
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    comisionChequeDevueltoTecba?: number;
+
+    /** Si la comisión por cheque devuelto de este banco causa IVA. */
+    @IsBoolean()
+    @IsOptional()
+    ivaComisionChequeTecba?: boolean;
 }

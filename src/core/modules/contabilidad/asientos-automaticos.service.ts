@@ -88,6 +88,41 @@ export interface AsientoRetencionTarjetaResult {
     advertencias: string[];
 }
 
+export interface GenerarAsientoComisionChequeDevueltoDto {
+    /** Movimiento de la comisión ya creado en tes_cab_libr_banc (cuenta bancaria real que el banco debitó) */
+    ideTeclb: number;
+    fecha: string;
+    /** FK → tes_cuenta_banco (cuenta bancaria real debitada por el banco) */
+    ideTecba: number;
+    valorComision: number;
+    valorIvaComision: number;
+    observacion: string;
+}
+
+export interface AsientoComisionChequeDevueltoResult {
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    banco_encontrado: boolean;
+    advertencias: string[];
+}
+
+export interface GenerarAsientoCargoClienteChequeDevueltoDto {
+    fecha: string;
+    ideGeper: number;
+    valorComision: number;
+    valorIvaComision: number;
+    observacion: string;
+}
+
+export interface AsientoCargoClienteChequeDevueltoResult {
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    cliente_encontrado: boolean;
+    advertencias: string[];
+}
+
 export interface GenerarAsientoComprasCxPDto {
     ide_cpcfa: number;
 }
@@ -686,6 +721,205 @@ export class AsientosAutomaticosService extends BaseService {
             return {
                 generado: false,
                 banco_encontrado: ideCndpcBanco != null,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Genera el asiento contable de la comisión que el banco nos debitó por un cheque de
+     * cliente devuelto (fondos insuficientes, firma no autorizada, etc.) - lado "gasto":
+     *
+     *   CUENTA                                          DEBE    HABER
+     *   Gasto Comisión Cheque Devuelto (config)           X
+     *   IVA Compras Comisión Cheque Devuelto (config)     X      (si valorIvaComision > 0)
+     *   Cuenta bancaria (tes_cuenta_banco.ide_cndpc)               X
+     *
+     * Los nombres de cuenta se resuelven vía con_cab_conf_asie (mismo mecanismo ya usado por
+     * generarAsientoRetencionTarjeta) - si no están configurados, se genera igual con
+     * ide_cndpc=0 y advertencia (mismo criterio tolerante que el resto del motor).
+     */
+    async generarAsientoComisionChequeDevuelto(
+        dtoIn: GenerarAsientoComisionChequeDevueltoDto & HeaderParamsDto,
+    ): Promise<AsientoComisionChequeDevueltoResult> {
+        const advertencias: string[] = [];
+
+        const ctaBancoQuery = new SelectQuery(`
+            SELECT ide_cndpc FROM tes_cuenta_banco WHERE ide_tecba = $1 LIMIT 1
+        `);
+        ctaBancoQuery.addIntParam(1, dtoIn.ideTecba);
+        const ctaBancoRow = await this.dataSource.createSingleQuery(ctaBancoQuery);
+        const ideCndpcBanco = ctaBancoRow?.ide_cndpc ?? null;
+        if (!ideCndpcBanco) {
+            advertencias.push('Cuenta contable de la cuenta bancaria no configurada en tes_cuenta_banco');
+        }
+
+        const valorComision = Number((dtoIn.valorComision || 0).toFixed(2));
+        const valorIva = Number((dtoIn.valorIvaComision || 0).toFixed(2));
+        if (valorComision <= 0) {
+            return {
+                generado: false,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias: [...advertencias, 'El valor de la comisión debe ser mayor a 0'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [];
+
+        const cuentaGasto = await this.buscarCuentaConfig('GASTO COMISION CHEQUE DEVUELTO', {}, dtoIn.ideSucu);
+        if (!cuentaGasto) advertencias.push('Cuenta GASTO COMISION CHEQUE DEVUELTO no configurada');
+        detallesAsiento.push({
+            ide_cnlap: this.lugarDebe, ide_cndpc: cuentaGasto ?? 0, valor_cndcc: valorComision,
+            observacion_cndcc: 'GASTO COMISION CHEQUE DEVUELTO',
+        });
+
+        if (valorIva > 0) {
+            const cuentaIva = await this.buscarCuentaConfig('IVA COMPRAS COMISION CHEQUE DEVUELTO', {}, dtoIn.ideSucu);
+            if (!cuentaIva) advertencias.push('Cuenta IVA COMPRAS COMISION CHEQUE DEVUELTO no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuentaIva ?? 0, valor_cndcc: valorIva,
+                observacion_cndcc: 'IVA COMPRAS COMISION CHEQUE DEVUELTO',
+            });
+        }
+
+        detallesAsiento.push({
+            ide_cnlap: this.lugarHaber,
+            ide_cndpc: ideCndpcBanco ?? 0,
+            valor_cndcc: Number((valorComision + valorIva).toFixed(2)),
+            observacion_cndcc: 'BANCO (COMISION CHEQUE DEVUELTO)',
+        });
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const result = await this.comprobanteService.saveAutomatico({
+                ...dtoIn,
+                ...saveDto,
+            } as any);
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2`,
+                [ideCnccc, dtoIn.ideTeclb],
+            );
+
+            return {
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de comisión de cheque devuelto para ide_teclb=${dtoIn.ideTeclb}: ${error}`);
+            return {
+                generado: false,
+                banco_encontrado: ideCndpcBanco != null,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    /**
+     * Genera el asiento contable del cargo interno a un cliente por la comisión (+ IVA) de un
+     * cheque suyo devuelto - lado "cobro al cliente", espejo del anterior:
+     *
+     *   CUENTA                                          DEBE    HABER
+     *   Cliente (cuenta por cobrar, config)               X
+     *   Ingreso Comisión Cobrada a Cliente (config)               X
+     *   IVA en Ventas (config, ya usado en el resto del motor)    X  (si valorIvaComision > 0)
+     *
+     * No requiere factura (cargo directo vía cxc_cabece_transa/cxc_detall_transa, ide_cccfa NULL -
+     * mismo patrón ya usado para "saldo a favor" en CxcTransaccionesSaveService.saveCobroCxC).
+     */
+    async generarAsientoCargoClienteChequeDevuelto(
+        dtoIn: GenerarAsientoCargoClienteChequeDevueltoDto & HeaderParamsDto,
+    ): Promise<AsientoCargoClienteChequeDevueltoResult> {
+        const advertencias: string[] = [];
+
+        const ideCndpcCliente = await this.getCuentaPersona('CUENTA POR COBRAR', dtoIn.ideGeper, dtoIn.ideEmpr, dtoIn.ideSucu);
+        if (!ideCndpcCliente) {
+            advertencias.push('Cuenta por cobrar del cliente no configurada en con_det_conf_asie');
+        }
+
+        const valorComision = Number((dtoIn.valorComision || 0).toFixed(2));
+        const valorIva = Number((dtoIn.valorIvaComision || 0).toFixed(2));
+        if (valorComision <= 0) {
+            return {
+                generado: false,
+                cliente_encontrado: ideCndpcCliente != null,
+                advertencias: [...advertencias, 'El valor de la comisión debe ser mayor a 0'],
+            };
+        }
+
+        const detallesAsiento: Array<{
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+        }> = [
+            {
+                ide_cnlap: this.lugarDebe,
+                ide_cndpc: ideCndpcCliente ?? 0,
+                valor_cndcc: Number((valorComision + valorIva).toFixed(2)),
+                observacion_cndcc: 'CUENTA POR COBRAR (COMISION CHEQUE DEVUELTO)',
+            },
+        ];
+
+        const cuentaIngreso = await this.buscarCuentaConfig('INGRESO COMISION COBRADA A CLIENTE', {}, dtoIn.ideSucu);
+        if (!cuentaIngreso) advertencias.push('Cuenta INGRESO COMISION COBRADA A CLIENTE no configurada');
+        detallesAsiento.push({
+            ide_cnlap: this.lugarHaber, ide_cndpc: cuentaIngreso ?? 0, valor_cndcc: valorComision,
+            observacion_cndcc: 'INGRESO COMISION COBRADA A CLIENTE',
+        });
+
+        if (valorIva > 0) {
+            const cuentaIva = await this.buscarCuentaConfig('IVA EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuentaIva) advertencias.push('Cuenta IVA EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuentaIva ?? 0, valor_cndcc: valorIva,
+                observacion_cndcc: 'IVA EN VENTAS (COMISION CHEQUE DEVUELTO)',
+            });
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: dtoIn.ideGeper,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: detallesAsiento,
+        } as SaveComprobanteDto;
+
+        try {
+            const result = await this.comprobanteService.saveAutomatico({
+                ...dtoIn,
+                ...saveDto,
+            } as any);
+
+            return {
+                ide_cnccc: result.ide_cnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                cliente_encontrado: ideCndpcCliente != null,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de cargo al cliente por cheque devuelto (ide_geper=${dtoIn.ideGeper}): ${error}`);
+            return {
+                generado: false,
+                cliente_encontrado: ideCndpcCliente != null,
                 advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
             };
         }
