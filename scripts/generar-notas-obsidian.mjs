@@ -8,9 +8,14 @@
  * Uso — reutiliza la MISMA conexión que ya usa la app (DB_URL_POOL de nest-core-api/.env),
  * no hace falta un usuario ni un archivo de configuración aparte:
  *
- *   OUT_DIR=/ruta/al/vault/_Schema-Completo node --env-file=.env scripts/generar-notas-obsidian.mjs
+ *   yarn schema:notas
  *
- * (con `yarn schema:notas` ya está armado así - ver package.json)
+ * (armado así en package.json - node --env-file=.env scripts/generar-notas-obsidian.mjs)
+ *
+ * El destino (OUT_DIR) queda quemado al path real del servidor donde corre siempre este
+ * script - ver DEFAULT_OUT_DIR más abajo. Si alguna vez hace falta correrlo apuntando a
+ * otro lado (ej. de prueba en otra máquina), pasar OUT_DIR=/otra/ruta explícito, que tiene
+ * prioridad sobre el default.
  *
  * Variables de entorno:
  *   DB_URL_POOL default: la que ya está en .env (postgresql://user:pass@host/db) - se
@@ -18,8 +23,7 @@
  *   PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD - alternativa si no hay DB_URL_POOL
  *               (ej. para correr fuera del servidor). Si DB_URL_POOL está seteada, tiene
  *               prioridad y estas se ignoran.
- *   OUT_DIR     obligatorio en la práctica (no hay forma de adivinar dónde está el vault
- *               en cada máquina) - ruta a la carpeta _Schema-Completo/ del vault.
+ *   OUT_DIR     opcional - sobreescribe DEFAULT_OUT_DIR (ver abajo) si se pasa.
  *   AUTO_COMMIT default: "true" - si el OUT_DIR es parte de un repo git, hace
  *               add+commit+push automático al terminar (poner "false" para desactivar)
  */
@@ -28,10 +32,11 @@ import { Client } from 'pg';
 import { writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = resolve(process.env.OUT_DIR || join(__dirname, '..', '..', 'erp-knowledge', '_Schema-Completo'));
+// Path fijo del servidor Debian donde siempre corre este script (no asumido por posición
+// relativa - la estructura real es /proerp/nest-core-api/nest-core-api/, no hermanos).
+const DEFAULT_OUT_DIR = '/proerp/erp-knowledge-work/_Schema-Completo';
+const OUT_DIR = resolve(process.env.OUT_DIR || DEFAULT_OUT_DIR);
 const GLOSARIO_DIR = process.env.GLOSARIO_DIR || join(dirname(OUT_DIR), '_Glosario-Tablas');
 const SCHEMA = process.env.PGSCHEMA || 'public';
 const AUTO_COMMIT = (process.env.AUTO_COMMIT ?? 'true') === 'true';
