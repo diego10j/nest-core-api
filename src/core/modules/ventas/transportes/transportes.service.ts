@@ -577,6 +577,9 @@ export class TransportesService extends BaseService {
                 e.fecha_envio_cctfa,
                 cl.nom_geper AS cliente,
                 cl.identificac_geper,
+                cl.direccion_geper,
+                prov.nombre_geprov,
+                cant.nombre_gecant,
                 ee.nombre_cceen AS estado_envio,
                 ee.color_cceen,
                 e.total_flete_cctfa,
@@ -586,6 +589,8 @@ export class TransportesService extends BaseService {
             FROM cxc_transporte_factura e
             INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN gen_persona cl ON f.ide_geper = cl.ide_geper
+            LEFT JOIN gen_provincia prov ON cl.ide_geprov = prov.ide_geprov
+            LEFT JOIN gen_canton cant ON cl.ide_gecant = cant.ide_gecant
             LEFT JOIN cxc_estado_envio ee ON e.ide_cceen = ee.ide_cceen
             LEFT JOIN LATERAL (
                 SELECT json_agg(
