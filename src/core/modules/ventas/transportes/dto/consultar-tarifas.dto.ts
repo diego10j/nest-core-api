@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 /**
@@ -32,11 +32,4 @@ export class ConsultarTarifasDto extends QueryOptionsDto {
     @IsInt()
     @IsOptional()
     ide_inuni?: number;
-
-    /** Tolerancia en % sobre el peso buscado (default 30) */
-    @IsNumber()
-    @Min(0)
-    @Max(200)
-    @IsOptional()
-    tolerancia?: number;
 }

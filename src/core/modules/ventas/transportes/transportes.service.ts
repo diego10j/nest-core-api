@@ -5,17 +5,34 @@ import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { GptService } from 'src/core/integration/gpt/gpt.service';
 
 import { ConsultarTarifasDto } from './dto/consultar-tarifas.dto';
 import { GetEnviosPorTransporteDto } from './dto/get-envios-transporte.dto';
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
 import { GetFacturasParaRutaDto, GetRutasDto } from './dto/save-transporte.dto';
 
+/** Resumen generado por IA sobre un lote de tarifas históricas para un peso buscado -
+ * ver `TransportesService.analizarTarifasConIA`. */
+export type ResumenTarifasIA = {
+    resumen: string;
+    sugerenciaPrecio: number | null;
+    criterio: string;
+    confianza: 'alta' | 'media' | 'baja';
+};
+
+// Tolerancia asimétrica fija sobre el peso buscado (no configurable por el usuario): los envíos
+// reales rara vez pesan exactamente lo cotizado y suelen sesgarse levemente hacia arriba
+// (empaque, redondeo de báscula), de ahí el rango -30% / +35% en vez de un ±30% simétrico.
+const TOLERANCIA_INFERIOR_PCT = 30;
+const TOLERANCIA_SUPERIOR_PCT = 35;
+
 @Injectable()
 export class TransportesService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly gptService: GptService,
     ) {
         super();
     }
@@ -625,16 +642,25 @@ export class TransportesService extends BaseService {
     /**
      * "Consultar Tarifas": búsqueda dinámica sobre los envíos YA REGISTRADOS (histórico real,
      * no la tarifa de catálogo) para que un vendedor pueda cotizar un costo referencial de
-     * transporte - por destino (provincia/cantón/descripción libre, todos combinables) y/o por
-     * peso aproximado con tolerancia (el destino del envío se toma de la dirección registrada
-     * del cliente en gen_persona, no hay campo de destino propio en cxc_transporte_factura).
-     * Devuelve costo_real (flete ya cobrado) y costo_estimado (flete calculado al generar el
-     * envío) para que el vendedor vea cuál es más confiable. Limitado a los 300 más recientes
-     * para no devolver el histórico completo sin acotar cuando la búsqueda es muy amplia.
+     * transporte - por destino (provincia/cantón/descripción libre, al menos uno obligatorio) y/o
+     * por peso aproximado (requiere unidad) con tolerancia asimétrica fija (el destino del envío
+     * se toma de la dirección registrada del cliente en gen_persona, no hay campo de destino
+     * propio en cxc_transporte_factura). Devuelve costo_real (flete ya cobrado) y costo_estimado
+     * (flete calculado al generar el envío) para que el vendedor vea cuál es más confiable.
+     * Limitado a los 300 más recientes para no devolver el histórico completo sin acotar cuando
+     * la búsqueda es muy amplia. Cuando se busca por peso+unidad y hay más de 10 resultados, se
+     * agrega un resumen generado por IA (ver `analizarTarifasConIA`).
      */
     async consultarTarifas(dtoIn: ConsultarTarifasDto & HeaderParamsDto) {
+        if (!dtoIn.ide_geprov && !dtoIn.ide_gecant && !dtoIn.descripcion?.trim()) {
+            throw new BadRequestException(
+                'Debe especificar al menos un filtro de destino: provincia, cantón o descripción.',
+            );
+        }
+        if ((dtoIn.peso != null) !== (dtoIn.ide_inuni != null)) {
+            throw new BadRequestException('Para buscar por peso debe indicar también la unidad de medida.');
+        }
         const tienePeso = dtoIn.peso != null && dtoIn.peso > 0 && dtoIn.ide_inuni != null;
-        const tolerancia = dtoIn.tolerancia ?? 30;
 
         const q = new SelectQuery(`
             WITH envios AS (
@@ -700,12 +726,12 @@ export class TransportesService extends BaseService {
                 $5::boolean IS NOT TRUE
                 OR (
                     en.cantidad_unidad_buscada IS NOT NULL
-                    AND en.cantidad_unidad_buscada BETWEEN $7 * (1 - $8 / 100.0) AND $7 * (1 + $8 / 100.0)
+                    AND en.cantidad_unidad_buscada
+                        BETWEEN $7 * (1 - ${TOLERANCIA_INFERIOR_PCT} / 100.0)
+                        AND $7 * (1 + ${TOLERANCIA_SUPERIOR_PCT} / 100.0)
                 )
             )
-            ORDER BY
-                CASE WHEN $5::boolean IS TRUE THEN ABS(en.cantidad_unidad_buscada - $7) END ASC NULLS LAST,
-                fecha_envio DESC
+            ORDER BY fecha_envio DESC
             LIMIT 300
         `, dtoIn);
         q.addIntParam(1, dtoIn.ideEmpr);
@@ -715,8 +741,67 @@ export class TransportesService extends BaseService {
         q.addParam(5, tienePeso);
         q.addParam(6, dtoIn.ide_inuni ?? null);
         q.addParam(7, dtoIn.peso ?? null);
-        q.addParam(8, tolerancia);
-        return this.dataSource.createSelectQuery(q);
+        const rows = await this.dataSource.createSelectQuery(q);
+
+        const resumenIA =
+            tienePeso && Array.isArray(rows) && rows.length > 10
+                ? await this.analizarTarifasConIA(rows, dtoIn.peso as number, dtoIn.ide_inuni as number)
+                : null;
+
+        return { rows, resumenIA };
+    }
+
+    /**
+     * Genera, con IA, un resumen en criterio experto del comportamiento de precios para el peso
+     * buscado y, si detecta un patrón definido (envíos con peso y costo consistentes), sugiere un
+     * precio referencial único. Si los datos son dispersos o no hay suficiente consistencia,
+     * `sugerenciaPrecio` viene en null en vez de inventar un número - nunca debe romper la
+     * búsqueda principal (si OpenAI falla, se retorna null y el usuario solo ve los resultados).
+     */
+    private async analizarTarifasConIA(
+        rows: any[],
+        peso: number,
+        ideInuni: number,
+    ): Promise<ResumenTarifasIA | null> {
+        try {
+            const unidad =
+                rows
+                    .flatMap((r) => r.detalle_unidades ?? [])
+                    .find((d: any) => d.ide_inuni === ideInuni)?.unidad ?? 'unidades';
+
+            const muestra = rows.slice(0, 150).map((r) => ({
+                peso: r.cantidad_unidad_buscada,
+                costo_real: r.costo_real,
+                costo_estimado: r.costo_estimado,
+                fecha: r.fecha_envio,
+                transporte: r.nombre_vgtra,
+            }));
+
+            const prompt = `Eres un analista de logística de una empresa ecuatoriana, experto en fletes de transporte terrestre.
+Se te entrega un listado de envíos históricos reales para un peso buscado de ${peso} ${unidad}, cada uno con el peso realmente enviado (similar al buscado), el costo real cobrado (o estimado si no hay real), el transportista y la fecha.
+
+Tu tarea:
+1. Redacta un resumen breve (2 a 4 frases, en español, tono profesional para un vendedor interno) sobre el comportamiento de precios para ese peso aproximado: rango típico, si varía mucho por transportista, si hay tendencia reciente, etc.
+2. Si detectas un patrón claro y consistente (varios envíos de peso y costo similares, sin dispersión relevante), sugiere un precio referencial único en "sugerenciaPrecio".
+3. Si los datos son dispersos, contradictorios o insuficientes para un patrón confiable, deja "sugerenciaPrecio" en null y explica el motivo en "criterio" - nunca inventes un precio sin respaldo en los datos.
+4. "confianza" refleja qué tan sólido es el patrón encontrado ("alta" = muy consistente, "media" = razonable pero con dispersión, "baja" = poco confiable o sin datos suficientes).
+
+Responde EXCLUSIVAMENTE en JSON con esta forma exacta:
+{"resumen": string, "sugerenciaPrecio": number|null, "criterio": string, "confianza": "alta"|"media"|"baja"}`;
+
+            const result = await this.gptService.parseTextToJson(prompt, JSON.stringify(muestra));
+
+            return {
+                resumen: String(result?.resumen ?? ''),
+                sugerenciaPrecio: result?.sugerenciaPrecio != null ? Number(result.sugerenciaPrecio) : null,
+                criterio: String(result?.criterio ?? ''),
+                confianza: (['alta', 'media', 'baja'] as const).includes(result?.confianza)
+                    ? result.confianza
+                    : 'media',
+            };
+        } catch {
+            return null;
+        }
     }
 
     async getFacturasSinEnvio(dtoIn: QueryOptionsDto & HeaderParamsDto) {

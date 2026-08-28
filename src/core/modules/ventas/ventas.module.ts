@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
+import { IntegrationModule } from '../../integration/integration.module';
 import { WhatsappModule } from '../../whatsapp/whatsapp.module';
 import { WhatsappService } from '../../whatsapp/whatsapp.service';
 import { AuditService } from '../audit/audit.service';
@@ -35,7 +36,7 @@ import { TransportesController } from './transportes/transportes.controller';
 import { TransportesService } from './transportes/transportes.service';
 
 @Module({
-  imports: [ConfigModule, WhatsappModule, SriModule, FilesModule, ContabilidadModule],
+  imports: [ConfigModule, WhatsappModule, SriModule, FilesModule, ContabilidadModule, IntegrationModule],
   controllers: [
     ClientesController,
     FacturasController,
