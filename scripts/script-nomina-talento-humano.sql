@@ -33,6 +33,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_gth_empleado_geper ON public.gth_empleado(i
 ALTER TABLE public.gen_empleados_departamento_par
     ADD COLUMN IF NOT EXISTS ide_gtcar int REFERENCES public.gth_cargo(ide_gtcar);
 
+-- gth_empleado.foto_gtemp / firma_gtemp — columnas de nombre de archivo (mismo patrón
+-- que gen_persona.foto_geper: string + servidas por /api/sistema/files/image/{archivo}),
+-- NO bytea. Las columnas existentes path_foto_gtemp/path_firma_gtemp (bytea) quedan sin
+-- usar por decisión del usuario — no se tocan ni se borran, simplemente no se leen/escriben.
+ALTER TABLE public.gth_empleado
+    ADD COLUMN IF NOT EXISTS foto_gtemp varchar(255),
+    ADD COLUMN IF NOT EXISTS firma_gtemp varchar(255);
+
 -- 1) nrh_detalle_rol — línea calculada y congelada por empleado+rubro+rol
 CREATE TABLE IF NOT EXISTS public.nrh_detalle_rol (
     ide_nrdro           int PRIMARY KEY,

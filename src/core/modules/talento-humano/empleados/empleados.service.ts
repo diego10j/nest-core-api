@@ -36,6 +36,8 @@ const GTH_EMPLEADO_COLUMNS = new Set([
     'separacion_bienes_gtemp',
     'discapacitado_gtemp',
     'acumula_decimo_gtemp',
+    'foto_gtemp',
+    'firma_gtemp',
 ]);
 
 const REQUIRED_ON_CREATE = [
@@ -59,7 +61,9 @@ export class EmpleadosService {
     ) { }
 
     /**
-     * Lista empleados (gth_empleado + datos de contacto de gen_persona).
+     * Lista empleados (gth_empleado + contacto de gen_persona + cargo vigente).
+     * Trae todo de una vez (SelectQuery con lazy=false, sin paginación server-side):
+     * el grid de empleados pagina y busca en el cliente.
      */
     async getEmpleados(dtoIn: GetEmpleadosDto & HeaderParamsDto) {
         try {
@@ -73,12 +77,12 @@ export class EmpleadosService {
                 params.push(dtoIn.activo === 'true');
             }
 
-            const query = new SelectQuery(
-                `
+            const query = new SelectQuery(`
                 SELECT
                     e.ide_gtemp,
                     e.ide_geper,
                     p.uuid,
+                    e.foto_gtemp,
                     p.correo_geper,
                     p.telefono_geper,
                     p.movil_geper,
@@ -92,16 +96,24 @@ export class EmpleadosService {
                     e.tarjeta_marcacion_gtemp,
                     e.cargo_publico_gtemp,
                     e.acumula_decimo_gtemp,
-                    e.activo_gtemp
+                    e.activo_gtemp,
+                    puesto.cargo
                 FROM gth_empleado e
                 INNER JOIN gen_persona p ON p.ide_geper = e.ide_geper
+                LEFT JOIN LATERAL (
+                    SELECT c.detalle_gtcar AS cargo
+                    FROM gen_empleados_departamento_par ged
+                    LEFT JOIN gth_cargo c ON c.ide_gtcar = ged.ide_gtcar
+                    WHERE ged.ide_gtemp = e.ide_gtemp AND ged.activo_geedp = true
+                    ORDER BY ged.ide_geedp DESC
+                    LIMIT 1
+                ) puesto ON true
                 WHERE ${conditions.join(' AND ')}
                 ORDER BY e.apellido_paterno_gtemp, e.primer_nombre_gtemp
-                `,
-                dtoIn,
-            );
+            `);
+            query.setLazy(false);
             params.forEach((val, i) => query.addParam(i + 1, val));
-            return this.dataSource.createQuery(query, 'gth_empleado');
+            return this.dataSource.createSelectQuery(query);
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
@@ -219,44 +231,49 @@ export class EmpleadosService {
                 return { message: 'ok', rowCount: listQuery.length, ide_gtemp: ideGtemp, ide_geper: ideGeper };
             }
 
-            // Crear: validar campos mínimos requeridos por gth_empleado
+            // Crear: la persona debe elegirse ANTES (SearchPersona en el frontend) —
+            // gth_empleado nunca crea una gen_persona nueva, solo se asocia a una que
+            // ya existe. ide_geper es obligatorio.
+            if (!data.ide_geper) {
+                throw new BadRequestException(
+                    'Debe seleccionar la persona (gen_persona) a la que se asociará el empleado',
+                );
+            }
             for (const field of REQUIRED_ON_CREATE) {
                 if (empleadoData[field] === undefined || empleadoData[field] === null) {
                     throw new BadRequestException(`El campo ${field} es requerido para crear un empleado`);
                 }
             }
 
-            const ideGeper = await this.dataSource.getSeqTable('gen_persona', 'ide_geper', 1, dtoIn.login);
-            const ideGtemp = await this.dataSource.getSeqTable('gth_empleado', 'ide_gtemp', 1, dtoIn.login);
+            const ideGeper = Number(data.ide_geper);
 
-            const nombreCompleto = [
-                empleadoData.primer_nombre_gtemp,
-                empleadoData.segundo_nombre_gtemp,
-                empleadoData.apellido_paterno_gtemp,
-                empleadoData.apellido_materno_gtemp,
-            ]
-                .filter(Boolean)
-                .join(' ');
+            const personaExistente = await this.getPersonaParaAsociar(ideGeper, dtoIn.ideEmpr);
+            if (!personaExistente) {
+                throw new BadRequestException('La persona seleccionada no existe o no pertenece a esta empresa');
+            }
+            if (personaExistente.ide_gtemp) {
+                throw new BadRequestException('Esta persona ya está registrada como empleado');
+            }
+
+            const ideGtemp = await this.dataSource.getSeqTable('gth_empleado', 'ide_gtemp', 1, dtoIn.login);
 
             const listQuery: ObjectQueryDto[] = [
                 {
-                    operation: 'insert',
+                    // Nunca se crea gen_persona acá: solo se marca es_empleado_geper=true
+                    // sobre la persona ya existente y elegida, más los datos de contacto
+                    // que se hayan editado en el formulario (si los hay).
+                    operation: 'update',
                     module: 'gen',
                     tableName: 'persona',
                     primaryKey: 'ide_geper',
                     object: {
-                        nom_geper: nombreCompleto,
-                        identificac_geper: empleadoData.documento_identidad_gtemp,
                         es_empleado_geper: true,
-                        activo_geper: true,
-                        nivel_geper: 'HIJO',
                         ...personaData,
-                        ide_geper: ideGeper,
-                        ide_empr: dtoIn.ideEmpr,
-                        usuario_ingre: dtoIn.login,
-                        fecha_ingre: getCurrentDate(),
-                        hora_ingre: getCurrentTime(),
+                        usuario_actua: dtoIn.login,
+                        fecha_actua: getCurrentDate(),
+                        hora_actua: getCurrentTime(),
                     },
+                    condition: `ide_geper = ${ideGeper}`,
                 },
                 {
                     operation: 'insert',
@@ -283,6 +300,27 @@ export class EmpleadosService {
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar el empleado: ${msg}`);
         }
+    }
+
+    /**
+     * Verifica que la persona exista en esta empresa y si ya tiene un empleado asociado
+     * (gth_empleado.ide_geper es único — ver script-nomina-talento-humano.sql).
+     */
+    private async getPersonaParaAsociar(
+        ideGeper: number,
+        ideEmpr: number,
+    ): Promise<{ ide_geper: number; ide_gtemp: number | null } | null> {
+        const query = new SelectQuery(`
+            SELECT p.ide_geper, e.ide_gtemp
+            FROM gen_persona p
+            LEFT JOIN gth_empleado e ON e.ide_geper = p.ide_geper
+            WHERE p.ide_geper = $1 AND p.ide_empr = $2
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, ideGeper);
+        query.addIntParam(2, ideEmpr);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return (rows?.[0] as { ide_geper: number; ide_gtemp: number | null }) ?? null;
     }
 
     /**
