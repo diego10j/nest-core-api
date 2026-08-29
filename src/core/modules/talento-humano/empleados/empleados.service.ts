@@ -329,7 +329,15 @@ export class EmpleadosService {
     async getCatalogos(dtoIn: HeaderParamsDto) {
         const [generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos, divisionesPoliticas] = await Promise.all([
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'genero', primaryKey: 'ide_gtgen', columnLabel: 'detalle_gtgen' }),
-            this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'tipo_documento_identidad', primaryKey: 'ide_gttdi', columnLabel: 'detalle_gttdi' }),
+            this.core.getListDataValues({
+                ...dtoIn,
+                module: 'gth',
+                tableName: 'tipo_documento_identidad',
+                primaryKey: 'ide_gttdi',
+                columnLabel: 'detalle_gttdi',
+                // El empleado solo admite Cédula o Pasaporte (no RUC ni otros tipos del catálogo general).
+                condition: `activo_gttdi = true AND (detalle_gttdi ILIKE '%cedula%' OR detalle_gttdi ILIKE '%pasaporte%')`,
+            }),
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'estado_civil', primaryKey: 'ide_gtesc', columnLabel: 'detalle_gtesc' }),
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'tipo_sangre', primaryKey: 'ide_gttis', columnLabel: 'detalle_gttis' }),
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'nacionalidad', primaryKey: 'ide_gtnac', columnLabel: 'detalle_gtnac' }),

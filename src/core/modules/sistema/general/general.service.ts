@@ -116,9 +116,11 @@ export class GeneralService {
             p.es_cliente_geper,
             p.es_proveedo_geper,
             p.es_empleado_geper,
-            p.es_contacto_geper
+            p.es_contacto_geper,
+            tid.nombre_getid AS tipo_identificacion
         FROM
             gen_persona p
+        LEFT JOIN gen_tipo_identifi tid ON tid.ide_getid = p.ide_getid
         WHERE
             (
                 regexp_replace(unaccent(LOWER(p.nom_geper)), '[^a-z0-9]', '', 'g') LIKE $1
