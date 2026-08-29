@@ -31,6 +31,15 @@ export const MODULOS = {
     SIGLAS: 'imp',
     NOMBRE: 'Importaciones',
   },
+  // Módulo "Nómina" ya existente en sis_modulo (id=6) — confirmado por el usuario contra
+  // la BD real. Existe también un id=13 "Gestión de Talento Humano" (ficha de empleado,
+  // gth_*) pero los parámetros de acá son específicos del motor de rol de pagos, por eso
+  // se registran bajo Nómina.
+  NOMINA: {
+    ID: toModuleID(6),
+    SIGLAS: 'nrh',
+    NOMBRE: 'Nómina',
+  },
 } as const;
 
 export const MODULOS_DEFINIDOS: ReadonlyMap<ModuleID, ModuloDefinition> = new Map(

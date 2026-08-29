@@ -9,6 +9,7 @@ import { INVENTARIO_VARS } from './data/1-inv-var';
 import { IMPORTACIONES_VARS } from './data/14-imp-var';
 import { CUENTAS_POR_PAGAR_VARS } from './data/2-cxp-var';
 import { CUENTAS_POR_COBRAR_VARS } from './data/3-cxc-var';
+import { NOMINA_VARS } from './data/6-nrh-var';
 import { ActualizarVariableDto } from './dto/actualizar-variable.dto';
 import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
 import { GetVariableDto } from './dto/get-variable.dto';
@@ -699,6 +700,7 @@ export class VariablesService {
       ...IMPORTACIONES_VARS,
       ...CUENTAS_POR_COBRAR_VARS,
       ...CUENTAS_POR_PAGAR_VARS,
+      ...NOMINA_VARS,
       // Agregar más conjuntos de variables
     ];
   }

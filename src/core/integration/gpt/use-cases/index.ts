@@ -9,3 +9,4 @@ export * from './translate.use-case';
 export * from './content-product.use-case';
 export * from './correct-spelling.use-case';
 export * from './improve-text.use-case';
+export * from './feriados-ecuador.use-case';

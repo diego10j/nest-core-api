@@ -14,6 +14,7 @@ import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProformasModule } from './modules/proformas/proformas.module';
 import { SistemaModule } from './modules/sistema/sistema.module';
 import { SriModule } from './modules/sri/sri.module';
+import { TalentoHumanoModule } from './modules/talento-humano/talento-humano.module';
 import { ChequeDevueltoModule } from './modules/tesoreria/cheque-devuelto/cheque-devuelto.module';
 import { DepositoCajaModule } from './modules/tesoreria/deposito-caja/deposito-caja.module';
 import { DevolucionCobroTarjetaModule } from './modules/tesoreria/devolucion-cobro-tarjeta/devolucion-cobro-tarjeta.module';
@@ -43,6 +44,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     DevolucionCobroTarjetaModule,
     DepositoCajaModule,
     ChequeDevueltoModule,
+    TalentoHumanoModule,
   ],
   providers: [CoreService, ModulosSistemaService],
 
