@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { CoreService } from '../../core.service';
 import { IntegrationModule } from '../../integration/integration.module';
@@ -22,7 +23,7 @@ import { VacacionesPermisosController } from './vacaciones-permisos/vacaciones-p
 import { VacacionesPermisosService } from './vacaciones-permisos/vacaciones-permisos.service';
 
 @Module({
-    imports: [ContabilidadModule, IntegrationModule],
+    imports: [ConfigModule, ContabilidadModule, IntegrationModule],
     controllers: [
         EmpleadosController,
         PuestosSalariosController,
