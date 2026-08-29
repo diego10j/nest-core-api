@@ -112,6 +112,7 @@ export class GeneralService {
             p.uuid,
             p.identificac_geper,
             p.nom_geper,
+            p.numero_geper,
             p.correo_geper,
             p.es_cliente_geper,
             p.es_proveedo_geper,
