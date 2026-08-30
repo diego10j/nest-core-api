@@ -11,6 +11,7 @@ import {
     CrearPermisoDto,
     GetPermisosDto,
     GetSaldoVacacionesDto,
+    AprobarJustificacionDto,
     RegistrarMovimientoVacacionDto,
 } from './dto/vacaciones-permisos.dto';
 
@@ -142,6 +143,7 @@ export class VacacionesPermisosService {
                     p.fecha_hasta_aspvh,
                     p.nro_dias_aspvh,
                     p.nro_horas_aspvh,
+                    to_char(p.hora_desde_aspvh, 'HH24:MI') AS hora_desde_aspvh,
                     p.detalle_aspvh,
                     p.activo_aspvh,
                     p.razon_anula_aspvh,
@@ -186,6 +188,7 @@ export class VacacionesPermisosService {
                         fecha_hasta_aspvh: dtoIn.fecha_hasta_aspvh,
                         nro_dias_aspvh: dtoIn.nro_dias_aspvh ?? null,
                         nro_horas_aspvh: dtoIn.nro_horas_aspvh ?? null,
+                        hora_desde_aspvh: dtoIn.hora_desde_aspvh ?? null,
                         detalle_aspvh: dtoIn.detalle_aspvh ?? null,
                         activo_aspvh: true,
                         usuario_ingre: dtoIn.login,
@@ -256,6 +259,131 @@ export class VacacionesPermisosService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al anular el permiso: ${msg}`);
+        }
+    }
+
+    // ─── Justificación de marcación (autoservicio + aprobación coordinador) ───
+
+    /**
+     * Justificaciones de marcación (tipo_aspvh=4) pendientes de que el coordinador las
+     * apruebe, con `ya_registrada` calculado (existe ya una marca ese día para el
+     * empleado) para que la pantalla de aprobación sepa cuáles ya quedaron resueltas.
+     */
+    async getJustificacionesPendientes(dtoIn: HeaderParamsDto) {
+        try {
+            const query = new SelectQuery(`
+                SELECT
+                    p.ide_aspvh,
+                    p.ide_gtemp,
+                    emp.primer_nombre_gtemp || ' ' || emp.apellido_paterno_gtemp AS empleado,
+                    emp.tarjeta_marcacion_gtemp,
+                    p.fecha_desde_aspvh::text AS fecha_desde_aspvh,
+                    to_char(p.hora_desde_aspvh, 'HH24:MI') AS hora_desde_aspvh,
+                    p.detalle_aspvh,
+                    p.fecha_solicitud_aspvh,
+                    p.activo_aspvh,
+                    EXISTS (
+                        SELECT 1 FROM asi_marcaciones m
+                        WHERE m.cod_empleado_asmar = emp.tarjeta_marcacion_gtemp
+                          AND m.fecha_asmar = p.fecha_desde_aspvh
+                          AND (m.h1_asmar IS NOT NULL OR m.h2_asmar IS NOT NULL OR m.h3_asmar IS NOT NULL OR m.h4_asmar IS NOT NULL)
+                    ) AS ya_registrada
+                FROM asi_permisos_vacacion_hext p
+                INNER JOIN gth_empleado emp ON emp.ide_gtemp = p.ide_gtemp
+                INNER JOIN gen_persona per ON per.ide_geper = emp.ide_geper
+                WHERE p.tipo_aspvh = 4 AND p.activo_aspvh = true AND per.ide_empr = $1
+                ORDER BY p.fecha_desde_aspvh DESC
+            `);
+            query.setLazy(false);
+            query.addIntParam(1, dtoIn.ideEmpr);
+            return await this.dataSource.createSelectQuery(query);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener justificaciones pendientes: ${msg}`);
+        }
+    }
+
+    /**
+     * Aprueba una justificación de marcación: registra (crea o completa) la marca real
+     * en asi_marcaciones para el empleado+fecha+hora de la justificación, usando el
+     * primer slot h1-h4 libre del día si ya existe una fila. Requiere que el empleado
+     * tenga configurada su tarjeta de marcación (gth_empleado.tarjeta_marcacion_gtemp).
+     */
+    async aprobarJustificacion(dtoIn: AprobarJustificacionDto & HeaderParamsDto) {
+        if (!dtoIn.ide_aspvh) throw new BadRequestException('El campo ide_aspvh es requerido');
+        try {
+            const permQuery = new SelectQuery(`
+                SELECT p.ide_aspvh, p.ide_gtemp, p.fecha_desde_aspvh::text AS fecha_desde_aspvh,
+                       to_char(p.hora_desde_aspvh, 'HH24:MI') AS hora_desde_aspvh, p.tipo_aspvh,
+                       emp.tarjeta_marcacion_gtemp, emp.ide_geper
+                FROM asi_permisos_vacacion_hext p
+                INNER JOIN gth_empleado emp ON emp.ide_gtemp = p.ide_gtemp
+                WHERE p.ide_aspvh = $1
+            `);
+            permQuery.setLazy(false);
+            permQuery.addIntParam(1, dtoIn.ide_aspvh);
+            const permRows = await this.dataSource.createSelectQuery(permQuery);
+            const perm = permRows?.[0];
+            if (!perm) throw new BadRequestException('No se encontró la justificación indicada');
+            if (perm.tipo_aspvh !== 4) throw new BadRequestException('El registro indicado no es una justificación de marcación');
+            if (!perm.tarjeta_marcacion_gtemp) {
+                throw new BadRequestException('El empleado no tiene configurada su tarjeta de marcación (Nómina > Empleados)');
+            }
+
+            const marcQuery = new SelectQuery(`
+                SELECT ide_asmar, h1_asmar, h2_asmar, h3_asmar, h4_asmar
+                FROM asi_marcaciones
+                WHERE cod_empleado_asmar = $1 AND fecha_asmar = $2
+                LIMIT 1
+            `);
+            marcQuery.setLazy(false);
+            marcQuery.addStringParam(1, perm.tarjeta_marcacion_gtemp);
+            marcQuery.addStringParam(2, perm.fecha_desde_aspvh);
+            const marcRows = await this.dataSource.createSelectQuery(marcQuery);
+            const marc = marcRows?.[0];
+            const hora = perm.hora_desde_aspvh ?? '08:00';
+
+            const listQuery: ObjectQueryDto[] = [];
+            if (!marc) {
+                const ideAsmar = await this.dataSource.getSeqTable('asi_marcaciones', 'ide_asmar', 1, dtoIn.login);
+                listQuery.push({
+                    operation: 'insert',
+                    module: 'asi',
+                    tableName: 'marcaciones',
+                    primaryKey: 'ide_asmar',
+                    object: {
+                        ide_asmar: ideAsmar,
+                        cod_empleado_asmar: perm.tarjeta_marcacion_gtemp,
+                        fecha_asmar: perm.fecha_desde_aspvh,
+                        h1_asmar: hora,
+                        ide_geper: perm.ide_geper,
+                        ide_sucu: dtoIn.ideSucu,
+                        ide_empr: dtoIn.ideEmpr,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                });
+            } else {
+                const slot = !marc.h1_asmar ? 'h1_asmar' : !marc.h2_asmar ? 'h2_asmar' : !marc.h3_asmar ? 'h3_asmar' : 'h4_asmar';
+                const updMarc = new UpdateQuery('asi_marcaciones', 'ide_asmar');
+                updMarc.values.set(slot, hora);
+                updMarc.where = 'ide_asmar = $1';
+                updMarc.addIntParam(1, marc.ide_asmar as number);
+                await this.dataSource.createQuery(updMarc);
+            }
+
+            if (listQuery.length > 0) {
+                await this.core.save({ ...dtoIn, listQuery, audit: false });
+            }
+
+            // No hay un campo de estado propio para "aprobada" — el indicador es
+            // `ya_registrada` en getJustificacionesPendientes (existe una marca ese día).
+            return { message: 'ok', ide_aspvh: dtoIn.ide_aspvh };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al aprobar la justificación: ${msg}`);
         }
     }
 

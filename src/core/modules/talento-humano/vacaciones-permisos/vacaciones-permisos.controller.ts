@@ -8,6 +8,7 @@ import {
     CrearPermisoDto,
     GetPermisosDto,
     GetSaldoVacacionesDto,
+    AprobarJustificacionDto,
     RegistrarMovimientoVacacionDto,
 } from './dto/vacaciones-permisos.dto';
 import { VacacionesPermisosService } from './vacaciones-permisos.service';
@@ -69,5 +70,20 @@ export class VacacionesPermisosController {
         @Body() dtoIn: AnularPermisoDto,
     ) {
         return this.service.anularPermiso({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getJustificacionesPendientes')
+    @ApiOperation({ summary: 'Justificaciones de marcación (tipo_aspvh=4) para revisión del coordinador' })
+    getJustificacionesPendientes(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getJustificacionesPendientes(headersParams);
+    }
+
+    @Post('aprobarJustificacion')
+    @ApiOperation({ summary: 'Aprueba una justificación de marcación: crea/completa la marca real en asi_marcaciones' })
+    aprobarJustificacion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: AprobarJustificacionDto,
+    ) {
+        return this.service.aprobarJustificacion({ ...headersParams, ...dtoIn });
     }
 }

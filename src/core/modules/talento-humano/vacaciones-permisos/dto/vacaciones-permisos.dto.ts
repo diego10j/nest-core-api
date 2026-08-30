@@ -36,8 +36,8 @@ export class CrearPermisoDto {
     @Type(() => Number)
     ide_gtemp: number;
 
-    @ApiProperty({ description: '1=permiso normal, 2=cargo a vacaciones, 3=horas extra' })
-    @IsIn([1, 2, 3])
+    @ApiProperty({ description: '1=permiso normal, 2=cargo a vacaciones, 3=horas extra, 4=justificación de marcación' })
+    @IsIn([1, 2, 3, 4])
     @Type(() => Number)
     tipo_aspvh: number;
 
@@ -59,10 +59,22 @@ export class CrearPermisoDto {
     @IsNumber()
     nro_horas_aspvh?: number;
 
+    @ApiPropertyOptional({ description: 'Hora que debió marcarse (HH:MM), para justificación de marcación' })
+    @IsOptional()
+    @IsString()
+    hora_desde_aspvh?: string;
+
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()
     detalle_aspvh?: string;
+}
+
+export class AprobarJustificacionDto {
+    @ApiProperty({ description: 'ID de la justificación (asi_permisos_vacacion_hext.ide_aspvh, tipo_aspvh=4)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_aspvh: number;
 }
 
 export class AnularPermisoDto {
