@@ -4,10 +4,12 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { FormulaEngineService } from 'src/core/modules/talento-humano/formula-engine/formula-engine.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import {
     GetDetalleRubrosByTipoNominaDto,
+    ProbarFormulaDto,
     SaveCargoDto,
     SaveDepartamentoTipoGastoDto,
     SaveDetalleRubroDto,
@@ -20,6 +22,7 @@ export class RubrosService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        private readonly formulaEngine: FormulaEngineService,
     ) { }
 
     // ─── Catálogos base (Select/Autocomplete) ─────────────────────────────
@@ -188,6 +191,61 @@ export class RubrosService {
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al obtener la parametría de rubros: ${msg}`);
+        }
+    }
+
+    /**
+     * Evalúa una fórmula contra un empleado real ANTES de guardarla, usando el mismo
+     * FormulaEngineService que usa generarRol (fidelidad 1:1 con lo que pasaría en un rol
+     * real) — permite validar la sintaxis y ver el resultado en el editor de Parametría
+     * de Rubros. El contexto de "otros rubros ya calculados" (para fórmulas que
+     * referencian [ide_nrder]) se arma con los valores congelados del ÚLTIMO rol de ese
+     * empleado (nrh_detalle_rol) — si nunca se le generó un rol, el contexto queda vacío
+     * y cualquier referencia a otro rubro se evalúa como 0 (se avisa en la respuesta).
+     */
+    async probarFormula(dtoIn: ProbarFormulaDto & HeaderParamsDto) {
+        try {
+            const ultimoRolQuery = new SelectQuery(`
+                SELECT MAX(ide_nrrol) AS ide_nrrol FROM nrh_detalle_rol WHERE ide_geedp = $1
+            `);
+            ultimoRolQuery.setLazy(false);
+            ultimoRolQuery.addIntParam(1, dtoIn.ideGeedp);
+            const ultimoRolRows = await this.dataSource.createSelectQuery(ultimoRolQuery);
+            const ideNrrolContexto = (ultimoRolRows?.[0] as { ide_nrrol: number | null } | undefined)?.ide_nrrol ?? null;
+
+            const computedValues = new Map<number, number>();
+            if (ideNrrolContexto) {
+                const detalleQuery = new SelectQuery(`
+                    SELECT ide_nrder, valor_nrdro FROM nrh_detalle_rol WHERE ide_nrrol = $1 AND ide_geedp = $2
+                `);
+                detalleQuery.setLazy(false);
+                detalleQuery.addIntParam(1, ideNrrolContexto);
+                detalleQuery.addIntParam(2, dtoIn.ideGeedp);
+                const rows = (await this.dataSource.createSelectQuery(detalleQuery)) as Array<{
+                    ide_nrder: number;
+                    valor_nrdro: number;
+                }>;
+                for (const row of rows) computedValues.set(row.ide_nrder, Number(row.valor_nrdro) || 0);
+            }
+
+            const fechaRol = getCurrentDate();
+            const valor = await this.formulaEngine.evaluarRubro({
+                formula: dtoIn.formula,
+                ideGeedp: dtoIn.ideGeedp,
+                fechaRol,
+                computedValues,
+                mensualizado: false,
+            });
+
+            return {
+                message: 'ok',
+                valor: Math.round(valor * 100) / 100,
+                ideNrrolContexto,
+                rubrosEnContexto: computedValues.size,
+            };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al probar la fórmula: ${msg}`);
         }
     }
 

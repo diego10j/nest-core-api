@@ -5,6 +5,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import {
     GetDetalleRubrosByTipoNominaDto,
+    ProbarFormulaDto,
     SaveCargoDto,
     SaveDepartamentoTipoGastoDto,
     SaveDetalleRubroDto,
@@ -85,6 +86,15 @@ export class RubrosController {
         @Body() dtoIn: SaveDetalleRubroDto,
     ) {
         return this.service.saveDetalleRubro({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('probarFormula')
+    @ApiOperation({ summary: 'Evalúa una fórmula (sin guardarla) contra un empleado real, usando el mismo motor que generarRol' })
+    probarFormula(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ProbarFormulaDto,
+    ) {
+        return this.service.probarFormula({ ...headersParams, ...dtoIn });
     }
 
     @Get('getCargos')

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt } from 'class-validator';
+import { IsInt, IsString, IsNotEmpty } from 'class-validator';
 import { SaveDto } from 'src/common/dto/save.dto';
 
 export class GetDetalleRubrosByTipoNominaDto {
@@ -13,6 +13,18 @@ export class GetDetalleRubrosByTipoNominaDto {
 export class SaveRubroDto extends SaveDto {
     @ApiProperty({ description: 'Datos de nrh_rubro (ide_nrfoc, ide_nrtir, detalle_nrrub, activo_nrrub, anticipo_nrrub, decimo_nrrub)' })
     declare data: Record<string, unknown>;
+}
+
+export class ProbarFormulaDto {
+    @ApiProperty({ description: 'Texto de la fórmula a probar (ej. "=[68]*0.0945"), sin guardar todavía' })
+    @IsString()
+    @IsNotEmpty()
+    formula: string;
+
+    @ApiProperty({ description: 'Empleado (gen_empleados_departamento_par.ide_geedp) contra el que se prueba' })
+    @IsInt()
+    @Type(() => Number)
+    ideGeedp: number;
 }
 
 export class SaveDetalleRubroDto extends SaveDto {
