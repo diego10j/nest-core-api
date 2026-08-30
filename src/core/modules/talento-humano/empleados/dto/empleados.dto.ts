@@ -16,6 +16,19 @@ export class GetEmpleadoByIdDto {
     ide_gtemp: number;
 }
 
+export class VincularUsuarioDto {
+    @ApiProperty({ description: 'ID del empleado (gth_empleado.ide_gtemp) a vincular' })
+    @IsInt()
+    @Type(() => Number)
+    ide_gtemp: number;
+
+    @ApiProperty({ description: 'ID del usuario de acceso (sis_usuario.ide_usua); null para desvincular', required: false })
+    @IsInt()
+    @IsOptional()
+    @Type(() => Number)
+    ide_usua?: number | null;
+}
+
 export class SaveEmpleadoDto {
     @ApiProperty({ description: 'ID del empleado (gth_empleado.ide_gtemp) — presente solo al actualizar' })
     @IsInt()

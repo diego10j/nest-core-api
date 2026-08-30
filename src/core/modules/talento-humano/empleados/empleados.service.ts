@@ -2,11 +2,11 @@ import { BadRequestException, Injectable, InternalServerErrorException } from '@
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { SelectQuery } from 'src/core/connection/helpers';
+import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
-import { GetEmpleadoByIdDto, GetEmpleadosDto, SaveEmpleadoDto } from './dto/empleados.dto';
+import { GetEmpleadoByIdDto, GetEmpleadosDto, SaveEmpleadoDto, VincularUsuarioDto } from './dto/empleados.dto';
 
 @Injectable()
 export class EmpleadosService {
@@ -99,7 +99,9 @@ export class EmpleadosService {
                     tis.detalle_gttis  AS tipo_sangre,
                     nac.detalle_gtnac  AS nacionalidad,
                     prov.nombre_geprov AS provincia_nacimiento,
-                    cant.nombre_gecant AS canton_nacimiento
+                    cant.nombre_gecant AS canton_nacimiento,
+                    u.ide_usua AS ide_usua_login,
+                    u.nom_usua AS usuario_login
                 FROM gth_empleado e
                 INNER JOIN gen_persona p ON p.ide_geper = e.ide_geper
                 LEFT JOIN gth_genero gen ON gen.ide_gtgen = e.ide_gtgen
@@ -109,6 +111,7 @@ export class EmpleadosService {
                 LEFT JOIN gth_nacionalidad nac ON nac.ide_gtnac = e.ide_gtnac
                 LEFT JOIN gen_provincia prov ON prov.ide_geprov = e.ide_geprov
                 LEFT JOIN gen_canton cant ON cant.ide_gecant = e.ide_gecant
+                LEFT JOIN sis_usuario u ON u.ide_gtemp = e.ide_gtemp
                 WHERE e.ide_gtemp = $1
                   AND p.ide_empr = $2
             `);
@@ -301,5 +304,64 @@ export class EmpleadosService {
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'cargo', primaryKey: 'ide_gtcar', columnLabel: 'detalle_gtcar', condition: 'activo_gtcar = true' }),
         ]);
         return { generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos };
+    }
+
+    /**
+     * Resuelve "quién soy" para las páginas de autoservicio (Mis Marcaciones, Mis
+     * Vacaciones, Mis Permisos) a partir del usuario logueado (sis_usuario.ide_gtemp,
+     * ver vincularUsuario). Retorna null si el usuario no está vinculado a ningún
+     * empleado — cada página de autoservicio debe mostrar un mensaje claro en ese caso,
+     * no un error genérico.
+     */
+    async getMiEmpleado(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                e.ide_gtemp,
+                e.primer_nombre_gtemp || ' ' || e.apellido_paterno_gtemp AS empleado,
+                e.tarjeta_marcacion_gtemp,
+                ged.ide_geedp,
+                car.detalle_gtcar AS cargo,
+                per.identificac_geper AS identificacion
+            FROM sis_usuario u
+            INNER JOIN gth_empleado e ON e.ide_gtemp = u.ide_gtemp
+            INNER JOIN gen_persona per ON per.ide_geper = e.ide_geper
+            LEFT JOIN gen_empleados_departamento_par ged ON ged.ide_gtemp = e.ide_gtemp AND ged.activo_geedp = true
+            LEFT JOIN gth_cargo car ON car.ide_gtcar = ged.ide_gtcar
+            WHERE u.ide_usua = $1
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, dtoIn.ideUsua);
+        const rows = await this.dataSource.createSelectQuery(query);
+        return rows && rows.length > 0 ? rows[0] : null;
+    }
+
+    /**
+     * Vincula (o desvincula, con ide_usua null) un empleado a su usuario de acceso al
+     * sistema (sis_usuario.ide_gtemp) — necesario para que el autoservicio (Mis
+     * Marcaciones, Mis Vacaciones, Mis Permisos) sepa "quién soy" a partir del login.
+     * Libera primero cualquier otro usuario que ya tuviera este ide_gtemp asignado,
+     * para mantener la relación 1 a 1 (un empleado, un usuario de acceso).
+     */
+    async vincularUsuario(dtoIn: VincularUsuarioDto & HeaderParamsDto) {
+        if (!dtoIn.ide_gtemp) throw new BadRequestException('El campo ide_gtemp es requerido');
+        try {
+            const clear = new UpdateQuery('sis_usuario', 'ide_usua');
+            clear.values.set('ide_gtemp', null);
+            clear.where = 'ide_gtemp = $1';
+            clear.addIntParam(1, dtoIn.ide_gtemp);
+            await this.dataSource.createQuery(clear);
+
+            if (dtoIn.ide_usua) {
+                const link = new UpdateQuery('sis_usuario', 'ide_usua');
+                link.values.set('ide_gtemp', dtoIn.ide_gtemp);
+                link.where = 'ide_usua = $1';
+                link.addIntParam(1, dtoIn.ide_usua);
+                await this.dataSource.createQuery(link);
+            }
+            return { message: 'ok' };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al vincular el usuario: ${msg}`);
+        }
     }
 }

@@ -3,7 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { GetEmpleadoByIdDto, GetEmpleadosDto, SaveEmpleadoDto } from './dto/empleados.dto';
+import { GetEmpleadoByIdDto, GetEmpleadosDto, SaveEmpleadoDto, VincularUsuarioDto } from './dto/empleados.dto';
 import { EmpleadosService } from './empleados.service';
 
 @ApiTags('TalentoHumano-Empleados')
@@ -29,6 +29,12 @@ export class EmpleadosController {
         return this.service.getEmpleadoById({ ...headersParams, ...dtoIn });
     }
 
+    @Get('getMiEmpleado')
+    @ApiOperation({ summary: 'Resuelve el empleado vinculado al usuario logueado, para las páginas de autoservicio' })
+    getMiEmpleado(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getMiEmpleado(headersParams);
+    }
+
     @Get('getCatalogos')
     @ApiOperation({ summary: 'Catálogos base (género, tipo documento, estado civil, tipo sangre, nacionalidad, cargo) para el formulario de ficha' })
     getCatalogos(
@@ -44,5 +50,14 @@ export class EmpleadosController {
         @Body() dtoIn: SaveEmpleadoDto,
     ) {
         return this.service.save({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('vincularUsuario')
+    @ApiOperation({ summary: 'Vincula (o desvincula) un empleado a su usuario de acceso al sistema, para habilitar el autoservicio' })
+    vincularUsuario(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: VincularUsuarioDto,
+    ) {
+        return this.service.vincularUsuario({ ...headersParams, ...dtoIn });
     }
 }

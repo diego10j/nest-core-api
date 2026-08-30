@@ -6,6 +6,8 @@ import { IntegrationModule } from '../../integration/integration.module';
 import { AuditService } from '../audit/audit.service';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
+import { AsistenciaController } from './asistencia/asistencia.controller';
+import { AsistenciaService } from './asistencia/asistencia.service';
 import { CalculoLegalService } from './calculo-legal/calculo-legal.service';
 import { EmpleadosController } from './empleados/empleados.controller';
 import { EmpleadosService } from './empleados/empleados.service';
@@ -36,6 +38,7 @@ import { VacacionesPermisosService } from './vacaciones-permisos/vacaciones-perm
         VacacionesPermisosController,
         MensualizacionController,
         FichaEmpleadoController,
+        AsistenciaController,
     ],
     providers: [
         AuditService,
@@ -50,6 +53,7 @@ import { VacacionesPermisosService } from './vacaciones-permisos/vacaciones-perm
         MensualizacionService,
         FichaEmpleadoService,
         CalculoLegalService,
+        AsistenciaService,
     ],
     exports: [EmpleadosService, PuestosSalariosService, RolPagosService],
 })
