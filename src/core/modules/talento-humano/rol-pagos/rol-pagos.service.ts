@@ -419,7 +419,10 @@ export class RolPagosService extends BaseService {
         const lugarDebe = this.variables.get('p_con_lugar_debe') ?? '1';
         const lugarHaber = this.variables.get('p_con_lugar_haber') ?? '0';
 
-        if (!ideCntcm || !ideCndpcLiquido || !estadoCerrada) {
+        // ide_cntcm/ide_cndpc/ide_nresr pueden legítimamente ser 0 (ej. con_tipo_comproba
+        // "DIARIO" = 0) — validar con == null, no con falsy, o un valor real 0 se trata
+        // como "falta configurar".
+        if (ideCntcm == null || ideCndpcLiquido == null || estadoCerrada == null) {
             throw new BadRequestException(
                 'Faltan parámetros de sistema: p_nrh_tipo_comprobante_rol, p_nrh_cuenta_liquido_pagar y/o p_nrh_estado_nomina_cerrada (Sistema > Variables)',
             );
@@ -539,7 +542,8 @@ export class RolPagosService extends BaseService {
         const estadoCerrada = this.paramInt('p_nrh_estado_nomina_cerrada');
         const estadoFacturaNormal = this.paramInt('p_cxp_estado_factura_normal');
 
-        if (!rubroId || !cuentaPasivo || !ideCndpcLiquido || !ideCntcm || !estadoCerrada) {
+        // Validar con == null, no falsy: ide_cntcm/ide_cndpc/ide_nresr pueden ser 0 legítimamente.
+        if (rubroId == null || cuentaPasivo == null || ideCndpcLiquido == null || ideCntcm == null || estadoCerrada == null) {
             throw new BadRequestException(
                 'Faltan parámetros de sistema para la liquidación de décimos (Sistema > Variables, módulo Nómina)',
             );
