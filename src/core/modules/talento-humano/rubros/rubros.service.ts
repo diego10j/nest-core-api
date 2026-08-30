@@ -325,17 +325,31 @@ export class RubrosService {
             }
 
             // Un rubro tiene una sola cuenta activa a la vez: desactivar la anterior.
-            const desactivar: ObjectQueryDto = {
-                operation: 'update',
-                module: 'nrh',
-                tableName: 'rubro_cuenta',
-                primaryKey: 'ide_nrrucu',
-                object: { activo_nrrucu: false },
-                condition: `ide_nrrub = ${data.ide_nrrub} AND activo_nrrucu = true`,
-            };
+            // El helper de auditoría de core.save necesita el valor de la primary key
+            // presente en `object` (no solo en `condition`), por eso se busca primero
+            // cuál es la fila activa en vez de desactivar "a ciegas" por ide_nrrub.
+            const activaQuery = new SelectQuery(`
+                SELECT ide_nrrucu FROM nrh_rubro_cuenta WHERE ide_nrrub = $1 AND activo_nrrucu = true LIMIT 1
+            `);
+            activaQuery.setLazy(false);
+            activaQuery.addIntParam(1, data.ide_nrrub);
+            const activaRows = await this.dataSource.createSelectQuery(activaQuery);
+            const ideNrrucuActiva = (activaRows?.[0] as { ide_nrrucu: number } | undefined)?.ide_nrrucu;
+
+            const listQuery: ObjectQueryDto[] = [];
+            if (ideNrrucuActiva) {
+                listQuery.push({
+                    operation: 'update',
+                    module: 'nrh',
+                    tableName: 'rubro_cuenta',
+                    primaryKey: 'ide_nrrucu',
+                    object: { ide_nrrucu: ideNrrucuActiva, activo_nrrucu: false },
+                    condition: `ide_nrrucu = ${ideNrrucuActiva}`,
+                });
+            }
 
             const ideNrrucu = await this.dataSource.getSeqTable('nrh_rubro_cuenta', 'ide_nrrucu', 1, dtoIn.login);
-            const crear: ObjectQueryDto = {
+            listQuery.push({
                 operation: 'insert',
                 module: 'nrh',
                 tableName: 'rubro_cuenta',
@@ -349,9 +363,9 @@ export class RubrosService {
                     fecha_ingre: getCurrentDate(),
                     hora_ingre: getCurrentTime(),
                 },
-            };
+            });
 
-            await this.core.save({ ...dtoIn, listQuery: [desactivar, crear], audit: true });
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
             return { message: 'ok', ide_nrrucu: ideNrrucu };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -394,6 +408,7 @@ export class RubrosService {
                 tableName: 'departamento',
                 primaryKey: 'ide_gedep',
                 object: {
+                    ide_gedep: dtoIn.ide_gedep,
                     tipo_gasto_gedep: dtoIn.tipo_gasto_gedep,
                     usuario_actua: dtoIn.login,
                     fecha_actua: getCurrentDate(),

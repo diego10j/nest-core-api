@@ -52,14 +52,32 @@ export class MensualizacionService {
      */
     async save(dtoIn: SaveSolicitudMensualizacionDto & HeaderParamsDto) {
         try {
-            const desactivar: ObjectQueryDto = {
-                operation: 'update',
-                module: 'nrh',
-                tableName: 'solicitud_mensualizacion',
-                primaryKey: 'ide_nrsom',
-                object: { activo_nrsom: false },
-                condition: `ide_geedp = ${dtoIn.ide_geedp} AND ide_nrrub = ${dtoIn.ide_nrrub} AND activo_nrsom = true`,
-            };
+            // El helper de auditoría de core.save necesita el valor de la primary key
+            // presente en `object` (no solo en `condition`) para poder registrar el
+            // cambio — por eso primero se busca cuál es la solicitud activa a
+            // desactivar, en vez de desactivar "a ciegas" por (geedp, rubro).
+            const activaQuery = new SelectQuery(`
+                SELECT ide_nrsom FROM nrh_solicitud_mensualizacion
+                WHERE ide_geedp = $1 AND ide_nrrub = $2 AND activo_nrsom = true
+                LIMIT 1
+            `);
+            activaQuery.setLazy(false);
+            activaQuery.addIntParam(1, dtoIn.ide_geedp);
+            activaQuery.addIntParam(2, dtoIn.ide_nrrub);
+            const activaRows = await this.dataSource.createSelectQuery(activaQuery);
+            const ideNrsomActiva = (activaRows?.[0] as { ide_nrsom: number } | undefined)?.ide_nrsom;
+
+            const listQuery: ObjectQueryDto[] = [];
+            if (ideNrsomActiva) {
+                listQuery.push({
+                    operation: 'update',
+                    module: 'nrh',
+                    tableName: 'solicitud_mensualizacion',
+                    primaryKey: 'ide_nrsom',
+                    object: { ide_nrsom: ideNrsomActiva, activo_nrsom: false },
+                    condition: `ide_nrsom = ${ideNrsomActiva}`,
+                });
+            }
 
             const ideNrsom = await this.dataSource.getSeqTable('nrh_solicitud_mensualizacion', 'ide_nrsom', 1, dtoIn.login);
             const crear: ObjectQueryDto = {
@@ -80,8 +98,9 @@ export class MensualizacionService {
                     fecha_ingre: getCurrentDate(),
                 },
             };
+            listQuery.push(crear);
 
-            await this.core.save({ ...dtoIn, listQuery: [desactivar, crear], audit: true });
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
             return { message: 'ok', ide_nrsom: ideNrsom };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;

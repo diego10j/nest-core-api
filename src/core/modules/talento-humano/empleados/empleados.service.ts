@@ -221,6 +221,7 @@ export class EmpleadosService {
                         tableName: 'persona',
                         primaryKey: 'ide_geper',
                         object: {
+                            ide_geper: ideGeper,
                             ...personaData,
                             usuario_actua: dtoIn.login,
                             hora_actua: getCurrentTime(),
@@ -272,6 +273,7 @@ export class EmpleadosService {
                     tableName: 'persona',
                     primaryKey: 'ide_geper',
                     object: {
+                        ide_geper: ideGeper,
                         es_empleado_geper: true,
                         ...personaData,
                         usuario_actua: dtoIn.login,
