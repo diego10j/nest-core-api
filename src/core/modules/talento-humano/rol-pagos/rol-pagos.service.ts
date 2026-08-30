@@ -59,15 +59,10 @@ export class RolPagosService extends BaseService {
                 'p_nrh_rubro_decimo_tercero',
                 'p_nrh_rubro_decimo_cuarto',
                 'p_nrh_rubro_fondos_reserva',
-                'p_nrh_cuenta_pasivo_fondos_reserva',
-                'p_nrh_cuenta_pasivo_decimo_tercero',
-                'p_nrh_cuenta_pasivo_decimo_cuarto',
-                'p_nrh_cuenta_gasto_venta_fondos_reserva',
-                'p_nrh_cuenta_gasto_venta_decimo_tercero',
-                'p_nrh_cuenta_gasto_venta_decimo_cuarto',
-                'p_nrh_cuenta_gasto_admin_fondos_reserva',
-                'p_nrh_cuenta_gasto_admin_decimo_tercero',
-                'p_nrh_cuenta_gasto_admin_decimo_cuarto',
+                // Las cuentas de pasivo/gasto-venta/gasto-admin de la provisión de
+                // décimos/fondos ya NO viven acá (eliminadas de sis_parametros
+                // 2026-08-30) — se leen de nrh_rubro_cuenta, ver
+                // getCuentasProvisionPorRubro.
                 'p_nrh_region_decimo4',
                 'p_nrh_estado_pre_nomina',
                 'p_nrh_estado_nomina_aprobada',
@@ -715,6 +710,13 @@ export class RolPagosService extends BaseService {
     private async getTotalesPorCuenta(
         ideNrrol: number,
     ): Promise<Array<{ ide_cndpc: number; signo_nrtir: number; total: number }>> {
+        // rc.ide_cndpc IS NOT NULL es obligatorio: desde que nrh_rubro_cuenta también
+        // guarda las cuentas de provisión (ide_cndpc_pasivo/gasto_venta/gasto_admin, ver
+        // docs/modulo-nomina.md sección 6.1), un rubro de provisión (décimo3/décimo4/
+        // fondos de reserva) tiene fila activa en nrh_rubro_cuenta con ide_cndpc = NULL
+        // (no usa cuenta "simple", solo las 3 de provisión) — sin este filtro, el INNER
+        // JOIN igual lo trae, agrupado bajo una cuenta NULL fantasma que infla el DEBE y
+        // descuadra el asiento (bug real encontrado 2026-08-30, ver docs/modulo-nomina.md).
         const query = new SelectQuery(`
             SELECT rc.ide_cndpc, tir.signo_nrtir, SUM(dr.valor_nrdro) AS total
             FROM nrh_detalle_rol dr
@@ -722,7 +724,7 @@ export class RolPagosService extends BaseService {
             INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
             INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = rub.ide_nrtir
             INNER JOIN nrh_rubro_cuenta rc ON rc.ide_nrrub = rub.ide_nrrub AND rc.activo_nrrucu = true
-            WHERE dr.ide_nrrol = $1
+            WHERE dr.ide_nrrol = $1 AND rc.ide_cndpc IS NOT NULL
             GROUP BY rc.ide_cndpc, tir.signo_nrtir
         `);
         query.setLazy(false);
