@@ -31,7 +31,13 @@ export class SaveCargoDto extends SaveDto {
 }
 
 export class SaveRubroCuentaDto extends SaveDto {
-    @ApiProperty({ description: 'Datos de nrh_rubro_cuenta (ide_nrrub, ide_cndpc)' })
+    @ApiProperty({
+        description:
+            'Datos de nrh_rubro_cuenta: ide_nrrub (requerido) + al menos una de ide_cndpc ' +
+            '(cuenta simple, usada en el asiento principal del rol), ide_cndpc_pasivo / ' +
+            'ide_cndpc_gasto_venta / ide_cndpc_gasto_admin (las 3 cuentas que usa la ' +
+            'provisión de décimos/fondos de reserva, ver rol-pagos.service.ts).',
+    })
     declare data: Record<string, unknown>;
 }
 

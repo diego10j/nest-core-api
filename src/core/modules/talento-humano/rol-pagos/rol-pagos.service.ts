@@ -91,6 +91,41 @@ export class RolPagosService extends BaseService {
         return Number.isFinite(n) ? n : null;
     }
 
+    /**
+     * Cuentas de pasivo/gasto-venta/gasto-admin de nrh_rubro_cuenta para los rubros de
+     * décimo3/décimo4/fondos de reserva (configurables en Nómina > Catálogos > Cuenta
+     * Contable de Rubros) — reemplaza las 9 variables sueltas p_nrh_cuenta_pasivo_/
+     * gasto_venta_/gasto_admin_ que usaba antes (ver docs/modulo-nomina.md, sección 6.1).
+     */
+    private async getCuentasProvisionPorRubro(
+        rubroIds: number[],
+    ): Promise<Map<number, { pasivo: number | null; gastoVenta: number | null; gastoAdmin: number | null }>> {
+        const result = new Map<number, { pasivo: number | null; gastoVenta: number | null; gastoAdmin: number | null }>();
+        if (rubroIds.length === 0) return result;
+
+        const query = new SelectQuery(`
+            SELECT ide_nrrub, ide_cndpc_pasivo, ide_cndpc_gasto_venta, ide_cndpc_gasto_admin
+            FROM nrh_rubro_cuenta
+            WHERE ide_nrrub = ANY ($1) AND activo_nrrucu = true
+        `);
+        query.setLazy(false);
+        query.addParam(1, rubroIds);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_nrrub: number;
+            ide_cndpc_pasivo: number | null;
+            ide_cndpc_gasto_venta: number | null;
+            ide_cndpc_gasto_admin: number | null;
+        }>;
+        for (const row of rows) {
+            result.set(row.ide_nrrub, {
+                pasivo: row.ide_cndpc_pasivo,
+                gastoVenta: row.ide_cndpc_gasto_venta,
+                gastoAdmin: row.ide_cndpc_gasto_admin,
+            });
+        }
+        return result;
+    }
+
     private paramFloat(name: string, fallback: number): number {
         const raw = this.variables.get(name);
         if (!raw) return fallback;
@@ -534,9 +569,8 @@ export class RolPagosService extends BaseService {
     async generarLiquidacionDecimo(dtoIn: GenerarLiquidacionDecimoDto & HeaderParamsDto) {
         const esDecimoTercero = dtoIn.concepto === 'decimo_tercero';
         const rubroId = this.paramInt(esDecimoTercero ? 'p_nrh_rubro_decimo_tercero' : 'p_nrh_rubro_decimo_cuarto');
-        const cuentaPasivo = this.paramInt(
-            esDecimoTercero ? 'p_nrh_cuenta_pasivo_decimo_tercero' : 'p_nrh_cuenta_pasivo_decimo_cuarto',
-        );
+        const cuentaPasivo =
+            rubroId != null ? (await this.getCuentasProvisionPorRubro([rubroId])).get(rubroId)?.pasivo ?? null : null;
         const ideCndpcLiquido = this.paramInt('p_nrh_cuenta_liquido_pagar');
         const ideCntcm = this.paramInt('p_nrh_tipo_comprobante_rol');
         const estadoCerrada = this.paramInt('p_nrh_estado_nomina_cerrada');
@@ -834,31 +868,32 @@ export class RolPagosService extends BaseService {
         fechaRol: string,
         dtoIn: HeaderParamsDto,
     ): Promise<{ ide_cnmoc_provisiones: number | null; totalProvisionado: number }> {
+        // Los 3 ide_nrrub (qué rubro ES décimo3/décimo4/fondos de reserva) siguen viniendo
+        // de sis_parametros — identifican un rubro, no una cuenta contable. Las 3 cuentas
+        // de cada uno (pasivo/gasto-venta/gasto-admin) se leen de nrh_rubro_cuenta
+        // (Nómina > Catálogos > Cuenta Contable de Rubros), no de variables sueltas — ver
+        // getCuentasProvisionPorRubro.
+        const rubroFondosReserva = this.paramInt('p_nrh_rubro_fondos_reserva');
+        const rubroDecimoTercero = this.paramInt('p_nrh_rubro_decimo_tercero');
+        const rubroDecimoCuarto = this.paramInt('p_nrh_rubro_decimo_cuarto');
+        const cuentasPorRubro = await this.getCuentasProvisionPorRubro(
+            [rubroFondosReserva, rubroDecimoTercero, rubroDecimoCuarto].filter((r): r is number => r != null),
+        );
+
         const conceptos: Array<{
             rubro: number | null;
             pasivo: number | null;
             gastoVenta: number | null;
             gastoAdmin: number | null;
-        }> = [
-            {
-                rubro: this.paramInt('p_nrh_rubro_fondos_reserva'),
-                pasivo: this.paramInt('p_nrh_cuenta_pasivo_fondos_reserva'),
-                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_fondos_reserva'),
-                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_fondos_reserva'),
-            },
-            {
-                rubro: this.paramInt('p_nrh_rubro_decimo_tercero'),
-                pasivo: this.paramInt('p_nrh_cuenta_pasivo_decimo_tercero'),
-                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_decimo_tercero'),
-                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_decimo_tercero'),
-            },
-            {
-                rubro: this.paramInt('p_nrh_rubro_decimo_cuarto'),
-                pasivo: this.paramInt('p_nrh_cuenta_pasivo_decimo_cuarto'),
-                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_decimo_cuarto'),
-                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_decimo_cuarto'),
-            },
-        ];
+        }> = [rubroFondosReserva, rubroDecimoTercero, rubroDecimoCuarto].map((rubro) => {
+            const cuentas = rubro != null ? cuentasPorRubro.get(rubro) : undefined;
+            return {
+                rubro,
+                pasivo: cuentas?.pasivo ?? null,
+                gastoVenta: cuentas?.gastoVenta ?? null,
+                gastoAdmin: cuentas?.gastoAdmin ?? null,
+            };
+        });
 
         const rubrosConfigurados = conceptos.filter(
             (c) => c.rubro !== null && c.pasivo !== null && c.gastoVenta !== null && c.gastoAdmin !== null,

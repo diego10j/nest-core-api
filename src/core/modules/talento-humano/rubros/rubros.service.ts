@@ -298,13 +298,21 @@ export class RubrosService {
                     tir.detalle_nrtir AS tipo_rubro,
                     tir.signo_nrtir,
                     rc.ide_cndpc,
-                    dpc.codig_recur_cndpc,
                     dpc.nombre_cndpc,
+                    rc.ide_cndpc_pasivo,
+                    dpcp.nombre_cndpc AS nombre_cndpc_pasivo,
+                    rc.ide_cndpc_gasto_venta,
+                    dpcv.nombre_cndpc AS nombre_cndpc_gasto_venta,
+                    rc.ide_cndpc_gasto_admin,
+                    dpca.nombre_cndpc AS nombre_cndpc_gasto_admin,
                     rc.activo_nrrucu
                 FROM nrh_rubro_cuenta rc
                 INNER JOIN nrh_rubro rub ON rub.ide_nrrub = rc.ide_nrrub
                 INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = rub.ide_nrtir
-                INNER JOIN con_det_plan_cuen dpc ON dpc.ide_cndpc = rc.ide_cndpc
+                LEFT JOIN con_det_plan_cuen dpc ON dpc.ide_cndpc = rc.ide_cndpc
+                LEFT JOIN con_det_plan_cuen dpcp ON dpcp.ide_cndpc = rc.ide_cndpc_pasivo
+                LEFT JOIN con_det_plan_cuen dpcv ON dpcv.ide_cndpc = rc.ide_cndpc_gasto_venta
+                LEFT JOIN con_det_plan_cuen dpca ON dpca.ide_cndpc = rc.ide_cndpc_gasto_admin
                 WHERE rc.activo_nrrucu = true
                 ORDER BY rub.detalle_nrrub
             `);
@@ -320,8 +328,16 @@ export class RubrosService {
         try {
             if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
             const { data } = dtoIn;
-            if (!data.ide_nrrub || !data.ide_cndpc) {
-                throw new BadRequestException('ide_nrrub y ide_cndpc son requeridos');
+            if (!data.ide_nrrub) {
+                throw new BadRequestException('ide_nrrub es requerido');
+            }
+            // ide_cndpc es la cuenta "simple" para el asiento principal del rol (sueldo,
+            // IESS, etc.); ide_cndpc_pasivo/gasto_venta/gasto_admin son las 3 cuentas que
+            // usa la provisión de décimos/fondos de reserva (RolPagosService,
+            // generarProvisionDecimosFondos/generarLiquidacionDecimo) — un rubro puede
+            // usar el primer grupo, el segundo, o ambos, pero no puede quedar sin ninguno.
+            if (!data.ide_cndpc && !data.ide_cndpc_pasivo && !data.ide_cndpc_gasto_venta && !data.ide_cndpc_gasto_admin) {
+                throw new BadRequestException('Debe indicar al menos una cuenta contable');
             }
 
             // Un rubro tiene una sola cuenta activa a la vez: desactivar la anterior.
@@ -357,7 +373,10 @@ export class RubrosService {
                 object: {
                     ide_nrrucu: ideNrrucu,
                     ide_nrrub: data.ide_nrrub,
-                    ide_cndpc: data.ide_cndpc,
+                    ide_cndpc: data.ide_cndpc ?? null,
+                    ide_cndpc_pasivo: data.ide_cndpc_pasivo ?? null,
+                    ide_cndpc_gasto_venta: data.ide_cndpc_gasto_venta ?? null,
+                    ide_cndpc_gasto_admin: data.ide_cndpc_gasto_admin ?? null,
                     activo_nrrucu: true,
                     usuario_ingre: dtoIn.login,
                     fecha_ingre: getCurrentDate(),
