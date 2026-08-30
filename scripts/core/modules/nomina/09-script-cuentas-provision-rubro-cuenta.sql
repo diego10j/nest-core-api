@@ -106,9 +106,12 @@ BEGIN
     END IF;
 END $$;
 
--- 3) Desactivar (nunca DELETE, mismo criterio que el resto de scripts de este módulo)
---    las 9 variables sueltas que ya no se leen — el código ahora usa nrh_rubro_cuenta.
-UPDATE sis_parametros SET activo_para = false
+-- 3) Eliminar las 9 variables sueltas que ya no se leen — el código ahora usa
+--    nrh_rubro_cuenta. A pedido explícito del usuario (2026-08-30): DELETE real, no
+--    desactivar — es configuración pura (sis_parametros), no dato transaccional/de
+--    negocio, y su declaración también se quitó de 6-nrh-var.ts (si se corre
+--    updateVariables de nuevo, no se re-crean).
+DELETE FROM sis_parametros
 WHERE ide_modu = 6 AND nom_para IN (
     'p_nrh_cuenta_pasivo_fondos_reserva', 'p_nrh_cuenta_gasto_venta_fondos_reserva', 'p_nrh_cuenta_gasto_admin_fondos_reserva',
     'p_nrh_cuenta_pasivo_decimo_tercero', 'p_nrh_cuenta_gasto_venta_decimo_tercero', 'p_nrh_cuenta_gasto_admin_decimo_tercero',
