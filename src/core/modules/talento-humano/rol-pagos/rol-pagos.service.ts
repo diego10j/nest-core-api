@@ -121,10 +121,14 @@ export class RolPagosService extends BaseService {
                     r.ide_cnmoc,
                     r.activo_nrrol,
                     (SELECT COUNT(DISTINCT dr.ide_geedp) FROM nrh_detalle_rol dr WHERE dr.ide_nrrol = r.ide_nrrol) AS total_empleados,
+                    -- El líquido es la suma del rubro "TOTAL A RECIBIR" (ya calculado por la
+                    -- fórmula, neto real por empleado) — NO sumar todos los rubros: la mayoría
+                    -- son informativos (subtotales, provisiones, bases imponibles) que
+                    -- duplicarían valores ya contados en REMUNERACION UNIFICADA.
                     (SELECT COALESCE(SUM(dr.valor_nrdro), 0) FROM nrh_detalle_rol dr
-                       INNER JOIN nrh_rubro rub ON rub.ide_nrrub = (SELECT der.ide_nrrub FROM nrh_detalle_rubro der WHERE der.ide_nrder = dr.ide_nrder)
-                       INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = rub.ide_nrtir
-                      WHERE dr.ide_nrrol = r.ide_nrrol) AS total_liquido
+                       INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+                       INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
+                      WHERE dr.ide_nrrol = r.ide_nrrol AND rub.detalle_nrrub = 'TOTAL A RECIBIR') AS total_liquido
                 FROM nrh_rol r
                 INNER JOIN nrh_detalle_tipo_nomina dtn ON dtn.ide_nrdtn = r.ide_nrdtn
                 INNER JOIN nrh_tipo_nomina tin ON tin.ide_nrtin = dtn.ide_nrtin
