@@ -8,52 +8,6 @@ import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import { GetEmpleadoByIdDto, GetEmpleadosDto, SaveEmpleadoDto } from './dto/empleados.dto';
 
-// Columnas propias de gth_empleado (todo lo que no está en este set, al guardar,
-// se asume columna de gen_persona). gth_empleado no usa TypeORM: se guarda con
-// el mismo mecanismo genérico ObjectQueryDto/core.save que el resto del sistema.
-const GTH_EMPLEADO_COLUMNS = new Set([
-    'ide_gtemp',
-    'ide_geper',
-    'ide_gtgen',
-    'ide_gttdi',
-    'ide_gtesc',
-    'ide_gttis',
-    'ide_gtnac',
-    'ide_geprov',
-    'ide_gecant',
-    'documento_identidad_gtemp',
-    'fecha_ingreso_pais_gtemp',
-    'carnet_extranjeria_gtemp',
-    'primer_nombre_gtemp',
-    'segundo_nombre_gtemp',
-    'apellido_paterno_gtemp',
-    'apellido_materno_gtemp',
-    'fecha_nacimiento_gtemp',
-    'cargo_publico_gtemp',
-    'fecha_ingreso_grupo_gtemp',
-    'fecha_ingreso_gtemp',
-    'tarjeta_marcacion_gtemp',
-    'activo_gtemp',
-    'separacion_bienes_gtemp',
-    'discapacitado_gtemp',
-    'acumula_decimo_gtemp',
-    'foto_gtemp',
-    'firma_gtemp',
-]);
-
-const REQUIRED_ON_CREATE = [
-    'primer_nombre_gtemp',
-    'apellido_paterno_gtemp',
-    'documento_identidad_gtemp',
-    'fecha_nacimiento_gtemp',
-    'ide_gtgen',
-    'ide_gttdi',
-    'ide_gtesc',
-    'ide_gttis',
-    'ide_gtnac',
-    'ide_geprov',
-];
-
 @Injectable()
 export class EmpleadosService {
     constructor(
@@ -176,84 +130,82 @@ export class EmpleadosService {
      */
     async save(dtoIn: SaveEmpleadoDto & HeaderParamsDto) {
         try {
-            if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
-            const { data } = dtoIn;
+            const isUpdate = dtoIn.ideGtemp != null;
 
-            const empleadoData: Record<string, unknown> = {};
-            const personaData: Record<string, unknown> = {};
-            for (const [key, value] of Object.entries(data)) {
-                if (GTH_EMPLEADO_COLUMNS.has(key)) {
-                    empleadoData[key] = value;
-                } else {
-                    personaData[key] = value;
-                }
-            }
+            const empleadoObject: Record<string, unknown> = {
+                ide_geper: dtoIn.ideGeper,
+                primer_nombre_gtemp: dtoIn.primerNombreGtemp,
+                segundo_nombre_gtemp: dtoIn.segundoNombreGtemp ?? null,
+                apellido_paterno_gtemp: dtoIn.apellidoPaternoGtemp,
+                apellido_materno_gtemp: dtoIn.apellidoMaternoGtemp ?? null,
+                documento_identidad_gtemp: dtoIn.documentoIdentidadGtemp,
+                fecha_nacimiento_gtemp: dtoIn.fechaNacimientoGtemp,
+                fecha_ingreso_gtemp: dtoIn.fechaIngresoGtemp ?? null,
+                // fecha_ingreso_grupo_gtemp es NOT NULL heredado de sector público ("grupo
+                // ocupacional") — no aplica conceptualmente a DIQUIMEC y no se pide en el
+                // formulario, se copia de fecha_ingreso_gtemp.
+                fecha_ingreso_grupo_gtemp: dtoIn.fechaIngresoGtemp ?? getCurrentDate(),
+                tarjeta_marcacion_gtemp: dtoIn.tarjetaMarcacionGtemp ?? null,
+                ide_gtgen: dtoIn.ideGtgen,
+                ide_gttdi: dtoIn.ideGttdi,
+                ide_gtesc: dtoIn.ideGtesc,
+                ide_gttis: dtoIn.ideGttis,
+                ide_gtnac: dtoIn.ideGtnac,
+                ide_geprov: dtoIn.ideGeprov,
+                ide_gecant: dtoIn.ideGecant ?? null,
+                acumula_decimo_gtemp: dtoIn.acumulaDecimoGtemp ?? false,
+                activo_gtemp: dtoIn.activoGtemp ?? true,
+                foto_gtemp: dtoIn.fotoGtemp ?? null,
+                firma_gtemp: dtoIn.firmaGtemp ?? null,
+            };
 
-            const isUpdate = dtoIn.isUpdate && !!data.ide_gtemp;
+            const personaObject: Record<string, unknown> = {
+                correo_geper: dtoIn.correoGeper ?? null,
+                telefono_geper: dtoIn.telefonoGeper ?? null,
+                movil_geper: dtoIn.movilGeper ?? null,
+                direccion_geper: dtoIn.direccionGeper ?? null,
+            };
 
             if (isUpdate) {
-                const ideGtemp = data.ide_gtemp as number;
-                const ideGeper = data.ide_geper as number;
-                if (!ideGeper) {
-                    throw new BadRequestException('El campo ide_geper es requerido para actualizar');
-                }
-
-                const listQuery: ObjectQueryDto[] = [];
-                if (Object.keys(empleadoData).length > 0) {
-                    listQuery.push({
+                const ideGtemp = dtoIn.ideGtemp as number;
+                const listQuery: ObjectQueryDto[] = [
+                    {
                         operation: 'update',
                         module: 'gth',
                         tableName: 'empleado',
                         primaryKey: 'ide_gtemp',
                         object: {
-                            ...empleadoData,
+                            ...empleadoObject,
+                            ide_gtemp: ideGtemp,
                             usuario_actua: dtoIn.login,
                             fecha_actua: getCurrentDate(),
                             hora_actua: getCurrentTime(),
                         },
                         condition: `ide_gtemp = ${ideGtemp}`,
-                    });
-                }
-                if (Object.keys(personaData).length > 0) {
-                    listQuery.push({
+                    },
+                    {
                         operation: 'update',
                         module: 'gen',
                         tableName: 'persona',
                         primaryKey: 'ide_geper',
                         object: {
-                            ide_geper: ideGeper,
-                            ...personaData,
+                            ide_geper: dtoIn.ideGeper,
+                            ...personaObject,
                             usuario_actua: dtoIn.login,
+                            fecha_actua: getCurrentDate(),
                             hora_actua: getCurrentTime(),
                         },
-                        condition: `ide_geper = ${ideGeper}`,
-                    });
-                }
-
-                if (listQuery.length === 0) {
-                    return { message: 'ok', rowCount: 0, ide_gtemp: ideGtemp, ide_geper: ideGeper };
-                }
+                        condition: `ide_geper = ${dtoIn.ideGeper}`,
+                    },
+                ];
                 await this.core.save({ ...dtoIn, listQuery, audit: true });
-                return { message: 'ok', rowCount: listQuery.length, ide_gtemp: ideGtemp, ide_geper: ideGeper };
+                return { message: 'ok', ideGtemp, ideGeper: dtoIn.ideGeper };
             }
 
             // Crear: la persona debe elegirse ANTES (SearchPersona en el frontend) —
-            // gth_empleado nunca crea una gen_persona nueva, solo se asocia a una que
-            // ya existe. ide_geper es obligatorio.
-            if (!data.ide_geper) {
-                throw new BadRequestException(
-                    'Debe seleccionar la persona (gen_persona) a la que se asociará el empleado',
-                );
-            }
-            for (const field of REQUIRED_ON_CREATE) {
-                if (empleadoData[field] === undefined || empleadoData[field] === null) {
-                    throw new BadRequestException(`El campo ${field} es requerido para crear un empleado`);
-                }
-            }
-
-            const ideGeper = Number(data.ide_geper);
-
-            const personaExistente = await this.getPersonaParaAsociar(ideGeper, dtoIn.ideEmpr);
+            // gth_empleado nunca crea una gen_persona nueva, solo se asocia a una que ya
+            // existe (validado por class-validator: ideGeper es requerido en el DTO).
+            const personaExistente = await this.getPersonaParaAsociar(dtoIn.ideGeper, dtoIn.ideEmpr);
             if (!personaExistente) {
                 throw new BadRequestException('La persona seleccionada no existe o no pertenece a esta empresa');
             }
@@ -273,14 +225,14 @@ export class EmpleadosService {
                     tableName: 'persona',
                     primaryKey: 'ide_geper',
                     object: {
-                        ide_geper: ideGeper,
+                        ide_geper: dtoIn.ideGeper,
                         es_empleado_geper: true,
-                        ...personaData,
+                        ...personaObject,
                         usuario_actua: dtoIn.login,
                         fecha_actua: getCurrentDate(),
                         hora_actua: getCurrentTime(),
                     },
-                    condition: `ide_geper = ${ideGeper}`,
+                    condition: `ide_geper = ${dtoIn.ideGeper}`,
                 },
                 {
                     operation: 'insert',
@@ -288,10 +240,8 @@ export class EmpleadosService {
                     tableName: 'empleado',
                     primaryKey: 'ide_gtemp',
                     object: {
-                        activo_gtemp: true,
-                        ...empleadoData,
+                        ...empleadoObject,
                         ide_gtemp: ideGtemp,
-                        ide_geper: ideGeper,
                         usuario_ingre: dtoIn.login,
                         fecha_ingre: getCurrentDate(),
                         hora_ingre: getCurrentTime(),
@@ -301,7 +251,7 @@ export class EmpleadosService {
 
             await this.core.save({ ...dtoIn, listQuery, audit: true });
 
-            return { message: 'ok', rowCount: 1, ide_gtemp: ideGtemp, ide_geper: ideGeper };
+            return { message: 'ok', ideGtemp, ideGeper: dtoIn.ideGeper };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
