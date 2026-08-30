@@ -53,7 +53,7 @@ export class RechazarCandidatasDto {
 
 export class SaveFeriadoDto {
     @ApiProperty({ description: 'Datos de nrh_feriado (fecha_nrfer, detalle_nrfer, activo_nrfer)' })
-    data: Record<string, any>;
+    data: Record<string, unknown>;
 }
 
 export class GenerarFeriadosDto {

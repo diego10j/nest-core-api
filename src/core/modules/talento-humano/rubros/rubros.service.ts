@@ -332,7 +332,7 @@ export class RubrosService {
                 SELECT ide_nrrucu FROM nrh_rubro_cuenta WHERE ide_nrrub = $1 AND activo_nrrucu = true LIMIT 1
             `);
             activaQuery.setLazy(false);
-            activaQuery.addIntParam(1, data.ide_nrrub);
+            activaQuery.addIntParam(1, data.ide_nrrub as number);
             const activaRows = await this.dataSource.createSelectQuery(activaQuery);
             const ideNrrucuActiva = (activaRows?.[0] as { ide_nrrucu: number } | undefined)?.ide_nrrucu;
 

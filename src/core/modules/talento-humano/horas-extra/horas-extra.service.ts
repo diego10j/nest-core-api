@@ -294,7 +294,7 @@ export class HorasExtraService {
         }
     }
 
-    async saveFeriado(dtoIn: { data: Record<string, any> } & HeaderParamsDto) {
+    async saveFeriado(dtoIn: { data: Record<string, unknown> } & HeaderParamsDto) {
         try {
             if (!dtoIn.data?.fecha_nrfer) {
                 throw new BadRequestException('fecha_nrfer es requerida');

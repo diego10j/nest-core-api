@@ -12,7 +12,7 @@ export class GetDetalleRubrosByTipoNominaDto {
 
 export class SaveRubroDto extends SaveDto {
     @ApiProperty({ description: 'Datos de nrh_rubro (ide_nrfoc, ide_nrtir, detalle_nrrub, activo_nrrub, anticipo_nrrub, decimo_nrrub)' })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class SaveDetalleRubroDto extends SaveDto {
@@ -22,17 +22,17 @@ export class SaveDetalleRubroDto extends SaveDto {
             'iniciar con "=" para que se evalúe), orden_nrder, fecha_inicial_nrder/fecha_final_nrder ' +
             '/fecha_pago_nrder en formato "MM-DD/offsetAño" (ej. "8-1/-1"), activo_nrder.',
     })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class SaveCargoDto extends SaveDto {
     @ApiProperty({ description: 'Datos de gth_cargo (detalle_gtcar, activo_gtcar)' })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class SaveRubroCuentaDto extends SaveDto {
     @ApiProperty({ description: 'Datos de nrh_rubro_cuenta (ide_nrrub, ide_cndpc)' })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class SaveDepartamentoTipoGastoDto {

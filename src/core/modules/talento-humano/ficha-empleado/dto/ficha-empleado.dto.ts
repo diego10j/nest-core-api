@@ -18,7 +18,7 @@ export class SaveEducacionDto extends SaveDto {
             '(especialidad), ide_gtana, anio_gtede, anio_grado_gtede, registro_titulo_gtede (SENESCYT), ' +
             'observaciones_gtede.',
     })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class EliminarEducacionDto {
@@ -36,7 +36,7 @@ export class SaveExperienciaLaboralDto extends SaveDto {
             'nro_subordinados_gtele, jefe_inmediato_gtele, cargo_jefe_gtele, telefono_gtele, ' +
             'funciones_desempenio_gtele, motivo_salida_gtele, fecha_ingreso_gtele, fecha_salida_gtele.',
     })
-    declare data: Record<string, any>;
+    declare data: Record<string, unknown>;
 }
 
 export class EliminarExperienciaLaboralDto {
