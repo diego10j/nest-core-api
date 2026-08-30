@@ -41,6 +41,17 @@ ALTER TABLE public.gth_empleado
     ADD COLUMN IF NOT EXISTS foto_gtemp varchar(255),
     ADD COLUMN IF NOT EXISTS firma_gtemp varchar(255);
 
+-- gth_empleado.ide_gedip (lugar de origen) apuntaba a gen_division_politica, un catálogo
+-- que en esta empresa nunca se pobló/usó. Se reemplaza el concepto por Provincia/Cantón
+-- de nacimiento, reutilizando gen_provincia/gen_canton (mismo patrón que ya usa
+-- gen_persona.ide_geprov/ide_gecant en otros formularios del ERP). ide_gedip se deja
+-- nullable en vez de borrarla: registros ya cargados no se tocan, solo deja de ser
+-- obligatoria y de usarse en la ficha nueva.
+ALTER TABLE public.gth_empleado
+    ALTER COLUMN ide_gedip DROP NOT NULL,
+    ADD COLUMN IF NOT EXISTS ide_geprov int REFERENCES public.gen_provincia(ide_geprov),
+    ADD COLUMN IF NOT EXISTS ide_gecant int REFERENCES public.gen_canton(ide_gecant);
+
 -- 1) nrh_detalle_rol — línea calculada y congelada por empleado+rubro+rol
 CREATE TABLE IF NOT EXISTS public.nrh_detalle_rol (
     ide_nrdro           int PRIMARY KEY,

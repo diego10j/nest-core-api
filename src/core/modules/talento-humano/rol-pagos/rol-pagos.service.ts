@@ -6,10 +6,19 @@ import { ObjectQueryDto } from 'src/core/connection/dto';
 import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/comprobante-contabilidad/comprobante-contabilidad.service';
+import { CalculoLegalService } from 'src/core/modules/talento-humano/calculo-legal/calculo-legal.service';
 import { FormulaEngineService } from 'src/core/modules/talento-humano/formula-engine/formula-engine.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
-import { AnularRolDto, AprobarRolDto, CerrarRolDto, GenerarRolDto, GetRolByIdDto, GetRolesDto } from './dto/rol-pagos.dto';
+import {
+    AnularRolDto,
+    AprobarRolDto,
+    CerrarRolDto,
+    GenerarLiquidacionDecimoDto,
+    GenerarRolDto,
+    GetRolByIdDto,
+    GetRolesDto,
+} from './dto/rol-pagos.dto';
 
 interface DetalleRubroRow {
     ide_nrder: number;
@@ -36,6 +45,7 @@ export class RolPagosService extends BaseService {
         private readonly core: CoreService,
         private readonly formulaEngine: FormulaEngineService,
         private readonly comprobanteContabilidad: ComprobanteContabilidadService,
+        private readonly calculoLegal: CalculoLegalService,
     ) {
         super();
         this.core
@@ -43,6 +53,22 @@ export class RolPagosService extends BaseService {
                 'p_nrh_rubro_sueldo',
                 'p_nrh_rubro_horas_supl',
                 'p_nrh_rubro_horas_extra',
+                'p_nrh_rubro_horas_nocturna',
+                'p_nrh_parametro_horas_extra',
+                'p_nrh_sbu_vigente',
+                'p_nrh_rubro_decimo_tercero',
+                'p_nrh_rubro_decimo_cuarto',
+                'p_nrh_rubro_fondos_reserva',
+                'p_nrh_cuenta_pasivo_fondos_reserva',
+                'p_nrh_cuenta_pasivo_decimo_tercero',
+                'p_nrh_cuenta_pasivo_decimo_cuarto',
+                'p_nrh_cuenta_gasto_venta_fondos_reserva',
+                'p_nrh_cuenta_gasto_venta_decimo_tercero',
+                'p_nrh_cuenta_gasto_venta_decimo_cuarto',
+                'p_nrh_cuenta_gasto_admin_fondos_reserva',
+                'p_nrh_cuenta_gasto_admin_decimo_tercero',
+                'p_nrh_cuenta_gasto_admin_decimo_cuarto',
+                'p_nrh_region_decimo4',
                 'p_nrh_estado_pre_nomina',
                 'p_nrh_estado_nomina_aprobada',
                 'p_nrh_estado_nomina_cerrada',
@@ -63,6 +89,13 @@ export class RolPagosService extends BaseService {
         if (!raw) return null;
         const n = Number(raw);
         return Number.isFinite(n) ? n : null;
+    }
+
+    private paramFloat(name: string, fallback: number): number {
+        const raw = this.variables.get(name);
+        if (!raw) return fallback;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : fallback;
     }
 
     // ─── Consulta ──────────────────────────────────────────────────────────
@@ -173,6 +206,12 @@ export class RolPagosService extends BaseService {
             const rubroSueldoId = this.paramInt('p_nrh_rubro_sueldo');
             const rubroHorasSuplId = this.paramInt('p_nrh_rubro_horas_supl');
             const rubroHorasExtraId = this.paramInt('p_nrh_rubro_horas_extra');
+            const rubroHorasNocturnaId = this.paramInt('p_nrh_rubro_horas_nocturna');
+            const rubroDecimoTerceroId = this.paramInt('p_nrh_rubro_decimo_tercero');
+            const rubroDecimoCuartoId = this.paramInt('p_nrh_rubro_decimo_cuarto');
+            const rubroFondosReservaId = this.paramInt('p_nrh_rubro_fondos_reserva');
+            const parametroHorasExtra = this.paramFloat('p_nrh_parametro_horas_extra', 240);
+            const sbuVigente = this.paramFloat('p_nrh_sbu_vigente', 0);
             const estadoPreNomina = this.paramInt('p_nrh_estado_pre_nomina');
 
             const detalleRubros = await this.getDetalleRubrosByTipoNomina(dtoIn.ide_nrdtn);
@@ -188,7 +227,10 @@ export class RolPagosService extends BaseService {
             }
 
             // Ubicar, dentro de la parametría de ESTE tipo de nómina, cuál ide_nrder
-            // corresponde al rubro Sueldo y a cada tipo de hora extra (si están configurados).
+            // corresponde a cada rubro de cálculo legal fijo (sueldo, horas extra,
+            // décimos, fondos de reserva) — si están configurados. Estos NO se evalúan
+            // por fórmula (ver CalculoLegalService): se calculan en código y se inyectan
+            // directo, igual que ya se hacía con sueldo.
             const nrderSueldo = rubroSueldoId
                 ? detalleRubros.find((d) => d.ide_nrrub === rubroSueldoId)?.ide_nrder
                 : undefined;
@@ -197,6 +239,18 @@ export class RolPagosService extends BaseService {
                 : undefined;
             const nrderHorasExtra = rubroHorasExtraId
                 ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasExtraId)?.ide_nrder
+                : undefined;
+            const nrderHorasNocturna = rubroHorasNocturnaId
+                ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasNocturnaId)?.ide_nrder
+                : undefined;
+            const nrderDecimoTercero = rubroDecimoTerceroId
+                ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoTerceroId)?.ide_nrder
+                : undefined;
+            const nrderDecimoCuarto = rubroDecimoCuartoId
+                ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoCuartoId)?.ide_nrder
+                : undefined;
+            const nrderFondosReserva = rubroFondosReservaId
+                ? detalleRubros.find((d) => d.ide_nrrub === rubroFondosReservaId)?.ide_nrder
                 : undefined;
 
             const ideNrrol = await this.dataSource.getSeqTable('nrh_rol', 'ide_nrrol', 1, dtoIn.login);
@@ -224,23 +278,57 @@ export class RolPagosService extends BaseService {
             ];
 
             const horasConsumidas: number[] = [];
+            const mensualizacionVigente = await this.getMensualizacionVigente(
+                empleados.map((e) => e.ide_geedp),
+                dtoIn.fecha_nrrol,
+            );
 
             for (const empleado of empleados) {
                 const computedValues = new Map<number, number>();
+                const sueldo = Number(empleado.rmu_geedp) || 0;
 
                 if (nrderSueldo !== undefined) {
-                    computedValues.set(nrderSueldo, Number(empleado.rmu_geedp) || 0);
+                    computedValues.set(nrderSueldo, sueldo);
                 }
 
-                if (nrderHorasSupl !== undefined || nrderHorasExtra !== undefined) {
-                    const { supl, extra, ids } = await this.getHorasExtraAprobadas(empleado.ide_geedp, dtoIn.fecha_nrrol);
-                    if (nrderHorasSupl !== undefined) computedValues.set(nrderHorasSupl, supl);
-                    if (nrderHorasExtra !== undefined) computedValues.set(nrderHorasExtra, extra);
+                let valorHorasSupl = 0;
+                let valorHorasExtra = 0;
+                let valorHorasNocturna = 0;
+                if (nrderHorasSupl !== undefined || nrderHorasExtra !== undefined || nrderHorasNocturna !== undefined) {
+                    const { supl, extra, nocturna, ids } = await this.getHorasExtraAprobadas(empleado.ide_geedp, dtoIn.fecha_nrrol);
+                    const valores = this.calculoLegal.calcularHorasExtra(sueldo, supl, extra, nocturna, parametroHorasExtra);
+                    valorHorasSupl = valores.valorSuplementaria;
+                    valorHorasExtra = valores.valorExtraordinaria;
+                    valorHorasNocturna = valores.valorNocturna;
+                    if (nrderHorasSupl !== undefined) computedValues.set(nrderHorasSupl, valorHorasSupl);
+                    if (nrderHorasExtra !== undefined) computedValues.set(nrderHorasExtra, valorHorasExtra);
+                    if (nrderHorasNocturna !== undefined) computedValues.set(nrderHorasNocturna, valorHorasNocturna);
                     horasConsumidas.push(...ids);
+                }
+
+                // Ingreso gravable mensual (sueldo + horas extra) — base de fondos de
+                // reserva y décimo tercero. No incluye "otros ingresos" (no modelado aún).
+                const ingresoGravable = sueldo + valorHorasSupl + valorHorasExtra + valorHorasNocturna;
+
+                // Décimos y fondos de reserva SIEMPRE se calculan y se guardan (acumule o
+                // mensualice el empleado) — es la provisión contable del mes, el pasivo ya
+                // se debe aunque no se pague en efectivo todavía. Si el empleado mensualiza,
+                // crearCxpPorEmpleado (en cerrarRol) además lo incluye en su líquido a
+                // recibir; si acumula, solo queda en nrh_detalle_rol para que
+                // generarProvisionDecimosFondos arme el asiento de provisión del mes.
+                if (nrderDecimoTercero !== undefined) {
+                    computedValues.set(nrderDecimoTercero, this.calculoLegal.calcularDecimoTercero(ingresoGravable));
+                }
+                if (nrderDecimoCuarto !== undefined) {
+                    computedValues.set(nrderDecimoCuarto, this.calculoLegal.calcularDecimoCuarto(sbuVigente));
+                }
+                if (nrderFondosReserva !== undefined) {
+                    computedValues.set(nrderFondosReserva, this.calculoLegal.calcularFondosReserva(ingresoGravable));
                 }
 
                 for (const der of detalleRubros) {
                     if (computedValues.has(der.ide_nrder)) continue; // ya inyectado (sueldo/horas)
+                    const mensualizado = mensualizacionVigente.get(`${empleado.ide_geedp}:${der.ide_nrrub}`) ?? false;
                     const valor = await this.formulaEngine.evaluarRubro({
                         formula: der.formula_nrder,
                         ideGeedp: empleado.ide_geedp,
@@ -248,6 +336,7 @@ export class RolPagosService extends BaseService {
                         fechaInicialNrder: der.fecha_inicial_nrder,
                         fechaFinalNrder: der.fecha_final_nrder,
                         computedValues,
+                        mensualizado,
                     });
                     computedValues.set(der.ide_nrder, Math.round(valor * 100) / 100);
                 }
@@ -398,6 +487,12 @@ export class RolPagosService extends BaseService {
                 dtoIn,
             );
 
+            const provisionesRegistradas = await this.generarProvisionDecimosFondos(
+                dtoIn.ide_nrrol,
+                rol.fecha_nrrol,
+                dtoIn,
+            );
+
             return {
                 message: 'ok',
                 ide_nrrol: dtoIn.ide_nrrol,
@@ -405,11 +500,173 @@ export class RolPagosService extends BaseService {
                 numero_cnccc: comprobante.numero_cnccc,
                 totalLiquido,
                 cxpCreadas,
+                provisiones: provisionesRegistradas,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al cerrar el rol: ${msg}`);
+        }
+    }
+
+    /**
+     * Liquidación anual de décimo tercero o décimo cuarto: suma las provisiones
+     * mensuales acumuladas (nrh_detalle_rol) en la ventana legal del período (dic-nov
+     * para décimo 3°; ago-jul Sierra o mar-feb Costa para décimo 4°, ver
+     * p_nrh_region_decimo4), excluyendo los meses en los que el empleado ya mensualizó
+     * ese rubro (ya se le pagó con el rol normal, no se le debe otra vez). Genera un
+     * nrh_rol nuevo (tipo "Nómina Pago Décimos"), su asiento contable — DEBE a la cuenta
+     * de pasivo (cancela la deuda acumulada, ver p_nrh_cuenta_pasivo_decimo_*) / HABER a
+     * "Sueldos por Pagar" — y una CxP por empleado con el monto a pagar, reutilizando el
+     * mismo mecanismo de con_cab_comp_cont/cxp_cabece_factur que cerrarRol.
+     *
+     * Al ser la SUMA de lo realmente provisionado mes a mes, un empleado que ingresó a
+     * mitad de período queda prorrateado automáticamente (solo tiene provisión en los
+     * meses que trabajó) — no hace falta un cálculo de prorrateo aparte.
+     */
+    async generarLiquidacionDecimo(dtoIn: GenerarLiquidacionDecimoDto & HeaderParamsDto) {
+        const esDecimoTercero = dtoIn.concepto === 'decimo_tercero';
+        const rubroId = this.paramInt(esDecimoTercero ? 'p_nrh_rubro_decimo_tercero' : 'p_nrh_rubro_decimo_cuarto');
+        const cuentaPasivo = this.paramInt(
+            esDecimoTercero ? 'p_nrh_cuenta_pasivo_decimo_tercero' : 'p_nrh_cuenta_pasivo_decimo_cuarto',
+        );
+        const ideCndpcLiquido = this.paramInt('p_nrh_cuenta_liquido_pagar');
+        const ideCntcm = this.paramInt('p_nrh_tipo_comprobante_rol');
+        const estadoCerrada = this.paramInt('p_nrh_estado_nomina_cerrada');
+        const estadoFacturaNormal = this.paramInt('p_cxp_estado_factura_normal');
+
+        if (!rubroId || !cuentaPasivo || !ideCndpcLiquido || !ideCntcm || !estadoCerrada) {
+            throw new BadRequestException(
+                'Faltan parámetros de sistema para la liquidación de décimos (Sistema > Variables, módulo Nómina)',
+            );
+        }
+
+        try {
+            const [desde, hasta] = this.calcularVentanaLiquidacion(dtoIn.concepto, dtoIn.anio);
+
+            const detalleRubros = await this.getDetalleRubrosByTipoNomina(dtoIn.ide_nrdtn);
+            const nrder = detalleRubros.find((d) => d.ide_nrrub === rubroId)?.ide_nrder;
+            if (!nrder) {
+                throw new BadRequestException(
+                    'El tipo de nómina de liquidación no tiene configurado el rubro correspondiente ' +
+                    '(Nómina > Catálogos > Parametría de Rubros)',
+                );
+            }
+
+            const provisiones = await this.getProvisionesEnVentana(rubroId, desde, hasta);
+            if (provisiones.length === 0) {
+                throw new BadRequestException(`No hay provisiones registradas entre ${desde} y ${hasta} para liquidar`);
+            }
+
+            const historial = await this.getHistorialMensualizacion([...new Set(provisiones.map((p) => p.ide_geedp))]);
+            const porEmpleado = new Map<number, number>();
+            for (const p of provisiones) {
+                const mensualizado = this.resolverMensualizado(historial, p.ide_geedp, rubroId, p.fecha_nrrol);
+                if (mensualizado) continue; // ya se pagó ese mes en el rol normal
+                porEmpleado.set(p.ide_geedp, (porEmpleado.get(p.ide_geedp) ?? 0) + (Number(p.valor) || 0));
+            }
+            const entradas = [...porEmpleado.entries()]
+                .map(([ideGeedp, valor]) => [ideGeedp, Math.round(valor * 100) / 100] as [number, number])
+                .filter(([, valor]) => valor > 0);
+
+            if (entradas.length === 0) {
+                return { message: 'ok', ide_nrrol: null, empleadosLiquidados: 0, totalLiquidado: 0 };
+            }
+
+            const ideNrrol = await this.dataSource.getSeqTable('nrh_rol', 'ide_nrrol', 1, dtoIn.login);
+            const listQuery: ObjectQueryDto[] = [
+                {
+                    operation: 'insert',
+                    module: 'nrh',
+                    tableName: 'rol',
+                    primaryKey: 'ide_nrrol',
+                    object: {
+                        ide_nrrol: ideNrrol,
+                        ide_sucu: dtoIn.ideSucu,
+                        ide_usua: dtoIn.ideUsua,
+                        ide_gepro: dtoIn.ide_gepro,
+                        ide_nrdtn: dtoIn.ide_nrdtn,
+                        ide_nresr: estadoCerrada,
+                        fecha_nrrol: hasta,
+                        activo_nrrol: true,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                },
+            ];
+
+            let totalLiquidado = 0;
+            for (const [ideGeedp, valor] of entradas) {
+                totalLiquidado += valor;
+                const ideNrdro = await this.dataSource.getSeqTable('nrh_detalle_rol', 'ide_nrdro', 1, dtoIn.login);
+                listQuery.push({
+                    operation: 'insert',
+                    module: 'nrh',
+                    tableName: 'detalle_rol',
+                    primaryKey: 'ide_nrdro',
+                    object: {
+                        ide_nrdro: ideNrdro,
+                        ide_nrrol: ideNrrol,
+                        ide_nrder: nrder,
+                        ide_geedp: ideGeedp,
+                        valor_nrdro: valor,
+                        usuario_ingre: dtoIn.login,
+                        fecha_ingre: getCurrentDate(),
+                        hora_ingre: getCurrentTime(),
+                    },
+                });
+            }
+            totalLiquidado = Math.round(totalLiquidado * 100) / 100;
+
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
+
+            const lugarDebe = Number(this.variables.get('p_con_lugar_debe') ?? '1');
+            const lugarHaber = Number(this.variables.get('p_con_lugar_haber') ?? '0');
+            const comprobante = await this.comprobanteContabilidad.saveAutomatico({
+                ...dtoIn,
+                data: {
+                    ide_cntcm: ideCntcm,
+                    fecha_trans_cnccc: hasta,
+                    observacion_cnccc:
+                        `Liquidación anual ${esDecimoTercero ? 'Décimo Tercero' : 'Décimo Cuarto'} ` +
+                        `${dtoIn.anio} - Rol #${ideNrrol}`,
+                },
+                isUpdate: false,
+                detalles: [
+                    { ide_cnlap: lugarDebe, ide_cndpc: cuentaPasivo, valor_cndcc: totalLiquidado },
+                    { ide_cnlap: lugarHaber, ide_cndpc: ideCndpcLiquido, valor_cndcc: totalLiquidado },
+                ],
+            });
+
+            const updRol = new UpdateQuery('nrh_rol', 'ide_nrrol');
+            updRol.values.set('ide_cnmoc', comprobante.ide_cnccc);
+            updRol.where = 'ide_nrrol = $1';
+            updRol.addIntParam(1, ideNrrol);
+            await this.dataSource.createQuery(updRol);
+
+            const cxpCreadas = await this.crearCxpLiquidacionDecimo(
+                entradas,
+                hasta,
+                comprobante.ide_cnccc,
+                estadoFacturaNormal,
+                esDecimoTercero,
+                dtoIn,
+            );
+
+            return {
+                message: 'ok',
+                ide_nrrol: ideNrrol,
+                ide_cnccc: comprobante.ide_cnccc,
+                numero_cnccc: comprobante.numero_cnccc,
+                empleadosLiquidados: entradas.length,
+                totalLiquidado,
+                cxpCreadas,
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al generar la liquidación: ${msg}`);
         }
     }
 
@@ -433,6 +690,13 @@ export class RolPagosService extends BaseService {
         >;
     }
 
+    /**
+     * Décimos y fondos de reserva se calculan y se guardan en nrh_detalle_rol TODOS los
+     * meses (ver generarRol), pero solo deben pagarse en efectivo al empleado este rol
+     * si tiene la modalidad "mensualizado" vigente para ese rubro — si acumula, el valor
+     * ya quedó registrado para el asiento de provisión (generarProvisionDecimosFondos) y
+     * NO debe sumarse a lo que se le paga este mes.
+     */
     private async crearCxpPorEmpleado(
         ideNrrol: number,
         fechaRol: string,
@@ -440,7 +704,13 @@ export class RolPagosService extends BaseService {
         estadoFacturaNormal: number | null,
         dtoIn: HeaderParamsDto,
     ): Promise<number> {
-        const query = new SelectQuery(`
+        const rubrosProvision = [
+            this.paramInt('p_nrh_rubro_decimo_tercero'),
+            this.paramInt('p_nrh_rubro_decimo_cuarto'),
+            this.paramInt('p_nrh_rubro_fondos_reserva'),
+        ].filter((v): v is number => v !== null);
+
+        const queryNormal = new SelectQuery(`
             SELECT emp.ide_geper, SUM(dr.valor_nrdro * tir.signo_nrtir) AS liquido
             FROM nrh_detalle_rol dr
             INNER JOIN gen_empleados_departamento_par ged ON ged.ide_geedp = dr.ide_geedp
@@ -448,13 +718,58 @@ export class RolPagosService extends BaseService {
             INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
             INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
             INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = rub.ide_nrtir
-            WHERE dr.ide_nrrol = $1
+            WHERE dr.ide_nrrol = $1 AND rub.ide_nrrub != ALL ($2)
             GROUP BY emp.ide_geper
-            HAVING SUM(dr.valor_nrdro * tir.signo_nrtir) > 0
         `);
-        query.setLazy(false);
-        query.addIntParam(1, ideNrrol);
-        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{ ide_geper: number; liquido: number }>;
+        queryNormal.setLazy(false);
+        queryNormal.addIntParam(1, ideNrrol);
+        queryNormal.addParam(2, rubrosProvision);
+        const rowsNormal = (await this.dataSource.createSelectQuery(queryNormal)) as Array<{
+            ide_geper: number;
+            liquido: number;
+        }>;
+
+        const liquidoPorGeper = new Map<number, number>();
+        for (const row of rowsNormal) {
+            liquidoPorGeper.set(row.ide_geper, Number(row.liquido) || 0);
+        }
+
+        if (rubrosProvision.length > 0) {
+            const queryProvision = new SelectQuery(`
+                SELECT emp.ide_geper, dr.ide_geedp, rub.ide_nrrub, dr.valor_nrdro * tir.signo_nrtir AS valor
+                FROM nrh_detalle_rol dr
+                INNER JOIN gen_empleados_departamento_par ged ON ged.ide_geedp = dr.ide_geedp
+                INNER JOIN gth_empleado emp ON emp.ide_gtemp = ged.ide_gtemp
+                INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+                INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
+                INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = rub.ide_nrtir
+                WHERE dr.ide_nrrol = $1 AND rub.ide_nrrub = ANY ($2)
+            `);
+            queryProvision.setLazy(false);
+            queryProvision.addIntParam(1, ideNrrol);
+            queryProvision.addParam(2, rubrosProvision);
+            const rowsProvision = (await this.dataSource.createSelectQuery(queryProvision)) as Array<{
+                ide_geper: number;
+                ide_geedp: number;
+                ide_nrrub: number;
+                valor: number;
+            }>;
+
+            const mensualizacionVigente = await this.getMensualizacionVigente(
+                [...new Set(rowsProvision.map((r) => r.ide_geedp))],
+                fechaRol,
+            );
+            for (const row of rowsProvision) {
+                const mensualizado = mensualizacionVigente.get(`${row.ide_geedp}:${row.ide_nrrub}`) ?? false;
+                if (!mensualizado) continue; // acumula: no se paga este rol, solo se provisiona
+                const previo = liquidoPorGeper.get(row.ide_geper) ?? 0;
+                liquidoPorGeper.set(row.ide_geper, previo + (Number(row.valor) || 0));
+            }
+        }
+
+        const rows = [...liquidoPorGeper.entries()]
+            .map(([ide_geper, liquido]) => ({ ide_geper, liquido }))
+            .filter((r) => r.liquido > 0);
 
         const listQuery: ObjectQueryDto[] = [];
         for (const row of rows) {
@@ -490,6 +805,160 @@ export class RolPagosService extends BaseService {
         return listQuery.length;
     }
 
+    /**
+     * Asiento de provisión mensual de décimo tercero, décimo cuarto y fondos de reserva
+     * — replica el asiento "REGISTRO ROL DE PROVISIONES <mes>" que hoy registra la
+     * contadora a mano (verificado contra con_det_comp_cont real de DIQUIMEC): por cada
+     * concepto, UN HABER al pasivo por el total de todos los empleados que acumulan (no
+     * mensualizan), partido en DEBE de gasto Ventas/Administrativo según el departamento
+     * de cada empleado (gen_departamento.tipo_gasto_gedep). Los empleados mensualizados
+     * NO entran acá — su décimo/fondos ya se pagó en el rol normal (ver
+     * crearCxpPorEmpleado); si además se quiere contabilizar su gasto automáticamente,
+     * hay que mapear su rubro en Nómina > Catálogos > Rubros > Cuenta Contable (no lo
+     * hace este método, para no duplicar el asiento).
+     *
+     * Separado del asiento normal del rol (nrh_rol.ide_cnmoc) — se guarda en
+     * nrh_rol.ide_cnmoc_provisiones, mismo patrón que ide_cnccc_provisiones tenía el
+     * sistema anterior del usuario (reh_cab_rol_pago).
+     */
+    private async generarProvisionDecimosFondos(
+        ideNrrol: number,
+        fechaRol: string,
+        dtoIn: HeaderParamsDto,
+    ): Promise<{ ide_cnmoc_provisiones: number | null; totalProvisionado: number }> {
+        const conceptos: Array<{
+            rubro: number | null;
+            pasivo: number | null;
+            gastoVenta: number | null;
+            gastoAdmin: number | null;
+        }> = [
+            {
+                rubro: this.paramInt('p_nrh_rubro_fondos_reserva'),
+                pasivo: this.paramInt('p_nrh_cuenta_pasivo_fondos_reserva'),
+                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_fondos_reserva'),
+                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_fondos_reserva'),
+            },
+            {
+                rubro: this.paramInt('p_nrh_rubro_decimo_tercero'),
+                pasivo: this.paramInt('p_nrh_cuenta_pasivo_decimo_tercero'),
+                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_decimo_tercero'),
+                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_decimo_tercero'),
+            },
+            {
+                rubro: this.paramInt('p_nrh_rubro_decimo_cuarto'),
+                pasivo: this.paramInt('p_nrh_cuenta_pasivo_decimo_cuarto'),
+                gastoVenta: this.paramInt('p_nrh_cuenta_gasto_venta_decimo_cuarto'),
+                gastoAdmin: this.paramInt('p_nrh_cuenta_gasto_admin_decimo_cuarto'),
+            },
+        ];
+
+        const rubrosConfigurados = conceptos.filter(
+            (c) => c.rubro !== null && c.pasivo !== null && c.gastoVenta !== null && c.gastoAdmin !== null,
+        );
+        if (rubrosConfigurados.length === 0) return { ide_cnmoc_provisiones: null, totalProvisionado: 0 };
+
+        const rubroIds = rubrosConfigurados.map((c) => c.rubro as number);
+        const query = new SelectQuery(`
+            SELECT
+                dr.ide_geedp,
+                rub.ide_nrrub,
+                dr.valor_nrdro AS valor,
+                dep.tipo_gasto_gedep
+            FROM nrh_detalle_rol dr
+            INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+            INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
+            INNER JOIN gen_empleados_departamento_par ged ON ged.ide_geedp = dr.ide_geedp
+            LEFT JOIN gen_departamento dep ON dep.ide_gedep = ged.ide_gedep
+            WHERE dr.ide_nrrol = $1 AND rub.ide_nrrub = ANY ($2) AND dr.valor_nrdro > 0
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, ideNrrol);
+        query.addParam(2, rubroIds);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_geedp: number;
+            ide_nrrub: number;
+            valor: number;
+            tipo_gasto_gedep: string | null;
+        }>;
+        if (rows.length === 0) return { ide_cnmoc_provisiones: null, totalProvisionado: 0 };
+
+        const mensualizacionVigente = await this.getMensualizacionVigente(
+            [...new Set(rows.map((r) => r.ide_geedp))],
+            fechaRol,
+        );
+
+        const departamentosSinClasificar = new Set<number>();
+        const detalles: Array<{ ide_cnlap: number; ide_cndpc: number; valor_cndcc: number }> = [];
+        const lugarDebe = Number(this.variables.get('p_con_lugar_debe') ?? '1');
+        const lugarHaber = Number(this.variables.get('p_con_lugar_haber') ?? '0');
+        let totalProvisionado = 0;
+
+        for (const concepto of rubrosConfigurados) {
+            let totalPasivo = 0;
+            let totalVenta = 0;
+            let totalAdmin = 0;
+
+            for (const row of rows) {
+                if (row.ide_nrrub !== concepto.rubro) continue;
+                const mensualizado = mensualizacionVigente.get(`${row.ide_geedp}:${row.ide_nrrub}`) ?? false;
+                if (mensualizado) continue; // ya se pagó en el rol normal, no se provisiona
+
+                const valor = Number(row.valor) || 0;
+                totalPasivo += valor;
+                if (row.tipo_gasto_gedep === 'venta') totalVenta += valor;
+                else if (row.tipo_gasto_gedep === 'administrativo') totalAdmin += valor;
+                else departamentosSinClasificar.add(row.ide_geedp);
+            }
+
+            if (totalPasivo <= 0) continue;
+            totalPasivo = Math.round(totalPasivo * 100) / 100;
+            totalVenta = Math.round(totalVenta * 100) / 100;
+            totalAdmin = Math.round(totalAdmin * 100) / 100;
+            // Ajuste de redondeo: lo que no cayó en venta/admin (departamento sin
+            // clasificar) se manda a administrativo, para que el asiento siempre cuadre.
+            const diferencia = Math.round((totalPasivo - totalVenta - totalAdmin) * 100) / 100;
+            if (diferencia !== 0) totalAdmin = Math.round((totalAdmin + diferencia) * 100) / 100;
+
+            detalles.push({ ide_cnlap: lugarHaber, ide_cndpc: concepto.pasivo as number, valor_cndcc: totalPasivo });
+            if (totalVenta > 0) {
+                detalles.push({ ide_cnlap: lugarDebe, ide_cndpc: concepto.gastoVenta as number, valor_cndcc: totalVenta });
+            }
+            if (totalAdmin > 0) {
+                detalles.push({ ide_cnlap: lugarDebe, ide_cndpc: concepto.gastoAdmin as number, valor_cndcc: totalAdmin });
+            }
+            totalProvisionado += totalPasivo;
+        }
+
+        if (departamentosSinClasificar.size > 0) {
+            throw new BadRequestException(
+                'Hay empleados cuyo departamento no está clasificado como Ventas o Administrativo ' +
+                '(Nómina > Catálogos > Departamentos) — clasifícalos antes de generar la provisión.',
+            );
+        }
+
+        if (detalles.length === 0) return { ide_cnmoc_provisiones: null, totalProvisionado: 0 };
+
+        const ideCntcm = this.paramInt('p_nrh_tipo_comprobante_rol');
+        const comprobante = await this.comprobanteContabilidad.saveAutomatico({
+            ...dtoIn,
+            data: {
+                ide_cntcm: ideCntcm,
+                fecha_trans_cnccc: fechaRol,
+                observacion_cnccc: `Provisión décimos y fondos de reserva - Rol de pagos #${ideNrrol}`,
+            },
+            isUpdate: false,
+            detalles,
+        });
+
+        const updRol = new UpdateQuery('nrh_rol', 'ide_nrrol');
+        updRol.values.set('ide_cnmoc_provisiones', comprobante.ide_cnccc);
+        updRol.where = 'ide_nrrol = $1';
+        updRol.addIntParam(1, ideNrrol);
+        await this.dataSource.createQuery(updRol);
+
+        return { ide_cnmoc_provisiones: comprobante.ide_cnccc, totalProvisionado: Math.round(totalProvisionado * 100) / 100 };
+    }
+
     private async cambiarEstado(ideNrrol: number, ideNresr: number, dtoIn: HeaderParamsDto) {
         if (!ideNrrol) throw new BadRequestException('El campo ide_nrrol es requerido');
         const updQuery = new UpdateQuery('nrh_rol', 'ide_nrrol');
@@ -505,6 +974,187 @@ export class RolPagosService extends BaseService {
     }
 
     // ─── Privados ──────────────────────────────────────────────────────────
+
+    /**
+     * Modalidad (mensualizado/acumula) vigente A LA FECHA DEL ROL para cada
+     * (empleado, rubro) con solicitud registrada en nrh_solicitud_mensualizacion —
+     * no simplemente "la fila activa hoy", para que un rol generado con fecha pasada
+     * resuelva la modalidad que aplicaba en ese momento si el empleado cambió de
+     * modalidad después. Batch por todos los empleados del rol en una sola consulta
+     * (evita N+1 dentro del loop de generarRol). Sin solicitud registrada, el default
+     * es "acumula" (false) — igual que el default legal y el DEFAULT de la columna.
+     */
+    private async getMensualizacionVigente(
+        geedpIds: number[],
+        fechaRol: string,
+    ): Promise<Map<string, boolean>> {
+        const resultado = new Map<string, boolean>();
+        if (geedpIds.length === 0) return resultado;
+
+        const query = new SelectQuery(`
+            SELECT ide_geedp, ide_nrrub, mensualizado_nrsom, fecha_solicitud_nrsom
+            FROM nrh_solicitud_mensualizacion
+            WHERE ide_geedp = ANY ($1) AND fecha_solicitud_nrsom <= $2
+            ORDER BY ide_geedp, ide_nrrub, fecha_solicitud_nrsom ASC
+        `);
+        query.setLazy(false);
+        query.addParam(1, geedpIds);
+        query.addStringParam(2, fechaRol);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_geedp: number;
+            ide_nrrub: number;
+            mensualizado_nrsom: boolean;
+        }>;
+
+        // Filas ordenadas ascendente por fecha: la última que sobrescribe cada clave
+        // es la más reciente <= fechaRol, o sea la vigente a esa fecha.
+        for (const row of rows) {
+            resultado.set(`${row.ide_geedp}:${row.ide_nrrub}`, !!row.mensualizado_nrsom);
+        }
+        return resultado;
+    }
+
+    /**
+     * Ventana legal [desde, hasta] para la liquidación anual de un concepto y año.
+     * Décimo tercero: fijo dic(año-1) a nov(año) — no varía por región. Décimo cuarto:
+     * Sierra/Amazonía ago(año-1)-jul(año); Costa/Insular mar(año)-feb(año) — según
+     * p_nrh_region_decimo4. Simplificación: no ajusta 28/29 de febrero en años bisiestos
+     * por región Costa (día menos de holgura, sin impacto real en el cálculo).
+     */
+    private calcularVentanaLiquidacion(concepto: 'decimo_tercero' | 'decimo_cuarto', anio: number): [string, string] {
+        if (concepto === 'decimo_tercero') {
+            return [`${anio - 1}-12-01`, `${anio}-11-30`];
+        }
+        const region = (this.variables.get('p_nrh_region_decimo4') ?? 'sierra').trim().toLowerCase();
+        if (region === 'costa') {
+            return [`${anio}-03-01`, `${anio + 1}-02-28`];
+        }
+        return [`${anio - 1}-08-01`, `${anio}-07-31`];
+    }
+
+    /** Provisiones mensuales (nrh_detalle_rol.valor_nrdro) de un rubro dentro de una ventana de fechas, por empleado y rol. */
+    private async getProvisionesEnVentana(
+        ideNrrub: number,
+        desde: string,
+        hasta: string,
+    ): Promise<Array<{ ide_geedp: number; valor: number; fecha_nrrol: string }>> {
+        const query = new SelectQuery(`
+            SELECT dr.ide_geedp, dr.valor_nrdro AS valor, r.fecha_nrrol::text AS fecha_nrrol
+            FROM nrh_detalle_rol dr
+            INNER JOIN nrh_rol r ON r.ide_nrrol = dr.ide_nrrol AND r.activo_nrrol = true
+            INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+            WHERE der.ide_nrrub = $1 AND r.fecha_nrrol BETWEEN $2 AND $3
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, ideNrrub);
+        query.addStringParam(2, desde);
+        query.addStringParam(3, hasta);
+        return this.dataSource.createSelectQuery(query) as Promise<
+            Array<{ ide_geedp: number; valor: number; fecha_nrrol: string }>
+        >;
+    }
+
+    /** Historial completo (no solo la vigente) de mensualización por (empleado, rubro), ordenado por fecha ascendente. */
+    private async getHistorialMensualizacion(
+        geedpIds: number[],
+    ): Promise<Map<string, Array<{ fecha: string; mensualizado: boolean }>>> {
+        const resultado = new Map<string, Array<{ fecha: string; mensualizado: boolean }>>();
+        if (geedpIds.length === 0) return resultado;
+
+        const query = new SelectQuery(`
+            SELECT ide_geedp, ide_nrrub, mensualizado_nrsom, fecha_solicitud_nrsom::text AS fecha_solicitud_nrsom
+            FROM nrh_solicitud_mensualizacion
+            WHERE ide_geedp = ANY ($1)
+            ORDER BY ide_geedp, ide_nrrub, fecha_solicitud_nrsom ASC
+        `);
+        query.setLazy(false);
+        query.addParam(1, geedpIds);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_geedp: number;
+            ide_nrrub: number;
+            mensualizado_nrsom: boolean;
+            fecha_solicitud_nrsom: string;
+        }>;
+        for (const row of rows) {
+            const key = `${row.ide_geedp}:${row.ide_nrrub}`;
+            if (!resultado.has(key)) resultado.set(key, []);
+            resultado.get(key)!.push({ fecha: row.fecha_solicitud_nrsom, mensualizado: !!row.mensualizado_nrsom });
+        }
+        return resultado;
+    }
+
+    /** Resuelve la modalidad vigente a una fecha específica a partir del historial completo. */
+    private resolverMensualizado(
+        historial: Map<string, Array<{ fecha: string; mensualizado: boolean }>>,
+        ideGeedp: number,
+        ideNrrub: number,
+        fecha: string,
+    ): boolean {
+        const hist = historial.get(`${ideGeedp}:${ideNrrub}`);
+        if (!hist) return false;
+        let resultado = false;
+        for (const h of hist) {
+            if (h.fecha <= fecha) resultado = h.mensualizado;
+            else break;
+        }
+        return resultado;
+    }
+
+    /** CxP por empleado para la liquidación anual de décimos (una fila por empleado liquidado). */
+    private async crearCxpLiquidacionDecimo(
+        entradas: Array<[number, number]>,
+        fecha: string,
+        ideCnccc: number,
+        estadoFacturaNormal: number | null,
+        esDecimoTercero: boolean,
+        dtoIn: HeaderParamsDto,
+    ): Promise<number> {
+        const geedpIds = entradas.map(([ideGeedp]) => ideGeedp);
+        const query = new SelectQuery(`
+            SELECT ged.ide_geedp, emp.ide_geper
+            FROM gen_empleados_departamento_par ged
+            INNER JOIN gth_empleado emp ON emp.ide_gtemp = ged.ide_gtemp
+            WHERE ged.ide_geedp = ANY ($1)
+        `);
+        query.setLazy(false);
+        query.addParam(1, geedpIds);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{ ide_geedp: number; ide_geper: number }>;
+        const geperPorGeedp = new Map(rows.map((r) => [r.ide_geedp, r.ide_geper]));
+
+        const listQuery: ObjectQueryDto[] = [];
+        for (const [ideGeedp, valor] of entradas) {
+            const ideGeper = geperPorGeedp.get(ideGeedp);
+            if (!ideGeper) continue;
+            const ideCpcfa = await this.dataSource.getSeqTable('cxp_cabece_factur', 'ide_cpcfa', 1, dtoIn.login);
+            listQuery.push({
+                operation: 'insert',
+                module: 'cxp',
+                tableName: 'cabece_factur',
+                primaryKey: 'ide_cpcfa',
+                object: {
+                    ide_cpcfa: ideCpcfa,
+                    ide_geper: ideGeper,
+                    ide_sucu: dtoIn.ideSucu,
+                    ide_empr: dtoIn.ideEmpr,
+                    ide_usua: dtoIn.ideUsua,
+                    ide_cnccc: ideCnccc,
+                    ide_cpefa: estadoFacturaNormal,
+                    fecha_trans_cpcfa: fecha,
+                    fecha_emisi_cpcfa: fecha,
+                    numero_cpcfa: `LIQ-${esDecimoTercero ? 'D3' : 'D4'}-${ideGeedp}-${fecha}`,
+                    total_cpcfa: Math.round(valor * 100) / 100,
+                    observacion_cpcfa: `Liquidación anual de ${esDecimoTercero ? 'décimo tercero' : 'décimo cuarto'}`,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
+                },
+            });
+        }
+        if (listQuery.length > 0) {
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
+        }
+        return listQuery.length;
+    }
 
     private async getDetalleRubrosByTipoNomina(ideNrdtn: number): Promise<DetalleRubroRow[]> {
         const query = new SelectQuery(`
@@ -548,12 +1198,12 @@ export class RolPagosService extends BaseService {
     /**
      * Horas extra aprobadas (con tipo ya decidido por quien aprobó, ver
      * HorasExtraService.aprobar) y no consumidas por otro rol todavía, separadas por
-     * suplementaria (50%) / extraordinaria (100%).
+     * suplementaria (50%) / extraordinaria (100%) / nocturna (25%).
      */
     private async getHorasExtraAprobadas(
         ideGeedp: number,
         fechaRol: string,
-    ): Promise<{ supl: number; extra: number; ids: number[] }> {
+    ): Promise<{ supl: number; extra: number; nocturna: number; ids: number[] }> {
         const inicioMes = fechaRol.slice(0, 8) + '01';
         const query = new SelectQuery(`
             SELECT ide_nrhec, horas_detectadas_nrhec, tipo_nrhec
@@ -572,13 +1222,14 @@ export class RolPagosService extends BaseService {
             horas_detectadas_nrhec: number;
             tipo_nrhec: string | null;
         }>;
-        const supl = rows
-            .filter((r) => r.tipo_nrhec === 'suplementaria')
-            .reduce((acc, r) => acc + Number(r.horas_detectadas_nrhec || 0), 0);
-        const extra = rows
-            .filter((r) => r.tipo_nrhec === 'extraordinaria')
-            .reduce((acc, r) => acc + Number(r.horas_detectadas_nrhec || 0), 0);
-        return { supl, extra, ids: rows.map((r) => r.ide_nrhec) };
+        const sumar = (tipo: string) =>
+            rows.filter((r) => r.tipo_nrhec === tipo).reduce((acc, r) => acc + Number(r.horas_detectadas_nrhec || 0), 0);
+        return {
+            supl: sumar('suplementaria'),
+            extra: sumar('extraordinaria'),
+            nocturna: sumar('nocturna'),
+            ids: rows.map((r) => r.ide_nrhec),
+        };
     }
 
     private async marcarHorasExtraConsumidas(ids: number[], ideNrrol: number): Promise<void> {

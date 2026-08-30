@@ -34,3 +34,13 @@ export class SaveRubroCuentaDto extends SaveDto {
     @ApiProperty({ description: 'Datos de nrh_rubro_cuenta (ide_nrrub, ide_cndpc)' })
     declare data: Record<string, any>;
 }
+
+export class SaveDepartamentoTipoGastoDto {
+    @ApiProperty({ description: 'ID del departamento (gen_departamento.ide_gedep)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_gedep: number;
+
+    @ApiProperty({ description: '"venta" o "administrativo" — centro de costo para partir el gasto en la provisión de décimos/fondos de reserva' })
+    tipo_gasto_gedep: 'venta' | 'administrativo';
+}

@@ -7,13 +7,20 @@ import { MODULOS } from '../modulos';
 //   2.1.5.01 — jerarquía nueva, confirmada por movimientos reales en con_det_comp_cont
 //   frente a la cuenta vieja 1199/2.1.03.0.1 que no tiene ninguno).
 // - p_nrh_tipo_comprobante_rol = 0 (con_tipo_comproba "DIARIO").
-// p_nrh_rubro_horas_supl / p_nrh_rubro_horas_extra quedan vacíos: cada uno debe apuntar
-// a un rubro nrh_rubro "input" (recibe la SUMA de horas ya aprobadas manualmente de ese
-// tipo — ver HorasExtraService.aprobar, la clasificación 50%/100% la decide quien
-// aprueba, no el sistema). DIQUIMEC ya tiene varios rubros de horas extra (17, 237,
-// 245, 258, 267, 331, 332, 336) pero no quedó claro cuál es el "conteo de horas" a
-// usar como input vs. cuál es el valor en dólares ya calculado — definir y configurar
-// desde Sistema > Variables.
+// p_nrh_rubro_horas_supl=17 "HORAS EXTRAS 50%" / p_nrh_rubro_horas_extra=336 "HORAS
+// EXTRAS 100%" — confirmados dentro de ide_nrdtn=4 (el único tipo de nómina "Normal"
+// activo, ver script-depuracion-rol-diquimec.sql). RolPagosService.generarRol calcula
+// el VALOR EN DÓLARES en código vía CalculoLegalService (sueldo/240 * 1.5 o *2 * horas
+// aprobadas) y lo inyecta directo en estos rubros — la fórmula que tenían antes
+// (referenciaba conteos manuales viejos) queda muerta, no hace falta borrarla.
+// p_nrh_rubro_decimo_tercero=125 "PROVISION DECIMO TERCERO" / p_nrh_rubro_decimo_cuarto
+// =121 "PROVISION DECIMO CUARTO" / p_nrh_rubro_fondos_reserva=29 "FONDOS RESERVA
+// NOMINA" — mismo mecanismo, confirmados dentro de ide_nrdtn=4. CalculoLegalService
+// calcula la provisión mensual (ver limitación documentada ahí sobre "acumula" vs
+// "mensualiza") y RolPagosService la inyecta directo, sin pasar por formula_nrder.
+// p_nrh_sbu_vigente y p_nrh_parametro_horas_extra son los valores legales que
+// alimentan esos cálculos — hay que mantenerlos actualizados cada vez que cambien por
+// resolución/decreto (no hay forma de que el sistema lo sepa solo).
 // es_empr_para=false (global, un solo valor para todo el sistema) porque nrh_rubro y
 // nrh_estado_rol no tienen columna ide_sucu — el picker de "tabla de referencia" de
 // Variables (getConfiguracionTablaVariable) filtra por ide_sucu cuando es_empr_para=true,
@@ -34,8 +41,8 @@ export const NOMINA_VARS = [
   {
     ide_modu: MODULOS.NOMINA.ID,
     nom_para: 'p_nrh_rubro_horas_supl',
-    descripcion_para: 'ide_nrrub del rubro "input" de horas suplementarias (50%) — recibe la suma de horas aprobadas con tipo_nrhec=suplementaria',
-    valor_para: '',
+    descripcion_para: 'ide_nrrub del rubro "HORAS EXTRAS 50%" — recibe el valor en dólares ya calculado (sueldo/240*1.5*horas aprobadas tipo_nrhec=suplementaria)',
+    valor_para: '17',
     tabla_para: 'nrh_rubro',
     campo_codigo_para: 'ide_nrrub',
     campo_nombre_para: 'detalle_nrrub',
@@ -45,11 +52,182 @@ export const NOMINA_VARS = [
   {
     ide_modu: MODULOS.NOMINA.ID,
     nom_para: 'p_nrh_rubro_horas_extra',
-    descripcion_para: 'ide_nrrub del rubro "input" de horas extraordinarias (100%) — recibe la suma de horas aprobadas con tipo_nrhec=extraordinaria',
-    valor_para: '',
+    descripcion_para: 'ide_nrrub del rubro "HORAS EXTRAS 100%" — recibe el valor en dólares ya calculado (sueldo/240*2.0*horas aprobadas tipo_nrhec=extraordinaria)',
+    valor_para: '336',
     tabla_para: 'nrh_rubro',
     campo_codigo_para: 'ide_nrrub',
     campo_nombre_para: 'detalle_nrrub',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_rubro_horas_nocturna',
+    descripcion_para: 'ide_nrrub del rubro "HORAS EXTRAS 25%" — recibe el valor en dólares ya calculado (sueldo/240*1.25*horas aprobadas tipo_nrhec=nocturna, Art. 49 CT)',
+    valor_para: '331',
+    tabla_para: 'nrh_rubro',
+    campo_codigo_para: 'ide_nrrub',
+    campo_nombre_para: 'detalle_nrrub',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_parametro_horas_extra',
+    descripcion_para: 'Divisor legal para el valor de la hora extra (sueldo / N) — 240 por convención (Art. 55 Código de Trabajo), no cambia por resolución como el IESS',
+    valor_para: '240',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_sbu_vigente',
+    descripcion_para: 'Salario Básico Unificado vigente (dólares) — base del décimo cuarto sueldo. Actualizar cada enero según el decreto del Ministerio de Trabajo',
+    valor_para: '',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_region_decimo4',
+    descripcion_para: '"sierra" (período ago-jul, pago 15-ago) o "costa" (período mar-feb, pago 15-mar) — define la ventana de RolPagosService#generarLiquidacionDecimo para décimo cuarto',
+    valor_para: 'sierra',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_rubro_decimo_tercero',
+    descripcion_para: 'ide_nrrub del rubro "PROVISION DECIMO TERCERO" — el generador de rol inyecta la provisión mensual calculada (ingreso gravable/12) en vez de evaluar fórmula',
+    valor_para: '125',
+    tabla_para: 'nrh_rubro',
+    campo_codigo_para: 'ide_nrrub',
+    campo_nombre_para: 'detalle_nrrub',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_rubro_decimo_cuarto',
+    descripcion_para: 'ide_nrrub del rubro "PROVISION DECIMO CUARTO" — el generador de rol inyecta la provisión mensual calculada (SBU vigente/12) en vez de evaluar fórmula',
+    valor_para: '121',
+    tabla_para: 'nrh_rubro',
+    campo_codigo_para: 'ide_nrrub',
+    campo_nombre_para: 'detalle_nrrub',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_rubro_fondos_reserva',
+    descripcion_para: 'ide_nrrub del rubro "FONDOS RESERVA NOMINA" — el generador de rol inyecta la provisión mensual calculada (ingreso gravable/12) en vez de evaluar fórmula',
+    valor_para: '29',
+    tabla_para: 'nrh_rubro',
+    campo_codigo_para: 'ide_nrrub',
+    campo_nombre_para: 'detalle_nrrub',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  // Cuentas contables del asiento automático de provisión de décimos/fondos de reserva
+  // (RolPagosService#generarProvisionDecimosFondos) — confirmadas contra con_det_plan_cuen
+  // y con_det_comp_cont reales de DIQUIMEC (asientos "REGISTRO ROL DE PROVISIONES <mes>"
+  // que hoy registra la contadora a mano, 2026-08-29). No inventadas.
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_pasivo_fondos_reserva',
+    descripcion_para: 'ide_cndpc del pasivo "Fondos de reserva" (2.1.5.04) — se acredita cada mes con el total provisionado de empleados que acumulan',
+    valor_para: '10078',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_pasivo_decimo_tercero',
+    descripcion_para: 'ide_cndpc del pasivo "Décimo tercero" (2.1.5.05)',
+    valor_para: '10079',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_pasivo_decimo_cuarto',
+    descripcion_para: 'ide_cndpc del pasivo "Décimo cuarto" (2.1.5.06)',
+    valor_para: '10080',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_venta_fondos_reserva',
+    descripcion_para: 'ide_cndpc de "GASTO VTA Fondos de reserva" (6.1.03) — porción del gasto de empleados en departamentos clasificados como Ventas',
+    valor_para: '10114',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_venta_decimo_tercero',
+    descripcion_para: 'ide_cndpc de "GASTO VTA Décimo tercero" (6.1.04)',
+    valor_para: '10115',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_venta_decimo_cuarto',
+    descripcion_para: 'ide_cndpc de "GASTO VTA Décimo cuarto" (6.1.05)',
+    valor_para: '10116',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_admin_fondos_reserva',
+    descripcion_para: 'ide_cndpc de "GASTO ADM Fondos de reserva" (6.2.03) — porción del gasto de empleados en departamentos clasificados como Administrativo',
+    valor_para: '10140',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_admin_decimo_tercero',
+    descripcion_para: 'ide_cndpc de "GASTO ADM Décimo tercero" (6.2.04)',
+    valor_para: '10141',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
+    activo_para: true,
+    es_empr_para: false,
+  },
+  {
+    ide_modu: MODULOS.NOMINA.ID,
+    nom_para: 'p_nrh_cuenta_gasto_admin_decimo_cuarto',
+    descripcion_para: 'ide_cndpc de "GASTO ADM Décimo cuarto" (6.2.05)',
+    valor_para: '10142',
+    tabla_para: 'con_det_plan_cuen',
+    campo_codigo_para: 'ide_cndpc',
+    campo_nombre_para: 'nombre_cndpc',
     activo_para: true,
     es_empr_para: false,
   },

@@ -13,6 +13,12 @@
  *                     evaluando.
  *   - `if (cond) { expr; } else { expr; }`  condicional, con comparadores
  *                     == != > < >= <=.
+ *   - `mensualizado`  1 si el rubro que se está evaluando tiene modalidad "mensualizado"
+ *                     vigente para el empleado (nrh_solicitud_mensualizacion), 0 si
+ *                     "acumula" (o si no hay solicitud registrada — ver
+ *                     RolPagosService#getMensualizacionVigente). Extensión propia, no
+ *                     existía en el motor legado (que resolvía esto con un rubro
+ *                     auxiliar inyectado — ver EvaluarRubroParams.mensualizado).
  *   - operadores aritméticos + - * / con precedencia estándar y paréntesis `(...)`.
  *   - un formula_nrder que no empieza con `=` es un valor literal fijo (no se parsea).
  */
@@ -21,6 +27,7 @@ export type FormulaNode =
     | { type: 'number'; value: number }
     | { type: 'ref'; ideNrder: number }
     | { type: 'sum'; ideNrder: number }
+    | { type: 'mensualizado' }
     | { type: 'binary'; op: '+' | '-' | '*' | '/'; left: FormulaNode; right: FormulaNode }
     | { type: 'compare'; op: '==' | '!=' | '>' | '<' | '>=' | '<='; left: FormulaNode; right: FormulaNode }
     | { type: 'negate'; expr: FormulaNode }
@@ -169,6 +176,10 @@ class Parser {
 
         if (t.kind === 'number') {
             return { type: 'number', value: t.value };
+        }
+
+        if (t.kind === 'ident' && t.value === 'mensualizado') {
+            return { type: 'mensualizado' };
         }
 
         if (t.kind === 'ident' && t.value === 'sum') {

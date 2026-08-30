@@ -17,6 +17,14 @@ export interface EvaluarRubroParams {
     fechaFinalNrder?: string | null;
     /** Valores ya calculados en este rol para este empleado: ide_nrder -> valor. */
     computedValues: Map<number, number>;
+    /**
+     * Modalidad vigente (nrh_solicitud_mensualizacion) del rubro que se está evaluando,
+     * ya resuelta por el caller para el empleado y la fecha del rol — ver
+     * RolPagosService#getMensualizacionVigente. true = mensualizado, false = acumula
+     * (o no hay solicitud registrada, que es el default legal). Alimenta el token
+     * `mensualizado` de la fórmula.
+     */
+    mensualizado?: boolean;
 }
 
 /**
@@ -57,6 +65,9 @@ export class FormulaEngineService {
 
             case 'sum':
                 return this.resolveSum(node.ideNrder, ctx);
+
+            case 'mensualizado':
+                return ctx.mensualizado ? 1 : 0;
 
             case 'negate':
                 return -(await this.evaluate(node.expr, ctx));

@@ -3,7 +3,14 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { GetDetalleRubrosByTipoNominaDto, SaveCargoDto, SaveDetalleRubroDto, SaveRubroCuentaDto, SaveRubroDto } from './dto/rubros.dto';
+import {
+    GetDetalleRubrosByTipoNominaDto,
+    SaveCargoDto,
+    SaveDepartamentoTipoGastoDto,
+    SaveDetalleRubroDto,
+    SaveRubroCuentaDto,
+    SaveRubroDto,
+} from './dto/rubros.dto';
 import { RubrosService } from './rubros.service';
 
 @ApiTags('TalentoHumano-Rubros')
@@ -108,5 +115,20 @@ export class RubrosController {
         @Body() dtoIn: SaveRubroCuentaDto,
     ) {
         return this.service.saveRubroCuenta({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getDepartamentos')
+    @ApiOperation({ summary: 'Listar departamentos con su centro de costo (Ventas/Administrativo)' })
+    getDepartamentos() {
+        return this.service.getDepartamentos();
+    }
+
+    @Post('saveDepartamentoTipoGasto')
+    @ApiOperation({ summary: 'Clasificar un departamento como centro de costo Ventas o Administrativo' })
+    saveDepartamentoTipoGasto(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: SaveDepartamentoTipoGastoDto,
+    ) {
+        return this.service.saveDepartamentoTipoGasto({ ...headersParams, ...dtoIn });
     }
 }

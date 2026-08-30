@@ -34,9 +34,9 @@ export class AprobarCandidataDto {
     @Type(() => Number)
     ide_nrhec: number;
 
-    @ApiProperty({ description: 'Clasificación decidida por quien aprueba: suplementaria (50%) | extraordinaria (100%)' })
-    @IsIn(['suplementaria', 'extraordinaria'])
-    tipo_nrhec: 'suplementaria' | 'extraordinaria';
+    @ApiProperty({ description: 'Clasificación decidida por quien aprueba: suplementaria (50%) | extraordinaria (100%) | nocturna (25%)' })
+    @IsIn(['suplementaria', 'extraordinaria', 'nocturna'])
+    tipo_nrhec: 'suplementaria' | 'extraordinaria' | 'nocturna';
 
     @ApiProperty({ description: 'Justificación de por qué se trabajaron estas horas' })
     @IsString()

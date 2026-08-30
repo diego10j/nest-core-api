@@ -3,7 +3,15 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { AnularRolDto, AprobarRolDto, CerrarRolDto, GenerarRolDto, GetRolByIdDto, GetRolesDto } from './dto/rol-pagos.dto';
+import {
+    AnularRolDto,
+    AprobarRolDto,
+    CerrarRolDto,
+    GenerarLiquidacionDecimoDto,
+    GenerarRolDto,
+    GetRolByIdDto,
+    GetRolesDto,
+} from './dto/rol-pagos.dto';
 import { RolPagosService } from './rol-pagos.service';
 
 @ApiTags('TalentoHumano-RolPagos')
@@ -63,5 +71,19 @@ export class RolPagosController {
         @Body() dtoIn: CerrarRolDto,
     ) {
         return this.service.cerrarRol({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('generarLiquidacionDecimo')
+    @ApiOperation({
+        summary:
+            'Liquidación anual de décimo tercero o décimo cuarto: suma las provisiones mensuales del ' +
+            'período legal (excluyendo empleados mensualizados) y genera un rol independiente con su ' +
+            'asiento contable y CxP por empleado',
+    })
+    generarLiquidacionDecimo(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: GenerarLiquidacionDecimoDto,
+    ) {
+        return this.service.generarLiquidacionDecimo({ ...headersParams, ...dtoIn });
     }
 }

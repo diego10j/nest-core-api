@@ -17,9 +17,10 @@ const GTH_EMPLEADO_COLUMNS = new Set([
     'ide_gtgen',
     'ide_gttdi',
     'ide_gtesc',
-    'ide_gedip',
     'ide_gttis',
     'ide_gtnac',
+    'ide_geprov',
+    'ide_gecant',
     'documento_identidad_gtemp',
     'fecha_ingreso_pais_gtemp',
     'carnet_extranjeria_gtemp',
@@ -50,7 +51,7 @@ const REQUIRED_ON_CREATE = [
     'ide_gtesc',
     'ide_gttis',
     'ide_gtnac',
-    'ide_gedip',
+    'ide_geprov',
 ];
 
 @Injectable()
@@ -142,7 +143,9 @@ export class EmpleadosService {
                     tdi.detalle_gttdi  AS tipo_documento_identidad,
                     esc.detalle_gtesc  AS estado_civil,
                     tis.detalle_gttis  AS tipo_sangre,
-                    nac.detalle_gtnac  AS nacionalidad
+                    nac.detalle_gtnac  AS nacionalidad,
+                    prov.nombre_geprov AS provincia_nacimiento,
+                    cant.nombre_gecant AS canton_nacimiento
                 FROM gth_empleado e
                 INNER JOIN gen_persona p ON p.ide_geper = e.ide_geper
                 LEFT JOIN gth_genero gen ON gen.ide_gtgen = e.ide_gtgen
@@ -150,6 +153,8 @@ export class EmpleadosService {
                 LEFT JOIN gth_estado_civil esc ON esc.ide_gtesc = e.ide_gtesc
                 LEFT JOIN gth_tipo_sangre tis ON tis.ide_gttis = e.ide_gttis
                 LEFT JOIN gth_nacionalidad nac ON nac.ide_gtnac = e.ide_gtnac
+                LEFT JOIN gen_provincia prov ON prov.ide_geprov = e.ide_geprov
+                LEFT JOIN gen_canton cant ON cant.ide_gecant = e.ide_gecant
                 WHERE e.ide_gtemp = $1
                   AND p.ide_empr = $2
             `);
@@ -327,7 +332,7 @@ export class EmpleadosService {
      * Retorna catálogos base para los Select del formulario de ficha de empleado.
      */
     async getCatalogos(dtoIn: HeaderParamsDto) {
-        const [generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos, divisionesPoliticas] = await Promise.all([
+        const [generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos] = await Promise.all([
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'genero', primaryKey: 'ide_gtgen', columnLabel: 'detalle_gtgen' }),
             this.core.getListDataValues({
                 ...dtoIn,
@@ -342,8 +347,7 @@ export class EmpleadosService {
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'tipo_sangre', primaryKey: 'ide_gttis', columnLabel: 'detalle_gttis' }),
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'nacionalidad', primaryKey: 'ide_gtnac', columnLabel: 'detalle_gtnac' }),
             this.core.getListDataValues({ ...dtoIn, module: 'gth', tableName: 'cargo', primaryKey: 'ide_gtcar', columnLabel: 'detalle_gtcar', condition: 'activo_gtcar = true' }),
-            this.core.getListDataValues({ ...dtoIn, module: 'gen', tableName: 'division_politica', primaryKey: 'ide_gedip', columnLabel: 'detalle_gedip' }),
         ]);
-        return { generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos, divisionesPoliticas };
+        return { generos, tiposDocumento, estadosCiviles, tiposSangre, nacionalidades, cargos };
     }
 }

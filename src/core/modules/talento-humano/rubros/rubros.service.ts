@@ -6,7 +6,14 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
-import { GetDetalleRubrosByTipoNominaDto, SaveCargoDto, SaveDetalleRubroDto, SaveRubroCuentaDto, SaveRubroDto } from './dto/rubros.dto';
+import {
+    GetDetalleRubrosByTipoNominaDto,
+    SaveCargoDto,
+    SaveDepartamentoTipoGastoDto,
+    SaveDetalleRubroDto,
+    SaveRubroCuentaDto,
+    SaveRubroDto,
+} from './dto/rubros.dto';
 
 @Injectable()
 export class RubrosService {
@@ -350,6 +357,56 @@ export class RubrosService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar el mapeo rubro-cuenta: ${msg}`);
+        }
+    }
+
+    // ─── Catálogo de departamentos (gen_departamento) ─────────────────────
+    // Solo para clasificar el centro de costo (Ventas/Administrativo) que usa
+    // RolPagosService#generarProvisionDecimosFondos al partir el gasto de la
+    // provisión mensual — no es un CRUD completo de departamentos (esa tabla ya
+    // se administra en el sistema legado; acá solo se agrega el campo nuevo).
+
+    async getDepartamentos() {
+        try {
+            const query = new SelectQuery(`
+                SELECT ide_gedep, detalle_gedep, tipo_gasto_gedep, activo_gedep
+                FROM gen_departamento
+                WHERE activo_gedep = true OR activo_gedep IS NULL
+                ORDER BY detalle_gedep
+            `);
+            query.setLazy(false);
+            return this.dataSource.createSelectQuery(query);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al obtener departamentos: ${msg}`);
+        }
+    }
+
+    async saveDepartamentoTipoGasto(dtoIn: SaveDepartamentoTipoGastoDto & HeaderParamsDto) {
+        if (!dtoIn.ide_gedep) throw new BadRequestException('El campo ide_gedep es requerido');
+        if (!['venta', 'administrativo'].includes(dtoIn.tipo_gasto_gedep)) {
+            throw new BadRequestException('tipo_gasto_gedep debe ser "venta" o "administrativo"');
+        }
+        try {
+            const updQuery: ObjectQueryDto = {
+                operation: 'update',
+                module: 'gen',
+                tableName: 'departamento',
+                primaryKey: 'ide_gedep',
+                object: {
+                    tipo_gasto_gedep: dtoIn.tipo_gasto_gedep,
+                    usuario_actua: dtoIn.login,
+                    fecha_actua: getCurrentDate(),
+                    hora_actua: getCurrentTime(),
+                },
+                condition: `ide_gedep = ${dtoIn.ide_gedep}`,
+            };
+            await this.core.save({ ...dtoIn, listQuery: [updQuery], audit: true });
+            return { message: 'ok', ide_gedep: dtoIn.ide_gedep };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar el departamento: ${msg}`);
         }
     }
 }

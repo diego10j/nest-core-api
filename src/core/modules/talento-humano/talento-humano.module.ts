@@ -6,8 +6,11 @@ import { IntegrationModule } from '../../integration/integration.module';
 import { AuditService } from '../audit/audit.service';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
+import { CalculoLegalService } from './calculo-legal/calculo-legal.service';
 import { EmpleadosController } from './empleados/empleados.controller';
 import { EmpleadosService } from './empleados/empleados.service';
+import { FichaEmpleadoController } from './ficha-empleado/ficha-empleado.controller';
+import { FichaEmpleadoService } from './ficha-empleado/ficha-empleado.service';
 import { FormulaEngineService } from './formula-engine/formula-engine.service';
 import { HorasExtraController } from './horas-extra/horas-extra.controller';
 import { HorasExtraService } from './horas-extra/horas-extra.service';
@@ -32,6 +35,7 @@ import { VacacionesPermisosService } from './vacaciones-permisos/vacaciones-perm
         HorasExtraController,
         VacacionesPermisosController,
         MensualizacionController,
+        FichaEmpleadoController,
     ],
     providers: [
         AuditService,
@@ -44,6 +48,8 @@ import { VacacionesPermisosService } from './vacaciones-permisos/vacaciones-perm
         HorasExtraService,
         VacacionesPermisosService,
         MensualizacionService,
+        FichaEmpleadoService,
+        CalculoLegalService,
     ],
     exports: [EmpleadosService, PuestosSalariosService, RolPagosService],
 })

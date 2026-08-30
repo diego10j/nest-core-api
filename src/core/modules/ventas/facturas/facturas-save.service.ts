@@ -489,6 +489,26 @@ export class FacturasSaveService extends BaseService {
                 [secuencialFactura, `V/. FACTURA ${secuencialFactura}`, ideCcdtr],
             );
 
+            // 4-E2. UPDATE retroactivo del comprobante de inventario (kardex) — se insertó en
+            // la Transacción 1 con secuencial vacío porque el secuencial SRI recién se conoce
+            // acá; sin este UPDATE, numero_incci/referencia_incci/observacion_incci quedaban
+            // en blanco (o "VENTA FACTURA " sin número) para siempre.
+            if (tieneKardex && ideIncci !== null) {
+                await queryRunner.query(
+                    `UPDATE ${TABLE_INV_CAB}
+                     SET numero_incci = $1,
+                         referencia_incci = $2,
+                         observacion_incci = $3
+                     WHERE ${PK_INV_CAB} = $4`,
+                    [
+                        secuencialFactura.slice(-10),
+                        secuencialFactura.slice(-12),
+                        `VENTA FACTURA ${secuencialFactura}`,
+                        ideIncci,
+                    ],
+                );
+            }
+
             // 4-F. SRI comprobante + UPDATE guía de remisión
             if (tieneGuia && ideSrcomGuia !== null && ideGuia !== null && secuencialGuia) {
                 const insertSriGuia = this.buildSriFullInsert(
