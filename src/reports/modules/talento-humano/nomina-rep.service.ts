@@ -1,0 +1,128 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { DataSourceService } from 'src/core/connection/datasource.service';
+import { SelectQuery } from 'src/core/connection/helpers';
+import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.service';
+import { PrinterService } from 'src/reports/printer/printer.service';
+
+import { GetRolPagosRepDto } from './dto/get-rol-pagos-rep.dto';
+import { RolPagosRep, RolPagosRepEmpleado } from './interfaces/rol-pagos-rep';
+import { rolPagosReport } from './rol-pagos.report';
+
+interface DetalleRolRepRow {
+    ide_geedp: number;
+    empleado: string;
+    identificacion: string | null;
+    cargo: string | null;
+    rubro: string;
+    valor_nrdro: number;
+}
+
+// Rubros por su nombre (nrh_rubro.detalle_nrrub) tal como se usan hoy en la parametría
+// de DIQUIMEC — ver Nómina > Catálogos > Parametría de Rubros. Igual que el frontend
+// (rol-pagos-details.tsx), se identifican por nombre en vez de por ide_nrrub porque el
+// reporte debe seguir funcionando aunque cambie qué sis_parametros apunta a cada rubro.
+const RUBRO_SUELDO = 'REMUNERACION UNIFICADA';
+const RUBROS_HORAS_EXTRA = ['HORAS EXTRAS 50%', 'HORAS EXTRAS 25%', 'HORAS EXTRAS 100%'];
+const RUBRO_DECIMO_TERCERO = 'PROVISION DECIMO TERCERO';
+const RUBRO_DECIMO_CUARTO = 'PROVISION DECIMO CUARTO';
+const RUBRO_FONDOS_RESERVA = 'FONDOS RESERVA NOMINA';
+const RUBRO_TOTAL_INGRESOS = 'TOTAL INGRESOS';
+const RUBRO_IESS = 'IESS PERSONAL';
+const RUBROS_PRESTAMOS = ['PRESTAMO HIPOTECARIO', 'PRESTAMO QUIROGRAFARIO'];
+const RUBRO_LIQUIDO = 'TOTAL A RECIBIR';
+
+@Injectable()
+export class NominaRepService {
+    constructor(
+        private readonly printerService: PrinterService,
+        private readonly dataSource: DataSourceService,
+        private readonly empresaRepService: EmpresaRepService,
+    ) { }
+
+    /** Reporte de Rol de Pagos: una fila por empleado con las mismas columnas que el rol físico (Excel) de DIQUIMEC. */
+    async reportRolPagos(dtoIn: HeaderParamsDto & GetRolPagosRepDto) {
+        const queryCabecera = new SelectQuery(`
+            SELECT r.ide_nrrol, r.fecha_nrrol, tin.detalle_nrtin AS tipo_nomina, est.detalle_nresr AS estado
+            FROM nrh_rol r
+            INNER JOIN nrh_detalle_tipo_nomina dtn ON dtn.ide_nrdtn = r.ide_nrdtn
+            INNER JOIN nrh_tipo_nomina tin ON tin.ide_nrtin = dtn.ide_nrtin
+            LEFT JOIN nrh_estado_rol est ON est.ide_nresr = r.ide_nresr
+            WHERE r.ide_nrrol = $1 AND r.ide_sucu = $2
+        `);
+        queryCabecera.addIntParam(1, dtoIn.ide_nrrol);
+        queryCabecera.addIntParam(2, dtoIn.ideSucu);
+        const cabecera = await this.dataSource.createSingleQuery(queryCabecera);
+        if (!cabecera) {
+            throw new NotFoundException(`Rol de pagos ${dtoIn.ide_nrrol} no encontrado`);
+        }
+
+        const queryDetalle = new SelectQuery(`
+            SELECT
+                dr.ide_geedp,
+                emp.primer_nombre_gtemp || ' ' || emp.apellido_paterno_gtemp AS empleado,
+                per.identificac_geper AS identificacion,
+                car.detalle_gtcar AS cargo,
+                rub.detalle_nrrub AS rubro,
+                dr.valor_nrdro
+            FROM nrh_detalle_rol dr
+            INNER JOIN gen_empleados_departamento_par ged ON ged.ide_geedp = dr.ide_geedp
+            INNER JOIN gth_empleado emp ON emp.ide_gtemp = ged.ide_gtemp
+            INNER JOIN gen_persona per ON per.ide_geper = emp.ide_geper
+            LEFT JOIN gth_cargo car ON car.ide_gtcar = ged.ide_gtcar
+            INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+            INNER JOIN nrh_rubro rub ON rub.ide_nrrub = der.ide_nrrub
+            WHERE dr.ide_nrrol = $1
+            ORDER BY emp.apellido_paterno_gtemp, dr.orden_calculo_nrdro
+        `);
+        queryDetalle.addIntParam(1, dtoIn.ide_nrrol);
+        const filas = (await this.dataSource.createSelectQuery(queryDetalle)) as DetalleRolRepRow[];
+
+        const porEmpleado = new Map<number, { empleado: string; identificacion: string; cargo: string | null; valores: Map<string, number> }>();
+        for (const f of filas) {
+            if (!porEmpleado.has(f.ide_geedp)) {
+                porEmpleado.set(f.ide_geedp, {
+                    empleado: f.empleado,
+                    identificacion: f.identificacion ?? '---',
+                    cargo: f.cargo,
+                    valores: new Map(),
+                });
+            }
+            porEmpleado.get(f.ide_geedp)!.valores.set(f.rubro, Number(f.valor_nrdro) || 0);
+        }
+
+        const sumar = (valores: Map<string, number>, nombres: string[]) =>
+            nombres.reduce((acc, n) => acc + (valores.get(n) ?? 0), 0);
+
+        const empleados: RolPagosRepEmpleado[] = Array.from(porEmpleado.entries()).map(([ideGeedp, e]) => {
+            const totalIngresos = e.valores.get(RUBRO_TOTAL_INGRESOS) ?? 0;
+            const liquido = e.valores.get(RUBRO_LIQUIDO) ?? 0;
+            const iess = e.valores.get(RUBRO_IESS) ?? 0;
+            const prestamos = sumar(e.valores, RUBROS_PRESTAMOS);
+            return {
+                ide_geedp: ideGeedp,
+                empleado: e.empleado,
+                identificacion: e.identificacion,
+                cargo: e.cargo,
+                sueldo: e.valores.get(RUBRO_SUELDO) ?? 0,
+                horasExtra: sumar(e.valores, RUBROS_HORAS_EXTRA),
+                decimoTercero: e.valores.get(RUBRO_DECIMO_TERCERO) ?? 0,
+                decimoCuarto: e.valores.get(RUBRO_DECIMO_CUARTO) ?? 0,
+                fondosReserva: e.valores.get(RUBRO_FONDOS_RESERVA) ?? 0,
+                totalIngresos,
+                iess,
+                prestamos,
+                totalDescuentos: Math.round((totalIngresos - liquido) * 100) / 100,
+                liquido,
+            };
+        });
+
+        const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+        const data: RolPagosRep = {
+            cabecera: { ...(cabecera as Omit<RolPagosRep['cabecera'], 'ide_empr'>), ide_empr: dtoIn.ideEmpr },
+            empleados,
+        };
+        const docDefinition = rolPagosReport(data, empresa);
+        return this.printerService.createPdf(docDefinition);
+    }
+}

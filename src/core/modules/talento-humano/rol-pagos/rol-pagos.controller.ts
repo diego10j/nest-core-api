@@ -11,6 +11,7 @@ import {
     GenerarRolDto,
     GetRolByIdDto,
     GetRolesDto,
+    RecalcularRolDto,
 } from './dto/rol-pagos.dto';
 import { RolPagosService } from './rol-pagos.service';
 
@@ -44,6 +45,19 @@ export class RolPagosController {
         @Body() dtoIn: GenerarRolDto,
     ) {
         return this.service.generarRol({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('recalcular')
+    @ApiOperation({
+        summary:
+            'Recalcula un rol aún no cerrado ni anulado (borra su detalle previo, libera las horas ' +
+            'extra que había consumido y vuelve a correr el cálculo completo en el mismo ide_nrrol)',
+    })
+    recalcular(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: RecalcularRolDto,
+    ) {
+        return this.service.recalcularRol({ ...headersParams, ...dtoIn });
     }
 
     @Put('aprobar')

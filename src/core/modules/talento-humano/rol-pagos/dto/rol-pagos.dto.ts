@@ -57,6 +57,17 @@ export class CerrarRolDto {
     ide_nrrol: number;
 }
 
+export class RecalcularRolDto {
+    @ApiProperty({
+        description:
+            'ID del rol a recalcular (debe estar aún sin cerrar/anular). Borra su detalle previo, ' +
+            'libera las horas extra que había consumido y vuelve a correr el cálculo completo.',
+    })
+    @IsInt()
+    @Type(() => Number)
+    ide_nrrol: number;
+}
+
 export class GenerarLiquidacionDecimoDto {
     @ApiProperty({ description: 'Concepto a liquidar: décimo tercero (período dic-nov) o décimo cuarto (período según región)' })
     @IsIn(['decimo_tercero', 'decimo_cuarto'])

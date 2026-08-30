@@ -3,7 +3,7 @@ import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { SelectQuery, UpdateQuery, DeleteQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { ComprobanteContabilidadService } from 'src/core/modules/contabilidad/comprobante-contabilidad/comprobante-contabilidad.service';
 import { CalculoLegalService } from 'src/core/modules/talento-humano/calculo-legal/calculo-legal.service';
@@ -18,6 +18,7 @@ import {
     GenerarRolDto,
     GetRolByIdDto,
     GetRolesDto,
+    RecalcularRolDto,
 } from './dto/rol-pagos.dto';
 
 interface DetalleRubroRow {
@@ -237,87 +238,175 @@ export class RolPagosService extends BaseService {
      */
     async generarRol(dtoIn: GenerarRolDto & HeaderParamsDto) {
         try {
-            const rubroSueldoId = this.paramInt('p_nrh_rubro_sueldo');
-            const rubroHorasSuplId = this.paramInt('p_nrh_rubro_horas_supl');
-            const rubroHorasExtraId = this.paramInt('p_nrh_rubro_horas_extra');
-            const rubroHorasNocturnaId = this.paramInt('p_nrh_rubro_horas_nocturna');
-            const rubroDecimoTerceroId = this.paramInt('p_nrh_rubro_decimo_tercero');
-            const rubroDecimoCuartoId = this.paramInt('p_nrh_rubro_decimo_cuarto');
-            const rubroFondosReservaId = this.paramInt('p_nrh_rubro_fondos_reserva');
-            const parametroHorasExtra = this.paramFloat('p_nrh_parametro_horas_extra', 240);
-            const sbuVigente = this.paramFloat('p_nrh_sbu_vigente', 0);
             const estadoPreNomina = this.paramInt('p_nrh_estado_pre_nomina');
-
-            const detalleRubros = await this.getDetalleRubrosByTipoNomina(dtoIn.ide_nrdtn);
-            if (detalleRubros.length === 0) {
-                throw new BadRequestException(
-                    'El tipo de nómina seleccionado no tiene rubros parametrizados (Nómina > Catálogos > Parametría de Rubros)',
-                );
-            }
-
-            const empleados = await this.getEmpleadosVigentes(dtoIn.ide_nrdtn, dtoIn.fecha_nrrol, dtoIn.ideEmpr);
-            if (empleados.length === 0) {
-                throw new BadRequestException('No hay empleados vigentes para el tipo de nómina y fecha seleccionados');
-            }
-
-            // Ubicar, dentro de la parametría de ESTE tipo de nómina, cuál ide_nrder
-            // corresponde a cada rubro de cálculo legal fijo (sueldo, horas extra,
-            // décimos, fondos de reserva) — si están configurados. Estos NO se evalúan
-            // por fórmula (ver CalculoLegalService): se calculan en código y se inyectan
-            // directo, igual que ya se hacía con sueldo.
-            const nrderSueldo = rubroSueldoId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroSueldoId)?.ide_nrder
-                : undefined;
-            const nrderHorasSupl = rubroHorasSuplId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasSuplId)?.ide_nrder
-                : undefined;
-            const nrderHorasExtra = rubroHorasExtraId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasExtraId)?.ide_nrder
-                : undefined;
-            const nrderHorasNocturna = rubroHorasNocturnaId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasNocturnaId)?.ide_nrder
-                : undefined;
-            const nrderDecimoTercero = rubroDecimoTerceroId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoTerceroId)?.ide_nrder
-                : undefined;
-            const nrderDecimoCuarto = rubroDecimoCuartoId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoCuartoId)?.ide_nrder
-                : undefined;
-            const nrderFondosReserva = rubroFondosReservaId
-                ? detalleRubros.find((d) => d.ide_nrrub === rubroFondosReservaId)?.ide_nrder
-                : undefined;
-
             const ideNrrol = await this.dataSource.getSeqTable('nrh_rol', 'ide_nrrol', 1, dtoIn.login);
 
-            const listQuery: ObjectQueryDto[] = [
-                {
-                    operation: 'insert',
-                    module: 'nrh',
-                    tableName: 'rol',
-                    primaryKey: 'ide_nrrol',
-                    object: {
-                        ide_nrrol: ideNrrol,
-                        ide_sucu: dtoIn.ideSucu,
-                        ide_usua: dtoIn.ideUsua,
-                        ide_gepro: dtoIn.ide_gepro,
-                        ide_nrdtn: dtoIn.ide_nrdtn,
-                        ide_nresr: estadoPreNomina,
-                        fecha_nrrol: dtoIn.fecha_nrrol,
-                        activo_nrrol: true,
-                        usuario_ingre: dtoIn.login,
-                        fecha_ingre: getCurrentDate(),
-                        hora_ingre: getCurrentTime(),
-                    },
+            const cabeceraInsert: ObjectQueryDto = {
+                operation: 'insert',
+                module: 'nrh',
+                tableName: 'rol',
+                primaryKey: 'ide_nrrol',
+                object: {
+                    ide_nrrol: ideNrrol,
+                    ide_sucu: dtoIn.ideSucu,
+                    ide_usua: dtoIn.ideUsua,
+                    ide_gepro: dtoIn.ide_gepro,
+                    ide_nrdtn: dtoIn.ide_nrdtn,
+                    ide_nresr: estadoPreNomina,
+                    fecha_nrrol: dtoIn.fecha_nrrol,
+                    activo_nrrol: true,
+                    usuario_ingre: dtoIn.login,
+                    fecha_ingre: getCurrentDate(),
+                    hora_ingre: getCurrentTime(),
                 },
-            ];
+            };
 
-            const horasConsumidas: number[] = [];
-            const mensualizacionVigente = await this.getMensualizacionVigente(
-                empleados.map((e) => e.ide_geedp),
-                dtoIn.fecha_nrrol,
+            const { listQuery: detalleQueries, horasConsumidas, empleadosProcesados } = await this.construirDetalleRol(
+                ideNrrol,
+                dtoIn,
             );
 
-            for (const empleado of empleados) {
+            await this.core.save({ ...dtoIn, listQuery: [cabeceraInsert, ...detalleQueries], audit: true });
+
+            if (horasConsumidas.length > 0) {
+                await this.marcarHorasExtraConsumidas(horasConsumidas, ideNrrol);
+            }
+
+            return { message: 'ok', ide_nrrol: ideNrrol, empleadosProcesados };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al generar el rol: ${msg}`);
+        }
+    }
+
+    /**
+     * Recalcula un rol ya generado (aún NO cerrado ni anulado) en el mismo ide_nrrol:
+     * borra su nrh_detalle_rol previo, libera las horas extra que había consumido (vuelven
+     * a estado "aprobada" disponibles) y vuelve a correr el mismo cálculo de generarRol.
+     * Útil cuando se aprueban horas extra nuevas o se corrige una fórmula/salario después
+     * de haber generado el rol, sin crear un rol duplicado.
+     */
+    async recalcularRol(dtoIn: RecalcularRolDto & HeaderParamsDto) {
+        if (!dtoIn.ide_nrrol) throw new BadRequestException('El campo ide_nrrol es requerido');
+
+        const estadoAnulada = this.paramInt('p_nrh_estado_nomina_anulada');
+
+        try {
+            const rolQuery = new SelectQuery(`
+                SELECT ide_nrrol, ide_nrdtn, fecha_nrrol, ide_cnmoc, ide_nresr
+                FROM nrh_rol WHERE ide_nrrol = $1 AND ide_sucu = $2
+            `);
+            rolQuery.setLazy(false);
+            rolQuery.addIntParam(1, dtoIn.ide_nrrol);
+            rolQuery.addIntParam(2, dtoIn.ideSucu);
+            const rolRows = await this.dataSource.createSelectQuery(rolQuery);
+            const rol = rolRows?.[0];
+            if (!rol) throw new BadRequestException('No se encontró el rol indicado');
+            if (rol.ide_cnmoc) throw new BadRequestException('Este rol ya está cerrado, no se puede recalcular');
+            if (estadoAnulada != null && rol.ide_nresr === estadoAnulada) {
+                throw new BadRequestException('Este rol está anulado, no se puede recalcular');
+            }
+
+            const freeHoras = new UpdateQuery('nrh_hora_extra_candidata', 'ide_nrhec');
+            freeHoras.values.set('ide_nrrol', null);
+            freeHoras.where = 'ide_nrrol = $1';
+            freeHoras.addIntParam(1, dtoIn.ide_nrrol);
+            await this.dataSource.createQuery(freeHoras);
+
+            const delDetalle = new DeleteQuery('nrh_detalle_rol');
+            delDetalle.where = 'ide_nrrol = $1';
+            delDetalle.addIntParam(1, dtoIn.ide_nrrol);
+            await this.dataSource.createQuery(delDetalle);
+
+            const { listQuery, horasConsumidas, empleadosProcesados } = await this.construirDetalleRol(dtoIn.ide_nrrol, {
+                ide_nrdtn: rol.ide_nrdtn,
+                fecha_nrrol: rol.fecha_nrrol,
+                ideEmpr: dtoIn.ideEmpr,
+                ideSucu: dtoIn.ideSucu,
+                login: dtoIn.login,
+            });
+
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
+
+            if (horasConsumidas.length > 0) {
+                await this.marcarHorasExtraConsumidas(horasConsumidas, dtoIn.ide_nrrol);
+            }
+
+            return { message: 'ok', ide_nrrol: dtoIn.ide_nrrol, empleadosProcesados };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al recalcular el rol: ${msg}`);
+        }
+    }
+
+    /**
+     * Calcula el detalle (nrh_detalle_rol) de un rol para todos los empleados vigentes del
+     * tipo de nómina indicado, usado tanto por generarRol (rol nuevo) como por
+     * recalcularRol (mismo ide_nrrol, detalle previo ya borrado por el caller).
+     */
+    private async construirDetalleRol(
+        ideNrrol: number,
+        dtoIn: { ide_nrdtn: number; fecha_nrrol: string; ideEmpr: number; ideSucu: number; login: string },
+    ): Promise<{ listQuery: ObjectQueryDto[]; horasConsumidas: number[]; empleadosProcesados: number }> {
+        const rubroSueldoId = this.paramInt('p_nrh_rubro_sueldo');
+        const rubroHorasSuplId = this.paramInt('p_nrh_rubro_horas_supl');
+        const rubroHorasExtraId = this.paramInt('p_nrh_rubro_horas_extra');
+        const rubroHorasNocturnaId = this.paramInt('p_nrh_rubro_horas_nocturna');
+        const rubroDecimoTerceroId = this.paramInt('p_nrh_rubro_decimo_tercero');
+        const rubroDecimoCuartoId = this.paramInt('p_nrh_rubro_decimo_cuarto');
+        const rubroFondosReservaId = this.paramInt('p_nrh_rubro_fondos_reserva');
+        const parametroHorasExtra = this.paramFloat('p_nrh_parametro_horas_extra', 240);
+        const sbuVigente = this.paramFloat('p_nrh_sbu_vigente', 0);
+
+        const detalleRubros = await this.getDetalleRubrosByTipoNomina(dtoIn.ide_nrdtn);
+        if (detalleRubros.length === 0) {
+            throw new BadRequestException(
+                'El tipo de nómina seleccionado no tiene rubros parametrizados (Nómina > Catálogos > Parametría de Rubros)',
+            );
+        }
+
+        const empleados = await this.getEmpleadosVigentes(dtoIn.ide_nrdtn, dtoIn.fecha_nrrol, dtoIn.ideEmpr);
+        if (empleados.length === 0) {
+            throw new BadRequestException('No hay empleados vigentes para el tipo de nómina y fecha seleccionados');
+        }
+
+        // Ubicar, dentro de la parametría de ESTE tipo de nómina, cuál ide_nrder
+        // corresponde a cada rubro de cálculo legal fijo (sueldo, horas extra,
+        // décimos, fondos de reserva) — si están configurados. Estos NO se evalúan
+        // por fórmula (ver CalculoLegalService): se calculan en código y se inyectan
+        // directo, igual que ya se hacía con sueldo.
+        const nrderSueldo = rubroSueldoId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroSueldoId)?.ide_nrder
+            : undefined;
+        const nrderHorasSupl = rubroHorasSuplId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasSuplId)?.ide_nrder
+            : undefined;
+        const nrderHorasExtra = rubroHorasExtraId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasExtraId)?.ide_nrder
+            : undefined;
+        const nrderHorasNocturna = rubroHorasNocturnaId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroHorasNocturnaId)?.ide_nrder
+            : undefined;
+        const nrderDecimoTercero = rubroDecimoTerceroId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoTerceroId)?.ide_nrder
+            : undefined;
+        const nrderDecimoCuarto = rubroDecimoCuartoId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroDecimoCuartoId)?.ide_nrder
+            : undefined;
+        const nrderFondosReserva = rubroFondosReservaId
+            ? detalleRubros.find((d) => d.ide_nrrub === rubroFondosReservaId)?.ide_nrder
+            : undefined;
+
+        const listQuery: ObjectQueryDto[] = [];
+        const horasConsumidas: number[] = [];
+        const mensualizacionVigente = await this.getMensualizacionVigente(
+            empleados.map((e) => e.ide_geedp),
+            dtoIn.fecha_nrrol,
+        );
+
+        for (const empleado of empleados) {
                 const computedValues = new Map<number, number>();
                 const sueldo = Number(empleado.rmu_geedp) || 0;
 
@@ -397,18 +486,7 @@ export class RolPagosService extends BaseService {
                 }
             }
 
-            await this.core.save({ ...dtoIn, listQuery, audit: true });
-
-            if (horasConsumidas.length > 0) {
-                await this.marcarHorasExtraConsumidas(horasConsumidas, ideNrrol);
-            }
-
-            return { message: 'ok', ide_nrrol: ideNrrol, empleadosProcesados: empleados.length };
-        } catch (error) {
-            if (error instanceof BadRequestException) throw error;
-            const msg = error instanceof Error ? error.message : String(error);
-            throw new InternalServerErrorException(`Error al generar el rol: ${msg}`);
-        }
+        return { listQuery, horasConsumidas, empleadosProcesados: empleados.length };
     }
 
     async aprobar(dtoIn: AprobarRolDto & HeaderParamsDto) {
