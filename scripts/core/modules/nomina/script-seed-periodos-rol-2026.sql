@@ -44,8 +44,8 @@ SELECT
     0 AS ide_nrtit,
     m.ide_gemes,
     a.ide_geani,
-    make_date(a.nom_geani::int, m.ide_gemes, 1) AS fecha_inicial_gepro,
-    (make_date(a.nom_geani::int, m.ide_gemes, 1) + interval '1 month' - interval '1 day')::date AS fecha_final_gepro,
+    make_date(a.nom_geani::int, m.ide_gemes::int, 1) AS fecha_inicial_gepro,
+    (make_date(a.nom_geani::int, m.ide_gemes::int, 1) + interval '1 month' - interval '1 day')::date AS fecha_final_gepro,
     initcap(m.nombre_gemes) || ' ' || a.nom_geani AS detalle_periodo_gepro,
     true
 FROM gen_mes m
