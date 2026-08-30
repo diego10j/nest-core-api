@@ -8,7 +8,15 @@ import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import { GetPuestosSalariosByEmpleadoDto, SavePuestoSalarioDto } from './dto/puestos-salarios.dto';
 
-const REQUIRED_ON_CREATE = ['ide_gtemp', 'ide_gtcar', 'rmu_geedp', 'fecha_geedp'];
+// Combo "genérico" sembrado por seed-catalogos-puesto-salario.sql para las columnas NOT
+// NULL heredadas de sector público que gen_empleados_departamento_par exige pero DIQUIMEC
+// no necesita conceptualmente (partida presupuestaria/grupo de cargo/área). ide_gedep NO
+// está acá: viene del form (Ventas=1 / Administrativo=2) porque sí es real para DIQUIMEC —
+// determina la provisión de décimos/fondos de reserva (ver generarProvisionDecimosFondos).
+const GENERICO_GEPGC = { ideGepgc: 1, ideGegro: 1, ideGecaf: 1, ideGeare: 1 };
+const GENERICO_GTTEM = 1; // CODIGO DE TRABAJO (privado — correcto para DIQUIMEC)
+const GENERICO_GTTCO = 2; // CONTRATO INDEFINIDO
+const GENERICO_GTTSI = 1; // Ninguno
 
 @Injectable()
 export class PuestosSalariosService {
@@ -60,19 +68,21 @@ export class PuestosSalariosService {
      */
     async save(dtoIn: SavePuestoSalarioDto & HeaderParamsDto) {
         try {
-            if (!dtoIn.data) throw new BadRequestException('El campo data es requerido');
-            const { data } = dtoIn;
-            const isUpdate = dtoIn.isUpdate && !!data.ide_geedp;
+            const isUpdate = dtoIn.ideGeedp != null;
 
             if (isUpdate) {
-                const ideGeedp = data.ide_geedp as number;
+                const ideGeedp = dtoIn.ideGeedp as number;
                 const updQuery: ObjectQueryDto = {
                     operation: 'update',
                     module: 'gen',
                     tableName: 'empleados_departamento_par',
                     primaryKey: 'ide_geedp',
                     object: {
-                        ...data,
+                        ide_geedp: ideGeedp,
+                        ide_gtcar: dtoIn.ideGtcar,
+                        rmu_geedp: dtoIn.rmuGeedp,
+                        fecha_geedp: dtoIn.fechaGeedp,
+                        ide_gedep: dtoIn.ideGedep,
                         usuario_actua: dtoIn.login,
                         fecha_actua: getCurrentDate(),
                         hora_actua: getCurrentTime(),
@@ -80,13 +90,7 @@ export class PuestosSalariosService {
                     condition: `ide_geedp = ${ideGeedp}`,
                 };
                 await this.core.save({ ...dtoIn, listQuery: [updQuery], audit: true });
-                return { message: 'ok', rowCount: 1, ide_geedp: ideGeedp };
-            }
-
-            for (const field of REQUIRED_ON_CREATE) {
-                if (data[field] === undefined || data[field] === null) {
-                    throw new BadRequestException(`El campo ${field} es requerido para crear una asignación de puesto/salario`);
-                }
+                return { message: 'ok', ideGeedp };
             }
 
             const ideGeedp = await this.dataSource.getSeqTable(
@@ -102,10 +106,23 @@ export class PuestosSalariosService {
                 tableName: 'empleados_departamento_par',
                 primaryKey: 'ide_geedp',
                 object: {
-                    activo_geedp: true,
-                    ide_sucu: dtoIn.ideSucu,
-                    ...data,
                     ide_geedp: ideGeedp,
+                    ide_gtemp: dtoIn.ideGtemp,
+                    ide_gtcar: dtoIn.ideGtcar,
+                    rmu_geedp: dtoIn.rmuGeedp,
+                    fecha_geedp: dtoIn.fechaGeedp,
+                    ide_gedep: dtoIn.ideGedep,
+                    ide_sucu: dtoIn.ideSucu,
+                    activo_geedp: true,
+                    // Combo "genérico" sembrado en gen_partida_grupo_cargo — ver comentario en la
+                    // cabecera del archivo y seed-catalogos-puesto-salario.sql.
+                    ide_gepgc: GENERICO_GEPGC.ideGepgc,
+                    ide_gegro: GENERICO_GEPGC.ideGegro,
+                    ide_gecaf: GENERICO_GEPGC.ideGecaf,
+                    ide_geare: GENERICO_GEPGC.ideGeare,
+                    ide_gttem: GENERICO_GTTEM,
+                    ide_gttco: GENERICO_GTTCO,
+                    ide_gttsi: GENERICO_GTTSI,
                     usuario_ingre: dtoIn.login,
                     fecha_ingre: getCurrentDate(),
                     hora_ingre: getCurrentTime(),
@@ -113,7 +130,7 @@ export class PuestosSalariosService {
             };
             await this.core.save({ ...dtoIn, listQuery: [insQuery], audit: true });
 
-            return { message: 'ok', rowCount: 1, ide_geedp: ideGeedp };
+            return { message: 'ok', ideGeedp };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);

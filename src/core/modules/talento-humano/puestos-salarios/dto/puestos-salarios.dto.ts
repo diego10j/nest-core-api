@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt } from 'class-validator';
-import { SaveDto } from 'src/common/dto/save.dto';
+import { IsInt, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
 
 export class GetPuestosSalariosByEmpleadoDto {
     @ApiProperty({ description: 'ID del empleado (gth_empleado.ide_gtemp)' })
@@ -10,13 +9,26 @@ export class GetPuestosSalariosByEmpleadoDto {
     ide_gtemp: number;
 }
 
-export class SavePuestoSalarioDto extends SaveDto {
+export class SavePuestoSalarioDto {
+    @ApiProperty({ description: 'ID de la asignación (gen_empleados_departamento_par.ide_geedp) — presente solo al actualizar' })
+    @IsInt()
+    @IsOptional()
+    ideGeedp?: number;
+
+    @IsInt() @IsNotEmpty() ideGtemp: number;
+    @IsInt() @IsNotEmpty() ideGtcar: number;
+    @IsNumber() @IsNotEmpty() rmuGeedp: number;
+
+    @ApiProperty({ description: 'Fecha de inicio de la asignación (YYYY-MM-DD)' })
+    @IsNotEmpty()
+    fechaGeedp: string;
+
     @ApiProperty({
         description:
-            'Datos de gen_empleados_departamento_par. Requeridos al crear: ide_gtemp, ide_gtcar, ' +
-            'rmu_geedp, fecha_geedp. El resto de columnas NOT NULL heredadas de sector público ' +
-            '(ide_gepgc, ide_gegro, ide_gecaf, ide_geare, ide_gttem, ide_gttco, ide_gttsi, ide_sucu, ' +
-            'ide_gedep) deben resolverse con catálogos "genéricos" ya creados para DIQUIMEC.',
+            'Departamento (gen_departamento.ide_gedep) — determina venta/administrativo para la ' +
+            'provisión de décimos/fondos de reserva al cerrar el rol.',
     })
-    declare data: Record<string, any>;
+    @IsInt()
+    @IsNotEmpty()
+    ideGedep: number;
 }
