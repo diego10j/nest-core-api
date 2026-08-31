@@ -5,6 +5,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { GetRolPagosRepDto } from './dto/get-rol-pagos-rep.dto';
+import { GetSolicitudPermisoRepDto } from './dto/get-solicitud-permiso-rep.dto';
 import { NominaRepService } from './nomina-rep.service';
 
 @ApiTags('Reportes-Nomina')
@@ -22,6 +23,20 @@ export class NominaRepController {
         const pdfDoc = await this.service.reportRolPagos({ ...headersParams, ...dtoIn });
         response.setHeader('Content-Type', 'application/pdf');
         pdfDoc.info.Title = `Rol de Pagos ${dtoIn.ide_nrrol}`;
+        pdfDoc.pipe(response);
+        pdfDoc.end();
+    }
+
+    @Get('reportSolicitudPermiso')
+    @ApiOperation({ summary: 'PDF de una solicitud (permiso/vacaciones/justificación de marcación) para firma manual' })
+    async reportSolicitudPermiso(
+        @Res() response: Response,
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetSolicitudPermisoRepDto,
+    ) {
+        const pdfDoc = await this.service.reportSolicitudPermiso({ ...headersParams, ...dtoIn });
+        response.setHeader('Content-Type', 'application/pdf');
+        pdfDoc.info.Title = `Solicitud ${dtoIn.ide_aspvh}`;
         pdfDoc.pipe(response);
         pdfDoc.end();
     }

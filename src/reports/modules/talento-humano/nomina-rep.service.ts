@@ -6,8 +6,18 @@ import { EmpresaRepService } from 'src/reports/common/services/empresa-rep.servi
 import { PrinterService } from 'src/reports/printer/printer.service';
 
 import { GetRolPagosRepDto } from './dto/get-rol-pagos-rep.dto';
+import { GetSolicitudPermisoRepDto } from './dto/get-solicitud-permiso-rep.dto';
 import { RolPagosRep, RolPagosRepEmpleado } from './interfaces/rol-pagos-rep';
+import { SolicitudPermisoRep } from './interfaces/solicitud-permiso-rep';
 import { rolPagosReport } from './rol-pagos.report';
+import { solicitudPermisoReport } from './solicitud-permiso.report';
+
+const TIPO_ASPVH_LABEL: Record<number, string> = {
+    1: 'Solicitud de Permiso',
+    2: 'Solicitud de Vacaciones',
+    3: 'Solicitud de Horas Extra',
+    4: 'Justificación de Marcación',
+};
 
 interface DetalleRolRepRow {
     ide_geedp: number;
@@ -123,6 +133,57 @@ export class NominaRepService {
             empleados,
         };
         const docDefinition = rolPagosReport(data, empresa);
+        return this.printerService.createPdf(docDefinition);
+    }
+
+    /** Documento de solicitud (permiso/vacaciones/justificación de marcación) para firma manual del empleado y del coordinador. */
+    async reportSolicitudPermiso(dtoIn: HeaderParamsDto & GetSolicitudPermisoRepDto) {
+        const query = new SelectQuery(`
+            SELECT
+                p.ide_aspvh,
+                p.tipo_aspvh,
+                p.fecha_solicitud_aspvh::text AS fecha_solicitud_aspvh,
+                p.fecha_desde_aspvh::text AS fecha_desde_aspvh,
+                p.fecha_hasta_aspvh::text AS fecha_hasta_aspvh,
+                to_char(p.hora_desde_aspvh, 'HH24:MI') AS hora_desde_aspvh,
+                to_char(p.hora_hasta_aspvh, 'HH24:MI') AS hora_hasta_aspvh,
+                p.nro_dias_aspvh,
+                p.nro_horas_aspvh,
+                p.detalle_aspvh,
+                emp.primer_nombre_gtemp || ' ' || emp.apellido_paterno_gtemp AS empleado,
+                per.identificac_geper AS identificacion,
+                car.detalle_gtcar AS cargo
+            FROM asi_permisos_vacacion_hext p
+            INNER JOIN gth_empleado emp ON emp.ide_gtemp = p.ide_gtemp
+            INNER JOIN gen_persona per ON per.ide_geper = emp.ide_geper
+            LEFT JOIN gen_empleados_departamento_par ged ON ged.ide_gtemp = emp.ide_gtemp AND ged.activo_geedp = true
+            LEFT JOIN gth_cargo car ON car.ide_gtcar = ged.ide_gtcar
+            WHERE p.ide_aspvh = $1
+        `);
+        query.addIntParam(1, dtoIn.ide_aspvh);
+        const row = await this.dataSource.createSingleQuery(query);
+        if (!row) {
+            throw new NotFoundException(`Solicitud ${dtoIn.ide_aspvh} no encontrada`);
+        }
+
+        const data: SolicitudPermisoRep = {
+            ide_aspvh: row.ide_aspvh,
+            tipoLabel: TIPO_ASPVH_LABEL[row.tipo_aspvh] ?? 'Solicitud',
+            empleado: row.empleado,
+            identificacion: row.identificacion ?? '---',
+            cargo: row.cargo,
+            fecha_solicitud_aspvh: row.fecha_solicitud_aspvh,
+            fecha_desde_aspvh: row.fecha_desde_aspvh,
+            fecha_hasta_aspvh: row.fecha_hasta_aspvh,
+            hora_desde_aspvh: row.hora_desde_aspvh,
+            hora_hasta_aspvh: row.hora_hasta_aspvh,
+            nro_dias_aspvh: row.nro_dias_aspvh,
+            nro_horas_aspvh: row.nro_horas_aspvh,
+            detalle_aspvh: row.detalle_aspvh,
+            ide_empr: dtoIn.ideEmpr,
+        };
+        const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
+        const docDefinition = solicitudPermisoReport(data, empresa);
         return this.printerService.createPdf(docDefinition);
     }
 }

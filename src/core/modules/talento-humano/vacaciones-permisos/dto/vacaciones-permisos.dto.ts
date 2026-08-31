@@ -59,15 +59,27 @@ export class CrearPermisoDto {
     @IsNumber()
     nro_horas_aspvh?: number;
 
-    @ApiPropertyOptional({ description: 'Hora que debió marcarse (HH:MM), para justificación de marcación' })
+    @ApiPropertyOptional({ description: 'Hora inicio (HH:MM) — hora que debió marcarse en justificación, o inicio del permiso por horas' })
     @IsOptional()
     @IsString()
     hora_desde_aspvh?: string;
+
+    @ApiPropertyOptional({ description: 'Hora fin (HH:MM), para permiso por horas' })
+    @IsOptional()
+    @IsString()
+    hora_hasta_aspvh?: string;
 
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()
     detalle_aspvh?: string;
+}
+
+export class AprobarPermisoDto {
+    @ApiProperty({ description: 'ID del permiso/vacación a aprobar (asi_permisos_vacacion_hext.ide_aspvh)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_aspvh: number;
 }
 
 export class AprobarJustificacionDto {

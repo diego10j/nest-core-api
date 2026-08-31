@@ -10,6 +10,7 @@ import {
     AnularPermisoDto,
     CrearPermisoDto,
     GetPermisosDto,
+    AprobarPermisoDto,
     GetSaldoVacacionesDto,
     AprobarJustificacionDto,
     RegistrarMovimientoVacacionDto,
@@ -144,8 +145,10 @@ export class VacacionesPermisosService {
                     p.nro_dias_aspvh,
                     p.nro_horas_aspvh,
                     to_char(p.hora_desde_aspvh, 'HH24:MI') AS hora_desde_aspvh,
+                    to_char(p.hora_hasta_aspvh, 'HH24:MI') AS hora_hasta_aspvh,
                     p.detalle_aspvh,
                     p.activo_aspvh,
+                    p.aprobado_aspvh,
                     p.razon_anula_aspvh,
                     p.fecha_anula_aspvh
                 FROM asi_permisos_vacacion_hext p
@@ -189,6 +192,7 @@ export class VacacionesPermisosService {
                         nro_dias_aspvh: dtoIn.nro_dias_aspvh ?? null,
                         nro_horas_aspvh: dtoIn.nro_horas_aspvh ?? null,
                         hora_desde_aspvh: dtoIn.hora_desde_aspvh ?? null,
+                        hora_hasta_aspvh: dtoIn.hora_hasta_aspvh ?? null,
                         detalle_aspvh: dtoIn.detalle_aspvh ?? null,
                         activo_aspvh: true,
                         usuario_ingre: dtoIn.login,
@@ -259,6 +263,28 @@ export class VacacionesPermisosService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al anular el permiso: ${msg}`);
+        }
+    }
+
+    /**
+     * Aprueba un permiso/vacación (tipo_aspvh 1 o 2) pendiente — se usa cuando el
+     * coordinador recibe el documento firmado en papel por el empleado. El "rechazo"
+     * de una solicitud pendiente reutiliza anularPermiso (mismo efecto: queda anulada
+     * y, si tenía cargo a vacaciones, se reversa el descuento del saldo).
+     */
+    async aprobarPermiso(dtoIn: AprobarPermisoDto & HeaderParamsDto) {
+        if (!dtoIn.ide_aspvh) throw new BadRequestException('El campo ide_aspvh es requerido');
+        try {
+            const updPermiso = new UpdateQuery('asi_permisos_vacacion_hext', 'ide_aspvh');
+            updPermiso.values.set('aprobado_aspvh', true);
+            updPermiso.where = `ide_aspvh = $1 AND activo_aspvh = true`;
+            updPermiso.addIntParam(1, dtoIn.ide_aspvh);
+            await this.dataSource.createQuery(updPermiso);
+            return { message: 'ok', ide_aspvh: dtoIn.ide_aspvh };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al aprobar el permiso: ${msg}`);
         }
     }
 

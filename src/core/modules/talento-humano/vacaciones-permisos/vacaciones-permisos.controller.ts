@@ -7,6 +7,7 @@ import {
     AnularPermisoDto,
     CrearPermisoDto,
     GetPermisosDto,
+    AprobarPermisoDto,
     GetSaldoVacacionesDto,
     AprobarJustificacionDto,
     RegistrarMovimientoVacacionDto,
@@ -70,6 +71,15 @@ export class VacacionesPermisosController {
         @Body() dtoIn: AnularPermisoDto,
     ) {
         return this.service.anularPermiso({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('aprobarPermiso')
+    @ApiOperation({ summary: 'Aprueba un permiso/vacación pendiente (el coordinador recibió el documento firmado)' })
+    aprobarPermiso(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: AprobarPermisoDto,
+    ) {
+        return this.service.aprobarPermiso({ ...headersParams, ...dtoIn });
     }
 
     @Get('getJustificacionesPendientes')
