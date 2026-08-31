@@ -14,10 +14,8 @@ interface MarcacionRow {
     fecha_asmar: string;
     dow: number; // 0=domingo .. 6=sábado
     es_feriado: boolean;
-    h1_asmar: string | null;
-    h2_asmar: string | null;
-    h3_asmar: string | null;
-    h4_asmar: string | null;
+    hora_entrada: string | null;
+    hora_salida: string | null;
     jornada_fin: string | null;
 }
 
@@ -49,6 +47,14 @@ export class HorasExtraService {
      */
     async detectarCandidatas(dtoIn: DetectarCandidatasDto & HeaderParamsDto) {
         try {
+            // `asi_marcaciones` es una fila POR MARCA, no una fila por día con h1..h4 como
+            // 4 horas del día (confirmado en pre_biometrico.java y datos reales — ver nota
+            // igual en talento-humano/asistencia/asistencia.service.ts#getMisMarcaciones) —
+            // hay que agrupar por (empleado, fecha) y tomar MIN/MAX(hora_asmar), si no cada
+            // fila de marca se procesaba por separado con h1-h4 sin relación a la hora real.
+            // El cruce a empleado tampoco puede ser por tarjeta_marcacion_gtemp (vacío para
+            // la mayoría de empleados reales de DIQUIMEC) — es por ide_geper, ya poblado en
+            // asi_marcaciones tanto por el sistema legado como por confirmarCargaMarcaciones.
             const query = new SelectQuery(`
                 SELECT
                     ged.ide_geedp,
@@ -58,11 +64,12 @@ export class HorasExtraService {
                         SELECT 1 FROM nrh_feriado f
                         WHERE f.fecha_nrfer = m.fecha_asmar AND f.activo_nrfer = true
                     ) AS es_feriado,
-                    m.h1_asmar, m.h2_asmar, m.h3_asmar, m.h4_asmar,
-                    per.jornada_fin_geper::text AS jornada_fin
+                    to_char(MIN(m.hora_asmar), 'HH24:MI') AS hora_entrada,
+                    to_char(MAX(m.hora_asmar), 'HH24:MI') AS hora_salida,
+                    MAX(per.jornada_fin_geper::text) AS jornada_fin
                 FROM asi_marcaciones m
-                INNER JOIN gth_empleado emp ON emp.tarjeta_marcacion_gtemp = m.cod_empleado_asmar
-                INNER JOIN gen_persona per ON per.ide_geper = emp.ide_geper
+                INNER JOIN gen_persona per ON per.ide_geper = m.ide_geper
+                INNER JOIN gth_empleado emp ON emp.ide_geper = per.ide_geper
                 INNER JOIN gen_empleados_departamento_par ged ON ged.ide_gtemp = emp.ide_gtemp AND ged.activo_geedp = true
                 WHERE m.ide_sucu = $1
                   AND m.fecha_asmar BETWEEN $2 AND $3
@@ -70,6 +77,7 @@ export class HorasExtraService {
                       SELECT 1 FROM nrh_hora_extra_candidata c
                       WHERE c.ide_geedp = ged.ide_geedp AND c.fecha_nrhec = m.fecha_asmar
                   )
+                GROUP BY ged.ide_geedp, m.fecha_asmar
             `);
             query.setLazy(false);
             query.addIntParam(1, dtoIn.ideSucu);
@@ -120,16 +128,16 @@ export class HorasExtraService {
 
     /** Total de horas trabajadas fuera de jornada (primera a última marcación del día). */
     private calcularExcedente(m: MarcacionRow): number {
-        const marcas = [m.h1_asmar, m.h2_asmar, m.h3_asmar, m.h4_asmar]
-            .map((h) => horaAMinutos(h))
-            .filter((v): v is number => v !== null);
-        if (marcas.length === 0) return 0;
+        const entrada = horaAMinutos(m.hora_entrada);
+        const salida = horaAMinutos(m.hora_salida);
+        if (entrada === null || salida === null || salida <= entrada) return 0;
 
-        const entrada = Math.min(...marcas);
-        const salida = Math.max(...marcas);
-        if (salida <= entrada) return 0;
-
-        const esDiaNoLaborable = m.dow === 0 || m.es_feriado; // domingo o feriado
+        // Sábado: DIQUIMEC no programa a nadie de forma fija — quién trabaja depende de la
+        // necesidad del negocio esa semana, sin planificación anticipada, así que marcar no
+        // es obligatorio. Si de todas formas hay marcación, TODO lo trabajado cuenta como
+        // excedente (igual que domingo/feriado) — el umbral de jornada_fin (17:00 por
+        // defecto) no aplicaría nunca: el horario de atención de sábado es 09:00-13:00.
+        const esDiaNoLaborable = m.dow === 0 || m.dow === 6 || m.es_feriado; // domingo, sábado o feriado
         if (esDiaNoLaborable) {
             return Math.round(((salida - entrada) / 60) * 100) / 100;
         }
@@ -140,12 +148,12 @@ export class HorasExtraService {
     }
 
     /**
-     * Sugerencia informativa (Art. 55): domingo/feriado -> extraordinaria (100%);
-     * cualquier otro exceso -> suplementaria (50%, cubre lunes-sábado 06:00-24:00,
-     * el caso normal). Quien aprueba puede cambiarla.
+     * Sugerencia informativa (Art. 55): domingo/sábado (no programado)/feriado ->
+     * extraordinaria (100%); cualquier otro exceso en día laborable -> suplementaria
+     * (50%). Quien aprueba puede cambiarla.
      */
     private sugerirTipo(m: MarcacionRow): 'suplementaria' | 'extraordinaria' {
-        return m.dow === 0 || m.es_feriado ? 'extraordinaria' : 'suplementaria';
+        return m.dow === 0 || m.dow === 6 || m.es_feriado ? 'extraordinaria' : 'suplementaria';
     }
 
     async getCandidatas(dtoIn: GetCandidatasDto & HeaderParamsDto) {

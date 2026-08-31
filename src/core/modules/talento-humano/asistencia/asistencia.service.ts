@@ -70,6 +70,15 @@ interface HoraExtraMesRow {
 
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
+/**
+ * ide_tihor de sis_tipo_horario "HORARIO ATENCION DIQUIMEC" (creado 2026-08-31): Lun-Vie
+ * 08:00-17:00, Sáb 09:00-13:00, sin fila domingo (cerrado). Es un horario de ASISTENCIA,
+ * distinto de "HORARIO ADMIN"/"HORARIO OFICINA" (esos controlan en qué franja puede
+ * iniciar sesión cada perfil, ver auth.service.ts#validarHorarioLogin) — mismas tablas
+ * (sis_horario/sis_tipo_horario), consumidores completamente separados, no se cruzan.
+ */
+const IDE_TIHOR_ATENCION_DIQUIMEC = 4;
+
 function horaAMinutos(hora: string | null | undefined): number | null {
     if (!hora) return null;
     const m = /^(\d{1,2}):(\d{2})/.exec(hora.trim());
@@ -106,6 +115,28 @@ export class AsistenciaService {
             empleado: string;
         }[];
         return new Map(rows.map((r) => [r.numero_geper, { ide_geper: r.ide_geper, empleado: r.empleado }]));
+    }
+
+    /**
+     * Horario esperado por día de semana (1=Lunes..6=Sábado, sin domingo) desde
+     * sis_horario, para calcular atraso/suplementarias/extraordinarias en
+     * getMisMarcaciones. Convención de dia_hora confirmada en bot-config.service.ts
+     * (estaEnHorario): 1=Lunes..7=Domingo.
+     */
+    private async getHorarioSemanal(): Promise<Map<number, { inicio: string; fin: string }>> {
+        const query = new SelectQuery(`
+            SELECT dia_hora, hora_inicio_hora::text AS inicio, hora_fin_hora::text AS fin
+            FROM sis_horario
+            WHERE ide_tihor = $1 AND activo_hora = true
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, IDE_TIHOR_ATENCION_DIQUIMEC);
+        const rows = (await this.dataSource.createSelectQuery(query)) as {
+            dia_hora: number;
+            inicio: string;
+            fin: string;
+        }[];
+        return new Map(rows.map((r) => [r.dia_hora, { inicio: r.inicio, fin: r.fin }]));
     }
 
     /**
@@ -289,32 +320,84 @@ export class AsistenciaService {
                 horasExtra = (await this.dataSource.createSelectQuery(heQuery)) as HoraExtraMesRow[];
             }
 
+            const horarioSemanal = await this.getHorarioSemanal();
+
             const marcacionesPorFecha = new Map(marcaciones.map((m) => [m.fecha_asmar, m]));
             const horasExtraPorFecha = new Map(horasExtra.map((h) => [h.fecha_nrhec, h]));
 
             const dias = [];
             let totalHorasTrabajadas = 0;
+            let totalMinutosAtraso = 0;
+            let totalHorasSuplementarias = 0;
+            let totalHorasExtraordinarias = 0;
             let diasSinMarcar = 0;
             for (let d = 1; d <= diasEnMes; d++) {
                 const fecha = `${dtoIn.anio}-${String(dtoIn.mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dow = new Date(dtoIn.anio, dtoIn.mes - 1, d).getDay();
                 const esFeriado = feriadosSet.has(fecha);
                 const esDomingo = dow === 0;
+                const esSabado = dow === 6;
                 const m = marcacionesPorFecha.get(fecha);
 
                 const horaEntrada = m?.hora_entrada ?? null;
                 const horaSalida = m?.hora_salida ?? null;
-                let horasTrabajadas = 0;
                 const minEntrada = horaAMinutos(horaEntrada);
                 const minSalida = horaAMinutos(horaSalida);
-                if (minEntrada !== null && minSalida !== null) {
-                    horasTrabajadas = Math.round(((minSalida - minEntrada) / 60) * 100) / 100;
+
+                // Sábado se trabaja según necesidad del negocio, sin planificación fija —
+                // no es obligatorio marcar (no cuenta como falta), pero si hay marcación se
+                // calcula igual que domingo/feriado: no aplica horario esperado ni almuerzo,
+                // todo el tiempo trabajado es hora extra (ver misma regla en
+                // horas-extra.service.ts#calcularExcedente).
+                const esDiaEspecial = esDomingo || esSabado || esFeriado;
+
+                let horasTrabajadas = 0;
+                let minutosAtraso = 0;
+                let horasSuplementarias = 0;
+                let horasExtraordinarias = 0;
+
+                if (minEntrada !== null && minSalida !== null && minSalida > minEntrada) {
+                    const minutosBrutos = minSalida - minEntrada;
+
+                    if (esDiaEspecial) {
+                        // Todo el tiempo trabajado es hora extra (100% — Art. 55: día de
+                        // descanso no obligatorio/feriado). Sin resta de almuerzo: son
+                        // jornadas cortas y no programadas ("timbran salida y se van").
+                        horasExtraordinarias = Math.round((minutosBrutos / 60) * 100) / 100;
+                        horasTrabajadas = horasExtraordinarias;
+                    } else {
+                        // Día laborable normal: se resta 1h de almuerzo SOLO si trabajó más
+                        // de 4 horas (pedido explícito — no la regla incondicional del
+                        // reporte legado pre_resumen_marcaciones.java).
+                        const horasBrutas = minutosBrutos / 60;
+                        horasTrabajadas = Math.round((horasBrutas > 4 ? horasBrutas - 1 : horasBrutas) * 100) / 100;
+
+                        const horario = horarioSemanal.get(dow); // dow 1-6 == dia_hora 1-6
+                        if (horario) {
+                            const minEsperadoEntrada = horaAMinutos(horario.inicio);
+                            const minEsperadoSalida = horaAMinutos(horario.fin);
+                            if (minEsperadoEntrada !== null && minEntrada > minEsperadoEntrada) {
+                                minutosAtraso = minEntrada - minEsperadoEntrada;
+                            }
+                            if (minEsperadoSalida !== null && minSalida > minEsperadoSalida) {
+                                // Mismo criterio que el reporte legado: primero "recupera" el
+                                // atraso antes de que la salida tardía cuente como suplementaria.
+                                const excedente = minSalida - minEsperadoSalida - minutosAtraso;
+                                if (excedente > 60) {
+                                    horasSuplementarias = Math.round((excedente / 60) * 100) / 100;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 const heDelDia = horasExtraPorFecha.get(fecha);
-                const sinMarcacion = !m && !esDomingo && !esFeriado && fecha <= getCurrentDate();
+                const sinMarcacion = !m && !esDomingo && !esSabado && !esFeriado && fecha <= getCurrentDate();
 
                 totalHorasTrabajadas += horasTrabajadas;
+                totalMinutosAtraso += minutosAtraso;
+                totalHorasSuplementarias += horasSuplementarias;
+                totalHorasExtraordinarias += horasExtraordinarias;
                 if (sinMarcacion) diasSinMarcar++;
 
                 dias.push({
@@ -322,9 +405,13 @@ export class AsistenciaService {
                     diaSemana: DIAS_SEMANA[dow],
                     esFeriado,
                     esDomingo,
+                    esSabado,
                     horaEntrada,
                     horaSalida,
                     horasTrabajadas,
+                    minutosAtraso,
+                    horasSuplementarias,
+                    horasExtraordinarias,
                     sinMarcacion,
                     horasExtra: heDelDia
                         ? { horas: Number(heDelDia.horas_detectadas_nrhec), estado: heDelDia.estado_nrhec }
@@ -338,6 +425,9 @@ export class AsistenciaService {
                 dias,
                 resumen: {
                     totalHorasTrabajadas: Math.round(totalHorasTrabajadas * 100) / 100,
+                    totalMinutosAtraso,
+                    totalHorasSuplementarias: Math.round(totalHorasSuplementarias * 100) / 100,
+                    totalHorasExtraordinarias: Math.round(totalHorasExtraordinarias * 100) / 100,
                     diasSinMarcar,
                 },
             };
