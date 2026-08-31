@@ -143,11 +143,14 @@ export class EmpleadosService {
                 apellido_materno_gtemp: dtoIn.apellidoMaternoGtemp ?? null,
                 documento_identidad_gtemp: dtoIn.documentoIdentidadGtemp,
                 fecha_nacimiento_gtemp: dtoIn.fechaNacimientoGtemp,
-                fecha_ingreso_gtemp: dtoIn.fechaIngresoGtemp ?? null,
+                // '||' (no '??'): el form puede enviar '' cuando el campo queda vacío, y
+                // '??' no lo captura (solo null/undefined) — dejaba pasar '' que luego
+                // toObjectTable() convierte a null, violando el NOT NULL de abajo.
+                fecha_ingreso_gtemp: dtoIn.fechaIngresoGtemp || null,
                 // fecha_ingreso_grupo_gtemp es NOT NULL heredado de sector público ("grupo
                 // ocupacional") — no aplica conceptualmente a DIQUIMEC y no se pide en el
                 // formulario, se copia de fecha_ingreso_gtemp.
-                fecha_ingreso_grupo_gtemp: dtoIn.fechaIngresoGtemp ?? getCurrentDate(),
+                fecha_ingreso_grupo_gtemp: dtoIn.fechaIngresoGtemp || getCurrentDate(),
                 tarjeta_marcacion_gtemp: dtoIn.tarjetaMarcacionGtemp ?? null,
                 ide_gtgen: dtoIn.ideGtgen,
                 ide_gttdi: dtoIn.ideGttdi,
