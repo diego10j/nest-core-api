@@ -171,6 +171,32 @@ export class EmpleadosService {
 
             if (isUpdate) {
                 const ideGtemp = dtoIn.ideGtemp as number;
+
+                // Detecta si se re-eligió una persona distinta a la ya asociada (ej. se
+                // corrige un error de selección al crear el empleado). Si cambió, valida
+                // que la nueva persona no esté ya asociada a OTRO empleado, y desmarca
+                // es_empleado_geper en la persona anterior (queda libre para asociarse a
+                // otro empleado en el futuro, o simplemente deja de estar marcada como tal).
+                const actualQuery = new SelectQuery(`SELECT ide_geper FROM gth_empleado WHERE ide_gtemp = $1`);
+                actualQuery.setLazy(false);
+                actualQuery.addIntParam(1, ideGtemp);
+                const actualRows = await this.dataSource.createSelectQuery(actualQuery);
+                const ideGeperActual = (actualRows?.[0] as { ide_geper: number } | undefined)?.ide_geper;
+                if (ideGeperActual == null) {
+                    throw new BadRequestException('El empleado indicado no existe');
+                }
+
+                const cambiaPersona = Number(dtoIn.ideGeper) !== Number(ideGeperActual);
+                if (cambiaPersona) {
+                    const nuevaPersona = await this.getPersonaParaAsociar(dtoIn.ideGeper, dtoIn.ideEmpr);
+                    if (!nuevaPersona) {
+                        throw new BadRequestException('La persona seleccionada no existe o no pertenece a esta empresa');
+                    }
+                    if (nuevaPersona.ide_gtemp) {
+                        throw new BadRequestException('Esta persona ya está registrada como otro empleado');
+                    }
+                }
+
                 const listQuery: ObjectQueryDto[] = [
                     {
                         operation: 'update',
@@ -194,6 +220,7 @@ export class EmpleadosService {
                         object: {
                             ide_geper: dtoIn.ideGeper,
                             ...personaObject,
+                            ...(cambiaPersona ? { es_empleado_geper: true } : {}),
                             usuario_actua: dtoIn.login,
                             fecha_actua: getCurrentDate(),
                             hora_actua: getCurrentTime(),
@@ -201,6 +228,24 @@ export class EmpleadosService {
                         condition: `ide_geper = ${dtoIn.ideGeper}`,
                     },
                 ];
+
+                if (cambiaPersona) {
+                    listQuery.push({
+                        operation: 'update',
+                        module: 'gen',
+                        tableName: 'persona',
+                        primaryKey: 'ide_geper',
+                        object: {
+                            ide_geper: ideGeperActual,
+                            es_empleado_geper: false,
+                            usuario_actua: dtoIn.login,
+                            fecha_actua: getCurrentDate(),
+                            hora_actua: getCurrentTime(),
+                        },
+                        condition: `ide_geper = ${ideGeperActual}`,
+                    });
+                }
+
                 await this.core.save({ ...dtoIn, listQuery, audit: true });
                 return { message: 'ok', ideGtemp, ideGeper: dtoIn.ideGeper };
             }
