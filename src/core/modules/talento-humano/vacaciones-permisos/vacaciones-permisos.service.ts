@@ -403,8 +403,12 @@ export class VacacionesPermisosService {
                 await this.core.save({ ...dtoIn, listQuery, audit: false });
             }
 
-            // No hay un campo de estado propio para "aprobada" — el indicador es
-            // `ya_registrada` en getJustificacionesPendientes (existe una marca ese día).
+            const updPerm = new UpdateQuery('asi_permisos_vacacion_hext', 'ide_aspvh');
+            updPerm.values.set('aprobado_aspvh', true);
+            updPerm.where = 'ide_aspvh = $1';
+            updPerm.addIntParam(1, dtoIn.ide_aspvh);
+            await this.dataSource.createQuery(updPerm);
+
             return { message: 'ok', ide_aspvh: dtoIn.ide_aspvh };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
