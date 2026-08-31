@@ -365,8 +365,10 @@ export class EmpleadosService {
         const query = new SelectQuery(`
             SELECT
                 e.ide_gtemp,
+                e.ide_geper,
                 e.primer_nombre_gtemp || ' ' || e.apellido_paterno_gtemp AS empleado,
                 e.tarjeta_marcacion_gtemp,
+                per.numero_geper,
                 ged.ide_geedp,
                 car.detalle_gtcar AS cargo,
                 per.identificac_geper AS identificacion

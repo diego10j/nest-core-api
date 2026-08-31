@@ -58,10 +58,8 @@ function normalizarFecha(valor: string): string | null {
 
 interface MarcacionMesRow {
     fecha_asmar: string;
-    h1_asmar: string | null;
-    h2_asmar: string | null;
-    h3_asmar: string | null;
-    h4_asmar: string | null;
+    hora_entrada: string | null;
+    hora_salida: string | null;
 }
 
 interface HoraExtraMesRow {
@@ -79,12 +77,6 @@ function horaAMinutos(hora: string | null | undefined): number | null {
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-function minutosAHora(min: number): string {
-    const h = Math.floor(min / 60);
-    const m = Math.round(min % 60);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 @Injectable()
 export class AsistenciaService {
     constructor(
@@ -93,20 +85,27 @@ export class AsistenciaService {
         private readonly core: CoreService,
     ) { }
 
-    /** Mapa código de marcación (gth_empleado.tarjeta_marcacion_gtemp) -> {ide_geper, empleado}, para cruzar la carga. */
+    /**
+     * Mapa código del biométrico -> {ide_geper, empleado}, para cruzar la carga del .dat.
+     * El código real es `gen_persona.numero_geper` (confirmado en pre_biometrico.java del
+     * sistema legado: `UPDATE asi_marcaciones SET ide_geper = s.ide_geper FROM gen_persona s
+     * WHERE cod_empleado_asmar = s.numero_geper`) — NO `gth_empleado.tarjeta_marcacion_gtemp`,
+     * que está vacío para la mayoría de empleados reales y no es lo que escribe el biométrico.
+     */
     private async getMapaTarjetas(): Promise<Map<string, { ide_geper: number; empleado: string }>> {
         const query = new SelectQuery(`
-            SELECT tarjeta_marcacion_gtemp, ide_geper, primer_nombre_gtemp || ' ' || apellido_paterno_gtemp AS empleado
-            FROM gth_empleado
-            WHERE tarjeta_marcacion_gtemp IS NOT NULL AND activo_gtemp = true
+            SELECT p.numero_geper, e.ide_geper, e.primer_nombre_gtemp || ' ' || e.apellido_paterno_gtemp AS empleado
+            FROM gth_empleado e
+            INNER JOIN gen_persona p ON p.ide_geper = e.ide_geper
+            WHERE p.numero_geper IS NOT NULL AND p.numero_geper <> '' AND e.activo_gtemp = true
         `);
         query.setLazy(false);
         const rows = (await this.dataSource.createSelectQuery(query)) as {
-            tarjeta_marcacion_gtemp: string;
+            numero_geper: string;
             ide_geper: number;
             empleado: string;
         }[];
-        return new Map(rows.map((r) => [r.tarjeta_marcacion_gtemp, { ide_geper: r.ide_geper, empleado: r.empleado }]));
+        return new Map(rows.map((r) => [r.numero_geper, { ide_geper: r.ide_geper, empleado: r.empleado }]));
     }
 
     /**
@@ -231,24 +230,40 @@ export class AsistenciaService {
             const diasEnMes = new Date(dtoIn.anio, dtoIn.mes, 0).getDate();
             const fechaFin = `${dtoIn.anio}-${String(dtoIn.mes).padStart(2, '0')}-${String(diasEnMes).padStart(2, '0')}`;
 
-            const tarjeta = miEmpleado.tarjeta_marcacion_gtemp as string | null;
+            // El código real del biométrico es gen_persona.numero_geper, no
+            // gth_empleado.tarjeta_marcacion_gtemp (ver nota en getMapaTarjetas) — el aviso
+            // "sin código configurado" debe medir el campo que de verdad usan las cargas .dat.
+            const tieneCodigoBiometrico = !!(miEmpleado.numero_geper as string | null);
 
-            const marcaciones: MarcacionMesRow[] = tarjeta
-                ? ((await this.dataSource.createSelectQuery(
-                      (() => {
-                          const q = new SelectQuery(`
-                            SELECT fecha_asmar::text AS fecha_asmar, h1_asmar, h2_asmar, h3_asmar, h4_asmar
-                            FROM asi_marcaciones
-                            WHERE cod_empleado_asmar = $1 AND fecha_asmar BETWEEN $2 AND $3
-                          `);
-                          q.setLazy(false);
-                          q.addStringParam(1, tarjeta);
-                          q.addStringParam(2, fechaInicio);
-                          q.addStringParam(3, fechaFin);
-                          return q;
-                      })(),
-                  )) as MarcacionMesRow[])
-                : [];
+            // El código Java legado (ServicioControlAsistencia.getSqlHorasExtra) filtra
+            // asi_marcaciones por `ide_geper` directamente, no por `cod_empleado_asmar` (el
+            // código de texto del biométrico) — es la FK real y confiable, tanto para datos
+            // históricos cargados por el sistema legado como para los cargados por
+            // confirmarCargaMarcaciones (que también backfillea ide_geper). Filtrar por
+            // cod_empleado_asmar dejaba fuera marcaciones reales cuyo código de texto no
+            // calzaba exacto con tarjeta_marcacion_gtemp.
+            // `asi_marcaciones` es una fila POR MARCA (no una fila por día con h1..h4 como
+            // los 4 marcas) — confirmado en pre_biometrico.java (`cargar()`: una fila por
+            // línea del .dat, `hora_asmar` = la hora real de esa marca) y en
+            // ServicioControlAsistencia.java (HORA_ENTRADA/HORA_SALIDA = MIN/MAX(hora_asmar)
+            // agrupado por fecha). `h1_asmar..h4_asmar` son códigos del biométrico sin
+            // relación con la hora — leerlos como si fueran 4 horas del día (bug anterior)
+            // dejaba horasTrabajadas siempre en 0 para toda marcación real.
+            const marcacionesQuery = new SelectQuery(`
+                SELECT fecha_asmar::text AS fecha_asmar,
+                       to_char(MIN(hora_asmar), 'HH24:MI') AS hora_entrada,
+                       to_char(MAX(hora_asmar), 'HH24:MI') AS hora_salida
+                FROM asi_marcaciones
+                WHERE ide_geper = $1 AND fecha_asmar BETWEEN $2 AND $3
+                GROUP BY fecha_asmar
+            `);
+            marcacionesQuery.setLazy(false);
+            marcacionesQuery.addIntParam(1, miEmpleado.ide_geper as number);
+            marcacionesQuery.addStringParam(2, fechaInicio);
+            marcacionesQuery.addStringParam(3, fechaFin);
+            const marcaciones = (await this.dataSource.createSelectQuery(
+                marcacionesQuery,
+            )) as MarcacionMesRow[];
 
             const feriadosQuery = new SelectQuery(`
                 SELECT fecha_nrfer::text AS fecha_nrfer FROM nrh_feriado
@@ -287,24 +302,17 @@ export class AsistenciaService {
                 const esDomingo = dow === 0;
                 const m = marcacionesPorFecha.get(fecha);
 
-                const marcas = m
-                    ? [m.h1_asmar, m.h2_asmar, m.h3_asmar, m.h4_asmar]
-                          .map((h) => horaAMinutos(h))
-                          .filter((v): v is number => v !== null)
-                          .sort((a, b) => a - b)
-                    : [];
-
-                let horaEntrada: string | null = null;
-                let horaSalida: string | null = null;
+                const horaEntrada = m?.hora_entrada ?? null;
+                const horaSalida = m?.hora_salida ?? null;
                 let horasTrabajadas = 0;
-                if (marcas.length > 0) {
-                    horaEntrada = minutosAHora(marcas[0]);
-                    horaSalida = minutosAHora(marcas[marcas.length - 1]);
-                    horasTrabajadas = Math.round(((marcas[marcas.length - 1] - marcas[0]) / 60) * 100) / 100;
+                const minEntrada = horaAMinutos(horaEntrada);
+                const minSalida = horaAMinutos(horaSalida);
+                if (minEntrada !== null && minSalida !== null) {
+                    horasTrabajadas = Math.round(((minSalida - minEntrada) / 60) * 100) / 100;
                 }
 
                 const heDelDia = horasExtraPorFecha.get(fecha);
-                const sinMarcacion = marcas.length === 0 && !esDomingo && !esFeriado && fecha <= getCurrentDate();
+                const sinMarcacion = !m && !esDomingo && !esFeriado && fecha <= getCurrentDate();
 
                 totalHorasTrabajadas += horasTrabajadas;
                 if (sinMarcacion) diasSinMarcar++;
@@ -326,7 +334,7 @@ export class AsistenciaService {
 
             return {
                 empleado: miEmpleado,
-                sinTarjetaMarcacion: !tarjeta,
+                sinTarjetaMarcacion: !tieneCodigoBiometrico,
                 dias,
                 resumen: {
                     totalHorasTrabajadas: Math.round(totalHorasTrabajadas * 100) / 100,
