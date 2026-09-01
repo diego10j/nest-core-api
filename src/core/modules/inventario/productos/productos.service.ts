@@ -4,7 +4,6 @@ import { join } from 'path';
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { SearchDto } from 'src/common/dto/search.dto';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { CoreService } from 'src/core/core.service';
 import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
@@ -33,6 +32,7 @@ import { KpiPreciosDto } from './dto/kpi-precios.dto';
 import { KpiVentasProductoDto } from './dto/kpi-ventas-producto.dto';
 import { PreciosProductoDto } from './dto/precios-producto.dto';
 import { InvArticulo, SaveProductoDto } from './dto/save-producto.dto';
+import { SearchProductoDto } from './dto/search-producto.dto';
 import { TopClientesProductoDto } from './dto/top-clientes-producto.dto';
 import { TrnProductoDto } from './dto/trn-producto.dto';
 import { VentasMensualesDto } from './dto/ventas-mensuales.dto';
@@ -235,9 +235,13 @@ export class ProductosService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    async searchProducto(dto: SearchDto & HeaderParamsDto) {
+    async searchProducto(dto: SearchProductoDto & HeaderParamsDto) {
         const normalizedSearchValue = normalizeString(dto.value.trim());
         const sqlSearchValue = `%${normalizedSearchValue}%`;
+        // Ventas/proformas solo ofrecen productos vendibles (ide_intpr = 1); compras e
+        // importaciones (soloVentas=false) necesitan poder seleccionar cualquier tipo de
+        // artículo del catálogo (servicios, materia prima, etc.), no solo los de venta.
+        const filtroTipoProducto = dto.soloVentas === 'false' ? '' : 'AND a.ide_intpr = 1';
 
         const query = new SelectQuery(
             `
@@ -271,8 +275,8 @@ export class ProductosService extends BaseService {
             LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
             LEFT JOIN inv_categoria c ON a.ide_incate = c.ide_incate
         WHERE
-            a.ide_intpr = 1 -- solo productos
-            AND a.nivel_inarti = 'HIJO'
+            a.nivel_inarti = 'HIJO'
+            ${filtroTipoProducto}
             AND a.ide_empr = ${dto.ideEmpr}
             AND a.activo_inarti = true
             AND (

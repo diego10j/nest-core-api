@@ -150,10 +150,26 @@ export class VacacionesPermisosService {
                     p.activo_aspvh,
                     p.aprobado_aspvh,
                     p.razon_anula_aspvh,
-                    p.fecha_anula_aspvh
+                    p.documento_anula_aspvh,
+                    p.fecha_anula_aspvh,
+                    to_char(p.hora_anula_aspvh, 'HH24:MI') AS hora_anula_aspvh,
+                    p.ide_usua_aprobador,
+                    usu_apr.nom_usua AS aprobador,
+                    p.fecha_aprobacion_aspvh,
+                    to_char(p.hora_aprobacion_aspvh, 'HH24:MI') AS hora_aprobacion_aspvh,
+                    p.observacion_aprobacion_aspvh,
+                    (
+                        p.tipo_aspvh = 4 AND EXISTS (
+                            SELECT 1 FROM asi_marcaciones m
+                            WHERE m.cod_empleado_asmar = emp.tarjeta_marcacion_gtemp
+                              AND m.fecha_asmar = p.fecha_desde_aspvh
+                              AND (m.h1_asmar IS NOT NULL OR m.h2_asmar IS NOT NULL OR m.h3_asmar IS NOT NULL OR m.h4_asmar IS NOT NULL)
+                        )
+                    ) AS ya_registrada
                 FROM asi_permisos_vacacion_hext p
                 INNER JOIN gth_empleado emp ON emp.ide_gtemp = p.ide_gtemp
                 INNER JOIN gen_persona per ON per.ide_geper = emp.ide_geper
+                LEFT JOIN sis_usuario usu_apr ON usu_apr.ide_usua = p.ide_usua_aprobador
                 WHERE ${conditions.join(' AND ')}
                 ORDER BY p.fecha_desde_aspvh DESC
                 `,
@@ -248,6 +264,7 @@ export class VacacionesPermisosService {
             updPermiso.values.set('razon_anula_aspvh', dtoIn.razon_anula_aspvh ?? null);
             updPermiso.values.set('documento_anula_aspvh', dtoIn.login);
             updPermiso.values.set('fecha_anula_aspvh', getCurrentDate());
+            updPermiso.values.set('hora_anula_aspvh', getCurrentTime());
             updPermiso.where = 'ide_aspvh = $1';
             updPermiso.addIntParam(1, dtoIn.ide_aspvh);
             await this.dataSource.createQuery(updPermiso);
@@ -277,6 +294,10 @@ export class VacacionesPermisosService {
         try {
             const updPermiso = new UpdateQuery('asi_permisos_vacacion_hext', 'ide_aspvh');
             updPermiso.values.set('aprobado_aspvh', true);
+            updPermiso.values.set('ide_usua_aprobador', dtoIn.ideUsua);
+            updPermiso.values.set('fecha_aprobacion_aspvh', getCurrentDate());
+            updPermiso.values.set('hora_aprobacion_aspvh', getCurrentTime());
+            updPermiso.values.set('observacion_aprobacion_aspvh', dtoIn.observacion ?? null);
             updPermiso.where = `ide_aspvh = $1 AND activo_aspvh = true`;
             updPermiso.addIntParam(1, dtoIn.ide_aspvh);
             await this.dataSource.createQuery(updPermiso);
@@ -405,6 +426,10 @@ export class VacacionesPermisosService {
 
             const updPerm = new UpdateQuery('asi_permisos_vacacion_hext', 'ide_aspvh');
             updPerm.values.set('aprobado_aspvh', true);
+            updPerm.values.set('ide_usua_aprobador', dtoIn.ideUsua);
+            updPerm.values.set('fecha_aprobacion_aspvh', getCurrentDate());
+            updPerm.values.set('hora_aprobacion_aspvh', getCurrentTime());
+            updPerm.values.set('observacion_aprobacion_aspvh', dtoIn.observacion ?? null);
             updPerm.where = 'ide_aspvh = $1';
             updPerm.addIntParam(1, dtoIn.ide_aspvh);
             await this.dataSource.createQuery(updPerm);

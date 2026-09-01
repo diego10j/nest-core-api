@@ -2,12 +2,13 @@ import { BadRequestException, Injectable, InternalServerErrorException } from '@
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { SelectQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, Query, SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { FormulaEngineService } from 'src/core/modules/talento-humano/formula-engine/formula-engine.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import {
+    EliminarRubroDto,
     GetDetalleRubrosByTipoNominaDto,
     ProbarFormulaDto,
     SaveCargoDto,
@@ -90,6 +91,13 @@ export class RubrosService {
 
     // ─── Rubros ────────────────────────────────────────────────────────────
 
+    /**
+     * `tiene_formula`/`nominas_asignadas` son computados (no columnas reales de
+     * nrh_rubro) para la pantalla de Catálogo de Rubros: si el rubro tiene una fórmula
+     * real configurada en nrh_detalle_rubro, y en qué tipos de nómina ACTIVOS
+     * (nrh_detalle_tipo_nomina.activo_nrdtn) está parametrizado — ayuda a detectar
+     * rubros huérfanos (sin fórmula y sin nómina asignada = candidato a desactivar).
+     */
     async getRubros(dtoIn: HeaderParamsDto) {
         try {
             const query = new SelectQuery(`
@@ -103,7 +111,19 @@ export class RubrosService {
                     tir.signo_nrtir,
                     r.anticipo_nrrub,
                     r.decimo_nrrub,
-                    r.activo_nrrub
+                    r.activo_nrrub,
+                    EXISTS (
+                        SELECT 1 FROM nrh_detalle_rubro der
+                        WHERE der.ide_nrrub = r.ide_nrrub AND der.activo_nrder = true
+                          AND der.formula_nrder IS NOT NULL AND btrim(der.formula_nrder) <> ''
+                    ) AS tiene_formula,
+                    (
+                        SELECT string_agg(DISTINCT tin.detalle_nrtin, ', ' ORDER BY tin.detalle_nrtin)
+                        FROM nrh_detalle_rubro der
+                        INNER JOIN nrh_detalle_tipo_nomina dtn ON dtn.ide_nrdtn = der.ide_nrdtn AND dtn.activo_nrdtn = true
+                        INNER JOIN nrh_tipo_nomina tin ON tin.ide_nrtin = dtn.ide_nrtin
+                        WHERE der.ide_nrrub = r.ide_nrrub AND der.activo_nrder = true
+                    ) AS nominas_asignadas
                 FROM nrh_rubro r
                 INNER JOIN nrh_forma_calculo foc ON foc.ide_nrfoc = r.ide_nrfoc
                 INNER JOIN nrh_tipo_rubro tir ON tir.ide_nrtir = r.ide_nrtir
@@ -153,6 +173,136 @@ export class RubrosService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar el rubro: ${msg}`);
+        }
+    }
+
+    /**
+     * Elimina físicamente un rubro y todo lo que depende de él, en cascada (la BD no
+     * tiene ON DELETE CASCADE en estas FK, así que se hace a mano en el orden correcto
+     * dentro de una transacción — ver conteo real de tablas hijas verificado contra
+     * information_schema: nrh_detalle_rubro → nrh_detalle_rol / nrh_amortizacion →
+     * nrh_precancelacion / nrh_detalle_factura_guarderia / nrh_retencion_rubro_descuento
+     * / nrh_rubro_asiento / nrh_rubro_cuenta / nrh_solicitud_mensualizacion). Pedido
+     * explícito del usuario para depurar el catálogo nuevo de Nómina y dejar solo los
+     * rubros que usa DIQUIMEC — por eso NO es un simple activo_nrrub=false. Con dos
+     * salvaguardas: no se puede borrar un rubro de cálculo legal fijo (el que apunta
+     * sis_parametros para sueldo/horas extra/décimos/fondos de reserva), ni uno que ya
+     * tenga valores en un rol CERRADO (con asiento contable real generado).
+     */
+    async eliminarRubro(dtoIn: EliminarRubroDto & HeaderParamsDto) {
+        if (!dtoIn.ide_nrrub) throw new BadRequestException('El campo ide_nrrub es requerido');
+        try {
+            const variablesProtegidas = await this.core.getVariables([
+                'p_nrh_rubro_sueldo',
+                'p_nrh_rubro_horas_supl',
+                'p_nrh_rubro_horas_extra',
+                'p_nrh_rubro_horas_nocturna',
+                'p_nrh_rubro_decimo_tercero',
+                'p_nrh_rubro_decimo_cuarto',
+                'p_nrh_rubro_fondos_reserva',
+            ]);
+            const idsProtegidos = new Set(
+                [...variablesProtegidas.values()].map((v) => Number(v)).filter((n) => Number.isFinite(n)),
+            );
+            if (idsProtegidos.has(dtoIn.ide_nrrub)) {
+                throw new BadRequestException(
+                    'Este rubro es de cálculo legal fijo (sueldo, horas extra, décimo 3°/4° o fondos de reserva, ' +
+                    'configurado en Sistema > Parámetros) y no se puede eliminar.',
+                );
+            }
+
+            const cerradoQuery = new SelectQuery(`
+                SELECT 1
+                FROM nrh_detalle_rol dr
+                INNER JOIN nrh_detalle_rubro der ON der.ide_nrder = dr.ide_nrder
+                INNER JOIN nrh_rol r ON r.ide_nrrol = dr.ide_nrrol
+                WHERE der.ide_nrrub = $1 AND r.ide_cnmoc IS NOT NULL
+                LIMIT 1
+            `);
+            cerradoQuery.setLazy(false);
+            cerradoQuery.addIntParam(1, dtoIn.ide_nrrub);
+            const usadoEnCerrado = await this.dataSource.createSingleQuery(cerradoQuery);
+            if (usadoEnCerrado) {
+                throw new BadRequestException(
+                    'No se puede eliminar: este rubro tiene valores en un rol ya cerrado (con asiento contable ' +
+                    'generado). Desactívelo desde el catálogo en su lugar.',
+                );
+            }
+
+            const nrderQuery = new SelectQuery(`SELECT ide_nrder FROM nrh_detalle_rubro WHERE ide_nrrub = $1`);
+            nrderQuery.setLazy(false);
+            nrderQuery.addIntParam(1, dtoIn.ide_nrrub);
+            const nrderRows = (await this.dataSource.createSelectQuery(nrderQuery)) as Array<{ ide_nrder: number }>;
+            const nrderIds = nrderRows.map((r) => r.ide_nrder);
+
+            const nramoQuery = new SelectQuery(`SELECT ide_nramo FROM nrh_amortizacion WHERE ide_nrrub = $1`);
+            nramoQuery.setLazy(false);
+            nramoQuery.addIntParam(1, dtoIn.ide_nrrub);
+            const nramoRows = (await this.dataSource.createSelectQuery(nramoQuery)) as Array<{ ide_nramo: number }>;
+            const nramoIds = nramoRows.map((r) => r.ide_nramo);
+
+            const listQuery: Query[] = [];
+
+            if (nramoIds.length > 0) {
+                const delPrecancelacion = new DeleteQuery('nrh_precancelacion');
+                delPrecancelacion.where = 'ide_nramo = ANY ($1)';
+                delPrecancelacion.addParam(1, nramoIds);
+                listQuery.push(delPrecancelacion);
+            }
+
+            const delAmortizacion = new DeleteQuery('nrh_amortizacion');
+            delAmortizacion.where = 'ide_nrrub = $1';
+            delAmortizacion.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delAmortizacion);
+
+            if (nrderIds.length > 0) {
+                const delDetalleRol = new DeleteQuery('nrh_detalle_rol');
+                delDetalleRol.where = 'ide_nrder = ANY ($1)';
+                delDetalleRol.addParam(1, nrderIds);
+                listQuery.push(delDetalleRol);
+            }
+
+            const delFacturaGuarderia = new DeleteQuery('nrh_detalle_factura_guarderia');
+            delFacturaGuarderia.where = 'ide_nrrub = $1';
+            delFacturaGuarderia.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delFacturaGuarderia);
+
+            const delRetencionDescuento = new DeleteQuery('nrh_retencion_rubro_descuento');
+            delRetencionDescuento.where = 'ide_nrrub = $1';
+            delRetencionDescuento.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delRetencionDescuento);
+
+            const delRubroAsiento = new DeleteQuery('nrh_rubro_asiento');
+            delRubroAsiento.where = 'ide_nrrub = $1';
+            delRubroAsiento.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delRubroAsiento);
+
+            const delRubroCuenta = new DeleteQuery('nrh_rubro_cuenta');
+            delRubroCuenta.where = 'ide_nrrub = $1';
+            delRubroCuenta.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delRubroCuenta);
+
+            const delSolicitudMensualizacion = new DeleteQuery('nrh_solicitud_mensualizacion');
+            delSolicitudMensualizacion.where = 'ide_nrrub = $1';
+            delSolicitudMensualizacion.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delSolicitudMensualizacion);
+
+            const delDetalleRubro = new DeleteQuery('nrh_detalle_rubro');
+            delDetalleRubro.where = 'ide_nrrub = $1';
+            delDetalleRubro.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delDetalleRubro);
+
+            const delRubro = new DeleteQuery('nrh_rubro');
+            delRubro.where = 'ide_nrrub = $1';
+            delRubro.addIntParam(1, dtoIn.ide_nrrub);
+            listQuery.push(delRubro);
+
+            await this.dataSource.createListQuery(listQuery);
+            return { message: 'ok', ide_nrrub: dtoIn.ide_nrrub };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al eliminar el rubro: ${msg}`);
         }
     }
 

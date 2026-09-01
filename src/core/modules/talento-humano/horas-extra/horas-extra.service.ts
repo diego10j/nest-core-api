@@ -4,10 +4,10 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
 import { DeleteQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
-import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
-import { AprobarCandidataDto, DetectarCandidatasDto, GenerarFeriadosDto, GetCandidatasDto, RechazarCandidatasDto } from './dto/horas-extra.dto';
+import { AprobarCandidataDto, DetectarCandidatasDto, EliminarFeriadoDto, GenerarFeriadosDto, GetCandidatasDto, RechazarCandidatasDto } from './dto/horas-extra.dto';
+import { feriadosEcuadorUseCase } from './utils/feriados-ecuador.util';
 
 interface MarcacionRow {
     ide_geedp: number;
@@ -33,7 +33,6 @@ export class HorasExtraService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
-        private readonly gptService: GptService,
     ) { }
 
     /**
@@ -260,9 +259,9 @@ export class HorasExtraService {
             throw new BadRequestException(`No se pueden generar feriados de años futuros (máximo ${anioActual})`);
         }
         try {
-            const feriados = await this.gptService.feriadosEcuador(dtoIn.anio);
+            const feriados = feriadosEcuadorUseCase(dtoIn.anio);
             if (!feriados || feriados.length === 0) {
-                throw new BadRequestException('No se pudo generar el calendario de feriados (respuesta vacía de IA)');
+                throw new BadRequestException('No se pudo generar el calendario de feriados');
             }
 
             const delQuery = new DeleteQuery('nrh_feriado');
@@ -327,6 +326,19 @@ export class HorasExtraService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al guardar el feriado: ${msg}`);
+        }
+    }
+
+    async eliminarFeriado(dtoIn: EliminarFeriadoDto & HeaderParamsDto) {
+        try {
+            const delQuery = new DeleteQuery('nrh_feriado');
+            delQuery.where = 'ide_nrfer = $1';
+            delQuery.addIntParam(1, dtoIn.ide_nrfer);
+            await this.dataSource.createQuery(delQuery);
+            return { message: 'ok' };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al eliminar el feriado: ${msg}`);
         }
     }
 }

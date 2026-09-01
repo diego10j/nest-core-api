@@ -355,7 +355,7 @@ export class CatalogosService extends BaseService {
                                                 WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
                                                   AND activo_cnpim = TRUE
                                                 ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                            ), 0.12))
+                                            ), 0.15))
                                         END
                                     ), 2
                                 ), 0
@@ -517,7 +517,7 @@ export class CatalogosService extends BaseService {
                                                 WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
                                                   AND activo_cnpim = TRUE
                                                 ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                            ), 0.12))
+                                            ), 0.15))
                                         END
                                     ), 2
                                 ), 0

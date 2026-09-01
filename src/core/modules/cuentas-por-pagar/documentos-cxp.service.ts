@@ -13,12 +13,6 @@ import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
 import { ReporteComprasMensualesDto } from './dto/reporte-compras-mensuales.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
-import {
-    SUSTENTO_FACTURA,
-    SUSTENTO_LIQUIDACION_COMPRA,
-    SUSTENTO_NOTA_CREDITO,
-    SUSTENTO_REEMBOLSO,
-} from './sustento-tributario.util';
 
 /** Tipo de documento "Importaciones" (valor fijo heredado del legacy) */
 const IDE_CNTDO_IMPORTACIONES = 11;
@@ -47,6 +41,7 @@ export class DocumentosCxPService extends BaseService {
                 'p_cxp_tipo_trans_anticipo',
                 'p_cxp_estado_factura_anulada',
                 'p_cxp_dias_mod_doccxp',
+                'p_con_porcentaje_imp_iva',
             ])
             .then((result) => {
                 this.variables = result;
@@ -795,34 +790,23 @@ export class DocumentosCxPService extends BaseService {
     }
 
     /**
-     * Retorna sustento tributario para combo, filtrado por tipo de documento
-     * (Tabla 4 SRI - ATS) cuando se indica ide_cntdo; sin filtro retorna todo el catálogo.
+     * Retorna sustento tributario para combo, filtrado por tipo de documento (Tabla 4 SRI -
+     * ATS) cuando se indica ide_cntdo; sin filtro retorna todo el catálogo. La clasificación
+     * vive en la tabla sri_sustento_x_documento (editable por SQL directo, sin deploy de
+     * backend) en vez de hardcodeada en TypeScript - ver scripts/sri_sustento_x_documento.sql.
      */
     async getSustentoTributario(dtoIn?: SustentoTributarioCxPDto) {
-        const codigos = this.getSustentosPermitidos(dtoIn?.ide_cntdo);
+        const filtrarPorTipo = isDefined(dtoIn?.ide_cntdo);
         const query = new SelectQuery(`
-            SELECT CAST(ide_srtst AS VARCHAR) AS value, alterno_srtst || ' - ' || nombre_srtst AS label
-            FROM sri_tipo_sustento_tributario
-            ${codigos ? 'WHERE alterno_srtst = ANY($1)' : ''}
-            ORDER BY alterno_srtst
+            SELECT CAST(a.ide_srtst AS VARCHAR) AS value, a.alterno_srtst || ' - ' || a.nombre_srtst AS label
+            FROM sri_tipo_sustento_tributario a
+            ${filtrarPorTipo
+                ? 'INNER JOIN sri_sustento_x_documento sxd ON sxd.ide_srtst = a.ide_srtst AND sxd.ide_cntdo = $1'
+                : ''}
+            ORDER BY a.alterno_srtst
         `);
-        if (codigos) query.addParam(1, codigos);
+        if (filtrarPorTipo) query.addIntParam(1, Number(dtoIn!.ide_cntdo));
         return this.dataSource.createSelectQuery(query);
-    }
-
-    /** Códigos de sustento tributario válidos para el tipo de documento (Tabla 4 SRI - ATS); undefined = sin filtro. */
-    private getSustentosPermitidos(ideCntdo?: number): string[] | undefined {
-        if (!isDefined(ideCntdo)) return undefined;
-        const factura = this.variables.get('p_con_tipo_documento_factura');
-        const notaCredito = this.variables.get('p_con_tipo_documento_nota_credito');
-        const reembolso = this.variables.get('p_con_tipo_documento_reembolso');
-        const liqCompra = this.variables.get('p_con_tipo_documento_liquidacion_compra');
-
-        if (Number(ideCntdo) === Number(factura)) return SUSTENTO_FACTURA;
-        if (Number(ideCntdo) === Number(liqCompra)) return SUSTENTO_LIQUIDACION_COMPRA;
-        if (Number(ideCntdo) === Number(notaCredito)) return SUSTENTO_NOTA_CREDITO;
-        if (Number(ideCntdo) === Number(reembolso)) return SUSTENTO_REEMBOLSO;
-        return undefined;
     }
 
     /**
@@ -923,21 +907,42 @@ export class DocumentosCxPService extends BaseService {
     /**
      * Obtiene el porcentaje de IVA a una fecha
      */
+    /**
+     * Tarifa de IVA vigente a una fecha. Paridad legacy exacta
+     * (ServicioConfiguracion.getPorcentajeIva del proyecto Java): primero busca en
+     * con_porcen_impues la fila cuyo rango [fecha_desde_cnpim, fecha_fin_cnpim] cubra la
+     * fecha (activo_cnpim=true); si ninguna cubre esa fecha, cae al ide_cnpim por defecto
+     * apuntado por la variable p_con_porcentaje_imp_iva. Antes esto apuntaba a una tabla
+     * con_config_iva que nunca existió en el schema migrado — el catch silencioso hacía
+     * que TODO documento CxP sin tarifa_iva_cpcfa explícita calculara IVA al 12% fijo,
+     * sin importar la fecha (la tarifa real vigente es 15% desde 2024-04-01, ver
+     * con_porcen_impues ide_cnpim=3).
+     */
     async getPorcentajeIva(fecha: string): Promise<number> {
         try {
             const query = new SelectQuery(`
-                SELECT porcentaje_iva_cncii AS iva
-                FROM con_config_iva
-                WHERE fecha_inicio_cncii <= $1::date
-                  AND (fecha_fin_cncii IS NULL OR fecha_fin_cncii >= $1::date)
-                ORDER BY fecha_inicio_cncii DESC
+                SELECT porcentaje_cnpim AS iva
+                FROM con_porcen_impues
+                WHERE $1::date BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
+                  AND activo_cnpim = true
                 LIMIT 1
             `);
             query.addStringParam(1, fecha);
             const result = await this.dataSource.createSingleQuery(query);
-            return result?.iva ?? 0.12;
+            if (result?.iva != null) return Number(result.iva);
+
+            const ideCnpimDefault = Number(this.variables.get('p_con_porcentaje_imp_iva'));
+            if (ideCnpimDefault) {
+                const qDefault = new SelectQuery(`
+                    SELECT porcentaje_cnpim AS iva FROM con_porcen_impues WHERE ide_cnpim = $1
+                `);
+                qDefault.addIntParam(1, ideCnpimDefault);
+                const rDefault = await this.dataSource.createSingleQuery(qDefault);
+                if (rDefault?.iva != null) return Number(rDefault.iva);
+            }
+            return 0.15;
         } catch {
-            return 0.12;
+            return 0.15;
         }
     }
 }

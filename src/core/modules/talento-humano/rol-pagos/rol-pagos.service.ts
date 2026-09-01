@@ -14,6 +14,7 @@ import {
     AnularRolDto,
     AprobarRolDto,
     CerrarRolDto,
+    EditarDetalleRolDto,
     GenerarLiquidacionDecimoDto,
     GenerarRolDto,
     GetRolByIdDto,
@@ -338,6 +339,110 @@ export class RolPagosService extends BaseService {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
             throw new InternalServerErrorException(`Error al recalcular el rol: ${msg}`);
+        }
+    }
+
+    /**
+     * Edita manualmente el detalle de un rol aún sin cerrar/anular: cambia valores de
+     * líneas puntuales (típicamente rubros TECLADO como DESCUENTO FONDOS RESERVA, que
+     * generarRol siempre deja en 0 porque no tienen fórmula — ver
+     * FormulaEngineService#evaluarRubro) y/o elimina líneas que no aplican para un
+     * empleado. A diferencia de recalcularRol (que borra TODO y vuelve a correr
+     * generarRol desde cero, perdiendo estas ediciones), acá solo se tocan las líneas
+     * indicadas y luego se corren de nuevo los rubros de FÓRMULA (subtotales, totales,
+     * IESS, etc. — ver recalcularTotalesRol) para que la edición se refleje en el
+     * líquido a recibir.
+     */
+    async editarDetalleRol(dtoIn: EditarDetalleRolDto & HeaderParamsDto) {
+        if (!dtoIn.ide_nrrol) throw new BadRequestException('El campo ide_nrrol es requerido');
+        const ediciones = dtoIn.ediciones ?? [];
+        const eliminaciones = dtoIn.eliminaciones ?? [];
+        if (ediciones.length === 0 && eliminaciones.length === 0) {
+            throw new BadRequestException('No hay cambios que aplicar');
+        }
+
+        const estadoAnulada = this.paramInt('p_nrh_estado_nomina_anulada');
+        try {
+            const rolQuery = new SelectQuery(`
+                SELECT ide_nrrol, ide_nrdtn, fecha_nrrol, ide_cnmoc, ide_nresr
+                FROM nrh_rol WHERE ide_nrrol = $1 AND ide_sucu = $2
+            `);
+            rolQuery.setLazy(false);
+            rolQuery.addIntParam(1, dtoIn.ide_nrrol);
+            rolQuery.addIntParam(2, dtoIn.ideSucu);
+            const rolRows = await this.dataSource.createSelectQuery(rolQuery);
+            const rol = rolRows?.[0];
+            if (!rol) throw new BadRequestException('No se encontró el rol indicado');
+            if (rol.ide_cnmoc) throw new BadRequestException('Este rol ya está cerrado, no se puede editar');
+            if (estadoAnulada != null && rol.ide_nresr === estadoAnulada) {
+                throw new BadRequestException('Este rol está anulado, no se puede editar');
+            }
+
+            // Las líneas indicadas deben pertenecer a ESTE rol (evita editar/borrar
+            // detalle de otro rol por error de la UI o un ide_nrdro manipulado).
+            const idsInvolucrados = [...new Set([...ediciones.map((e) => e.ide_nrdro), ...eliminaciones])];
+            if (idsInvolucrados.length > 0) {
+                const checkQuery = new SelectQuery(`
+                    SELECT ide_nrdro FROM nrh_detalle_rol WHERE ide_nrrol = $1 AND ide_nrdro = ANY ($2)
+                `);
+                checkQuery.setLazy(false);
+                checkQuery.addIntParam(1, dtoIn.ide_nrrol);
+                checkQuery.addParam(2, idsInvolucrados);
+                const validRows = (await this.dataSource.createSelectQuery(checkQuery)) as Array<{ ide_nrdro: number }>;
+                const validIds = new Set(validRows.map((r) => r.ide_nrdro));
+                const invalido = idsInvolucrados.find((id) => !validIds.has(id));
+                if (invalido !== undefined) {
+                    throw new BadRequestException(`La línea ${invalido} no pertenece a este rol`);
+                }
+            }
+
+            // Se separan en dos llamadas a core.save porque 'audit' aplica a TODO el
+            // listQuery de una llamada: un 'delete' con audit:true dispara
+            // getDeleteActivityTable, que lee objDelete.header.login — pero
+            // CoreService#toQuery arma el DeleteQuery sin setear .header (bug ya
+            // existente del framework, ver deleteDireccionPersona/clientes-save.service.ts
+            // que por eso ya usa audit:false para deletes) y revienta con
+            // "Cannot read properties of undefined (reading 'login')". Las ediciones sí
+            // quedan auditadas (son 'update', que no tiene ese problema).
+            if (ediciones.length > 0) {
+                const listQueryEdiciones: ObjectQueryDto[] = ediciones.map((edicion) => ({
+                    operation: 'update',
+                    module: 'nrh',
+                    tableName: 'detalle_rol',
+                    primaryKey: 'ide_nrdro',
+                    object: {
+                        ide_nrdro: edicion.ide_nrdro,
+                        valor_nrdro: Math.round((Number(edicion.valor_nrdro) || 0) * 100) / 100,
+                    },
+                    condition: `ide_nrdro = ${edicion.ide_nrdro}`,
+                }));
+                await this.core.save({ ...dtoIn, listQuery: listQueryEdiciones, audit: true });
+            }
+            if (eliminaciones.length > 0) {
+                const listQueryEliminaciones: ObjectQueryDto[] = eliminaciones.map((ideNrdro) => ({
+                    operation: 'delete',
+                    module: 'nrh',
+                    tableName: 'detalle_rol',
+                    primaryKey: 'ide_nrdro',
+                    object: { ide_nrdro: ideNrdro },
+                    condition: `ide_nrdro = ${ideNrdro}`,
+                }));
+                await this.core.save({ ...dtoIn, listQuery: listQueryEliminaciones, audit: false });
+            }
+
+            const lineasRecalculadas = await this.recalcularTotalesRol(dtoIn, dtoIn.ide_nrrol, rol.ide_nrdtn, rol.fecha_nrrol);
+
+            return {
+                message: 'ok',
+                ide_nrrol: dtoIn.ide_nrrol,
+                lineasEditadas: ediciones.length,
+                lineasEliminadas: eliminaciones.length,
+                lineasRecalculadas,
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al editar el rol: ${msg}`);
         }
     }
 
@@ -1097,6 +1202,117 @@ export class RolPagosService extends BaseService {
     }
 
     // ─── Privados ──────────────────────────────────────────────────────────
+
+    /**
+     * ide_nrder de los rubros de cálculo legal fijo (sueldo, horas supl/extra/nocturna,
+     * décimo3, décimo4, fondos de reserva) dentro de la parametría de un tipo de
+     * nómina — los mismos que construirDetalleRol inyecta en código sin evaluar su
+     * fórmula (ver comentario ahí). Se reutiliza en recalcularTotalesRol para NO
+     * volver a evaluar su fórmula ahí guardada (para décimo3/décimo4/fondos de reserva
+     * esa fórmula existe pero es legado muerto — referencia un rubro [1964] que no
+     * existe en la parametría de DIQUIMEC y daría 0, pisando el valor correcto).
+     */
+    private resolverRubrosEspeciales(detalleRubros: DetalleRubroRow[]): Set<number> {
+        const idsRubroEspeciales = [
+            this.paramInt('p_nrh_rubro_sueldo'),
+            this.paramInt('p_nrh_rubro_horas_supl'),
+            this.paramInt('p_nrh_rubro_horas_extra'),
+            this.paramInt('p_nrh_rubro_horas_nocturna'),
+            this.paramInt('p_nrh_rubro_decimo_tercero'),
+            this.paramInt('p_nrh_rubro_decimo_cuarto'),
+            this.paramInt('p_nrh_rubro_fondos_reserva'),
+        ].filter((v): v is number => v !== null);
+
+        const resultado = new Set<number>();
+        for (const der of detalleRubros) {
+            if (idsRubroEspeciales.includes(der.ide_nrrub)) resultado.add(der.ide_nrder);
+        }
+        return resultado;
+    }
+
+    /**
+     * Recalcula SOLO los rubros de FÓRMULA real (subtotales, totales, IESS, etc.) de un
+     * rol ya generado, a partir de los valores ACTUALES de nrh_detalle_rol por
+     * empleado — usado después de editarDetalleRol. A diferencia de recalcularRol (que
+     * borra todo y vuelve a correr generarRol desde cero), esto preserva cualquier
+     * edición/eliminación manual: los rubros TECLADO (sin fórmula) y los de cálculo
+     * legal fijo (ver resolverRubrosEspeciales) se dejan intactos tal cual están en la
+     * BD, y una línea eliminada simplemente no se vuelve a crear (las fórmulas que la
+     * referencian por [ide_nrder] la ven como 0, igual que evaluarRubro con
+     * computedValues sin esa clave).
+     */
+    private async recalcularTotalesRol(
+        dtoIn: HeaderParamsDto,
+        ideNrrol: number,
+        ideNrdtn: number,
+        fechaRol: string,
+    ): Promise<number> {
+        const detalleRubros = await this.getDetalleRubrosByTipoNomina(ideNrdtn);
+        const rubrosEspeciales = this.resolverRubrosEspeciales(detalleRubros);
+
+        const query = new SelectQuery(`
+            SELECT ide_nrdro, ide_geedp, ide_nrder, valor_nrdro
+            FROM nrh_detalle_rol
+            WHERE ide_nrrol = $1
+        `);
+        query.setLazy(false);
+        query.addIntParam(1, ideNrrol);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_nrdro: number;
+            ide_geedp: number;
+            ide_nrder: number;
+            valor_nrdro: number;
+        }>;
+        if (rows.length === 0) return 0;
+
+        const porEmpleado = new Map<number, Map<number, number>>();
+        const nrdroPorClave = new Map<string, number>();
+        for (const row of rows) {
+            if (!porEmpleado.has(row.ide_geedp)) porEmpleado.set(row.ide_geedp, new Map());
+            porEmpleado.get(row.ide_geedp)!.set(row.ide_nrder, Number(row.valor_nrdro) || 0);
+            nrdroPorClave.set(`${row.ide_geedp}:${row.ide_nrder}`, row.ide_nrdro);
+        }
+
+        const mensualizacionVigente = await this.getMensualizacionVigente([...porEmpleado.keys()], fechaRol);
+
+        const listQuery: ObjectQueryDto[] = [];
+        for (const [ideGeedp, computedValues] of porEmpleado) {
+            for (const der of detalleRubros) {
+                if (rubrosEspeciales.has(der.ide_nrder)) continue;
+                if (!(der.formula_nrder ?? '').trim()) continue;
+                if (!computedValues.has(der.ide_nrder)) continue; // línea eliminada por el usuario: no se recrea
+
+                const mensualizado = mensualizacionVigente.get(`${ideGeedp}:${der.ide_nrrub}`) ?? false;
+                const valor = await this.formulaEngine.evaluarRubro({
+                    formula: der.formula_nrder,
+                    ideGeedp,
+                    fechaRol,
+                    fechaInicialNrder: der.fecha_inicial_nrder,
+                    fechaFinalNrder: der.fecha_final_nrder,
+                    computedValues,
+                    mensualizado,
+                });
+                const valorRedondeado = Math.round(valor * 100) / 100;
+                computedValues.set(der.ide_nrder, valorRedondeado);
+
+                const ideNrdro = nrdroPorClave.get(`${ideGeedp}:${der.ide_nrder}`);
+                if (ideNrdro === undefined) continue;
+                listQuery.push({
+                    operation: 'update',
+                    module: 'nrh',
+                    tableName: 'detalle_rol',
+                    primaryKey: 'ide_nrdro',
+                    object: { ide_nrdro: ideNrdro, valor_nrdro: valorRedondeado },
+                    condition: `ide_nrdro = ${ideNrdro}`,
+                });
+            }
+        }
+
+        if (listQuery.length > 0) {
+            await this.core.save({ ...dtoIn, listQuery, audit: true });
+        }
+        return listQuery.length;
+    }
 
     /**
      * Modalidad (mensualizado/acumula) vigente A LA FECHA DEL ROL para cada

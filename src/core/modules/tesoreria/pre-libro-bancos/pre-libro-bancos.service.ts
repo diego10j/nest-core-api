@@ -366,8 +366,11 @@ export class PreLibroBancosService extends BaseService {
      * tes_secuencial_trans, que solo se actualiza al final de un guardado exitoso y puede
      * quedar desincronizada - p.ej. movimientos cargados por otra vía, o números antiguos
      * repetidos como "000000" antes de existir la generación automática). Solo considera
-     * numero_teclb puramente numérico (ignora formatos como "TRF-2024-0012345" o "CH-000123"
-     * que no aplican al secuencial de 8 dígitos).
+     * numero_teclb puramente numérico de hasta 8 dígitos (el formato real del secuencial,
+     * ver padStart(8,'0') más abajo) - ignora tanto formatos como "TRF-2024-0012345" o
+     * "CH-000123" como números de referencia bancarios largos (9+ dígitos, p.ej. los que
+     * genera el propio banco para transferencias) que de otro modo desbordarían el
+     * cast a integer de Postgres (máximo ~2147 millones).
      */
     private async getMaximoNumeroUsado(
         ideTecba: number, ideTettb: number, ideSucu: number,
@@ -380,7 +383,7 @@ export class PreLibroBancosService extends BaseService {
               AND ide_sucu  = $2
               AND ide_tecba = $3
               AND ide_teelb = $4
-              AND numero_teclb ~ '^[0-9]+$'
+              AND numero_teclb ~ '^[0-9]{1,8}$'
         `);
         query.addIntParam(1, ideTettb);
         query.addIntParam(2, ideSucu);
@@ -395,17 +398,37 @@ export class PreLibroBancosService extends BaseService {
      * una cuenta + tipo de transacción. Arranca del mayor entre lo que dice la tabla de
      * seguimiento (tes_secuencial_trans) y lo realmente usado en tes_cab_libr_banc, para no
      * proponer un número que ya esté tomado por desincronización entre ambas fuentes.
+     *
+     * Las transferencias (+/-) no participan de esta numeración: su "N° comprobante" es un
+     * número de referencia que genera el propio banco, no un secuencial interno - se retorna
+     * cadena vacía para que quien la llame no autocomplete nada y deje el campo para digitar
+     * a mano el número real del banco.
+     *
+     * Este número es puramente informativo/de conveniencia (nunca debe impedir registrar una
+     * transacción): ante cualquier fallo - p.ej. un numero_teclb histórico corrupto que no
+     * matchea el formato esperado - se devuelve '000' en vez de propagar el error.
      */
     async getSiguienteNumeroTransaccion(
         ideTecba: number, ideTettb: number, ideSucu: number,
     ): Promise<string> {
-        const [row, maximoUsado] = await Promise.all([
-            this.getNumMaximoTipoTransaccion(ideTecba, ideTettb, ideSucu),
-            this.getMaximoNumeroUsado(ideTecba, ideTettb, ideSucu),
-        ]);
-        const siguienteTrackeado = Number(row?.secuencial ?? 1);
-        const siguiente = Math.max(siguienteTrackeado, maximoUsado + 1);
-        return String(siguiente).padStart(8, '0');
+        const ideTettbStr = String(ideTettb);
+        const strTransferenciaMas = this.variables.get('p_tes_tran_transferencia_mas');
+        const strTransferenciaMenos = this.variables.get('p_tes_tran_transferencia_menos');
+        if (ideTettbStr === strTransferenciaMas || ideTettbStr === strTransferenciaMenos) {
+            return '';
+        }
+
+        try {
+            const [row, maximoUsado] = await Promise.all([
+                this.getNumMaximoTipoTransaccion(ideTecba, ideTettb, ideSucu),
+                this.getMaximoNumeroUsado(ideTecba, ideTettb, ideSucu),
+            ]);
+            const siguienteTrackeado = Number(row?.secuencial ?? 1);
+            const siguiente = Math.max(siguienteTrackeado, maximoUsado + 1);
+            return String(siguiente).padStart(8, '0');
+        } catch {
+            return '000';
+        }
     }
 
     /**

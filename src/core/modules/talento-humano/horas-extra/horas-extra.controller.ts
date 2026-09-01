@@ -3,7 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { AprobarCandidataDto, DetectarCandidatasDto, GenerarFeriadosDto, GetCandidatasDto, SaveFeriadoDto, RechazarCandidatasDto } from './dto/horas-extra.dto';
+import { AprobarCandidataDto, DetectarCandidatasDto, EliminarFeriadoDto, GenerarFeriadosDto, GetCandidatasDto, SaveFeriadoDto, RechazarCandidatasDto } from './dto/horas-extra.dto';
 import { HorasExtraService } from './horas-extra.service';
 
 @ApiTags('TalentoHumano-HorasExtra')
@@ -63,11 +63,20 @@ export class HorasExtraController {
     }
 
     @Post('generarFeriadosAnio')
-    @ApiOperation({ summary: 'Generar por IA el calendario de feriados de un año (reemplaza los existentes de ese año)' })
+    @ApiOperation({ summary: 'Generar el calendario de feriados nacionales de un año (cálculo determinista, reemplaza los existentes de ese año)' })
     generarFeriadosAnio(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: GenerarFeriadosDto,
     ) {
         return this.service.generarFeriadosAnio({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('eliminarFeriado')
+    @ApiOperation({ summary: 'Eliminar un feriado' })
+    eliminarFeriado(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EliminarFeriadoDto,
+    ) {
+        return this.service.eliminarFeriado({ ...headersParams, ...dtoIn });
     }
 }

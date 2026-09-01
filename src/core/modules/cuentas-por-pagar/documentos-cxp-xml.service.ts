@@ -112,10 +112,11 @@ export class DocumentosCxPXmlService {
             const detalles: DetalleXmlCxP[] = [];
             // Tarifa de IVA declarada en la PRIMERA línea gravada del XML (<impuesto><tarifa>,
             // ej. "15.00") - se usa como tarifa del documento en vez de recalcularla contra
-            // con_config_iva (ver más abajo): el XML ya trae la tarifa que el SRI autorizó para
-            // ESE comprobante puntual, así que confiar en con_config_iva puede quedar
-            // desactualizado (ej. changio de tarifa 12%->15%) y descuadrar el IVA en centavos
-            // frente al valor real que el emisor cobró.
+            // con_porcen_impues (ver DocumentosCxPService.getPorcentajeIva): el XML ya trae la
+            // tarifa que el SRI autorizó para ESE comprobante puntual, así que confiar en la
+            // config del sistema puede quedar desactualizada frente a un cambio de tarifa
+            // (12%->15%) o a una fecha de vigencia mal cargada, y descuadrar el IVA en
+            // centavos frente al valor real que el emisor cobró.
             let tarifaIvaXml: number | undefined;
             $('detalles > detalle').each((_, el) => {
                 const det = $(el);

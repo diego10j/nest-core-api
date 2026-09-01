@@ -25,6 +25,7 @@ interface DetalleRolRepRow {
     identificacion: string | null;
     cargo: string | null;
     rubro: string;
+    ide_nrrub: number;
     valor_nrdro: number;
 }
 
@@ -74,6 +75,7 @@ export class NominaRepService {
                 per.identificac_geper AS identificacion,
                 car.detalle_gtcar AS cargo,
                 rub.detalle_nrrub AS rubro,
+                rub.ide_nrrub,
                 dr.valor_nrdro
             FROM nrh_detalle_rol dr
             INNER JOIN gen_empleados_departamento_par ged ON ged.ide_geedp = dr.ide_geedp
@@ -89,6 +91,7 @@ export class NominaRepService {
         const filas = (await this.dataSource.createSelectQuery(queryDetalle)) as DetalleRolRepRow[];
 
         const porEmpleado = new Map<number, { empleado: string; identificacion: string; cargo: string | null; valores: Map<string, number> }>();
+        const idRubroPorNombre = new Map<string, number>();
         for (const f of filas) {
             if (!porEmpleado.has(f.ide_geedp)) {
                 porEmpleado.set(f.ide_geedp, {
@@ -99,7 +102,30 @@ export class NominaRepService {
                 });
             }
             porEmpleado.get(f.ide_geedp)!.valores.set(f.rubro, Number(f.valor_nrdro) || 0);
+            if (!idRubroPorNombre.has(f.rubro)) idRubroPorNombre.set(f.rubro, f.ide_nrrub);
         }
+
+        // Décimo 3°/4° y fondos de reserva se calculan y guardan en nrh_detalle_rol
+        // TODOS los meses como provisión contable (ver rol-pagos.service.ts
+        // #construirDetalleRol), la tenga o no mensualizada el empleado — por eso NO
+        // alcanza con leer el valor tal cual: si el empleado acumula (no mensualiza),
+        // ese valor es solo provisión interna y nunca se le paga en este rol, así que
+        // mostrarlo en el reporte descuadra contra el Total Ingr./Líquido reales.
+        // Se filtra igual que crearCxpPorEmpleado: solo se muestra si está mensualizado
+        // vigente a la fecha del rol.
+        const rubrosMensualizables = [RUBRO_DECIMO_TERCERO, RUBRO_DECIMO_CUARTO, RUBRO_FONDOS_RESERVA]
+            .map((nombre) => idRubroPorNombre.get(nombre))
+            .filter((id): id is number => id !== undefined);
+        const mensualizacionVigente = await this.getMensualizacionVigente(
+            [...porEmpleado.keys()],
+            rubrosMensualizables,
+            String(cabecera.fecha_nrrol),
+        );
+        const estaMensualizado = (ideGeedp: number, nombreRubro: string) => {
+            const ideNrrub = idRubroPorNombre.get(nombreRubro);
+            if (ideNrrub === undefined) return false;
+            return mensualizacionVigente.get(`${ideGeedp}:${ideNrrub}`) ?? false;
+        };
 
         const sumar = (valores: Map<string, number>, nombres: string[]) =>
             nombres.reduce((acc, n) => acc + (valores.get(n) ?? 0), 0);
@@ -116,9 +142,9 @@ export class NominaRepService {
                 cargo: e.cargo,
                 sueldo: e.valores.get(RUBRO_SUELDO) ?? 0,
                 horasExtra: sumar(e.valores, RUBROS_HORAS_EXTRA),
-                decimoTercero: e.valores.get(RUBRO_DECIMO_TERCERO) ?? 0,
-                decimoCuarto: e.valores.get(RUBRO_DECIMO_CUARTO) ?? 0,
-                fondosReserva: e.valores.get(RUBRO_FONDOS_RESERVA) ?? 0,
+                decimoTercero: estaMensualizado(ideGeedp, RUBRO_DECIMO_TERCERO) ? e.valores.get(RUBRO_DECIMO_TERCERO) ?? 0 : 0,
+                decimoCuarto: estaMensualizado(ideGeedp, RUBRO_DECIMO_CUARTO) ? e.valores.get(RUBRO_DECIMO_CUARTO) ?? 0 : 0,
+                fondosReserva: estaMensualizado(ideGeedp, RUBRO_FONDOS_RESERVA) ? e.valores.get(RUBRO_FONDOS_RESERVA) ?? 0 : 0,
                 totalIngresos,
                 iess,
                 prestamos,
@@ -185,5 +211,40 @@ export class NominaRepService {
         const empresa = await this.empresaRepService.getEmpresaById(dtoIn.ideEmpr);
         const docDefinition = solicitudPermisoReport(data, empresa);
         return this.printerService.createPdf(docDefinition);
+    }
+
+    /**
+     * Modalidad (mensualizado/acumula) vigente A LA FECHA DEL ROL para cada
+     * (empleado, rubro) — misma lógica que RolPagosService#getMensualizacionVigente.
+     * Sin solicitud registrada, el default es "acumula" (false).
+     */
+    private async getMensualizacionVigente(
+        geedpIds: number[],
+        ideNrrubIds: number[],
+        fechaRol: string,
+    ): Promise<Map<string, boolean>> {
+        const resultado = new Map<string, boolean>();
+        if (geedpIds.length === 0 || ideNrrubIds.length === 0) return resultado;
+
+        const query = new SelectQuery(`
+            SELECT ide_geedp, ide_nrrub, mensualizado_nrsom
+            FROM nrh_solicitud_mensualizacion
+            WHERE ide_geedp = ANY ($1) AND ide_nrrub = ANY ($2) AND fecha_solicitud_nrsom <= $3
+            ORDER BY ide_geedp, ide_nrrub, fecha_solicitud_nrsom ASC
+        `);
+        query.setLazy(false);
+        query.addParam(1, geedpIds);
+        query.addParam(2, ideNrrubIds);
+        query.addStringParam(3, fechaRol);
+        const rows = (await this.dataSource.createSelectQuery(query)) as Array<{
+            ide_geedp: number;
+            ide_nrrub: number;
+            mensualizado_nrsom: boolean;
+        }>;
+
+        for (const row of rows) {
+            resultado.set(`${row.ide_geedp}:${row.ide_nrrub}`, !!row.mensualizado_nrsom);
+        }
+        return resultado;
     }
 }
