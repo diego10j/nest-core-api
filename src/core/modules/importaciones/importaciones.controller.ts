@@ -213,12 +213,22 @@ export class ImportacionesController {
     }
 
     @Get('getFacturasImportaciones')
-    @ApiOperation({ summary: 'Facturas CxP tipo 11 del proveedor no asignadas a ninguna importación' })
+    @ApiOperation({
+        summary:
+            'Facturas CxP del proveedor no asignadas a ninguna importación, de la empresa/sucursal actual, ' +
+            'con antigüedad máxima de 4 meses y (opcional) monto aproximado al total de productos ingresado (±5%)',
+    })
     getFacturasImportaciones(
         @AppHeaders() h: HeaderParamsDto,
         @Query('ide_geper', ParseIntPipe) ide_geper: number,
+        @Query('montoAprox') montoAprox?: string,
     ) {
-        return this.service.getFacturasImportaciones(ide_geper, h.ideEmpr);
+        return this.service.getFacturasImportaciones(
+            ide_geper,
+            h.ideEmpr,
+            h.ideSucu,
+            montoAprox ? Number(montoAprox) : undefined,
+        );
     }
 
     // ========================================================================
