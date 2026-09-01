@@ -850,8 +850,13 @@ export class ImportacionesService extends BaseService {
      * Facturas CxP de tipo DOCUMENTO DE IMPORTACION (ide_cntdo=11) del proveedor
      * que no están anuladas y que aún no han sido asignadas a ninguna orden de importación.
      * Usado para vincular facturas ingresadas manualmente antes de existir el módulo.
+     *
+     * Se filtra por empresa/sucursal actual (header), antigüedad máxima de 4 meses, y si se
+     * indica montoAprox (total de productos ya ingresado en la orden), sólo facturas dentro
+     * de un ±5% de ese valor.
      */
-    async getFacturasImportaciones(ide_geper: number, ideEmpr: number) {
+    async getFacturasImportaciones(ide_geper: number, ideEmpr: number, ideSucu: number, montoAprox?: number) {
+        const aplicarFiltroMonto = montoAprox != null && montoAprox > 0;
         const query = new SelectQuery(`
                 SELECT f.ide_cpcfa,
                     f.numero_cpcfa,
@@ -870,16 +875,24 @@ export class ImportacionesService extends BaseService {
                 WHERE f.ide_geper = $1
                -- AND f.ide_cntdo = ${IDE_CNTDO_IMPORTACION}
                 AND f.ide_empr = $2
+                AND f.ide_sucu = $3
                 AND f.ide_cpefa = 0
+                AND f.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '4 months'
                 AND f.ide_cpcfa NOT IN (
                     SELECT ide_cpcfa
                     FROM imp_cab_importa
                     WHERE ide_cpcfa IS NOT NULL
                 )
+                ${aplicarFiltroMonto ? 'AND f.total_cpcfa BETWEEN $4 AND $5' : ''}
                 ORDER BY f.fecha_emisi_cpcfa DESC, f.ide_cpcfa DESC
             `);
         query.addIntParam(1, ide_geper);
         query.addIntParam(2, ideEmpr);
+        query.addIntParam(3, ideSucu);
+        if (aplicarFiltroMonto) {
+            query.addNumberParam(4, montoAprox * 0.95);
+            query.addNumberParam(5, montoAprox * 1.05);
+        }
         return this.dataSource.createSelectQuery(query);
     }
 
