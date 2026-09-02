@@ -4,9 +4,11 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import {
+    EliminarCuentaBancariaDto,
     EliminarEducacionDto,
     EliminarExperienciaLaboralDto,
     GetByEmpleadoDto,
+    SaveCuentaBancariaDto,
     SaveEducacionDto,
     SaveExperienciaLaboralDto,
 } from './dto/ficha-empleado.dto';
@@ -57,5 +59,23 @@ export class FichaEmpleadoController {
     @ApiOperation({ summary: 'Eliminar (desactivar) un registro de experiencia laboral' })
     eliminarExperienciaLaboral(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EliminarExperienciaLaboralDto) {
         return this.service.eliminarExperienciaLaboral({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getCuentaBancaria')
+    @ApiOperation({ summary: 'Cuentas bancarias registradas de un empleado' })
+    getCuentaBancaria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetByEmpleadoDto) {
+        return this.service.getCuentaBancaria({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('saveCuentaBancaria')
+    @ApiOperation({ summary: 'Crear o actualizar una cuenta bancaria del empleado' })
+    saveCuentaBancaria(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveCuentaBancariaDto) {
+        return this.service.saveCuentaBancaria({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('eliminarCuentaBancaria')
+    @ApiOperation({ summary: 'Eliminar (desactivar) una cuenta bancaria del empleado' })
+    eliminarCuentaBancaria(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EliminarCuentaBancariaDto) {
+        return this.service.eliminarCuentaBancaria({ ...headersParams, ...dtoIn });
     }
 }
