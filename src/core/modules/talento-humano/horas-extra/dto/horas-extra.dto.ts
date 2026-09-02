@@ -63,3 +63,10 @@ export class GenerarFeriadosDto {
     @Type(() => Number)
     anio: number;
 }
+
+export class EliminarFeriadoDto {
+    @ApiProperty({ description: 'ID de nrh_feriado a eliminar' })
+    @IsInt()
+    @Type(() => Number)
+    ide_nrfer: number;
+}

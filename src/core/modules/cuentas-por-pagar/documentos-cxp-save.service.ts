@@ -870,7 +870,10 @@ export class DocumentosCxPSaveService extends BaseService {
         q.values.set('numero_cpcfa', cabecera.numero_cpcfa);
         q.values.set('autorizacio_cpcfa', cabecera.autorizacio_cpcfa);
         q.values.set('fecha_emisi_cpcfa', cabecera.fecha_emisi_cpcfa);
-        q.values.set('fecha_trans_cpcfa', getCurrentDate());
+        // fecha_trans_cpcfa debe coincidir con la fecha de emisión del XML del proveedor
+        // (declaraciones SRI / conciliaciones dependen de esto) - antes usaba getCurrentDate(),
+        // que solo coincidía con la emisión si la factura se registraba el mismo día.
+        q.values.set('fecha_trans_cpcfa', cabecera.fecha_emisi_cpcfa);
         q.values.set('observacion_cpcfa', cabecera.observacion_cpcfa);
         q.values.set('base_grabada_cpcfa', totales.base_grabada);
         q.values.set('base_no_objeto_iva_cpcfa', totales.base_no_objeto_iva);

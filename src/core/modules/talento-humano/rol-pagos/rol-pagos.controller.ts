@@ -7,6 +7,7 @@ import {
     AnularRolDto,
     AprobarRolDto,
     CerrarRolDto,
+    EditarDetalleRolDto,
     GenerarLiquidacionDecimoDto,
     GenerarRolDto,
     GetRolByIdDto,
@@ -58,6 +59,20 @@ export class RolPagosController {
         @Body() dtoIn: RecalcularRolDto,
     ) {
         return this.service.recalcularRol({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('editarDetalle')
+    @ApiOperation({
+        summary:
+            'Edita valores y/o elimina líneas del detalle de un rol aún sin cerrar/anular (ej. tipear un ' +
+            'descuento manual, corregir un valor, quitar un rubro que no aplica) y recalcula los rubros ' +
+            'de fórmula (subtotales, totales, IESS, etc.) que dependen de esas líneas',
+    })
+    editarDetalle(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EditarDetalleRolDto,
+    ) {
+        return this.service.editarDetalleRol({ ...headersParams, ...dtoIn });
     }
 
     @Put('aprobar')

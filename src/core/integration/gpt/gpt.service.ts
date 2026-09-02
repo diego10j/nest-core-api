@@ -19,7 +19,6 @@ import {
 import {
   audioToTextUseCase,
   correctSpellingUseCase,
-  feriadosEcuadorUseCase,
   imageGenerationUseCase,
   imageVariationUseCase,
   improveTextUseCase,
@@ -38,10 +37,6 @@ export class GptService {
   });
 
   // Solo va a llamar casos de uso
-
-  async feriadosEcuador(anio: number) {
-    return await feriadosEcuadorUseCase(this.openai, { anio });
-  }
 
   async orthographyCheck(orthographyDto: OrthographyDto) {
     return await orthographyCheckUseCase(this.openai, {

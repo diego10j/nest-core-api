@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsInt, IsNumber, IsOptional, ValidateNested } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class GenerarRolDto {
@@ -66,6 +66,43 @@ export class RecalcularRolDto {
     @IsInt()
     @Type(() => Number)
     ide_nrrol: number;
+}
+
+export class EditarDetalleRolItemDto {
+    @ApiProperty({ description: 'ID de la línea a editar (nrh_detalle_rol.ide_nrdro)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_nrdro: number;
+
+    @ApiProperty({ description: 'Nuevo valor de la línea' })
+    @IsNumber()
+    @Type(() => Number)
+    valor_nrdro: number;
+}
+
+export class EditarDetalleRolDto {
+    @ApiProperty({ description: 'ID del rol a editar (debe estar sin cerrar/anular)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_nrrol: number;
+
+    @ApiProperty({
+        description: 'Ediciones de valor por línea del detalle',
+        type: [EditarDetalleRolItemDto],
+        required: false,
+    })
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => EditarDetalleRolItemDto)
+    ediciones?: EditarDetalleRolItemDto[];
+
+    @ApiProperty({ description: 'IDs de líneas del detalle (nrh_detalle_rol.ide_nrdro) a eliminar', required: false, type: [Number] })
+    @IsOptional()
+    @IsArray()
+    @IsInt({ each: true })
+    @Type(() => Number)
+    eliminaciones?: number[];
 }
 
 export class GenerarLiquidacionDecimoDto {

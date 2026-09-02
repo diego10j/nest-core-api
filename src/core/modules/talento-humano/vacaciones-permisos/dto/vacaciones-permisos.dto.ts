@@ -80,6 +80,11 @@ export class AprobarPermisoDto {
     @IsInt()
     @Type(() => Number)
     ide_aspvh: number;
+
+    @ApiPropertyOptional({ description: 'Observación del aprobador (opcional)' })
+    @IsOptional()
+    @IsString()
+    observacion?: string;
 }
 
 export class AprobarJustificacionDto {
@@ -87,6 +92,11 @@ export class AprobarJustificacionDto {
     @IsInt()
     @Type(() => Number)
     ide_aspvh: number;
+
+    @ApiPropertyOptional({ description: 'Observación del aprobador (opcional)' })
+    @IsOptional()
+    @IsString()
+    observacion?: string;
 }
 
 export class AnularPermisoDto {

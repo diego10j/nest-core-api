@@ -53,6 +53,13 @@ export class SaveRubroCuentaDto extends SaveDto {
     declare data: Record<string, unknown>;
 }
 
+export class EliminarRubroDto {
+    @ApiProperty({ description: 'ID del rubro a eliminar físicamente (nrh_rubro.ide_nrrub), en cascada por sus tablas relacionadas' })
+    @IsInt()
+    @Type(() => Number)
+    ide_nrrub: number;
+}
+
 export class SaveDepartamentoTipoGastoDto {
     @ApiProperty({ description: 'ID del departamento (gen_departamento.ide_gedep)' })
     @IsInt()

@@ -96,8 +96,14 @@ export class DataSourceService {
     @Inject('REDIS_CLIENT') public readonly redisClient: Redis,
   ) {
     // Parse types bdd
-    // DATE
-    //   types.setTypeParser(this.TYPE_DATESTAMP, (date) => getDateFormat(date));
+    // DATE (1082): el parser default de pg construye un objeto Date LOCAL (new Date(y, m, d)).
+    // Si el proceso Node corre en un timezone que no es realmente America/Guayaquil (ej. UTC,
+    // default de la mayoría de contenedores), ese Date se serializa a JSON como medianoche UTC
+    // y el frontend (que sí corre en -05:00) lo muestra un día antes - el bug reportado en
+    // tes_cab_libr_banc/cxp_cabece_factur (fechas de pago/factura de flete-consolidado
+    // apareciendo un día antes). Un DATE no tiene componente horario: se devuelve el texto
+    // 'YYYY-MM-DD' tal cual llega de Postgres, sin pasar por Date en ningún momento.
+    types.setTypeParser(this.TYPE_DATESTAMP, (val) => val);
     //   types.setTypeParser(this.TYPE_TIMESTAMP, (date) => getDateTimeFormat(date));
     //   types.setTypeParser(this.TYPE_TIMESTAMPTZ, (date) => getTimeFormat(date));
     types.setTypeParser(this.TIME_OID, (val) => getTimeISOFormat(val));

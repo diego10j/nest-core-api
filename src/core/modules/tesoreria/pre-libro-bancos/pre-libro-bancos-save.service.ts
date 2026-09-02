@@ -650,26 +650,32 @@ export class PreLibroBancosSaveService extends BaseService {
     async generarNumeroAutomatico(
         ideTecba: number, ideTettb: number, dtoIn: HeaderParamsDto,
     ): Promise<string> {
-        let numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
-            ideTecba, ideTettb, dtoIn.ideSucu,
-        );
-        const { existe } = await this.preLibroBancosService.existeNumTransaccion({
-            ...dtoIn, ideTecba, ideTettb, numero,
-        });
-        if (existe) {
-            numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
+        try {
+            let numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
                 ideTecba, ideTettb, dtoIn.ideSucu,
             );
-            const { existe: sigueExistiendo } = await this.preLibroBancosService.existeNumTransaccion({
+            if (!numero) return '000';
+            const { existe } = await this.preLibroBancosService.existeNumTransaccion({
                 ...dtoIn, ideTecba, ideTettb, numero,
             });
-            if (sigueExistiendo) {
-                throw new BadRequestException(
-                    'No se pudo generar un número de comprobante automático disponible.',
+            if (existe) {
+                numero = await this.preLibroBancosService.getSiguienteNumeroTransaccion(
+                    ideTecba, ideTettb, dtoIn.ideSucu,
                 );
+                if (!numero) return '000';
+                const { existe: sigueExistiendo } = await this.preLibroBancosService.existeNumTransaccion({
+                    ...dtoIn, ideTecba, ideTettb, numero,
+                });
+                if (sigueExistiendo) {
+                    // No debe bloquear el registro de la transacción - se prefiere un valor
+                    // neutro que el usuario pueda corregir a mano antes que impedir el guardado.
+                    return '000';
+                }
             }
+            return numero;
+        } catch {
+            return '000';
         }
-        return numero;
     }
 
     /**

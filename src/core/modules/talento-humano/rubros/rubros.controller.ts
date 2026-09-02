@@ -4,6 +4,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import {
+    EliminarRubroDto,
     GetDetalleRubrosByTipoNominaDto,
     ProbarFormulaDto,
     SaveCargoDto,
@@ -68,6 +69,21 @@ export class RubrosController {
         @Body() dtoIn: SaveRubroDto,
     ) {
         return this.service.saveRubro({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('eliminarRubro')
+    @ApiOperation({
+        summary:
+            'Elimina físicamente un rubro y todo lo que depende de él en cascada (parametría, detalle de ' +
+            'roles ya generados, cuentas contables, etc.) — pensado para depurar catálogo, no para uso ' +
+            'normal (preferir desactivar). Bloqueado si el rubro es de cálculo legal fijo o ya tiene ' +
+            'valores en un rol cerrado.',
+    })
+    eliminarRubro(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EliminarRubroDto,
+    ) {
+        return this.service.eliminarRubro({ ...headersParams, ...dtoIn });
     }
 
     @Get('getDetalleRubrosByTipoNomina')
