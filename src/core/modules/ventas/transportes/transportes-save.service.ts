@@ -261,13 +261,25 @@ export class TransportesSaveService extends BaseService {
             throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
         }
 
+        // Si no viene ide_geper explícito, se resuelve del propio transportista (ven_transporte.ide_geper
+        // — la persona/razón social del transportista para el SRI). Sin esto, el frontend tendría que
+        // conocer y enviar ese dato con cada corrección; el mismo fallback ya existe en saveEnvio.
+        let ideGeper = dtoIn.ide_geper ?? null;
+        if (!ideGeper) {
+            const transporte = await this.dataSource.pool.query(
+                `SELECT ide_geper FROM ven_transporte WHERE ide_vgtra = $1`,
+                [dtoIn.ide_vgtra],
+            );
+            ideGeper = transporte.rows[0]?.ide_geper ?? null;
+        }
+
         await this.dataSource.pool.query(
             `UPDATE cxc_transporte_factura
                 SET ide_vgtra = $1,
                     ide_geper = $2,
                     es_transporte_propio_cctfa = false
               WHERE ide_cctfa = $3`,
-            [dtoIn.ide_vgtra, dtoIn.ide_geper ?? null, dtoIn.ide_cctfa],
+            [dtoIn.ide_vgtra, ideGeper, dtoIn.ide_cctfa],
         );
         return { message: 'ok' };
     }
