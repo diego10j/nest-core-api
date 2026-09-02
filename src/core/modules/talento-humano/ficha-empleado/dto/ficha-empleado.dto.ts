@@ -45,3 +45,21 @@ export class EliminarExperienciaLaboralDto {
     @Type(() => Number)
     ide_gtele: number;
 }
+
+export class SaveCuentaBancariaDto extends SaveDto {
+    @ApiProperty({
+        description:
+            'Datos de gth_cuenta_bancaria_empleado. Requeridos al crear: ide_gtemp, ide_geins ' +
+            '(institución financiera), ide_gttcb (tipo de cuenta), numero_cuenta_gtcbe. Opcionales: ' +
+            'individual_conjunta_gtcbe (0=Conjunta, 1=Individual, default 1), acreditacion_gtcbe ' +
+            '(default false), saldo_promedio_gtcbe.',
+    })
+    declare data: Record<string, unknown>;
+}
+
+export class EliminarCuentaBancariaDto {
+    @ApiProperty({ description: 'ID de la cuenta bancaria (gth_cuenta_bancaria_empleado.ide_gtcbe)' })
+    @IsInt()
+    @Type(() => Number)
+    ide_gtcbe: number;
+}
