@@ -15,6 +15,11 @@ import { ComprasMensualesProveedorDto } from './dto/compras-mensuales-proveedor.
 import { GetCtaBancoProveedorDto } from './dto/get-cta-banco-proveedor.dto';
 import { GetProveedoresDto } from './dto/get-proveedores.dto';
 import { IdProveedorDto } from './dto/id-proveedor.dto';
+import { IdeCpctrDto } from './dto/ide-cpctr.dto';
+import { SearchAsientoProveedorDto } from './dto/search-asiento-proveedor.dto';
+import { SearchCabeceraTrnDto } from './dto/search-cabecera-trn.dto';
+import { SearchDocumentoCxPDto } from './dto/search-documento-cxp.dto';
+import { SearchLibroBancoProveedorDto } from './dto/search-libro-banco-proveedor.dto';
 import { TrnProveedorDto } from './dto/trn-proveedor.dto';
 
 @Injectable()
@@ -32,6 +37,8 @@ export class ProveedorService extends BaseService {
         'p_con_estado_comprobante_normal',
         'p_con_estado_comp_final',
         'p_con_lugar_debe',
+        'p_con_tipo_documento_factura',
+        'p_con_tipo_documento_nota_credito',
       ])
       .then((result) => {
         this.variables = result;
@@ -921,6 +928,193 @@ export class ProveedorService extends BaseService {
     return this.dataSource.createSelectQuery(query);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Editar Transacciones CxP
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Cabeceras de transacción CxP (cxp_cabece_transa) de un proveedor en un rango de
+   * fechas, agrupadas con el total de su detalle y si están cuadradas. `saldo > 0` es
+   * "pendiente de pago" (normal, ej. factura sin pago aún) — solo `saldo < 0` es un
+   * error real ("descuadrada"), lo cual el guardado (saveDetalleCabeceraTrn) impide
+   * que vuelva a ocurrir hacia adelante.
+   */
+  async getCabecerasTrnProveedor(dtoIn: TrnProveedorDto & HeaderParamsDto) {
+    const query = new SelectQuery(
+      `
+        SELECT
+            ct.ide_cpctr,
+            ct.fecha_trans_cpctr,
+            ct.ide_cpttr,
+            tt.nombre_cpttr AS tipo_principal,
+            ct.ide_cpcfa,
+            cf.numero_cpcfa,
+            ct.observacion_cpctr,
+            COUNT(dt.ide_cpdtr) AS cantidad_detalles,
+            COALESCE(SUM(CASE WHEN dtt.signo_cpttr = 1 THEN dt.valor_cpdtr END), 0) AS total_ingresos,
+            COALESCE(SUM(CASE WHEN dtt.signo_cpttr = -1 THEN dt.valor_cpdtr END), 0) AS total_egresos,
+            COALESCE(SUM(dt.valor_cpdtr * dtt.signo_cpttr), 0) AS saldo,
+            CASE
+                WHEN ABS(COALESCE(SUM(dt.valor_cpdtr * dtt.signo_cpttr), 0)) < 0.005 THEN 'cuadrada'
+                WHEN COALESCE(SUM(dt.valor_cpdtr * dtt.signo_cpttr), 0) > 0 THEN 'pendiente_pago'
+                ELSE 'descuadrada'
+            END AS estado
+        FROM cxp_cabece_transa ct
+        LEFT JOIN cxp_detall_transa dt ON dt.ide_cpctr = ct.ide_cpctr
+        LEFT JOIN cxp_tipo_transacc dtt ON dtt.ide_cpttr = dt.ide_cpttr
+        LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = ct.ide_cpttr
+        LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
+        WHERE ct.ide_geper = $1
+          AND ct.ide_sucu = ${dtoIn.ideSucu}
+          AND ct.fecha_trans_cpctr BETWEEN $2 AND $3
+        GROUP BY ct.ide_cpctr, ct.fecha_trans_cpctr, ct.ide_cpttr, tt.nombre_cpttr,
+                 ct.ide_cpcfa, cf.numero_cpcfa, ct.observacion_cpctr
+        ORDER BY ct.fecha_trans_cpctr DESC, ct.ide_cpctr DESC
+        `,
+      dtoIn,
+    );
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addParam(2, dtoIn.fechaInicio);
+    query.addParam(3, dtoIn.fechaFin);
+    return this.dataSource.createQuery(query);
+  }
+
+  /**
+   * Cabecera + detalle completo de una transacción CxP, para la pantalla de edición.
+   */
+  async getDetalleCabeceraTrn(dtoIn: IdeCpctrDto & HeaderParamsDto) {
+    const qCab = new SelectQuery(`
+        SELECT ct.ide_cpctr, ct.ide_geper, ct.fecha_trans_cpctr, ct.ide_cpttr,
+               ct.ide_cpcfa, cf.numero_cpcfa, ct.observacion_cpctr, p.nom_geper
+        FROM cxp_cabece_transa ct
+        LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
+        LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+        WHERE ct.ide_cpctr = $1 AND ct.ide_empr = ${dtoIn.ideEmpr}
+    `);
+    qCab.addIntParam(1, dtoIn.ide_cpctr);
+    const cabecera = await this.dataSource.createSingleQuery(qCab);
+    if (!cabecera) {
+      throw new BadRequestException(`La transacción ide_cpctr=${dtoIn.ide_cpctr} no existe`);
+    }
+
+    const notaCredito = this.variables.get('p_con_tipo_documento_nota_credito');
+    const qDet = new SelectQuery(`
+        SELECT dt.*, tt.nombre_cpttr, tt.signo_cpttr,
+               cf.numero_cpcfa, cf.fecha_emisi_cpcfa, cf.total_cpcfa, cf.ide_cntdo,
+               CASE WHEN cf.ide_cntdo = ${notaCredito} THEN 'nota_credito' ELSE 'factura' END AS tipo_documento
+        FROM cxp_detall_transa dt
+        LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+        LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = dt.ide_cpcfa
+        WHERE dt.ide_cpctr = $1
+        ORDER BY dt.numero_pago_cpdtr, dt.ide_cpdtr
+    `);
+    qDet.addIntParam(1, dtoIn.ide_cpctr);
+    const detalles = await this.dataSource.createSelectQuery(qDet);
+
+    const saldo = detalles.reduce(
+      (acc: number, d: any) => acc + Number(d.valor_cpdtr) * Number(d.signo_cpttr ?? 0),
+      0,
+    );
+    const estado = Math.abs(saldo) < 0.005 ? 'cuadrada' : saldo > 0 ? 'pendiente_pago' : 'descuadrada';
+
+    return { ...cabecera, detalles, saldo, estado };
+  }
+
+  /**
+   * Facturas o notas de crédito de compra de un proveedor (autocomplete). Ambas viven
+   * en cxp_cabece_factur, distinguidas por ide_cntdo — no hay tabla separada de notas
+   * de crédito de proveedor (confirmado en documentos-cxp.service.ts).
+   */
+  async searchDocumentoProveedor(dtoIn: SearchDocumentoCxPDto & HeaderParamsDto) {
+    const ideCntdo =
+      dtoIn.tipo === 'nota_credito'
+        ? this.variables.get('p_con_tipo_documento_nota_credito')
+        : this.variables.get('p_con_tipo_documento_factura');
+
+    const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+    const query = new SelectQuery(`
+        SELECT ide_cpcfa, numero_cpcfa, fecha_emisi_cpcfa, total_cpcfa, pagado_cpcfa
+        FROM cxp_cabece_factur
+        WHERE ide_geper = $1 AND ide_empr = ${dtoIn.ideEmpr} AND ide_cntdo = ${ideCntdo}
+          AND (regexp_replace(unaccent(LOWER(COALESCE(numero_cpcfa, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+               OR CAST(ide_cpcfa AS VARCHAR) LIKE $2)
+        ORDER BY fecha_emisi_cpcfa DESC
+        LIMIT ${dtoIn.limit}
+    `);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addStringParam(2, sqlSearchValue);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Asientos contables (con_cab_comp_cont, que sí tiene ide_geper directo) de un
+   * proveedor específico, para vincular ide_cnccc de una línea de detalle CxP.
+   */
+  async searchAsientoProveedor(dtoIn: SearchAsientoProveedorDto & HeaderParamsDto) {
+    const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+    const query = new SelectQuery(`
+        SELECT ide_cnccc, fecha_trans_cnccc, observacion_cnccc
+        FROM con_cab_comp_cont
+        WHERE ide_geper = $1 AND ide_sucu = ${dtoIn.ideSucu}
+          AND (CAST(ide_cnccc AS VARCHAR) LIKE $2
+               OR regexp_replace(unaccent(LOWER(COALESCE(observacion_cnccc, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+        ORDER BY fecha_trans_cnccc DESC
+        LIMIT ${dtoIn.limit}
+    `);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addStringParam(2, sqlSearchValue);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Movimientos de libro de bancos (tes_cab_libr_banc) ya vinculados al historial de
+   * este proveedor vía cxp_detall_transa — tes_cab_libr_banc no tiene ide_geper propio,
+   * se escopea a lo ya asociado a este proveedor (no a todo el banco de la empresa).
+   */
+  async searchLibroBancoProveedor(dtoIn: SearchLibroBancoProveedorDto & HeaderParamsDto) {
+    const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+    const query = new SelectQuery(`
+        SELECT DISTINCT lb.ide_teclb, lb.fecha_trans_teclb, lb.numero_teclb
+        FROM tes_cab_libr_banc lb
+        INNER JOIN cxp_detall_transa dt ON dt.ide_teclb = lb.ide_teclb
+        INNER JOIN cxp_cabece_transa ct ON ct.ide_cpctr = dt.ide_cpctr
+        WHERE ct.ide_geper = $1
+          AND (CAST(lb.ide_teclb AS VARCHAR) LIKE $2
+               OR regexp_replace(unaccent(LOWER(COALESCE(lb.numero_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+        ORDER BY lb.fecha_trans_teclb DESC
+        LIMIT ${dtoIn.limit}
+    `);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addStringParam(2, sqlSearchValue);
+    return this.dataSource.createSelectQuery(query);
+  }
+
+  /**
+   * Cabeceras de transacción CxP de un proveedor (todo el histórico, sin filtro de
+   * fecha), para el picker de "mover línea de detalle a otra cabecera".
+   */
+  async searchCabeceraTrnProveedor(dtoIn: SearchCabeceraTrnDto & HeaderParamsDto) {
+    const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+    const excludeClause = dtoIn.excluir_ide_cpctr ? 'AND ct.ide_cpctr != $3' : '';
+    const query = new SelectQuery(`
+        SELECT ct.ide_cpctr, ct.fecha_trans_cpctr, tt.nombre_cpttr AS tipo_principal,
+               ct.ide_cpcfa, cf.numero_cpcfa
+        FROM cxp_cabece_transa ct
+        LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = ct.ide_cpttr
+        LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
+        WHERE ct.ide_geper = $1
+          AND (CAST(ct.ide_cpctr AS VARCHAR) LIKE $2 OR COALESCE(cf.numero_cpcfa, '') LIKE $2)
+          ${excludeClause}
+        ORDER BY ct.fecha_trans_cpctr DESC
+        LIMIT ${dtoIn.limit}
+    `);
+    query.addIntParam(1, dtoIn.ide_geper);
+    query.addStringParam(2, sqlSearchValue);
+    if (dtoIn.excluir_ide_cpctr) {
+      query.addIntParam(3, dtoIn.excluir_ide_cpctr);
+    }
+    return this.dataSource.createSelectQuery(query);
+  }
 
 
   async getCtaBancoProveedor(dtoIn: GetCtaBancoProveedorDto & HeaderParamsDto) {

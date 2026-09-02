@@ -4,14 +4,18 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SaveDto } from 'src/common/dto/save.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ObjectQueryDto } from 'src/core/connection/dto';
-import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 import { validateCedula, validateRUC } from 'src/util/helpers/validations/cedula-ruc';
 
 import { SetCuentaContableProveedorDto } from './dto/cuenta-contable-proveedor.dto';
+import { DeleteCabeceraTrnDto } from './dto/delete-cabecera-trn.dto';
+import { DetalleTrnItemDto } from './dto/detalle-trn-item.dto';
+import { MoverDetalleTrnDto } from './dto/mover-detalle-trn.dto';
 import { SaveCtaBancoProveedorDto } from './dto/save-cta-banco-proveedor.dto';
+import { SaveDetalleCabeceraTrnDto } from './dto/save-detalle-cabecera-trn.dto';
 import { SaveTrnProveedorDto } from './dto/save-trn-proveedor.dto';
 
 /** Identificador de configuración contable del proveedor */
@@ -275,9 +279,301 @@ export class ProveedorSaveService extends BaseService {
         }
     }
 
+    /**
+     * Guardado tipo-diff (crear/actualizar/eliminar, nunca borrar-y-recrear) del detalle
+     * completo de una cabecera de transacción CxP. `dtoIn.detalles` representa el estado
+     * final deseado: filas con ide_cpdtr existente → UPDATE in-place; sin ide_cpdtr →
+     * INSERT; filas que ya no vienen en el payload → DELETE. Antes de comitear valida
+     * que el saldo resultante (Σ valor_cpdtr * signo_cpttr) no quede negativo — esa es
+     * la regla central de "cuadre" pedida por el usuario.
+     */
+    async saveDetalleCabeceraTrn(dtoIn: SaveDetalleCabeceraTrnDto & HeaderParamsDto) {
+        try {
+            const qCab = new SelectQuery(`
+                SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpctr = $1 AND ide_geper = $2
+            `);
+            qCab.addIntParam(1, dtoIn.ide_cpctr);
+            qCab.addIntParam(2, dtoIn.ide_geper);
+            const cab = await this.dataSource.createSingleQuery(qCab);
+            if (!cab) {
+                throw new BadRequestException(
+                    `La cabecera ide_cpctr=${dtoIn.ide_cpctr} no existe o no pertenece al proveedor.`,
+                );
+            }
+
+            const qExistentes = new SelectQuery(`
+                SELECT ide_cpdtr, ide_cpttr, ide_cpcfa, fecha_trans_cpdtr, fecha_venci_cpdtr,
+                       valor_cpdtr, docum_relac_cpdtr, observacion_cpdtr, ide_cnccc, ide_teclb, numero_pago_cpdtr
+                FROM cxp_detall_transa WHERE ide_cpctr = $1
+            `);
+            qExistentes.addIntParam(1, dtoIn.ide_cpctr);
+            const existentes: Record<string, any>[] = await this.dataSource.createSelectQuery(qExistentes);
+            const existentesPorId = new Map(existentes.map((r) => [Number(r.ide_cpdtr), r]));
+            const idsExistentes = new Set(existentesPorId.keys());
+
+            const toUpdate = dtoIn.detalles.filter((d) => isDefined(d.ide_cpdtr));
+            const toInsert = dtoIn.detalles.filter((d) => !isDefined(d.ide_cpdtr));
+
+            const idsIncoming = new Set<number>();
+            for (const d of toUpdate) {
+                const id = Number(d.ide_cpdtr);
+                if (!idsExistentes.has(id)) {
+                    throw new BadRequestException(
+                        `La línea ide_cpdtr=${id} no pertenece a la cabecera ide_cpctr=${dtoIn.ide_cpctr}.`,
+                    );
+                }
+                if (idsIncoming.has(id)) {
+                    throw new BadRequestException(`La línea ide_cpdtr=${id} está repetida en el detalle enviado.`);
+                }
+                idsIncoming.add(id);
+            }
+
+            const toDeleteIds = [...idsExistentes].filter((id) => !idsIncoming.has(id));
+            for (const id of toDeleteIds) {
+                const existente = existentesPorId.get(id)!;
+                if (isDefined(existente.ide_cnccc) || isDefined(existente.ide_teclb)) {
+                    throw new BadRequestException(
+                        `La línea ide_cpdtr=${id} ya está vinculada a un asiento contable o al libro de bancos; desvincúlela (editando esos campos a vacío) antes de eliminarla.`,
+                    );
+                }
+            }
+
+            const listQuery: Query[] = [];
+
+            if (toDeleteIds.length > 0) {
+                const delDetalles = new DeleteQuery('cxp_detall_transa');
+                delDetalles.where = 'ide_cpdtr = ANY($1) AND ide_cpctr = $2';
+                delDetalles.addParam(1, toDeleteIds);
+                delDetalles.addIntParam(2, dtoIn.ide_cpctr);
+                listQuery.push(delDetalles);
+            }
+
+            for (const d of toUpdate) {
+                const id = Number(d.ide_cpdtr);
+                if (this.detalleTrnSinCambios(d, existentesPorId.get(id)!)) continue;
+                const q = new UpdateQuery('cxp_detall_transa', 'ide_cpdtr', dtoIn);
+                q.where = 'ide_cpdtr = $1 AND ide_cpctr = $2';
+                q.addIntParam(1, id);
+                q.addIntParam(2, dtoIn.ide_cpctr);
+                q.values.set('ide_cpttr', d.ide_cpttr);
+                q.values.set('ide_cpcfa', d.ide_cpcfa ?? null);
+                q.values.set('fecha_trans_cpdtr', toPgDate(d.fecha_trans_cpdtr));
+                q.values.set('fecha_venci_cpdtr', toPgDate(d.fecha_venci_cpdtr) ?? toPgDate(d.fecha_trans_cpdtr));
+                q.values.set('valor_cpdtr', d.valor_cpdtr);
+                q.values.set('docum_relac_cpdtr', d.docum_relac_cpdtr ?? null);
+                q.values.set('observacion_cpdtr', d.observacion_cpdtr ?? null);
+                q.values.set('ide_cnccc', d.ide_cnccc ?? null);
+                q.values.set('ide_teclb', d.ide_teclb ?? null);
+                listQuery.push(q);
+            }
+
+            if (toInsert.length > 0) {
+                const maxPagoActual = existentes.reduce(
+                    (max, r) => Math.max(max, Number(r.numero_pago_cpdtr ?? 0)),
+                    0,
+                );
+                const baseIdeCpdtr = await this.dataSource.getSeqTable(
+                    'cxp_detall_transa', 'ide_cpdtr', toInsert.length, dtoIn.login,
+                );
+                toInsert.forEach((d, idx) => {
+                    const q = new InsertQuery('cxp_detall_transa', 'ide_cpdtr', dtoIn);
+                    q.values.set('ide_cpdtr', baseIdeCpdtr + idx);
+                    q.values.set('ide_cpctr', dtoIn.ide_cpctr);
+                    q.values.set('ide_cpttr', d.ide_cpttr);
+                    q.values.set('ide_cpcfa', d.ide_cpcfa ?? null);
+                    q.values.set('ide_usua', dtoIn.ideUsua);
+                    q.values.set('fecha_trans_cpdtr', toPgDate(d.fecha_trans_cpdtr));
+                    q.values.set('fecha_venci_cpdtr', toPgDate(d.fecha_venci_cpdtr) ?? toPgDate(d.fecha_trans_cpdtr));
+                    q.values.set('valor_cpdtr', d.valor_cpdtr);
+                    q.values.set('docum_relac_cpdtr', d.docum_relac_cpdtr ?? null);
+                    q.values.set('observacion_cpdtr', d.observacion_cpdtr ?? null);
+                    q.values.set('numero_pago_cpdtr', maxPagoActual + idx + 1);
+                    q.values.set('valor_anticipo_cpdtr', 0);
+                    q.values.set('ide_cnccc', d.ide_cnccc ?? null);
+                    q.values.set('ide_teclb', d.ide_teclb ?? null);
+                    q.values.set('fecha_ingre', getCurrentDate());
+                    q.values.set('hora_ingre', getCurrentTime());
+                    listQuery.push(q);
+                });
+            }
+
+            // dtoIn.detalles ya representa el estado final deseado completo (updates +
+            // inserts); las filas eliminadas simplemente no vienen en el payload.
+            const mapaSigno = await this.getMapaSignoTipoTransaccion();
+            const saldoResultante = dtoIn.detalles.reduce(
+                (acc, d) => acc + Number(d.valor_cpdtr) * (mapaSigno.get(Number(d.ide_cpttr)) ?? 0),
+                0,
+            );
+            if (saldoResultante < -0.005) {
+                throw new BadRequestException(
+                    'La transacción quedaría descuadrada en contra: los egresos superan a los ingresos. Verifique los valores.',
+                );
+            }
+
+            await this.dataSource.createListQuery(listQuery);
+
+            const estado = Math.abs(saldoResultante) < 0.005 ? 'cuadrada' : 'pendiente_pago';
+            return { message: 'ok', ide_cpctr: dtoIn.ide_cpctr, saldo: saldoResultante, estado };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar el detalle de la transacción: ${msg}`);
+        }
+    }
+
+    /**
+     * Reasigna una línea de cxp_detall_transa a otra cabecera del mismo proveedor.
+     * Acción atómica separada del guardado por lote porque afecta el cuadre de DOS
+     * cabeceras (origen y destino) a la vez; ambas deben seguir con saldo >= 0.
+     */
+    async moverDetalleTrn(dtoIn: MoverDetalleTrnDto & HeaderParamsDto) {
+        try {
+            const qFila = new SelectQuery(`
+                SELECT dt.ide_cpdtr, dt.ide_cpctr, dt.ide_cpttr, dt.valor_cpdtr
+                FROM cxp_detall_transa dt
+                INNER JOIN cxp_cabece_transa ct ON ct.ide_cpctr = dt.ide_cpctr
+                WHERE dt.ide_cpdtr = $1 AND ct.ide_geper = $2
+            `);
+            qFila.addIntParam(1, dtoIn.ide_cpdtr);
+            qFila.addIntParam(2, dtoIn.ide_geper);
+            const fila = await this.dataSource.createSingleQuery(qFila);
+            if (!fila) {
+                throw new BadRequestException(
+                    `La línea ide_cpdtr=${dtoIn.ide_cpdtr} no existe o no pertenece al proveedor.`,
+                );
+            }
+            if (Number(fila.ide_cpctr) === Number(dtoIn.ide_cpctr_destino)) {
+                throw new BadRequestException('La cabecera destino es la misma cabecera actual.');
+            }
+
+            const qDestino = new SelectQuery(`
+                SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpctr = $1 AND ide_geper = $2
+            `);
+            qDestino.addIntParam(1, dtoIn.ide_cpctr_destino);
+            qDestino.addIntParam(2, dtoIn.ide_geper);
+            const destino = await this.dataSource.createSingleQuery(qDestino);
+            if (!destino) {
+                throw new BadRequestException(
+                    `La cabecera destino ide_cpctr=${dtoIn.ide_cpctr_destino} no existe o no pertenece al proveedor.`,
+                );
+            }
+
+            const mapaSigno = await this.getMapaSignoTipoTransaccion();
+            const saldoCabecera = async (
+                ideCpctr: number,
+                excluirIdeCpdtr?: number,
+                agregarFila?: { ide_cpttr: number; valor_cpdtr: number },
+            ) => {
+                const q = new SelectQuery(`
+                    SELECT ide_cpdtr, ide_cpttr, valor_cpdtr FROM cxp_detall_transa WHERE ide_cpctr = $1
+                `);
+                q.addIntParam(1, ideCpctr);
+                const filas: any[] = await this.dataSource.createSelectQuery(q);
+                let saldo = filas
+                    .filter((f) => Number(f.ide_cpdtr) !== excluirIdeCpdtr)
+                    .reduce((acc, f) => acc + Number(f.valor_cpdtr) * (mapaSigno.get(Number(f.ide_cpttr)) ?? 0), 0);
+                if (agregarFila) {
+                    saldo += agregarFila.valor_cpdtr * (mapaSigno.get(agregarFila.ide_cpttr) ?? 0);
+                }
+                return saldo;
+            };
+
+            const saldoOrigen = await saldoCabecera(Number(fila.ide_cpctr), Number(fila.ide_cpdtr));
+            const saldoDestino = await saldoCabecera(Number(dtoIn.ide_cpctr_destino), undefined, {
+                ide_cpttr: Number(fila.ide_cpttr),
+                valor_cpdtr: Number(fila.valor_cpdtr),
+            });
+
+            if (saldoOrigen < -0.005 || saldoDestino < -0.005) {
+                throw new BadRequestException(
+                    'No se puede mover la línea: la cabecera de origen o la de destino quedaría con egresos mayores a sus ingresos.',
+                );
+            }
+
+            const q = new UpdateQuery('cxp_detall_transa', 'ide_cpdtr', dtoIn);
+            q.where = 'ide_cpdtr = $1';
+            q.addIntParam(1, dtoIn.ide_cpdtr);
+            q.values.set('ide_cpctr', dtoIn.ide_cpctr_destino);
+            await this.dataSource.createListQuery([q]);
+
+            const estadoDe = (s: number) => (Math.abs(s) < 0.005 ? 'cuadrada' : s > 0 ? 'pendiente_pago' : 'descuadrada');
+            return {
+                message: 'ok',
+                origen: { ide_cpctr: Number(fila.ide_cpctr), saldo: saldoOrigen, estado: estadoDe(saldoOrigen) },
+                destino: {
+                    ide_cpctr: Number(dtoIn.ide_cpctr_destino),
+                    saldo: saldoDestino,
+                    estado: estadoDe(saldoDestino),
+                },
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al mover la línea de detalle: ${msg}`);
+        }
+    }
+
+    /** Elimina una cabecera de transacción CxP; solo si no tiene detalle asociado. */
+    async deleteCabeceraTrn(dtoIn: DeleteCabeceraTrnDto & HeaderParamsDto) {
+        try {
+            const qCab = new SelectQuery(`
+                SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpctr = $1 AND ide_geper = $2
+            `);
+            qCab.addIntParam(1, dtoIn.ide_cpctr);
+            qCab.addIntParam(2, dtoIn.ide_geper);
+            const cab = await this.dataSource.createSingleQuery(qCab);
+            if (!cab) {
+                throw new BadRequestException(
+                    `La cabecera ide_cpctr=${dtoIn.ide_cpctr} no existe o no pertenece al proveedor.`,
+                );
+            }
+
+            const qCount = new SelectQuery(`
+                SELECT COUNT(*) AS cantidad FROM cxp_detall_transa WHERE ide_cpctr = $1
+            `);
+            qCount.addIntParam(1, dtoIn.ide_cpctr);
+            const conteo = await this.dataSource.createSingleQuery(qCount);
+            if (Number(conteo?.cantidad ?? 0) > 0) {
+                throw new BadRequestException('La cabecera tiene detalle asociado, no se puede eliminar.');
+            }
+
+            const del = new DeleteQuery('cxp_cabece_transa');
+            del.where = 'ide_cpctr = $1';
+            del.addIntParam(1, dtoIn.ide_cpctr);
+            await this.dataSource.createListQuery([del]);
+
+            return { message: 'ok', ide_cpctr: dtoIn.ide_cpctr };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al eliminar la cabecera: ${msg}`);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // HELPERS PRIVADOS
     // ─────────────────────────────────────────────────────────────────────────
+
+    private async getMapaSignoTipoTransaccion(): Promise<Map<number, number>> {
+        const q = new SelectQuery(`SELECT ide_cpttr, signo_cpttr FROM cxp_tipo_transacc`);
+        const rows: any[] = await this.dataSource.createSelectQuery(q);
+        return new Map(rows.map((r) => [Number(r.ide_cpttr), Number(r.signo_cpttr)]));
+    }
+
+    private detalleTrnSinCambios(d: DetalleTrnItemDto, existente: Record<string, any>): boolean {
+        const norm = (v: unknown) => (v === undefined || v === null || v === '' ? null : v);
+        return (
+            Number(d.ide_cpttr) === Number(existente.ide_cpttr) &&
+            Number(norm(d.ide_cpcfa) ?? -1) === Number(existente.ide_cpcfa ?? -1) &&
+            toPgDate(d.fecha_trans_cpdtr) === toPgDate(existente.fecha_trans_cpdtr) &&
+            toPgDate(d.fecha_venci_cpdtr) === toPgDate(existente.fecha_venci_cpdtr) &&
+            Number(d.valor_cpdtr) === Number(existente.valor_cpdtr) &&
+            String(norm(d.docum_relac_cpdtr) ?? '') === String(existente.docum_relac_cpdtr ?? '') &&
+            String(norm(d.observacion_cpdtr) ?? '') === String(existente.observacion_cpdtr ?? '') &&
+            Number(norm(d.ide_cnccc) ?? -1) === Number(existente.ide_cnccc ?? -1) &&
+            Number(norm(d.ide_teclb) ?? -1) === Number(existente.ide_teclb ?? -1)
+        );
+    }
 
     private validarIdentificacionProveedor(data: Record<string, any>) {
         const tipoCedula = this.variables.get('p_gen_tipo_identificacion_cedula');
