@@ -22,6 +22,7 @@ import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { GetFilesDto } from './dto/get-files.dto';
+import { MoveFileDto } from './dto/move-file.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FileTempService } from './file-temp.service';
@@ -383,6 +384,96 @@ export class FilesService {
     await this.dataSource.createQuery(updateQuery);
     return {
       message: 'Archivo renombrado exitosamente',
+    } as ResultQuery;
+  }
+
+  /**
+   * Mueve un archivo o carpeta a otra carpeta (o a la raíz si no se envía sis_ide_arch).
+   * Valida que no se mueva una carpeta dentro de sí misma o de una de sus subcarpetas,
+   * y que no exista ya un elemento con el mismo nombre en el destino.
+   * @param dto
+   * @returns
+   */
+  async moveFile(dto: MoveFileDto): Promise<ResultQuery> {
+    const { id, sis_ide_arch } = dto;
+
+    const itemQuery = new SelectQuery(`
+        SELECT
+            ide_arch,
+            nombre_arch,
+            carpeta_arch,
+            sis_ide_arch,
+            ide_inarti
+        FROM
+            sis_archivo
+        WHERE
+            uuid = $1`);
+    itemQuery.addStringParam(1, id);
+    const item = await this.dataSource.createSingleQuery(itemQuery);
+
+    if (!item) {
+      throw new BadRequestException('El archivo no existe');
+    }
+
+    if (isDefined(sis_ide_arch) && Number(sis_ide_arch) === Number(item.ide_arch)) {
+      throw new BadRequestException('No puedes mover una carpeta dentro de sí misma');
+    }
+
+    if (item.carpeta_arch === true && isDefined(sis_ide_arch)) {
+      // Evita mover una carpeta dentro de una de sus propias subcarpetas (ciclo)
+      const cycleQuery = new SelectQuery(`
+          WITH RECURSIVE descendientes AS (
+              SELECT ide_arch FROM sis_archivo WHERE sis_ide_arch = $1
+              UNION ALL
+              SELECT a.ide_arch
+              FROM sis_archivo a
+              INNER JOIN descendientes d ON a.sis_ide_arch = d.ide_arch
+          )
+          SELECT 1 FROM descendientes WHERE ide_arch = $2 LIMIT 1`);
+      cycleQuery.addParam(1, item.ide_arch);
+      cycleQuery.addParam(2, sis_ide_arch);
+      const cycle = await this.dataSource.createSingleQuery(cycleQuery);
+      if (cycle) {
+        throw new BadRequestException('No puedes mover una carpeta dentro de una de sus subcarpetas');
+      }
+    }
+
+    // Valida que no exista ya un elemento con el mismo nombre en el destino
+    const params: any[] = [item.nombre_arch, id];
+    let whereClause = `WHERE nombre_arch = $1 AND uuid != $2 AND papelera_arch = false`;
+    if (isDefined(item.ide_inarti)) {
+      params.push(item.ide_inarti);
+      whereClause += ` AND ide_inarti = $${params.length}`;
+    } else {
+      whereClause += ` AND ide_inarti IS NULL`;
+    }
+    if (isDefined(sis_ide_arch)) {
+      params.push(Number(sis_ide_arch));
+      whereClause += ` AND sis_ide_arch = $${params.length}`;
+    } else {
+      whereClause += ` AND sis_ide_arch IS NULL`;
+    }
+    const dupQuery = new SelectQuery(`SELECT 1 FROM sis_archivo ${whereClause} LIMIT 1`);
+    params.forEach((param, index) => {
+      if (typeof param === 'string') {
+        dupQuery.addStringParam(index + 1, param);
+      } else {
+        dupQuery.addParam(index + 1, param);
+      }
+    });
+    const duplicate = await this.dataSource.createSingleQuery(dupQuery);
+    if (duplicate) {
+      throw new BadRequestException(`Ya existe un elemento llamado "${item.nombre_arch}" en el destino`);
+    }
+
+    const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
+    updateQuery.values.set('sis_ide_arch', isDefined(sis_ide_arch) ? Number(sis_ide_arch) : null);
+    updateQuery.where = `uuid = $1`;
+    updateQuery.addParam(1, id);
+    await this.dataSource.createQuery(updateQuery);
+
+    return {
+      message: `${item.carpeta_arch ? 'Carpeta' : 'Archivo'} movido exitosamente`,
     } as ResultQuery;
   }
 

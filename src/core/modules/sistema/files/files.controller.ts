@@ -25,6 +25,7 @@ import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { GetFilesDto } from './dto/get-files.dto';
+import { MoveFileDto } from './dto/move-file.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FilesService } from './files.service';
@@ -221,6 +222,13 @@ export class FilesController {
   //@Auth()
   favoriteFile(@Body() dtoIn: FavoriteFileDto) {
     return this.filesService.favoriteFile(dtoIn);
+  }
+
+  @Post('moveFile')
+  @ApiOperation({ summary: 'Mover un archivo o carpeta a otra carpeta (o a la raíz del gestor documental)' })
+  //@Auth()
+  moveFile(@Body() dtoIn: MoveFileDto) {
+    return this.filesService.moveFile(dtoIn);
   }
 
   @Put('move')
