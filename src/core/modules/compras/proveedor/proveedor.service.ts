@@ -999,11 +999,24 @@ export class ProveedorService extends BaseService {
     }
 
     const notaCredito = this.variables.get('p_con_tipo_documento_nota_credito');
+    // `valor_teclb` es el valor TOTAL del movimiento de tesorería (ide_teclb) — un mismo pago
+    // consolidado en tesorería suele repartirse en varias líneas de detalle CxP (de esta u otras
+    // cabeceras/facturas). Comparar `valor_teclb` contra el `valor_cpdtr` de UNA sola línea da
+    // una "diferencia" falsa cuando en realidad está bien distribuido. Las subconsultas
+    // correlacionadas traen la suma y cantidad de TODAS las líneas (de cualquier cabecera) que
+    // comparten ese mismo ide_teclb, para comparar contra el total real repartido.
     const qDet = new SelectQuery(`
-        SELECT dt.*, tt.nombre_cpttr, tt.signo_cpttr,
+        SELECT dt.ide_cpdtr, dt.ide_cpctr, dt.ide_cpttr, dt.ide_cpcfa,
+               dt.fecha_trans_cpdtr, dt.fecha_venci_cpdtr, dt.numero_pago_cpdtr, dt.valor_cpdtr,
+               dt.docum_relac_cpdtr, dt.observacion_cpdtr, dt.ide_cnccc, dt.ide_teclb,
+               tt.nombre_cpttr, tt.signo_cpttr,
                cf.numero_cpcfa, cf.fecha_emisi_cpcfa, cf.total_cpcfa, cf.ide_cntdo,
                CASE WHEN cf.ide_cntdo = ${notaCredito} THEN 'nota_credito' ELSE 'factura' END AS tipo_documento,
-               lb.valor_teclb, lb.beneficiari_teclb, lb.numero_teclb, lb.fecha_trans_teclb
+               lb.valor_teclb, lb.beneficiari_teclb, lb.numero_teclb, lb.fecha_trans_teclb,
+               (SELECT SUM(dt2.valor_cpdtr) FROM cxp_detall_transa dt2 WHERE dt2.ide_teclb = dt.ide_teclb)
+                   AS suma_distribuida_teclb,
+               (SELECT COUNT(dt2.ide_cpdtr) FROM cxp_detall_transa dt2 WHERE dt2.ide_teclb = dt.ide_teclb)
+                   AS cantidad_distribuida_teclb
         FROM cxp_detall_transa dt
         LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
         LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = dt.ide_cpcfa
