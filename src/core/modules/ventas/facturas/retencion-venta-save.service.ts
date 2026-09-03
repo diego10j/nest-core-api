@@ -7,7 +7,12 @@ import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 
-import { AnularRetencionVentaDto, DetalleRetencionVentaDto, SaveRetencionVentaDto } from './dto/save-retencion-venta.dto';
+import {
+    AnularRetencionVentaDto,
+    DetalleRetencionVentaDto,
+    EditarRetencionVentaDto,
+    SaveRetencionVentaDto,
+} from './dto/save-retencion-venta.dto';
 
 const TABLE_RET_CAB = 'con_cabece_retenc';
 const PK_RET_CAB = 'ide_cncre';
@@ -260,6 +265,169 @@ export class RetencionVentaSaveService extends BaseService {
 
         await this.dataSource.createListQuery(listQuery);
         return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cccfa: factura?.ide_cccfa ?? null };
+    }
+
+    /**
+     * Edita un comprobante de retención de venta ya registrado (corrige un error de
+     * digitación del comprobante recibido del cliente). No aplica a documentos electrónicos
+     * emitidos por nosotros porque esta retención SIEMPRE viene ya emitida por un tercero.
+     * Bloqueado si la transacción CxC de retención ya fue aplicada a un cobro.
+     */
+    async editarRetencion(dtoIn: EditarRetencionVentaDto & HeaderParamsDto) {
+        try {
+            const qRet = new SelectQuery(`
+                SELECT r.ide_cncre, r.ide_cnere,
+                       f.ide_cccfa, f.secuencial_cccfa, f.total_cccfa, f.fecha_trans_cccfa,
+                       f.ide_cnccc, f.fact_mig_cccfa, f.ide_cndfp
+                FROM ${TABLE_RET_CAB} r
+                INNER JOIN cxc_cabece_factura f ON f.ide_cncre = r.ide_cncre
+                WHERE r.ide_cncre = $1 AND r.es_venta_cncre = TRUE
+            `);
+            qRet.addIntParam(1, dtoIn.ide_cncre);
+            const ret = await this.dataSource.createSingleQuery(qRet);
+            if (!ret) {
+                throw new BadRequestException(`El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no existe.`);
+            }
+            if (Number(ret.ide_cnere) === this.getVar('p_con_estado_comprobante_rete_anulado')) {
+                throw new BadRequestException('No se puede editar un comprobante de retención anulado.');
+            }
+
+            const qPagada = new SelectQuery(`
+                SELECT 1 AS existe FROM cxc_detall_transa
+                WHERE ide_cccfa = $1 AND ide_ccttr = $2 AND numero_pago_ccdtr <> 0
+                LIMIT 1
+            `);
+            qPagada.addIntParam(1, Number(ret.ide_cccfa));
+            qPagada.addIntParam(2, this.getVar('p_cxc_tipo_trans_retencion'));
+            const pagada = await this.dataSource.createSingleQuery(qPagada);
+            if (pagada) {
+                throw new BadRequestException(
+                    'No se puede editar: la retención ya fue aplicada a un cobro. Reverse el cobro primero.',
+                );
+            }
+
+            const listQuery: Query[] = [];
+            const updCab = new UpdateQuery(TABLE_RET_CAB, PK_RET_CAB, dtoIn);
+            if (isDefined(dtoIn.fecha_emisi_cncre)) {
+                updCab.values.set('fecha_emisi_cncre', toPgDate(dtoIn.fecha_emisi_cncre));
+            }
+            if (isDefined(dtoIn.observacion_cncre)) updCab.values.set('observacion_cncre', dtoIn.observacion_cncre);
+            updCab.values.set('usuario_actua', dtoIn.login);
+            updCab.values.set('fecha_actua', getCurrentDate());
+            updCab.values.set('hora_actua', getCurrentTime());
+
+            if (dtoIn.numero_cncre || dtoIn.autorizacion_cncre) {
+                if (!dtoIn.numero_cncre) throw new BadRequestException('Debe ingresar el número de retención');
+                if (!dtoIn.autorizacion_cncre) {
+                    throw new BadRequestException('Debe ingresar el número de autorización de la retención');
+                }
+                const qDup = new SelectQuery(`
+                    SELECT 1 AS existe FROM ${TABLE_RET_CAB}
+                    WHERE autorizacion_cncre = $1 AND numero_cncre = $2 AND es_venta_cncre = TRUE AND ide_cncre <> $3
+                    LIMIT 1
+                `);
+                qDup.addStringParam(1, dtoIn.autorizacion_cncre);
+                qDup.addStringParam(2, dtoIn.numero_cncre);
+                qDup.addIntParam(3, dtoIn.ide_cncre);
+                const dup = await this.dataSource.createSingleQuery(qDup);
+                if (dup) throw new BadRequestException('El comprobante de retención ya existe.');
+                updCab.values.set('numero_cncre', dtoIn.numero_cncre);
+                updCab.values.set('autorizacion_cncre', dtoIn.autorizacion_cncre);
+            }
+
+            updCab.where = 'ide_cncre = $1';
+            updCab.addIntParam(1, dtoIn.ide_cncre);
+            listQuery.push(updCab);
+
+            let totalRetencion: number | undefined;
+            if (dtoIn.detalles?.length) {
+                totalRetencion = Number(
+                    dtoIn.detalles.reduce((sum, d) => sum + this.valorDetalle(d), 0).toFixed(2),
+                );
+                if (totalRetencion <= 0) {
+                    throw new BadRequestException('El valor total de la retención debe ser mayor a 0.');
+                }
+                if (totalRetencion > Number(ret.total_cccfa || 0)) {
+                    throw new BadRequestException(
+                        `El valor retenido (${totalRetencion.toFixed(2)}) no puede ser mayor al total de la factura (${Number(ret.total_cccfa).toFixed(2)}).`,
+                    );
+                }
+
+                const delDet = new DeleteQuery(TABLE_RET_DET);
+                delDet.where = 'ide_cncre = $1';
+                delDet.addIntParam(1, dtoIn.ide_cncre);
+                listQuery.push(delDet);
+
+                const baseIdeCndre = await this.dataSource.getSeqTable(TABLE_RET_DET, PK_RET_DET, dtoIn.detalles.length, dtoIn.login);
+                dtoIn.detalles.forEach((det, idx) => {
+                    const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
+                    insDet.values.set(PK_RET_DET, baseIdeCndre + idx);
+                    insDet.values.set(PK_RET_CAB, dtoIn.ide_cncre);
+                    insDet.values.set('ide_cncim', det.ide_cncim);
+                    insDet.values.set('porcentaje_cndre', det.porcentaje_cndre);
+                    insDet.values.set('base_cndre', det.base_cndre);
+                    insDet.values.set('valor_cndre', this.valorDetalle(det));
+                    insDet.values.set('fecha_ingre', getCurrentDate());
+                    insDet.values.set('hora_ingre', getCurrentTime());
+                    listQuery.push(insDet);
+                });
+
+                const qTrn = new SelectQuery(`SELECT ide_ccctr FROM cxc_cabece_transa WHERE ide_cccfa = $1`);
+                qTrn.addIntParam(1, Number(ret.ide_cccfa));
+                const trn = await this.dataSource.createSingleQuery(qTrn);
+                if (!trn) throw new BadRequestException('La factura no tiene transacción de cuenta por cobrar asociada.');
+
+                const esPagoTarjeta =
+                    Number(ret.ide_cndfp) === IDE_CNDFP_TARJETA || isDefined(ret.fact_mig_cccfa);
+                let saldoActual = 0;
+                if (esPagoTarjeta) {
+                    const qSaldo = new SelectQuery(`
+                        SELECT COALESCE(SUM(dt.valor_ccdtr * tt.signo_ccttr), 0) AS saldo
+                        FROM cxc_detall_transa dt
+                        JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+                        WHERE dt.ide_ccctr = $1 AND dt.ide_ccttr <> $2
+                    `);
+                    qSaldo.addIntParam(1, Number(trn.ide_ccctr));
+                    qSaldo.addIntParam(2, this.getVar('p_cxc_tipo_trans_retencion'));
+                    const rowSaldo = await this.dataSource.createSingleQuery(qSaldo);
+                    saldoActual = Number(rowSaldo?.saldo ?? 0);
+                }
+                const soloDocumental = esPagoTarjeta && saldoActual <= 0;
+
+                const delTrn = new DeleteQuery('cxc_detall_transa');
+                delTrn.where = 'ide_cccfa = $1 AND ide_ccttr = $2 AND numero_pago_ccdtr = 0';
+                delTrn.addIntParam(1, Number(ret.ide_cccfa));
+                delTrn.addIntParam(2, this.getVar('p_cxc_tipo_trans_retencion'));
+                listQuery.push(delTrn);
+
+                if (!soloDocumental) {
+                    const ideCcdtr = await this.dataSource.getSeqTable('cxc_detall_transa', 'ide_ccdtr', 1, dtoIn.login);
+                    const insTrn = new InsertQuery('cxc_detall_transa', 'ide_ccdtr', dtoIn);
+                    insTrn.values.set('ide_ccdtr', ideCcdtr);
+                    insTrn.values.set('ide_ccctr', Number(trn.ide_ccctr));
+                    insTrn.values.set('ide_cccfa', Number(ret.ide_cccfa));
+                    insTrn.values.set('ide_ccttr', this.getVar('p_cxc_tipo_trans_retencion'));
+                    insTrn.values.set('ide_usua', dtoIn.ideUsua);
+                    insTrn.values.set('fecha_trans_ccdtr', ret.fecha_trans_cccfa ?? getCurrentDate());
+                    insTrn.values.set('fecha_venci_ccdtr', ret.fecha_trans_cccfa ?? getCurrentDate());
+                    insTrn.values.set('valor_ccdtr', totalRetencion);
+                    insTrn.values.set('observacion_ccdtr', `V/. RETENCIÓN FACTURA N. ${ret.secuencial_cccfa} (editada)`);
+                    insTrn.values.set('numero_pago_ccdtr', 0);
+                    insTrn.values.set('docum_relac_ccdtr', ret.secuencial_cccfa);
+                    insTrn.values.set('ide_cnccc', ret.ide_cnccc ?? null);
+                    insTrn.values.set('fecha_ingre', getCurrentDate());
+                    insTrn.values.set('hora_ingre', getCurrentTime());
+                    listQuery.push(insTrn);
+                }
+            }
+
+            await this.dataSource.createListQuery(listQuery);
+            return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cccfa: Number(ret.ide_cccfa), total_retencion: totalRetencion };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al editar la retención: ${msg}`);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

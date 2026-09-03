@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -37,6 +37,7 @@ export class DocumentosCxPService extends BaseService {
                 'p_con_tipo_documento_reembolso',
                 'p_con_tipo_documento_nota_venta',
                 'p_con_tipo_documento_liquidacion_compra',
+                'p_con_tipo_contribuyente_nota_venta',
                 'p_gen_tipo_iden_ruc',
                 'p_cxp_tipo_trans_anticipo',
                 'p_cxp_estado_factura_anulada',
@@ -142,7 +143,7 @@ export class DocumentosCxPService extends BaseService {
             WITH documentos_filtrados AS (
                 SELECT a.ide_cpcfa, a.ide_cntdo, a.fecha_emisi_cpcfa, a.numero_cpcfa,
                        a.autorizacio_cpcfa, a.ide_geper, a.ide_cnccc, a.ide_cncre, a.pagado_cpcfa,
-                       a.base_grabada_cpcfa,
+                       a.base_grabada_cpcfa, a.ide_srcom,
                        a.base_tarifa0_cpcfa + a.base_no_objeto_iva_cpcfa AS base0,
                        a.valor_iva_cpcfa, a.total_cpcfa, a.observacion_cpcfa, a.fecha_trans_cpcfa
                 FROM cxp_cabece_factur a
@@ -183,12 +184,20 @@ export class DocumentosCxPService extends BaseService {
                    d.ide_cncre,
                    f.numero_cncre,
                    d.observacion_cpcfa,
-                   d.fecha_trans_cpcfa
+                   d.fecha_trans_cpcfa,
+                   sc.claveacceso_srcom,
+                   sc.autorizacion_srcomn,
+                   sc.ide_sresc,
+                   se.nombre_sresc,
+                   se.icono_sresc,
+                   se.color_sresc
             FROM documentos_filtrados d
             INNER JOIN gen_persona p ON d.ide_geper = p.ide_geper
             INNER JOIN con_tipo_document e ON d.ide_cntdo = e.ide_cntdo
             LEFT JOIN con_cabece_retenc f ON d.ide_cncre = f.ide_cncre
             LEFT JOIN saldos s ON s.ide_cpcfa = d.ide_cpcfa
+            LEFT JOIN sri_comprobante sc ON d.ide_srcom = sc.ide_srcom
+            LEFT JOIN sri_estado_comprobante se ON sc.ide_sresc = se.ide_sresc
             ORDER BY d.fecha_emisi_cpcfa DESC, d.numero_cpcfa DESC, d.ide_cpcfa DESC
             `,
             dtoIn,
@@ -353,9 +362,11 @@ export class DocumentosCxPService extends BaseService {
         const query = new SelectQuery(
             `
             SELECT a.ide_cpcfa,
+                   a.ide_cntdo,
                    a.fecha_emisi_cpcfa,
                    e.nombre_cntdo,
                    a.numero_cpcfa,
+                   a.autorizacio_cpcfa,
                    b.nom_geper,
                    b.identificac_geper,
                    a.base_grabada_cpcfa  AS ventas12,
@@ -609,7 +620,13 @@ export class DocumentosCxPService extends BaseService {
                    dc.nombre_cndfp AS nombre_dias_credito,
                    st.alterno_srtst,
                    st.nombre_srtst,
-                   c.nombre_cpefa AS estado_cpcfa
+                   c.nombre_cpefa AS estado_cpcfa,
+                   sc.claveacceso_srcom,
+                   sc.autorizacion_srcomn,
+                   sc.ide_sresc,
+                   se.nombre_sresc,
+                   se.icono_sresc,
+                   se.color_sresc
             FROM cxp_cabece_factur a
             INNER JOIN gen_persona p ON a.ide_geper = p.ide_geper
             INNER JOIN con_tipo_document t ON a.ide_cntdo = t.ide_cntdo
@@ -617,6 +634,8 @@ export class DocumentosCxPService extends BaseService {
             LEFT JOIN con_deta_forma_pago dc ON a.ide_cndfp1 = dc.ide_cndfp
             LEFT JOIN sri_tipo_sustento_tributario st ON a.ide_srtst = st.ide_srtst
             LEFT JOIN cxp_estado_factur c ON a.ide_cpefa = c.ide_cpefa
+            LEFT JOIN sri_comprobante sc ON a.ide_srcom = sc.ide_srcom
+            LEFT JOIN sri_estado_comprobante se ON sc.ide_sresc = se.ide_sresc
             WHERE a.ide_cpcfa = $1
         `);
         cabQuery.addIntParam(1, ide_cpcfa);
@@ -811,10 +830,18 @@ export class DocumentosCxPService extends BaseService {
 
     /**
      * Retorna los proveedores para el combo, filtrados según el tipo de
-     * documento (paridad con cargarProveedores del legacy):
+     * documento (paridad con cargarProveedores del legacy, corregida contra la normativa SRI
+     * vigente - ver nota de Nota de Venta abajo):
      *  - Importaciones: solo proveedores extranjeros
-     *  - Factura / Nota de Venta / Nota de Crédito / Reembolso: solo con RUC
-     *  - Liquidación de compra: sin RUC (cédula / pasaporte)
+     *  - Factura / Nota de Crédito / Reembolso: solo con RUC
+     *  - Nota de Venta: solo el Tipo de Contribuyente configurado en el parámetro
+     *    `p_con_tipo_contribuyente_nota_venta` (Sistema > Parámetros → con_tipo_contribu) -
+     *    normativamente debe apuntar a RIMPE "Negocio Popular" (único régimen habilitado hoy
+     *    para emitir nota de venta preimpresa física, Res. NAC-DGERCGC24-00000027 - el legacy
+     *    exigía "RISE", régimen derogado desde la reforma de 2022). Parametrizado en vez de
+     *    hardcodeado para no depender de que el catálogo del cliente use exactamente ese texto.
+     *  - Liquidación de compra: sin RUC (Art. 13 Reglamento de Comprobantes de Venta - aplica a
+     *    quien no está inscrito en el RUC al momento de la transacción, no solo cédula)
      */
     async getProveedoresDocumento(dtoIn: ProveedoresCxPDto & HeaderParamsDto) {
         const tipoIdenRuc = this.variables.get('p_gen_tipo_iden_ruc');
@@ -830,10 +857,20 @@ export class DocumentosCxPService extends BaseService {
             const tipoDoc = String(ideCntdo);
             if (ideCntdo === IDE_CNTDO_IMPORTACIONES) {
                 condicionTipoIden = `AND ide_getid = ${IDE_GETID_EXTRANJERO}`;
-            } else if ([factura, reembolso, notaCredito, notaVenta].includes(tipoDoc)) {
+            } else if ([factura, reembolso, notaCredito].includes(tipoDoc)) {
                 condicionTipoIden = `AND ide_getid = ${tipoIdenRuc}`;
             } else if (tipoDoc === liqCompra) {
                 condicionTipoIden = `AND ide_getid != ${tipoIdenRuc}`;
+            } else if (tipoDoc === notaVenta) {
+                const ideCntcoNotaVenta = this.variables.get('p_con_tipo_contribuyente_nota_venta');
+                if (!ideCntcoNotaVenta) {
+                    throw new BadRequestException(
+                        'Falta configurar el parámetro "p_con_tipo_contribuyente_nota_venta" ' +
+                        '(Sistema > Parámetros) con el Tipo de Contribuyente habilitado para ' +
+                        'emitir Nota de Venta (RIMPE Negocio Popular).',
+                    );
+                }
+                condicionTipoIden = `AND ide_cntco = ${Number(ideCntcoNotaVenta)}`;
             }
         }
 
@@ -880,6 +917,23 @@ export class DocumentosCxPService extends BaseService {
      * suma 1 al secuencial con padding a 9 dígitos. Incluye la autorización
      * de la última liquidación registrada (paridad legacy).
      */
+    /** Puntos de emisión habilitados para Liquidación de Compra electrónica (mismo mecanismo
+     * que getPuntosEmisionRetencion, ide_cntdoc=4 en vez de 8 - ver cxc_datos_fac). El
+     * ide_ccdaf elegido aquí es requerido por DocumentosCxPSaveService.saveDocumento para
+     * generar secuencial + clave de acceso automáticamente. */
+    async getPuntosEmisionLiquidacion(dtoIn: HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT CAST(ide_ccdaf AS VARCHAR) AS value,
+                   serie_ccdaf || ' ' || COALESCE(autorizacion_ccdaf, '') AS label,
+                   observacion_ccdaf
+            FROM cxc_datos_fac
+            WHERE ide_cntdoc = 4
+              AND ide_sucu = $1
+        `);
+        query.addIntParam(1, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
+    }
+
     async getSecuencialLiquidacion(dtoIn: HeaderParamsDto) {
         const liqCompra = this.variables.get('p_con_tipo_documento_liquidacion_compra');
         const query = new SelectQuery(`

@@ -12,7 +12,12 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate, getCurrentTime, toPgDate } from 'src/util/helpers/date-util';
 
 import { EnviarSriRetencionCxPDto } from './dto/enviar-sri-retencion-cxp.dto';
-import { AnularRetencionCxPDto, DetalleRetencionCxPDto, SaveRetencionCxPDto } from './dto/save-retencion-cxp.dto';
+import {
+    AnularRetencionCxPDto,
+    DetalleRetencionCxPDto,
+    EditarRetencionCxPDto,
+    SaveRetencionCxPDto,
+} from './dto/save-retencion-cxp.dto';
 
 const TABLE_RET_CAB = 'con_cabece_retenc';
 const PK_RET_CAB = 'ide_cncre';
@@ -287,12 +292,25 @@ export class RetencionesCxPSaveService extends BaseService {
      */
     async anularRetencion(dtoIn: AnularRetencionCxPDto & HeaderParamsDto) {
         const qRet = new SelectQuery(`
-            SELECT ide_cncre FROM ${TABLE_RET_CAB} WHERE ide_cncre = $1
+            SELECT r.ide_cncre, r.ide_cnere, s.ide_sresc
+            FROM ${TABLE_RET_CAB} r
+            LEFT JOIN sri_comprobante s ON r.ide_srcom = s.ide_srcom
+            WHERE r.ide_cncre = $1
         `);
         qRet.addIntParam(1, dtoIn.ide_cncre);
         const retencion = await this.dataSource.createSingleQuery(qRet);
         if (!retencion) {
             throw new BadRequestException(`El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no existe.`);
+        }
+        if (Number(retencion.ide_cnere) === this.getVar('p_con_estado_comprobante_rete_anulado')) {
+            throw new BadRequestException('El comprobante de retención ya está anulado.');
+        }
+        if (Number(retencion.ide_sresc) === EstadoComprobanteEnum.AUTORIZADO.codigo && !dtoIn.confirmar_autorizado) {
+            throw new BadRequestException(
+                'El comprobante ya fue autorizado por el SRI. Anular aquí solo desvincula el registro local: '
+                + 'el documento electrónico sigue siendo válido ante el SRI y su baja formal debe tramitarse '
+                + 'por separado (proceso de "baja de comprobantes" del SRI). Confirme explícitamente para continuar.',
+            );
         }
 
         const qDoc = new SelectQuery(`
@@ -325,6 +343,185 @@ export class RetencionesCxPSaveService extends BaseService {
 
         await this.dataSource.createListQuery(listQuery);
         return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cpcfa: doc?.ide_cpcfa ?? null };
+    }
+
+    /**
+     * Edita un comprobante de retención ya guardado. Migrado de
+     * pre_modificar_retencion.java (legacy): reemplaza con_detall_retenc y recalcula la
+     * transacción CxP de retención asociada.
+     *
+     * Reglas:
+     * - No se puede editar un comprobante anulado.
+     * - No se puede editar un comprobante electrónico ya AUTORIZADO por el SRI (el documento
+     *   fiscal ya está emitido; para corregirlo hay que anular y generar uno nuevo).
+     * - En un comprobante electrónico aún no autorizado, solo se permiten cambios cosméticos
+     *   (fecha, observación, correo) - no se aceptan cambios de `detalles` porque el total ya
+     *   quedó fijado en la cabecera `sri_comprobante` PENDIENTE al crearlo.
+     * - En retención física, se permite editar todo (incluyendo número/autorización y detalles),
+     *   siempre que la transacción CxP de retención no haya sido aplicada a un pago.
+     */
+    async editarRetencion(dtoIn: EditarRetencionCxPDto & HeaderParamsDto) {
+        try {
+            const qRet = new SelectQuery(`
+                SELECT r.ide_cncre, r.ide_cnere, r.numero_cncre, r.autorizacion_cncre, r.ide_srcom,
+                       s.ide_sresc,
+                       d.ide_cpcfa, d.numero_cpcfa, d.fecha_trans_cpcfa, d.ide_cnccc,
+                       d.base_grabada_cpcfa, d.base_tarifa0_cpcfa, d.base_no_objeto_iva_cpcfa, d.valor_iva_cpcfa
+                FROM ${TABLE_RET_CAB} r
+                LEFT JOIN sri_comprobante s ON r.ide_srcom = s.ide_srcom
+                INNER JOIN cxp_cabece_factur d ON d.ide_cncre = r.ide_cncre
+                WHERE r.ide_cncre = $1
+            `);
+            qRet.addIntParam(1, dtoIn.ide_cncre);
+            const ret = await this.dataSource.createSingleQuery(qRet);
+            if (!ret) {
+                throw new BadRequestException(`El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no existe.`);
+            }
+            if (Number(ret.ide_cnere) === this.getVar('p_con_estado_comprobante_rete_anulado')) {
+                throw new BadRequestException('No se puede editar un comprobante de retención anulado.');
+            }
+
+            const esElectronica = isDefined(ret.ide_srcom);
+            if (esElectronica && Number(ret.ide_sresc) === EstadoComprobanteEnum.AUTORIZADO.codigo) {
+                throw new BadRequestException(
+                    'El comprobante ya fue autorizado por el SRI y no puede editarse. Anule el comprobante y '
+                    + 'registre uno nuevo con los valores correctos.',
+                );
+            }
+
+            const listQuery: Query[] = [];
+            const updCab = new UpdateQuery(TABLE_RET_CAB, PK_RET_CAB, dtoIn);
+            if (isDefined(dtoIn.fecha_emisi_cncre)) {
+                updCab.values.set('fecha_emisi_cncre', toPgDate(dtoIn.fecha_emisi_cncre));
+            }
+            if (isDefined(dtoIn.observacion_cncre)) updCab.values.set('observacion_cncre', dtoIn.observacion_cncre);
+            if (isDefined(dtoIn.correo_cncre)) updCab.values.set('correo_cncre', dtoIn.correo_cncre);
+            updCab.values.set('usuario_actua', dtoIn.login);
+            updCab.values.set('fecha_actua', getCurrentDate());
+            updCab.values.set('hora_actua', getCurrentTime());
+
+            if (esElectronica) {
+                // Comprobante electrónico aún no autorizado: solo cambios cosméticos, nunca
+                // el detalle (el total ya quedó fijado en sri_comprobante PENDIENTE).
+                if (dtoIn.detalles?.length || dtoIn.numero_cncre || dtoIn.autorizacion_cncre) {
+                    throw new BadRequestException(
+                        'Un comprobante de retención electrónico no admite cambios de detalle/valores ni de '
+                        + 'número/autorización. Anule el comprobante y registre uno nuevo si necesita cambiar montos.',
+                    );
+                }
+                updCab.where = 'ide_cncre = $1';
+                updCab.addIntParam(1, dtoIn.ide_cncre);
+                await this.dataSource.createQuery(updCab);
+                return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cpcfa: Number(ret.ide_cpcfa) };
+            }
+
+            // ── Retención física: edición completa ──────────────────────────────
+            if (!dtoIn.detalles?.length) {
+                throw new BadRequestException('Debe ingresar detalles al comprobante de retención');
+            }
+
+            // La transacción de retención no debe haber sido aplicada a un pago
+            const qPagada = new SelectQuery(`
+                SELECT 1 AS existe FROM cxp_detall_transa
+                WHERE ide_cpcfa = $1 AND ide_cpttr = $2 AND numero_pago_cpdtr <> 0
+                LIMIT 1
+            `);
+            qPagada.addIntParam(1, Number(ret.ide_cpcfa));
+            qPagada.addIntParam(2, this.getVar('p_cxp_tipo_trans_retencion'));
+            const pagada = await this.dataSource.createSingleQuery(qPagada);
+            if (pagada) {
+                throw new BadRequestException(
+                    'No se puede editar: la retención ya fue aplicada a un pago. Reverse el pago primero.',
+                );
+            }
+
+            if (dtoIn.numero_cncre || dtoIn.autorizacion_cncre) {
+                if (!dtoIn.numero_cncre) throw new BadRequestException('Debe ingresar el número de retención');
+                if (!dtoIn.autorizacion_cncre) {
+                    throw new BadRequestException('Debe ingresar el número de autorización de la retención');
+                }
+                const qDup = new SelectQuery(`
+                    SELECT 1 AS existe FROM ${TABLE_RET_CAB}
+                    WHERE autorizacion_cncre = $1 AND numero_cncre = $2 AND ide_cncre <> $3
+                    LIMIT 1
+                `);
+                qDup.addStringParam(1, dtoIn.autorizacion_cncre);
+                qDup.addStringParam(2, dtoIn.numero_cncre);
+                qDup.addIntParam(3, dtoIn.ide_cncre);
+                const dup = await this.dataSource.createSingleQuery(qDup);
+                if (dup) throw new BadRequestException('El número de retención ya existe');
+                updCab.values.set('numero_cncre', dtoIn.numero_cncre);
+                updCab.values.set('autorizacion_cncre', dtoIn.autorizacion_cncre);
+            }
+
+            await this.validarCuadreBases(ret, dtoIn.detalles, dtoIn.validar_totales);
+
+            const totalRetencion = Number(
+                dtoIn.detalles.reduce((sum, d) => sum + this.valorDetalle(d), 0).toFixed(2),
+            );
+
+            updCab.where = 'ide_cncre = $1';
+            updCab.addIntParam(1, dtoIn.ide_cncre);
+            listQuery.push(updCab);
+
+            const delDet = new DeleteQuery(TABLE_RET_DET);
+            delDet.where = 'ide_cncre = $1';
+            delDet.addIntParam(1, dtoIn.ide_cncre);
+            listQuery.push(delDet);
+
+            const baseIdeCndre = await this.dataSource.getSeqTable(TABLE_RET_DET, PK_RET_DET, dtoIn.detalles.length, dtoIn.login);
+            dtoIn.detalles.forEach((det, idx) => {
+                const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
+                insDet.values.set(PK_RET_DET, baseIdeCndre + idx);
+                insDet.values.set(PK_RET_CAB, dtoIn.ide_cncre);
+                insDet.values.set('ide_cncim', det.ide_cncim);
+                insDet.values.set('porcentaje_cndre', det.porcentaje_cndre);
+                insDet.values.set('base_cndre', det.base_cndre);
+                insDet.values.set('valor_cndre', this.valorDetalle(det));
+                insDet.values.set('fecha_ingre', getCurrentDate());
+                insDet.values.set('hora_ingre', getCurrentTime());
+                listQuery.push(insDet);
+            });
+
+            const delTrn = new DeleteQuery('cxp_detall_transa');
+            delTrn.where = 'ide_cpcfa = $1 AND ide_cpttr = $2 AND numero_pago_cpdtr = 0';
+            delTrn.addIntParam(1, Number(ret.ide_cpcfa));
+            delTrn.addIntParam(2, this.getVar('p_cxp_tipo_trans_retencion'));
+            listQuery.push(delTrn);
+
+            if (totalRetencion > 0) {
+                const qTrn = new SelectQuery(`SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpcfa = $1`);
+                qTrn.addIntParam(1, Number(ret.ide_cpcfa));
+                const trn = await this.dataSource.createSingleQuery(qTrn);
+                if (!trn) throw new BadRequestException('El documento no tiene transacción de cuenta por pagar asociada.');
+
+                const ideCpdtr = await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login);
+                const insTrn = new InsertQuery('cxp_detall_transa', 'ide_cpdtr', dtoIn);
+                insTrn.values.set('ide_cpdtr', ideCpdtr);
+                insTrn.values.set('ide_cpctr', Number(trn.ide_cpctr));
+                insTrn.values.set('ide_cpcfa', Number(ret.ide_cpcfa));
+                insTrn.values.set('ide_cpttr', this.getVar('p_cxp_tipo_trans_retencion'));
+                insTrn.values.set('ide_usua', dtoIn.ideUsua);
+                insTrn.values.set('fecha_trans_cpdtr', ret.fecha_trans_cpcfa ?? getCurrentDate());
+                insTrn.values.set('fecha_venci_cpdtr', ret.fecha_trans_cpcfa ?? getCurrentDate());
+                insTrn.values.set('valor_cpdtr', totalRetencion);
+                insTrn.values.set('observacion_cpdtr', `V/. RETENCIÓN FACTURA N. ${ret.numero_cpcfa} (editada)`);
+                insTrn.values.set('numero_pago_cpdtr', 0);
+                insTrn.values.set('docum_relac_cpdtr', ret.numero_cpcfa);
+                insTrn.values.set('ide_cnccc', ret.ide_cnccc ?? null);
+                insTrn.values.set('valor_anticipo_cpdtr', 0);
+                insTrn.values.set('fecha_ingre', getCurrentDate());
+                insTrn.values.set('hora_ingre', getCurrentTime());
+                listQuery.push(insTrn);
+            }
+
+            await this.dataSource.createListQuery(listQuery);
+            return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cpcfa: Number(ret.ide_cpcfa), total_retencion: totalRetencion };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al editar la retención: ${msg}`);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -362,6 +559,16 @@ export class RetencionesCxPSaveService extends BaseService {
 
         // Cuadre de bases contra el documento (con_cabece_impues.ide_cnimp = 1 → renta)
         if (dtoIn.validar_totales === false) return;
+        await this.validarCuadreBases(doc, detalles);
+    }
+
+    /** Cuadre de bases imponibles del detalle de retención contra el documento origen. */
+    private async validarCuadreBases(
+        doc: any,
+        detalles: DetalleRetencionCxPDto[],
+        validarTotales?: boolean,
+    ) {
+        if (validarTotales === false) return;
 
         const ids = [...new Set(detalles.map((d) => d.ide_cncim))];
         const qImp = new SelectQuery(`

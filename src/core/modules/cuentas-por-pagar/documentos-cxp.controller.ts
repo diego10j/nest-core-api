@@ -159,6 +159,13 @@ export class DocumentosCxPController {
         return this.service.getSecuencialLiquidacion(headersParams);
     }
 
+    @Get('getPuntosEmisionLiquidacion')
+    @Auth()
+    @ApiOperation({ summary: 'Listar puntos de emisión habilitados para Liquidación de Compra electrónica' })
+    getPuntosEmisionLiquidacion(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getPuntosEmisionLiquidacion(headersParams);
+    }
+
     @Get('getDocumentosAnulados')
     @Auth()
     @ApiOperation({ summary: 'Listar documentos CxP anulados en rango de fechas' })
@@ -344,7 +351,7 @@ export class DocumentosCxPController {
     @Post('importarXML')
     @Auth()
     @ApiOperation({
-        summary: 'Parsear un XML de factura electrónica SRI y retornar la data para el formulario (no guarda)',
+        summary: 'Parsear un XML de factura o nota de crédito electrónica SRI y retornar la data para el formulario (no guarda)',
     })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
@@ -371,7 +378,7 @@ export class DocumentosCxPController {
         @UploadedFile() file: Express.Multer.File,
     ) {
         if (!file) throw new BadRequestException('Debe seleccionar un archivo XML');
-        return this.xmlService.parseFacturaXml(file.buffer, headersParams);
+        return this.xmlService.parseXmlDocumento(file.buffer, headersParams);
     }
 
 }

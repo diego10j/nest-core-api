@@ -7,6 +7,10 @@ import { AuditService } from '../audit/audit.service';
 import { AsientosAutomaticosService } from './asientos-automaticos.service';
 import { ComprobanteContabilidadController } from './comprobante-contabilidad/comprobante-contabilidad.controller';
 import { ComprobanteContabilidadService } from './comprobante-contabilidad/comprobante-contabilidad.service';
+import { ConfigAsientosController } from './config-asientos/config-asientos.controller';
+import { ConfigAsientosService } from './config-asientos/config-asientos.service';
+import { ConfigImpuestosController } from './config-impuestos/config-impuestos.controller';
+import { ConfigImpuestosService } from './config-impuestos/config-impuestos.service';
 import { ContabilidadController } from './contabilidad.controller';
 import { ContabilidadService } from './contabilidad.service';
 import { ContabilidadBiController } from './data-bi/contabilidad-bi.controller';
@@ -27,6 +31,8 @@ import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
     ContabilidadBiController,
     FlujoEfectivoController,
     ComprobanteContabilidadController,
+    ConfigImpuestosController,
+    ConfigAsientosController,
   ],
   providers: [
     AuditService,
@@ -38,6 +44,8 @@ import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
     FlujoEfectivoService,
     ComprobanteContabilidadService,
     AsientosAutomaticosService,
+    ConfigImpuestosService,
+    ConfigAsientosService,
   ],
   exports: [ContabilidadService, ComprobanteContabilidadService, AsientosAutomaticosService],
 })

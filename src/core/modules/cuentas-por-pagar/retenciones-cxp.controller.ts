@@ -5,7 +5,12 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
 import { EnviarSriRetencionCxPDto } from './dto/enviar-sri-retencion-cxp.dto';
-import { AnularRetencionCxPDto, IdDocumentoCxPDto, SaveRetencionCxPDto } from './dto/save-retencion-cxp.dto';
+import {
+    AnularRetencionCxPDto,
+    EditarRetencionCxPDto,
+    IdDocumentoCxPDto,
+    SaveRetencionCxPDto,
+} from './dto/save-retencion-cxp.dto';
 import { RetencionesCxPSaveService } from './retenciones-cxp-save.service';
 import { RetencionesCxPService } from './retenciones-cxp.service';
 
@@ -79,5 +84,15 @@ export class RetencionesCxPController {
         @Body() dtoIn: AnularRetencionCxPDto,
     ) {
         return this.saveService.anularRetencion({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('editarRetencion')
+    @Auth()
+    @ApiOperation({ summary: 'Editar un comprobante de retención ya guardado (solo físico, o campos cosméticos si es electrónico y aún no autorizado)' })
+    editarRetencion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EditarRetencionCxPDto,
+    ) {
+        return this.saveService.editarRetencion({ ...headersParams, ...dtoIn });
     }
 }

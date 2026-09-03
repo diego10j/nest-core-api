@@ -93,6 +93,57 @@ export class AnularRetencionCxPDto {
     @IsInt()
     @IsNotEmpty()
     ide_cncre: number;
+
+    /** Debe enviarse en true para anular un comprobante ya AUTORIZADO por el SRI (ver advertencia en el servicio) */
+    @IsBoolean()
+    @IsOptional()
+    confirmar_autorizado?: boolean;
+}
+
+/**
+ * Edición del comprobante de retención de un documento CxP ya guardado (reemplaza
+ * con_detall_retenc y recalcula la transacción CxP asociada). Solo permitido si el
+ * comprobante NO fue enviado/autorizado por el SRI y su transacción de retención no ha
+ * sido aplicada a un pago.
+ */
+export class EditarRetencionCxPDto {
+    /** FK → con_cabece_retenc */
+    @IsInt()
+    @IsNotEmpty()
+    ide_cncre: number;
+
+    @IsDateString()
+    @IsOptional()
+    fecha_emisi_cncre?: string;
+
+    /** Solo aplica a retención física */
+    @IsString()
+    @IsOptional()
+    numero_cncre?: string;
+
+    /** Solo aplica a retención física */
+    @IsString()
+    @IsOptional()
+    autorizacion_cncre?: string;
+
+    @IsString()
+    @IsOptional()
+    observacion_cncre?: string;
+
+    @IsEmail()
+    @IsOptional()
+    correo_cncre?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    validar_totales?: boolean;
+
+    /** Vacío/omitido cuando el comprobante es electrónico (solo se editan campos cosméticos) */
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => DetalleRetencionCxPDto)
+    @IsOptional()
+    detalles?: DetalleRetencionCxPDto[];
 }
 
 export class IdDocumentoCxPDto {

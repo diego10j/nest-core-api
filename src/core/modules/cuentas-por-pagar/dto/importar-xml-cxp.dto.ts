@@ -70,6 +70,25 @@ export interface InfoAdicionalXmlCxP {
     valor: string;
 }
 
+/** Datos del "documento modificado" que trae un XML de Nota de Crédito (<infoNotaCredito>),
+ * resueltos contra la factura real del proveedor en cxp_cabece_factur (ver
+ * DocumentosCxPXmlService.resolverFacturaModificada). El XML de NC del SRI no trae la
+ * autorización/clave de acceso de la factura original, solo su número (numDocModificado) y
+ * fecha - por eso la autorización se resuelve buscando en la BD, no se lee del XML. */
+export interface NotaCreditoXmlCxP {
+    /** <infoNotaCredito><numDocModificado> (estab-ptoEmi-secuencial) */
+    numDocModificado: string;
+    /** <infoNotaCredito><fechaEmisionDocSustento> */
+    fechaEmisionDocSustento?: string;
+    /** <infoNotaCredito><motivo> */
+    motivo?: string;
+    /** true si se encontró una factura del proveedor con ese número en el sistema */
+    facturaEncontrada: boolean;
+    /** autorizacio_cpcfa de la factura encontrada (solo si facturaEncontrada=true) */
+    autorizacioFacturaOriginal?: string;
+    ideCntdoFacturaOriginal?: number;
+}
+
 export interface ImportarXmlCxPResult {
     // Proveedor
     ide_geper: number;
@@ -93,4 +112,9 @@ export interface ImportarXmlCxPResult {
     comprobante: ComprobanteXmlCxP;
     comprador: CompradorXmlCxP;
     infoAdicional: InfoAdicionalXmlCxP[];
+    /** Solo presente cuando el XML importado es una Nota de Crédito (codDoc=04) */
+    notaCredito?: NotaCreditoXmlCxP;
+    /** Aviso no bloqueante para el usuario (ej. no se encontró la factura referenciada, debe
+     * seleccionarla manualmente) */
+    advertencia?: string;
 }

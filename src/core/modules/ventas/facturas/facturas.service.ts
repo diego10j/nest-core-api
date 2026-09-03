@@ -1460,6 +1460,7 @@ export class FacturasService extends BaseService {
             `
             SELECT
                 a.ide_cndre,
+                a.ide_cncim,
                 b.nombre_cncim,
                 b.casillero_cncim,
                 a.porcentaje_cndre,

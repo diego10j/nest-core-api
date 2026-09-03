@@ -6,7 +6,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
-import { AnularRetencionVentaDto, SaveRetencionVentaDto } from './dto/save-retencion-venta.dto';
+import { AnularRetencionVentaDto, EditarRetencionVentaDto, SaveRetencionVentaDto } from './dto/save-retencion-venta.dto';
 import { RetencionVentaSaveService } from './retencion-venta-save.service';
 import { RetencionVentaXmlService } from './retencion-venta-xml.service';
 
@@ -67,5 +67,15 @@ export class RetencionVentaController {
         @Body() dtoIn: AnularRetencionVentaDto,
     ) {
         return this.saveService.anularRetencion({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('editarRetencion')
+    @Auth()
+    @ApiOperation({ summary: 'Editar el comprobante de retención ya registrado de una factura de venta' })
+    editarRetencion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: EditarRetencionVentaDto,
+    ) {
+        return this.saveService.editarRetencion({ ...headersParams, ...dtoIn });
     }
 }

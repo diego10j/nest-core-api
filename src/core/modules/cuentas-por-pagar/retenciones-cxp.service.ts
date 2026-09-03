@@ -4,12 +4,28 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
+import { EstadoComprobanteEnum } from 'src/core/modules/sri/cel/enum/estado-comprobante.enum';
 
 import { DocumentosCxPService } from './documentos-cxp.service';
 import { IdDocumentoCxPDto } from './dto/save-retencion-cxp.dto';
 
 /** Identificador de configuración contable para el casillero de renta por artículo */
 const IDENTIFICADOR_RENTA_CXP = 'RETENCION RENTA POR PAGAR';
+
+/** Días hábiles (lunes a viernes) entre dos fechas, sin contar el día inicial. Aproximado: no descuenta feriados. */
+function contarDiasHabiles(desde: Date, hasta: Date): number {
+    let dias = 0;
+    const cursor = new Date(desde);
+    cursor.setHours(0, 0, 0, 0);
+    const fin = new Date(hasta);
+    fin.setHours(0, 0, 0, 0);
+    while (cursor < fin) {
+        cursor.setDate(cursor.getDate() + 1);
+        const diaSemana = cursor.getDay();
+        if (diaSemana !== 0 && diaSemana !== 6) dias += 1;
+    }
+    return dias;
+}
 
 export interface SugerenciaDetalleRetencion {
     ide_cncim: number;
@@ -59,8 +75,10 @@ export class RetencionesCxPService extends BaseService {
                    r.correo_cncre,
                    r.ide_cnere,
                    r.ide_srcom,
+                   s.ide_sresc,
                    d.ide_cpcfa
             FROM con_cabece_retenc r
+            LEFT JOIN sri_comprobante s ON r.ide_srcom = s.ide_srcom
             INNER JOIN cxp_cabece_factur d ON d.ide_cncre = r.ide_cncre
             WHERE d.ide_cpcfa = $1
             LIMIT 1
@@ -68,6 +86,7 @@ export class RetencionesCxPService extends BaseService {
         qCab.addIntParam(1, dtoIn.ide_cpcfa);
         const cabecera = await this.dataSource.createSingleQuery(qCab);
         if (!cabecera) return { cabecera: null, detalles: [] };
+        cabecera.autorizado_sri = Number(cabecera.ide_sresc) === EstadoComprobanteEnum.AUTORIZADO.codigo;
 
         const qDet = new SelectQuery(`
             SELECT d.ide_cndre,
@@ -145,12 +164,26 @@ export class RetencionesCxPService extends BaseService {
         // ── Proveedor ────────────────────────────────────────────────────────
         const qProv = new SelectQuery(`
             SELECT p.ide_geper, p.nom_geper, p.identificac_geper, p.direccion_geper,
-                   p.correo_geper, p.ide_cntco
+                   p.correo_geper, p.ide_cntco, t.nombre_cntco, COALESCE(t.no_retener_cntco, FALSE) AS no_retener_cntco
             FROM gen_persona p
+            LEFT JOIN con_tipo_contribu t ON t.ide_cntco = p.ide_cntco
             WHERE p.ide_geper = $1
         `);
         qProv.addIntParam(1, Number(doc.ide_geper));
         const proveedor = await this.dataSource.createSingleQuery(qProv);
+
+        const advertencias: string[] = [];
+        if (proveedor?.no_retener_cntco) {
+            advertencias.push(
+                `El proveedor está clasificado como "${proveedor.nombre_cntco}". Verifique la normativa vigente del SRI antes de generar la retención: en muchos casos no corresponde retener IVA a este tipo de contribuyente (ej. Contribuyente Especial / Grande Contribuyente), aunque la retención de Renta puede seguir aplicando según el tipo de transacción.`,
+            );
+        }
+        const diasHabilesDesdeEmision = contarDiasHabiles(new Date(doc.fecha_emisi_cpcfa), new Date());
+        if (diasHabilesDesdeEmision > 5) {
+            advertencias.push(
+                `Han pasado ${diasHabilesDesdeEmision} días hábiles desde la emisión de la factura (${doc.fecha_emisi_cpcfa}). El Reglamento de Comprobantes de Venta, Retención y Documentos Complementarios establece un plazo máximo de 5 días hábiles para emitir el comprobante de retención.`,
+            );
+        }
 
         // Correo usado en la última retención del proveedor (paridad legacy)
         const qCorreo = new SelectQuery(`
@@ -199,6 +232,8 @@ export class RetencionesCxPService extends BaseService {
                 identificac_geper: proveedor?.identificac_geper ?? null,
                 direccion_geper: proveedor?.direccion_geper ?? null,
                 correo: correoRet?.correo_cncre ?? proveedor?.correo_geper ?? null,
+                nombre_cntco: proveedor?.nombre_cntco ?? null,
+                no_retener: Boolean(proveedor?.no_retener_cntco),
             },
             base_imponible_renta: Number(baseRenta.toFixed(2)),
             base_imponible_iva: Number(baseIva.toFixed(2)),
@@ -207,6 +242,7 @@ export class RetencionesCxPService extends BaseService {
             numero_sugerido: sugerenciaNumero.numero,
             autorizacion_sugerida: sugerenciaNumero.autorizacion,
             detalles_sugeridos: sugerencias,
+            advertencias,
         };
     }
 

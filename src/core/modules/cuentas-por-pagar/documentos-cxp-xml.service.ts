@@ -6,10 +6,12 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import { DocumentosCxPService } from './documentos-cxp.service';
-import { DetalleXmlCxP, ImportarXmlCxPResult } from './dto/importar-xml-cxp.dto';
+import { DetalleXmlCxP, ImportarXmlCxPResult, NotaCreditoXmlCxP } from './dto/importar-xml-cxp.dto';
 
 /** Código SRI de comprobante tipo factura */
 const COD_DOC_FACTURA = '01';
+/** Código SRI de comprobante tipo nota de crédito */
+const COD_DOC_NOTA_CREDITO = '04';
 /** Longitudes válidas de autorización SRI (10 física, 37/49 clave de acceso) - mismo criterio que documentos-cxp-save.service.ts */
 const LONGITUDES_AUTORIZACION = [10, 37, 49];
 /** Código SRI de porcentaje IVA 0% */
@@ -18,11 +20,14 @@ const COD_PORCENTAJE_IVA_0 = '0';
 const COD_PORCENTAJE_NO_OBJETO = '6';
 /** Tipo de documento CxP "Factura" (variable p_con_tipo_documento_factura) */
 const VAR_TIPO_DOC_FACTURA = 'p_con_tipo_documento_factura';
+/** Tipo de documento CxP "Nota de Crédito" (variable p_con_tipo_documento_nota_credito) */
+const VAR_TIPO_DOC_NOTA_CREDITO = 'p_con_tipo_documento_nota_credito';
 
 /**
- * Parsea un XML de factura electrónica del SRI (Ecuador) y retorna la data
- * lista para poblar el formulario del documento CxP. NO persiste nada.
- * Migrado de DocumentoCxP.seleccionarArchivoXML del legacy.
+ * Parsea un XML de comprobante electrónico del SRI recibido de un proveedor (factura o nota
+ * de crédito) y retorna la data lista para poblar el formulario del documento CxP. NO persiste
+ * nada. Migrado de DocumentoCxP.seleccionarArchivoXML del legacy (que en el original solo
+ * aceptaba factura).
  */
 @Injectable()
 export class DocumentosCxPXmlService {
@@ -32,7 +37,7 @@ export class DocumentosCxPXmlService {
         private readonly consultas: DocumentosCxPService,
     ) { }
 
-    async parseFacturaXml(
+    async parseXmlDocumento(
         fileBuffer: Buffer,
         _dtoIn: HeaderParamsDto,
     ): Promise<ImportarXmlCxPResult> {
@@ -71,9 +76,12 @@ export class DocumentosCxPXmlService {
 
             // ── Validaciones ─────────────────────────────────────────────────
             const codDoc = this.texto($, 'codDoc');
-            if (codDoc !== COD_DOC_FACTURA) {
-                throw new BadRequestException('Tipo de comprobante no válido: el XML no es una factura.');
+            if (codDoc !== COD_DOC_FACTURA && codDoc !== COD_DOC_NOTA_CREDITO) {
+                throw new BadRequestException(
+                    'Tipo de comprobante no válido: el XML debe ser una factura o una nota de crédito.',
+                );
             }
+            const esNotaCredito = codDoc === COD_DOC_NOTA_CREDITO;
 
             const ruc = this.texto($, 'infoTributaria ruc') || this.texto($, 'ruc');
             const proveedor = await this.getProveedorPorRuc(ruc);
@@ -95,7 +103,7 @@ export class DocumentosCxPXmlService {
             }
             const { existe } = await this.consultas.existeDocumentoElectronico(autorizacion);
             if (existe) {
-                throw new BadRequestException('La factura electrónica seleccionada ya se encuentra registrada.');
+                throw new BadRequestException('El comprobante electrónico seleccionado ya se encuentra registrado.');
             }
 
             // ── Cabecera ─────────────────────────────────────────────────────
@@ -131,14 +139,23 @@ export class DocumentosCxPXmlService {
                     if (tarifaTexto && tarifaNum >= 0) tarifaIvaXml = tarifaNum / 100;
                 }
 
+                // La nota de crédito usa codigoInterno/codigoAdicional en vez de
+                // codigoPrincipal/codigoAuxiliar (Ficha Técnica SRI) - se intentan ambos.
+                const codigoPrincipal =
+                    det.find('codigoPrincipal').first().text().trim() ||
+                    det.find('codigoInterno').first().text().trim();
+                const codigoAuxiliar =
+                    det.find('codigoAuxiliar').first().text().trim() ||
+                    det.find('codigoAdicional').first().text().trim();
+
                 detalles.push({
                     cantidad_cpdfa: this.numero(det.find('cantidad').first().text(), 3),
                     observacion_cpdfa: det.find('descripcion').first().text().trim(),
                     precio_cpdfa: this.numero(det.find('precioUnitario').first().text()),
                     valor_cpdfa: this.numero(det.find('precioTotalSinImpuesto').first().text()),
                     iva_inarti_cpdfa: ivaInarti,
-                    codigo_principal: det.find('codigoPrincipal').first().text().trim() || undefined,
-                    codigo_auxiliar: det.find('codigoAuxiliar').first().text().trim() || undefined,
+                    codigo_principal: codigoPrincipal || undefined,
+                    codigo_auxiliar: codigoAuxiliar || undefined,
                     descuento_cpdfa: this.numero(det.find('descuento').first().text()),
                 });
             });
@@ -157,7 +174,37 @@ export class DocumentosCxPXmlService {
             const tarifaIva = tarifaIvaXml ?? await this.consultas.getPorcentajeIva(fechaEmision);
             const totales = this.calcularTotales(detalles, tarifaIva);
 
-            const variables = await this.core.getVariables([VAR_TIPO_DOC_FACTURA]);
+            const variables = await this.core.getVariables([
+                VAR_TIPO_DOC_FACTURA,
+                VAR_TIPO_DOC_NOTA_CREDITO,
+            ]);
+
+            let notaCredito: NotaCreditoXmlCxP | undefined;
+            let advertencia: string | undefined;
+            if (esNotaCredito) {
+                const numDocModificado = this.texto($, 'numDocModificado');
+                const fechaEmisionDocSustento = this.texto($, 'fechaEmisionDocSustento');
+                const motivo = this.texto($, 'motivo');
+                const facturaOriginal = await this.buscarFacturaModificada(
+                    Number(proveedor.ide_geper),
+                    numDocModificado,
+                );
+                notaCredito = {
+                    numDocModificado,
+                    fechaEmisionDocSustento: fechaEmisionDocSustento || undefined,
+                    motivo: motivo || undefined,
+                    facturaEncontrada: !!facturaOriginal,
+                    autorizacioFacturaOriginal: facturaOriginal
+                        ? String(facturaOriginal.autorizacio_cpcfa)
+                        : undefined,
+                    ideCntdoFacturaOriginal: facturaOriginal
+                        ? Number(facturaOriginal.ide_cntdo)
+                        : undefined,
+                };
+                if (!facturaOriginal) {
+                    advertencia = `No se encontró en el sistema la factura de compra ${numDocModificado || '(sin número)'} del proveedor - selecciónela manualmente antes de guardar.`;
+                }
+            }
 
             // Solo para el RIDE (vista previa) - el proveedor real a usar en el documento CxP
             // sigue siendo el de gen_persona (getProveedorPorRuc), estos campos son tal cual
@@ -183,7 +230,9 @@ export class DocumentosCxPXmlService {
                 ide_geper: Number(proveedor.ide_geper),
                 nom_geper: proveedor.nom_geper,
                 identificac_geper: proveedor.identificac_geper,
-                ide_cntdo: Number(variables.get(VAR_TIPO_DOC_FACTURA) ?? 0),
+                ide_cntdo: Number(
+                    variables.get(esNotaCredito ? VAR_TIPO_DOC_NOTA_CREDITO : VAR_TIPO_DOC_FACTURA) ?? 0,
+                ),
                 numero_cpcfa: numero,
                 autorizacio_cpcfa: autorizacion,
                 fecha_emisi_cpcfa: fechaEmision,
@@ -217,11 +266,13 @@ export class DocumentosCxPXmlService {
                     identificacion: identificacionComprador || undefined,
                 },
                 infoAdicional,
+                notaCredito,
+                advertencia,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             const msg = error instanceof Error ? error.message : String(error);
-            throw new InternalServerErrorException(`Error al leer la factura XML: ${msg}`);
+            throw new InternalServerErrorException(`Error al leer el XML del comprobante: ${msg}`);
         }
     }
 
@@ -258,6 +309,25 @@ export class DocumentosCxPXmlService {
             LIMIT 1
         `);
         q.addStringParam(1, ruc);
+        return this.dataSource.createSingleQuery(q);
+    }
+
+    /** Busca la factura del proveedor que una Nota de Crédito dice modificar, por número de
+     * comprobante (estab-ptoEmi-secuencial) - la autorización del documento modificado NO viene
+     * en el XML de la NC (Ficha Técnica SRI), por eso se resuelve acá contra la BD en vez de
+     * confiar en un campo del XML. Solo considera facturas no anuladas (ide_cpefa = 0, mismo
+     * criterio que existeDocumentoElectronico). */
+    private async buscarFacturaModificada(ideGeper: number, numero: string) {
+        if (!numero) return undefined;
+        const q = new SelectQuery(`
+            SELECT ide_cpcfa, ide_cntdo, autorizacio_cpcfa
+            FROM cxp_cabece_factur
+            WHERE ide_geper = $1 AND numero_cpcfa = $2 AND ide_cpefa = 0
+            ORDER BY ide_cpcfa DESC
+            LIMIT 1
+        `);
+        q.addIntParam(1, ideGeper);
+        q.addStringParam(2, numero);
         return this.dataSource.createSingleQuery(q);
     }
 

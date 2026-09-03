@@ -77,6 +77,40 @@ export class AnularRetencionVentaDto {
     ide_cncre: number;
 }
 
+/**
+ * Edición del comprobante de retención de una factura de venta ya registrado (corrige un
+ * error de digitación al importar/registrar el comprobante recibido del cliente). Solo
+ * permitido si la transacción CxC de retención no ha sido aplicada a un cobro.
+ */
+export class EditarRetencionVentaDto {
+    /** FK → con_cabece_retenc */
+    @IsInt()
+    @IsNotEmpty()
+    ide_cncre: number;
+
+    @IsDateString()
+    @IsOptional()
+    fecha_emisi_cncre?: string;
+
+    @IsString()
+    @IsOptional()
+    numero_cncre?: string;
+
+    @IsString()
+    @IsOptional()
+    autorizacion_cncre?: string;
+
+    @IsString()
+    @IsOptional()
+    observacion_cncre?: string;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => DetalleRetencionVentaDto)
+    @IsOptional()
+    detalles?: DetalleRetencionVentaDto[];
+}
+
 export class IdFacturaVentaDto {
     /** FK → cxc_cabece_factura */
     @IsInt()

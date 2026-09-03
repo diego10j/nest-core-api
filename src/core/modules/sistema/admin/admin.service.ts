@@ -66,7 +66,7 @@ export class AdminService {
     const qs = new SelectQuery(`
       SELECT ide_sucu, ide_empr, nom_sucu, nombre_comercial_sucu,
              identicicacion_sucu, direccion_sucu, telefonos_sucu,
-             correo_sucu, logotipo_sucu, pagina_sucu
+             correo_sucu, logotipo_sucu, pagina_sucu, agente_ret_sucu
       FROM sis_sucursal
       WHERE ide_sucu = $1
     `);

@@ -159,7 +159,7 @@ export class FleteConsolidadoService {
             );
         }
 
-        const parsed = await this.xmlService.parseFacturaXml(fileBuffer, dtoIn);
+        const parsed = await this.xmlService.parseXmlDocumento(fileBuffer, dtoIn);
 
         if (Number(parsed.ide_geper) !== Number(ideGeperTransporte)) {
             throw new BadRequestException(
