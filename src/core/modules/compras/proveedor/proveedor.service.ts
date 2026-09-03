@@ -965,6 +965,7 @@ export class ProveedorService extends BaseService {
         LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = ct.ide_cpttr
         LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
         WHERE ct.ide_geper = $1
+          AND ct.ide_empr = ${dtoIn.ideEmpr}
           AND ct.ide_sucu = ${dtoIn.ideSucu}
           AND ct.fecha_trans_cpctr BETWEEN $2 AND $3
         GROUP BY ct.ide_cpctr, ct.fecha_trans_cpctr, ct.ide_cpttr, tt.nombre_cpttr,
@@ -985,7 +986,7 @@ export class ProveedorService extends BaseService {
   async getDetalleCabeceraTrn(dtoIn: IdeCpctrDto & HeaderParamsDto) {
     const qCab = new SelectQuery(`
         SELECT ct.ide_cpctr, ct.ide_geper, ct.fecha_trans_cpctr, ct.ide_cpttr,
-               ct.ide_cpcfa, cf.numero_cpcfa, ct.observacion_cpctr, p.nom_geper
+               ct.ide_cpcfa, cf.numero_cpcfa, ct.observacion_cpctr, p.nom_geper, p.identificac_geper
         FROM cxp_cabece_transa ct
         LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
         LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
@@ -1033,12 +1034,15 @@ export class ProveedorService extends BaseService {
 
     const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
     const query = new SelectQuery(`
-        SELECT ide_cpcfa, numero_cpcfa, fecha_emisi_cpcfa, total_cpcfa, pagado_cpcfa
-        FROM cxp_cabece_factur
-        WHERE ide_geper = $1 AND ide_empr = ${dtoIn.ideEmpr} AND ide_cntdo = ${ideCntdo}
-          AND (regexp_replace(unaccent(LOWER(COALESCE(numero_cpcfa, ''))), '[^a-z0-9]', '', 'g') LIKE $2
-               OR CAST(ide_cpcfa AS VARCHAR) LIKE $2)
-        ORDER BY fecha_emisi_cpcfa DESC
+        SELECT cf.ide_cpcfa, cf.numero_cpcfa, cf.fecha_emisi_cpcfa, cf.total_cpcfa, cf.pagado_cpcfa,
+               p.nom_geper
+        FROM cxp_cabece_factur cf
+        LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+        WHERE cf.ide_geper = $1 AND cf.ide_empr = ${dtoIn.ideEmpr} AND cf.ide_sucu = ${dtoIn.ideSucu}
+          AND cf.ide_cntdo = ${ideCntdo}
+          AND (regexp_replace(unaccent(LOWER(COALESCE(cf.numero_cpcfa, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+               OR CAST(cf.ide_cpcfa AS VARCHAR) LIKE $2)
+        ORDER BY cf.fecha_emisi_cpcfa DESC
         LIMIT ${dtoIn.limit}
     `);
     query.addIntParam(1, dtoIn.ide_geper);
@@ -1053,12 +1057,13 @@ export class ProveedorService extends BaseService {
   async searchAsientoProveedor(dtoIn: SearchAsientoProveedorDto & HeaderParamsDto) {
     const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
     const query = new SelectQuery(`
-        SELECT ide_cnccc, fecha_trans_cnccc, observacion_cnccc
-        FROM con_cab_comp_cont
-        WHERE ide_geper = $1 AND ide_sucu = ${dtoIn.ideSucu}
-          AND (CAST(ide_cnccc AS VARCHAR) LIKE $2
-               OR regexp_replace(unaccent(LOWER(COALESCE(observacion_cnccc, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
-        ORDER BY fecha_trans_cnccc DESC
+        SELECT cc.ide_cnccc, cc.fecha_trans_cnccc, cc.observacion_cnccc, p.nom_geper
+        FROM con_cab_comp_cont cc
+        LEFT JOIN gen_persona p ON p.ide_geper = cc.ide_geper
+        WHERE cc.ide_geper = $1 AND cc.ide_empr = ${dtoIn.ideEmpr} AND cc.ide_sucu = ${dtoIn.ideSucu}
+          AND (CAST(cc.ide_cnccc AS VARCHAR) LIKE $2
+               OR regexp_replace(unaccent(LOWER(COALESCE(cc.observacion_cnccc, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+        ORDER BY cc.fecha_trans_cnccc DESC
         LIMIT ${dtoIn.limit}
     `);
     query.addIntParam(1, dtoIn.ide_geper);
@@ -1074,13 +1079,17 @@ export class ProveedorService extends BaseService {
   async searchLibroBancoProveedor(dtoIn: SearchLibroBancoProveedorDto & HeaderParamsDto) {
     const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
     const query = new SelectQuery(`
-        SELECT DISTINCT lb.ide_teclb, lb.fecha_trans_teclb, lb.numero_teclb
+        SELECT DISTINCT lb.ide_teclb, lb.fecha_trans_teclb, lb.numero_teclb,
+               lb.beneficiari_teclb, lb.observacion_teclb
         FROM tes_cab_libr_banc lb
         INNER JOIN cxp_detall_transa dt ON dt.ide_teclb = lb.ide_teclb
         INNER JOIN cxp_cabece_transa ct ON ct.ide_cpctr = dt.ide_cpctr
         WHERE ct.ide_geper = $1
+          AND lb.ide_empr = ${dtoIn.ideEmpr} AND lb.ide_sucu = ${dtoIn.ideSucu}
           AND (CAST(lb.ide_teclb AS VARCHAR) LIKE $2
-               OR regexp_replace(unaccent(LOWER(COALESCE(lb.numero_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+               OR regexp_replace(unaccent(LOWER(COALESCE(lb.numero_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+               OR regexp_replace(unaccent(LOWER(COALESCE(lb.beneficiari_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+               OR regexp_replace(unaccent(LOWER(COALESCE(lb.observacion_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
         ORDER BY lb.fecha_trans_teclb DESC
         LIMIT ${dtoIn.limit}
     `);
@@ -1103,6 +1112,7 @@ export class ProveedorService extends BaseService {
         LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = ct.ide_cpttr
         LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = ct.ide_cpcfa
         WHERE ct.ide_geper = $1
+          AND ct.ide_empr = ${dtoIn.ideEmpr} AND ct.ide_sucu = ${dtoIn.ideSucu}
           AND (CAST(ct.ide_cpctr AS VARCHAR) LIKE $2 OR COALESCE(cf.numero_cpcfa, '') LIKE $2)
           ${excludeClause}
         ORDER BY ct.fecha_trans_cpctr DESC
