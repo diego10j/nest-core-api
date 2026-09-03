@@ -38,8 +38,14 @@ export class TransaccionesTesoreriaService extends BaseService {
      * Guarda o actualiza el movimiento de banco (tes_cab_libr_banc) y la
      * transacción de CxP (cxp_detall_transa) para cada detalle activo de
      * una orden de pago.
-     * - Si el registro ya existe en cxp_detall_transa → actualiza ambas tablas.
-     * - Si no existe → inserta en tes_cab_libr_banc y luego en cxp_detall_transa.
+     * - Si el registro ya existe en cxp_detall_transa → actualiza ambas tablas (sin cambios,
+     *   1 movimiento bancario por detalle, igual que antes de la consolidación).
+     * - Si no existe (pago nuevo) → los detalles se AGRUPAN por "mismo pago físico"
+     *   (mismo proveedor + cuenta + tipo de transacción + fecha + comprobante) y se crea UN
+     *   solo movimiento en tes_cab_libr_banc por el valor TOTAL del grupo, distribuido en un
+     *   registro de cxp_detall_transa por cada factura — igual criterio que el sistema legado
+     *   (Java): el movimiento bancario es por el total pagado; en CxP se reparte para saldar
+     *   cada factura, y la suma de esos detalles vuelve a dar el valor consolidado.
      * @param dtoIn ide_cpcop + ide_cpcdop_list (ids de detalles pagados) + parámetros de cabecera
      */
     async saveTransaccionOrdenPagoCxP(
@@ -83,16 +89,13 @@ export class TransaccionesTesoreriaService extends BaseService {
             operacion: 'insert' | 'update';
         }> = [];
 
+        // Resuelve de antemano, por cada detalle, si YA existe un registro de pago
+        // (numero_pago_cpdtr = 1) en cxp_detall_transa. Solo los que NO existen todavía entran
+        // a la consolidación nueva — los que ya existen (edición de un pago previo, posiblemente
+        // creado antes de esta consolidación) se actualizan uno por uno como siempre, para no
+        // tocar/fusionar movimientos bancarios ya conciliados o contabilizados.
+        const existentesPorDet = new Map<number, { ide_cpdtr: number; ide_teclb: number | null; ide_cnccc: number | null }>();
         for (const det of detalles) {
-            const esChequePosf = Number(det.ide_tettb) === IDE_TETTB_CHEQUE_POSFECHADO;
-            const ide_cpttr = esChequePosf ? IDE_CPTTR_CHEQUE_POSFECHADO : ide_cpttr_pago;
-            const fecha_venci_cpdtr = esChequePosf ? det.fecha_cheque_cpcdop : getCurrentDate();
-            const numero = det.num_comprobante_cpcdop ?? '000000';
-            const doc_relac = det.num_comprobante_cpcdop || det.num_documento_factura || '';
-            let ideTeclbParaAsiento: number;
-
-            // Busca el registro de PAGO (numero_pago_cpdtr = 1) para este ide_cpctr.
-            // El registro de la factura original NO se toca; solo se trabaja con el de pago.
             const existeQuery = new SelectQuery(`
                 SELECT det.ide_cpdtr, det.ide_teclb, lb.ide_cnccc
                 FROM   cxp_detall_transa det
@@ -103,21 +106,90 @@ export class TransaccionesTesoreriaService extends BaseService {
             `);
             existeQuery.addIntParam(1, det.ide_cpctr);
             const existe = await this.dataSource.createSingleQuery(existeQuery);
-            // Si el movimiento bancario ya tiene un asiento contable generado, no se regenera al
-            // editar (mismo criterio que anularTransaccionesOrdenPagoCxP: una vez contabilizado,
-            // no se toca desde este flujo — evitaría un asiento duplicado/huérfano).
-            const yaContabilizado = !!existe?.ide_cnccc;
+            if (existe) existentesPorDet.set(det.ide_cpcdop, existe);
+        }
 
-            if (existe) {
-                // ─── UPDATE ──────────────────────────────────────────────────────────
+        /**
+         * Genera/actualiza el asiento contable de UNA línea (best-effort: si falla, se registra
+         * en el log y la línea queda con `ide_cnccc = null` — no bloquea el pago).
+         * Se resuelve ANTES de insertar/actualizar tesorería/CxP (mismo orden que
+         * CxpTransaccionesSaveService.savePagoCxP) para poder embeber el `ide_cnccc` ya
+         * resuelto directamente en esos objetos, en vez de depender del `UPDATE ... WHERE
+         * ide_cnccc IS NULL` interno de generarAsientoPagoCxP — que con varias líneas nuevas
+         * compartiendo el mismo ide_teclb (todavía sin insertar ninguna) no podría distinguir
+         * a cuál de ellas pertenece cada asiento.
+         */
+        const resolverAsiento = async (params: {
+            ideTeclb: number;
+            fecha: string;
+            ideTecba: number;
+            ideTettb: number;
+            ideGeper: number;
+            valor: number;
+            observacion: string;
+            ideCnccc: number | null;
+        }): Promise<number | null> => {
+            try {
+                const datosAsiento = {
+                    ideTeclb: params.ideTeclb,
+                    fecha: params.fecha,
+                    ideTecba: params.ideTecba,
+                    ideTettb: params.ideTettb,
+                    ideGeper: params.ideGeper,
+                    valor: params.valor,
+                    observacion: params.observacion,
+                    ...dtoIn,
+                };
+                const result = params.ideCnccc
+                    ? await this.asientosAutomaticosService.actualizarAsientoPagoCxP({
+                        ...datosAsiento,
+                        ideCnccc: params.ideCnccc,
+                    })
+                    : await this.asientosAutomaticosService.generarAsientoPagoCxP(datosAsiento);
+                return result.generado ? (result.ide_cnccc ?? params.ideCnccc ?? null) : params.ideCnccc ?? null;
+            } catch (error) {
+                this.logger.warn(
+                    `Error en asiento automático de pago de orden CxP para ide_teclb=${params.ideTeclb}: ${error}`,
+                );
+                return params.ideCnccc ?? null;
+            }
+        };
 
-                // Si el registro CxP existe pero no tiene ide_teclb (creado antes sin libro banco),
-                // hay que insertar en tes_cab_libr_banc; si ya tiene ide_teclb, actualizar.
-                let ide_teclb_efectivo: number;
+        // ─── DETALLES QUE YA TENÍAN UN PAGO REGISTRADO: actualizar uno por uno ────────────────
+        // Tesorería + CxP se guardan en UN solo `core.save()` (mismo listQuery) para que ambas
+        // escrituras corran en la MISMA transacción SQL (BEGIN/COMMIT/ROLLBACK vía
+        // DataSourceService.createListQuery) — igual patrón que savePagoCxP/savePagoMultipleCxC.
+        for (const det of detalles) {
+            const existe = existentesPorDet.get(det.ide_cpcdop);
+            if (!existe) continue;
 
-                if (existe.ide_teclb) {
-                    // Actualiza el movimiento existente en el libro de banco
-                    const tesUpd: ObjectQueryDto = {
+            const esChequePosf = Number(det.ide_tettb) === IDE_TETTB_CHEQUE_POSFECHADO;
+            const ide_cpttr = esChequePosf ? IDE_CPTTR_CHEQUE_POSFECHADO : ide_cpttr_pago;
+            const fecha_venci_cpdtr = esChequePosf ? det.fecha_cheque_cpcdop : getCurrentDate();
+            const numero = det.num_comprobante_cpcdop ?? '000000';
+            const doc_relac = det.num_comprobante_cpcdop || det.num_documento_factura || '';
+            // Una vez contabilizado, no se regenera el asiento al editar (evita uno duplicado/huérfano).
+            const yaContabilizado = !!existe.ide_cnccc;
+
+            // Si el registro CxP existe pero no tiene ide_teclb (creado antes sin libro banco),
+            // hay que insertar en tes_cab_libr_banc; si ya tiene ide_teclb, actualizar.
+            const ide_teclb_efectivo = existe.ide_teclb
+                ?? await this.dataSource.getSeqTable('tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login);
+
+            const ideCnccc = await resolverAsiento({
+                ideTeclb: ide_teclb_efectivo,
+                fecha: det.fecha_pago_cpcdop,
+                ideTecba: det.ide_tecba,
+                ideTettb: det.ide_tettb,
+                ideGeper: det.ide_geper,
+                valor: det.valor_pagado_banco_cpcdop,
+                observacion: det.observacion_cpcdop || `Pago orden ${dtoIn.ide_cpcop}`,
+                ideCnccc: yaContabilizado ? existe.ide_cnccc : null,
+            });
+
+            const listQuery: ObjectQueryDto[] = [
+                existe.ide_teclb
+                    ? {
                         operation: 'update',
                         module: 'tes',
                         tableName: 'cab_libr_banc',
@@ -138,19 +210,10 @@ export class TransaccionesTesoreriaService extends BaseService {
                             num_comprobante_teclb: numero,
                             depositado_teclb: false,
                             devuelto_teclb: false,
+                            ide_cnccc: ideCnccc,
                         },
-                    };
-                    await this.core.save({ ...dtoIn, listQuery: [tesUpd], audit: false });
-                    ide_teclb_efectivo = existe.ide_teclb;
-                } else {
-                    // No hay movimiento bancario previo → crear uno nuevo
-                    ide_teclb_efectivo = await this.dataSource.getSeqTable(
-                        'tes_cab_libr_banc',
-                        'ide_teclb',
-                        1,
-                        dtoIn.login,
-                    );
-                    const tesIns: ObjectQueryDto = {
+                    }
+                    : {
                         operation: 'insert',
                         module: 'tes',
                         tableName: 'cab_libr_banc',
@@ -172,13 +235,10 @@ export class TransaccionesTesoreriaService extends BaseService {
                             depositado_teclb: false,
                             devuelto_teclb: false,
                             hora_ingre: getCurrentTime(),
+                            ide_cnccc: ideCnccc,
                         },
-                    };
-                    await this.core.save({ ...dtoIn, listQuery: [tesIns], audit: false });
-                }
-
-                // Actualiza la transacción en CxP con el ide_teclb resuelto
-                const cxpUpd: ObjectQueryDto = {
+                    },
+                {
                     operation: 'update',
                     module: 'cxp',
                     tableName: 'detall_transa',
@@ -195,28 +255,63 @@ export class TransaccionesTesoreriaService extends BaseService {
                         valor_cpdtr: det.valor_pagado_banco_cpcdop,
                         observacion_cpdtr: det.observacion_cpcdop ?? null,
                         docum_relac_cpdtr: doc_relac,
+                        ide_cnccc: ideCnccc,
                     },
-                };
-                await this.core.save({ ...dtoIn, listQuery: [cxpUpd], audit: false });
+                },
+            ];
+            await this.core.save({ ...dtoIn, listQuery, audit: false });
 
-                results.push({
-                    ide_cpctr: det.ide_cpctr,
-                    ide_teclb: ide_teclb_efectivo,
-                    ide_cpdtr: existe.ide_cpdtr,
-                    operacion: 'update',
-                });
-                ideTeclbParaAsiento = ide_teclb_efectivo;
-            } else {
-                // ─── INSERT ──────────────────────────────────────────────────────────
+            results.push({
+                ide_cpctr: det.ide_cpctr,
+                ide_teclb: ide_teclb_efectivo,
+                ide_cpdtr: existe.ide_cpdtr,
+                operacion: 'update',
+            });
+        }
 
-                // Inserta el movimiento en el libro de banco
-                const ide_teclb = await this.dataSource.getSeqTable(
-                    'tes_cab_libr_banc',
-                    'ide_teclb',
-                    1,
-                    dtoIn.login,
+        // ─── DETALLES NUEVOS: agrupar por pago físico y consolidar en UN movimiento ───────────
+        // El movimiento de tesorería (1) y TODAS las líneas CxP del grupo se guardan en un único
+        // `core.save()` — una sola transacción SQL: o se registra el pago completo, o no queda
+        // nada a medias.
+        const detallesNuevos = detalles.filter((det) => !existentesPorDet.has(det.ide_cpcdop));
+        const grupos = new Map<string, typeof detallesNuevos>();
+        for (const det of detallesNuevos) {
+            const clave = [det.ide_geper, det.ide_tecba, det.ide_tettb, det.fecha_pago_cpcdop, det.num_comprobante_cpcdop ?? '']
+                .join('|');
+            const grupo = grupos.get(clave);
+            if (grupo) grupo.push(det);
+            else grupos.set(clave, [det]);
+        }
+
+        for (const detsGrupo of grupos.values()) {
+            const primero = detsGrupo[0];
+            const valorTotalGrupo = detsGrupo.reduce((acc, d) => acc + Number(d.valor_pagado_banco_cpcdop), 0);
+            const numero = primero.num_comprobante_cpcdop ?? '000000';
+
+            const ide_teclb = await this.dataSource.getSeqTable('tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login);
+            const baseIdeCpdtr = await this.dataSource.getSeqTable(
+                'cxp_detall_transa', 'ide_cpdtr', detsGrupo.length, dtoIn.login,
+            );
+
+            // Un asiento contable POR FACTURA, resuelto antes de escribir (best-effort cada uno).
+            const ideCnccPorDet: Array<number | null> = [];
+            for (const det of detsGrupo) {
+                ideCnccPorDet.push(
+                    await resolverAsiento({
+                        ideTeclb: ide_teclb,
+                        fecha: det.fecha_pago_cpcdop,
+                        ideTecba: det.ide_tecba,
+                        ideTettb: det.ide_tettb,
+                        ideGeper: det.ide_geper,
+                        valor: det.valor_pagado_banco_cpcdop,
+                        observacion: det.observacion_cpcdop || `Pago orden ${dtoIn.ide_cpcop}`,
+                        ideCnccc: null,
+                    }),
                 );
-                const tesIns: ObjectQueryDto = {
+            }
+
+            const listQuery: ObjectQueryDto[] = [
+                {
                     operation: 'insert',
                     module: 'tes',
                     tableName: 'cab_libr_banc',
@@ -224,32 +319,38 @@ export class TransaccionesTesoreriaService extends BaseService {
                     object: {
                         ide_teclb,
                         ide_teelb,
-                        ide_tecba: det.ide_tecba,
-                        ide_tettb: det.ide_tettb,
-                        valor_teclb: det.valor_pagado_banco_cpcdop,
+                        ide_tecba: primero.ide_tecba,
+                        ide_tettb: primero.ide_tettb,
+                        valor_teclb: valorTotalGrupo,
                         numero_teclb: numero,
-                        fecha_trans_teclb: det.fecha_pago_cpcdop,
-                        fecha_venci_teclb: det.fecha_pago_cpcdop,
-                        fec_cam_est_teclb: det.fecha_pago_cpcdop,
-                        beneficiari_teclb: det.beneficiari_teclb,
-                        observacion_teclb: det.observacion_cpcdop ?? null,
+                        fecha_trans_teclb: primero.fecha_pago_cpcdop,
+                        fecha_venci_teclb: primero.fecha_pago_cpcdop,
+                        fec_cam_est_teclb: primero.fecha_pago_cpcdop,
+                        beneficiari_teclb: primero.beneficiari_teclb,
+                        observacion_teclb: primero.observacion_cpcdop ?? null,
                         conciliado_teclb: false,
                         num_comprobante_teclb: numero,
                         depositado_teclb: false,
                         devuelto_teclb: false,
                         hora_ingre: getCurrentTime(),
+                        // La columna es única (un movimiento solo puede apuntar a un asiento):
+                        // queda con el de la primera línea — el asiento real de cada factura vive
+                        // en su propio cxp_detall_transa.ide_cnccc, seteado abajo individualmente.
+                        ide_cnccc: ideCnccPorDet[0] ?? null,
                     },
-                };
-                await this.core.save({ ...dtoIn, listQuery: [tesIns], audit: false });
+                },
+            ];
 
-                // Inserta la transacción en CxP con numero_pago = 1 (primer pago)
-                const ide_cpdtr = await this.dataSource.getSeqTable(
-                    'cxp_detall_transa',
-                    'ide_cpdtr',
-                    1,
-                    dtoIn.login,
-                );
-                const cxpIns: ObjectQueryDto = {
+            // Distribuye el pago: un registro de cxp_detall_transa por factura, todos apuntando
+            // al mismo ide_teclb consolidado — la suma de sus valor_cpdtr da valorTotalGrupo.
+            detsGrupo.forEach((det, i) => {
+                const esChequePosf = Number(det.ide_tettb) === IDE_TETTB_CHEQUE_POSFECHADO;
+                const ide_cpttr = esChequePosf ? IDE_CPTTR_CHEQUE_POSFECHADO : ide_cpttr_pago;
+                const fecha_venci_cpdtr = esChequePosf ? det.fecha_cheque_cpcdop : getCurrentDate();
+                const doc_relac = det.num_comprobante_cpcdop || det.num_documento_factura || '';
+                const ide_cpdtr = baseIdeCpdtr + i;
+
+                listQuery.push({
                     operation: 'insert',
                     module: 'cxp',
                     tableName: 'detall_transa',
@@ -268,45 +369,28 @@ export class TransaccionesTesoreriaService extends BaseService {
                         numero_pago_cpdtr: 1,
                         docum_relac_cpdtr: doc_relac,
                         hora_ingre: getCurrentTime(),
+                        ide_cnccc: ideCnccPorDet[i],
                     },
-                };
-                await this.core.save({ ...dtoIn, listQuery: [cxpIns], audit: false });
+                });
 
                 results.push({ ide_cpctr: det.ide_cpctr, ide_teclb, ide_cpdtr, operacion: 'insert' });
-                ideTeclbParaAsiento = ide_teclb;
-            }
+            });
 
-            // ─── ASIENTO CONTABLE (BEST-EFFORT) ────────────────────────────────────
-            // Proveedor vs Banco, mismo patrón ya usado en CxpTransaccionesSaveService
-            // (pago CxP directo) — antes este flujo de Orden de Pago no generaba ningún
-            // asiento. No bloquea el pago si falla: se registra en log y sigue.
-            // Si ya existe un asiento (edición de un pago ya contabilizado) se actualiza en
-            // vez de generar uno nuevo, para reflejar el valor/cuenta corregidos sin duplicar.
             try {
-                const datosAsiento = {
-                    ideTeclb: ideTeclbParaAsiento,
-                    fecha: det.fecha_pago_cpcdop,
-                    ideTecba: det.ide_tecba,
-                    ideTettb: det.ide_tettb,
-                    ideGeper: det.ide_geper,
-                    valor: det.valor_pagado_banco_cpcdop,
-                    observacion: det.observacion_cpcdop || `Pago orden ${dtoIn.ide_cpcop}`,
-                    ...dtoIn,
-                };
-                if (yaContabilizado) {
-                    await this.asientosAutomaticosService.actualizarAsientoPagoCxP({
-                        ...datosAsiento,
-                        ideCnccc: existe.ide_cnccc,
-                    });
-                } else {
-                    await this.asientosAutomaticosService.generarAsientoPagoCxP(datosAsiento);
-                }
+                await this.core.save({ ...dtoIn, listQuery, audit: false });
             } catch (error) {
-                this.logger.warn(
-                    `Error en asiento automático de pago de orden CxP para ide_teclb=${ideTeclbParaAsiento}: ${error}`,
+                // Los asientos ya se habían generado/confirmado (en su propia transacción) antes
+                // de llegar acá - si el guardado de tesorería/CxP falla ahora, se revierten para
+                // no dejar comprobantes contables huérfanos sin pago asociado.
+                await Promise.all(
+                    ideCnccPorDet
+                        .filter((ideCnccc): ideCnccc is number => ideCnccc != null)
+                        .map((ideCnccc) => this.asientosAutomaticosService.eliminarAsiento(ideCnccc, dtoIn)),
                 );
+                throw error;
             }
         }
+
         console.log('Resultados de transacciones guardadas/actualizadas:', results);
         return { message: 'ok', rowCount: results.length, results };
     }

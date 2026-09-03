@@ -1002,9 +1002,12 @@ export class ProveedorService extends BaseService {
     // `valor_teclb` es el valor TOTAL del movimiento de tesorería (ide_teclb) — un mismo pago
     // consolidado en tesorería suele repartirse en varias líneas de detalle CxP (de esta u otras
     // cabeceras/facturas). Comparar `valor_teclb` contra el `valor_cpdtr` de UNA sola línea da
-    // una "diferencia" falsa cuando en realidad está bien distribuido. Las subconsultas
-    // correlacionadas traen la suma y cantidad de TODAS las líneas (de cualquier cabecera) que
-    // comparten ese mismo ide_teclb, para comparar contra el total real repartido.
+    // una "diferencia" falsa cuando en realidad está bien distribuido.
+    // `ide_cpttr IN (3, 19)` es el mismo filtro que ya usa la reconciliación de
+    // PreLibroBancosService.getDetalleTransaccion (UNION con cxp_detall_transa) para quedarse
+    // solo con las líneas que representan la APLICACIÓN real del pago — sin este filtro se
+    // arrastran otras líneas (reclasificaciones, notas, etc.) que comparten el mismo ide_teclb
+    // por otro motivo y duplican/inflan la suma.
     const qDet = new SelectQuery(`
         SELECT dt.ide_cpdtr, dt.ide_cpctr, dt.ide_cpttr, dt.ide_cpcfa,
                dt.fecha_trans_cpdtr, dt.fecha_venci_cpdtr, dt.numero_pago_cpdtr, dt.valor_cpdtr,
@@ -1013,10 +1016,17 @@ export class ProveedorService extends BaseService {
                cf.numero_cpcfa, cf.fecha_emisi_cpcfa, cf.total_cpcfa, cf.ide_cntdo,
                CASE WHEN cf.ide_cntdo = ${notaCredito} THEN 'nota_credito' ELSE 'factura' END AS tipo_documento,
                lb.valor_teclb, lb.beneficiari_teclb, lb.numero_teclb, lb.fecha_trans_teclb,
-               (SELECT SUM(dt2.valor_cpdtr) FROM cxp_detall_transa dt2 WHERE dt2.ide_teclb = dt.ide_teclb)
+               (SELECT SUM(dt2.valor_cpdtr) FROM cxp_detall_transa dt2
+                   WHERE dt2.ide_teclb = dt.ide_teclb AND dt2.ide_cpttr IN (3, 19))
                    AS suma_distribuida_teclb,
-               (SELECT COUNT(dt2.ide_cpdtr) FROM cxp_detall_transa dt2 WHERE dt2.ide_teclb = dt.ide_teclb)
-                   AS cantidad_distribuida_teclb
+               (SELECT COUNT(dt2.ide_cpdtr) FROM cxp_detall_transa dt2
+                   WHERE dt2.ide_teclb = dt.ide_teclb AND dt2.ide_cpttr IN (3, 19))
+                   AS cantidad_distribuida_teclb,
+               EXISTS (
+                   SELECT 1 FROM cxp_detall_transa dt3
+                   WHERE dt3.ide_teclb = dt.ide_teclb AND dt3.ide_cpttr IN (3, 19)
+                     AND ABS(dt3.valor_cpdtr - lb.valor_teclb) < 0.005
+               ) AS hay_linea_exacta_teclb
         FROM cxp_detall_transa dt
         LEFT JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
         LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = dt.ide_cpcfa
