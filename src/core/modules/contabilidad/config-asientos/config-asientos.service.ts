@@ -5,11 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { DeleteQuery, SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
-import {
-    DeleteCabConfAsieDto,
-    esIdentificadorProtegido,
-    SaveCabConfAsieDto,
-} from './dto/config-asientos.dto';
+import { DeleteCabConfAsieDto, SaveCabConfAsieDto } from './dto/config-asientos.dto';
 
 const MODULE = 'con';
 const TABLE_CAB = 'cab_conf_asie';
@@ -22,12 +18,16 @@ export type GetDetConfAsieDto = QueryOptionsDto & { ide_cnvca: number };
  * Configuración de asientos automáticos (con_cab_conf_asie / con_vig_conf_asie /
  * con_det_conf_asie / con_porcen_impues). Este es el catálogo que
  * `AsientosAutomaticosService` (y algunos servicios de compras/retenciones) resuelven en
- * tiempo de ejecución buscando `con_cab_conf_asie.nombre_cncca` por texto exacto — ver
- * `esIdentificadorProtegido` en el DTO. Por eso SOLO la cabecera (con_cab_conf_asie) tiene
- * un service propio con la validación de "nombre protegido"; las tablas hijas
- * (vigencias/detalle) y con_porcen_impues se administran desde el frontend con los
- * endpoints genéricos `/api/core/getTableQuery` y `/api/core/save`, igual que
- * `sucursales.tsx` — no necesitan reglas de negocio adicionales.
+ * tiempo de ejecución buscando `con_cab_conf_asie.nombre_cncca` por texto exacto - marcado con
+ * la columna `con_cab_conf_asie.protegido_cncca`
+ * (`scripts/contabilidad-config-asientos-protegido.sql`). `con_cab_conf_asie` NO tiene un
+ * constraint UNIQUE en `nombre_cncca`, así que en teoría se podría crear una fila NUEVA con un
+ * nombre protegido sin querer - `saveCabConfAsie` valida esto también en el alta (no solo en
+ * edición), buscando si ya existe otra fila protegida con el mismo nombre. Por eso SOLO la
+ * cabecera (con_cab_conf_asie) tiene un service propio con esta validación; las tablas hijas
+ * (vigencias/detalle) y con_porcen_impues se administran desde el frontend con los endpoints
+ * genéricos `/api/core/getTableQuery` y `/api/core/save`, igual que `sucursales.tsx` - no
+ * necesitan reglas de negocio adicionales.
  */
 @Injectable()
 export class ConfigAsientosService {
@@ -35,6 +35,21 @@ export class ConfigAsientosService {
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
     ) { }
+
+    /** true si YA EXISTE una fila de con_cab_conf_asie con este nombre marcada protegido_cncca = true. */
+    private async existeNombreProtegido(nombreCncca: string | null | undefined, excluirIdeCncca?: number): Promise<{ protegido: boolean; nombre?: string }> {
+        if (!nombreCncca?.trim()) return { protegido: false };
+        const q = new SelectQuery(`
+            SELECT nombre_cncca FROM con_cab_conf_asie
+            WHERE UPPER(nombre_cncca) = UPPER($1) AND protegido_cncca = TRUE
+            ${excluirIdeCncca ? 'AND ide_cncca <> $2' : ''}
+            LIMIT 1
+        `);
+        q.addStringParam(1, nombreCncca.trim());
+        if (excluirIdeCncca) q.addIntParam(2, excluirIdeCncca);
+        const row = await this.dataSource.createSingleQuery(q);
+        return { protegido: Boolean(row), nombre: row?.nombre_cncca };
+    }
 
     async getCabConfAsie(dto: QueryOptionsDto & HeaderParamsDto) {
         const condition = `ide_empr = ${dto.ideEmpr}`;
@@ -60,8 +75,10 @@ export class ConfigAsientosService {
 
     /**
      * Crea o actualiza una cabecera de configuración de asiento (con_cab_conf_asie).
-     * Si el nombre (nuevo o el que ya tenía el registro) está en la lista de identificadores
-     * protegidos, exige `confirmar_protegido: true` explícito.
+     * Si el nombre (nuevo o el que ya tenía el registro) coincide con una fila marcada
+     * `protegido_cncca = true`, exige `confirmar_protegido: true` explícito. También valida
+     * en el ALTA (no solo al editar): como `nombre_cncca` no es UNIQUE, alguien podría crear
+     * sin querer una segunda fila con un nombre ya protegido.
      */
     async saveCabConfAsie(dtoIn: SaveCabConfAsieDto & HeaderParamsDto) {
         const { data, isUpdate, confirmar_protegido: confirmarProtegido } = dtoIn;
@@ -74,13 +91,22 @@ export class ConfigAsientosService {
             const actual = await this.core.findById({
                 ...dtoIn, module: MODULE, tableName: TABLE_CAB, primaryKey: PK_CAB, value: data.ide_cncca,
             });
-            const nombreProtegidoActual = esIdentificadorProtegido(actual?.nombre_cncca);
-            const nombreProtegidoNuevo = esIdentificadorProtegido(data.nombre_cncca);
-            if ((nombreProtegidoActual || nombreProtegidoNuevo) && !confirmarProtegido) {
+            const nuevoNombreProtegido = await this.existeNombreProtegido(data.nombre_cncca, data.ide_cncca);
+            const filaEraProtegida = Boolean(actual?.protegido_cncca);
+            if ((filaEraProtegida || nuevoNombreProtegido.protegido) && !confirmarProtegido) {
                 throw new BadRequestException(
                     `"${actual?.nombre_cncca}" es un identificador usado internamente por el motor de asientos `
                     + 'automáticos (compras, ventas, retenciones o tesorería). Renombrarlo puede dejar de generar '
                     + 'asientos contables sin avisar. Confirme explícitamente para continuar.',
+                );
+            }
+        } else {
+            const nombreYaProtegido = await this.existeNombreProtegido(data.nombre_cncca);
+            if (nombreYaProtegido.protegido && !confirmarProtegido) {
+                throw new BadRequestException(
+                    `Ya existe una configuración protegida llamada "${nombreYaProtegido.nombre}" que el motor de `
+                    + 'asientos automáticos usa internamente. Crear otra con el mismo nombre puede generar '
+                    + 'ambigüedad en qué cuenta contable se resuelve. Confirme explícitamente para continuar.',
                 );
             }
         }
@@ -124,11 +150,11 @@ export class ConfigAsientosService {
         if (!dtoIn.ide?.length) throw new BadRequestException('Debe indicar al menos un ide_cncca a eliminar');
 
         const qNombres = new SelectQuery(`
-            SELECT ide_cncca, nombre_cncca FROM con_cab_conf_asie WHERE ide_cncca = ANY($1)
+            SELECT ide_cncca, nombre_cncca, protegido_cncca FROM con_cab_conf_asie WHERE ide_cncca = ANY($1)
         `);
         qNombres.addParam(1, dtoIn.ide);
         const rows = await this.dataSource.createSelectQuery(qNombres);
-        const protegidos = rows.filter((r: any) => esIdentificadorProtegido(r.nombre_cncca));
+        const protegidos = rows.filter((r: any) => r.protegido_cncca);
         if (protegidos.length && !dtoIn.confirmar_protegido) {
             const nombres = protegidos.map((r: any) => r.nombre_cncca).join(', ');
             throw new BadRequestException(
