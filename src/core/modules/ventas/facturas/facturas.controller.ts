@@ -204,6 +204,44 @@ export class FacturasController {
     return resultados;
   }
 
+  @Post('deshacerAsientosFacturas')
+  @ApiOperation({ summary: 'Deshacer el asiento contable (venta) automático de una o varias facturas de VENTAS (Mayorizar)' })
+  @Auth()
+  async deshacerAsientosFacturas(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto,
+  ) {
+    const resultados = [];
+    for (const ideCccfa of dtoIn.ide) {
+      resultados.push(
+        await this.asientosService.deshacerAsientoFacturaCxC({
+          ...headersParams,
+          ide_cccfa: ideCccfa,
+        }),
+      );
+    }
+    return resultados;
+  }
+
+  @Post('deshacerAsientosFacturasCosto')
+  @ApiOperation({ summary: 'Deshacer el asiento de costo de venta automático de una o varias facturas de VENTAS (Mayorizar)' })
+  @Auth()
+  async deshacerAsientosFacturasCosto(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Body() dtoIn: ArrayIdeDto,
+  ) {
+    const resultados = [];
+    for (const ideCccfa of dtoIn.ide) {
+      resultados.push(
+        await this.asientosService.deshacerAsientoCostoVenta({
+          ...headersParams,
+          ide_cccfa: ideCccfa,
+        }),
+      );
+    }
+    return resultados;
+  }
+
   @Get('getFacturaById')
   @ApiOperation({ summary: 'Obtener factura por ID' })
   @Auth()
