@@ -75,6 +75,44 @@ export class NotasCreditoController {
         return resultados;
     }
 
+    @Post('deshacerAsientosNotasCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Deshacer el asiento contable (venta) automático de una o varias notas de crédito de VENTAS (Mayorizar)' })
+    async deshacerAsientosNotasCredito(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ArrayIdeDto,
+    ) {
+        const resultados = [];
+        for (const ideCpcno of dtoIn.ide) {
+            resultados.push(
+                await this.asientosService.deshacerAsientoNotaCredito({
+                    ...headersParams,
+                    ide_cpcno: ideCpcno,
+                }),
+            );
+        }
+        return resultados;
+    }
+
+    @Post('deshacerAsientosNotasCreditoCosto')
+    @Auth()
+    @ApiOperation({ summary: 'Deshacer el asiento de reverso de costo automático de una o varias notas de crédito de VENTAS (Mayorizar)' })
+    async deshacerAsientosNotasCreditoCosto(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ArrayIdeDto,
+    ) {
+        const resultados = [];
+        for (const ideCpcno of dtoIn.ide) {
+            resultados.push(
+                await this.asientosService.deshacerAsientoCostoNotaCredito({
+                    ...headersParams,
+                    ide_cpcno: ideCpcno,
+                }),
+            );
+        }
+        return resultados;
+    }
+
     @Get('getPuntosEmisionNotasCredito')
     @Auth()
     @ApiOperation({ summary: 'Puntos de emisión configurados para Notas de Crédito' })
