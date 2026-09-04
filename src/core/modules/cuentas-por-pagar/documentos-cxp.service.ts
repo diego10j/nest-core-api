@@ -5,6 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
+import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { AnticiposProveedorCxPDto } from './dto/anticipos-proveedor-cxp.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
@@ -37,7 +38,7 @@ export class DocumentosCxPService extends BaseService {
                 'p_con_tipo_documento_reembolso',
                 'p_con_tipo_documento_nota_venta',
                 'p_con_tipo_documento_liquidacion_compra',
-                'p_con_tipo_contribuyente_nota_venta',
+                'p_cxp_tipo_contribuyente_nota_venta',
                 'p_gen_tipo_iden_ruc',
                 'p_cxp_tipo_trans_anticipo',
                 'p_cxp_estado_factura_anulada',
@@ -835,7 +836,7 @@ export class DocumentosCxPService extends BaseService {
      *  - Importaciones: solo proveedores extranjeros
      *  - Factura / Nota de Crédito / Reembolso: solo con RUC
      *  - Nota de Venta: solo el Tipo de Contribuyente configurado en el parámetro
-     *    `p_con_tipo_contribuyente_nota_venta` (Sistema > Parámetros → con_tipo_contribu) -
+     *    `p_cxp_tipo_contribuyente_nota_venta` (Sistema > Parámetros → con_tipo_contribu) -
      *    normativamente debe apuntar a RIMPE "Negocio Popular" (único régimen habilitado hoy
      *    para emitir nota de venta preimpresa física, Res. NAC-DGERCGC24-00000027 - el legacy
      *    exigía "RISE", régimen derogado desde la reforma de 2022). Parametrizado en vez de
@@ -862,10 +863,10 @@ export class DocumentosCxPService extends BaseService {
             } else if (tipoDoc === liqCompra) {
                 condicionTipoIden = `AND ide_getid != ${tipoIdenRuc}`;
             } else if (tipoDoc === notaVenta) {
-                const ideCntcoNotaVenta = this.variables.get('p_con_tipo_contribuyente_nota_venta');
+                const ideCntcoNotaVenta = this.variables.get('p_cxp_tipo_contribuyente_nota_venta');
                 if (!ideCntcoNotaVenta) {
                     throw new BadRequestException(
-                        'Falta configurar el parámetro "p_con_tipo_contribuyente_nota_venta" ' +
+                        'Falta configurar el parámetro "p_cxp_tipo_contribuyente_nota_venta" ' +
                         '(Sistema > Parámetros) con el Tipo de Contribuyente habilitado para ' +
                         'emitir Nota de Venta (RIMPE Negocio Popular).',
                     );
@@ -874,16 +875,33 @@ export class DocumentosCxPService extends BaseService {
             }
         }
 
+        // Búsqueda por texto (autocomplete tipo SearchCliente/SearchProveedor) - opcional,
+        // los llamadores existentes (combo simple de DocumentoCxPForm) no la usan y siguen
+        // trayendo la lista completa sin paginar.
+        const hasSearch = !!dtoIn.value?.trim();
+        const condicionBusqueda = hasSearch
+            ? `AND (regexp_replace(unaccent(LOWER(COALESCE(nom_geper, ''))), '[^a-z0-9]', '', 'g') LIKE $1
+                 OR regexp_replace(unaccent(LOWER(COALESCE(identificac_geper, ''))), '[^a-z0-9]', '', 'g') LIKE $1)`
+            : '';
+        const limite = hasSearch ? (dtoIn.limit ?? 25) : undefined;
+
         const query = new SelectQuery(`
-            SELECT CAST(ide_geper AS VARCHAR) AS value,
+            SELECT ide_geper,
+                   CAST(ide_geper AS VARCHAR) AS value,
                    nom_geper || ' - ' || COALESCE(identificac_geper, '') AS label,
+                   nom_geper,
                    identificac_geper
             FROM gen_persona
             WHERE es_proveedo_geper = TRUE
               AND nivel_geper = 'HIJO'
               ${condicionTipoIden}
+              ${condicionBusqueda}
             ORDER BY nom_geper
+            ${limite ? `LIMIT ${limite}` : ''}
         `);
+        if (hasSearch) {
+            query.addStringParam(1, `%${normalizeString(dtoIn.value!.trim())}%`);
+        }
         return this.dataSource.createSelectQuery(query);
     }
 
@@ -923,8 +941,11 @@ export class DocumentosCxPService extends BaseService {
      * generar secuencial + clave de acceso automáticamente. */
     async getPuntosEmisionLiquidacion(dtoIn: HeaderParamsDto) {
         const query = new SelectQuery(`
-            SELECT CAST(ide_ccdaf AS VARCHAR) AS value,
+            SELECT ide_ccdaf,
+                   CAST(ide_ccdaf AS VARCHAR) AS value,
                    serie_ccdaf || ' ' || COALESCE(autorizacion_ccdaf, '') AS label,
+                   establecimiento_ccdfa,
+                   pto_emision_ccdfa,
                    observacion_ccdaf
             FROM cxc_datos_fac
             WHERE ide_cntdoc = 4

@@ -5,10 +5,12 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { removeEqualsElements } from 'src/util/helpers/array-util';
 import { getCurrentDate } from 'src/util/helpers/date-util';
 
+import { CONTABILIDAD_VARS } from './data/0-con-var';
 import { INVENTARIO_VARS } from './data/1-inv-var';
 import { IMPORTACIONES_VARS } from './data/14-imp-var';
 import { CUENTAS_POR_PAGAR_VARS } from './data/2-cxp-var';
 import { CUENTAS_POR_COBRAR_VARS } from './data/3-cxc-var';
+import { GENERAL_VARS } from './data/5-gen-var';
 import { NOMINA_VARS } from './data/6-nrh-var';
 import { ActualizarVariableDto } from './dto/actualizar-variable.dto';
 import { GetConfiguracionTablaVariableDto } from './dto/get-configuracion-tabla-variable.dto';
@@ -696,10 +698,12 @@ export class VariablesService {
   // Cargar todos los parámetros desde los archivos JSON
   private getAllVariables(): Parametro[] {
     return [
+      ...CONTABILIDAD_VARS,
       ...INVENTARIO_VARS,
       ...IMPORTACIONES_VARS,
       ...CUENTAS_POR_COBRAR_VARS,
       ...CUENTAS_POR_PAGAR_VARS,
+      ...GENERAL_VARS,
       ...NOMINA_VARS,
       // Agregar más conjuntos de variables
     ];

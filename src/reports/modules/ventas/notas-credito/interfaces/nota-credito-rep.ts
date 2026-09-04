@@ -16,6 +16,7 @@ export interface NotaCreditoCabecera {
     fecha_emision_mod_cpcno: Date | string;
     valor_mod_cpcno: number;
     nombre_cpmno: string;
+    nombre_vgven?: string;
 
     // Totales
     base_grabada_cpcno: number;

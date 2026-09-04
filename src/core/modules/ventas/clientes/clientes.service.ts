@@ -20,9 +20,14 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetDiferenciasContablesCxcDto } from './dto/get-diferencias-contables-cxc.dto';
+import { IdeCcctrDto } from './dto/ide-ccctr.dto';
 import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
+import { SearchAsientoClienteDto } from './dto/search-asiento-cliente.dto';
+import { SearchDocumentoCxCDto } from './dto/search-documento-cxc.dto';
+import { SearchLibroBancoClienteDto } from './dto/search-libro-banco-cliente.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
 import { VentasMensualesClienteDto } from './dto/ventas-mensuales.dto';
@@ -48,6 +53,9 @@ export class ClientesService extends BaseService {
                 'p_gen_tipo_identificacion_ruc', //  1
                 'p_gen_tipo_identificacion_cedula', // 0
                 'p_cxc_descuento_seguidor', // 5
+                'p_con_tipo_documento_factura',
+                'p_con_cuenta_clientes_cxc',
+                'p_con_estado_comprobante_normal',
             ])
             .then((result) => {
                 this.variables = result;
@@ -2321,6 +2329,296 @@ export class ClientesService extends BaseService {
         );
 
         query.addParam(1, dtoIn.ide_geper);
+        return this.dataSource.createQuery(query);
+    }
+
+    // ─── Editar Transacciones CxC (mirror de ProveedorService, ver plan) ───────
+
+    /** Combo de tipos de transacción CxC (cxc_tipo_transacc) */
+    async getListDataTiposTransaccionCxC() {
+        const query = new SelectQuery(`
+            SELECT CAST(ide_ccttr AS VARCHAR) AS value,
+                   nombre_ccttr AS label,
+                   signo_ccttr
+            FROM cxc_tipo_transacc
+            ORDER BY nombre_ccttr
+        `);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Cabeceras de transacción CxC (cxc_cabece_transa) de un cliente por período, con
+     * cuadre (ingresos/egresos/saldo/estado) agregado del detalle.
+     */
+    async getCabecerasTrnCliente(dtoIn: TrnClienteDto & HeaderParamsDto) {
+        const query = new SelectQuery(
+            `
+            SELECT
+                ct.ide_ccctr,
+                ct.fecha_trans_ccctr,
+                ct.ide_ccttr,
+                tt.nombre_ccttr AS tipo_principal,
+                ct.ide_cccfa,
+                cf.secuencial_cccfa AS numero_cccfa,
+                ct.observacion_ccctr,
+                COUNT(dt.ide_ccdtr) AS cantidad_detalles,
+                COALESCE(SUM(CASE WHEN dtt.signo_ccttr = 1 THEN dt.valor_ccdtr END), 0) AS total_ingresos,
+                COALESCE(SUM(CASE WHEN dtt.signo_ccttr = -1 THEN dt.valor_ccdtr END), 0) AS total_egresos,
+                COALESCE(SUM(dt.valor_ccdtr * dtt.signo_ccttr), 0) AS saldo,
+                CASE
+                    WHEN ABS(COALESCE(SUM(dt.valor_ccdtr * dtt.signo_ccttr), 0)) < 0.005 THEN 'cuadrada'
+                    WHEN COALESCE(SUM(dt.valor_ccdtr * dtt.signo_ccttr), 0) > 0 THEN 'pendiente_cobro'
+                    ELSE 'descuadrada'
+                END AS estado
+            FROM cxc_cabece_transa ct
+            LEFT JOIN cxc_detall_transa dt ON dt.ide_ccctr = ct.ide_ccctr
+            LEFT JOIN cxc_tipo_transacc dtt ON dtt.ide_ccttr = dt.ide_ccttr
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = ct.ide_ccttr
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+            WHERE ct.ide_geper = $1
+              AND ct.ide_empr = ${dtoIn.ideEmpr}
+              AND ct.ide_sucu = ${dtoIn.ideSucu}
+              AND ct.fecha_trans_ccctr BETWEEN $2 AND $3
+            GROUP BY ct.ide_ccctr, ct.fecha_trans_ccctr, ct.ide_ccttr, tt.nombre_ccttr,
+                     ct.ide_cccfa, cf.secuencial_cccfa, ct.observacion_ccctr
+            ORDER BY ct.fecha_trans_ccctr DESC, ct.ide_ccctr DESC
+            `,
+            dtoIn,
+        );
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addParam(2, dtoIn.fechaInicio);
+        query.addParam(3, dtoIn.fechaFin);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Cabecera + detalle completo de una transacción CxC, para la pantalla de edición.
+     */
+    async getDetalleCabeceraTrn(dtoIn: IdeCcctrDto & HeaderParamsDto) {
+        const qCab = new SelectQuery(`
+            SELECT ct.ide_ccctr, ct.ide_geper, ct.fecha_trans_ccctr, ct.ide_ccttr,
+                   ct.ide_cccfa, cf.secuencial_cccfa AS numero_cccfa, ct.observacion_ccctr,
+                   p.nom_geper, p.identificac_geper
+            FROM cxc_cabece_transa ct
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+            LEFT JOIN gen_persona p ON p.ide_geper = ct.ide_geper
+            WHERE ct.ide_ccctr = $1 AND ct.ide_empr = ${dtoIn.ideEmpr}
+        `);
+        qCab.addIntParam(1, dtoIn.ide_ccctr);
+        const cabecera = await this.dataSource.createSingleQuery(qCab);
+        if (!cabecera) {
+            throw new BadRequestException(`La transacción ide_ccctr=${dtoIn.ide_ccctr} no existe`);
+        }
+
+        // `ide_ccttr IN (0, 10)` = {PAGO, CHEQUE POSFECHADO} en cxc_tipo_transacc - equivalente
+        // por NOMBRE al `ide_cpttr IN (3, 19)` que usa la versión CxP (los IDs numéricos no
+        // coinciden entre los dos catálogos, se verificó cada uno por separado). Son las líneas
+        // que representan la APLICACIÓN real de un cobro, para no inflar/duplicar la suma
+        // distribuida de un mismo movimiento de tesorería repartido en varias líneas/cabeceras.
+        const qDet = new SelectQuery(`
+            SELECT dt.ide_ccdtr, dt.ide_ccctr, dt.ide_ccttr, dt.ide_cccfa,
+                   dt.fecha_trans_ccdtr, dt.fecha_venci_ccdtr, dt.numero_pago_ccdtr, dt.valor_ccdtr,
+                   dt.docum_relac_ccdtr, dt.observacion_ccdtr, dt.ide_cnccc, dt.ide_teclb,
+                   tt.nombre_ccttr, tt.signo_ccttr,
+                   cf.secuencial_cccfa AS numero_cccfa, cf.fecha_emisi_cccfa, cf.total_cccfa,
+                   lb.valor_teclb, lb.beneficiari_teclb, lb.numero_teclb, lb.fecha_trans_teclb,
+                   (SELECT SUM(dt2.valor_ccdtr) FROM cxc_detall_transa dt2
+                       WHERE dt2.ide_teclb = dt.ide_teclb AND dt2.ide_ccttr IN (0, 10))
+                       AS suma_distribuida_teclb,
+                   (SELECT COUNT(dt2.ide_ccdtr) FROM cxc_detall_transa dt2
+                       WHERE dt2.ide_teclb = dt.ide_teclb AND dt2.ide_ccttr IN (0, 10))
+                       AS cantidad_distribuida_teclb,
+                   EXISTS (
+                       SELECT 1 FROM cxc_detall_transa dt3
+                       WHERE dt3.ide_teclb = dt.ide_teclb AND dt3.ide_ccttr IN (0, 10)
+                         AND ABS(dt3.valor_ccdtr - lb.valor_teclb) < 0.005
+                   ) AS hay_linea_exacta_teclb
+            FROM cxc_detall_transa dt
+            LEFT JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = dt.ide_cccfa
+            LEFT JOIN tes_cab_libr_banc lb ON lb.ide_teclb = dt.ide_teclb
+            WHERE dt.ide_ccctr = $1
+            ORDER BY dt.numero_pago_ccdtr, dt.ide_ccdtr
+        `);
+        qDet.addIntParam(1, dtoIn.ide_ccctr);
+        const detalles = await this.dataSource.createSelectQuery(qDet);
+
+        const saldo = detalles.reduce(
+            (acc: number, d: any) => acc + Number(d.valor_ccdtr) * Number(d.signo_ccttr ?? 0),
+            0,
+        );
+        const estado = Math.abs(saldo) < 0.005 ? 'cuadrada' : saldo > 0 ? 'pendiente_cobro' : 'descuadrada';
+
+        return { ...cabecera, detalles, saldo, estado };
+    }
+
+    /**
+     * Facturas de venta (cxc_cabece_factura) de un cliente (autocomplete). A diferencia
+     * de CxP no hay rama de nota_credito - ver comentario en SearchDocumentoCxCDto.
+     */
+    async searchDocumentoCliente(dtoIn: SearchDocumentoCxCDto & HeaderParamsDto) {
+        const ideCntdo = this.variables.get('p_con_tipo_documento_factura');
+        const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+        const query = new SelectQuery(`
+            SELECT cf.ide_cccfa, cf.secuencial_cccfa AS numero_cccfa, cf.fecha_emisi_cccfa,
+                   cf.total_cccfa, cf.pagado_cccfa, p.nom_geper
+            FROM cxc_cabece_factura cf
+            LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+            WHERE cf.ide_geper = $1 AND cf.ide_empr = ${dtoIn.ideEmpr} AND cf.ide_sucu = ${dtoIn.ideSucu}
+              AND cf.ide_cntdo = ${ideCntdo}
+              AND (regexp_replace(unaccent(LOWER(COALESCE(cf.secuencial_cccfa, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+                   OR CAST(cf.ide_cccfa AS VARCHAR) LIKE $2)
+            ORDER BY cf.fecha_emisi_cccfa DESC
+            LIMIT ${dtoIn.limit}
+        `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addStringParam(2, sqlSearchValue);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Asientos contables (con_cab_comp_cont) de un cliente específico, para vincular
+     * ide_cnccc de una línea de detalle CxC.
+     */
+    async searchAsientoCliente(dtoIn: SearchAsientoClienteDto & HeaderParamsDto) {
+        const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+        const query = new SelectQuery(`
+            SELECT cc.ide_cnccc, cc.fecha_trans_cnccc, cc.observacion_cnccc, p.nom_geper
+            FROM con_cab_comp_cont cc
+            LEFT JOIN gen_persona p ON p.ide_geper = cc.ide_geper
+            WHERE cc.ide_geper = $1 AND cc.ide_empr = ${dtoIn.ideEmpr} AND cc.ide_sucu = ${dtoIn.ideSucu}
+              AND (CAST(cc.ide_cnccc AS VARCHAR) LIKE $2
+                   OR regexp_replace(unaccent(LOWER(COALESCE(cc.observacion_cnccc, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+            ORDER BY cc.fecha_trans_cnccc DESC
+            LIMIT ${dtoIn.limit}
+        `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addStringParam(2, sqlSearchValue);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
+     * Movimientos de libro de bancos (tes_cab_libr_banc) ya vinculados al historial de
+     * este cliente vía cxc_detall_transa.
+     */
+    async searchLibroBancoCliente(dtoIn: SearchLibroBancoClienteDto & HeaderParamsDto) {
+        const sqlSearchValue = `%${normalizeString((dtoIn.value ?? '').trim())}%`;
+        const query = new SelectQuery(`
+            SELECT DISTINCT lb.ide_teclb, lb.fecha_trans_teclb, lb.numero_teclb,
+                   lb.beneficiari_teclb, lb.observacion_teclb
+            FROM tes_cab_libr_banc lb
+            INNER JOIN cxc_detall_transa dt ON dt.ide_teclb = lb.ide_teclb
+            INNER JOIN cxc_cabece_transa ct ON ct.ide_ccctr = dt.ide_ccctr
+            WHERE ct.ide_geper = $1
+              AND lb.ide_empr = ${dtoIn.ideEmpr} AND lb.ide_sucu = ${dtoIn.ideSucu}
+              AND (CAST(lb.ide_teclb AS VARCHAR) LIKE $2
+                   OR regexp_replace(unaccent(LOWER(COALESCE(lb.numero_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+                   OR regexp_replace(unaccent(LOWER(COALESCE(lb.beneficiari_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2
+                   OR regexp_replace(unaccent(LOWER(COALESCE(lb.observacion_teclb, ''))), '[^a-z0-9]', '', 'g') LIKE $2)
+            ORDER BY lb.fecha_trans_teclb DESC
+            LIMIT ${dtoIn.limit}
+        `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addStringParam(2, sqlSearchValue);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    // ─── Diferencias Contable vs CxC ────────────────────────────────────────
+    // Concilia el saldo de la cuenta contable "Clientes" (con_det_plan_cuen, ID
+    // configurable vía sis_parametros.p_con_cuenta_clientes_cxc - no hardcodeado,
+    // ver plan) contra el saldo de Cuentas por Cobrar, a una fecha de corte. La
+    // premisa validada contra datos reales: toda factura/cobro/NC de cliente postea
+    // contra esa única cuenta compartida, así que agrupando por ide_geper ambos lados
+    // deberían coincidir - las diferencias señalan asientos mal registrados o no
+    // reflejados en CxC (o viceversa).
+
+    /**
+     * Saldo contable (cuenta Clientes) vs saldo CxC, consolidado (todos los clientes), a una fecha de corte.
+     * A propósito NO se filtra por ide_sucu (a diferencia del resto del módulo): la contabilidad no
+     * discrimina por sucursal para esta cuenta (con_cab_comp_cont siempre trae ide_sucu=0 en las líneas
+     * de la cuenta Clientes, confirmado contra datos reales), mientras que CxC sí registra transacciones
+     * en varias sucursales - filtrar por sucursal en cualquiera de los dos lados compararía "toda la
+     * empresa" contra "una sola sucursal" y produciría un descuadre artificial permanente.
+     */
+    async getDiferenciasContablesCxcConsolidado(dtoIn: GetDiferenciasContablesCxcDto & HeaderParamsDto) {
+        const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
+        const ideCnecoNormal = Number(this.variables.get('p_con_estado_comprobante_normal'));
+        const query = new SelectQuery(`
+            SELECT
+                COALESCE((
+                    SELECT SUM(dc.valor_cndcc * CASE WHEN la.nombre_cnlap = 'DEBE' THEN 1 ELSE -1 END)
+                    FROM con_det_comp_cont dc
+                    INNER JOIN con_cab_comp_cont cc ON cc.ide_cnccc = dc.ide_cnccc
+                    INNER JOIN con_lugar_aplicac la ON la.ide_cnlap = dc.ide_cnlap
+                    WHERE dc.ide_cndpc = ${ideCndpcClientes}
+                      AND cc.fecha_trans_cnccc <= $1
+                      AND cc.ide_empr = ${dtoIn.ideEmpr}
+                      AND cc.ide_cneco = ${ideCnecoNormal}
+                ), 0) AS saldo_contable,
+                COALESCE((
+                    SELECT SUM(dt.valor_ccdtr * tt.signo_ccttr)
+                    FROM cxc_detall_transa dt
+                    INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+                    WHERE dt.fecha_trans_ccdtr <= $1
+                      AND dt.ide_empr = ${dtoIn.ideEmpr}
+                ), 0) AS saldo_cxc
+        `);
+        query.addParam(1, dtoIn.fechaCorte);
+        const row = await this.dataSource.createSingleQuery(query);
+        const saldoContable = Number(row?.saldo_contable ?? 0);
+        const saldoCxc = Number(row?.saldo_cxc ?? 0);
+        return { saldo_contable: saldoContable, saldo_cxc: saldoCxc, diferencia: saldoContable - saldoCxc };
+    }
+
+    /**
+     * Saldo contable (cuenta Clientes) vs saldo CxC, detallado por cliente, a una fecha de corte.
+     * Sin filtro de ide_sucu - ver comentario en getDiferenciasContablesCxcConsolidado.
+     */
+    async getDiferenciasContablesCxc(dtoIn: GetDiferenciasContablesCxcDto & HeaderParamsDto) {
+        const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
+        const ideCnecoNormal = Number(this.variables.get('p_con_estado_comprobante_normal'));
+        const query = new SelectQuery(
+            `
+            WITH saldo_contable AS (
+                SELECT
+                    cc.ide_geper,
+                    SUM(dc.valor_cndcc * CASE WHEN la.nombre_cnlap = 'DEBE' THEN 1 ELSE -1 END) AS saldo
+                FROM con_det_comp_cont dc
+                INNER JOIN con_cab_comp_cont cc ON cc.ide_cnccc = dc.ide_cnccc
+                INNER JOIN con_lugar_aplicac la ON la.ide_cnlap = dc.ide_cnlap
+                WHERE dc.ide_cndpc = ${ideCndpcClientes}
+                  AND cc.fecha_trans_cnccc <= $1
+                  AND cc.ide_empr = ${dtoIn.ideEmpr}
+                  AND cc.ide_cneco = ${ideCnecoNormal}
+                GROUP BY cc.ide_geper
+            ),
+            saldo_cxc AS (
+                SELECT
+                    ct.ide_geper,
+                    SUM(dt.valor_ccdtr * tt.signo_ccttr) AS saldo
+                FROM cxc_detall_transa dt
+                INNER JOIN cxc_cabece_transa ct ON dt.ide_ccctr = ct.ide_ccctr
+                INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+                WHERE dt.fecha_trans_ccdtr <= $1
+                  AND dt.ide_empr = ${dtoIn.ideEmpr}
+                GROUP BY ct.ide_geper
+            )
+            SELECT
+                COALESCE(sc.ide_geper, sx.ide_geper) AS ide_geper,
+                p.nom_geper,
+                p.identificac_geper,
+                COALESCE(sc.saldo, 0) AS saldo_contable,
+                COALESCE(sx.saldo, 0) AS saldo_cxc,
+                COALESCE(sc.saldo, 0) - COALESCE(sx.saldo, 0) AS diferencia
+            FROM saldo_contable sc
+            FULL OUTER JOIN saldo_cxc sx ON sx.ide_geper = sc.ide_geper
+            LEFT JOIN gen_persona p ON p.ide_geper = COALESCE(sc.ide_geper, sx.ide_geper)
+            WHERE COALESCE(sc.saldo, 0) != 0 OR COALESCE(sx.saldo, 0) != 0
+            ORDER BY ABS(COALESCE(sc.saldo, 0) - COALESCE(sx.saldo, 0)) DESC
+            `,
+            dtoIn,
+        );
+        query.addParam(1, dtoIn.fechaCorte);
         return this.dataSource.createQuery(query);
     }
 }

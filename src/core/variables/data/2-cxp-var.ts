@@ -25,7 +25,7 @@ export const CUENTAS_POR_PAGAR_VARS = [
   },
   {
     ide_modu: MODULOS.CUENTAS_POR_PAGAR.ID,
-    nom_para: 'p_con_tipo_contribuyente_nota_venta',
+    nom_para: 'p_cxp_tipo_contribuyente_nota_venta',
     descripcion_para: 'Tipo de Contribuyente habilitado para que un proveedor emita Nota de Venta (normativamente RIMPE Negocio Popular) - filtra el combo de proveedores al crear este tipo de documento en Compras. DEBE configurarse manualmente: no trae un valor válido por defecto.',
     valor_para: '',
     tabla_para: 'con_tipo_contribu',

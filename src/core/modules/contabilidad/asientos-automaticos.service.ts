@@ -1105,14 +1105,24 @@ export class AsientosAutomaticosService extends BaseService {
      *   CUENTA                          DEBE    HABER
      *   Retención renta por cobrar        X            (si aplica)
      *   Retención IVA por cobrar          X            (si aplica)
+     *   Descuento en ventas               X            (si aplica, ver abajo)
      *   Cuenta por cobrar (cliente)       X       (total − retenciones)
-     *   Ventas 12% / Transporte c/IVA              X
-     *   Ventas 0%  / Transporte s/IVA               X
+     *   Ventas 12% / Transporte c/IVA              X   (bruto, ver abajo)
+     *   Ventas 0%  / Transporte s/IVA               X  (bruto, ver abajo)
      *   IVA en ventas                              X
      *
      * "Transporte en ventas" separa la porción de líneas de artículo
      * "SERVICIOS LOGISTICOS%" del resto de Ventas 12%/0% (paridad legacy: fletes
      * facturados junto a la mercadería van a una cuenta contable distinta).
+     *
+     * "Descuento en ventas" (desde agosto 2026, descuento de línea en facturas):
+     * base_grabada_cccfa/base_tarifa0_cccfa ya vienen NETAS de descuento (suma de
+     * total_ccdfa por línea) - antes esto dejaba el descuento absorbido en silencio
+     * dentro de VENTAS. Ahora "Ventas" se grosea sumando el descuento de vuelta y se
+     * agrega una línea DEBE separada a la cuenta "Descuento en Ventas" (con_det_plan_cuen
+     * ide_cndpc configurado vía el identificador "DESCUENTO EN VENTAS" en
+     * con_cab_conf_asie) - la Cuenta por Cobrar no cambia, sigue siendo el neto real; el
+     * asiento sigue cuadrando porque DEBE y HABER crecen por igual.
      */
     async generarAsientoFacturaCxC(
         dtoIn: GenerarAsientoFacturaCxCDto & HeaderParamsDto,
@@ -1140,7 +1150,15 @@ export class AsientosAutomaticosService extends BaseService {
                     WHERE d.ide_cccfa = a.ide_cccfa
                       AND art.nombre_inarti ILIKE 'SERVICIOS LOGISTICOS%'
                       AND d.iva_inarti_ccdfa != 1
-                ), 0) AS transporte_tarifa0
+                ), 0) AS transporte_tarifa0,
+                COALESCE((
+                    SELECT SUM(d.descuento_ccdfa) FROM cxc_deta_factura d
+                    WHERE d.ide_cccfa = a.ide_cccfa AND d.iva_inarti_ccdfa = 1
+                ), 0) AS descuento_grabada,
+                COALESCE((
+                    SELECT SUM(d.descuento_ccdfa) FROM cxc_deta_factura d
+                    WHERE d.ide_cccfa = a.ide_cccfa AND d.iva_inarti_ccdfa != 1
+                ), 0) AS descuento_tarifa0
             FROM cxc_cabece_factura a
             LEFT JOIN (
                 SELECT d.ide_cncre, d.valor_cndre, f.ide_cncim
@@ -1215,7 +1233,19 @@ export class AsientosAutomaticosService extends BaseService {
         const transporteBase = Number(doc.transporte_base || 0);
         const transporteTarifa0 = Number(doc.transporte_tarifa0 || 0);
 
-        const valorVenta12 = Number((Number(doc.base_grabada_cccfa || 0) - transporteBase).toFixed(2));
+        // "Ventas" se grosea sumando de vuelta el descuento (base_grabada_cccfa ya viene
+        // NETA de descuento de línea) para que la cuenta VENTAS refleje el ingreso bruto y
+        // el descuento quede visible aparte en su propia cuenta contable (DESCUENTO EN
+        // VENTAS) - antes el descuento se perdía en silencio dentro de VENTAS. No cambia el
+        // cuadre del asiento: DEBE crece por la línea nueva de descuento exactamente lo mismo
+        // que crece HABER en VENTAS.
+        const descuentoGrabada = Number(doc.descuento_grabada || 0);
+        const descuentoTarifa0 = Number(doc.descuento_tarifa0 || 0);
+        const descuentoTotal = Number((descuentoGrabada + descuentoTarifa0).toFixed(2));
+
+        const valorVenta12 = Number(
+            (Number(doc.base_grabada_cccfa || 0) - transporteBase + descuentoGrabada).toFixed(2),
+        );
         if (valorVenta12 > 0) {
             const cuenta = await this.buscarCuentaConfig('VENTAS', { idePorcentaje: 2 }, dtoIn.ideSucu);
             if (!cuenta) advertencias.push('Cuenta VENTAS (12%) no configurada');
@@ -1233,13 +1263,23 @@ export class AsientosAutomaticosService extends BaseService {
             });
         }
 
-        const valorVenta0 = Number((Number(doc.base_tarifa0_cccfa || 0) - transporteTarifa0).toFixed(2));
+        const valorVenta0 = Number(
+            (Number(doc.base_tarifa0_cccfa || 0) - transporteTarifa0 + descuentoTarifa0).toFixed(2),
+        );
         if (valorVenta0 > 0) {
             const cuenta = await this.buscarCuentaConfig('VENTAS', { idePorcentaje: 0 }, dtoIn.ideSucu);
             if (!cuenta) advertencias.push('Cuenta VENTAS (0%) no configurada');
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: valorVenta0,
                 observacion_cndcc: 'VENTAS',
+            });
+        }
+        if (descuentoTotal > 0) {
+            const cuenta = await this.buscarCuentaConfig('DESCUENTO EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta DESCUENTO EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: descuentoTotal,
+                observacion_cndcc: 'DESCUENTO EN VENTAS',
             });
         }
         if (transporteTarifa0 > 0) {
@@ -1314,9 +1354,18 @@ export class AsientosAutomaticosService extends BaseService {
      * generarAsientoNotaCredito que reversa a cuentas VENTAS):
      *
      *   CUENTA                          DEBE    HABER
-     *   Notas de crédito ventas           X            (base 12% + base 0%)
+     *   Notas de crédito ventas           X            (base 12% + base 0%, bruto, ver abajo)
      *   IVA en ventas                     X            (si aplica)
-     *   Cuenta por cobrar (cliente)                X   (total de la nota)
+     *   Descuento en ventas                        X   (si aplica, reversa el descuento
+     *                                                    original de la factura, ver abajo)
+     *   Cuenta por cobrar (cliente)                X   (total de la nota, neto)
+     *
+     * "Descuento en ventas": base_grabada_cpcno/base_tarifa0_cpcno ya vienen netas del
+     * descuento de línea copiado de la factura original (ver Hallazgo 1 del plan de
+     * "Descuento en Ventas" - notas-credito-save.service.ts#valorDetalle). Se grosea
+     * "Notas de crédito ventas" sumando el descuento de vuelta y se agrega la línea HABER
+     * a "Descuento en Ventas" (reversa el DEBE que la factura original registró en esa
+     * misma cuenta) - Cuenta por Cobrar no cambia, sigue siendo el neto real.
      */
     async generarAsientoNotaCredito(
         dtoIn: GenerarAsientoNotaCreditoDto & HeaderParamsDto,
@@ -1325,7 +1374,8 @@ export class AsientosAutomaticosService extends BaseService {
 
         const qNota = new SelectQuery(`
             SELECT a.ide_cpcno, a.ide_geper, a.numero_cpcno, a.fecha_emisi_cpcno,
-                   a.total_cpcno, a.base_grabada_cpcno, a.base_tarifa0_cpcno, a.valor_iva_cpcno, a.ide_cnccc
+                   a.total_cpcno, a.base_grabada_cpcno, a.base_tarifa0_cpcno, a.valor_iva_cpcno,
+                   a.descuento_cpcno, a.ide_cnccc
             FROM cxp_cabecera_nota a
             WHERE a.ide_cpcno = $1
         `);
@@ -1355,13 +1405,24 @@ export class AsientosAutomaticosService extends BaseService {
             observacion_cndcc: 'CUENTA POR COBRAR',
         });
 
-        const totalDev = Number((Number(nota.base_grabada_cpcno || 0) + Number(nota.base_tarifa0_cpcno || 0)).toFixed(2));
+        const descuentoTotal = Number(nota.descuento_cpcno || 0);
+        const totalDev = Number(
+            (Number(nota.base_grabada_cpcno || 0) + Number(nota.base_tarifa0_cpcno || 0) + descuentoTotal).toFixed(2),
+        );
         if (totalDev > 0) {
             const cuenta = await this.buscarCuentaConfig('NOTAS DE CREDITO VENTAS', {}, dtoIn.ideSucu);
             if (!cuenta) advertencias.push('Cuenta NOTAS DE CREDITO VENTAS no configurada');
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: totalDev,
                 observacion_cndcc: 'NOTAS DE CREDITO VENTAS',
+            });
+        }
+        if (descuentoTotal > 0) {
+            const cuenta = await this.buscarCuentaConfig('DESCUENTO EN VENTAS', {}, dtoIn.ideSucu);
+            if (!cuenta) advertencias.push('Cuenta DESCUENTO EN VENTAS no configurada');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(descuentoTotal.toFixed(2)),
+                observacion_cndcc: 'DESCUENTO EN VENTAS',
             });
         }
 

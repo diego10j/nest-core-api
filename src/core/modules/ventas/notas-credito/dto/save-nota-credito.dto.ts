@@ -45,6 +45,21 @@ export class DetalleNotaCreditoDto {
     @IsString()
     @IsOptional()
     observacion_cpdno?: string;
+
+    /**
+     * Descuento de la línea (valor absoluto), copiado de
+     * cxc_deta_factura.descuento_ccdfa cuando la NC se genera desde una factura -
+     * sin esto la NC acredita el bruto en vez del neto realmente facturado.
+     */
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    descuento_cpdno?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    porcentaje_descuento_cpdno?: number;
 }
 
 /**

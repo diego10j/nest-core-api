@@ -47,12 +47,15 @@ export const notaCreditoReport = (
             campoTexto('Razón Social / Nombres y Apellidos', cabecera.nom_geper ?? ''),
             campoTexto('Identificación', cabecera.identificac_geper ?? ''),
             campoTexto('Dirección', cabecera.direccion_geper ?? ''),
+            campoTexto('Teléfono', cabecera.telefono_geper ?? ''),
+            campoTexto('Correo', cabecera.correo_geper ?? ''),
             campoTexto('Fecha Emisión', cabecera.fecha_emisi_cpcno ? fDate(cabecera.fecha_emisi_cpcno, 'dd/MM/yyyy') : '---'),
         ],
         [
             campoTexto('Comprobante que se Modifica', `${docModificado.estab}-${docModificado.ptoEmi}-${docModificado.secuencial}`),
             campoTexto('Fecha Emisión (Comprobante a Modificar)', cabecera.fecha_emision_mod_cpcno ? fDate(cabecera.fecha_emision_mod_cpcno, 'dd/MM/yyyy') : '---'),
             campoTexto('Razón de Modificación', cabecera.nombre_cpmno ?? ''),
+            campoTexto('Vendedor', cabecera.nombre_vgven ?? ''),
         ],
     );
 

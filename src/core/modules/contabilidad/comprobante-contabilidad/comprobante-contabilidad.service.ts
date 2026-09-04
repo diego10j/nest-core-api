@@ -34,6 +34,7 @@ export class ComprobanteContabilidadService extends BaseService {
                 'p_con_estado_comprobante_normal',
                 'p_con_lugar_debe',
                 'p_con_lugar_haber',
+                'p_con_cuenta_clientes_cxc',
             ])
             .then((result) => {
                 this.variables = result;
@@ -666,6 +667,9 @@ export class ComprobanteContabilidadService extends BaseService {
      */
     async getComprobantesConError(dtoIn: GetComprobantesConErrorDto & HeaderParamsDto) {
         try {
+            // Cuenta contable "Clientes" (con_det_plan_cuen), configurable vía
+            // sis_parametros.p_con_cuenta_clientes_cxc - no hardcodear el ide_cndpc.
+            const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
             const selectCols = `
                 SELECT DISTINCT a.ide_cnccc
                      , a.numero_cnccc    AS num_asiento
@@ -702,13 +706,19 @@ export class ComprobanteContabilidadService extends BaseService {
               WHERE a.ide_sucu = $1
                AND a.fecha_trans_cnccc BETWEEN $2 AND $3
                AND a.ide_cneco = 0
-               AND a.ide_cntcm = 2
-               AND b.ide_cndpc = 677
+               AND b.ide_cndpc = ${ideCndpcClientes}
                AND NOT EXISTS (
-                   SELECT 1
-                     FROM tes_cab_libr_banc t
-                    WHERE t.ide_cnccc = a.ide_cnccc
-                      AND t.ide_sucu  = $1
+                   SELECT 1 FROM tes_cab_libr_banc t WHERE t.ide_cnccc = a.ide_cnccc
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM cxc_detall_transa dt WHERE dt.ide_cnccc = a.ide_cnccc
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM cxc_cabece_factura cf WHERE cf.ide_cnccc = a.ide_cnccc
+               )
+               AND NOT EXISTS (
+                   -- Notas de crédito de VENTA (prefijo cxp_ engañoso, es dato de Ventas/CxC)
+                   SELECT 1 FROM cxp_cabecera_nota cn WHERE cn.ide_cnccc = a.ide_cnccc
                ))
              UNION ALL
             (${selectCols}, 'CXP NO ASOCIADA A TRANSACCION' AS error

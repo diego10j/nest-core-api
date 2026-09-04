@@ -1,4 +1,4 @@
-import { IsInt, IsOptional } from 'class-validator';
+import { IsInt, IsString, IsOptional } from 'class-validator';
 
 export class ProveedoresCxPDto {
 
@@ -6,4 +6,13 @@ export class ProveedoresCxPDto {
     @IsInt()
     @IsOptional()
     ide_cntdo?: number;
+
+    /** Texto de búsqueda (nombre o identificación) — autocomplete tipo SearchCliente */
+    @IsString()
+    @IsOptional()
+    value?: string;
+
+    @IsInt()
+    @IsOptional()
+    limit?: number;
 }

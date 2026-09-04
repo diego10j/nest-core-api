@@ -484,6 +484,7 @@ export class FacturasService extends BaseService {
         uv.siglas_inuni,
         uv.precio_venta,
         uv.total_ccdfa,
+        uv.descuento_ccdfa,
         uv.nombre_vgven,
         uv.hace_kardex_inarti,
         uv.precio_compra,

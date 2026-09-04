@@ -9,7 +9,12 @@ import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asient
 import { GetNoContabilizadosDto } from '../facturas/dto/get-no-contabilizados.dto';
 
 import { EnviarSriNotaCreditoDto } from './dto/enviar-sri-nota-credito.dto';
+import { GetNotaCreditoDto } from './dto/get-nota-credito.dto';
+import { GetNotasCreditoDto } from './dto/get-notas-credito.dto';
+import { GetTotalNotasCreditoPorEstadoDto } from './dto/get-total-notas-credito-por-estado.dto';
+import { SearchFacturaNotaCreditoDto } from './dto/search-factura-nota-credito.dto';
 import { AnularNotaCreditoDto, SaveNotaCreditoDto } from './dto/save-nota-credito.dto';
+import { UpdateNotaCreditoDto } from './dto/update-nota-credito.dto';
 import { NotasCreditoSaveService } from './notas-credito-save.service';
 import { NotasCreditoService } from './notas-credito.service';
 
@@ -70,6 +75,53 @@ export class NotasCreditoController {
         return resultados;
     }
 
+    @Get('getPuntosEmisionNotasCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Puntos de emisión configurados para Notas de Crédito' })
+    getPuntosEmisionNotasCredito(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.service.getPuntosEmisionNotasCredito(headersParams);
+    }
+
+    @Get('searchFacturaNotaCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Buscar facturas (por número o cliente) para crear una nota de crédito' })
+    searchFacturaNotaCredito(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: SearchFacturaNotaCreditoDto,
+    ) {
+        return this.service.searchFacturaNotaCredito({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getTotalNotasCreditoPorEstado')
+    @Auth()
+    @ApiOperation({ summary: 'Conteo de notas de crédito de venta por estado SRI (tabs del listado)' })
+    getTotalNotasCreditoPorEstado(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetTotalNotasCreditoPorEstadoDto,
+    ) {
+        return this.service.getTotalNotasCreditoPorEstado({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getNotasCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Listar notas de crédito de venta (paginado, para pantalla de gestión)' })
+    getNotasCredito(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetNotasCreditoDto,
+    ) {
+        return this.service.getNotasCredito({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getNotaCreditoById')
+    @Auth()
+    @ApiOperation({ summary: 'Detalle de una nota de crédito de venta (ver/editar)' })
+    getNotaCreditoById(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetNotaCreditoDto,
+    ) {
+        return this.service.getNotaCreditoById({ ...headersParams, ...dtoIn });
+    }
+
     @Post('saveNotaCredito')
     @Auth()
     @ApiOperation({ summary: 'Crear una nota de crédito de venta (reversa una factura, genera comprobante SRI)' })
@@ -78,6 +130,16 @@ export class NotasCreditoController {
         @Body() dtoIn: SaveNotaCreditoDto,
     ) {
         return this.saveService.saveNotaCredito({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('updateNotaCredito')
+    @Auth()
+    @ApiOperation({ summary: 'Editar una nota de crédito de venta mientras su comprobante SRI siga PENDIENTE' })
+    updateNotaCredito(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: UpdateNotaCreditoDto,
+    ) {
+        return this.saveService.updateNotaCredito({ ...headersParams, ...dtoIn });
     }
 
     @Post('enviarSRI')

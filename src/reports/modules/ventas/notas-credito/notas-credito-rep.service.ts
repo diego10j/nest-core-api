@@ -29,11 +29,16 @@ export class NotasCreditoRepService {
                 a.valor_iva_cpcno, a.tarifa_iva_cpcno, a.total_cpcno,
                 p.nom_geper, p.identificac_geper, p.direccion_geper, p.telefono_geper, p.correo_geper,
                 m.nombre_cpmno,
+                ven.nombre_vgven,
                 s.claveacceso_srcom, s.autorizacion_srcomn, s.fechaautoriza_srcom
             FROM cxp_cabecera_nota a
             INNER JOIN gen_persona p ON a.ide_geper = p.ide_geper
             LEFT JOIN cxp_motivo_nota m ON a.ide_cpmno = m.ide_cpmno
             LEFT JOIN sri_comprobante s ON a.ide_srcom = s.ide_srcom
+            -- Vendedor: la NC no tiene vendedor propio, se muestra el de la factura que
+            -- origina la nota de crédito.
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = a.ide_cccfa
+            LEFT JOIN ven_vendedor ven ON ven.ide_vgven = cf.ide_vgven
             WHERE a.ide_cpcno = $1
               AND a.ide_empr = $2
         `);

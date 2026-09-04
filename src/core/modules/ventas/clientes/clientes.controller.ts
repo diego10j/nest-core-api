@@ -10,14 +10,22 @@ import { SaveDto } from '../../../../common/dto/save.dto';
 
 import { ClientesSaveService } from './clientes-save.service';
 import { ClientesService } from './clientes.service';
+import { DeleteCabeceraTrnCxCDto } from './dto/delete-cabecera-trn-cxc.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetDiferenciasContablesCxcDto } from './dto/get-diferencias-contables-cxc.dto';
 import { GetExisteClienteDto } from './dto/get-existe-cliente.dto';
 import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
+import { IdeCcctrDto } from './dto/ide-ccctr.dto';
 import { MarcarSeguidorDto } from './dto/marcar-seguidor.dto';
+import { MoverDetalleTrnCxCDto } from './dto/mover-detalle-trn-cxc.dto';
+import { SaveDetalleCabeceraTrnCxCDto } from './dto/save-detalle-cabecera-trn-cxc.dto';
 import { SaveDireccionPersonaDto } from './dto/save-direccion-persona.dto';
+import { SearchAsientoClienteDto } from './dto/search-asiento-cliente.dto';
+import { SearchDocumentoCxCDto } from './dto/search-documento-cxc.dto';
+import { SearchLibroBancoClienteDto } from './dto/search-libro-banco-cliente.dto';
 import { SetActivoDireccionDto } from './dto/set-activo-direccion.dto';
 import { TrnClienteDto } from './dto/trn-cliente.dto';
 import { ValidaWhatsAppCliente } from './dto/valida-whatsapp-cliente.dto';
@@ -228,5 +236,78 @@ export class ClientesController {
   @ApiResponse({ status: 200, description: 'Cliente marcado como seguidor' })
   marcarSeguidorRedes(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: MarcarSeguidorDto) {
     return this.saveService.marcarSeguidorRedes({ ...headersParams, ...dtoIn });
+  }
+
+  // ─── Editar Transacciones CxC ─────────────────────────────────────────────
+
+  @Get('getListDataTiposTransaccionCxC')
+  @ApiOperation({ summary: 'Combo de tipos de transacción CxC' })
+  getListDataTiposTransaccionCxC(@AppHeaders() _h: HeaderParamsDto) {
+    return this.service.getListDataTiposTransaccionCxC();
+  }
+
+  @Get('getCabecerasTrnCliente')
+  @ApiOperation({ summary: 'Cabeceras de transacción CxC de un cliente por período, con cuadre' })
+  getCabecerasTrnCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TrnClienteDto) {
+    return this.service.getCabecerasTrnCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getDetalleCabeceraTrn')
+  @ApiOperation({ summary: 'Cabecera + detalle completo de una transacción CxC' })
+  getDetalleCabeceraTrn(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeCcctrDto) {
+    return this.service.getDetalleCabeceraTrn({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('searchDocumentoCliente')
+  @ApiOperation({ summary: 'Buscar facturas de venta de un cliente (autocomplete)' })
+  searchDocumentoCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchDocumentoCxCDto) {
+    return this.service.searchDocumentoCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('searchAsientoCliente')
+  @ApiOperation({ summary: 'Buscar asientos contables de un cliente (autocomplete)' })
+  searchAsientoCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchAsientoClienteDto) {
+    return this.service.searchAsientoCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('searchLibroBancoCliente')
+  @ApiOperation({ summary: 'Buscar movimientos de libro de bancos vinculados a un cliente (autocomplete)' })
+  searchLibroBancoCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchLibroBancoClienteDto) {
+    return this.service.searchLibroBancoCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('saveDetalleCabeceraTrn')
+  @ApiOperation({ summary: 'Guardar (diff crear/actualizar/eliminar) el detalle completo de una cabecera de transacción CxC' })
+  saveDetalleCabeceraTrn(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetalleCabeceraTrnCxCDto) {
+    return this.saveService.saveDetalleCabeceraTrn({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('moverDetalleTrn')
+  @ApiOperation({ summary: 'Reasignar una línea de detalle CxC a otra cabecera del mismo cliente' })
+  moverDetalleTrn(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: MoverDetalleTrnCxCDto) {
+    return this.saveService.moverDetalleTrn({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('deleteCabeceraTrn')
+  @ApiOperation({ summary: 'Eliminar una cabecera de transacción CxC (solo si no tiene detalle asociado)' })
+  deleteCabeceraTrn(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: DeleteCabeceraTrnCxCDto) {
+    return this.saveService.deleteCabeceraTrn({ ...headersParams, ...dtoIn });
+  }
+
+  // ─── Diferencias Contable vs CxC ───────────────────────────────────────────
+
+  @Get('getDiferenciasContablesCxcConsolidado')
+  @ApiOperation({ summary: 'Saldo contable (cuenta Clientes) vs saldo CxC, consolidado, a una fecha de corte' })
+  getDiferenciasContablesCxcConsolidado(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: GetDiferenciasContablesCxcDto
+  ) {
+    return this.service.getDiferenciasContablesCxcConsolidado({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getDiferenciasContablesCxc')
+  @ApiOperation({ summary: 'Saldo contable (cuenta Clientes) vs saldo CxC, detallado por cliente, a una fecha de corte' })
+  getDiferenciasContablesCxc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDiferenciasContablesCxcDto) {
+    return this.service.getDiferenciasContablesCxc({ ...headersParams, ...dtoIn });
   }
 }
