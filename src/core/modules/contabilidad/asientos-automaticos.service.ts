@@ -183,6 +183,41 @@ export interface AsientoCostoNotaCreditoResult {
     advertencias: string[];
 }
 
+// ===================== Deshacer asientos automáticos (Mayorizar) =====================
+// Simétrico a los "generar*" de arriba: pone en NULL el/los FK de asiento en el documento
+// origen y elimina (cabecera + detalle) el comprobante, pero SOLO si automatico_cnccc=true
+// - nunca deshace un asiento editado/creado manualmente aunque coincida el ide_cnccc.
+
+export interface DeshacerAsientoCompraResult {
+    ide_cpcfa: number;
+    deshecho: boolean;
+    advertencias: string[];
+}
+
+export interface DeshacerAsientoFacturaCxCResult {
+    ide_cccfa: number;
+    deshecho: boolean;
+    advertencias: string[];
+}
+
+export interface DeshacerAsientoCostoVentaResult {
+    ide_cccfa: number;
+    deshecho: boolean;
+    advertencias: string[];
+}
+
+export interface DeshacerAsientoNotaCreditoResult {
+    ide_cpcno: number;
+    deshecho: boolean;
+    advertencias: string[];
+}
+
+export interface DeshacerAsientoCostoNotaCreditoResult {
+    ide_cpcno: number;
+    deshecho: boolean;
+    advertencias: string[];
+}
+
 /** Tipo de comprobante DIARIO (hardcoded en el legacy generarAsientoComprasCxP) */
 const IDE_CNTCM_DIARIO = 0;
 
@@ -1724,6 +1759,152 @@ export class AsientosAutomaticosService extends BaseService {
                 advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
             };
         }
+    }
+
+    /**
+     * Valida que el ide_cnccc pertenezca a un asiento generado por el proceso automático de
+     * Mayorizar (automatico_cnccc = true en con_cab_comp_cont) y, de ser así, lo elimina
+     * (cabecera + detalle) vía ComprobanteContabilidadService.eliminarAutomatico. No toca el
+     * documento origen (cxp_cabece_factur / cxc_cabece_factura / cxp_cabecera_nota) - cada
+     * método público "deshacerAsiento*" hace ese UPDATE (poner en NULL el FK) antes de llamar
+     * a este helper, así el FK nunca queda apuntando a un comprobante ya eliminado.
+     */
+    private async validarYEliminarAsientoAutomatico(
+        ideCnccc: number,
+        dtoIn: HeaderParamsDto,
+    ): Promise<{ ok: boolean; mensaje?: string }> {
+        const q = new SelectQuery(`SELECT automatico_cnccc FROM con_cab_comp_cont WHERE ide_cnccc = $1`);
+        q.addIntParam(1, ideCnccc);
+        const row = await this.dataSource.createSingleQuery(q);
+        if (!row) {
+            return { ok: false, mensaje: `El asiento ${ideCnccc} no existe` };
+        }
+        if (!row.automatico_cnccc) {
+            return {
+                ok: false,
+                mensaje: `El asiento ${ideCnccc} no fue generado por el proceso automático, no se puede deshacer`,
+            };
+        }
+        await this.comprobanteService.eliminarAutomatico(ideCnccc, dtoIn);
+        return { ok: true };
+    }
+
+    /** Deshace (pone en NULL + elimina el comprobante) el asiento automático de un documento CxP (compras) */
+    async deshacerAsientoComprasCxP(
+        dtoIn: { ide_cpcfa: number } & HeaderParamsDto,
+    ): Promise<DeshacerAsientoCompraResult> {
+        const q = new SelectQuery(`SELECT ide_cnccc FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
+        q.addIntParam(1, dtoIn.ide_cpcfa);
+        const doc = await this.dataSource.createSingleQuery(q);
+        if (!doc?.ide_cnccc) {
+            return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: false, advertencias: ['El documento no tiene asiento contable'] };
+        }
+        const ideCnccc = Number(doc.ide_cnccc);
+        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        if (!resultado.ok) {
+            return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: false, advertencias: [resultado.mensaje as string] };
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxp_cabece_factur SET ide_cnccc = NULL WHERE ide_cpcfa = $1`,
+            [dtoIn.ide_cpcfa],
+        );
+        await this.dataSource.pool.query(
+            `UPDATE cxp_detall_transa SET ide_cnccc = NULL WHERE ide_cpcfa = $1 AND numero_pago_cpdtr = 0 AND ide_cnccc = $2`,
+            [dtoIn.ide_cpcfa, ideCnccc],
+        );
+        return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: true, advertencias: [] };
+    }
+
+    /** Deshace el asiento de VENTA de una factura de VENTAS */
+    async deshacerAsientoFacturaCxC(
+        dtoIn: { ide_cccfa: number } & HeaderParamsDto,
+    ): Promise<DeshacerAsientoFacturaCxCResult> {
+        const q = new SelectQuery(`SELECT ide_cnccc FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
+        q.addIntParam(1, dtoIn.ide_cccfa);
+        const doc = await this.dataSource.createSingleQuery(q);
+        if (!doc?.ide_cnccc) {
+            return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: ['La factura no tiene asiento contable'] };
+        }
+        const ideCnccc = Number(doc.ide_cnccc);
+        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        if (!resultado.ok) {
+            return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxc_cabece_factura SET ide_cnccc = NULL WHERE ide_cccfa = $1`,
+            [dtoIn.ide_cccfa],
+        );
+        await this.dataSource.pool.query(
+            `UPDATE cxc_detall_transa SET ide_cnccc = NULL WHERE ide_cccfa = $1 AND numero_pago_ccdtr = 0 AND ide_cnccc = $2`,
+            [dtoIn.ide_cccfa, ideCnccc],
+        );
+        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
+    }
+
+    /** Deshace el asiento de COSTO DE VENTA de una factura de VENTAS */
+    async deshacerAsientoCostoVenta(
+        dtoIn: { ide_cccfa: number } & HeaderParamsDto,
+    ): Promise<DeshacerAsientoCostoVentaResult> {
+        const q = new SelectQuery(`SELECT ide_cnccc_costo FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
+        q.addIntParam(1, dtoIn.ide_cccfa);
+        const doc = await this.dataSource.createSingleQuery(q);
+        if (!doc?.ide_cnccc_costo) {
+            return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: ['La factura no tiene asiento de costo'] };
+        }
+        const ideCnccc = Number(doc.ide_cnccc_costo);
+        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        if (!resultado.ok) {
+            return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxc_cabece_factura SET ide_cnccc_costo = NULL WHERE ide_cccfa = $1`,
+            [dtoIn.ide_cccfa],
+        );
+        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
+    }
+
+    /** Deshace el asiento de VENTA de una nota de crédito de VENTAS */
+    async deshacerAsientoNotaCredito(
+        dtoIn: { ide_cpcno: number } & HeaderParamsDto,
+    ): Promise<DeshacerAsientoNotaCreditoResult> {
+        const q = new SelectQuery(`SELECT ide_cnccc FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
+        q.addIntParam(1, dtoIn.ide_cpcno);
+        const nota = await this.dataSource.createSingleQuery(q);
+        if (!nota?.ide_cnccc) {
+            return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: ['La nota de crédito no tiene asiento contable'] };
+        }
+        const ideCnccc = Number(nota.ide_cnccc);
+        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        if (!resultado.ok) {
+            return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxp_cabecera_nota SET ide_cnccc = NULL WHERE ide_cpcno = $1`,
+            [dtoIn.ide_cpcno],
+        );
+        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
+    }
+
+    /** Deshace el asiento de reverso de COSTO de una nota de crédito de VENTAS */
+    async deshacerAsientoCostoNotaCredito(
+        dtoIn: { ide_cpcno: number } & HeaderParamsDto,
+    ): Promise<DeshacerAsientoCostoNotaCreditoResult> {
+        const q = new SelectQuery(`SELECT ide_cnccc_costo FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
+        q.addIntParam(1, dtoIn.ide_cpcno);
+        const nota = await this.dataSource.createSingleQuery(q);
+        if (!nota?.ide_cnccc_costo) {
+            return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: ['La nota de crédito no tiene asiento de costo'] };
+        }
+        const ideCnccc = Number(nota.ide_cnccc_costo);
+        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        if (!resultado.ok) {
+            return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
+        }
+        await this.dataSource.pool.query(
+            `UPDATE cxp_cabecera_nota SET ide_cnccc_costo = NULL WHERE ide_cpcno = $1`,
+            [dtoIn.ide_cpcno],
+        );
+        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
     }
 
     /**

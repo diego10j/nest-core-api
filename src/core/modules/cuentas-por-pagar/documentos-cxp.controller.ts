@@ -328,6 +328,25 @@ export class DocumentosCxPController {
         return resultados;
     }
 
+    @Post('deshacerAsientosCompras')
+    @Auth()
+    @ApiOperation({ summary: 'Deshacer (poner en NULL + eliminar comprobante) el asiento contable automático de uno o varios documentos CxP (Mayorizar)' })
+    async deshacerAsientosCompras(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: GenerarAsientosComprasDto,
+    ) {
+        const resultados = [];
+        for (const ideCpcfa of dtoIn.ide) {
+            resultados.push(
+                await this.asientosService.deshacerAsientoComprasCxP({
+                    ...headersParams,
+                    ide_cpcfa: ideCpcfa,
+                }),
+            );
+        }
+        return resultados;
+    }
+
     @Post('enviarSRI')
     @Auth()
     @ApiOperation({ summary: 'Enviar bajo demanda una Liquidación de Compra al SRI (firma + recepción + autorización + correo)' })
