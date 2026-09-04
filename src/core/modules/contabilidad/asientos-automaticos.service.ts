@@ -262,7 +262,7 @@ export class AsientosAutomaticosService extends BaseService {
      */
     async eliminarAsiento(ideCnccc: number, dtoIn: HeaderParamsDto): Promise<void> {
         try {
-            await this.comprobanteService.eliminarAutomatico(ideCnccc, dtoIn);
+            await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         } catch (error) {
             this.logger.error(`No se pudo revertir el asiento automático ide_cnccc=${ideCnccc}: ${error}`);
         }
@@ -1763,15 +1763,16 @@ export class AsientosAutomaticosService extends BaseService {
 
     /**
      * Valida que el ide_cnccc pertenezca a un asiento generado por el proceso automático de
-     * Mayorizar (automatico_cnccc = true en con_cab_comp_cont) y, de ser así, lo elimina
-     * (cabecera + detalle) vía ComprobanteContabilidadService.eliminarAutomatico. No toca el
-     * documento origen (cxp_cabece_factur / cxc_cabece_factura / cxp_cabecera_nota) - cada
-     * método público "deshacerAsiento*" hace ese UPDATE (poner en NULL el FK) antes de llamar
-     * a este helper, así el FK nunca queda apuntando a un comprobante ya eliminado.
+     * Mayorizar (automatico_cnccc = true en con_cab_comp_cont) - solo lectura, no modifica
+     * nada. "Deshacer" NO borra el comprobante (eso violaría la FK
+     * cxc_cabece_factura/cxp_cabece_factur/cxp_cabecera_nota → con_cab_comp_cont mientras el
+     * documento todavía lo referencia - visto en producción: "update or delete on table
+     * con_cab_comp_cont violates foreign key constraint ..._ide_cnccc_fkey"), sino que lo deja
+     * en estado ANULADO (ComprobanteContabilidadService.anular) y pone en NULL el FK del
+     * documento origen, para que vuelva a aparecer como pendiente de contabilizar.
      */
-    private async validarYEliminarAsientoAutomatico(
+    private async validarAsientoAutomatico(
         ideCnccc: number,
-        dtoIn: HeaderParamsDto,
     ): Promise<{ ok: boolean; mensaje?: string }> {
         const q = new SelectQuery(`SELECT automatico_cnccc FROM con_cab_comp_cont WHERE ide_cnccc = $1`);
         q.addIntParam(1, ideCnccc);
@@ -1785,11 +1786,10 @@ export class AsientosAutomaticosService extends BaseService {
                 mensaje: `El asiento ${ideCnccc} no fue generado por el proceso automático, no se puede deshacer`,
             };
         }
-        await this.comprobanteService.eliminarAutomatico(ideCnccc, dtoIn);
         return { ok: true };
     }
 
-    /** Deshace (pone en NULL + elimina el comprobante) el asiento automático de un documento CxP (compras) */
+    /** Deshace (pone en NULL el FK + anula el comprobante) el asiento automático de un documento CxP (compras) */
     async deshacerAsientoComprasCxP(
         dtoIn: { ide_cpcfa: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoCompraResult> {
@@ -1800,7 +1800,7 @@ export class AsientosAutomaticosService extends BaseService {
             return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: false, advertencias: ['El documento no tiene asiento contable'] };
         }
         const ideCnccc = Number(doc.ide_cnccc);
-        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
             return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
@@ -1812,6 +1812,7 @@ export class AsientosAutomaticosService extends BaseService {
             `UPDATE cxp_detall_transa SET ide_cnccc = NULL WHERE ide_cpcfa = $1 AND numero_pago_cpdtr = 0 AND ide_cnccc = $2`,
             [dtoIn.ide_cpcfa, ideCnccc],
         );
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: true, advertencias: [] };
     }
 
@@ -1826,7 +1827,7 @@ export class AsientosAutomaticosService extends BaseService {
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: ['La factura no tiene asiento contable'] };
         }
         const ideCnccc = Number(doc.ide_cnccc);
-        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
@@ -1838,6 +1839,7 @@ export class AsientosAutomaticosService extends BaseService {
             `UPDATE cxc_detall_transa SET ide_cnccc = NULL WHERE ide_cccfa = $1 AND numero_pago_ccdtr = 0 AND ide_cnccc = $2`,
             [dtoIn.ide_cccfa, ideCnccc],
         );
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
     }
 
@@ -1852,7 +1854,7 @@ export class AsientosAutomaticosService extends BaseService {
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: ['La factura no tiene asiento de costo'] };
         }
         const ideCnccc = Number(doc.ide_cnccc_costo);
-        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
@@ -1860,6 +1862,7 @@ export class AsientosAutomaticosService extends BaseService {
             `UPDATE cxc_cabece_factura SET ide_cnccc_costo = NULL WHERE ide_cccfa = $1`,
             [dtoIn.ide_cccfa],
         );
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
     }
 
@@ -1874,7 +1877,7 @@ export class AsientosAutomaticosService extends BaseService {
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: ['La nota de crédito no tiene asiento contable'] };
         }
         const ideCnccc = Number(nota.ide_cnccc);
-        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
@@ -1882,6 +1885,7 @@ export class AsientosAutomaticosService extends BaseService {
             `UPDATE cxp_cabecera_nota SET ide_cnccc = NULL WHERE ide_cpcno = $1`,
             [dtoIn.ide_cpcno],
         );
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
     }
 
@@ -1896,7 +1900,7 @@ export class AsientosAutomaticosService extends BaseService {
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: ['La nota de crédito no tiene asiento de costo'] };
         }
         const ideCnccc = Number(nota.ide_cnccc_costo);
-        const resultado = await this.validarYEliminarAsientoAutomatico(ideCnccc, dtoIn);
+        const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
@@ -1904,6 +1908,7 @@ export class AsientosAutomaticosService extends BaseService {
             `UPDATE cxp_cabecera_nota SET ide_cnccc_costo = NULL WHERE ide_cpcno = $1`,
             [dtoIn.ide_cpcno],
         );
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
         return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
     }
 
