@@ -68,7 +68,12 @@ export class AnticipoProveedorSaveService extends BaseService {
             }
         }
 
-        const numero = dtoIn.numero ?? '000000';
+        // A diferencia de saveAnticipoCxP (que cae a un '000000' fijo), acá se genera un
+        // secuencial real cuando no viene número - '000000' colisiona en el segundo anticipo
+        // que se registre con la misma cuenta/tipo de transacción (mismo patrón que
+        // CxpTransaccionesSaveService.savePagoCxP).
+        const numero = dtoIn.numero
+            ?? await this.preLibroBancosSaveService.generarNumeroAutomatico(dtoIn.ideTecba, dtoIn.ideTettb, dtoIn);
         const { existe } = await this.preLibroBancosService.existeNumTransaccion({
             ...dtoIn,
             ideTecba: dtoIn.ideTecba,
