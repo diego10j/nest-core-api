@@ -136,6 +136,21 @@ export class AnticipoProveedorSaveService extends BaseService {
                     dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentDateTime()],
             );
 
+            if (dtoIn.ideCpcfc != null) {
+                // Mismo proveedor por seguridad (dueño real ya validado por ideGeper arriba) -
+                // así el detalle del grupo puede mostrar/ocultar "Registrar Anticipo" sabiendo
+                // que ya tiene uno vinculado.
+                const { rowCount } = await queryRunner.query(
+                    `UPDATE cxp_cab_flete_cons SET ide_teanp = $1 WHERE ide_cpcfc = $2 AND ide_geper = $3`,
+                    [ideTeanp, dtoIn.ideCpcfc, dtoIn.ideGeper],
+                );
+                if (rowCount === 0) {
+                    throw new BadRequestException(
+                        `El grupo ide_cpcfc=${dtoIn.ideCpcfc} no existe o no pertenece a este proveedor.`,
+                    );
+                }
+            }
+
             await queryRunner.query('COMMIT');
         } catch (error) {
             await queryRunner.query('ROLLBACK');

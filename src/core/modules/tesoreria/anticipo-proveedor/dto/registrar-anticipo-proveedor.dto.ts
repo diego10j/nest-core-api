@@ -53,4 +53,12 @@ export class RegistrarAnticipoProveedorDto {
     @IsInt()
     @IsOptional()
     ideTeban?: number;
+
+    /** FK → cxp_cab_flete_cons - si viene, vincula este anticipo al grupo "Pendiente Factura"
+     * indicado (cxp_cab_flete_cons.ide_teanp), para que su pantalla de detalle sepa que ya
+     * tiene un anticipo registrado y no vuelva a ofrecer "Registrar Anticipo" sobre el mismo
+     * grupo. Se valida que el grupo sea del mismo proveedor (ideGeper). */
+    @IsInt()
+    @IsOptional()
+    ideCpcfc?: number;
 }

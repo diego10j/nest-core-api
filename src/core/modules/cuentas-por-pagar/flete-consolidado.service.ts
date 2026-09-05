@@ -466,7 +466,12 @@ export class FleteConsolidadoService extends BaseService {
                 cf.pagado_cpcfa,
                 cf.ide_cnccc,
                 ccc.numero_cnccc,
-                cc.ide_teclb
+                cc.ide_teclb,
+                cc.ide_teanp,
+                ap.valor_teanp AS anticipo_valor,
+                ap.valor_liquidado_teanp AS anticipo_valor_liquidado,
+                eap.nombre_teeap AS anticipo_estado,
+                eap.color_teeap AS anticipo_color_estado
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
@@ -484,6 +489,8 @@ export class FleteConsolidadoService extends BaseService {
             LEFT JOIN ven_transporte t          ON t.ide_vgtra = ctf.ide_vgtra
             LEFT JOIN cxp_cabece_factur cf      ON cc.ide_cpcfa = cf.ide_cpcfa
             LEFT JOIN con_cab_comp_cont ccc     ON ccc.ide_cnccc = cf.ide_cnccc
+            LEFT JOIN tes_cab_anticipo_prov ap  ON ap.ide_teanp = cc.ide_teanp
+            LEFT JOIN tes_estado_anticipo_prov eap ON eap.ide_teeap = ap.ide_teeap
             WHERE cc.ide_cpcfc = $1
               AND cc.ide_empr = $2
               AND cc.ide_sucu = $3
