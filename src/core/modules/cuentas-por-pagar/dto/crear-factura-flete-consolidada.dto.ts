@@ -55,4 +55,18 @@ export class CrearFacturaFleteConsolidadaDto {
     @IsDateString()
     @IsNotEmpty()
     fecha_hasta: string;
+
+    /** FK → cxp_cab_flete_cons - si viene, completa ese grupo "Pendiente Factura" ya existente
+     * (creado por registrarGrupoEnviosSinFactura) en vez de crear un grupo nuevo: actualiza su
+     * cabecera/detalle en vez de insertar filas nuevas. */
+    @IsInt()
+    @IsOptional()
+    ide_cpcfc?: number;
+
+    /** FK → cxp_cabece_transa (anticipo ya pagado a este proveedor, sin documento asociado) -
+     * se reenvía tal cual a DocumentosCxPSaveService.saveDocumento, que ya sabe reutilizar esa
+     * cabecera en vez de crear un pago nuevo. */
+    @IsInt()
+    @IsOptional()
+    ide_cpctr_anticipo?: number;
 }

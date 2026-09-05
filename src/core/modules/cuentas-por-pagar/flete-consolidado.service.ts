@@ -1,11 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { CoreService } from 'src/core/core.service';
 import { GptService } from 'src/core/integration/gpt/gpt.service';
 
 import { DocumentosCxPXmlService } from './documentos-cxp-xml.service';
 import { GetEnviosSinFacturaDto } from './dto/get-envios-sin-factura.dto';
+import { GetFacturasProveedorFleteDto } from './dto/get-facturas-proveedor-flete.dto';
 import { GetFletesConsolidadosDto } from './dto/get-fletes-consolidados.dto';
 import {
     DetalleXmlCxP,
@@ -21,6 +24,10 @@ import {
     ProductoPreFactura,
     truncarObservacion,
 } from './envio-factura-cxp.service';
+
+/** Estados de cxp_estado_flete_cons (seed en script-cxp-flete-consolidado.sql). Ver también
+ * FleteConsolidadoSaveService, que define los mismos valores para actualizar el estado. */
+const ESTADO_ANULADO = 3;
 
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
 export interface EnvioParaConsolidar {
@@ -91,13 +98,21 @@ export interface PrefillFacturaFleteConsolidada {
  * (cxp_cab_flete_cons/cxp_det_flete_cons). El guardado vive en FleteConsolidadoSaveService.
  */
 @Injectable()
-export class FleteConsolidadoService {
+export class FleteConsolidadoService extends BaseService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly xmlService: DocumentosCxPXmlService,
         private readonly envioFacturaCxPService: EnvioFacturaCxPService,
         private readonly gptService: GptService,
-    ) { }
+        private readonly core: CoreService,
+    ) {
+        super();
+        this.core
+            .getVariables(['p_cxp_estado_factura_normal'])
+            .then((result) => {
+                this.variables = result;
+            });
+    }
 
     /** Envíos de un transportista sin factura de flete registrada, en un rango de fechas
      * (misma fecha de referencia que el Reporte de Envío de Facturas: emisión de la factura
@@ -111,16 +126,31 @@ export class FleteConsolidadoService {
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 f.fecha_emisi_cccfa,
-                e.total_flete_cctfa
+                e.total_flete_cctfa,
+                t.ide_geper AS ide_geper_transporte
             FROM cxc_transporte_factura e
             INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN cxc_datos_fac df     ON f.ide_ccdaf = df.ide_ccdaf
             INNER JOIN gen_persona b        ON f.ide_geper = b.ide_geper
+            LEFT JOIN ven_transporte t      ON e.ide_vgtra = t.ide_vgtra
             WHERE e.ide_vgtra = $1
               AND e.ide_cpcfa IS NULL
               AND f.fecha_emisi_cccfa BETWEEN $2 AND $3
               AND e.ide_empr = $4
               AND e.ide_sucu = $5
+              -- Un envío no debe reaparecer como disponible si ya quedó vinculado a CUALQUIER
+              -- grupo/orden de flete consolidado activo - incluye grupos "Pendiente Factura"
+              -- (todavía sin ide_cpcfa, por eso ya no alcanza con "ide_cpcfa IS NULL" solo) y
+              -- grupos ya facturados (pendientes de pago o pagados). Los ANULADOS sí liberan el
+              -- envío, porque revierten el proceso completo (ver
+              -- FleteConsolidadoSaveService.anularFleteConsolidado).
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM cxp_det_flete_cons d
+                  INNER JOIN cxp_cab_flete_cons c ON c.ide_cpcfc = d.ide_cpcfc
+                  WHERE d.ide_cctfa = e.ide_cctfa
+                    AND c.ide_cpefc <> ${ESTADO_ANULADO}
+              )
             ORDER BY f.fecha_emisi_cccfa
             `,
             dtoIn,
@@ -131,6 +161,51 @@ export class FleteConsolidadoService {
         query.addIntParam(4, dtoIn.ideEmpr);
         query.addIntParam(5, dtoIn.ideSucu);
         return this.dataSource.createQuery(query);
+    }
+
+    /** Facturas CxP de un proveedor/transportista, en estado normal y no vinculadas todavía a
+     * ningún grupo de flete consolidado, para asociar a un grupo "Pendiente Factura" (ver
+     * FleteConsolidadoSaveService.completarConFacturaExistente). Mismo criterio que
+     * ImportacionesService.getFacturasImportaciones (antigüedad 4 meses, monto aproximado
+     * opcional ±5%), adaptado a que acá el filtro de "ya usada" es contra cxp_cab_flete_cons en
+     * vez de imp_cab_importa. */
+    async getFacturasProveedorFlete(dtoIn: GetFacturasProveedorFleteDto & HeaderParamsDto) {
+        const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
+        const aplicarFiltroMonto = dtoIn.montoAprox != null && dtoIn.montoAprox > 0;
+        const query = new SelectQuery(`
+            SELECT f.ide_cpcfa,
+                   f.numero_cpcfa,
+                   f.fecha_emisi_cpcfa,
+                   f.autorizacio_cpcfa,
+                   f.total_cpcfa,
+                   f.observacion_cpcfa,
+                   ef.nombre_cpefa AS estado,
+                   p.nom_geper AS proveedor,
+                   p.identificac_geper
+            FROM cxp_cabece_factur f
+            INNER JOIN gen_persona p ON f.ide_geper = p.ide_geper
+            LEFT JOIN cxp_estado_factur ef ON f.ide_cpefa = ef.ide_cpefa
+            WHERE f.ide_geper = $1
+              AND f.ide_empr = $2
+              AND f.ide_sucu = $3
+              AND f.ide_cpefa = ${estadoNormal}
+              AND f.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '4 months'
+              AND NOT EXISTS (
+                  SELECT 1 FROM cxp_cab_flete_cons c
+                  WHERE c.ide_cpcfa = f.ide_cpcfa
+              )
+              ${aplicarFiltroMonto ? 'AND f.total_cpcfa BETWEEN $4 AND $5' : ''}
+            ORDER BY f.fecha_emisi_cpcfa DESC, f.ide_cpcfa DESC
+        `);
+        query.addIntParam(1, dtoIn.ide_geper);
+        query.addIntParam(2, dtoIn.ideEmpr);
+        query.addIntParam(3, dtoIn.ideSucu);
+        if (aplicarFiltroMonto) {
+            const monto = Number(dtoIn.montoAprox);
+            query.addNumberParam(4, monto * 0.95);
+            query.addNumberParam(5, monto * 1.05);
+        }
+        return this.dataSource.createSelectQuery(query);
     }
 
     async prepararFacturaFleteConsolidadaDesdeXml(
@@ -170,14 +245,17 @@ export class FleteConsolidadoService {
         // Con 2+ envíos no hay forma de saber a cuál pertenece cada línea sin que coincidan
         // en cantidad (se resuelve el emparejamiento por GPT más abajo). Con 1 solo envío no
         // existe esa ambigüedad - todo el XML es de ese envío, sin importar cuántas líneas
-        // traiga - así que esta validación estricta no aplica a ese caso (ver más abajo).
-        if (envios.length > 1 && parsed.detalles.length !== envios.length) {
+        // traiga - así que esta validación estricta no aplica a ese caso (ver más abajo). Una
+        // sola línea para N envíos tampoco es ambigua (es la única candidata para todos) - se
+        // reparte proporcionalmente más abajo en vez de bloquear.
+        if (envios.length > 1 && parsed.detalles.length !== envios.length && parsed.detalles.length !== 1) {
             throw new BadRequestException(
-                `El XML trae ${parsed.detalles.length} línea(s) de detalle, pero seleccionaste ${envios.length} envío(s). Deben coincidir 1 a 1.`,
+                `El XML trae ${parsed.detalles.length} línea(s) de detalle, pero seleccionaste ${envios.length} envío(s). Deben coincidir 1 a 1, o traer una sola línea para repartir entre todos.`,
             );
         }
 
         const articulo = await this.envioFacturaCxPService.getArticuloLogisticaDefault();
+        const tarifaIva = parsed.totales.tarifa_iva;
 
         const [ideCndfp, ideCndfp1, ideSrtst] = await Promise.all([
             this.envioFacturaCxPService.resolverFormaPago(parsed.ide_cndfp),
@@ -235,6 +313,45 @@ export class FleteConsolidadoService {
             return { ...prefillBase, productos, advertencia, envios: enviosConMatch };
         }
 
+        if (parsed.detalles.length === 1) {
+            // Simétrico al caso "1 envío, N líneas" de arriba: acá es "1 línea, N envíos" - la
+            // factura del transportista cobra todo junto, sin desglose por envío. Sin
+            // ambigüedad de emparejamiento (es la única línea candidata para todos), se reparte
+            // proporcionalmente al flete que se le cobró originalmente a cada cliente en vez de
+            // bloquear el flujo exigiendo 1 línea por envío.
+            const linea = parsed.detalles[0];
+            const ivaMatched: 'SI' | 'NO' = linea.iva_inarti_cpdfa === '1' ? 'SI' : 'NO';
+            const pesoTotal = envios.reduce((sum, e) => sum + Number(e.total_flete_cctfa || 0), 0);
+            let baseAcumulada = 0;
+            const enviosConMatch: EnvioConsolidadoMatch[] = envios.map((envio, idx) => {
+                const esUltimo = idx === envios.length - 1;
+                const peso = pesoTotal > 0 ? Number(envio.total_flete_cctfa || 0) / pesoTotal : 1 / envios.length;
+                // El último envío se lleva el residuo del redondeo, para que la suma de las
+                // líneas cuadre exacto contra linea.valor_cpdfa (mismo patrón que un reparto de
+                // descuento/IVA prorrateado).
+                const valorBase = esUltimo
+                    ? Number((linea.valor_cpdfa - baseAcumulada).toFixed(2))
+                    : Number((linea.valor_cpdfa * peso).toFixed(2));
+                baseAcumulada += valorBase;
+                const valorConIva = Number(
+                    (valorBase * (ivaMatched === 'SI' ? 1 + tarifaIva : 1)).toFixed(2),
+                );
+                return {
+                    ide_cctfa: envio.ide_cctfa,
+                    cliente: envio.cliente,
+                    numero_factura_venta: envio.numero_factura_venta,
+                    fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
+                    total_flete_cctfa: envio.total_flete_cctfa,
+                    valor_matched: valorConIva,
+                    valor_base_matched: valorBase,
+                    iva_matched: ivaMatched,
+                    observacion_matched: linea.observacion_cpdfa ?? '',
+                };
+            });
+            const advertencia = `El XML trae 1 sola línea para los ${envios.length} envíos seleccionados; se repartió proporcionalmente al flete cobrado a cada cliente.`;
+            return { ...prefillBase, advertencia, envios: enviosConMatch };
+        }
+
         const matches = await this.emparejarConGpt(
             parsed.detalles.map((d, index) => ({
                 index,
@@ -250,7 +367,6 @@ export class FleteConsolidadoService {
         // valor_base_matched/iva_matched son la base y el flag SIN IVA de esa misma línea, para
         // poder armar un renglón de detalle de factura por envío (ver crearFacturaFleteConsolidada
         // en el frontend) sin volver a aplicar el IVA sobre un valor que ya lo incluye.
-        const tarifaIva = parsed.totales.tarifa_iva;
         const enviosConMatch: EnvioConsolidadoMatch[] = envios.map((envio) => {
             const match = matches.find((m) => m.ide_cctfa === envio.ide_cctfa);
             const linea = match ? parsed.detalles[match.indexLinea] : undefined;
@@ -292,20 +408,25 @@ export class FleteConsolidadoService {
                 cf.total_cpcfa,
                 (SELECT COUNT(*) FROM cxp_det_flete_cons d WHERE d.ide_cpcfc = cc.ide_cpcfc) AS num_envios,
                 (
-                    -- Con 1 solo envío el ide_cpdfa vinculado puede ser solo una de varias
+                    -- Sin factura todavía (grupo "Pendiente Factura", cf.total_cpcfa IS NULL) se
+                    -- compara siempre envío a envío contra lo estimado (valor_cpdfc). Con
+                    -- factura y 1 solo envío, el ide_cpdfa vinculado puede ser solo una de varias
                     -- líneas agrupadas por IVA (no toda la factura) - ahí se compara contra el
-                    -- total de la factura (cf.total_cpcfa) en vez de esa línea puntual. Con 2+
-                    -- envíos cada línea sí es 1 a 1, se compara normal.
+                    -- total de la factura (cf.total_cpcfa) en vez de esa línea puntual. Con
+                    -- factura y 2+ envíos cada línea sí es 1 a 1, se compara normal.
                     SELECT CASE
+                        WHEN cf.total_cpcfa IS NULL THEN
+                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc)))
+                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)), 0)
                         WHEN COUNT(*) = 1 THEN
                             CASE WHEN MAX(e.total_flete_cctfa) != cf.total_cpcfa
                                  THEN ABS(MAX(e.total_flete_cctfa) - cf.total_cpcfa) ELSE 0 END
                         ELSE
-                            COALESCE(SUM(ABS(e.total_flete_cctfa - cd.valor_cpdfa))
-                                     FILTER (WHERE e.total_flete_cctfa != cd.valor_cpdfa), 0)
+                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc)))
+                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)), 0)
                     END
                     FROM cxp_det_flete_cons d
-                    INNER JOIN cxp_detall_factur cd     ON d.ide_cpdfa = cd.ide_cpdfa
+                    LEFT JOIN cxp_detall_factur cd       ON d.ide_cpdfa = cd.ide_cpdfa
                     INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
                     WHERE d.ide_cpcfc = cc.ide_cpcfc
                 ) AS diferencia_total,
@@ -313,7 +434,7 @@ export class FleteConsolidadoService {
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
-            INNER JOIN cxp_cabece_factur cf     ON cc.ide_cpcfa = cf.ide_cpcfa
+            LEFT JOIN cxp_cabece_factur cf       ON cc.ide_cpcfa = cf.ide_cpcfa
             WHERE cc.ide_empr = $1
               AND cc.ide_sucu = $2
               AND cc.activo_cpcfc = true
@@ -361,7 +482,7 @@ export class FleteConsolidadoService {
             ) pe ON TRUE
             LEFT JOIN cxc_transporte_factura ctf ON ctf.ide_cctfa = pe.ide_cctfa
             LEFT JOIN ven_transporte t          ON t.ide_vgtra = ctf.ide_vgtra
-            INNER JOIN cxp_cabece_factur cf     ON cc.ide_cpcfa = cf.ide_cpcfa
+            LEFT JOIN cxp_cabece_factur cf      ON cc.ide_cpcfa = cf.ide_cpcfa
             LEFT JOIN con_cab_comp_cont ccc     ON ccc.ide_cnccc = cf.ide_cnccc
             WHERE cc.ide_cpcfc = $1
               AND cc.ide_empr = $2
@@ -379,24 +500,24 @@ export class FleteConsolidadoService {
             SELECT
                 d.ide_cpdfc,
                 d.ide_cctfa,
-                cd.valor_cpdfa       AS valor_cpdfc,
-                cd.observacion_cpdfa AS observacion_cpdfc,
+                COALESCE(cd.valor_cpdfa, d.valor_cpdfc)             AS valor_cpdfc,
+                COALESCE(cd.observacion_cpdfa, d.observacion_cpdfc) AS observacion_cpdfc,
                 e.total_flete_cctfa,
                 b.nom_geper AS cliente,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 CASE
-                    WHEN e.total_flete_cctfa != cd.valor_cpdfa
-                    THEN ABS(e.total_flete_cctfa - cd.valor_cpdfa)
+                    WHEN e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)
+                    THEN ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc))
                     ELSE NULL
                 END AS diferencia_flete,
                 CASE
-                    WHEN e.total_flete_cctfa > cd.valor_cpdfa THEN 'Cobro más'
-                    WHEN e.total_flete_cctfa < cd.valor_cpdfa THEN 'Cobro menos'
+                    WHEN e.total_flete_cctfa > COALESCE(cd.valor_cpdfa, d.valor_cpdfc) THEN 'Cobro más'
+                    WHEN e.total_flete_cctfa < COALESCE(cd.valor_cpdfa, d.valor_cpdfc) THEN 'Cobro menos'
                     ELSE NULL
                 END AS tipo_diferencia_flete
             FROM cxp_det_flete_cons d
-            INNER JOIN cxp_detall_factur cd      ON d.ide_cpdfa = cd.ide_cpdfa
+            LEFT JOIN cxp_detall_factur cd        ON d.ide_cpdfa = cd.ide_cpdfa
             INNER JOIN cxc_transporte_factura e  ON d.ide_cctfa = e.ide_cctfa
             INNER JOIN cxc_cabece_factura f      ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN cxc_datos_fac df          ON f.ide_ccdaf = df.ide_ccdaf
@@ -407,10 +528,12 @@ export class FleteConsolidadoService {
         qDet.addIntParam(1, ideCpcfc);
         const envios = await this.dataSource.createSelectQuery(qDet);
 
-        // Con 1 solo envío el ide_cpdfa vinculado puede ser solo una de varias líneas
-        // agrupadas por IVA (no toda la factura) - ahí "facturado" es el total de la factura,
-        // no esa línea puntual. Con 2+ envíos cada línea sí es 1 a 1, se deja tal cual.
-        if (envios.length === 1) {
+        // Con factura y 1 solo envío, el ide_cpdfa vinculado puede ser solo una de varias líneas
+        // agrupadas por IVA (no toda la factura) - ahí "facturado" es el total de la factura, no
+        // esa línea puntual. Con factura y 2+ envíos cada línea sí es 1 a 1. Sin factura todavía
+        // (grupo "Pendiente Factura", cabecera.total_cpcfa null) no aplica: ya se ve el valor
+        // estimado por envío (valor_cpdfc) tal cual.
+        if (envios.length === 1 && cabecera.total_cpcfa != null) {
             const totalFactura = Number(cabecera.total_cpcfa);
             const cobrado = Number(envios[0].total_flete_cctfa);
             envios[0].valor_cpdfc = totalFactura;
@@ -423,8 +546,9 @@ export class FleteConsolidadoService {
     }
 
     /** Envíos candidatos (sin factura) por sus ide_cctfa, con los datos del transportista para
-     * validar que todos compartan el mismo (ide_vgtra/ide_geper_transporte). */
-    private async getEnviosParaFacturar(
+     * validar que todos compartan el mismo (ide_vgtra/ide_geper_transporte). Público: también lo
+     * usa FleteConsolidadoSaveService.registrarGrupoEnviosSinFactura para la misma validación. */
+    async getEnviosParaFacturar(
         ideCctfas: number[],
         dtoIn: HeaderParamsDto,
     ): Promise<(EnvioParaConsolidar & { ide_vgtra: number | null; ide_geper_transporte: number | null; nombre_vgtra: string | null })[]> {

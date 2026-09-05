@@ -16,11 +16,14 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 
+import { AsociarFacturaExistenteFleteDto } from './dto/asociar-factura-existente-flete.dto';
 import { CrearFacturaFleteConsolidadaDto } from './dto/crear-factura-flete-consolidada.dto';
 import { GetEnviosSinFacturaDto } from './dto/get-envios-sin-factura.dto';
+import { GetFacturasProveedorFleteDto } from './dto/get-facturas-proveedor-flete.dto';
 import { GetFletesConsolidadosDto } from './dto/get-fletes-consolidados.dto';
 import { IdFleteConsolidadoDto, MarcarPagadoFleteConsolidadoDto } from './dto/id-flete-consolidado.dto';
 import { PrepararXmlFleteConsolidadoDto } from './dto/preparar-xml-flete-consolidado.dto';
+import { RegistrarGrupoEnviosFleteDto } from './dto/registrar-grupo-envios-flete.dto';
 import { FleteConsolidadoSaveService } from './flete-consolidado-save.service';
 import { FleteConsolidadoService } from './flete-consolidado.service';
 
@@ -79,12 +82,44 @@ export class FleteConsolidadoController {
 
     @Post('crearFacturaFleteConsolidada')
     @Auth()
-    @ApiOperation({ summary: 'Crea la factura CxP consolidada y vincula los envíos incluidos' })
+    @ApiOperation({ summary: 'Crea la factura CxP consolidada y vincula los envíos incluidos (o completa un grupo "Pendiente Factura" si viene ide_cpcfc)' })
     crearFacturaFleteConsolidada(
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: CrearFacturaFleteConsolidadaDto,
     ) {
         return this.saveService.crearFacturaFleteConsolidada({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('registrarGrupoEnviosSinFactura')
+    @Auth()
+    @ApiOperation({
+        summary: 'Registra un grupo de envíos SIN factura todavía (estado "Pendiente Factura") - se completa después por XML o asociando una factura existente',
+    })
+    registrarGrupoEnviosSinFactura(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: RegistrarGrupoEnviosFleteDto,
+    ) {
+        return this.saveService.registrarGrupoEnviosSinFactura({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getFacturasProveedorFlete')
+    @Auth()
+    @ApiOperation({ summary: 'Facturas CxP de un proveedor/transportista disponibles para asociar a un grupo "Pendiente Factura"' })
+    getFacturasProveedorFlete(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetFacturasProveedorFleteDto,
+    ) {
+        return this.service.getFacturasProveedorFlete({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('completarConFacturaExistente')
+    @Auth()
+    @ApiOperation({ summary: 'Completa un grupo "Pendiente Factura" asociando una factura CxP ya registrada, repartiendo su valor entre los envíos' })
+    completarConFacturaExistente(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: AsociarFacturaExistenteFleteDto,
+    ) {
+        return this.saveService.completarConFacturaExistente({ ...headersParams, ...dtoIn });
     }
 
     @Post('anularFleteConsolidado')

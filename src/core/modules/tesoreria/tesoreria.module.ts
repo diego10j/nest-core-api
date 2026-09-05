@@ -4,6 +4,9 @@ import { IntegrationModule } from 'src/core/integration/integration.module';
 import { ContabilidadModule } from 'src/core/modules/contabilidad/contabilidad.module';
 import { FilesModule } from 'src/core/modules/sistema/files/files.module';
 
+import { AnticipoProveedorSaveService } from './anticipo-proveedor/anticipo-proveedor-save.service';
+import { AnticipoProveedorController } from './anticipo-proveedor/anticipo-proveedor.controller';
+import { AnticipoProveedorService } from './anticipo-proveedor/anticipo-proveedor.service';
 import { BancosSaveService } from './bancos/bancos-save.service';
 import { BancosController } from './bancos/bancos.controller';
 import { BancosService } from './bancos/bancos.service';
@@ -48,6 +51,7 @@ import { TesoreriaService } from './tesoreria.service';
         ComprobanteBancoController,
         CxcTransaccionesController,
         CxpTransaccionesController,
+        AnticipoProveedorController,
         TesoreriaBiController,
     ],
     providers: [
@@ -71,6 +75,8 @@ import { TesoreriaService } from './tesoreria.service';
         CxpTransaccionesService,
         CxpTransaccionesSaveService,
         PagoCxPEmailService,
+        AnticipoProveedorService,
+        AnticipoProveedorSaveService,
         TesoreriaBiService,
         CoreService,
     ],
@@ -79,6 +85,8 @@ import { TesoreriaService } from './tesoreria.service';
         PreLibroBancosSaveService,
         CxpTransaccionesSaveService,
         ComprobanteBancoSaveService,
+        AnticipoProveedorService,
+        AnticipoProveedorSaveService,
     ],
 })
 export class TesoreriaModule { }

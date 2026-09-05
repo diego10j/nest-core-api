@@ -46,6 +46,23 @@ export interface AsientoPagoResult {
     advertencias: string[];
 }
 
+export interface GenerarAsientoLiquidacionAnticipoDto {
+    /** FK → gen_persona (proveedor al que se le aplica el anticipo) */
+    ideGeper: number;
+    fecha: string;
+    valor: number;
+    observacion: string;
+}
+
+export interface AsientoLiquidacionAnticipoResult {
+    ide_cnccc?: number;
+    numero_cnccc?: string;
+    generado: boolean;
+    proveedor_encontrado: boolean;
+    anticipo_encontrado: boolean;
+    advertencias: string[];
+}
+
 export interface GenerarAsientoTransferenciaDto {
     fecha: string;
     ideTecbaOrigen: number;
@@ -635,6 +652,202 @@ export class AsientosAutomaticosService extends BaseService {
         } as SaveComprobanteDto;
 
         return { advertencias, ideCndpcBanco, ideCndpcProveedor, saveDto };
+    }
+
+    /**
+     * Genera el asiento del pago de un Anticipo a Proveedores (AnticipoProveedorSaveService):
+     *
+     *   CUENTA                          DEBE    HABER
+     *   Anticipo a Proveedores (config)   X
+     *   Banco                                     X
+     *
+     * Misma resolución de banco/signo que generarAsientoPagoCxP - solo cambia la cuenta del otro
+     * lado: en vez de la CUENTA POR PAGAR del proveedor (pasivo), usa la cuenta dedicada
+     * "ANTICIPO A PROVEEDORES" (activo) configurada en Contabilidad > Configuración de Asientos
+     * (con_cab_conf_asie / con_vig_conf_asie / con_det_conf_asie - misma tabla que ya usa CUENTA
+     * POR PAGAR/CUENTA POR COBRAR, resuelta acá por nombre + vigencia + sucursal, sin depender
+     * del proveedor porque es una única cuenta compartida).
+     */
+    async generarAsientoAnticipoProveedor(dtoIn: GenerarAsientoPagoCxPDto & HeaderParamsDto): Promise<AsientoPagoResult> {
+        const datos = await this.resolverDatosAsientoAnticipoProveedor(dtoIn);
+
+        try {
+            const comprobanteDto: SaveComprobanteDto & HeaderParamsDto = {
+                ...dtoIn,
+                ...datos.saveDto,
+            };
+            const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
+
+            const ideCnccc = result.ide_cnccc;
+
+            await this.dataSource.pool.query(
+                `UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2`,
+                [ideCnccc, dtoIn.ideTeclb],
+            );
+
+            return {
+                ide_cnccc: ideCnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcAnticipo != null,
+                advertencias: datos.advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de anticipo a proveedor para ide_teclb=${dtoIn.ideTeclb}: ${error}`);
+            return {
+                generado: false,
+                banco_encontrado: datos.ideCndpcBanco != null,
+                proveedor_encontrado: datos.ideCndpcAnticipo != null,
+                advertencias: [...datos.advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
+    }
+
+    private async resolverDatosAsientoAnticipoProveedor(dtoIn: GenerarAsientoPagoCxPDto & HeaderParamsDto): Promise<{
+        advertencias: string[];
+        ideCndpcBanco: number | null;
+        ideCndpcAnticipo: number | null;
+        saveDto: SaveComprobanteDto;
+    }> {
+        const advertencias: string[] = [];
+
+        const signoQuery = new SelectQuery(`
+            SELECT signo_tettb FROM tes_tip_tran_banc WHERE ide_tettb = $1 LIMIT 1
+        `);
+        signoQuery.addIntParam(1, dtoIn.ideTettb);
+        const signoRow = await this.dataSource.createSingleQuery(signoQuery);
+        const signoTettb = Number(signoRow?.signo_tettb ?? -1);
+
+        const ctaBancoQuery = new SelectQuery(`
+            SELECT ide_cndpc FROM tes_cuenta_banco WHERE ide_tecba = $1 LIMIT 1
+        `);
+        ctaBancoQuery.addIntParam(1, dtoIn.ideTecba);
+        const ctaBancoRow = await this.dataSource.createSingleQuery(ctaBancoQuery);
+        const ideCndpcBanco = ctaBancoRow?.ide_cndpc ?? null;
+        if (!ideCndpcBanco) {
+            advertencias.push('Cuenta contable del banco no configurada en tes_cuenta_banco');
+        }
+
+        const ideCndpcAnticipo = await this.buscarCuentaConfig('ANTICIPO A PROVEEDORES', {}, dtoIn.ideSucu);
+        if (!ideCndpcAnticipo) {
+            advertencias.push(
+                'Cuenta "ANTICIPO A PROVEEDORES" no configurada en Contabilidad > Configuración de Asientos',
+            );
+        }
+
+        const ideCntcm = signoTettb === 1
+            ? Number(this.variables.get('p_con_tipo_comprobante_ingreso'))
+            : Number(this.variables.get('p_con_tipo_comprobante_egreso'));
+
+        let bancoLap: number;
+        let anticipoLap: number;
+        if (signoTettb === -1) {
+            bancoLap = this.lugarHaber;
+            anticipoLap = this.lugarDebe;
+        } else {
+            bancoLap = this.lugarDebe;
+            anticipoLap = this.lugarHaber;
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: ideCntcm,
+                ide_geper: dtoIn.ideGeper,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: [
+                {
+                    ide_cnlap: anticipoLap,
+                    ide_cndpc: ideCndpcAnticipo ?? 0,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'ANTICIPO A PROVEEDORES',
+                },
+                {
+                    ide_cnlap: bancoLap,
+                    ide_cndpc: ideCndpcBanco ?? 0,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'BANCO',
+                },
+            ],
+        } as SaveComprobanteDto;
+
+        return { advertencias, ideCndpcBanco, ideCndpcAnticipo, saveDto };
+    }
+
+    /**
+     * Genera el asiento de LIQUIDACIÓN de un Anticipo a Proveedores, cuando se aplica a una
+     * factura ya registrada (AnticipoProveedorSaveService.liquidar): es una reclasificación pura
+     * entre dos cuentas patrimoniales, sin movimiento de banco, por eso usa el tipo de
+     * comprobante "Diario" (IDE_CNTCM_DIARIO) en vez de ingreso/egreso.
+     *
+     *   CUENTA                              DEBE    HABER
+     *   Cuenta por Pagar del proveedor        X            (se cancela contra el anticipo)
+     *   Anticipo a Proveedores (config)               X    (sale de la cuenta de anticipo)
+     */
+    async generarAsientoLiquidacionAnticipo(
+        dtoIn: GenerarAsientoLiquidacionAnticipoDto & HeaderParamsDto,
+    ): Promise<AsientoLiquidacionAnticipoResult> {
+        const advertencias: string[] = [];
+
+        const ideCndpcProveedor = await this.getCuentaPersona('CUENTA POR PAGAR', dtoIn.ideGeper, dtoIn.ideEmpr, dtoIn.ideSucu);
+        if (!ideCndpcProveedor) {
+            advertencias.push('Cuenta por pagar del proveedor no configurada en con_det_conf_asie');
+        }
+        const ideCndpcAnticipo = await this.buscarCuentaConfig('ANTICIPO A PROVEEDORES', {}, dtoIn.ideSucu);
+        if (!ideCndpcAnticipo) {
+            advertencias.push(
+                'Cuenta "ANTICIPO A PROVEEDORES" no configurada en Contabilidad > Configuración de Asientos',
+            );
+        }
+
+        const saveDto: SaveComprobanteDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                ide_geper: dtoIn.ideGeper,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: [
+                {
+                    ide_cnlap: this.lugarDebe,
+                    ide_cndpc: ideCndpcProveedor ?? 0,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'CUENTA POR PAGAR (liquidación anticipo)',
+                },
+                {
+                    ide_cnlap: this.lugarHaber,
+                    ide_cndpc: ideCndpcAnticipo ?? 0,
+                    valor_cndcc: dtoIn.valor,
+                    observacion_cndcc: 'ANTICIPO A PROVEEDORES (liquidación)',
+                },
+            ],
+        } as SaveComprobanteDto;
+
+        try {
+            const result = await this.comprobanteService.saveAutomatico({ ...dtoIn, ...saveDto } as any);
+            return {
+                ide_cnccc: result.ide_cnccc,
+                numero_cnccc: result.numero_cnccc,
+                generado: true,
+                proveedor_encontrado: ideCndpcProveedor != null,
+                anticipo_encontrado: ideCndpcAnticipo != null,
+                advertencias,
+            };
+        } catch (error) {
+            this.logger.warn(`Error al generar asiento de liquidación de anticipo a proveedor ide_geper=${dtoIn.ideGeper}: ${error}`);
+            return {
+                generado: false,
+                proveedor_encontrado: ideCndpcProveedor != null,
+                anticipo_encontrado: ideCndpcAnticipo != null,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+            };
+        }
     }
 
     /**
