@@ -5,7 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
-import { getCurrentTime } from 'src/util/helpers/date-util';
+import { getCurrentTime, getCurrentDateTime } from 'src/util/helpers/date-util';
 
 import { PreLibroBancosSaveService } from '../pre-libro-bancos/pre-libro-bancos-save.service';
 import { PreLibroBancosService } from '../pre-libro-bancos/pre-libro-bancos.service';
@@ -133,7 +133,7 @@ export class AnticipoProveedorSaveService extends BaseService {
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
                 [ideTeanp, dtoIn.ideGeper, ideTeclb, ideCnccc, ESTADO_PENDIENTE_LIQUIDAR,
                     dtoIn.valor, 0, dtoIn.fecha, dtoIn.observacion,
-                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentDateTime()],
             );
 
             await queryRunner.query('COMMIT');
@@ -267,14 +267,14 @@ export class AnticipoProveedorSaveService extends BaseService {
                         fecha_tedap, usuario_ingre, hora_ingre
                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
                     [det.ide_tedap, dtoIn.ide_teanp, det.ide_cpcfa, det.valor, det.ide_cnccc,
-                        this.hoy(), dtoIn.login, getCurrentTime()],
+                        this.hoy(), dtoIn.login, getCurrentDateTime()],
                 );
             }
             await queryRunner.query(
                 `UPDATE tes_cab_anticipo_prov
                     SET valor_liquidado_teanp = $1, ide_teeap = $2, usuario_actua = $3, hora_actua = $4
                   WHERE ide_teanp = $5`,
-                [nuevoLiquidado, nuevoEstado, dtoIn.login, getCurrentTime(), dtoIn.ide_teanp],
+                [nuevoLiquidado, nuevoEstado, dtoIn.login, getCurrentDateTime(), dtoIn.ide_teanp],
             );
             await queryRunner.query('COMMIT');
         } catch (error) {
