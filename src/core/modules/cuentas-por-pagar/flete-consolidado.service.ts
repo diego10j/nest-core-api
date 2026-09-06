@@ -134,6 +134,7 @@ export class FleteConsolidadoService extends BaseService {
             INNER JOIN gen_persona b        ON f.ide_geper = b.ide_geper
             LEFT JOIN ven_transporte t      ON e.ide_vgtra = t.ide_vgtra
             WHERE e.ide_vgtra = $1
+              AND e.es_transporte_propio_cctfa = false
               AND e.ide_cpcfa IS NULL
               AND f.fecha_emisi_cccfa BETWEEN $2 AND $3
               AND e.ide_empr = $4
@@ -590,6 +591,7 @@ export class FleteConsolidadoService extends BaseService {
             INNER JOIN gen_persona b        ON f.ide_geper = b.ide_geper
             LEFT JOIN ven_transporte t      ON e.ide_vgtra = t.ide_vgtra
             WHERE e.ide_cctfa = ANY($1)
+              AND e.es_transporte_propio_cctfa = false
               AND e.ide_cpcfa IS NULL
               AND e.ide_empr = $2
               AND e.ide_sucu = $3
