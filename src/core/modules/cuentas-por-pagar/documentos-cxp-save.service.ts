@@ -277,7 +277,10 @@ export class DocumentosCxPSaveService extends BaseService {
                         iva: totales.valor_iva,
                         total: totales.total,
                         identificacion: proveedor?.identificac_geper ?? '',
-                        correo: proveedor?.correo_geper,
+                        // Prioriza el correo recién editado en el formulario (aún no persistido
+                        // en gen_persona en este punto - esa actualización va en listQuery, más
+                        // abajo) sobre el que ya tenía el proveedor en el catálogo.
+                        correo: cabecera.correo_geper || proveedor?.correo_geper,
                         periodoFiscal,
                     },
                     emisor,
@@ -328,6 +331,21 @@ export class DocumentosCxPSaveService extends BaseService {
 
             // ── Construir la lista de queries de la transacción ──────────────
             const listQuery: Query[] = [];
+
+            // Datos de contacto del proveedor (Liquidación de Compra, editables en el
+            // formulario): si vienen en el payload, se actualiza gen_persona en la misma
+            // transacción. correo_geper/direccion_geper/telefono_geper se leen en vivo — no
+            // como snapshot — tanto para el envío del comprobante electrónico al SRI (XML
+            // <infoAdicional>, ver comprobantes-elec.service.ts) como para el correo de
+            // notificación al autorizarse (ver ComprobanteEmailListener#resolverContraparte),
+            // así que esta actualización basta sin tocar esos flujos.
+            if (esLiquidacionCompra && (
+                isDefined(cabecera.direccion_geper) ||
+                isDefined(cabecera.telefono_geper) ||
+                isDefined(cabecera.correo_geper)
+            )) {
+                listQuery.push(this.buildUpdateProveedorContacto(cabecera, dtoIn));
+            }
 
             if (isUpdate) {
                 listQuery.push(this.buildUpdateCabecera(ideCpcfa, cabecera, totales, tarifaIva, diasCredito, dtoIn));
@@ -954,6 +972,23 @@ export class DocumentosCxPSaveService extends BaseService {
         return q;
     }
 
+    /** Actualiza dirección/teléfono/correo del proveedor (gen_persona) con lo editado en el
+     * formulario de Liquidación de Compra. Solo toca los campos realmente enviados. */
+    private buildUpdateProveedorContacto(
+        cabecera: CabDocumentoCxPDto,
+        dtoIn: SaveDocumentoCxPDto & HeaderParamsDto,
+    ): UpdateQuery {
+        const q = new UpdateQuery('gen_persona', 'ide_geper', dtoIn);
+        if (isDefined(cabecera.direccion_geper)) q.values.set('direccion_geper', cabecera.direccion_geper);
+        if (isDefined(cabecera.telefono_geper)) q.values.set('telefono_geper', cabecera.telefono_geper);
+        if (isDefined(cabecera.correo_geper)) q.values.set('correo_geper', cabecera.correo_geper);
+        q.values.set('fecha_actua', getCurrentDate());
+        q.values.set('hora_actua', getCurrentTime());
+        q.where = `ide_geper = $1`;
+        q.addIntParam(1, cabecera.ide_geper);
+        return q;
+    }
+
     private buildUpdateCabecera(
         ideCpcfa: number,
         cabecera: CabDocumentoCxPDto,
@@ -1304,7 +1339,9 @@ export class DocumentosCxPSaveService extends BaseService {
         q.values.set('ide_cpcfa', ideCpcfaPadre);
         q.values.set('ide_empr', dtoIn.ideEmpr);
         q.values.set('ide_sucu', dtoIn.ideSucu);
-        q.values.set('cod_pais_pago_cpdcr', r.cod_pais_pago ?? 593);
+        // cxp_datos_com_reembolso no tiene columna de país de pago (ver
+        // comprobantes-elec.service.ts#toReembolsoLinea, que fija Ecuador/593 directo al
+        // armar el XML) - no hay nada que persistir acá.
 
         if (isDefined(r.ide_cpcfa_sustento)) {
             const qDoc = new SelectQuery(`

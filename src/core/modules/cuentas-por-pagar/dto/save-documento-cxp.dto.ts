@@ -170,6 +170,21 @@ export class CabDocumentoCxPDto {
     @IsOptional()
     ide_srtst?: number;
 
+    // Datos de contacto del proveedor (gen_persona) — editables solo para Liquidación de
+    // Compra electrónica: al guardar se actualiza gen_persona con lo que llegue acá (si se
+    // envía), y correo_geper es el destino del correo de notificación de autorización SRI.
+    @IsString()
+    @IsOptional()
+    direccion_geper?: string;
+
+    @IsString()
+    @IsOptional()
+    telefono_geper?: string;
+
+    @IsString()
+    @IsOptional()
+    correo_geper?: string;
+
     // Nota de Crédito – campos opcionales
     @IsInt()
     @IsOptional()

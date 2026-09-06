@@ -616,6 +616,9 @@ export class DocumentosCxPService extends BaseService {
                    a.motivo_nc_cpcfa,
                    p.nom_geper,
                    p.identificac_geper,
+                   p.direccion_geper,
+                   p.telefono_geper,
+                   p.correo_geper,
                    t.nombre_cntdo,
                    fp.nombre_cndfp AS nombre_forma_pago,
                    dc.nombre_cndfp AS nombre_dias_credito,
@@ -890,7 +893,10 @@ export class DocumentosCxPService extends BaseService {
                    CAST(ide_geper AS VARCHAR) AS value,
                    nom_geper || ' - ' || COALESCE(identificac_geper, '') AS label,
                    nom_geper,
-                   identificac_geper
+                   identificac_geper,
+                   direccion_geper,
+                   telefono_geper,
+                   correo_geper
             FROM gen_persona
             WHERE es_proveedo_geper = TRUE
               AND nivel_geper = 'HIJO'

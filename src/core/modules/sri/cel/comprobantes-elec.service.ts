@@ -320,7 +320,6 @@ export class ComprobantesElecService extends BaseService {
                 r.base_tarifa0_cpdcr,
                 r.base_imponible_cpdcr,
                 r.valor_iva_cpdcr,
-                r.cod_pais_pago_cpdcr,
                 ct.alter_tribu_cntdo,
                 ti.alterno2_getid
             FROM cxp_datos_com_reembolso r
@@ -368,7 +367,10 @@ export class ComprobantesElecService extends BaseService {
     return {
       tipoIdentificacionProveedorReembolso: tipoIdentificacion,
       identificacionProveedorReembolso: identificacion,
-      codPaisPagoProveedorReembolso: Number(r.cod_pais_pago_cpdcr ?? 593),
+      // La tabla cxp_datos_com_reembolso no tiene columna de país de pago; el reembolso de
+      // gastos (Anexo 17 SRI) hoy solo contempla proveedores locales, así que se fija
+      // Ecuador (593) directamente en vez de leer un campo que no existe.
+      codPaisPagoProveedorReembolso: 593,
       tipoProveedorReembolso: getTipoProveedorReembolso(tipoIdentificacion, identificacion),
       codDocReembolso: String(r.alter_tribu_cntdo ?? ''),
       estabDocReembolso: estab,
