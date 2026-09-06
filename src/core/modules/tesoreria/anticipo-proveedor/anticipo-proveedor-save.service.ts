@@ -88,6 +88,14 @@ export class AnticipoProveedorSaveService extends BaseService {
         const ideCpttrAnticipo = Number(this.variables.get('p_cxp_tipo_trans_anticipo'));
         const fechaVenceCuota = esChequePostfechado ? (dtoIn.fechaEfectivo ?? dtoIn.fecha) : dtoIn.fecha;
 
+        // tes_cab_libr_banc no tiene columna ide_geper - el proveedor se identifica en el
+        // listado de movimientos únicamente por beneficiari_teclb (texto libre), igual que
+        // CxpTransaccionesSaveService.savePagoCxP.
+        const qPersona = new SelectQuery(`SELECT nom_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`);
+        qPersona.addIntParam(1, dtoIn.ideGeper);
+        const persona = await this.dataSource.createSingleQuery(qPersona);
+        const beneficiario = persona?.nom_geper ?? '';
+
         const ideTeclb = await this.dataSource.getSeqTable('tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login);
         const ideCpctr = await this.dataSource.getSeqTable('cxp_cabece_transa', 'ide_cpctr', 1, dtoIn.login);
         const ideCpdtr = await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login);
@@ -119,7 +127,7 @@ export class AnticipoProveedorSaveService extends BaseService {
                     ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [ideTeclb, ideTeelb, dtoIn.ideTecba, dtoIn.ideTettb, dtoIn.valor,
-                    numero, dtoIn.fecha, fechaVenceCuota, '',
+                    numero, dtoIn.fecha, fechaVenceCuota, beneficiario,
                     dtoIn.observacion, false, dtoIn.fechaEfectivo ?? dtoIn.fecha, dtoIn.numCuentaCheque ?? '',
                     dtoIn.ideTeban ?? null, false, false,
                     dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
