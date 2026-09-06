@@ -102,6 +102,18 @@ export class FleteConsolidadoController {
         return this.saveService.registrarGrupoEnviosSinFactura({ ...headersParams, ...dtoIn });
     }
 
+    @Post('descartarGrupoPendienteFactura')
+    @Auth()
+    @ApiOperation({
+        summary: 'Rollback: borra un grupo "Pendiente Factura" recién creado (sin factura ni anticipo todavía) cuando el paso siguiente del mismo flujo falló',
+    })
+    descartarGrupoPendienteFactura(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: IdFleteConsolidadoDto,
+    ) {
+        return this.saveService.descartarGrupoPendienteFactura(dtoIn.ide_cpcfc, headersParams);
+    }
+
     @Get('getFacturasProveedorFlete')
     @Auth()
     @ApiOperation({ summary: 'Facturas CxP de un proveedor/transportista disponibles para asociar a un grupo "Pendiente Factura"' })

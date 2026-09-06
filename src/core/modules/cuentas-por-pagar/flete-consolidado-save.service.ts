@@ -411,6 +411,35 @@ export class FleteConsolidadoSaveService {
         return { message: 'ok', ide_cpcfa: cab.ide_cpcfa, ide_cpcfc: ideCpcfc };
     }
 
+    /**
+     * Descarta (borra, no anula) un grupo "Pendiente Factura" recién creado que todavía no
+     * tiene factura ni anticipo - se usa como rollback cuando el paso siguiente en el mismo
+     * flujo del usuario falla (ej. registrarGrupoEnviosSinFactura salió bien pero el anticipo
+     * que se iba a registrar junto falló): a diferencia de anularFleteConsolidado, esto no dejar
+     * un registro ANULADO de auditoría - el grupo nunca llegó a completarse, así que no debe
+     * quedar rastro y los envíos vuelven a estar disponibles de una.
+     */
+    async descartarGrupoPendienteFactura(ideCpcfc: number, dtoIn: HeaderParamsDto) {
+        const qCab = new SelectQuery(
+            `SELECT ide_cpefc, ide_cpcfa, ide_cpctr_anticipo FROM cxp_cab_flete_cons WHERE ide_cpcfc = $1`,
+        );
+        qCab.addIntParam(1, ideCpcfc);
+        const cab = await this.dataSource.createSingleQuery(qCab);
+        if (!cab) {
+            return { message: 'ok' };
+        }
+        if (Number(cab.ide_cpefc) !== ESTADO_PENDIENTE_FACTURA || cab.ide_cpcfa != null || cab.ide_cpctr_anticipo != null) {
+            throw new BadRequestException(
+                'Este grupo ya avanzó más allá de "Pendiente Factura" - no se puede descartar automáticamente, use Anular.',
+            );
+        }
+
+        await this.dataSource.pool.query(`DELETE FROM cxp_det_flete_cons WHERE ide_cpcfc = $1`, [ideCpcfc]);
+        await this.dataSource.pool.query(`DELETE FROM cxp_cab_flete_cons WHERE ide_cpcfc = $1`, [ideCpcfc]);
+
+        return { message: 'ok' };
+    }
+
     /** Se llama tras registrar el pago (RegistrarPagoCxPDialog, sin cambios) para vincular el
      * movimiento de tesorería a la tabla de control y marcarla como pagada. */
     async marcarFleteConsolidadoPagado(dtoIn: MarcarPagadoFleteConsolidadoDto & HeaderParamsDto) {
