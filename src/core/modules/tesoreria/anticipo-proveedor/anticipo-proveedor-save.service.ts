@@ -369,12 +369,24 @@ export class AnticipoProveedorSaveService extends BaseService {
 
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(cab.ide_teclb) });
 
-        await this.dataSource.pool.query(`DELETE FROM cxp_detall_transa WHERE ide_cpctr = $1`, [ideCpctr]);
-        await this.dataSource.pool.query(`DELETE FROM cxp_cabece_transa WHERE ide_cpctr = $1`, [ideCpctr]);
-        await this.dataSource.pool.query(
-            `UPDATE cxp_cab_flete_cons SET ide_cpctr_anticipo = NULL WHERE ide_cpctr_anticipo = $1`,
-            [ideCpctr],
-        );
+        // Primero desvincular el FK (cxp_cab_flete_cons.ide_cpctr_anticipo) - si se borra
+        // cxp_cabece_transa antes, la BD rechaza el delete por la foreign key.
+        const queryRunner = await this.dataSource.pool.connect();
+        try {
+            await queryRunner.query('BEGIN');
+            await queryRunner.query(
+                `UPDATE cxp_cab_flete_cons SET ide_cpctr_anticipo = NULL WHERE ide_cpctr_anticipo = $1`,
+                [ideCpctr],
+            );
+            await queryRunner.query(`DELETE FROM cxp_detall_transa WHERE ide_cpctr = $1`, [ideCpctr]);
+            await queryRunner.query(`DELETE FROM cxp_cabece_transa WHERE ide_cpctr = $1`, [ideCpctr]);
+            await queryRunner.query('COMMIT');
+        } catch (error) {
+            await queryRunner.query('ROLLBACK');
+            throw error;
+        } finally {
+            queryRunner.release();
+        }
 
         return { message: 'ok', ide_cpctr: ideCpctr };
     }
