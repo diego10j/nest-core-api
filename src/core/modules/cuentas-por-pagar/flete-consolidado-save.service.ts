@@ -4,6 +4,8 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
+import { AnticipoProveedorSaveService } from '../tesoreria/anticipo-proveedor/anticipo-proveedor-save.service';
+
 import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { AsociarFacturaExistenteFleteDto } from './dto/asociar-factura-existente-flete.dto';
 import { CrearFacturaFleteConsolidadaDto } from './dto/crear-factura-flete-consolidada.dto';
@@ -38,6 +40,7 @@ export class FleteConsolidadoSaveService {
         private readonly dataSource: DataSourceService,
         private readonly documentosCxPSaveService: DocumentosCxPSaveService,
         private readonly fleteConsolidadoService: FleteConsolidadoService,
+        private readonly anticipoProveedorSaveService: AnticipoProveedorSaveService,
     ) { }
 
     /** Registra el grupo de envíos SIN factura todavía (estado "Pendiente Factura"): no crea
@@ -355,14 +358,22 @@ export class FleteConsolidadoSaveService {
     }
 
     /**
-     * Anula todo el proceso: si ya tenía factura, reversa el pago de tesorería y su asiento, la
-     * cuenta por pagar y el kardex (documentosCxPSaveService.anularDocumento, sin cambios -
-     * igual que anular un pago 1 a 1); si todavía estaba "Pendiente Factura" (sin factura ni
-     * pago), solo libera los envíos. En ambos casos desvincula los envíos y marca la tabla de
-     * control anulada.
+     * Anula todo el proceso, reversando lo que corresponda según qué tan avanzado estaba:
+     *  - Con factura: reversa el pago de tesorería y su asiento, la cuenta por pagar y el
+     *    kardex (documentosCxPSaveService.anularDocumento, sin cambios - igual que anular un
+     *    pago 1 a 1; si esa factura se había pagado con un anticipo, el propio anularDocumento
+     *    ya reversa ese pago porque queda registrado contra ide_cpcfa como cualquier otro).
+     *  - Sin factura pero con un anticipo ya registrado (grupo "Pendiente Factura" con pago
+     *    adelantado): reversa ESE anticipo con el mismo mecanismo genérico de "anular pago"
+     *    (AnticipoProveedorSaveService.anular -> PreLibroBancosSaveService.anularMovimiento).
+     *  - Sin factura ni anticipo: solo libera los envíos.
+     * En todos los casos desvincula los envíos (vuelven a estar disponibles para un registro
+     * nuevo) y marca la tabla de control anulada.
      */
     async anularFleteConsolidado(ideCpcfc: number, dtoIn: HeaderParamsDto) {
-        const qCab = new SelectQuery(`SELECT ide_cpcfa, ide_cpefc FROM cxp_cab_flete_cons WHERE ide_cpcfc = $1`);
+        const qCab = new SelectQuery(
+            `SELECT ide_cpcfa, ide_cpefc, ide_cpctr_anticipo FROM cxp_cab_flete_cons WHERE ide_cpcfc = $1`,
+        );
         qCab.addIntParam(1, ideCpcfc);
         const cab = await this.dataSource.createSingleQuery(qCab);
         if (!cab) {
@@ -374,6 +385,8 @@ export class FleteConsolidadoSaveService {
 
         if (cab.ide_cpcfa != null) {
             await this.documentosCxPSaveService.anularDocumento({ ...dtoIn, ide_cpcfa: cab.ide_cpcfa });
+        } else if (cab.ide_cpctr_anticipo != null) {
+            await this.anticipoProveedorSaveService.anular(Number(cab.ide_cpctr_anticipo), dtoIn);
         }
 
         const qDet = new SelectQuery(`SELECT ide_cctfa FROM cxp_det_flete_cons WHERE ide_cpcfc = $1`);
