@@ -236,15 +236,24 @@ export class AnticipoProveedorSaveService extends BaseService {
         }
 
         const ideCpcfaList = dtoIn.aplicaciones.map((a) => a.ide_cpcfa);
+        // pagado_cpcfa no siempre queda actualizado por otros flujos - se valida con el saldo
+        // real de la transacción CxP del documento (SUM(valor*signo) = 0 -> ya está cubierto).
         const qFacturas = new SelectQuery(`
-            SELECT ide_cpcfa, ide_geper, pagado_cpcfa
-            FROM cxp_cabece_factur
-            WHERE ide_cpcfa = ANY($1) AND ide_empr = $2 AND ide_sucu = $3
+            SELECT cf.ide_cpcfa, cf.ide_geper,
+                   COALESCE((
+                       SELECT SUM(dt.valor_cpdtr * tt.signo_cpttr)
+                       FROM cxp_detall_transa dt
+                       JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+                       WHERE dt.ide_cpctr = ct.ide_cpctr
+                   ), cf.total_cpcfa) AS saldo
+            FROM cxp_cabece_factur cf
+            LEFT JOIN cxp_cabece_transa ct ON ct.ide_cpcfa = cf.ide_cpcfa
+            WHERE cf.ide_cpcfa = ANY($1) AND cf.ide_empr = $2 AND cf.ide_sucu = $3
         `);
         qFacturas.addParam(1, ideCpcfaList);
         qFacturas.addIntParam(2, dtoIn.ideEmpr);
         qFacturas.addIntParam(3, dtoIn.ideSucu);
-        const facturas: { ide_cpcfa: number; ide_geper: number; pagado_cpcfa: boolean }[] =
+        const facturas: { ide_cpcfa: number; ide_geper: number; saldo: number }[] =
             await this.dataSource.createSelectQuery(qFacturas);
         if (facturas.length !== ideCpcfaList.length) {
             const faltantes = ideCpcfaList.filter((id) => !facturas.some((f) => f.ide_cpcfa === id));
@@ -256,24 +265,69 @@ export class AnticipoProveedorSaveService extends BaseService {
                 `La factura ide_cpcfa=${facturaAjena.ide_cpcfa} no pertenece al proveedor de este anticipo.`,
             );
         }
-        const facturaPagada = facturas.find((f) => f.pagado_cpcfa);
+        const facturaPagada = facturas.find((f) => Math.abs(Number(f.saldo)) <= TOLERANCIA_CENTAVOS);
         if (facturaPagada) {
             throw new BadRequestException(`La factura ide_cpcfa=${facturaPagada.ide_cpcfa} ya está pagada.`);
         }
 
         // Si es una sola factura y cubre el saldo completo, no hace falta registrar nada en
-        // cxp_aplicacion_anticipo: alcanza con vincular ide_cpcfa directo, igual que el flujo
-        // normal de ide_cpctr_anticipo.
+        // cxp_aplicacion_anticipo: alcanza con mover el detalle del anticipo a la cabecera que
+        // esa factura ya tiene (creada al registrarla normalmente) y borrar la cabecera del
+        // anticipo, que queda con 0 detalles - dejar las dos cabeceras por separado, ambas
+        // apuntando al mismo ide_cpcfa, rompería getFacturaCxP/getFacturasPendientesProveedor
+        // (asumen una sola cxp_cabece_transa por documento). Mismo criterio que
+        // FleteConsolidadoSaveService.asociarAnticipoExistente.
         const esLiquidacionTotalSimple =
             dtoIn.aplicaciones.length === 1 &&
             Math.abs(totalAplicar - saldoDisponible) <= TOLERANCIA_CENTAVOS;
 
         if (esLiquidacionTotalSimple) {
-            await this.dataSource.pool.query(
-                `UPDATE cxp_cabece_transa SET ide_cpcfa = $1 WHERE ide_cpctr = $2`,
-                [dtoIn.aplicaciones[0].ide_cpcfa, dtoIn.ide_cpctr],
-            );
-            return { message: 'ok', ide_cpctr: dtoIn.ide_cpctr, saldo_restante: 0 };
+            const ideCpcfa = dtoIn.aplicaciones[0].ide_cpcfa;
+            const qFacturaCab = new SelectQuery(`SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpcfa = $1`);
+            qFacturaCab.addIntParam(1, ideCpcfa);
+            const facturaCab = await this.dataSource.createSingleQuery(qFacturaCab);
+            if (!facturaCab) {
+                throw new InternalServerErrorException(
+                    `La factura ide_cpcfa=${ideCpcfa} no tiene una transacción CxP asociada.`,
+                );
+            }
+            const ideCpctrFactura = Number(facturaCab.ide_cpctr);
+
+            const queryRunner = await this.dataSource.pool.connect();
+            try {
+                await queryRunner.query('BEGIN');
+                await queryRunner.query(
+                    `UPDATE cxp_detall_transa SET ide_cpctr = $1, ide_cpcfa = $2 WHERE ide_cpctr = $3`,
+                    [ideCpctrFactura, ideCpcfa, dtoIn.ide_cpctr],
+                );
+                await queryRunner.query(`DELETE FROM cxp_cabece_transa WHERE ide_cpctr = $1`, [dtoIn.ide_cpctr]);
+                await queryRunner.query('COMMIT');
+            } catch (error) {
+                await queryRunner.query('ROLLBACK');
+                throw error;
+            } finally {
+                queryRunner.release();
+            }
+
+            // pagado_cpcfa no siempre queda actualizado por otros flujos - se valida con el
+            // saldo real resultante, no con "se aplicó todo el anticipo disponible" (el
+            // anticipo puede ser menor al total de la factura y dejarla con saldo pendiente
+            // real, pagable por el resto vía Registrar Pago).
+            const qSaldoFactura = new SelectQuery(`
+                SELECT COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0) AS saldo
+                FROM cxp_detall_transa dt
+                JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+                WHERE dt.ide_cpctr = $1
+            `);
+            qSaldoFactura.addIntParam(1, ideCpctrFactura);
+            const { saldo: saldoFactura } = await this.dataSource.createSingleQuery(qSaldoFactura);
+            if (Math.abs(Number(saldoFactura)) <= TOLERANCIA_CENTAVOS) {
+                await this.dataSource.pool.query(
+                    `UPDATE cxp_cabece_factur SET pagado_cpcfa = true WHERE ide_cpcfa = $1`,
+                    [ideCpcfa],
+                );
+            }
+            return { message: 'ok', ide_cpctr: ideCpctrFactura, saldo_restante: Number(saldoFactura) };
         }
 
         const baseIdeCpaan = await this.dataSource.getSeqTable(

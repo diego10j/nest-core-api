@@ -175,11 +175,14 @@ export class FleteConsolidadoSaveService {
         }
 
         // 2. Si se usó un anticipo, el pago ya existía de antes - se marca el grupo como pagado
-        // directamente, sin pasar por Registrar Pago.
+        // directamente, sin pasar por Registrar Pago. saveDocumento ya validó el saldo real
+        // (pagado_via_anticipo) en vez de asumir "pagado" solo porque hay un anticipo vinculado -
+        // si el anticipo no alcanza a cubrir el total, el grupo queda pendiente de pago igual
+        // que cualquier factura con saldo (se paga el resto por Registrar Pago).
         const ideTeclbAnticipo = dtoIn.ide_cpctr_anticipo != null
             ? await this.buscarTeclbDeAnticipo(dtoIn.ide_cpctr_anticipo)
             : null;
-        const estadoCab = ideTeclbAnticipo != null ? ESTADO_PAGADO : ESTADO_PENDIENTE_PAGO;
+        const estadoCab = resultado.pagado_via_anticipo ? ESTADO_PAGADO : ESTADO_PENDIENTE_PAGO;
 
         // 3. Vincular los N envíos + tabla de control (insertar un grupo nuevo, o completar uno
         // "Pendiente Factura" ya existente), en su propia transacción.
@@ -311,6 +314,22 @@ export class FleteConsolidadoSaveService {
             throw new InternalServerErrorException('Este grupo no tiene envíos registrados.');
         }
 
+        // Aviso no bloqueante: si la factura seleccionada tiene más o menos líneas que envíos
+        // tiene el grupo, puede ser la factura equivocada (o simplemente el transportista
+        // agrupa distinto) - se avisa pero no se bloquea, el reparto proporcional de abajo
+        // funciona igual sin importar cuántas líneas traiga la factura.
+        const qNumLineasFactura = new SelectQuery(
+            `SELECT COUNT(*) AS num_lineas FROM cxp_detall_factur WHERE ide_cpcfa = $1`,
+        );
+        qNumLineasFactura.addIntParam(1, dtoIn.ide_cpcfa);
+        const { num_lineas: numLineasFactura } = await this.dataSource.createSingleQuery(qNumLineasFactura);
+        let advertencia: string | undefined;
+        if (Number(numLineasFactura) !== detalles.length) {
+            advertencia =
+                `La factura seleccionada tiene ${numLineasFactura} línea(s) de detalle, pero el `
+                + `grupo tiene ${detalles.length} envío(s) - verifica que sea la factura correcta.`;
+        }
+
         // Reparto proporcional del total de la factura entre los envíos, según lo que se cobró
         // originalmente a cada cliente - el último envío se lleva el residuo del redondeo para
         // que la suma cuadre exacto contra el total de la factura.
@@ -337,24 +356,27 @@ export class FleteConsolidadoSaveService {
             );
         });
 
-        // Estado del grupo: pagado si la factura ya estaba pagada, o si se asocia un anticipo
-        // ahora mismo (el pago ya existía de antes); si no, queda pendiente de pago, igual que
-        // el flujo normal con Registrar Pago.
-        const ideTeclbAnticipo = dtoIn.ide_cpctr_anticipo != null
+        // Estado del grupo: pagado si la factura ya estaba pagada, o si el anticipo que se
+        // asocia ahora cubre el saldo completo (validado por saldo real, no por asumir "hay
+        // anticipo = pagado"); si no, queda pendiente de pago por el resto, igual que el flujo
+        // normal con Registrar Pago.
+        const anticipoAsociado = dtoIn.ide_cpctr_anticipo != null
             ? await this.asociarAnticipoExistente(dtoIn.ide_cpctr_anticipo, Number(cab.ide_geper), dtoIn.ide_cpcfa)
             : null;
-        const nuevoEstado = factura.pagado_cpcfa || ideTeclbAnticipo != null ? ESTADO_PAGADO : ESTADO_PENDIENTE_PAGO;
+        const nuevoEstado = factura.pagado_cpcfa || anticipoAsociado?.pagadoCompleto
+            ? ESTADO_PAGADO
+            : ESTADO_PENDIENTE_PAGO;
 
         const updCab = new UpdateQuery('cxp_cab_flete_cons', 'ide_cpcfc', dtoIn);
         updCab.values.set('ide_cpcfa', dtoIn.ide_cpcfa);
         updCab.values.set('ide_cpefc', nuevoEstado);
-        if (ideTeclbAnticipo != null) updCab.values.set('ide_teclb', ideTeclbAnticipo);
+        if (anticipoAsociado?.ideTeclb != null) updCab.values.set('ide_teclb', anticipoAsociado.ideTeclb);
         updCab.where = `ide_cpcfc = $1`;
         updCab.addIntParam(1, dtoIn.ide_cpcfc);
         listQuery.push(updCab);
 
         await this.dataSource.createListQuery(listQuery);
-        return { message: 'ok', ide_cpcfc: dtoIn.ide_cpcfc, ide_cpcfa: dtoIn.ide_cpcfa };
+        return { message: 'ok', ide_cpcfc: dtoIn.ide_cpcfc, ide_cpcfa: dtoIn.ide_cpcfa, advertencia };
     }
 
     /**
@@ -488,15 +510,21 @@ export class FleteConsolidadoSaveService {
         return row ? Number(row.ide_teclb) : null;
     }
 
-    /** Vincula un anticipo YA PAGADO (cxp_cabece_transa.ide_cpcfa IS NULL) a una factura que se
-     * está asociando directamente (sin pasar por DocumentosCxPSaveService.saveDocumento, que es
-     * solo para crear documentos nuevos) y devuelve su ide_teclb. Misma validación de propiedad
-     * que DocumentosCxPSaveService.resolverCabeceraTransaccion. */
+    /**
+     * Vincula un anticipo YA PAGADO (cxp_cabece_transa.ide_cpcfa IS NULL) a una factura que YA
+     * EXISTE (registrada normalmente, con su propia cabecera cxp_cabece_transa autorreferenciada
+     * desde que se guardó - a diferencia de DocumentosCxPSaveService.saveDocumento, que crea el
+     * documento y reutiliza la cabecera del anticipo PORQUE el documento todavía no tiene una
+     * propia). Acá hay que hacerlo al revés: MOVER el detalle del anticipo a la cabecera que la
+     * factura ya tiene, y borrar la cabecera del anticipo (queda con 0 detalles) - dejar las dos
+     * cabeceras por separado, ambas apuntando al mismo ide_cpcfa, rompería getFacturaCxP /
+     * getFacturasPendientesProveedor (asumen una sola cxp_cabece_transa por documento).
+     */
     private async asociarAnticipoExistente(
         ideCpctrAnticipo: number,
         ideGeper: number,
         ideCpcfa: number,
-    ): Promise<number | null> {
+    ): Promise<{ ideTeclb: number | null; pagadoCompleto: boolean }> {
         const qAnticipo = new SelectQuery(
             `SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpctr = $1 AND ide_geper = $2 AND ide_cpcfa IS NULL`,
         );
@@ -508,10 +536,57 @@ export class FleteConsolidadoSaveService {
                 `El anticipo ide_cpctr=${ideCpctrAnticipo} no existe, no pertenece a este proveedor o ya está asociado a un documento.`,
             );
         }
-        await this.dataSource.pool.query(
-            `UPDATE cxp_cabece_transa SET ide_cpcfa = $1 WHERE ide_cpctr = $2`,
-            [ideCpcfa, ideCpctrAnticipo],
-        );
-        return this.buscarTeclbDeAnticipo(ideCpctrAnticipo);
+
+        const qFacturaCab = new SelectQuery(`SELECT ide_cpctr FROM cxp_cabece_transa WHERE ide_cpcfa = $1`);
+        qFacturaCab.addIntParam(1, ideCpcfa);
+        const facturaCab = await this.dataSource.createSingleQuery(qFacturaCab);
+        if (!facturaCab) {
+            throw new InternalServerErrorException(
+                `La factura ide_cpcfa=${ideCpcfa} no tiene una transacción CxP asociada.`,
+            );
+        }
+        const ideCpctrFactura = Number(facturaCab.ide_cpctr);
+
+        // El teclb hay que leerlo ANTES de mover el detalle (después de moverlo, ya no está
+        // bajo ideCpctrAnticipo).
+        const ideTeclb = await this.buscarTeclbDeAnticipo(ideCpctrAnticipo);
+
+        const queryRunner = await this.dataSource.pool.connect();
+        try {
+            await queryRunner.query('BEGIN');
+            await queryRunner.query(
+                `UPDATE cxp_detall_transa SET ide_cpctr = $1, ide_cpcfa = $2 WHERE ide_cpctr = $3`,
+                [ideCpctrFactura, ideCpcfa, ideCpctrAnticipo],
+            );
+            await queryRunner.query(`DELETE FROM cxp_cabece_transa WHERE ide_cpctr = $1`, [ideCpctrAnticipo]);
+            await queryRunner.query('COMMIT');
+        } catch (error) {
+            await queryRunner.query('ROLLBACK');
+            throw error;
+        } finally {
+            queryRunner.release();
+        }
+
+        // pagado_cpcfa no siempre queda actualizado por otros flujos - la validación correcta es
+        // el saldo real (SUM(valor*signo)) de la cabecera de la factura tras mover el anticipo:
+        // si da 0, está pagada; si el anticipo no alcanza a cubrir el total, queda con saldo
+        // pendiente real (pagable por el resto vía Registrar Pago, no se fuerza pagado_cpcfa).
+        const qSaldo = new SelectQuery(`
+            SELECT COALESCE(SUM(dt.valor_cpdtr * tt.signo_cpttr), 0) AS saldo
+            FROM cxp_detall_transa dt
+            JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+            WHERE dt.ide_cpctr = $1
+        `);
+        qSaldo.addIntParam(1, ideCpctrFactura);
+        const { saldo } = await this.dataSource.createSingleQuery(qSaldo);
+        const pagadoCompleto = Math.abs(Number(saldo)) <= 0.01;
+        if (pagadoCompleto) {
+            await this.dataSource.pool.query(
+                `UPDATE cxp_cabece_factur SET pagado_cpcfa = true WHERE ide_cpcfa = $1`,
+                [ideCpcfa],
+            );
+        }
+
+        return { ideTeclb, pagadoCompleto };
     }
 }

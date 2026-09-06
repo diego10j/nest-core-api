@@ -62,6 +62,11 @@ interface TrnResuelta {
     ideCpctr: number | null;
     /** ide_cpcfa de la factura original (solo notas de crédito) */
     ideCpcfaFacturaOriginal: number | null;
+    /** true si ideCpctr viene de reutilizar un anticipo (dtoIn.ide_cpctr_anticipo) - la
+     * cabecera reutilizada quedó con ide_cpcfa NULL desde que se registró el anticipo (todavía
+     * no tenía factura), así que hay que actualizarla para que apunte al documento que se está
+     * creando ahora (ver uso más abajo). */
+    viaAnticipo: boolean;
 }
 
 /**
@@ -358,8 +363,52 @@ export class DocumentosCxPSaveService extends BaseService {
 
             // Cuenta por pagar: cabecera nueva salvo NC (reutiliza la de la factura
             // original) o compra con anticipo (usa la cabecera del anticipo)
+            let pagadoViaAnticipo = false;
             if (trn.ideCpctr === null) {
                 listQuery.push(this.buildInsertTrnCabecera(ideCpctr, ideCpcfa, cabecera, esNotaCredito, dtoIn));
+            } else if (trn.viaAnticipo) {
+                // La cabecera del anticipo quedó con ide_cpcfa NULL (todavía no tenía factura al
+                // registrarse) - hay que apuntarla al documento recién creado, igual que
+                // buildInsertTrnCabecera hace para una cabecera nueva. Sin esto, getFacturaCxP/
+                // getFacturasPendientesProveedor (que buscan por ct.ide_cpcfa = cf.ide_cpcfa) no
+                // encuentran esta factura y el saldo pendiente queda "huérfano".
+                const updTrnCab = new UpdateQuery(TABLE_TRN_CAB, PK_TRN_CAB, dtoIn);
+                updTrnCab.values.set(PK_CAB, ideCpcfa);
+                updTrnCab.where = `${PK_TRN_CAB} = $1`;
+                updTrnCab.addIntParam(1, ideCpctr);
+                listQuery.push(updTrnCab);
+
+                // pagado_cpcfa no siempre queda actualizado por otros flujos - la validación
+                // correcta es el saldo real de las cxp_detall_transa de esta transacción: si tras
+                // sumar la nueva línea de este documento el saldo (SUM(valor*signo)) da 0 (con
+                // más de 1 detalle, es decir que sí hubo algo que compensarlo), está pagada. Si el
+                // anticipo no alcanza a cubrir el total, queda con saldo pendiente real y
+                // pagado_cpcfa se deja en false (default del insert) para que sea pagable por el
+                // resto vía Registrar Pago.
+                const ideCpttrNuevaLinea = esNotaCredito ? IDE_CPTTR_NOTA_CREDITO : this.ideTipoTransFactura;
+                const qSaldoProyectado = new SelectQuery(`
+                    SELECT
+                        COALESCE((
+                            SELECT SUM(dt.valor_cpdtr * tt.signo_cpttr)
+                            FROM cxp_detall_transa dt
+                            JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+                            WHERE dt.ide_cpctr = $1
+                        ), 0)
+                        + $2 * (SELECT signo_cpttr FROM cxp_tipo_transacc WHERE ide_cpttr = $3)
+                        AS saldo_proyectado
+                `);
+                qSaldoProyectado.addIntParam(1, ideCpctr);
+                qSaldoProyectado.addNumberParam(2, totales.total);
+                qSaldoProyectado.addIntParam(3, ideCpttrNuevaLinea);
+                const { saldo_proyectado: saldoProyectado } = await this.dataSource.createSingleQuery(qSaldoProyectado);
+                if (Math.abs(Number(saldoProyectado)) <= 0.01) {
+                    pagadoViaAnticipo = true;
+                    const updFactura = new UpdateQuery(`${MODULE}_${TABLE_CAB}`, PK_CAB, dtoIn);
+                    updFactura.values.set('pagado_cpcfa', true);
+                    updFactura.where = `${PK_CAB} = $1`;
+                    updFactura.addIntParam(1, ideCpcfa);
+                    listQuery.push(updFactura);
+                }
             }
             const ideCpcfaTrnDetalle = esNotaCredito && trn.ideCpcfaFacturaOriginal !== null
                 ? trn.ideCpcfaFacturaOriginal
@@ -403,6 +452,11 @@ export class DocumentosCxPSaveService extends BaseService {
                 // dtoIn.detalles - permite a callers como crearFacturaFleteConsolidada
                 // vincular cada línea recién creada sin adivinar el PK.
                 detalles_ide_cpdfa: detallesIdeCpdfa,
+                // true si se pagó completo con el anticipo (ide_cpctr_anticipo) reutilizado -
+                // saldo real de la transacción en 0, no una suposición por "hay anticipo
+                // vinculado". Permite a callers (ej. crearFacturaFleteConsolidada) reflejar el
+                // mismo criterio en su propio estado sin volver a calcular el saldo.
+                pagado_via_anticipo: pagadoViaAnticipo,
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -802,7 +856,7 @@ export class DocumentosCxPSaveService extends BaseService {
                     `El anticipo ide_cpctr=${dtoIn.ide_cpctr_anticipo} no existe, no pertenece al proveedor o ya está asociado a un documento.`,
                 );
             }
-            return { ideCpctr: Number(anticipo.ide_cpctr), ideCpcfaFacturaOriginal: null };
+            return { ideCpctr: Number(anticipo.ide_cpctr), ideCpcfaFacturaOriginal: null, viaAnticipo: true };
         }
 
         if (esNotaCredito) {
@@ -827,6 +881,7 @@ export class DocumentosCxPSaveService extends BaseService {
             return {
                 ideCpctr: Number(original.ide_cpctr),
                 ideCpcfaFacturaOriginal: Number(original.ide_cpcfa),
+                viaAnticipo: false,
             };
         }
 
@@ -837,11 +892,11 @@ export class DocumentosCxPSaveService extends BaseService {
             q.addIntParam(1, cabecera.ide_cpcfa);
             const existente = await this.dataSource.createSingleQuery(q);
             if (existente) {
-                return { ideCpctr: Number(existente.ide_cpctr), ideCpcfaFacturaOriginal: null };
+                return { ideCpctr: Number(existente.ide_cpctr), ideCpcfaFacturaOriginal: null, viaAnticipo: false };
             }
         }
 
-        return { ideCpctr: null, ideCpcfaFacturaOriginal: null };
+        return { ideCpctr: null, ideCpcfaFacturaOriginal: null, viaAnticipo: false };
     }
 
     // ─────────────────────────────────────────────────────────────────────────

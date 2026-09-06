@@ -243,18 +243,6 @@ export class FleteConsolidadoService extends BaseService {
             );
         }
 
-        // Con 2+ envíos no hay forma de saber a cuál pertenece cada línea sin que coincidan
-        // en cantidad (se resuelve el emparejamiento por GPT más abajo). Con 1 solo envío no
-        // existe esa ambigüedad - todo el XML es de ese envío, sin importar cuántas líneas
-        // traiga - así que esta validación estricta no aplica a ese caso (ver más abajo). Una
-        // sola línea para N envíos tampoco es ambigua (es la única candidata para todos) - se
-        // reparte proporcionalmente más abajo en vez de bloquear.
-        if (envios.length > 1 && parsed.detalles.length !== envios.length && parsed.detalles.length !== 1) {
-            throw new BadRequestException(
-                `El XML trae ${parsed.detalles.length} línea(s) de detalle, pero seleccionaste ${envios.length} envío(s). Deben coincidir 1 a 1, o traer una sola línea para repartir entre todos.`,
-            );
-        }
-
         const articulo = await this.envioFacturaCxPService.getArticuloLogisticaDefault();
         const tarifaIva = parsed.totales.tarifa_iva;
 
@@ -389,7 +377,15 @@ export class FleteConsolidadoService extends BaseService {
             };
         });
 
-        return { ...prefillBase, envios: enviosConMatch };
+        // Aviso no bloqueante: con conteos distintos, el emparejamiento GPT (con fallback
+        // posicional) igual asigna algo a cada envío, pero conviene que el usuario revise el
+        // resultado en el visualizador antes de confirmar - a diferencia del bloqueo estricto
+        // que existía antes acá.
+        const advertencia = parsed.detalles.length !== envios.length
+            ? `El XML trae ${parsed.detalles.length} línea(s) de detalle, pero seleccionaste ${envios.length} envío(s) - revisa el emparejamiento sugerido antes de confirmar.`
+            : undefined;
+
+        return { ...prefillBase, advertencia, envios: enviosConMatch };
     }
 
     async getFletesConsolidados(dtoIn: GetFletesConsolidadosDto & HeaderParamsDto) {
