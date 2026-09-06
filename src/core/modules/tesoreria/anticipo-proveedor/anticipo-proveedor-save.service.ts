@@ -15,24 +15,22 @@ import { RegistrarAnticipoProveedorDto } from './dto/registrar-anticipo-proveedo
 
 const IDE_TETTB_CHEQUE_POSFECHADO = 14;
 
-/** Estados de tes_estado_anticipo_prov (seed en 1-anticipo-proveedores.sql). */
-const ESTADO_PENDIENTE_LIQUIDAR = 1;
-const ESTADO_PARCIALMENTE_LIQUIDADO = 2;
-const ESTADO_LIQUIDADO = 3;
-const ESTADO_ANULADO = 4;
-
-/** Tolerancia de redondeo (centavos) al comparar el saldo liquidado contra el valor original,
- * para decidir si un anticipo quedó completamente liquidado. */
+/** Tolerancia de redondeo (centavos) al comparar valores para decidir si un anticipo/aplicación
+ * quedó completa. */
 const TOLERANCIA_CENTAVOS = 0.01;
 
 /**
- * Guardado de Anticipo a Proveedores: registra el pago (movimiento de tesorería + asiento contra
- * la cuenta dedicada de activo), lo liquida contra una o varias facturas cuando el proveedor
- * emite el comprobante (reclasifica Anticipo -> Cuenta por Pagar, un asiento por factura), o lo
- * anula si todavía no tiene ninguna liquidación. Mismo patrón operativo que
- * CxpTransaccionesSaveService.saveAnticipoCxP, pero con seguimiento de saldo propio
- * (tes_cab_anticipo_prov/tes_det_anticipo_prov) para soportar liquidación parcial y contra
- * varias facturas - el mecanismo genérico (cxp_cabece_transa) no lo permite.
+ * Guardado de Anticipo a Proveedores: registra el pago en cxp_cabece_transa/cxp_detall_transa
+ * (mismo mecanismo genérico que CxpTransaccionesSaveService.savePagoCxP/saveAnticipoCxP - así
+ * aparece de una en Transacciones CxP y en el detalle de Tesorería), pero con su propio asiento
+ * contable contra la cuenta dedicada "ANTICIPO A PROVEEDORES" en vez de la cuenta por pagar del
+ * proveedor (ver AsientosAutomaticosService.generarAsientoAnticipoProveedor).
+ *
+ * Liquidarlo contra UNA sola factura por el saldo completo no necesita nada especial: ya
+ * funciona pasando ide_cpctr_anticipo a DocumentosCxPSaveService.saveDocumento
+ * (resolverCabeceraTransaccion reutiliza esa cabecera). Este servicio solo cubre lo que ese
+ * mecanismo no soporta - varias facturas o aplicación parcial - registrado en
+ * cxp_aplicacion_anticipo (una fila por factura, con su propio asiento de reclasificación).
  */
 @Injectable()
 export class AnticipoProveedorSaveService extends BaseService {
@@ -47,7 +45,7 @@ export class AnticipoProveedorSaveService extends BaseService {
     ) {
         super();
         this.core
-            .getVariables(['p_tes_estado_lib_banco_normal'])
+            .getVariables(['p_tes_estado_lib_banco_normal', 'p_cxp_tipo_trans_anticipo'])
             .then((result) => {
                 this.variables = result;
             });
@@ -68,12 +66,7 @@ export class AnticipoProveedorSaveService extends BaseService {
             }
         }
 
-        // A diferencia de saveAnticipoCxP (que cae a un '000000' fijo), acá se genera un
-        // secuencial real cuando no viene número - '000000' colisiona en el segundo anticipo
-        // que se registre con la misma cuenta/tipo de transacción (mismo patrón que
-        // CxpTransaccionesSaveService.savePagoCxP).
-        const numero = dtoIn.numero
-            ?? await this.preLibroBancosSaveService.generarNumeroAutomatico(dtoIn.ideTecba, dtoIn.ideTettb, dtoIn);
+        const numero = dtoIn.numero ?? '000000';
         const { existe } = await this.preLibroBancosService.existeNumTransaccion({
             ...dtoIn,
             ideTecba: dtoIn.ideTecba,
@@ -87,13 +80,15 @@ export class AnticipoProveedorSaveService extends BaseService {
         }
 
         const ideTeelb = Number(this.variables.get('p_tes_estado_lib_banco_normal'));
+        const ideCpttrAnticipo = Number(this.variables.get('p_cxp_tipo_trans_anticipo'));
         const fechaVenceCuota = esChequePostfechado ? (dtoIn.fechaEfectivo ?? dtoIn.fecha) : dtoIn.fecha;
 
         const ideTeclb = await this.dataSource.getSeqTable('tes_cab_libr_banc', 'ide_teclb', 1, dtoIn.login);
-        const ideTeanp = await this.dataSource.getSeqTable('tes_cab_anticipo_prov', 'ide_teanp', 1, dtoIn.login);
+        const ideCpctr = await this.dataSource.getSeqTable('cxp_cabece_transa', 'ide_cpctr', 1, dtoIn.login);
+        const ideCpdtr = await this.dataSource.getSeqTable('cxp_detall_transa', 'ide_cpdtr', 1, dtoIn.login);
 
-        // Asiento contable ANTES de tocar tesorería (mismo criterio "todo o nada" que
-        // saveAnticipoCxP): si no se puede contabilizar, no se guarda nada.
+        // Asiento contable ANTES de tocar tesorería (todo o nada): si no se puede contabilizar
+        // (ej. cuenta "ANTICIPO A PROVEEDORES" sin configurar), no se guarda nada.
         const asientoResult = await this.asientosAutomaticosService.generarAsientoAnticipoProveedor({
             ideTeclb, fecha: dtoIn.fecha, ideTecba: dtoIn.ideTecba, ideTettb: dtoIn.ideTettb,
             ideGeper: dtoIn.ideGeper, valor: dtoIn.valor, observacion: dtoIn.observacion,
@@ -125,24 +120,38 @@ export class AnticipoProveedorSaveService extends BaseService {
                     dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );
 
+            // Misma pareja cxp_cabece_transa/cxp_detall_transa que saveAnticipoCxP (paridad
+            // "generarTransaccionAnticipo" del legacy) - ide_cpcfa queda NULL hasta que se
+            // aplique a una factura (ver ide_cpctr_anticipo en saveDocumento, o liquidar() acá
+            // abajo para el caso de varias facturas).
             await queryRunner.query(
-                `INSERT INTO tes_cab_anticipo_prov (
-                    ide_teanp, ide_geper, ide_teclb, ide_cnccc, ide_teeap,
-                    valor_teanp, valor_liquidado_teanp, fecha_teanp, observacion_teanp,
+                `INSERT INTO cxp_cabece_transa (
+                    ide_cpctr, ide_geper, ide_cpttr, fecha_trans_cpctr, observacion_cpctr,
                     ide_empr, ide_sucu, usuario_ingre, hora_ingre
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-                [ideTeanp, dtoIn.ideGeper, ideTeclb, ideCnccc, ESTADO_PENDIENTE_LIQUIDAR,
-                    dtoIn.valor, 0, dtoIn.fecha, dtoIn.observacion,
-                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentDateTime()],
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                [ideCpctr, dtoIn.ideGeper, ideCpttrAnticipo, dtoIn.fecha, dtoIn.observacion,
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime()],
+            );
+
+            await queryRunner.query(
+                `INSERT INTO cxp_detall_transa (
+                    ide_cpdtr, ide_teclb, ide_cpctr, ide_cpttr, ide_usua,
+                    valor_cpdtr, observacion_cpdtr, numero_pago_cpdtr,
+                    fecha_trans_cpdtr, fecha_venci_cpdtr, docum_relac_cpdtr, valor_anticipo_cpdtr,
+                    ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                [ideCpdtr, ideTeclb, ideCpctr, ideCpttrAnticipo, dtoIn.ideUsua,
+                    dtoIn.valor, dtoIn.observacion, 0,
+                    dtoIn.fecha, fechaVenceCuota, numero, 0,
+                    dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );
 
             if (dtoIn.ideCpcfc != null) {
-                // Mismo proveedor por seguridad (dueño real ya validado por ideGeper arriba) -
-                // así el detalle del grupo puede mostrar/ocultar "Registrar Anticipo" sabiendo
-                // que ya tiene uno vinculado.
+                // Mismo proveedor por seguridad - así el detalle del grupo puede mostrar/ocultar
+                // "Registrar Anticipo" sabiendo que ya tiene uno vinculado.
                 const { rowCount } = await queryRunner.query(
-                    `UPDATE cxp_cab_flete_cons SET ide_teanp = $1 WHERE ide_cpcfc = $2 AND ide_geper = $3`,
-                    [ideTeanp, dtoIn.ideCpcfc, dtoIn.ideGeper],
+                    `UPDATE cxp_cab_flete_cons SET ide_cpctr_anticipo = $1 WHERE ide_cpcfc = $2 AND ide_geper = $3`,
+                    [ideCpctr, dtoIn.ideCpcfc, dtoIn.ideGeper],
                 );
                 if (rowCount === 0) {
                     throw new BadRequestException(
@@ -164,7 +173,7 @@ export class AnticipoProveedorSaveService extends BaseService {
 
         return {
             message: 'ok',
-            ide_teanp: ideTeanp,
+            ide_cpctr: ideCpctr,
             ide_teclb: ideTeclb,
             ide_geper: dtoIn.ideGeper,
             valor: dtoIn.valor,
@@ -173,9 +182,13 @@ export class AnticipoProveedorSaveService extends BaseService {
     }
 
     /**
-     * Aplica (liquida) un anticipo contra una o varias facturas del proveedor: valida que el
-     * saldo alcance y que cada factura pertenezca al mismo proveedor, genera un asiento de
-     * reclasificación por cada aplicación, y actualiza el saldo/estado del anticipo.
+     * Aplica (liquida) un anticipo contra una o varias facturas del proveedor. Si es una sola
+     * factura por el saldo completo, resuelve directo con cxp_cabece_transa.ide_cpcfa (mismo
+     * resultado que si se hubiera creado la factura con ide_cpctr_anticipo desde el inicio) sin
+     * generar ningún asiento extra - el reclasificador de saldo ya lo hace saveDocumento en ese
+     * flujo, acá el valor a aplicar YA es exactamente el saldo del anticipo, así que solo hace
+     * falta el vínculo. Para varias facturas o montos parciales, cada una queda registrada en
+     * cxp_aplicacion_anticipo con su propio asiento de reclasificación.
      */
     async liquidar(dtoIn: LiquidarAnticipoProveedorDto & HeaderParamsDto) {
         if (!dtoIn.aplicaciones?.length) {
@@ -183,25 +196,25 @@ export class AnticipoProveedorSaveService extends BaseService {
         }
 
         const qCab = new SelectQuery(`
-            SELECT ide_geper, ide_teeap, valor_teanp, valor_liquidado_teanp
-            FROM tes_cab_anticipo_prov
-            WHERE ide_teanp = $1 AND ide_empr = $2 AND ide_sucu = $3
+            SELECT ct.ide_geper, ct.ide_cpcfa, cd.valor_cpdtr AS valor_teanp,
+                   COALESCE((SELECT SUM(valor_aplicado_cpaan) FROM cxp_aplicacion_anticipo
+                             WHERE ide_cpctr = ct.ide_cpctr AND activo_cpaan = true), 0) AS aplicado
+            FROM cxp_cabece_transa ct
+            INNER JOIN cxp_detall_transa cd ON cd.ide_cpctr = ct.ide_cpctr
+            WHERE ct.ide_cpctr = $1 AND ct.ide_empr = $2 AND ct.ide_sucu = $3
         `);
-        qCab.addIntParam(1, dtoIn.ide_teanp);
+        qCab.addIntParam(1, dtoIn.ide_cpctr);
         qCab.addIntParam(2, dtoIn.ideEmpr);
         qCab.addIntParam(3, dtoIn.ideSucu);
         const cab = await this.dataSource.createSingleQuery(qCab);
         if (!cab) {
-            throw new BadRequestException(`Anticipo a proveedor ide_teanp=${dtoIn.ide_teanp} no encontrado.`);
+            throw new BadRequestException(`Anticipo ide_cpctr=${dtoIn.ide_cpctr} no encontrado.`);
         }
-        if (Number(cab.ide_teeap) === ESTADO_ANULADO) {
-            throw new BadRequestException('Este anticipo está anulado.');
-        }
-        if (Number(cab.ide_teeap) === ESTADO_LIQUIDADO) {
-            throw new BadRequestException('Este anticipo ya está completamente liquidado.');
+        if (cab.ide_cpcfa != null) {
+            throw new BadRequestException('Este anticipo ya está completamente liquidado contra una factura.');
         }
 
-        const saldoDisponible = Number(cab.valor_teanp) - Number(cab.valor_liquidado_teanp);
+        const saldoDisponible = Number(cab.valor_teanp) - Number(cab.aplicado);
         const totalAplicar = dtoIn.aplicaciones.reduce((sum, a) => sum + Number(a.valor), 0);
         if (totalAplicar - saldoDisponible > TOLERANCIA_CENTAVOS) {
             throw new BadRequestException(
@@ -211,14 +224,14 @@ export class AnticipoProveedorSaveService extends BaseService {
 
         const ideCpcfaList = dtoIn.aplicaciones.map((a) => a.ide_cpcfa);
         const qFacturas = new SelectQuery(`
-            SELECT ide_cpcfa, ide_geper, total_cpcfa, pagado_cpcfa
+            SELECT ide_cpcfa, ide_geper, pagado_cpcfa
             FROM cxp_cabece_factur
             WHERE ide_cpcfa = ANY($1) AND ide_empr = $2 AND ide_sucu = $3
         `);
         qFacturas.addParam(1, ideCpcfaList);
         qFacturas.addIntParam(2, dtoIn.ideEmpr);
         qFacturas.addIntParam(3, dtoIn.ideSucu);
-        const facturas: { ide_cpcfa: number; ide_geper: number; total_cpcfa: number; pagado_cpcfa: boolean }[] =
+        const facturas: { ide_cpcfa: number; ide_geper: number; pagado_cpcfa: boolean }[] =
             await this.dataSource.createSelectQuery(qFacturas);
         if (facturas.length !== ideCpcfaList.length) {
             const faltantes = ideCpcfaList.filter((id) => !facturas.some((f) => f.ide_cpcfa === id));
@@ -235,23 +248,36 @@ export class AnticipoProveedorSaveService extends BaseService {
             throw new BadRequestException(`La factura ide_cpcfa=${facturaPagada.ide_cpcfa} ya está pagada.`);
         }
 
-        const baseIdeTedap = await this.dataSource.getSeqTable(
-            'tes_det_anticipo_prov', 'ide_tedap', dtoIn.aplicaciones.length, dtoIn.login,
+        // Si es una sola factura y cubre el saldo completo, no hace falta registrar nada en
+        // cxp_aplicacion_anticipo: alcanza con vincular ide_cpcfa directo, igual que el flujo
+        // normal de ide_cpctr_anticipo.
+        const esLiquidacionTotalSimple =
+            dtoIn.aplicaciones.length === 1 &&
+            Math.abs(totalAplicar - saldoDisponible) <= TOLERANCIA_CENTAVOS;
+
+        if (esLiquidacionTotalSimple) {
+            await this.dataSource.pool.query(
+                `UPDATE cxp_cabece_transa SET ide_cpcfa = $1 WHERE ide_cpctr = $2`,
+                [dtoIn.aplicaciones[0].ide_cpcfa, dtoIn.ide_cpctr],
+            );
+            return { message: 'ok', ide_cpctr: dtoIn.ide_cpctr, saldo_restante: 0 };
+        }
+
+        const baseIdeCpaan = await this.dataSource.getSeqTable(
+            'cxp_aplicacion_anticipo', 'ide_cpaan', dtoIn.aplicaciones.length, dtoIn.login,
         );
 
-        const detalles: { ide_tedap: number; ide_cpcfa: number; valor: number; ide_cnccc: number | null }[] = [];
+        const detalles: { ide_cpaan: number; ide_cpcfa: number; valor: number; ide_cnccc: number | null }[] = [];
         for (let i = 0; i < dtoIn.aplicaciones.length; i += 1) {
             const aplicacion = dtoIn.aplicaciones[i];
             const asiento = await this.asientosAutomaticosService.generarAsientoLiquidacionAnticipo({
                 ideGeper: Number(cab.ide_geper),
                 fecha: this.hoy(),
                 valor: aplicacion.valor,
-                observacion: `Liquidación anticipo #${dtoIn.ide_teanp} - factura ${aplicacion.ide_cpcfa}`,
+                observacion: `Liquidación anticipo #${dtoIn.ide_cpctr} - factura ${aplicacion.ide_cpcfa}`,
                 ...dtoIn,
             });
             if (!asiento.generado) {
-                // Revierte los asientos ya generados en este mismo lote antes de fallar, para no
-                // dejar liquidaciones parciales contabilizadas sin sus filas de control.
                 await Promise.all(
                     detalles.filter((d) => d.ide_cnccc != null)
                         .map((d) => this.asientosAutomaticosService.eliminarAsiento(d.ide_cnccc as number, dtoIn)),
@@ -261,36 +287,26 @@ export class AnticipoProveedorSaveService extends BaseService {
                 );
             }
             detalles.push({
-                ide_tedap: baseIdeTedap + i,
+                ide_cpaan: baseIdeCpaan + i,
                 ide_cpcfa: aplicacion.ide_cpcfa,
                 valor: aplicacion.valor,
                 ide_cnccc: asiento.ide_cnccc ?? null,
             });
         }
 
-        const nuevoLiquidado = Number(cab.valor_liquidado_teanp) + totalAplicar;
-        const quedaLiquidado = Number(cab.valor_teanp) - nuevoLiquidado <= TOLERANCIA_CENTAVOS;
-        const nuevoEstado = quedaLiquidado ? ESTADO_LIQUIDADO : ESTADO_PARCIALMENTE_LIQUIDADO;
-
         const queryRunner = await this.dataSource.pool.connect();
         try {
             await queryRunner.query('BEGIN');
             for (const det of detalles) {
                 await queryRunner.query(
-                    `INSERT INTO tes_det_anticipo_prov (
-                        ide_tedap, ide_teanp, ide_cpcfa, valor_aplicado_tedap, ide_cnccc,
-                        fecha_tedap, usuario_ingre, hora_ingre
+                    `INSERT INTO cxp_aplicacion_anticipo (
+                        ide_cpaan, ide_cpctr, ide_cpcfa, valor_aplicado_cpaan, ide_cnccc,
+                        fecha_cpaan, usuario_ingre, hora_ingre
                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-                    [det.ide_tedap, dtoIn.ide_teanp, det.ide_cpcfa, det.valor, det.ide_cnccc,
+                    [det.ide_cpaan, dtoIn.ide_cpctr, det.ide_cpcfa, det.valor, det.ide_cnccc,
                         this.hoy(), dtoIn.login, getCurrentDateTime()],
                 );
             }
-            await queryRunner.query(
-                `UPDATE tes_cab_anticipo_prov
-                    SET valor_liquidado_teanp = $1, ide_teeap = $2, usuario_actua = $3, hora_actua = $4
-                  WHERE ide_teanp = $5`,
-                [nuevoLiquidado, nuevoEstado, dtoIn.login, getCurrentDateTime(), dtoIn.ide_teanp],
-            );
             await queryRunner.query('COMMIT');
         } catch (error) {
             await queryRunner.query('ROLLBACK');
@@ -305,26 +321,34 @@ export class AnticipoProveedorSaveService extends BaseService {
             queryRunner.release();
         }
 
-        return { message: 'ok', ide_teanp: dtoIn.ide_teanp, nuevo_estado: nuevoEstado, saldo_restante: Number(cab.valor_teanp) - nuevoLiquidado };
+        return {
+            message: 'ok',
+            ide_cpctr: dtoIn.ide_cpctr,
+            saldo_restante: Number((saldoDisponible - totalAplicar).toFixed(2)),
+        };
     }
 
-    /** Anula un anticipo que todavía no tiene ninguna liquidación activa: reversa el movimiento
-     * de tesorería y su asiento. Si ya tiene liquidaciones, hay que revertirlas primero (no se
-     * soporta anular en cascada, para no perder trazabilidad de facturas ya reclasificadas). */
-    async anular(ideTeanp: number, dtoIn: HeaderParamsDto) {
+    /** Anula un anticipo que todavía no tiene ninguna liquidación (ni directa por ide_cpcfa ni
+     * en cxp_aplicacion_anticipo): reversa el movimiento de tesorería y su asiento (mismo
+     * mecanismo genérico que cualquier pago), y borra las filas de
+     * cxp_cabece_transa/cxp_detall_transa (anularMovimiento no las toca solo porque
+     * numero_pago_cpdtr = 0, a diferencia de un pago aplicado a un documento). */
+    async anular(ideCpctr: number, dtoIn: HeaderParamsDto) {
         const qCab = new SelectQuery(`
-            SELECT ide_teclb, ide_cnccc, ide_teeap, valor_liquidado_teanp
-            FROM tes_cab_anticipo_prov WHERE ide_teanp = $1
+            SELECT ct.ide_cpcfa,
+                   cd.ide_teclb,
+                   COALESCE((SELECT COUNT(*) FROM cxp_aplicacion_anticipo
+                             WHERE ide_cpctr = ct.ide_cpctr AND activo_cpaan = true), 0) AS num_aplicaciones
+            FROM cxp_cabece_transa ct
+            INNER JOIN cxp_detall_transa cd ON cd.ide_cpctr = ct.ide_cpctr
+            WHERE ct.ide_cpctr = $1
         `);
-        qCab.addIntParam(1, ideTeanp);
+        qCab.addIntParam(1, ideCpctr);
         const cab = await this.dataSource.createSingleQuery(qCab);
         if (!cab) {
-            throw new BadRequestException(`Anticipo a proveedor ide_teanp=${ideTeanp} no encontrado.`);
+            throw new BadRequestException(`Anticipo ide_cpctr=${ideCpctr} no encontrado.`);
         }
-        if (Number(cab.ide_teeap) === ESTADO_ANULADO) {
-            throw new BadRequestException('Este anticipo ya está anulado.');
-        }
-        if (Number(cab.valor_liquidado_teanp) > 0) {
+        if (cab.ide_cpcfa != null || Number(cab.num_aplicaciones) > 0) {
             throw new BadRequestException(
                 'Este anticipo ya tiene liquidaciones aplicadas - no se puede anular directamente.',
             );
@@ -332,12 +356,14 @@ export class AnticipoProveedorSaveService extends BaseService {
 
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(cab.ide_teclb) });
 
+        await this.dataSource.pool.query(`DELETE FROM cxp_detall_transa WHERE ide_cpctr = $1`, [ideCpctr]);
+        await this.dataSource.pool.query(`DELETE FROM cxp_cabece_transa WHERE ide_cpctr = $1`, [ideCpctr]);
         await this.dataSource.pool.query(
-            `UPDATE tes_cab_anticipo_prov SET ide_teeap = $1, activo_teanp = false WHERE ide_teanp = $2`,
-            [ESTADO_ANULADO, ideTeanp],
+            `UPDATE cxp_cab_flete_cons SET ide_cpctr_anticipo = NULL WHERE ide_cpctr_anticipo = $1`,
+            [ideCpctr],
         );
 
-        return { message: 'ok', ide_teanp: ideTeanp };
+        return { message: 'ok', ide_cpctr: ideCpctr };
     }
 
     private hoy(): string {

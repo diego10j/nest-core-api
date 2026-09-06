@@ -467,11 +467,19 @@ export class FleteConsolidadoService extends BaseService {
                 cf.ide_cnccc,
                 ccc.numero_cnccc,
                 cc.ide_teclb,
-                cc.ide_teanp,
-                ap.valor_teanp AS anticipo_valor,
-                ap.valor_liquidado_teanp AS anticipo_valor_liquidado,
-                eap.nombre_teeap AS anticipo_estado,
-                eap.color_teeap AS anticipo_color_estado
+                cc.ide_cpctr_anticipo,
+                acd.valor_cpdtr AS anticipo_valor,
+                COALESCE(aap.aplicado, 0) AS anticipo_valor_liquidado,
+                CASE
+                    WHEN act.ide_cpcfa IS NOT NULL OR COALESCE(aap.aplicado, 0) >= acd.valor_cpdtr THEN 'LIQUIDADO'
+                    WHEN COALESCE(aap.aplicado, 0) > 0 THEN 'PARCIALMENTE LIQUIDADO'
+                    ELSE 'PENDIENTE DE LIQUIDAR'
+                END AS anticipo_estado,
+                CASE
+                    WHEN act.ide_cpcfa IS NOT NULL OR COALESCE(aap.aplicado, 0) >= acd.valor_cpdtr THEN 'success'
+                    WHEN COALESCE(aap.aplicado, 0) > 0 THEN 'info'
+                    ELSE 'warning'
+                END AS anticipo_color_estado
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
@@ -489,8 +497,14 @@ export class FleteConsolidadoService extends BaseService {
             LEFT JOIN ven_transporte t          ON t.ide_vgtra = ctf.ide_vgtra
             LEFT JOIN cxp_cabece_factur cf      ON cc.ide_cpcfa = cf.ide_cpcfa
             LEFT JOIN con_cab_comp_cont ccc     ON ccc.ide_cnccc = cf.ide_cnccc
-            LEFT JOIN tes_cab_anticipo_prov ap  ON ap.ide_teanp = cc.ide_teanp
-            LEFT JOIN tes_estado_anticipo_prov eap ON eap.ide_teeap = ap.ide_teeap
+            LEFT JOIN cxp_cabece_transa act     ON act.ide_cpctr = cc.ide_cpctr_anticipo
+            LEFT JOIN cxp_detall_transa acd     ON acd.ide_cpctr = act.ide_cpctr
+            LEFT JOIN (
+                SELECT ide_cpctr, SUM(valor_aplicado_cpaan) AS aplicado
+                FROM cxp_aplicacion_anticipo
+                WHERE activo_cpaan = true
+                GROUP BY ide_cpctr
+            ) aap ON aap.ide_cpctr = act.ide_cpctr
             WHERE cc.ide_cpcfc = $1
               AND cc.ide_empr = $2
               AND cc.ide_sucu = $3

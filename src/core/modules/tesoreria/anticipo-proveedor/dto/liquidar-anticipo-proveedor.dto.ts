@@ -13,15 +13,16 @@ export class AplicacionAnticipoDto {
     valor: number;
 }
 
-/** Liquida (aplica) un anticipo contra una o varias facturas del mismo proveedor - cada una
- * genera su propio asiento de reclasificación (Debe Cuenta por Pagar del proveedor / Haber
- * Anticipo a Proveedores). El anticipo queda "Liquidado" cuando su saldo llega a cero, o
- * "Parcialmente Liquidado" si aún le queda saldo disponible. */
+/** Liquida (aplica) un anticipo contra una o varias facturas del mismo proveedor. Si es una
+ * sola factura por el saldo completo, se resuelve directo con cxp_cabece_transa.ide_cpcfa (ver
+ * DocumentosCxPSaveService.resolverCabeceraTransaccion, ide_cpctr_anticipo) - este endpoint es
+ * para el caso que ese mecanismo no soporta: varias facturas o aplicación parcial, registrado
+ * en cxp_aplicacion_anticipo (una fila por factura, con su propio asiento de reclasificación). */
 export class LiquidarAnticipoProveedorDto {
-    /** FK → tes_cab_anticipo_prov */
+    /** FK → cxp_cabece_transa (el anticipo) */
     @IsInt()
     @IsNotEmpty()
-    ide_teanp: number;
+    ide_cpctr: number;
 
     @IsArray()
     @ValidateNested({ each: true })

@@ -28,14 +28,14 @@ export class AnticipoProveedorController {
         return this.service.getAnticiposProveedor({ ...headersParams, ...dtoIn });
     }
 
-    @Get('getAnticipoProveedorById/:ideTeanp')
+    @Get('getAnticipoProveedorById/:ideCpctr')
     @Auth()
     @ApiOperation({ summary: 'Detalle de un anticipo, con las facturas a las que ya se aplicó' })
     getAnticipoProveedorById(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Param('ideTeanp') ideTeanp: string,
+        @Param('ideCpctr') ideCpctr: string,
     ) {
-        return this.service.getAnticipoProveedorById(Number(ideTeanp), headersParams);
+        return this.service.getAnticipoProveedorById(Number(ideCpctr), headersParams);
     }
 
     @Post('registrar')
@@ -65,6 +65,6 @@ export class AnticipoProveedorController {
         @AppHeaders() headersParams: HeaderParamsDto,
         @Body() dtoIn: IdAnticipoProveedorDto,
     ) {
-        return this.saveService.anular(dtoIn.ide_teanp, headersParams);
+        return this.saveService.anular(dtoIn.ide_cpctr, headersParams);
     }
 }

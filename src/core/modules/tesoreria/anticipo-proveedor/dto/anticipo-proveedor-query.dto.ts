@@ -10,7 +10,8 @@ export class GetAnticiposProveedorDto extends QueryOptionsDto {
 }
 
 export class IdAnticipoProveedorDto {
+    /** FK → cxp_cabece_transa */
     @IsInt()
     @IsNotEmpty()
-    ide_teanp: number;
+    ide_cpctr: number;
 }

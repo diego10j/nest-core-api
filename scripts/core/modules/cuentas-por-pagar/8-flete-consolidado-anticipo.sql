@@ -1,4 +1,9 @@
 -- ================================================================
+-- ⚠ REEMPLAZADO por tesoreria/2-anticipo-proveedores-simplificado.sql,
+-- que borra la columna ide_teanp creada acá y agrega ide_cpctr_anticipo
+-- en su lugar (el anticipo ahora vive en cxp_cabece_transa, no en
+-- tes_cab_anticipo_prov). No volver a correr este script.
+-- ================================================================
 -- SCRIPT: Cuentas por Pagar - Factura Consolidada de Flete
 --         Vincula el grupo "Pendiente Factura" con el Anticipo a
 --         Proveedores que se le haya registrado (si lo hay), para

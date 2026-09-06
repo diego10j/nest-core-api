@@ -1,4 +1,11 @@
 -- ================================================================
+-- ⚠ REEMPLAZADO por 2-anticipo-proveedores-simplificado.sql: ese
+-- script BORRA las tablas creadas acá (tes_cab_anticipo_prov/
+-- tes_det_anticipo_prov/tes_estado_anticipo_prov) - el anticipo pasa
+-- a vivir en cxp_cabece_transa/cxp_detall_transa (mecanismo genérico
+-- ya existente) en vez de duplicarlo. Se deja este script tal cual
+-- para el historial; no volver a correrlo.
+-- ================================================================
 -- SCRIPT: Tesorería - Anticipo a Proveedores
 -- Descripción: Pago anticipado a un proveedor SIN factura todavía,
 --              contabilizado contra una cuenta dedicada de activo
