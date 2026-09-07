@@ -3,8 +3,8 @@ import { IsArray, IsDateString, IsNumber, IsString } from 'class-validator';
 /**
  * Payload para "Detectar diferencias con IA" en Diferencias Contable vs CxC. Los arrays
  * ya vienen calculados/truncados por el frontend (asientos contables y transacciones CxC
- * de un cliente hasta la fecha de corte, con saldo acumulado) - este endpoint no vuelve a
- * consultar la base de datos, solo arma el prompt y llama a GPT.
+ * de un cliente en el rango consultado, con saldo inicial y saldo acumulado) - este endpoint
+ * no vuelve a consultar la base de datos, solo arma el prompt y llama a GPT.
  */
 export class DetectCxcDifferencesDto {
   @IsNumber()
@@ -14,7 +14,10 @@ export class DetectCxcDifferencesDto {
   nom_geper: string;
 
   @IsDateString()
-  fechaCorte: string;
+  fechaInicio: string;
+
+  @IsDateString()
+  fechaFin: string;
 
   @IsNumber()
   saldoContable: number;

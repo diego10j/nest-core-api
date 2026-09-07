@@ -313,14 +313,8 @@ export class ClientesController {
   }
 
   @Get('getAsientosContablesCliente')
-  @ApiOperation({ summary: 'Asientos contables (cuenta Clientes) de un cliente puntual hasta una fecha de corte, con saldo acumulado' })
+  @ApiOperation({ summary: 'Asientos contables (cuenta Clientes) de un cliente puntual en un rango de fechas, con saldo inicial y saldo acumulado' })
   getAsientosContablesCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleDiferenciaClienteDto) {
     return this.service.getAsientosContablesCliente({ ...headersParams, ...dtoIn });
-  }
-
-  @Get('getTransaccionesCxcCliente')
-  @ApiOperation({ summary: 'Transacciones CxC de un cliente puntual hasta una fecha de corte, con saldo acumulado' })
-  getTransaccionesCxcCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleDiferenciaClienteDto) {
-    return this.service.getTransaccionesCxcCliente({ ...headersParams, ...dtoIn });
   }
 }

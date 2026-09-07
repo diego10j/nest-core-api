@@ -118,10 +118,11 @@ export class GptService {
     const systemPrompt = `
       Eres un contador auditor experto en conciliación de cuentas por cobrar. Se te
       entrega, en JSON, un cliente con su saldo contable (cuenta "Clientes") y su saldo
-      de Cuentas por Cobrar (CxC) a una fecha de corte, junto con el detalle de asientos
-      contables (array "asientos", cada uno con debe/haber y saldo acumulado) y el
-      detalle de transacciones CxC (array "transacciones", cada una con ingreso/egreso y
-      saldo acumulado) de ese mismo cliente hasta esa fecha.
+      de Cuentas por Cobrar (CxC) al cierre del rango consultado (fechaInicio-fechaFin),
+      junto con el detalle de asientos contables (array "asientos", cada uno con
+      debe/haber y saldo acumulado, incluyendo una fila "Saldo Inicial") y el detalle de
+      transacciones CxC (array "transacciones", cada una con debe/haber y saldo
+      acumulado, incluyendo una fila "Saldo Inicial") de ese mismo cliente en ese rango.
 
       Tu tarea es encontrar la causa probable de la diferencia entre saldoContable y
       saldoCxc (o confirmar que cuadra). Compara ambos lados: montos que aparecen en un
