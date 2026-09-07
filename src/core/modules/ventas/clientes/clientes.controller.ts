@@ -13,6 +13,7 @@ import { ClientesService } from './clientes.service';
 import { DeleteCabeceraTrnCxCDto } from './dto/delete-cabecera-trn-cxc.dto';
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetDetalleDiferenciaClienteDto } from './dto/get-detalle-diferencia-cliente.dto';
 import { GetDiferenciasContablesCxcDto } from './dto/get-diferencias-contables-cxc.dto';
 import { GetExisteClienteDto } from './dto/get-existe-cliente.dto';
 import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
@@ -309,5 +310,17 @@ export class ClientesController {
   @ApiOperation({ summary: 'Saldo contable (cuenta Clientes) vs saldo CxC, detallado por cliente, a una fecha de corte' })
   getDiferenciasContablesCxc(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDiferenciasContablesCxcDto) {
     return this.service.getDiferenciasContablesCxc({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getAsientosContablesCliente')
+  @ApiOperation({ summary: 'Asientos contables (cuenta Clientes) de un cliente puntual hasta una fecha de corte, con saldo acumulado' })
+  getAsientosContablesCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleDiferenciaClienteDto) {
+    return this.service.getAsientosContablesCliente({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getTransaccionesCxcCliente')
+  @ApiOperation({ summary: 'Transacciones CxC de un cliente puntual hasta una fecha de corte, con saldo acumulado' })
+  getTransaccionesCxcCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleDiferenciaClienteDto) {
+    return this.service.getTransaccionesCxcCliente({ ...headersParams, ...dtoIn });
   }
 }

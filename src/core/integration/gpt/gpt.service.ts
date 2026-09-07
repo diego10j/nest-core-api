@@ -8,6 +8,7 @@ import { envs } from 'src/config/envs';
 import {
   AudioToTextDto,
   ContentProductDto,
+  DetectCxcDifferencesDto,
   ImageGenerationDto,
   ImageVariationDto,
   OrthographyDto,
@@ -105,6 +106,42 @@ export class GptService {
 
   async improveText({ prompt }: TextToolDto) {
     return await improveTextUseCase(this.openai, { prompt });
+  }
+
+  /**
+   * "Detectar diferencias con IA" en Diferencias Contable vs CxC: recibe los asientos
+   * contables (cuenta Clientes) y las transacciones CxC de un mismo cliente, ya
+   * calculados/truncados por el frontend, y le pide a GPT que encuentre la causa
+   * probable del descuadre entre saldoContable y saldoCxc.
+   */
+  async detectCxcDifferences(dto: DetectCxcDifferencesDto) {
+    const systemPrompt = `
+      Eres un contador auditor experto en conciliación de cuentas por cobrar. Se te
+      entrega, en JSON, un cliente con su saldo contable (cuenta "Clientes") y su saldo
+      de Cuentas por Cobrar (CxC) a una fecha de corte, junto con el detalle de asientos
+      contables (array "asientos", cada uno con debe/haber y saldo acumulado) y el
+      detalle de transacciones CxC (array "transacciones", cada una con ingreso/egreso y
+      saldo acumulado) de ese mismo cliente hasta esa fecha.
+
+      Tu tarea es encontrar la causa probable de la diferencia entre saldoContable y
+      saldoCxc (o confirmar que cuadra). Compara ambos lados: montos que aparecen en un
+      lado y no en el otro, fechas cercanas con montos iguales que podrían ser el mismo
+      movimiento mal registrado, asientos sin transacción CxC asociada o viceversa,
+      diferencias de monto en movimientos que parecen corresponder al mismo hecho.
+
+      Responde EXCLUSIVAMENTE con un JSON con esta forma exacta, sin texto adicional:
+      {
+        "resumen": "string breve en markdown explicando el diagnóstico general",
+        "cuadra": boolean,
+        "hallazgos": [
+          { "titulo": "string", "detalle": "string", "impacto": number o null, "confianza": "alta" | "media" | "baja" }
+        ]
+      }
+      Si no encuentras una causa clara, igual devuelve al menos un hallazgo describiendo
+      qué información adicional ayudaría a diagnosticar. No inventes movimientos que no
+      estén en los datos entregados.
+    `;
+    return this.parseTextToJson(systemPrompt, JSON.stringify(dto));
   }
 
   async parseTextToJson(prompt: string, text: string) {

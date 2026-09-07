@@ -22,6 +22,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import {
   AudioToTextDto,
   ContentProductDto,
+  DetectCxcDifferencesDto,
   ImageGenerationDto,
   ImageVariationDto,
   OrthographyDto,
@@ -200,5 +201,14 @@ export class GptController {
     @Body() textToolDto: TextToolDto,
   ) {
     return this.gptService.improveText(textToolDto);
+  }
+
+  @Post('detectar-diferencias-cxc')
+  @ApiOperation({ summary: 'Detectar con IA la causa de una diferencia entre saldo contable y saldo CxC de un cliente' })
+  detectCxcDifferences(
+    @AppHeaders() _h: HeaderParamsDto,
+    @Body() detectCxcDifferencesDto: DetectCxcDifferencesDto,
+  ) {
+    return this.gptService.detectCxcDifferences(detectCxcDifferencesDto);
   }
 }

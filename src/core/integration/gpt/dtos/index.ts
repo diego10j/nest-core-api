@@ -6,4 +6,5 @@ export * from './pros-cons-discusser.dto';
 export * from './text-to-audio.dto';
 export * from './translate.dto';
 export * from './content-product.dto';
+export * from './detect-cxc-differences.dto';
 export * from './text-tool.dto';

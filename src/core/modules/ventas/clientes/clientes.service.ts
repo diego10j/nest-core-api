@@ -20,6 +20,7 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 
 import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
+import { GetDetalleDiferenciaClienteDto } from './dto/get-detalle-diferencia-cliente.dto';
 import { GetDiferenciasContablesCxcDto } from './dto/get-diferencias-contables-cxc.dto';
 import { IdeCcctrDto } from './dto/ide-ccctr.dto';
 import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
@@ -2619,6 +2620,84 @@ export class ClientesService extends BaseService {
             dtoIn,
         );
         query.addParam(1, dtoIn.fechaCorte);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Asientos contables (con_cab_comp_cont/con_det_comp_cont) de la cuenta "Clientes" para
+     * un cliente puntual, hasta una fecha de corte, con saldo acumulado (misma fórmula que
+     * getDiferenciasContablesCxc, así que el último saldo coincide exactamente con
+     * saldo_contable de esa fila). Sin filtro de ide_sucu - ver comentario en
+     * getDiferenciasContablesCxcConsolidado.
+     */
+    async getAsientosContablesCliente(dtoIn: GetDetalleDiferenciaClienteDto & HeaderParamsDto) {
+        const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
+        const ideCnecoNormal = Number(this.variables.get('p_con_estado_comprobante_normal'));
+        const query = new SelectQuery(`
+            SELECT
+                cc.ide_cnccc,
+                cc.fecha_trans_cnccc,
+                cc.numero_cnccc,
+                cc.observacion_cnccc,
+                la.nombre_cnlap,
+                CASE WHEN la.nombre_cnlap = 'DEBE' THEN dc.valor_cndcc ELSE 0 END AS debe,
+                CASE WHEN la.nombre_cnlap = 'HABER' THEN dc.valor_cndcc ELSE 0 END AS haber,
+                SUM(dc.valor_cndcc * CASE WHEN la.nombre_cnlap = 'DEBE' THEN 1 ELSE -1 END)
+                    OVER (ORDER BY cc.fecha_trans_cnccc, cc.ide_cnccc
+                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo
+            FROM con_det_comp_cont dc
+            INNER JOIN con_cab_comp_cont cc ON cc.ide_cnccc = dc.ide_cnccc
+            INNER JOIN con_lugar_aplicac la ON la.ide_cnlap = dc.ide_cnlap
+            WHERE dc.ide_cndpc = ${ideCndpcClientes}
+              AND cc.fecha_trans_cnccc <= $1
+              AND cc.ide_empr = ${dtoIn.ideEmpr}
+              AND cc.ide_cneco = ${ideCnecoNormal}
+              AND cc.ide_geper = $2
+            ORDER BY cc.fecha_trans_cnccc, cc.ide_cnccc
+        `);
+        query.addParam(1, dtoIn.fechaCorte);
+        query.addIntParam(2, dtoIn.ide_geper);
+        // Sin paginación: el dialog necesita TODAS las filas del cliente de una vez (para que
+        // el saldo acumulado y la fila de totales cuadren exactamente contra saldo_contable),
+        // y createQuery además retorna el esquema de columnas que usan los customColumns.
+        query.isLazy = false;
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Transacciones CxC (cxc_detall_transa) de un cliente puntual, hasta una fecha de corte,
+     * con saldo acumulado (misma fórmula que getDiferenciasContablesCxc, así que el último
+     * saldo coincide exactamente con saldo_cxc de esa fila). Sin filtro de ide_sucu - ver
+     * comentario en getDiferenciasContablesCxcConsolidado. Trae ide_cnccc para poder saltar
+     * al comprobante contable que originó cada movimiento, cuando existe.
+     */
+    async getTransaccionesCxcCliente(dtoIn: GetDetalleDiferenciaClienteDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                dt.ide_ccdtr,
+                dt.ide_ccctr,
+                dt.ide_cnccc,
+                dt.fecha_trans_ccdtr,
+                tt.nombre_ccttr,
+                dt.observacion_ccdtr,
+                cf.secuencial_cccfa AS numero_cccfa,
+                CASE WHEN tt.signo_ccttr = 1 THEN dt.valor_ccdtr ELSE 0 END AS ingreso,
+                CASE WHEN tt.signo_ccttr = -1 THEN dt.valor_ccdtr ELSE 0 END AS egreso,
+                SUM(dt.valor_ccdtr * tt.signo_ccttr)
+                    OVER (ORDER BY dt.fecha_trans_ccdtr, dt.ide_ccdtr
+                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo
+            FROM cxc_detall_transa dt
+            INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
+            INNER JOIN cxc_cabece_transa ct ON ct.ide_ccctr = dt.ide_ccctr
+            LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
+            WHERE dt.fecha_trans_ccdtr <= $1
+              AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND ct.ide_geper = $2
+            ORDER BY dt.fecha_trans_ccdtr, dt.ide_ccdtr
+        `);
+        query.addParam(1, dtoIn.fechaCorte);
+        query.addIntParam(2, dtoIn.ide_geper);
+        query.isLazy = false;
         return this.dataSource.createQuery(query);
     }
 }
