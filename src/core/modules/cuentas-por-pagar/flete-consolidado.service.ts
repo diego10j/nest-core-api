@@ -173,7 +173,22 @@ export class FleteConsolidadoService extends BaseService {
     async getFacturasProveedorFlete(dtoIn: GetFacturasProveedorFleteDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
         const aplicarFiltroMonto = dtoIn.montoAprox != null && dtoIn.montoAprox > 0;
+        // Este diálogo alimenta "completarConFacturaExistente": el grupo de envíos todavía
+        // necesita que se le registre/rastree un pago, así que una factura que ya está saldada
+        // (pagado_cpcfa, o saldo real <= 0 vía cxp_detall_transa - mismo cálculo que
+        // DocumentosCxPService.getReporteDocumentos) no es un candidato útil para asociar acá y
+        // solo ensucia la lista - antes se colaba porque el filtro solo miraba
+        // ide_cpefa (anulada/normal), nunca el saldo.
         const query = new SelectQuery(`
+            WITH saldos AS (
+                SELECT dt.ide_cpcfa, SUM(dt.valor_cpdtr * tt.signo_cpttr) AS saldo
+                FROM cxp_detall_transa dt
+                INNER JOIN cxp_tipo_transacc tt ON tt.ide_cpttr = dt.ide_cpttr
+                WHERE dt.ide_cpcfa IN (
+                    SELECT ide_cpcfa FROM cxp_cabece_factur WHERE ide_geper = $1 AND ide_empr = $2 AND ide_sucu = $3
+                )
+                GROUP BY dt.ide_cpcfa
+            )
             SELECT f.ide_cpcfa,
                    f.numero_cpcfa,
                    f.fecha_emisi_cpcfa,
@@ -186,11 +201,14 @@ export class FleteConsolidadoService extends BaseService {
             FROM cxp_cabece_factur f
             INNER JOIN gen_persona p ON f.ide_geper = p.ide_geper
             LEFT JOIN cxp_estado_factur ef ON f.ide_cpefa = ef.ide_cpefa
+            LEFT JOIN saldos s ON s.ide_cpcfa = f.ide_cpcfa
             WHERE f.ide_geper = $1
               AND f.ide_empr = $2
               AND f.ide_sucu = $3
               AND f.ide_cpefa = ${estadoNormal}
               AND f.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '4 months'
+              AND f.pagado_cpcfa IS NOT TRUE
+              AND COALESCE(s.saldo, f.total_cpcfa) > 0.01
               AND NOT EXISTS (
                   SELECT 1 FROM cxp_cab_flete_cons c
                   WHERE c.ide_cpcfa = f.ide_cpcfa
@@ -389,6 +407,11 @@ export class FleteConsolidadoService extends BaseService {
     }
 
     async getFletesConsolidados(dtoIn: GetFletesConsolidadosDto & HeaderParamsDto) {
+        const aplicarFiltroEstado = dtoIn.ide_cpefc != null;
+        const aplicarFiltroFecha = dtoIn.fechaInicio != null && dtoIn.fechaFin != null;
+        const paramEstado = 3;
+        const paramFechaInicio = aplicarFiltroEstado ? 4 : 3;
+        const paramFechaFin = paramFechaInicio + 1;
         const query = new SelectQuery(
             `
             SELECT
@@ -410,7 +433,13 @@ export class FleteConsolidadoService extends BaseService {
                     -- factura y 1 solo envío, el ide_cpdfa vinculado puede ser solo una de varias
                     -- líneas agrupadas por IVA (no toda la factura) - ahí se compara contra el
                     -- total de la factura (cf.total_cpcfa) en vez de esa línea puntual. Con
-                    -- factura y 2+ envíos cada línea sí es 1 a 1, se compara normal.
+                    -- factura y 2+ envíos cada línea sí es 1 a 1, se compara normal - pero
+                    -- cd.valor_cpdfa es SIEMPRE la base sin IVA (cantidad*precio en el registro
+                    -- manual, precioTotalSinImpuesto en el XML - ver documentos-cxp-save.service.ts
+                    -- y documentos-cxp-xml.service.ts), así que si la línea grava IVA hay que
+                    -- sumárselo antes de comparar contra total_flete_cctfa (que sí incluye IVA);
+                    -- si no, cualquier línea gravada se ve como "cobro de más" por el valor exacto
+                    -- del IVA.
                     SELECT CASE
                         WHEN cf.total_cpcfa IS NULL THEN
                             COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc)))
@@ -419,8 +448,8 @@ export class FleteConsolidadoService extends BaseService {
                             CASE WHEN MAX(e.total_flete_cctfa) != cf.total_cpcfa
                                  THEN ABS(MAX(e.total_flete_cctfa) - cf.total_cpcfa) ELSE 0 END
                         ELSE
-                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc)))
-                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)), 0)
+                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc)))
+                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc)), 0)
                     END
                     FROM cxp_det_flete_cons d
                     LEFT JOIN cxp_detall_factur cd       ON d.ide_cpdfa = cd.ide_cpdfa
@@ -435,12 +464,19 @@ export class FleteConsolidadoService extends BaseService {
             WHERE cc.ide_empr = $1
               AND cc.ide_sucu = $2
               AND cc.activo_cpcfc = true
+              ${aplicarFiltroEstado ? `AND cc.ide_cpefc = $${paramEstado}` : ''}
+              ${aplicarFiltroFecha ? `AND cc.hora_ingre::date BETWEEN $${paramFechaInicio} AND $${paramFechaFin}` : ''}
             ORDER BY cc.hora_ingre DESC
             `,
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ideEmpr);
         query.addIntParam(2, dtoIn.ideSucu);
+        if (aplicarFiltroEstado) query.addIntParam(paramEstado, dtoIn.ide_cpefc);
+        if (aplicarFiltroFecha) {
+            query.addStringParam(paramFechaInicio, dtoIn.fechaInicio);
+            query.addStringParam(paramFechaFin, dtoIn.fechaFin);
+        }
         return this.dataSource.createQuery(query);
     }
 
@@ -514,28 +550,37 @@ export class FleteConsolidadoService extends BaseService {
             throw new BadRequestException(`Factura consolidada ide_cpcfc=${ideCpcfc} no encontrada.`);
         }
 
+        // cd.valor_cpdfa (línea real de la factura del transportista) es SIEMPRE la base sin IVA,
+        // tanto si la factura se registró manualmente (cantidad*precio) como si vino de un XML
+        // (precioTotalSinImpuesto) - ver documentos-cxp-save.service.ts/documentos-cxp-xml.service.ts.
+        // Si esa línea grava IVA (cd.iva_inarti_cpdfa = 1) hay que sumárselo con la tarifa de la
+        // propia factura (cf.tarifa_iva_cpcfa) antes de comparar contra total_flete_cctfa (que sí
+        // incluye IVA) - de lo contrario toda línea gravada se veía como "Cobro más" por
+        // exactamente el valor del IVA.
         const qDet = new SelectQuery(`
             SELECT
                 d.ide_cpdfc,
                 d.ide_cctfa,
-                COALESCE(cd.valor_cpdfa, d.valor_cpdfc)             AS valor_cpdfc,
+                COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc) AS valor_cpdfc,
                 COALESCE(cd.observacion_cpdfa, d.observacion_cpdfc) AS observacion_cpdfc,
                 e.total_flete_cctfa,
                 b.nom_geper AS cliente,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 CASE
-                    WHEN e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)
-                    THEN ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc))
+                    WHEN e.total_flete_cctfa != COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc)
+                    THEN ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc))
                     ELSE NULL
                 END AS diferencia_flete,
                 CASE
-                    WHEN e.total_flete_cctfa > COALESCE(cd.valor_cpdfa, d.valor_cpdfc) THEN 'Cobro más'
-                    WHEN e.total_flete_cctfa < COALESCE(cd.valor_cpdfa, d.valor_cpdfc) THEN 'Cobro menos'
+                    WHEN e.total_flete_cctfa > COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc) THEN 'Cobro más'
+                    WHEN e.total_flete_cctfa < COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc) THEN 'Cobro menos'
                     ELSE NULL
                 END AS tipo_diferencia_flete
             FROM cxp_det_flete_cons d
             LEFT JOIN cxp_detall_factur cd        ON d.ide_cpdfa = cd.ide_cpdfa
+            LEFT JOIN cxp_cab_flete_cons cc2      ON cc2.ide_cpcfc = d.ide_cpcfc
+            LEFT JOIN cxp_cabece_factur cf        ON cf.ide_cpcfa = cc2.ide_cpcfa
             INNER JOIN cxc_transporte_factura e  ON d.ide_cctfa = e.ide_cctfa
             INNER JOIN cxc_cabece_factura f      ON e.ide_cccfa = f.ide_cccfa
             INNER JOIN cxc_datos_fac df          ON f.ide_ccdaf = df.ide_ccdaf

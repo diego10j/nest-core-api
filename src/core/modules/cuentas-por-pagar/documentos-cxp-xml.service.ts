@@ -172,6 +172,48 @@ export class DocumentosCxPXmlService {
             // traía descuento.
             const descuentoXml = this.numero(this.texto($, 'totalDescuento'));
             const tarifaIva = tarifaIvaXml ?? await this.consultas.getPorcentajeIva(fechaEmision);
+
+            // El SRI redondea cada <precioTotalSinImpuesto> de forma INDEPENDIENTE a 2 decimales,
+            // pero el propio emisor calcula <totalSinImpuestos> (cabecera) a partir de los
+            // valores SIN redondear de cada línea - sumar los precioTotalSinImpuesto ya
+            // redondeados puede quedar 1 centavo por debajo/encima de ese total oficial (y por
+            // lo tanto también el IVA y el importeTotal calculados a partir de esa suma). Como el
+            // guardado del documento (DocumentosCxPSaveService.calcularTotales) siempre recalcula
+            // valor_cpdfa = cantidad*precio a partir de las líneas -no hay forma de guardar un
+            // total de cabecera "suelto" sin líneas que lo sustenten-, el ajuste se hace acá: la
+            // ÚLTIMA línea absorbe el residuo de redondeo contra el total oficial declarado por
+            // el SRI (mismo patrón que el reparto proporcional de flete consolidado, ver
+            // FleteConsolidadoService.prepararFacturaFleteConsolidadaDesdeXml). Así el documento
+            // que se guarda cuadra exacto contra lo que el SRI autorizó, en vez de arrastrar un
+            // descuadre de centavos frente al RIDE (caso real: 2 líneas de flete que suman 5.21
+            // en vez del 5.22 oficial, factura guardada en 5.99 en vez de 6.00).
+            let advertenciaRedondeo: string | undefined;
+            const totalSinImpuestosXml = this.numero(this.texto($, 'totalSinImpuestos'));
+            if (totalSinImpuestosXml > 0) {
+                const sumaLineas = Number(
+                    detalles.reduce((sum, d) => sum + d.valor_cpdfa, 0).toFixed(2),
+                );
+                const residuo = Number((totalSinImpuestosXml - sumaLineas).toFixed(2));
+                if (residuo !== 0) {
+                    // Tolerancia de solo unos centavos: un residuo mayor no es redondeo, es una
+                    // señal de que algo más está mal (línea faltante, XML mal formado) - ahí se
+                    // prefiere avisar en vez de forzar el cuadre en silencio.
+                    if (Math.abs(residuo) <= 0.05) {
+                        const ultimo = detalles[detalles.length - 1];
+                        ultimo.valor_cpdfa = Number((ultimo.valor_cpdfa + residuo).toFixed(2));
+                        if (ultimo.cantidad_cpdfa) {
+                            ultimo.precio_cpdfa = Number(
+                                (ultimo.valor_cpdfa / ultimo.cantidad_cpdfa).toFixed(6),
+                            );
+                        }
+                    } else {
+                        advertenciaRedondeo =
+                            `La suma de las líneas (${sumaLineas.toFixed(2)}) no coincide con el `
+                            + `subtotal declarado por el SRI (${totalSinImpuestosXml.toFixed(2)}) - `
+                            + 'verifica el XML antes de guardar.';
+                    }
+                }
+            }
             const totales = this.calcularTotales(detalles, tarifaIva);
 
             const variables = await this.core.getVariables([
@@ -180,7 +222,7 @@ export class DocumentosCxPXmlService {
             ]);
 
             let notaCredito: NotaCreditoXmlCxP | undefined;
-            let advertencia: string | undefined;
+            let advertencia: string | undefined = advertenciaRedondeo;
             if (esNotaCredito) {
                 const numDocModificado = this.texto($, 'numDocModificado');
                 const fechaEmisionDocSustento = this.texto($, 'fechaEmisionDocSustento');
@@ -202,7 +244,8 @@ export class DocumentosCxPXmlService {
                         : undefined,
                 };
                 if (!facturaOriginal) {
-                    advertencia = `No se encontró en el sistema la factura de compra ${numDocModificado || '(sin número)'} del proveedor - selecciónela manualmente antes de guardar.`;
+                    const advertenciaFactura = `No se encontró en el sistema la factura de compra ${numDocModificado || '(sin número)'} del proveedor - selecciónela manualmente antes de guardar.`;
+                    advertencia = advertencia ? `${advertencia} ${advertenciaFactura}` : advertenciaFactura;
                 }
             }
 
