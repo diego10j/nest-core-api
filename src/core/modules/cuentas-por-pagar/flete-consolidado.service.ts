@@ -32,6 +32,9 @@ const ESTADO_ANULADO = 3;
 /** Envío candidato a incluirse en una factura consolidada de flete (sin factura aún). */
 export interface EnvioParaConsolidar {
     ide_cctfa: number;
+    /** PK de la factura de venta (cxc_cabece_factura) que originó este envío - para poder
+     * abrir su detalle (ViewFacturaDialog) desde el wizard de Registrar Envíos. */
+    ide_cccfa: number;
     cliente: string;
     numero_factura_venta: string;
     fecha_emisi_cccfa: string;
@@ -122,6 +125,7 @@ export class FleteConsolidadoService extends BaseService {
             `
             SELECT
                 e.ide_cctfa,
+                f.ide_cccfa,
                 b.nom_geper AS cliente,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
@@ -305,6 +309,7 @@ export class FleteConsolidadoService extends BaseService {
                 : undefined;
             const enviosConMatch: EnvioConsolidadoMatch[] = [{
                 ide_cctfa: envio.ide_cctfa,
+                ide_cccfa: envio.ide_cccfa,
                 cliente: envio.cliente,
                 numero_factura_venta: envio.numero_factura_venta,
                 fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
@@ -345,6 +350,7 @@ export class FleteConsolidadoService extends BaseService {
                 );
                 return {
                     ide_cctfa: envio.ide_cctfa,
+                    ide_cccfa: envio.ide_cccfa,
                     cliente: envio.cliente,
                     numero_factura_venta: envio.numero_factura_venta,
                     fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
@@ -384,6 +390,7 @@ export class FleteConsolidadoService extends BaseService {
                 : 0;
             return {
                 ide_cctfa: envio.ide_cctfa,
+                ide_cccfa: envio.ide_cccfa,
                 cliente: envio.cliente,
                 numero_factura_venta: envio.numero_factura_venta,
                 fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
