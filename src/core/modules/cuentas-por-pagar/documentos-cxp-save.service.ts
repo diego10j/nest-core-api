@@ -288,7 +288,12 @@ export class DocumentosCxPSaveService extends BaseService {
                 sriHeaderQuery = built.query;
                 claveAccesoSri = built.claveAcceso;
                 ideSrcomElectronico = built.ideSrcom;
-                cabecera.numero_cpcfa = `${estab}-${ptoEmi}-${built.secuencial}`;
+                // Sin guiones: cxp_cabece_factur.numero_cpcfa se guarda siempre en el formato
+                // heredado de dígitos contiguos (3+3+resto - ver splitNumeroDocumento más abajo
+                // en este archivo), igual que facturas/notas de crédito de proveedor cargadas
+                // por XML (ver parseXmlDocumento en documentos-cxp-xml.service.ts). Los guiones
+                // solo se reintroducen al mostrarlo (ver fmtNumero en ride-report.util.ts).
+                cabecera.numero_cpcfa = `${estab}${ptoEmi}${built.secuencial}`;
                 cabecera.autorizacio_cpcfa = claveAccesoSri;
             }
 

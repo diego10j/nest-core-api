@@ -107,7 +107,11 @@ export class DocumentosCxPXmlService {
             }
 
             // ── Cabecera ─────────────────────────────────────────────────────
-            const numero = `${this.texto($, 'estab')}-${this.texto($, 'ptoEmi')}-${this.texto($, 'secuencial')}`;
+            // Sin guiones: cxp_cabece_factur.numero_cpcfa se guarda en el formato heredado de
+            // dígitos contiguos (3+3+resto - ver splitNumeroDocumento en
+            // documentos-cxp-save.service.ts), no "005-004-000083410". Los guiones solo se
+            // reintroducen al mostrarlo (ver fmtNumero en ride-report.util.ts).
+            const numero = `${this.texto($, 'estab')}${this.texto($, 'ptoEmi')}${this.texto($, 'secuencial')}`;
             const fechaEmision = this.parseFecha(this.texto($, 'fechaEmision'));
             const ideCndfp = await this.getFormaPagoPorCodigoSri(this.texto($, 'formaPago'));
 
@@ -359,18 +363,26 @@ export class DocumentosCxPXmlService {
      * comprobante (estab-ptoEmi-secuencial) - la autorización del documento modificado NO viene
      * en el XML de la NC (Ficha Técnica SRI), por eso se resuelve acá contra la BD en vez de
      * confiar en un campo del XML. Solo considera facturas no anuladas (ide_cpefa = 0, mismo
-     * criterio que existeDocumentoElectronico). */
+     * criterio que existeDocumentoElectronico).
+     *
+     * El XML de la NC siempre trae <numDocModificado> CON guiones ("001-001-000000001"), pero
+     * cxp_cabece_factur.numero_cpcfa se guarda SIN guiones (formato heredado, ver el comentario
+     * en parseXmlDocumento y splitNumeroDocumento en documentos-cxp-save.service.ts) - se
+     * compara contra ambas variantes para no dejar de encontrar la factura ni con una factura ya
+     * guardada en el formato viejo (con guiones) ni con una nueva (sin guiones). */
     private async buscarFacturaModificada(ideGeper: number, numero: string) {
         if (!numero) return undefined;
+        const sinGuiones = numero.replace(/-/g, '');
         const q = new SelectQuery(`
             SELECT ide_cpcfa, ide_cntdo, autorizacio_cpcfa
             FROM cxp_cabece_factur
-            WHERE ide_geper = $1 AND numero_cpcfa = $2 AND ide_cpefa = 0
+            WHERE ide_geper = $1 AND numero_cpcfa IN ($2, $3) AND ide_cpefa = 0
             ORDER BY ide_cpcfa DESC
             LIMIT 1
         `);
         q.addIntParam(1, ideGeper);
-        q.addStringParam(2, numero);
+        q.addStringParam(2, sinGuiones);
+        q.addStringParam(3, numero);
         return this.dataSource.createSingleQuery(q);
     }
 
