@@ -143,25 +143,24 @@ export class FleteConsolidadoService extends BaseService {
               AND f.fecha_emisi_cccfa BETWEEN $2 AND $3
               AND e.ide_empr = $4
               AND e.ide_sucu = $5
-              -- flete_pagado_cctfa (default true en la tabla) NO significa "ya se pagó una
-              -- transacción real": es lo que se marca en el envío al crear la factura de venta -
-              -- queda en true tanto para "no hay nada que pagarle al transportista" (flete al
-              -- cobro directo al destinatario, retiro en sucursal, o simplemente ya se saldó por
-              -- otra vía) como para el default sin tocar. Solo se pone en false cuando el
-              -- vendedor marca explícitamente que ese flete SÍ queda pendiente de pagarle al
-              -- transportista (factura-form.tsx) - que es exactamente lo que este flujo necesita
-              -- reconciliar. Sin este filtro se colaban acá los envíos "flete al cobro"
-              -- (total_flete_cctfa = 0, nada que facturarle al transportista).
-              --
-              -- OJO: NO se filtra por total_flete_cctfa > 0 - ese campo es lo COBRADO AL
-              -- CLIENTE, no lo que se le debe al transportista. Hay envíos donde el cliente no
-              -- paga flete (0, la empresa lo asume por buen margen en la venta) pero igual hay
-              -- que pagarle al transportista - ahí flete_pagado_cctfa=false con
-              -- total_flete_cctfa=0 es un caso válido que este flujo SÍ debe poder registrar.
-              -- El monto real a pagar (total_flete_real_cctfa) recién se conoce/graba al
-              -- completar este mismo proceso (ver buildActualizarEnvioQuery), así que tampoco
-              -- sirve como filtro previo.
-              AND e.flete_pagado_cctfa = false
+              -- flete_pagado_cctfa (default true) NO es "ya se pagó una transacción real" - es
+              -- el switch "Flete pagado" / "Flete cobro en destino" que el vendedor marca al
+              -- facturar el envío (ver EnvioSection en factura-form.tsx, el propio label del
+              -- switch confirma la semántica):
+              --   true  = "Flete pagado": la empresa es responsable de pagarle al transportista
+              --           (con o sin cobro al cliente - incluye el caso donde el cliente no paga
+              --           flete porque la empresa lo asume por buen margen en la venta).
+              --   false = "Flete cobro en destino": el transportista cobra DIRECTO al
+              --           destinatario - la empresa nunca le paga nada por ese envío.
+              -- Por eso el filtro es flete_pagado_cctfa = TRUE (no false): así se excluyen los
+              -- envíos "cobro en destino" (el bug original reportado) sin bloquear los envíos
+              -- que el cliente no pagó pero la empresa sí debe facturarle al transportista.
+              -- NO se filtra por total_flete_cctfa > 0 - ese campo es lo COBRADO AL CLIENTE, no
+              -- lo que se le debe al transportista (puede ser 0 en el caso de arriba). El monto
+              -- real a pagar (total_flete_real_cctfa) recién se conoce/graba al completar este
+              -- mismo proceso (ver buildActualizarEnvioQuery), así que tampoco sirve como filtro
+              -- previo.
+              AND e.flete_pagado_cctfa = true
               -- Un envío no debe reaparecer como disponible si ya quedó vinculado a CUALQUIER
               -- grupo/orden de flete consolidado activo - incluye grupos "Pendiente Factura"
               -- (todavía sin ide_cpcfa, por eso ya no alcanza con "ide_cpcfa IS NULL" solo) y
