@@ -515,6 +515,9 @@ export class FleteConsolidadoService extends BaseService {
                 cc.ide_geper,
                 p.nom_geper AS proveedor,
                 p.identificac_geper,
+                p.direccion_geper,
+                gp.nombre_geprov,
+                gc.nombre_gecant,
                 t.logo_vgtra AS logo_transportista,
                 cc.fecha_desde_cpcfc,
                 cc.fecha_hasta_cpcfc,
@@ -541,6 +544,8 @@ export class FleteConsolidadoService extends BaseService {
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
+            LEFT JOIN gen_provincia gp           ON gp.ide_geprov = p.ide_geprov
+            LEFT JOIN gen_canton gc              ON gc.ide_gecant = p.ide_gecant
             -- El logo se resuelve por ide_vgtra (PK real de ven_transporte, igual que en
             -- getEnviosParaFacturar/facturas.service.ts), NO por ide_geper: ven_transporte.ide_geper
             -- no está garantizado poblado para todo transportista, a diferencia de ide_vgtra que
@@ -586,6 +591,7 @@ export class FleteConsolidadoService extends BaseService {
             SELECT
                 d.ide_cpdfc,
                 d.ide_cctfa,
+                f.ide_cccfa,
                 COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc) AS valor_cpdfc,
                 COALESCE(cd.observacion_cpdfa, d.observacion_cpdfc) AS observacion_cpdfc,
                 e.total_flete_cctfa,
