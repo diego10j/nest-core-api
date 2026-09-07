@@ -2554,6 +2554,7 @@ export class ClientesService extends BaseService {
                     WHERE dc.ide_cndpc = ${ideCndpcClientes}
                       AND cc.fecha_trans_cnccc <= $1
                       AND cc.ide_empr = ${dtoIn.ideEmpr}
+                      AND cc.ide_sucu = ${dtoIn.ideSucu}
                       AND cc.ide_cneco = ${ideCnecoNormal}
                 ), 0) AS saldo_contable,
                 COALESCE((
@@ -2590,6 +2591,7 @@ export class ClientesService extends BaseService {
                 WHERE dc.ide_cndpc = ${ideCndpcClientes}
                   AND cc.fecha_trans_cnccc <= $1
                   AND cc.ide_empr = ${dtoIn.ideEmpr}
+                  AND cc.ide_sucu = ${dtoIn.ideSucu}
                   AND cc.ide_cneco = ${ideCnecoNormal}
                 GROUP BY cc.ide_geper
             ),
@@ -2602,6 +2604,7 @@ export class ClientesService extends BaseService {
                 INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
                 WHERE dt.fecha_trans_ccdtr <= $1
                   AND dt.ide_empr = ${dtoIn.ideEmpr}
+                  AND dt.ide_sucu = ${dtoIn.ideSucu}
                 GROUP BY ct.ide_geper
             )
             SELECT
@@ -2651,6 +2654,7 @@ export class ClientesService extends BaseService {
             WHERE dc.ide_cndpc = ${ideCndpcClientes}
               AND cc.fecha_trans_cnccc <= $1
               AND cc.ide_empr = ${dtoIn.ideEmpr}
+              AND cc.ide_sucu = ${dtoIn.ideSucu}
               AND cc.ide_cneco = ${ideCnecoNormal}
               AND cc.ide_geper = $2
             ORDER BY cc.fecha_trans_cnccc, cc.ide_cnccc
@@ -2692,6 +2696,7 @@ export class ClientesService extends BaseService {
             LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa
             WHERE dt.fecha_trans_ccdtr <= $1
               AND dt.ide_empr = ${dtoIn.ideEmpr}
+              AND dt.ide_sucu = ${dtoIn.ideSucu}
               AND ct.ide_geper = $2
             ORDER BY dt.fecha_trans_ccdtr, dt.ide_ccdtr
         `);

@@ -7,9 +7,9 @@ SELECT 20, 0, 0, 'DESCUENTO EN VENTAS', 'IDENTIFICADOR PARA EL DESCUENTO EN EL A
 WHERE NOT EXISTS (SELECT 1 FROM con_cab_conf_asie WHERE nombre_cncca = 'DESCUENTO EN VENTAS');
 
 INSERT INTO con_vig_conf_asie (ide_cnvca, ide_cncca, ide_sucu, ide_empr, nombre_cnvca, fecha_inici_cnvca, fecha_final_cnvca, estado_cnvca)
-SELECT 29, 20, 0, 0, 'PERIODO ACTUAL', '2026-02-01', '2036-02-29', true
-WHERE NOT EXISTS (SELECT 1 FROM con_vig_conf_asie WHERE ide_cnvca = 29);
+SELECT 39, 20, 0, 0, 'PERIODO ACTUAL', '2026-02-01', '2036-02-29', true
+WHERE NOT EXISTS (SELECT 1 FROM con_vig_conf_asie WHERE ide_cnvca = 39);
 
 INSERT INTO con_det_conf_asie (ide_cndca, ide_cnvca, ide_sucu, ide_empr, ide_cndpc)
-SELECT 7691, 29, 0, 0, 10104
-WHERE NOT EXISTS (SELECT 1 FROM con_det_conf_asie WHERE ide_cndca = 7691);
+SELECT 7791, 39, 0, 0, 10104
+WHERE NOT EXISTS (SELECT 1 FROM con_det_conf_asie WHERE ide_cndca = 7791);

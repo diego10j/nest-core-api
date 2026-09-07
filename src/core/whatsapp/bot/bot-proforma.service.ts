@@ -8,14 +8,14 @@ import { roundTo, roundPrecio, getPrecioDecimals } from 'src/util/helpers/number
 
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 
-export const IDE_USUA_BOT       = 32;  // Usuario bot para proformas automáticas
-export const IDE_VGVEN_DEFAULT  = 16;  // Vendedor por defecto para cotizaciones automáticas
+export const IDE_USUA_BOT = 32;  // Usuario bot para proformas automáticas
+export const IDE_VGVEN_DEFAULT = 16;  // Vendedor por defecto para cotizaciones automáticas
 
 // ─── Constantes WhatsApp proforma ─────────────────────────────────────────────
-const IDE_CCTPR_WHATSAPP    = 3;           // Tipo de proforma: WhatsApp
-const IDE_CCVAP_WHATSAPP    = 6;           // Canal de venta WhatsApp
-const IDE_CCTEN_WHATSAPP    = 0;           // Tiene (campo requerido)
-const REFERENCIA_WHATSAPP   = 'WhatsApp';  // Referencia en cabecera
+const IDE_CCTPR_WHATSAPP = 3;           // Tipo de proforma: WhatsApp
+const IDE_CCVAP_WHATSAPP = 6;           // Canal de venta WhatsApp
+const IDE_CCTEN_WHATSAPP = 0;           // Tiene (campo requerido)
+const REFERENCIA_WHATSAPP = 'WhatsApp';  // Referencia en cabecera
 
 /** Convierte número internacional Ecuador a formato local: +593983113543 → 0983113543 */
 function toLocalPhone(phone: string): string {
@@ -52,7 +52,7 @@ export class BotProformaService {
     private readonly dataSource: DataSourceService,
     private readonly proformasService: ProformasService,
     private readonly notificaciones: NotificacionesService,
-  ) {}
+  ) { }
 
   async procesarProforma(
     datos: DatosSesion,
@@ -78,15 +78,15 @@ export class BotProformaService {
       if (precioConf) {
         tarifaIva = precioConf.porcentaje_iva;
         const precioSinIva = roundPrecio(precioConf.precio_venta_sin_iva);
-        const totalConIva  = roundTo(precioConf.precio_venta_con_iva * prod.cantidad, DECIMALES_TOTALES);
+        const totalConIva = roundTo(precioConf.precio_venta_con_iva * prod.cantidad, DECIMALES_TOTALES);
         productosConPrecio.push({
           ...prod,
           precio_unitario: precioSinIva,
-          precio_total:    totalConIva,
-          costo_promedio:  precioConf.costo_promedio,
-          utilidad_ccdpr:  precioConf.utilidad_neta ?? null,
+          precio_total: totalConIva,
+          costo_promedio: precioConf.costo_promedio,
+          utilidad_ccdpr: precioConf.utilidad_neta ?? null,
           porcentaje_util_ccdpr: precioConf.porcentaje_utilidad ?? null,
-          tiene_precio:    true,
+          tiene_precio: true,
         });
       } else {
         productosSinPrecio.push({ ...prod, tiene_precio: false });
@@ -149,15 +149,15 @@ export class BotProformaService {
     // Actualizar cabecera con datos específicos de WhatsApp y del cliente
     try {
       const cliente = datos.cliente;
-      let ideGeper   = 7712;  // Consumidor final por defecto
+      let ideGeper = 7712;  // Consumidor final por defecto
       let identificac = '9999999999999';
-      let ideGetid   = 3;
-      let correo     = cliente?.correo || 'info@diquimec.com.ec';
+      let ideGetid = 3;
+      let correo = cliente?.correo || 'info@diquimec.com.ec';
 
       if (cliente?.es_cliente_registrado && cliente.ide_geper) {
-        ideGeper   = cliente.ide_geper;
+        ideGeper = cliente.ide_geper;
         identificac = cliente.identificacion || identificac;
-        correo      = cliente.correo || correo;
+        correo = cliente.correo || correo;
 
         // Obtener ide_getid real del cliente desde gen_persona
         const pQ = new SelectQuery(`SELECT ide_getid, correo_geper FROM gen_persona WHERE ide_geper = $1 LIMIT 1`);
@@ -165,7 +165,7 @@ export class BotProformaService {
         const personaRow = await this.dataSource.createSingleQuery(pQ);
         if (personaRow) {
           ideGetid = personaRow.ide_getid ?? 3;
-          correo   = personaRow.correo_geper || correo;
+          correo = personaRow.correo_geper || correo;
         }
       }
 
@@ -187,7 +187,7 @@ export class BotProformaService {
       }
 
       // notas_cccpr: coordenadas GPS en JSON si el cliente compartió ubicación
-      const latitud  = datos.envio?.latitud;
+      const latitud = datos.envio?.latitud;
       const longitud = datos.envio?.longitud;
       const notasGps = (latitud && longitud)
         ? JSON.stringify({ lat: latitud, lng: longitud })
@@ -225,7 +225,7 @@ export class BotProformaService {
         datos.envio?.direccion || '',
         notasGps,
         datos.cliente?.ide_vgven || null,
-        'LA COTIZACIÓN NO INCLUYE COSTO DE ENVÍO.',
+        '',
         ideGeprov,
       ]);
       this.logger.log(`[Proforma] Cabecera WhatsApp actualizada ide_cccpr=${ide_cccpr} ide_geper=${ideGeper}`);
@@ -262,10 +262,10 @@ export class BotProformaService {
       // Recalcular totales cabecera usando el método compartido de ProformasService
       try {
         const itemsTotales = productosConPrecio.map((p) => ({
-          cantidad:       p.cantidad,
-          precio:         p.precio_unitario,
+          cantidad: p.cantidad,
+          precio: p.precio_unitario,
           porcentaje_iva: tarifaIva,
-          utilidad:       p.utilidad_ccdpr ?? null,
+          utilidad: p.utilidad_ccdpr ?? null,
         }));
         await this.proformasService.actualizarTotalesCabecera(ide_cccpr, itemsTotales);
         this.logger.log(`[Proforma] Totales actualizados ide_cccpr=${ide_cccpr} items=${itemsTotales.length}`);
@@ -343,8 +343,8 @@ export class BotProformaService {
     const baseGrabadaRet = todosTienePrecio
       ? productosConPrecio.reduce((s, p) => s + roundTo(p.cantidad * p.precio_unitario, DECIMALES_TOTALES), 0)
       : undefined;
-    const valorIva  = baseGrabadaRet != null ? roundTo(baseGrabadaRet * (tarifaIva / 100), DECIMALES_TOTALES) : undefined;
-    const total     = baseGrabadaRet != null ? baseGrabadaRet + 0 + valorIva : undefined;
+    const valorIva = baseGrabadaRet != null ? roundTo(baseGrabadaRet * (tarifaIva / 100), DECIMALES_TOTALES) : undefined;
+    const total = baseGrabadaRet != null ? baseGrabadaRet + 0 + valorIva : undefined;
 
     return {
       ide_cccpr, secuencial, automatica, conPrecio,
