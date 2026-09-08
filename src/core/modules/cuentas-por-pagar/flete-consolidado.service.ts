@@ -188,10 +188,13 @@ export class FleteConsolidadoService extends BaseService {
 
     /** Facturas CxP de un proveedor/transportista, en estado normal y no vinculadas todavía a
      * ningún grupo de flete consolidado, para asociar a un grupo "Pendiente Factura" (ver
-     * FleteConsolidadoSaveService.completarConFacturaExistente). Mismo criterio que
-     * ImportacionesService.getFacturasImportaciones (antigüedad 4 meses, monto aproximado
-     * opcional ±5%), adaptado a que acá el filtro de "ya usada" es contra cxp_cab_flete_cons en
-     * vez de imp_cab_importa. */
+     * FleteConsolidadoSaveService.completarConFacturaExistente). Sin filtro de antigüedad
+     * (a diferencia de ImportacionesService.getFacturasImportaciones, de donde se copió este
+     * patrón originalmente): una factura de transportista pendiente de pago puede legítimamente
+     * tener más de 4 meses, y no hay ninguna razón de negocio para ocultarla acá si sigue
+     * pendiente en Documentos por Pagar (bug reportado 2026-09-08: una factura vieja pendiente
+     * no aparecía para asociar). Filtro de "ya usada" contra cxp_cab_flete_cons, en vez de
+     * imp_cab_importa como en el patrón de importaciones. */
     async getFacturasProveedorFlete(dtoIn: GetFacturasProveedorFleteDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
         const aplicarFiltroMonto = dtoIn.montoAprox != null && dtoIn.montoAprox > 0;
@@ -228,7 +231,6 @@ export class FleteConsolidadoService extends BaseService {
               AND f.ide_empr = $2
               AND f.ide_sucu = $3
               AND f.ide_cpefa = ${estadoNormal}
-              AND f.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '4 months'
               AND f.pagado_cpcfa IS NOT TRUE
               AND COALESCE(s.saldo, f.total_cpcfa) > 0.01
               -- Igual que en getEnviosSinFacturaPorProveedor: un grupo ANULADO no debe seguir

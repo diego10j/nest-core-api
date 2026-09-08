@@ -436,8 +436,12 @@ export class FleteConsolidadoSaveService {
             [envios.map((e) => e.ide_cctfa)],
         );
 
+        // ide_teclb queda limpio en ambos casos ('anulada' o 'desvinculada'): el pago que
+        // representaba (de la factura o del anticipo) ya se reversó arriba - dejarlo apuntando a
+        // un movimiento de tesorería ya anulado es un dato colgante que solo confunde al revisar
+        // el historial de un grupo ANULADO.
         await this.dataSource.pool.query(
-            `UPDATE cxp_cab_flete_cons SET ide_cpefc = $1 WHERE ide_cpcfc = $2`,
+            `UPDATE cxp_cab_flete_cons SET ide_cpefc = $1, ide_teclb = NULL WHERE ide_cpcfc = $2`,
             [ESTADO_ANULADO, ideCpcfc],
         );
 
@@ -451,10 +455,9 @@ export class FleteConsolidadoSaveService {
      *    pagos ni retención aplicados) se anula todo - documentosCxPSaveService.anularDocumento
      *    ya rechaza anular si tiene una retención asociada (ide_cncre), así que ese caso cae
      *    directo a "desvincular" sin necesidad de otra validación acá.
-     *  - Si no (ya tiene pagos y/o retención), se reversan sus pagos de tesorería - cada
-     *    anularMovimiento ya limpia su propia fila de aplicación en cxp_detall_transa (ver
-     *    documentos-cxp-save.service.ts) - sin tocar el estado de la factura ni su asiento
-     *    contable propio: queda como una factura normal, sin pagos pendientes de aplicar.
+     *  - Si no (ya tiene pagos y/o retención), se reversan sus pagos de tesorería y cualquier
+     *    anticipo fusionado (ver abajo) sin tocar el estado de la factura ni su asiento contable
+     *    propio: queda como una factura normal, sin pagos pendientes de aplicar.
      */
     private async anularOFacturaFleteConsolidado(
         ideCpcfa: number,
@@ -474,6 +477,29 @@ export class FleteConsolidadoSaveService {
             return 'anulada';
         }
 
+        // Antes de reversar nada: si CUALQUIERA de los movimientos de banco a reversar (pagos
+        // reales o anticipos fusionados, ambos con ide_teclb propio) ya está conciliado,
+        // PreLibroBancosSaveService.anularMovimiento lo va a rechazar - se valida todo de una acá
+        // para avisar con un mensaje claro (qué movimiento y por qué) en vez de fallar a la mitad
+        // del loop de abajo dejando algunos movimientos ya reversados y otros no.
+        const qConciliados = new SelectQuery(`
+            SELECT DISTINCT b.ide_teclb, b.numero_teclb
+            FROM cxp_detall_transa dt
+            INNER JOIN tes_cab_libr_banc b ON b.ide_teclb = dt.ide_teclb
+            WHERE dt.ide_cpcfa = $1 AND dt.ide_teclb IS NOT NULL AND b.conciliado_teclb = true
+        `);
+        qConciliados.addIntParam(1, ideCpcfa);
+        const conciliados: { ide_teclb: number; numero_teclb: string | null }[] =
+            await this.dataSource.createSelectQuery(qConciliados);
+        if (conciliados.length > 0) {
+            const detalle = conciliados.map((c) => c.numero_teclb ?? `#${c.ide_teclb}`).join(', ');
+            throw new BadRequestException(
+                `No se puede anular/desvincular: la factura tiene ${conciliados.length === 1 ? 'un pago o anticipo' : 'pagos o anticipos'} ya conciliado(s) con el banco (movimiento ${detalle}). Desconcilia ese movimiento en Tesorería antes de anular.`,
+            );
+        }
+
+        // Pagos reales (Registrar Pago): numero_pago_cpdtr > 0 - anularMovimiento ya limpia su
+        // propia fila de cxp_detall_transa (ver documentos-cxp-save.service.ts).
         const qPagos = new SelectQuery(`
             SELECT DISTINCT ide_teclb FROM cxp_detall_transa
             WHERE ide_cpcfa = $1 AND numero_pago_cpdtr > 0 AND ide_teclb IS NOT NULL
@@ -483,6 +509,27 @@ export class FleteConsolidadoSaveService {
         for (const pago of pagos) {
             await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(pago.ide_teclb) });
         }
+
+        // Anticipos fusionados (completarConFacturaExistente -> asociarAnticipoExistente): su
+        // fila de cxp_detall_transa queda con numero_pago_cpdtr = 0 (igual que el cargo original
+        // de la factura, que nunca tiene ide_teclb) pero SÍ tiene ide_teclb propio - esa
+        // combinación es lo único que la distingue del cargo original, y por eso el filtro de
+        // arriba (numero_pago_cpdtr > 0) nunca la encuentra. anularMovimiento tampoco la borra
+        // por sí solo (solo actúa sobre numero_pago_cpdtr > 0 - ver AnticipoProveedorSaveService.
+        // anular, que por esto mismo hace el DELETE manual) - se limpia acá por su propio
+        // ide_cpdtr, nunca por ide_cpctr (ya quedó compartido con la factura tras la fusión).
+        const qAnticipos = new SelectQuery(`
+            SELECT ide_cpdtr, ide_teclb FROM cxp_detall_transa
+            WHERE ide_cpcfa = $1 AND numero_pago_cpdtr = 0 AND ide_teclb IS NOT NULL
+        `);
+        qAnticipos.addIntParam(1, ideCpcfa);
+        const anticipos: { ide_cpdtr: number; ide_teclb: number }[] =
+            await this.dataSource.createSelectQuery(qAnticipos);
+        for (const ant of anticipos) {
+            await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(ant.ide_teclb) });
+            await this.dataSource.pool.query(`DELETE FROM cxp_detall_transa WHERE ide_cpdtr = $1`, [ant.ide_cpdtr]);
+        }
+
         return 'desvinculada';
     }
 
