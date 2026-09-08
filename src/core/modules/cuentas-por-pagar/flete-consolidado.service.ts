@@ -197,7 +197,7 @@ export class FleteConsolidadoService extends BaseService {
      * imp_cab_importa como en el patrón de importaciones. */
     async getFacturasProveedorFlete(dtoIn: GetFacturasProveedorFleteDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
-        const aplicarFiltroMonto = dtoIn.montoAprox != null && dtoIn.montoAprox > 0;
+
         // Este diálogo alimenta "completarConFacturaExistente": el grupo de envíos todavía
         // necesita que se le registre/rastree un pago, así que una factura que ya está saldada
         // (pagado_cpcfa, o saldo real <= 0 vía cxp_detall_transa - mismo cálculo que
@@ -220,6 +220,7 @@ export class FleteConsolidadoService extends BaseService {
                    f.autorizacio_cpcfa,
                    f.total_cpcfa,
                    f.observacion_cpcfa,
+                   s.saldo as saldo,
                    ef.nombre_cpefa AS estado,
                    p.nom_geper AS proveedor,
                    p.identificac_geper
@@ -231,7 +232,6 @@ export class FleteConsolidadoService extends BaseService {
               AND f.ide_empr = $2
               AND f.ide_sucu = $3
               AND f.ide_cpefa = ${estadoNormal}
-              AND f.pagado_cpcfa IS NOT TRUE
               AND COALESCE(s.saldo, f.total_cpcfa) > 0.01
               -- Igual que en getEnviosSinFacturaPorProveedor: un grupo ANULADO no debe seguir
               -- bloqueando la factura como "ya usada" - anularFleteConsolidado revierte el
@@ -241,17 +241,12 @@ export class FleteConsolidadoService extends BaseService {
                   WHERE c.ide_cpcfa = f.ide_cpcfa
                     AND c.ide_cpefc <> ${ESTADO_ANULADO}
               )
-              ${aplicarFiltroMonto ? 'AND f.total_cpcfa BETWEEN $4 AND $5' : ''}
             ORDER BY f.fecha_emisi_cpcfa DESC, f.ide_cpcfa DESC
         `);
         query.addIntParam(1, dtoIn.ide_geper);
         query.addIntParam(2, dtoIn.ideEmpr);
         query.addIntParam(3, dtoIn.ideSucu);
-        if (aplicarFiltroMonto) {
-            const monto = Number(dtoIn.montoAprox);
-            query.addNumberParam(4, monto * 0.95);
-            query.addNumberParam(5, monto * 1.05);
-        }
+
         return this.dataSource.createSelectQuery(query);
     }
 
