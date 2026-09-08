@@ -58,6 +58,7 @@ export class ClientesService extends BaseService {
                 'p_con_cuenta_clientes_cxc',
                 'p_con_estado_comprobante_normal',
                 'p_cxc_tipo_trans_retencion',
+                'p_cxc_tipo_trans_pago',
             ])
             .then((result) => {
                 this.variables = result;
@@ -325,6 +326,7 @@ export class ClientesService extends BaseService {
                     a.ide_teclb,
                     a.ide_cnccc,
                     (a.ide_ccttr = ${Number(this.variables.get('p_cxc_tipo_trans_retencion'))}) AS es_retencion,
+                    (a.ide_ccttr = ${Number(this.variables.get('p_cxc_tipo_trans_pago'))}) AS es_pago,
                     tclb.numero_teclb,
                     tclb.beneficiari_teclb,
                     tclb.valor_teclb
@@ -355,6 +357,7 @@ export class ClientesService extends BaseService {
                 NULL AS ide_teclb,
                 NULL AS ide_cnccc,
                 false AS es_retencion,
+                false AS es_pago,
                 NULL AS numero_teclb,
                 NULL AS beneficiari_teclb,
                 NULL AS valor_teclb
@@ -380,6 +383,7 @@ export class ClientesService extends BaseService {
                 mov.ide_teclb,
                 mov.ide_cnccc,
                 mov.es_retencion,
+                mov.es_pago,
                 mov.numero_teclb,
                 mov.beneficiari_teclb,
                 mov.valor_teclb
