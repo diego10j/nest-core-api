@@ -5,6 +5,7 @@ import { InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connectio
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
 import { AnticipoProveedorSaveService } from '../tesoreria/anticipo-proveedor/anticipo-proveedor-save.service';
+import { PreLibroBancosSaveService } from '../tesoreria/pre-libro-bancos/pre-libro-bancos-save.service';
 
 import { DocumentosCxPSaveService } from './documentos-cxp-save.service';
 import { AsociarFacturaExistenteFleteDto } from './dto/asociar-factura-existente-flete.dto';
@@ -41,6 +42,7 @@ export class FleteConsolidadoSaveService {
         private readonly documentosCxPSaveService: DocumentosCxPSaveService,
         private readonly fleteConsolidadoService: FleteConsolidadoService,
         private readonly anticipoProveedorSaveService: AnticipoProveedorSaveService,
+        private readonly preLibroBancosSaveService: PreLibroBancosSaveService,
     ) { }
 
     /** Registra el grupo de envíos SIN factura todavía (estado "Pendiente Factura"): no crea
@@ -293,7 +295,11 @@ export class FleteConsolidadoSaveService {
             throw new BadRequestException('La factura seleccionada no pertenece al proveedor de este grupo de envíos.');
         }
 
-        const qYaUsada = new SelectQuery(`SELECT ide_cpcfc FROM cxp_cab_flete_cons WHERE ide_cpcfa = $1`);
+        // Igual que FleteConsolidadoService.getFacturasProveedorFlete: un grupo ANULADO no debe
+        // seguir bloqueando la factura como "ya usada".
+        const qYaUsada = new SelectQuery(
+            `SELECT ide_cpcfc FROM cxp_cab_flete_cons WHERE ide_cpcfa = $1 AND ide_cpefc <> ${ESTADO_ANULADO}`,
+        );
         qYaUsada.addIntParam(1, dtoIn.ide_cpcfa);
         const yaUsada = await this.dataSource.createSingleQuery(qYaUsada);
         if (yaUsada) {
@@ -381,10 +387,14 @@ export class FleteConsolidadoSaveService {
 
     /**
      * Anula todo el proceso, reversando lo que corresponda según qué tan avanzado estaba:
-     *  - Con factura: reversa el pago de tesorería y su asiento, la cuenta por pagar y el
-     *    kardex (documentosCxPSaveService.anularDocumento, sin cambios - igual que anular un
-     *    pago 1 a 1; si esa factura se había pagado con un anticipo, el propio anularDocumento
-     *    ya reversa ese pago porque queda registrado contra ide_cpcfa como cualquier otro).
+     *  - Con factura: si la factura todavía no tiene ningún pago ni retención aplicado (un
+     *    solo registro en cxp_detall_transa - el cargo original), se anula por completo
+     *    (factura, su asiento contable y kardex, vía documentosCxPSaveService.anularDocumento)
+     *    para poder recargar el XML de cero. Si en cambio ya tiene pagos y/o retención
+     *    aplicados, la factura NO se anula - solo se reversan sus pagos de tesorería (su
+     *    tes_cab_libr_banc y el asiento propio de cada pago), dejándola viva y sin pagos
+     *    pendientes de aplicar, lista para reasignarse a un grupo correcto vía "Asociar
+     *    Factura Existente" sin perder el trabajo ya hecho (ver anularOFacturaFleteConsolidado).
      *  - Sin factura pero con un anticipo ya registrado (grupo "Pendiente Factura" con pago
      *    adelantado): reversa ESE anticipo con el mismo mecanismo genérico de "anular pago"
      *    (AnticipoProveedorSaveService.anular -> PreLibroBancosSaveService.anularMovimiento).
@@ -405,8 +415,9 @@ export class FleteConsolidadoSaveService {
             throw new BadRequestException('Esta factura consolidada ya está anulada.');
         }
 
+        let accion: 'anulada' | 'desvinculada' | 'sin_factura' = 'sin_factura';
         if (cab.ide_cpcfa != null) {
-            await this.documentosCxPSaveService.anularDocumento({ ...dtoIn, ide_cpcfa: cab.ide_cpcfa });
+            accion = await this.anularOFacturaFleteConsolidado(Number(cab.ide_cpcfa), dtoIn);
         } else if (cab.ide_cpctr_anticipo != null) {
             await this.anticipoProveedorSaveService.anular(Number(cab.ide_cpctr_anticipo), dtoIn);
         }
@@ -430,7 +441,49 @@ export class FleteConsolidadoSaveService {
             [ESTADO_ANULADO, ideCpcfc],
         );
 
-        return { message: 'ok', ide_cpcfa: cab.ide_cpcfa, ide_cpcfc: ideCpcfc };
+        return { message: 'ok', ide_cpcfa: cab.ide_cpcfa, ide_cpcfc: ideCpcfc, accion };
+    }
+
+    /**
+     * Decide automáticamente si la factura vinculada a un grupo que se está anulando se anula
+     * por completo o solo se desvincula (ver anularFleteConsolidado):
+     *  - Si cxp_detall_transa solo tiene 1 registro para esta factura (el cargo original, sin
+     *    pagos ni retención aplicados) se anula todo - documentosCxPSaveService.anularDocumento
+     *    ya rechaza anular si tiene una retención asociada (ide_cncre), así que ese caso cae
+     *    directo a "desvincular" sin necesidad de otra validación acá.
+     *  - Si no (ya tiene pagos y/o retención), se reversan sus pagos de tesorería - cada
+     *    anularMovimiento ya limpia su propia fila de aplicación en cxp_detall_transa (ver
+     *    documentos-cxp-save.service.ts) - sin tocar el estado de la factura ni su asiento
+     *    contable propio: queda como una factura normal, sin pagos pendientes de aplicar.
+     */
+    private async anularOFacturaFleteConsolidado(
+        ideCpcfa: number,
+        dtoIn: HeaderParamsDto,
+    ): Promise<'anulada' | 'desvinculada'> {
+        const qEstado = new SelectQuery(`
+            SELECT
+                (SELECT COUNT(*) FROM cxp_detall_transa WHERE ide_cpcfa = $1) AS num_registros,
+                (SELECT ide_cncre FROM cxp_cabece_factur WHERE ide_cpcfa = $1) AS ide_cncre
+        `);
+        qEstado.addIntParam(1, ideCpcfa);
+        const estado = await this.dataSource.createSingleQuery(qEstado);
+        const sinPagosNiRetencion = Number(estado?.num_registros ?? 0) <= 1 && estado?.ide_cncre == null;
+
+        if (sinPagosNiRetencion) {
+            await this.documentosCxPSaveService.anularDocumento({ ...dtoIn, ide_cpcfa: ideCpcfa });
+            return 'anulada';
+        }
+
+        const qPagos = new SelectQuery(`
+            SELECT DISTINCT ide_teclb FROM cxp_detall_transa
+            WHERE ide_cpcfa = $1 AND numero_pago_cpdtr > 0 AND ide_teclb IS NOT NULL
+        `);
+        qPagos.addIntParam(1, ideCpcfa);
+        const pagos: { ide_teclb: number }[] = await this.dataSource.createSelectQuery(qPagos);
+        for (const pago of pagos) {
+            await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(pago.ide_teclb) });
+        }
+        return 'desvinculada';
     }
 
     /**

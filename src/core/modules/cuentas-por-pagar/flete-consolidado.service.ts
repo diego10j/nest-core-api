@@ -231,9 +231,13 @@ export class FleteConsolidadoService extends BaseService {
               AND f.fecha_emisi_cpcfa >= CURRENT_DATE - INTERVAL '4 months'
               AND f.pagado_cpcfa IS NOT TRUE
               AND COALESCE(s.saldo, f.total_cpcfa) > 0.01
+              -- Igual que en getEnviosSinFacturaPorProveedor: un grupo ANULADO no debe seguir
+              -- bloqueando la factura como "ya usada" - anularFleteConsolidado revierte el
+              -- proceso completo, así que la factura vuelve a estar disponible.
               AND NOT EXISTS (
                   SELECT 1 FROM cxp_cab_flete_cons c
                   WHERE c.ide_cpcfa = f.ide_cpcfa
+                    AND c.ide_cpefc <> ${ESTADO_ANULADO}
               )
               ${aplicarFiltroMonto ? 'AND f.total_cpcfa BETWEEN $4 AND $5' : ''}
             ORDER BY f.fecha_emisi_cpcfa DESC, f.ide_cpcfa DESC
@@ -540,7 +544,20 @@ export class FleteConsolidadoService extends BaseService {
                     WHEN act.ide_cpcfa IS NOT NULL OR COALESCE(aap.aplicado, 0) >= acd.valor_cpdtr THEN 'success'
                     WHEN COALESCE(aap.aplicado, 0) > 0 THEN 'info'
                     ELSE 'warning'
-                END AS anticipo_color_estado
+                END AS anticipo_color_estado,
+                -- Anticipa qué va a hacer "Anular" con la factura vinculada (ver
+                -- FleteConsolidadoSaveService.anularOFacturaFleteConsolidado, misma condición
+                -- exacta): sin pagos ni retención registrados todavía -> se anula por completo;
+                -- si ya tiene algo aplicado -> solo se desvincula. Le permite al diálogo de
+                -- confirmación del frontend mostrar el mensaje correcto antes de que el usuario
+                -- confirme, no solo en el toast de resultado.
+                CASE
+                    WHEN cc.ide_cpcfa IS NULL THEN NULL
+                    WHEN cf.ide_cncre IS NOT NULL THEN 'desvincular'
+                    WHEN COALESCE((SELECT COUNT(*) FROM cxp_detall_transa dt WHERE dt.ide_cpcfa = cc.ide_cpcfa), 0) <= 1
+                        THEN 'anular'
+                    ELSE 'desvincular'
+                END AS accion_al_anular
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
