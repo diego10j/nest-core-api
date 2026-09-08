@@ -5,6 +5,7 @@ import { SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
+import { ambienteDesdeClaveAcceso } from '../cel/clave-acceso.util';
 import { ComprobantesElecService } from '../cel/comprobantes-elec.service';
 import { ComprobanteDto } from '../cel/dto/comprobante.dto';
 import { EmisorDto } from '../cel/dto/emisor.dto';
@@ -132,7 +133,7 @@ export class ComprobanteEnvioService extends BaseService {
         resultado.numeroAutorizacion,
         resultado.fechaAutorizacion,
       );
-      const xmlAutorizacion = buildXmlAutorizacion(resultado, emisor.ambiente);
+      const xmlAutorizacion = buildXmlAutorizacion(resultado, claveAcceso);
       await this.guardarHistorialXml(comprobante.codigocomprobante, nuevoEstado, xmlAutorizacion, undefined, mensajesTexto, dtoIn);
       // Notifica para que quien esté interesado (envío de correo con PDF+XML) reaccione,
       // sin acoplar este módulo a reportes/correo (ver ComprobanteAutorizadoEmitter).
@@ -356,17 +357,24 @@ function formatMensajesAutorizacion(mensajes: SriMensaje[]): string {
     .join(' \n');
 }
 
-/** Envoltorio informativo del resultado de autorización, paridad con AutorizacionServiceImp (stb_xml). */
+/**
+ * Envoltorio informativo del resultado de autorización, paridad con AutorizacionServiceImp
+ * (stb_xml). El ambiente se lee del dígito 24 de la clave de acceso (dato inmutable fijado
+ * al emitir el comprobante) y NO de sri_emisor.ambiente_sremi: esa es la config ACTUAL de
+ * la sucursal (mutable, cacheada en Redis) y usarla acá desincroniza el envoltorio guardado
+ * si el ambiente de la sucursal cambia (o el caché queda stale) entre la emisión y el
+ * momento en que se consulta la autorización - mismo criterio que ride-report.util.ts.
+ */
 function buildXmlAutorizacion(
   resultado: { estado: string; numeroAutorizacion?: string; fechaAutorizacion?: string; comprobanteAutorizado?: string },
-  ambiente: number,
+  claveAcceso: string,
 ): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <autorizacion>
 <estado>${resultado.estado}</estado>
 <numeroAutorizacion>${resultado.numeroAutorizacion ?? ''}</numeroAutorizacion>
 <fechaAutorizacion>${resultado.fechaAutorizacion ?? ''}</fechaAutorizacion>
-<ambiente>${ambiente === 2 ? 'PRODUCCIÓN' : 'PRUEBAS'}</ambiente>
+<ambiente>${ambienteDesdeClaveAcceso(claveAcceso)}</ambiente>
 <comprobante><![CDATA[${resultado.comprobanteAutorizado ?? ''}]]></comprobante>
 </autorizacion>`;
 }

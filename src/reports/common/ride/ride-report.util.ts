@@ -159,24 +159,11 @@ export interface EncabezadoRideParams {
     /** "R.U.C.:" a la izquierda es siempre el emisor; alguna vez el label difiere (ej. proveedor en liquidación de compra) — no aplica aquí, el panel izquierdo es siempre el emisor del comprobante. */
 }
 
-/**
- * Texto de ambiente para el encabezado RIDE, leído directamente del dígito de ambiente
- * embebido en la clave de acceso del documento (posición 24, 1-indexado — ver
- * clave-acceso.util.ts::generarClaveAcceso: 1=pruebas, 2=producción).
- *
- * Deliberadamente NO se consulta sri_emisor.ambiente_sremi: esa es la configuración
- * ACTUAL de la sucursal y puede cambiar en el tiempo (ej. de pruebas a producción y
- * viceversa), mientras que la clave de acceso es un dato inmutable fijado al momento
- * de emitir cada documento — es la única fuente confiable para el ambiente histórico
- * real de un comprobante ya emitido.
- */
-export function ambienteDesdeClaveAcceso(claveAcceso: string | null | undefined): string {
-    if (!claveAcceso || claveAcceso.length < 24) return '---';
-    const digito = claveAcceso.charAt(23);
-    if (digito === '2') return 'PRODUCCIÓN';
-    if (digito === '1') return 'PRUEBAS';
-    return '---';
-}
+// ambienteDesdeClaveAcceso vive en clave-acceso.util.ts (junto a generarClaveAcceso, que
+// define la estructura de la clave) y se reexporta acá para no romper los imports
+// existentes de los reportes que la consumían desde este archivo. También la usa
+// comprobante-envio.service.ts para el mismo propósito, fuera del árbol de reportes.
+export { ambienteDesdeClaveAcceso } from 'src/core/modules/sri/cel/clave-acceso.util';
 
 /**
  * Encabezado RIDE estándar: panel izquierdo (logo + datos del emisor) + panel derecho

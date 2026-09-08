@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Redis } from 'ioredis';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -31,6 +32,7 @@ export class ConfiguracionSaveService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
+        @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
     ) { }
 
     async saveEmisor(dtoIn: SaveEmisorDto & HeaderParamsDto) {
@@ -72,7 +74,20 @@ export class ConfiguracionSaveService {
         }
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });
+        // EmisorService.getEmisor cachea la fila entera en Redis sin TTL (clave emisor_<ideSucu>)
+        // - sin esto, un cambio de ambiente/wsdl acá no toma efecto hasta un clearCacheEmisor
+        // manual, y mientras tanto el ambiente guardado en cada autorización (ver
+        // ComprobanteEnvioService.buildXmlAutorizacion, que ya no depende de esto) o cualquier
+        // otro consumidor de getEmisor seguiría viendo el valor viejo.
+        await this.clearCacheEmisor();
         return { message: 'ok', ide_sremi: ideSremi };
+    }
+
+    private async clearCacheEmisor(): Promise<void> {
+        const keys = await this.redisClient.keys('emisor_*');
+        if (keys.length > 0) {
+            await this.redisClient.del(...keys);
+        }
     }
 
     async saveFirma(dtoIn: SaveFirmaDto & HeaderParamsDto) {

@@ -18,10 +18,27 @@ export const FORMAT_DATETIME_FRONT = (): string => 'dd/MM/yyyy HH:mm:ss';
 
 type InputValue = Date | string | number | null | undefined;
 
+/**
+ * Parsea una fecha evitando el corrimiento de -1 día: un string 'YYYY-MM-DD' (columna
+ * `date` de Postgres, sin componente de hora - ver DataSourceService, el parser de
+ * DATE_OID lo devuelve tal cual, como texto) interpretado con `new Date(string)` se
+ * asume medianoche UTC; en un proceso corriendo en America/Guayaquil (UTC-5) eso se
+ * formatea un día antes, porque date-fns lee los componentes con getters LOCALES. Para
+ * ese caso puntual se arma el Date a partir de año/mes/día en hora local, sin pasar por
+ * el parseo UTC del constructor de string.
+ */
+function toSafeDate(date: InputValue): Date {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(date as any);
+}
+
 export function fDate(date: InputValue, newFormat?: string) {
   const fm = newFormat || 'dd MMM yyyy'; // dd MMM yyyy
 
-  return date ? fToTitleCase(format(new Date(date), fm, { locale: es })) : '';
+  return date ? fToTitleCase(format(toSafeDate(date), fm, { locale: es })) : '';
 }
 
 /**
@@ -31,7 +48,7 @@ export function fDate(date: InputValue, newFormat?: string) {
  */
 export function fShortDate(date: InputValue) {
   const fm = 'MMM yyyy';
-  return date ? fToTitleCase(format(new Date(date), fm, { locale: es })) : '';
+  return date ? fToTitleCase(format(toSafeDate(date), fm, { locale: es })) : '';
 }
 
 export function fTime(date: InputValue, newFormat?: string) {
@@ -42,7 +59,7 @@ export function fTime(date: InputValue, newFormat?: string) {
 
 export function fDateTime(date: InputValue, newFormat?: string) {
   const fm = newFormat || 'dd MMM yyyy p';
-  return date ? fToTitleCase(format(new Date(date), fm, { locale: es })) : '';
+  return date ? fToTitleCase(format(toSafeDate(date), fm, { locale: es })) : '';
 }
 
 export function fTimestamp(date: InputValue) {
@@ -117,13 +134,13 @@ export function toDate(date: string, newFormat?: string): Date {
  */
 export function getDateFormat(date: InputValue, newFormat?: string): string {
   const fm = newFormat || FORMAT_DATE_BD();
-  return date ? format(new Date(date), fm) : '';
+  return date ? format(toSafeDate(date), fm) : '';
 }
 
 export function getDateFormatFront(date: InputValue, forSQL: boolean = false): string {
   if (!date) return '';
 
-  const dateObj = new Date(date);
+  const dateObj = toSafeDate(date);
 
   if (forSQL) {
     // Para SQL: formato YYYY-MM-DD
@@ -183,7 +200,7 @@ export function getCurrentDateTime(newFormat?: string): string {
 }
 
 export function getDayNumber(date?: InputValue): number {
-  const day = format(new Date(date || new Date()), 'i');
+  const day = format(toSafeDate(date || new Date()), 'i');
   return parseInt(day, 10);
 }
 

@@ -61,6 +61,24 @@ export function generarClaveAcceso(params: ClaveAccesoParams): string {
 }
 
 /**
+ * Texto de ambiente (PRUEBAS/PRODUCCIÓN) leído directamente del dígito de ambiente
+ * embebido en la clave de acceso (posición 24, 1-indexado - ver estructura arriba).
+ *
+ * Deliberadamente NO se debe derivar de sri_emisor.ambiente_sremi (config actual de la
+ * sucursal): esa configuración es mutable y puede cambiar en el tiempo (de pruebas a
+ * producción o viceversa, o quedar cacheada), mientras que la clave de acceso es un dato
+ * inmutable fijado al momento de emitir cada documento - es la única fuente confiable
+ * para el ambiente histórico real de un comprobante ya emitido.
+ */
+export function ambienteDesdeClaveAcceso(claveAcceso: string | null | undefined): string {
+    if (!claveAcceso || claveAcceso.length < 24) return '---';
+    const digito = claveAcceso.charAt(23);
+    if (digito === '2') return 'PRODUCCIÓN';
+    if (digito === '1') return 'PRUEBAS';
+    return '---';
+}
+
+/**
  * Calcula el dígito verificador por módulo 11 según algoritmo SRI.
  * Recorre la cadena de derecha a izquierda con multiplicador cíclico 2→7.
  * Casos borde: total=0 o 1 → 0; verificador=10 → 1; verificador=11 → 0.
