@@ -57,6 +57,7 @@ export class ClientesService extends BaseService {
                 'p_con_tipo_documento_factura',
                 'p_con_cuenta_clientes_cxc',
                 'p_con_estado_comprobante_normal',
+                'p_cxc_tipo_trans_retencion',
             ])
             .then((result) => {
                 this.variables = result;
@@ -310,22 +311,28 @@ export class ClientesService extends BaseService {
                     ide_geper
             ),
             movimientos AS (
-                SELECT 
+                SELECT
                     a.ide_ccdtr,
                     fecha_trans_ccdtr,
-                    docum_relac_ccdtr, 
+                    docum_relac_ccdtr,
                     observacion_ccdtr AS observacion,
-                    nombre_ccttr AS transaccion,            
+                    nombre_ccttr AS transaccion,
                     CASE WHEN b.signo_ccttr = 1 THEN valor_ccdtr END AS debe,
                     CASE WHEN b.signo_ccttr = -1 THEN valor_ccdtr END AS haber,
                     0 as saldo,
                     fecha_venci_ccdtr,
-                    ide_teclb,
-                    ide_cnccc
-                FROM 
+                    a.ide_cccfa,
+                    a.ide_teclb,
+                    a.ide_cnccc,
+                    (a.ide_ccttr = ${Number(this.variables.get('p_cxc_tipo_trans_retencion'))}) AS es_retencion,
+                    tclb.numero_teclb,
+                    tclb.beneficiari_teclb,
+                    tclb.valor_teclb
+                FROM
                     cxc_detall_transa a
                     INNER JOIN cxc_tipo_transacc b ON a.ide_ccttr = b.ide_ccttr
                     INNER JOIN cxc_cabece_transa d ON a.ide_ccctr = d.ide_ccctr
+                    LEFT JOIN tes_cab_libr_banc tclb ON tclb.ide_teclb = a.ide_teclb
                 WHERE
                     ide_geper = $3
                     AND fecha_trans_ccdtr BETWEEN $4 AND $5
@@ -334,7 +341,7 @@ export class ClientesService extends BaseService {
                 ORDER BY
                     fecha_trans_ccdtr, a.ide_ccdtr
             )
-            SELECT 
+            SELECT
                 -1 AS ide_ccdtr,
                 '${getDateFormat(dtoIn.fechaInicio)}' AS fecha_trans_ccdtr,
                 NULL AS docum_relac_ccdtr,
@@ -344,15 +351,20 @@ export class ClientesService extends BaseService {
                 NULL AS haber,
                 COALESCE(saldo_inicial.saldo_inicial, 0) AS saldo,  -- Aseguramos saldo 0 si no hay registros
                 NULL AS fecha_venci_ccdtr,
+                NULL AS ide_cccfa,
                 NULL AS ide_teclb,
-                NULL AS ide_cnccc
-            FROM 
+                NULL AS ide_cnccc,
+                false AS es_retencion,
+                NULL AS numero_teclb,
+                NULL AS beneficiari_teclb,
+                NULL AS valor_teclb
+            FROM
                 (SELECT 1) AS dummy
                 LEFT JOIN saldo_inicial ON TRUE  -- Cambio clave para manejar casos sin registros
-                
+
             UNION ALL
-                
-            SELECT 
+
+            SELECT
                 mov.ide_ccdtr,
                 mov.fecha_trans_ccdtr,
                 mov.docum_relac_ccdtr,
@@ -360,16 +372,21 @@ export class ClientesService extends BaseService {
                 mov.transaccion,
                 mov.debe,
                 mov.haber,
-                COALESCE(saldo_inicial.saldo_inicial, 0) + 
-                COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) - 
+                COALESCE(saldo_inicial.saldo_inicial, 0) +
+                COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) -
                 COALESCE(SUM(mov.haber) OVER (ORDER BY mov.fecha_trans_ccdtr, mov.ide_ccdtr), 0) AS saldo,
                 mov.fecha_venci_ccdtr,
+                mov.ide_cccfa,
                 mov.ide_teclb,
-                mov.ide_cnccc
-            FROM 
+                mov.ide_cnccc,
+                mov.es_retencion,
+                mov.numero_teclb,
+                mov.beneficiari_teclb,
+                mov.valor_teclb
+            FROM
                 movimientos mov
                 CROSS JOIN (SELECT COALESCE(SUM(saldo_inicial), 0) AS saldo_inicial FROM saldo_inicial) saldo_inicial
-            ORDER BY 
+            ORDER BY
                 fecha_trans_ccdtr, ide_ccdtr
           `,
             dtoIn,
