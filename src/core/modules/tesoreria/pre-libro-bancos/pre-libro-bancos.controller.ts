@@ -71,6 +71,15 @@ export class PreLibroBancosController {
         return this.service.getDetalleTransaccion({ ...headersParams, ...dtoIn });
     }
 
+    @Get('getMovimientoBanco')
+    @ApiOperation({ summary: 'Obtener identidad de la cuenta bancaria/caja (banco, logo, color) de un movimiento' })
+    getMovimientoBanco(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: GetDetalleTransaccionDto,
+    ) {
+        return this.service.getMovimientoBanco({ ...headersParams, ...dtoIn });
+    }
+
     @Get('getSaldoInicialCuenta')
     @ApiOperation({ summary: 'Obtener saldo inicial de una cuenta a una fecha' })
     getSaldoInicialCuenta(

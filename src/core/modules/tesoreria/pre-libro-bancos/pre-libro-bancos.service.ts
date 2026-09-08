@@ -272,6 +272,31 @@ export class PreLibroBancosService extends BaseService {
     }
 
     /**
+     * Retorna la identidad de la cuenta bancaria/caja (banco, logo, color) de un movimiento,
+     * para poder mostrar la cabecera del visualizador de movimiento sin depender de que el
+     * llamador ya tenga esos datos (ej. Transacciones de un cliente, que solo conoce ide_teclb).
+     */
+    async getMovimientoBanco(dtoIn: GetDetalleTransaccionDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                a.ide_teclb,
+                a.ide_tecba,
+                cb.nombre_tecba,
+                ban.ide_teban,
+                ban.nombre_teban,
+                ban.foto_teban,
+                ban.color_teban,
+                ban.es_caja_teban
+            FROM tes_cab_libr_banc a
+            INNER JOIN tes_cuenta_banco cb ON a.ide_tecba = cb.ide_tecba
+            INNER JOIN tes_banco ban ON cb.ide_teban = ban.ide_teban
+            WHERE a.ide_teclb = $1
+        `);
+        query.addIntParam(1, dtoIn.ideTeclb);
+        return this.dataSource.createSelectQuery(query);
+    }
+
+    /**
      * Retorna el saldo inicial de una cuenta a una fecha determinada
      * (transacciones con fecha_trans_teclb < fecha)
      */
