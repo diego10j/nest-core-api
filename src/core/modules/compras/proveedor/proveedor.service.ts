@@ -39,6 +39,8 @@ export class ProveedorService extends BaseService {
         'p_con_lugar_debe',
         'p_con_tipo_documento_factura',
         'p_con_tipo_documento_nota_credito',
+        'p_cxp_tipo_trans_retencion',
+        'p_cxp_tipo_trans_pago',
       ])
       .then((result) => {
         this.variables = result;
@@ -372,12 +374,19 @@ export class ProveedorService extends BaseService {
                 CASE WHEN b.signo_cpttr = -1 THEN valor_cpdtr END AS haber,
                 0 as saldo,
                 fecha_venci_cpdtr,
-                ide_teclb,
-                ide_cnccc
+                a.ide_cpcfa,
+                a.ide_teclb,
+                a.ide_cnccc,
+                (a.ide_cpttr = ${Number(this.variables.get('p_cxp_tipo_trans_retencion'))}) AS es_retencion,
+                (a.ide_cpttr = ${Number(this.variables.get('p_cxp_tipo_trans_pago'))}) AS es_pago,
+                tclb.numero_teclb,
+                tclb.beneficiari_teclb,
+                tclb.valor_teclb
             FROM
                 cxp_detall_transa a
                 INNER JOIN cxp_tipo_transacc b ON a.ide_cpttr = b.ide_cpttr
                 INNER JOIN cxp_cabece_transa ct ON a.ide_cpctr = ct.ide_cpctr
+                LEFT JOIN tes_cab_libr_banc tclb ON tclb.ide_teclb = a.ide_teclb
                 ${joinPersona}
             WHERE
                 ${whereClause3}
@@ -397,8 +406,14 @@ export class ProveedorService extends BaseService {
             NULL AS haber,
             COALESCE(saldo_inicial.saldo_inicial, 0) AS saldo,
             NULL AS fecha_venci_cpdtr,
+            NULL AS ide_cpcfa,
             NULL AS ide_teclb,
-            NULL AS ide_cnccc
+            NULL AS ide_cnccc,
+            false AS es_retencion,
+            false AS es_pago,
+            NULL AS numero_teclb,
+            NULL AS beneficiari_teclb,
+            NULL AS valor_teclb
         FROM
             (SELECT 1) AS dummy
             LEFT JOIN saldo_inicial ON TRUE
@@ -417,8 +432,14 @@ export class ProveedorService extends BaseService {
             COALESCE(SUM(mov.debe) OVER (ORDER BY mov.fecha_trans_cpdtr, mov.ide_cpdtr), 0) -
             COALESCE(SUM(mov.haber) OVER (ORDER BY mov.fecha_trans_cpdtr, mov.ide_cpdtr), 0) AS saldo,
             mov.fecha_venci_cpdtr,
+            mov.ide_cpcfa,
             mov.ide_teclb,
-            mov.ide_cnccc
+            mov.ide_cnccc,
+            mov.es_retencion,
+            mov.es_pago,
+            mov.numero_teclb,
+            mov.beneficiari_teclb,
+            mov.valor_teclb
         FROM
             movimientos mov
             CROSS JOIN (SELECT COALESCE(SUM(saldo_inicial), 0) AS saldo_inicial FROM saldo_inicial) saldo_inicial
