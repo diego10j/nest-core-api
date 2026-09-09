@@ -140,6 +140,25 @@ export class CabDocumentoCxPDto {
     @IsOptional()
     descuento_cpcfa?: number;
 
+    /**
+     * true cuando descuento_cpcfa viene de un XML de proveedor ya parseado (Importar XML,
+     * Envío de Factura, Registrar Envíos/Flete Consolidado, Importaciones - cualquier flujo
+     * que prellena el formulario vía DocumentoCxPForm.prefill), en vez de tipeado a mano.
+     *
+     * calcularTotales() SOLO debe restar descuento_cpcfa de la base del IVA cuando el usuario
+     * lo tipeó manualmente junto a un precio bruto sin descontar (paridad legacy). En un XML
+     * real (caso confirmado: factura Servientrega con <totalDescuento>1.46</totalDescuento>),
+     * el emisor no necesariamente resta ese descuento de <totalSinImpuestos>/<totalImpuesto>/
+     * <importeTotal> - volver a restarlo acá corrompe el total (bug real: XML declaraba
+     * $32.24, el sistema guardaba $30.56). Con esta bandera en true, calcularTotales ignora
+     * descuento_cpcfa para el cálculo de IVA/total (se sigue guardando tal cual para mostrarlo
+     * en el detalle del documento), confiando en que la base ya reconstruida desde
+     * cantidad_cpdfa*precio_cpdfa de las líneas del XML es la base real declarada por el SRI.
+     */
+    @IsBoolean()
+    @IsOptional()
+    xmlImportado?: boolean;
+
     @IsNumber()
     @Min(0)
     @IsOptional()

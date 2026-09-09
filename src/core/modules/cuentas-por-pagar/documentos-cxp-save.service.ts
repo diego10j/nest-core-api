@@ -204,14 +204,20 @@ export class DocumentosCxPSaveService extends BaseService {
                 if (r.fecha) r.fecha = toPgDate(r.fecha) || cabecera.fecha_emisi_cpcfa;
             }
 
-            // ── Totales (paridad legacy: el descuento solo reduce la base del IVA) ──
+            // ── Totales ──
+            // Paridad legacy: el descuento reduce la base del IVA - correcto solo para entrada
+            // manual (el usuario tipea un precio bruto + un descuento aparte). Si el documento
+            // viene de un XML ya parseado (cabecera.xmlImportado), NO se vuelve a restar acá -
+            // ver el comentario en CabDocumentoCxPDto.xmlImportado para el caso real que motivó
+            // esto.
             const tarifaIva = isDefined(cabecera.tarifa_iva_cpcfa)
                 ? Number(cabecera.tarifa_iva_cpcfa)
                 : await this.consultas.getPorcentajeIva(cabecera.fecha_emisi_cpcfa);
+            const descuentoParaIva = cabecera.xmlImportado ? 0 : (cabecera.descuento_cpcfa ?? 0);
             const totales = this.calcularTotales(
                 detalles,
                 tarifaIva,
-                cabecera.descuento_cpcfa ?? 0,
+                descuentoParaIva,
                 cabecera.otros_cpcfa ?? 0,
             );
 
