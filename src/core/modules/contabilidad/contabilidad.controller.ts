@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Get, Post, Body, Query, Controller } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
@@ -11,6 +11,7 @@ import { LibroMayorDto } from './dto/libro-mayor.dto';
 import { LogMayorizacionDto } from './dto/log-mayorizacion.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
 import { ReporteRetencionesDto } from './dto/reporte-retenciones.dto';
+import { ResumenCuentasMayorizacionDto } from './dto/resumen-cuentas-mayorizacion.dto';
 
 @ApiTags('Contabilidad')
 @Controller('contabilidad')
@@ -90,6 +91,15 @@ export class ContabilidadController {
     @ApiOperation({ summary: 'Log de generación/anulación de asientos automáticos (Mayorizar) por período' })
     getLogMayorizacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LogMayorizacionDto) {
         return this.asientosService.getLogMayorizacion({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('getResumenCuentasMayorizacion')
+    @ApiOperation({ summary: 'Totales por cuenta contable de un conjunto de asientos (Mayorizar)' })
+    getResumenCuentasMayorizacion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Body() dtoIn: ResumenCuentasMayorizacionDto,
+    ) {
+        return this.contabilidadService.getResumenCuentasMayorizacion({ ...headersParams, ...dtoIn });
     }
 }
 

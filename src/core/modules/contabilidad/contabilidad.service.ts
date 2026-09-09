@@ -865,4 +865,27 @@ export class ContabilidadService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
+    /**
+     * Totales por cuenta contable (identificador) de un conjunto de asientos - usado por la tab
+     * "Resumen" de Mayorizar para mostrar cuánto se contabilizó por cuenta en el período (suma
+     * de con_det_comp_cont.valor_cndcc agrupada por referencia_cndcc). Si un asiento es de antes
+     * del fix que empezó a completar referencia_cndcc (o fue creado manualmente sin ese campo),
+     * cae al agrupar por observacion_cndcc para no perder el detalle bajo un identificador vacío.
+     */
+    async getResumenCuentasMayorizacion(dtoIn: { ide_cnccc: number[] } & HeaderParamsDto) {
+        if (!dtoIn.ide_cnccc?.length) return [];
+
+        const query = new SelectQuery(`
+            SELECT
+                COALESCE(NULLIF(d.referencia_cndcc, ''), d.observacion_cndcc) AS identificador,
+                SUM(d.valor_cndcc) AS total,
+                COUNT(*) AS cantidad
+            FROM con_det_comp_cont d
+            WHERE d.ide_cnccc = ANY($1)
+            GROUP BY COALESCE(NULLIF(d.referencia_cndcc, ''), d.observacion_cndcc)
+            ORDER BY total DESC
+        `);
+        query.addParam(1, dtoIn.ide_cnccc);
+        return this.dataSource.createSelectQuery(query);
+    }
 }
