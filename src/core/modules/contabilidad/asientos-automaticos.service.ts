@@ -885,7 +885,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         let totalRetenciones = 0;
@@ -901,6 +901,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valorRetencionIva,
                 observacion_cndcc: 'RETENCION IVA POR COBRAR (TARJETA)',
+                referencia_cndcc: 'RETENCION IVA POR COBRAR',
             });
         }
         const valorRetencionRenta = Number((dtoIn.valorRetencionRenta || 0).toFixed(2));
@@ -915,6 +916,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valorRetencionRenta,
                 observacion_cndcc: 'RETENCION RENTA POR COBRAR (TARJETA)',
+                referencia_cndcc: 'RETENCION RENTA POR COBRAR',
             });
         }
 
@@ -931,6 +933,7 @@ export class AsientosAutomaticosService extends BaseService {
             ide_cndpc: ideCndpcBanco ?? 0,
             valor_cndcc: Number(totalRetenciones.toFixed(2)),
             observacion_cndcc: 'CUENTA TARJETA (DESCUENTO RETENCION)',
+            referencia_cndcc: 'TES_CUENTA_BANCO',
         });
 
         const saveDto: SaveComprobanteDto = {
@@ -1013,7 +1016,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         const cuentaGasto = await this.buscarCuentaConfig('GASTO COMISION CHEQUE DEVUELTO', {}, dtoIn.ideSucu);
@@ -1021,6 +1024,7 @@ export class AsientosAutomaticosService extends BaseService {
         detallesAsiento.push({
             ide_cnlap: this.lugarDebe, ide_cndpc: cuentaGasto ?? 0, valor_cndcc: valorComision,
             observacion_cndcc: 'GASTO COMISION CHEQUE DEVUELTO',
+            referencia_cndcc: 'GASTO COMISION CHEQUE DEVUELTO',
         });
 
         if (valorIva > 0) {
@@ -1029,6 +1033,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuentaIva ?? 0, valor_cndcc: valorIva,
                 observacion_cndcc: 'IVA COMPRAS COMISION CHEQUE DEVUELTO',
+                referencia_cndcc: 'IVA COMPRAS COMISION CHEQUE DEVUELTO',
             });
         }
 
@@ -1037,6 +1042,7 @@ export class AsientosAutomaticosService extends BaseService {
             ide_cndpc: ideCndpcBanco ?? 0,
             valor_cndcc: Number((valorComision + valorIva).toFixed(2)),
             observacion_cndcc: 'BANCO (COMISION CHEQUE DEVUELTO)',
+            referencia_cndcc: 'TES_CUENTA_BANCO',
         });
 
         const saveDto: SaveComprobanteDto = {
@@ -1112,13 +1118,14 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [
             {
                 ide_cnlap: this.lugarDebe,
                 ide_cndpc: ideCndpcCliente ?? 0,
                 valor_cndcc: Number((valorComision + valorIva).toFixed(2)),
                 observacion_cndcc: 'CUENTA POR COBRAR (COMISION CHEQUE DEVUELTO)',
+                referencia_cndcc: 'CUENTA POR COBRAR',
             },
         ];
 
@@ -1127,6 +1134,7 @@ export class AsientosAutomaticosService extends BaseService {
         detallesAsiento.push({
             ide_cnlap: this.lugarHaber, ide_cndpc: cuentaIngreso ?? 0, valor_cndcc: valorComision,
             observacion_cndcc: 'INGRESO COMISION COBRADA A CLIENTE',
+            referencia_cndcc: 'INGRESO COMISION COBRADA A CLIENTE',
         });
 
         if (valorIva > 0) {
@@ -1135,6 +1143,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuentaIva ?? 0, valor_cndcc: valorIva,
                 observacion_cndcc: 'IVA EN VENTAS (COMISION CHEQUE DEVUELTO)',
+                referencia_cndcc: 'IVA EN VENTAS',
             });
         }
 
@@ -1239,6 +1248,7 @@ export class AsientosAutomaticosService extends BaseService {
             ide_cndpc: number;
             valor_cndcc: number;
             observacion_cndcc: string;
+            referencia_cndcc: string;
         }> = [];
 
         // DEBE: inventario/gasto por cada línea
@@ -1255,6 +1265,7 @@ export class AsientosAutomaticosService extends BaseService {
                 ide_cndpc: ideCndpc ?? 0,
                 valor_cndcc: Number(Number(det.valor_cpdfa || 0).toFixed(2)),
                 observacion_cndcc: String(det.nombre_inarti ?? 'INVENTARIO-GASTO-ACTIVO').substring(0, 190),
+                referencia_cndcc: 'INVENTARIO-GASTO-ACTIVO',
             });
         }
 
@@ -1268,6 +1279,7 @@ export class AsientosAutomaticosService extends BaseService {
                 ide_cndpc: cuentaIva ?? 0,
                 valor_cndcc: Number(valorIva.toFixed(2)),
                 observacion_cndcc: 'IVA CREDITO TRIBUTARIO',
+                referencia_cndcc: 'IVA CREDITO TRIBUTARIO',
             });
         }
 
@@ -1286,6 +1298,7 @@ export class AsientosAutomaticosService extends BaseService {
                 ide_cndpc: cuentaRet ?? 0,
                 valor_cndcc: valorRet,
                 observacion_cndcc: identificador,
+                referencia_cndcc: identificador,
             });
         }
 
@@ -1298,6 +1311,7 @@ export class AsientosAutomaticosService extends BaseService {
             ide_cndpc: cuentaCxP ?? 0,
             valor_cndcc: valorCxP,
             observacion_cndcc: 'CUENTA POR PAGAR',
+            referencia_cndcc: 'CUENTA POR PAGAR',
         });
 
         const saveDto: SaveComprobanteDto = {
@@ -1329,6 +1343,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cpcfa],
             );
 
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
+                numeroDocumento: doc.numero_cpcfa, ideCnccc, numeroCnccc: result.numero_cnccc,
+                generado: true, advertencias, fecha: doc.fecha_emisi_cpcfa, dtoIn,
+            });
+
             return {
                 ide_cpcfa: dtoIn.ide_cpcfa,
                 ide_cnccc: ideCnccc,
@@ -1338,6 +1358,12 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de compra ide_cpcfa=${dtoIn.ide_cpcfa}: ${error}`);
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
+                numeroDocumento: doc.numero_cpcfa, generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+                fecha: doc.fecha_emisi_cpcfa, dtoIn,
+            });
             return {
                 ide_cpcfa: dtoIn.ide_cpcfa,
                 generado: false,
@@ -1437,7 +1463,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         let totalRetenciones = 0;
@@ -1453,6 +1479,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valor,
                 observacion_cndcc: 'RETENCION RENTA POR COBRAR',
+                referencia_cndcc: 'RETENCION RENTA POR COBRAR',
             });
         }
         if (doc.ret_iva != null) {
@@ -1467,6 +1494,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: valor,
                 observacion_cndcc: 'RETENCION IVA POR COBRAR',
+                referencia_cndcc: 'RETENCION IVA POR COBRAR',
             });
         }
 
@@ -1476,6 +1504,7 @@ export class AsientosAutomaticosService extends BaseService {
         detallesAsiento.push({
             ide_cnlap: this.lugarDebe, ide_cndpc: cuentaCxC ?? 0, valor_cndcc: valorCxC,
             observacion_cndcc: 'CUENTA POR COBRAR',
+            referencia_cndcc: 'CUENTA POR COBRAR',
         });
 
         const transporteBase = Number(doc.transporte_base || 0);
@@ -1500,6 +1529,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: valorVenta12,
                 observacion_cndcc: 'VENTAS',
+                referencia_cndcc: 'VENTAS',
             });
         }
         if (transporteBase > 0) {
@@ -1508,6 +1538,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(transporteBase.toFixed(2)),
                 observacion_cndcc: 'TRANSPORTE EN VENTAS',
+                referencia_cndcc: 'TRANSPORTE EN VENTAS',
             });
         }
 
@@ -1520,6 +1551,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: valorVenta0,
                 observacion_cndcc: 'VENTAS',
+                referencia_cndcc: 'VENTAS',
             });
         }
         if (descuentoTotal > 0) {
@@ -1528,6 +1560,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: descuentoTotal,
                 observacion_cndcc: 'DESCUENTO EN VENTAS',
+                referencia_cndcc: 'DESCUENTO EN VENTAS',
             });
         }
         if (transporteTarifa0 > 0) {
@@ -1536,6 +1569,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(transporteTarifa0.toFixed(2)),
                 observacion_cndcc: 'TRANSPORTE EN VENTAS',
+                referencia_cndcc: 'TRANSPORTE EN VENTAS',
             });
         }
 
@@ -1546,6 +1580,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(valorIva.toFixed(2)),
                 observacion_cndcc: 'IVA EN VENTAS',
+                referencia_cndcc: 'IVA EN VENTAS',
             });
         }
 
@@ -1578,6 +1613,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cccfa],
             );
 
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, ideCnccc, numeroCnccc: result.numero_cnccc,
+                generado: true, advertencias, fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
+
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
                 ide_cnccc: ideCnccc,
@@ -1587,6 +1628,12 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de factura ide_cccfa=${dtoIn.ide_cccfa}: ${error}`);
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+                fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
                 generado: false,
@@ -1642,7 +1689,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         const cuentaCxC = await this.getCuentaPersona('CUENTA POR COBRAR', Number(nota.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
@@ -1651,6 +1698,7 @@ export class AsientosAutomaticosService extends BaseService {
         detallesAsiento.push({
             ide_cnlap: this.lugarHaber, ide_cndpc: cuentaCxC ?? 0, valor_cndcc: valorCxC,
             observacion_cndcc: 'CUENTA POR COBRAR',
+            referencia_cndcc: 'CUENTA POR COBRAR',
         });
 
         const descuentoTotal = Number(nota.descuento_cpcno || 0);
@@ -1663,6 +1711,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: totalDev,
                 observacion_cndcc: 'NOTAS DE CREDITO VENTAS',
+                referencia_cndcc: 'NOTAS DE CREDITO VENTAS',
             });
         }
         if (descuentoTotal > 0) {
@@ -1671,6 +1720,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(descuentoTotal.toFixed(2)),
                 observacion_cndcc: 'DESCUENTO EN VENTAS',
+                referencia_cndcc: 'DESCUENTO EN VENTAS',
             });
         }
 
@@ -1681,6 +1731,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuenta ?? 0, valor_cndcc: Number(valorIva.toFixed(2)),
                 observacion_cndcc: 'IVA EN VENTAS',
+                referencia_cndcc: 'IVA EN VENTAS',
             });
         }
 
@@ -1712,6 +1763,12 @@ export class AsientosAutomaticosService extends BaseService {
             // asiento con ide_ccttr=1 (sin acotar por esta nota) - eso es un bug latente
             // documentado en la investigación de migración, no se replica aquí a propósito.
 
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, ideCnccc, numeroCnccc: result.numero_cnccc,
+                generado: true, advertencias, fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
+
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
                 ide_cnccc: ideCnccc,
@@ -1721,6 +1778,12 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de nota de crédito ide_cpcno=${dtoIn.ide_cpcno}: ${error}`);
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+                fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
                 generado: false,
@@ -1791,7 +1854,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         for (const linea of detalles) {
@@ -1803,6 +1866,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuentaCosto ?? 0, valor_cndcc: valorCosto,
                 observacion_cndcc: `${linea.nombre_inarti} (${linea.cantidad_ccdfa} x ${linea.costo_unitario})`,
+                referencia_cndcc: 'COSTO EN VENTAS',
             });
 
             const cuentaInventario = await this.buscarCuentaProducto('INVENTARIO PRODUCTO TERMINADO', ideInarti, dtoIn.ideSucu);
@@ -1810,6 +1874,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuentaInventario ?? 0, valor_cndcc: valorCosto,
                 observacion_cndcc: linea.nombre_inarti,
+                referencia_cndcc: 'INVENTARIO PRODUCTO TERMINADO',
             });
         }
 
@@ -1835,6 +1900,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cccfa],
             );
 
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, ideCnccc, numeroCnccc: result.numero_cnccc,
+                generado: true, advertencias, fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
+
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
                 ide_cnccc_costo: ideCnccc,
@@ -1844,6 +1915,12 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de costo ide_cccfa=${dtoIn.ide_cccfa}: ${error}`);
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+                fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
                 generado: false,
@@ -1913,7 +1990,7 @@ export class AsientosAutomaticosService extends BaseService {
         }
 
         const detallesAsiento: Array<{
-            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string;
+            ide_cnlap: number; ide_cndpc: number; valor_cndcc: number; observacion_cndcc: string; referencia_cndcc: string;
         }> = [];
 
         for (const linea of detalles) {
@@ -1925,6 +2002,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarDebe, ide_cndpc: cuentaInventario ?? 0, valor_cndcc: valorCosto,
                 observacion_cndcc: linea.nombre_inarti,
+                referencia_cndcc: 'INVENTARIO PRODUCTO TERMINADO',
             });
 
             const cuentaCosto = await this.buscarCuentaProducto('COSTO EN VENTAS', ideInarti, dtoIn.ideSucu);
@@ -1932,6 +2010,7 @@ export class AsientosAutomaticosService extends BaseService {
             detallesAsiento.push({
                 ide_cnlap: this.lugarHaber, ide_cndpc: cuentaCosto ?? 0, valor_cndcc: valorCosto,
                 observacion_cndcc: `${linea.nombre_inarti} (${linea.cantidad_cpdno} x ${linea.costo_unitario})`,
+                referencia_cndcc: 'COSTO EN VENTAS',
             });
         }
 
@@ -1957,6 +2036,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cpcno],
             );
 
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, ideCnccc, numeroCnccc: result.numero_cnccc,
+                generado: true, advertencias, fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
+
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
                 ide_cnccc_costo: ideCnccc,
@@ -1966,6 +2051,12 @@ export class AsientosAutomaticosService extends BaseService {
             };
         } catch (error) {
             this.logger.warn(`Error al generar asiento de costo ide_cpcno=${dtoIn.ide_cpcno}: ${error}`);
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, generado: false,
+                advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
+                fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
                 generado: false,
@@ -2006,7 +2097,7 @@ export class AsientosAutomaticosService extends BaseService {
     async deshacerAsientoComprasCxP(
         dtoIn: { ide_cpcfa: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoCompraResult> {
-        const q = new SelectQuery(`SELECT ide_cnccc FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
+        const q = new SelectQuery(`SELECT ide_cnccc, numero_cpcfa, fecha_emisi_cpcfa FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
         q.addIntParam(1, dtoIn.ide_cpcfa);
         const doc = await this.dataSource.createSingleQuery(q);
         if (!doc?.ide_cnccc) {
@@ -2015,6 +2106,11 @@ export class AsientosAutomaticosService extends BaseService {
         const ideCnccc = Number(doc.ide_cnccc);
         const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'ANULAR', ideDocumento: dtoIn.ide_cpcfa,
+                numeroDocumento: doc.numero_cpcfa, ideCnccc, generado: false,
+                advertencias: [resultado.mensaje as string], fecha: doc.fecha_emisi_cpcfa, dtoIn,
+            });
             return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
         await this.dataSource.pool.query(
@@ -2026,6 +2122,11 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcfa, ideCnccc],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        await this.registrarLogMayorizacion({
+            tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'ANULAR', ideDocumento: dtoIn.ide_cpcfa,
+            numeroDocumento: doc.numero_cpcfa, ideCnccc, generado: true, advertencias: [],
+            fecha: doc.fecha_emisi_cpcfa, dtoIn,
+        });
         return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: true, advertencias: [] };
     }
 
@@ -2033,7 +2134,7 @@ export class AsientosAutomaticosService extends BaseService {
     async deshacerAsientoFacturaCxC(
         dtoIn: { ide_cccfa: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoFacturaCxCResult> {
-        const q = new SelectQuery(`SELECT ide_cnccc FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
+        const q = new SelectQuery(`SELECT ide_cnccc, secuencial_cccfa, fecha_emisi_cccfa FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
         q.addIntParam(1, dtoIn.ide_cccfa);
         const doc = await this.dataSource.createSingleQuery(q);
         if (!doc?.ide_cnccc) {
@@ -2042,6 +2143,11 @@ export class AsientosAutomaticosService extends BaseService {
         const ideCnccc = Number(doc.ide_cnccc);
         const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: false,
+                advertencias: [resultado.mensaje as string], fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
         await this.dataSource.pool.query(
@@ -2053,6 +2159,11 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cccfa, ideCnccc],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        await this.registrarLogMayorizacion({
+            tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
+            numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: true, advertencias: [],
+            fecha: doc.fecha_emisi_cccfa, dtoIn,
+        });
         return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
     }
 
@@ -2060,7 +2171,7 @@ export class AsientosAutomaticosService extends BaseService {
     async deshacerAsientoCostoVenta(
         dtoIn: { ide_cccfa: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoCostoVentaResult> {
-        const q = new SelectQuery(`SELECT ide_cnccc_costo FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
+        const q = new SelectQuery(`SELECT ide_cnccc_costo, secuencial_cccfa, fecha_emisi_cccfa FROM cxc_cabece_factura WHERE ide_cccfa = $1`);
         q.addIntParam(1, dtoIn.ide_cccfa);
         const doc = await this.dataSource.createSingleQuery(q);
         if (!doc?.ide_cnccc_costo) {
@@ -2069,6 +2180,11 @@ export class AsientosAutomaticosService extends BaseService {
         const ideCnccc = Number(doc.ide_cnccc_costo);
         const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
+                numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: false,
+                advertencias: [resultado.mensaje as string], fecha: doc.fecha_emisi_cccfa, dtoIn,
+            });
             return { ide_cccfa: dtoIn.ide_cccfa, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
         await this.dataSource.pool.query(
@@ -2076,6 +2192,11 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cccfa],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        await this.registrarLogMayorizacion({
+            tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
+            numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: true, advertencias: [],
+            fecha: doc.fecha_emisi_cccfa, dtoIn,
+        });
         return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
     }
 
@@ -2083,7 +2204,7 @@ export class AsientosAutomaticosService extends BaseService {
     async deshacerAsientoNotaCredito(
         dtoIn: { ide_cpcno: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoNotaCreditoResult> {
-        const q = new SelectQuery(`SELECT ide_cnccc FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
+        const q = new SelectQuery(`SELECT ide_cnccc, numero_cpcno, fecha_emisi_cpcno FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
         q.addIntParam(1, dtoIn.ide_cpcno);
         const nota = await this.dataSource.createSingleQuery(q);
         if (!nota?.ide_cnccc) {
@@ -2092,6 +2213,11 @@ export class AsientosAutomaticosService extends BaseService {
         const ideCnccc = Number(nota.ide_cnccc);
         const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, ideCnccc, generado: false,
+                advertencias: [resultado.mensaje as string], fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
         await this.dataSource.pool.query(
@@ -2099,6 +2225,11 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcno],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        await this.registrarLogMayorizacion({
+            tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
+            numeroDocumento: nota.numero_cpcno, ideCnccc, generado: true, advertencias: [],
+            fecha: nota.fecha_emisi_cpcno, dtoIn,
+        });
         return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
     }
 
@@ -2106,7 +2237,7 @@ export class AsientosAutomaticosService extends BaseService {
     async deshacerAsientoCostoNotaCredito(
         dtoIn: { ide_cpcno: number } & HeaderParamsDto,
     ): Promise<DeshacerAsientoCostoNotaCreditoResult> {
-        const q = new SelectQuery(`SELECT ide_cnccc_costo FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
+        const q = new SelectQuery(`SELECT ide_cnccc_costo, numero_cpcno, fecha_emisi_cpcno FROM cxp_cabecera_nota WHERE ide_cpcno = $1`);
         q.addIntParam(1, dtoIn.ide_cpcno);
         const nota = await this.dataSource.createSingleQuery(q);
         if (!nota?.ide_cnccc_costo) {
@@ -2115,6 +2246,11 @@ export class AsientosAutomaticosService extends BaseService {
         const ideCnccc = Number(nota.ide_cnccc_costo);
         const resultado = await this.validarAsientoAutomatico(ideCnccc);
         if (!resultado.ok) {
+            await this.registrarLogMayorizacion({
+                tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
+                numeroDocumento: nota.numero_cpcno, ideCnccc, generado: false,
+                advertencias: [resultado.mensaje as string], fecha: nota.fecha_emisi_cpcno, dtoIn,
+            });
             return { ide_cpcno: dtoIn.ide_cpcno, deshecho: false, advertencias: [resultado.mensaje as string] };
         }
         await this.dataSource.pool.query(
@@ -2122,6 +2258,11 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcno],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        await this.registrarLogMayorizacion({
+            tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
+            numeroDocumento: nota.numero_cpcno, ideCnccc, generado: true, advertencias: [],
+            fecha: nota.fecha_emisi_cpcno, dtoIn,
+        });
         return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
     }
 
@@ -2253,5 +2394,90 @@ export class AsientosAutomaticosService extends BaseService {
             }
         }
         return null;
+    }
+
+    // ===================== Log de auditoría de Mayorización =====================
+    // Registra en con_mayorizacion_log el resultado de cada generación/anulación de asiento
+    // automático hecha desde la pantalla Mayorizar (Documentos por Pagar, Facturas de Venta,
+    // Notas de Crédito) - alimenta las tabs "Resumen" y "Log" de esa pantalla. El
+    // mes/periodo del registro es el de la FECHA DE EMISIÓN del documento origen (mismo
+    // criterio que agrupa documentos por período en Mayorizar), no la fecha en que se
+    // ejecutó la acción.
+
+    private mesPeriodoDe(fecha: string | Date): { mes: number; periodo: number } {
+        const d = new Date(fecha);
+        return { mes: d.getUTCMonth() + 1, periodo: d.getUTCFullYear() };
+    }
+
+    /**
+     * Solo-escritura: nunca debe hacer fallar la generación/anulación del asiento por un
+     * problema al registrar el log - si el INSERT falla, se descarta con un warning.
+     */
+    private async registrarLogMayorizacion(entry: {
+        tipoOrigen: 'FACTURA_VENTA' | 'DOCUMENTOS_PAGAR' | 'NOTA_CREDITO';
+        accion: 'GENERAR' | 'ANULAR';
+        subtipo?: string;
+        ideDocumento: number;
+        numeroDocumento?: string | null;
+        ideCnccc?: number | null;
+        numeroCnccc?: string | null;
+        generado: boolean;
+        advertencias: string[];
+        fecha: string | Date;
+        dtoIn: HeaderParamsDto;
+    }): Promise<void> {
+        try {
+            const { mes, periodo } = this.mesPeriodoDe(entry.fecha);
+            const resultado = !entry.generado ? 'ERROR' : entry.advertencias.length > 0 ? 'ADVERTENCIA' : 'OK';
+            await this.dataSource.pool.query(
+                `INSERT INTO con_mayorizacion_log (
+                    tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg, numero_documento_cnmlg,
+                    ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg, advertencias_cnmlg,
+                    mes_cnmlg, periodo_cnmlg, ide_empr, ide_sucu, usuario_ingre
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                    entry.tipoOrigen,
+                    entry.accion,
+                    entry.subtipo ?? null,
+                    entry.ideDocumento,
+                    entry.numeroDocumento ?? null,
+                    entry.ideCnccc ?? null,
+                    entry.numeroCnccc ?? null,
+                    resultado,
+                    JSON.stringify(entry.advertencias ?? []),
+                    mes,
+                    periodo,
+                    entry.dtoIn.ideEmpr,
+                    entry.dtoIn.ideSucu,
+                    entry.dtoIn.login ?? null,
+                ],
+            );
+        } catch (error) {
+            this.logger.warn(
+                `No se pudo registrar el log de mayorización (${entry.tipoOrigen}/${entry.accion} ide=${entry.ideDocumento}): ${error}`,
+            );
+        }
+    }
+
+    /** Log de generación/anulación de asientos automáticos (Mayorizar) de un período */
+    async getLogMayorizacion(
+        dtoIn: { mes: number; periodo: number; tipoOrigen?: string } & HeaderParamsDto,
+    ) {
+        const condicionOrigen = dtoIn.tipoOrigen ? `AND tipo_origen_cnmlg = $5` : '';
+        const q = new SelectQuery(`
+            SELECT ide_cnmlg, tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg,
+                   numero_documento_cnmlg, ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg,
+                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg
+            FROM con_mayorizacion_log
+            WHERE ide_empr = $1 AND ide_sucu = $2 AND periodo_cnmlg = $3 AND mes_cnmlg = $4
+              ${condicionOrigen}
+            ORDER BY fecha_reg_cnmlg DESC
+        `);
+        q.addIntParam(1, dtoIn.ideEmpr);
+        q.addIntParam(2, dtoIn.ideSucu);
+        q.addIntParam(3, dtoIn.periodo);
+        q.addIntParam(4, dtoIn.mes);
+        if (dtoIn.tipoOrigen) q.addStringParam(5, dtoIn.tipoOrigen);
+        return this.dataSource.createSelectQuery(q);
     }
 }

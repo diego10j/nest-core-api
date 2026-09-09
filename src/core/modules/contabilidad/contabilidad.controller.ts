@@ -3,17 +3,22 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { AsientosAutomaticosService } from './asientos-automaticos.service';
 import { ContabilidadService } from './contabilidad.service';
 import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
+import { LogMayorizacionDto } from './dto/log-mayorizacion.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
 import { ReporteRetencionesDto } from './dto/reporte-retenciones.dto';
 
 @ApiTags('Contabilidad')
 @Controller('contabilidad')
 export class ContabilidadController {
-    constructor(private readonly contabilidadService: ContabilidadService) { }
+    constructor(
+        private readonly contabilidadService: ContabilidadService,
+        private readonly asientosService: AsientosAutomaticosService,
+    ) { }
 
     @Get('getLibroDiario')
     @ApiOperation({ summary: 'Obtener libro diario contable por período' })
@@ -79,6 +84,12 @@ export class ContabilidadController {
         @Query() dtoIn: ReporteRetencionesDto,
     ) {
         return this.contabilidadService.getReporteRetencionesVentas({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getLogMayorizacion')
+    @ApiOperation({ summary: 'Log de generación/anulación de asientos automáticos (Mayorizar) por período' })
+    getLogMayorizacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LogMayorizacionDto) {
+        return this.asientosService.getLogMayorizacion({ ...headersParams, ...dtoIn });
     }
 }
 
