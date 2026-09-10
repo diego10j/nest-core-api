@@ -2472,25 +2472,48 @@ export class AsientosAutomaticosService extends BaseService {
         }
     }
 
-    /** Log de generación/anulación de asientos automáticos (Mayorizar) de un período */
+    /**
+     * Log de generación/anulación de asientos automáticos (Mayorizar) de un período - paginado
+     * (LIMIT/OFFSET + total vía COUNT(*) OVER()): un período con uso intensivo de Mayorizar
+     * puede acumular miles de filas y devolverlas todas de una vez ahoga tanto la respuesta
+     * HTTP como el render de la tabla en el frontend.
+     */
     async getLogMayorizacion(
-        dtoIn: { mes: number; periodo: number; tipoOrigen?: string } & HeaderParamsDto,
+        dtoIn: {
+            mes: number;
+            periodo: number;
+            tipoOrigen?: string;
+            page?: number;
+            pageSize?: number;
+        } & HeaderParamsDto,
     ) {
+        const page = dtoIn.page ?? 0;
+        const pageSize = dtoIn.pageSize ?? 50;
         const condicionOrigen = dtoIn.tipoOrigen ? `AND tipo_origen_cnmlg = $5` : '';
+        const limitIndex = dtoIn.tipoOrigen ? 6 : 5;
         const q = new SelectQuery(`
             SELECT ide_cnmlg, tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg,
                    numero_documento_cnmlg, ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg,
-                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg
+                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg,
+                   COUNT(*) OVER() AS total_count
             FROM con_mayorizacion_log
             WHERE ide_empr = $1 AND ide_sucu = $2 AND periodo_cnmlg = $3 AND mes_cnmlg = $4
               ${condicionOrigen}
             ORDER BY fecha_reg_cnmlg DESC
+            LIMIT $${limitIndex} OFFSET $${limitIndex + 1}
         `);
         q.addIntParam(1, dtoIn.ideEmpr);
         q.addIntParam(2, dtoIn.ideSucu);
         q.addIntParam(3, dtoIn.periodo);
         q.addIntParam(4, dtoIn.mes);
         if (dtoIn.tipoOrigen) q.addStringParam(5, dtoIn.tipoOrigen);
-        return this.dataSource.createSelectQuery(q);
+        q.addIntParam(limitIndex, pageSize);
+        q.addIntParam(limitIndex + 1, page * pageSize);
+        const filas = await this.dataSource.createSelectQuery(q);
+        const totalRecords = filas.length > 0 ? Number(filas[0].total_count) : 0;
+        return {
+            rows: filas.map(({ total_count: _totalCount, ...fila }) => fila),
+            totalRecords,
+        };
     }
 }
