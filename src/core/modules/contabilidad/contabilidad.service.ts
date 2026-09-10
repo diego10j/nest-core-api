@@ -875,14 +875,17 @@ export class ContabilidadService extends BaseService {
     async getResumenCuentasMayorizacion(dtoIn: { ide_cnccc: number[] } & HeaderParamsDto) {
         if (!dtoIn.ide_cnccc?.length) return [];
 
+        // COALESCE con 3 niveles: referencia_cndcc (motor automático desde el fix) → observacion_cndcc
+        // (comprobantes manuales o generados antes del fix) → 'Sin identificar' (líneas importadas del
+        // aplicativo Java legacy que no traen ninguno de los dos) - nunca debe llegar NULL al frontend.
         const query = new SelectQuery(`
             SELECT
-                COALESCE(NULLIF(d.referencia_cndcc, ''), d.observacion_cndcc) AS identificador,
+                COALESCE(NULLIF(d.referencia_cndcc, ''), NULLIF(d.observacion_cndcc, ''), 'Sin identificar') AS identificador,
                 SUM(d.valor_cndcc) AS total,
                 COUNT(*) AS cantidad
             FROM con_det_comp_cont d
             WHERE d.ide_cnccc = ANY($1)
-            GROUP BY COALESCE(NULLIF(d.referencia_cndcc, ''), d.observacion_cndcc)
+            GROUP BY COALESCE(NULLIF(d.referencia_cndcc, ''), NULLIF(d.observacion_cndcc, ''), 'Sin identificar')
             ORDER BY total DESC
         `);
         query.addParam(1, dtoIn.ide_cnccc);
