@@ -1204,6 +1204,7 @@ export class FacturasService extends BaseService {
         query.addIntParam(1, dtoIn.mes);
         query.addIntParam(2, dtoIn.periodo);
         query.addIntParam(3, dtoIn.ideSucu);
+        query.isLazy = false;
         return this.dataSource.createQuery(query);
     }
 
