@@ -1343,11 +1343,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cpcfa],
             );
 
-            await this.registrarLogMayorizacion({
+            const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
                 numeroDocumento: doc.numero_cpcfa, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: doc.fecha_emisi_cpcfa, dtoIn,
             });
+            if (logError) advertencias.push(logError);
 
             return {
                 ide_cpcfa: dtoIn.ide_cpcfa,
@@ -1613,11 +1614,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cccfa],
             );
 
-            await this.registrarLogMayorizacion({
+            const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
                 numeroDocumento: doc.secuencial_cccfa, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: doc.fecha_emisi_cccfa, dtoIn,
             });
+            if (logError) advertencias.push(logError);
 
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
@@ -1763,11 +1765,12 @@ export class AsientosAutomaticosService extends BaseService {
             // asiento con ide_ccttr=1 (sin acotar por esta nota) - eso es un bug latente
             // documentado en la investigación de migración, no se replica aquí a propósito.
 
-            await this.registrarLogMayorizacion({
+            const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
                 numeroDocumento: nota.numero_cpcno, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: nota.fecha_emisi_cpcno, dtoIn,
             });
+            if (logError) advertencias.push(logError);
 
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
@@ -1900,11 +1903,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cccfa],
             );
 
-            await this.registrarLogMayorizacion({
+            const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
                 numeroDocumento: doc.secuencial_cccfa, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: doc.fecha_emisi_cccfa, dtoIn,
             });
+            if (logError) advertencias.push(logError);
 
             return {
                 ide_cccfa: dtoIn.ide_cccfa,
@@ -2036,11 +2040,12 @@ export class AsientosAutomaticosService extends BaseService {
                 [ideCnccc, dtoIn.ide_cpcno],
             );
 
-            await this.registrarLogMayorizacion({
+            const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
                 numeroDocumento: nota.numero_cpcno, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: nota.fecha_emisi_cpcno, dtoIn,
             });
+            if (logError) advertencias.push(logError);
 
             return {
                 ide_cpcno: dtoIn.ide_cpcno,
@@ -2122,12 +2127,12 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcfa, ideCnccc],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
-        await this.registrarLogMayorizacion({
+        const logError = await this.registrarLogMayorizacion({
             tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'ANULAR', ideDocumento: dtoIn.ide_cpcfa,
             numeroDocumento: doc.numero_cpcfa, ideCnccc, generado: true, advertencias: [],
             fecha: doc.fecha_emisi_cpcfa, dtoIn,
         });
-        return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: true, advertencias: [] };
+        return { ide_cpcfa: dtoIn.ide_cpcfa, deshecho: true, advertencias: logError ? [logError] : [] };
     }
 
     /** Deshace el asiento de VENTA de una factura de VENTAS */
@@ -2159,12 +2164,12 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cccfa, ideCnccc],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
-        await this.registrarLogMayorizacion({
+        const logError = await this.registrarLogMayorizacion({
             tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
             numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: true, advertencias: [],
             fecha: doc.fecha_emisi_cccfa, dtoIn,
         });
-        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
+        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: logError ? [logError] : [] };
     }
 
     /** Deshace el asiento de COSTO DE VENTA de una factura de VENTAS */
@@ -2192,12 +2197,12 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cccfa],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
-        await this.registrarLogMayorizacion({
+        const logError = await this.registrarLogMayorizacion({
             tipoOrigen: 'FACTURA_VENTA', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
             numeroDocumento: doc.secuencial_cccfa, ideCnccc, generado: true, advertencias: [],
             fecha: doc.fecha_emisi_cccfa, dtoIn,
         });
-        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: [] };
+        return { ide_cccfa: dtoIn.ide_cccfa, deshecho: true, advertencias: logError ? [logError] : [] };
     }
 
     /** Deshace el asiento de VENTA de una nota de crédito de VENTAS */
@@ -2225,12 +2230,12 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcno],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
-        await this.registrarLogMayorizacion({
+        const logError = await this.registrarLogMayorizacion({
             tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
             numeroDocumento: nota.numero_cpcno, ideCnccc, generado: true, advertencias: [],
             fecha: nota.fecha_emisi_cpcno, dtoIn,
         });
-        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
+        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: logError ? [logError] : [] };
     }
 
     /** Deshace el asiento de reverso de COSTO de una nota de crédito de VENTAS */
@@ -2258,12 +2263,12 @@ export class AsientosAutomaticosService extends BaseService {
             [dtoIn.ide_cpcno],
         );
         await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
-        await this.registrarLogMayorizacion({
+        const logError = await this.registrarLogMayorizacion({
             tipoOrigen: 'NOTA_CREDITO', accion: 'ANULAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
             numeroDocumento: nota.numero_cpcno, ideCnccc, generado: true, advertencias: [],
             fecha: nota.fecha_emisi_cpcno, dtoIn,
         });
-        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: [] };
+        return { ide_cpcno: dtoIn.ide_cpcno, deshecho: true, advertencias: logError ? [logError] : [] };
     }
 
     /**
@@ -2427,7 +2432,7 @@ export class AsientosAutomaticosService extends BaseService {
         advertencias: string[];
         fecha: string | Date;
         dtoIn: HeaderParamsDto;
-    }): Promise<void> {
+    }): Promise<string | null> {
         try {
             const resultado = !entry.generado ? 'ERROR' : entry.advertencias.length > 0 ? 'ADVERTENCIA' : 'OK';
             await this.dataSource.pool.query(
@@ -2456,10 +2461,14 @@ export class AsientosAutomaticosService extends BaseService {
                     entry.dtoIn.login ?? null,
                 ],
             );
+            return null;
         } catch (error) {
-            this.logger.warn(
-                `No se pudo registrar el log de mayorización (${entry.tipoOrigen}/${entry.accion} ide=${entry.ideDocumento}): ${error}`,
+            const mensaje = `No se pudo registrar el log de mayorización: ${error instanceof Error ? error.message : String(error)}`;
+            this.logger.error(
+                `${mensaje} (${entry.tipoOrigen}/${entry.accion} ide=${entry.ideDocumento})`,
+                error instanceof Error ? error.stack : undefined,
             );
+            return mensaje;
         }
     }
 
