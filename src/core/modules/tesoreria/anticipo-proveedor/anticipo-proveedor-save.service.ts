@@ -136,7 +136,13 @@ export class AnticipoProveedorSaveService extends BaseService {
             // Misma pareja cxp_cabece_transa/cxp_detall_transa que saveAnticipoCxP (paridad
             // "generarTransaccionAnticipo" del legacy) - ide_cpcfa queda NULL hasta que se
             // aplique a una factura (ver ide_cpctr_anticipo en saveDocumento, o liquidar() acá
-            // abajo para el caso de varias facturas).
+            // abajo para el caso de varias facturas). numero_pago_cpdtr = 1: el anticipo ya
+            // tiene ide_teclb propio (salida real de banco/caja), igual que cualquier pago
+            // registrado vía Registrar Pago - así queda consistente con el convenio del resto
+            // del sistema (numero_pago_cpdtr > 0 = pago real con ide_teclb propio, = 0 solo
+            // para el cargo original de una factura, sin ide_teclb) y lo capturan sin casos
+            // especiales las mismas consultas que reversan pagos reales al anular un documento
+            // (ver DocumentosCxPSaveService.anularDocumento).
             await queryRunner.query(
                 `INSERT INTO cxp_cabece_transa (
                     ide_cpctr, ide_geper, ide_cpttr, fecha_trans_cpctr, observacion_cpctr,
@@ -154,7 +160,7 @@ export class AnticipoProveedorSaveService extends BaseService {
                     ide_empr, ide_sucu, usuario_ingre, hora_ingre, ide_cnccc
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
                 [ideCpdtr, ideTeclb, ideCpctr, ideCpttrAnticipo, dtoIn.ideUsua,
-                    dtoIn.valor, dtoIn.observacion, 0,
+                    dtoIn.valor, dtoIn.observacion, 1,
                     dtoIn.fecha, fechaVenceCuota, numero, 0,
                     dtoIn.ideEmpr, dtoIn.ideSucu, dtoIn.login, getCurrentTime(), ideCnccc],
             );

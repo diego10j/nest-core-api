@@ -2404,14 +2404,16 @@ export class AsientosAutomaticosService extends BaseService {
     // criterio que agrupa documentos por período en Mayorizar), no la fecha en que se
     // ejecutó la acción.
 
-    private mesPeriodoDe(fecha: string | Date): { mes: number; periodo: number } {
-        const d = new Date(fecha);
-        return { mes: d.getUTCMonth() + 1, periodo: d.getUTCFullYear() };
-    }
-
     /**
      * Solo-escritura: nunca debe hacer fallar la generación/anulación del asiento por un
      * problema al registrar el log - si el INSERT falla, se descarta con un warning.
+     *
+     * mes_cnmlg/periodo_cnmlg se calculan con EXTRACT en SQL (nunca con `new Date(...)` en JS):
+     * mismo criterio que usan getDocumentosNoContabilizados/getFacturasNoContabilizadas/
+     * getNotasNoContabilizadas para agrupar documentos por período. Parsear la fecha en JS
+     * (`new Date(fecha).getMonth()`) es una fuente de bugs conocida en este proyecto - ver el
+     * bug de fecha -1 día por parser de pg inactivo en flete-consolidado -, así que la
+     * conversión mes/año se delega siempre a Postgres.
      */
     private async registrarLogMayorizacion(entry: {
         tipoOrigen: 'FACTURA_VENTA' | 'DOCUMENTOS_PAGAR' | 'NOTA_CREDITO';
@@ -2427,14 +2429,17 @@ export class AsientosAutomaticosService extends BaseService {
         dtoIn: HeaderParamsDto;
     }): Promise<void> {
         try {
-            const { mes, periodo } = this.mesPeriodoDe(entry.fecha);
             const resultado = !entry.generado ? 'ERROR' : entry.advertencias.length > 0 ? 'ADVERTENCIA' : 'OK';
             await this.dataSource.pool.query(
                 `INSERT INTO con_mayorizacion_log (
                     tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg, numero_documento_cnmlg,
                     ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg, advertencias_cnmlg,
                     mes_cnmlg, periodo_cnmlg, ide_empr, ide_sucu, usuario_ingre
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,
+                    EXTRACT(MONTH FROM $10::date)::int, EXTRACT(YEAR FROM $10::date)::int,
+                    $11,$12,$13
+                )`,
                 [
                     entry.tipoOrigen,
                     entry.accion,
@@ -2445,8 +2450,7 @@ export class AsientosAutomaticosService extends BaseService {
                     entry.numeroCnccc ?? null,
                     resultado,
                     JSON.stringify(entry.advertencias ?? []),
-                    mes,
-                    periodo,
+                    entry.fecha,
                     entry.dtoIn.ideEmpr,
                     entry.dtoIn.ideSucu,
                     entry.dtoIn.login ?? null,

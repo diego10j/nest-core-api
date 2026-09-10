@@ -9,7 +9,7 @@
 -- pantalla. Alimenta las tabs "Resumen" y "Log" de Mayorizar.
 -- ============================================================
 
-CREATE TABLE con_mayorizacion_log (
+CREATE TABLE IF NOT EXISTS con_mayorizacion_log (
     ide_cnmlg               SERIAL PRIMARY KEY,
     tipo_origen_cnmlg        VARCHAR(20)  NOT NULL,   -- FACTURA_VENTA | DOCUMENTOS_PAGAR | NOTA_CREDITO
     accion_cnmlg             VARCHAR(10)  NOT NULL,   -- GENERAR | ANULAR
@@ -28,5 +28,5 @@ CREATE TABLE con_mayorizacion_log (
     fecha_reg_cnmlg             TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_cnmlg_periodo
+CREATE INDEX IF NOT EXISTS idx_cnmlg_periodo
     ON con_mayorizacion_log (ide_empr, ide_sucu, periodo_cnmlg, mes_cnmlg, tipo_origen_cnmlg);

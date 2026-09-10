@@ -498,8 +498,12 @@ export class FleteConsolidadoSaveService {
             );
         }
 
-        // Pagos reales (Registrar Pago): numero_pago_cpdtr > 0 - anularMovimiento ya limpia su
-        // propia fila de cxp_detall_transa (ver documentos-cxp-save.service.ts).
+        // Pagos reales (Registrar Pago) y anticipos fusionados (completarConFacturaExistente ->
+        // asociarAnticipoExistente) comparten el mismo convenio: numero_pago_cpdtr > 0 con
+        // ide_teclb propio - un anticipo también es una salida real de banco/caja, guardado con
+        // numero_pago_cpdtr = 1 desde su creación (ver AnticipoProveedorSaveService). Por eso
+        // una sola consulta alcanza para ambos; anularMovimiento ya limpia su propia fila de
+        // cxp_detall_transa (ver documentos-cxp-save.service.ts).
         const qPagos = new SelectQuery(`
             SELECT DISTINCT ide_teclb FROM cxp_detall_transa
             WHERE ide_cpcfa = $1 AND numero_pago_cpdtr > 0 AND ide_teclb IS NOT NULL
@@ -508,26 +512,6 @@ export class FleteConsolidadoSaveService {
         const pagos: { ide_teclb: number }[] = await this.dataSource.createSelectQuery(qPagos);
         for (const pago of pagos) {
             await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(pago.ide_teclb) });
-        }
-
-        // Anticipos fusionados (completarConFacturaExistente -> asociarAnticipoExistente): su
-        // fila de cxp_detall_transa queda con numero_pago_cpdtr = 0 (igual que el cargo original
-        // de la factura, que nunca tiene ide_teclb) pero SÍ tiene ide_teclb propio - esa
-        // combinación es lo único que la distingue del cargo original, y por eso el filtro de
-        // arriba (numero_pago_cpdtr > 0) nunca la encuentra. anularMovimiento tampoco la borra
-        // por sí solo (solo actúa sobre numero_pago_cpdtr > 0 - ver AnticipoProveedorSaveService.
-        // anular, que por esto mismo hace el DELETE manual) - se limpia acá por su propio
-        // ide_cpdtr, nunca por ide_cpctr (ya quedó compartido con la factura tras la fusión).
-        const qAnticipos = new SelectQuery(`
-            SELECT ide_cpdtr, ide_teclb FROM cxp_detall_transa
-            WHERE ide_cpcfa = $1 AND numero_pago_cpdtr = 0 AND ide_teclb IS NOT NULL
-        `);
-        qAnticipos.addIntParam(1, ideCpcfa);
-        const anticipos: { ide_cpdtr: number; ide_teclb: number }[] =
-            await this.dataSource.createSelectQuery(qAnticipos);
-        for (const ant of anticipos) {
-            await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: Number(ant.ide_teclb) });
-            await this.dataSource.pool.query(`DELETE FROM cxp_detall_transa WHERE ide_cpdtr = $1`, [ant.ide_cpdtr]);
         }
 
         return 'desvinculada';

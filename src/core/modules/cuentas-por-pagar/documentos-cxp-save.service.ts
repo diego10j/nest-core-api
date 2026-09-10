@@ -407,6 +407,18 @@ export class DocumentosCxPSaveService extends BaseService {
                 updTrnCab.addIntParam(1, ideCpctr);
                 listQuery.push(updTrnCab);
 
+                // La fila de cxp_detall_transa del anticipo (insertada al crearlo, con
+                // ide_cpcfa NULL) también debe apuntar al documento recién creado - sin esto
+                // queda huérfana y anularDocumento/anularOFacturaFleteConsolidado nunca
+                // encuentran ni reversan su movimiento de banco al anular la factura. Filtro
+                // por ide_cpcfa IS NULL para no tocar la fila nueva de esta misma factura que
+                // se inserta más abajo (buildInsertTrnDetalle) en la misma transacción.
+                const updTrnDetAnticipo = new UpdateQuery(TABLE_TRN_DET, PK_TRN_DET, dtoIn);
+                updTrnDetAnticipo.values.set(PK_CAB, ideCpcfa);
+                updTrnDetAnticipo.where = `${PK_TRN_CAB} = $1 AND ${PK_CAB} IS NULL`;
+                updTrnDetAnticipo.addIntParam(1, ideCpctr);
+                listQuery.push(updTrnDetAnticipo);
+
                 // pagado_cpcfa no siempre queda actualizado por otros flujos - la validación
                 // correcta es el saldo real de las cxp_detall_transa de esta transacción: si tras
                 // sumar la nueva línea de este documento el saldo (SUM(valor*signo)) da 0 (con
