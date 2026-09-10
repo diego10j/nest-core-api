@@ -7,6 +7,7 @@ import { CoreService } from 'src/core/core.service';
 
 import { ComprobanteContabilidadService } from './comprobante-contabilidad/comprobante-contabilidad.service';
 import { SaveComprobanteDto } from './comprobante-contabilidad/dto/comprobante-contabilidad.dto';
+import { LogMayorizacionDto } from './dto/log-mayorizacion.dto';
 
 export interface GenerarAsientoCobroCxCDto {
     ideTeclb: number;
@@ -2306,8 +2307,16 @@ export class AsientosAutomaticosService extends BaseService {
     }
 
     /**
-     * Busca la cuenta contable configurada para un artículo, subiendo por su
-     * jerarquía de padres (inv_ide_inarti) hasta encontrarla
+     * Busca la cuenta contable configurada para un artículo, subiendo por su jerarquía de
+     * padres (inv_ide_inarti) hasta encontrarla. Si ningún artículo de la cadena (ni el
+     * propio ni sus padres) tiene una fila específica en con_det_conf_asie, cae a
+     * `buscarCuentaConfig` (cuenta genérica del identificador, sin filtrar por artículo) -
+     * paridad exacta con el legacy `cls_contabilidad.buscarCuentaProducto` (Java), que hace
+     * lo mismo cuando `str_padre == null` (se agotó la jerarquía): un último
+     * `buscarCuenta(identificador, null, null, ...)` sin filtro de artículo. Sin este
+     * fallback, cualquier identificador que solo tenga configurada una cuenta "catch-all"
+     * (no por artículo) generaba advertencias "cuenta no configurada" en cada línea, aunque
+     * el legacy sí las resolvía.
      */
     private async buscarCuentaProducto(
         identificador: string,
@@ -2339,7 +2348,8 @@ export class AsientosAutomaticosService extends BaseService {
         q.addStringParam(2, identificador);
         q.addIntParam(3, ideSucu);
         const row = await this.dataSource.createSingleQuery(q);
-        return row?.ide_cndpc ? Number(row.ide_cndpc) : null;
+        if (row?.ide_cndpc) return Number(row.ide_cndpc);
+        return this.buscarCuentaConfig(identificador, {}, ideSucu);
     }
 
     private async getCuentaPersona(identificador: string, ideGeper: number, ideEmpr: number, ideSucu: number): Promise<number | null> {
@@ -2473,47 +2483,91 @@ export class AsientosAutomaticosService extends BaseService {
     }
 
     /**
-     * Log de generación/anulación de asientos automáticos (Mayorizar) de un período - paginado
-     * (LIMIT/OFFSET + total vía COUNT(*) OVER()): un período con uso intensivo de Mayorizar
-     * puede acumular miles de filas y devolverlas todas de una vez ahoga tanto la respuesta
-     * HTTP como el render de la tabla en el frontend.
+     * Log de generación/anulación de asientos automáticos (Mayorizar) de un período - vía el
+     * motor genérico de paginación/orden/filtro de DataSourceService.createQuery (el mismo que
+     * usa `core.getTableQuery` y que consumen `DataTableQuery`/`useDataTableQuery` en el
+     * frontend): pasar `dtoIn` (extiende QueryOptionsDto) como segundo argumento de
+     * `SelectQuery` activa `isLazy`, que aplica paginación server-side automática con un
+     * tamaño de página por defecto aunque el frontend no mande `pagination` explícito - un
+     * período con uso intensivo de Mayorizar puede acumular miles de filas y devolverlas
+     * todas de una vez ahogaba tanto la respuesta HTTP como el render de la tabla.
      */
-    async getLogMayorizacion(
-        dtoIn: {
-            mes: number;
-            periodo: number;
-            tipoOrigen?: string;
-            page?: number;
-            pageSize?: number;
-        } & HeaderParamsDto,
-    ) {
-        const page = dtoIn.page ?? 0;
-        const pageSize = dtoIn.pageSize ?? 50;
+    async getLogMayorizacion(dtoIn: LogMayorizacionDto & HeaderParamsDto) {
         const condicionOrigen = dtoIn.tipoOrigen ? `AND tipo_origen_cnmlg = $5` : '';
-        const limitIndex = dtoIn.tipoOrigen ? 6 : 5;
-        const q = new SelectQuery(`
+        const q = new SelectQuery(
+            `
             SELECT ide_cnmlg, tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg,
                    numero_documento_cnmlg, ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg,
-                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg,
-                   COUNT(*) OVER() AS total_count
+                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg
             FROM con_mayorizacion_log
             WHERE ide_empr = $1 AND ide_sucu = $2 AND periodo_cnmlg = $3 AND mes_cnmlg = $4
               ${condicionOrigen}
             ORDER BY fecha_reg_cnmlg DESC
-            LIMIT $${limitIndex} OFFSET $${limitIndex + 1}
+        `,
+            dtoIn,
+        );
+        q.addIntParam(1, dtoIn.ideEmpr);
+        q.addIntParam(2, dtoIn.ideSucu);
+        q.addIntParam(3, dtoIn.periodo);
+        q.addIntParam(4, dtoIn.mes);
+        if (dtoIn.tipoOrigen) q.addStringParam(5, dtoIn.tipoOrigen);
+        return this.dataSource.createQuery(q, undefined, 'con_mayorizacion_log');
+    }
+
+    /**
+     * Totales de actividad (generados/anulados/con advertencias/con errores) de un período -
+     * consulta aparte de getLogMayorizacion (no paginada): la tab Resumen ("Actividad del
+     * período") necesita el total real de todo el período, no solo la página visible de la
+     * tabla Log.
+     */
+    async getActividadMayorizacion(
+        dtoIn: { mes: number; periodo: number; tipoOrigen?: string } & HeaderParamsDto,
+    ) {
+        const condicionOrigen = dtoIn.tipoOrigen ? `AND tipo_origen_cnmlg = $5` : '';
+        const q = new SelectQuery(`
+            SELECT
+                COUNT(*) FILTER (WHERE accion_cnmlg = 'GENERAR') AS total_generar,
+                COUNT(*) FILTER (WHERE accion_cnmlg = 'ANULAR') AS total_anular,
+                COUNT(*) FILTER (WHERE resultado_cnmlg = 'ADVERTENCIA') AS total_advertencia,
+                COUNT(*) FILTER (WHERE resultado_cnmlg = 'ERROR') AS total_error
+            FROM con_mayorizacion_log
+            WHERE ide_empr = $1 AND ide_sucu = $2 AND periodo_cnmlg = $3 AND mes_cnmlg = $4
+              ${condicionOrigen}
         `);
         q.addIntParam(1, dtoIn.ideEmpr);
         q.addIntParam(2, dtoIn.ideSucu);
         q.addIntParam(3, dtoIn.periodo);
         q.addIntParam(4, dtoIn.mes);
         if (dtoIn.tipoOrigen) q.addStringParam(5, dtoIn.tipoOrigen);
-        q.addIntParam(limitIndex, pageSize);
-        q.addIntParam(limitIndex + 1, page * pageSize);
-        const filas = await this.dataSource.createSelectQuery(q);
-        const totalRecords = filas.length > 0 ? Number(filas[0].total_count) : 0;
+        const fila = await this.dataSource.createSingleQuery(q);
+
+        // "Última actividad" se resuelve acá (no desde getLogMayorizacion) a propósito: esa
+        // consulta es lazy/paginada para la tab Log, así que su primera fila depende de en qué
+        // página esté parado el usuario - esta es independiente, siempre la más reciente real.
+        const condicionOrigenUltima = dtoIn.tipoOrigen ? `AND tipo_origen_cnmlg = $5` : '';
+        const qUltima = new SelectQuery(`
+            SELECT ide_cnmlg, tipo_origen_cnmlg, accion_cnmlg, subtipo_cnmlg, ide_documento_cnmlg,
+                   numero_documento_cnmlg, ide_cnccc_cnmlg, numero_cnccc_cnmlg, resultado_cnmlg,
+                   advertencias_cnmlg, usuario_ingre, fecha_reg_cnmlg
+            FROM con_mayorizacion_log
+            WHERE ide_empr = $1 AND ide_sucu = $2 AND periodo_cnmlg = $3 AND mes_cnmlg = $4
+              ${condicionOrigenUltima}
+            ORDER BY fecha_reg_cnmlg DESC
+            LIMIT 1
+        `);
+        qUltima.addIntParam(1, dtoIn.ideEmpr);
+        qUltima.addIntParam(2, dtoIn.ideSucu);
+        qUltima.addIntParam(3, dtoIn.periodo);
+        qUltima.addIntParam(4, dtoIn.mes);
+        if (dtoIn.tipoOrigen) qUltima.addStringParam(5, dtoIn.tipoOrigen);
+        const ultima = await this.dataSource.createSingleQuery(qUltima);
+
         return {
-            rows: filas.map(({ total_count: _totalCount, ...fila }) => fila),
-            totalRecords,
+            totalGenerados: fila ? Number(fila.total_generar) : 0,
+            totalAnulados: fila ? Number(fila.total_anular) : 0,
+            totalAdvertencias: fila ? Number(fila.total_advertencia) : 0,
+            totalErrores: fila ? Number(fila.total_error) : 0,
+            ultima: ultima ?? null,
         };
     }
 }

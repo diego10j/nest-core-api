@@ -93,6 +93,12 @@ export class ContabilidadController {
         return this.asientosService.getLogMayorizacion({ ...headersParams, ...dtoIn });
     }
 
+    @Get('getActividadMayorizacion')
+    @ApiOperation({ summary: 'Totales de actividad (generados/anulados/advertencias/errores) de Mayorizar por período' })
+    getActividadMayorizacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LogMayorizacionDto) {
+        return this.asientosService.getActividadMayorizacion({ ...headersParams, ...dtoIn });
+    }
+
     @Post('getResumenCuentasMayorizacion')
     @ApiOperation({ summary: 'Totales por cuenta contable de un conjunto de asientos (Mayorizar)' })
     getResumenCuentasMayorizacion(

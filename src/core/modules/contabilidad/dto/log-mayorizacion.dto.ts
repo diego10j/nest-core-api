@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
@@ -8,9 +7,11 @@ export type TipoOrigenMayorizar = (typeof TIPO_ORIGEN_MAYORIZAR_VALUES)[number];
 
 /**
  * Log de generación/anulación de asientos automáticos (Mayorizar) de un mes/período.
- * Paginado (page/pageSize planos, no el `pagination` anidado de QueryOptionsDto - este es un
- * GET con query params simples, no el flujo lazy de DataTableQuery/getTableQuery) - un período
- * con uso intensivo de Mayorizar puede acumular miles de filas de log.
+ * Extiende QueryOptionsDto (paginación/orden/filtro anidados: `pagination`, `orderBy`,
+ * `filters`, `globalFilter`, `lazy`) - lo consume DataTableQuery/useDataTableQuery en el
+ * frontend igual que cualquier otra tabla lazy de la app (ver getLogMayorizacion en
+ * AsientosAutomaticosService, que pasa este dto directo a `new SelectQuery(sql, dtoIn)` +
+ * `dataSource.createQuery`, el mismo motor genérico que usa `core.getTableQuery`).
  */
 export class LogMayorizacionDto extends QueryOptionsDto {
     /** Año del período (ej. 2026) */
@@ -28,19 +29,4 @@ export class LogMayorizacionDto extends QueryOptionsDto {
     @IsIn(TIPO_ORIGEN_MAYORIZAR_VALUES)
     @IsOptional()
     tipoOrigen?: TipoOrigenMayorizar;
-
-    /** Página 0-indexed (opcional, default 0) */
-    @IsInt()
-    @Min(0)
-    @IsOptional()
-    @Type(() => Number)
-    page?: number = 0;
-
-    /** Filas por página (opcional, default 50, máx 200) */
-    @IsInt()
-    @Min(1)
-    @Max(200)
-    @IsOptional()
-    @Type(() => Number)
-    pageSize?: number = 50;
 }
