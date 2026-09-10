@@ -558,6 +558,19 @@ ORDER BY prof.secuencial_cccpr DESC
     const detPrimaryKey = 'ide_ccdpr';
     const cab: CabProformaDto = dtoIn.data;
 
+    // Regla de negocio: no se permite ningún descuento en proformas cotizadas con tarjeta -
+    // se fuerza en servidor (defensa en profundidad, el frontend ya deshabilita el campo) en
+    // vez de confiar en lo que mande el cliente. Mismo criterio que facturas-save.service.ts.
+    if (isDefined(cab.ide_cuenta_tarjeta)) {
+      for (const det of cab.detalles) {
+        if ((det.descuento_ccdpr ?? 0) > 0 || (det.porcentaje_descuento_ccdpr ?? 0) > 0) {
+          det.total_ccdpr = Number(((det.total_ccdpr ?? 0) + (det.descuento_ccdpr ?? 0)).toFixed(2));
+          det.descuento_ccdpr = 0;
+          det.porcentaje_descuento_ccdpr = 0;
+        }
+      }
+    }
+
     const tarifaIva = isDefined(cab.tarifa_iva_cccpr) ? Number(cab.tarifa_iva_cccpr) : 15;
     const totales = this.calcularTotalesProforma(cab.detalles, tarifaIva);
 

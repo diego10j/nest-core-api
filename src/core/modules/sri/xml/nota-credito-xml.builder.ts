@@ -13,34 +13,19 @@ export function buildNotaCreditoXml(comprobante: ComprobanteDto, emisor: EmisorD
   const baseTarifa0 = Number(comprobante.subtotal0 ?? 0);
   const baseGrabada = Number(comprobante.subtotal ?? 0);
   const totalSinImpuestos = baseTarifa0 + baseGrabada;
-  const iva = Number(comprobante.iva ?? 0);
-  const porcentajeIva = baseGrabada > 0 ? (iva * 100) / baseGrabada : 0;
-
-  let subtotales = '';
-  if (baseGrabada > 0) {
-    subtotales += `				<totalImpuesto>
-					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
-					<codigoPorcentaje>${getCodigoPorcentajeIva(porcentajeIva)}</codigoPorcentaje>
-					<baseImponible>${fNumero(baseGrabada)}</baseImponible>
-					<valor>${fNumero(iva)}</valor>
-				</totalImpuesto>
-`;
-  }
-  if (baseTarifa0 > 0) {
-    subtotales += `				<totalImpuesto>
-					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
-					<codigoPorcentaje>${CODIGO_PORCENTAJE_IVA_0}</codigoPorcentaje>
-					<baseImponible>${fNumero(baseTarifa0)}</baseImponible>
-					<valor>${fNumero(0)}</valor>
-				</totalImpuesto>
-`;
-  }
+  const porcentajeIva =
+    baseGrabada > 0 ? (Number(comprobante.iva ?? 0) * 100) / baseGrabada : 0;
 
   const agenteRetencion = comprobante.agenteRetencion ? `<agenteRetencion>1</agenteRetencion> \n` : '';
 
+  // El IVA agregado de <totalImpuesto> se arma como la suma de los <impuesto><valor> por
+  // línea (ya redondeados a 2 decimales, los mismos que se imprimen abajo) - ver mismo
+  // criterio y motivo en factura-xml.builder.ts.
+  let ivaAcumulada = 0;
   let detalles = '';
   for (const detalle of comprobante.detalle ?? []) {
-    const valorIva = detalle.preciototalsinimpuesto * (detalle.porcentajeiva / 100);
+    const valorIvaRedondeado = Math.round(detalle.preciototalsinimpuesto * (detalle.porcentajeiva / 100) * 100) / 100;
+    if (detalle.porcentajeiva > 0) ivaAcumulada += valorIvaRedondeado;
     detalles += `			<detalle>
 				<codigoInterno>${detalle.codigoprincipal}</codigoInterno>
 				<codigoAdicional>${detalle.codigoauxiliar ?? detalle.codigoprincipal}</codigoAdicional>
@@ -55,10 +40,30 @@ export function buildNotaCreditoXml(comprobante: ComprobanteDto, emisor: EmisorD
 						<codigoPorcentaje>${getCodigoPorcentajeIva(fNumero(detalle.porcentajeiva))}</codigoPorcentaje>
 						<tarifa>${fNumero(detalle.porcentajeiva)}</tarifa>
 						<baseImponible>${fNumero(detalle.preciototalsinimpuesto)}</baseImponible>
-						<valor>${fNumero(valorIva)}</valor>
+						<valor>${fNumero(valorIvaRedondeado)}</valor>
 					</impuesto>
 				</impuestos>
 			</detalle>
+`;
+  }
+
+  let subtotales = '';
+  if (baseGrabada > 0) {
+    subtotales += `				<totalImpuesto>
+					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
+					<codigoPorcentaje>${getCodigoPorcentajeIva(porcentajeIva)}</codigoPorcentaje>
+					<baseImponible>${fNumero(baseGrabada)}</baseImponible>
+					<valor>${fNumero(ivaAcumulada)}</valor>
+				</totalImpuesto>
+`;
+  }
+  if (baseTarifa0 > 0) {
+    subtotales += `				<totalImpuesto>
+					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
+					<codigoPorcentaje>${CODIGO_PORCENTAJE_IVA_0}</codigoPorcentaje>
+					<baseImponible>${fNumero(baseTarifa0)}</baseImponible>
+					<valor>${fNumero(0)}</valor>
+				</totalImpuesto>
 `;
   }
 

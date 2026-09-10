@@ -14,36 +14,22 @@ export function buildFacturaXml(comprobante: ComprobanteDto, emisor: EmisorDto):
   const baseGrabada = Number(comprobante.subtotal ?? 0);
   const totalSinImpuestos = baseTarifa0 + baseGrabada;
   const totalDescuento = Number(comprobante.totaldescuento ?? 0);
-  const iva = Number(comprobante.iva ?? 0);
-  const porcentajeIva = baseGrabada > 0 ? (iva * 100) / baseGrabada : 0;
-
-  let subtotales = '';
-  if (baseGrabada > 0) {
-    subtotales += `				<totalImpuesto>
-					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
-					<codigoPorcentaje>${getCodigoPorcentajeIva(porcentajeIva)}</codigoPorcentaje>
-					<descuentoAdicional>${fNumero(0)}</descuentoAdicional>
-					<baseImponible>${fNumero(baseGrabada)}</baseImponible>
-					<valor>${fNumero(iva)}</valor>
-				</totalImpuesto>
-`;
-  }
-  if (baseTarifa0 > 0) {
-    subtotales += `				<totalImpuesto>
-					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
-					<codigoPorcentaje>${CODIGO_PORCENTAJE_IVA_0}</codigoPorcentaje>
-					<descuentoAdicional>${fNumero(0)}</descuentoAdicional>
-					<baseImponible>${fNumero(baseTarifa0)}</baseImponible>
-					<valor>${fNumero(0)}</valor>
-				</totalImpuesto>
-`;
-  }
+  const porcentajeIva =
+    baseGrabada > 0 ? (Number(comprobante.iva ?? 0) * 100) / baseGrabada : 0;
 
   const agenteRetencion = comprobante.agenteRetencion ? `<agenteRetencion>1</agenteRetencion> \n` : '';
 
+  // El IVA agregado de <totalImpuesto> se arma como la suma de los <impuesto><valor> por
+  // línea (ya redondeados a 2 decimales, los mismos que se imprimen abajo) en vez de
+  // recalcularse por separado sobre baseGrabada - así el XML queda internamente consistente
+  // (la suma de las líneas coincide siempre con el total declarado), sin depender de si
+  // baseGrabada quedó redondeada antes o después. valor_iva_cccfa (BD, RIDE, contabilidad)
+  // no se toca - esto sólo afecta el número que se imprime en este XML.
+  let ivaAcumulada = 0;
   let detalles = '';
   for (const detalle of comprobante.detalle ?? []) {
-    const valorIva = detalle.preciototalsinimpuesto * (detalle.porcentajeiva / 100);
+    const valorIvaRedondeado = Math.round(detalle.preciototalsinimpuesto * (detalle.porcentajeiva / 100) * 100) / 100;
+    if (detalle.porcentajeiva > 0) ivaAcumulada += valorIvaRedondeado;
     detalles += `			<detalle>
 				<codigoPrincipal>${detalle.codigoprincipal}</codigoPrincipal>
 				<codigoAuxiliar>${detalle.codigoauxiliar ?? detalle.codigoprincipal}</codigoAuxiliar>
@@ -58,10 +44,32 @@ export function buildFacturaXml(comprobante: ComprobanteDto, emisor: EmisorDto):
 						<codigoPorcentaje>${getCodigoPorcentajeIva(detalle.porcentajeiva)}</codigoPorcentaje>
 						<tarifa>${detalle.porcentajeiva}</tarifa>
 						<baseImponible>${fNumero(detalle.preciototalsinimpuesto)}</baseImponible>
-						<valor>${fNumero(valorIva)}</valor>
+						<valor>${fNumero(valorIvaRedondeado)}</valor>
 					</impuesto>
 				</impuestos>
 			</detalle>
+`;
+  }
+
+  let subtotales = '';
+  if (baseGrabada > 0) {
+    subtotales += `				<totalImpuesto>
+					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
+					<codigoPorcentaje>${getCodigoPorcentajeIva(porcentajeIva)}</codigoPorcentaje>
+					<descuentoAdicional>${fNumero(0)}</descuentoAdicional>
+					<baseImponible>${fNumero(baseGrabada)}</baseImponible>
+					<valor>${fNumero(ivaAcumulada)}</valor>
+				</totalImpuesto>
+`;
+  }
+  if (baseTarifa0 > 0) {
+    subtotales += `				<totalImpuesto>
+					<codigo>${TipoImpuestoCodigo.IVA}</codigo>
+					<codigoPorcentaje>${CODIGO_PORCENTAJE_IVA_0}</codigoPorcentaje>
+					<descuentoAdicional>${fNumero(0)}</descuentoAdicional>
+					<baseImponible>${fNumero(baseTarifa0)}</baseImponible>
+					<valor>${fNumero(0)}</valor>
+				</totalImpuesto>
 `;
   }
 

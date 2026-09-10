@@ -145,6 +145,19 @@ export class FacturasSaveService extends BaseService {
             const { data, detalles } = dtoIn;
             const isUpdate = dtoIn.isUpdate && !!data.ide_cccfa;
 
+            // Regla de negocio: no se permite ningún descuento en facturas pagadas con
+            // tarjeta - se fuerza en servidor (defensa en profundidad, el frontend ya
+            // deshabilita el campo) en vez de confiar en lo que mande el cliente.
+            if (isDefined(data.ide_cuenta_tarjeta)) {
+                for (const det of detalles) {
+                    if ((det.descuento_ccdfa ?? 0) > 0 || (det.porcentaje_descuento_ccdfa ?? 0) > 0) {
+                        det.total_ccdfa = Number((det.total_ccdfa + (det.descuento_ccdfa ?? 0)).toFixed(2));
+                        det.descuento_ccdfa = 0;
+                        det.porcentaje_descuento_ccdfa = 0;
+                    }
+                }
+            }
+
             // Sanitizar fecha: normalizar a YYYY-MM-DD
             data.fecha_emisi_cccfa = toPgDate(data.fecha_emisi_cccfa) || getCurrentDate();
             if (dtoIn.guia) {

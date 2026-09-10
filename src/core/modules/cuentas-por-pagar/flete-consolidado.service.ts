@@ -453,40 +453,47 @@ export class FleteConsolidadoService extends BaseService {
                 cf.numero_cpcfa,
                 cf.total_cpcfa,
                 (SELECT COUNT(*) FROM cxp_det_flete_cons d WHERE d.ide_cpcfc = cc.ide_cpcfc) AS num_envios,
-                (
-                    -- Sin factura todavía (grupo "Pendiente Factura", cf.total_cpcfa IS NULL) se
-                    -- compara siempre envío a envío contra lo estimado (valor_cpdfc). Con
-                    -- factura y 1 solo envío, el ide_cpdfa vinculado puede ser solo una de varias
-                    -- líneas agrupadas por IVA (no toda la factura) - ahí se compara contra el
-                    -- total de la factura (cf.total_cpcfa) en vez de esa línea puntual. Con
-                    -- factura y 2+ envíos cada línea sí es 1 a 1, se compara normal - pero
-                    -- cd.valor_cpdfa es SIEMPRE la base sin IVA (cantidad*precio en el registro
-                    -- manual, precioTotalSinImpuesto en el XML - ver documentos-cxp-save.service.ts
-                    -- y documentos-cxp-xml.service.ts), así que si la línea grava IVA hay que
-                    -- sumárselo antes de comparar contra total_flete_cctfa (que sí incluye IVA);
-                    -- si no, cualquier línea gravada se ve como "cobro de más" por el valor exacto
-                    -- del IVA.
-                    SELECT CASE
-                        WHEN cf.total_cpcfa IS NULL THEN
-                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc)))
-                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa, d.valor_cpdfc)), 0)
-                        WHEN COUNT(*) = 1 THEN
-                            CASE WHEN MAX(e.total_flete_cctfa) != cf.total_cpcfa
-                                 THEN ABS(MAX(e.total_flete_cctfa) - cf.total_cpcfa) ELSE 0 END
-                        ELSE
-                            COALESCE(SUM(ABS(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc)))
-                                     FILTER (WHERE e.total_flete_cctfa != COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc)), 0)
-                    END
-                    FROM cxp_det_flete_cons d
-                    LEFT JOIN cxp_detall_factur cd       ON d.ide_cpdfa = cd.ide_cpdfa
-                    INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
-                    WHERE d.ide_cpcfc = cc.ide_cpcfc
-                ) AS diferencia_total,
+                -- ABS(neto) para el monto y el signo de ese mismo neto para el tipo - antes se
+                -- sumaba ABS() envío a envío (SUM(ABS(a-b))), que da la magnitud BRUTA de los
+                -- descuadres individuales, no el descuadre real del grupo: con 3 envíos que
+                -- cobraron -1, +2 y 0, esa suma daba 3 (1+2+0) en vez de 1 (el neto real: -1+2+0).
+                ABS(COALESCE(dif.neto, 0)) AS diferencia_total,
+                CASE
+                    WHEN dif.neto > 0 THEN 'Cobro más'
+                    WHEN dif.neto < 0 THEN 'Cobro menos'
+                    ELSE NULL
+                END AS tipo_diferencia_total,
                 cc.hora_ingre
             FROM cxp_cab_flete_cons cc
             INNER JOIN cxp_estado_flete_cons ec ON cc.ide_cpefc = ec.ide_cpefc
             INNER JOIN gen_persona p            ON cc.ide_geper = p.ide_geper
             LEFT JOIN cxp_cabece_factur cf       ON cc.ide_cpcfa = cf.ide_cpcfa
+            -- Sin factura todavía (grupo "Pendiente Factura", cf.total_cpcfa IS NULL) se compara
+            -- siempre envío a envío contra lo estimado (valor_cpdfc). Con factura y 1 solo envío,
+            -- el ide_cpdfa vinculado puede ser solo una de varias líneas agrupadas por IVA (no
+            -- toda la factura) - ahí se compara contra el total de la factura (cf.total_cpcfa) en
+            -- vez de esa línea puntual. Con factura y 2+ envíos cada línea sí es 1 a 1, se compara
+            -- normal - pero cd.valor_cpdfa es SIEMPRE la base sin IVA (cantidad*precio en el
+            -- registro manual, precioTotalSinImpuesto en el XML - ver
+            -- documentos-cxp-save.service.ts y documentos-cxp-xml.service.ts), así que si la
+            -- línea grava IVA hay que sumárselo antes de comparar contra total_flete_cctfa (que sí
+            -- incluye IVA); si no, cualquier línea gravada se ve como "cobro de más" por el valor
+            -- exacto del IVA. El SUM es del NETO (a-b, con signo) - no de ABS(a-b) - para que
+            -- diferencias en sentidos opuestos se cancelen entre sí en vez de acumularse.
+            LEFT JOIN LATERAL (
+                SELECT CASE
+                    WHEN cf.total_cpcfa IS NULL THEN
+                        SUM(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa, d.valor_cpdfc))
+                    WHEN COUNT(*) = 1 THEN
+                        MAX(e.total_flete_cctfa) - cf.total_cpcfa
+                    ELSE
+                        SUM(e.total_flete_cctfa - COALESCE(cd.valor_cpdfa * CASE WHEN cd.iva_inarti_cpdfa = 1 THEN 1 + COALESCE(cf.tarifa_iva_cpcfa, 0) ELSE 1 END, d.valor_cpdfc))
+                END AS neto
+                FROM cxp_det_flete_cons d
+                LEFT JOIN cxp_detall_factur cd       ON d.ide_cpdfa = cd.ide_cpdfa
+                INNER JOIN cxc_transporte_factura e ON d.ide_cctfa = e.ide_cctfa
+                WHERE d.ide_cpcfc = cc.ide_cpcfc
+            ) dif ON TRUE
             WHERE cc.ide_empr = $1
               AND cc.ide_sucu = $2
               AND cc.activo_cpcfc = true
