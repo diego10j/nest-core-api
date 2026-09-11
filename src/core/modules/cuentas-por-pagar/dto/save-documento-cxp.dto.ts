@@ -415,9 +415,11 @@ export class SaveDocumentoCxPDto {
     ide_cpctr_anticipo?: number;
 
     /**
-     * FK → cxc_datos_fac (punto de emisión). Requerido solo para Liquidación de
-     * Compra electrónica (cuando numero_cpcfa/autorizacio_cpcfa no se ingresan
-     * a mano): de aquí se toman estab/ptoEmi para generar el comprobante SRI.
+     * FK → cxc_datos_fac (punto de emisión). Requerido al crear un documento de
+     * Liquidación de Compra (electrónica o física, según cxc_datos_fac.es_electronica_ccdaf):
+     * electrónica genera el comprobante SRI (estab/ptoEmi + clave de acceso); física calcula
+     * numero_cpcfa/autorizacio_cpcfa desde el contador propio del punto de emisión
+     * (num_actual_ccdfa/autorizacion_ccdaf). No aplica a otros tipos de documento CxP.
      */
     @IsOptional()
     @IsInt()

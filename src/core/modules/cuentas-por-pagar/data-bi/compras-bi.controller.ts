@@ -9,6 +9,7 @@ import { ComprasBiService } from './compras-bi.service';
 import { ComparativoVentasComprasDto } from './dto/comparativo-ventas-compras.dto';
 import { ComprasDiariasDto } from './dto/compras-diarias.dto';
 import { ComprasMensualesDto } from './dto/compras-mensuales.dto';
+import { SucursalDto } from './dto/sucursal.dto';
 import { TopProveedoresDto } from './dto/top-proveedores.dto';
 
 @ApiTags('Compras-DataBI')
@@ -68,8 +69,11 @@ export class ComprasBiController {
   @Get('getResumenComprasPeriodos')
   @ApiOperation({ summary: 'Obtener resumen comparativo de compras por año' })
   @Auth()
-  getResumenComprasPeriodos(@AppHeaders() headersParams: HeaderParamsDto) {
-    return this.service.getResumenComprasPeriodos(headersParams);
+  getResumenComprasPeriodos(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SucursalDto,
+  ) {
+    return this.service.getResumenComprasPeriodos({ ...headersParams, ...dtoIn });
   }
 
   @Get('getComparativoVentasCompras')

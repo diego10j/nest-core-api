@@ -11,8 +11,10 @@ import { AnticiposProveedorCxPDto } from './dto/anticipos-proveedor-cxp.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
+import { PuntosEmisionLiquidacionDto } from './dto/puntos-emision-liquidacion.dto';
 import { ReporteComprasMensualesDto } from './dto/reporte-compras-mensuales.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
+import { SecuencialDocumentoCxPDto } from './dto/secuencial-documento-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
 
 /** Tipo de documento "Importaciones" (valor fijo heredado del legacy) */
@@ -941,34 +943,44 @@ export class DocumentosCxPService extends BaseService {
         return this.dataSource.createSelectQuery(query);
     }
 
-    /**
-     * Retorna el siguiente secuencial de liquidación de compra: conserva el
-     * prefijo estab-ptoEmi (6 primeros caracteres) de la última liquidación y
-     * suma 1 al secuencial con padding a 9 dígitos. Incluye la autorización
-     * de la última liquidación registrada (paridad legacy).
-     */
-    /** Puntos de emisión habilitados para Liquidación de Compra electrónica (mismo mecanismo
-     * que getPuntosEmisionRetencion, ide_cntdoc=4 en vez de 8 - ver cxc_datos_fac). El
-     * ide_ccdaf elegido aquí es requerido por DocumentosCxPSaveService.saveDocumento para
-     * generar secuencial + clave de acceso automáticamente. */
-    async getPuntosEmisionLiquidacion(dtoIn: HeaderParamsDto) {
+    /** Puntos de emisión para Liquidación de Compra (mismo mecanismo que
+     * getPuntosEmisionRetencion, ide_cntdoc=4 en vez de 8 - ver cxc_datos_fac), filtrables por
+     * `electronica` (cxc_datos_fac.es_electronica_ccdaf) para distinguir el punto de emisión
+     * electrónico (requerido por DocumentosCxPSaveService.saveDocumento para generar
+     * secuencial + clave de acceso vía SRI) del físico/preimpreso (secuencial propio via
+     * num_actual_ccdfa, sin SRI - ver Liquidación Compra Física en documento-cxp-form.tsx). */
+    async getPuntosEmisionLiquidacion(dtoIn: HeaderParamsDto & PuntosEmisionLiquidacionDto) {
+        const filtrarElectronica = isDefined(dtoIn.electronica);
         const query = new SelectQuery(`
             SELECT ide_ccdaf,
                    CAST(ide_ccdaf AS VARCHAR) AS value,
                    serie_ccdaf || ' ' || COALESCE(autorizacion_ccdaf, '') AS label,
                    establecimiento_ccdfa,
                    pto_emision_ccdfa,
-                   observacion_ccdaf
+                   observacion_ccdaf,
+                   es_electronica_ccdaf
             FROM cxc_datos_fac
             WHERE ide_cntdoc = 4
               AND ide_sucu = $1
+              AND activo_ccdaf = TRUE
+              ${filtrarElectronica ? 'AND es_electronica_ccdaf = $2' : ''}
         `);
         query.addIntParam(1, dtoIn.ideSucu);
+        if (filtrarElectronica) query.addBooleanParam(2, dtoIn.electronica!);
         return this.dataSource.createSelectQuery(query);
     }
 
-    async getSecuencialLiquidacion(dtoIn: HeaderParamsDto) {
-        const liqCompra = this.variables.get('p_con_tipo_documento_liquidacion_compra');
+    /**
+     * Retorna el siguiente secuencial sugerido para un tipo de documento CxP dado: conserva
+     * el prefijo estab-ptoEmi (6 primeros caracteres) del último documento de ese tipo y suma
+     * 1 al secuencial con padding a 9 dígitos. Solo una SUGERENCIA para digitación manual
+     * (Importaciones, o Liquidación de Compra física antes de elegir punto de emisión) - no
+     * reserva el número: el guardado de Liquidación física con punto de emisión (ide_ccdaf)
+     * calcula el número autoritativo desde cxc_datos_fac.num_actual_ccdfa en la misma
+     * transacción (ver DocumentosCxPSaveService.saveDocumento), evitando la colisión que este
+     * escaneo por MAX() no puede prevenir bajo uso concurrente.
+     */
+    async getSecuencialDocumentoCxP(dtoIn: SecuencialDocumentoCxPDto & HeaderParamsDto) {
         const query = new SelectQuery(`
             SELECT numero_cpcfa, autorizacio_cpcfa
             FROM cxp_cabece_factur
@@ -978,16 +990,16 @@ export class DocumentosCxPService extends BaseService {
             LIMIT 1
         `);
         query.addIntParam(1, dtoIn.ideEmpr);
-        query.addIntParam(2, Number(liqCompra));
-        const ultima = await this.dataSource.createSingleQuery(query);
-        if (!ultima?.numero_cpcfa || String(ultima.numero_cpcfa).length <= 6) {
+        query.addIntParam(2, Number(dtoIn.ide_cntdo));
+        const ultimo = await this.dataSource.createSingleQuery(query);
+        if (!ultimo?.numero_cpcfa || String(ultimo.numero_cpcfa).length <= 6) {
             return { numero_cpcfa: null, autorizacio_cpcfa: null };
         }
-        const numLiq = String(ultima.numero_cpcfa);
-        const secuencial = (Number.parseInt(numLiq.substring(6), 10) || 0) + 1;
+        const numAnterior = String(ultimo.numero_cpcfa);
+        const secuencial = (Number.parseInt(numAnterior.substring(6), 10) || 0) + 1;
         return {
-            numero_cpcfa: numLiq.substring(0, 6) + String(secuencial).padStart(9, '0'),
-            autorizacio_cpcfa: ultima.autorizacio_cpcfa,
+            numero_cpcfa: numAnterior.substring(0, 6) + String(secuencial).padStart(9, '0'),
+            autorizacio_cpcfa: ultimo.autorizacio_cpcfa,
         };
     }
 

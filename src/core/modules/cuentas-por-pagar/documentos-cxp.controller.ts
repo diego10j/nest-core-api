@@ -27,9 +27,11 @@ import { GenerarAsientosComprasDto } from './dto/generar-asientos-compras.dto';
 import { GetDocumentosCxPDto } from './dto/get-documentos-cxp.dto';
 import { PeriodoCxPDto, PeriodoMesCxPDto } from './dto/periodo-mes-cxp.dto';
 import { ProveedoresCxPDto } from './dto/proveedores-cxp.dto';
+import { PuntosEmisionLiquidacionDto } from './dto/puntos-emision-liquidacion.dto';
 import { ReporteComprasMensualesDto } from './dto/reporte-compras-mensuales.dto';
 import { SaldosProveedoresCxPDto } from './dto/saldos-proveedores-cxp.dto';
 import { SaveDocumentoCxPDto } from './dto/save-documento-cxp.dto';
+import { SecuencialDocumentoCxPDto } from './dto/secuencial-documento-cxp.dto';
 import { SustentoTributarioCxPDto } from './dto/sustento-tributario-cxp.dto';
 
 @ApiTags('CuentasPorPagar - Documentos')
@@ -152,18 +154,24 @@ export class DocumentosCxPController {
         return this.service.getAnticiposProveedor({ ...headersParams, ...dtoIn });
     }
 
-    @Get('getSecuencialLiquidacion')
+    @Get('getSecuencialDocumento')
     @Auth()
-    @ApiOperation({ summary: 'Obtener el siguiente secuencial de liquidación de compra' })
-    getSecuencialLiquidacion(@AppHeaders() headersParams: HeaderParamsDto) {
-        return this.service.getSecuencialLiquidacion(headersParams);
+    @ApiOperation({ summary: 'Sugerir el siguiente secuencial de un tipo de documento CxP (Importaciones, Liquidación de Compra física)' })
+    getSecuencialDocumento(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: SecuencialDocumentoCxPDto,
+    ) {
+        return this.service.getSecuencialDocumentoCxP({ ...headersParams, ...dtoIn });
     }
 
     @Get('getPuntosEmisionLiquidacion')
     @Auth()
-    @ApiOperation({ summary: 'Listar puntos de emisión habilitados para Liquidación de Compra electrónica' })
-    getPuntosEmisionLiquidacion(@AppHeaders() headersParams: HeaderParamsDto) {
-        return this.service.getPuntosEmisionLiquidacion(headersParams);
+    @ApiOperation({ summary: 'Listar puntos de emisión de Liquidación de Compra, opcionalmente filtrados por electrónico/físico' })
+    getPuntosEmisionLiquidacion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query() dtoIn: PuntosEmisionLiquidacionDto,
+    ) {
+        return this.service.getPuntosEmisionLiquidacion({ ...headersParams, ...dtoIn });
     }
 
     @Get('getDocumentosAnulados')

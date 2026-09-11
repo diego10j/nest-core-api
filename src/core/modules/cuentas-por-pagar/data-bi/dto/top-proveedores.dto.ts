@@ -1,4 +1,4 @@
-import { IsDateString, IsNumber, IsOptional } from 'class-validator';
+import { IsArray, IsDateString, IsNumber, IsOptional, IsNotEmpty, ArrayNotEmpty } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class TopProveedoresDto extends QueryOptionsDto {
@@ -11,4 +11,10 @@ export class TopProveedoresDto extends QueryOptionsDto {
   @IsNumber()
   @IsOptional()
   limit?: number = 10;
+
+  @ArrayNotEmpty()
+  @IsNotEmpty({ each: true })
+  @IsArray()
+  @IsOptional()
+  ide_sucu?: number[];
 }

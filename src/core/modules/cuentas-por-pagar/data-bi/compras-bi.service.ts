@@ -11,6 +11,7 @@ import { SelectQuery } from '../../../connection/helpers/select-query';
 import { ComparativoVentasComprasDto } from './dto/comparativo-ventas-compras.dto';
 import { ComprasDiariasDto } from './dto/compras-diarias.dto';
 import { ComprasMensualesDto } from './dto/compras-mensuales.dto';
+import { SucursalDto } from './dto/sucursal.dto';
 import { TopProveedoresDto } from './dto/top-proveedores.dto';
 
 @Injectable()
@@ -35,6 +36,10 @@ export class ComprasBiService extends BaseService {
      * KPIs principales de compras (total, ticket promedio, proveedores activos, IVA pagado, crecimiento).
      */
     async getKPIsCompras(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(`
             WITH compras_periodo AS (
                 SELECT
@@ -49,6 +54,7 @@ export class ComprasBiService extends BaseService {
                     AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                     AND ide_rem_cpcfa IS NULL
                     AND ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursal}
             ),
             compras_periodo_anterior AS (
                 SELECT
@@ -60,6 +66,7 @@ export class ComprasBiService extends BaseService {
                     AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                     AND ide_rem_cpcfa IS NULL
                     AND ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursal}
             )
             SELECT
                 cp.total_facturas,
@@ -244,6 +251,9 @@ export class ComprasBiService extends BaseService {
                     COALESCE(cm.total_compras_bruto, 0) AS total_compras
                 FROM meses_anios ma
                 LEFT JOIN compras_mensuales cm ON cm.mes_numero = ma.mes_numero
+                -- Solo meses con compras reales - excluye meses futuros/sin datos que
+                -- generarían un falso -100% de crecimiento contra un mes anterior real
+                WHERE cm.mes_numero IS NOT NULL
             ),
             compras_calculadas AS (
                 SELECT
@@ -291,6 +301,10 @@ export class ComprasBiService extends BaseService {
      * Top proveedores por monto de compras en un período.
      */
     async getTopProveedores(dtoIn: TopProveedoresDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(
             `
             SELECT
@@ -306,7 +320,8 @@ export class ComprasBiService extends BaseService {
                      AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
                      AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                      AND ide_rem_cpcfa IS NULL
-                     AND ide_empr = ${dtoIn.ideEmpr}), 2) AS porcentaje
+                     AND ide_empr = ${dtoIn.ideEmpr}
+                     ${whereSucursal}), 2) AS porcentaje
             FROM cxp_cabece_factur cf
             JOIN gen_persona p ON cf.ide_geper = p.ide_geper
             WHERE cf.fecha_emisi_cpcfa BETWEEN $3 AND $4
@@ -314,6 +329,7 @@ export class ComprasBiService extends BaseService {
                 AND cf.ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                 AND cf.ide_rem_cpcfa IS NULL
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
+                ${whereSucursal}
             GROUP BY p.ide_geper, p.nom_geper
             ORDER BY total_compras DESC
             LIMIT ${dtoIn.limit}
@@ -331,24 +347,31 @@ export class ComprasBiService extends BaseService {
      * Top productos/artículos comprados en un período.
      */
     async getTopProductosComprados(dtoIn: TopProveedoresDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND cf.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(
             `
             SELECT
                 d.ide_inarti,
                 art.codigo_inarti,
                 art.nombre_inarti AS producto,
+                uni.siglas_inuni,
                 COUNT(DISTINCT cf.ide_cpcfa) AS num_facturas,
                 SUM(d.cantidad_cpdfa) AS cantidad_comprada,
                 SUM(d.valor_cpdfa) AS total_comprado
             FROM cxp_detall_factur d
             JOIN cxp_cabece_factur cf ON d.ide_cpcfa = cf.ide_cpcfa
             JOIN inv_articulo art ON d.ide_inarti = art.ide_inarti
+            LEFT JOIN inv_unidad uni ON uni.ide_inuni = art.ide_inuni
             WHERE cf.fecha_emisi_cpcfa BETWEEN $1 AND $2
                 AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
                 AND cf.ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                 AND cf.ide_rem_cpcfa IS NULL
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY d.ide_inarti, art.codigo_inarti, art.nombre_inarti
+                ${whereSucursal}
+            GROUP BY d.ide_inarti, art.codigo_inarti, art.nombre_inarti, uni.siglas_inuni
             ORDER BY total_comprado DESC
             LIMIT ${dtoIn.limit}
             `,
@@ -363,6 +386,10 @@ export class ComprasBiService extends BaseService {
      * Compras agrupadas por categoría de producto.
      */
     async getComprasPorCategoriaProducto(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND cf.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(`
             SELECT
                 COALESCE(art.ide_incate, -1) AS ide_categoria,
@@ -378,6 +405,7 @@ export class ComprasBiService extends BaseService {
                 AND cf.ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                 AND cf.ide_rem_cpcfa IS NULL
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
+                ${whereSucursal}
             GROUP BY art.ide_incate, COALESCE(cat.nombre_incate, 'SIN CATEGORÍA')
             ORDER BY total_comprado DESC
         `);
@@ -389,7 +417,11 @@ export class ComprasBiService extends BaseService {
     /**
      * Resumen anual de compras (para comparar períodos completos).
      */
-    async getResumenComprasPeriodos(dtoIn: HeaderParamsDto) {
+    async getResumenComprasPeriodos(dtoIn: SucursalDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(`
             SELECT
                 EXTRACT(YEAR FROM fecha_emisi_cpcfa) AS anio,
@@ -410,6 +442,7 @@ export class ComprasBiService extends BaseService {
                 AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                 AND ide_rem_cpcfa IS NULL
                 AND ide_empr = ${dtoIn.ideEmpr}
+                ${whereSucursal}
             GROUP BY EXTRACT(YEAR FROM fecha_emisi_cpcfa)
             ORDER BY anio DESC
         `);

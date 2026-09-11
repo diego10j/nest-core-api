@@ -185,11 +185,59 @@ export class DocumentosCxPSaveService extends BaseService {
             // Líneas de reembolso opcionales dentro de una Liquidación de Compra (Anexo 17 SRI),
             // en cxp_datos_com_reembolso (tabla ya existente en el core para este propósito).
             const reembolsosLiquidacion = esLiquidacionCompra ? (dtoIn.reembolsosLiquidacion ?? []) : [];
-            // Liquidación de Compra electrónica: numero_cpcfa/autorizacio_cpcfa no vienen del
-            // usuario (a diferencia del resto de documentos CxP, recibidos de terceros) — se
-            // generan al guardar mediante el generador de cabecera SRI (paridad Retención CxP).
+            // Liquidación de Compra (creación): numero_cpcfa/autorizacio_cpcfa nunca vienen del
+            // usuario (a diferencia del resto de documentos CxP, recibidos de terceros) — el
+            // punto de emisión elegido (ide_ccdaf, cxc_datos_fac) decide si el número sale del
+            // generador de cabecera SRI (electrónica, paridad Retención CxP) o del contador
+            // propio num_actual_ccdfa del punto de emisión físico/preimpreso.
+            let datosPuntoEmision: {
+                estab: string; ptoEmi: string; esElectronicaPunto: boolean;
+                numActual: number; autorizacion: string | null;
+            } | undefined;
+            if (esLiquidacionCompra && !isUpdate) {
+                if (!dtoIn.ide_ccdaf) {
+                    throw new BadRequestException(
+                        'Debe seleccionar el punto de emisión de la Liquidación de Compra.',
+                    );
+                }
+                const qPunto = new SelectQuery(`
+                    SELECT serie_ccdaf, es_electronica_ccdaf,
+                           COALESCE(num_actual_ccdfa, num_inicia_ccdaf, 0) AS num_actual_ccdfa,
+                           autorizacion_ccdaf
+                    FROM cxc_datos_fac
+                    WHERE ide_ccdaf = $1
+                `);
+                qPunto.addIntParam(1, dtoIn.ide_ccdaf);
+                const punto = await this.dataSource.createSingleQuery(qPunto);
+                if (!punto?.serie_ccdaf) {
+                    throw new BadRequestException(`No existe el punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf}`);
+                }
+                const serie = String(punto.serie_ccdaf);
+                datosPuntoEmision = {
+                    estab: serie.slice(0, 3),
+                    ptoEmi: serie.slice(3, 6),
+                    esElectronicaPunto: !!punto.es_electronica_ccdaf,
+                    numActual: Number(punto.num_actual_ccdfa),
+                    autorizacion: punto.autorizacion_ccdaf ?? null,
+                };
+            }
             const esElectronica = esLiquidacionCompra && !isUpdate
-                && !cabecera.numero_cpcfa && !cabecera.autorizacio_cpcfa;
+                && datosPuntoEmision!.esElectronicaPunto;
+            // Liquidación de Compra física: el secuencial sale de num_actual_ccdfa del punto de
+            // emisión elegido (mismo contador que usan las facturas de venta electrónicas para
+            // su propio número), sincronizado en la misma transacción (ver UPDATE más abajo) -
+            // más robusto ante uso concurrente que el escaneo MAX(numero_cpcfa) de
+            // getSecuencialDocumentoCxP (solo una sugerencia previa al guardado real).
+            const esLiquidacionFisica = esLiquidacionCompra && !isUpdate
+                && !datosPuntoEmision!.esElectronicaPunto;
+            let siguienteNumActualFisica: number | undefined;
+            if (esLiquidacionFisica) {
+                siguienteNumActualFisica = datosPuntoEmision!.numActual + 1;
+                cabecera.numero_cpcfa =
+                    `${datosPuntoEmision!.estab}${datosPuntoEmision!.ptoEmi}` +
+                    String(siguienteNumActualFisica).padStart(9, '0');
+                cabecera.autorizacio_cpcfa = datosPuntoEmision!.autorizacion ?? '';
+            }
 
             // ── Sanitizar fechas ─────────────────────────────────────────────
             cabecera.fecha_emisi_cpcfa = toPgDate(cabecera.fecha_emisi_cpcfa) || getCurrentDate();
@@ -242,20 +290,7 @@ export class DocumentosCxPSaveService extends BaseService {
             let ideSrcomElectronico: number | undefined;
             let sriHeaderQuery: InsertQuery | undefined;
             if (esElectronica) {
-                if (!dtoIn.ide_ccdaf) {
-                    throw new BadRequestException(
-                        'Debe seleccionar el punto de emisión (ide_ccdaf) para la Liquidación de Compra electrónica.',
-                    );
-                }
-                const qSerie = new SelectQuery(`SELECT serie_ccdaf FROM cxc_datos_fac WHERE ide_ccdaf = $1`);
-                qSerie.addIntParam(1, dtoIn.ide_ccdaf);
-                const serieRow = await this.dataSource.createSingleQuery(qSerie);
-                if (!serieRow?.serie_ccdaf) {
-                    throw new BadRequestException(`No existe el punto de emisión ide_ccdaf=${dtoIn.ide_ccdaf}`);
-                }
-                const serie = String(serieRow.serie_ccdaf);
-                const estab = serie.slice(0, 3);
-                const ptoEmi = serie.slice(3, 6);
+                const { estab, ptoEmi } = datosPuntoEmision!;
 
                 const qProveedor = new SelectQuery(`SELECT identificac_geper, correo_geper FROM gen_persona WHERE ide_geper = $1`);
                 qProveedor.addIntParam(1, cabecera.ide_geper);
@@ -368,6 +403,9 @@ export class DocumentosCxPSaveService extends BaseService {
             }
             if (sriHeaderQuery) {
                 listQuery.push(sriHeaderQuery);
+            }
+            if (esLiquidacionFisica) {
+                listQuery.push(this.buildUpdateNumActualCcdaf(dtoIn.ide_ccdaf!, siguienteNumActualFisica!));
             }
 
             let detallesIdeCpdfa: number[] | undefined;
@@ -1009,6 +1047,20 @@ export class DocumentosCxPSaveService extends BaseService {
         q.values.set('hora_actua', getCurrentTime());
         q.where = `ide_geper = $1`;
         q.addIntParam(1, cabecera.ide_geper);
+        return q;
+    }
+
+    /** Sincroniza el contador del punto de emisión físico de Liquidación de Compra
+     * (cxc_datos_fac.num_actual_ccdfa) tras usar su siguiente número - mismo mecanismo que
+     * usan las facturas de venta electrónicas para su propio punto de emisión.
+     * `cxc_datos_fac` no tiene columnas de auditoría de actualización (usuario_actua/
+     * fecha_actua) — a propósito no se pasa `dtoIn` al constructor de UpdateQuery para no
+     * intentar setear `usuario_actua`, que rompería el UPDATE (columna inexistente). */
+    private buildUpdateNumActualCcdaf(ideCcdaf: number, siguienteNumActual: number): UpdateQuery {
+        const q = new UpdateQuery('cxc_datos_fac', 'ide_ccdaf');
+        q.values.set('num_actual_ccdfa', siguienteNumActual);
+        q.where = `ide_ccdaf = $1`;
+        q.addIntParam(1, ideCcdaf);
         return q;
     }
 
