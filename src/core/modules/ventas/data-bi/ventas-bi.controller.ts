@@ -11,6 +11,7 @@ import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
 import { RangoFechasSucursalDto } from './dto/rango-fechas-sucursal.dto';
+import { SucursalDto } from './dto/sucursal.dto';
 import { TopClientesDto } from './dto/top-clientes.dto';
 import { VentasBiService } from './ventas-bi.service';
 
@@ -74,6 +75,19 @@ export class VentasBiController {
   @Auth()
   getTopVendedores(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTopVendedores({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getPromedioVentasPorVendedor')
+  @ApiOperation({ summary: 'Obtener ticket promedio y clientes atendidos por vendedor en un período' })
+  @Auth()
+  getPromedioVentasPorVendedor(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: RangoFechasDto,
+  ) {
+    return this.service.getPromedioVentasPorVendedor({
       ...headersParams,
       ...dtoIn,
     });
@@ -152,8 +166,14 @@ export class VentasBiController {
   @Get('getResumenVentasPeriodos')
   @ApiOperation({ summary: 'Obtener resumen comparativo de ventas entre períodos (actual, anterior, hace 2 años)' })
   @Auth()
-  getResumenVentasPeriodos(@AppHeaders() headersParams: HeaderParamsDto) {
-    return this.service.getResumenVentasPeriodos(headersParams);
+  getResumenVentasPeriodos(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SucursalDto,
+  ) {
+    return this.service.getResumenVentasPeriodos({
+      ...headersParams,
+      ...dtoIn,
+    });
   }
 
   @Get('getVariacionVentasPeriodos')
@@ -199,8 +219,14 @@ export class VentasBiController {
   @Get('getTotalClientesPorProvincia')
   @ApiOperation({ summary: 'Obtener distribución de clientes por provincia' })
   @Auth()
-  getTotalClientesPorProvincia(@AppHeaders() headersParams: HeaderParamsDto) {
-    return this.service.getTotalClientesPorProvincia(headersParams);
+  getTotalClientesPorProvincia(
+    @AppHeaders() headersParams: HeaderParamsDto,
+    @Query() dtoIn: SucursalDto,
+  ) {
+    return this.service.getTotalClientesPorProvincia({
+      ...headersParams,
+      ...dtoIn,
+    });
   }
 
   @Get('getTopClientesFacturas')

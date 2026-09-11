@@ -55,52 +55,59 @@ export class InventarioBiService extends BaseService {
         const query = new SelectQuery(
             `
           WITH ventas_producto AS (
-              SELECT 
+              SELECT
                   iart.ide_inarti,
                   iart.uuid,
                   iart.nombre_inarti AS producto,
+                  uni.siglas_inuni,
                   COUNT(DISTINCT cf.ide_cccfa) AS num_facturas,
                   SUM(cdf.total_ccdfa) AS ventas_brutas,
-                  SUM(cdf.total_ccdfa) AS total_bruto
-              FROM 
+                  SUM(cdf.total_ccdfa) AS total_bruto,
+                  SUM(cdf.cantidad_ccdfa) AS cantidad_vendida
+              FROM
                   cxc_deta_factura cdf
-              JOIN 
+              JOIN
                   inv_articulo iart ON cdf.ide_inarti = iart.ide_inarti
-              JOIN 
+              JOIN
                   cxc_cabece_factura cf ON cdf.ide_cccfa = cf.ide_cccfa
-              WHERE 
+              LEFT JOIN
+                  inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
+              WHERE
                   cf.fecha_emisi_cccfa BETWEEN $1 AND $2
                   AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
                   AND iart.hace_kardex_inarti = true
                   AND cf.ide_empr = ${dtoIn.ideEmpr}
                   ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
-              GROUP BY 
-                  iart.ide_inarti, iart.uuid, iart.nombre_inarti
+              GROUP BY
+                  iart.ide_inarti, iart.uuid, iart.nombre_inarti, uni.siglas_inuni
           ),
           notas_credito_producto AS (
-              SELECT 
+              SELECT
                   cdn.ide_inarti,
-                  SUM(cdn.valor_cpdno) AS total_notas_credito
-              FROM 
+                  SUM(cdn.valor_cpdno) AS total_notas_credito,
+                  SUM(cdn.cantidad_cpdno) AS cantidad_notas_credito
+              FROM
                   cxp_cabecera_nota cn
-              JOIN 
+              JOIN
                   cxp_detalle_nota cdn ON cn.ide_cpcno = cdn.ide_cpcno
-              JOIN 
+              JOIN
                   cxc_cabece_factura cf ON cn.ide_cccfa = cf.ide_cccfa
-              WHERE 
+              WHERE
                   cn.fecha_emisi_cpcno BETWEEN $3 AND $4
                   AND cn.ide_cpeno = 1
                   ${whereSucursal.replace(/ide_sucu/g, 'cn.ide_sucu')}
-              GROUP BY 
+              GROUP BY
                   cdn.ide_inarti
           )
-          SELECT 
+          SELECT
               vp.ide_inarti,
               vp.uuid,
               vp.producto,
+              vp.siglas_inuni,
               vp.num_facturas,
               vp.ventas_brutas - COALESCE(nc.total_notas_credito, 0) AS total_ventas,
               COALESCE(nc.total_notas_credito, 0) AS total_notas_credito,
+              vp.cantidad_vendida - COALESCE(nc.cantidad_notas_credito, 0) AS cantidad_vendida,
               ROUND(
                   (vp.total_bruto - COALESCE(nc.total_notas_credito, 0)) * 100.0 / 
                   NULLIF((SELECT SUM(total_ccdfa) 
@@ -221,7 +228,9 @@ export class InventarioBiService extends BaseService {
         SELECT
             iart.ide_inarti,
             upper(iart.nombre_inarti) as nombre_inarti,
-            COUNT(1) AS num_facturas
+            uni.siglas_inuni,
+            COUNT(1) AS num_facturas,
+            SUM(cdf.cantidad_ccdfa) AS cantidad_facturada
         FROM
             cxc_deta_factura cdf
             INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = cdf.ide_cccfa
@@ -229,13 +238,14 @@ export class InventarioBiService extends BaseService {
             LEFT JOIN inv_unidad uni ON uni.ide_inuni = iart.ide_inuni
         WHERE
             cf.fecha_emisi_cccfa BETWEEN $1 AND $2
-            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            AND cf.ide_empr = ${dtoIn.ideEmpr} 
+            AND cf.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            AND cf.ide_empr = ${dtoIn.ideEmpr}
             AND hace_kardex_inarti = true
             ${whereSucursal.replace(/ide_sucu/g, 'cf.ide_sucu')}
         GROUP BY
             iart.ide_inarti,
-            iart.nombre_inarti
+            iart.nombre_inarti,
+            uni.siglas_inuni
         ORDER BY
             num_facturas  DESC
         ${limitConfig}`,

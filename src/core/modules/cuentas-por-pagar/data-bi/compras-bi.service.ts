@@ -421,6 +421,10 @@ export class ComprasBiService extends BaseService {
      * Usado tanto en el dashboard de Ventas como en el de Compras.
      */
     async getComparativoVentasCompras(dtoIn: ComparativoVentasComprasDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
         const query = new SelectQuery(`
             WITH ventas_mes AS (
                 SELECT
@@ -431,6 +435,7 @@ export class ComprasBiService extends BaseService {
                 WHERE fecha_emisi_cccfa BETWEEN $1 AND $2
                     AND ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
                     AND ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursal}
                 GROUP BY EXTRACT(MONTH FROM fecha_emisi_cccfa)
             ),
             compras_mes AS (
@@ -444,6 +449,7 @@ export class ComprasBiService extends BaseService {
                     AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                     AND ide_rem_cpcfa IS NULL
                     AND ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursal}
                 GROUP BY EXTRACT(MONTH FROM fecha_emisi_cpcfa)
             )
             SELECT
@@ -458,7 +464,12 @@ export class ComprasBiService extends BaseService {
                     WHEN COALESCE(v.total_ventas, 0) > 0
                     THEN ROUND((COALESCE(v.total_ventas, 0) - COALESCE(c.total_compras, 0)) / v.total_ventas * 100, 2)
                     ELSE 0
-                END AS margen_porcentual
+                END AS margen_porcentual,
+                CASE
+                    WHEN COALESCE(v.total_ventas, 0) > 0
+                    THEN ROUND(COALESCE(c.total_compras, 0) / v.total_ventas * 100, 2)
+                    ELSE 0
+                END AS ratio_compras_ventas
             FROM gen_mes gm
             LEFT JOIN ventas_mes v ON gm.ide_gemes = v.mes
             LEFT JOIN compras_mes c ON gm.ide_gemes = c.mes

@@ -1296,8 +1296,11 @@ export class FacturasService extends BaseService {
                     SELECT numero_cncre
                     FROM con_cabece_retenc
                     WHERE ide_cncre = a.ide_cncre
-                ) as numero_retencion
-                
+                ) as numero_retencion,
+
+                -- Proforma de origen (si num_proforma_cccfa corresponde a una proforma real)
+                pr.ide_cccpr AS ide_cccpr_proforma
+
             FROM
                 cxc_cabece_factura a
                 INNER JOIN gen_persona b ON a.ide_geper = b.ide_geper
@@ -1306,6 +1309,9 @@ export class FacturasService extends BaseService {
                 LEFT JOIN sri_estado_comprobante f ON d.ide_sresc = f.ide_sresc
                 LEFT JOIN ven_vendedor v ON a.ide_vgven = v.ide_vgven
                 LEFT JOIN con_deta_forma_pago x ON a.ide_cndfp1 = x.ide_cndfp
+                LEFT JOIN cxc_cabece_proforma pr
+                    ON pr.secuencial_cccpr = a.num_proforma_cccfa
+                    AND pr.ide_empr = ${dtoIn.ideEmpr}
             WHERE
                 a.ide_cccfa = $1
                 AND a.ide_empr = ${dtoIn.ideEmpr}
