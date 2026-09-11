@@ -432,7 +432,7 @@ export class VentasBiService extends BaseService {
             NotasCredito nc ON ds.num_dia = nc.num_dia
         WHERE
             -- Solo días con ventas reales en el rango - evita mostrar p.ej. Domingo
-            -- en $0 cuando el negocio no factura ese día
+            -- en cero cuando el negocio no factura ese día
             v.num_dia IS NOT NULL
         ORDER BY
             ds.num_dia
