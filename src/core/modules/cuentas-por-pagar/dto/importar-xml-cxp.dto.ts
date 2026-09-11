@@ -89,6 +89,28 @@ export interface NotaCreditoXmlCxP {
     ideCntdoFacturaOriginal?: number;
 }
 
+/** Línea del anexo de Reembolso (SRI Ficha Técnica, <reembolsos><reembolsoDetalle>) - cada
+ * una referencia un comprobante YA EMITIDO A NOMBRE DEL INTERMEDIARIO (el proveedor del XML
+ * que se está importando) por un tercero distinto. Mismos campos que arma
+ * reembolso-xml.util.ts al emitir, leídos acá en sentido inverso (recepción). */
+export interface ReembolsoLineaXmlCxP {
+    /** con_tipo_document.ide_cntdo resuelto desde <codDocReembolso> (alter_tribu_cntdo) -
+     * undefined si el código no calza con ningún tipo de documento conocido. */
+    ide_cntdo?: number;
+    identificacion: string;
+    /** <estabDocReembolso><ptoEmiDocReembolso><secuencialDocReembolso> concatenados, sin
+     * guiones (mismo formato que numero_cpcfa del documento principal). */
+    numero_cpcfa: string;
+    fecha_emisi_cpcfa?: string;
+    autorizacio_cpcfa: string;
+    base_no_objeto_iva_cpcfa: number;
+    base_tarifa0_cpcfa: number;
+    base_grabada_cpcfa: number;
+    valor_iva_cpcfa: number;
+    valor_ice_cpcfa: number;
+    total_cpcfa: number;
+}
+
 export interface ImportarXmlCxPResult {
     // Proveedor
     ide_geper: number;
@@ -114,6 +136,9 @@ export interface ImportarXmlCxPResult {
     infoAdicional: InfoAdicionalXmlCxP[];
     /** Solo presente cuando el XML importado es una Nota de Crédito (codDoc=04) */
     notaCredito?: NotaCreditoXmlCxP;
+    /** Solo presente cuando el XML trae el anexo de reembolso (<reembolsos>) - factura de un
+     * intermediario que reembolsa gastos hechos en nombre propio. */
+    reembolsos?: ReembolsoLineaXmlCxP[];
     /** Aviso no bloqueante para el usuario (ej. no se encontró la factura referenciada, debe
      * seleccionarla manualmente) */
     advertencia?: string;

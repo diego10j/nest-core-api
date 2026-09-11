@@ -378,18 +378,19 @@ export class DocumentosCxPSaveService extends BaseService {
             // ── Construir la lista de queries de la transacción ──────────────
             const listQuery: Query[] = [];
 
-            // Datos de contacto del proveedor (Liquidación de Compra, editables en el
-            // formulario): si vienen en el payload, se actualiza gen_persona en la misma
-            // transacción. correo_geper/direccion_geper/telefono_geper se leen en vivo — no
-            // como snapshot — tanto para el envío del comprobante electrónico al SRI (XML
-            // <infoAdicional>, ver comprobantes-elec.service.ts) como para el correo de
-            // notificación al autorizarse (ver ComprobanteEmailListener#resolverContraparte),
-            // así que esta actualización basta sin tocar esos flujos.
-            if (esLiquidacionCompra && (
+            // Datos de contacto del proveedor, editables en cualquier documento CxP: si
+            // vienen en el payload, se actualiza gen_persona en la misma transacción -
+            // mismo patrón que facturas de venta (FacturasSaveService, direccion_cccfa/
+            // correo_cccfa actualizan gen_persona del cliente). En Liquidación de Compra
+            // electrónica además se leen en vivo (no como snapshot) para el envío del
+            // comprobante al SRI (XML <infoAdicional>, ver comprobantes-elec.service.ts) y
+            // para el correo de notificación al autorizarse (ver
+            // ComprobanteEmailListener#resolverContraparte).
+            if (
                 isDefined(cabecera.direccion_geper) ||
                 isDefined(cabecera.telefono_geper) ||
                 isDefined(cabecera.correo_geper)
-            )) {
+            ) {
                 listQuery.push(this.buildUpdateProveedorContacto(cabecera, dtoIn));
             }
 

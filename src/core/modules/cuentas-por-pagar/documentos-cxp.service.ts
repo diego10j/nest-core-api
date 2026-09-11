@@ -60,12 +60,14 @@ export class DocumentosCxPService extends BaseService {
         const notaCredito = this.variables.get('p_con_tipo_documento_nota_credito');
         const reembolso = this.variables.get('p_con_tipo_documento_reembolso');
         const notaVenta = this.variables.get('p_con_tipo_documento_nota_venta');
-        const liqCompra = this.variables.get('p_con_tipo_documento_liquidacion_compra');
 
+        // Liquidación de Compra NO se ofrece acá: solo se emite por la vía electrónica
+        // (módulo dedicado `liquidaciones-compra/`, con clave de acceso y envío real al
+        // SRI) - no se generan liquidaciones manuales/físicas en Compras.
         const query = new SelectQuery(`
             SELECT CAST(ide_cntdo AS VARCHAR) AS value, nombre_cntdo AS label
             FROM con_tipo_document
-            WHERE ide_cntdo IN (${factura}, ${liqCompra}, ${notaVenta}, ${reembolso}, ${notaCredito}, 11)
+            WHERE ide_cntdo IN (${factura}, ${notaVenta}, ${reembolso}, ${notaCredito}, 11)
             ORDER BY nombre_cntdo
         `);
         return this.dataSource.createSelectQuery(query);
@@ -878,8 +880,8 @@ export class DocumentosCxPService extends BaseService {
                 if (!ideCntcoNotaVenta) {
                     throw new BadRequestException(
                         'Falta configurar el parámetro "p_cxp_tipo_contribuyente_nota_venta" ' +
-                        '(Sistema > Parámetros) con el Tipo de Contribuyente habilitado para ' +
-                        'emitir Nota de Venta (RIMPE Negocio Popular).',
+                        '(Sistema > Variables del Sistema) con el Tipo de Contribuyente habilitado ' +
+                        'para emitir Nota de Venta (RIMPE Negocio Popular).',
                     );
                 }
                 condicionTipoIden = `AND ide_cntco = ${Number(ideCntcoNotaVenta)}`;

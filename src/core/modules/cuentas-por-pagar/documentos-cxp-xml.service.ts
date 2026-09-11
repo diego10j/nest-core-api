@@ -6,7 +6,12 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import { DocumentosCxPService } from './documentos-cxp.service';
-import { DetalleXmlCxP, ImportarXmlCxPResult, NotaCreditoXmlCxP } from './dto/importar-xml-cxp.dto';
+import {
+    DetalleXmlCxP,
+    ImportarXmlCxPResult,
+    NotaCreditoXmlCxP,
+    ReembolsoLineaXmlCxP,
+} from './dto/importar-xml-cxp.dto';
 
 /** Código SRI de comprobante tipo factura */
 const COD_DOC_FACTURA = '01';
@@ -18,10 +23,16 @@ const LONGITUDES_AUTORIZACION = [10, 37, 49];
 const COD_PORCENTAJE_IVA_0 = '0';
 /** Código SRI de no objeto de impuesto */
 const COD_PORCENTAJE_NO_OBJETO = '6';
+/** Código SRI de impuesto IVA (Tabla 16/18 ATS - <detalleImpuesto><codigo>) */
+const COD_IMPUESTO_IVA = '2';
+/** Código SRI de impuesto ICE */
+const COD_IMPUESTO_ICE = '3';
 /** Tipo de documento CxP "Factura" (variable p_con_tipo_documento_factura) */
 const VAR_TIPO_DOC_FACTURA = 'p_con_tipo_documento_factura';
 /** Tipo de documento CxP "Nota de Crédito" (variable p_con_tipo_documento_nota_credito) */
 const VAR_TIPO_DOC_NOTA_CREDITO = 'p_con_tipo_documento_nota_credito';
+/** Tipo de documento CxP "Reembolsos" (variable p_con_tipo_documento_reembolso) */
+const VAR_TIPO_DOC_REEMBOLSO = 'p_con_tipo_documento_reembolso';
 
 /**
  * Parsea un XML de comprobante electrónico del SRI recibido de un proveedor (factura o nota
@@ -167,6 +178,58 @@ export class DocumentosCxPXmlService {
                 throw new BadRequestException('El XML no contiene detalles de la factura.');
             }
 
+            // ── Anexo de Reembolso (<reembolsos><reembolsoDetalle>, Ficha Técnica SRI) ──
+            // Presente cuando el emisor es un intermediario que reembolsa gastos hechos en
+            // nombre propio (agencia de viajes, transportista, etc.) - cada línea referencia
+            // un comprobante distinto, emitido A NOMBRE DEL INTERMEDIARIO por un tercero.
+            // Mismo bloque que arma reembolso-xml.util.ts al EMITIR (codDocReembolso,
+            // estabDocReembolso...) - acá se lee en sentido inverso, del lado de recepción.
+            const reembolsos: ReembolsoLineaXmlCxP[] = [];
+            for (const el of $('reembolsos reembolsoDetalle').toArray()) {
+                const det = $(el);
+                const identificacion = det.find('identificacionProveedorReembolso').first().text().trim();
+                const codDocReembolso = det.find('codDocReembolso').first().text().trim();
+                const estabReemb = det.find('estabDocReembolso').first().text().trim();
+                const ptoEmiReemb = det.find('ptoEmiDocReembolso').first().text().trim();
+                const secuencialReemb = det.find('secuencialDocReembolso').first().text().trim();
+                const fechaEmisionReembTexto = det.find('fechaEmisionDocReembolso').first().text().trim();
+                const autorizacionReemb = det.find('numeroautorizacionDocReemb').first().text().trim();
+
+                let baseGrabadaReemb = 0;
+                let baseTarifa0Reemb = 0;
+                let baseNoObjetoReemb = 0;
+                let valorIvaReemb = 0;
+                let valorIceReemb = 0;
+                det.find('detalleImpuestos detalleImpuesto').each((_, di) => {
+                    const d = $(di);
+                    const codigo = d.find('codigo').first().text().trim();
+                    const codigoPorcentaje = d.find('codigoPorcentaje').first().text().trim();
+                    const base = this.numero(d.find('baseImponibleReembolso').first().text());
+                    const impuesto = this.numero(d.find('impuestoReembolso').first().text());
+                    if (codigoPorcentaje === COD_PORCENTAJE_IVA_0) baseTarifa0Reemb += base;
+                    else if (codigoPorcentaje === COD_PORCENTAJE_NO_OBJETO) baseNoObjetoReemb += base;
+                    else baseGrabadaReemb += base;
+                    if (codigo === COD_IMPUESTO_IVA) valorIvaReemb += impuesto;
+                    else if (codigo === COD_IMPUESTO_ICE) valorIceReemb += impuesto;
+                });
+
+                reembolsos.push({
+                    ide_cntdo: (await this.getTipoDocumentoPorCodigoSri(codDocReembolso)) ?? undefined,
+                    identificacion,
+                    numero_cpcfa: `${estabReemb}${ptoEmiReemb}${secuencialReemb}`,
+                    fecha_emisi_cpcfa: fechaEmisionReembTexto ? this.parseFecha(fechaEmisionReembTexto) : undefined,
+                    autorizacio_cpcfa: autorizacionReemb,
+                    base_grabada_cpcfa: Number(baseGrabadaReemb.toFixed(2)),
+                    base_tarifa0_cpcfa: Number(baseTarifa0Reemb.toFixed(2)),
+                    base_no_objeto_iva_cpcfa: Number(baseNoObjetoReemb.toFixed(2)),
+                    valor_iva_cpcfa: Number(valorIvaReemb.toFixed(2)),
+                    valor_ice_cpcfa: Number(valorIceReemb.toFixed(2)),
+                    total_cpcfa: Number(
+                        (baseGrabadaReemb + baseTarifa0Reemb + baseNoObjetoReemb + valorIvaReemb + valorIceReemb).toFixed(2),
+                    ),
+                });
+            }
+
             // ── Totales (recalculados localmente, paridad legacy) ────────────
             // <infoFactura><totalDescuento> - suma de los <descuento> de cada línea (Ficha
             // Técnica SRI). Los detalles ya llegan netos (valor_cpdfa = precioTotalSinImpuesto,
@@ -223,6 +286,7 @@ export class DocumentosCxPXmlService {
             const variables = await this.core.getVariables([
                 VAR_TIPO_DOC_FACTURA,
                 VAR_TIPO_DOC_NOTA_CREDITO,
+                VAR_TIPO_DOC_REEMBOLSO,
             ]);
 
             let notaCredito: NotaCreditoXmlCxP | undefined;
@@ -277,8 +341,17 @@ export class DocumentosCxPXmlService {
                 ide_geper: Number(proveedor.ide_geper),
                 nom_geper: proveedor.nom_geper,
                 identificac_geper: proveedor.identificac_geper,
+                // Con anexo de reembolso se sugiere el tipo Reembolsos en vez de Factura -
+                // solo una sugerencia (PrefillDocumentoCxP.ide_cntdo no fija el tipo), el
+                // usuario puede seguir cambiándolo con "Cambiar tipo" si hace falta.
                 ide_cntdo: Number(
-                    variables.get(esNotaCredito ? VAR_TIPO_DOC_NOTA_CREDITO : VAR_TIPO_DOC_FACTURA) ?? 0,
+                    variables.get(
+                        esNotaCredito
+                            ? VAR_TIPO_DOC_NOTA_CREDITO
+                            : reembolsos.length
+                              ? VAR_TIPO_DOC_REEMBOLSO
+                              : VAR_TIPO_DOC_FACTURA,
+                    ) ?? 0,
                 ),
                 numero_cpcfa: numero,
                 autorizacio_cpcfa: autorizacion,
@@ -314,6 +387,7 @@ export class DocumentosCxPXmlService {
                 },
                 infoAdicional,
                 notaCredito,
+                reembolsos: reembolsos.length ? reembolsos : undefined,
                 advertencia,
             };
         } catch (error) {
@@ -398,6 +472,22 @@ export class DocumentosCxPXmlService {
         q.addStringParam(1, codigoSri);
         const row = await this.dataSource.createSingleQuery(q);
         return row ? Number(row.ide_cndfp) : null;
+    }
+
+    /** Mapea <codDocReembolso> (código SRI del comprobante reembolsado, ej. '01' = factura) a
+     * con_tipo_document.ide_cntdo vía alter_tribu_cntdo - mismo código que ya usa este sistema
+     * para el anexo de reembolso al EMITIR (ver ReembolsoLineaDto.codDocReembolso). */
+    private async getTipoDocumentoPorCodigoSri(codigoSri: string): Promise<number | null> {
+        if (!codigoSri) return null;
+        const q = new SelectQuery(`
+            SELECT ide_cntdo
+            FROM con_tipo_document
+            WHERE alter_tribu_cntdo = $1
+            LIMIT 1
+        `);
+        q.addStringParam(1, codigoSri);
+        const row = await this.dataSource.createSingleQuery(q);
+        return row ? Number(row.ide_cntdo) : null;
     }
 
     /** El sobre <autorizacion> trae "PRODUCCION"/"PRUEBAS" en texto; <infoTributaria> (fallback
