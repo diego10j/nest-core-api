@@ -6,6 +6,7 @@ import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { Auth } from 'src/core/auth';
 
 import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
+import { SucursalDto } from '../dto/sucursal.dto';
 
 import { ProformasBiService } from './proformas-bi.service';
 
@@ -53,6 +54,16 @@ export class ProformasBiController {
     });
   }
 
+  @Get('getVendedoresMensuales')
+  @ApiOperation({ summary: 'Obtener vendedores activos y cotizaciones por mes en un año' })
+  @Auth()
+  getVendedoresMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ProformasMensualesDto) {
+    return this.service.getVendedoresMensuales({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
   @Get('getTendenciaDiaria')
   @ApiOperation({ summary: 'Obtener tendencia diaria de proformas emitidas' })
   getTendenciaDiaria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
@@ -91,8 +102,8 @@ export class ProformasBiController {
 
   @Get('getVariacionCotizaciones')
   @ApiOperation({ summary: 'Obtener variación de cotizaciones entre períodos' })
-  getVariacionCotizaciones(@AppHeaders() headersParams: HeaderParamsDto) {
-    return this.service.getVariacionCotizaciones(headersParams);
+  getVariacionCotizaciones(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SucursalDto) {
+    return this.service.getVariacionCotizaciones({ ...headersParams, ...dtoIn });
   }
 
   @Get('getComportamientoClientes')

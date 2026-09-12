@@ -52,6 +52,13 @@ export class ComprasBiController {
     return this.service.getTopProveedores({ ...headersParams, ...dtoIn });
   }
 
+  @Get('getProveedoresMensuales')
+  @ApiOperation({ summary: 'Obtener proveedores nuevos y activos por mes en un año' })
+  @Auth()
+  getProveedoresMensuales(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ComprasMensualesDto) {
+    return this.service.getProveedoresMensuales({ ...headersParams, ...dtoIn });
+  }
+
   @Get('getTopProductosComprados')
   @ApiOperation({ summary: 'Obtener top de productos/artículos comprados en un período' })
   @Auth()
@@ -64,6 +71,13 @@ export class ComprasBiController {
   @Auth()
   getComprasPorCategoriaProducto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getComprasPorCategoriaProducto({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getKPIsProductosComprados')
+  @ApiOperation({ summary: 'Obtener KPIs de productos comprados en un período (gasto total, productos únicos, ticket promedio)' })
+  @Auth()
+  getKPIsProductosComprados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getKPIsProductosComprados({ ...headersParams, ...dtoIn });
   }
 
   @Get('getResumenComprasPeriodos')

@@ -301,9 +301,15 @@ export class ComprasBiService extends BaseService {
      * Top proveedores por monto de compras en un período.
      */
     async getTopProveedores(dtoIn: TopProveedoresDto & HeaderParamsDto) {
-        const whereSucursal = isDefined(dtoIn.ide_sucu)
-            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
-            : '';
+        // `gen_persona` también tiene columna `ide_sucu` - sin calificar por tabla, el filtro
+        // queda ambiguo apenas se hace JOIN con ella (error real: "column reference ide_sucu
+        // is ambiguous"). Se arma un helper parametrizado por alias para no repetir el bug en
+        // la subquery (que no tiene alias, usa el nombre de tabla completo) y en el WHERE
+        // externo (alias `cf`).
+        const buildWhereSucursal = (alias: string) =>
+            isDefined(dtoIn.ide_sucu)
+                ? `AND ${alias}.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+                : '';
 
         const query = new SelectQuery(
             `
@@ -321,7 +327,7 @@ export class ComprasBiService extends BaseService {
                      AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                      AND ide_rem_cpcfa IS NULL
                      AND ide_empr = ${dtoIn.ideEmpr}
-                     ${whereSucursal}), 2) AS porcentaje
+                     ${buildWhereSucursal('cxp_cabece_factur')}), 2) AS porcentaje
             FROM cxp_cabece_factur cf
             JOIN gen_persona p ON cf.ide_geper = p.ide_geper
             WHERE cf.fecha_emisi_cpcfa BETWEEN $3 AND $4
@@ -329,7 +335,7 @@ export class ComprasBiService extends BaseService {
                 AND cf.ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
                 AND cf.ide_rem_cpcfa IS NULL
                 AND cf.ide_empr = ${dtoIn.ideEmpr}
-                ${whereSucursal}
+                ${buildWhereSucursal('cf')}
             GROUP BY p.ide_geper, p.nom_geper
             ORDER BY total_compras DESC
             LIMIT ${dtoIn.limit}
@@ -340,6 +346,55 @@ export class ComprasBiService extends BaseService {
         query.addStringParam(2, dtoIn.fechaFin);
         query.addStringParam(3, dtoIn.fechaInicio);
         query.addStringParam(4, dtoIn.fechaFin);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Proveedores nuevos (fecha de ingreso) y activos (con al menos una factura) por mes de
+     * un año - mismo patrón que VentasBiService.getClientesMensuales.
+     */
+    async getProveedoresMensuales(dtoIn: ComprasMensualesDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
+            WITH ProveedoresNuevos AS (
+                SELECT
+                    EXTRACT(MONTH FROM COALESCE(fecha_ingre_geper, fecha_ingre)) AS mes,
+                    COUNT(ide_geper) AS nuevos
+                FROM gen_persona
+                WHERE EXTRACT(YEAR FROM COALESCE(fecha_ingre_geper, fecha_ingre)) = $1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                    AND es_proveedo_geper = true
+                    AND COALESCE(fecha_ingre_geper, fecha_ingre) IS NOT NULL
+                    ${whereSucursal}
+                GROUP BY EXTRACT(MONTH FROM COALESCE(fecha_ingre_geper, fecha_ingre))
+            ),
+            ProveedoresActivos AS (
+                SELECT
+                    EXTRACT(MONTH FROM fecha_emisi_cpcfa) AS mes,
+                    COUNT(DISTINCT ide_geper) AS activos
+                FROM cxp_cabece_factur
+                WHERE EXTRACT(YEAR FROM fecha_emisi_cpcfa) = $1
+                    AND ide_empr = ${dtoIn.ideEmpr}
+                    AND ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
+                    AND ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
+                    AND ide_rem_cpcfa IS NULL
+                    ${whereSucursal}
+                GROUP BY EXTRACT(MONTH FROM fecha_emisi_cpcfa)
+            )
+            SELECT
+                gm.ide_gemes,
+                gm.nombre_gemes,
+                COALESCE(pn.nuevos, 0) AS proveedores_nuevos,
+                COALESCE(pa.activos, 0) AS proveedores_activos
+            FROM gen_mes gm
+            LEFT JOIN ProveedoresNuevos pn ON gm.ide_gemes = pn.mes
+            LEFT JOIN ProveedoresActivos pa ON gm.ide_gemes = pa.mes
+            ORDER BY gm.ide_gemes
+        `);
+        query.addIntParam(1, dtoIn.periodo);
         return this.dataSource.createQuery(query);
     }
 
@@ -408,6 +463,49 @@ export class ComprasBiService extends BaseService {
                 ${whereSucursal}
             GROUP BY art.ide_incate, COALESCE(cat.nombre_incate, 'SIN CATEGORÍA')
             ORDER BY total_comprado DESC
+        `);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * KPIs de productos comprados en un período: gasto total, productos únicos, cantidad
+     * total, ticket promedio por línea y el producto con mayor gasto.
+     */
+    async getKPIsProductosComprados(dtoIn: RangoFechasDto & HeaderParamsDto) {
+        const whereSucursal = isDefined(dtoIn.ide_sucu)
+            ? `AND cf.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+            : '';
+
+        const query = new SelectQuery(`
+            WITH detalle_periodo AS (
+                SELECT d.ide_inarti, d.valor_cpdfa, d.cantidad_cpdfa, cf.ide_cpcfa
+                FROM cxp_detall_factur d
+                JOIN cxp_cabece_factur cf ON d.ide_cpcfa = cf.ide_cpcfa
+                WHERE cf.fecha_emisi_cpcfa BETWEEN $1 AND $2
+                    AND cf.ide_cpefa = ${this.variables.get('p_cxp_estado_factura_normal')}
+                    AND cf.ide_cntdo = ${this.variables.get('p_con_tipo_documento_factura')}
+                    AND cf.ide_rem_cpcfa IS NULL
+                    AND cf.ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursal}
+            ),
+            top_producto AS (
+                SELECT art.nombre_inarti, SUM(dp.valor_cpdfa) AS total
+                FROM detalle_periodo dp
+                JOIN inv_articulo art ON dp.ide_inarti = art.ide_inarti
+                GROUP BY art.nombre_inarti
+                ORDER BY total DESC
+                LIMIT 1
+            )
+            SELECT
+                COALESCE(SUM(dp.valor_cpdfa), 0) AS total_comprado,
+                COUNT(DISTINCT dp.ide_inarti) AS productos_unicos,
+                COUNT(DISTINCT dp.ide_cpcfa) AS num_facturas,
+                COALESCE(SUM(dp.cantidad_cpdfa), 0) AS cantidad_total,
+                (SELECT nombre_inarti FROM top_producto) AS producto_top,
+                COALESCE((SELECT total FROM top_producto), 0) AS producto_top_total
+            FROM detalle_periodo dp
         `);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);

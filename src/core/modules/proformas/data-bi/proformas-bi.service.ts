@@ -3,12 +3,14 @@ import { getYear } from 'date-fns';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 import { CoreService } from 'src/core/core.service';
+import { isDefined } from 'src/util/helpers/common-util';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { VentasMensualesDto } from '../../ventas/facturas/dto/ventas-mensuales.dto';
 import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
+import { SucursalDto } from '../dto/sucursal.dto';
 
 @Injectable()
 export class ProformasBiService extends BaseService {
@@ -39,6 +41,12 @@ export class ProformasBiService extends BaseService {
     if (dtoIn.periodo === 0) {
       dtoIn.periodo = getYear(new Date());
     }
+    const whereSucursalA = isDefined(dtoIn.ide_sucu)
+      ? `AND a.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const whereSucursalC = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
     const query = new SelectQuery(`
         WITH
             proformas_mes AS (
@@ -56,6 +64,7 @@ export class ProformasBiService extends BaseService {
                     a.fecha_cccpr BETWEEN $1 AND $2
                     AND a.anulado_cccpr = FALSE
                     AND a.ide_empr = ${dtoIn.ideEmpr}
+                    ${whereSucursalA}
                 GROUP BY
                     EXTRACT(MONTH FROM a.fecha_cccpr)
             ),
@@ -72,8 +81,9 @@ export class ProformasBiService extends BaseService {
                     cxc_cabece_factura c
                 WHERE
                     c.fecha_emisi_cccfa BETWEEN $3 AND $4
-                    AND c.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')} 
+                    AND c.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')}
                     AND c.num_proforma_cccfa IS NOT NULL
+                    ${whereSucursalC}
                 GROUP BY
                     EXTRACT(MONTH FROM c.fecha_emisi_cccfa)
             )
@@ -104,7 +114,10 @@ export class ProformasBiService extends BaseService {
 
   // 1. Productos más cotizados (Top 10)
   async getTopProductos(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`     
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
         SELECT
             a.ide_inarti,
             b.nombre_inarti,
@@ -123,6 +136,7 @@ export class ProformasBiService extends BaseService {
             AND c.anulado_cccpr = FALSE
             AND c.ide_empr  = ${dtoIn.ideEmpr}
             AND b.hace_kardex_inarti = TRUE
+            ${whereSucursal}
         GROUP BY
             a.ide_inarti,
             b.nombre_inarti,
@@ -138,6 +152,9 @@ export class ProformasBiService extends BaseService {
 
   // 2. Productos con mayor utilidad
   async getTopProductosMayorUtilidad(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
     const query = new SelectQuery(`
         SELECT
             a.ide_inarti,
@@ -156,6 +173,7 @@ export class ProformasBiService extends BaseService {
             AND c.anulado_cccpr = false
             AND c.ide_empr = ${dtoIn.ideEmpr}
             AND a.utilidad_ccdpr IS NOT NULL
+            ${whereSucursal}
         GROUP BY
             a.ide_inarti, b.nombre_inarti, f.siglas_inuni
         ORDER BY
@@ -169,32 +187,40 @@ export class ProformasBiService extends BaseService {
 
   // 3. Efectividad por vendedor (Gráfico de pastel)
   async getEfectividadPorVendedor(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
         WITH cotizaciones_vendedor AS (
-            SELECT 
+            SELECT
                 v.ide_vgven,
                 v.nombre_vgven,
                 COUNT(DISTINCT c.ide_cccpr) AS total_cotizaciones,
-                COUNT(DISTINCT f.ide_cccfa) AS cotizaciones_efectivas
-            FROM 
+                COUNT(DISTINCT f.ide_cccfa) AS cotizaciones_efectivas,
+                SUM(c.total_cccpr) AS monto_cotizado,
+                SUM(f.total_cccfa) AS monto_facturado
+            FROM
                 cxc_cabece_proforma c
             LEFT JOIN ven_vendedor v ON c.ide_vgven = v.ide_vgven
-            LEFT JOIN cxc_cabece_factura f ON c.secuencial_cccpr = f.num_proforma_cccfa AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-            WHERE 
+            LEFT JOIN cxc_cabece_factura f ON c.secuencial_cccpr = f.num_proforma_cccfa AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+            WHERE
                 c.fecha_cccpr BETWEEN $1 AND $2
                 AND c.anulado_cccpr = false
                 AND c.ide_empr = ${dtoIn.ideEmpr}
-            GROUP BY 
+                ${whereSucursal}
+            GROUP BY
                 v.ide_vgven, v.nombre_vgven
         )
-        SELECT 
+        SELECT
         COALESCE(nombre_vgven, 'Sin Vendedor')  AS vendedor,
             total_cotizaciones,
             cotizaciones_efectivas,
+            COALESCE(monto_cotizado, 0) AS monto_cotizado,
+            COALESCE(monto_facturado, 0) AS monto_facturado,
             ROUND((cotizaciones_efectivas::numeric / NULLIF(total_cotizaciones, 0)::numeric) * 100, 2) AS porcentaje_efectividad
-        FROM 
+        FROM
             cotizaciones_vendedor
-        ORDER BY 
+        ORDER BY
             total_cotizaciones DESC
         `);
     query.addParam(1, dtoIn.fechaInicio);
@@ -202,20 +228,65 @@ export class ProformasBiService extends BaseService {
     return this.dataSource.createQuery(query);
   }
 
+  // 3b. Vendedores activos (con al menos una proforma) por mes de un año - mismo patrón que
+  // ComprasBiService.getProveedoresMensuales / VentasBiService.getClientesMensuales.
+  async getVendedoresMensuales(dtoIn: ProformasMensualesDto & HeaderParamsDto) {
+    if (dtoIn.periodo === 0) {
+      dtoIn.periodo = getYear(new Date());
+    }
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
+        WITH vendedores_mes AS (
+            SELECT
+                EXTRACT(MONTH FROM c.fecha_cccpr) AS mes,
+                COUNT(DISTINCT c.ide_vgven) AS vendedores_activos,
+                COUNT(DISTINCT c.ide_cccpr) AS total_cotizaciones
+            FROM
+                cxc_cabece_proforma c
+            WHERE
+                EXTRACT(YEAR FROM c.fecha_cccpr) = $1
+                AND c.anulado_cccpr = false
+                AND c.ide_empr = ${dtoIn.ideEmpr}
+                AND c.ide_vgven IS NOT NULL
+                ${whereSucursal}
+            GROUP BY
+                EXTRACT(MONTH FROM c.fecha_cccpr)
+        )
+        SELECT
+            gm.ide_gemes,
+            gm.nombre_gemes,
+            COALESCE(vm.vendedores_activos, 0) AS vendedores_activos,
+            COALESCE(vm.total_cotizaciones, 0) AS total_cotizaciones
+        FROM
+            gen_mes gm
+        LEFT JOIN vendedores_mes vm ON gm.ide_gemes = vm.mes
+        ORDER BY
+            gm.ide_gemes
+        `);
+    query.addIntParam(1, dtoIn.periodo);
+    return this.dataSource.createQuery(query);
+  }
+
   // 4. Tendencia diaria de cotizaciones
   async getTendenciaDiaria(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
-    SELECT 
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
+    SELECT
         DATE_TRUNC('day', fecha_cccpr) AS fecha,
         COUNT(ide_cccpr) AS cantidad_cotizaciones,
         SUM(total_cccpr) AS valor_total
-    FROM 
+    FROM
         cxc_cabece_proforma
-    WHERE 
+    WHERE
         fecha_cccpr BETWEEN $1 AND $2
         AND anulado_cccpr = false
         AND ide_empr = ${dtoIn.ideEmpr}
-    GROUP BY 
+        ${whereSucursal}
+    GROUP BY
         DATE_TRUNC('day', fecha_cccpr)
     ORDER BY 
         fecha
@@ -227,7 +298,10 @@ export class ProformasBiService extends BaseService {
 
   //5. Clientes que más cotizan (Top 10)
   async getTopClientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
         SELECT 
             p.ide_geper,
             p.nom_geper,
@@ -242,9 +316,10 @@ export class ProformasBiService extends BaseService {
             c.fecha_cccpr BETWEEN $1 AND $2
             AND c.anulado_cccpr = false
             AND c.ide_empr  = ${dtoIn.ideEmpr}
-        GROUP BY 
+            ${whereSucursal}
+        GROUP BY
             p.ide_geper, p.nom_geper
-        ORDER BY 
+        ORDER BY
             3 DESC
         LIMIT 10
     `);
@@ -255,62 +330,79 @@ export class ProformasBiService extends BaseService {
 
   // 6. Tiempo promedio de conversión (cotización a factura)
   async getTiempoConversion(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
-        SELECT 
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
+        SELECT
             f_redondeo(AVG((f.fecha_emisi_cccfa - c.fecha_cccpr)::int) ,2)AS dias_promedio_conversion,
             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (f.fecha_emisi_cccfa - c.fecha_cccpr)::int) AS mediana_dias_conversion
-        FROM 
+        FROM
             cxc_cabece_proforma c
         INNER JOIN cxc_cabece_factura f ON c.secuencial_cccpr = f.num_proforma_cccfa
-        WHERE 
+        WHERE
             c.fecha_cccpr BETWEEN $1 AND $2
-            AND f.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            AND f.ide_ccefa  = ${this.variables.get('p_cxc_estado_factura_normal')}
             AND c.anulado_cccpr = false
             AND c.ide_empr = ${dtoIn.ideEmpr}
+            ${whereSucursal}
     `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return this.dataSource.createSelectQuery(query);
+    // Antes usaba createSelectQuery (retorna un array plano, sin envoltorio {rows:[...]})
+    // mientras el frontend leía config.dataResponse?.rows?.[0] - por eso el card de KPIs
+    // mostraba siempre 0 (rows era undefined). createQuery sí devuelve el shape esperado.
+    return this.dataSource.createQuery(query);
   }
 
   // 7. Estado de cotizaciones (resumen ejecutivo)
   async getResumenCotizaciones(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`   
-    SELECT 
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
+    SELECT
         COUNT(*) AS total_cotizaciones,
         SUM(CASE WHEN anulado_cccpr THEN 1 ELSE 0 END) AS cotizaciones_anuladas,
         SUM(CASE WHEN NOT anulado_cccpr THEN 1 ELSE 0 END) AS cotizaciones_validas,
         SUM(CASE WHEN f.ide_cccfa IS NOT NULL THEN 1 ELSE 0 END) AS cotizaciones_convertidas,
-        ROUND(SUM(CASE WHEN f.ide_cccfa IS NOT NULL THEN 1 ELSE 0 END)::numeric / 
+        ROUND(SUM(CASE WHEN f.ide_cccfa IS NOT NULL THEN 1 ELSE 0 END)::numeric /
             NULLIF(SUM(CASE WHEN NOT anulado_cccpr THEN 1 ELSE 0 END), 0)::numeric * 100, 2) AS tasa_conversion
-    FROM 
+    FROM
         cxc_cabece_proforma c
-    LEFT JOIN cxc_cabece_factura f ON c.secuencial_cccpr = f.num_proforma_cccfa AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
-    WHERE 
+    LEFT JOIN cxc_cabece_factura f ON c.secuencial_cccpr = f.num_proforma_cccfa AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
+    WHERE
         c.fecha_cccpr BETWEEN $1 AND $2
         AND c.ide_empr = ${dtoIn.ideEmpr}
+        ${whereSucursal}
 `);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
-    return this.dataSource.createSelectQuery(query);
+    // Antes usaba createSelectQuery (array plano) - el frontend leía .rows?.[0] y siempre
+    // daba undefined, mostrando 0 en todos los KPIs de "Resumen de Cotizaciones".
+    return this.dataSource.createQuery(query);
   }
 
   // 8. Variación mensual de cotizaciones
-  async getVariacionCotizaciones(dtoIn: HeaderParamsDto) {
-    const query = new SelectQuery(`   
+  async getVariacionCotizaciones(dtoIn: SucursalDto & HeaderParamsDto) {
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
     WITH cotizaciones_mensuales AS (
-        SELECT 
+        SELECT
             EXTRACT(YEAR FROM fecha_cccpr) AS año,
             EXTRACT(MONTH FROM fecha_cccpr) AS mes,
             COUNT(ide_cccpr) AS cantidad,
             SUM(total_cccpr) AS valor_total
-        FROM 
+        FROM
             cxc_cabece_proforma
-        WHERE 
+        WHERE
             fecha_cccpr BETWEEN DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year' AND CURRENT_DATE
             AND anulado_cccpr = false
             AND ide_empr = ${dtoIn.ideEmpr}
-        GROUP BY 
+            ${whereSucursal}
+        GROUP BY
             EXTRACT(YEAR FROM fecha_cccpr), EXTRACT(MONTH FROM fecha_cccpr)
     )
     SELECT 
@@ -322,18 +414,23 @@ export class ProformasBiService extends BaseService {
         LAG(valor_total) OVER (ORDER BY año, mes) AS valor_mes_anterior,
         ROUND((cantidad - LAG(cantidad) OVER (ORDER BY año, mes)) / NULLIF(LAG(cantidad) OVER (ORDER BY año, mes), 0)::numeric * 100, 2) AS variacion_cantidad,
         ROUND((valor_total - LAG(valor_total) OVER (ORDER BY año, mes)) / NULLIF(LAG(valor_total) OVER (ORDER BY año, mes), 0)::numeric * 100, 2) AS variacion_valor
-    FROM 
+    FROM
         cotizaciones_mensuales
-    ORDER BY 
+    ORDER BY
         año, mes
 `);
-    return this.dataSource.createSelectQuery(query);
+    // createQuery (no createSelectQuery): el frontend espera el shape {rows:[...]} estándar,
+    // igual que el resto de endpoints de este servicio.
+    return this.dataSource.createQuery(query);
   }
 
   //1. Segmentación de Clientes por Comportamiento
   async getComportamientoClientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
     const query = new SelectQuery(
-      `       
+      `
     WITH clientes_cotizaciones AS (
         SELECT
             p.ide_geper,
@@ -350,6 +447,7 @@ export class ProformasBiService extends BaseService {
             c.fecha_cccpr BETWEEN $1 AND $2
             AND c.anulado_cccpr = false
             AND c.ide_empr =  ${dtoIn.ideEmpr}
+            ${whereSucursal}
         GROUP BY
             p.ide_geper, p.nom_geper
     )
@@ -380,7 +478,10 @@ export class ProformasBiService extends BaseService {
   // Cotizaciones Pendientes de Seguimiento (no convertidas)
 
   async getCotizacionesPendientes(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`      
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
     SELECT
         c.ide_cccpr,
         c.secuencial_cccpr,
@@ -400,10 +501,11 @@ export class ProformasBiService extends BaseService {
         c.fecha_cccpr BETWEEN $1 AND $2
         AND c.anulado_cccpr = false
         AND c.ide_empr =  ${dtoIn.ideEmpr}
+        ${whereSucursal}
         AND NOT EXISTS (
-            SELECT 1 FROM cxc_cabece_factura f 
-            WHERE f.num_proforma_cccfa = c.secuencial_cccpr 
-            AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')} 
+            SELECT 1 FROM cxc_cabece_factura f
+            WHERE f.num_proforma_cccfa = c.secuencial_cccpr
+            AND f.ide_ccefa = ${this.variables.get('p_cxc_estado_factura_normal')}
         )
     ORDER BY
     dias_pendientes DESC`);
@@ -415,7 +517,13 @@ export class ProformasBiService extends BaseService {
   // 3. Análisis de Pérdidas (Cotizaciones no Convertidas)
 
   async getAnalisisPerdidas(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`      
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const whereSucursalC = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
     SELECT
     EXTRACT(MONTH FROM c.fecha_cccpr) AS mes,
     EXTRACT(YEAR FROM c.fecha_cccpr) AS anio,
@@ -423,11 +531,12 @@ export class ProformasBiService extends BaseService {
     SUM(c.total_cccpr) AS valor_perdido,
     STRING_AGG(DISTINCT p.nom_geper, ', ' ORDER BY p.nom_geper) AS clientes_afectados,
     ROUND(COUNT(*)::numeric / NULLIF((
-        SELECT COUNT(*) 
-        FROM cxc_cabece_proforma 
+        SELECT COUNT(*)
+        FROM cxc_cabece_proforma
         WHERE fecha_cccpr BETWEEN $1 AND $2
         AND anulado_cccpr = false
         AND ide_empr =  ${dtoIn.ideEmpr}
+        ${whereSucursal}
     ), 0) * 100, 2) AS porcentaje_perdidas
     FROM
     cxc_cabece_proforma c
@@ -436,6 +545,7 @@ export class ProformasBiService extends BaseService {
     c.fecha_cccpr BETWEEN $3 AND $4
     AND c.anulado_cccpr = false
     AND c.ide_empr =  ${dtoIn.ideEmpr}
+    ${whereSucursalC}
     AND NOT EXISTS (
         SELECT 1 FROM cxc_cabece_factura f 
         WHERE f.num_proforma_cccfa = c.secuencial_cccpr 
@@ -457,7 +567,10 @@ export class ProformasBiService extends BaseService {
   // - 4. Efectividad por Tipo de Cotizacion
 
   async getEfectividadPorTipo(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`      
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
+    const query = new SelectQuery(`
     SELECT
         c.ide_cctpr,
         t.nombre_cctpr AS tipo_producto,
@@ -474,6 +587,7 @@ export class ProformasBiService extends BaseService {
         c.fecha_cccpr  BETWEEN $1 AND $2
         AND c.anulado_cccpr = false
         AND c.ide_empr = ${dtoIn.ideEmpr}
+        ${whereSucursal}
     GROUP BY
         c.ide_cctpr,
         t.nombre_cctpr
@@ -487,8 +601,11 @@ export class ProformasBiService extends BaseService {
   // 5. Histórico de Conversión por Cliente
 
   async getHisConversionPorCliente(dtoIn: RangoFechasDto & HeaderParamsDto) {
+    const whereSucursal = isDefined(dtoIn.ide_sucu)
+      ? `AND c.ide_sucu = ANY (ARRAY[${Array.isArray(dtoIn.ide_sucu) ? dtoIn.ide_sucu.join(',') : dtoIn.ide_sucu}]::INT[])`
+      : '';
     const query = new SelectQuery(
-      `         
+      `
         SELECT
         p.ide_geper,
         p.nom_geper AS cliente,
@@ -507,6 +624,7 @@ export class ProformasBiService extends BaseService {
         c.fecha_cccpr BETWEEN $1 AND $2
         AND c.anulado_cccpr = false
         AND c.ide_empr =  ${dtoIn.ideEmpr}
+        ${whereSucursal}
         GROUP BY
         p.ide_geper, p.nom_geper, EXTRACT(YEAR FROM c.fecha_cccpr), EXTRACT(MONTH FROM c.fecha_cccpr)
         ORDER BY

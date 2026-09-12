@@ -299,6 +299,32 @@ export class AnticipoProveedorSaveService extends BaseService {
             }
             const ideCpctrFactura = Number(facturaCab.ide_cpctr);
 
+            // Si la factura YA fue mayorizada (tiene ide_cnccc), su asiento se generó por el
+            // total contra CUENTA POR PAGAR sin saber de este anticipo - AsientosAutomaticosService
+            // .generarAsientoComprasCxP solo detecta el anticipo si ya estaba vinculado ANTES de
+            // mayorizar. Acá el orden es el inverso (se liquida después), así que hay que generar
+            // ahora el asiento de reclasificación o la cuenta ANTICIPO A PROVEEDORES queda abierta
+            // para siempre. Antes de tocar la BD (mismo criterio "todo o nada" que registrar()).
+            const qFacturaMayorizada = new SelectQuery(`SELECT ide_cnccc FROM cxp_cabece_factur WHERE ide_cpcfa = $1`);
+            qFacturaMayorizada.addIntParam(1, ideCpcfa);
+            const facturaMayorizada = await this.dataSource.createSingleQuery(qFacturaMayorizada);
+            let ideCncccLiquidacion: number | null = null;
+            if (facturaMayorizada?.ide_cnccc != null) {
+                const asiento = await this.asientosAutomaticosService.generarAsientoLiquidacionAnticipo({
+                    ideGeper: Number(cab.ide_geper),
+                    fecha: this.hoy(),
+                    valor: totalAplicar,
+                    observacion: `Liquidación anticipo #${dtoIn.ide_cpctr} - factura ${ideCpcfa}`,
+                    ...dtoIn,
+                });
+                if (!asiento.generado) {
+                    throw new BadRequestException(
+                        `No se pudo generar el asiento de liquidación para la factura ${ideCpcfa} (${(asiento.advertencias ?? []).join('; ') || 'error desconocido'}).`,
+                    );
+                }
+                ideCncccLiquidacion = asiento.ide_cnccc ?? null;
+            }
+
             const queryRunner = await this.dataSource.pool.connect();
             try {
                 await queryRunner.query('BEGIN');
@@ -310,6 +336,9 @@ export class AnticipoProveedorSaveService extends BaseService {
                 await queryRunner.query('COMMIT');
             } catch (error) {
                 await queryRunner.query('ROLLBACK');
+                if (ideCncccLiquidacion != null) {
+                    await this.asientosAutomaticosService.eliminarAsiento(ideCncccLiquidacion, dtoIn);
+                }
                 throw error;
             } finally {
                 queryRunner.release();
@@ -333,7 +362,12 @@ export class AnticipoProveedorSaveService extends BaseService {
                     [ideCpcfa],
                 );
             }
-            return { message: 'ok', ide_cpctr: ideCpctrFactura, saldo_restante: Number(saldoFactura) };
+            return {
+                message: 'ok',
+                ide_cpctr: ideCpctrFactura,
+                saldo_restante: Number(saldoFactura),
+                ide_cnccc_liquidacion: ideCncccLiquidacion ?? undefined,
+            };
         }
 
         const baseIdeCpaan = await this.dataSource.getSeqTable(

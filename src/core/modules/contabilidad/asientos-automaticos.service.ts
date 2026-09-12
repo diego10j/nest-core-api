@@ -239,6 +239,10 @@ export interface DeshacerAsientoCostoNotaCreditoResult {
 /** Tipo de comprobante DIARIO (hardcoded en el legacy generarAsientoComprasCxP) */
 const IDE_CNTCM_DIARIO = 0;
 
+/** Tolerancia de redondeo (centavos) al decidir si un anticipo vinculado a una factura
+ * alcanza para generar una línea de asiento propia. */
+const TOLERANCIA_CENTAVOS = 0.01;
+
 @Injectable()
 export class AsientosAutomaticosService extends BaseService {
     private readonly logger = new Logger(AsientosAutomaticosService.name);
@@ -257,6 +261,7 @@ export class AsientosAutomaticosService extends BaseService {
                 'p_con_lugar_debe',
                 'p_con_lugar_haber',
                 'p_con_tipo_documento_nota_credito',
+                'p_cxp_tipo_trans_anticipo',
             ])
             .then((result) => {
                 this.variables = result;
@@ -1303,17 +1308,64 @@ export class AsientosAutomaticosService extends BaseService {
             });
         }
 
-        // HABER: cuenta por pagar del proveedor (total − retenciones)
-        const cuentaCxP = await this.getCuentaPersona('CUENTA POR PAGAR', Number(doc.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
-        if (!cuentaCxP) advertencias.push('Cuenta por pagar del proveedor no configurada en con_det_conf_asie');
+        // HABER: cuenta por pagar del proveedor (total − retenciones), o ANTICIPO A
+        // PROVEEDORES por la porción ya cubierta por un anticipo vinculado a esta factura
+        // (registro de envío pagado por anticipado antes de que llegara la factura, o
+        // liquidación de AnticipoProveedorSaveService.liquidar) - sin esto, la cuenta de
+        // anticipo (activo) nunca se libera y la factura duplica el pasivo por el total
+        // completo. cxp_detall_transa.ide_cpcfa queda apuntando a esta factura tanto si el
+        // anticipo se reutilizó desde el registro de envío (resolverCabeceraTransaccion) como
+        // si se aplicó después vía liquidar() - una sola consulta cubre ambos casos.
+        const ideCpttrAnticipo = Number(this.variables.get('p_cxp_tipo_trans_anticipo'));
+        const qAnticipo = new SelectQuery(`
+            SELECT COALESCE(SUM(valor_cpdtr), 0) AS anticipo
+            FROM cxp_detall_transa
+            WHERE ide_cpcfa = $1 AND ide_cpttr = $2
+        `);
+        qAnticipo.addIntParam(1, dtoIn.ide_cpcfa);
+        qAnticipo.addIntParam(2, ideCpttrAnticipo);
+        const filaAnticipo = await this.dataSource.createSingleQuery(qAnticipo);
+        const anticipoVinculado = Number(filaAnticipo?.anticipo ?? 0);
+
         const valorCxP = Number((Number(doc.total_cpcfa || 0) - totalRetenciones).toFixed(2));
-        detallesAsiento.push({
-            ide_cnlap: this.lugarHaber,
-            ide_cndpc: cuentaCxP ?? 0,
-            valor_cndcc: valorCxP,
-            observacion_cndcc: 'CUENTA POR PAGAR',
-            referencia_cndcc: 'CUENTA POR PAGAR',
-        });
+
+        if (anticipoVinculado > TOLERANCIA_CENTAVOS) {
+            const valorAnticipoAplicado = Number(Math.min(anticipoVinculado, valorCxP).toFixed(2));
+            const cuentaAnticipo = await this.buscarCuentaConfig('ANTICIPO A PROVEEDORES', {}, dtoIn.ideSucu);
+            if (!cuentaAnticipo) {
+                advertencias.push('Cuenta "ANTICIPO A PROVEEDORES" no configurada en Contabilidad > Configuración de Asientos');
+            }
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber,
+                ide_cndpc: cuentaAnticipo ?? 0,
+                valor_cndcc: valorAnticipoAplicado,
+                observacion_cndcc: 'ANTICIPO A PROVEEDORES',
+                referencia_cndcc: 'ANTICIPO A PROVEEDORES',
+            });
+
+            const valorCxPRestante = Number((valorCxP - valorAnticipoAplicado).toFixed(2));
+            if (valorCxPRestante > TOLERANCIA_CENTAVOS) {
+                const cuentaCxP = await this.getCuentaPersona('CUENTA POR PAGAR', Number(doc.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
+                if (!cuentaCxP) advertencias.push('Cuenta por pagar del proveedor no configurada en con_det_conf_asie');
+                detallesAsiento.push({
+                    ide_cnlap: this.lugarHaber,
+                    ide_cndpc: cuentaCxP ?? 0,
+                    valor_cndcc: valorCxPRestante,
+                    observacion_cndcc: 'CUENTA POR PAGAR',
+                    referencia_cndcc: 'CUENTA POR PAGAR',
+                });
+            }
+        } else {
+            const cuentaCxP = await this.getCuentaPersona('CUENTA POR PAGAR', Number(doc.ide_geper), dtoIn.ideEmpr, dtoIn.ideSucu);
+            if (!cuentaCxP) advertencias.push('Cuenta por pagar del proveedor no configurada en con_det_conf_asie');
+            detallesAsiento.push({
+                ide_cnlap: this.lugarHaber,
+                ide_cndpc: cuentaCxP ?? 0,
+                valor_cndcc: valorCxP,
+                observacion_cndcc: 'CUENTA POR PAGAR',
+                referencia_cndcc: 'CUENTA POR PAGAR',
+            });
+        }
 
         const saveDto: SaveComprobanteDto = {
             isUpdate: false,
@@ -1346,6 +1398,7 @@ export class AsientosAutomaticosService extends BaseService {
 
             const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
+                subtipo: anticipoVinculado > TOLERANCIA_CENTAVOS ? 'Con anticipo' : undefined,
                 numeroDocumento: doc.numero_cpcfa, ideCnccc, numeroCnccc: result.numero_cnccc,
                 generado: true, advertencias, fecha: doc.fecha_emisi_cpcfa, dtoIn,
             });
@@ -1362,6 +1415,7 @@ export class AsientosAutomaticosService extends BaseService {
             this.logger.warn(`Error al generar asiento de compra ide_cpcfa=${dtoIn.ide_cpcfa}: ${error}`);
             await this.registrarLogMayorizacion({
                 tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
+                subtipo: anticipoVinculado > TOLERANCIA_CENTAVOS ? 'Con anticipo' : undefined,
                 numeroDocumento: doc.numero_cpcfa, generado: false,
                 advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
                 fecha: doc.fecha_emisi_cpcfa, dtoIn,
