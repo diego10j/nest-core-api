@@ -157,9 +157,21 @@ export class BotGptService {
   async analizarLoteProductos(
     textoAcumulado: string,
     productosYaAgregados: string[] = [],
+    historialReciente: { role: 'user' | 'assistant'; content: string }[] = [],
   ): Promise<{ completo: boolean; items: { producto: string; cantidad: number | null }[] }> {
     const ctx = productosYaAgregados.length
       ? `Ya fueron agregados a la cotización (no los repitas): ${productosYaAgregados.join(', ')}.`
+      : '';
+    // Sin historial, un mensaje de seguimiento que no repite el producto (ej. el cliente
+    // preguntó "tienen cera de coco", el bot respondió, y el cliente solo contesta
+    // "necesito 2kg") se analiza aislado y no encuentra ningún producto — la cotización
+    // terminaba con un ítem genérico en vez de "cera de coco" (caso real detectado
+    // 2026-09-13). Con el historial, GPT puede resolver la referencia al mensaje anterior
+    // como lo haría un asesor leyendo el chat completo.
+    const avisoHistorial = historialReciente.length
+      ? '\nSi el ÚLTIMO mensaje del cliente (el que aparece más abajo) no nombra ningún producto por sí solo ' +
+        '(ej. solo da una cantidad, o responde "sí"/"ese mismo"/"el primero"), revisa los mensajes anteriores de esta ' +
+        'misma conversación para identificar de qué producto está hablando — no lo dejes vacío si el contexto ya lo dejó claro.\n'
       : '';
     try {
       const resp = await this.openai.chat.completions.create({
@@ -170,7 +182,7 @@ export class BotGptService {
             content:
               'El cliente está listando productos y cantidades para una cotización, posiblemente en varios mensajes seguidos ' +
               '(separados por saltos de línea en el texto que recibes). ' +
-              `${ctx}\n` +
+              `${ctx}${avisoHistorial}\n` +
               'Tu tarea:\n' +
               '1. "completo": true si el texto contiene la palabra FIN (aislada), si el cliente da a entender que ya terminó de listar ' +
               '(ej: "eso es todo", "ya", "nada más", "es todo por ahora", "listo"), O SI el mensaje es una pregunta o pedido ' +
@@ -199,6 +211,7 @@ export class BotGptService {
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
               'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
+          ...historialReciente.slice(-6),
           { role: 'user', content: textoAcumulado },
         ],
         response_format: { type: 'json_object' },

@@ -684,23 +684,14 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string,
     nombreBot: string, nombreEmpresa: string,
   ): Promise<void> {
-    const { items: itemsPropios } = await this.botGpt.analizarLoteProductos(texto, []);
-
-    // Si este mensaje NO menciona ningún producto por sí solo (ej. "Necesito 2kg" —
-    // solo cantidad) y quedó un producto pendiente del turno anterior (se le mostró el
-    // link de catálogo sin cantidad, ver más abajo), se combina con ese texto para no
-    // perderlo. Antes, este caso real (cliente pregunta "tiene cera de coco", bot
-    // muestra el catálogo, cliente responde solo "necesito 2kg") generaba la cotización
-    // con el producto genérico en vez de "cera de coco" — el cliente no debería tener
-    // que repetir el nombre del producto que ya había mencionado.
-    let items = itemsPropios;
-    if (!itemsPropios.length && datos.producto_pendiente_seguimiento) {
-      ({ items } = await this.botGpt.analizarLoteProductos(
-        `${datos.producto_pendiente_seguimiento}. ${texto}`, [],
-      ));
-    }
-    const datosBase: DatosSesion = { ...datos, producto_pendiente_seguimiento: undefined };
-
+    // Se pasa el historial reciente del chat para que GPT pueda resolver mensajes de
+    // seguimiento que no repiten el producto (ej. el cliente pregunta "tienen cera de
+    // coco", el bot responde, y el cliente solo contesta "necesito 2kg") — igual que lo
+    // haría un asesor leyendo la conversación completa, en vez de analizar cada mensaje
+    // aislado (caso real detectado 2026-09-13: la cotización terminaba con un ítem
+    // genérico en vez de "cera de coco").
+    const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
+    const { items } = await this.botGpt.analizarLoteProductos(texto, [], historial);
     const hayItemConCantidad = items.some((i) => i.cantidad !== null);
 
     if (!hayItemConCantidad) {
@@ -714,16 +705,14 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId,
           `¡Sí, disponemos! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos, aquí: ${urlCatalogo} — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
         );
-        // Se recuerda qué preguntó, por si el siguiente mensaje es solo la cantidad.
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA,
-          { ...datosBase, producto_pendiente_seguimiento: texto.trim() });
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
         return;
       }
     }
 
     const itemsParaCotizar = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
     await this.iniciarRecopilacionCotizacionRapida(
-      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosBase, itemsParaCotizar, nombreBot, nombreEmpresa,
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar, nombreBot, nombreEmpresa,
     );
   }
 
@@ -1387,11 +1376,16 @@ export class BotService implements OnModuleInit {
     const cliente: ClienteSesion = datos.cliente ?? { nombres: '', correo: '', es_cliente_registrado: false };
 
     if (cliente.pendiente_campo === 'nombres') {
-      const nombres = texto.trim();
-      if (nombres.length < 3 || esIdBotonConocido(nombres)) {
-        await this.sendText(ideEmpr, waId, `Por favor ingresa tu nombre completo 😊`);
+      // GPT extrae el nombre del texto libre (no heurística de longitud) — así "me llamo
+      // Diego Jácome" guarda "Diego Jácome", no la frase completa. esIdBotonConocido queda
+      // como red de seguridad extra ante un ID de botón viejo (ver comentario junto a
+      // IDS_BOTONES_CONOCIDOS).
+      const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      if (!nombre || esIdBotonConocido(nombre)) {
+        await this.sendText(ideEmpr, waId, `Por favor, ayúdame con tu nombre para continuar 😊`);
         return;
       }
+      const nombres = nombre;
       // Ya no se pide correo — se usa el correo general de la empresa por defecto
       // (mismo criterio que un cliente existente sin correo registrado).
       const nuevosDatos: DatosSesion = {
