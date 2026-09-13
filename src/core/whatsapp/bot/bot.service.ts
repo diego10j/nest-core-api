@@ -629,33 +629,64 @@ export class BotService implements OnModuleInit {
       texto = datos.texto_inicial || texto;
     }
 
-    const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
-    this.logger.debug(`[Bot][Reducido] tipoConsulta="${tipoConsulta}"`);
+    // El debounce existe justo para esto: juntar todo lo que el cliente escribió (uno o
+    // varios mensajes seguidos) y responderlo COMPLETO en la menor cantidad de mensajes
+    // posible — no solo lo primero que se detecte. detectarRequerimientos (a diferencia
+    // de clasificarConsulta) marca TODAS las categorías presentes, no una sola, para no
+    // perder en silencio el resto de lo que pidió (caso real: "dónde están ubicados,
+    // disponen percarbonato de sodio" solo respondía la ubicación).
+    const requerimientos = await this.botGpt.detectarRequerimientos(texto);
+    this.logger.debug(`[Bot][Reducido] requerimientos=${JSON.stringify(requerimientos)}`);
 
-    if (['UBICACION', 'HORARIO', 'ENVIO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
-      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
-      return;
+    const partesInfo: string[] = [];
+    if (requerimientos.ubicacion) {
+      const t = this.construirTextoInfo('UBICACION', nombreEmpresa, config);
+      if (t) partesInfo.push(t);
     }
-
-    if (tipoConsulta === 'CATALOGO') {
-      await this.sendText(ideEmpr, waId,
+    if (requerimientos.horario) {
+      const t = this.construirTextoInfo('HORARIO', nombreEmpresa, config);
+      if (t) partesInfo.push(t);
+    }
+    if (requerimientos.envio) {
+      const t = this.construirTextoInfo('ENVIO', nombreEmpresa, config);
+      if (t) partesInfo.push(t);
+    }
+    if (requerimientos.catalogo) {
+      partesInfo.push(
         `¡Claro que sí! 📋 Aquí tienes nuestros catálogos:\n` +
         `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
-        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
-        `Cualquier producto puntual que necesites, cuéntame y con gusto te ayudo 😊`,
+        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo`,
       );
-      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
-      return;
     }
 
-    if (tipoConsulta === 'PRODUCTO') {
+    if (partesInfo.length) {
+      await this.sendText(ideEmpr, waId, partesInfo.join('\n\n'));
+      // El pin de ubicación es un tipo de mensaje de WhatsApp aparte (no se puede fundir
+      // con el texto) — se manda igual que en responderInfo, después del texto combinado.
+      if (requerimientos.ubicacion && config?.lat_empresa && config?.lng_empresa) {
+        try {
+          await this.ycloudService.sendLocation(
+            ideEmpr, `+${waId}`, config.lat_empresa, config.lng_empresa, nombreEmpresa, '', true,
+          );
+        } catch (err) {
+          this.logger.warn(`[Bot][Reducido] No se pudo enviar pin de ubicación: ${err.message}`);
+        }
+      }
+    }
+
+    if (requerimientos.producto) {
       await this.manejarConsultaProductoReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreBot, nombreEmpresa);
       return;
     }
 
-    // GENERAL: GPT responde con el prompt de la empresa; si necesita un dato específico
-    // que no tiene, deriva a asesor en vez de inventar.
+    if (partesInfo.length) {
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      return;
+    }
+
+    // GENERAL: ninguna categoría específica aplicó — GPT responde con el prompt de la
+    // empresa; si necesita un dato específico que no tiene, deriva a asesor en vez de
+    // inventar.
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
@@ -1068,64 +1099,27 @@ export class BotService implements OnModuleInit {
     const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
 
     if (tipoConsulta === 'PRODUCTO') {
-      // Antes de arrastrar al cliente por todo el flujo (identificación, dirección,
-      // forma de pago) se verifica que AL MENOS UNO de los productos mencionados tenga
-      // algún candidato en el catálogo interno — nada exige que sea el match correcto,
-      // solo que exista algo remotamente parecido. Si NINGUNO existe, no tiene sentido
-      // pedirle nombre/cédula/dirección para algo que de todas formas va a terminar en
-      // "no disponemos" (patrón real detectado: clientes esperando horas a que un
-      // asesor confirme que no hay stock, después de completar todo el formulario). Se
-      // deriva de una vez, sin gastarle el tiempo.
-      const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoInicial, []);
-      // Si GPT no logró extraer ningún nombre de producto puntual (ej. el mensaje es
-      // vago o es solo intención de cotizar sin decir qué), no hay nada que verificar
-      // todavía — se sigue el flujo normal, que ya sabe pedir el producto.
-      if (itemsDetectados.length) {
-        const estadoProducto = await this.evaluarExistenciaProductos(
-          itemsDetectados.map((i) => i.producto), ideEmpr,
-        );
-
-        if (estadoProducto.estado === 'NO_VENDEMOS') {
-          await this.sendText(ideEmpr, waId,
-            `Por el momento no disponemos de ese producto 😔${estadoProducto.observacion ? ` ${estadoProducto.observacion}.` : ''} ¿Te ayudo con algo más?`,
-          );
-          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
-          return;
-        }
-
-        if (estadoProducto.estado === 'DESCONOCIDO') {
-          await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-            `Por el momento no tenemos disponible ese producto 😔 De todas formas te comunico con un asesor por si podemos conseguirlo o sugerirte una alternativa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
-            `Cliente preguntó por "${textoInicial}" — sin ningún match en catálogo interno (ni exacto ni por palabras).`,
-          );
-          return;
-        }
-      }
-
-      if (datos.cliente?.nombres) {
-        const datosNuevos: DatosSesion = { ...datos, productos: [] };
-        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
-        // El mensaje inicial ya traía el producto (ej. "quiero 5kg cera de palma") —
-        // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
-        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
-      } else {
-        // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste
-        // con nosotros?" — la gran mayoría de los chats nuevos que llegan al bot nunca
-        // compraron antes, así que esa pregunta casi siempre era un mensaje de más. El
-        // texto con el producto se guarda para procesarlo automáticamente en cuanto
-        // tengamos el nombre (handleDatosNuevoCliente), sin que lo repita.
-        await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
-        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
-          ...datos,
-          cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
-          producto_texto_pendiente: textoInicial || undefined,
-        });
-      }
+      await this.manejarConsultaProductoClasica(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+      );
       return;
     }
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+
+      // El mensaje puede combinar la pregunta informativa con una consulta de producto en
+      // el mismo texto (ej. "dónde están ubicados y disponen percarbonato de sodio") —
+      // clasificarConsulta solo devuelve UNA categoría, así que sin este chequeo la mitad
+      // del mensaje (el producto) se perdía en silencio (caso real detectado 2026-09-13).
+      const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(textoInicial, []);
+      if (itemsExtra.length) {
+        await this.manejarConsultaProductoClasica(
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+        );
+        return;
+      }
+
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
       return;
     }
@@ -1140,6 +1134,73 @@ export class BotService implements OnModuleInit {
       `📦 Catálogos y precios\n\n` +
       `_Escribe lo que necesitas o *SALIR* para hablar con un asesor_`,
     );
+  }
+
+  /**
+   * Lógica de "el cliente quiere un producto" compartida entre responderConsultaInicial
+   * (cuando esa es la única intención del mensaje) y handleAtencionLibre (mismo caso, más
+   * adelante en la conversación) — extraída para poder invocarla también cuando el
+   * mensaje combina una pregunta informativa (ubicación/horario/envío/catálogo) CON una
+   * consulta de producto en el mismo texto, algo que clasificarConsulta no puede reflejar
+   * al devolver una sola categoría.
+   */
+  private async manejarConsultaProductoClasica(
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    sesion: any, datos: DatosSesion, textoProducto: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    // Antes de arrastrar al cliente por todo el flujo (identificación, dirección, forma
+    // de pago) se verifica que AL MENOS UNO de los productos mencionados tenga algún
+    // candidato en el catálogo interno — nada exige que sea el match correcto, solo que
+    // exista algo remotamente parecido. Si NINGUNO existe, no tiene sentido pedirle
+    // nombre/cédula/dirección para algo que de todas formas va a terminar en "no
+    // disponemos" (patrón real detectado: clientes esperando horas a que un asesor
+    // confirme que no hay stock, después de completar todo el formulario). Se deriva de
+    // una vez, sin gastarle el tiempo.
+    const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoProducto, []);
+    // Si GPT no logró extraer ningún nombre de producto puntual (ej. el mensaje es vago o
+    // es solo intención de cotizar sin decir qué), no hay nada que verificar todavía — se
+    // sigue el flujo normal, que ya sabe pedir el producto.
+    if (itemsDetectados.length) {
+      const estadoProducto = await this.evaluarExistenciaProductos(
+        itemsDetectados.map((i) => i.producto), ideEmpr,
+      );
+
+      if (estadoProducto.estado === 'NO_VENDEMOS') {
+        await this.sendText(ideEmpr, waId,
+          `Por el momento no disponemos de ese producto 😔${estadoProducto.observacion ? ` ${estadoProducto.observacion}.` : ''} ¿Te ayudo con algo más?`,
+        );
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+        return;
+      }
+
+      if (estadoProducto.estado === 'DESCONOCIDO') {
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+          `Por el momento no tenemos disponible ese producto 😔 De todas formas te comunico con un asesor por si podemos conseguirlo o sugerirte una alternativa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
+          `Cliente preguntó por "${textoProducto}" — sin ningún match en catálogo interno (ni exacto ni por palabras).`,
+        );
+        return;
+      }
+    }
+
+    if (datos.cliente?.nombres) {
+      const datosNuevos: DatosSesion = { ...datos, productos: [] };
+      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
+      // El mensaje ya traía el producto (ej. "quiero 5kg cera de palma") — se procesa de
+      // inmediato en vez de pedirlo de nuevo con el mensaje genérico.
+      await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoProducto, nombreEmpresa, config);
+    } else {
+      // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste con
+      // nosotros?" — la gran mayoría de los chats nuevos que llegan al bot nunca
+      // compraron antes, así que esa pregunta casi siempre era un mensaje de más. El
+      // texto con el producto se guarda para procesarlo automáticamente en cuanto
+      // tengamos el nombre (handleDatosNuevoCliente), sin que lo repita.
+      await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
+        ...datos,
+        cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
+        producto_texto_pendiente: textoProducto || undefined,
+      });
+    }
   }
 
   /**
@@ -1185,61 +1246,24 @@ export class BotService implements OnModuleInit {
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+
+      // El mensaje puede combinar la pregunta informativa con una consulta de producto
+      // en el mismo texto (ej. "dónde están ubicados y disponen percarbonato de
+      // sodio") — clasificarConsulta solo devuelve UNA categoría, así que sin este
+      // chequeo la mitad del mensaje (el producto) se perdía en silencio.
+      const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(texto, []);
+      if (itemsExtra.length) {
+        await this.manejarConsultaProductoClasica(
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config,
+        );
+      }
       return;
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      // Mismo chequeo rápido que responderConsultaInicial: si ningún producto
-      // mencionado existe ni remotamente en el catálogo, no tiene sentido arrastrar al
-      // cliente por identificación/dirección para algo que va a terminar en "no
-      // disponemos" — se deriva de una vez.
-      const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(texto, []);
-      // Si GPT no logró extraer ningún nombre de producto puntual (ej. una afirmación
-      // corta como "sí"/"claro" tras una respuesta informativa), no hay nada que
-      // verificar todavía — se sigue el flujo normal, que ya sabe pedir el producto.
-      if (itemsDetectados.length) {
-        const estadoProducto = await this.evaluarExistenciaProductos(
-          itemsDetectados.map((i) => i.producto), ideEmpr,
-        );
-
-        if (estadoProducto.estado === 'NO_VENDEMOS') {
-          await this.sendText(ideEmpr, waId,
-            `Por el momento no disponemos de ese producto 😔${estadoProducto.observacion ? ` ${estadoProducto.observacion}.` : ''} ¿Te ayudo con algo más?`,
-          );
-          return;
-        }
-
-        if (estadoProducto.estado === 'DESCONOCIDO') {
-          await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-            `Por el momento no tenemos disponible ese producto 😔 De todas formas te comunico con un asesor por si podemos conseguirlo o sugerirte una alternativa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
-            `Cliente preguntó por "${texto}" — sin ningún match en catálogo interno (ni exacto ni por palabras).`,
-          );
-          return;
-        }
-      }
-
-      if (datos.cliente?.nombres) {
-        const datosNuevos: DatosSesion = { ...datos, productos: [] };
-        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
-        // El mensaje ya traía el producto (ej. "quiero 5kg cera de palma") — se procesa
-        // de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
-        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, texto, nombreEmpresa, config);
-      } else {
-        // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste
-        // con nosotros?" (ver responderConsultaInicial, mismo criterio). El texto con
-        // el producto se guarda para procesarlo en cuanto tengamos el nombre.
-        try {
-          await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
-        } catch (e) {
-          this.logger.error(`[Bot] sendText lanzó excepción: ${e.message}`);
-          throw e;
-        }
-        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
-          ...datos,
-          cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
-          producto_texto_pendiente: texto,
-        });
-      }
+      await this.manejarConsultaProductoClasica(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config,
+      );
       return;
     }
 
@@ -2720,15 +2744,17 @@ export class BotService implements OnModuleInit {
    * Para preguntas genéricas usa el template directamente (determinista, sin costo GPT).
    * Si no existe el template, fallback a GPT.
    */
-  private async responderInfo(
-    ideEmpr: number, waId: string,
+  /**
+   * Solo arma el texto de la plantilla configurada (columnas dedicadas en DB, fuente de
+   * verdad, sin parseo) — no envía nada. Separado de responderInfo para poder combinar
+   * varias respuestas informativas en un solo mensaje (ver handleAtencionLibreReducida).
+   */
+  private construirTextoInfo(
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
     nombreEmpresa: string,
     config: any,
-  ): Promise<void> {
+  ): string | null {
     const nombreBot = config?.nombre_bot || 'Asistente';
-
-    // Columnas dedicadas en DB — fuente de verdad, sin parseo de texto
     const colMap: Record<string, string | null> = {
       UBICACION: config?.resp_ubicacion ?? null,
       HORARIO: config?.resp_horario ?? null,
@@ -2736,15 +2762,23 @@ export class BotService implements OnModuleInit {
       CATALOGO: config?.resp_catalogo ?? null,
     };
     const template = colMap[tipo] ?? null;
-
     if (!template) {
-      this.logger.warn(`[responderInfo] tipo=${tipo} sin template configurado en resp_${tipo.toLowerCase()} — omitiendo respuesta`);
-      return;
+      this.logger.warn(`[construirTextoInfo] tipo=${tipo} sin template configurado en resp_${tipo.toLowerCase()} — omitiendo respuesta`);
+      return null;
     }
-
-    const respuesta = template
+    return template
       .replace(/{BOT_NOMBRE}/g, nombreBot)
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+  }
+
+  private async responderInfo(
+    ideEmpr: number, waId: string,
+    tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
+    nombreEmpresa: string,
+    config: any,
+  ): Promise<void> {
+    const respuesta = this.construirTextoInfo(tipo, nombreEmpresa, config);
+    if (!respuesta) return;
 
     await this.sendText(ideEmpr, waId, respuesta);
 

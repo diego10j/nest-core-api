@@ -150,6 +150,69 @@ export class BotGptService {
   }
 
   /**
+   * A diferencia de clasificarConsulta (una sola categoría, la primera que matchea),
+   * detecta TODAS las categorías presentes en el texto — el modo mensajes reducidos junta
+   * con debounce varios mensajes seguidos del cliente antes de responder (ej. "¿dónde
+   * están ubicados?" + "¿tienen catálogo?" + "disponen de percarbonato de sodio?" en un
+   * solo lote) justamente para que el bot pueda atender todo junto en la menor cantidad
+   * de mensajes, no solo lo primero que detecte. Categorías no excluyentes entre sí.
+   */
+  async detectarRequerimientos(texto: string): Promise<{
+    ubicacion: boolean; horario: boolean; envio: boolean; catalogo: boolean; producto: boolean;
+  }> {
+    const t = texto.toUpperCase();
+    const requerimientos = {
+      ubicacion: /UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA/.test(t),
+      horario: /HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t),
+      envio: /ENV[IÍ]O|ENV[IÍ]AN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|OTRA CIUDAD/.test(t),
+      catalogo: /CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIOS\b|LISTA DE PRODUCTO/.test(t),
+      producto: /PRODUCTO|COTIZACI[OÓ]N|COTIZAR|COMPRAR|NECESITO|QUIERO|PEDIR|ORDEN|DISPONE[N]?|HAY\s+|DISPONIB|CONSIGO|VENDEN?|EXISTENCIA|STOCK|PRECIO\b|CU[AÁ]NTO\s+CUESTA|COSTO\s+DE/.test(t),
+    };
+    // Los atajos por regex ya cubren la mayoría de los casos reales sin gastar una
+    // llamada a GPT — si ninguno matcheó, el texto es más implícito/conversacional y se
+    // le pide a GPT que decida (puede marcar varias categorías igual).
+    if (Object.values(requerimientos).some(Boolean)) return requerimientos;
+
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'El cliente puede estar pidiendo VARIAS cosas en el mismo mensaje (a veces son varios mensajes seguidos ' +
+              'que ya vienen unidos, separados por saltos de línea). Marca TRUE cada categoría que aplique — pueden ser ' +
+              'varias a la vez, no elijas solo una:\n' +
+              'ubicacion = dirección, cómo llegar, sucursal/sede/local en otra ciudad.\n' +
+              'horario = horario de atención, si están abiertos.\n' +
+              'envio = envíos, despacho, costo de envío a otras ciudades.\n' +
+              'catalogo = pide el catálogo o la lista de precios EN GENERAL, sin nombrar un producto específico.\n' +
+              'producto = disponibilidad, precio o compra de un producto específico.\n' +
+              'Responde SOLO JSON: {"ubicacion":bool,"horario":bool,"envio":bool,"catalogo":bool,"producto":bool}.',
+          },
+          { role: 'user', content: texto },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 60,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return requerimientos;
+      const parsed = JSON.parse(content);
+      return {
+        ubicacion: !!parsed.ubicacion,
+        horario: !!parsed.horario,
+        envio: !!parsed.envio,
+        catalogo: !!parsed.catalogo,
+        producto: !!parsed.producto,
+      };
+    } catch (err) {
+      this.logger.error(`detectarRequerimientos error: ${err.message}`);
+      return requerimientos;
+    }
+  }
+
+  /**
    * Analiza el texto acumulado durante la captura de productos en lote.
    * Detecta si el cliente ya terminó de listar (FIN literal o cierre semántico)
    * y extrae todos los pares producto/cantidad mencionados hasta el momento.
