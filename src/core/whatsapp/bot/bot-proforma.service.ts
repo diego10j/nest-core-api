@@ -370,6 +370,7 @@ export class BotProformaService {
   async obtenerCatalogosDisponibles(ideEmpr: number): Promise<{
     ide_cata: number;
     nombre_cata: string;
+    path_cata: string | null;
     productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
   }[]> {
     const cacheKey = `catalogo:bot:productos:${ideEmpr}`;
@@ -384,6 +385,7 @@ export class BotProformaService {
       SELECT
         c.ide_inccat     AS ide_cata,
         c.nombre_inccat  AS nombre_cata,
+        c.path_inccat    AS path_cata,
         a.ide_inarti,
         a.nombre_inarti  AS nombre_producto
       FROM inv_cab_catalogo c
@@ -407,12 +409,14 @@ export class BotProformaService {
     const rows = await this.dataSource.createSelectQuery(query);
 
     const porCatalogo = new Map<number, {
-      ide_cata: number; nombre_cata: string;
+      ide_cata: number; nombre_cata: string; path_cata: string | null;
       productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
     }>();
     for (const row of rows) {
       if (!porCatalogo.has(row.ide_cata)) {
-        porCatalogo.set(row.ide_cata, { ide_cata: row.ide_cata, nombre_cata: row.nombre_cata, productos: [] });
+        porCatalogo.set(row.ide_cata, {
+          ide_cata: row.ide_cata, nombre_cata: row.nombre_cata, path_cata: row.path_cata ?? null, productos: [],
+        });
       }
       porCatalogo.get(row.ide_cata)!.productos.push({
         ide_inarti: row.ide_inarti, nombre: row.nombre_producto, precio_desde: null,

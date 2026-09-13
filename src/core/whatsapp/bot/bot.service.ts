@@ -398,7 +398,7 @@ export class BotService implements OnModuleInit {
     try {
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
-          await this.handleInicio(waId, ideWhcue, ideEmpr, sesion.ide_whbse, texto, nombreBot, nombreEmpresa, sesion.datos_sesion as DatosSesion);
+          await this.handleInicio(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, texto, nombreBot, nombreEmpresa, sesion, config);
           break;
         case BotState.ESPERANDO_CONFIRMACION:
           await this.handleConfirmacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
@@ -549,13 +549,58 @@ export class BotService implements OnModuleInit {
   ): Promise<void> {
     let datos = sesion.datos_sesion as DatosSesion;
 
-    // Primer mensaje de la sesión reducida: se presenta antes de responder lo que sea
-    // que haya preguntado el cliente — igual que hoy hace handleInicio (mismo tono),
-    // solo que sin el botón "¿Empezamos?" que el modo reducido se salta.
+    // Primer mensaje de la sesión: si ya conocemos al cliente (memoria de una sesión
+    // anterior) se le saluda por su nombre y se responde de una vez lo que haya
+    // preguntado. Si no lo conocemos, se le pregunta el nombre ANTES de responder —
+    // se guarda lo que preguntó para contestarlo apenas lo sepamos, en vez de pedirle
+    // que lo repita.
     if (!datos.saludo_reducido_enviado) {
-      await this.sendText(ideEmpr, waId, `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}* 😊`);
       datos = { ...datos, saludo_reducido_enviado: true };
+      if (datos.cliente?.nombres) {
+        await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${datos.cliente.nombres}*! 😊`);
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      } else {
+        datos = { ...datos, texto_inicial: texto };
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+        await this.sendText(ideEmpr, waId,
+          `¡Hola! Soy *${nombreBot}*, asistente de *${nombreEmpresa}* 😊 ¿Cuál es tu nombre?`,
+        );
+        return;
+      }
+    }
+
+    // Todavía no tenemos el nombre (ya se le preguntó en un mensaje anterior): se
+    // interpreta este mensaje como la respuesta — GPT lo extrae del texto libre (no
+    // heurísticas de patrón: "soy Diego", "me llamo Diego" o solo "Diego" son todas
+    // respuestas válidas) para que la conversación se sienta natural y no como un
+    // formulario. Los pedidos explícitos de salir/hablar con un asesor tienen prioridad
+    // aunque todavía no haya dado su nombre.
+    if (!datos.cliente?.nombres) {
+      if (REGEX_SALIR.test(texto.trim()) || PALABRAS_ASESOR.test(texto)) {
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
+        return;
+      }
+
+      const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      if (!nombre) {
+        await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
+        return;
+      }
+
+      datos = {
+        ...datos,
+        cliente: {
+          ...(datos.cliente ?? {}),
+          nombres: nombre,
+          correo: datos.cliente?.correo || '',
+          es_cliente_registrado: datos.cliente?.es_cliente_registrado ?? false,
+        },
+      };
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
+      // Responde lo que había preguntado en el primer mensaje, no este ("Diego"/"me
+      // llamo Diego") — evita "¿Qué necesitas?" cuando ya lo había dicho.
+      texto = datos.texto_inicial || texto;
     }
 
     const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
@@ -619,8 +664,12 @@ export class BotService implements OnModuleInit {
       const catalogos = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
       const match = await this.botGpt.matchCatalogoProducto(texto, catalogos);
       if (match?.ide_cata) {
+        const catalogoMatch = catalogos.find((c) => c.ide_cata === match.ide_cata);
+        const urlCatalogo = catalogoMatch?.path_cata
+          ? `https://diquimec.com.ec/catalogo/${catalogoMatch.path_cata}`
+          : 'https://diquimec.com.ec/catalogo';
         await this.sendText(ideEmpr, waId,
-          `¡Sí, disponemos de ese producto! 😊 Lo encuentras en nuestro catálogo con precios aquí: https://diquimec.com.ec/catalogo — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
+          `¡Sí, disponemos! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos, aquí: ${urlCatalogo} — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
         );
         await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
         return;
@@ -787,25 +836,30 @@ export class BotService implements OnModuleInit {
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   private async handleInicio(
-    waId: string, ideWhcue: number, ideEmpr: number,
-    ideWhbse: number, texto: string, nombreBot: string, nombreEmpresa: string, datosSesion: DatosSesion,
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    texto: string, nombreBot: string, nombreEmpresa: string, sesion: any, config: any,
   ): Promise<void> {
-    const datosActualizados: DatosSesion = {
-      ...datosSesion,
-      productos: datosSesion?.productos ?? [],
-      texto_inicial: texto,
-    };
-    await this.botSession.update(ideWhbse, BotState.ESPERANDO_CONFIRMACION, datosActualizados);
-
+    const datosSesion = sesion.datos_sesion as DatosSesion;
     const nombreCliente = datosSesion?.cliente?.nombres;
-    const saludo = nombreCliente
-      ? `¡Hola de nuevo, *${nombreCliente}*! 😊 Soy *${nombreBot}* de *${nombreEmpresa}*.\n\n¿En qué te ayudo hoy?`
-      : `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}*.\n\nCon gusto te ayudo con: 🧪 cotizaciones, 📦 catálogo y precios, 📍 ubicación y 🚚 envíos.\n\n¿Empezamos?`;
 
-    await this.sendButtons(ideEmpr, waId, saludo, [
-      { id: 'SI', title: '🤖 Preguntar a bot' },
-      { id: 'NO', title: '👤 Hablar con asesor' },
-    ]);
+    if (nombreCliente) {
+      // Ya lo conocemos (memoria de una sesión anterior) — se saluda por su nombre y
+      // se responde de una vez a lo que haya escrito, sin gates de confirmación.
+      await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${nombreCliente}*! 😊`);
+      const datosActualizados: DatosSesion = { ...datosSesion, productos: datosSesion?.productos ?? [] };
+      await this.responderConsultaInicial(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosActualizados, texto, nombreEmpresa, config,
+      );
+      return;
+    }
+
+    // No lo conocemos: se pregunta el nombre antes de responder — se guarda lo que
+    // preguntó para contestarlo apenas lo sepamos, en vez de pedirle que lo repita.
+    const datosActualizados: DatosSesion = {
+      ...datosSesion, productos: datosSesion?.productos ?? [], texto_inicial: texto,
+    };
+    await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CONFIRMACION, datosActualizados);
+    await this.sendText(ideEmpr, waId, `¡Hola! Soy *${nombreBot}*, asistente de *${nombreEmpresa}* 😊 ¿Cuál es tu nombre?`);
   }
 
   private async handleConfirmacion(
@@ -813,79 +867,98 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
     const datos = sesion.datos_sesion as DatosSesion;
-
-    // Detección por IDs de botón (respuestas exactas de WhatsApp) — sin GPT en este estado
     const t = texto.trim();
-    const tUpper = t.toUpperCase();
-    let intencion: string | null = null;
 
-    if (tUpper === 'SI' || tUpper === 'NO') {
-      intencion = tUpper === 'SI' ? 'CONFIRMAR' : 'CANCELAR';
-    } else if (REGEX_SALIR.test(t)) {
-      intencion = 'SALIR';
-    } else if (PALABRAS_ASESOR.test(t)) {
-      intencion = 'ASESOR';
-    }
-
-    // Solo usar GPT si no se detectó por botón/regex
-    if (!intencion) {
-      intencion = await this.botGpt.detectarIntencion(texto);
-    }
-
-    if (intencion === 'CANCELAR' || intencion === 'ASESOR') {
+    // Salidas explícitas tienen prioridad, incluso mientras se espera el nombre.
+    if (REGEX_SALIR.test(t) || PALABRAS_ASESOR.test(t)) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
       await this.botSession.cerrar(sesion.ide_whbse, BotState.CANCELADO);
       return;
     }
 
-    if (intencion === 'CONFIRMAR') {
-      const textoInicial = datos?.texto_inicial || '';
-      const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
-
-      if (tipoConsulta === 'PRODUCTO') {
-        if (datos.cliente?.nombres && datos.memoria_cargada) {
-          const datosNuevos: DatosSesion = { ...datos, productos: [] };
-          await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
-          // El mensaje inicial ya traía el producto (ej. "quiero 5kg cera de palma") —
-          // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
-          await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
-        } else {
-          // Cliente desconocido: el texto con el producto se guarda para procesarlo
-          // automáticamente al terminar la identificación (antes se perdía y el
-          // cliente tenía que volver a escribirlo).
-          await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-          await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
-            { ...datos, producto_texto_pendiente: textoInicial || undefined });
-        }
+    if (!datos.cliente?.nombres) {
+      // Todavía no sabemos su nombre — se interpreta este mensaje como la respuesta a
+      // "¿cuál es tu nombre?" del saludo. GPT lo extrae del texto libre (no heurísticas
+      // de patrón: "soy Diego", "me llamo Diego" o solo "Diego" son todas válidas) para
+      // que la conversación se sienta natural, no como un formulario.
+      const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      if (!nombre) {
+        await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
         return;
       }
 
-      if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-        await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
-        return;
-      }
-
-      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
-      await this.sendText(ideEmpr, waId,
-        `¡Perfecto! 😊 ¿En qué te puedo ayudar hoy?\n\n` +
-        `🧪 Cotización de productos\n` +
-        `📍 Ubicación y cómo llegar\n` +
-        `🕒 Horarios de atención\n` +
-        `🚚 Información de envíos\n` +
-        `📦 Catálogos y precios\n\n` +
-        `_Escribe lo que necesitas o *SALIR* para hablar con un asesor_`,
+      const datosConNombre: DatosSesion = {
+        ...datos,
+        cliente: {
+          ...(datos.cliente ?? {}),
+          nombres: nombre,
+          correo: datos.cliente?.correo || '',
+          es_cliente_registrado: datos.cliente?.es_cliente_registrado ?? false,
+        },
+      };
+      await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
+      // Responde lo que había preguntado en el saludo, no este mensaje ("Diego"/"me
+      // llamo Diego") — evita "¿en qué te ayudo?" cuando ya lo había dicho.
+      const textoInicial = datosConNombre.texto_inicial || '';
+      await this.responderConsultaInicial(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoInicial, nombreEmpresa, config,
       );
       return;
     }
 
-    // Cualquier otra respuesta → re-enviar los botones de elección
-    await this.sendButtons(ideEmpr, waId,
-      `Para poder ayudarte, primero selecciona una opción por favor 😊`,
-      [
-        { id: 'SI', title: '⚡ Continuar' },
-        { id: 'NO', title: '👤 Hablar con asesor' },
-      ],
+    // Nombre ya conocido — no debería llegar normalmente (handleInicio ya responde de
+    // una vez cuando lo conoce), cubre el caso borde de un mensaje que llegó mientras
+    // se procesaba el anterior.
+    const textoInicial = datos.texto_inicial || texto;
+    await this.responderConsultaInicial(
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+    );
+  }
+
+  /**
+   * Clasifica el mensaje inicial (o el que quedó pendiente mientras se preguntaba el
+   * nombre) y lo responde — misma lógica para un cliente ya conocido (handleInicio) o
+   * uno que recién dio su nombre (handleConfirmacion).
+   */
+  private async responderConsultaInicial(
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    sesion: any, datos: DatosSesion, textoInicial: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
+
+    if (tipoConsulta === 'PRODUCTO') {
+      if (datos.cliente?.nombres && datos.memoria_cargada) {
+        const datosNuevos: DatosSesion = { ...datos, productos: [] };
+        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
+        // El mensaje inicial ya traía el producto (ej. "quiero 5kg cera de palma") —
+        // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
+        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
+      } else {
+        // Cliente sin identificar en el ERP: el texto con el producto se guarda para
+        // procesarlo automáticamente al terminar la identificación (antes se perdía y
+        // el cliente tenía que volver a escribirlo).
+        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
+          { ...datos, producto_texto_pendiente: textoInicial || undefined });
+      }
+      return;
+    }
+
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+      return;
+    }
+
+    await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+    await this.sendText(ideEmpr, waId,
+      `¡Perfecto! 😊 ¿En qué te puedo ayudar hoy?\n\n` +
+      `🧪 Cotización de productos\n` +
+      `📍 Ubicación y cómo llegar\n` +
+      `🕒 Horarios de atención\n` +
+      `🚚 Información de envíos\n` +
+      `📦 Catálogos y precios\n\n` +
+      `_Escribe lo que necesitas o *SALIR* para hablar con un asesor_`,
     );
   }
 
@@ -2768,14 +2841,15 @@ export class BotService implements OnModuleInit {
       );
       const ultimoEstado = lastSesionRow.rows[0]?.estado;
 
-      // Chat sin historial de bot → presentar el asistente con los botones estándar
+      // Chat sin historial de bot → presentar el asistente
       if (!ultimoEstado) {
         const cfg = await this.botConfig.getConfig(ideWhcue);
+        if (!cfg) return;
         const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
         await this.handleInicio(
-          waId, ideWhcue, ideEmpr, sesion.ide_whbse, lastClientMsg,
-          cfg?.nombre_bot || 'QuimIA', cfg?.nombre_empresa || 'la empresa',
-          sesion.datos_sesion as DatosSesion,
+          waId, phone_number_id_whcha, ideWhcha, ideWhcue, ideEmpr, lastClientMsg,
+          cfg.nombre_bot || 'QuimIA', cfg.nombre_empresa || 'la empresa',
+          sesion, cfg,
         );
         return;
       }
