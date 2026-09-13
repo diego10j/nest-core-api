@@ -504,6 +504,13 @@ export class BotService implements OnModuleInit {
     const nombreEmpresa = config.nombre_empresa || 'DIQUIMEC';
 
     try {
+      // Frustración/enojo en cualquier punto del flujo reducido → derivar de inmediato,
+      // sin seguir intentando resolverlo con el bot (mensaje de horario por defecto).
+      if (await this.botGpt.detectarFrustracion(textoConcatenado)) {
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr);
+        return;
+      }
+
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
         case BotState.ATENCION_LIBRE_REDUCIDA:
@@ -540,7 +547,17 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
     nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
-    const datos = sesion.datos_sesion as DatosSesion;
+    let datos = sesion.datos_sesion as DatosSesion;
+
+    // Primer mensaje de la sesión reducida: se presenta antes de responder lo que sea
+    // que haya preguntado el cliente — igual que hoy hace handleInicio (mismo tono),
+    // solo que sin el botón "¿Empezamos?" que el modo reducido se salta.
+    if (!datos.saludo_reducido_enviado) {
+      await this.sendText(ideEmpr, waId, `¡Hola! Soy *${nombreBot}* 🤖, tu asistente en *${nombreEmpresa}* 😊`);
+      datos = { ...datos, saludo_reducido_enviado: true };
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+    }
+
     const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
     this.logger.debug(`[Bot][Reducido] tipoConsulta="${tipoConsulta}"`);
 
@@ -2578,8 +2595,8 @@ export class BotService implements OnModuleInit {
   async derivarAsesor(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number,
-    mensajeCliente?: string,   // mensaje visible al cliente (undefined = mensaje default)
-    notaAsesor?: string,       // nota interna para el asesor (NO se envía al cliente)
+    mensajeCliente?: string | null,   // mensaje visible al cliente (undefined = default, null = ninguno)
+    notaAsesor?: string,              // nota interna para el asesor (NO se envía al cliente)
   ): Promise<void> {
     await this.dataSource.pool.query(
       `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,

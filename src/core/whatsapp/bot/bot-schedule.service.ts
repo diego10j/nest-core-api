@@ -63,10 +63,12 @@ export class BotScheduleService {
         ide_whcue: number;
         ide_empr: number;
         nombre_bot: string;
+        estado: string;
       }>(`
         SELECT s.ide_whbse, c.ide_whcha, c.wa_id_whcha, c.phone_number_id_whcha,
                cu.ide_whcue, cu.ide_empr,
-               COALESCE(bc.nombre_bot, 'QuimIA') AS nombre_bot
+               COALESCE(bc.nombre_bot, 'QuimIA') AS nombre_bot,
+               s.estado
         FROM wha_bot_sesion s
         INNER JOIN wha_chat c ON c.ide_whcha = s.ide_whcha
         INNER JOIN wha_cuenta cu ON cu.ide_whcue = s.ide_whcue AND cu.activo_whcue = TRUE
@@ -76,7 +78,8 @@ export class BotScheduleService {
                                DATOS_NUEVO_CLIENTE,SELECCION_PRODUCTOS,SELECCION_MULTIPLE,
                                CONFIRMANDO_PRODUCTO_LOTE,
                                ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,
-                               CONFIRMACION_PRODUCTOS,MODIFICANDO_LISTA,DATOS_ENVIO,DATOS_PAGO}'::text[])
+                               CONFIRMACION_PRODUCTOS,MODIFICANDO_LISTA,DATOS_ENVIO,DATOS_PAGO,
+                               ATENCION_LIBRE_REDUCIDA,RECOPILANDO_COTIZACION_RAPIDA}'::text[])
           AND (NOW() - s.hora_actua) > make_interval(mins => $1)
           AND c.bot_activo_whcha = TRUE
           AND c.bot_modo_whcha = 'BOT'
@@ -86,10 +89,15 @@ export class BotScheduleService {
       for (const row of result.rows) {
         try {
           await this.botSession.expirarPorInactividad(row.ide_whbse);
+          // Modo mensajes reducidos: la filosofía es minimizar mensajes al cliente — se
+          // deriva a asesor en silencio (solo cambia bot_modo_whcha internamente), sin el
+          // aviso de "sesión finalizada por inactividad" que sí tiene sentido en el
+          // asistente de cotización completo (con mucho más contexto/progreso en juego).
+          const esModoReducido = row.estado === 'ATENCION_LIBRE_REDUCIDA' || row.estado === 'RECOPILANDO_COTIZACION_RAPIDA';
           await this.botService.derivarAsesor(
             row.wa_id_whcha, row.phone_number_id_whcha,
             row.ide_whcha, row.ide_whcue, row.ide_empr,
-            `Tu sesión ha finalizado por inactividad ⏳\n\nTe estamos comunicando con uno de nuestros asesores comerciales para dar seguimiento a tu consulta 👤\n\n_En breve te atenderán_ 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+            esModoReducido ? null : `Tu sesión ha finalizado por inactividad ⏳\n\nTe estamos comunicando con uno de nuestros asesores comerciales para dar seguimiento a tu consulta 👤\n\n_En breve te atenderán_ 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
             `Chat derivado a asesor por inactividad de ${ttl} min.`,
           );
           this.logger.log(`[Bot] Inactividad: chat=${row.ide_whcha} → ASESOR`);

@@ -543,4 +543,38 @@ export class BotGptService {
       return { nombre: null, ciudad: null };
     }
   }
+
+  /**
+   * Detecta si el cliente está molesto/frustrado con la atención (reclamo, queja, tono de
+   * enojo) — NO simplemente "no tienen el producto que busca". Usado en modo mensajes
+   * reducidos para derivar a un asesor de inmediato en vez de seguir intentando resolverlo
+   * con el bot. Atajo rápido sin GPT para los casos más obvios (evita una llamada extra en
+   * el caso común de un cliente normal).
+   */
+  async detectarFrustracion(texto: string): Promise<boolean> {
+    if (/\b(p[eé]simo|mal[ií]simo|estafa|denuncia|terrible|nunca\s+m[aá]s|no\s+sirve|inservible|incompeten|de\s+verg[uü]enza)\b/i.test(texto)) {
+      return true;
+    }
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Analiza si el cliente está molesto, frustrado o enojado con la atención o el servicio — un tono ' +
+              'de queja, reclamo o enojo explícito. NO cuenta simplemente estar insatisfecho porque no hay stock ' +
+              'de un producto o preguntar algo varias veces. Responde SOLO "SI" o "NO".',
+          },
+          { role: 'user', content: texto },
+        ],
+        temperature: 0,
+        max_tokens: 5,
+      });
+      return (resp.choices[0]?.message?.content?.trim().toUpperCase().startsWith('SI')) ?? false;
+    } catch (err) {
+      this.logger.error(`detectarFrustracion error: ${err.message}`);
+      return false;
+    }
+  }
 }

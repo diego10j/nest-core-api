@@ -94,6 +94,9 @@ export interface DatosSesion {
   // cliente confirme si es o no el producto que buscaba — bloquea de inmediato.
   pendiente_confirmacion?: PendienteConfirmacion;
   // ─── Modo mensajes reducidos ────────────────────────────────────────────
+  // TRUE luego de enviar el saludo inicial (una sola vez por sesión) — evita repetirlo
+  // en cada mensaje mientras la sesión reducida siga abierta.
+  saludo_reducido_enviado?: boolean;
   // Productos+cantidad detectados en el flujo simplificado (BotState.RECOPILANDO_
   // COTIZACION_RAPIDA) mientras se completan nombre/ciudad/cantidades faltantes.
   // Independiente de `productos` (que solo se llena al resolver contra el catálogo,
