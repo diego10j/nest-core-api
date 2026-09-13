@@ -837,7 +837,7 @@ export class BotService implements OnModuleInit {
 
     const referencia = resultado?.secuencial ? ` *N° ${resultado.secuencial}*` : '';
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial la va a completar y te responderá lo antes posible para coordinar los detalles y el envío.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
     );
   }
 
@@ -1113,19 +1113,24 @@ export class BotService implements OnModuleInit {
         }
       }
 
-      if (datos.cliente?.nombres && datos.memoria_cargada) {
+      if (datos.cliente?.nombres) {
         const datosNuevos: DatosSesion = { ...datos, productos: [] };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
         // El mensaje inicial ya traía el producto (ej. "quiero 5kg cera de palma") —
         // se procesa de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
         await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoInicial, nombreEmpresa, config);
       } else {
-        // Cliente sin identificar en el ERP: el texto con el producto se guarda para
-        // procesarlo automáticamente al terminar la identificación (antes se perdía y
-        // el cliente tenía que volver a escribirlo).
-        await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
-          { ...datos, producto_texto_pendiente: textoInicial || undefined });
+        // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste
+        // con nosotros?" — la gran mayoría de los chats nuevos que llegan al bot nunca
+        // compraron antes, así que esa pregunta casi siempre era un mensaje de más. El
+        // texto con el producto se guarda para procesarlo automáticamente en cuanto
+        // tengamos el nombre (handleDatosNuevoCliente), sin que lo repita.
+        await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
+          ...datos,
+          cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
+          producto_texto_pendiente: textoInicial || undefined,
+        });
       }
       return;
     }
@@ -1224,23 +1229,27 @@ export class BotService implements OnModuleInit {
         }
       }
 
-      if (datos.cliente?.nombres && datos.memoria_cargada) {
+      if (datos.cliente?.nombres) {
         const datosNuevos: DatosSesion = { ...datos, productos: [] };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
         // El mensaje ya traía el producto (ej. "quiero 5kg cera de palma") — se procesa
         // de inmediato en vez de pedirlo de nuevo con el mensaje genérico.
         await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, texto, nombreEmpresa, config);
       } else {
+        // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste
+        // con nosotros?" (ver responderConsultaInicial, mismo criterio). El texto con
+        // el producto se guarda para procesarlo en cuanto tengamos el nombre.
         try {
-          await this.sendButtons(ideEmpr, waId, MSG_ES_CLIENTE_BODY, BTN_ES_CLIENTE);
+          await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
         } catch (e) {
-          this.logger.error(`[Bot] sendButtons lanzó excepción: ${e.message}`);
+          this.logger.error(`[Bot] sendText lanzó excepción: ${e.message}`);
           throw e;
         }
-        // El mensaje ya traía el producto — se guarda para procesarlo automáticamente
-        // al terminar la identificación (antes se perdía).
-        await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
-          { ...datos, producto_texto_pendiente: texto });
+        await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
+          ...datos,
+          cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
+          producto_texto_pendiente: texto,
+        });
       }
       return;
     }
@@ -1877,10 +1886,15 @@ export class BotService implements OnModuleInit {
     ideEmpr: number, waId: string, sesion: any, datos: DatosSesion,
   ): Promise<void> {
     if (!datos.cliente?.nombres) {
-      await this.botSession.update(sesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE, datos);
-      await this.sendButtons(ideEmpr, waId,
-        `${this.buildResumenProductos(datos.productos)}\n\nPara preparar tu cotización, necesito unos datos rápidos 😊\n\n${MSG_ES_CLIENTE_BODY}`,
-        BTN_ES_CLIENTE,
+      // No preguntamos "¿ya compraste con nosotros?" — se pide el nombre directo (ver
+      // responderConsultaInicial, mismo criterio: la mayoría de los chats nuevos nunca
+      // compraron antes, así que esa pregunta era casi siempre un mensaje de más).
+      await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
+        ...datos,
+        cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
+      });
+      await this.sendText(ideEmpr, waId,
+        `${this.buildResumenProductos(datos.productos)}\n\nPara preparar tu cotización, ¿me podrías indicar tu nombre? 😊`,
       );
       return;
     }
@@ -2668,12 +2682,15 @@ export class BotService implements OnModuleInit {
         return;
       }
 
-      await this.botSession.update(nuevaSesion.ide_whbse, BotState.PREGUNTA_ES_CLIENTE,
-        { productos: [], texto_inicial: '' });
-      await this.sendButtons(ideEmpr, waId, `¡Con gusto! 😊 ¿Eres cliente registrado con nosotros?`, [
-        { id: 'SI_CLIENTE', title: '✅ Sí, soy cliente' },
-        { id: 'NO_CLIENTE', title: '❌ No' },
-      ]);
+      // No preguntamos "¿eres cliente registrado?" — se pide el nombre directo (mismo
+      // criterio que responderConsultaInicial/handleAtencionLibre/finalizarColeccion
+      // Productos: la gran mayoría de los chats nuevos nunca compraron antes).
+      await this.botSession.update(nuevaSesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
+        productos: [],
+        cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
+        producto_texto_pendiente: esBotonNueva ? undefined : texto,
+      });
+      await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 ¿Me podrías indicar tu nombre?`);
       return;
     }
 
