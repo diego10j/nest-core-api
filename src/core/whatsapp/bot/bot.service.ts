@@ -684,7 +684,23 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string,
     nombreBot: string, nombreEmpresa: string,
   ): Promise<void> {
-    const { items } = await this.botGpt.analizarLoteProductos(texto, []);
+    const { items: itemsPropios } = await this.botGpt.analizarLoteProductos(texto, []);
+
+    // Si este mensaje NO menciona ningún producto por sí solo (ej. "Necesito 2kg" —
+    // solo cantidad) y quedó un producto pendiente del turno anterior (se le mostró el
+    // link de catálogo sin cantidad, ver más abajo), se combina con ese texto para no
+    // perderlo. Antes, este caso real (cliente pregunta "tiene cera de coco", bot
+    // muestra el catálogo, cliente responde solo "necesito 2kg") generaba la cotización
+    // con el producto genérico en vez de "cera de coco" — el cliente no debería tener
+    // que repetir el nombre del producto que ya había mencionado.
+    let items = itemsPropios;
+    if (!itemsPropios.length && datos.producto_pendiente_seguimiento) {
+      ({ items } = await this.botGpt.analizarLoteProductos(
+        `${datos.producto_pendiente_seguimiento}. ${texto}`, [],
+      ));
+    }
+    const datosBase: DatosSesion = { ...datos, producto_pendiente_seguimiento: undefined };
+
     const hayItemConCantidad = items.some((i) => i.cantidad !== null);
 
     if (!hayItemConCantidad) {
@@ -698,14 +714,16 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId,
           `¡Sí, disponemos! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos, aquí: ${urlCatalogo} — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
         );
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+        // Se recuerda qué preguntó, por si el siguiente mensaje es solo la cantidad.
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA,
+          { ...datosBase, producto_pendiente_seguimiento: texto.trim() });
         return;
       }
     }
 
     const itemsParaCotizar = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
     await this.iniciarRecopilacionCotizacionRapida(
-      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar, nombreBot, nombreEmpresa,
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosBase, itemsParaCotizar, nombreBot, nombreEmpresa,
     );
   }
 

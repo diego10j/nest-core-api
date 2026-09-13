@@ -101,6 +101,12 @@ export interface DatosSesion {
   // debounce). Pasado el límite sin concretar (ni cotización automática ni catálogo
   // resuelto), se deriva a un asesor humano en vez de seguir intentando indefinidamente.
   mensajes_reducido?: number;
+  // Texto del último mensaje que mencionó un producto SIN cantidad y terminó en el link
+  // de catálogo (manejarConsultaProductoReducida) — si el siguiente mensaje del cliente
+  // no menciona ningún producto por sí solo (ej. "necesito 2kg"), se combina con este
+  // texto antes de volver a analizarlo, para no perder de vista qué producto era. Se
+  // limpia apenas se usa una vez, sea cual sea el resultado.
+  producto_pendiente_seguimiento?: string;
   // Productos+cantidad detectados en el flujo simplificado (BotState.RECOPILANDO_
   // COTIZACION_RAPIDA) mientras se completan nombre/ciudad/cantidades faltantes.
   // Independiente de `productos` (que solo se llena al resolver contra el catálogo,
