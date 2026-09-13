@@ -1183,11 +1183,18 @@ export class BotService implements OnModuleInit {
     }
 
     if (datos.cliente?.nombres) {
-      const datosNuevos: DatosSesion = { ...datos, productos: [] };
-      await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
-      // El mensaje ya traía el producto (ej. "quiero 5kg cera de palma") — se procesa de
-      // inmediato en vez de pedirlo de nuevo con el mensaje genérico.
-      await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosNuevos, textoProducto, nombreEmpresa, config);
+      // Consulta puntual (una pregunta aislada, no una sesión de armar un carrito largo)
+      // — se usa el mismo flujo liviano del modo reducido: pide solo lo que falte
+      // (la cantidad) y, apenas está completo, genera la proforma directo y deriva a un
+      // asesor. El flujo de "agregar más/escribe FIN" (procesarTextoProductos) quedó en
+      // desuso — es una ceremonia pensada para carritos largos que solo suma mensajes
+      // de más para una pregunta puntual (caso real: "tiene cera de palma" terminaba en
+      // "¿necesitas algún otro producto?").
+      const itemsParaCotizar = itemsDetectados.length ? itemsDetectados : [{ producto: textoProducto.trim(), cantidad: null }];
+      await this.iniciarRecopilacionCotizacionRapida(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar,
+        config?.nombre_bot || 'QuimIA', nombreEmpresa,
+      );
     } else {
       // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste con
       // nosotros?" — la gran mayoría de los chats nuevos que llegan al bot nunca
@@ -1426,17 +1433,24 @@ export class BotService implements OnModuleInit {
         );
       } else if (nuevosDatos.producto_texto_pendiente) {
         // El cliente ya había dicho qué producto quería ANTES de registrarse — se
-        // procesa de inmediato en vez de pedirle que lo escriba de nuevo.
+        // procesa de inmediato con el flujo liviano (pide solo la cantidad si falta y
+        // genera la proforma directo, ver manejarConsultaProductoClasica) en vez de
+        // pedirle que lo escriba de nuevo o arrastrarlo por el flujo de lista/FIN.
         const textoProducto = nuevosDatos.producto_texto_pendiente;
         const datosSinPendiente: DatosSesion = { ...nuevosDatos, producto_texto_pendiente: undefined };
-        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosSinPendiente);
         await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊`);
-        await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, textoProducto, config?.nombre_empresa || 'DIQUIMEC', config);
-      } else {
-        await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
-        await this.sendText(ideEmpr, waId,
-          `¡Gracias, *${nombres}*! 😊\n\n${MSG_INICIO_COTIZACION}`,
+        const { items } = await this.botGpt.analizarLoteProductos(textoProducto, []);
+        const itemsParaCotizar = items.length ? items : [{ producto: textoProducto.trim(), cantidad: null }];
+        await this.iniciarRecopilacionCotizacionRapida(
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, itemsParaCotizar,
+          config?.nombre_bot || 'QuimIA', config?.nombre_empresa || 'DIQUIMEC',
         );
+      } else {
+        // Todavía no mencionó ningún producto — se queda en ATENCION_LIBRE para que el
+        // siguiente mensaje se clasifique normalmente (si nombra un producto, entra por
+        // el mismo flujo liviano de manejarConsultaProductoClasica).
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, nuevosDatos);
+        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊 ¿Qué producto necesitas cotizar?`);
       }
       return;
     }
@@ -2686,16 +2700,20 @@ export class BotService implements OnModuleInit {
           memoria_cargada: true,
           envio: datosAnteriores.envio?.provincia ? { provincia: datosAnteriores.envio.provincia } : undefined,
         };
-        await this.botSession.update(nuevaSesion.ide_whbse, BotState.SELECCION_PRODUCTOS, nuevosDatos);
         if (esBotonNueva) {
-          // Solo el clic del botón, sin producto mencionado — pedir la lista normalmente.
-          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊\n\n${MSG_INICIO_COTIZACION}`);
+          // Solo el clic del botón, sin producto mencionado — se queda esperando que
+          // diga qué necesita (el siguiente mensaje ya entra por el flujo liviano).
+          await this.botSession.update(nuevaSesion.ide_whbse, BotState.ATENCION_LIBRE, nuevosDatos);
+          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 ¿Qué producto necesitas cotizar?`);
         } else {
           // El mensaje ya traía el producto (ej. "otra cotización: 5kg cera de soya") —
-          // se procesa de inmediato en vez de descartarlo (mismo patrón ya usado en
-          // handleAtencionLibre/handleConfirmacion para no perder el texto del cliente).
-          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊`);
-          await this.procesarTextoProductos(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, nuevaSesion, nuevosDatos, texto, nombreEmpresa, config);
+          // se procesa de inmediato con el flujo liviano (pide solo la cantidad si falta
+          // y genera la proforma directo) en vez del de lista/FIN.
+          const { items } = await this.botGpt.analizarLoteProductos(texto, []);
+          const itemsParaCotizar = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
+          await this.iniciarRecopilacionCotizacionRapida(
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, nuevaSesion, nuevosDatos, itemsParaCotizar, nombreBot, nombreEmpresa,
+          );
         }
         return;
       }
