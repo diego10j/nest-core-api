@@ -577,4 +577,37 @@ export class BotGptService {
       return false;
     }
   }
+
+  /**
+   * Detecta si el primer mensaje de un chat nuevo es la oferta de un PROVEEDOR (alguien
+   * que quiere VENDERnos un producto/servicio) en vez de un cliente que busca comprar.
+   * El bot existe para cotizar y captar clientes rápido, no para gestionar ofertas de
+   * proveedores — esas se derivan directo a un asesor, sin la fricción del flujo de
+   * ventas (saludo, identificación, etc.). Ante la duda responde que NO es proveedor,
+   * para no arriesgarse a bloquear a un cliente real.
+   */
+  async esProveedorNoCliente(texto: string): Promise<boolean> {
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Analiza si este mensaje es de un PROVEEDOR ofreciendo VENDERLE un producto o servicio a la empresa ' +
+              '(ej. "tengo a su disposición...", "les ofrezco...", "contamos con... a un precio de remate", ' +
+              '"somos representantes de...") — y NO un cliente preguntando si LA EMPRESA vende algo. Ante la duda, ' +
+              'responde NO (favorece no bloquear a un cliente real). Responde SOLO "SI" o "NO".',
+          },
+          { role: 'user', content: texto },
+        ],
+        temperature: 0,
+        max_tokens: 5,
+      });
+      return (resp.choices[0]?.message?.content?.trim().toUpperCase().startsWith('SI')) ?? false;
+    } catch (err) {
+      this.logger.error(`esProveedorNoCliente error: ${err.message}`);
+      return false;
+    }
+  }
 }

@@ -97,6 +97,10 @@ export interface DatosSesion {
   // TRUE luego de enviar el saludo inicial (una sola vez por sesión) — evita repetirlo
   // en cada mensaje mientras la sesión reducida siga abierta.
   saludo_reducido_enviado?: boolean;
+  // Cuenta turnos procesados en la sesión reducida (se incrementa una vez por lote de
+  // debounce). Pasado el límite sin concretar (ni cotización automática ni catálogo
+  // resuelto), se deriva a un asesor humano en vez de seguir intentando indefinidamente.
+  mensajes_reducido?: number;
   // Productos+cantidad detectados en el flujo simplificado (BotState.RECOPILANDO_
   // COTIZACION_RAPIDA) mientras se completan nombre/ciudad/cantidades faltantes.
   // Independiente de `productos` (que solo se llena al resolver contra el catálogo,

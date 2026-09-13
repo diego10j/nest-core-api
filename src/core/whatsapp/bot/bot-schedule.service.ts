@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { nowGuayaquil } from 'src/util/helpers/date-util';
 
 import { YcloudMetricsService } from '../ycloud/ycloud-metrics.service';
 
@@ -164,15 +165,19 @@ export class BotScheduleService {
   }
 
   /**
-   * Diariamente a las 00:05 genera métricas del día anterior para todas las empresas
-   * con WhatsApp activo. Así la tabla wha_metrics_diaria se mantiene poblada
-   * automáticamente sin intervención manual.
+   * Diariamente a las 00:05 "cierra" las métricas del día anterior para todas las
+   * empresas con WhatsApp activo. La fecha se calcula en zona horaria Guayaquil (no
+   * UTC) — el servidor corre en UTC en producción, así que un `new Date()` +
+   * `toISOString()` calcularía "ayer" según el reloj UTC, que en las horas de la noche
+   * ecuatoriana (19:00-23:59) todavía corresponde al día que en Ecuador sigue en curso,
+   * no al que ya terminó.
    */
   @Cron('5 0 * * *')
   async generarMetricasDiarias(): Promise<void> {
     this.logger.log('[Metrics] Cron generarMetricasDiarias disparado');
     try {
-      const ayer = new Date();
+      const hoyGye = nowGuayaquil().split(' ')[0];
+      const ayer = new Date(`${hoyGye}T00:00:00`);
       ayer.setDate(ayer.getDate() - 1);
       const fechaAyer = ayer.toISOString().split('T')[0];
 
@@ -203,6 +208,39 @@ export class BotScheduleService {
       this.logger.log(`[Metrics] Métricas diarias generadas para ${ok}/${empresas.length} empresa(s) — fecha: ${fechaAyer}`);
     } catch (error) {
       this.logger.error(`Error en generarMetricasDiarias: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * Cada 15 minutos recalcula (upsert) las métricas del DÍA ACTUAL — sin esto, el
+   * dashboard de Métricas YCloud siempre mostraba 0 para "hoy" hasta que corría el cron
+   * de medianoche del día SIGUIENTE (generarMetricasDiarias solo cierra el día
+   * anterior). No reemplaza ese cron: este solo mantiene "hoy" al día mientras
+   * transcurre; generarMetricasDiarias sigue siendo el que la deja fija una vez pasada
+   * la medianoche.
+   */
+  @Cron('*/15 * * * *')
+  async actualizarMetricasHoy(): Promise<void> {
+    try {
+      const hoyGye = nowGuayaquil().split(' ')[0];
+
+      const empresas = await this.metricsService.dataSource.createSelectQuery(
+        new SelectQuery(`
+          SELECT DISTINCT ide_empr
+          FROM wha_cuenta
+          WHERE activo_whcue = TRUE
+        `),
+      );
+
+      for (const { ide_empr } of empresas) {
+        try {
+          await this.metricsService.generateDailyMetrics(ide_empr as number, hoyGye);
+        } catch (err) {
+          this.logger.error(`[Metrics] Error actualizando métricas de hoy ide_empr=${ide_empr}: ${err.message}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error en actualizarMetricasHoy: ${error.message}`);
     }
   }
 }

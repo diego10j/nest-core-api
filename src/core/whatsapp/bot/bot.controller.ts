@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Logger, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
+import { ArrayIdeDto } from 'src/common/dto/array-ide.dto';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { BotConfigService } from './bot-config.service';
+import { BotNoDisponibleService } from './bot-no-disponible.service';
 import { BotSessionService } from './bot-session.service';
 import { BotService } from './bot.service';
 import { BotConfigQueryDto } from './dto/bot-config-query.dto';
 import { BotSessionQueryDto } from './dto/bot-session-query.dto';
+import { NoDisponibleQueryDto } from './dto/no-disponible-query.dto';
 import { SaveBotConfigDto } from './dto/save-bot-config.dto';
+import { SaveNoDisponibleDto } from './dto/save-no-disponible.dto';
 import { ToggleBotDto } from './dto/toggle-bot.dto';
 
 @ApiTags('WhatsApp-Bot')
@@ -20,6 +24,7 @@ export class BotController {
     private readonly botConfig: BotConfigService,
     private readonly botSession: BotSessionService,
     private readonly botService: BotService,
+    private readonly botNoDisponible: BotNoDisponibleService,
   ) { }
 
   @Post('toggle')
@@ -175,5 +180,33 @@ export class BotController {
   @ApiOperation({ summary: 'Historial de sesiones de un chat específico' })
   async sessionHistory(@Param('ideWhcha', ParseIntPipe) ideWhcha: number) {
     return this.botSession.getSessionHistory(ideWhcha);
+  }
+
+  @Get('no-disponibles')
+  @ApiOperation({ summary: 'Listar productos registrados como no comercializados (mantenimiento)' })
+  async getNoDisponibles(
+    @AppHeaders() h: HeaderParamsDto,
+    @Query() dto: NoDisponibleQueryDto,
+  ) {
+    return this.botNoDisponible.getList({ ...h, ...dto });
+  }
+
+  @Post('no-disponible')
+  @ApiOperation({ summary: 'Crear o actualizar un producto registrado como no comercializado' })
+  async saveNoDisponible(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() dto: SaveNoDisponibleDto,
+  ) {
+    await this.botNoDisponible.save({ ...h, ...dto });
+    return { ok: true };
+  }
+
+  @Delete('no-disponible')
+  @ApiOperation({ summary: 'Eliminar productos registrados como no comercializados' })
+  async deleteNoDisponible(
+    @AppHeaders() h: HeaderParamsDto,
+    @Body() dto: ArrayIdeDto,
+  ) {
+    return this.botNoDisponible.delete({ ...h, ...dto });
   }
 }

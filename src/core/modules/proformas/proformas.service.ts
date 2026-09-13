@@ -2482,7 +2482,7 @@ ORDER BY prof.secuencial_cccpr DESC
     return this.generateProformaPdf({ ...data, empresa }, empresa);
   }
 
-  async asignarVendedorProforma(ide_cccpr: number, ide_usua: number, ide_vgven: number): Promise<void> {
+  async asignarVendedorProforma(ide_cccpr: number, ide_usua: number, ide_vgven: number | null): Promise<void> {
     await this.dataSource.pool.query(
       `UPDATE cxc_cabece_proforma SET ide_usua = $2, ide_vgven = $3, usuario_actua = 'bot', hora_actua = NOW()
        WHERE ide_cccpr = $1`,

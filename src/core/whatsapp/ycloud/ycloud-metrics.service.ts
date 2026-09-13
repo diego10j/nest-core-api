@@ -26,6 +26,7 @@ export class YcloudMetricsService {
       SELECT
         fecha_whmed AS fecha,
         mensajes_enviados AS enviados,
+        mensajes_bot_enviados AS enviados_bot,
         mensajes_recibidos AS recibidos,
         respuestas_dentro_24h AS dentro_24h,
         respuestas_fuera_24h AS fuera_24h,
@@ -119,7 +120,7 @@ export class YcloudMetricsService {
     await this.dataSource.pool.query(`
       INSERT INTO wha_metrics_diaria (
         ide_empr, fecha_whmed,
-        mensajes_enviados, mensajes_recibidos,
+        mensajes_enviados, mensajes_bot_enviados, mensajes_recibidos,
         respuestas_dentro_24h, respuestas_fuera_24h,
         tiempo_respuesta_promedio_seg,
         chats_nuevos, chats_atendidos,
@@ -130,6 +131,7 @@ export class YcloudMetricsService {
         $1,
         $2::date,
         COUNT(CASE WHEN m.direction_whmem = '1' THEN 1 END),
+        COUNT(CASE WHEN m.direction_whmem = '1' AND m.es_bot_whmem = TRUE THEN 1 END),
         COUNT(CASE WHEN m.direction_whmem = '0' THEN 1 END),
         COUNT(CASE WHEN m.direction_whmem = '1' AND m.tiempo_respuesta_seg_whmem <= 86400 THEN 1 END),
         COUNT(CASE WHEN m.direction_whmem = '1' AND m.tiempo_respuesta_seg_whmem > 86400 THEN 1 END),
@@ -144,6 +146,7 @@ export class YcloudMetricsService {
       WHERE m.fecha_whmem::date = $2::date
       ON CONFLICT (ide_empr, fecha_whmed) DO UPDATE SET
         mensajes_enviados = EXCLUDED.mensajes_enviados,
+        mensajes_bot_enviados = EXCLUDED.mensajes_bot_enviados,
         mensajes_recibidos = EXCLUDED.mensajes_recibidos,
         respuestas_dentro_24h = EXCLUDED.respuestas_dentro_24h,
         respuestas_fuera_24h = EXCLUDED.respuestas_fuera_24h,

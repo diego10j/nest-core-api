@@ -9,7 +9,6 @@ import { roundTo, roundPrecio, getPrecioDecimals } from 'src/util/helpers/number
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 
 export const IDE_USUA_BOT = 32;  // Usuario bot para proformas automáticas
-export const IDE_VGVEN_DEFAULT = 16;  // Vendedor por defecto para cotizaciones automáticas
 
 // ─── Constantes WhatsApp proforma ─────────────────────────────────────────────
 const IDE_CCTPR_WHATSAPP = 3;           // Tipo de proforma: WhatsApp
@@ -286,7 +285,9 @@ export class BotProformaService {
         this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
       } else {
         try {
-          const ideVgven = datos.cliente?.ide_vgven || IDE_VGVEN_DEFAULT;
+          // Sin vendedor por defecto: si el cliente no tiene uno propio asignado en el
+          // ERP, se deja ide_vgven en NULL — un asesor lo asigna al completar la cotización.
+          const ideVgven = datos.cliente?.ide_vgven ?? null;
           await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, ideVgven);
           pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
           await this.dataSource.pool.query(

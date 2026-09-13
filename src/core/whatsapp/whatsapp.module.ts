@@ -8,6 +8,7 @@ import { WhatsappApiService } from './api/whatsapp-api.service';
 import { BotConfigService } from './bot/bot-config.service';
 import { BotDebounceService } from './bot/bot-debounce.service';
 import { BotGptService } from './bot/bot-gpt.service';
+import { BotNoDisponibleService } from './bot/bot-no-disponible.service';
 import { BotProformaService } from './bot/bot-proforma.service';
 import { BotScheduleService } from './bot/bot-schedule.service';
 import { BotSessionService } from './bot/bot-session.service';
@@ -60,6 +61,7 @@ import { YcloudService } from './ycloud/ycloud.service';
     BotProformaService,
     BotScheduleService,
     BotService,
+    BotNoDisponibleService,
   ],
   exports: [
     WhatsappApiService,

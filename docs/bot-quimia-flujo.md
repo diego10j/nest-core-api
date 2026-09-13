@@ -461,7 +461,8 @@ IDE_CCVAP_WHATSAPP  = 6   // Canal de venta
 IDE_CCTEN_WHATSAPP  = 0   // ide_ccten
 REFERENCIA          = 'WhatsApp'
 IDE_USUA_BOT        = 32  // Usuario bot (cotización automática)
-IDE_VGVEN_DEFAULT   = 16  // Vendedor por defecto (si el cliente no tiene ide_vgven propio)
+// ide_vgven: sin vendedor por defecto — si el cliente no tiene uno propio en el ERP,
+// se crea la proforma con ide_vgven = NULL y un asesor lo asigna al completarla.
 PRODUCTO_GENERICO_IDE_INARTI = 2102  // Artículo genérico para sabor/color/fragancia/aceite sin match
 ```
 

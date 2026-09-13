@@ -12,7 +12,8 @@ import { YcloudService } from '../ycloud/ycloud.service';
 import { BotConfigService } from './bot-config.service';
 import { BotDebounceService } from './bot-debounce.service';
 import { BotGptService } from './bot-gpt.service';
-import { BotProformaService } from './bot-proforma.service';
+import { BotNoDisponibleService } from './bot-no-disponible.service';
+import { BotProformaService, ResultadoProforma } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
 import { BotToolsService } from './bot-tools.service';
 import {
@@ -32,6 +33,11 @@ const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|salud
 const REGEX_PRODUCTO_GENERICO = /\b(sabor(?:es|izantes?)?|colorantes?|colores?|fragancias?|aceites?|esencias?)\b/i;
 const PRODUCTO_GENERICO_IDE_INARTI = 2102;
 const LIMITE_COINCIDENCIAS = 3;
+
+// Turnos máximos del modo mensajes reducidos sin concretar (ni cotización automática ni
+// catálogo resuelto) antes de derivar a un asesor humano — evita que el bot insista
+// indefinidamente en una conversación que ya debería atender una persona.
+const LIMITE_MENSAJES_REDUCIDO = 10;
 
 // IDs de todos los botones interactivos usados en el flujo. WhatsApp no invalida un
 // botón viejo cuando la conversación avanza — sigue siendo tocable en el historial del
@@ -119,6 +125,7 @@ export class BotService implements OnModuleInit {
     private readonly botGpt: BotGptService,
     private readonly botTools: BotToolsService,
     private readonly botProforma: BotProformaService,
+    private readonly botNoDisponible: BotNoDisponibleService,
     private readonly ycloudService: YcloudService,
     private readonly ycloudWindowService: YcloudWindowService,
     private readonly gateway: WhatsappGateway,
@@ -511,6 +518,25 @@ export class BotService implements OnModuleInit {
         return;
       }
 
+      // Más de LIMITE_MENSAJES_REDUCIDO turnos sin concretar (ni cotización automática
+      // ni catálogo resuelto): un asesor humano ya habría tomado la conversación en vez
+      // de seguir dando vueltas — se deriva en vez de insistir indefinidamente.
+      const datosActuales = sesion.datos_sesion as DatosSesion;
+      const turnos = (datosActuales?.mensajes_reducido ?? 0) + 1;
+      if (turnos > LIMITE_MENSAJES_REDUCIDO) {
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+          `¡Gracias por tu paciencia! 😊 Te voy a comunicar con un asesor comercial para darte una atención más completa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+          `Chat con más de ${LIMITE_MENSAJES_REDUCIDO} mensajes en modo reducido sin concretar cotización ni resolver por catálogo.`,
+        );
+        return;
+      }
+      // Se actualiza también la copia en memoria de `sesion` (no solo la fila en BD):
+      // los handlers de abajo leen `sesion.datos_sesion` y hacen su propio `update()`
+      // sobre esa misma base — si no se sincroniza acá, su próximo `update()` pisaría
+      // este incremento con la versión vieja del contador.
+      sesion.datos_sesion = { ...datosActuales, mensajes_reducido: turnos };
+      await this.botSession.update(sesion.ide_whbse, sesion.estado as BotState, sesion.datos_sesion);
+
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
         case BotState.ATENCION_LIBRE_REDUCIDA:
@@ -624,7 +650,7 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
-      await this.manejarConsultaProductoReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto);
+      await this.manejarConsultaProductoReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreBot, nombreEmpresa);
       return;
     }
 
@@ -656,6 +682,7 @@ export class BotService implements OnModuleInit {
   private async manejarConsultaProductoReducida(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string,
+    nombreBot: string, nombreEmpresa: string,
   ): Promise<void> {
     const { items } = await this.botGpt.analizarLoteProductos(texto, []);
     const hayItemConCantidad = items.some((i) => i.cantidad !== null);
@@ -677,34 +704,133 @@ export class BotService implements OnModuleInit {
     }
 
     const itemsParaCotizar = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
-    await this.iniciarRecopilacionCotizacionRapida(ideEmpr, waId, sesion, datos, itemsParaCotizar);
+    await this.iniciarRecopilacionCotizacionRapida(
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar, nombreBot, nombreEmpresa,
+    );
   }
 
-  /** Guarda los productos detectados, pasa a RECOPILANDO_COTIZACION_RAPIDA y pide en un solo mensaje lo que falte (cantidad/nombre/ciudad). */
+  /**
+   * Guarda los productos detectados y calcula qué falta. La ciudad/provincia NO se pide
+   * ni bloquea nada — queda en null y la completa un asesor al revisar la cotización; lo
+   * único que importa para resolverla sola es el producto+precio (ver
+   * finalizarCotizacionRapida). Si el cliente ya dio cantidad+nombre en el mismo mensaje
+   * (ej. "necesito 5kg de cera de soya" y ya teníamos su nombre de una sesión anterior),
+   * no tiene sentido preguntarle "cuéntame: " con la lista vacía — se genera de una vez.
+   */
   private async iniciarRecopilacionCotizacionRapida(
-    ideEmpr: number, waId: string, sesion: any, datos: DatosSesion,
-    items: { producto: string; cantidad: number | null }[],
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    sesion: any, datos: DatosSesion, items: { producto: string; cantidad: number | null }[],
+    nombreBot: string, nombreEmpresa: string,
   ): Promise<void> {
     const nuevosDatos: DatosSesion = { ...datos, cotizacion_rapida: { items } };
-    await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
 
     const faltantes: string[] = [];
     if (items.some((i) => i.cantidad === null)) faltantes.push('la cantidad que necesitas de cada producto');
     if (!nuevosDatos.cliente?.nombres) faltantes.push('tu nombre');
-    if (!nuevosDatos.envio?.provincia) faltantes.push('la ciudad desde donde nos escribes');
 
+    if (!faltantes.length) {
+      await this.finalizarCotizacionRapida(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, items, nombreBot, nombreEmpresa,
+      );
+      return;
+    }
+
+    await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
     await this.sendText(ideEmpr, waId,
       `¡Claro que sí! Para generar tu solicitud de cotización cuéntame: ${faltantes.join(', ')} 😊`,
     );
   }
 
   /**
-   * Recibe la respuesta con los datos pedidos (cantidad/nombre/ciudad, lo que faltara),
-   * extrae lo que el cliente indicó y, si ya está todo completo, resuelve los productos
-   * contra el catálogo interno (sin disambiguación multi-turno) y genera la solicitud de
-   * cotización con procesarProforma() — igual que el flujo completo, pero sin dirección
-   * exacta ni forma de pago, y sin enviarle el PDF/precio al cliente: el asesor la
-   * completa. Si todavía falta algo, vuelve a preguntar solo lo que falta.
+   * Resuelve los productos contra el catálogo interno (genérico si no matchea ninguno o
+   * el match es ambiguo — nada se pierde, el asesor lo revisa) y genera la cotización con
+   * procesarProforma() — sin forma de pago (siempre efectivo por defecto) ni ciudad exacta
+   * (queda null, la completa el asesor). Dos escenarios, ambos terminan derivando a un
+   * asesor humano (la filosofía del bot es preparar la venta, no cerrarla solo):
+   *   - Match EXACTO de producto y precio en TODOS los ítems (`resultado.automatica`):
+   *     se asigna vendedor, se genera el PDF y se le responde al cliente con el PDF
+   *     adjunto — luego se deriva avisando que un asesor coordinará pago y envío.
+   *   - Si no (algún producto sin precio, fuera de catálogo o con match ambiguo): queda
+   *     registrada con su N° de cotización y se deriva para que un asesor la complete.
+   */
+  private async finalizarCotizacionRapida(
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    sesion: any, datos: DatosSesion, items: { producto: string; cantidad: number | null }[],
+    nombreBot: string, nombreEmpresa: string,
+  ): Promise<void> {
+    const productosResueltos = await this.resolverProductosSimple(items, ideEmpr);
+    const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
+
+    let resultado: ResultadoProforma | null = null;
+    try {
+      resultado = await this.botProforma.procesarProforma(datosFinales, `+${waId}`, ideEmpr, 0, nombreBot);
+    } catch (err) {
+      // No se le comunica el error al cliente: igual se cierra con el mensaje de asesor
+      // de abajo — mejor que un pedido con datos completos no se pierda en silencio, un
+      // humano lo revisa desde los logs.
+      this.logger.error(`[Bot][Reducido] Error generando cotización rápida chat=${ideWhcha}: ${err.message}`, err.stack);
+    }
+
+    if (resultado?.automatica && resultado.pdfBuffer) {
+      let pdfEnviado = false;
+      try {
+        const filename = await this.fileTempService.saveWhatsAppMedia(
+          resultado.pdfBuffer, 'pdf', `Cotizacion_${resultado.secuencial}.pdf`,
+        );
+        const pdfUrl = `${envs.hostApi}/api/whatsapp/media/${filename}`;
+        await this.ycloudService.sendDocument(
+          ideEmpr, `+${waId}`, null,
+          `Cotizacion_${resultado.secuencial}.pdf`,
+          `📄 Cotización #${resultado.secuencial} — ${nombreEmpresa}`,
+          undefined, pdfUrl, true,
+        );
+        pdfEnviado = true;
+        this.gateway.emitNuevaProformaBot(ideWhcue, resultado.secuencial, datosFinales.cliente?.nombres || waId);
+      } catch (pdfErr) {
+        this.logger.error(`[Bot][Reducido] Error enviando PDF cotización #${resultado.secuencial}: ${pdfErr.message}`);
+        try {
+          await this.notificaciones.enviarSistema(
+            'WHATSAPP_PDF_FALLIDO',
+            `⚠️ PDF no enviado — Cotización #${resultado.secuencial}`,
+            `Falló el envío automático del PDF de la cotización #${resultado.secuencial} a ${waId} (modo reducido). Reenviar manualmente.`,
+            { tipo: 'text', botones: [{ texto: 'Ver Chat', accion: 'navigate', estilo: 'primary', url: '/dashboard/whatsapp' }] },
+            ideEmpr, 'bot',
+          );
+        } catch (notifErr) {
+          this.logger.error(`[Notif] Error notificando fallo de envío de PDF: ${notifErr.message}`);
+        }
+      }
+
+      const totalFinal = resultado.total ?? 0;
+      await this.sendText(ideEmpr, waId,
+        `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n💰 *Total: $${totalFinal.toFixed(2)}*\n\n` +
+        (pdfEnviado
+          ? `📄 Adjuntamos el PDF con el detalle completo.`
+          : `📄 En un momento te enviamos el PDF con el detalle completo.`) +
+        `\n\nUn asesor comercial se pondrá en contacto contigo para coordinar el pago y el envío 😊\n\n` +
+        `⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
+      );
+      // null = ya se le avisó al cliente arriba; nota interna solo para el asesor/log.
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        null, `Cotización #${resultado.secuencial} generada automáticamente (match exacto de producto y precio) — PDF ya enviado al cliente. Coordinar pago y envío.`,
+      );
+      return;
+    }
+
+    const referencia = resultado?.secuencial ? ` *N° ${resultado.secuencial}*` : '';
+    await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial la va a completar y te responderá lo antes posible para coordinar los detalles y el envío.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+    );
+  }
+
+  /**
+   * Recibe la respuesta con los datos pedidos (cantidad/nombre, lo que faltara), extrae
+   * lo que el cliente indicó y, si ya está todo completo, resuelve los productos contra
+   * el catálogo interno (sin disambiguación multi-turno) y genera la cotización con
+   * procesarProforma() — sin ciudad exacta (queda null, la completa el asesor) ni forma
+   * de pago (efectivo por defecto). Si el match fue exacto se le responde con el PDF
+   * (ver finalizarCotizacionRapida); si no, queda para que un asesor la complete. Si
+   * todavía falta algo, vuelve a preguntar solo lo que falta.
    */
   private async handleRecopilandoCotizacionRapida(
     waId: string, phoneNumberId: string, ideWhcha: number,
@@ -721,12 +847,11 @@ export class BotService implements OnModuleInit {
     }
 
     const nombreFaltante = !datos.cliente?.nombres;
-    const ciudadFaltante = !datos.envio?.provincia;
     const itemsSinCantidad = cot.items.filter((i) => i.cantidad === null);
 
     const [datosPersona, cantidadesExtraidas] = await Promise.all([
-      (nombreFaltante || ciudadFaltante)
-        ? this.botGpt.extraerNombreYCiudad(texto, nombreFaltante, ciudadFaltante)
+      nombreFaltante
+        ? this.botGpt.extraerNombreYCiudad(texto, true, false)
         : Promise.resolve({ nombre: null, ciudad: null }),
       itemsSinCantidad.length
         ? this.botGpt.extraerCantidadesPorProducto(
@@ -751,14 +876,12 @@ export class BotService implements OnModuleInit {
         ...(datos.cliente ?? { correo: '', es_cliente_registrado: false }),
         nombres: datos.cliente?.nombres || datosPersona.nombre || '',
       },
-      envio: { ...(datos.envio ?? {}), provincia: datos.envio?.provincia || datosPersona.ciudad || undefined },
     };
 
     const faltantes: string[] = [];
     const itemsAunSinCantidad = itemsActualizados.filter((i) => i.cantidad === null);
     if (itemsAunSinCantidad.length) faltantes.push(`la cantidad de: ${itemsAunSinCantidad.map((i) => i.producto).join(', ')}`);
     if (!nuevosDatos.cliente?.nombres) faltantes.push('tu nombre');
-    if (!nuevosDatos.envio?.provincia) faltantes.push('la ciudad desde donde nos escribes');
 
     if (faltantes.length) {
       await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
@@ -766,20 +889,8 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const productosResueltos = await this.resolverProductosSimple(itemsActualizados, ideEmpr);
-    const datosFinales: DatosSesion = { ...nuevosDatos, productos: productosResueltos };
-
-    try {
-      await this.botProforma.procesarProforma(datosFinales, `+${waId}`, ideEmpr, 0, nombreBot);
-    } catch (err) {
-      // No se le comunica el error al cliente: igual se cierra con el mensaje de asesor
-      // de abajo — mejor que un pedido con datos completos no se pierda en silencio, un
-      // humano lo revisa desde los logs.
-      this.logger.error(`[Bot][Reducido] Error generando cotización rápida chat=${ideWhcha}: ${err.message}`, err.stack);
-    }
-
-    await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `Perfecto, ya registré tu solicitud ✅ Uno de nuestros asesores se comunicará contigo para coordinar los detalles y el envío.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias! 😊`,
+    await this.finalizarCotizacionRapida(
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, itemsActualizados, nombreBot, nombreEmpresa,
     );
   }
 
@@ -807,17 +918,28 @@ export class BotService implements OnModuleInit {
         .trim() || item.producto;
 
       let candidatos = await this.botTools.buscarProductos(nombreLimpio, ideEmpr);
-      if (!candidatos.length) candidatos = await this.botTools.buscarProductosPorPalabras(nombreLimpio, ideEmpr);
+      // Confiable = sin ambigüedad: un único candidato, o alguno matchea el nombre EXACTO
+      // entre varios. El fallback difuso por palabras sueltas nunca es confiable — solo
+      // sirve para no perder el ide_inarti (y así el precio) si nada más apareció.
+      let confiable = candidatos.length === 1 || candidatos.some((c) => c.matched_exacto);
+      if (!candidatos.length) {
+        candidatos = await this.botTools.buscarProductosPorPalabras(nombreLimpio, ideEmpr);
+        confiable = false;
+      }
 
       if (candidatos.length) {
-        const prod = candidatos[0];
+        const prod = confiable ? candidatos[0] : (candidatos.find((c) => c.matched_exacto) ?? candidatos[0]);
         resultado.push({
           ide_inarti: prod.ide_inarti,
           nombre: item.producto,
           cantidad,
           unidad: prod.nombre_unidad,
           siglas_unidad: prod.siglas_unidad,
-          en_catalogo: prod.en_catalogo,
+          // en_catalogo solo si el match es confiable: evita que una coincidencia
+          // ambigua o difusa dispare la cotización 100% automática (sin revisión
+          // humana) — igual se deja el ide_inarti real para que el precio se cargue
+          // y el asesor solo tenga que confirmar el producto, no armarlo desde cero.
+          en_catalogo: confiable && prod.en_catalogo,
         });
       } else {
         resultado.push({
@@ -849,6 +971,18 @@ export class BotService implements OnModuleInit {
       const datosActualizados: DatosSesion = { ...datosSesion, productos: datosSesion?.productos ?? [] };
       await this.responderConsultaInicial(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosActualizados, texto, nombreEmpresa, config,
+      );
+      return;
+    }
+
+    // Chat nuevo (sin memoria previa): puede ser un proveedor ofreciendo VENDERnos algo,
+    // no un cliente buscando comprar — el bot existe para cotizar y captar clientes
+    // rápido, no para gestionar ofertas de proveedores. Se deriva directo, sin la
+    // fricción del saludo/identificación de venta.
+    if (await this.botGpt.esProveedorNoCliente(texto)) {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        `¡Gracias por escribirnos! 😊 Para temas de proveedores, un asesor comercial revisará tu propuesta en nuestro horario de atención.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00.`,
+        `Mensaje de chat nuevo clasificado como oferta de proveedor, no consulta de cliente: "${texto}"`,
       );
       return;
     }
@@ -927,6 +1061,40 @@ export class BotService implements OnModuleInit {
     const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
 
     if (tipoConsulta === 'PRODUCTO') {
+      // Antes de arrastrar al cliente por todo el flujo (identificación, dirección,
+      // forma de pago) se verifica que AL MENOS UNO de los productos mencionados tenga
+      // algún candidato en el catálogo interno — nada exige que sea el match correcto,
+      // solo que exista algo remotamente parecido. Si NINGUNO existe, no tiene sentido
+      // pedirle nombre/cédula/dirección para algo que de todas formas va a terminar en
+      // "no disponemos" (patrón real detectado: clientes esperando horas a que un
+      // asesor confirme que no hay stock, después de completar todo el formulario). Se
+      // deriva de una vez, sin gastarle el tiempo.
+      const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoInicial, []);
+      // Si GPT no logró extraer ningún nombre de producto puntual (ej. el mensaje es
+      // vago o es solo intención de cotizar sin decir qué), no hay nada que verificar
+      // todavía — se sigue el flujo normal, que ya sabe pedir el producto.
+      if (itemsDetectados.length) {
+        const estadoProducto = await this.evaluarExistenciaProductos(
+          itemsDetectados.map((i) => i.producto), ideEmpr,
+        );
+
+        if (estadoProducto.estado === 'NO_VENDEMOS') {
+          await this.sendText(ideEmpr, waId,
+            `Por el momento no disponemos de ese producto 😔${estadoProducto.observacion ? ` ${estadoProducto.observacion}.` : ''} ¿Te ayudo con algo más?`,
+          );
+          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+          return;
+        }
+
+        if (estadoProducto.estado === 'DESCONOCIDO') {
+          await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+            `Por el momento no tenemos disponible ese producto 😔 De todas formas te comunico con un asesor por si podemos conseguirlo o sugerirte una alternativa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
+            `Cliente preguntó por "${textoInicial}" — sin ningún match en catálogo interno (ni exacto ni por palabras).`,
+          );
+          return;
+        }
+      }
+
       if (datos.cliente?.nombres && datos.memoria_cargada) {
         const datosNuevos: DatosSesion = { ...datos, productos: [] };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);
@@ -962,6 +1130,35 @@ export class BotService implements OnModuleInit {
     );
   }
 
+  /**
+   * Chequeo rápido de EXISTENCIA (sin precio, sin desambiguar) antes de arrastrar al
+   * cliente por identificación/dirección — no resuelve cuál es el producto correcto
+   * (eso lo hace resolverColaProductos/resolverProductosSimple más adelante, con más
+   * cuidado), solo decide si vale la pena seguir el flujo de venta:
+   *   - EXISTE: al menos un producto mencionado tiene algún candidato remoto en
+   *     `inv_articulo` → seguir el flujo normal.
+   *   - NO_VENDEMOS: ninguno existe en el catálogo, pero ya está registrado en
+   *     `wha_bot_no_disponible` (confirmado antes por un asesor, o cargado manualmente
+   *     en el mantenimiento) → responder directo, sin derivar a un humano.
+   *   - DESCONOCIDO: ninguno existe y no hay registro previo → caso incierto, se
+   *     deriva a un asesor como antes (y así puede quedar registrado para la próxima).
+   */
+  private async evaluarExistenciaProductos(
+    nombresProducto: string[], ideEmpr: number,
+  ): Promise<{ estado: 'EXISTE' } | { estado: 'NO_VENDEMOS'; observacion: string | null } | { estado: 'DESCONOCIDO' }> {
+    for (const nombre of nombresProducto) {
+      const candidatos = await this.botTools.buscarProductos(nombre, ideEmpr);
+      if (candidatos.length) return { estado: 'EXISTE' };
+      const porPalabras = await this.botTools.buscarProductosPorPalabras(nombre, ideEmpr);
+      if (porPalabras.length) return { estado: 'EXISTE' };
+    }
+    for (const nombre of nombresProducto) {
+      const noDisponible = await this.botNoDisponible.buscar(nombre, ideEmpr);
+      if (noDisponible) return { estado: 'NO_VENDEMOS', observacion: noDisponible.observacion_whbnd };
+    }
+    return { estado: 'DESCONOCIDO' };
+  }
+
   private async handleAtencionLibre(
     waId: string, phoneNumberId: string, ideWhcha: number,
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string, nombreBot: string, nombreEmpresa: string, config: any,
@@ -980,6 +1177,35 @@ export class BotService implements OnModuleInit {
     }
 
     if (tipoConsulta === 'PRODUCTO') {
+      // Mismo chequeo rápido que responderConsultaInicial: si ningún producto
+      // mencionado existe ni remotamente en el catálogo, no tiene sentido arrastrar al
+      // cliente por identificación/dirección para algo que va a terminar en "no
+      // disponemos" — se deriva de una vez.
+      const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(texto, []);
+      // Si GPT no logró extraer ningún nombre de producto puntual (ej. una afirmación
+      // corta como "sí"/"claro" tras una respuesta informativa), no hay nada que
+      // verificar todavía — se sigue el flujo normal, que ya sabe pedir el producto.
+      if (itemsDetectados.length) {
+        const estadoProducto = await this.evaluarExistenciaProductos(
+          itemsDetectados.map((i) => i.producto), ideEmpr,
+        );
+
+        if (estadoProducto.estado === 'NO_VENDEMOS') {
+          await this.sendText(ideEmpr, waId,
+            `Por el momento no disponemos de ese producto 😔${estadoProducto.observacion ? ` ${estadoProducto.observacion}.` : ''} ¿Te ayudo con algo más?`,
+          );
+          return;
+        }
+
+        if (estadoProducto.estado === 'DESCONOCIDO') {
+          await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+            `Por el momento no tenemos disponible ese producto 😔 De todas formas te comunico con un asesor por si podemos conseguirlo o sugerirte una alternativa.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
+            `Cliente preguntó por "${texto}" — sin ningún match en catálogo interno (ni exacto ni por palabras).`,
+          );
+          return;
+        }
+      }
+
       if (datos.cliente?.nombres && datos.memoria_cargada) {
         const datosNuevos: DatosSesion = { ...datos, productos: [] };
         await this.botSession.update(sesion.ide_whbse, BotState.SELECCION_PRODUCTOS, datosNuevos);

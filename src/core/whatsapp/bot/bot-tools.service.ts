@@ -22,6 +22,7 @@ export interface ProductoInfo {
   nombre_unidad: string;
   en_catalogo: boolean;
   matched_by_otro_nombre?: boolean;
+  matched_exacto?: boolean;
 }
 
 // PrecioConfigurado movido a ProformasService → importar desde allí si se necesita.
@@ -70,7 +71,11 @@ export class BotToolsService {
         (
           unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) = unaccent(UPPER($1))
           AND NOT (unaccent(UPPER(a.nombre_inarti)) ILIKE '%' || unaccent(UPPER($1)) || '%')
-        ) AS matched_by_otro_nombre
+        ) AS matched_by_otro_nombre,
+        (
+          unaccent(UPPER(a.nombre_inarti)) = unaccent(UPPER($1))
+          OR unaccent(UPPER(COALESCE(a.otro_nombre_inarti,''))) = unaccent(UPPER($1))
+        ) AS matched_exacto
       FROM inv_articulo a
       LEFT JOIN inv_unidad u ON a.ide_inuni = u.ide_inuni
       WHERE a.ide_empr = $2
