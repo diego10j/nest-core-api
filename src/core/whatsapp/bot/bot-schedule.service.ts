@@ -118,10 +118,11 @@ export class BotScheduleService {
             ide_whcue: number; wa_id_whcha: string; phone_number_id_whcha: string;
             ide_empr: number; bot_activo_whcha: boolean; bot_modo_whcha: string;
           }>(`
-            SELECT s.ide_whcue, c.wa_id_whcha, c.phone_number_id_whcha, c.ide_empr,
+            SELECT s.ide_whcue, c.wa_id_whcha, c.phone_number_id_whcha, cu.ide_empr,
                    c.bot_activo_whcha, c.bot_modo_whcha
             FROM wha_bot_sesion s
             INNER JOIN wha_chat c ON c.ide_whcha = s.ide_whcha
+            INNER JOIN wha_cuenta cu ON cu.ide_whcue = s.ide_whcue
             WHERE s.ide_whcha = $1 AND s.activa = TRUE
             LIMIT 1
           `, [ideWhcha])).rows[0];
