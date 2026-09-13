@@ -119,6 +119,12 @@ export class BotController {
     return this.botConfig.getCuentasSinConfig(h.ideEmpr);
   }
 
+  @Get('tipos-horario')
+  @ApiOperation({ summary: 'Tipos de horario disponibles para el selector del formulario (incluye globales)' })
+  async getTiposHorario(@AppHeaders() h: HeaderParamsDto) {
+    return this.botConfig.getTiposHorarioDisponibles(h.ideEmpr);
+  }
+
   @Post('setActivoConfig')
   @ApiOperation({ summary: 'Activar/desactivar bot desde la grilla (por ide_whbco)' })
   async setActivoConfig(
@@ -127,6 +133,24 @@ export class BotController {
   ) {
     await this.botConfig.setActivoBotConfig(dto.ide, dto.activo, h.ideUsua);
     return { ok: true, activo: dto.activo };
+  }
+
+  @Post('setReduceMensajesConfig')
+  @ApiOperation({ summary: 'Activar/desactivar el modo mensajes reducidos desde la grilla (por ide_whbco)' })
+  async setReduceMensajesConfig(
+    @Body() dto: { ide: number; activo: boolean },
+  ) {
+    await this.botConfig.setReduceMensajesBotConfig(dto.ide, dto.activo);
+    return { ok: true, activo: dto.activo };
+  }
+
+  @Post('setSegundosEsperaConfig')
+  @ApiOperation({ summary: 'Ajustar los segundos de espera (debounce) del modo mensajes reducidos (por ide_whbco)' })
+  async setSegundosEsperaConfig(
+    @Body() dto: { ide: number; segundos: number },
+  ) {
+    await this.botConfig.setSegundosEsperaBotConfig(dto.ide, dto.segundos);
+    return { ok: true, segundos: dto.segundos };
   }
 
   @Get('logs')

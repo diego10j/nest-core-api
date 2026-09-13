@@ -25,6 +25,14 @@ export class CatalogosSaveService extends BaseService {
         super();
     }
 
+    /**
+     * Limpia TODO lo cacheado bajo el prefijo `catalogo:` — incluye `catalogo:lista:*`
+     * y `catalogo:tags:*` (este módulo) y también `catalogo:bot:productos:*`
+     * (`BotProformaService.obtenerCatalogosDisponibles`, módulo WhatsApp/bot: catálogos
+     * con stock que usa el modo mensajes reducidos). Están acoplados solo por convención
+     * de nombre — si se cambia el prefijo de una de las dos claves, hay que actualizar
+     * la otra para no romper esta invalidación cruzada.
+     */
     private async invalidateCatalogCache() {
         try {
             const keys = await this.redis.keys('catalogo:*');

@@ -31,6 +31,8 @@ export interface BotConfigData {
   max_intentos_fallo: number;
   lat_empresa: number | null;
   lng_empresa: number | null;
+  reduce_mensajes_whbco: boolean;
+  segundos_espera_whbco: number;
 }
 
 @Injectable()
@@ -50,8 +52,9 @@ export class BotConfigService {
     const cached = await this.dataSource.redisClient.get(cacheKey);
     if (cached) {
       const parsed = JSON.parse(cached) as BotConfigData;
-      // Invalidar cache si resp_ubicacion no existe o es null (objeto pre-migración o cacheado con valores vacíos)
-      if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null) {
+      // Invalidar cache si resp_ubicacion no existe o es null (objeto pre-migración o cacheado con valores vacíos),
+      // o si reduce_mensajes_whbco no existe (cacheado antes de la migración de mensajes reducidos)
+      if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null || !('reduce_mensajes_whbco' in parsed)) {
         await this.dataSource.redisClient.del(cacheKey);
       } else {
         return parsed;
@@ -63,6 +66,7 @@ export class BotConfigService {
              bc.nombre_bot, bc.prompt_sistema,
              bc.resp_ubicacion, bc.resp_horario, bc.resp_envio, bc.resp_catalogo,
              bc.monto_envio_gratis, bc.max_intentos_fallo,
+             bc.reduce_mensajes_whbco, bc.segundos_espera_whbco,
              COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa,
              e.latitud_empr  AS lat_empresa,
              e.longitud_empr AS lng_empresa
@@ -146,7 +150,7 @@ export class BotConfigService {
   /** Actualiza la configuración editable del bot (nombre, prompt, respuestas fijas, parámetros) */
   async updateConfigBot(ideWhcue: number, data: Partial<Pick<BotConfigData,
     'nombre_bot' | 'prompt_sistema' | 'resp_ubicacion' | 'resp_horario' | 'resp_envio' | 'resp_catalogo' |
-    'monto_envio_gratis' | 'max_intentos_fallo'
+    'monto_envio_gratis' | 'max_intentos_fallo' | 'reduce_mensajes_whbco' | 'segundos_espera_whbco'
   >>): Promise<void> {
     const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
     for (const [k, v] of Object.entries(data)) {
@@ -216,6 +220,25 @@ export class BotConfigService {
       LIMIT ${limit}
     `);
     q.addIntParam(1, ideWhcue);
+    return this.dataSource.createSelectQuery(q);
+  }
+
+  /**
+   * Tipos de horario disponibles para el selector del formulario de configuración del bot
+   * — incluye los de la empresa del usuario y los globales (ide_empr=0, como "HORARIO BOT"
+   * creado por la migración original del bot). `getListDataTiposHorario` (admin genérico,
+   * `sistema/admin`) filtra estrictamente `ide_empr = $1` y por eso no sirve acá: nunca
+   * mostraría un tipo de horario global.
+   */
+  async getTiposHorarioDisponibles(ideEmpr: number): Promise<{ value: number; label: string }[]> {
+    const q = new SelectQuery(`
+      SELECT ide_tihor AS value, nombre_tihor AS label
+      FROM sis_tipo_horario
+      WHERE activo_tihor = TRUE
+        AND (ide_empr = $1 OR ide_empr = 0)
+      ORDER BY nombre_tihor
+    `);
+    q.addIntParam(1, ideEmpr);
     return this.dataSource.createSelectQuery(q);
   }
 
@@ -295,6 +318,8 @@ export class BotConfigService {
         bc.nombre_bot,
         bc.monto_envio_gratis,
         bc.max_intentos_fallo,
+        bc.reduce_mensajes_whbco,
+        bc.segundos_espera_whbco,
         bc.hora_ingre,
         bc.hora_actua,
         COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa
@@ -360,6 +385,42 @@ export class BotConfigService {
     await this.toggleManual(config.ide_whcue, activo, ideUsua);
   }
 
+  /** Activa/desactiva el modo mensajes reducidos desde la grilla (por ide_whbco) */
+  async setReduceMensajesBotConfig(ideWhbco: number, activo: boolean): Promise<void> {
+    const q = new SelectQuery(`
+      SELECT ide_whcue FROM wha_bot_config WHERE ide_whbco = $1 LIMIT 1
+    `);
+    q.addIntParam(1, ideWhbco);
+    const config = await this.dataSource.createSingleQuery(q) as { ide_whcue: number } | null;
+    if (!config) return;
+
+    const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
+    upd.values.set('reduce_mensajes_whbco', activo);
+    upd.where = 'ide_whbco = $1';
+    upd.addIntParam(1, ideWhbco);
+    await this.dataSource.createQuery(upd);
+    await this.invalidarCache(config.ide_whcue);
+    this.logger.log(`[BotConfig] Modo mensajes reducidos ${activo ? 'ACTIVADO' : 'DESACTIVADO'} en config ${ideWhbco}`);
+  }
+
+  /** Ajusta los segundos de espera del debounce del modo mensajes reducidos (por ide_whbco) */
+  async setSegundosEsperaBotConfig(ideWhbco: number, segundos: number): Promise<void> {
+    const q = new SelectQuery(`
+      SELECT ide_whcue FROM wha_bot_config WHERE ide_whbco = $1 LIMIT 1
+    `);
+    q.addIntParam(1, ideWhbco);
+    const config = await this.dataSource.createSingleQuery(q) as { ide_whcue: number } | null;
+    if (!config) return;
+
+    const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
+    upd.values.set('segundos_espera_whbco', segundos);
+    upd.where = 'ide_whbco = $1';
+    upd.addIntParam(1, ideWhbco);
+    await this.dataSource.createQuery(upd);
+    await this.invalidarCache(config.ide_whcue);
+    this.logger.log(`[BotConfig] segundos_espera_whbco=${segundos} en config ${ideWhbco}`);
+  }
+
   /** Crea o actualiza una configuración de bot para una cuenta */
   async saveConfig(dto: SaveBotConfigDto & HeaderParamsDto): Promise<void> {
     const existe = new SelectQuery(`SELECT 1 FROM wha_bot_config WHERE ide_whcue = $1 LIMIT 1`);
@@ -379,6 +440,8 @@ export class BotConfigService {
       if (dto.activo_manual !== undefined) upd.values.set('activo_manual', dto.activo_manual);
       if (dto.usa_horario !== undefined) upd.values.set('usa_horario', dto.usa_horario);
       if (dto.ide_tihor !== undefined) upd.values.set('ide_tihor', dto.ide_tihor);
+      if (dto.reduce_mensajes_whbco !== undefined) upd.values.set('reduce_mensajes_whbco', dto.reduce_mensajes_whbco);
+      if (dto.segundos_espera_whbco !== undefined) upd.values.set('segundos_espera_whbco', dto.segundos_espera_whbco);
       upd.where = 'ide_whcue = $1';
       upd.addIntParam(1, dto.ide_whcue);
       await this.dataSource.createQuery(upd);
@@ -393,6 +456,8 @@ export class BotConfigService {
       ins.values.set('prompt_sistema', dto.prompt_sistema ?? this.getDefaultPrompt(nombreBotDefault));
       ins.values.set('monto_envio_gratis', dto.monto_envio_gratis ?? 100);
       ins.values.set('max_intentos_fallo', dto.max_intentos_fallo ?? 3);
+      ins.values.set('reduce_mensajes_whbco', dto.reduce_mensajes_whbco ?? false);
+      ins.values.set('segundos_espera_whbco', dto.segundos_espera_whbco ?? 10);
       await this.dataSource.createQuery(ins);
     }
 

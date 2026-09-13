@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
 import { SyncLogQueryDto } from './dto/sync-log-query.dto';
-import { AgentMetrics, DailyMetrics, SyncLogEntry } from './interfaces/ycloud-metrics.interface';
+import { DailyMetrics, SyncLogEntry } from './interfaces/ycloud-metrics.interface';
 
 @Injectable()
 export class YcloudMetricsService {
@@ -12,18 +13,26 @@ export class YcloudMetricsService {
 
   constructor(public readonly dataSource: DataSourceService) {}
 
+  /**
+   * Los nombres de columna del SELECT están aliaseados a los nombres de campo que espera
+   * el frontend (`IYCloudDailyKpi` en react-front-erp/src/types/whatsapp.ts) — antes se
+   * devolvían tal cual las columnas de `wha_metrics_diaria` (`fecha_whmed`,
+   * `mensajes_enviados`, etc.), que no coinciden con lo que el frontend lee (`fecha`,
+   * `enviados`, etc.), así que los KPIs y el gráfico "Enviados vs Recibidos por día"
+   * siempre calculaban 0 aunque la tabla tuviera datos.
+   */
   async getDailyMetrics(ideEmpr: number, fechaDesde: string, fechaHasta: string): Promise<DailyMetrics[]> {
     const query = new SelectQuery(`
       SELECT
-        fecha_whmed,
-        mensajes_enviados,
-        mensajes_recibidos,
-        respuestas_dentro_24h,
-        respuestas_fuera_24h,
+        fecha_whmed AS fecha,
+        mensajes_enviados AS enviados,
+        mensajes_recibidos AS recibidos,
+        respuestas_dentro_24h AS dentro_24h,
+        respuestas_fuera_24h AS fuera_24h,
         tiempo_respuesta_promedio_seg,
         chats_nuevos,
         chats_atendidos,
-        templates_enviados,
+        templates_enviados AS templates,
         mensajes_fallidos
       FROM wha_metrics_diaria
       WHERE ide_empr = $1
@@ -37,29 +46,41 @@ export class YcloudMetricsService {
     return this.dataSource.createSelectQuery(query);
   }
 
-  async getAgentMetrics(ideEmpr: number, fechaDesde: string, fechaHasta: string): Promise<AgentMetrics[]> {
+  /**
+   * Alias de columnas al shape de `IYCloudAgentRow` (mismo motivo que `getDailyMetrics`
+   * arriba) + `createQuery()` en vez de `createSelectQuery()`: el frontend consume este
+   * endpoint con `ResponseQuerySWR`/`DataTableQuery`, que esperan la forma envuelta
+   * `{ rows, columns, rowCount, totalRecords }` — `createSelectQuery()` devuelve un array
+   * plano sin `rows`, por lo que `agentsData?.rows` era siempre `undefined` y la sección
+   * "Rendimiento por Agente" nunca se renderizaba. También faltaba el filtro por
+   * `ide_empr` (disponible vía el join a `wha_chat`) pese a que el parámetro ya se recibía.
+   */
+  async getAgentMetrics(ideEmpr: number, fechaDesde: string, fechaHasta: string): Promise<ResultQuery> {
     const query = new SelectQuery(`
       SELECT
-        m.ide_usua_whmem,
-        u.nom_usua,
-        COUNT(m.ide_whmem)::INT AS mensajes_enviados,
-        AVG(m.tiempo_respuesta_seg_whmem)::INT AS tiempo_respuesta_promedio_seg,
-        COUNT(CASE WHEN m.tiempo_respuesta_seg_whmem IS NOT NULL
-              AND m.tiempo_respuesta_seg_whmem <= 86400 THEN 1 END)::INT AS respuestas_dentro_24h,
-        COUNT(CASE WHEN m.tiempo_respuesta_seg_whmem > 86400 THEN 1 END)::INT AS respuestas_fuera_24h
+        u.nom_usua AS agente,
+        COUNT(m.ide_whmem)::INT AS mensajes,
+        AVG(m.tiempo_respuesta_seg_whmem)::INT AS tiempo_promedio,
+        ROUND(
+          100.0 * COUNT(CASE WHEN m.tiempo_respuesta_seg_whmem IS NOT NULL
+                AND m.tiempo_respuesta_seg_whmem <= 86400 THEN 1 END)
+          / NULLIF(COUNT(CASE WHEN m.tiempo_respuesta_seg_whmem IS NOT NULL THEN 1 END), 0)
+        )::INT AS porcentaje_24h
       FROM wha_mensaje m
       INNER JOIN wha_chat c ON m.wa_id_whmem = c.wa_id_whcha
       INNER JOIN sis_usuario u ON m.ide_usua_whmem = u.ide_usua
       WHERE m.direction_whmem = '1'
         AND m.ide_usua_whmem IS NOT NULL
-        AND m.fecha_whmem::date >= $1::date
-        AND m.fecha_whmem::date <= $2::date
+        AND c.ide_empr = $1
+        AND m.fecha_whmem::date >= $2::date
+        AND m.fecha_whmem::date <= $3::date
       GROUP BY m.ide_usua_whmem, u.nom_usua
-      ORDER BY mensajes_enviados DESC
+      ORDER BY mensajes DESC
     `);
-    query.addStringParam(1, fechaDesde);
-    query.addStringParam(2, fechaHasta);
-    return this.dataSource.createSelectQuery(query);
+    query.addIntParam(1, ideEmpr);
+    query.addStringParam(2, fechaDesde);
+    query.addStringParam(3, fechaHasta);
+    return this.dataSource.createQuery(query);
   }
 
   async getResponseTimeStats(

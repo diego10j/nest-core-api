@@ -7,6 +7,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { YcloudMetricsService } from '../ycloud/ycloud-metrics.service';
 
 import { BotConfigService } from './bot-config.service';
+import { BotDebounceService } from './bot-debounce.service';
 import { BotSessionService } from './bot-session.service';
 import { BotService } from './bot.service';
 
@@ -14,12 +15,17 @@ import { BotService } from './bot.service';
 export class BotScheduleService {
   private readonly logger = new Logger(BotScheduleService.name);
 
+  // Cota inferior conservadora para candidatos del debounce de mensajes reducidos — el
+  // corte real por cuenta (wha_bot_config.segundos_espera_whbco) se aplica después.
+  private readonly MIN_ESPERA_REDUCIDO_SEG = 3;
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly botConfig: BotConfigService,
     private readonly metricsService: YcloudMetricsService,
     private readonly botService: BotService,
     private readonly botSession: BotSessionService,
+    private readonly botDebounce: BotDebounceService,
   ) {}
 
   /**
@@ -93,6 +99,58 @@ export class BotScheduleService {
       }
     } catch (err) {
       this.logger.error(`[Bot] verificarInactividad: ${err.message}`);
+    }
+  }
+
+  /**
+   * Cada 5s revisa el buffer de mensajes del modo mensajes reducidos (wha_bot_config.
+   * reduce_mensajes_whbco) — cuando un chat lleva `segundos_espera_whbco` sin mensajes
+   * nuevos, procesa de una sola vez todo lo acumulado en vez de responder mensaje a
+   * mensaje. Ver BotDebounceService para el detalle del buffer.
+   */
+  @Cron('*/5 * * * * *')
+  async procesarBufferReducido(): Promise<void> {
+    try {
+      const candidatos = await this.botDebounce.obtenerCandidatos(this.MIN_ESPERA_REDUCIDO_SEG);
+      for (const { ideWhcha, ultimoMensajeMs } of candidatos) {
+        try {
+          const info = (await this.dataSource.pool.query<{
+            ide_whcue: number; wa_id_whcha: string; phone_number_id_whcha: string;
+            ide_empr: number; bot_activo_whcha: boolean; bot_modo_whcha: string;
+          }>(`
+            SELECT s.ide_whcue, c.wa_id_whcha, c.phone_number_id_whcha, c.ide_empr,
+                   c.bot_activo_whcha, c.bot_modo_whcha
+            FROM wha_bot_sesion s
+            INNER JOIN wha_chat c ON c.ide_whcha = s.ide_whcha
+            WHERE s.ide_whcha = $1 AND s.activa = TRUE
+            LIMIT 1
+          `, [ideWhcha])).rows[0];
+
+          if (!info) { await this.botDebounce.descartar(ideWhcha); continue; }
+
+          if (!info.bot_activo_whcha || info.bot_modo_whcha !== 'BOT') {
+            // Un asesor tomó el chat mientras esperaba el debounce — descartar sin responder.
+            await this.botDebounce.descartar(ideWhcha);
+            continue;
+          }
+
+          const config = await this.botConfig.getConfig(info.ide_whcue);
+          const esperaMs = (config?.segundos_espera_whbco ?? 10) * 1000;
+          if (Date.now() - ultimoMensajeMs < esperaMs) continue; // aún no le toca a esta cuenta
+
+          const textos = await this.botDebounce.reclamarBuffer(ideWhcha);
+          if (!textos.length) continue; // otro tick ya lo procesó
+
+          await this.botService.procesarBufferReducido(
+            info.wa_id_whcha, info.phone_number_id_whcha, ideWhcha,
+            info.ide_whcue, info.ide_empr, textos.join('\n'),
+          );
+        } catch (err) {
+          this.logger.error(`[Bot][Reducido] Error procesando buffer chat=${ideWhcha}: ${err.message}`, err.stack);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error en procesarBufferReducido: ${error.message}`);
     }
   }
 

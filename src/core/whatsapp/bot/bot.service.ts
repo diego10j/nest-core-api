@@ -10,6 +10,7 @@ import { YcloudWindowService } from '../ycloud/ycloud-window.service';
 import { YcloudService } from '../ycloud/ycloud.service';
 
 import { BotConfigService } from './bot-config.service';
+import { BotDebounceService } from './bot-debounce.service';
 import { BotGptService } from './bot-gpt.service';
 import { BotProformaService } from './bot-proforma.service';
 import { BotSessionService } from './bot-session.service';
@@ -113,6 +114,7 @@ export class BotService implements OnModuleInit {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly botConfig: BotConfigService,
+    private readonly botDebounce: BotDebounceService,
     private readonly botSession: BotSessionService,
     private readonly botGpt: BotGptService,
     private readonly botTools: BotToolsService,
@@ -374,6 +376,25 @@ export class BotService implements OnModuleInit {
       this.logger.log(`[Bot] Saludo detectado en estado ${sesion.estado} → sesión reiniciada`);
     }
 
+    // ─── Modo mensajes reducidos (wha_bot_config.reduce_mensajes_whbco) ────────
+    // En vez de responder de inmediato, se buferiza el mensaje y se espera
+    // `segundos_espera_whbco` de silencio del cliente antes de procesarlo — agrupa
+    // ráfagas de mensajes seguidos en una sola respuesta (ver BotDebounceService y
+    // BotScheduleService.procesarBufferReducido, que llama a procesarBufferReducido()
+    // más abajo con el texto ya concatenado).
+    const ESTADOS_MODO_REDUCIDO = [
+      BotState.INICIO, BotState.ATENCION_LIBRE_REDUCIDA, BotState.RECOPILANDO_COTIZACION_RAPIDA,
+    ];
+    if (config.reduce_mensajes_whbco && ESTADOS_MODO_REDUCIDO.includes(sesion.estado as BotState)) {
+      if (sesion.estado === BotState.INICIO) {
+        // Se salta el botón "¿Empezamos?" del flujo completo — el modo reducido prioriza
+        // responder directo a lo que pide el cliente, no confirmar intención primero.
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, sesion.datos_sesion as DatosSesion);
+      }
+      await this.botDebounce.encolarMensaje(ideWhcha, texto);
+      return;
+    }
+
     try {
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
@@ -424,6 +445,16 @@ export class BotService implements OnModuleInit {
         case BotState.FINALIZADO:
           await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
+        // Estos dos solo se alcanzan por acá si reduce_mensajes_whbco se desactivó
+        // mientras el chat quedaba a mitad del flujo reducido (el camino normal es vía
+        // el buffer de debounce, ver interceptor de ESTADOS_MODO_REDUCIDO más arriba) —
+        // se atienden igual, sin buffer, para no dejar el chat mudo.
+        case BotState.ATENCION_LIBRE_REDUCIDA:
+          await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
+          break;
+        case BotState.RECOPILANDO_COTIZACION_RAPIDA:
+          await this.handleRecopilandoCotizacionRapida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
+          break;
       }
     } catch (error) {
       this.logger.error(`BotService error [${sesion.estado}]: ${error.message}`, error.stack);
@@ -445,6 +476,295 @@ export class BotService implements OnModuleInit {
         }
       }
     }
+  }
+
+  // ─── Modo mensajes reducidos: entrypoint del buffer de debounce ────────────
+  // Llamado por BotScheduleService.procesarBufferReducido() cuando un chat lleva
+  // `segundos_espera_whbco` sin mensajes nuevos, con el texto de todos los mensajes
+  // acumulados ya concatenado.
+
+  async procesarBufferReducido(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, textoConcatenado: string,
+  ): Promise<void> {
+    await this.chatLock.runExclusive(ideWhcha, () =>
+      this.procesarBufferReducidoInternal(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoConcatenado),
+    );
+  }
+
+  private async procesarBufferReducidoInternal(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, textoConcatenado: string,
+  ): Promise<void> {
+    const { sesion } = await this.botSession.getOrCreate(ideWhcha, ideWhcue);
+    const config = await this.botConfig.getConfig(ideWhcue);
+    if (!config) return;
+
+    const nombreBot = config.nombre_bot || 'QuimIA';
+    const nombreEmpresa = config.nombre_empresa || 'DIQUIMEC';
+
+    try {
+      switch (sesion.estado as BotState) {
+        case BotState.INICIO:
+        case BotState.ATENCION_LIBRE_REDUCIDA:
+          await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
+          break;
+        case BotState.RECOPILANDO_COTIZACION_RAPIDA:
+          await this.handleRecopilandoCotizacionRapida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
+          break;
+        default:
+          // La sesión avanzó a un estado del flujo completo (ej. un agente reactivó la
+          // cotización clásica) mientras el mensaje esperaba en el buffer — no aplica.
+          break;
+      }
+    } catch (error) {
+      this.logger.error(`[Bot][Reducido] Error [${sesion.estado}] chat=${ideWhcha}: ${error.message}`, error.stack);
+      try {
+        await this.sendText(ideEmpr, waId, `Disculpa, tuve un inconveniente procesando tu mensaje 😅 ¿Me lo repites, por favor?`);
+      } catch (notifyErr) {
+        this.logger.error(`[Bot][Reducido]: tampoco se pudo notificar el error al cliente: ${notifyErr.message}`);
+      }
+    }
+  }
+
+  /**
+   * Clasifica el mensaje y responde con el flujo simplificado. UBICACION/HORARIO/ENVIO/
+   * CATALOGO usan las mismas plantillas configurables que el flujo completo. PRODUCTO
+   * intenta primero dirigir al catálogo público (manejarConsultaProductoReducida); si no
+   * aplica, toma el pedido para generar una solicitud de cotización simplificada.
+   * GENERAL usa GPT con `prompt_sistema`, derivando a asesor si detecta que necesita un
+   * dato específico que no puede responder con certeza — nunca inventa.
+   */
+  private async handleAtencionLibreReducida(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
+    nombreBot: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const tipoConsulta = await this.botGpt.clasificarConsulta(texto);
+    this.logger.debug(`[Bot][Reducido] tipoConsulta="${tipoConsulta}"`);
+
+    if (['UBICACION', 'HORARIO', 'ENVIO'].includes(tipoConsulta)) {
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      return;
+    }
+
+    if (tipoConsulta === 'CATALOGO') {
+      await this.sendText(ideEmpr, waId,
+        `¡Claro que sí! 📋 Aquí tienes nuestros catálogos:\n` +
+        `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
+        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
+        `Cualquier producto puntual que necesites, cuéntame y con gusto te ayudo 😊`,
+      );
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      return;
+    }
+
+    if (tipoConsulta === 'PRODUCTO') {
+      await this.manejarConsultaProductoReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto);
+      return;
+    }
+
+    // GENERAL: GPT responde con el prompt de la empresa; si necesita un dato específico
+    // que no tiene, deriva a asesor en vez de inventar.
+    const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
+    const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
+      .replace(/{BOT_NOMBRE}/g, nombreBot)
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+    const resultado = await this.botGpt.generateResponseConEscalamiento(
+      promptBase, historial, texto,
+      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa.`,
+    );
+    if (resultado.requiereAsesor) {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, resultado.respuesta);
+      return;
+    }
+    await this.sendText(ideEmpr, waId, resultado.respuesta);
+    await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+  }
+
+  /**
+   * PRODUCTO en modo reducido: si el cliente ya dio cantidad en el mismo mensaje (pedido
+   * directo, ej. "necesito 10kg de cera de soya"), se toma el pedido de una vez — mostrar
+   * el catálogo ahí sería un mensaje de más. Si NO dio cantidad (solo pregunta si hay tal
+   * producto), primero se intenta dirigir al catálogo público con stock; solo si no hay
+   * match se levanta la solicitud de cotización.
+   */
+  private async manejarConsultaProductoReducida(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, datos: DatosSesion, texto: string,
+  ): Promise<void> {
+    const { items } = await this.botGpt.analizarLoteProductos(texto, []);
+    const hayItemConCantidad = items.some((i) => i.cantidad !== null);
+
+    if (!hayItemConCantidad) {
+      const catalogos = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
+      const match = await this.botGpt.matchCatalogoProducto(texto, catalogos);
+      if (match?.ide_cata) {
+        await this.sendText(ideEmpr, waId,
+          `¡Sí, disponemos de ese producto! 😊 Lo encuentras en nuestro catálogo con precios aquí: https://diquimec.com.ec/catalogo — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
+        );
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+        return;
+      }
+    }
+
+    const itemsParaCotizar = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
+    await this.iniciarRecopilacionCotizacionRapida(ideEmpr, waId, sesion, datos, itemsParaCotizar);
+  }
+
+  /** Guarda los productos detectados, pasa a RECOPILANDO_COTIZACION_RAPIDA y pide en un solo mensaje lo que falte (cantidad/nombre/ciudad). */
+  private async iniciarRecopilacionCotizacionRapida(
+    ideEmpr: number, waId: string, sesion: any, datos: DatosSesion,
+    items: { producto: string; cantidad: number | null }[],
+  ): Promise<void> {
+    const nuevosDatos: DatosSesion = { ...datos, cotizacion_rapida: { items } };
+    await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
+
+    const faltantes: string[] = [];
+    if (items.some((i) => i.cantidad === null)) faltantes.push('la cantidad que necesitas de cada producto');
+    if (!nuevosDatos.cliente?.nombres) faltantes.push('tu nombre');
+    if (!nuevosDatos.envio?.provincia) faltantes.push('la ciudad desde donde nos escribes');
+
+    await this.sendText(ideEmpr, waId,
+      `¡Claro que sí! Para generar tu solicitud de cotización cuéntame: ${faltantes.join(', ')} 😊`,
+    );
+  }
+
+  /**
+   * Recibe la respuesta con los datos pedidos (cantidad/nombre/ciudad, lo que faltara),
+   * extrae lo que el cliente indicó y, si ya está todo completo, resuelve los productos
+   * contra el catálogo interno (sin disambiguación multi-turno) y genera la solicitud de
+   * cotización con procesarProforma() — igual que el flujo completo, pero sin dirección
+   * exacta ni forma de pago, y sin enviarle el PDF/precio al cliente: el asesor la
+   * completa. Si todavía falta algo, vuelve a preguntar solo lo que falta.
+   */
+  private async handleRecopilandoCotizacionRapida(
+    waId: string, phoneNumberId: string, ideWhcha: number,
+    ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
+    nombreBot: string, nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const datos = sesion.datos_sesion as DatosSesion;
+    const cot = datos.cotizacion_rapida;
+    if (!cot) {
+      // Estado inconsistente (no debería pasar) — vuelve a atención libre reducida.
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
+      return;
+    }
+
+    const nombreFaltante = !datos.cliente?.nombres;
+    const ciudadFaltante = !datos.envio?.provincia;
+    const itemsSinCantidad = cot.items.filter((i) => i.cantidad === null);
+
+    const [datosPersona, cantidadesExtraidas] = await Promise.all([
+      (nombreFaltante || ciudadFaltante)
+        ? this.botGpt.extraerNombreYCiudad(texto, nombreFaltante, ciudadFaltante)
+        : Promise.resolve({ nombre: null, ciudad: null }),
+      itemsSinCantidad.length
+        ? this.botGpt.extraerCantidadesPorProducto(
+            itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
+            texto,
+          )
+        : Promise.resolve([] as (number | null)[]),
+    ]);
+
+    let cursor = 0;
+    const itemsActualizados = cot.items.map((i) => {
+      if (i.cantidad !== null) return i;
+      const nueva = cantidadesExtraidas[cursor];
+      cursor += 1;
+      return nueva != null ? { ...i, cantidad: nueva } : i;
+    });
+
+    const nuevosDatos: DatosSesion = {
+      ...datos,
+      cotizacion_rapida: { items: itemsActualizados },
+      cliente: {
+        ...(datos.cliente ?? { correo: '', es_cliente_registrado: false }),
+        nombres: datos.cliente?.nombres || datosPersona.nombre || '',
+      },
+      envio: { ...(datos.envio ?? {}), provincia: datos.envio?.provincia || datosPersona.ciudad || undefined },
+    };
+
+    const faltantes: string[] = [];
+    const itemsAunSinCantidad = itemsActualizados.filter((i) => i.cantidad === null);
+    if (itemsAunSinCantidad.length) faltantes.push(`la cantidad de: ${itemsAunSinCantidad.map((i) => i.producto).join(', ')}`);
+    if (!nuevosDatos.cliente?.nombres) faltantes.push('tu nombre');
+    if (!nuevosDatos.envio?.provincia) faltantes.push('la ciudad desde donde nos escribes');
+
+    if (faltantes.length) {
+      await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
+      await this.sendText(ideEmpr, waId, `Gracias 🙌 Solo me falta: ${faltantes.join(', ')}`);
+      return;
+    }
+
+    const productosResueltos = await this.resolverProductosSimple(itemsActualizados, ideEmpr);
+    const datosFinales: DatosSesion = { ...nuevosDatos, productos: productosResueltos };
+
+    try {
+      await this.botProforma.procesarProforma(datosFinales, `+${waId}`, ideEmpr, 0, nombreBot);
+    } catch (err) {
+      // No se le comunica el error al cliente: igual se cierra con el mensaje de asesor
+      // de abajo — mejor que un pedido con datos completos no se pierda en silencio, un
+      // humano lo revisa desde los logs.
+      this.logger.error(`[Bot][Reducido] Error generando cotización rápida chat=${ideWhcha}: ${err.message}`, err.stack);
+    }
+
+    await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+      `Perfecto, ya registré tu solicitud ✅ Uno de nuestros asesores se comunicará contigo para coordinar los detalles y el envío.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias! 😊`,
+    );
+  }
+
+  /**
+   * Resuelve cada producto contra el catálogo interno SIN disambiguación multi-turno
+   * (a diferencia de resolverColaProductos, usado por el flujo completo): con 1 resultado
+   * lo usa directo, con varios toma el primero (mejor ranking), y sin resultados cae al
+   * artículo genérico con el texto literal del cliente — mismo fallback ya usado en
+   * resolverColaProductos para "nada matcheó". El asesor humano confirma el detalle exacto
+   * al completar la cotización, así que no vale la pena gastar mensajes desambiguando acá.
+   */
+  private async resolverProductosSimple(
+    items: { producto: string; cantidad: number | null }[],
+    ideEmpr: number,
+  ): Promise<ProductoSesion[]> {
+    const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
+    const resultado: ProductoSesion[] = [];
+
+    for (const item of items) {
+      const cantidad = item.cantidad ?? 0;
+      const nombreLimpio = item.producto
+        .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kilo[s]?|lb[s]?|gr[s]?|g\b|litro[s]?|lt[s]?|ml|und[s]?|unidad[s]?|galon[s]?|gal[s]?|lb)\b/gi, '')
+        .replace(/\b\d+\b/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim() || item.producto;
+
+      let candidatos = await this.botTools.buscarProductos(nombreLimpio, ideEmpr);
+      if (!candidatos.length) candidatos = await this.botTools.buscarProductosPorPalabras(nombreLimpio, ideEmpr);
+
+      if (candidatos.length) {
+        const prod = candidatos[0];
+        resultado.push({
+          ide_inarti: prod.ide_inarti,
+          nombre: item.producto,
+          cantidad,
+          unidad: prod.nombre_unidad,
+          siglas_unidad: prod.siglas_unidad,
+          en_catalogo: prod.en_catalogo,
+        });
+      } else {
+        resultado.push({
+          ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
+          nombre: item.producto,
+          cantidad,
+          unidad: generico?.nombre_unidad ?? 'Unidad',
+          siglas_unidad: generico?.siglas_unidad ?? 'UND',
+          en_catalogo: generico?.en_catalogo ?? false,
+        });
+      }
+    }
+    return resultado;
   }
 
   // ─── Handlers ─────────────────────────────────────────────────────────────

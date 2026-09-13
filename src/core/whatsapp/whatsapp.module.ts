@@ -6,6 +6,7 @@ import { FileTempService } from '../modules/sistema/files/file-temp.service';
 
 import { WhatsappApiService } from './api/whatsapp-api.service';
 import { BotConfigService } from './bot/bot-config.service';
+import { BotDebounceService } from './bot/bot-debounce.service';
 import { BotGptService } from './bot/bot-gpt.service';
 import { BotProformaService } from './bot/bot-proforma.service';
 import { BotScheduleService } from './bot/bot-schedule.service';
@@ -52,6 +53,7 @@ import { YcloudService } from './ycloud/ycloud.service';
     YcloudMetricsService,
     // Bot QuimIA
     BotConfigService,
+    BotDebounceService,
     BotSessionService,
     BotGptService,
     BotToolsService,

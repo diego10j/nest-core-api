@@ -93,6 +93,17 @@ export interface DatosSesion {
   // Ítem con un único match "dudoso" (solo por fallback difuso) a la espera de que el
   // cliente confirme si es o no el producto que buscaba — bloquea de inmediato.
   pendiente_confirmacion?: PendienteConfirmacion;
+  // ─── Modo mensajes reducidos ────────────────────────────────────────────
+  // Productos+cantidad detectados en el flujo simplificado (BotState.RECOPILANDO_
+  // COTIZACION_RAPIDA) mientras se completan nombre/ciudad/cantidades faltantes.
+  // Independiente de `productos` (que solo se llena al resolver contra el catálogo,
+  // justo antes de llamar a procesarProforma).
+  cotizacion_rapida?: { items: ItemCotizacionRapida[] };
+}
+
+export interface ItemCotizacionRapida {
+  producto: string;
+  cantidad: number | null;
 }
 
 export interface OpcionProducto {

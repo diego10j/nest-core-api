@@ -31,23 +31,30 @@ export class WhatsappDbService {
     /**
      * wha_chat/wha_mensaje guardan sus fechas en columnas `timestamp without time zone`
      * pensadas como UTC (el código de escritura usa `new Date().toISOString()`), pero la
-     * sesión de Postgres tiene configurado TimeZone=America/Guayaquil: al insertar un valor
-     * con offset, Postgres lo convierte a la zona de la sesión ANTES de guardarlo como
+     * sesión de Postgres tiene configurado un TimeZone propio: al insertar un valor con
+     * offset, Postgres lo convierte a la zona de la sesión ANTES de guardarlo como
      * "naive" — lo que queda en la columna son en realidad las cifras de hora LOCAL de
-     * Ecuador, no UTC. Devueltas tal cual, el parser nativo de `pg` para TIMESTAMP (OID
-     * 1114) las reinterpreta usando el TZ del proceso Node (UTC en producción) y el
-     * resultado queda ~5 horas por debajo de la hora real (confirmado con el usuario:
-     * un mensaje de las 14:00 Ecuador se mostraba como 09:00).
-     * Este helper evita la ambigüedad: interpreta la columna EXPLÍCITAMENTE como hora de
-     * Guayaquil, la convierte a UTC, y la devuelve ya formateada como texto ISO con
-     * sufijo 'Z' — así el driver nunca vuelve a tocarla con su parser de timestamp, y el
-     * frontend (que ya asume "sin offset = UTC" en date-chat.ts) la muestra correcta.
+     * esa zona, no UTC. Devueltas tal cual, el parser nativo de `pg` para TIMESTAMP (OID
+     * 1114) las reinterpreta usando el TZ del proceso Node (UTC en producción), desfasando
+     * la hora real (confirmado con el usuario: un mensaje de las 14:00 Ecuador se mostraba
+     * como 09:00).
+     * Este helper evita la ambigüedad: interpreta la columna EXPLÍCITAMENTE con
+     * `current_setting('TimeZone')` — la MISMA zona de sesión que Postgres usó para
+     * convertir el valor al guardarlo, sea cual sea — la convierte a UTC, y la devuelve ya
+     * formateada como texto ISO con sufijo 'Z'. Antes esto hardcodeaba 'America/Guayaquil':
+     * si el TimeZone de sesión de la BD cambia (migración de servidor/hosting, ALTER
+     * DATABASE/ROLE, etc.), ese hardcode queda desincronizado y desfasa TODAS las horas por
+     * la diferencia entre la zona real y la asumida (ej. sesión pasa a UTC: el naive ya es
+     * UTC puro, pero el helper le restaba 5h de más al "reinterpretarlo" como Guayaquil,
+     * mostrando +5h). Usar `current_setting('TimeZone')` hace la conversión autoconsistente
+     * sin importar qué TimeZone tenga la sesión, mientras escritura y lectura compartan la
+     * misma (el caso normal: es un ajuste a nivel de conexión/rol, no por-request).
      * No usar en columnas que participan en cursores de paginación (fecha_msg_whcha en
      * los WHERE de getChats/getChatsPorFiltro): el cast `$n::timestamp` de esos cursores
      * ya hace la conversión correcta vía el TimeZone de la sesión, sin pasar por `pg`.
      */
     private utcIso(column: string): string {
-        return `to_char((${column} AT TIME ZONE 'America/Guayaquil') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+        return `to_char((${column} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
     }
 
     /**

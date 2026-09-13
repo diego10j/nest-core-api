@@ -400,4 +400,147 @@ export class BotGptService {
     }
   }
 
+  // ─── Modo mensajes reducidos ────────────────────────────────────────────────
+
+  /**
+   * Igual que generateResponse, pero le pide a GPT que también indique si la consulta
+   * necesita un dato específico que no puede responder con certeza (precio exacto, stock
+   * real, condición particular de un pedido) — en ese caso "respuesta" es un mensaje breve
+   * avisando que se deriva a un asesor, NO un intento de contestar la pregunta original.
+   * Usado solo en modo mensajes reducidos (ATENCION_LIBRE_REDUCIDA) para evitar que el bot
+   * invente información cuando no tiene certeza.
+   */
+  async generateResponseConEscalamiento(
+    systemPrompt: string,
+    historial: { role: 'user' | 'assistant'; content: string }[],
+    mensajeActual: string,
+    contextoExtra?: string,
+  ): Promise<{ respuesta: string; requiereAsesor: boolean }> {
+    const sysContent =
+      `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra ?? ''}\n\n` +
+      'Responde SOLO JSON válido: {"respuesta": "texto para el cliente", "requiereAsesor": bool}. ' +
+      'requiereAsesor=true SOLO si la pregunta necesita un dato específico que no puedes responder con certeza ' +
+      '(precio exacto, stock real, condición particular de un pedido puntual) — en ese caso "respuesta" debe ser ' +
+      'un mensaje breve avisando que un asesor se comunicará, sin intentar responder la pregunta original.';
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: sysContent },
+      ...historial.slice(-10),
+      { role: 'user', content: mensajeActual },
+    ];
+
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages,
+        temperature: 0.7,
+        max_tokens: 350,
+        response_format: { type: 'json_object' },
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return { respuesta: 'Lo siento, tuve un inconveniente. ¿Podrías repetir?', requiereAsesor: false };
+      const parsed = JSON.parse(content);
+      return {
+        respuesta: typeof parsed.respuesta === 'string' && parsed.respuesta.trim()
+          ? parsed.respuesta.trim()
+          : 'Con gusto te ayudo — un asesor se comunicará contigo.',
+        requiereAsesor: !!parsed.requiereAsesor,
+      };
+    } catch (err) {
+      this.logger.error(`generateResponseConEscalamiento error: ${err.message}`);
+      return { respuesta: 'Disculpa, ocurrió un problema procesando tu mensaje. Por favor intenta de nuevo.', requiereAsesor: false };
+    }
+  }
+
+  /**
+   * Determina si el producto que menciona el cliente corresponde a alguno de los
+   * catálogos públicos con stock disponible (modo mensajes reducidos) — para dirigirlo
+   * directo al catálogo con precios en vez de levantar una solicitud de cotización manual.
+   * No adivina: si no hay coincidencia razonablemente clara, devuelve null.
+   */
+  async matchCatalogoProducto(
+    texto: string,
+    catalogos: { ide_cata: number; nombre_cata: string; productos: { nombre: string }[] }[],
+  ): Promise<{ ide_cata: number } | null> {
+    if (!catalogos.length) return null;
+    const listado = catalogos
+      .map((c) => `Catálogo "${c.nombre_cata}" (id ${c.ide_cata}): ${c.productos.map((p) => p.nombre).join(', ')}`)
+      .join('\n');
+
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'El cliente pregunta por un producto. Estos son los catálogos públicos con stock disponible y sus ' +
+              'productos:\n' + listado + '\n\n' +
+              'Si el producto que menciona el cliente coincide (exacto o muy cercano) con alguno de estos productos, ' +
+              'responde SOLO JSON: {"ide_cata": <id del catálogo>}. Si NO hay ningún producto que coincida con ' +
+              'razonable certeza, responde {"ide_cata": null} — no adivines ni asumas coincidencias vagas.',
+          },
+          { role: 'user', content: texto },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 30,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return null;
+      const parsed = JSON.parse(content);
+      const ideCata = Number(parsed.ide_cata);
+      return Number.isInteger(ideCata) && catalogos.some((c) => c.ide_cata === ideCata) ? { ide_cata: ideCata } : null;
+    } catch (err) {
+      this.logger.error(`matchCatalogoProducto error: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Extrae nombre y/o ciudad de la respuesta del cliente cuando se le pidieron en un solo
+   * mensaje (modo mensajes reducidos, cotización rápida). Solo pide lo que realmente falta
+   * — `pedirNombre`/`pedirCiudad` en false hacen que ese campo se devuelva siempre null
+   * sin llamar a GPT si ninguno de los dos hace falta.
+   */
+  async extraerNombreYCiudad(
+    respuesta: string,
+    pedirNombre: boolean,
+    pedirCiudad: boolean,
+  ): Promise<{ nombre: string | null; ciudad: string | null }> {
+    if (!pedirNombre && !pedirCiudad) return { nombre: null, ciudad: null };
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'El cliente está respondiendo a una pregunta que le pidió' +
+              (pedirNombre && pedirCiudad
+                ? ' su nombre y la ciudad desde donde escribe.'
+                : pedirNombre
+                  ? ' su nombre.'
+                  : ' la ciudad desde donde escribe.') +
+              ' Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
+              'Responde SOLO JSON: {"nombre": string|null, "ciudad": string|null}.',
+          },
+          { role: 'user', content: respuesta },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 100,
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) return { nombre: null, ciudad: null };
+      const parsed = JSON.parse(content);
+      return {
+        nombre: typeof parsed.nombre === 'string' && parsed.nombre.trim() ? parsed.nombre.trim() : null,
+        ciudad: typeof parsed.ciudad === 'string' && parsed.ciudad.trim() ? parsed.ciudad.trim() : null,
+      };
+    } catch (err) {
+      this.logger.error(`extraerNombreYCiudad error: ${err.message}`);
+      return { nombre: null, ciudad: null };
+    }
+  }
 }

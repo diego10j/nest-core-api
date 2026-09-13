@@ -1,23 +1,23 @@
+/** Alias de columnas de `wha_metrics_diaria` al shape que espera el frontend (`IYCloudDailyKpi`). */
 export interface DailyMetrics {
-  fecha_whmed: string;
-  mensajes_enviados: number;
-  mensajes_recibidos: number;
-  respuestas_dentro_24h: number;
-  respuestas_fuera_24h: number;
+  fecha: string;
+  enviados: number;
+  recibidos: number;
+  dentro_24h: number;
+  fuera_24h: number;
   tiempo_respuesta_promedio_seg: number | null;
   chats_nuevos: number;
   chats_atendidos: number;
-  templates_enviados: number;
+  templates: number;
   mensajes_fallidos: number;
 }
 
+/** Alias de columnas al shape que espera el frontend (`IYCloudAgentRow`). */
 export interface AgentMetrics {
-  ide_usua_whmem: number;
-  nom_usua: string;
-  mensajes_enviados: number;
-  tiempo_respuesta_promedio_seg: number | null;
-  respuestas_dentro_24h: number;
-  respuestas_fuera_24h: number;
+  agente: string;
+  mensajes: number;
+  tiempo_promedio: number | null;
+  porcentaje_24h: number;
 }
 
 export interface SyncLogEntry {

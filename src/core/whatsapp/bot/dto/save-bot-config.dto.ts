@@ -48,4 +48,12 @@ export class SaveBotConfigDto {
   @IsInt()
   @IsOptional()
   max_intentos_fallo?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  reduce_mensajes_whbco?: boolean;
+
+  @IsInt()
+  @IsOptional()
+  segundos_espera_whbco?: number;
 }

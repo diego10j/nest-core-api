@@ -352,4 +352,93 @@ export class BotProformaService {
       baseGrabada: baseGrabadaRet, baseTarifa0: 0, valorIva, tarifaIva, total,
     };
   }
+
+  /**
+   * Catálogos públicos activos con productos EN STOCK (modo mensajes reducidos) — le da a
+   * `BotGptService.matchCatalogoProducto` contexto real de productos (no solo el nombre de
+   * la categoría) para decidir si dirigir al cliente al catálogo con precios en vez de
+   * levantar una solicitud de cotización manual. Relación producto↔catálogo vía
+   * `inv_det_catalogo`, mismo criterio de stock que `ProductosService.getCatalogoProductos`
+   * (suma de `inv_det_comp_inve` en la bodega principal, ide_inepi=1).
+   * Cacheado en Redis 20 min (clave `catalogo:bot:productos:<ideEmpr>`) — cubre el caso de
+   * stock, que cambia más seguido que el catálogo. Cuando SÍ cambia el catálogo (producto
+   * agregado/quitado, activar/desactivar, etc.) no hace falta invalidar acá: la clave usa
+   * el mismo prefijo `catalogo:` que ya barre `CatalogosSaveService.invalidateCatalogCache()`
+   * con `KEYS catalogo:*` en cada save/delete/toggle de catálogo — se limpia sola. Si se
+   * cambia este prefijo, hay que revisar esa función para no perder la invalidación cruzada.
+   */
+  async obtenerCatalogosDisponibles(ideEmpr: number): Promise<{
+    ide_cata: number;
+    nombre_cata: string;
+    productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
+  }[]> {
+    const cacheKey = `catalogo:bot:productos:${ideEmpr}`;
+    try {
+      const cached = await this.dataSource.redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      this.logger.warn(`[Catalogos] Redis get falló para ${cacheKey}: ${err.message}`);
+    }
+
+    const query = new SelectQuery(`
+      SELECT
+        c.ide_inccat     AS ide_cata,
+        c.nombre_inccat  AS nombre_cata,
+        a.ide_inarti,
+        a.nombre_inarti  AS nombre_producto
+      FROM inv_cab_catalogo c
+      INNER JOIN inv_det_catalogo d ON d.ide_inccat = c.ide_inccat AND d.activo_indcat = TRUE
+      INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+        AND a.activo_inarti = TRUE AND a.hace_kardex_inarti = TRUE
+      WHERE c.estado_inccat = TRUE
+        AND (c.ide_empr = $1 OR c.ide_empr = 0)
+        AND COALESCE(
+          (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+           FROM inv_det_comp_inve dci
+           INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+           INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+           INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+           WHERE dci.ide_inarti = a.ide_inarti AND cci.ide_inepi = 1
+          ), 0
+        ) > 0
+      ORDER BY c.orden_inccat, c.nombre_inccat, a.nombre_inarti
+    `);
+    query.addIntParam(1, ideEmpr);
+    const rows = await this.dataSource.createSelectQuery(query);
+
+    const porCatalogo = new Map<number, {
+      ide_cata: number; nombre_cata: string;
+      productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
+    }>();
+    for (const row of rows) {
+      if (!porCatalogo.has(row.ide_cata)) {
+        porCatalogo.set(row.ide_cata, { ide_cata: row.ide_cata, nombre_cata: row.nombre_cata, productos: [] });
+      }
+      porCatalogo.get(row.ide_cata)!.productos.push({
+        ide_inarti: row.ide_inarti, nombre: row.nombre_producto, precio_desde: null,
+      });
+    }
+    const resultado = Array.from(porCatalogo.values());
+
+    // Precio de referencia (cantidad=1) por producto — best-effort, no bloquea el catálogo
+    // si falla para alguno en particular.
+    for (const cat of resultado) {
+      for (const prod of cat.productos) {
+        try {
+          const precio = await this.proformasService.buscarPrecioProducto(prod.ide_inarti, 1, ideEmpr, 0);
+          prod.precio_desde = precio ? roundPrecio(precio.precio_venta_con_iva) : null;
+        } catch {
+          prod.precio_desde = null;
+        }
+      }
+    }
+
+    try {
+      await this.dataSource.redisClient.setex(cacheKey, 1200, JSON.stringify(resultado));
+    } catch (err) {
+      this.logger.warn(`[Catalogos] Redis set falló para ${cacheKey}: ${err.message}`);
+    }
+
+    return resultado;
+  }
 }

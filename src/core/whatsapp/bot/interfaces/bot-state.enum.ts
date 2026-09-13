@@ -16,4 +16,7 @@ export enum BotState {
   DATOS_PAGO                 = 'DATOS_PAGO',
   FINALIZADO                 = 'FINALIZADO',
   CANCELADO                  = 'CANCELADO',
+  // ─── Modo mensajes reducidos (wha_bot_config.reduce_mensajes_whbco) ────────
+  ATENCION_LIBRE_REDUCIDA       = 'ATENCION_LIBRE_REDUCIDA',
+  RECOPILANDO_COTIZACION_RAPIDA = 'RECOPILANDO_COTIZACION_RAPIDA',
 }
