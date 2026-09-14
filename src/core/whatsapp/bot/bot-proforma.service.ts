@@ -60,7 +60,7 @@ export class BotProformaService {
     ideSucu: number,
     nombreBot: string,
   ): Promise<ResultadoProforma> {
-    const productosConPrecio: ProductoSesion[] = [];
+    const productosConPrecio: (ProductoSesion & { tiene_stock?: boolean })[] = [];
     const productosSinPrecio: ProductoSesion[] = [];
 
     let tarifaIva = 15; // fallback
@@ -78,6 +78,8 @@ export class BotProformaService {
         tarifaIva = precioConf.porcentaje_iva;
         const precioSinIva = roundPrecio(precioConf.precio_venta_sin_iva);
         const totalConIva = roundTo(precioConf.precio_venta_con_iva * prod.cantidad, DECIMALES_TOTALES);
+        const tieneStock = await this.tieneStockSuficiente(prod.ide_inarti, prod.cantidad);
+        this.logger.log(`[Stock] ide_inarti=${prod.ide_inarti} "${prod.nombre}" cant_solicitada=${prod.cantidad} → ${tieneStock ? 'SUFICIENTE' : 'INSUFICIENTE'}`);
         productosConPrecio.push({
           ...prod,
           precio_unitario: precioSinIva,
@@ -86,6 +88,7 @@ export class BotProformaService {
           utilidad_ccdpr: precioConf.utilidad_neta ?? null,
           porcentaje_util_ccdpr: precioConf.porcentaje_utilidad ?? null,
           tiene_precio: true,
+          tiene_stock: tieneStock,
         });
       } else {
         productosSinPrecio.push({ ...prod, tiene_precio: false });
@@ -93,10 +96,13 @@ export class BotProformaService {
     }
 
     const todosTienePrecio = productosSinPrecio.length === 0;
-    // Automática: todos tienen precio Y todos están en catálogo
+    // Automática: todos tienen precio configurado para la cantidad pedida Y todos tienen
+    // stock suficiente en bodega principal — ya NO se exige que el producto esté en un
+    // catálogo público (antes bloqueaba productos vendibles con precio y stock reales
+    // solo por no estar publicados en un catálogo de WhatsApp/web).
     const automatica = todosTienePrecio &&
-      datos.productos.every((p) => p.en_catalogo === true);
-    // Con precio pero alguno fuera de catálogo: se carga precio pero no es automática
+      productosConPrecio.every((p) => p.tiene_stock === true);
+    // Con precio pero sin stock suficiente en algún ítem: se carga precio pero no es automática
     const conPrecio = todosTienePrecio && !automatica;
 
     // Construir detalles con precio cuando está disponible.
@@ -120,7 +126,7 @@ export class BotProformaService {
     const observacion = automatica
       ? `Cotización automática generada por ${nombreBot} vía WhatsApp`
       : conPrecio
-        ? `Cotización ${nombreBot} vía WhatsApp — precios cargados, pendiente revisión de catálogo`
+        ? `Cotización ${nombreBot} vía WhatsApp — precios cargados, pendiente revisión de stock`
         : `Cotización ${nombreBot} vía WhatsApp — revisar productos sin precio`;
 
     const resultado = await this.proformasService.createProformaWeb({
@@ -372,6 +378,36 @@ export class BotProformaService {
       productosConPrecio, productosSinPrecio, pdfBuffer,
       baseGrabada: baseGrabadaRet, baseTarifa0: 0, valorIva, tarifaIva, total,
     };
+  }
+
+  /**
+   * Stock general disponible (todas las bodegas, sin restringir a una en particular) —
+   * suma de `inv_det_comp_inve` con signo de `inv_tip_comp_inve`, mismo cálculo base que
+   * usa el resto del ERP (catalogos.service.ts, productos.service.ts) para "hay
+   * existencia" pero sin el filtro a una bodega puntual: alcanza con que el total
+   * disponible en cualquier combinación de bodegas cubra la cantidad pedida. Gatea la
+   * generación automática del PDF junto con el precio configurado — que un producto no
+   * esté publicado en un catálogo ya no bloquea el envío automático si de verdad hay
+   * stock y precio para la cantidad pedida.
+   */
+  private async tieneStockSuficiente(ideInarti: number, cantidad: number): Promise<boolean> {
+    const q = new SelectQuery(`
+      SELECT COALESCE(
+        (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+         FROM inv_det_comp_inve dci
+         INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+         INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+         INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+         WHERE dci.ide_inarti = a.ide_inarti
+        ), 0
+      ) AS stock
+      FROM inv_articulo a
+      WHERE a.ide_inarti = $1
+    `);
+    q.addIntParam(1, ideInarti);
+    const row = await this.dataSource.createSingleQuery(q);
+    const stock = Number(row?.stock ?? 0);
+    return stock >= cantidad;
   }
 
   /**
