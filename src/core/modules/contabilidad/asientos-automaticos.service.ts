@@ -1386,11 +1386,23 @@ export class AsientosAutomaticosService extends BaseService {
             } as any);
             const ideCnccc = result.ide_cnccc;
 
-            // Vincular asiento al documento y a la transacción CxP original
-            await this.dataSource.pool.query(
-                `UPDATE cxp_cabece_factur SET ide_cnccc = $1 WHERE ide_cpcfa = $2`,
-                [ideCnccc, dtoIn.ide_cpcfa],
+            // Vincular asiento al documento y a la transacción CxP original - reclamo atómico
+            // (ver reclamarEnlaceAsiento) contra doble clic en Mayorizar.
+            const reclamo = await this.reclamarEnlaceAsiento(
+                'cxp_cabece_factur', 'ide_cnccc', 'ide_cpcfa', dtoIn.ide_cpcfa, ideCnccc, dtoIn,
             );
+            if (!reclamo.gano) {
+                const advertencia = 'El documento ya tiene asiento contable (generado por otra petición concurrente); el comprobante recién creado se anuló automáticamente para evitar un duplicado';
+                await this.registrarLogMayorizacion({
+                    tipoOrigen: 'DOCUMENTOS_PAGAR', accion: 'GENERAR', ideDocumento: dtoIn.ide_cpcfa,
+                    numeroDocumento: doc.numero_cpcfa, ideCnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia], fecha: doc.fecha_emisi_cpcfa, dtoIn,
+                });
+                return {
+                    ide_cpcfa: dtoIn.ide_cpcfa, ide_cnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia],
+                };
+            }
             await this.dataSource.pool.query(
                 `UPDATE cxp_detall_transa SET ide_cnccc = $1 WHERE ide_cpcfa = $2 AND numero_pago_cpdtr = 0`,
                 [ideCnccc, dtoIn.ide_cpcfa],
@@ -1660,10 +1672,21 @@ export class AsientosAutomaticosService extends BaseService {
             const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
             const ideCnccc = result.ide_cnccc;
 
-            await this.dataSource.pool.query(
-                `UPDATE cxc_cabece_factura SET ide_cnccc = $1 WHERE ide_cccfa = $2`,
-                [ideCnccc, dtoIn.ide_cccfa],
+            const reclamo = await this.reclamarEnlaceAsiento(
+                'cxc_cabece_factura', 'ide_cnccc', 'ide_cccfa', dtoIn.ide_cccfa, ideCnccc, dtoIn,
             );
+            if (!reclamo.gano) {
+                const advertencia = 'La factura ya tiene asiento contable (generado por otra petición concurrente); el comprobante recién creado se anuló automáticamente para evitar un duplicado';
+                await this.registrarLogMayorizacion({
+                    tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cccfa,
+                    numeroDocumento: doc.secuencial_cccfa, ideCnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia], fecha: doc.fecha_emisi_cccfa, dtoIn,
+                });
+                return {
+                    ide_cccfa: dtoIn.ide_cccfa, ide_cnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia],
+                };
+            }
             await this.dataSource.pool.query(
                 `UPDATE cxc_detall_transa SET ide_cnccc = $1 WHERE ide_cccfa = $2 AND numero_pago_ccdtr = 0`,
                 [ideCnccc, dtoIn.ide_cccfa],
@@ -1812,10 +1835,21 @@ export class AsientosAutomaticosService extends BaseService {
             const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
             const ideCnccc = result.ide_cnccc;
 
-            await this.dataSource.pool.query(
-                `UPDATE cxp_cabecera_nota SET ide_cnccc = $1 WHERE ide_cpcno = $2`,
-                [ideCnccc, dtoIn.ide_cpcno],
+            const reclamo = await this.reclamarEnlaceAsiento(
+                'cxp_cabecera_nota', 'ide_cnccc', 'ide_cpcno', dtoIn.ide_cpcno, ideCnccc, dtoIn,
             );
+            if (!reclamo.gano) {
+                const advertencia = 'La nota de crédito ya tiene asiento contable (generado por otra petición concurrente); el comprobante recién creado se anuló automáticamente para evitar un duplicado';
+                await this.registrarLogMayorizacion({
+                    tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Asiento', ideDocumento: dtoIn.ide_cpcno,
+                    numeroDocumento: nota.numero_cpcno, ideCnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia], fecha: nota.fecha_emisi_cpcno, dtoIn,
+                });
+                return {
+                    ide_cpcno: dtoIn.ide_cpcno, ide_cnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia],
+                };
+            }
             // Nota: el legacy además actualiza masivamente TODA fila cxc_detall_transa sin
             // asiento con ide_ccttr=1 (sin acotar por esta nota) - eso es un bug latente
             // documentado en la investigación de migración, no se replica aquí a propósito.
@@ -1953,10 +1987,21 @@ export class AsientosAutomaticosService extends BaseService {
             const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
             const ideCnccc = result.ide_cnccc;
 
-            await this.dataSource.pool.query(
-                `UPDATE cxc_cabece_factura SET ide_cnccc_costo = $1 WHERE ide_cccfa = $2`,
-                [ideCnccc, dtoIn.ide_cccfa],
+            const reclamo = await this.reclamarEnlaceAsiento(
+                'cxc_cabece_factura', 'ide_cnccc_costo', 'ide_cccfa', dtoIn.ide_cccfa, ideCnccc, dtoIn,
             );
+            if (!reclamo.gano) {
+                const advertencia = 'La factura ya tiene asiento de costo (generado por otra petición concurrente); el comprobante recién creado se anuló automáticamente para evitar un duplicado';
+                await this.registrarLogMayorizacion({
+                    tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
+                    numeroDocumento: doc.secuencial_cccfa, ideCnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia], fecha: doc.fecha_emisi_cccfa, dtoIn,
+                });
+                return {
+                    ide_cccfa: dtoIn.ide_cccfa, ide_cnccc_costo: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia],
+                };
+            }
 
             const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'FACTURA_VENTA', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cccfa,
@@ -2090,10 +2135,21 @@ export class AsientosAutomaticosService extends BaseService {
             const result = await this.comprobanteService.saveAutomatico(comprobanteDto);
             const ideCnccc = result.ide_cnccc;
 
-            await this.dataSource.pool.query(
-                `UPDATE cxp_cabecera_nota SET ide_cnccc_costo = $1 WHERE ide_cpcno = $2`,
-                [ideCnccc, dtoIn.ide_cpcno],
+            const reclamo = await this.reclamarEnlaceAsiento(
+                'cxp_cabecera_nota', 'ide_cnccc_costo', 'ide_cpcno', dtoIn.ide_cpcno, ideCnccc, dtoIn,
             );
+            if (!reclamo.gano) {
+                const advertencia = 'La nota de crédito ya tiene asiento de costo (generado por otra petición concurrente); el comprobante recién creado se anuló automáticamente para evitar un duplicado';
+                await this.registrarLogMayorizacion({
+                    tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
+                    numeroDocumento: nota.numero_cpcno, ideCnccc: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia], fecha: nota.fecha_emisi_cpcno, dtoIn,
+                });
+                return {
+                    ide_cpcno: dtoIn.ide_cpcno, ide_cnccc_costo: reclamo.ideCnccc,
+                    generado: false, advertencias: [advertencia],
+                };
+            }
 
             const logError = await this.registrarLogMayorizacion({
                 tipoOrigen: 'NOTA_CREDITO', accion: 'GENERAR', subtipo: 'Costo', ideDocumento: dtoIn.ide_cpcno,
@@ -2333,6 +2389,33 @@ export class AsientosAutomaticosService extends BaseService {
      * (ide_cnpim - distingue p.ej. "VENTAS" 12% de "VENTAS" 0% bajo el mismo
      * identificador, paridad cls_contabilidad.buscarCuenta(...porcentajeImpuesto...)).
      */
+    /**
+     * Reclama atómicamente el enlace de un asiento recién generado a su documento origen: el
+     * UPDATE solo aplica si la columna de enlace sigue NULL, así que dos peticiones
+     * concurrentes para el mismo documento (doble clic en Mayorizar) nunca pueden enlazar las
+     * dos - `saveAutomatico` ya creó el comprobante antes de llamar acá, así que la que pierde
+     * la carrera anula el que acaba de crear en vez de dejarlo huérfano. Bug confirmado en
+     * con_cab_comp_cont 104612/104613 (factura 000003460, 2026-09-14 - Contabilidad >
+     * Asientos Contables con Errores > "CXC NO ASOCIADA A TRANSACCION"): ambos comprobantes
+     * quedaron idénticos en contenido (mismo cálculo determinístico), solo uno enlazado.
+     */
+    private async reclamarEnlaceAsiento(
+        tabla: string, columna: string, pk: string, ideDocumento: number,
+        ideCnccc: number, dtoIn: HeaderParamsDto,
+    ): Promise<{ gano: boolean; ideCnccc: number | undefined }> {
+        const claim = await this.dataSource.pool.query(
+            `UPDATE ${tabla} SET ${columna} = $1 WHERE ${pk} = $2 AND ${columna} IS NULL`,
+            [ideCnccc, ideDocumento],
+        );
+        if ((claim.rowCount ?? 0) > 0) return { gano: true, ideCnccc };
+
+        await this.comprobanteService.anular({ ide_cnccc: ideCnccc, ...dtoIn });
+        const q = new SelectQuery(`SELECT ${columna} AS ide_cnccc FROM ${tabla} WHERE ${pk} = $1`);
+        q.addIntParam(1, ideDocumento);
+        const existente = await this.dataSource.createSingleQuery(q);
+        return { gano: false, ideCnccc: existente ? Number(existente.ide_cnccc) : undefined };
+    }
+
     private async buscarCuentaConfig(
         identificador: string,
         filtros: { ideCncim?: number; idePorcentaje?: number },
