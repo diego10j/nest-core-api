@@ -44,7 +44,7 @@ export class ProductosConsultaIaService {
       return { limitReached: true, mensaje: MENSAJE_LIMITE_ALCANZADO };
     }
 
-    const systemPrompt = this.buildSystemPrompt(dtoIn.nombreProducto);
+    const systemPrompt = this.buildSystemPrompt(dtoIn.nombreProducto, dtoIn.descripcionProducto);
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
@@ -66,10 +66,23 @@ export class ProductosConsultaIaService {
     return { limitReached: false, stream };
   }
 
-  private buildSystemPrompt(nombreProducto: string | undefined): string {
-    const bloqueProducto = nombreProducto
-      ? `El usuario está consultando sobre el producto: "${nombreProducto}".`
-      : '';
+  private buildSystemPrompt(
+    nombreProducto: string | undefined,
+    descripcionProducto: string | undefined,
+  ): string {
+    const fichaTecnica = this.limpiarFichaTecnica(descripcionProducto);
+
+    const bloqueProducto = fichaTecnica
+      ? `FICHA TÉCNICA DEL PRODUCTO "${nombreProducto ?? ''}" (información real de DIQUIMEC —
+úsala como fuente PRINCIPAL y prioritaria para responder sobre dosificación, usos,
+aplicaciones, especificaciones técnicas e INCI; tiene prioridad sobre tu conocimiento
+general del tema):
+"""
+${fichaTecnica}
+"""`
+      : nombreProducto
+        ? `El usuario está consultando sobre el producto: "${nombreProducto}".`
+        : '';
 
     return `
 Eres QuimIA, asistente comercial de DIQUIMEC, empresa ecuatoriana proveedora de materias
@@ -78,8 +91,11 @@ limpieza, pinturas, plásticos y manufactura en general).
 
 CÓMO RESPONDER:
 - Responde en español, de forma directa, técnica y profesional.
-- No inventes datos técnicos (CAS, especificaciones, pureza exacta) que no conozcas con
-  certeza; en ese caso indica que las especificaciones varían según el lote/proveedor.
+- Si la ficha técnica del producto (más abajo) responde la pregunta, básate en ella —
+  es información real de DIQUIMEC, no la contradigas ni la completes con suposiciones.
+- Si la pregunta pide algo que la ficha técnica NO cubre, no inventes datos técnicos (CAS,
+  pureza exacta, etc.); en ese caso indica que las especificaciones varían según el
+  lote/proveedor o recomienda confirmar con un asesor.
 - No confirmes precios exactos ni disponibilidad/stock puntual — nunca los conoces con
   certeza en este canal.
 - Respuestas concretas, máximo 4-5 oraciones salvo que la complejidad técnica lo amerite.
@@ -97,5 +113,21 @@ Si la pregunta no está relacionada con química, materias primas o el producto 
 indícalo brevemente y sugiere contactar a un asesor de DIQUIMEC. Nunca recomiendes
 proveedores o tiendas distintas a DIQUIMEC.
     `.trim();
+  }
+
+  /** El frontend ya manda texto limpio (sin HTML), pero por si llega con tags residuales
+   * y para acotar el costo/tamaño del prompt, se recorta a un máximo razonable. */
+  private limpiarFichaTecnica(descripcion: string | undefined): string | null {
+    if (!descripcion) return null;
+
+    const texto = descripcion
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!texto) return null;
+
+    const MAX_CHARS = 4000;
+    return texto.length > MAX_CHARS ? `${texto.slice(0, MAX_CHARS)}…` : texto;
   }
 }

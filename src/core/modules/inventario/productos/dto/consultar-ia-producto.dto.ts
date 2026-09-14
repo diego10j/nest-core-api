@@ -23,6 +23,13 @@ export class ConsultarIaProductoDto {
   @IsString()
   nombreProducto?: string;
 
+  /** Ficha técnica/descripción del producto ya cargada en el portal (dosificación,
+   * INCI, especificaciones, aplicaciones) — la manda el frontend, que ya la tiene en
+   * memoria; se usa como contexto para que la respuesta sea más precisa. */
+  @IsOptional()
+  @IsString()
+  descripcionProducto?: string;
+
   @IsString()
   @IsNotEmpty()
   nombre: string;
