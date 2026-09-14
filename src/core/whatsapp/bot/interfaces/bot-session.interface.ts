@@ -105,12 +105,26 @@ export interface DatosSesion {
   // COTIZACION_RAPIDA) mientras se completan nombre/ciudad/cantidades faltantes.
   // Independiente de `productos` (que solo se llena al resolver contra el catálogo,
   // justo antes de llamar a procesarProforma).
-  cotizacion_rapida?: { items: ItemCotizacionRapida[] };
+  cotizacion_rapida?: {
+    items: ItemCotizacionRapida[];
+    // true cuando NINGÚN producto del lote matcheó con confianza en catálogo interno,
+    // catálogo público, ni por palabras, NI con el registro de no-disponibles
+    // (evaluarExistenciaProductos → SIN_MATCH) — puede tener otro nombre o conseguirse
+    // con un proveedor aliado, así que el bot no asume "no lo vendemos"; se le pregunta
+    // también el "uso" de cada uno para que el asesor tenga contexto real al completar
+    // la cotización. Si el producto SÍ coincide con el registro de no-disponibles
+    // (`wha_bot_no_disponible`), eso corta antes de llegar acá — ver evaluarExistencia
+    // Productos → NO_VENDEMOS, que responde directo con la observación.
+    pedirUso?: boolean;
+  };
 }
 
 export interface ItemCotizacionRapida {
   producto: string;
   cantidad: number | null;
+  // Para qué necesita el producto — solo se pide cuando `pedirUso` está activo (ver
+  // arriba); se adjunta como `uso_generico` en la proforma para el asesor.
+  uso?: string | null;
 }
 
 export interface OpcionProducto {
