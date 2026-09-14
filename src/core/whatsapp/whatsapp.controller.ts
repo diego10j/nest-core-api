@@ -22,7 +22,6 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { Auth } from '../auth';
 import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
@@ -53,7 +52,6 @@ import { WhatsappService } from './whatsapp.service';
 @Controller('whatsapp')
 export class WhatsappController {
   constructor(
-    private readonly dataSource: DataSourceService,
     private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
     private readonly whatsappCamp: WhatsappCampaniaService,
@@ -400,11 +398,10 @@ export class WhatsappController {
       await this.botService.liberarChat(dto.ideWhcha);
       return { ok: true, bot_modo_whcha: 'BOT' };
     } else {
-      // Silenciar el bot en este chat sin enviar mensaje
-      await this.dataSource.pool.query(
-        `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
-        [dto.ideWhcha],
-      );
+      // Silenciar el bot en este chat sin enviar mensaje — pausarChatManual también
+      // cierra cualquier sesión de bot activa de inmediato (no solo al reactivar), para
+      // que no quede colgada con datos de una cotización a medio completar.
+      await this.botService.pausarChatManual(dto.ideWhcha);
       return { ok: true, bot_modo_whcha: 'ASESOR' };
     }
   }

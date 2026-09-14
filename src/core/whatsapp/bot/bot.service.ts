@@ -796,23 +796,40 @@ export class BotService implements OnModuleInit {
     }
 
     const hayItemConCantidad = items.some((i) => i.cantidad !== null);
-    if (!pedirUso && !hayItemConCantidad) {
+    let itemsPendientes: ItemCotizacionRapida[] = items;
+    if (!pedirUso && items.length && !hayItemConCantidad) {
       const catalogos = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
-      const match = await this.botGpt.matchCatalogoProducto(texto, catalogos);
-      if (match?.ide_cata) {
-        const catalogoMatch = catalogos.find((c) => c.ide_cata === match.ide_cata);
-        const urlCatalogo = catalogoMatch?.path_cata
-          ? `https://diquimec.com.ec/catalogo/${catalogoMatch.path_cata}`
-          : 'https://diquimec.com.ec/catalogo';
-        await this.sendText(ideEmpr, waId,
-          `¡Sí, disponemos! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos, aquí: ${urlCatalogo} — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
+      if (catalogos.length) {
+        // Chequeo POR PRODUCTO, no contra el mensaje completo — mismo fix que el flujo
+        // clásico: un solo match contra todo el texto le daba el link de UN catálogo
+        // como si respondiera por TODOS los productos mencionados.
+        const matches = await Promise.all(
+          items.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos)),
         );
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
-        return;
+        const conCatalogo = items.filter((_, i) => matches[i]?.ide_cata);
+        itemsPendientes = items.filter((_, i) => !matches[i]?.ide_cata);
+
+        if (conCatalogo.length) {
+          const idsUnicos = [...new Set(matches.map((m) => m?.ide_cata).filter((id): id is number => !!id))];
+          const links = idsUnicos.map((id) => {
+            const c = catalogos.find((cat) => cat.ide_cata === id);
+            return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
+          });
+          const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          await this.sendText(ideEmpr, waId,
+            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            (itemsPendientes.length ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
+          );
+          if (!itemsPendientes.length) {
+            await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+            return;
+          }
+        }
       }
     }
 
-    const itemsParaCotizar: ItemCotizacionRapida[] = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
+    const itemsParaCotizar: ItemCotizacionRapida[] = itemsPendientes.length
+      ? itemsPendientes : [{ producto: texto.trim(), cantidad: null }];
     await this.iniciarRecopilacionCotizacionRapida(
       waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar, nombreBot, nombreEmpresa, pedirUso,
     );
@@ -828,19 +845,18 @@ export class BotService implements OnModuleInit {
    */
   /**
    * Arma la lista de "qué falta preguntar" para la cotización rápida (cantidad, uso,
-   * nombre, ciudad) en frases naturales que nombran el/los producto(s) puntualmente —
-   * compartida entre iniciarRecopilacionCotizacionRapida (primera vez) y
-   * handleRecopilandoCotizacionRapida (reintento tras la respuesta del cliente) para no
-   * duplicar la redacción en dos lugares. `pedirUso` viene de evaluarExistenciaProductos
-   * → SIN_MATCH: ningún ítem matcheó con confianza en catálogo interno ni catálogo
-   * público, así que además de la cantidad se necesita saber para qué lo va a usar,
-   * para que el asesor tenga contexto real y decida (confirmar disponibilidad,
-   * sugerir alternativa, conseguirlo con un proveedor aliado) en vez de que el bot
-   * responda "no disponemos" por su cuenta.
+   * nombre) en frases naturales que nombran el/los producto(s) puntualmente — compartida
+   * entre iniciarRecopilacionCotizacionRapida (primera vez) y handleRecopilandoCotizacion
+   * Rapida (reintento tras la respuesta del cliente) para no duplicar la redacción en dos
+   * lugares. `pedirUso` viene de evaluarExistenciaProductos → SIN_MATCH: ningún ítem
+   * matcheó con confianza en catálogo interno ni catálogo público, así que además de la
+   * cantidad se necesita saber para qué lo va a usar, para que el asesor tenga contexto
+   * real y decida (confirmar disponibilidad, sugerir alternativa, conseguirlo con un
+   * proveedor aliado) en vez de que el bot responda "no disponemos" por su cuenta.
    *
-   * No incluye la ciudad: esa se pregunta UNA sola vez (solo en la primera llamada, ver
-   * iniciarRecopilacionCotizacionRapida) y nunca bloquea reintentos posteriores — cada
-   * caller la agrega o no según corresponda.
+   * No incluye la ciudad: esa se pregunta como mensaje INDEPENDIENTE recién cuando
+   * cantidad/uso/nombre ya están completos (ver preguntarCiudadOFinalizar), no mezclada
+   * con esta pregunta — y solo una vez, nunca bloquea.
    */
   private construirFaltantesCotizacionRapida(
     items: ItemCotizacionRapida[], pedirUso: boolean, tieneNombre: boolean,
@@ -889,30 +905,63 @@ export class BotService implements OnModuleInit {
     const nuevosDatos: DatosSesion = { ...datos, cotizacion_rapida: { items, pedirUso } };
 
     const faltantes = this.construirFaltantesCotizacionRapida(items, pedirUso, !!nuevosDatos.cliente?.nombres);
-    if (!nuevosDatos.envio?.provincia) faltantes.push('desde qué ciudad nos escribes');
 
-    if (!faltantes.length) {
+    if (faltantes.length) {
+      await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
+      // Cuando el producto no matcheó en ninguna fuente, se le avisa con transparencia
+      // en vez de sonar igual de seguro que cuando sí lo tenemos — sin decir todavía
+      // "no lo tenemos" (puede ser un problema de nombre, no de stock real).
+      const intro = pedirUso
+        ? 'Ese producto no lo tengo identificado en nuestro catálogo, pero igual te ayudo a levantar la solicitud 😊 Cuéntame'
+        : '¡Claro que sí! Cuéntame';
+      await this.sendText(ideEmpr, waId, `${intro} ${faltantes.join(', ')} 😊`);
+      return;
+    }
+
+    // Cantidad/uso/nombre ya completos (pudo venir todo en el mismo mensaje, ej. cliente
+    // conocido que ya dio cantidad) — la ciudad se pregunta en un mensaje INDEPENDIENTE
+    // (no mezclada con la de cantidad), y solo una vez: si el cliente no la reconoce en
+    // su respuesta no bloquea, se genera la cotización igual.
+    await this.preguntarCiudadOFinalizar(
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, items, nombreBot, nombreEmpresa,
+    );
+  }
+
+  /**
+   * Último paso antes de generar la cotización: si ya sabemos la ciudad (de memoria o de
+   * una respuesta anterior), finaliza directo. Si no, la pregunta como mensaje propio
+   * ("¡Perfecto! Una última cosa...") — antes se mezclaba con la pregunta de cantidad
+   * desde el primer mensaje, lo que sonaba a formulario largo en vez de una conversación
+   * (caso real detectado 2026-09-13: pedía cantidad Y ciudad en la misma frase, incluso
+   * antes de saber si el producto existía). Solo se pregunta una vez — la siguiente
+   * respuesta del cliente cierra la cotización sin importar si trajo o no una ciudad.
+   */
+  private async preguntarCiudadOFinalizar(
+    waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
+    sesion: any, datos: DatosSesion, items: ItemCotizacionRapida[],
+    nombreBot: string, nombreEmpresa: string,
+  ): Promise<void> {
+    if (datos.envio?.provincia) {
       await this.finalizarCotizacionRapida(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, items, nombreBot, nombreEmpresa,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, items, nombreBot, nombreEmpresa,
       );
       return;
     }
 
+    const nuevosDatos: DatosSesion = {
+      ...datos,
+      cotizacion_rapida: { ...datos.cotizacion_rapida, items, ciudadPreguntada: true },
+    };
     await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
-    // Cuando el producto no matcheó en ninguna fuente, se le avisa con transparencia en
-    // vez de sonar igual de seguro que cuando sí lo tenemos — sin decir todavía "no lo
-    // tenemos" (puede ser un problema de nombre, no de stock real).
-    const intro = pedirUso
-      ? 'Ese producto no lo tengo identificado en nuestro catálogo, pero igual te ayudo a levantar la solicitud 😊 Cuéntame'
-      : '¡Claro que sí! Cuéntame';
-    await this.sendText(ideEmpr, waId, `${intro} ${faltantes.join(', ')} 😊`);
+    await this.sendText(ideEmpr, waId, `¡Perfecto! Una última cosa 😊 ¿Desde qué ciudad nos escribes?`);
   }
 
   /**
    * Resuelve los productos contra el catálogo interno (genérico si no matchea ninguno o
    * el match es ambiguo — nada se pierde, el asesor lo revisa) y genera la cotización con
    * procesarProforma() — sin forma de pago (siempre efectivo por defecto); la ciudad ya
-   * se pidió antes de llegar acá (ver iniciarRecopilacionCotizacionRapida). Dos
+   * se resolvió (con dato o sin él, nunca bloquea) antes de llegar acá — ver
+   * preguntarCiudadOFinalizar. Dos
    * escenarios, ambos terminan derivando a un asesor humano (la filosofía del bot es
    * preparar la venta, no cerrarla solo):
    *   - Match EXACTO de producto y precio en TODOS los ítems (`resultado.automatica`):
@@ -994,13 +1043,15 @@ export class BotService implements OnModuleInit {
   }
 
   /**
-   * Recibe la respuesta con los datos pedidos (cantidad/nombre/ciudad, lo que faltara),
-   * extrae lo que el cliente indicó y, si ya está todo completo, resuelve los productos
-   * contra el catálogo interno (sin disambiguación multi-turno) y genera la cotización
-   * con procesarProforma() — sin forma de pago (efectivo por defecto). Si el match fue
-   * exacto se le responde con el PDF (ver finalizarCotizacionRapida); si no, queda para
-   * que un asesor la complete. Si todavía falta algo, vuelve a preguntar solo lo que
-   * falta.
+   * Recibe la respuesta con los datos de producto pedidos (cantidad/uso/nombre, lo que
+   * faltara) y extrae lo que el cliente indicó. Si `ciudadPreguntada` ya está activo,
+   * en cambio, esta respuesta es la contestación a la pregunta de ciudad (mensaje
+   * independiente, ver preguntarCiudadOFinalizar) y finaliza directo. Cuando cantidad/
+   * uso/nombre quedan completos, resuelve los productos contra el catálogo interno (sin
+   * disambiguación multi-turno) y genera la cotización con procesarProforma() — sin
+   * forma de pago (efectivo por defecto). Si el match fue exacto se le responde con el
+   * PDF (ver finalizarCotizacionRapida); si no, queda para que un asesor la complete. Si
+   * todavía falta algo, vuelve a preguntar solo lo que falta.
    */
   private async handleRecopilandoCotizacionRapida(
     waId: string, phoneNumberId: string, ideWhcha: number,
@@ -1016,15 +1067,34 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // La ciudad ya se preguntó como mensaje independiente (ver preguntarCiudadOFinalizar)
+    // — esta respuesta es la contestación a esa pregunta puntual. Se intenta extraer la
+    // ciudad, pero no bloquea: se finaliza la cotización de una vez, la haya reconocido
+    // o no (ya se preguntó una vez, no tiene sentido insistir).
+    if (cot.ciudadPreguntada) {
+      const { ciudad } = await this.botGpt.extraerNombreYCiudad(texto, false, true);
+      const datosConCiudad: DatosSesion = {
+        ...datos,
+        envio: { ...(datos.envio ?? {}), provincia: datos.envio?.provincia || ciudad || undefined },
+      };
+      await this.finalizarCotizacionRapida(
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCiudad, cot.items, nombreBot, nombreEmpresa,
+      );
+      return;
+    }
+
     const nombreFaltante = !datos.cliente?.nombres;
-    const ciudadFaltante = !datos.envio?.provincia;
     const pedirUso = cot.pedirUso ?? false;
     const itemsSinCantidad = cot.items.filter((i) => i.cantidad === null);
     const itemsSinUso = pedirUso ? cot.items.filter((i) => !i.uso) : [];
 
+    // Ciudad NO se pide acá: es un mensaje independiente aparte, después de que cantidad/
+    // uso/nombre estén completos (ver preguntarCiudadOFinalizar) — antes se mezclaba con
+    // esta pregunta desde el primer mensaje, lo que sonaba a formulario largo en vez de
+    // una conversación (caso real detectado 2026-09-13).
     const [datosPersona, cantidadesExtraidas, usosExtraidos] = await Promise.all([
-      (nombreFaltante || ciudadFaltante)
-        ? this.botGpt.extraerNombreYCiudad(texto, nombreFaltante, ciudadFaltante)
+      nombreFaltante
+        ? this.botGpt.extraerNombreYCiudad(texto, true, false)
         : Promise.resolve({ nombre: null, ciudad: null }),
       itemsSinCantidad.length
         ? this.botGpt.extraerCantidadesPorProducto(
@@ -1061,13 +1131,8 @@ export class BotService implements OnModuleInit {
         ...(datos.cliente ?? { correo: '', es_cliente_registrado: false }),
         nombres: datos.cliente?.nombres || datosPersona.nombre || '',
       },
-      envio: { ...(datos.envio ?? {}), provincia: datos.envio?.provincia || datosPersona.ciudad || undefined },
     };
 
-    // La ciudad se pregunta UNA sola vez (en el mensaje de iniciarRecopilacionCotizacion
-    // Rapida, arriba) — si en esta respuesta no se pudo detectar, no bloquea: se genera
-    // la cotización igual con ese dato en null, y un asesor lo completa si hace falta. Por
-    // eso no se incluye acá (a diferencia de la primera llamada al helper).
     const faltantes = this.construirFaltantesCotizacionRapida(
       itemsActualizados, pedirUso, !!nuevosDatos.cliente?.nombres,
     );
@@ -1078,7 +1143,9 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.finalizarCotizacionRapida(
+    // Cantidad/uso/nombre completos recién ahora — la ciudad se pregunta como mensaje
+    // aparte (o se finaliza directo si ya la teníamos de memoria).
+    await this.preguntarCiudadOFinalizar(
       waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, itemsActualizados, nombreBot, nombreEmpresa,
     );
   }
@@ -1328,7 +1395,14 @@ export class BotService implements OnModuleInit {
     // disponemos" (patrón real detectado: clientes esperando horas a que un asesor
     // confirme que no hay stock, después de completar todo el formulario). Se deriva de
     // una vez, sin gastarle el tiempo.
-    const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoProducto, []);
+    // Se pasa historial reciente para que GPT resuelva mensajes de seguimiento que no
+    // repiten el producto (ej. el cliente pregunta por dos productos, el bot responde, y
+    // el cliente solo contesta "1kg de cada uno") — mismo fix ya aplicado en el modo
+    // reducido (manejarConsultaProductoReducida); sin esto, "1kg de cada uno" llegaba sin
+    // ningún producto detectado y el chequeo de catálogo de abajo terminaba adivinando
+    // un producto de una conversación vieja (caso real detectado 2026-09-13).
+    const historialProducto = await this.botSession.getHistorialMensajes(ideWhcha, 6);
+    const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoProducto, [], historialProducto);
     // Si GPT no logró extraer ningún nombre de producto puntual (ej. el mensaje es vago o
     // es solo intención de cotizar sin decir qué), no hay nada que verificar todavía — se
     // sigue el flujo normal, que ya sabe pedir el producto.
@@ -1362,19 +1436,40 @@ export class BotService implements OnModuleInit {
     // Existencia ya intentó este mismo match de catálogo como parte del chequeo y no
     // encontró nada, repetirlo sería una llamada a GPT de más para el mismo resultado.
     const hayItemConCantidad = itemsDetectados.some((i) => i.cantidad !== null);
-    if (!pedirUso && !hayItemConCantidad) {
+    let itemsPendientes: ItemCotizacionRapida[] = itemsDetectados;
+    if (!pedirUso && itemsDetectados.length && !hayItemConCantidad) {
       const catalogos = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
-      const match = await this.botGpt.matchCatalogoProducto(textoProducto, catalogos);
-      if (match?.ide_cata) {
-        const catalogoMatch = catalogos.find((c) => c.ide_cata === match.ide_cata);
-        const urlCatalogo = catalogoMatch?.path_cata
-          ? `https://diquimec.com.ec/catalogo/${catalogoMatch.path_cata}`
-          : 'https://diquimec.com.ec/catalogo';
-        await this.sendText(ideEmpr, waId,
-          `¡Sí, disponemos! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos, aquí: ${urlCatalogo} — ahí mismo puedes generar tu cotización. Si prefieres, dime la cantidad que necesitas y la generamos por aquí.`,
+      if (catalogos.length) {
+        // Chequeo POR PRODUCTO, no contra el mensaje completo — antes un solo match de
+        // GPT sobre todo el texto devolvía UN catálogo y el bot respondía "¡Sí,
+        // disponemos!" como si hubiera confirmado TODOS los productos mencionados (caso
+        // real: "manteca de karité y cera de coco" → solo "cera de coco" está en el
+        // catálogo de Ceras, pero el bot dio ese link como si también cubriera la
+        // manteca de karité, que puede estar en otro catálogo o en ninguno).
+        const matches = await Promise.all(
+          itemsDetectados.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos)),
         );
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
-        return;
+        const conCatalogo = itemsDetectados.filter((_, i) => matches[i]?.ide_cata);
+        itemsPendientes = itemsDetectados.filter((_, i) => !matches[i]?.ide_cata);
+
+        if (conCatalogo.length) {
+          const idsUnicos = [...new Set(matches.map((m) => m?.ide_cata).filter((id): id is number => !!id))];
+          const links = idsUnicos.map((id) => {
+            const c = catalogos.find((cat) => cat.ide_cata === id);
+            return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
+          });
+          const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          await this.sendText(ideEmpr, waId,
+            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            (itemsPendientes.length ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
+          );
+          if (!itemsPendientes.length) {
+            await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+            return;
+          }
+          // Quedan productos sin catálogo público (itemsPendientes) — se sigue el flujo
+          // normal para pedir su cantidad, sin cortar la conversación acá.
+        }
       }
     }
 
@@ -1387,8 +1482,8 @@ export class BotService implements OnModuleInit {
       // ceremonia pensada para carritos largos que solo suma mensajes de más para una
       // pregunta puntual (caso real: "tiene cera de palma" terminaba en "¿necesitas
       // algún otro producto?").
-      const itemsParaCotizar: ItemCotizacionRapida[] = itemsDetectados.length
-        ? itemsDetectados : [{ producto: textoProducto.trim(), cantidad: null }];
+      const itemsParaCotizar: ItemCotizacionRapida[] = itemsPendientes.length
+        ? itemsPendientes : [{ producto: textoProducto.trim(), cantidad: null }];
       await this.iniciarRecopilacionCotizacionRapida(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar,
         config?.nombre_bot || 'QuimIA', nombreEmpresa, pedirUso,
@@ -3301,6 +3396,36 @@ export class BotService implements OnModuleInit {
       );
     } catch (err) {
       this.logger.error(`[Notif] Error al enviar notificación WhatsApp: ${err.message}`);
+    }
+  }
+
+  /**
+   * Pausa el bot en un chat porque un asesor lo tomó MANUALMENTE desde el front (toggle
+   * BOT/ASESOR del chat) — distinto de derivarAsesor(), que es cuando el propio bot
+   * decide derivar. Cierra cualquier sesión de bot que haya quedado activa, igual que
+   * derivarAsesor(), para que no se quede colgada con datos a medio completar (ej. una
+   * cotización rápida con cantidad/uso pendiente) mientras el asesor atiende — antes esto
+   * solo se limpiaba al derivar automáticamente o, como red de seguridad tardía, recién
+   * al reactivar el bot vía liberarChat() (caso real detectado 2026-09-13: un admin
+   * cambió a asesor a mitad de una cotización de prueba y, al volver a activar el bot,
+   * una conversación nueva arrastró referencias a esa cotización vieja).
+   */
+  async pausarChatManual(ideWhcha: number): Promise<void> {
+    await this.dataSource.pool.query(
+      `UPDATE wha_chat SET bot_activo_whcha = FALSE, bot_modo_whcha = 'ASESOR' WHERE ide_whcha = $1`,
+      [ideWhcha],
+    );
+
+    try {
+      const activa = await this.dataSource.pool.query<{ ide_whbse: number }>(
+        `SELECT ide_whbse FROM wha_bot_sesion WHERE ide_whcha = $1 AND activa = TRUE LIMIT 1`,
+        [ideWhcha],
+      );
+      if (activa.rowCount > 0) {
+        await this.botSession.cerrar(activa.rows[0].ide_whbse, BotState.CANCELADO);
+      }
+    } catch (err) {
+      this.logger.warn(`[Bot] pausarChatManual: no se pudo cerrar sesión activa de chat ${ideWhcha}: ${err.message}`);
     }
   }
 

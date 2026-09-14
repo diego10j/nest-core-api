@@ -63,9 +63,15 @@ export class BotController {
   ) {
     await this.botService.liberarChat(ideWhcha);
 
-    // Por defecto (responderAnteriores=true): GPT analiza el historial y retoma inteligentemente.
-    // responderAnteriores=false: el bot espera el próximo mensaje nuevo del cliente.
-    const responderAnteriores = dto?.responderAnteriores !== false;
+    // Por defecto (responderAnteriores=false): el bot queda en silencio esperando el
+    // próximo mensaje nuevo del cliente — devolver un chat al bot es una acción manual
+    // del agente, no debería disparar un mensaje proactivo. Antes el default era true
+    // (GPT analiza el historial y "retoma" la conversación), y el front nunca mandaba
+    // este flag explícito, así que TODO clic en "Devolver al bot" terminaba enviándole
+    // un mensaje al cliente sin que el agente lo pidiera (caso real detectado
+    // 2026-09-13). Se deja el flag por si algún caller puntual sí quiere ese
+    // comportamiento, pero ya no es el default.
+    const responderAnteriores = dto?.responderAnteriores === true;
 
     if (responderAnteriores) {
       this.botService.iniciarConContextoChat(ideWhcha)

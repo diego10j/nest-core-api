@@ -116,6 +116,11 @@ export interface DatosSesion {
     // (`wha_bot_no_disponible`), eso corta antes de llegar acá — ver evaluarExistencia
     // Productos → NO_VENDEMOS, que responde directo con la observación.
     pedirUso?: boolean;
+    // true cuando ya se preguntó la ciudad como mensaje independiente (después de tener
+    // cantidad/uso/nombre completos) — la siguiente respuesta del cliente se interpreta
+    // como esa respuesta y se finaliza la cotización sin importar si trajo o no una
+    // ciudad reconocible (no bloquea, solo se pregunta una vez).
+    ciudadPreguntada?: boolean;
   };
 }
 
