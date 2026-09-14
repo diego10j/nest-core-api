@@ -1056,7 +1056,7 @@ export class BotService implements OnModuleInit {
 
     const referencia = resultado?.secuencial ? ` *N° ${resultado.secuencial}*` : '';
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
     );
   }
 
