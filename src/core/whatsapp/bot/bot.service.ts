@@ -674,9 +674,14 @@ export class BotService implements OnModuleInit {
       };
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
-      // Responde lo que había preguntado en el primer mensaje, no este ("Diego"/"me
-      // llamo Diego") — evita "¿Qué necesitas?" cuando ya lo había dicho.
-      texto = datos.texto_inicial || texto;
+      // Se combina lo que había preguntado en el primer mensaje (ej. "Hola, tienen cera
+      // de coco") CON esta respuesta (ej. "Janneth Pachacama quiero la ubicación") —
+      // antes se usaba SOLO el primer mensaje, así que un pedido que llegaba junto con
+      // el nombre en la respuesta se perdía en silencio (caso real detectado
+      // 2026-09-13: el bot respondía un genérico "¿en qué te ayudo?" en vez de la
+      // ubicación que sí pidió). Si el primer mensaje no traía nada (solo "Hola"), queda
+      // efectivamente solo el texto de esta respuesta.
+      texto = [datos.texto_inicial, texto].filter(Boolean).join('\n');
     }
 
     // El debounce existe justo para esto: juntar todo lo que el cliente escribió (uno o
@@ -778,8 +783,21 @@ export class BotService implements OnModuleInit {
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
     const { items } = await this.botGpt.analizarLoteProductos(texto, [], historial);
 
+    // detectarRequerimientos ya clasificó el mensaje como PRODUCTO (por eso se llegó
+    // acá), pero eso solo detecta INTENCIÓN por palabras clave ("quiero", "disponen") —
+    // no garantiza que se haya nombrado un producto puntual. Si analizarLoteProductos no
+    // extrajo ninguno (ej. "quiero saber los productos que disponen"), NO se debe usar
+    // el mensaje completo como si fuera el nombre de un producto — eso generaba
+    // respuestas sin sentido como "cuéntame qué cantidad necesitas de quiero saber los
+    // productos que disponen" (caso real detectado 2026-09-13).
+    if (!items.length) {
+      await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      return;
+    }
+
     let pedirUso = false;
-    if (items.length) {
+    {
       const estadoProducto = await this.evaluarExistenciaProductos(items.map((i) => i.producto), ideEmpr);
 
       if (estadoProducto.estado === 'NO_VENDEMOS') {
@@ -828,10 +846,10 @@ export class BotService implements OnModuleInit {
       }
     }
 
-    const itemsParaCotizar: ItemCotizacionRapida[] = itemsPendientes.length
-      ? itemsPendientes : [{ producto: texto.trim(), cantidad: null }];
+    // itemsPendientes nunca queda vacío acá: si el chequeo de catálogo de arriba cubrió
+    // TODOS los ítems detectados, ya se retornó antes.
     await this.iniciarRecopilacionCotizacionRapida(
-      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar, nombreBot, nombreEmpresa, pedirUso,
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsPendientes, nombreBot, nombreEmpresa, pedirUso,
     );
   }
 
@@ -1308,21 +1326,27 @@ export class BotService implements OnModuleInit {
         },
       };
       await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
-      // Responde lo que había preguntado en el saludo, no este mensaje ("Diego"/"me
-      // llamo Diego") — evita "¿en qué te ayudo?" cuando ya lo había dicho.
-      const textoInicial = datosConNombre.texto_inicial || '';
+      // Se combina lo que había preguntado en el saludo (ej. "Hola, tienen cera de
+      // coco") CON esta respuesta (ej. "Janneth Pachacama quiero la ubicación") — antes
+      // se usaba SOLO el saludo original, así que un pedido que llegaba junto con el
+      // nombre en la respuesta se perdía en silencio y el bot terminaba respondiendo un
+      // genérico "¿en qué te ayudo?" en vez de la ubicación que sí pidió (caso real
+      // detectado 2026-09-13). Si el saludo original no traía nada (solo "Hola"), queda
+      // efectivamente solo el texto de esta respuesta.
+      const textoParaResponder = [datosConNombre.texto_inicial, texto].filter(Boolean).join('\n');
       await this.responderConsultaInicial(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoInicial, nombreEmpresa, config,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoParaResponder, nombreEmpresa, config,
       );
       return;
     }
 
     // Nombre ya conocido — no debería llegar normalmente (handleInicio ya responde de
     // una vez cuando lo conoce), cubre el caso borde de un mensaje que llegó mientras
-    // se procesaba el anterior.
-    const textoInicial = datos.texto_inicial || texto;
+    // se procesaba el anterior. Se combina con texto_inicial (si quedó algo pendiente
+    // sin responder) en vez de reemplazar este mensaje nuevo por uno viejo.
+    const textoParaResponder = [datos.texto_inicial, texto].filter(Boolean).join('\n');
     await this.responderConsultaInicial(
-      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoParaResponder, nombreEmpresa, config,
     );
   }
 
@@ -1403,11 +1427,22 @@ export class BotService implements OnModuleInit {
     // un producto de una conversación vieja (caso real detectado 2026-09-13).
     const historialProducto = await this.botSession.getHistorialMensajes(ideWhcha, 6);
     const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoProducto, [], historialProducto);
-    // Si GPT no logró extraer ningún nombre de producto puntual (ej. el mensaje es vago o
-    // es solo intención de cotizar sin decir qué), no hay nada que verificar todavía — se
-    // sigue el flujo normal, que ya sabe pedir el producto.
+
+    // Si GPT no logró extraer ningún nombre de producto puntual (ej. "quiero saber los
+    // productos que disponen", "necesito una cotización" sin decir de qué), NO se debe
+    // seguir el flujo de cotización usando el mensaje completo como si fuera el nombre
+    // de un producto — eso generaba respuestas sin sentido como "cuéntame qué cantidad
+    // necesitas de quiero saber los productos que disponen" (caso real detectado
+    // 2026-09-13). Se le pide que precise qué producto le interesa, sin arrastrar el
+    // mensaje vago a ningún lado.
+    if (!itemsDetectados.length) {
+      await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+      return;
+    }
+
     let pedirUso = false;
-    if (itemsDetectados.length) {
+    {
       const estadoProducto = await this.evaluarExistenciaProductos(
         itemsDetectados.map((i) => i.producto), ideEmpr,
       );
@@ -1482,10 +1517,10 @@ export class BotService implements OnModuleInit {
       // ceremonia pensada para carritos largos que solo suma mensajes de más para una
       // pregunta puntual (caso real: "tiene cera de palma" terminaba en "¿necesitas
       // algún otro producto?").
-      const itemsParaCotizar: ItemCotizacionRapida[] = itemsPendientes.length
-        ? itemsPendientes : [{ producto: textoProducto.trim(), cantidad: null }];
+      // itemsPendientes nunca queda vacío acá: si el chequeo de catálogo de arriba
+      // cubrió TODOS los ítems detectados, ya se retornó antes.
       await this.iniciarRecopilacionCotizacionRapida(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsParaCotizar,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsPendientes,
         config?.nombre_bot || 'QuimIA', nombreEmpresa, pedirUso,
       );
     } else {
@@ -1767,8 +1802,17 @@ export class BotService implements OnModuleInit {
         await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊`);
         const { items } = await this.botGpt.analizarLoteProductos(textoProducto, []);
 
+        // Igual que en manejarConsultaProductoClasica: si GPT no logró extraer ningún
+        // producto puntual del texto pendiente, no se debe usar ese texto vago como si
+        // fuera el nombre de un producto — se le pregunta directo.
+        if (!items.length) {
+          await this.sendText(ideEmpr, waId, `Cuéntame qué productos necesitas cotizar y en qué cantidades, y con gusto te preparo la cotización 😊`);
+          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datosSinPendiente);
+          return;
+        }
+
         let pedirUso = false;
-        if (items.length) {
+        {
           const estadoProducto = await this.evaluarExistenciaProductos(items.map((i) => i.producto), ideEmpr);
           if (estadoProducto.estado === 'NO_VENDEMOS') {
             const mensaje = estadoProducto.observacion?.trim() || 'Por el momento no comercializamos ese producto 😔';
@@ -1779,9 +1823,8 @@ export class BotService implements OnModuleInit {
           if (estadoProducto.estado === 'SIN_MATCH') pedirUso = true;
         }
 
-        const itemsParaCotizar: ItemCotizacionRapida[] = items.length ? items : [{ producto: textoProducto.trim(), cantidad: null }];
         await this.iniciarRecopilacionCotizacionRapida(
-          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, itemsParaCotizar,
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosSinPendiente, items,
           config?.nombre_bot || 'QuimIA', config?.nombre_empresa || 'DIQUIMEC', pedirUso,
         );
       } else {
@@ -1789,7 +1832,7 @@ export class BotService implements OnModuleInit {
         // siguiente mensaje se clasifique normalmente (si nombra un producto, entra por
         // el mismo flujo liviano de manejarConsultaProductoClasica).
         await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, nuevosDatos);
-        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊 ¿Qué producto necesitas cotizar?`);
+        await this.sendText(ideEmpr, waId, `¡Gracias, *${nombres}*! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y con gusto te preparo la cotización.`);
       }
       return;
     }
@@ -3049,15 +3092,23 @@ export class BotService implements OnModuleInit {
           // Solo el clic del botón, sin producto mencionado — se queda esperando que
           // diga qué necesita (el siguiente mensaje ya entra por el flujo liviano).
           await this.botSession.update(nuevaSesion.ide_whbse, BotState.ATENCION_LIBRE, nuevosDatos);
-          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 ¿Qué producto necesitas cotizar?`);
+          await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
         } else {
           // El mensaje ya traía el producto (ej. "otra cotización: 5kg cera de soya") —
           // se procesa de inmediato con el flujo liviano (pide solo la cantidad si falta
           // y genera la proforma directo) en vez del de lista/FIN.
           const { items } = await this.botGpt.analizarLoteProductos(texto, []);
 
+          // Igual que en manejarConsultaProductoClasica: sin producto puntual detectado,
+          // no se arrastra el mensaje vago a la cotización.
+          if (!items.length) {
+            await this.sendText(ideEmpr, waId, `Cuéntame qué productos necesitas cotizar y en qué cantidades, y con gusto te preparo la cotización 😊`);
+            await this.botSession.update(nuevaSesion.ide_whbse, BotState.ATENCION_LIBRE, nuevosDatos);
+            return;
+          }
+
           let pedirUso = false;
-          if (items.length) {
+          {
             const estadoProducto = await this.evaluarExistenciaProductos(items.map((i) => i.producto), ideEmpr);
             if (estadoProducto.estado === 'NO_VENDEMOS') {
               const mensaje = estadoProducto.observacion?.trim() || 'Por el momento no comercializamos ese producto 😔';
@@ -3068,9 +3119,8 @@ export class BotService implements OnModuleInit {
             if (estadoProducto.estado === 'SIN_MATCH') pedirUso = true;
           }
 
-          const itemsParaCotizar: ItemCotizacionRapida[] = items.length ? items : [{ producto: texto.trim(), cantidad: null }];
           await this.iniciarRecopilacionCotizacionRapida(
-            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, nuevaSesion, nuevosDatos, itemsParaCotizar, nombreBot, nombreEmpresa, pedirUso,
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, nuevaSesion, nuevosDatos, items, nombreBot, nombreEmpresa, pedirUso,
           );
         }
         return;
