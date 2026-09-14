@@ -1093,7 +1093,15 @@ export class BotService implements OnModuleInit {
       const { ciudad } = await this.botGpt.extraerNombreYCiudad(texto, false, true);
       const datosConCiudad: DatosSesion = {
         ...datos,
-        envio: { ...(datos.envio ?? {}), provincia: datos.envio?.provincia || ciudad || undefined },
+        envio: {
+          ...(datos.envio ?? {}),
+          // direccion_cccpr de la proforma debe reflejar textualmente lo que el cliente
+          // escribió (ver bot-proforma.service.ts) — provincia guarda el nombre de
+          // ciudad/provincia ya normalizado por GPT, usado solo para el match contra
+          // gen_canton/gen_provincia.
+          direccion: datos.envio?.direccion || texto.trim(),
+          provincia: datos.envio?.provincia || ciudad || texto.trim() || undefined,
+        },
       };
       await this.finalizarCotizacionRapida(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCiudad, cot.items, nombreBot, nombreEmpresa,

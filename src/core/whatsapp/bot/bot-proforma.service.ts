@@ -168,21 +168,41 @@ export class BotProformaService {
         }
       }
 
-      // Buscar ide_geprov por nombre de provincia (coincidencia flexible)
+      // Buscar ide_geprov por lo que el cliente escribió como ciudad/provincia. La
+      // mayoría de las veces el cliente responde un cantón (ej. "Guayaquil"), no el
+      // nombre de la provincia (ej. "Guayas") — matchear directo contra gen_provincia
+      // fallaba en ese caso porque los nombres no se parecen entre sí. Se prueba primero
+      // gen_canton (cantón → su provincia) y, si no hay coincidencia, gen_provincia
+      // directo (por si el cliente sí escribió la provincia). Sin match en ninguna,
+      // queda en null — no bloquea la cotización.
       let ideGeprov: number | null = null;
       const provinciaInput = datos.envio?.provincia?.trim();
       if (provinciaInput) {
-        const provQ = new SelectQuery(`
-          SELECT ide_geprov FROM gen_provincia
-          WHERE unaccent(UPPER(nombre_geprov)) ILIKE '%' || unaccent(UPPER($1)) || '%'
-             OR unaccent(UPPER($1)) ILIKE '%' || unaccent(UPPER(nombre_geprov)) || '%'
-          ORDER BY LENGTH(nombre_geprov) ASC
+        const cantonQ = new SelectQuery(`
+          SELECT ide_geprov FROM gen_canton
+          WHERE (activo_gecant IS NULL OR activo_gecant = TRUE)
+            AND (unaccent(UPPER(nombre_gecant)) ILIKE '%' || unaccent(UPPER($1)) || '%'
+                 OR unaccent(UPPER($1)) ILIKE '%' || unaccent(UPPER(nombre_gecant)) || '%')
+          ORDER BY LENGTH(nombre_gecant) ASC
           LIMIT 1
         `);
-        provQ.addParam(1, provinciaInput);
-        const provRow = await this.dataSource.createSingleQuery(provQ);
-        ideGeprov = provRow?.ide_geprov ?? null;
-        this.logger.log(`[Proforma] Provincia "${provinciaInput}" → ide_geprov=${ideGeprov}`);
+        cantonQ.addParam(1, provinciaInput);
+        const cantonRow = await this.dataSource.createSingleQuery(cantonQ);
+        ideGeprov = cantonRow?.ide_geprov ?? null;
+
+        if (ideGeprov == null) {
+          const provQ = new SelectQuery(`
+            SELECT ide_geprov FROM gen_provincia
+            WHERE unaccent(UPPER(nombre_geprov)) ILIKE '%' || unaccent(UPPER($1)) || '%'
+               OR unaccent(UPPER($1)) ILIKE '%' || unaccent(UPPER(nombre_geprov)) || '%'
+            ORDER BY LENGTH(nombre_geprov) ASC
+            LIMIT 1
+          `);
+          provQ.addParam(1, provinciaInput);
+          const provRow = await this.dataSource.createSingleQuery(provQ);
+          ideGeprov = provRow?.ide_geprov ?? null;
+        }
+        this.logger.log(`[Proforma] Ciudad/provincia "${provinciaInput}" → ide_geprov=${ideGeprov}`);
       }
 
       // notas_cccpr: coordenadas GPS en JSON si el cliente compartió ubicación
