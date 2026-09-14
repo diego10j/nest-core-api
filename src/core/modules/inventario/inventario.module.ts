@@ -28,14 +28,17 @@ import { MenudeoSaveService } from './menudeo/menudeo-save.service';
 import { MenudeoController } from './menudeo/menudeo.controller';
 import { MenudeoService } from './menudeo/menudeo.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
+import { ProductosConsultaIaController } from './productos/productos-consulta-ia.controller';
+import { ProductosConsultaIaService } from './productos/productos-consulta-ia.service';
 import { ProductosController } from './productos/productos.controller';
 import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [ConfigModule, IntegrationModule],
-  controllers: [ProductosController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController],
+  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController],
   providers: [
     ProductosService,
+    ProductosConsultaIaService,
     AuditService,
     BodegasService,
     ComprobantesInvService,

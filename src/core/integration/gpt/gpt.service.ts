@@ -19,6 +19,7 @@ import {
 } from './dtos';
 import {
   audioToTextUseCase,
+  chatCompletionStreamUseCase,
   correctSpellingUseCase,
   imageGenerationUseCase,
   imageVariationUseCase,
@@ -51,6 +52,17 @@ export class GptService {
 
   async prosConsDicusserStream({ prompt }: ProsConsDiscusserDto) {
     return await prosConsDicusserStreamUseCase(this.openai, { prompt });
+  }
+
+  /**
+   * Streaming genérico multi-mensaje (system + historial + user), para chats
+   * conversacionales con contexto (ej. consulta-ia de productos del portal público).
+   */
+  async chatCompletionStream(
+    messages: OpenAI.ChatCompletionMessageParam[],
+    opts?: { model?: string; temperature?: number; maxTokens?: number },
+  ) {
+    return await chatCompletionStreamUseCase(this.openai, { messages, ...opts });
   }
 
   async translateText({ prompt, lang }: TranslateDto) {

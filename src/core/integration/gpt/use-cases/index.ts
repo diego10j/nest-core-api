@@ -1,4 +1,5 @@
 export * from './audio-to-text.use-case';
+export * from './chat-completion-stream.use-case';
 export * from './image-generation.use-case';
 export * from './image-variation.use-case';
 export * from './orthography.use-case';

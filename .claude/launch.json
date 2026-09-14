@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "page-diquimec",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d D:\\DIEGO2022\\Varios\\git\\page-diquimec && node node_modules\\vite\\bin\\vite.js --port 18081"
+      ],
+      "port": 18081
+    }
+  ]
+}
