@@ -26,6 +26,7 @@ import {
 import { TreeDto } from './connection/dto/tree-dto';
 import { UpdateQuery, DeleteQuery, InsertQuery, SelectQuery, Query } from './connection/helpers';
 import { ResultQuery } from './connection/interfaces/resultQuery';
+import { GetVariableDto } from './variables/dto/get-variable.dto';
 import { VariablesService } from './variables/variables.service';
 
 @Injectable()
@@ -42,6 +43,16 @@ export class CoreService {
    */
   async getVariables(listVariables: string[]) {
     return this.variables.getVariables(listVariables);
+  }
+
+  /**
+   * Recupera el valor de UNA variable resolviendo por empresa (empresa exacta → empresa
+   * default ide_empr=0 → global) — a diferencia de getVariables/getVariables() (batch), que
+   * sólo sirve para variables globales cacheadas una vez al boot. Usar esta para cualquier
+   * variable `pe_*` (es_empr_para=true) que se necesite en tiempo de request.
+   */
+  async getVariableValue(name: string, ideEmpr: number): Promise<string> {
+    return this.variables.getVariable({ name, ideEmpr } as GetVariableDto & HeaderParamsDto);
   }
 
   /**

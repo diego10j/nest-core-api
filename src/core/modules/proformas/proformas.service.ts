@@ -1233,6 +1233,23 @@ ORDER BY prof.secuencial_cccpr DESC
       ),
     );
 
+    // ─── Paso 2b: verificar stock (solo para los que sí tienen precio) ───────
+    // Cotización 100% automática: los N productos deben haberse encontrado por
+    // coincidencia (ide_prod/uuid_prod/ideInarti/nombre), TODOS con precio configurado
+    // para la cantidad pedida Y TODOS con stock general suficiente — mismo criterio que
+    // usa BotProformaService para WhatsApp (ver ProformasService.tieneStockSuficiente).
+    const stockResults = await Promise.all(
+      resolvedDetalles.map(({ detalle, ideInarti }, idx) =>
+        ideInarti != null && precioResults[idx] != null
+          ? this.tieneStockSuficiente(ideInarti, detalle.cantidad)
+          : Promise.resolve(false),
+      ),
+    );
+    const todosResueltos = resolvedDetalles.every(({ ideInarti }) => ideInarti != null);
+    const todosConPrecio = precioResults.every((p) => p != null);
+    const todosConStock = stockResults.every((s) => s === true);
+    const automatica = todosResueltos && todosConPrecio && todosConStock;
+
     // ─── Paso 3: construir queries de inserción ──────────────────────────────
     resolvedDetalles.forEach(({ detalle, ideInuni, ideInarti }, idx) => {
       const precioInfo  = precioResults[idx];
@@ -1279,17 +1296,49 @@ ORDER BY prof.secuencial_cccpr DESC
         utilidad:      precioInfo!.utilidad_neta ?? null,
       }));
 
+    let totalProforma = 0;
     try {
-      await this.actualizarTotalesCabecera(ideCccpr, itemsTotales);
+      totalProforma = await this.actualizarTotalesCabecera(ideCccpr, itemsTotales);
     } catch (err) {
       this.logger.warn(`[ProformaWeb] No se actualizaron totales cabecera: ${err.message}`);
+    }
+
+    // ─── Completar y enviar automáticamente si todo matcheó ──────────────────
+    // Mismo criterio que la cotización automática de WhatsApp: los N productos se
+    // encontraron por coincidencia, todos con precio configurado y todos con stock
+    // general suficiente → se asigna un usuario "sistema", se genera el PDF y se
+    // responde de inmediato al correo del solicitante, sin esperar a un asesor.
+    let enviadoAutomatico = false;
+    if (automatica && totalProforma > 0) {
+      try {
+        const { ideUsuaAutomatico, ideVgvenDefecto } = await this.obtenerUsuarioYVendedorAutomatico(solicitante.ideEmpr);
+        await this.asignarVendedorProforma(ideCccpr, ideUsuaAutomatico, ideVgvenDefecto);
+        await this.sendProformaEmail({
+          ide_cccpr: ideCccpr,
+          destinatario: [solicitante.correo],
+          ideEmpr: solicitante.ideEmpr,
+          ideUsua: ideUsuaAutomatico,
+          ideSucu: 0,
+          idePerf: 0,
+          login: 'web',
+        } as SendProformaEmailDto & HeaderParamsDto);
+        enviadoAutomatico = true;
+        this.logger.log(`[ProformaWeb] Cotización automática completada y enviada ide_cccpr=${ideCccpr} correo=${solicitante.correo}`);
+      } catch (err) {
+        this.logger.error(`[ProformaWeb] No se pudo completar/enviar automáticamente ide_cccpr=${ideCccpr}: ${err.message}`);
+      }
     }
 
     // ─── Notificar a todos los usuarios vía push ──────────────────────────
     try {
       await this.notificaciones.enviarSistema(
         'COTIZACION_WEB',
-        `🛒 ${dtoIn.solicitante.nombres} solicitó cotización`,
+        enviadoAutomatico
+          ? `✅ Cotización automática #${secuencial} enviada a ${dtoIn.solicitante.nombres}`
+          : `🛒 ${dtoIn.solicitante.nombres} solicitó cotización`,
+        (enviadoAutomatico
+          ? `Se generó y envió automáticamente el PDF de la cotización N° ${secuencial} al correo del solicitante — no requiere revisión.\n`
+          : ``) +
         `Cliente: ${dtoIn.solicitante.nombres}\n` +
         `Correo: ${dtoIn.solicitante.correo}\n` +
         `Teléfono: ${dtoIn.solicitante.telefono}\n` +
@@ -1317,6 +1366,7 @@ ORDER BY prof.secuencial_cccpr DESC
         ide_cccpr: ideCccpr,
         secuencial_cccpr: secuencial,
         total_items: dtoIn.detalles.length,
+        automatica: enviadoAutomatico,
         resultMessage,
       },
     };
@@ -1469,15 +1519,68 @@ ORDER BY prof.secuencial_cccpr DESC
   }
 
   /**
+   * Stock general disponible (todas las bodegas, sin restringir a una en particular) —
+   * suma de `inv_det_comp_inve` con signo de `inv_tip_comp_inve`, mismo cálculo base que
+   * usa el resto del ERP (catalogos.service.ts, productos.service.ts) para "hay
+   * existencia" pero sin filtrar a una bodega puntual: alcanza con que el total
+   * disponible en cualquier combinación de bodegas cubra la cantidad pedida.
+   * Usado tanto por createProformaWeb (cotización automática web) como por
+   * BotProformaService (cotización automática WhatsApp) para decidir si, además de tener
+   * precio configurado, hay existencia real para completar la cotización sin
+   * intervención de un asesor.
+   */
+  async tieneStockSuficiente(ideInarti: number, cantidad: number): Promise<boolean> {
+    const q = new SelectQuery(`
+      SELECT COALESCE(
+        (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
+         FROM inv_det_comp_inve dci
+         INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+         INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+         INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+         WHERE dci.ide_inarti = a.ide_inarti
+        ), 0
+      ) AS stock
+      FROM inv_articulo a
+      WHERE a.ide_inarti = $1
+    `);
+    q.addIntParam(1, ideInarti);
+    const row = await this.dataSource.createSingleQuery(q);
+    const stock = Number(row?.stock ?? 0);
+    return stock >= cantidad;
+  }
+
+  /**
+   * Usuario "sistema" y vendedor por defecto para proformas completadas 100%
+   * automáticamente (bot WhatsApp / cotizador web), sin intervención de un asesor —
+   * configurables por empresa vía variables del sistema (`pe_cxc_usua_proforma_automatica`
+   * / `pe_cxc_vgven_proforma_automatica`, ver src/core/variables/data/3-cxc-var.ts) en vez
+   * de código quemado, para poder ajustarlos por empresa sin desplegar. El vendedor es el
+   * que se asigna SOLO cuando el cliente no trae uno propio (ver llamadores).
+   * Usado tanto por createProformaWeb como por BotProformaService.
+   */
+  async obtenerUsuarioYVendedorAutomatico(ideEmpr: number): Promise<{ ideUsuaAutomatico: number; ideVgvenDefecto: number | null }> {
+    const [usuaStr, vgvenStr] = await Promise.all([
+      this.core.getVariableValue('pe_cxc_usua_proforma_automatica', ideEmpr),
+      this.core.getVariableValue('pe_cxc_vgven_proforma_automatica', ideEmpr),
+    ]);
+    return {
+      ideUsuaAutomatico: Number(usuaStr),
+      ideVgvenDefecto: vgvenStr ? Number(vgvenStr) : null,
+    };
+  }
+
+  /**
    * Recalcula y persiste los totales de cabecera a partir de los detalles dados.
+   * Retorna el total calculado (0 si ningún ítem tenía precio) — createProformaWeb lo usa
+   * para decidir si hay algo que enviar en la cotización automática, sin otra consulta.
    * Usado tanto por createProformaWeb como por BotProformaService.
    */
   async actualizarTotalesCabecera(
     ideCccpr: number,
     items: Array<{ cantidad: number; precio: number; porcentaje_iva: number; utilidad?: number | null }>,
-  ): Promise<void> {
+  ): Promise<number> {
     const itemsConPrecio = items.filter((i) => i.precio > 0);
-    if (itemsConPrecio.length === 0) return;
+    if (itemsConPrecio.length === 0) return 0;
 
     let baseGrabada = 0;
     let baseTarifa0 = 0;
@@ -1518,6 +1621,8 @@ ORDER BY prof.secuencial_cccpr DESC
        WHERE ide_cccpr = $1`,
       [ideCccpr, baseGrabada, baseTarifa0, tarifaIva, valorIva, total, utilidadCccpr],
     );
+
+    return total;
   }
 
   private getNextSolicitudId(login: string = 'sa'): Promise<number> {

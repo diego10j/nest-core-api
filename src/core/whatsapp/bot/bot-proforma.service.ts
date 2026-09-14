@@ -8,8 +8,6 @@ import { roundTo, roundPrecio, getPrecioDecimals } from 'src/util/helpers/number
 
 import { DatosSesion, ProductoSesion } from './interfaces/bot-session.interface';
 
-export const IDE_USUA_BOT = 32;  // Usuario bot para proformas automáticas
-
 // ─── Constantes WhatsApp proforma ─────────────────────────────────────────────
 const IDE_CCTPR_WHATSAPP = 3;           // Tipo de proforma: WhatsApp
 const IDE_CCVAP_WHATSAPP = 6;           // Canal de venta WhatsApp
@@ -311,10 +309,12 @@ export class BotProformaService {
         this.logger.warn(`[Proforma] Total = ${totalProforma} — PDF no generado. Verificar precios.`);
       } else {
         try {
-          // Sin vendedor por defecto: si el cliente no tiene uno propio asignado en el
-          // ERP, se deja ide_vgven en NULL — un asesor lo asigna al completar la cotización.
-          const ideVgven = datos.cliente?.ide_vgven ?? null;
-          await this.proformasService.asignarVendedorProforma(ide_cccpr, IDE_USUA_BOT, ideVgven);
+          // Usuario "sistema" y vendedor por defecto (si el cliente no tiene uno propio
+          // asignado en el ERP) vienen de variables del sistema por empresa — ver
+          // ProformasService.obtenerUsuarioYVendedorAutomatico.
+          const { ideUsuaAutomatico, ideVgvenDefecto } = await this.proformasService.obtenerUsuarioYVendedorAutomatico(ideEmpr);
+          const ideVgven = datos.cliente?.ide_vgven ?? ideVgvenDefecto;
+          await this.proformasService.asignarVendedorProforma(ide_cccpr, ideUsuaAutomatico, ideVgven);
           pdfBuffer = await this.proformasService.getPdfBuffer(ide_cccpr, ideEmpr);
           await this.dataSource.pool.query(
             `UPDATE cxc_cabece_proforma SET enviado_cccpr = TRUE WHERE ide_cccpr = $1`,
@@ -381,33 +381,11 @@ export class BotProformaService {
   }
 
   /**
-   * Stock general disponible (todas las bodegas, sin restringir a una en particular) —
-   * suma de `inv_det_comp_inve` con signo de `inv_tip_comp_inve`, mismo cálculo base que
-   * usa el resto del ERP (catalogos.service.ts, productos.service.ts) para "hay
-   * existencia" pero sin el filtro a una bodega puntual: alcanza con que el total
-   * disponible en cualquier combinación de bodegas cubra la cantidad pedida. Gatea la
-   * generación automática del PDF junto con el precio configurado — que un producto no
-   * esté publicado en un catálogo ya no bloquea el envío automático si de verdad hay
-   * stock y precio para la cantidad pedida.
+   * Delega en ProformasService.tieneStockSuficiente — mismo criterio de stock general
+   * (todas las bodegas) compartido con createProformaWeb, para no duplicar la consulta.
    */
-  private async tieneStockSuficiente(ideInarti: number, cantidad: number): Promise<boolean> {
-    const q = new SelectQuery(`
-      SELECT COALESCE(
-        (SELECT f_redondeo(SUM(dci.cantidad_indci * tci.signo_intci), a.decim_stock_inarti)
-         FROM inv_det_comp_inve dci
-         INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
-         INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
-         INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
-         WHERE dci.ide_inarti = a.ide_inarti
-        ), 0
-      ) AS stock
-      FROM inv_articulo a
-      WHERE a.ide_inarti = $1
-    `);
-    q.addIntParam(1, ideInarti);
-    const row = await this.dataSource.createSingleQuery(q);
-    const stock = Number(row?.stock ?? 0);
-    return stock >= cantidad;
+  private tieneStockSuficiente(ideInarti: number, cantidad: number): Promise<boolean> {
+    return this.proformasService.tieneStockSuficiente(ideInarti, cantidad);
   }
 
   /**
