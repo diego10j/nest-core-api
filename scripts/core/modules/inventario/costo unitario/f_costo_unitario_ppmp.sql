@@ -21,7 +21,13 @@ DECLARE
     v_fecha_futuro  DATE;
     v_saldo_futuro  NUMERIC;
 BEGIN
-    -- ── 1. Último CPP vigente a la fecha de venta ────────────────────────────
+    -- ── 1. Última fila de kardex vigente a la fecha de venta ─────────────────
+    -- NOTA: no se filtra por costo_promedio > 0 aquí. Si se filtra, la primera
+    -- venta de un artículo que NUNCA tuvo compra previa (saldo pasa a negativo
+    -- con costo_promedio = 0 en esa misma fila) queda excluida de la búsqueda,
+    -- v_saldo_previo resulta NULL en vez de negativo, y el paso 2 (saldo
+    -- negativo → buscar compra futura) nunca se activa: el costo queda en 0
+    -- aunque exista una compra posterior que sí resuelve el costo real.
     SELECT
         k.costo_promedio,
         k.fecha_mov,
@@ -35,7 +41,6 @@ BEGIN
       AND k.ide_sucu      = p_id_sucursal
       AND k.ide_inarti    = p_ide_inarti
       AND k.fecha_mov    <= p_fecha_venta
-      AND k.costo_promedio > 0
     ORDER BY k.fecha_mov DESC, k.orden_mov DESC
     LIMIT 1;
 
