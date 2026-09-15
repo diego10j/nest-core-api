@@ -267,10 +267,13 @@ export class BotGptService {
               '   - Si el cliente da un conteo simple sin unidad de peso (ej: "5 moldes", "3 unidades", "media docena"→6, ' +
               '"un par"→2), NO apliques conversión de peso — usa el número/conteo tal cual (puede tratarse de un producto que ' +
               'se vende por unidad, no por peso).\n' +
-              '   - Si no menciona ninguna cantidad para ese producto: cantidad: null.\n' +
-              '   - cantidad: 0 si el cliente pide la cantidad mínima disponible ("cantidad mínima", "lo mínimo que manejen", "el mínimo") ' +
-              'O si pide comprar al por mayor/mayorista sin dar una cifra concreta ("al por mayor", "por mayor", "para revender", "mayorista") — ' +
-              'en ambos casos el asesor define la cantidad real después, se usa 0 como marcador.\n' +
+              '   - Si no menciona ninguna cantidad para ese producto: cantidad: null. Esto incluye cuando el cliente solo dice que ' +
+              'es "distribuidor"/"mayorista"/pregunta "precios para distribuidor" o "al por mayor" SIN dar una cifra concreta por ' +
+              'producto — eso indica el TIPO de precio que busca (tarifa de distribuidor), no la cantidad; una cotización real ' +
+              'necesita la cantidad de cada producto, así que se pregunta igual, no se asume nada.\n' +
+              '   - cantidad: 0 SOLO si el cliente pide explícitamente la cantidad MÍNIMA disponible de un producto puntual ' +
+              '("cantidad mínima", "lo mínimo que manejen", "el mínimo") — el asesor define la cantidad real después, se usa 0 ' +
+              'como marcador. No uses 0 solo porque mencionó ser mayorista/distribuidor sin más contexto (ver punto anterior).\n' +
               '   - Si el cliente menciona VARIANTES o presentaciones distintas de un mismo producto conectadas por "y" (ej. códigos/siglas ' +
               'como APF, BPF, tipo A, tipo B, u otras presentaciones), trátalas como PRODUCTOS SEPARADOS, uno por variante — NO las combines ' +
               'en un solo string. Ejemplo: "cera de soya de APF y BPF" → dos ítems: "cera de soya APF" y "cera de soya BPF".\n' +

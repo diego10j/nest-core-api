@@ -51,6 +51,9 @@ export class BotScheduleService {
   /**
    * Cada minuto (a los 30s) busca sesiones de bot activas con más de 20 min sin respuesta
    * del cliente. Envía un mensaje de despedida y deriva el chat a modo ASESOR.
+   * ESPERANDO_CONFIRMACION (el bot preguntó el nombre y espera respuesta) faltaba en la
+   * lista de estados — sesiones ahí se quedaban activas indefinidamente sin derivar a un
+   * asesor (caso real detectado 2026-09-15: sesiones de hasta 61 días en ese estado).
    */
   @Cron('30 * * * * *')
   async verificarInactividad(): Promise<void> {
@@ -75,7 +78,7 @@ export class BotScheduleService {
         INNER JOIN wha_cuenta cu ON cu.ide_whcue = s.ide_whcue AND cu.activo_whcue = TRUE
         LEFT JOIN wha_bot_config bc ON bc.ide_whcue = s.ide_whcue
         WHERE s.activa = TRUE
-          AND s.estado = ANY('{ATENCION_LIBRE,PREGUNTA_ES_CLIENTE,IDENTIFICACION,
+          AND s.estado = ANY('{ESPERANDO_CONFIRMACION,ATENCION_LIBRE,PREGUNTA_ES_CLIENTE,IDENTIFICACION,
                                DATOS_NUEVO_CLIENTE,SELECCION_PRODUCTOS,SELECCION_MULTIPLE,
                                CONFIRMANDO_PRODUCTO_LOTE,
                                ESPERANDO_CANTIDAD_LOTE,ESPERANDO_USO_LOTE,

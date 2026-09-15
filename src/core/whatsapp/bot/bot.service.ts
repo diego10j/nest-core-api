@@ -172,7 +172,29 @@ export class BotService implements OnModuleInit {
     texto: string,
     botActivoWhcha: boolean,
   ): Promise<void> {
-    this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha=${botActivoWhcha} texto="${texto}"`);
+    this.logger.log(`[Bot] processMessage waId=${waId} ideWhcha=${ideWhcha} ideWhcue=${ideWhcue} botActivoWhcha(snapshot)=${botActivoWhcha} texto="${texto}"`);
+
+    // Releer bot_activo_whcha FRESCO de la BD, ya adentro del lock exclusivo por chat —
+    // el valor que llega por parámetro es una foto tomada en YcloudService ANTES de este
+    // lock (fire-and-forget, sin await sobre el handler), así que si dos mensajes del
+    // mismo chat llegan casi juntos (ej. un video + su caption como mensajes separados),
+    // el segundo puede traer un snapshot desactualizado de ANTES de que el primero ya
+    // haya derivado el chat a asesor (bot_activo_whcha=FALSE) dentro de este mismo lock.
+    // Caso real: video → "no puedo revisar archivos" + deriva a asesor → el mensaje
+    // siguiente (con el snapshot viejo en TRUE) igual entraba como si el bot siguiera
+    // activo y saludaba de nuevo, aunque el chat ya estaba en modo ASESOR.
+    try {
+      const freshRow = await this.dataSource.pool.query<{ bot_activo_whcha: boolean }>(
+        `SELECT bot_activo_whcha FROM wha_chat WHERE ide_whcha = $1`,
+        [ideWhcha],
+      );
+      if (freshRow.rowCount > 0) {
+        botActivoWhcha = freshRow.rows[0].bot_activo_whcha !== false;
+      }
+    } catch (err) {
+      this.logger.warn(`[Bot] No se pudo releer bot_activo_whcha fresco para chat ${ideWhcha}: ${err.message}`);
+    }
+    this.logger.log(`[Bot] processMessage ideWhcha=${ideWhcha} botActivoWhcha(fresco)=${botActivoWhcha}`);
 
     // ── Chat NUEVO (primer mensaje real, verificado en 2 capas: sesión local +
     // API de YCloud como fuente de verdad): en PROD el bot SIEMPRE responde, sin
@@ -754,9 +776,17 @@ export class BotService implements OnModuleInit {
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+    // Mismo fix que handleAtencionLibre (flujo clásico): no re-saludar con un nombre
+    // distinto al ya guardado en sesión si el mensaje menciona otro nombre.
+    const nombreConocidoReducido = datos.cliente?.nombres;
     const resultado = await this.botGpt.generateResponseConEscalamiento(
       promptBase, historial, texto,
-      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa.`,
+      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa.` +
+      (nombreConocidoReducido
+        ? ` El cliente ya se identificó como "${nombreConocidoReducido}" — no lo saludes de nuevo como si fuera ` +
+          `alguien nuevo ni cambies ese nombre aunque el mensaje mencione uno distinto; seguí usando ` +
+          `"${nombreConocidoReducido}" salvo que el cliente pida explícitamente corregirlo.`
+        : ''),
     );
     if (resultado.requiereAsesor) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, resultado.respuesta);
@@ -1102,8 +1132,14 @@ export class BotService implements OnModuleInit {
     }
 
     const referencia = resultado?.secuencial ? ` *N° ${resultado.secuencial}*` : '';
+    // Detalle de productos en el mensaje: antes solo confirmaba el número de cotización
+    // sin decir qué se registró — el cliente no tenía forma de verificar que el bot
+    // entendió bien su pedido hasta que un asesor le respondiera.
+    const detalleProductos = productosResueltos
+      .map((p) => `- ${p.nombre.toUpperCase()} ${p.cantidad === 0 ? '(cantidad mínima)' : `${p.cantidad}${p.siglas_unidad || ''}`}`)
+      .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ Un asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
     );
   }
 
@@ -1714,12 +1750,22 @@ export class BotService implements OnModuleInit {
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+    // Sin esto, GPT podía re-saludar con un nombre distinto al ya guardado en sesión si
+    // el mensaje mencionaba otro nombre (ej. cliente ya identificado como "Hunas" escribe
+    // "Andres le saluda" y el bot respondía "¡Hola, Andrés!", como si fuera alguien nuevo)
+    // — caso real detectado 2026-09-15.
+    const nombreConocido = datos.cliente?.nombres;
     const respuesta = await this.botGpt.generateResponse(
       promptBase,
       historial,
       texto,
       `Empresa: ${nombreEmpresa}. Usa la información del sistema para responder. ` +
-      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt.`,
+      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt.` +
+      (nombreConocido
+        ? ` El cliente ya se identificó como "${nombreConocido}" — no lo saludes de nuevo como si fuera alguien ` +
+          `nuevo ni cambies ese nombre aunque el mensaje mencione uno distinto (puede ser otra persona escribiendo ` +
+          `desde el mismo número); seguí usando "${nombreConocido}" salvo que el cliente pida explícitamente corregirlo.`
+        : ''),
     );
     await this.sendText(ideEmpr, waId, respuesta);
   }
