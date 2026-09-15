@@ -221,7 +221,10 @@ export class BotGptService {
     textoAcumulado: string,
     productosYaAgregados: string[] = [],
     historialReciente: { role: 'user' | 'assistant'; content: string }[] = [],
-  ): Promise<{ completo: boolean; items: { producto: string; cantidad: number | null }[] }> {
+  ): Promise<{
+    completo: boolean;
+    items: { producto: string; cantidad: number | null; cantidadTexto?: string | null }[];
+  }> {
     const ctx = productosYaAgregados.length
       ? `Ya fueron agregados a la cotización (no los repitas): ${productosYaAgregados.join(', ')}.`
       : '';
@@ -271,7 +274,13 @@ export class BotGptService {
               '   - Si el cliente menciona VARIANTES o presentaciones distintas de un mismo producto conectadas por "y" (ej. códigos/siglas ' +
               'como APF, BPF, tipo A, tipo B, u otras presentaciones), trátalas como PRODUCTOS SEPARADOS, uno por variante — NO las combines ' +
               'en un solo string. Ejemplo: "cera de soya de APF y BPF" → dos ítems: "cera de soya APF" y "cera de soya BPF".\n' +
-              'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null}]}. ' +
+              '   - Si el mensaje da una cantidad/unidad pero NO nombra ningún producto concreto (ej. "cotización de 100 litros", ' +
+              '"necesito 50kg", "quiero cotizar 20 unidades"), NO inventes ni asumas qué producto es (ni uses "cotización"/"pedido"/' +
+              'similar como si fuera el nombre) — usa "producto": "" (string vacío) para ese ítem, mantén la cantidad tal como la dio ' +
+              'el cliente, y agrega "cantidadTexto" con el texto EXACTO que usó para la cantidad/unidad (ej. "100 litros", "50kg"), ' +
+              'para que el asesor virtual pueda preguntarle puntualmente de qué producto se trata citando lo que ya dijo, sin perderlo.\n' +
+              'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null,' +
+              '"cantidadTexto": string|null}]} — "cantidadTexto" solo hace falta cuando "producto" queda vacío. ' +
               'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
           ...historialReciente.slice(-6),
@@ -286,12 +295,18 @@ export class BotGptService {
       const parsed = JSON.parse(content);
       const items = Array.isArray(parsed.items)
         ? parsed.items
-          .filter((i: any) => i && typeof i.producto === 'string' && i.producto.trim())
+          // Se conserva el ítem si tiene nombre de producto O cantidad — un "producto": ""
+          // con cantidad (ver instrucción arriba) es válido: representa "el cliente dio
+          // cantidad pero no dijo qué producto", que el llamador debe preguntar puntualmente
+          // en vez de perder esa cantidad. Solo se descarta si no aporta NADA (ni nombre ni cantidad).
+          .filter((i: any) => i && typeof i.producto === 'string'
+            && (i.producto.trim() || (i.cantidad !== null && i.cantidad !== undefined && !isNaN(Number(i.cantidad)))))
           .map((i: any) => ({
             producto: i.producto.trim(),
             cantidad: (i.cantidad === null || i.cantidad === undefined || isNaN(Number(i.cantidad)))
               ? null
               : Number(i.cantidad),
+            cantidadTexto: typeof i.cantidadTexto === 'string' && i.cantidadTexto.trim() ? i.cantidadTexto.trim() : null,
           }))
         : [];
       return { completo: !!parsed.completo, items };
@@ -533,11 +548,18 @@ export class BotGptService {
    * catálogos públicos con stock disponible (modo mensajes reducidos) — para dirigirlo
    * directo al catálogo con precios en vez de levantar una solicitud de cotización manual.
    * No adivina: si no hay coincidencia razonablemente clara, devuelve null.
+   *
+   * `matchEspecifico` distingue el tipo de coincidencia: true cuando el texto del cliente
+   * matcheó un producto PUNTUAL listado dentro del catálogo (ej. "cera de coco" → producto
+   * exacto), false cuando solo matcheó el tema/título general del catálogo (ej. "esencias
+   * para velas" → catálogo "Fragancias para velas", sin un producto puntual identificado).
+   * El llamador usa esto para no invitar a "dar la cantidad" cuando el catálogo tiene
+   * varios productos y no se sabe cuál puntual quiere el cliente.
    */
   async matchCatalogoProducto(
     texto: string,
     catalogos: { ide_cata: number; nombre_cata: string; productos: { nombre: string }[] }[],
-  ): Promise<{ ide_cata: number } | null> {
+  ): Promise<{ ide_cata: number; matchEspecifico: boolean } | null> {
     if (!catalogos.length) return null;
     const listado = catalogos
       .map((c) => `Catálogo "${c.nombre_cata}" (id ${c.ide_cata}): ${c.productos.map((p) => p.nombre).join(', ')}`)
@@ -553,20 +575,25 @@ export class BotGptService {
               'El cliente pregunta por un producto. Estos son los catálogos públicos con stock disponible y sus ' +
               'productos:\n' + listado + '\n\n' +
               'Si el producto que menciona el cliente coincide (exacto o muy cercano) con alguno de estos productos, ' +
-              'responde SOLO JSON: {"ide_cata": <id del catálogo>}. Si NO hay ningún producto que coincida con ' +
-              'razonable certeza, responde {"ide_cata": null} — no adivines ni asumas coincidencias vagas.',
+              'o con el tema/título general de un catálogo (ej. "esencias para velas" con el catálogo "Fragancias ' +
+              'para velas"), responde SOLO JSON: {"ide_cata": <id del catálogo>, "matchEspecifico": <true|false>}. ' +
+              '"matchEspecifico" = true SOLO si el texto coincide con UNO de los productos listados puntualmente; ' +
+              'false si solo coincide con el tema/título general del catálogo. Si NO hay ningún catálogo ni producto ' +
+              'que coincida con razonable certeza, responde {"ide_cata": null, "matchEspecifico": false} — no ' +
+              'adivines ni asumas coincidencias vagas.',
           },
           { role: 'user', content: texto },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 30,
+        max_tokens: 40,
       });
       const content = resp.choices[0]?.message?.content;
       if (!content) return null;
       const parsed = JSON.parse(content);
       const ideCata = Number(parsed.ide_cata);
-      return Number.isInteger(ideCata) && catalogos.some((c) => c.ide_cata === ideCata) ? { ide_cata: ideCata } : null;
+      if (!Number.isInteger(ideCata) || !catalogos.some((c) => c.ide_cata === ideCata)) return null;
+      return { ide_cata: ideCata, matchEspecifico: !!parsed.matchEspecifico };
     } catch (err) {
       this.logger.error(`matchCatalogoProducto error: ${err.message}`);
       return null;
@@ -598,7 +625,13 @@ export class BotGptService {
                 : pedirNombre
                   ? ' su nombre.'
                   : ' la ciudad desde donde escribe.') +
-              ' Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
+              (pedirNombre
+                ? ' Este es un negocio B2B (venta de materias primas/químicos): "nombre" es válido tanto si da su ' +
+                  'nombre de pila (ej. "Diego", "me llamo Ashly") como si responde con el nombre de su empresa (ej. ' +
+                  '"Somos la empresa Botica Bristol", "Química Andina", "represento a Laboratorios XYZ") — en ese ' +
+                  'caso usa el nombre de la empresa como "nombre". '
+                : '') +
+              'Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
               'Responde SOLO JSON: {"nombre": string|null, "ciudad": string|null}.',
           },
           { role: 'user', content: respuesta },

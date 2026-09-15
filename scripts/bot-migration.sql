@@ -253,7 +253,7 @@ Despachamos a *nivel nacional* con el transporte de preferencia del cliente 📦
 === RESPUESTA_CATALOGO ===
 📦 *Explora nuestros productos:*
 
-🔹 *Catálogos de precios (por sector):*
+🔹 *Catálogos para emprendedores (con precios):*
 👉 https://diquimec.com.ec/catalogo
 
 🔹 *Listado completo de productos:*

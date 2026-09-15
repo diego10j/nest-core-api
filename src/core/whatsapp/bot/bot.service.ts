@@ -659,6 +659,14 @@ export class BotService implements OnModuleInit {
 
       const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
       if (!nombre) {
+        // Mismo fix que handleConfirmacion (flujo clásico): este mensaje tampoco traía
+        // el nombre, pero puede traer lo que el cliente necesita — se acumula en
+        // texto_inicial en vez de perderlo cuando finalmente dé su nombre.
+        const textoAcumulado = [datos.texto_inicial, texto].filter(Boolean).join('\n');
+        if (textoAcumulado !== datos.texto_inicial) {
+          datos = { ...datos, texto_inicial: textoAcumulado };
+          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+        }
         await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
         return;
       }
@@ -781,20 +789,52 @@ export class BotService implements OnModuleInit {
     // aislado (caso real detectado 2026-09-13: la cotización terminaba con un ítem
     // genérico en vez de "cera de coco").
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
-    const { items } = await this.botGpt.analizarLoteProductos(texto, [], historial);
+    const { items: itemsCrudos } = await this.botGpt.analizarLoteProductos(texto, [], historial);
+
+    // Defensa adicional (no depender solo del prompt de analizarLoteProductos): si el
+    // "producto" extraído es en realidad una palabra genérica del propio pedido (caso
+    // real: "cotización de 100 litros" → GPT devolvía producto="Cotización", cantidad=100),
+    // se normaliza al mismo sentinel de "producto sin identificar" (string vacío) que ya
+    // usa el prompt cuando el cliente no nombra nada — NO se descarta: se pregunta
+    // puntualmente qué producto es (como haría un asesor), sin perder la cantidad ya dada.
+    const REGEX_PRODUCTO_GENERICO_INVALIDO = /^(cotizaci[oó]n|pedido|presupuesto|producto|art[ií]culo|orden|compra)$/i;
+    const itemsNormalizados = itemsCrudos.map((i) =>
+      REGEX_PRODUCTO_GENERICO_INVALIDO.test(i.producto.trim()) ? { ...i, producto: '' } : i,
+    );
 
     // detectarRequerimientos ya clasificó el mensaje como PRODUCTO (por eso se llegó
     // acá), pero eso solo detecta INTENCIÓN por palabras clave ("quiero", "disponen") —
     // no garantiza que se haya nombrado un producto puntual. Si analizarLoteProductos no
-    // extrajo ninguno (ej. "quiero saber los productos que disponen"), NO se debe usar
-    // el mensaje completo como si fuera el nombre de un producto — eso generaba
-    // respuestas sin sentido como "cuéntame qué cantidad necesitas de quiero saber los
-    // productos que disponen" (caso real detectado 2026-09-13).
-    if (!items.length) {
+    // extrajo NADA (ej. "quiero saber los productos que disponen", sin cantidad ni
+    // producto), NO se debe usar el mensaje completo como si fuera el nombre de un
+    // producto — eso generaba respuestas sin sentido como "cuéntame qué cantidad
+    // necesitas de quiero saber los productos que disponen" (caso real 2026-09-13).
+    if (!itemsNormalizados.length) {
       await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       return;
     }
+
+    // Ítems con cantidad/unidad pero sin nombre de producto (ej. "cotización de 100
+    // litros") — se pregunta puntualmente, citando lo que ya dijo el cliente, en vez de
+    // perder esa cantidad con un mensaje genérico. Queda en el historial de la
+    // conversación para que analizarLoteProductos la retome cuando el cliente responda
+    // solo el nombre del producto (mismo mecanismo que ya resuelve "necesito 2kg" después
+    // de "tienen cera de coco").
+    const itemsSinProducto = itemsNormalizados.filter((i) => !i.producto);
+    if (itemsSinProducto.length) {
+      const citas = itemsSinProducto.map((i) => i.cantidadTexto || (i.cantidad != null ? String(i.cantidad) : null)).filter(Boolean);
+      const pregunta = citas.length
+        ? citas.length === 1
+          ? `¡Con gusto! 😊 ¿De qué producto necesitas los ${citas[0]}?`
+          : `¡Con gusto! 😊 Mencionaste ${citas.join(' y ')} — ¿de qué producto se trata cada cantidad?`
+        : `¡Con gusto! 😊 Cuéntame de qué producto se trata para poder cotizarte.`;
+      await this.sendText(ideEmpr, waId, pregunta);
+      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+      return;
+    }
+
+    const items = itemsNormalizados;
 
     let pedirUso = false;
     {
@@ -834,9 +874,16 @@ export class BotService implements OnModuleInit {
             return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
           });
           const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          // "Dime la cantidad..." solo tiene sentido cuando el match fue a un producto
+          // PUNTUAL — si solo matcheó el tema/título del catálogo (ej. "esencias para
+          // velas" → catálogo con varios productos), no se sabe cuál puntual quiere el
+          // cliente, así que no tiene sentido pedirle cantidad todavía.
+          const todosEspecificos = matches
+            .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
+            .every((m) => m.matchEspecifico);
           await this.sendText(ideEmpr, waId,
             `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
-            (itemsPendientes.length ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
+            (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
             await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
@@ -1320,6 +1367,18 @@ export class BotService implements OnModuleInit {
       // que la conversación se sienta natural, no como un formulario.
       const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
       if (!nombre) {
+        // Este mensaje tampoco traía el nombre — puede traer, en cambio, lo que el
+        // cliente necesita (ej. "Dispone de yoduro de potasio"). Se acumula en
+        // texto_inicial en vez de descartarlo: sin esto, cuando el cliente por fin da su
+        // nombre en un mensaje posterior, solo se combina con el saludo original y este
+        // mensaje intermedio se pierde en silencio — el bot termina mostrando el menú
+        // genérico en vez de la cotización que ya había pedido (caso real: "Buenos dias"
+        // → "Dispone de yoduro de potasio" → "Ashly" → el bot ignoró el producto).
+        const textoAcumulado = [datos.texto_inicial, texto].filter(Boolean).join('\n');
+        if (textoAcumulado !== datos.texto_inicial) {
+          await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CONFIRMACION,
+            { ...datos, texto_inicial: textoAcumulado });
+        }
         await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
         return;
       }
@@ -1502,9 +1561,16 @@ export class BotService implements OnModuleInit {
             return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
           });
           const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          // "Dime la cantidad..." solo tiene sentido cuando el match fue a un producto
+          // PUNTUAL — si solo matcheó el tema/título del catálogo (ej. "esencias para
+          // velas" → catálogo con varios productos), no se sabe cuál puntual quiere el
+          // cliente, así que no tiene sentido pedirle cantidad todavía.
+          const todosEspecificos = matches
+            .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
+            .every((m) => m.matchEspecifico);
           await this.sendText(ideEmpr, waId,
             `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
-            (itemsPendientes.length ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
+            (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
             await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
