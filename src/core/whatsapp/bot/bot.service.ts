@@ -688,7 +688,7 @@ export class BotService implements OnModuleInit {
         return;
       }
 
-      const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      const { nombre, restoTexto } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
       if (!nombre) {
         // Mismo fix que handleConfirmacion (flujo clásico): este mensaje tampoco traía
         // el nombre, pero puede traer lo que el cliente necesita — se acumula en
@@ -714,13 +714,15 @@ export class BotService implements OnModuleInit {
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
       // Se combina lo que había preguntado en el primer mensaje (ej. "Hola, tienen cera
-      // de coco") CON esta respuesta (ej. "Janneth Pachacama quiero la ubicación") —
-      // antes se usaba SOLO el primer mensaje, así que un pedido que llegaba junto con
-      // el nombre en la respuesta se perdía en silencio (caso real detectado
-      // 2026-09-13: el bot respondía un genérico "¿en qué te ayudo?" en vez de la
-      // ubicación que sí pidió). Si el primer mensaje no traía nada (solo "Hola"), queda
-      // efectivamente solo el texto de esta respuesta.
-      texto = [datos.texto_inicial, texto].filter(Boolean).join('\n');
+      // de coco") CON el resto de esta respuesta, SIN el nombre ya extraído (ej.
+      // "Janneth Pachacama quiero la ubicación" → restoTexto="quiero la ubicación") —
+      // antes se usaba el mensaje CRUDO completo, así que si el cliente respondía
+      // ÚNICAMENTE con su nombre/empresa (ej. "Laboratorio DOC"), ese texto se reinyectaba
+      // en el análisis de productos y GPT lo interpretaba como un segundo producto de la
+      // lista (caso real detectado 2026-09-15: cotización con "TWEEN DE 20" real +
+      // "LABORATORIO DOC" inventado). Si el primer mensaje no traía nada (solo "Hola") ni
+      // esta respuesta traía nada más que el nombre, queda vacío — se resuelve más abajo.
+      texto = [datos.texto_inicial, restoTexto].filter(Boolean).join('\n');
     }
 
     // El debounce existe justo para esto: juntar todo lo que el cliente escribió (uno o
@@ -804,6 +806,20 @@ export class BotService implements OnModuleInit {
           `distinto; seguí usando "${nombreConocidoReducido}" salvo que el cliente pida explícitamente corregirlo.`
         : ''),
     );
+    if (resultado.interesGenerico) {
+      // Interés general en una actividad/manualidad (ej. "quiero aprender a hacer
+      // jabones") sin producto puntual — no se responde con conocimiento general
+      // inventado (ver generateResponseConEscalamiento), se envía el catálogo real y se
+      // deriva a un asesor para una recomendación personalizada.
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
+        `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
+        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
+        `Un asesor comercial 👤 te va a contactar para darte una atención más personalizada 😊`,
+        `Cliente mostró interés general en una actividad/manualidad sin nombrar producto puntual: "${texto}"`,
+      );
+      return;
+    }
     if (resultado.requiereAsesor) {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, resultado.respuesta);
       return;
@@ -1429,7 +1445,7 @@ export class BotService implements OnModuleInit {
       // "¿cuál es tu nombre?" del saludo. GPT lo extrae del texto libre (no heurísticas
       // de patrón: "soy Diego", "me llamo Diego" o solo "Diego" son todas válidas) para
       // que la conversación se sienta natural, no como un formulario.
-      const { nombre } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      const { nombre, restoTexto } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
       if (!nombre) {
         // Este mensaje tampoco traía el nombre — puede traer, en cambio, lo que el
         // cliente necesita (ej. "Dispone de yoduro de potasio"). Se acumula en
@@ -1458,13 +1474,15 @@ export class BotService implements OnModuleInit {
       };
       await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
       // Se combina lo que había preguntado en el saludo (ej. "Hola, tienen cera de
-      // coco") CON esta respuesta (ej. "Janneth Pachacama quiero la ubicación") — antes
-      // se usaba SOLO el saludo original, así que un pedido que llegaba junto con el
-      // nombre en la respuesta se perdía en silencio y el bot terminaba respondiendo un
-      // genérico "¿en qué te ayudo?" en vez de la ubicación que sí pidió (caso real
-      // detectado 2026-09-13). Si el saludo original no traía nada (solo "Hola"), queda
-      // efectivamente solo el texto de esta respuesta.
-      const textoParaResponder = [datosConNombre.texto_inicial, texto].filter(Boolean).join('\n');
+      // coco") CON el resto de esta respuesta, SIN el nombre ya extraído (ej. "Janneth
+      // Pachacama quiero la ubicación" → restoTexto="quiero la ubicación") — antes se
+      // reinyectaba el mensaje CRUDO completo, así que si el cliente respondía
+      // ÚNICAMENTE con su nombre/empresa (ej. "Laboratorio DOC"), ese texto se colaba en
+      // el análisis de productos y GPT lo tomaba como un segundo producto de la lista
+      // (mismo bug del flujo reducido, ver handleAtencionLibreReducida — caso real
+      // detectado 2026-09-15). Si el saludo original no traía nada (solo "Hola") ni esta
+      // respuesta traía nada más que el nombre, queda vacío.
+      const textoParaResponder = [datosConNombre.texto_inicial, restoTexto].filter(Boolean).join('\n');
       await this.responderConsultaInicial(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoParaResponder, nombreEmpresa, config,
       );

@@ -554,21 +554,35 @@ export class BotGptService {
    * necesita un dato específico que no puede responder con certeza (precio exacto, stock
    * real, condición particular de un pedido) — en ese caso "respuesta" es un mensaje breve
    * avisando que se deriva a un asesor, NO un intento de contestar la pregunta original.
-   * Usado solo en modo mensajes reducidos (ATENCION_LIBRE_REDUCIDA) para evitar que el bot
-   * invente información cuando no tiene certeza.
+   * También detecta interés GENÉRICO en una actividad/manualidad (ej. "quiero aprender a
+   * hacer jabones") sin producto puntual — GPT sabe de sobra qué materiales se usan por su
+   * conocimiento general, pero eso no es información real de ESTA empresa (puede no
+   * coincidir con lo que vende ni con sus nombres de producto) y generaba respuestas
+   * inventadas tipo tutorial (caso real detectado 2026-09-15: listó "base de jabón,
+   * aceites esenciales, colorantes, moldes..." de memoria, sin que nada de eso viniera del
+   * catálogo). En ese caso el llamador debe mostrar el catálogo real y derivar a un asesor,
+   * no usar "respuesta" tal cual. Usado solo en modo mensajes reducidos (ATENCION_LIBRE_
+   * REDUCIDA) para evitar que el bot invente información cuando no tiene certeza.
    */
   async generateResponseConEscalamiento(
     systemPrompt: string,
     historial: { role: 'user' | 'assistant'; content: string }[],
     mensajeActual: string,
     contextoExtra?: string,
-  ): Promise<{ respuesta: string; requiereAsesor: boolean }> {
+  ): Promise<{ respuesta: string; requiereAsesor: boolean; interesGenerico: boolean }> {
     const sysContent =
       `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra ?? ''}\n\n` +
-      'Responde SOLO JSON válido: {"respuesta": "texto para el cliente", "requiereAsesor": bool}. ' +
+      'REGLA FIJA: si el cliente expresa un interés GENERAL en una actividad o manualidad (ej. "quiero aprender a ' +
+      'hacer jabones/velas/cosméticos", "cómo empiezo a hacer velas", "qué necesito para hacer jabón") SIN nombrar ' +
+      'un producto puntual de esta empresa, NO expliques con tu propio conocimiento general qué materiales, pasos o ' +
+      'productos necesita (aunque lo sepas) — eso no es información real de ESTA empresa, puede no coincidir con lo ' +
+      'que vende ni con sus nombres de producto. En ese caso "interesGenerico" debe ser true.\n' +
+      'Responde SOLO JSON válido: {"respuesta": "texto para el cliente", "requiereAsesor": bool, "interesGenerico": bool}. ' +
       'requiereAsesor=true SOLO si la pregunta necesita un dato específico que no puedes responder con certeza ' +
       '(precio exacto, stock real, condición particular de un pedido puntual) — en ese caso "respuesta" debe ser ' +
-      'un mensaje breve avisando que un asesor se comunicará, sin intentar responder la pregunta original.';
+      'un mensaje breve avisando que un asesor se comunicará, sin intentar responder la pregunta original. ' +
+      'interesGenerico=true en el caso descrito arriba — no hace falta que armes "respuesta" con cuidado en ese ' +
+      'caso, el sistema arma su propio mensaje con el catálogo real de la empresa.';
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: sysContent },
@@ -585,17 +599,18 @@ export class BotGptService {
         response_format: { type: 'json_object' },
       });
       const content = resp.choices[0]?.message?.content;
-      if (!content) return { respuesta: 'Lo siento, tuve un inconveniente. ¿Podrías repetir?', requiereAsesor: false };
+      if (!content) return { respuesta: 'Lo siento, tuve un inconveniente. ¿Podrías repetir?', requiereAsesor: false, interesGenerico: false };
       const parsed = JSON.parse(content);
       return {
         respuesta: typeof parsed.respuesta === 'string' && parsed.respuesta.trim()
           ? parsed.respuesta.trim()
           : 'Con gusto te ayudo — un asesor se comunicará contigo.',
         requiereAsesor: !!parsed.requiereAsesor,
+        interesGenerico: !!parsed.interesGenerico,
       };
     } catch (err) {
       this.logger.error(`generateResponseConEscalamiento error: ${err.message}`);
-      return { respuesta: 'Disculpa, ocurrió un problema procesando tu mensaje. Por favor intenta de nuevo.', requiereAsesor: false };
+      return { respuesta: 'Disculpa, ocurrió un problema procesando tu mensaje. Por favor intenta de nuevo.', requiereAsesor: false, interesGenerico: false };
     }
   }
 
@@ -661,13 +676,22 @@ export class BotGptService {
    * mensaje (modo mensajes reducidos, cotización rápida). Solo pide lo que realmente falta
    * — `pedirNombre`/`pedirCiudad` en false hacen que ese campo se devuelva siempre null
    * sin llamar a GPT si ninguno de los dos hace falta.
+   *
+   * También devuelve `restoTexto`: lo que queda del mensaje después de quitar el nombre/
+   * ciudad extraídos (null si el mensaje era SOLO el nombre/ciudad, sin nada más). Los
+   * llamadores que combinan este mensaje con `texto_inicial` para volver a analizarlo
+   * (detectar productos, ubicación, etc.) deben usar `restoTexto`, NUNCA el mensaje crudo
+   * — si el cliente respondió solo "Laboratorio DOC" a "¿cuál es tu nombre?", reinyectar
+   * ese texto crudo en el análisis de productos hacía que GPT lo interpretara como un
+   * segundo producto en la lista (caso real detectado 2026-09-15: cotización con
+   * "TWEEN DE 20" real + "LABORATORIO DOC" inventado como si fuera otro producto).
    */
   async extraerNombreYCiudad(
     respuesta: string,
     pedirNombre: boolean,
     pedirCiudad: boolean,
-  ): Promise<{ nombre: string | null; ciudad: string | null }> {
-    if (!pedirNombre && !pedirCiudad) return { nombre: null, ciudad: null };
+  ): Promise<{ nombre: string | null; ciudad: string | null; restoTexto: string | null }> {
+    if (!pedirNombre && !pedirCiudad) return { nombre: null, ciudad: null, restoTexto: respuesta };
     try {
       const resp = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -691,24 +715,28 @@ export class BotGptService {
                   'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. '
                 : '') +
               'Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
-              'Responde SOLO JSON: {"nombre": string|null, "ciudad": string|null}.',
+              'Además, en "restoTexto" devuelve el resto del mensaje SIN el nombre/ciudad ya extraídos (ej. si ' +
+              'respondió "Janneth Pachacama quiero la ubicación", nombre="Janneth Pachacama" y restoTexto="quiero ' +
+              'la ubicación"). Si el mensaje era ÚNICAMENTE el nombre y/o la ciudad, sin nada más, "restoTexto" es null. ' +
+              'Responde SOLO JSON: {"nombre": string|null, "ciudad": string|null, "restoTexto": string|null}.',
           },
           { role: 'user', content: respuesta },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 100,
+        max_tokens: 150,
       });
       const content = resp.choices[0]?.message?.content;
-      if (!content) return { nombre: null, ciudad: null };
+      if (!content) return { nombre: null, ciudad: null, restoTexto: respuesta };
       const parsed = JSON.parse(content);
       return {
         nombre: typeof parsed.nombre === 'string' && parsed.nombre.trim() ? parsed.nombre.trim() : null,
         ciudad: typeof parsed.ciudad === 'string' && parsed.ciudad.trim() ? parsed.ciudad.trim() : null,
+        restoTexto: typeof parsed.restoTexto === 'string' && parsed.restoTexto.trim() ? parsed.restoTexto.trim() : null,
       };
     } catch (err) {
       this.logger.error(`extraerNombreYCiudad error: ${err.message}`);
-      return { nombre: null, ciudad: null };
+      return { nombre: null, ciudad: null, restoTexto: respuesta };
     }
   }
 
