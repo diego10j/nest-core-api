@@ -3,6 +3,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { InsertQuery, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 
+import { toLocalPhone } from './bot-proforma.service';
 import { BotSessionQueryDto } from './dto/bot-session-query.dto';
 import { DatosSesion } from './interfaces/bot-session.interface';
 import { BotState } from './interfaces/bot-state.enum';
@@ -165,6 +166,26 @@ export class BotSessionService {
       cliente: datos.cliente,
       provincia: datos.envio?.provincia,
     };
+  }
+
+  /**
+   * "Cliente conocido" para la reactivación automática de chats viejos: primero la
+   * memoria propia del bot (barata, cubre la mayoría — la mayoría de los chats pasó por
+   * el bot alguna vez), y solo si no hay memoria, cruza por teléfono contra proformas ya
+   * generadas — cubre al cliente que compró/cotizó pero fue atendido 100% por un humano,
+   * sin nunca completar un flujo de bot (memoria vacía en ese caso, pero sí es cliente
+   * real). La query cara solo corre cuando hace falta.
+   */
+  async esClienteConocido(ideWhcha: number, waId: string, ideEmpr: number): Promise<boolean> {
+    const memoria = await this.getMemoriaCliente(ideWhcha);
+    if (memoria?.cliente?.nombres) return true;
+
+    const telefonoLocal = toLocalPhone(waId);
+    const row = await this.dataSource.pool.query(
+      `SELECT 1 FROM cxc_cabece_proforma WHERE telefono_cccpr = $1 AND ide_empr = $2 LIMIT 1`,
+      [telefonoLocal, ideEmpr],
+    );
+    return row.rowCount > 0;
   }
 
   /** Obtiene historial de mensajes del chat para contexto de GPT */

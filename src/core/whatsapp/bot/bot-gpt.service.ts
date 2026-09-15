@@ -264,6 +264,15 @@ export class BotGptService {
               '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en mililitros (ml), ' +
               'trátalo como gramos (densidad ≈ 1, 1ml = 1g) y conviértelo a kilogramos igual. ' +
               'Ejemplo: "10ml de fragancia vainilla"→cantidad:0.01.\n' +
+              '   - Si el cliente da la cantidad en VOLUMEN (litros, galones, ml) para un producto que se vende en KG, ' +
+              'NO calcules densidad — normalizá el volumen a LITROS (1000 ml = 1 litro, 1 galón = 4 litros, valor ' +
+              'comercial redondeado que usa la empresa) y usá ESE número de litros directo como si fueran kilogramos, ' +
+              'sin ninguna conversión adicional. Ejemplos: "20 litros de glicerina"→cantidad:20 | "5 galones"→cantidad:20 | ' +
+              '"500 ml"→cantidad:0.5.\n' +
+              '   - CANECA: si el cliente da la cantidad en CANECAS (ej: "6 canecas", "1 caneca"), una caneca pesa ' +
+              'por lo general 25kg — multiplicá el número de canecas x 25 y usa ese resultado como cantidad en kg ' +
+              '(ej: "6 canecas"→cantidad:150, "1 caneca"→cantidad:25). Es un valor aproximado que el asesor puede ' +
+              'ajustar después, pero permite avanzar la cotización en vez de dejarla en null.\n' +
               '   - Si el cliente da un conteo simple sin unidad de peso (ej: "5 moldes", "3 unidades", "media docena"→6, ' +
               '"un par"→2), NO apliques conversión de peso — usa el número/conteo tal cual (puede tratarse de un producto que ' +
               'se vende por unidad, no por peso).\n' +
@@ -274,17 +283,26 @@ export class BotGptService {
               '   - cantidad: 0 SOLO si el cliente pide explícitamente la cantidad MÍNIMA disponible de un producto puntual ' +
               '("cantidad mínima", "lo mínimo que manejen", "el mínimo") — el asesor define la cantidad real después, se usa 0 ' +
               'como marcador. No uses 0 solo porque mencionó ser mayorista/distribuidor sin más contexto (ver punto anterior).\n' +
+              '   - cantidad: 0 TAMBIÉN si el cliente da la cantidad en un ENVASE/EMPAQUE coloquial (que NO sea caneca, ' +
+              'ver regla de arriba) SIN volumen/peso explícito (ej: "2 sacos", "un bulto", "un tanque", "un frasco", ' +
+              '"un tambor" — con o sin número, litros/galones/ml NO cuentan acá, esos ya se resuelven con la regla de ' +
+              'arriba) — el tamaño real de esos envases varía por producto, no lo adivines. NO uses null en este caso: ' +
+              'el cliente SÍ contestó algo válido, null hace que el bot vuelva a preguntar lo mismo sin salida — el ' +
+              'asesor confirma la equivalencia exacta después, igual que con "cantidad mínima".\n' +
               '   - Si el cliente menciona VARIANTES o presentaciones distintas de un mismo producto conectadas por "y" (ej. códigos/siglas ' +
               'como APF, BPF, tipo A, tipo B, u otras presentaciones), trátalas como PRODUCTOS SEPARADOS, uno por variante — NO las combines ' +
               'en un solo string. Ejemplo: "cera de soya de APF y BPF" → dos ítems: "cera de soya APF" y "cera de soya BPF".\n' +
               '   - Si el mensaje da una cantidad/unidad pero NO nombra ningún producto concreto (ej. "cotización de 100 litros", ' +
               '"necesito 50kg", "quiero cotizar 20 unidades"), NO inventes ni asumas qué producto es (ni uses "cotización"/"pedido"/' +
               'similar como si fuera el nombre) — usa "producto": "" (string vacío) para ese ítem, mantén la cantidad tal como la dio ' +
-              'el cliente, y agrega "cantidadTexto" con el texto EXACTO que usó para la cantidad/unidad (ej. "100 litros", "50kg"), ' +
-              'para que el asesor virtual pueda preguntarle puntualmente de qué producto se trata citando lo que ya dijo, sin perderlo.\n' +
+              'el cliente, para que el asesor virtual pueda preguntarle puntualmente de qué producto se trata citando lo que ya dijo, ' +
+              'sin perderlo.\n' +
+              '   - "cantidadTexto": para TODO ítem con cantidad (tenga o no nombre de producto), agregá también el texto EXACTO ' +
+              'que el cliente usó para expresar esa cantidad, tal cual lo escribió (ej. "6 canecas", "1 galón", "100 litros", "50kg") ' +
+              '— se usa para mostrárselo de vuelta en el resumen de su cotización, en vez del número ya convertido internamente. ' +
+              'null si no dio cantidad para ese ítem.\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null,' +
-              '"cantidadTexto": string|null}]} — "cantidadTexto" solo hace falta cuando "producto" queda vacío. ' +
-              'No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
+              '"cantidadTexto": string|null}]}. No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
           ...historialReciente.slice(-6),
           { role: 'user', content: textoAcumulado },
@@ -367,7 +385,7 @@ export class BotGptService {
   async extraerCantidadesPorProducto(
     productos: { nombre: string; siglas_unidad: string; nombre_unidad: string }[],
     respuesta: string,
-  ): Promise<(number | null)[]> {
+  ): Promise<{ cantidad: number | null; cantidadTexto?: string | null }[]> {
     if (!productos.length) return [];
     try {
       const listaProductos = productos
@@ -386,36 +404,71 @@ export class BotGptService {
               'numerar (ej: "10kg y 5 litros"), o mencionar solo algunos, y puede usar una unidad DISTINTA a la ' +
               'unidad de venta del producto (ej: gramos, mililitros, toneladas, libras) — debes CONVERTIR el valor ' +
               'a la unidad de venta real de cada producto:\n' +
+              '   - Si el cliente responde con UNA sola cantidad/expresión de cantidad y NO menciona ningún ' +
+              'producto por nombre (ej. le preguntaste por "Ethylene Glycol, Propylene Glycol" y contesta solo ' +
+              '"6 canecas" o "20kg"), es la respuesta natural a "cuánto necesitas de CADA UNO" — no hace falta que ' +
+              'repita el nombre de cada producto uno por uno. Aplicá esa misma cantidad (ya convertida según las ' +
+              'reglas de abajo) a TODOS los productos de la lista. NO la dejes en null solo porque no nombró los ' +
+              'productos explícitamente — null en este caso también deja al bot preguntando lo mismo sin salida.\n' +
               '   - Equivalencias de masa: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, 1 libra (lb) = 0.453592 kg.\n' +
               '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en ' +
               'mililitros (ml), trátalo como gramos (densidad ≈ 1, 1ml = 1g) y luego conviértelo a la unidad de ' +
               'venta. Ejemplo: "10ml" de una fragancia cuya unidad de venta es KG → 0.010.\n' +
+              '   - Si el cliente da la cantidad en VOLUMEN (litros, galones, ml) para un producto cuya unidad de ' +
+              'venta es de PESO (kg), NO calcules densidad — normalizá el volumen a LITROS (1000 ml = 1 litro, ' +
+              '1 galón = 4 litros, valor comercial redondeado que usa la empresa) y usá ESE número de litros directo ' +
+              'como si fueran kilogramos, sin ninguna conversión adicional. Ejemplos: "20 litros"→cantidad:20 | ' +
+              '"5 galones"→cantidad:20 | "500 ml"→cantidad:0.5.\n' +
               '   - Si el cliente no menciona unidad, asume que el número ya está en la unidad de venta del producto.\n' +
               '   - Si el producto se vende por UNIDADES y el cliente da un conteo simple (ej: "5", "5 unidades"), ' +
               'no apliques conversión de masa — usa el número tal cual.\n' +
-              'Cada cantidad, YA CONVERTIDA a la unidad de venta del producto: número si viene explícita. ' +
-              '0 si pide cantidad mínima o compra al por mayor/mayorista sin cifra concreta. ' +
-              'null si no se puede determinar o convertir con certeza la cantidad de ese producto. ' +
-              'Responde SOLO JSON válido: {"cantidades": [number|null, ...]} con exactamente ' + productos.length +
-              ' elementos, en el mismo orden que la lista.',
+              '   - CANECA: si el cliente da la cantidad en CANECAS (ej: "6 canecas", "1 caneca"), una caneca pesa ' +
+              'por lo general 25kg — multiplicá el número de canecas x 25 y usa ese resultado como cantidad en kg ' +
+              '(ej: "6 canecas"→cantidad:150, "1 caneca"→cantidad:25). Es un valor aproximado que el asesor puede ' +
+              'ajustar después, pero permite avanzar la cotización en vez de dejarla en null.\n' +
+              '   - Si el cliente da la cantidad en OTRO ENVASE/EMPAQUE coloquial SIN volumen/peso explícito ' +
+              '(ej: "2 sacos", "un bulto", "un tanque", "un frasco", "un tambor" — con o sin número, litros/galones/ml ' +
+              'NO cuentan acá, esos ya se resuelven con la regla de arriba), NO intentes adivinar cuántos kg es — el ' +
+              'tamaño real de esos envases varía por producto y no lo sabés con certeza. Tratalo IGUAL que "cantidad ' +
+              'mínima": usa 0. NO devuelvas null en este caso — null hace que el bot vuelva a preguntar lo mismo en ' +
+              'un loop sin salida, y el cliente YA contestó algo válido, solo que el asesor tiene que confirmar la ' +
+              'equivalencia exacta después.\n' +
+              '"cantidad": la cantidad YA CONVERTIDA a la unidad de venta del producto: número si viene explícita ' +
+              '(incluye volumen normalizado a litros, y canecas convertidas a kg, ver reglas de arriba). ' +
+              '0 si pide cantidad mínima, compra al por mayor/mayorista sin cifra concreta, o da un envase/empaque ' +
+              'coloquial (que no sea caneca) sin volumen/peso explícito (ver regla de arriba). ' +
+              'null SOLO si el cliente mencionó explícitamente OTROS productos con sus cantidades pero dejó ESTE ' +
+              'producto puntual sin contestar (ej. respondió "1. 10kg" pero había un producto 2 que no tocó) — no ' +
+              'uses null solo porque no repitió el nombre en una respuesta de una sola cantidad para todos (ver ' +
+              'regla de arriba). ' +
+              '"cantidadTexto": el texto EXACTO que el cliente usó para expresar esa cantidad, tal cual lo escribió ' +
+              '(ej. "6 canecas", "1 galón", "20kg", "cantidad mínima") — se usa para mostrárselo de vuelta al cliente ' +
+              'en el resumen de su cotización, en vez del número ya convertido internamente. null si ese producto ' +
+              'quedó sin contestar.\n' +
+              'Responde SOLO JSON válido: {"items": [{"cantidad": number|null, "cantidadTexto": string|null}, ...]} ' +
+              'con exactamente ' + productos.length + ' elementos, en el mismo orden que la lista.',
           },
           { role: 'user', content: respuesta },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 200,
+        max_tokens: 300,
       });
       const content = resp.choices[0]?.message?.content;
-      if (!content) return productos.map(() => null);
+      if (!content) return productos.map(() => ({ cantidad: null }));
       const parsed = JSON.parse(content);
-      const cantidades = Array.isArray(parsed.cantidades) ? parsed.cantidades : [];
+      const items = Array.isArray(parsed.items) ? parsed.items : [];
       return productos.map((_, i) => {
-        const c = cantidades[i];
-        return (c === null || c === undefined || isNaN(Number(c))) ? null : Number(c);
+        const it = items[i];
+        const c = it?.cantidad;
+        return {
+          cantidad: (c === null || c === undefined || isNaN(Number(c))) ? null : Number(c),
+          cantidadTexto: typeof it?.cantidadTexto === 'string' && it.cantidadTexto.trim() ? it.cantidadTexto.trim() : null,
+        };
       });
     } catch (err) {
       this.logger.error(`extraerCantidadesPorProducto error: ${err.message}`);
-      return productos.map(() => null);
+      return productos.map(() => ({ cantidad: null }));
     }
   }
 
@@ -630,9 +683,12 @@ export class BotGptService {
                   : ' la ciudad desde donde escribe.') +
               (pedirNombre
                 ? ' Este es un negocio B2B (venta de materias primas/químicos): "nombre" es válido tanto si da su ' +
-                  'nombre de pila (ej. "Diego", "me llamo Ashly") como si responde con el nombre de su empresa (ej. ' +
-                  '"Somos la empresa Botica Bristol", "Química Andina", "represento a Laboratorios XYZ") — en ese ' +
-                  'caso usa el nombre de la empresa como "nombre". '
+                  'nombre de pila (ej. "Diego", "me llamo Ashly") como si responde SOLO con el nombre de su empresa ' +
+                  '(ej. "Somos la empresa Botica Bristol", "Química Andina", "represento a Laboratorios XYZ") — en ' +
+                  'ese caso usa el nombre de la empresa como "nombre". PERO si el mensaje trae AMBOS (su nombre de ' +
+                  'persona Y el de la empresa, ej. "le saluda Lissette Catagua de la cía QUIMPAC ECUADOR S.A."), usa ' +
+                  'el NOMBRE DE LA PERSONA como "nombre" — es a quien se saluda, no a la empresa; el nombre de ' +
+                  'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. '
                 : '') +
               'Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
               'Responde SOLO JSON: {"nombre": string|null, "ciudad": string|null}.',
@@ -719,6 +775,44 @@ export class BotGptService {
       return (resp.choices[0]?.message?.content?.trim().toUpperCase().startsWith('SI')) ?? false;
     } catch (err) {
       this.logger.error(`esProveedorNoCliente error: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Gate de la reactivación automática de chats viejos (cliente conocido, >24h de
+   * silencio, chat en modo ASESOR): decide si el mensaje justifica reactivar el bot solo,
+   * sin criterio humano de por medio. TRUE solo para consultas de venta nueva (producto,
+   * precio, cotización, catálogo, ubicación, horario, política de envío). FALSE para
+   * cualquier cosa que dependa de una transacción YA existente que el bot no puede
+   * verificar (seguimiento de un pedido, guía de envío, factura, reclamo, devolución,
+   * estado de pago) — el bot no tiene esos datos y no debe inventar ni asumir. Ante la
+   * duda responde NO (más seguro no reactivar que reactivar de más).
+   */
+  async puedeBotAtenderReactivacion(texto: string): Promise<boolean> {
+    try {
+      const resp = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Un cliente que ya habló antes con la empresa (y no ha escrito en más de 24 horas) volvió a escribir. ' +
+              'Decide si el mensaje es una consulta de VENTA NUEVA — pide un producto, precio, cotización, catálogo, ' +
+              'ubicación, horario o política de envío — en cuyo caso un asistente automático puede responderle con ' +
+              'confianza. Responde NO si el mensaje depende de una transacción YA EXISTENTE que el asistente no puede ' +
+              'verificar por su cuenta: seguimiento de un pedido, guía de envío/tracking, factura, reclamo, devolución, ' +
+              'estado de un pago, o cualquier cosa que suene a "ya soy cliente con algo pendiente" en vez de "quiero ' +
+              'comprar/cotizar algo". Ante la duda, responde NO. Responde SOLO "SI" o "NO".',
+          },
+          { role: 'user', content: texto },
+        ],
+        temperature: 0,
+        max_tokens: 5,
+      });
+      return (resp.choices[0]?.message?.content?.trim().toUpperCase().startsWith('SI')) ?? false;
+    } catch (err) {
+      this.logger.error(`puedeBotAtenderReactivacion error: ${err.message}`);
       return false;
     }
   }

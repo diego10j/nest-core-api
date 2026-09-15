@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { FileTempService } from 'src/core/modules/sistema/files/file-temp.service';
@@ -287,8 +287,17 @@ export class BotService implements OnModuleInit {
     // mensaje humano de semanas atrás (caso real: el propio dueño activó su chat de
     // pruebas en PROD y el bot no respondió).
     if (!esChatNuevo && !botActivoWhcha) {
-      this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`);
-      return;
+      // Reactivación automática de chats viejos (opt-in por cuenta, umbral en horas) —
+      // ver intentarReactivarChatViejo. Si no aplica (config sin umbral/null, cliente
+      // desconocido, todavía no pasó el umbral, o el mensaje no es de venta nueva), el
+      // chat se queda en ASESOR igual que siempre.
+      const reactivado = await this.intentarReactivarChatViejo(waId, ideWhcha, ideWhcue, ideEmpr, texto);
+      if (!reactivado) {
+        this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`);
+        return;
+      }
+      botActivoWhcha = true;
+      this.logger.log(`[Bot] Chat ${ideWhcha} reactivado automáticamente — continúa el procesamiento normal del mensaje`);
     }
 
     const botActivo = await this.botConfig.isBotActive(ideWhcue);
@@ -778,14 +787,21 @@ export class BotService implements OnModuleInit {
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
     // Mismo fix que handleAtencionLibre (flujo clásico): no re-saludar con un nombre
     // distinto al ya guardado en sesión si el mensaje menciona otro nombre.
+    // Mismo refuerzo que handleAtencionLibre (flujo clásico) — ver comentario ahí para el
+    // detalle completo: el prompt configurado por la cuenta puede traer instrucciones
+    // desactualizadas (pedir correo/dirección exacta) que esta regla anula siempre.
     const nombreConocidoReducido = datos.cliente?.nombres;
     const resultado = await this.botGpt.generateResponseConEscalamiento(
       promptBase, historial, texto,
-      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa.` +
+      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa. ` +
+      `REGLA FIJA que prevalece sobre cualquier instrucción de cotización del prompt: NUNCA pidas correo ` +
+      `electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por defecto y solo ` +
+      `pregunta la ciudad al final, en un paso aparte que el sistema maneja solo. Si hace falta pedir algo para ` +
+      `avanzar con una cotización, pedí SOLO el producto y la cantidad.` +
       (nombreConocidoReducido
-        ? ` El cliente ya se identificó como "${nombreConocidoReducido}" — no lo saludes de nuevo como si fuera ` +
-          `alguien nuevo ni cambies ese nombre aunque el mensaje mencione uno distinto; seguí usando ` +
-          `"${nombreConocidoReducido}" salvo que el cliente pida explícitamente corregirlo.`
+        ? ` El cliente ya se identificó como "${nombreConocidoReducido}" — NO le vuelvas a pedir el nombre, no lo ` +
+          `saludes de nuevo como si fuera alguien nuevo, ni cambies ese nombre aunque el mensaje mencione uno ` +
+          `distinto; seguí usando "${nombreConocidoReducido}" salvo que el cliente pida explícitamente corregirlo.`
         : ''),
     );
     if (resultado.requiereAsesor) {
@@ -1003,11 +1019,14 @@ export class BotService implements OnModuleInit {
 
     if (faltantes.length) {
       await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
-      // Cuando el producto no matcheó en ninguna fuente, se le avisa con transparencia
-      // en vez de sonar igual de seguro que cuando sí lo tenemos — sin decir todavía
-      // "no lo tenemos" (puede ser un problema de nombre, no de stock real).
+      // Cuando el producto no matcheó en ninguna fuente, antes se le decía explícitamente
+      // "no lo tengo identificado en nuestro catálogo" — sonaba a que no lo vendemos o a
+      // que el bot está perdido, restándole confianza al cliente sin necesidad (puede ser
+      // solo un problema de nombre, no de disponibilidad real; el asesor lo evalúa
+      // internamente de todas formas). Ahora el mensaje es el mismo para ambos casos —
+      // no expone la incertidumbre interna del bot (caso real detectado 2026-09-18).
       const intro = pedirUso
-        ? 'Ese producto no lo tengo identificado en nuestro catálogo, pero igual te ayudo a levantar la solicitud 😊 Cuéntame'
+        ? '¡Con gusto te ayudo a levantar tu solicitud! 😊 Cuéntame'
         : '¡Claro que sí! Cuéntame';
       await this.sendText(ideEmpr, waId, `${intro} ${faltantes.join(', ')} 😊`);
       return;
@@ -1135,8 +1154,13 @@ export class BotService implements OnModuleInit {
     // Detalle de productos en el mensaje: antes solo confirmaba el número de cotización
     // sin decir qué se registró — el cliente no tenía forma de verificar que el bot
     // entendió bien su pedido hasta que un asesor le respondiera.
+    // Igual que buildListaProductos: si la cantidad vino de convertir una expresión
+    // coloquial (caneca, galón, etc.), se le muestra al cliente lo que ÉL escribió —
+    // el número ya convertido a kg queda solo para uso interno de la proforma.
     const detalleProductos = productosResueltos
-      .map((p) => `- ${p.nombre.toUpperCase()} ${p.cantidad === 0 ? '(cantidad mínima)' : `${p.cantidad}${p.siglas_unidad || ''}`}`)
+      .map((p) => `- ${p.nombre.toUpperCase()} ${
+        p.cantidadTexto || (p.cantidad === 0 ? '(cantidad mínima)' : `${p.cantidad}${p.siglas_unidad || ''}`)
+      }`)
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
       `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
@@ -1210,7 +1234,7 @@ export class BotService implements OnModuleInit {
             itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
             texto,
           )
-        : Promise.resolve([] as (number | null)[]),
+        : Promise.resolve([] as { cantidad: number | null; cantidadTexto?: string | null }[]),
       itemsSinUso.length
         ? this.botGpt.extraerUsosPorProducto(itemsSinUso.map((i) => i.producto), texto)
         : Promise.resolve([] as (string | null)[]),
@@ -1223,7 +1247,9 @@ export class BotService implements OnModuleInit {
       if (actualizado.cantidad === null) {
         const nueva = cantidadesExtraidas[cursorCantidad];
         cursorCantidad += 1;
-        if (nueva != null) actualizado = { ...actualizado, cantidad: nueva };
+        if (nueva?.cantidad != null) {
+          actualizado = { ...actualizado, cantidad: nueva.cantidad, cantidadTexto: nueva.cantidadTexto ?? undefined };
+        }
       }
       if (pedirUso && !actualizado.uso) {
         const nuevo = usosExtraidos[cursorUso];
@@ -1298,6 +1324,7 @@ export class BotService implements OnModuleInit {
           ide_inarti: prod.ide_inarti,
           nombre: item.producto,
           cantidad,
+          cantidadTexto: item.cantidadTexto ?? undefined,
           unidad: prod.nombre_unidad,
           siglas_unidad: prod.siglas_unidad,
           // en_catalogo solo si el match es confiable: evita que una coincidencia
@@ -1312,6 +1339,7 @@ export class BotService implements OnModuleInit {
           ide_inarti: generico?.ide_inarti ?? PRODUCTO_GENERICO_IDE_INARTI,
           nombre: item.producto,
           cantidad,
+          cantidadTexto: item.cantidadTexto ?? undefined,
           unidad: generico?.nombre_unidad ?? 'Unidad',
           siglas_unidad: generico?.siglas_unidad ?? 'UND',
           en_catalogo: generico?.en_catalogo ?? false,
@@ -1653,11 +1681,11 @@ export class BotService implements OnModuleInit {
    * cliente por identificación/dirección — no resuelve cuál es el producto correcto
    * (eso lo hace resolverColaProductos/resolverProductosSimple más adelante, con más
    * cuidado), solo decide cómo seguir:
-   *   - EXISTE: al menos un producto mencionado tiene algún candidato remoto en
-   *     `inv_articulo`, o matchea una categoría del catálogo público.
    *   - NO_VENDEMOS: coincide con un registro CONFIRMADO en `wha_bot_no_disponible`
    *     (cargado a mano por un asesor) → se responde directo con la observación (texto
    *     de cara al cliente, ej. "Es un producto restringido, no lo comercializamos").
+   *   - EXISTE: al menos un producto mencionado tiene algún candidato remoto en
+   *     `inv_articulo`, o matchea una categoría del catálogo público.
    *   - SIN_MATCH: no matcheó con confianza en ninguna fuente (ni siquiera el registro
    *     de no-disponibles) → caso incierto, puede tener otro nombre o conseguirse con
    *     un proveedor aliado — el bot NO asume "no lo vendemos" acá, toma el pedido
@@ -1668,20 +1696,25 @@ export class BotService implements OnModuleInit {
   ): Promise<
     { estado: 'EXISTE' } | { estado: 'NO_VENDEMOS'; observacion: string | null } | { estado: 'SIN_MATCH' }
   > {
-    // Orden de confianza: match EXACTO en catálogo (alta precisión) → registro curado de
-    // "no disponibles" (alta precisión, confirmado a mano) → fallback difuso por
-    // palabras sueltas (baja precisión) → categoría del catálogo público (mismo
-    // criterio ya usado para dar el link de catálogo, sirve también como red de
-    // contención antes de rendirse: cubre nombres que no aparecen literalmente en
-    // `inv_articulo` pero sí caen dentro de una categoría pública, ej. "fragancias
-    // para velas").
-    for (const nombre of nombresProducto) {
-      const candidatos = await this.botTools.buscarProductos(nombre, ideEmpr);
-      if (candidatos.length) return { estado: 'EXISTE' };
-    }
+    // Orden de confianza: registro curado de "no disponibles" (alta precisión,
+    // confirmado a mano por un asesor) PRIMERO, antes que el catálogo — antes iba
+    // después del catálogo, así que un producto que SÍ existe como artículo interno
+    // (ej. para formulación/uso interno) pero está marcado como no disponible para
+    // venta nunca llegaba a chequearse: el match del catálogo cortaba antes (caso real
+    // detectado 2026-09-17: "ácido nítrico" tenía un registro de no-disponible, pero el
+    // bot igual generó la cotización porque el artículo existe en inv_articulo).
+    // Después: match en catálogo (alta precisión) → fallback difuso por palabras
+    // sueltas (baja precisión) → categoría del catálogo público (mismo criterio ya
+    // usado para dar el link de catálogo, sirve también como red de contención antes de
+    // rendirse: cubre nombres que no aparecen literalmente en `inv_articulo` pero sí
+    // caen dentro de una categoría pública, ej. "fragancias para velas").
     for (const nombre of nombresProducto) {
       const noDisponible = await this.botNoDisponible.buscar(nombre, ideEmpr);
       if (noDisponible) return { estado: 'NO_VENDEMOS', observacion: noDisponible.observacion_whbnd };
+    }
+    for (const nombre of nombresProducto) {
+      const candidatos = await this.botTools.buscarProductos(nombre, ideEmpr);
+      if (candidatos.length) return { estado: 'EXISTE' };
     }
     // El fallback difuso por palabras sueltas se omite para categorías genéricas
     // (sabor/color/fragancia/aceite/esencia): una sola palabra como "miel" o "vainilla"
@@ -1750,21 +1783,33 @@ export class BotService implements OnModuleInit {
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
-    // Sin esto, GPT podía re-saludar con un nombre distinto al ya guardado en sesión si
-    // el mensaje mencionaba otro nombre (ej. cliente ya identificado como "Hunas" escribe
-    // "Andres le saluda" y el bot respondía "¡Hola, Andrés!", como si fuera alguien nuevo)
-    // — caso real detectado 2026-09-15.
+    // Refuerzo de contexto — el prompt configurado por la cuenta (`config.prompt_sistema`)
+    // puede traer instrucciones desactualizadas ("pide correo y dirección de entrega") que
+    // ya no aplican al flujo simplificado actual (correo por defecto de la empresa, solo
+    // se pregunta la CIUDAD, nunca dirección exacta) — GPT las sigue al pie de la letra si
+    // no se le dice lo contrario. Esto va SIEMPRE, sin importar el contenido del prompt de
+    // la cuenta (casos reales detectados 2026-09-17: "Hola, Sara... necesitaría tu nombre
+    // completo, correo electrónico... dirección de entrega" pese a que el cliente ya se
+    // había identificado). Además: sin esto, GPT podía re-saludar con un nombre distinto
+    // al ya guardado en sesión si el mensaje mencionaba otro nombre (ej. cliente ya
+    // identificado como "Hunas" escribe "Andres le saluda" y el bot respondía "¡Hola,
+    // Andrés!", como si fuera alguien nuevo) — caso real detectado 2026-09-15.
     const nombreConocido = datos.cliente?.nombres;
     const respuesta = await this.botGpt.generateResponse(
       promptBase,
       historial,
       texto,
       `Empresa: ${nombreEmpresa}. Usa la información del sistema para responder. ` +
-      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt.` +
+      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt. ` +
+      `REGLA FIJA que prevalece sobre cualquier instrucción de cotización del prompt: NUNCA pidas correo ` +
+      `electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por defecto y solo ` +
+      `pregunta la ciudad al final, en un paso aparte que el sistema maneja solo. Si hace falta pedir algo para ` +
+      `avanzar con una cotización, pedí SOLO el producto y la cantidad.` +
       (nombreConocido
-        ? ` El cliente ya se identificó como "${nombreConocido}" — no lo saludes de nuevo como si fuera alguien ` +
-          `nuevo ni cambies ese nombre aunque el mensaje mencione uno distinto (puede ser otra persona escribiendo ` +
-          `desde el mismo número); seguí usando "${nombreConocido}" salvo que el cliente pida explícitamente corregirlo.`
+        ? ` El cliente ya se identificó como "${nombreConocido}" — NO le vuelvas a pedir el nombre, no lo saludes ` +
+          `de nuevo como si fuera alguien nuevo, ni cambies ese nombre aunque el mensaje mencione uno distinto ` +
+          `(puede ser otra persona escribiendo desde el mismo número); seguí usando "${nombreConocido}" salvo que ` +
+          `el cliente pida explícitamente corregirlo.`
         : ''),
     );
     await this.sendText(ideEmpr, waId, respuesta);
@@ -2615,7 +2660,7 @@ export class BotService implements OnModuleInit {
     // procesarTextoProductos).
     const cantidades = await this.botGpt.extraerCantidadesPorProducto(pendientes, texto);
 
-    if (cantidades.every((c) => c === null || c === undefined)) {
+    if (cantidades.every((c) => c.cantidad === null || c.cantidad === undefined)) {
       const tipoInfo = await this.botGpt.clasificarConsulta(texto);
       if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfo)) {
         await this.responderInfo(ideEmpr, waId, tipoInfo as any, nombreEmpresa, config);
@@ -2633,10 +2678,11 @@ export class BotService implements OnModuleInit {
     const siguenPendientes: typeof pendientes = [];
 
     pendientes.forEach((p, i) => {
-      const cant = cantidades[i];
+      const cant = cantidades[i]?.cantidad;
       if (cant === null || cant === undefined) { siguenPendientes.push(p); return; }
       productosNuevos.push({
         ide_inarti: p.ide_inarti, nombre: p.nombre, cantidad: cant,
+        cantidadTexto: cantidades[i]?.cantidadTexto ?? undefined,
         unidad: p.nombre_unidad, siglas_unidad: p.siglas_unidad, en_catalogo: p.en_catalogo, uso_generico: p.uso_generico,
       });
     });
@@ -3475,9 +3521,14 @@ export class BotService implements OnModuleInit {
 
   private buildListaProductos(productos: ProductoSesion[]): string {
     return productos.map((p, i) => {
-      const cantidadTexto = p.cantidad === 0
-        ? '(cantidad mínima disponible)'
-        : `${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`;
+      // Si la cantidad vino de convertir una expresión coloquial (caneca, galón, etc.),
+      // se le muestra al cliente lo que ÉL escribió (ver ProductoSesion.cantidadTexto) —
+      // el número ya convertido a kg queda solo para uso interno de la proforma.
+      const cantidadTexto = p.cantidadTexto
+        ? p.cantidadTexto
+        : p.cantidad === 0
+          ? '(cantidad mínima disponible)'
+          : `${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`;
       return `${i + 1}. *${p.nombre}* — ${cantidadTexto}`;
     }).join('\n');
   }
@@ -3566,6 +3617,70 @@ export class BotService implements OnModuleInit {
       );
     } catch (err) {
       this.logger.error(`[Notif] Error al enviar notificación WhatsApp: ${err.message}`);
+    }
+  }
+
+  /**
+   * Reactivación automática de un chat VIEJO (no nuevo) que está en modo ASESOR — feature
+   * opt-in por cuenta vía wha_bot_config.tiempo_reactiva_chats_viejos (horas; `null` =
+   * desactivada, sin umbral quemado en el código). Todas las condiciones deben cumplirse:
+   *   1. La cuenta tiene un umbral configurado (no null).
+   *   2. El cliente ya escribió antes hace más horas que ese umbral — se usa
+   *      wha_chat.ultimo_ingreso_cliente_whcha (timestamptz, mantenida por
+   *      YcloudWindowService.registerInboundMessage en cada mensaje entrante) y NO
+   *      columnas `timestamp` sin zona (fecha_msg_whcha/wha_mensaje.fecha_whmem) — esas
+   *      guardan UTC "disfrazado" de naive y darían un cálculo incorrecto si se restan
+   *      con NOW() en SQL (ver investigación de zona horaria 2026-09-15 en el vault).
+   *   3. El cliente es "conocido" — BotSessionService.esClienteConocido (memoria del bot
+   *      o cruce por teléfono contra proformas ya generadas).
+   *   4. El mensaje es una consulta de venta nueva, no algo que dependa de un
+   *      trámite/pedido ya existente — BotGptService.puedeBotAtenderReactivacion.
+   * Si reactiva, solo cambia los flags del chat — el resto de processMessageInternal
+   * sigue su curso normal con este mismo mensaje (misma sesión fresca en INICIO, mismo
+   * saludo por nombre si hay memoria, mismo debounce de modo reducido si la cuenta lo
+   * usa): no hay ningún motor de respuesta paralelo que pueda desalinearse de la lógica
+   * en vivo actual.
+   */
+  private async intentarReactivarChatViejo(
+    waId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number, texto: string,
+  ): Promise<boolean> {
+    try {
+      const cfg = await this.dataSource.pool.query<{ tiempo_reactiva_chats_viejos: number | null }>(
+        `SELECT tiempo_reactiva_chats_viejos FROM wha_bot_config WHERE ide_whcue = $1 LIMIT 1`,
+        [ideWhcue],
+      );
+      const umbralHoras = cfg.rows[0]?.tiempo_reactiva_chats_viejos;
+      if (umbralHoras == null) return false;
+
+      const botActivoGlobal = await this.botConfig.isBotActive(ideWhcue);
+      if (!botActivoGlobal) return false;
+
+      const chatRow = await this.dataSource.pool.query<{ ultimo_ingreso_cliente_whcha: Date | null }>(
+        `SELECT ultimo_ingreso_cliente_whcha FROM wha_chat WHERE ide_whcha = $1 LIMIT 1`,
+        [ideWhcha],
+      );
+      const ultimoIngreso = chatRow.rows[0]?.ultimo_ingreso_cliente_whcha;
+      if (!ultimoIngreso) return false;
+      const horasSinMensaje = (Date.now() - new Date(ultimoIngreso).getTime()) / (1000 * 60 * 60);
+      if (horasSinMensaje < umbralHoras) return false;
+
+      const conocido = await this.botSession.esClienteConocido(ideWhcha, waId, ideEmpr);
+      if (!conocido) return false;
+
+      const puedeResponder = await this.botGpt.puedeBotAtenderReactivacion(texto);
+      if (!puedeResponder) return false;
+
+      await this.dataSource.pool.query(
+        `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
+        [ideWhcha],
+      );
+      this.logger.log(
+        `[Bot] Reactivación automática chat=${ideWhcha}: cliente conocido, ${horasSinMensaje.toFixed(1)}h sin mensajes (umbral ${umbralHoras}h), intención de venta confirmada`,
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(`[Bot] intentarReactivarChatViejo error chat=${ideWhcha}: ${err.message}`);
+      return false;
     }
   }
 
@@ -3806,6 +3921,9 @@ export class BotService implements OnModuleInit {
         `Responde al último mensaje del cliente de forma natural y cálida, basándote en el historial. ` +
         `Si el cliente hacía consultas, respóndelas. Si iniciaba una cotización, ofrece continuar. ` +
         `No menciones que hubo un asesor ni que hubo una pausa en la conversación. ` +
+        `REGLA FIJA que prevalece sobre cualquier instrucción de cotización del prompt: NUNCA pidas correo ` +
+        `electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por defecto y solo ` +
+        `pregunta la ciudad al final. Si hace falta pedir algo, pedí SOLO el producto y la cantidad. ` +
         `Al final recuerda amablemente: "_Puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_"`,
       );
 
@@ -3824,6 +3942,124 @@ export class BotService implements OnModuleInit {
     } catch (err) {
       this.logger.error(`[Bot] iniciarConContextoChat error chat=${ideWhcha}: ${err.message}`);
     }
+  }
+
+  /**
+   * Feature "Responder con Bot" (chat en modo ASESOR): compone UNA respuesta propuesta
+   * al último mensaje del cliente, para que un agente la revise antes de enviarla —
+   * SIN ningún efecto secundario (no cambia bot_activo_whcha/bot_modo_whcha, no toca
+   * wha_bot_sesion, no genera proformas). Reusa la misma clasificación que
+   * iniciarConContextoChat, pero incluso para PRODUCTO responde en texto libre por GPT
+   * en vez de correr manejarConsultaProductoClasica — ese flujo SÍ tiene efectos
+   * secundarios reales (crea proformas, puede enviar un PDF), inapropiados para algo que
+   * todavía es solo una propuesta de texto que el agente puede descartar.
+   */
+  async componerRespuestaAsistida(ideWhcha: number): Promise<
+    { ok: true; respuesta: string; tipo: string } | { ok: false; motivo: string }
+  > {
+    const chatRow = await this.dataSource.pool.query<{
+      wa_id_whcha: string; phone_number_id_whcha: string; ide_whcue: number; ide_empr: number;
+    }>(
+      `SELECT c.wa_id_whcha, c.phone_number_id_whcha, cu.ide_whcue, cu.ide_empr
+       FROM wha_chat c
+       INNER JOIN wha_cuenta cu
+         ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
+         AND cu.activo_whcue = TRUE
+       WHERE c.ide_whcha = $1 LIMIT 1`,
+      [ideWhcha],
+    );
+    if (!chatRow.rowCount) return { ok: false, motivo: 'Chat no encontrado.' };
+    const { wa_id_whcha: waId, phone_number_id_whcha, ide_whcue: ideWhcue, ide_empr: ideEmpr } = chatRow.rows[0];
+
+    const windowCheck = await this.ycloudWindowService.canSendFreeMessage(phone_number_id_whcha, waId);
+    if (!windowCheck.allowed) {
+      return { ok: false, motivo: windowCheck.reason || 'Fuera de la ventana de 24h de WhatsApp — no se puede enviar texto libre.' };
+    }
+
+    const msgResult = await this.dataSource.pool.query<{ body_whmem: string; direction_whmem: string }>(
+      `SELECT body_whmem, direction_whmem
+       FROM wha_mensaje
+       WHERE ide_whcha = $1
+         AND content_type_whmem = 'text'
+         AND body_whmem IS NOT NULL
+         AND TRIM(body_whmem) <> ''
+       ORDER BY ide_whmem DESC
+       LIMIT 15`,
+      [ideWhcha],
+    );
+    if (!msgResult.rowCount) return { ok: false, motivo: 'No hay mensajes de texto en este chat.' };
+    const msgs = msgResult.rows.reverse();
+
+    let lastClientIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (String(msgs[i].direction_whmem) === '0') { lastClientIdx = i; break; }
+    }
+    if (lastClientIdx === -1) return { ok: false, motivo: 'El cliente no tiene mensajes en este chat.' };
+    const lastClientMsg = msgs[lastClientIdx].body_whmem;
+
+    const config = await this.botConfig.getConfig(ideWhcue);
+    const nombreBot = config?.nombre_bot || 'QuimIA';
+    const nombreEmpresa = config?.nombre_empresa || 'la empresa';
+
+    const tipoConsulta = await this.botGpt.clasificarConsulta(lastClientMsg);
+
+    if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
+      const texto = this.construirTextoInfo(tipoConsulta as any, nombreEmpresa, config);
+      if (texto) return { ok: true, respuesta: texto, tipo: tipoConsulta };
+    }
+
+    const historial: { role: 'user' | 'assistant'; content: string }[] = msgs
+      .slice(0, lastClientIdx)
+      .map((m) => ({
+        role: (String(m.direction_whmem) === '0' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.body_whmem,
+      }));
+
+    const promptBase = (config?.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
+      .replace(/{BOT_NOMBRE}/g, nombreBot)
+      .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
+
+    const respuesta = await this.botGpt.generateResponse(
+      promptBase,
+      historial,
+      lastClientMsg,
+      `Eres ${nombreBot}. Un asesor humano te pidió ayuda para responder el último mensaje del cliente — vas a ` +
+      `PROPONER una respuesta que el asesor va a revisar antes de enviarla, no la enviás vos directamente. ` +
+      `Responde de forma natural y cálida, basándote en el historial. No inventes precios, stock ni datos de ` +
+      `pedidos/trámites que no tengas — si el mensaje depende de eso, proponé una respuesta honesta que lo reconozca. ` +
+      `No pidas correo electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por ` +
+      `defecto y solo pregunta la ciudad al final.`,
+    );
+
+    return { ok: true, respuesta, tipo: tipoConsulta };
+  }
+
+  /**
+   * Envía la respuesta propuesta por componerRespuestaAsistida (o editada por el agente)
+   * — sin tocar bot_activo_whcha/bot_modo_whcha, el chat se queda en ASESOR. Guardado:
+   * solo funciona si el chat SIGUE en modo ASESOR al momento de enviar (pudo cambiar
+   * entre que se generó el preview y que el agente confirma).
+   */
+  async enviarRespuestaAsistida(ideWhcha: number, mensaje: string): Promise<void> {
+    const chatRow = await this.dataSource.pool.query<{
+      wa_id_whcha: string; ide_empr: number; bot_modo_whcha: string;
+    }>(
+      `SELECT c.wa_id_whcha, cu.ide_empr, c.bot_modo_whcha
+       FROM wha_chat c
+       INNER JOIN wha_cuenta cu
+         ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
+         AND cu.activo_whcue = TRUE
+       WHERE c.ide_whcha = $1 LIMIT 1`,
+      [ideWhcha],
+    );
+    if (!chatRow.rowCount) {
+      throw new BadRequestException('Chat no encontrado.');
+    }
+    const { wa_id_whcha: waId, ide_empr: ideEmpr, bot_modo_whcha: botModo } = chatRow.rows[0];
+    if (botModo !== 'ASESOR') {
+      throw new BadRequestException('Este chat ya no está en modo ASESOR — la respuesta asistida solo aplica ahí.');
+    }
+    await this.sendText(ideEmpr, waId, mensaje);
   }
 
   /**
@@ -3848,6 +4084,8 @@ export class BotService implements OnModuleInit {
       `${contextoFlujo} ` +
       `Responde de forma natural y cálida al mensaje del cliente. ` +
       `Si no puedes procesar su solicitud en este momento, guíalo de vuelta al flujo. ` +
+      `No pidas correo electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por ` +
+      `defecto y solo pregunta la ciudad al final. ` +
       `Al final de tu respuesta agrega una línea: "_Recuerda que puedes escribir *SALIR* en cualquier momento para hablar con un asesor 😊_"`,
     );
     await this.sendText(ideEmpr, waId, respuesta);

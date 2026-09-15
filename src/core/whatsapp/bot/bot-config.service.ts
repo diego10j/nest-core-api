@@ -33,6 +33,7 @@ export interface BotConfigData {
   lng_empresa: number | null;
   reduce_mensajes_whbco: boolean;
   segundos_espera_whbco: number;
+  tiempo_reactiva_chats_viejos: number | null;
 }
 
 @Injectable()
@@ -54,7 +55,8 @@ export class BotConfigService {
       const parsed = JSON.parse(cached) as BotConfigData;
       // Invalidar cache si resp_ubicacion no existe o es null (objeto pre-migración o cacheado con valores vacíos),
       // o si reduce_mensajes_whbco no existe (cacheado antes de la migración de mensajes reducidos)
-      if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null || !('reduce_mensajes_whbco' in parsed)) {
+      if (!('resp_ubicacion' in parsed) || parsed.resp_ubicacion === null || !('reduce_mensajes_whbco' in parsed)
+        || !('tiempo_reactiva_chats_viejos' in parsed)) {
         await this.dataSource.redisClient.del(cacheKey);
       } else {
         return parsed;
@@ -66,7 +68,7 @@ export class BotConfigService {
              bc.nombre_bot, bc.prompt_sistema,
              bc.resp_ubicacion, bc.resp_horario, bc.resp_envio, bc.resp_catalogo,
              bc.monto_envio_gratis, bc.max_intentos_fallo,
-             bc.reduce_mensajes_whbco, bc.segundos_espera_whbco,
+             bc.reduce_mensajes_whbco, bc.segundos_espera_whbco, bc.tiempo_reactiva_chats_viejos,
              COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa,
              e.latitud_empr  AS lat_empresa,
              e.longitud_empr AS lng_empresa
@@ -320,6 +322,7 @@ export class BotConfigService {
         bc.max_intentos_fallo,
         bc.reduce_mensajes_whbco,
         bc.segundos_espera_whbco,
+        bc.tiempo_reactiva_chats_viejos,
         bc.hora_ingre,
         bc.hora_actua,
         COALESCE(e.nom_corto_empr, 'Mi Empresa') AS nombre_empresa
@@ -403,6 +406,27 @@ export class BotConfigService {
     this.logger.log(`[BotConfig] Modo mensajes reducidos ${activo ? 'ACTIVADO' : 'DESACTIVADO'} en config ${ideWhbco}`);
   }
 
+  /**
+   * Ajusta el umbral (en horas) de reactivación automática de chats viejos (por
+   * ide_whbco) — `null` desactiva la reactivación para esa cuenta.
+   */
+  async setTiempoReactivaBotConfig(ideWhbco: number, horas: number | null): Promise<void> {
+    const q = new SelectQuery(`
+      SELECT ide_whcue FROM wha_bot_config WHERE ide_whbco = $1 LIMIT 1
+    `);
+    q.addIntParam(1, ideWhbco);
+    const config = await this.dataSource.createSingleQuery(q) as { ide_whcue: number } | null;
+    if (!config) return;
+
+    const upd = new UpdateQuery('wha_bot_config', 'ide_whbco');
+    upd.values.set('tiempo_reactiva_chats_viejos', horas);
+    upd.where = 'ide_whbco = $1';
+    upd.addIntParam(1, ideWhbco);
+    await this.dataSource.createQuery(upd);
+    await this.invalidarCache(config.ide_whcue);
+    this.logger.log(`[BotConfig] tiempo_reactiva_chats_viejos=${horas ?? 'NULL (desactivado)'} en config ${ideWhbco}`);
+  }
+
   /** Ajusta los segundos de espera del debounce del modo mensajes reducidos (por ide_whbco) */
   async setSegundosEsperaBotConfig(ideWhbco: number, segundos: number): Promise<void> {
     const q = new SelectQuery(`
@@ -442,6 +466,7 @@ export class BotConfigService {
       if (dto.ide_tihor !== undefined) upd.values.set('ide_tihor', dto.ide_tihor);
       if (dto.reduce_mensajes_whbco !== undefined) upd.values.set('reduce_mensajes_whbco', dto.reduce_mensajes_whbco);
       if (dto.segundos_espera_whbco !== undefined) upd.values.set('segundos_espera_whbco', dto.segundos_espera_whbco);
+      if (dto.tiempo_reactiva_chats_viejos !== undefined) upd.values.set('tiempo_reactiva_chats_viejos', dto.tiempo_reactiva_chats_viejos);
       upd.where = 'ide_whcue = $1';
       upd.addIntParam(1, dto.ide_whcue);
       await this.dataSource.createQuery(upd);
@@ -458,6 +483,7 @@ export class BotConfigService {
       ins.values.set('max_intentos_fallo', dto.max_intentos_fallo ?? 3);
       ins.values.set('reduce_mensajes_whbco', dto.reduce_mensajes_whbco ?? false);
       ins.values.set('segundos_espera_whbco', dto.segundos_espera_whbco ?? 10);
+      ins.values.set('tiempo_reactiva_chats_viejos', dto.tiempo_reactiva_chats_viejos ?? null);
       await this.dataSource.createQuery(ins);
     }
 
@@ -476,7 +502,10 @@ Usa *negrita* para datos clave. Responde en español.
 Si no puedes responder algo, invita al cliente a escribir SALIR.
 
 === INSTRUCCIONES DE COTIZACIÓN ===
-Cuando el cliente quiera cotizar, solicita: nombre completo, correo, productos con cantidades y dirección.
+Cuando el cliente quiera cotizar, pedile SOLO su nombre y los productos con cantidades. NO le pidas correo
+electrónico ni dirección exacta de entrega — el sistema usa el correo de la empresa por defecto y solo pregunta
+la CIUDAD de envío al final, nunca el correo del cliente ni una dirección completa. Si ya sabés su nombre, no lo
+vuelvas a pedir tampoco.
 
 === RESPUESTA_UBICACION ===
 📍 *¡Con gusto te indico cómo llegar!*

@@ -15,7 +15,7 @@ const IDE_CCTEN_WHATSAPP = 0;           // Tiene (campo requerido)
 const REFERENCIA_WHATSAPP = 'WhatsApp';  // Referencia en cabecera
 
 /** Convierte número internacional Ecuador a formato local: +593983113543 → 0983113543 */
-function toLocalPhone(phone: string): string {
+export function toLocalPhone(phone: string): string {
   const digits = phone.replace(/^\+/, '');
   if (digits.startsWith('593') && digits.length > 3) {
     return '0' + digits.substring(3);

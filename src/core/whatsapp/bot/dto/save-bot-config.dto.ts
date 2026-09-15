@@ -56,4 +56,12 @@ export class SaveBotConfigDto {
   @IsInt()
   @IsOptional()
   segundos_espera_whbco?: number;
+
+  // Horas de silencio del cliente antes de reactivar automáticamente un chat viejo (no
+  // nuevo, en modo ASESOR) de un cliente conocido cuyo mensaje es una consulta de venta
+  // nueva. `null` = reactivación automática desactivada (default) — cada cuenta define
+  // su propio umbral en horas, no queda un número quemado en el código.
+  @IsInt()
+  @IsOptional()
+  tiempo_reactiva_chats_viejos?: number | null;
 }

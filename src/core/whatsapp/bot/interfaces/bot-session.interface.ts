@@ -2,6 +2,11 @@ export interface ProductoSesion {
   ide_inarti: number;
   nombre: string;
   cantidad: number;
+  // Texto literal que el cliente usó para la cantidad (ej. "6 canecas", "1 galón") cuando
+  // `cantidad` viene de una conversión (caneca→kg, galón→litros, etc.) — se usa para
+  // mostrarle al cliente lo que él mismo escribió en el resumen de la cotización, en vez
+  // del número ya convertido que se guarda internamente en la proforma.
+  cantidadTexto?: string | null;
   unidad?: string;
   siglas_unidad?: string;
   precio_unitario?: number;
@@ -127,6 +132,8 @@ export interface DatosSesion {
 export interface ItemCotizacionRapida {
   producto: string;
   cantidad: number | null;
+  // Texto literal que el cliente usó para la cantidad (ver ProductoSesion.cantidadTexto).
+  cantidadTexto?: string | null;
   // Para qué necesita el producto — solo se pide cuando `pedirUso` está activo (ver
   // arriba); se adjunta como `uso_generico` en la proforma para el asesor.
   uso?: string | null;

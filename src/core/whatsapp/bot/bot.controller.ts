@@ -81,6 +81,22 @@ export class BotController {
     return { ok: true, message: 'Chat liberado — el bot puede responder de nuevo' };
   }
 
+  @Post('responder-preview/:ideWhcha')
+  @ApiOperation({ summary: 'Compone una respuesta propuesta por el bot al último mensaje del cliente — sin enviarla (feature "Responder con Bot", chat en modo ASESOR)' })
+  async responderPreview(@Param('ideWhcha', ParseIntPipe) ideWhcha: number) {
+    return this.botService.componerRespuestaAsistida(ideWhcha);
+  }
+
+  @Post('responder-enviar/:ideWhcha')
+  @ApiOperation({ summary: 'Envía la respuesta propuesta (o editada) por "Responder con Bot" — el chat se queda en modo ASESOR' })
+  async responderEnviar(
+    @Param('ideWhcha', ParseIntPipe) ideWhcha: number,
+    @Body() dto: { mensaje: string },
+  ) {
+    await this.botService.enviarRespuestaAsistida(ideWhcha, dto.mensaje);
+    return { ok: true, message: 'Respuesta enviada' };
+  }
+
   @Put('config/:ideWhcue')
   @ApiOperation({ summary: 'Actualizar nombre, prompt, template y parámetros del bot' })
   async updateConfig(
@@ -153,6 +169,15 @@ export class BotController {
   ) {
     await this.botConfig.setReduceMensajesBotConfig(dto.ide, dto.activo);
     return { ok: true, activo: dto.activo };
+  }
+
+  @Post('setTiempoReactivaConfig')
+  @ApiOperation({ summary: 'Ajustar el umbral en horas de reactivación automática de chats viejos desde la grilla (por ide_whbco) — null desactiva' })
+  async setTiempoReactivaConfig(
+    @Body() dto: { ide: number; horas: number | null },
+  ) {
+    await this.botConfig.setTiempoReactivaBotConfig(dto.ide, dto.horas);
+    return { ok: true, horas: dto.horas };
   }
 
   @Post('setSegundosEsperaConfig')
