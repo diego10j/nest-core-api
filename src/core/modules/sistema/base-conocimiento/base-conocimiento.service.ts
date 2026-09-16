@@ -179,7 +179,6 @@ export class BaseConocimientoService {
         c.uuid,
         c.titulo_cono,
         c.contenido_cono,
-        c.texto_plano_cono,
         c.modo_editor_cono,
         c.ide_ccat,
         cc.nombre_ccat AS categoria_cono,
