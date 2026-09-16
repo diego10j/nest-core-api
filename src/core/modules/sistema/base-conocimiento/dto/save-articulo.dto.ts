@@ -80,6 +80,13 @@ export class SaveArticuloDto {
   @IsOptional()
   contenido?: string;
 
+  // Qué editor generó/debe abrir `contenido`: HTML (editor clásico Tiptap) o BLOCKS (editor de
+  // bloques BlockNote, JSON) — elegido por el usuario en el selector del formulario. Si no se
+  // envía (compatibilidad con builds viejos del frontend a mitad de deploy), se asume HTML.
+  @IsIn(['HTML', 'BLOCKS'])
+  @IsOptional()
+  modoEditor?: 'HTML' | 'BLOCKS';
+
   @IsInt()
   @IsOptional()
   ideCcat?: number | null;

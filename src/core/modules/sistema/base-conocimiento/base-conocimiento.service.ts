@@ -27,6 +27,53 @@ const stripHtml = (html: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// `contenido_cono` guarda el JSON de bloques de BlockNote (editor de notas migrado) — las notas
+// creadas con el editor Tiptap anterior siguen en HTML hasta que alguien las edite y guarde de
+// nuevo. Estructura mínima de un bloque BlockNote, solo lo necesario para extraer texto plano.
+type BlockNoteInlineNode = { text?: string; content?: BlockNoteInlineNode[] | string };
+type BlockNoteBlockNode = {
+  content?: BlockNoteInlineNode[] | string;
+  props?: Record<string, unknown>;
+  children?: BlockNoteBlockNode[];
+};
+
+const extractInlineText = (content: BlockNoteInlineNode[] | string | undefined): string => {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  return content.map((node) => node.text ?? extractInlineText(node.content)).join(' ');
+};
+
+const extractBlocksText = (blocks: BlockNoteBlockNode[]): string =>
+  blocks
+    .map((block) => {
+      const own = extractInlineText(block.content);
+      const caption = typeof block.props?.caption === 'string' ? (block.props.caption as string) : '';
+      const children = block.children?.length ? extractBlocksText(block.children) : '';
+      return [own, caption, children].filter(Boolean).join(' ');
+    })
+    .join(' ');
+
+/**
+ * Texto plano para full-text search — el modo lo elige el usuario en el selector del
+ * formulario (`modo_editor_cono`), no se adivina a partir del contenido.
+ */
+const extractTextoPlano = (contenido: string, modoEditor: 'HTML' | 'BLOCKS'): string => {
+  if (modoEditor !== 'BLOCKS') {
+    return stripHtml(contenido);
+  }
+  try {
+    const parsed = JSON.parse(contenido);
+    if (Array.isArray(parsed)) {
+      return extractBlocksText(parsed as BlockNoteBlockNode[])
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+  } catch {
+    // No es JSON -> HTML legacy del editor anterior.
+  }
+  return stripHtml(contenido);
+};
+
 // Whitelist — nunca interpolar el orderBy del cliente directo en el SQL.
 const ORDER_BY_SQL: Record<string, string> = {
   reciente: 'COALESCE(c.fecha_actua_cono, c.fecha_reg_cono) DESC',
@@ -110,6 +157,7 @@ export class BaseConocimientoService {
         c.uuid,
         c.titulo_cono,
         c.contenido_cono,
+        c.modo_editor_cono,
         c.ide_ccat,
         cc.nombre_ccat AS categoria_cono,
         c.color_cono,
@@ -152,6 +200,7 @@ export class BaseConocimientoService {
         c.uuid,
         c.titulo_cono,
         c.contenido_cono,
+        c.modo_editor_cono,
         c.ide_ccat,
         cc.nombre_ccat AS categoria_cono,
         c.color_cono,
@@ -195,16 +244,36 @@ export class BaseConocimientoService {
   }
 
   async saveArticulo(dto: SaveArticuloDto & HeaderParamsDto): Promise<ResultQuery> {
-    const { uuid, titulo, contenido, ideCcat, color, favorito, tags = [], relaciones = [], archivos = [] } = dto;
-    const textoPlano = [titulo, stripHtml(contenido), tags.join(' ')].filter(Boolean).join(' ').slice(0, 20000);
+    const {
+      uuid,
+      titulo,
+      contenido,
+      modoEditor = 'HTML',
+      ideCcat,
+      color,
+      favorito,
+      tags = [],
+      relaciones = [],
+      archivos = [],
+    } = dto;
+    const textoPlano = [titulo, extractTextoPlano(contenido || '', modoEditor), tags.join(' ')]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 20000);
 
     const listQuery: Query[] = [];
     let ideCono: number;
+    // Imágenes insertadas EN EL TEXTO (no adjuntos de verdad) que quedaron vinculadas en un
+    // guardado anterior pero ya no aparecen en el contenido nuevo -> se desvinculan y se borra
+    // el archivo físico, igual que hace deleteArchivo (ver más abajo, tras el listQuery).
+    let archivosAEliminar: { uuid: string; nombre_disco_carc: string }[] = [];
 
     if (uuid) {
       const existing = await this.dataSource.createSingleQuery(
         (() => {
-          const q = new SelectQuery(`SELECT ide_cono FROM sis_conocimiento WHERE uuid = $1 AND ide_empr = $2`);
+          const q = new SelectQuery(
+            `SELECT ide_cono, contenido_cono FROM sis_conocimiento WHERE uuid = $1 AND ide_empr = $2`,
+          );
           q.addStringParam(1, uuid);
           q.addParam(2, dto.ideEmpr);
           return q;
@@ -215,9 +284,30 @@ export class BaseConocimientoService {
       }
       ideCono = existing.ide_cono;
 
+      const contenidoAnterior: string = existing.contenido_cono || '';
+      const contenidoNuevo = contenido || '';
+      const archivosVinculados = await this.dataSource.createSelectQuery(
+        (() => {
+          const q = new SelectQuery(
+            `SELECT uuid, nombre_disco_carc FROM sis_conocimiento_archivo WHERE ide_cono = $1`,
+          );
+          q.addParam(1, ideCono);
+          return q;
+        })(),
+      );
+      archivosAEliminar = archivosVinculados.filter(
+        (a) => contenidoAnterior.includes(a.uuid) && !contenidoNuevo.includes(a.uuid),
+      );
+      if (archivosAEliminar.length > 0) {
+        const deleteInline = new DeleteQuery('sis_conocimiento_archivo');
+        deleteInline.where = `uuid IN (${archivosAEliminar.map((a) => `'${a.uuid}'`).join(',')})`;
+        listQuery.push(deleteInline);
+      }
+
       const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
       updateQuery.values.set('titulo_cono', titulo);
       updateQuery.values.set('contenido_cono', contenido || null);
+      updateQuery.values.set('modo_editor_cono', modoEditor);
       updateQuery.values.set('texto_plano_cono', textoPlano);
       // ideCcat/color: solo se tocan si el caller los envió explícitamente (permite hacer saves
       // parciales, ej. togglear favorito, sin borrar por accidente la categoría o el color).
@@ -233,6 +323,7 @@ export class BaseConocimientoService {
       insertQuery.values.set(this.primaryKey, ideCono);
       insertQuery.values.set('titulo_cono', titulo);
       insertQuery.values.set('contenido_cono', contenido || null);
+      insertQuery.values.set('modo_editor_cono', modoEditor);
       insertQuery.values.set('texto_plano_cono', textoPlano);
       insertQuery.values.set('ide_ccat', ideCcat || null);
       insertQuery.values.set('color_cono', isDefined(color) ? color : null);
@@ -299,6 +390,17 @@ export class BaseConocimientoService {
     }
 
     await this.dataSource.createListQuery(listQuery);
+
+    // Recién ahora que la fila ya no existe en BD se borra el archivo físico (mismo orden que
+    // usa deleteArchivo) de cada imagen inline que quedó fuera del contenido nuevo.
+    archivosAEliminar.forEach((archivo) => {
+      const filePath = join(CONOCIMIENTO_STORAGE.BASE_PATH, archivo.nombre_disco_carc);
+      try {
+        unlinkSync(filePath);
+      } catch (error) {
+        this.errorLog.createErrorLog(`No se pudo borrar la imagen inline ${filePath}: ${error}`);
+      }
+    });
 
     const saved = await this.dataSource.createSingleQuery(
       (() => {
@@ -391,8 +493,10 @@ export class BaseConocimientoService {
         a.extension_carc,
         a.peso_carc AS peso,
         a.usuario_ingre,
-        a.fecha_reg_carc
+        a.fecha_reg_carc,
+        c.contenido_cono
       FROM sis_conocimiento_archivo a
+      INNER JOIN sis_conocimiento c ON c.ide_cono = a.ide_cono
       WHERE a.ide_cono = $1
       ORDER BY a.fecha_reg_carc DESC
     `);
@@ -400,6 +504,10 @@ export class BaseConocimientoService {
     const data = await this.dataSource.createSelectQuery(query);
     data.forEach((row) => {
       row.esImagen = isImageExtension(row.extension_carc || '');
+      // Imagen insertada en el cuerpo de la nota (no un adjunto de verdad) -> se oculta de la
+      // lista de "Adjuntos" en el frontend (ver ConocimientoAdjuntos).
+      row.inline = (row.contenido_cono || '').includes(row.uuid);
+      delete row.contenido_cono;
     });
     return data;
   }
