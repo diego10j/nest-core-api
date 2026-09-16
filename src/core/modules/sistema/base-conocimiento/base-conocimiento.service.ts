@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs';
+import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
 import { BadRequestException, Injectable } from '@nestjs/common';
@@ -10,6 +10,7 @@ import { Query } from 'src/core/connection/helpers/query';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { ErrorsLoggerService } from 'src/errors/errors-logger.service';
 import { isDefined } from 'src/util/helpers/common-util';
+import { detectMimeType } from 'src/util/helpers/file-utils';
 import { normalizeString } from 'src/util/helpers/sql-util';
 
 import { CONOCIMIENTO_STORAGE } from './constants/base-conocimiento.constants';
@@ -520,17 +521,35 @@ export class BaseConocimientoService {
     `);
     query.addStringParam(1, uuid);
     const data = await this.dataSource.createSingleQuery(query);
-    if (!data) {
-      throw new BadRequestException('El adjunto no existe');
+
+    let nombreDisco: string | undefined = data?.nombre_disco_carc;
+    let nombreOriginal: string | undefined = data?.nombre_original_carc;
+    let mime: string | undefined = data?.mime_carc;
+
+    // Una imagen recién insertada en el editor (uploadArchivo) todavía no tiene fila en
+    // sis_conocimiento_archivo -- esa fila recién se crea al guardar el artículo (ver
+    // saveArticulo). El usuario ya necesita verla en el editor antes de guardar, así que si no
+    // hay fila en BD se busca el archivo físico directo por su prefijo de uuid en disco.
+    if (!nombreDisco) {
+      const enDisco = existsSync(CONOCIMIENTO_STORAGE.BASE_PATH)
+        ? readdirSync(CONOCIMIENTO_STORAGE.BASE_PATH).find((f) => f.startsWith(`${uuid}.`))
+        : undefined;
+      if (!enDisco) {
+        throw new BadRequestException('El adjunto no existe');
+      }
+      nombreDisco = enDisco;
+      nombreOriginal = enDisco;
+      mime = detectMimeType(enDisco);
     }
-    const filePath = join(CONOCIMIENTO_STORAGE.BASE_PATH, data.nombre_disco_carc);
+
+    const filePath = join(CONOCIMIENTO_STORAGE.BASE_PATH, nombreDisco);
     if (!existsSync(filePath)) {
       throw new BadRequestException('El archivo no existe en disco');
     }
     const stat = statSync(filePath);
-    res.setHeader('Content-Type', data.mime_carc || 'application/octet-stream');
+    res.setHeader('Content-Type', mime || 'application/octet-stream');
     res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `inline; filename="${data.nombre_original_carc}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${nombreOriginal}"`);
     createReadStream(filePath).pipe(res);
   }
 

@@ -132,9 +132,14 @@ export class BotGptService {
               + 'HORARIO = horarios de atención, si están abiertos.\n'
               + 'ENVIO = envíos, despacho, costo de envío a otras ciudades.\n'
               + 'CATALOGO = pide el catálogo o la lista de precios EN GENERAL, sin nombrar un producto específico.\n'
-              + 'PRODUCTO = disponibilidad, precio o compra de un producto específico (si nombra un producto concreto, es PRODUCTO aunque pregunte el precio). NO incluye preguntas sobre sucursales.\n'
-              + 'GENERAL = saludos u otras consultas.\n'
-              + 'Ejemplos: "tienen sucursal en Cuenca"→UBICACION | "envían a Guayaquil"→ENVIO | "tienen cera de palma"→PRODUCTO | "cuál es el precio del sorbitol"→PRODUCTO | "me pasas la lista de precios"→CATALOGO | "qué horario tienen"→HORARIO.\n'
+              + 'PRODUCTO = disponibilidad, precio, compra, o pedir INFORMACIÓN/DETALLES de un producto específico — '
+              + 'nombrar el producto puntual ya alcanza, no hace falta que pida precio o quiera comprar explícitamente '
+              + '(ej. "me ayuda con información sobre el ácido peracético" es PRODUCTO, no un saludo genérico). '
+              + 'NO incluye preguntas sobre sucursales.\n'
+              + 'GENERAL = saludos u otras consultas que NO nombran ningún producto puntual.\n'
+              + 'Ejemplos: "tienen sucursal en Cuenca"→UBICACION | "envían a Guayaquil"→ENVIO | "tienen cera de palma"→PRODUCTO | '
+              + '"cuál es el precio del sorbitol"→PRODUCTO | "me ayuda con información sobre el ácido peracético"→PRODUCTO | '
+              + '"me pasas la lista de precios"→CATALOGO | "qué horario tienen"→HORARIO.\n'
               + 'Responde SOLO la categoría en mayúsculas.',
           },
           { role: 'user', content: texto },
@@ -191,7 +196,9 @@ export class BotGptService {
               'no puede consultar, así que ninguna categoría debe marcarse TRUE ahí — que quede sin clasificar para ' +
               'que se derive a un asesor en vez de responder con la política general.\n' +
               'catalogo = pide el catálogo o la lista de precios EN GENERAL, sin nombrar un producto específico.\n' +
-              'producto = disponibilidad, precio o compra de un producto específico.\n' +
+              'producto = disponibilidad, precio, compra, o pedir INFORMACIÓN/DETALLES de un producto específico — ' +
+              'nombrar el producto puntual ya alcanza, no hace falta que pida precio o quiera comprar explícitamente ' +
+              '(ej. "me ayuda con información sobre el ácido peracético" cuenta como producto=true).\n' +
               'Responde SOLO JSON: {"ubicacion":bool,"horario":bool,"envio":bool,"catalogo":bool,"producto":bool}.',
           },
           { role: 'user', content: texto },
@@ -423,7 +430,13 @@ export class BotGptService {
               '"6 canecas" o "20kg"), es la respuesta natural a "cuánto necesitas de CADA UNO" — no hace falta que ' +
               'repita el nombre de cada producto uno por uno. Aplicá esa misma cantidad (ya convertida según las ' +
               'reglas de abajo) a TODOS los productos de la lista. NO la dejes en null solo porque no nombró los ' +
-              'productos explícitamente — null en este caso también deja al bot preguntando lo mismo sin salida.\n' +
+              'productos explícitamente — null en este caso también deja al bot preguntando lo mismo sin salida. ' +
+              'OJO: esta regla es SOLO para una expresión que sí describe una cantidad/envase (número, "cantidad ' +
+              'mínima", un envase coloquial, etc.) — si el mensaje NO tiene relación alguna con una cantidad (ej. es ' +
+              'un nombre de persona/empresa, una pregunta sobre otro tema, un saludo), NO le fuerces un valor a los ' +
+              'productos: ahí sí dejalos en null, es la única forma de que el bot vuelva a preguntar en vez de ' +
+              'inventar que "cantidad mínima" fue la respuesta (caso real detectado 2026-09-16: el cliente escribió ' +
+              'su nombre, "MICHELLE MOLINA", y se interpretó como si fuera la cantidad de dos productos).\n' +
               '   - Equivalencias de masa: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, 1 libra (lb) = 0.453592 kg.\n' +
               '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en ' +
               'mililitros (ml), trátalo como gramos (densidad ≈ 1, 1ml = 1g) y luego conviértelo a la unidad de ' +
@@ -726,7 +739,14 @@ export class BotGptService {
                   'ese caso usa el nombre de la empresa como "nombre". PERO si el mensaje trae AMBOS (su nombre de ' +
                   'persona Y el de la empresa, ej. "le saluda Lissette Catagua de la cía QUIMPAC ECUADOR S.A."), usa ' +
                   'el NOMBRE DE LA PERSONA como "nombre" — es a quien se saluda, no a la empresa; el nombre de ' +
-                  'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. '
+                  'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. ' +
+                  'OJO: un nombre de empresa NO es lo mismo que el nombre de un PRODUCTO/QUÍMICO (ej. "ácido ' +
+                  'sulfónico", "formol", "percarbonato de sodio") ni una PREGUNTA sobre algo (termina en "?", o es ' +
+                  'claramente una consulta tipo "tienen tal cosa?"). Si el mensaje es eso — un producto suelto o una ' +
+                  'pregunta — NO es una respuesta válida al nombre: "nombre" debe quedar null y ese texto entero va a ' +
+                  '"restoTexto", aunque sea corto y parezca a primera vista un nombre de empresa (caso real detectado ' +
+                  '2026-09-16: "ACIDO SULFONICO?" — una pregunta sobre otro producto — se tomó como si fuera el ' +
+                  'nombre del cliente). '
                 : '') +
               (pedirCiudad
                 ? ' Si en vez de (o además de) decir el nombre de la ciudad, el cliente da una DIRECCIÓN completa ' +
