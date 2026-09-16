@@ -32,8 +32,11 @@ const stripHtml = (html: string): string =>
 // creadas con el editor Tiptap anterior siguen en HTML hasta que alguien las edite y guarde de
 // nuevo. Estructura mínima de un bloque BlockNote, solo lo necesario para extraer texto plano.
 type BlockNoteInlineNode = { text?: string; content?: BlockNoteInlineNode[] | string };
+// El bloque `table` no trae un array de inline nodes en `content` como el resto de bloques,
+// sino `{ type: 'tableContent', rows: [{ cells: [{ content: [...] }] }] }`.
+type BlockNoteTableContent = { type: 'tableContent'; rows?: { cells?: { content?: BlockNoteInlineNode[] | string }[] }[] };
 type BlockNoteBlockNode = {
-  content?: BlockNoteInlineNode[] | string;
+  content?: BlockNoteInlineNode[] | BlockNoteTableContent | string;
   props?: Record<string, unknown>;
   children?: BlockNoteBlockNode[];
 };
@@ -44,10 +47,28 @@ const extractInlineText = (content: BlockNoteInlineNode[] | string | undefined):
   return content.map((node) => node.text ?? extractInlineText(node.content)).join(' ');
 };
 
+// Sin este caso aparte para tablas, `content.map` revienta con "content.map is not a function"
+// (content es un objeto, no un array) y esa excepción se propaga hasta el catch de
+// `extractTextoPlano`, que entonces cae al fallback de stripHtml sobre el JSON crudo -> el
+// artículo completo queda con el JSON tal cual como "texto plano" en vez de solo perder el
+// texto de esa tabla puntual. Cualquier otra forma no reconocida devuelve '' en vez de tirar.
+const extractBlockContentText = (content: BlockNoteBlockNode['content']): string => {
+  if (!content) return '';
+  if (typeof content === 'string' || Array.isArray(content)) {
+    return extractInlineText(content);
+  }
+  if (content.type === 'tableContent') {
+    return (content.rows ?? [])
+      .map((row) => (row.cells ?? []).map((cell) => extractInlineText(cell.content)).join(' '))
+      .join(' ');
+  }
+  return '';
+};
+
 const extractBlocksText = (blocks: BlockNoteBlockNode[]): string =>
   blocks
     .map((block) => {
-      const own = extractInlineText(block.content);
+      const own = extractBlockContentText(block.content);
       const caption = typeof block.props?.caption === 'string' ? (block.props.caption as string) : '';
       const children = block.children?.length ? extractBlocksText(block.children) : '';
       return [own, caption, children].filter(Boolean).join(' ');
