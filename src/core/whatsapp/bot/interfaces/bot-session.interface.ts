@@ -75,6 +75,10 @@ export interface PendienteConfirmacion {
 
 export interface DatosSesion {
   texto_inicial?: string;
+  // Cuántas veces se le preguntó el nombre sin lograr extraerlo (ver handleAtencionLibre/
+  // handleAtencionLibreReducida y handleConfirmacion) — a la 2ª vez sin éxito se deja de
+  // insistir y se sigue con "CONSUMIDOR FINAL" en vez de repreguntar indefinidamente.
+  intentosNombre?: number;
   // Texto YA clasificado como PRODUCTO que quedó en espera mientras el cliente
   // desconocido pasa por identificación (PREGUNTA_ES_CLIENTE → IDENTIFICACION /
   // DATOS_NUEVO_CLIENTE) — al terminar de identificarse se procesa automáticamente

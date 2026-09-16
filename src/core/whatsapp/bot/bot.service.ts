@@ -672,7 +672,7 @@ export class BotService implements OnModuleInit {
           // este mismo mensaje más abajo (detectarRequerimientos), igual que si ya
           // conociéramos al cliente de una sesión anterior.
         } else {
-          datos = { ...datos, texto_inicial: texto };
+          datos = { ...datos, texto_inicial: texto, intentosNombre: 1 };
           await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
           await this.sendText(ideEmpr, waId,
             `¡Hola! Soy *${nombreBot}*, asistente de *${nombreEmpresa}* 😊 ¿Cuál es tu nombre?`,
@@ -695,40 +695,58 @@ export class BotService implements OnModuleInit {
       }
 
       const { nombre, restoTexto } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      const intentosPrevios = datos.intentosNombre ?? 1;
       if (!nombre) {
         // Mismo fix que handleConfirmacion (flujo clásico): este mensaje tampoco traía
         // el nombre, pero puede traer lo que el cliente necesita — se acumula en
         // texto_inicial en vez de perderlo cuando finalmente dé su nombre.
         const textoAcumulado = [datos.texto_inicial, texto].filter(Boolean).join('\n');
-        if (textoAcumulado !== datos.texto_inicial) {
-          datos = { ...datos, texto_inicial: textoAcumulado };
+        if (intentosPrevios >= 2) {
+          // 2 intentos sin lograr extraer el nombre — se deja de insistir (evita el loop
+          // "¿cómo te llamas?" indefinido, caso real detectado 2026-09-16) y se sigue con
+          // CONSUMIDOR FINAL. El resto de la función procesa este mismo mensaje más abajo.
+          datos = {
+            ...datos,
+            texto_inicial: undefined,
+            cliente: { nombres: 'CONSUMIDOR FINAL', correo: '', es_cliente_registrado: false },
+          };
           await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+          texto = textoAcumulado;
+        } else {
+          if (textoAcumulado !== datos.texto_inicial) {
+            datos = { ...datos, texto_inicial: textoAcumulado };
+          }
+          datos = { ...datos, intentosNombre: intentosPrevios + 1 };
+          await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+          // Segundo pedido — tono cordial pero más directo que el saludo inicial, no la
+          // misma pregunta repetida (caso real detectado 2026-09-16: el cliente escribió
+          // mal su nombre, GPT no lo reconoció, y el bot insistía con el mismo texto).
+          await this.sendText(ideEmpr, waId, `Para poder continuar, ¿me facilitas tu nombre por favor? 😊`);
+          return;
         }
-        await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
-        return;
+      } else {
+        datos = {
+          ...datos,
+          cliente: {
+            ...(datos.cliente ?? {}),
+            nombres: nombre,
+            correo: datos.cliente?.correo || '',
+            es_cliente_registrado: datos.cliente?.es_cliente_registrado ?? false,
+          },
+        };
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
+        await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
+        // Se combina lo que había preguntado en el primer mensaje (ej. "Hola, tienen cera
+        // de coco") CON el resto de esta respuesta, SIN el nombre ya extraído (ej.
+        // "Janneth Pachacama quiero la ubicación" → restoTexto="quiero la ubicación") —
+        // antes se usaba el mensaje CRUDO completo, así que si el cliente respondía
+        // ÚNICAMENTE con su nombre/empresa (ej. "Laboratorio DOC"), ese texto se
+        // reinyectaba en el análisis de productos y GPT lo interpretaba como un segundo
+        // producto de la lista (caso real detectado 2026-09-15: cotización con "TWEEN DE
+        // 20" real + "LABORATORIO DOC" inventado). Si el primer mensaje no traía nada
+        // (solo "Hola") ni esta respuesta traía nada más que el nombre, queda vacío.
+        texto = [datos.texto_inicial, restoTexto].filter(Boolean).join('\n');
       }
-
-      datos = {
-        ...datos,
-        cliente: {
-          ...(datos.cliente ?? {}),
-          nombres: nombre,
-          correo: datos.cliente?.correo || '',
-          es_cliente_registrado: datos.cliente?.es_cliente_registrado ?? false,
-        },
-      };
-      await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
-      await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
-      // Se combina lo que había preguntado en el primer mensaje (ej. "Hola, tienen cera
-      // de coco") CON el resto de esta respuesta, SIN el nombre ya extraído (ej.
-      // "Janneth Pachacama quiero la ubicación" → restoTexto="quiero la ubicación") —
-      // antes se usaba el mensaje CRUDO completo, así que si el cliente respondía
-      // ÚNICAMENTE con su nombre/empresa (ej. "Laboratorio DOC"), ese texto se reinyectaba
-      // en el análisis de productos y GPT lo interpretaba como un segundo producto de la
-      // lista (caso real detectado 2026-09-15: cotización con "TWEEN DE 20" real +
-      // "LABORATORIO DOC" inventado). Si el primer mensaje no traía nada (solo "Hola") ni
-      // esta respuesta traía nada más que el nombre, queda vacío — se resuelve más abajo.
-      texto = [datos.texto_inicial, restoTexto].filter(Boolean).join('\n');
     }
 
     // El debounce existe justo para esto: juntar todo lo que el cliente escribió (uno o
@@ -1439,7 +1457,7 @@ export class BotService implements OnModuleInit {
     // No dio su nombre en este mensaje: se pregunta antes de responder — se guarda lo
     // que preguntó para contestarlo apenas lo sepamos, en vez de pedirle que lo repita.
     const datosActualizados: DatosSesion = {
-      ...datosSesion, productos: datosSesion?.productos ?? [], texto_inicial: texto,
+      ...datosSesion, productos: datosSesion?.productos ?? [], texto_inicial: texto, intentosNombre: 1,
     };
     await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CONFIRMACION, datosActualizados);
     await this.sendText(ideEmpr, waId, `¡Hola! Soy *${nombreBot}*, asistente de *${nombreEmpresa}* 😊 ¿Cuál es tu nombre?`);
@@ -1465,6 +1483,7 @@ export class BotService implements OnModuleInit {
       // de patrón: "soy Diego", "me llamo Diego" o solo "Diego" son todas válidas) para
       // que la conversación se sienta natural, no como un formulario.
       const { nombre, restoTexto } = await this.botGpt.extraerNombreYCiudad(texto, true, false);
+      const intentosPrevios = datos.intentosNombre ?? 1;
       if (!nombre) {
         // Este mensaje tampoco traía el nombre — puede traer, en cambio, lo que el
         // cliente necesita (ej. "Dispone de yoduro de potasio"). Se acumula en
@@ -1474,11 +1493,30 @@ export class BotService implements OnModuleInit {
         // genérico en vez de la cotización que ya había pedido (caso real: "Buenos dias"
         // → "Dispone de yoduro de potasio" → "Ashly" → el bot ignoró el producto).
         const textoAcumulado = [datos.texto_inicial, texto].filter(Boolean).join('\n');
+        if (intentosPrevios >= 2) {
+          // 2 intentos sin lograr extraer el nombre — se deja de insistir (mismo criterio
+          // que handleAtencionLibreReducida, caso real detectado 2026-09-16) y se sigue
+          // con CONSUMIDOR FINAL en vez de repreguntar indefinidamente.
+          const datosConsumidorFinal: DatosSesion = {
+            ...datos,
+            texto_inicial: undefined,
+            cliente: { nombres: 'CONSUMIDOR FINAL', correo: '', es_cliente_registrado: false },
+          };
+          await this.responderConsultaInicial(
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConsumidorFinal, textoAcumulado, nombreEmpresa, config,
+          );
+          return;
+        }
         if (textoAcumulado !== datos.texto_inicial) {
           await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CONFIRMACION,
-            { ...datos, texto_inicial: textoAcumulado });
+            { ...datos, texto_inicial: textoAcumulado, intentosNombre: intentosPrevios + 1 });
+        } else {
+          await this.botSession.update(sesion.ide_whbse, BotState.ESPERANDO_CONFIRMACION,
+            { ...datos, intentosNombre: intentosPrevios + 1 });
         }
-        await this.sendText(ideEmpr, waId, `¡Con gusto te ayudo! 😊 Antes cuéntame, ¿cómo te llamas?`);
+        // Segundo pedido — tono cordial pero más directo que el saludo inicial, no la
+        // misma pregunta repetida (caso real detectado 2026-09-16).
+        await this.sendText(ideEmpr, waId, `Para poder continuar, ¿me facilitas tu nombre por favor? 😊`);
         return;
       }
 
