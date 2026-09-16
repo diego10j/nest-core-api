@@ -12,6 +12,15 @@ import { BotDebounceService } from './bot-debounce.service';
 import { BotSessionService } from './bot-session.service';
 import { BotService } from './bot.service';
 
+// El cliente avisa explícitamente que va a seguir escribiendo (típicamente antes de
+// copiar/pegar datos de facturación desde otra app, lo que tarda más que un mensaje
+// normal) — si el último mensaje del buffer matchea esto, se extiende la espera del
+// debounce en vez de procesar ya (ver procesarBufferReducido). Caso real detectado
+// 2026-09-16: "Le envío lap datos" seguido, segundos después, del membrete de la
+// empresa — el debounce cerró la cotización antes de que llegara ese bloque.
+const REGEX_AVISO_CONTINUACION =
+  /\b(le\s+env[ií]o|te\s+env[ií]o|ya\s+te\s+(paso|env[ií]o|mando)|ahi\s+te\s+(paso|mando|env[ií]o)|voy\s+a\s+enviar|dame\s+un\s+(momento|segundo|seg)|un\s+momento|espera(me)?)\b/i;
+
 @Injectable()
 export class BotScheduleService {
   private readonly logger = new Logger(BotScheduleService.name);
@@ -19,6 +28,12 @@ export class BotScheduleService {
   // Cota inferior conservadora para candidatos del debounce de mensajes reducidos — el
   // corte real por cuenta (wha_bot_config.segundos_espera_whbco) se aplica después.
   private readonly MIN_ESPERA_REDUCIDO_SEG = 3;
+
+  // Tope de veces que se extiende la espera de un mismo chat por "aviso de continuación"
+  // (ver REGEX_AVISO_CONTINUACION) antes de procesarlo de todos modos — evita posponer
+  // indefinidamente si el cliente sigue escribiendo mensajes de ese tipo sin llegar nunca
+  // al dato real.
+  private readonly MAX_EXTENSIONES_REDUCIDO = 2;
 
   constructor(
     private readonly dataSource: DataSourceService,
@@ -116,12 +131,12 @@ export class BotScheduleService {
   }
 
   /**
-   * Cada 5s revisa el buffer de mensajes del modo mensajes reducidos (wha_bot_config.
+   * Cada 15s revisa el buffer de mensajes del modo mensajes reducidos (wha_bot_config.
    * reduce_mensajes_whbco) — cuando un chat lleva `segundos_espera_whbco` sin mensajes
    * nuevos, procesa de una sola vez todo lo acumulado en vez de responder mensaje a
    * mensaje. Ver BotDebounceService para el detalle del buffer.
    */
-  @Cron('*/5 * * * * *')
+  @Cron('*/15 * * * * *')
   async procesarBufferReducido(): Promise<void> {
     try {
       const candidatos = await this.botDebounce.obtenerCandidatos(this.MIN_ESPERA_REDUCIDO_SEG);
@@ -151,6 +166,20 @@ export class BotScheduleService {
           const config = await this.botConfig.getConfig(info.ide_whcue);
           const esperaMs = (config?.segundos_espera_whbco ?? 10) * 1000;
           if (Date.now() - ultimoMensajeMs < esperaMs) continue; // aún no le toca a esta cuenta
+
+          // El cliente avisó que viene más (ver REGEX_AVISO_CONTINUACION) y nada llegó
+          // todavía — se le da una espera extra en vez de procesar ya, hasta un tope de
+          // extensiones para no posponer indefinidamente. Si no matchea, o ya se llegó al
+          // tope, el flujo sigue exactamente igual que antes.
+          const ultimoTexto = await this.botDebounce.ultimoMensaje(ideWhcha);
+          if (ultimoTexto && REGEX_AVISO_CONTINUACION.test(ultimoTexto)) {
+            const extensiones = await this.botDebounce.contarExtension(ideWhcha);
+            if (extensiones <= this.MAX_EXTENSIONES_REDUCIDO) {
+              await this.botDebounce.extenderEspera(ideWhcha);
+              this.logger.log(`[Bot][Reducido] Chat=${ideWhcha} avisó continuación ("${ultimoTexto}") — espera extendida (${extensiones}/${this.MAX_EXTENSIONES_REDUCIDO})`);
+              continue;
+            }
+          }
 
           const textos = await this.botDebounce.reclamarBuffer(ideWhcha);
           if (!textos.length) continue; // otro tick ya lo procesó

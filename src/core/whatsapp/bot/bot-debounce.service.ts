@@ -23,10 +23,47 @@ export class BotDebounceService {
     return `bot:reducido:buffer:${ideWhcha}`;
   }
 
+  private extensionKey(ideWhcha: number): string {
+    return `bot:reducido:ext:${ideWhcha}`;
+  }
+
   async encolarMensaje(ideWhcha: number, texto: string): Promise<void> {
     const redis = this.dataSource.redisClient;
     await redis.rpush(this.bufferKey(ideWhcha), texto);
     await redis.zadd(BotDebounceService.PENDING_ZSET, Date.now(), String(ideWhcha));
+  }
+
+  /** Último mensaje del buffer sin sacarlo de la cola (a diferencia de reclamarBuffer) — para
+   * chequear si amerita extender la espera antes de decidir procesar. */
+  async ultimoMensaje(ideWhcha: number): Promise<string | null> {
+    const redis = this.dataSource.redisClient;
+    const items = await redis.lrange(this.bufferKey(ideWhcha), -1, -1);
+    return items[0] ?? null;
+  }
+
+  /**
+   * Empuja el score del chat en PENDING_ZSET a "ahora" SIN tocar el buffer — reinicia el
+   * conteo de `segundos_espera_whbco` para el próximo tick, igual que si acabara de llegar
+   * un mensaje nuevo, pero sin que haya llegado uno. Usado cuando el último mensaje del
+   * cliente avisa que viene más ("le envío los datos") — evita cerrar el paso (ej. finalizar
+   * una cotización) justo antes de que lleguen los datos que anunció.
+   */
+  async extenderEspera(ideWhcha: number): Promise<void> {
+    const redis = this.dataSource.redisClient;
+    await redis.zadd(BotDebounceService.PENDING_ZSET, Date.now(), String(ideWhcha));
+  }
+
+  /**
+   * Cuenta cuántas veces se extendió la espera para este chat en la ráfaga actual (TTL 5
+   * min — se resetea solo entre conversaciones). Tope en el llamador para no posponer
+   * indefinidamente si el cliente sigue escribiendo mensajes tipo "un momento".
+   */
+  async contarExtension(ideWhcha: number): Promise<number> {
+    const redis = this.dataSource.redisClient;
+    const key = this.extensionKey(ideWhcha);
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 300);
+    return count;
   }
 
   /**
@@ -57,6 +94,7 @@ export class BotDebounceService {
     const key = this.bufferKey(ideWhcha);
     const textos = await redis.lrange(key, 0, -1);
     await redis.del(key);
+    await redis.del(this.extensionKey(ideWhcha));
     return textos;
   }
 
@@ -65,5 +103,6 @@ export class BotDebounceService {
     const redis = this.dataSource.redisClient;
     await redis.zrem(BotDebounceService.PENDING_ZSET, String(ideWhcha));
     await redis.del(this.bufferKey(ideWhcha));
+    await redis.del(this.extensionKey(ideWhcha));
   }
 }

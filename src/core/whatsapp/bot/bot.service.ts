@@ -291,7 +291,7 @@ export class BotService implements OnModuleInit {
       // ver intentarReactivarChatViejo. Si no aplica (config sin umbral/null, cliente
       // desconocido, todavía no pasó el umbral, o el mensaje no es de venta nueva), el
       // chat se queda en ASESOR igual que siempre.
-      const reactivado = await this.intentarReactivarChatViejo(waId, ideWhcha, ideWhcue, ideEmpr, texto);
+      const reactivado = await this.intentarReactivarChatViejo(waId, ideWhcha, ideWhcue, ideEmpr);
       if (!reactivado) {
         this.logger.warn(`[Bot] Chat ${ideWhcha} en modo ASESOR — bot no responde`);
         return;
@@ -943,8 +943,11 @@ export class BotService implements OnModuleInit {
           const todosEspecificos = matches
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
+          const descripciones = this.buildDescripcionesCatalogo(idsUnicos, catalogos);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            `¡Sí, disponemos de ${nombres}! 😊` +
+            (descripciones ? `\n${descripciones}\n` : ' ') +
+            `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
@@ -1650,8 +1653,11 @@ export class BotService implements OnModuleInit {
           const todosEspecificos = matches
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
+          const descripciones = this.buildDescripcionesCatalogo(idsUnicos, catalogos);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            `¡Sí, disponemos de ${nombres}! 😊` +
+            (descripciones ? `\n${descripciones}\n` : ' ') +
+            `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
@@ -3555,6 +3561,35 @@ export class BotService implements OnModuleInit {
     return `📋 *Resumen de tu cotización:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos tu cotización?`;
   }
 
+  /**
+   * Arma las líneas de descripción de los catálogos recién matcheados (ide_cata en
+   * `idsUnicos`) para el mensaje "¡Sí, disponemos de...!" — usa `descripcion_cata`
+   * (desc_corta_inccat/descripcion_inccat, ver obtenerCatalogosDisponibles) cuando el
+   * catálogo tiene una, en vez de responder solo con el link pelado. Antes esa
+   * descripción existía en la base (ej. "Somos importadores directos de una amplia
+   * variedad de moldes de silicona...") pero nunca se usaba — el bot respondía genérico
+   * aunque hubiera contenido real cargado para vender el catálogo (caso real detectado
+   * 2026-09-16: cliente preguntó por moldes, el catálogo "Moldes De Silicona" tiene
+   * descripción propia y el bot no la mencionó). Cada descripción se recorta para no
+   * mandar un párrafo entero por WhatsApp; catálogos sin descripción no agregan línea.
+   */
+  private buildDescripcionesCatalogo(
+    idsUnicos: number[],
+    catalogos: { ide_cata: number; nombre_cata: string; descripcion_cata: string | null }[],
+  ): string {
+    const MAX_CHARS = 220;
+    return idsUnicos
+      .map((id) => catalogos.find((c) => c.ide_cata === id))
+      .filter((c): c is { ide_cata: number; nombre_cata: string; descripcion_cata: string | null } => !!c?.descripcion_cata)
+      .map((c) => {
+        const desc = c.descripcion_cata!.length > MAX_CHARS
+          ? `${c.descripcion_cata!.slice(0, MAX_CHARS).trim()}…`
+          : c.descripcion_cata!;
+        return `_${desc}_`;
+      })
+      .join('\n');
+  }
+
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {
     return `Eres ${nombreBot}, asesora comercial virtual de ${nombreEmpresa}.
 
@@ -3651,8 +3686,24 @@ export class BotService implements OnModuleInit {
    *      con NOW() en SQL (ver investigación de zona horaria 2026-09-15 en el vault).
    *   3. El cliente es "conocido" — BotSessionService.esClienteConocido (memoria del bot
    *      o cruce por teléfono contra proformas ya generadas).
-   *   4. El mensaje es una consulta de venta nueva, no algo que dependa de un
-   *      trámite/pedido ya existente — BotGptService.puedeBotAtenderReactivacion.
+   * A propósito NO hay un cuarto filtro de "intención de venta" sobre el contenido del
+   * mensaje (existió como BotGptService.puedeBotAtenderReactivacion, quitado 2026-09-16):
+   * un cliente conocido que vuelve a escribir pasado el umbral se trata EXACTAMENTE igual
+   * que un chat nuevo — un chat nuevo activa el bot con cualquier primer mensaje, sin
+   * filtrar por contenido (ver processMessageInternal), así que reactivar un chat viejo no
+   * debía ser más exigente que eso. Con el filtro de intención, un simple "Hola" (la forma
+   * más común de reabrir una conversación) casi nunca calificaba como "venta nueva
+   * explícita" y el chat se quedaba mudo — igual de silencioso que el bug de
+   * isBotActive() de abajo, solo que este habría seguido fallando incluso después de
+   * arreglar ese otro.
+   * A propósito NO depende de BotConfigService.isBotActive() (activo_manual/horario) —
+   * este bot siempre se maneja con activo_manual=FALSE y sin horario, igual que la
+   * activación de chats NUEVOS (ver comentario en processMessageInternal): el toggle
+   * global nunca estuvo pensado para gatear la auto-activación, solo para forzar el bot
+   * ON/OFF a mano. Agregar ese chequeo acá bloqueaba la reactivación por completo en la
+   * configuración real de la cuenta (caso real detectado 2026-09-16: un cliente conocido
+   * escribió "Hola" pasadas las horas del umbral y el chat se quedó mudo, aunque cumplía
+   * las otras 3 condiciones, porque este chequeo cortaba antes de evaluarlas).
    * Si reactiva, solo cambia los flags del chat — el resto de processMessageInternal
    * sigue su curso normal con este mismo mensaje (misma sesión fresca en INICIO, mismo
    * saludo por nombre si hay memoria, mismo debounce de modo reducido si la cuenta lo
@@ -3660,8 +3711,11 @@ export class BotService implements OnModuleInit {
    * en vivo actual.
    */
   private async intentarReactivarChatViejo(
-    waId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number, texto: string,
+    waId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
   ): Promise<boolean> {
+    // Mismo freno que la activación de chats nuevos: en DEV nunca se auto-activa nada,
+    // para no disparar mensajes reales a números de producción durante pruebas locales.
+    if (envs.mode !== 'PROD') return false;
     try {
       const cfg = await this.dataSource.pool.query<{ tiempo_reactiva_chats_viejos: number | null }>(
         `SELECT tiempo_reactiva_chats_viejos FROM wha_bot_config WHERE ide_whcue = $1 LIMIT 1`,
@@ -3669,9 +3723,6 @@ export class BotService implements OnModuleInit {
       );
       const umbralHoras = cfg.rows[0]?.tiempo_reactiva_chats_viejos;
       if (umbralHoras == null) return false;
-
-      const botActivoGlobal = await this.botConfig.isBotActive(ideWhcue);
-      if (!botActivoGlobal) return false;
 
       const chatRow = await this.dataSource.pool.query<{ ultimo_ingreso_cliente_whcha: Date | null }>(
         `SELECT ultimo_ingreso_cliente_whcha FROM wha_chat WHERE ide_whcha = $1 LIMIT 1`,
@@ -3685,15 +3736,12 @@ export class BotService implements OnModuleInit {
       const conocido = await this.botSession.esClienteConocido(ideWhcha, waId, ideEmpr);
       if (!conocido) return false;
 
-      const puedeResponder = await this.botGpt.puedeBotAtenderReactivacion(texto);
-      if (!puedeResponder) return false;
-
       await this.dataSource.pool.query(
         `UPDATE wha_chat SET bot_activo_whcha = TRUE, bot_modo_whcha = 'BOT' WHERE ide_whcha = $1`,
         [ideWhcha],
       );
       this.logger.log(
-        `[Bot] Reactivación automática chat=${ideWhcha}: cliente conocido, ${horasSinMensaje.toFixed(1)}h sin mensajes (umbral ${umbralHoras}h), intención de venta confirmada`,
+        `[Bot] Reactivación automática chat=${ideWhcha}: cliente conocido, ${horasSinMensaje.toFixed(1)}h sin mensajes (umbral ${umbralHoras}h)`,
       );
       return true;
     } catch (err) {

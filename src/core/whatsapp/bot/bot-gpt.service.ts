@@ -185,7 +185,11 @@ export class BotGptService {
               'varias a la vez, no elijas solo una:\n' +
               'ubicacion = dirección, cómo llegar, sucursal/sede/local en otra ciudad.\n' +
               'horario = horario de atención, si están abiertos.\n' +
-              'envio = envíos, despacho, costo de envío a otras ciudades.\n' +
+              'envio = política GENERAL de envíos (si envían a tal ciudad, costo/tiempo aproximado) — NO marques esto ' +
+              'para el seguimiento/estado de un pedido o guía YA ENVIADA en particular (ej. "me ayuda con mi guía", ' +
+              '"cómo va mi pedido", "no me ha llegado"): eso depende de datos de UN pedido puntual que este asistente ' +
+              'no puede consultar, así que ninguna categoría debe marcarse TRUE ahí — que quede sin clasificar para ' +
+              'que se derive a un asesor en vez de responder con la política general.\n' +
               'catalogo = pide el catálogo o la lista de precios EN GENERAL, sin nombrar un producto específico.\n' +
               'producto = disponibilidad, precio o compra de un producto específico.\n' +
               'Responde SOLO JSON: {"ubicacion":bool,"horario":bool,"envio":bool,"catalogo":bool,"producto":bool}.',
@@ -233,11 +237,21 @@ export class BotGptService {
     // "necesito 2kg") se analiza aislado y no encuentra ningún producto — la cotización
     // terminaba con un ítem genérico en vez de "cera de coco" (caso real detectado
     // 2026-09-13). Con el historial, GPT puede resolver la referencia al mensaje anterior
-    // como lo haría un asesor leyendo el chat completo.
+    // como lo haría un asesor leyendo el chat completo. OJO: esto es solo para RESOLVER A
+    // QUÉ producto se refiere el último mensaje cuando no lo nombra — el historial NO debe
+    // hacer que se re-listen productos de mensajes anteriores que el cliente ya no está
+    // mencionando ahora, o la lista de "items" crece sola en cada respuesta (caso real
+    // detectado 2026-09-16: el cliente preguntó por cera de soya, luego por fragancias,
+    // luego por colorantes, uno a la vez, y cada respuesta del bot repetía TODOS los
+    // productos anteriores en vez de solo el nuevo, porque GPT trataba la conversación
+    // completa como si fuera un único pedido en construcción).
     const avisoHistorial = historialReciente.length
       ? '\nSi el ÚLTIMO mensaje del cliente (el que aparece más abajo) no nombra ningún producto por sí solo ' +
         '(ej. solo da una cantidad, o responde "sí"/"ese mismo"/"el primero"), revisa los mensajes anteriores de esta ' +
-        'misma conversación para identificar de qué producto está hablando — no lo dejes vacío si el contexto ya lo dejó claro.\n'
+        'misma conversación SOLO para identificar de qué producto está hablando — no lo dejes vacío si el contexto ya ' +
+        'lo dejó claro. Pero si el ÚLTIMO mensaje SÍ nombra su(s) propio(s) producto(s) (aunque sea uno nuevo y distinto ' +
+        'a los de mensajes anteriores), "items" debe traer SOLO esos — NO agregues de vuelta productos de mensajes ' +
+        'anteriores que el cliente ya no está mencionando en este mensaje puntual.\n'
       : '';
     try {
       const resp = await this.openai.chat.completions.create({
@@ -714,6 +728,14 @@ export class BotGptService {
                   'el NOMBRE DE LA PERSONA como "nombre" — es a quien se saluda, no a la empresa; el nombre de ' +
                   'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. '
                 : '') +
+              (pedirCiudad
+                ? ' Si en vez de (o además de) decir el nombre de la ciudad, el cliente da una DIRECCIÓN completa ' +
+                  '(calle, número, sector, parque industrial, referencia) — típico de datos de facturación pegados ' +
+                  'de otra fuente — INFIERE la ciudad a partir de esa dirección si es reconocible (calles, sectores o ' +
+                  'referencias que ubiques en una ciudad de Ecuador), en vez de dejar "ciudad" en null solo porque no ' +
+                  'usó el nombre de la ciudad literalmente. Si la dirección no te permite ubicar la ciudad con algo de ' +
+                  'confianza, ahí sí null — no adivines al azar. '
+                : '') +
               'Extrae SOLO lo que el cliente realmente indicó en su respuesta — no inventes ni asumas. ' +
               'Además, en "restoTexto" devuelve el resto del mensaje SIN el nombre/ciudad ya extraídos (ej. si ' +
               'respondió "Janneth Pachacama quiero la ubicación", nombre="Janneth Pachacama" y restoTexto="quiero ' +
@@ -807,41 +829,4 @@ export class BotGptService {
     }
   }
 
-  /**
-   * Gate de la reactivación automática de chats viejos (cliente conocido, >24h de
-   * silencio, chat en modo ASESOR): decide si el mensaje justifica reactivar el bot solo,
-   * sin criterio humano de por medio. TRUE solo para consultas de venta nueva (producto,
-   * precio, cotización, catálogo, ubicación, horario, política de envío). FALSE para
-   * cualquier cosa que dependa de una transacción YA existente que el bot no puede
-   * verificar (seguimiento de un pedido, guía de envío, factura, reclamo, devolución,
-   * estado de pago) — el bot no tiene esos datos y no debe inventar ni asumir. Ante la
-   * duda responde NO (más seguro no reactivar que reactivar de más).
-   */
-  async puedeBotAtenderReactivacion(texto: string): Promise<boolean> {
-    try {
-      const resp = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Un cliente que ya habló antes con la empresa (y no ha escrito en más de 24 horas) volvió a escribir. ' +
-              'Decide si el mensaje es una consulta de VENTA NUEVA — pide un producto, precio, cotización, catálogo, ' +
-              'ubicación, horario o política de envío — en cuyo caso un asistente automático puede responderle con ' +
-              'confianza. Responde NO si el mensaje depende de una transacción YA EXISTENTE que el asistente no puede ' +
-              'verificar por su cuenta: seguimiento de un pedido, guía de envío/tracking, factura, reclamo, devolución, ' +
-              'estado de un pago, o cualquier cosa que suene a "ya soy cliente con algo pendiente" en vez de "quiero ' +
-              'comprar/cotizar algo". Ante la duda, responde NO. Responde SOLO "SI" o "NO".',
-          },
-          { role: 'user', content: texto },
-        ],
-        temperature: 0,
-        max_tokens: 5,
-      });
-      return (resp.choices[0]?.message?.content?.trim().toUpperCase().startsWith('SI')) ?? false;
-    } catch (err) {
-      this.logger.error(`puedeBotAtenderReactivacion error: ${err.message}`);
-      return false;
-    }
-  }
 }

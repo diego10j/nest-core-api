@@ -406,6 +406,7 @@ export class BotProformaService {
     ide_cata: number;
     nombre_cata: string;
     path_cata: string | null;
+    descripcion_cata: string | null;
     productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
   }[]> {
     const cacheKey = `catalogo:bot:productos:${ideEmpr}`;
@@ -418,9 +419,11 @@ export class BotProformaService {
 
     const query = new SelectQuery(`
       SELECT
-        c.ide_inccat     AS ide_cata,
-        c.nombre_inccat  AS nombre_cata,
-        c.path_inccat    AS path_cata,
+        c.ide_inccat        AS ide_cata,
+        c.nombre_inccat     AS nombre_cata,
+        c.path_inccat       AS path_cata,
+        c.desc_corta_inccat AS desc_corta_cata,
+        c.descripcion_inccat AS descripcion_larga_cata,
         a.ide_inarti,
         a.nombre_inarti  AS nombre_producto
       FROM inv_cab_catalogo c
@@ -444,13 +447,21 @@ export class BotProformaService {
     const rows = await this.dataSource.createSelectQuery(query);
 
     const porCatalogo = new Map<number, {
-      ide_cata: number; nombre_cata: string; path_cata: string | null;
+      ide_cata: number; nombre_cata: string; path_cata: string | null; descripcion_cata: string | null;
       productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
     }>();
     for (const row of rows) {
       if (!porCatalogo.has(row.ide_cata)) {
+        // Prioriza la descripción corta (pensada para mostrarse, ej. en tarjetas del
+        // catálogo público) — la larga puede traer HTML/varios párrafos, poco apta para
+        // un mensaje de WhatsApp. Se recorta por si acaso igual (ver uso en bot.service.ts).
+        const descripcion: string | null =
+          (row.desc_corta_cata && String(row.desc_corta_cata).trim())
+            || (row.descripcion_larga_cata && String(row.descripcion_larga_cata).trim())
+            || null;
         porCatalogo.set(row.ide_cata, {
-          ide_cata: row.ide_cata, nombre_cata: row.nombre_cata, path_cata: row.path_cata ?? null, productos: [],
+          ide_cata: row.ide_cata, nombre_cata: row.nombre_cata, path_cata: row.path_cata ?? null,
+          descripcion_cata: descripcion, productos: [],
         });
       }
       porCatalogo.get(row.ide_cata)!.productos.push({
