@@ -1221,14 +1221,19 @@ ORDER BY prof.secuencial_cccpr DESC
         ?? (detalle.uuid_prod ? (uuidMap.get(detalle.uuid_prod) ?? null) : null)
         ?? (nombreProd ? (articuloMap.get(nombreProd) ?? null) : null);
 
-      return { detalle, ideInuni, ideInarti };
+      // `cantidad_erp` (cuando viene) es la cantidad real en la unidad de stock
+      // del artículo (ej. 0.010 KG); `cantidad` es la cantidad "amigable" (ej.
+      // "1 und") que ve el cliente y no debe usarse para registrar la línea.
+      const cantidadEfectiva = detalle.cantidad_erp ?? detalle.cantidad;
+
+      return { detalle, ideInuni, ideInarti, cantidadEfectiva };
     });
 
     // ─── Paso 2: obtener configuración de precios en paralelo ────────────────
     const precioResults = await Promise.all(
-      resolvedDetalles.map(({ detalle, ideInarti }) =>
+      resolvedDetalles.map(({ ideInarti, cantidadEfectiva }) =>
         ideInarti != null
-          ? this.buscarPrecioProducto(ideInarti, detalle.cantidad, solicitante.ideEmpr, 0, ideCndfp)
+          ? this.buscarPrecioProducto(ideInarti, cantidadEfectiva, solicitante.ideEmpr, 0, ideCndfp)
           : Promise.resolve(null),
       ),
     );
@@ -1239,9 +1244,9 @@ ORDER BY prof.secuencial_cccpr DESC
     // para la cantidad pedida Y TODOS con stock general suficiente — mismo criterio que
     // usa BotProformaService para WhatsApp (ver ProformasService.tieneStockSuficiente).
     const stockResults = await Promise.all(
-      resolvedDetalles.map(({ detalle, ideInarti }, idx) =>
+      resolvedDetalles.map(({ ideInarti, cantidadEfectiva }, idx) =>
         ideInarti != null && precioResults[idx] != null
-          ? this.tieneStockSuficiente(ideInarti, detalle.cantidad)
+          ? this.tieneStockSuficiente(ideInarti, cantidadEfectiva)
           : Promise.resolve(false),
       ),
     );
@@ -1251,11 +1256,11 @@ ORDER BY prof.secuencial_cccpr DESC
     const automatica = todosResueltos && todosConPrecio && todosConStock;
 
     // ─── Paso 3: construir queries de inserción ──────────────────────────────
-    resolvedDetalles.forEach(({ detalle, ideInuni, ideInarti }, idx) => {
+    resolvedDetalles.forEach(({ detalle, ideInuni, ideInarti, cantidadEfectiva }, idx) => {
       const precioInfo  = precioResults[idx];
       const precioCcdpr = precioInfo != null ? roundPrecio(precioInfo.precio_venta_sin_iva) : null;
       const totalCcdpr  = precioCcdpr != null
-        ? +(precioCcdpr * detalle.cantidad).toFixed(2)   // total SIN IVA, 2 decimales
+        ? +(precioCcdpr * cantidadEfectiva).toFixed(2)   // total SIN IVA, 2 decimales
         : null;
       // iva_inarti_ccdpr = 1 → producto gravado (va a base_grabada)
       //                  = 0 → producto exento  (va a base_tarifa0)
@@ -1267,7 +1272,7 @@ ORDER BY prof.secuencial_cccpr DESC
       detQuery.values.set('ide_empr', solicitante.ideEmpr);
       detQuery.values.set('ide_sucu', 0);
       detQuery.values.set('ide_inarti', ideInarti);
-      detQuery.values.set('cantidad_ccdpr', detalle.cantidad);
+      detQuery.values.set('cantidad_ccdpr', cantidadEfectiva);
       detQuery.values.set('precio_ccdpr', precioCcdpr);
       detQuery.values.set('total_ccdpr', totalCcdpr);
       detQuery.values.set('iva_inarti_ccdpr', ivaInarti);
@@ -1287,10 +1292,10 @@ ORDER BY prof.secuencial_cccpr DESC
 
     // ─── Calcular y actualizar totales de cabecera ────────────────────────
     const itemsTotales = resolvedDetalles
-      .map(({ detalle }, idx) => ({ detalle, precioInfo: precioResults[idx] }))
+      .map(({ cantidadEfectiva }, idx) => ({ cantidadEfectiva, precioInfo: precioResults[idx] }))
       .filter(({ precioInfo }) => precioInfo != null)
-      .map(({ detalle, precioInfo }) => ({
-        cantidad:      detalle.cantidad,
+      .map(({ cantidadEfectiva, precioInfo }) => ({
+        cantidad:      cantidadEfectiva,
         precio:        roundPrecio(precioInfo!.precio_venta_sin_iva),
         porcentaje_iva: precioInfo!.porcentaje_iva,
         utilidad:      precioInfo!.utilidad_neta ?? null,

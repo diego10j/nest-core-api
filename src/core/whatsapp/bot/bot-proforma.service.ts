@@ -406,6 +406,10 @@ export class BotProformaService {
     ide_cata: number;
     nombre_cata: string;
     path_cata: string | null;
+    // Solo para dar contexto a BotGptService.matchCatalogoProducto (título/descripción/
+    // productos, ver ahí) — NUNCA se le muestra al cliente, la respuesta del bot se queda
+    // corta y precisa (confirmación + link), sin texto de marketing (caso real detectado
+    // 2026-09-16: se probó mostrarla y sobraba, el cliente pidió respuestas más directas).
     descripcion_cata: string | null;
     productos: { ide_inarti: number; nombre: string; precio_desde: number | null }[];
   }[]> {
@@ -452,9 +456,6 @@ export class BotProformaService {
     }>();
     for (const row of rows) {
       if (!porCatalogo.has(row.ide_cata)) {
-        // Prioriza la descripción corta (pensada para mostrarse, ej. en tarjetas del
-        // catálogo público) — la larga puede traer HTML/varios párrafos, poco apta para
-        // un mensaje de WhatsApp. Se recorta por si acaso igual (ver uso en bot.service.ts).
         const descripcion: string | null =
           (row.desc_corta_cata && String(row.desc_corta_cata).trim())
             || (row.descripcion_larga_cata && String(row.descripcion_larga_cata).trim())

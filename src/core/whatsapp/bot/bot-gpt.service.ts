@@ -656,11 +656,20 @@ export class BotGptService {
    */
   async matchCatalogoProducto(
     texto: string,
-    catalogos: { ide_cata: number; nombre_cata: string; productos: { nombre: string }[] }[],
+    catalogos: { ide_cata: number; nombre_cata: string; descripcion_cata?: string | null; productos: { nombre: string }[] }[],
   ): Promise<{ ide_cata: number; matchEspecifico: boolean } | null> {
     if (!catalogos.length) return null;
+    // La descripción del catálogo (desc_corta_inccat/descripcion_inccat) es contexto EXTRA
+    // para decidir el match — ej. "cera de soya APF" puede no estar listada como producto
+    // puntual, pero si la descripción del catálogo "Ceras" la menciona, ayuda a confirmar
+    // que sí corresponde ahí. Esto es solo una señal interna para GPT: la descripción NUNCA
+    // se le muestra al cliente (ver obtenerCatalogosDisponibles) — la respuesta se mantiene
+    // corta y precisa, solo confirmación + link.
     const listado = catalogos
-      .map((c) => `Catálogo "${c.nombre_cata}" (id ${c.ide_cata}): ${c.productos.map((p) => p.nombre).join(', ')}`)
+      .map((c) => {
+        const desc = c.descripcion_cata ? ` — descripción: ${c.descripcion_cata}` : '';
+        return `Catálogo "${c.nombre_cata}" (id ${c.ide_cata})${desc}. Productos: ${c.productos.map((p) => p.nombre).join(', ')}`;
+      })
       .join('\n');
 
     try {
@@ -670,15 +679,17 @@ export class BotGptService {
           {
             role: 'system',
             content:
-              'El cliente pregunta por un producto. Estos son los catálogos públicos con stock disponible y sus ' +
-              'productos:\n' + listado + '\n\n' +
-              'Si el producto que menciona el cliente coincide (exacto o muy cercano) con alguno de estos productos, ' +
-              'o con el tema/título general de un catálogo (ej. "esencias para velas" con el catálogo "Fragancias ' +
-              'para velas"), responde SOLO JSON: {"ide_cata": <id del catálogo>, "matchEspecifico": <true|false>}. ' +
+              'El cliente pregunta por un producto. Estos son los catálogos públicos con stock disponible, su ' +
+              'descripción (si tiene) y sus productos:\n' + listado + '\n\n' +
+              'Si el producto que menciona el cliente coincide (exacto o muy cercano) con alguno de los productos ' +
+              'listados, con el tema/título general de un catálogo (ej. "esencias para velas" con el catálogo ' +
+              '"Fragancias para velas"), o con lo que describe la descripción del catálogo (ej. la descripción de ' +
+              '"Ceras" menciona cera de soya aunque no esté listada como producto puntual), responde SOLO JSON: ' +
+              '{"ide_cata": <id del catálogo>, "matchEspecifico": <true|false>}. ' +
               '"matchEspecifico" = true SOLO si el texto coincide con UNO de los productos listados puntualmente; ' +
-              'false si solo coincide con el tema/título general del catálogo. Si NO hay ningún catálogo ni producto ' +
-              'que coincida con razonable certeza, responde {"ide_cata": null, "matchEspecifico": false} — no ' +
-              'adivines ni asumas coincidencias vagas.',
+              'false si solo coincide con el tema/título general del catálogo o con su descripción. Si NO hay ningún ' +
+              'catálogo ni producto que coincida con razonable certeza, responde {"ide_cata": null, "matchEspecifico": ' +
+              'false} — no adivines ni asumas coincidencias vagas.',
           },
           { role: 'user', content: texto },
         ],

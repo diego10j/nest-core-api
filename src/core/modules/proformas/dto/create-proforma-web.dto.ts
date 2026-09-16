@@ -59,6 +59,20 @@ class DetalleItemDto {
   @IsPositive({ message: 'La cantidad debe ser mayor a cero' })
   cantidad: number;
 
+  /**
+   * Cantidad real en la unidad de medida del ERP (ej. 0.010 KG para un frasco
+   * de fragancia de 10ml), cuando `cantidad` es una cantidad "amigable" (ej.
+   * "1 und") que no corresponde 1:1 a la unidad de stock del artículo — ver
+   * `factor_conversion_erp`/`cantidad_erp` en erp-checkout-mapper.ts del
+   * frontend. Cuando viene presente tiene prioridad sobre `cantidad` para
+   * registrar la línea de la proforma; si no viene, se usa `cantidad` tal cual
+   * (caso normal: productos del sitio que se venden por unidad entera).
+   */
+  @IsNumber()
+  @IsPositive({ message: 'cantidad_erp debe ser mayor a cero' })
+  @IsOptional()
+  cantidad_erp?: number;
+
   @IsString()
   @IsOptional()
   unidad?: string;

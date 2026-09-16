@@ -660,7 +660,13 @@ export class BotService implements OnModuleInit {
             ...datos,
             cliente: { nombres: nombreEnSaludo, correo: '', es_cliente_registrado: false },
           };
-          await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombreEnSaludo}*! 😊`);
+          // Se presenta (nombre del bot + empresa) igual que en la rama de abajo cuando
+          // todavía no sabíamos el nombre — antes esta rama saltaba directo a "Mucho
+          // gusto" sin decir quién es ni de qué empresa, aunque fuera el primer contacto
+          // real del cliente con el bot (caso real detectado 2026-09-16).
+          await this.sendText(ideEmpr, waId,
+            `¡Hola, *${nombreEnSaludo}*! Mucho gusto 😊 Soy *${nombreBot}*, asistente de *${nombreEmpresa}*.`,
+          );
           await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
           // No se guarda texto_inicial ni se retorna: el resto de la función procesa
           // este mismo mensaje más abajo (detectarRequerimientos), igual que si ya
@@ -943,11 +949,8 @@ export class BotService implements OnModuleInit {
           const todosEspecificos = matches
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
-          const descripciones = this.buildDescripcionesCatalogo(idsUnicos, catalogos);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊` +
-            (descripciones ? `\n${descripciones}\n` : ' ') +
-            `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
@@ -995,32 +998,38 @@ export class BotService implements OnModuleInit {
     const itemsSoloCantidad = items.filter((i) => i.cantidad === null && !(pedirUso && !i.uso));
     const itemsSoloUso = items.filter((i) => i.cantidad !== null && pedirUso && !i.uso);
 
+    // Con un solo producto, el nombre entra en la misma frase ("...de *X*"); con varios,
+    // se listan en líneas numeradas en vez de un "X, Y, Z" corrido — más fácil de leer en
+    // WhatsApp, sobre todo con 3+ productos (caso real detectado 2026-09-16: el texto
+    // llegaba todo unido, pidieron formato de lista).
+    const listar = (its: ItemCotizacionRapida[]) =>
+      its.length === 1
+        ? `*${its[0].producto}*`
+        : its.map((i, idx) => `${idx + 1}. *${i.producto}*`).join('\n');
+
     const faltantes: string[] = [];
     if (itemsAmbos.length) {
-      const nombres = itemsAmbos.map((i) => `*${i.producto}*`).join(', ');
       faltantes.push(
         itemsAmbos.length === 1
-          ? `qué cantidad necesitas de ${nombres} y para qué uso lo necesitas`
-          : `qué cantidad necesitas de cada uno y para qué uso — ${nombres}`,
+          ? `qué cantidad necesitas de ${listar(itemsAmbos)} y para qué uso lo necesitas`
+          : `qué cantidad necesitas de cada uno y para qué uso:\n${listar(itemsAmbos)}`,
       );
     }
     if (itemsSoloCantidad.length) {
       // Se ofrece la cantidad mínima como alternativa (ya soportada:
       // analizarLoteProductos/extraerCantidadesPorProducto reconocen "cantidad mínima"
       // como cantidad=0).
-      const nombres = itemsSoloCantidad.map((i) => `*${i.producto}*`).join(', ');
       faltantes.push(
         itemsSoloCantidad.length === 1
-          ? `qué cantidad necesitas de ${nombres} (o si prefieres la cantidad mínima)`
-          : `qué cantidad necesitas de cada uno — ${nombres} (o si prefieres la cantidad mínima)`,
+          ? `qué cantidad necesitas de ${listar(itemsSoloCantidad)} (o si prefieres la cantidad mínima)`
+          : `qué cantidad necesitas de cada uno (o si prefieres la cantidad mínima):\n${listar(itemsSoloCantidad)}`,
       );
     }
     if (itemsSoloUso.length) {
-      const nombres = itemsSoloUso.map((i) => `*${i.producto}*`).join(', ');
       faltantes.push(
         itemsSoloUso.length === 1
-          ? `para qué uso necesitas ${nombres}`
-          : `para qué uso necesitas cada uno — ${nombres}`,
+          ? `para qué uso necesitas ${listar(itemsSoloUso)}`
+          : `para qué uso necesitas cada uno:\n${listar(itemsSoloUso)}`,
       );
     }
     if (!tieneNombre) faltantes.push('tu nombre');
@@ -1047,7 +1056,9 @@ export class BotService implements OnModuleInit {
       const intro = pedirUso
         ? '¡Con gusto te ayudo a levantar tu solicitud! 😊 Cuéntame'
         : '¡Claro que sí! Cuéntame';
-      await this.sendText(ideEmpr, waId, `${intro} ${faltantes.join(', ')} 😊`);
+      // Separador '\n\n' entre cada "falta" (no ', ') — cuando alguna trae una lista
+      // numerada de productos embebida, una coma la partía a mitad de línea.
+      await this.sendText(ideEmpr, waId, `${intro} 😊\n\n${faltantes.join('\n\n')}`);
       return;
     }
 
@@ -1293,7 +1304,7 @@ export class BotService implements OnModuleInit {
 
     if (faltantes.length) {
       await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
-      await this.sendText(ideEmpr, waId, `Gracias 🙌 Solo me falta: ${faltantes.join(', ')}`);
+      await this.sendText(ideEmpr, waId, `Gracias 🙌 Solo me falta:\n\n${faltantes.join('\n\n')}`);
       return;
     }
 
@@ -1413,7 +1424,12 @@ export class BotService implements OnModuleInit {
         productos: datosSesion?.productos ?? [],
         cliente: { nombres: nombreEnSaludo, correo: '', es_cliente_registrado: false },
       };
-      await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombreEnSaludo}*! 😊`);
+      // Mismo criterio que handleAtencionLibreReducida: se presenta (nombre del bot +
+      // empresa) aunque el cliente ya haya dado su nombre en el mismo mensaje — es el
+      // primer contacto real, no tiene por qué saber con quién/qué empresa está hablando.
+      await this.sendText(ideEmpr, waId,
+        `¡Hola, *${nombreEnSaludo}*! Mucho gusto 😊 Soy *${nombreBot}*, asistente de *${nombreEmpresa}*.`,
+      );
       await this.responderConsultaInicial(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, texto, nombreEmpresa, config,
       );
@@ -1653,11 +1669,8 @@ export class BotService implements OnModuleInit {
           const todosEspecificos = matches
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
-          const descripciones = this.buildDescripcionesCatalogo(idsUnicos, catalogos);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊` +
-            (descripciones ? `\n${descripciones}\n` : ' ') +
-            `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           if (!itemsPendientes.length) {
@@ -3559,35 +3572,6 @@ export class BotService implements OnModuleInit {
 
   private buildResumenProductos(productos: ProductoSesion[]): string {
     return `📋 *Resumen de tu cotización:*\n\n${this.buildListaProductos(productos)}\n\n¿Confirmamos tu cotización?`;
-  }
-
-  /**
-   * Arma las líneas de descripción de los catálogos recién matcheados (ide_cata en
-   * `idsUnicos`) para el mensaje "¡Sí, disponemos de...!" — usa `descripcion_cata`
-   * (desc_corta_inccat/descripcion_inccat, ver obtenerCatalogosDisponibles) cuando el
-   * catálogo tiene una, en vez de responder solo con el link pelado. Antes esa
-   * descripción existía en la base (ej. "Somos importadores directos de una amplia
-   * variedad de moldes de silicona...") pero nunca se usaba — el bot respondía genérico
-   * aunque hubiera contenido real cargado para vender el catálogo (caso real detectado
-   * 2026-09-16: cliente preguntó por moldes, el catálogo "Moldes De Silicona" tiene
-   * descripción propia y el bot no la mencionó). Cada descripción se recorta para no
-   * mandar un párrafo entero por WhatsApp; catálogos sin descripción no agregan línea.
-   */
-  private buildDescripcionesCatalogo(
-    idsUnicos: number[],
-    catalogos: { ide_cata: number; nombre_cata: string; descripcion_cata: string | null }[],
-  ): string {
-    const MAX_CHARS = 220;
-    return idsUnicos
-      .map((id) => catalogos.find((c) => c.ide_cata === id))
-      .filter((c): c is { ide_cata: number; nombre_cata: string; descripcion_cata: string | null } => !!c?.descripcion_cata)
-      .map((c) => {
-        const desc = c.descripcion_cata!.length > MAX_CHARS
-          ? `${c.descripcion_cata!.slice(0, MAX_CHARS).trim()}…`
-          : c.descripcion_cata!;
-        return `_${desc}_`;
-      })
-      .join('\n');
   }
 
   private getPromptSistema(nombreBot: string, nombreEmpresa: string): string {
