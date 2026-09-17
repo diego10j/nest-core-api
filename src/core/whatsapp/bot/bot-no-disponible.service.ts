@@ -30,9 +30,16 @@ export class BotNoDisponibleService {
   constructor(private readonly dataSource: DataSourceService) {}
 
   /**
-   * Busca coincidencia por nombre (parcial, sin acentos/mayúsculas, en ambos sentidos —
-   * igual criterio que BotToolsService.buscarProductos) contra productos ya confirmados
-   * como no disponibles. Devuelve el primero que matchee o null.
+   * Busca coincidencia EXACTA (sin acentos/mayúsculas) contra productos ya confirmados
+   * como no disponibles — a propósito NO es parcial ni bidireccional. Esta es una lista
+   * curada a mano que le dice al cliente "no lo vendemos" con total seguridad; un falso
+   * positivo acá es mucho más costoso que uno negativo (si no matchea, el flujo normal
+   * igual lo maneja — catálogo, SIN_MATCH, etc.). El match parcial/bidireccional que había
+   * antes dejaba que un nombre corto registrado (ej. "ZINC") bloqueara CUALQUIER producto
+   * cuyo nombre lo contuviera como substring (ej. "óxido de zinc", que la empresa sí
+   * vende), o que una búsqueda larga "contuviera" sin querer un nombre registrado — muy
+   * arriesgado con nombres de químicos que comparten prefijos/palabras (ej. "cloruro de
+   * sodio" vs "cloruro de calcio", caso real señalado 2026-09-17).
    */
   async buscar(nombreProducto: string, ideEmpr: number): Promise<NoDisponibleMatch | null> {
     const q = new SelectQuery(`
@@ -41,10 +48,8 @@ export class BotNoDisponibleService {
       WHERE ide_empr = $1
         AND activo_whbnd = TRUE
         AND (
-          unaccent(UPPER(nombre_whbnd)) ILIKE '%' || unaccent(UPPER($2)) || '%'
-          OR unaccent(UPPER($2)) ILIKE '%' || unaccent(UPPER(nombre_whbnd)) || '%'
-          OR unaccent(UPPER(COALESCE(otros_nombres_whbnd, ''))) ILIKE '%' || unaccent(UPPER($2)) || '%'
-          OR unaccent(UPPER($2)) ILIKE '%' || unaccent(UPPER(COALESCE(otros_nombres_whbnd, ''))) || '%'
+          unaccent(UPPER(nombre_whbnd)) = unaccent(UPPER($2))
+          OR unaccent(UPPER(COALESCE(otros_nombres_whbnd, ''))) = unaccent(UPPER($2))
         )
       ORDER BY LENGTH(nombre_whbnd) DESC
       LIMIT 1
