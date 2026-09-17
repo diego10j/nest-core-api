@@ -377,6 +377,11 @@ export class BotGptService {
               productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
               'El cliente puede responder todo junto (ej: "1. repostería 2. ambiental"), en el mismo orden sin ' +
               'numerar (ej: "repostería y ambiental"), o mencionar solo algunos. ' +
+              'OJO: si el mensaje NO describe ningún uso/aplicación real — es una pregunta sobre otra cosa (ej. ' +
+              '"en qué cantidades se vende y el precio", "cuál es el precio") o no tiene relación con para qué va a ' +
+              'usar el producto — NO inventes un uso a partir de esa pregunta: dejalo en null. Es mejor volver a ' +
+              'preguntar que registrar un uso que en realidad no dijo (caso real detectado 2026-09-17: "quiero saber ' +
+              'en qué cantidades la venden" se tomó como si fuera la respuesta de uso).\n' +
               'Responde SOLO JSON válido: {"usos": [string|null, ...]} con exactamente ' + productos.length +
               ' elementos, en el mismo orden que la lista — null en la posición de cualquier producto cuyo uso ' +
               'no puedas determinar con la respuesta del cliente.',

@@ -1231,13 +1231,39 @@ export class BotService implements OnModuleInit {
     ideWhcue: number, ideEmpr: number, sesion: any, texto: string,
     nombreBot: string, nombreEmpresa: string, config: any,
   ): Promise<void> {
-    const datos = sesion.datos_sesion as DatosSesion;
+    let datos = sesion.datos_sesion as DatosSesion;
     const cot = datos.cotizacion_rapida;
     if (!cot) {
       // Estado inconsistente (no debería pasar) — vuelve a atención libre reducida.
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
       return;
+    }
+
+    // El cliente puede dar su nombre "tarde" — después de que ya se dejó de insistir y se
+    // asignó CONSUMIDOR FINAL (ver handleAtencionLibreReducida). Sin este chequeo quedaba
+    // sordo para siempre: "Soy Mafer" se colaba como respuesta de cantidad/uso (caso real
+    // detectado 2026-09-17). Se usa GPT (extraerNombreYCiudad), NO un regex tipo /^soy\s+.../
+    // — un regex así también matchea "Soy de Quito" y lo hubiera tomado como si el nombre
+    // fuera "de Quito" (gap detectado 2026-09-17 al revisar este mismo fix): GPT ya sabe
+    // distinguir nombre de ciudad. Se aprovecha la misma llamada para adelantar la ciudad
+    // si la dio y todavía no la teníamos — evita preguntarla de nuevo más adelante.
+    if (datos.cliente?.nombres === 'CONSUMIDOR FINAL') {
+      const { nombre: nombreTardio, ciudad: ciudadTardia } = await this.botGpt.extraerNombreYCiudad(texto, true, true);
+      if (nombreTardio) {
+        datos = {
+          ...datos,
+          cliente: {
+            ...(datos.cliente ?? { correo: '', es_cliente_registrado: false }),
+            nombres: nombreTardio,
+          },
+          envio: ciudadTardia && !datos.envio?.provincia
+            ? { ...(datos.envio ?? {}), provincia: ciudadTardia }
+            : datos.envio,
+        };
+        await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, datos);
+        await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombreTardio}*! 😊`);
+      }
     }
 
     // La ciudad ya se preguntó como mensaje independiente (ver preguntarCiudadOFinalizar)
