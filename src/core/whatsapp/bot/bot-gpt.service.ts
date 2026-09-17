@@ -850,8 +850,11 @@ export class BotGptService {
             content:
               'Analiza si este mensaje es de un PROVEEDOR ofreciendo VENDERLE un producto o servicio a la empresa ' +
               '(ej. "tengo a su disposición...", "les ofrezco...", "contamos con... a un precio de remate", ' +
-              '"somos representantes de...") — y NO un cliente preguntando si LA EMPRESA vende algo. Ante la duda, ' +
-              'responde NO (favorece no bloquear a un cliente real). Responde SOLO "SI" o "NO".',
+              '"somos representantes de...", "cuento con [producto] por varios sacos, estoy dispuesto a dejarlo a un ' +
+              'precio de liquidación") — la clave es que el que ESCRIBE dice tener el producto/stock y busca ' +
+              'colocarlo/rematarlo/liquidarlo, aunque no diga literalmente "vendo" u "ofrezco" — y NO un cliente ' +
+              'preguntando si LA EMPRESA vende algo. Ante la duda, responde NO (favorece no bloquear a un cliente ' +
+              'real). Responde SOLO "SI" o "NO".',
           },
           { role: 'user', content: texto },
         ],

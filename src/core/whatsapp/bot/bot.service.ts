@@ -23,7 +23,10 @@ import { BotState } from './interfaces/bot-state.enum';
 import { matchProvinciaEcuador } from './provincias-ecuador';
 
 // ─── Constantes de negocio ────────────────────────────────────────────────────
-const PALABRAS_ASESOR = /\bASESOR\b|\bAGENTE\b|\bHUMANO\b|\bPERSONA\b|\bVENDEDOR\b/i;
+// Con plural incluido (ASESOR/ASESORES, AGENTE/AGENTES, etc.) — antes solo matcheaba la
+// forma singular exacta, así que "hay asesores humanos?" no disparaba nada (caso real
+// detectado 2026-09-17: un proveedor preguntó eso y el bot igual le pidió cotizar).
+const PALABRAS_ASESOR = /\bASESOR(ES)?\b|\bAGENTES?\b|\bHUMANOS?\b|\bPERSONAS?\b|\bVENDEDOR(ES)?\b/i;
 const REGEX_SALIR = /^SALIR$/i;
 const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
