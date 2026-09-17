@@ -421,21 +421,26 @@ export class BotService implements OnModuleInit {
       this.logger.log(`[Bot] Saludo detectado en estado ${sesion.estado} → sesión reiniciada`);
     }
 
-    // ─── Modo mensajes reducidos (wha_bot_config.reduce_mensajes_whbco) ────────
+    // ─── Espera de mensajes (wha_bot_config.reduce_mensajes_whbco) ─────────────
     // En vez de responder de inmediato, se buferiza el mensaje y se espera
     // `segundos_espera_whbco` de silencio del cliente antes de procesarlo — agrupa
     // ráfagas de mensajes seguidos en una sola respuesta (ver BotDebounceService y
     // BotScheduleService.procesarBufferReducido, que llama a procesarBufferReducido()
-    // más abajo con el texto ya concatenado).
-    const ESTADOS_MODO_REDUCIDO = [
-      BotState.INICIO, BotState.ATENCION_LIBRE_REDUCIDA, BotState.RECOPILANDO_COTIZACION_RAPIDA,
+    // más abajo con el texto ya concatenado). A PROPÓSITO no se toca el switch de acá
+    // abajo ni ninguno de los handlers que llama — este `if` es la ÚNICA diferencia con
+    // `reduce_mensajes_whbco=false`: con el flag apagado, nunca entra acá y la ejecución
+    // cae directo al switch de siempre, sin ninguna línea nueva de por medio (garantiza
+    // que el comportamiento en `false` queda exactamente igual al de antes de este
+    // cambio — plan acordado 2026-09-17: un solo flujo, la espera es aditiva).
+    // Estos son los únicos 4 estados que hoy pisa una conversación real (sin botones de
+    // confirmación tipo SI/FIN, el resto de la máquina de estados no se transita) —
+    // procesarBufferReducidoInternal despacha a los MISMOS handlers de siempre
+    // (handleInicio/handleConfirmacion/handleAtencionLibre/handleRecopilandoCotizacion
+    // Rapida) una vez pasada la espera, con el texto ya concatenado.
+    const ESTADOS_CON_ESPERA = [
+      BotState.INICIO, BotState.ESPERANDO_CONFIRMACION, BotState.ATENCION_LIBRE, BotState.RECOPILANDO_COTIZACION_RAPIDA,
     ];
-    if (config.reduce_mensajes_whbco && ESTADOS_MODO_REDUCIDO.includes(sesion.estado as BotState)) {
-      if (sesion.estado === BotState.INICIO) {
-        // Se salta el botón "¿Empezamos?" del flujo completo — el modo reducido prioriza
-        // responder directo a lo que pide el cliente, no confirmar intención primero.
-        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, sesion.datos_sesion as DatosSesion);
-      }
+    if (config.reduce_mensajes_whbco && ESTADOS_CON_ESPERA.includes(sesion.estado as BotState)) {
       await this.botDebounce.encolarMensaje(ideWhcha, texto);
       return;
     }
@@ -502,10 +507,12 @@ export class BotService implements OnModuleInit {
         case BotState.FINALIZADO:
           await this.handlePostCotizacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
-        // Estos dos solo se alcanzan por acá si reduce_mensajes_whbco se desactivó
-        // mientras el chat quedaba a mitad del flujo reducido (el camino normal es vía
-        // el buffer de debounce, ver interceptor de ESTADOS_MODO_REDUCIDO más arriba) —
-        // se atienden igual, sin buffer, para no dejar el chat mudo.
+        // ATENCION_LIBRE_REDUCIDA: código legacy del viejo flujo "reducido" paralelo
+        // (retirado 2026-09-17, ver ESTADOS_CON_ESPERA más arriba) — nada nuevo entra acá,
+        // se deja solo como red de seguridad si quedara alguna sesión vieja en ese estado.
+        // RECOPILANDO_COTIZACION_RAPIDA sigue siendo un estado real y compartido por
+        // ambos flujos; si llega por acá (sin buffer) es porque reduce_mensajes_whbco
+        // estaba apagado o se desactivó a mitad de camino — se atiende igual, sin buffer.
         case BotState.ATENCION_LIBRE_REDUCIDA:
           await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, texto, nombreBot, nombreEmpresa, config);
           break;
@@ -587,17 +594,25 @@ export class BotService implements OnModuleInit {
       sesion.datos_sesion = { ...datosActuales, mensajes_reducido: turnos };
       await this.botSession.update(sesion.ide_whbse, sesion.estado as BotState, sesion.datos_sesion);
 
+      // Despacha a los MISMOS handlers que usa el camino inmediato (reduce_mensajes_
+      // whbco=false) — nada de lógica de respuesta duplicada, solo llega tarde (después
+      // de la espera) y con el texto de varios mensajes ya concatenado.
       switch (sesion.estado as BotState) {
         case BotState.INICIO:
-        case BotState.ATENCION_LIBRE_REDUCIDA:
-          await this.handleAtencionLibreReducida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
+          await this.handleInicio(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, textoConcatenado, nombreBot, nombreEmpresa, sesion, config);
+          break;
+        case BotState.ESPERANDO_CONFIRMACION:
+          await this.handleConfirmacion(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
+          break;
+        case BotState.ATENCION_LIBRE:
+          await this.handleAtencionLibre(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
           break;
         case BotState.RECOPILANDO_COTIZACION_RAPIDA:
           await this.handleRecopilandoCotizacionRapida(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, textoConcatenado, nombreBot, nombreEmpresa, config);
           break;
         default:
-          // La sesión avanzó a un estado del flujo completo (ej. un agente reactivó la
-          // cotización clásica) mientras el mensaje esperaba en el buffer — no aplica.
+          // La sesión avanzó a un estado sin espera (ej. un agente la reactivó en medio
+          // del flujo completo) mientras el mensaje esperaba en el buffer — no aplica.
           break;
       }
     } catch (error) {
@@ -705,13 +720,18 @@ export class BotService implements OnModuleInit {
           // 2 intentos sin lograr extraer el nombre — se deja de insistir (evita el loop
           // "¿cómo te llamas?" indefinido, caso real detectado 2026-09-16) y se sigue con
           // CONSUMIDOR FINAL. El resto de la función procesa este mismo mensaje más abajo.
+          // OJO: se sigue con `datos.texto_inicial` (lo acumulado ANTES de este último
+          // intento), NO con `textoAcumulado` — mismo fix que handleConfirmacion (caso
+          // real detectado 2026-09-17: "Sol", probablemente el nombre real de la clienta
+          // sin reconocer con certeza, se coló como un segundo producto de la cotización).
+          const textoSinUltimoIntento = datos.texto_inicial || texto;
           datos = {
             ...datos,
             texto_inicial: undefined,
             cliente: { nombres: 'CONSUMIDOR FINAL', correo: '', es_cliente_registrado: false },
           };
           await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
-          texto = textoAcumulado;
+          texto = textoSinUltimoIntento;
         } else {
           if (textoAcumulado !== datos.texto_inicial) {
             datos = { ...datos, texto_inicial: textoAcumulado };
@@ -1138,6 +1158,7 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, items: ItemCotizacionRapida[],
     nombreBot: string, nombreEmpresa: string,
+    notaExtra?: string,
   ): Promise<void> {
     const productosResueltos = await this.resolverProductosSimple(items, ideEmpr);
     const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
@@ -1193,7 +1214,9 @@ export class BotService implements OnModuleInit {
       );
       // null = ya se le avisó al cliente arriba; nota interna solo para el asesor/log.
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        null, `Cotización #${resultado.secuencial} generada automáticamente (match exacto de producto y precio) — PDF ya enviado al cliente.`,
+        null,
+        `Cotización #${resultado.secuencial} generada automáticamente (match exacto de producto y precio) — PDF ya enviado al cliente.`
+        + (notaExtra ? `\n${notaExtra}` : ''),
       );
       return;
     }
@@ -1212,6 +1235,7 @@ export class BotService implements OnModuleInit {
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
       `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      notaExtra,
     );
   }
 
@@ -1271,7 +1295,7 @@ export class BotService implements OnModuleInit {
     // ciudad, pero no bloquea: se finaliza la cotización de una vez, la haya reconocido
     // o no (ya se preguntó una vez, no tiene sentido insistir).
     if (cot.ciudadPreguntada) {
-      const { ciudad } = await this.botGpt.extraerNombreYCiudad(texto, false, true);
+      const { ciudad, restoTexto } = await this.botGpt.extraerNombreYCiudad(texto, false, true);
       const datosConCiudad: DatosSesion = {
         ...datos,
         envio: {
@@ -1284,8 +1308,16 @@ export class BotService implements OnModuleInit {
           provincia: datos.envio?.provincia || ciudad || texto.trim() || undefined,
         },
       };
+      // Este es el ÚLTIMO mensaje del flujo — si el cliente aprovecha para pedir algo más
+      // junto con la ciudad (ej. "también de Propilenglicol, desde Quito"), ya no hay otro
+      // paso donde el bot lo vaya a preguntar: sin esto, "Propilenglicol" se perdía
+      // silenciosamente, la cotización cerraba solo con el producto original (caso real
+      // detectado 2026-09-17). No se reabre todo el flujo de cantidad/uso acá (agregaría
+      // riesgo a un paso ya delicado) — se deja como nota interna para que el asesor lo
+      // vea y lo agregue él mismo a la cotización.
       await this.finalizarCotizacionRapida(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCiudad, cot.items, nombreBot, nombreEmpresa,
+        restoTexto ? `El cliente mencionó algo más junto con la ciudad: "${restoTexto}" — revisar si debe agregarse a la cotización.` : undefined,
       );
       return;
     }
@@ -1522,14 +1554,22 @@ export class BotService implements OnModuleInit {
         if (intentosPrevios >= 2) {
           // 2 intentos sin lograr extraer el nombre — se deja de insistir (mismo criterio
           // que handleAtencionLibreReducida, caso real detectado 2026-09-16) y se sigue
-          // con CONSUMIDOR FINAL en vez de repreguntar indefinidamente.
+          // con CONSUMIDOR FINAL en vez de repreguntar indefinidamente. OJO: se sigue con
+          // `datos.texto_inicial` (lo acumulado ANTES de este último intento), NO con
+          // `textoAcumulado` — este último mensaje falló específicamente el chequeo de
+          // "¿es un nombre?", y textos cortos así (ej. "Sol") son justo el tipo de texto
+          // que analizarLoteProductos puede malinterpretar como un producto más si se le
+          // reinyecta sin filtrar (caso real detectado 2026-09-17: "Sol" — probablemente
+          // el nombre real de la clienta, que GPT no reconoció con certeza — terminó listado
+          // como segundo producto de la cotización junto a "percarbonato").
           const datosConsumidorFinal: DatosSesion = {
             ...datos,
             texto_inicial: undefined,
             cliente: { nombres: 'CONSUMIDOR FINAL', correo: '', es_cliente_registrado: false },
           };
           await this.responderConsultaInicial(
-            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConsumidorFinal, textoAcumulado, nombreEmpresa, config,
+            waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConsumidorFinal,
+            datos.texto_inicial || texto, nombreEmpresa, config,
           );
           return;
         }
@@ -1879,7 +1919,11 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    // GENERAL: GPT responde con el contexto completo de la empresa
+    // GENERAL: ninguna categoría específica aplicó — GPT responde con el prompt de la
+    // empresa; si necesita un dato específico que no tiene, deriva a asesor en vez de
+    // inventar (generateResponseConEscalamiento, antes solo lo tenía el flujo reducido —
+    // portado acá 2026-09-17 para que el freno de "no inventes" aplique parejo en toda
+    // la cuenta, sin importar reduce_mensajes_whbco).
     const historial = await this.botSession.getHistorialMensajes(ideWhcha, 6);
     const promptBase = (config.prompt_sistema || this.getPromptSistema(nombreBot, nombreEmpresa))
       .replace(/{BOT_NOMBRE}/g, nombreBot)
@@ -1896,12 +1940,9 @@ export class BotService implements OnModuleInit {
     // identificado como "Hunas" escribe "Andres le saluda" y el bot respondía "¡Hola,
     // Andrés!", como si fuera alguien nuevo) — caso real detectado 2026-09-15.
     const nombreConocido = datos.cliente?.nombres;
-    const respuesta = await this.botGpt.generateResponse(
-      promptBase,
-      historial,
-      texto,
-      `Empresa: ${nombreEmpresa}. Usa la información del sistema para responder. ` +
-      `Si la pregunta es sobre ubicación, sucursales, horarios o envíos, responde basándote en los datos del prompt. ` +
+    const resultado = await this.botGpt.generateResponseConEscalamiento(
+      promptBase, historial, texto,
+      `Empresa: ${nombreEmpresa}. Responde de forma breve, cordial y precisa. ` +
       `REGLA FIJA que prevalece sobre cualquier instrucción de cotización del prompt: NUNCA pidas correo ` +
       `electrónico ni dirección exacta de entrega — el sistema ya usa el correo de la empresa por defecto y solo ` +
       `pregunta la ciudad al final, en un paso aparte que el sistema maneja solo. Si hace falta pedir algo para ` +
@@ -1913,7 +1954,25 @@ export class BotService implements OnModuleInit {
           `el cliente pida explícitamente corregirlo.`
         : ''),
     );
-    await this.sendText(ideEmpr, waId, respuesta);
+    if (resultado.interesGenerico) {
+      // Interés general en una actividad/manualidad (ej. "quiero aprender a hacer
+      // jabones") sin producto puntual — no se responde con conocimiento general
+      // inventado, se envía el catálogo real y se deriva a un asesor para una
+      // recomendación personalizada (mismo criterio que handleAtencionLibreReducida).
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+        `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
+        `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
+        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
+        `Un asesor comercial 👤 te va a contactar para darte una atención más personalizada 😊`,
+        `Cliente mostró interés general en una actividad/manualidad sin nombrar producto puntual: "${texto}"`,
+      );
+      return;
+    }
+    if (resultado.requiereAsesor) {
+      await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, resultado.respuesta);
+      return;
+    }
+    await this.sendText(ideEmpr, waId, resultado.respuesta);
   }
 
   private async handlePreguntaEsCliente(
