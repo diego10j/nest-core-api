@@ -2553,14 +2553,24 @@ export class ClientesService extends BaseService {
     // contra esa única cuenta compartida, así que agrupando por ide_geper ambos lados
     // deberían coincidir - las diferencias señalan asientos mal registrados o no
     // reflejados en CxC (o viceversa).
+    //
+    // IMPORTANTE (confirmado por el usuario 2026-09-18): en esta base, `ide_sucu` NO es
+    // una sucursal física - son DOS EMPRESAS LEGALES independientes que comparten la misma
+    // BD (ide_sucu=0 = DIQUIMEC [persona jurídica, empresa activa], ide_sucu=1 = la empresa
+    // anterior [persona natural], modelada como "sucursal" solo para no perder clientes/
+    // proveedores compartidos). CxC, CxP e inventario deben mantenerse SEPARADOS por
+    // ide_sucu entre ambas - por eso SÍ se filtra por ide_sucu en ambos lados, a diferencia
+    // de lo que asumía una versión anterior de este comentario. Ver
+    // `_Decisiones/diferencias-cxc-ide-sucu-no-filtra.md` en el vault (pendiente de
+    // corrección) y el plan de auditoría más amplio para el resto del código.
 
     /**
-     * Saldo contable (cuenta Clientes) vs saldo CxC, consolidado (todos los clientes), a una fecha de corte.
-     * A propósito NO se filtra por ide_sucu (a diferencia del resto del módulo): la contabilidad no
-     * discrimina por sucursal para esta cuenta (con_cab_comp_cont siempre trae ide_sucu=0 en las líneas
-     * de la cuenta Clientes, confirmado contra datos reales), mientras que CxC sí registra transacciones
-     * en varias sucursales - filtrar por sucursal en cualquiera de los dos lados compararía "toda la
-     * empresa" contra "una sola sucursal" y produciría un descuadre artificial permanente.
+     * Saldo contable (cuenta Clientes) vs saldo CxC, consolidado (todos los clientes), a una fecha de corte,
+     * PARA UNA SOLA EMPRESA (dtoIn.ideSucu). El lado CxC filtra por la sucursal de la CABECERA
+     * (ct.ide_sucu), no por la del detalle (dt.ide_sucu) - un detalle de COBRO se graba con la
+     * sucursal/empresa de quien registra el cobro, que puede no coincidir con la de la factura
+     * original si alguien opera bajo el contexto de empresa equivocado; agrupar por la cabecera
+     * evita partir artificialmente el saldo de una misma factura entre las dos empresas.
      */
     async getDiferenciasContablesCxcConsolidado(dtoIn: GetDiferenciasContablesCxcDto & HeaderParamsDto) {
         const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
@@ -2581,9 +2591,11 @@ export class ClientesService extends BaseService {
                 COALESCE((
                     SELECT SUM(dt.valor_ccdtr * tt.signo_ccttr)
                     FROM cxc_detall_transa dt
+                    INNER JOIN cxc_cabece_transa ct ON ct.ide_ccctr = dt.ide_ccctr
                     INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
                     WHERE dt.fecha_trans_ccdtr <= $1
                       AND dt.ide_empr = ${dtoIn.ideEmpr}
+                      AND ct.ide_sucu = ${dtoIn.ideSucu}
                 ), 0) AS saldo_cxc
         `);
         query.addParam(1, dtoIn.fechaCorte);
@@ -2594,8 +2606,14 @@ export class ClientesService extends BaseService {
     }
 
     /**
-     * Saldo contable (cuenta Clientes) vs saldo CxC, detallado por cliente, a una fecha de corte.
-     * Sin filtro de ide_sucu - ver comentario en getDiferenciasContablesCxcConsolidado.
+     * Saldo contable (cuenta Clientes) vs saldo CxC, detallado por cliente, a una fecha de corte,
+     * PARA UNA SOLA EMPRESA (dtoIn.ideSucu) - ver comentario en getDiferenciasContablesCxcConsolidado.
+     * El lado CxC filtra por `ct.ide_sucu` (la CABECERA/factura), no por `dt.ide_sucu` (el detalle):
+     * `cxc_detall_transa.ide_sucu` en una línea de COBRO refleja la empresa de quien registró el
+     * cobro (ver dtoIn.ideSucu en cxc-transacciones-save.service.ts), no la de la factura original -
+     * filtrar por el detalle partiría el saldo de una factura entre las dos empresas si el cobro se
+     * registró bajo el contexto equivocado. La pantalla "Editar Transacciones CxC"
+     * (getCabecerasTrnCliente) usa el mismo criterio (ct.ide_sucu).
      */
     async getDiferenciasContablesCxc(dtoIn: GetDiferenciasContablesCxcDto & HeaderParamsDto) {
         const ideCndpcClientes = Number(this.variables.get('p_con_cuenta_clientes_cxc'));
@@ -2625,7 +2643,7 @@ export class ClientesService extends BaseService {
                 INNER JOIN cxc_tipo_transacc tt ON tt.ide_ccttr = dt.ide_ccttr
                 WHERE dt.fecha_trans_ccdtr <= $1
                   AND dt.ide_empr = ${dtoIn.ideEmpr}
-                  AND dt.ide_sucu = ${dtoIn.ideSucu}
+                  AND ct.ide_sucu = ${dtoIn.ideSucu}
                 GROUP BY ct.ide_geper
             )
             SELECT
@@ -2653,7 +2671,7 @@ export class ClientesService extends BaseService {
      * previos a fechaInicio) y saldo acumulado por fila - mismo patrón que getTrnCliente
      * (saldo_inicial + movimientos + UNION ALL de una fila sintética "Saldo Inicial"), para que
      * el saldo del último movimiento coincida con saldo_contable de getDiferenciasContablesCxc
-     * cuando fechaFin = fecha de corte. Sin filtro de ide_sucu - ver comentario en
+     * cuando fechaFin = fecha de corte. Filtra por `cc.ide_sucu` (empresa) - ver comentario en
      * getDiferenciasContablesCxcConsolidado.
      */
     async getAsientosContablesCliente(dtoIn: GetDetalleDiferenciaClienteDto & HeaderParamsDto) {
@@ -2669,6 +2687,7 @@ export class ClientesService extends BaseService {
                 WHERE dc.ide_cndpc = ${ideCndpcClientes}
                   AND cc.fecha_trans_cnccc < $1
                   AND cc.ide_empr = ${dtoIn.ideEmpr}
+                  AND cc.ide_sucu = ${dtoIn.ideSucu}
                   AND cc.ide_cneco = ${ideCnecoNormal}
                   AND cc.ide_geper = $2
             ),
@@ -2687,6 +2706,7 @@ export class ClientesService extends BaseService {
                 WHERE dc.ide_cndpc = ${ideCndpcClientes}
                   AND cc.fecha_trans_cnccc BETWEEN $1 AND $3
                   AND cc.ide_empr = ${dtoIn.ideEmpr}
+                  AND cc.ide_sucu = ${dtoIn.ideSucu}
                   AND cc.ide_cneco = ${ideCnecoNormal}
                   AND cc.ide_geper = $2
             )
