@@ -377,6 +377,12 @@ export class BotGptService {
               productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
               'El cliente puede responder todo junto (ej: "1. repostería 2. ambiental"), en el mismo orden sin ' +
               'numerar (ej: "repostería y ambiental"), o mencionar solo algunos. ' +
+              'Si el cliente da UN SOLO uso/aplicación y NO nombra ningún producto por nombre (ej. le preguntaste el ' +
+              'uso de "Span 80, Monooleato de sorbitán" y contesta solo "uso cosmético" o "para fabricar velas"), es ' +
+              'la respuesta natural a "para qué uso necesitas CADA UNO" — aplicá ese mismo uso a TODOS los productos ' +
+              'de la lista, no hace falta que lo repita uno por uno (mismo criterio que extraerCantidadesPorProducto; ' +
+              'caso real detectado 2026-09-18: "uso cosmético" sin nombrar ninguno de los 2 productos pendientes no ' +
+              'se aplicó a ninguno, y el bot volvió a preguntar algo que el cliente ya había contestado). ' +
               'OJO: si el mensaje NO describe ningún uso/aplicación real — es una pregunta sobre otra cosa (ej. ' +
               '"en qué cantidades se vende y el precio", "cuál es el precio") o no tiene relación con para qué va a ' +
               'usar el producto — NO inventes un uso a partir de esa pregunta: dejalo en null. Es mejor volver a ' +
@@ -753,9 +759,14 @@ export class BotGptService {
                   'nombre de pila (ej. "Diego", "me llamo Ashly") como si responde SOLO con el nombre de su empresa ' +
                   '(ej. "Somos la empresa Botica Bristol", "Química Andina", "represento a Laboratorios XYZ") — en ' +
                   'ese caso usa el nombre de la empresa como "nombre". PERO si el mensaje trae AMBOS (su nombre de ' +
-                  'persona Y el de la empresa, ej. "le saluda Lissette Catagua de la cía QUIMPAC ECUADOR S.A."), usa ' +
-                  'el NOMBRE DE LA PERSONA como "nombre" — es a quien se saluda, no a la empresa; el nombre de ' +
-                  'empresa solo se usa como "nombre" cuando es lo ÚNICO que dio. ' +
+                  'persona Y el de la empresa, ej. "le saluda Lissette Catagua de la cía QUIMPAC ECUADOR S.A.", "le ' +
+                  'escribe Estefanía Lovato del departamento de investigación y desarrollo de Laboratorios Rene ' +
+                  'Chardon"), usa el NOMBRE DE LA PERSONA como "nombre" — es quien escribe, no a quien representa; el ' +
+                  'verbo puede ser "saluda", "escribe", "contacta" u otro similar, y puede haber MÁS contexto en el ' +
+                  'medio (cargo, departamento, área) entre el nombre y la empresa — igual el nombre de la persona es ' +
+                  'lo primero que aparece y es lo que hay que extraer, sin dejarte confundir por el resto de la frase ' +
+                  '(caso real detectado 2026-09-18: con esa frase completa GPT no extrajo el nombre y le pidió repetirlo). ' +
+                  'El nombre de empresa solo se usa como "nombre" cuando es lo ÚNICO que dio, sin nombre de persona. ' +
                   'OJO: un nombre de empresa NO es lo mismo que el nombre de un PRODUCTO/QUÍMICO (ej. "ácido ' +
                   'sulfónico", "formol", "percarbonato de sodio") ni una PREGUNTA sobre algo (termina en "?", o es ' +
                   'claramente una consulta tipo "tienen tal cosa?"). Si el mensaje es eso — un producto suelto o una ' +

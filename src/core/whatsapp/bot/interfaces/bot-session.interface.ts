@@ -87,6 +87,13 @@ export interface DatosSesion {
   // "manteca de karité y cera de abejas", cera de abejas matcheó catálogo público y
   // desapareció de la cotización — ver finalizarCotizacionRapida).
   productosEnCatalogoPublico?: string[];
+  // Aclaración del cliente detectada a mitad de la recopilación de cantidad/uso que vale
+  // la pena que el asesor vea tal cual la dijo — ej. "ambos son iguales" cuando hay 2+
+  // productos pendientes (pueden ser el mismo compuesto con dos nombres distintos, ej.
+  // "Span 80" y "monooleato de sorbitán" — caso real detectado 2026-09-18). No se intenta
+  // fusionar los ítems automáticamente (fusionar mal es peor que no fusionar), solo se
+  // deja la aclaración para que un humano decida.
+  notaClienteExtra?: string;
   // Texto YA clasificado como PRODUCTO que quedó en espera mientras el cliente
   // desconocido pasa por identificación (PREGUNTA_ES_CLIENTE → IDENTIFICACION /
   // DATOS_NUEVO_CLIENTE) — al terminar de identificarse se procesa automáticamente

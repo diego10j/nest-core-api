@@ -108,6 +108,23 @@ export class BotSessionService {
     await this.dataSource.createQuery(upd);
   }
 
+  /**
+   * Refresca `hora_actua` SIN tocar `estado` ni `datos_sesion` — para cuando un mensaje
+   * recién llega y todavía no se procesó (ej. queda esperando en el buffer de debounce).
+   * Sin esto, `verificarInactividad` podía derivar a asesor por "20 min sin actividad"
+   * justo cuando el cliente SÍ estaba activo, porque su mensaje estaba invisible adentro
+   * del buffer y nunca había llegado a actualizar `hora_actua` (caso real detectado
+   * 2026-09-18: cliente en silencio 20 min, retomó con 3 mensajes seguidos, y el cron de
+   * inactividad — que corre independiente del buffer — le ganó la carrera al debounce por
+   * unos segundos y cerró la sesión con el cliente escribiendo en ese mismo instante).
+   */
+  async tocarActividad(ideWhbse: number): Promise<void> {
+    await this.dataSource.pool.query(
+      `UPDATE wha_bot_sesion SET hora_actua = NOW() WHERE ide_whbse = $1`,
+      [ideWhbse],
+    );
+  }
+
   async incrementarFallo(ideWhbse: number): Promise<number> {
     const res = await this.dataSource.pool.query(
       `UPDATE wha_bot_sesion SET intentos_fallo = intentos_fallo + 1

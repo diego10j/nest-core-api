@@ -444,6 +444,11 @@ export class BotService implements OnModuleInit {
       BotState.INICIO, BotState.ESPERANDO_CONFIRMACION, BotState.ATENCION_LIBRE, BotState.RECOPILANDO_COTIZACION_RAPIDA,
     ];
     if (config.reduce_mensajes_whbco && ESTADOS_CON_ESPERA.includes(sesion.estado as BotState)) {
+      // Refresca hora_actua AHORA, aunque el mensaje recién quede en el buffer sin
+      // procesar todavía — si no, el cron de inactividad (independiente del buffer) puede
+      // ganarle la carrera y derivar a asesor justo cuando el cliente está activo (ver
+      // BotSessionService.tocarActividad).
+      await this.botSession.tocarActividad(sesion.ide_whbse);
       await this.botDebounce.encolarMensaje(ideWhcha, texto);
       return;
     }
@@ -1180,7 +1185,7 @@ export class BotService implements OnModuleInit {
     const notaCatalogoPublico = datos.productosEnCatalogoPublico?.length
       ? `El cliente también preguntó por: ${datos.productosEnCatalogoPublico.join(', ')} — se le compartió el link del catálogo público con precios, no está en esta cotización.`
       : null;
-    const notaCompleta = [notaExtra, notaCatalogoPublico].filter(Boolean).join('\n') || undefined;
+    const notaCompleta = [notaExtra, notaCatalogoPublico, datos.notaClienteExtra].filter(Boolean).join('\n') || undefined;
 
     const productosResueltos = await this.resolverProductosSimple(items, ideEmpr);
     const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
@@ -1348,6 +1353,18 @@ export class BotService implements OnModuleInit {
     const pedirUso = cot.pedirUso ?? false;
     const itemsSinCantidad = cot.items.filter((i) => i.cantidad === null);
     const itemsSinUso = pedirUso ? cot.items.filter((i) => !i.uso) : [];
+
+    // El cliente puede aclarar, a mitad de la recopilación, que dos+ productos pendientes
+    // son en realidad el mismo (ej. nombre comercial vs. nombre genérico del mismo
+    // compuesto — "Span 80" y "monooleato de sorbitán" son la misma sustancia). NO se
+    // intenta fusionar los ítems acá — determinar sinónimos químicos de forma automática
+    // es poco confiable y fusionar mal es peor que no fusionar — se deja tal cual la
+    // aclaración para que el asesor decida (caso real detectado 2026-09-18: la cotización
+    // terminó con "SPAN 80" y "MONOOLEATO DE SORBITÁN" como dos líneas separadas pese a
+    // que la clienta dijo explícitamente "ambos son iguales").
+    if (cot.items.length > 1 && /\b(son|es)\s+(el\s+mismo|la\s+misma|lo\s+mismo|iguales)\b/i.test(texto)) {
+      datos = { ...datos, notaClienteExtra: `El cliente aclaró: "${texto.trim()}" — revisar si alguno de los productos pendientes es en realidad el mismo.` };
+    }
 
     // Ciudad NO se pide acá: es un mensaje independiente aparte, después de que cantidad/
     // uso/nombre estén completos (ver preguntarCiudadOFinalizar) — antes se mezclaba con
