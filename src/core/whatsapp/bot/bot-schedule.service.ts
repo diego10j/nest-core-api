@@ -131,16 +131,16 @@ export class BotScheduleService {
   }
 
   /**
-   * Cada 20s revisa el buffer de mensajes del modo mensajes reducidos (wha_bot_config.
+   * Cada 5s revisa el buffer de mensajes del modo mensajes reducidos (wha_bot_config.
    * reduce_mensajes_whbco) — cuando un chat lleva `segundos_espera_whbco` sin mensajes
    * nuevos, procesa de una sola vez todo lo acumulado en vez de responder mensaje a
    * mensaje. Ver BotDebounceService para el detalle del buffer. OJO: este cron es GLOBAL
    * (todas las cuentas), no por cuenta — si alguna cuenta configura un `segundos_espera_
-   * whbco` bajo (el panel permite desde 1s), este intervalo le agrega hasta 20s extra de
+   * whbco` bajo (el panel permite desde 1s), este intervalo le agrega hasta 5s extra de
    * espera en el peor caso. Mantenerlo como fracción del umbral más CORTO entre todas las
    * cuentas activas, no ajustarlo pensando en una sola cuenta.
    */
-  @Cron('*/20 * * * * *')
+  @Cron('*/5 * * * * *')
   async procesarBufferReducido(): Promise<void> {
     try {
       const candidatos = await this.botDebounce.obtenerCandidatos(this.MIN_ESPERA_REDUCIDO_SEG);
