@@ -677,7 +677,39 @@ export class ComprobanteContabilidadService extends BaseService {
                      , c.nom_geper
                      , a.observacion_cnccc`.slice(1);
 
-            const sql = `(${selectCols}, 'CUENTA CONTABLE PADRE' AS error
+            // Un pago/cobro consolidado (ej. Orden de Pago a proveedor que cubre varias
+            // facturas) genera UN solo movimiento en tes_cab_libr_banc pero UN asiento
+            // contable POR CADA documento pagado (con_cab_comp_cont distintos) - solo el
+            // PRIMERO queda enlazado directamente en tes_cab_libr_banc.ide_cnccc (columna
+            // única), mientras que cada factura conserva su propio ide_cnccc en
+            // cxp_detall_transa/cxc_detall_transa. Sin esto, comparar el valor total del
+            // movimiento bancario contra un solo asiento (el de la primera factura) genera
+            // falsos positivos de 'VALOR BANCO INCORRECTO'.
+            const sql = `WITH tes_asientos_movimiento AS (
+                SELECT tclb0.ide_teclb, tclb0.ide_cnccc
+                  FROM tes_cab_libr_banc tclb0
+                 WHERE tclb0.ide_cnccc IS NOT NULL
+                UNION
+                SELECT dt.ide_teclb, dt.ide_cnccc
+                  FROM cxp_detall_transa dt
+                 WHERE dt.ide_teclb IS NOT NULL AND dt.ide_cnccc IS NOT NULL
+                UNION
+                SELECT dt.ide_teclb, dt.ide_cnccc
+                  FROM cxc_detall_transa dt
+                 WHERE dt.ide_teclb IS NOT NULL AND dt.ide_cnccc IS NOT NULL
+            ),
+            tes_valor_contabilizado AS (
+                SELECT tam.ide_teclb
+                     , SUM(COALESCE(dcc.valor_cndcc, 0)) AS valor_contabilizado
+                  FROM tes_asientos_movimiento tam
+                 INNER JOIN tes_cab_libr_banc tclb1 ON tclb1.ide_teclb = tam.ide_teclb
+                 INNER JOIN tes_cuenta_banco  tcba1 ON tcba1.ide_tecba = tclb1.ide_tecba
+                 INNER JOIN con_det_comp_cont dcc
+                    ON dcc.ide_cnccc = tam.ide_cnccc
+                   AND dcc.ide_cndpc = tcba1.ide_cndpc
+                 GROUP BY tam.ide_teclb
+            )
+            (${selectCols}, 'CUENTA CONTABLE PADRE' AS error
               FROM con_det_comp_cont x
              INNER JOIN con_cab_comp_cont a ON x.ide_cnccc = a.ide_cnccc
              INNER JOIN gen_persona      c ON a.ide_geper = c.ide_geper
@@ -735,6 +767,12 @@ export class ComprobanteContabilidadService extends BaseService {
                      FROM tes_cab_libr_banc t
                     WHERE t.ide_cnccc = a.ide_cnccc
                       AND t.ide_sucu  = $1
+               )
+               AND NOT EXISTS (
+                   -- Pago consolidado (Orden de Pago): esta factura conserva su propio
+                   -- ide_cnccc en cxp_detall_transa aunque tes_cab_libr_banc.ide_cnccc
+                   -- (columna única) apunte al asiento de otra factura del mismo pago.
+                   SELECT 1 FROM cxp_detall_transa dt WHERE dt.ide_cnccc = a.ide_cnccc
                ))
              UNION ALL
             (SELECT DISTINCT
@@ -751,14 +789,7 @@ export class ComprobanteContabilidadService extends BaseService {
                                AND dcc.ide_cndpc = tcba.ide_cndpc
                         )
                         THEN 'CUENTA BANCO INCORRECTA EN ASIENTO DE TESORERIA'
-                        WHEN EXISTS (
-                            SELECT 1
-                              FROM con_det_comp_cont dcc
-                             WHERE dcc.ide_cnccc = ccc.ide_cnccc
-                               AND dcc.ide_cndpc = tcba.ide_cndpc
-                               AND ABS(COALESCE(dcc.valor_cndcc, 0))
-                                   != ABS(tclb.valor_teclb)
-                        )
+                        WHEN ABS(COALESCE(tvc.valor_contabilizado, 0)) != ABS(tclb.valor_teclb)
                         THEN 'VALOR BANCO INCORRECTO EN ASIENTO DE TESORERIA'
                         ELSE 'ERROR CUENTA/VALOR BANCO'
                     END AS error
@@ -767,6 +798,8 @@ export class ComprobanteContabilidadService extends BaseService {
                  ON tcba.ide_tecba = tclb.ide_tecba
               INNER JOIN con_cab_comp_cont ccc
                  ON ccc.ide_cnccc = tclb.ide_cnccc
+               LEFT JOIN tes_valor_contabilizado tvc
+                 ON tvc.ide_teclb = tclb.ide_teclb
               WHERE tclb.ide_sucu = $1
                 AND tclb.ide_cnccc IS NOT NULL
                 AND ccc.ide_cneco = 0
@@ -778,14 +811,7 @@ export class ComprobanteContabilidadService extends BaseService {
                          WHERE dcc.ide_cnccc = ccc.ide_cnccc
                            AND dcc.ide_cndpc = tcba.ide_cndpc
                     )
-                    OR EXISTS (
-                        SELECT 1
-                          FROM con_det_comp_cont dcc
-                         WHERE dcc.ide_cnccc = ccc.ide_cnccc
-                           AND dcc.ide_cndpc = tcba.ide_cndpc
-                           AND ABS(COALESCE(dcc.valor_cndcc, 0))
-                               != ABS(tclb.valor_teclb)
-                    )
+                    OR ABS(COALESCE(tvc.valor_contabilizado, 0)) != ABS(tclb.valor_teclb)
                 ))
              ORDER BY fecha_trans_cnccc, ide_cnccc`;
 
