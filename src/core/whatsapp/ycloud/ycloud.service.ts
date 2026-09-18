@@ -1211,8 +1211,21 @@ export class YcloudService {
     const tipo = data.type || 'text';
     const body = data.text?.body || data.image?.caption || data.video?.caption || data.document?.caption || '';
 
+    // Sin esto el mensaje queda con ide_whcha en null — invisible para getHistorialMensajes
+    // y cualquier vista que filtre por chat (mismo bug encontrado 2026-09-18 en
+    // saveMessageSent, ver ese comentario para el detalle completo).
+    const chatRow = await this.dataSource.pool.query<{ ide_whcha: number }>(
+      `SELECT ide_whcha FROM wha_chat WHERE wa_id_whcha = $1 LIMIT 1`,
+      [customerWaId],
+    );
+    const ideWhchaDestino = chatRow.rows[0]?.ide_whcha;
+    if (!ideWhchaDestino) {
+      this.logger.warn(`[insertOutboundMessage] No se encontró wha_chat para wa_id=${customerWaId} — el mensaje se guarda sin ide_whcha`);
+    }
+
     const buildBase = (): InsertQuery => {
       const q = new InsertQuery('wha_mensaje', 'uuid');
+      if (ideWhchaDestino) q.values.set('ide_whcha', ideWhchaDestino);
       q.values.set('id_whmem', wamid);
       q.values.set('wa_id_whmem', customerWaId);
       q.values.set('phone_number_id_whmem', businessPhone);
@@ -1411,7 +1424,19 @@ export class YcloudService {
         [data.idWts, now, normalizedPhone],
       );
 
+      // Sin esto, el mensaje se manda por WhatsApp (el cliente SÍ lo ve) pero queda
+      // guardado con ide_whcha en null — invisible para cualquier query que filtre por
+      // chat, incluido getHistorialMensajes() (el contexto que se le pasa a GPT en cada
+      // llamada). GPT terminaba viendo la conversación solo del lado del cliente, sin sus
+      // propias respuestas anteriores (caso real detectado 2026-09-18 al revisar por qué
+      // wha_mensaje no tenía NINGÚN mensaje del bot para un chat que sí los recibió).
+      const ideWhchaDestino = chatRow.rows[0]?.ide_whcha;
+      if (!ideWhchaDestino) {
+        this.logger.warn(`[saveMessageSent] No se encontró wha_chat para wa_id=${normalizedPhone} — el mensaje se guarda sin ide_whcha`);
+      }
+
       const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
+      if (ideWhchaDestino) insertQuery.values.set('ide_whcha', ideWhchaDestino);
       insertQuery.values.set('phone_number_id_whmem', config.phoneNumberId);
       insertQuery.values.set('wa_id_whmem', normalizedPhone);
       insertQuery.values.set('id_whmem', data.idWts);

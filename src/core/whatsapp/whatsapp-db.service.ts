@@ -632,7 +632,19 @@ export class WhatsappDbService {
             updateQuery.addParam(1, dto.telefono);
             await this.dataSource.createQuery(updateQuery);
 
+            // Sin esto el mensaje queda con ide_whcha en null — invisible para cualquier
+            // vista/consulta que filtre por chat, incluido el historial que se le pasa al
+            // bot (mismo bug encontrado 2026-09-18 en YcloudService.saveMessageSent/
+            // insertOutboundMessage — este es el tercer lugar que lo tenía).
+            const chatQ = new SelectQuery(`SELECT ide_whcha FROM wha_chat WHERE wa_id_whcha = $1 LIMIT 1`);
+            chatQ.addParam(1, dto.telefono);
+            const chatRow = await this.dataSource.createSingleQuery(chatQ);
+            if (!chatRow) {
+                this.logger.warn(`[saveMensajeEnviado] No se encontró wha_chat para wa_id=${dto.telefono} — el mensaje se guarda sin ide_whcha`);
+            }
+
             const insertQuery = new InsertQuery('wha_mensaje', 'uuid');
+            if (chatRow?.ide_whcha) insertQuery.values.set('ide_whcha', chatRow.ide_whcha);
             insertQuery.values.set('phone_number_id_whmem', cuenta.id_cuenta_whcue);
             insertQuery.values.set('wa_id_whmem', dto.telefono);
             insertQuery.values.set('id_whmem', dto.idWts);
