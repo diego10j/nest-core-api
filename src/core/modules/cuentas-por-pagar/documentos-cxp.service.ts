@@ -725,7 +725,7 @@ export class DocumentosCxPService extends BaseService {
                    a.ide_teclb,
                    c.ide_cnccc,
                    ccc.numero_cnccc,
-                   icb.foto_teincb                 AS comprobante_foto,
+                   COALESCE(icb.foto_teincb, dop.foto_cpcdop) AS comprobante_foto,
                    icb.num_comprobante_teincb      AS comprobante_numero,
                    icb.tipo_trns_teincb            AS comprobante_tipo,
                    icb.ordenante_teincb            AS comprobante_ordenante,
@@ -749,6 +749,18 @@ export class DocumentosCxPService extends BaseService {
             LEFT JOIN tes_tip_tran_banc f ON c.ide_tettb = f.ide_tettb
             LEFT JOIN tes_info_comprobante_banco icb ON icb.ide_teclb = a.ide_teclb
             LEFT JOIN con_cab_comp_cont ccc ON ccc.ide_cnccc = c.ide_cnccc
+            -- Pagos registrados desde Órdenes de Pago (pago consolidado): el comprobante no
+            -- queda en tes_info_comprobante_banco (esa pantalla no lo sube ahí) sino en
+            -- cxp_det_orden_pago.foto_cpcdop, mismo storage (temp_media) que foto_teincb -
+            -- sin este fallback la imagen no se veía pese a existir.
+            LEFT JOIN LATERAL (
+                SELECT dop.foto_cpcdop
+                  FROM cxp_det_orden_pago dop
+                 WHERE dop.ide_cpctr = a.ide_cpctr
+                   AND dop.foto_cpcdop IS NOT NULL
+                 ORDER BY dop.ide_cpcdop DESC
+                 LIMIT 1
+            ) dop ON true
             WHERE a.numero_pago_cpdtr > 0
               AND a.ide_cpcfa = $1
             ORDER BY a.fecha_trans_cpdtr
