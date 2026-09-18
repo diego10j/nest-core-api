@@ -994,6 +994,16 @@ export class BotService implements OnModuleInit {
             `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
+          // Se guardan aunque no sigan en itemsPendientes — nunca van a entrar a
+          // cotizacion_rapida.items, así que sin esto el asesor nunca se entera de que el
+          // cliente también preguntó por estos (ver DatosSesion.productosEnCatalogoPublico).
+          datos = {
+            ...datos,
+            productosEnCatalogoPublico: [
+              ...(datos.productosEnCatalogoPublico ?? []),
+              ...conCatalogo.map((i) => i.producto),
+            ],
+          };
           if (!itemsPendientes.length) {
             await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
             return;
@@ -1163,6 +1173,15 @@ export class BotService implements OnModuleInit {
     nombreBot: string, nombreEmpresa: string,
     notaExtra?: string,
   ): Promise<void> {
+    // Productos que matchearon un catálogo público (se les mandó el link con precios en
+    // vez de cotizarlos acá) nunca entran a `items` — sin esto, el asesor no se enteraba
+    // de que el cliente también preguntó por ellos (caso real detectado 2026-09-18: "cera
+    // de abejas" desapareció de la cotización, solo quedó "manteca de karité").
+    const notaCatalogoPublico = datos.productosEnCatalogoPublico?.length
+      ? `El cliente también preguntó por: ${datos.productosEnCatalogoPublico.join(', ')} — se le compartió el link del catálogo público con precios, no está en esta cotización.`
+      : null;
+    const notaCompleta = [notaExtra, notaCatalogoPublico].filter(Boolean).join('\n') || undefined;
+
     const productosResueltos = await this.resolverProductosSimple(items, ideEmpr);
     const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
 
@@ -1219,7 +1238,7 @@ export class BotService implements OnModuleInit {
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
         null,
         `Cotización #${resultado.secuencial} generada automáticamente (match exacto de producto y precio) — PDF ya enviado al cliente.`
-        + (notaExtra ? `\n${notaExtra}` : ''),
+        + (notaCompleta ? `\n${notaCompleta}` : ''),
       );
       return;
     }
@@ -1238,7 +1257,7 @@ export class BotService implements OnModuleInit {
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
       `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
-      notaExtra,
+      notaCompleta,
     );
   }
 
@@ -1780,6 +1799,17 @@ export class BotService implements OnModuleInit {
             `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
+          // Se guardan aunque no sigan en itemsPendientes — nunca van a entrar a
+          // cotizacion_rapida.items, así que sin esto el asesor nunca se entera de que el
+          // cliente también preguntó por estos (mismo criterio que manejarConsultaProducto
+          // Reducida — ver DatosSesion.productosEnCatalogoPublico).
+          datos = {
+            ...datos,
+            productosEnCatalogoPublico: [
+              ...(datos.productosEnCatalogoPublico ?? []),
+              ...conCatalogo.map((i) => i.producto),
+            ],
+          };
           if (!itemsPendientes.length) {
             await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
             return;

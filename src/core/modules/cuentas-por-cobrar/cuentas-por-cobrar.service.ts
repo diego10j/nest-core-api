@@ -1169,13 +1169,11 @@ export class CuentasPorCobrarService extends BaseService {
           v.nombre_vgven AS vendedor,
           cf.dias_credito_cccfa AS dias_credito,
           cf.total_cccfa AS total_factura,
-          COALESCE((
-              SELECT SUM(dt2.valor_ccdtr * tt2.signo_ccttr)
-              FROM cxc_cabece_transa ct2
-              JOIN cxc_detall_transa dt2 ON dt2.ide_ccctr = ct2.ide_ccctr
-              JOIN cxc_tipo_transacc tt2 ON tt2.ide_ccttr = dt2.ide_ccttr
-              WHERE ct2.ide_cccfa = ct.ide_cccfa
-          ), 0)::NUMERIC(15,2) AS saldo_por_pagar,
+          spp.saldo_por_pagar,
+          CASE
+              WHEN ABS(spp.saldo_por_pagar) < 0.005 THEN 'cuadrado'
+              ELSE 'pendiente de pago'
+          END AS estado,
           COALESCE((
               SELECT SUM(dt3.valor_ccdtr * tt3.signo_ccttr)
               FROM cxc_cabece_transa ct3
@@ -1191,16 +1189,24 @@ export class CuentasPorCobrarService extends BaseService {
       LEFT JOIN cxc_cabece_factura cf ON cf.ide_cccfa = ct.ide_cccfa AND cf.ide_ccefa = ${estadoFacturaNormal}
       LEFT JOIN con_deta_forma_pago fp ON fp.ide_cndfp = cf.ide_cndfp1
       LEFT JOIN ven_vendedor v ON v.ide_vgven = cf.ide_vgven
+      LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(dt2.valor_ccdtr * tt2.signo_ccttr), 0)::NUMERIC(15,2) AS saldo_por_pagar
+          FROM cxc_cabece_transa ct2
+          JOIN cxc_detall_transa dt2 ON dt2.ide_ccctr = ct2.ide_ccctr
+          JOIN cxc_tipo_transacc tt2 ON tt2.ide_ccttr = dt2.ide_ccttr
+          WHERE ct2.ide_cccfa = ct.ide_cccfa
+      ) spp ON true
       WHERE ct.ide_empr = $1
         AND ct.ide_sucu = $2
-        AND cf.fecha_emisi_cccfa IS NOT NULL
         AND (
             cf.ide_cccfa IS NULL
-            OR (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa * INTERVAL '1 day') >= CURRENT_DATE
+            OR (cf.fecha_emisi_cccfa IS NOT NULL
+                AND (cf.fecha_emisi_cccfa + cf.dias_credito_cccfa * INTERVAL '1 day') >= CURRENT_DATE)
         )
       GROUP BY ct.ide_ccctr, ct.ide_cccfa, ct.ide_geper, p.nom_geper,
                ct.fecha_trans_ccctr, ct.observacion_ccctr,
-               fp.nombre_cndfp, v.nombre_vgven, cf.dias_credito_cccfa, cf.total_cccfa
+               fp.nombre_cndfp, v.nombre_vgven, cf.dias_credito_cccfa, cf.total_cccfa,
+               spp.saldo_por_pagar
       HAVING SUM(dt.valor_ccdtr * tt.signo_ccttr) != 0
       ORDER BY ABS(SUM(dt.valor_ccdtr * tt.signo_ccttr)) DESC
     `, dtoIn);

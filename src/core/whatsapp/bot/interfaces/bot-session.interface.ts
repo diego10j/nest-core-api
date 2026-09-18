@@ -79,6 +79,14 @@ export interface DatosSesion {
   // handleAtencionLibreReducida y handleConfirmacion) — a la 2ª vez sin éxito se deja de
   // insistir y se sigue con "CONSUMIDOR FINAL" en vez de repreguntar indefinidamente.
   intentosNombre?: number;
+  // Productos que el cliente mencionó y matchearon un catálogo PÚBLICO (se le mandó el
+  // link con precios en vez de cotizarlos por acá) — nunca entran a `productos`/
+  // `cotizacion_rapida.items`, así que sin esto se perdían del todo de la cotización
+  // final: el asesor solo veía los productos que SÍ se cotizaron, sin saber que el
+  // cliente también preguntó por otros (caso real detectado 2026-09-18: preguntó por
+  // "manteca de karité y cera de abejas", cera de abejas matcheó catálogo público y
+  // desapareció de la cotización — ver finalizarCotizacionRapida).
+  productosEnCatalogoPublico?: string[];
   // Texto YA clasificado como PRODUCTO que quedó en espera mientras el cliente
   // desconocido pasa por identificación (PREGUNTA_ES_CLIENTE → IDENTIFICACION /
   // DATOS_NUEVO_CLIENTE) — al terminar de identificarse se procesa automáticamente
