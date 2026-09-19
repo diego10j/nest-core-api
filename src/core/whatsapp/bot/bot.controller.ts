@@ -91,9 +91,9 @@ export class BotController {
   @ApiOperation({ summary: 'Envía la respuesta propuesta (o editada) por "Responder con Bot" — el chat se queda en modo ASESOR' })
   async responderEnviar(
     @Param('ideWhcha', ParseIntPipe) ideWhcha: number,
-    @Body() dto: { mensaje: string },
+    @Body() dto: { mensaje: string; incluirUbicacion?: boolean },
   ) {
-    await this.botService.enviarRespuestaAsistida(ideWhcha, dto.mensaje);
+    await this.botService.enviarRespuestaAsistida(ideWhcha, dto.mensaje, dto.incluirUbicacion === true);
     return { ok: true, message: 'Respuesta enviada' };
   }
 

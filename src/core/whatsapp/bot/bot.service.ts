@@ -4236,7 +4236,7 @@ export class BotService implements OnModuleInit {
    * todavía es solo una propuesta de texto que el agente puede descartar.
    */
   async componerRespuestaAsistida(ideWhcha: number): Promise<
-    { ok: true; respuesta: string; tipo: string } | { ok: false; motivo: string }
+    { ok: true; respuesta: string; tipo: string; incluyeUbicacion: boolean } | { ok: false; motivo: string }
   > {
     const chatRow = await this.dataSource.pool.query<{
       wa_id_whcha: string; phone_number_id_whcha: string; ide_whcue: number; ide_empr: number;
@@ -4286,7 +4286,12 @@ export class BotService implements OnModuleInit {
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       const texto = this.construirTextoInfo(tipoConsulta as any, nombreEmpresa, config);
-      if (texto) return { ok: true, respuesta: texto, tipo: tipoConsulta };
+      // Para UBICACION el flujo normal (responderInfo) manda además el pin de mapa de
+      // WhatsApp; acá solo se propone texto, así que se avisa si el envío lo va a incluir
+      // (ver enviarRespuestaAsistida) — antes el agente solo mandaba el texto de la
+      // dirección y el cliente no recibía la ubicación.
+      const incluyeUbicacion = tipoConsulta === 'UBICACION' && !!config?.lat_empresa && !!config?.lng_empresa;
+      if (texto) return { ok: true, respuesta: texto, tipo: tipoConsulta, incluyeUbicacion };
     }
 
     const historial: { role: 'user' | 'assistant'; content: string }[] = msgs
@@ -4312,7 +4317,7 @@ export class BotService implements OnModuleInit {
       `defecto y solo pregunta la ciudad al final.`,
     );
 
-    return { ok: true, respuesta, tipo: tipoConsulta };
+    return { ok: true, respuesta, tipo: tipoConsulta, incluyeUbicacion: false };
   }
 
   /**
@@ -4321,11 +4326,11 @@ export class BotService implements OnModuleInit {
    * solo funciona si el chat SIGUE en modo ASESOR al momento de enviar (pudo cambiar
    * entre que se generó el preview y que el agente confirma).
    */
-  async enviarRespuestaAsistida(ideWhcha: number, mensaje: string): Promise<void> {
+  async enviarRespuestaAsistida(ideWhcha: number, mensaje: string, incluirUbicacion = false): Promise<void> {
     const chatRow = await this.dataSource.pool.query<{
-      wa_id_whcha: string; ide_empr: number; bot_modo_whcha: string;
+      wa_id_whcha: string; ide_empr: number; ide_whcue: number; bot_modo_whcha: string;
     }>(
-      `SELECT c.wa_id_whcha, cu.ide_empr, c.bot_modo_whcha
+      `SELECT c.wa_id_whcha, cu.ide_empr, cu.ide_whcue, c.bot_modo_whcha
        FROM wha_chat c
        INNER JOIN wha_cuenta cu
          ON REPLACE(cu.id_telefono_whcue, '+', '') = c.phone_number_id_whcha
@@ -4336,11 +4341,28 @@ export class BotService implements OnModuleInit {
     if (!chatRow.rowCount) {
       throw new BadRequestException('Chat no encontrado.');
     }
-    const { wa_id_whcha: waId, ide_empr: ideEmpr, bot_modo_whcha: botModo } = chatRow.rows[0];
+    const { wa_id_whcha: waId, ide_empr: ideEmpr, ide_whcue: ideWhcue, bot_modo_whcha: botModo } = chatRow.rows[0];
     if (botModo !== 'ASESOR') {
       throw new BadRequestException('Este chat ya no está en modo ASESOR — la respuesta asistida solo aplica ahí.');
     }
     await this.sendText(ideEmpr, waId, mensaje);
+
+    // Pin de ubicación de WhatsApp después del texto de la dirección — igual que
+    // responderInfo('UBICACION') en el flujo normal del bot. Si falla no se propaga: el
+    // texto ya se envió y el agente no debe ver un error por algo secundario.
+    if (incluirUbicacion) {
+      try {
+        const config = await this.botConfig.getConfig(ideWhcue);
+        if (config?.lat_empresa && config?.lng_empresa) {
+          await this.ycloudService.sendLocation(
+            ideEmpr, `+${waId}`, config.lat_empresa, config.lng_empresa,
+            config.nombre_empresa || 'DIQUIMEC', '', true,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(`[Bot] No se pudo enviar pin de ubicación (respuesta asistida) chat=${ideWhcha}: ${err.message}`);
+      }
+    }
   }
 
   /**
