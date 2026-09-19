@@ -162,7 +162,10 @@ export class WhatsappApiService {
       phone_number_id_whmem: phoneNumberId,
     } = resFile;
 
-    if (existingUrl) {
+    // Solo una URL de nuestro servidor es permanente. Los links de YCloud/CDN (guardados desde
+    // el webhook) caducan a las pocas horas, así que se intenta re-cachear el archivo antes de devolverlos.
+    const isOwnUrl = !!existingUrl && existingUrl.includes('/api/whatsapp/media/');
+    if (isOwnUrl) {
       return { url: existingUrl, data: null, mimeType: contentType, fileSize: null, fileName: filename };
     }
 
@@ -175,6 +178,11 @@ export class WhatsappApiService {
 
       return { url: publicUrl, data: null, mimeType: contentType, fileSize: fileData.length, fileName: filename || savedName };
     } catch (error) {
+      if (existingUrl) {
+        // No se pudo re-cachear: el link externo aún puede estar vigente, que el cliente lo intente.
+        this.logger.warn(`download ${id}: sin re-cachear, se devuelve el link externo (${error.message})`);
+        return { url: existingUrl, data: null, mimeType: contentType, fileSize: null, fileName: filename };
+      }
       this.logger.error(`Error en download: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Error al descargar el archivo multimedia');
     }
@@ -321,7 +329,21 @@ export class WhatsappApiService {
     const ideUsua = Number(dto.ideUsua);
 
     try {
-      const { mediaId } = await this.ycloudService.uploadMedia(ideEmpr, file.buffer, file.mimetype, file.originalname);
+      // 1) Intenta subir el archivo a YCloud (media id). 2) Si falla, lo guarda en nuestro servidor
+      // y lo envía por link público (mismo mecanismo que usa el bot para los PDF).
+      let mediaId: string;
+      let link: string | undefined;
+      try {
+        ({ mediaId } = await this.ycloudService.uploadMedia(ideEmpr, file.buffer, file.mimetype, file.originalname));
+      } catch (uploadError) {
+        this.logger.warn(`uploadMedia YCloud falló (${uploadError.message}); se envía por link público`);
+        const savedName = await this.fileTempService.saveWhatsAppMedia(
+          file.buffer,
+          getFileExtension(file.mimetype, file.originalname),
+        );
+        link = `${envs.hostApi}/api/whatsapp/media/${savedName}`;
+        mediaId = savedName; // sirve como attachment_id para que el chat pueda mostrarlo
+      }
 
       const type = dto.type || (
         file.mimetype.startsWith('image/') ? 'image' :
@@ -332,17 +354,22 @@ export class WhatsappApiService {
       let result: { messageId: string };
       switch (type) {
         case 'image':
-          result = await this.ycloudService.sendImage(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua);
+          result = await this.ycloudService.sendImage(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua, link);
           break;
         case 'video':
-          result = await this.ycloudService.sendVideo(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua);
+          result = await this.ycloudService.sendVideo(ideEmpr, dto.telefono, mediaId, dto.caption, ideUsua, link);
           break;
         case 'audio':
-          result = await this.ycloudService.sendAudio(ideEmpr, dto.telefono, mediaId, ideUsua);
+          result = await this.ycloudService.sendAudio(ideEmpr, dto.telefono, mediaId, ideUsua, link);
           break;
         default:
-          result = await this.ycloudService.sendDocument(ideEmpr, dto.telefono, mediaId, dto.fileName || file.originalname, dto.caption, ideUsua);
+          result = await this.ycloudService.sendDocument(ideEmpr, dto.telefono, mediaId, dto.fileName || file.originalname, dto.caption, ideUsua, link);
           break;
+      }
+
+      // Con link propio, deja la URL permanente en el mensaje para que el chat lo muestre sin re-descargar.
+      if (link) {
+        await this.whatsappDb.updateUrlFile(mediaId, link).catch((e) => this.logger.warn(`updateUrlFile: ${e.message}`));
       }
 
       return { mensaje: 'ok', messageId: result.messageId };

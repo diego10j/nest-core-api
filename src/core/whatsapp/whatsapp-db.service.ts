@@ -93,7 +93,7 @@ export class WhatsappDbService {
         const query = new SelectQuery(
             `
                 SELECT 
-                    COALESCE(SUM(a.no_leidos_whcha), 0) AS total_no_leidos,
+                    COUNT(1) FILTER (WHERE a.leido_whcha = FALSE)::int AS total_no_leidos,
                     CASE 
                         WHEN EXISTS (
                             SELECT 1 

@@ -25,6 +25,24 @@ export function toLocalPhone(phone: string): string {
 
 const DECIMALES_TOTALES = 2;
 
+// La dirección se guarda "tal como la escribió el cliente" (ver bot.service.ts), pero
+// suele venir con una muletilla de introducción que no es parte de la dirección — ej.
+// "Desde Quito. Sector granados y 6 de diciembre", "Estoy en Cuenca", "Soy de Ambato".
+// Se quita solo ese prefijo (y se capitaliza la primera letra); el resto queda intacto
+// (caso real detectado 2026-09-19). "de"/"en" sueltos al inicio NO se tocan sin un verbo
+// delante, porque pueden ser parte real de la dirección ("De los Shyris y Naciones Unidas").
+const PREFIJO_DIRECCION_CON_VERBO =
+  /^\s*(?:(?:le\s+)?escribo|estoy|soy|somos|me\s+encuentro|nos\s+encontramos|vivo|resido)\s+(?:desde|en|de)\s+/i;
+const PREFIJO_DIRECCION_DESDE = /^\s*desde\s+/i;
+
+export function limpiarDireccion(direccion: string): string {
+  const limpia = direccion
+    .replace(PREFIJO_DIRECCION_CON_VERBO, '')
+    .replace(PREFIJO_DIRECCION_DESDE, '')
+    .trim();
+  return limpia ? limpia.charAt(0).toUpperCase() + limpia.slice(1) : limpia;
+}
+
 export interface ResultadoProforma {
   ide_cccpr: number;
   secuencial: string;
@@ -113,13 +131,18 @@ export class BotProformaService {
       if (p.uso_generico) observacionProducto += ` — Uso: ${p.uso_generico}`;
       if (p.cantidad === 0) observacionProducto += ' - CANTIDAD MINIMA';
       return {
-        producto: observacionProducto,
+        // Siempre en MAYÚSCULAS — el nombre llega como lo escribió el cliente
+        // ("percarbonato de sodio"), pero el detalle de una proforma del ERP va en
+        // mayúsculas como el resto de los artículos.
+        producto: observacionProducto.toUpperCase(),
         cantidad: p.cantidad,
         unidad: p.siglas_unidad || p.unidad,
         ideInarti: p.ide_inarti,
         precio: precioMap.get(p.ide_inarti) ?? null,
       };
     });
+
+    const direccionLimpia = limpiarDireccion(datos.envio?.direccion || '');
 
     const observacion = automatica
       ? `Cotización automática generada por ${nombreBot} vía WhatsApp`
@@ -137,7 +160,7 @@ export class BotProformaService {
         correo: datos.cliente.correo,
         telefono: toLocalPhone(telefonoWa),
         provincia: datos.envio?.provincia || '',
-        direccion: datos.envio?.direccion || '',
+        direccion: direccionLimpia,
         formaPago: datos.forma_pago === 'credit' ? 'credit' : 'cash',
         formaEntrega: 'Por definir',
         observacion,
@@ -245,7 +268,7 @@ export class BotProformaService {
         ideGetid,
         correo,
         toLocalPhone(telefonoWa),
-        datos.envio?.direccion || '',
+        direccionLimpia,
         notasGps,
         datos.cliente?.ide_vgven || null,
         '',

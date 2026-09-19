@@ -1052,7 +1052,18 @@ export class BotService implements OnModuleInit {
   ): string[] {
     const itemsAmbos = items.filter((i) => i.cantidad === null && pedirUso && !i.uso);
     const itemsSoloCantidad = items.filter((i) => i.cantidad === null && !(pedirUso && !i.uso));
-    const itemsSoloUso = items.filter((i) => i.cantidad !== null && pedirUso && !i.uso);
+    // El uso se pregunta por PRODUCTO, no por línea: si el cliente pidió el mismo producto
+    // en dos presentaciones (25 kg y 1 kg), el uso es el mismo — se pregunta una sola vez
+    // (caso real detectado 2026-09-19: "1. pecarbonato 2. pecarbonato").
+    const vistos = new Set<string>();
+    const itemsSoloUso = items
+      .filter((i) => i.cantidad !== null && pedirUso && !i.uso)
+      .filter((i) => {
+        const clave = i.producto.trim().toUpperCase();
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+      });
 
     // Con un solo producto, el nombre entra en la misma frase ("...de *X*"); con varios,
     // se listan en líneas numeradas en vez de un "X, Y, Z" corrido — más fácil de leer en
@@ -1353,6 +1364,10 @@ export class BotService implements OnModuleInit {
     const pedirUso = cot.pedirUso ?? false;
     const itemsSinCantidad = cot.items.filter((i) => i.cantidad === null);
     const itemsSinUso = pedirUso ? cot.items.filter((i) => !i.uso) : [];
+    // Productos únicos (mismo producto en varias presentaciones comparte el uso).
+    const nombresUnicosUso = [
+      ...new Map(itemsSinUso.map((i) => [i.producto.trim().toUpperCase(), i.producto])).values(),
+    ];
 
     // El cliente puede aclarar, a mitad de la recopilación, que dos+ productos pendientes
     // son en realidad el mismo (ej. nombre comercial vs. nombre genérico del mismo
@@ -1397,12 +1412,15 @@ export class BotService implements OnModuleInit {
           )
         : Promise.resolve([] as { cantidad: number | null; cantidadTexto?: string | null }[]),
       itemsSinUso.length
-        ? this.botGpt.extraerUsosPorProducto(itemsSinUso.map((i) => i.producto), texto)
+        ? this.botGpt.extraerUsosPorProducto(nombresUnicosUso, texto)
         : Promise.resolve([] as (string | null)[]),
     ]);
 
+    const usoPorProducto = new Map<string, string | null>(
+      nombresUnicosUso.map((n, idx) => [n.trim().toUpperCase(), usosExtraidos[idx] ?? null]),
+    );
+
     let cursorCantidad = 0;
-    let cursorUso = 0;
     const itemsActualizados = cot.items.map((i) => {
       let actualizado = i;
       if (actualizado.cantidad === null) {
@@ -1413,8 +1431,7 @@ export class BotService implements OnModuleInit {
         }
       }
       if (pedirUso && !actualizado.uso) {
-        const nuevo = usosExtraidos[cursorUso];
-        cursorUso += 1;
+        const nuevo = usoPorProducto.get(actualizado.producto.trim().toUpperCase());
         if (nuevo) actualizado = { ...actualizado, uso: nuevo };
       }
       return actualizado;

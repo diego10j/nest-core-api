@@ -153,7 +153,8 @@ export class WhatsappController {
   @Get('download/:id')
   async download(@Param('id') messageId: string, @Res() res: Response) {
     const fileInfo = await this.service.downloadMedia(messageId);
-    if (fileInfo.url?.startsWith('https://')) {
+    // La URL puede ser absoluta (http o https, según envs.hostApi / CDN de YCloud) o solo el nombre de archivo.
+    if (/^https?:\/\//i.test(fileInfo.url ?? '')) {
       return res.redirect(fileInfo.url);
     }
     return res.redirect(`/api/whatsapp/media/${fileInfo.url}`);

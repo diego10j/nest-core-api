@@ -16,6 +16,8 @@ import { BotToolsService } from './bot/bot-tools.service';
 import { BotController } from './bot/bot.controller';
 import { BotService } from './bot/bot.service';
 import { ChatLockService } from './chat-lock.service';
+import { MensajeRapidoController } from './mensaje-rapido/mensaje-rapido.controller';
+import { MensajeRapidoService } from './mensaje-rapido/mensaje-rapido.service';
 import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
@@ -38,6 +40,7 @@ import { YcloudService } from './ycloud/ycloud.service';
     YcloudController,
     YcloudWebhookController,
     BotController,
+    MensajeRapidoController,
   ],
   providers: [
     WhatsappApiService,
@@ -62,6 +65,7 @@ import { YcloudService } from './ycloud/ycloud.service';
     BotScheduleService,
     BotService,
     BotNoDisponibleService,
+    MensajeRapidoService,
   ],
   exports: [
     WhatsappApiService,

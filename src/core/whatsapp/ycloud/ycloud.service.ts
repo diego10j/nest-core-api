@@ -291,6 +291,7 @@ export class YcloudService {
     mediaId: string,
     caption?: string,
     ideUsua?: number,
+    link?: string,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -303,7 +304,7 @@ export class YcloudService {
       from: config.displayPhoneNumber,
       to,
       type: 'image',
-      image: { id: mediaId, caption },
+      image: (link ? { link, caption } : { id: mediaId, caption }) as any,
     };
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
@@ -341,6 +342,7 @@ export class YcloudService {
     mediaId: string,
     caption?: string,
     ideUsua?: number,
+    link?: string,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -350,9 +352,10 @@ export class YcloudService {
     }
 
     const payload: YcloudMessagePayload = {
+      from: config.displayPhoneNumber,
       to,
       type: 'video',
-      video: { id: mediaId, caption },
+      video: (link ? { link, caption } : { id: mediaId, caption }) as any,
     };
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
@@ -389,6 +392,7 @@ export class YcloudService {
     to: string,
     mediaId: string,
     ideUsua?: number,
+    link?: string,
   ): Promise<{ messageId: string }> {
     const config = await this.assertConfig(ideEmpr);
 
@@ -401,7 +405,7 @@ export class YcloudService {
       from: config.displayPhoneNumber,
       to,
       type: 'audio',
-      audio: { id: mediaId },
+      audio: (link ? { link } : { id: mediaId }) as any,
     };
 
     const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
