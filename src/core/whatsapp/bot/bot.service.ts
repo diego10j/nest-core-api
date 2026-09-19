@@ -987,7 +987,7 @@ export class BotService implements OnModuleInit {
             const c = catalogos.find((cat) => cat.ide_cata === id);
             return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
           });
-          const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          const nombresLista = conCatalogo.map((i) => i.producto);
           // "Dime la cantidad..." solo tiene sentido cuando el match fue a un producto
           // PUNTUAL — si solo matcheó el tema/título del catálogo (ej. "esencias para
           // velas" → catálogo con varios productos), no se sabe cuál puntual quiere el
@@ -996,7 +996,7 @@ export class BotService implements OnModuleInit {
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            this.armarMensajeDisponibles(nombresLista, links) +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           // Se guardan aunque no sigan en itemsPendientes — nunca van a entrar a
@@ -1362,8 +1362,24 @@ export class BotService implements OnModuleInit {
     // aclaración para que el asesor decida (caso real detectado 2026-09-18: la cotización
     // terminó con "SPAN 80" y "MONOOLEATO DE SORBITÁN" como dos líneas separadas pese a
     // que la clienta dijo explícitamente "ambos son iguales").
+    // Las notas se ACUMULAN (varios turnos pueden aportar la suya) en vez de pisarse.
+    const agregarNota = (nota: string) => {
+      datos = { ...datos, notaClienteExtra: [datos.notaClienteExtra, nota].filter(Boolean).join('\n') };
+    };
     if (cot.items.length > 1 && /\b(son|es)\s+(el\s+mismo|la\s+misma|lo\s+mismo|iguales)\b/i.test(texto)) {
-      datos = { ...datos, notaClienteExtra: `El cliente aclaró: "${texto.trim()}" — revisar si alguno de los productos pendientes es en realidad el mismo.` };
+      agregarNota(`El cliente aclaró: "${texto.trim()}" — revisar si alguno de los productos pendientes es en realidad el mismo.`);
+    }
+
+    // Si TODOS los ítems ya tienen cantidad, la extracción de cantidades no corre para este
+    // mensaje — una cantidad nueva/corregida (ej. dio "2 litros" y luego "necesito unos 3
+    // litros o 5 kilos") se descartaba en silencio y la cotización cerraba con la primera
+    // (caso real detectado 2026-09-19). No se pisa el valor ya guardado (podría ser un
+    // número suelto sin relación) — se deja la mención tal cual para que el asesor decida.
+    if (
+      itemsSinCantidad.length === 0 &&
+      /\d+([.,]\d+)?\s*(kg|kilos?|kilogramos?|g|gr|gramos?|lb|libras?|l|lts?|litros?|gal(on(es)?)?|ml|toneladas?|tn|canecas?)\b/i.test(texto)
+    ) {
+      agregarNota(`El cliente mencionó otra cantidad después de la que ya se registró: "${texto.trim()}" — revisar cuál es la correcta.`);
     }
 
     // Ciudad NO se pide acá: es un mensaje independiente aparte, después de que cantidad/
@@ -1681,6 +1697,7 @@ export class BotService implements OnModuleInit {
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, textoInicial, nombreEmpresa, config);
 
       // El mensaje puede combinar la pregunta informativa con una consulta de producto en
       // el mismo texto (ej. "dónde están ubicados y disponen percarbonato de sodio") —
@@ -1804,7 +1821,7 @@ export class BotService implements OnModuleInit {
             const c = catalogos.find((cat) => cat.ide_cata === id);
             return c?.path_cata ? `https://diquimec.com.ec/catalogo/${c.path_cata}` : 'https://diquimec.com.ec/catalogo';
           });
-          const nombres = conCatalogo.map((i) => `*${i.producto}*`).join(', ');
+          const nombresLista = conCatalogo.map((i) => i.producto);
           // "Dime la cantidad..." solo tiene sentido cuando el match fue a un producto
           // PUNTUAL — si solo matcheó el tema/título del catálogo (ej. "esencias para
           // velas" → catálogo con varios productos), no se sabe cuál puntual quiere el
@@ -1813,7 +1830,7 @@ export class BotService implements OnModuleInit {
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
           await this.sendText(ideEmpr, waId,
-            `¡Sí, disponemos de ${nombres}! 😊 Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.` +
+            this.armarMensajeDisponibles(nombresLista, links) +
             (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
           );
           // Se guardan aunque no sigan en itemsPendientes — nunca van a entrar a
@@ -1948,6 +1965,7 @@ export class BotService implements OnModuleInit {
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
       await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, texto, nombreEmpresa, config);
 
       // El mensaje puede combinar la pregunta informativa con una consulta de producto
       // en el mismo texto (ej. "dónde están ubicados y disponen percarbonato de
@@ -3573,6 +3591,32 @@ export class BotService implements OnModuleInit {
       .replace(/{NOMBRE_EMPRESA}/g, nombreEmpresa);
   }
 
+  /**
+   * clasificarConsulta devuelve UNA sola categoría (la primera que matchea), pero con la
+   * espera activa (reduce_mensajes_whbco=true) varios mensajes llegan juntos — ej.
+   * "Horario" + "Catálogo" — y solo se contestaba el primero; el cliente tenía que volver
+   * a pedir lo otro (caso real detectado 2026-09-19). detectarRequerimientos sí marca
+   * TODAS las categorías presentes (regex primero, sin costo de GPT cuando ya hubo match),
+   * así que acá se responden las que faltan además de `tipoYaRespondido`.
+   */
+  private async responderInfoAdicional(
+    ideEmpr: number, waId: string, tipoYaRespondido: string, texto: string,
+    nombreEmpresa: string, config: any,
+  ): Promise<void> {
+    const req = await this.botGpt.detectarRequerimientos(texto);
+    const categorias: { flag: boolean; tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' }[] = [
+      { flag: req.ubicacion, tipo: 'UBICACION' },
+      { flag: req.horario, tipo: 'HORARIO' },
+      { flag: req.envio, tipo: 'ENVIO' },
+      { flag: req.catalogo, tipo: 'CATALOGO' },
+    ];
+    for (const { flag, tipo } of categorias) {
+      if (flag && tipo !== tipoYaRespondido) {
+        await this.responderInfo(ideEmpr, waId, tipo, nombreEmpresa, config);
+      }
+    }
+  }
+
   private async responderInfo(
     ideEmpr: number, waId: string,
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
@@ -3741,6 +3785,20 @@ export class BotService implements OnModuleInit {
           : `${p.cantidad} ${p.siglas_unidad || p.unidad || ''}`;
       return `${i + 1}. *${p.nombre}* — ${cantidadTexto}`;
     }).join('\n');
+  }
+
+  /**
+   * "¡Sí, disponemos de...!" para productos que matchearon un catálogo público. Con 1-2
+   * productos queda en una frase; con 3+ (ej. "fragancia, colorante rosa, turquesa, lila y
+   * amarillo") se lista uno por línea — una oración con 5 nombres separados por coma era
+   * difícil de leer en WhatsApp (caso real detectado 2026-09-19).
+   */
+  private armarMensajeDisponibles(productos: string[], links: string[]): string {
+    const cierre = `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.`;
+    if (productos.length <= 2) {
+      return `¡Sí, disponemos de ${productos.map((p) => `*${p}*`).join(' y ')}! 😊 ${cierre}`;
+    }
+    return `¡Sí, disponemos de estos productos! 😊\n\n${productos.map((p) => `• *${p}*`).join('\n')}\n\n${cierre}`;
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {

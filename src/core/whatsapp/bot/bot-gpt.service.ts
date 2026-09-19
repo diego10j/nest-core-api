@@ -5,6 +5,20 @@ import { envs } from 'src/config/envs';
 export type IntencionCliente = 'CONFIRMAR' | 'CANCELAR' | 'ASESOR' | 'LISTO' | 'SALIR' | 'OTRO';
 export type IntencionConsulta = 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' | 'PRODUCTO' | 'GENERAL';
 
+// Pone en mayúscula inicial cada palabra del nombre cuando el cliente lo escribió todo en
+// minúsculas o todo en mayúsculas ("diana" → "Diana", "MICHELLE MOLINA" → "Michelle
+// Molina") — si ya viene con mezcla de mayúsculas/minúsculas se respeta tal cual (puede
+// ser intencional, ej. "De la Cruz"). Partículas (de, del, la, y...) quedan en minúscula.
+const PARTICULAS_NOMBRE = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'van', 'von']);
+function capitalizarNombre(nombre: string): string {
+  if (nombre !== nombre.toLowerCase() && nombre !== nombre.toUpperCase()) return nombre;
+  return nombre
+    .toLowerCase()
+    .split(/\s+/)
+    .map((p, i) => (i > 0 && PARTICULAS_NOMBRE.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(' ');
+}
+
 @Injectable()
 export class BotGptService {
   private readonly logger = new Logger(BotGptService.name);
@@ -377,6 +391,12 @@ export class BotGptService {
               productos.map((p, i) => `${i + 1}. ${p}`).join('\n') + '\n\n' +
               'El cliente puede responder todo junto (ej: "1. repostería 2. ambiental"), en el mismo orden sin ' +
               'numerar (ej: "repostería y ambiental"), o mencionar solo algunos. ' +
+              'CUALQUIER descripción de qué va a hacer con el producto cuenta como uso, aunque sea inusual y esté dicha ' +
+              'como afirmación en vez de "para...", y aunque venga mezclada con la cantidad en el mismo mensaje (ej. ' +
+              '"Necesito hacer botellas falsas de utilería, unos dos litros" → uso: "hacer botellas falsas de ' +
+              'utilería"; "es para un experimento escolar" → uso: "experimento escolar") — extraé solo la parte del ' +
+              'uso, sin la cantidad (caso real detectado 2026-09-19: "necesito hacer botellas falsas para romper en ' +
+              'la cabeza" no se reconoció como uso y el bot lo volvió a preguntar). ' +
               'Si el cliente da UN SOLO uso/aplicación y NO nombra ningún producto por nombre (ej. le preguntaste el ' +
               'uso de "Span 80, Monooleato de sorbitán" y contesta solo "uso cosmético" o "para fabricar velas"), es ' +
               'la respuesta natural a "para qué uso necesitas CADA UNO" — aplicá ese mismo uso a TODOS los productos ' +
@@ -799,7 +819,7 @@ export class BotGptService {
       if (!content) return { nombre: null, ciudad: null, restoTexto: respuesta };
       const parsed = JSON.parse(content);
       return {
-        nombre: typeof parsed.nombre === 'string' && parsed.nombre.trim() ? parsed.nombre.trim() : null,
+        nombre: typeof parsed.nombre === 'string' && parsed.nombre.trim() ? capitalizarNombre(parsed.nombre.trim()) : null,
         ciudad: typeof parsed.ciudad === 'string' && parsed.ciudad.trim() ? parsed.ciudad.trim() : null,
         restoTexto: typeof parsed.restoTexto === 'string' && parsed.restoTexto.trim() ? parsed.restoTexto.trim() : null,
       };
