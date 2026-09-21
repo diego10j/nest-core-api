@@ -1196,9 +1196,10 @@ export class BotService implements OnModuleInit {
     const notaCatalogoPublico = datos.productosEnCatalogoPublico?.length
       ? `El cliente también preguntó por: ${datos.productosEnCatalogoPublico.join(', ')} — se le compartió el link del catálogo público con precios, no está en esta cotización.`
       : null;
-    const notaCompleta = [notaExtra, notaCatalogoPublico, datos.notaClienteExtra].filter(Boolean).join('\n') || undefined;
-
-    const productosResueltos = await this.resolverProductosSimple(items, ideEmpr);
+    const notasAmbiguedad: string[] = [];
+    const productosResueltos = await this.resolverProductosSimple(items, ideEmpr, notasAmbiguedad);
+    const notaCompleta = [notaExtra, notaCatalogoPublico, datos.notaClienteExtra, ...notasAmbiguedad]
+      .filter(Boolean).join('\n') || undefined;
     const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
 
     let resultado: ResultadoProforma | null = null;
@@ -1474,6 +1475,7 @@ export class BotService implements OnModuleInit {
   private async resolverProductosSimple(
     items: ItemCotizacionRapida[],
     ideEmpr: number,
+    notasAmbiguedad: string[] = [],
   ): Promise<ProductoSesion[]> {
     const generico = await this.botTools.obtenerProductoPorId(PRODUCTO_GENERICO_IDE_INARTI, ideEmpr);
     const resultado: ProductoSesion[] = [];
@@ -1496,8 +1498,21 @@ export class BotService implements OnModuleInit {
         confiable = false;
       }
 
+      // Sin match confiable (varios candidatos y ninguno exacto, o solo coincidencia
+      // difusa por palabras) NO se adivina: tomar el primero asignaba un artículo — y un
+      // precio — equivocado, y como la cotización automática ya no exige catálogo, salía
+      // directo al cliente (caso real detectado 2026-09-21: "Parafina" se cotizó como
+      // "Parafina gel" habiendo también semi refinada y full refinada). Se cae al artículo
+      // genérico con el texto literal del cliente — sin precio, así que la cotización queda
+      // para un asesor — y se le deja anotado cuáles eran los candidatos.
+      if (candidatos.length && !confiable) {
+        const posibles = candidatos.slice(0, 5).map((c) => c.nombre).join(' / ');
+        notasAmbiguedad.push(`"${item.producto}" es ambiguo, se dejó como genérico. Posibles: ${posibles}.`);
+        candidatos = [];
+      }
+
       if (candidatos.length) {
-        const prod = confiable ? candidatos[0] : (candidatos.find((c) => c.matched_exacto) ?? candidatos[0]);
+        const prod = candidatos.find((c) => c.matched_exacto) ?? candidatos[0];
         resultado.push({
           ide_inarti: prod.ide_inarti,
           nombre: item.producto,

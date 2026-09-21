@@ -344,7 +344,9 @@ export class BotGptService {
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 400,
+        // Cada ítem (producto + cantidad + cantidadTexto) ronda los 40 tokens: con 400 una
+        // lista de ~10+ productos truncaba el JSON y no se extraía nada.
+        max_tokens: 1500,
       });
       const content = resp.choices[0]?.message?.content;
       if (!content) return { completo: false, items: [] };
@@ -503,21 +505,38 @@ export class BotGptService {
               '(ej. "6 canecas", "1 galón", "20kg", "cantidad mínima") — se usa para mostrárselo de vuelta al cliente ' +
               'en el resumen de su cotización, en vez del número ya convertido internamente. null si ese producto ' +
               'quedó sin contestar.\n' +
-              'Responde SOLO JSON válido: {"items": [{"cantidad": number|null, "cantidadTexto": string|null}, ...]} ' +
-              'con exactamente ' + productos.length + ' elementos, en el mismo orden que la lista.',
+              'ASOCIACIÓN POR NOMBRE, NO POR POSICIÓN: cuando el cliente nombra los productos en su respuesta ' +
+              '(ej. una lista "• Texapón: 10 L • Glicerina: 5 L ..."), asigná cada cantidad al producto de la lista ' +
+              'numerada de arriba que corresponda por NOMBRE (reconocé sinónimos, siglas y variantes: "NaCl" = ' +
+              '"cloruro de sodio", "Texapón" = "TEXAPÓN N70", etc.), sin importar el orden ni cuántos productos más ' +
+              'mencione el cliente. Si el cliente menciona productos que NO están en la lista numerada, ignoralos — ' +
+              'no desplazan ni reemplazan a los de la lista (caso real detectado 2026-09-21: el cliente listó 12 ' +
+              'productos con cantidad pero la lista de arriba tenía 9; las cantidades se asignaron por posición y ' +
+              'quedaron corridas: Biopol recibió la cantidad de la glicerina, etc.). Solo si el cliente responde sin ' +
+              'nombrar productos se usa el orden de la lista.\n' +
+              'Responde SOLO JSON válido: {"items": [{"n": number, "cantidad": number|null, "cantidadTexto": string|null}, ...]} ' +
+              'con exactamente ' + productos.length + ' elementos, uno por cada producto de la lista numerada, donde ' +
+              '"n" es el número del producto en esa lista (1 a ' + productos.length + ').',
           },
           { role: 'user', content: respuesta },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0,
-        max_tokens: 300,
+        // ~35 tokens por ítem: con 300 una lista de 9+ productos se truncaba a mitad del JSON.
+        max_tokens: Math.max(300, productos.length * 60),
       });
       const content = resp.choices[0]?.message?.content;
       if (!content) return productos.map(() => ({ cantidad: null }));
       const parsed = JSON.parse(content);
       const items = Array.isArray(parsed.items) ? parsed.items : [];
+      // Se indexa por "n" (número del producto en la lista) — si GPT no lo devuelve, se cae
+      // al orden posicional como antes.
+      const porN = new Map<number, any>();
+      items.forEach((it: any, idx: number) => {
+        const n = Number(it?.n);
+        porN.set(Number.isInteger(n) && n >= 1 && n <= productos.length ? n : idx + 1, it);
+      });
       return productos.map((_, i) => {
-        const it = items[i];
+        const it = porN.get(i + 1);
         const c = it?.cantidad;
         return {
           cantidad: (c === null || c === undefined || isNaN(Number(c))) ? null : Number(c),
