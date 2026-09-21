@@ -248,7 +248,10 @@ export class BotGptService {
     historialReciente: { role: 'user' | 'assistant'; content: string }[] = [],
   ): Promise<{
     completo: boolean;
-    items: { producto: string; cantidad: number | null; cantidadTexto?: string | null }[];
+    items: { producto: string; cantidad: number | null; cantidadTexto?: string | null; uso?: string | null }[];
+    // Resumen de una inquietud que pide orientación técnica/recomendación (no un producto
+    // concreto) — el bot no la responde, la deja para el asesor al finalizar.
+    asesoramiento?: string | null;
   }> {
     const ctx = productosYaAgregados.length
       ? `Ya fueron agregados a la cotización (no los repitas): ${productosYaAgregados.join(', ')}.`
@@ -336,8 +339,20 @@ export class BotGptService {
               'que el cliente usó para expresar esa cantidad, tal cual lo escribió (ej. "6 canecas", "1 galón", "100 litros", "50kg") ' +
               '— se usa para mostrárselo de vuelta en el resumen de su cotización, en vez del número ya convertido internamente. ' +
               'null si no dio cantidad para ese ítem.\n' +
+              '   - "uso": si el cliente dice para qué uso/grado necesita ESE producto puntual (ej. "ácido cítrico anhidro para ' +
+              'uso cosmético" → producto:"ácido cítrico anhidro", uso:"cosmético"), sepáralo del nombre y ponlo acá — no lo ' +
+              'pierdas ni lo dejes pegado al nombre. null si no lo dice.\n' +
+              '3. "asesoramiento": si el cliente, además de (o en lugar de) pedir productos concretos, cuenta un PROBLEMA o ' +
+              'situación y pide orientación técnica o una recomendación de qué usar (ej. "el agua de mi piscina se pone ' +
+              'verde, qué producto me sirve", "cuál me recomienda", "necesito algo para limpiar X y no sé qué"), escribe ' +
+              'ahí un resumen breve (máx. 25 palabras) de esa inquietud, en tercera persona ("Consulta cómo mantener el ' +
+              'agua de su piscina limpia: aparece color verde pese a controlar el pH; el agua de su sector tiene mucha cal"). ' +
+              'null si no pide orientación. IMPORTANTE: un FIN, problema o uso NO es un producto — NUNCA lo agregues a ' +
+              '"items" como si lo fuera (ej. "algún producto para limpiar mi piscina" NO es un ítem; solo van los productos ' +
+              'nombrados, como "pastillas de cloro"). Una pregunta directa sobre un producto concreto ("¿tienen ácido ' +
+              'peracético?") NO es asesoramiento.\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null,' +
-              '"cantidadTexto": string|null}]}. No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
+              '"cantidadTexto": string|null,"uso": string|null}], "asesoramiento": string|null}. No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
           ...historialReciente.slice(-6),
           { role: 'user', content: textoAcumulado },
@@ -365,9 +380,13 @@ export class BotGptService {
               ? null
               : Number(i.cantidad),
             cantidadTexto: typeof i.cantidadTexto === 'string' && i.cantidadTexto.trim() ? i.cantidadTexto.trim() : null,
+            uso: typeof i.uso === 'string' && i.uso.trim() ? i.uso.trim() : null,
           }))
         : [];
-      return { completo: !!parsed.completo, items };
+      const asesoramiento = typeof parsed.asesoramiento === 'string' && parsed.asesoramiento.trim()
+        ? parsed.asesoramiento.trim()
+        : null;
+      return { completo: !!parsed.completo, items, asesoramiento };
     } catch (err) {
       this.logger.error(`analizarLoteProductos error: ${err.message}`);
       return { completo: false, items: [] };

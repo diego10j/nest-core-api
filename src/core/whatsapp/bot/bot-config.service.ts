@@ -192,9 +192,10 @@ export class BotConfigService {
         (SELECT MAX(hora_ingre) FROM wha_bot_activacion_log WHERE ide_whcue = $1) AS ultima_activacion,
         (SELECT accion        FROM wha_bot_activacion_log WHERE ide_whcue = $1 ORDER BY hora_ingre DESC LIMIT 1) AS ultima_accion,
         -- Informativo: mensajes enviados por el bot en el mes calendario actual (reinicia cada mes)
-        (SELECT COUNT(1)::int
+        (SELECT COUNT(DISTINCT m.id_whmem)::int
            FROM wha_mensaje m
           WHERE m.phone_number_id_whmem = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_whcue = $1)
+            AND m.tipo_whmem = 'YCLOUD'
             AND m.es_bot_whmem = TRUE
             AND m.direction_whmem = '1'
             AND m.fecha_whmem >= date_trunc('month', LOCALTIMESTAMP)) AS mensajes_bot_mes

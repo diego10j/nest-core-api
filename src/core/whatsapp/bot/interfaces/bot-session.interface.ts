@@ -87,6 +87,23 @@ export interface DatosSesion {
   // "manteca de karité y cera de abejas", cera de abejas matcheó catálogo público y
   // desapareció de la cotización — ver finalizarCotizacionRapida).
   productosEnCatalogoPublico?: string[];
+  // Catálogos públicos (ide_cata) cuyo link ya se le envió al cliente en esta sesión —
+  // para no repetirle el mismo mensaje cada vez que vuelve a preguntar por el producto
+  // (caso real detectado 2026-09-21: glicerina blanca, 3 respuestas idénticas seguidas).
+  catalogosEnviados?: number[];
+  // Inquietud de asesoramiento técnico/recomendación del cliente (resumen) que el bot NO
+  // responde: avanza con lo concreto (productos/cantidades) y, al finalizar, se deriva a un
+  // asesor para que responda esa inquietud (caso real detectado 2026-09-21: piscina verde).
+  consultaAsesoramiento?: string;
+  // Epoch ms del último envío de un catálogo — distingue "sigue escribiendo lo mismo en
+  // ráfaga, antes de leer nuestra respuesta" de una insistencia real.
+  catalogoEnviadoEn?: number;
+  // Veces que ya se le recordó "revisa el catálogo" tras enviárselo; en la siguiente
+  // insistencia se deriva a un asesor.
+  recordatoriosCatalogo?: number;
+  // El cliente ya pidió una recomendación/calidad (criterio comercial que el bot no
+  // inventa) — si vuelve a pedirla, se deriva a un asesor.
+  recomendacionPedida?: boolean;
   // Aclaración del cliente detectada a mitad de la recopilación de cantidad/uso que vale
   // la pena que el asesor vea tal cual la dijo — ej. "ambos son iguales" cuando hay 2+
   // productos pendientes (pueden ser el mismo compuesto con dos nombres distintos, ej.

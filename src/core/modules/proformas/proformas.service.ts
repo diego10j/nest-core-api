@@ -107,7 +107,8 @@ proformas_periodo AS MATERIALIZED (
   FROM cxc_cabece_proforma
   WHERE fecha_cccpr BETWEEN $1 AND $2
     AND ide_empr = ${dtoIn.ideEmpr}
-    ${dtoIn.responsable === 'true' ? 'AND ide_usua IS NULL' : ''}
+    -- "Sin asignar" excluye las ANULADAS: se anulan sin responsable y no se asignan a nadie
+    ${dtoIn.responsable === 'true' ? 'AND ide_usua IS NULL AND COALESCE(anulado_cccpr, false) = false' : ''}
 ),
 
 -- Solo cuenta ítems de LAS proformas del período (no toda la tabla)
@@ -214,7 +215,8 @@ ORDER BY prof.secuencial_cccpr DESC
        FROM cxc_cabece_proforma
        WHERE fecha_cccpr BETWEEN $1 AND $2
          AND ide_empr = ${dtoIn.ideEmpr}
-         AND ide_usua IS NULL`,
+         AND ide_usua IS NULL
+         AND COALESCE(anulado_cccpr, false) = false`,
     );
     countQuery.addParam(1, dtoIn.fechaInicio);
     countQuery.addParam(2, dtoIn.fechaFin);

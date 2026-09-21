@@ -26,7 +26,26 @@ import { matchProvinciaEcuador } from './provincias-ecuador';
 // Con plural incluido (ASESOR/ASESORES, AGENTE/AGENTES, etc.) — antes solo matcheaba la
 // forma singular exacta, así que "hay asesores humanos?" no disparaba nada (caso real
 // detectado 2026-09-17: un proveedor preguntó eso y el bot igual le pidió cotizar).
-const PALABRAS_ASESOR = /\bASESOR(ES)?\b|\bAGENTES?\b|\bHUMANOS?\b|\bPERSONAS?\b|\bVENDEDOR(ES)?\b/i;
+// Intención del cliente cuando ya se le compartió el catálogo público (ver
+// manejarConsultaProductoClasica): precio → se le recuerda dónde están los precios;
+// recomendación/calidad → criterio comercial, el bot no lo inventa (deriva si insiste).
+// Tras responder una pregunta informativa (catálogo/ubicación/horario/envío) solo se sigue
+// con el flujo de producto si el mensaje nombra un producto real — no una palabra del
+// propio pedido ("catálogo", "lista de precios", "información"), que GPT a veces devolvía
+// como ítem y provocaba "¡Con gusto! Cuéntame qué productos necesitas…" justo después de
+// haberle enviado el catálogo (caso real detectado 2026-09-21).
+const REGEX_NO_ES_PRODUCTO = /^(cat[aá]logos?|lista(s)?(\s+de\s+(precios|productos))?|precios?|informaci[oó]n|productos?|cotizaci[oó]n)$/i;
+const esProductoConcreto = (i: { producto: string }) =>
+  !!i.producto?.trim() && !REGEX_NO_ES_PRODUCTO.test(i.producto.trim());
+const VENTANA_RAFAGA_CATALOGO_MS = 60_000;
+// "Voy a revisar y te comento", "luego te aviso": cierre cortés, no una consulta.
+const REGEX_CIERRE_REVISARA = /\b(voy|vamos)\s+a\s+(revisar|ver|mirar|chequear)\b|\b(te|les)\s+(comento|aviso|escribo|confirmo)\b|\blo\s+reviso\b/i;
+const REGEX_PIDE_PRECIO =/\b(precio|precios|costo|costos|valor|cu[aá]nto\s+(cuesta|vale|est[aá]|cobran)|a\s+c[oó]mo)\b/i;
+const REGEX_PIDE_RECOMENDACION = /\b(recomiend\w*|recomendaci[oó]n|sugiere\w*|aconsej\w*|calidad|mejor(es)?)\b|cu[aá]l\s+(es\s+)?(me\s+sirve|conviene)/i;
+// Incluye la forma femenina ("asesora", "vendedora"): sin ella, "Ayúdeme con una asesora"
+// no se reconocía como pedido de asesor y el bot seguía con el saludo (caso real
+// detectado 2026-09-21).
+const PALABRAS_ASESOR =/\bASESOR(A|AS|ES)?\b|\bAGENTES?\b|\bHUMANOS?\b|\bPERSONAS?\b|\bVENDEDOR(A|AS|ES)?\b|\bEJECUTIV[OA]S?\b/i;
 const REGEX_SALIR = /^SALIR$/i;
 const REGEX_SALUDO = /^(hola|buenas?|buenos?\s*(d[ií]as?|tardes?|noches?)|saludos?|hey)[\s!.,]*$/i;
 
@@ -1196,9 +1215,28 @@ export class BotService implements OnModuleInit {
     const notaCatalogoPublico = datos.productosEnCatalogoPublico?.length
       ? `El cliente también preguntó por: ${datos.productosEnCatalogoPublico.join(', ')} — se le compartió el link del catálogo público con precios, no está en esta cotización.`
       : null;
+    // Ítems repetidos (mismo producto y misma cantidad, ej. "colorante" listado dos veces
+    // en la lista pegada por el cliente) se colapsan en uno — caso real detectado
+    // 2026-09-21: la cotización salió con COLORANTE duplicado. Mismo producto con
+    // cantidad distinta se conserva (son presentaciones distintas).
+    const vistosItems = new Set<string>();
+    items = items.filter((i) => {
+      const clave = `${i.producto.trim().toUpperCase()}|${i.cantidad ?? ''}`;
+      if (vistosItems.has(clave)) return false;
+      vistosItems.add(clave);
+      return true;
+    });
     const notasAmbiguedad: string[] = [];
     const productosResueltos = await this.resolverProductosSimple(items, ideEmpr, notasAmbiguedad);
-    const notaCompleta = [notaExtra, notaCatalogoPublico, datos.notaClienteExtra, ...notasAmbiguedad]
+    // Inquietud de asesoramiento que el bot no responde — el asesor la atiende al tomar el
+    // chat (ver manejarConsultaProductoClasica / DatosSesion.consultaAsesoramiento).
+    const notaAsesoramiento = datos.consultaAsesoramiento
+      ? `⚠️ El cliente además hizo una consulta que debe responder el asesor: ${datos.consultaAsesoramiento}`
+      : null;
+    const avisoAsesoramiento = datos.consultaAsesoramiento
+      ? `\n\nAdemás, un asesor comercial te responderá tu consulta y te orientará con lo que necesitas 🤝`
+      : '';
+    const notaCompleta = [notaExtra, notaAsesoramiento, notaCatalogoPublico, datos.notaClienteExtra, ...notasAmbiguedad]
       .filter(Boolean).join('\n') || undefined;
     const datosFinales: DatosSesion = { ...datos, productos: productosResueltos };
 
@@ -1248,6 +1286,7 @@ export class BotService implements OnModuleInit {
         (pdfEnviado
           ? `📄 Adjuntamos el PDF con el detalle completo.`
           : `📄 En un momento te enviamos el PDF con el detalle completo.`) +
+        avisoAsesoramiento +
         `\n\nSi necesitas algo más, un asesor comercial está disponible para ayudarte 😊\n\n` +
         `⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
       );
@@ -1273,7 +1312,7 @@ export class BotService implements OnModuleInit {
       }`)
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.${avisoAsesoramiento}\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
       notaCompleta,
     );
   }
@@ -1354,9 +1393,43 @@ export class BotService implements OnModuleInit {
       // detectado 2026-09-17). No se reabre todo el flujo de cantidad/uso acá (agregaría
       // riesgo a un paso ya delicado) — se deja como nota interna para que el asesor lo
       // vea y lo agregue él mismo a la cotización.
+      // Si además de la ciudad pide el catálogo (ej. "o si me puede ayudar con catálogo",
+      // dicho por una instructora cuyas alumnas quieren comprar) se le comparte el de
+      // emprendedores, con precios — caso real detectado 2026-09-21: la petición quedaba
+      // solo como nota interna y la clienta nunca recibió el catálogo.
+      if (/cat[aá]logo|lista\s+de\s+precios/i.test(restoTexto ?? '')) {
+        await this.sendText(ideEmpr, waId,
+          `Te comparto también nuestro catálogo para emprendedores, con precios incluidos 😊\n👉 https://diquimec.com.ec/catalogo`,
+        );
+      }
+      // Corrección de cantidad junto con la ciudad (ej. "Desde Quito" + "Solo 1 Kg de cada
+      // una", tras haber dicho 2 Kg) — es lo último que dijo el cliente, así que PREVALECE
+      // sobre la cantidad anterior. Sin esto la cotización cerraba con los 2 Kg viejos
+      // (caso real detectado 2026-09-21). Solo se intenta si el resto trae una cantidad con
+      // unidad; se deja constancia de la corrección para el asesor.
+      let itemsFinales = cot.items;
+      let notaCorreccion: string | undefined;
+      if (
+        restoTexto &&
+        /\d+([.,]\d+)?\s*(kg|kilos?|kilogramos?|g|gr|gramos?|lb|libras?|l|lts?|litros?|gal(on(es)?)?|ml|toneladas?|tn|canecas?)\b/i.test(restoTexto)
+      ) {
+        const nuevas = await this.botGpt.extraerCantidadesPorProducto(
+          cot.items.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
+          restoTexto,
+        );
+        itemsFinales = cot.items.map((i, idx) => {
+          const n = nuevas[idx];
+          return n?.cantidad != null && n.cantidad !== i.cantidad
+            ? { ...i, cantidad: n.cantidad, cantidadTexto: n.cantidadTexto ?? undefined }
+            : i;
+        });
+        if (itemsFinales.some((it, idx) => it !== cot.items[idx])) {
+          notaCorreccion = `El cliente corrigió la cantidad al final: "${restoTexto}" (antes: ${cot.items.map((i) => `${i.producto} ${i.cantidadTexto ?? i.cantidad}`).join(', ')}).`;
+        }
+      }
       await this.finalizarCotizacionRapida(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCiudad, cot.items, nombreBot, nombreEmpresa,
-        restoTexto ? `El cliente mencionó algo más junto con la ciudad: "${restoTexto}" — revisar si debe agregarse a la cotización.` : undefined,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConCiudad, itemsFinales, nombreBot, nombreEmpresa,
+        notaCorreccion ?? (restoTexto ? `El cliente mencionó algo más junto con la ciudad: "${restoTexto}" — revisar si debe agregarse a la cotización.` : undefined),
       );
       return;
     }
@@ -1736,7 +1809,7 @@ export class BotService implements OnModuleInit {
       // clasificarConsulta solo devuelve UNA categoría, así que sin este chequeo la mitad
       // del mensaje (el producto) se perdía en silencio (caso real detectado 2026-09-13).
       const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(textoInicial, []);
-      if (itemsExtra.length) {
+      if (itemsExtra.some(esProductoConcreto)) {
         await this.manejarConsultaProductoClasica(
           waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
         );
@@ -1745,6 +1818,21 @@ export class BotService implements OnModuleInit {
 
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
       return;
+    }
+
+    // Antes de mostrar el menú genérico: clasificarConsulta devuelve una sola categoría y
+    // puede no reconocer un pedido de producto mezclado con cortesías o con lo que quedó
+    // del saludo (caso real detectado 2026-09-21: "Adrián un placer" + "ayúdeme con
+    // información de glicerina blanca" terminó en el menú). Si hay un producto concreto
+    // en el texto, se atiende como consulta de producto.
+    if (textoInicial.trim() && !REGEX_SALUDO.test(textoInicial.trim())) {
+      const { items: itemsMenu } = await this.botGpt.analizarLoteProductos(textoInicial, []);
+      if (itemsMenu.some((i) => i.producto)) {
+        await this.manejarConsultaProductoClasica(
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+        );
+        return;
+      }
     }
 
     await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
@@ -1786,7 +1874,26 @@ export class BotService implements OnModuleInit {
     // ningún producto detectado y el chequeo de catálogo de abajo terminaba adivinando
     // un producto de una conversación vieja (caso real detectado 2026-09-13).
     const historialProducto = await this.botSession.getHistorialMensajes(ideWhcha, 6);
-    const { items: itemsDetectados } = await this.botGpt.analizarLoteProductos(textoProducto, [], historialProducto);
+    const { items: itemsDetectados, asesoramiento } = await this.botGpt.analizarLoteProductos(textoProducto, [], historialProducto);
+
+    // Inquietud de asesoramiento técnico/recomendación ("mi piscina se pone verde, qué me
+    // sirve"): el bot no la responde ni la convierte en un producto inventado. Avanza con
+    // lo concreto (los productos nombrados, si los hay) y al finalizar se deriva a un
+    // asesor para que la responda (ver finalizarCotizacionRapida). Si NO hay ningún
+    // producto concreto, se deriva de una vez.
+    if (asesoramiento) {
+      datos = {
+        ...datos,
+        consultaAsesoramiento: [datos.consultaAsesoramiento, asesoramiento].filter(Boolean).join(' '),
+      };
+      if (!itemsDetectados.length) {
+        await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+          `Tu consulta necesita la orientación de un asesor comercial 😊 Ya se la paso para que te ayude y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+          `Consulta de asesoramiento (sin producto concreto): ${asesoramiento}\nMensaje original: "${textoProducto.trim()}"`,
+        );
+        return;
+      }
+    }
 
     // Si GPT no logró extraer ningún nombre de producto puntual (ej. "quiero saber los
     // productos que disponen", "necesito una cotización" sin decir de qué), NO se debe
@@ -1861,10 +1968,63 @@ export class BotService implements OnModuleInit {
           const todosEspecificos = matches
             .filter((m): m is { ide_cata: number; matchEspecifico: boolean } => !!m?.ide_cata)
             .every((m) => m.matchEspecifico);
-          await this.sendText(ideEmpr, waId,
-            this.armarMensajeDisponibles(nombresLista, links) +
-            (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
-          );
+
+          // ¿Ya se le envió este catálogo? Si vuelve a preguntar por lo mismo no se le
+          // repite el mismo mensaje (caso real detectado 2026-09-21: glicerina blanca,
+          // 3 respuestas idénticas seguidas sin avanzar):
+          //  - 1ª vuelta: recordatorio corto y cordial (revisar el catálogo / dar productos
+          //    y cantidades para cotizar).
+          //  - Insistencia (ya se le recordó, o vuelve a pedir recomendación/calidad): se
+          //    deriva a un asesor — la recomendación es criterio comercial que el bot no
+          //    inventa.
+          const enviados = datos.catalogosEnviados ?? [];
+          const yaEnviado = idsUnicos.every((id) => enviados.includes(id));
+          const pideRecomendacion = REGEX_PIDE_RECOMENDACION.test(textoProducto);
+          const pidePrecio = REGEX_PIDE_PRECIO.test(textoProducto);
+
+          if (yaEnviado && !itemsPendientes.length) {
+            // Ráfaga: el cliente siguió escribiendo (mensajes 2-3 de la misma idea) antes de
+            // leer el catálogo que acabamos de mandarle — no es insistencia ni hace falta
+            // repetir nada; solo se recuerda lo que pidió para el asesor (caso real
+            // detectado 2026-09-21: el bot respondió dos veces lo mismo en el mismo minuto).
+            if (Date.now() - (datos.catalogoEnviadoEn ?? 0) < VENTANA_RAFAGA_CATALOGO_MS) {
+              datos = {
+                ...datos,
+                ...(pideRecomendacion ? {
+                  recomendacionPedida: true,
+                  notaClienteExtra: [datos.notaClienteExtra, `El cliente también dijo: "${textoProducto.trim()}".`]
+                    .filter(Boolean).join('\n'),
+                } : {}),
+              };
+              await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+              return;
+            }
+            const insiste = (datos.recordatoriosCatalogo ?? 0) >= 1
+              || (pideRecomendacion && !!datos.recomendacionPedida);
+            if (insiste) {
+              await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
+                `Con gusto 😊 Para orientarte mejor, te comunico con uno de nuestros asesores comerciales.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+                `El cliente insiste sobre ${nombresLista.join(', ')} (${pideRecomendacion ? 'pide recomendación/calidad' : 'sigue preguntando'}) pese a que ya se le compartió el catálogo con precios: "${textoProducto.trim()}".`
+                + (datos.notaClienteExtra ? `\n${datos.notaClienteExtra}` : ''),
+              );
+              return;
+            }
+            await this.sendText(ideEmpr, waId,
+              pidePrecio
+                ? `Claro 😊 Los precios los encuentras en el catálogo que te compartí. Si quieres que te cotice, cuéntame qué productos necesitas y en qué cantidades, y lo armamos por aquí.`
+                : `Con gusto 😊 Te sugiero revisar el catálogo que te compartí, ahí están los productos con sus precios. Si quieres una cotización, dime qué productos y qué cantidades necesitas y te ayudo.`,
+            );
+            datos = { ...datos, recordatoriosCatalogo: (datos.recordatoriosCatalogo ?? 0) + 1 };
+            await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+            return;
+          }
+
+          if (!yaEnviado) {
+            await this.sendText(ideEmpr, waId,
+              this.armarMensajeDisponibles(nombresLista, links) +
+              (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
+            );
+          }
           // Se guardan aunque no sigan en itemsPendientes — nunca van a entrar a
           // cotizacion_rapida.items, así que sin esto el asesor nunca se entera de que el
           // cliente también preguntó por estos (mismo criterio que manejarConsultaProducto
@@ -1875,6 +2035,15 @@ export class BotService implements OnModuleInit {
               ...(datos.productosEnCatalogoPublico ?? []),
               ...conCatalogo.map((i) => i.producto),
             ],
+            catalogosEnviados: [...new Set([...enviados, ...idsUnicos])],
+            ...(yaEnviado ? {} : { catalogoEnviadoEn: Date.now() }),
+            ...(pideRecomendacion ? {
+              recomendacionPedida: true,
+              notaClienteExtra: [
+                datos.notaClienteExtra,
+                `El cliente pidió recomendación/calidad de ${nombresLista.join(', ')}: "${textoProducto.trim()}" — no se le recomendó nada por el bot.`,
+              ].filter(Boolean).join('\n'),
+            } : {}),
           };
           if (!itemsPendientes.length) {
             await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
@@ -2004,7 +2173,7 @@ export class BotService implements OnModuleInit {
       // sodio") — clasificarConsulta solo devuelve UNA categoría, así que sin este
       // chequeo la mitad del mensaje (el producto) se perdía en silencio.
       const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(texto, []);
-      if (itemsExtra.length) {
+      if (itemsExtra.some(esProductoConcreto)) {
         await this.manejarConsultaProductoClasica(
           waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config,
         );
@@ -2015,6 +2184,22 @@ export class BotService implements OnModuleInit {
     if (tipoConsulta === 'PRODUCTO') {
       await this.manejarConsultaProductoClasica(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, texto, nombreEmpresa, config,
+      );
+      return;
+    }
+
+    // Cierre cortés: el cliente avisa que va a revisar por su cuenta ("voy a revisar y te
+    // comento, gracias") — no es una consulta, no hay nada que responder ni que derivar.
+    // Sin esto, ese mensaje llegaba a GPT junto con lo anterior ("para velas y
+    // aromatizantes") y disparaba interés genérico: catálogos repetidos + "un asesor te va
+    // a contactar", cuando el cliente ya tenía los links y dijo que los iba a mirar (caso
+    // real detectado 2026-09-21).
+    if (REGEX_CIERRE_REVISARA.test(texto)) {
+      const nombreCierre = datos.cliente?.nombres && datos.cliente.nombres !== 'CONSUMIDOR FINAL'
+        ? `, ${datos.cliente.nombres.split(/\s+/)[0]}`
+        : '';
+      await this.sendText(ideEmpr, waId,
+        `¡Con gusto${nombreCierre}! 😊 Quedo pendiente por si necesitas cotizar algo o tienes alguna duda.`,
       );
       return;
     }
@@ -2059,10 +2244,14 @@ export class BotService implements OnModuleInit {
       // jabones") sin producto puntual — no se responde con conocimiento general
       // inventado, se envía el catálogo real y se deriva a un asesor para una
       // recomendación personalizada (mismo criterio que handleAtencionLibreReducida).
+      // Si los links ya se enviaron en esta conversación, no se repiten.
+      const yaTieneLinks = historial.some((m) => m.role === 'assistant' && m.content.includes('diquimec.com.ec/catalogo'));
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
-        `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
-        `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
+        (yaTieneLinks
+          ? `¡Con gusto! 😊 Ya tienes los catálogos que te compartí arriba.\n\n`
+          : `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
+            `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
+            `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n`) +
         `Un asesor comercial 👤 te va a contactar para darte una atención más personalizada 😊`,
         `Cliente mostró interés general en una actividad/manualidad sin nombrar producto puntual: "${texto}"`,
       );
