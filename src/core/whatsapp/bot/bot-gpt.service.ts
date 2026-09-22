@@ -320,7 +320,12 @@ export class BotGptService {
               'necesita la cantidad de cada producto, así que se pregunta igual, no se asume nada.\n' +
               '   - cantidad: 0 SOLO si el cliente pide explícitamente la cantidad MÍNIMA disponible de un producto puntual ' +
               '("cantidad mínima", "lo mínimo que manejen", "el mínimo") — el asesor define la cantidad real después, se usa 0 ' +
-              'como marcador. No uses 0 solo porque mencionó ser mayorista/distribuidor sin más contexto (ver punto anterior).\n' +
+              'como marcador. No uses 0 solo porque mencionó ser mayorista/distribuidor sin más contexto (ver punto anterior). ' +
+              'TAMPOCO uses 0 solo porque preguntó el precio mencionando la unidad de venta sin pedir una cantidad concreta ' +
+              '("precio por Kg", "cuánto vale el kilo", "a cómo el litro" — está preguntando la TARIFA, no cuánto va a llevar, ' +
+              'sobre todo si menciona varios productos a la vez): eso sigue siendo cantidad: null, el bot debe preguntar cuánto ' +
+              'necesita (caso real detectado 2026-09-22: "precio por Kg de la manteca de karité y base de glicerina sólida" se ' +
+              'tomó como cantidad mínima para los dos, sin haber preguntado nunca la cantidad real).\n' +
               '   - cantidad: 0 TAMBIÉN si el cliente da la cantidad en un ENVASE/EMPAQUE coloquial (que NO sea caneca, ' +
               'ver regla de arriba) SIN volumen/peso explícito (ej: "2 sacos", "un bulto", "un tanque", "un frasco", ' +
               '"un tambor" — con o sin número, litros/galones/ml NO cuentan acá, esos ya se resuelven con la regla de ' +
@@ -503,13 +508,21 @@ export class BotGptService {
               'como si fueran kilogramos, sin ninguna conversión adicional. Ejemplos: "20 litros"→cantidad:20 | ' +
               '"5 galones"→cantidad:20 | "500 ml"→cantidad:0.5.\n' +
               '   - Si el cliente no menciona unidad, asume que el número ya está en la unidad de venta del producto.\n' +
-              '   - PREGUNTA DE PRECIO CON UNIDAD EXPLÍCITA: si el mensaje es una pregunta de precio ("a cómo cuesta", ' +
-              '"cuánto vale", "cuál es el precio de") pero especifica una cantidad/envase concreto (ej. "¿a cómo cuesta ' +
-              'un galón?", "¿cuánto vale el kilo?"), SÍ es una cantidad — extraela y convertila con las reglas de arriba, ' +
-              'NO la dejes en null (ej. "¿a cómo cuesta un galón?" de un producto en KG → cantidad:4, por la conversión ' +
-              'de volumen de arriba). Se resuelve como una cotización real por esa cantidad; el asesor ajusta el precio ' +
-              'exacto. Distinto de una pregunta de precio SIN ninguna cantidad/envase mencionado (ej. "cuánto cuesta?", ' +
-              '"cuál es el precio?"), que sigue las reglas de abajo (null, salvo que ya haya una cantidad de contexto).\n' +
+              '   - PREGUNTA DE PRECIO CON UNA CANTIDAD PUNTUAL A COMPRAR: si el mensaje es una pregunta de precio ("a cómo ' +
+              'cuesta", "cuánto vale", "cuál es el precio de") y además pide el precio de UNA cantidad/envase puntual y ' +
+              'discreta, con artículo indefinido ("UN/UNA" + unidad — ej. "¿a cómo cuesta un galón?", "¿cuánto vale una ' +
+              'caneca?", "precio de un saco de 25kg"), SÍ es una cantidad — extraela y convertila con las reglas de ' +
+              'arriba, NO la dejes en null (ej. "¿a cómo cuesta un galón?" de un producto en KG → cantidad:4). Se ' +
+              'resuelve como una cotización real por esa cantidad; el asesor ajusta el precio exacto.\n' +
+              '   - PREGUNTA DE TARIFA/PRECIO POR UNIDAD (NO es una cantidad): "precio por kg", "cuánto vale el kilo", ' +
+              '"a cómo el litro", "precio por kilogramo" (preposición "por", o artículo definido "EL/LA" sin número ni ' +
+              '"un/una") es el cliente preguntando la TARIFA/precio unitario para decidir, NO pidiendo comprar esa ' +
+              'unidad puntual — sobre todo si menciona VARIOS productos a la vez con la misma frase. Estos casos ' +
+              'quedan en null (no inventes una cantidad ni la trates como "mínima"), igual que una pregunta de precio ' +
+              'sin ninguna cantidad ("cuánto cuesta?", "cuál es el precio?") — el bot debe seguir preguntando cuánto ' +
+              'necesita realmente (caso real detectado 2026-09-22: "precio por Kg de la manteca de karité y base de ' +
+              'glicerina sólida" se cerró como "presentación mínima de venta" para los dos, sin haber preguntado nunca ' +
+              'la cantidad).\n' +
               '   - Si el producto se vende por UNIDADES y el cliente da un conteo simple (ej: "5", "5 unidades"), ' +
               'no apliques conversión de masa — usa el número tal cual.\n' +
               '   - CANECA: si el cliente da la cantidad en CANECAS (ej: "6 canecas", "1 caneca"), una caneca pesa ' +

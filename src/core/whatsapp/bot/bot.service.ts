@@ -820,7 +820,7 @@ export class BotService implements OnModuleInit {
     }
     if (requerimientos.catalogo) {
       partesInfo.push(
-        `¡Claro que sí! 📋 Aquí tienes nuestros catálogos:\n` +
+        `📋 Aquí tienes nuestros catálogos:\n` +
         `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
         `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo`,
       );
@@ -883,7 +883,7 @@ export class BotService implements OnModuleInit {
       // inventado (ver generateResponseConEscalamiento), se envía el catálogo real y se
       // deriva a un asesor para una recomendación personalizada.
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-        `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
+        `📋 Aquí tienes nuestros catálogos:\n` +
         `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
         `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n` +
         `Un asesor comercial 👤 te va a contactar para darte una atención más personalizada 😊`,
@@ -946,7 +946,7 @@ export class BotService implements OnModuleInit {
       // Mismo criterio que manejarConsultaProductoClasica: primera instancia sugiere el
       // catálogo y el portal web para autoservicio, antes de escalar a un asesor.
       await this.sendText(ideEmpr, waId,
-        `¡Con gusto! 😊 Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
+        `Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
         `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
         `📦 Catálogo completo: https://diquimec.com.ec/product\n\n` +
         `Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
@@ -966,9 +966,9 @@ export class BotService implements OnModuleInit {
       const citas = itemsSinProducto.map((i) => i.cantidadTexto || (i.cantidad != null ? String(i.cantidad) : null)).filter(Boolean);
       const pregunta = citas.length
         ? citas.length === 1
-          ? `¡Con gusto! 😊 ¿De qué producto necesitas los ${citas[0]}?`
-          : `¡Con gusto! 😊 Mencionaste ${citas.join(' y ')} — ¿de qué producto se trata cada cantidad?`
-        : `¡Con gusto! 😊 Cuéntame de qué producto se trata para poder cotizarte.`;
+          ? `¿De qué producto necesitas los ${citas[0]}? 😊`
+          : `Mencionaste ${citas.join(' y ')} — ¿de qué producto se trata cada cantidad? 😊`
+        : `Cuéntame de qué producto se trata para poder cotizarte 😊`;
       await this.sendText(ideEmpr, waId, pregunta);
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       return;
@@ -1158,16 +1158,20 @@ export class BotService implements OnModuleInit {
     // Cantidad/uso/nombre ya completos (pudo venir todo en el mismo mensaje, ej. cliente
     // conocido que ya dio cantidad) — la ciudad se pregunta en un mensaje INDEPENDIENTE
     // (no mezclada con la de cantidad), y solo una vez: si el cliente no la reconoce en
-    // su respuesta no bloquea, se genera la cotización igual.
+    // su respuesta no bloquea, se genera la cotización igual. El saludo pendiente (si el
+    // cliente recién dio su nombre) viaja hasta acá — sin esto se perdía en silencio
+    // cuando la cantidad ya venía completa en el primer mensaje (ej. "saco 25kg de X"): el
+    // cliente daba su nombre y el bot pasaba directo a "¿Desde qué ciudad?" sin saludarlo
+    // (caso real detectado 2026-09-22).
     await this.preguntarCiudadOFinalizar(
-      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, items, nombreBot, nombreEmpresa,
+      waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, nuevosDatos, items, nombreBot, nombreEmpresa, saludo,
     );
   }
 
   /**
    * Último paso antes de generar la cotización: si ya sabemos la ciudad (de memoria o de
    * una respuesta anterior), finaliza directo. Si no, la pregunta como mensaje propio
-   * ("¡Perfecto! Una última cosa...") — antes se mezclaba con la pregunta de cantidad
+   * ("Para finalizar...") — antes se mezclaba con la pregunta de cantidad
    * desde el primer mensaje, lo que sonaba a formulario largo en vez de una conversación
    * (caso real detectado 2026-09-13: pedía cantidad Y ciudad en la misma frase, incluso
    * antes de saber si el producto existía). Solo se pregunta una vez — la siguiente
@@ -1176,11 +1180,12 @@ export class BotService implements OnModuleInit {
   private async preguntarCiudadOFinalizar(
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, items: ItemCotizacionRapida[],
-    nombreBot: string, nombreEmpresa: string,
+    nombreBot: string, nombreEmpresa: string, saludo?: string,
   ): Promise<void> {
     if (datos.envio?.provincia) {
       await this.finalizarCotizacionRapida(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, items, nombreBot, nombreEmpresa,
+        undefined, saludo,
       );
       return;
     }
@@ -1190,7 +1195,7 @@ export class BotService implements OnModuleInit {
       cotizacion_rapida: { ...datos.cotizacion_rapida, items, ciudadPreguntada: true },
     };
     await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
-    await this.sendText(ideEmpr, waId, `¡Perfecto! Una última cosa 😊 ¿Desde qué ciudad nos escribes?`);
+    await this.sendText(ideEmpr, waId, this.conSaludo(saludo, `Para finalizar, ¿desde qué ciudad nos escribes?`));
   }
 
   /**
@@ -1213,7 +1218,7 @@ export class BotService implements OnModuleInit {
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, items: ItemCotizacionRapida[],
     nombreBot: string, nombreEmpresa: string,
-    notaExtra?: string,
+    notaExtra?: string, saludo?: string,
   ): Promise<void> {
     // Productos que matchearon un catálogo público (se les mandó el link con precios en
     // vez de cotizarlos acá) nunca entran a `items` — sin esto, el asesor no se enteraba
@@ -1288,7 +1293,7 @@ export class BotService implements OnModuleInit {
       }
 
       const totalFinal = resultado.total ?? 0;
-      await this.sendText(ideEmpr, waId,
+      await this.sendText(ideEmpr, waId, this.conSaludo(saludo,
         `✅ *¡Tu cotización #${resultado.secuencial} está lista!* 🎉\n\n💰 *Total: $${totalFinal.toFixed(2)}*\n\n` +
         (pdfEnviado
           ? `📄 Adjuntamos el PDF con el detalle completo.`
@@ -1296,7 +1301,7 @@ export class BotService implements OnModuleInit {
         avisoAsesoramiento +
         `\n\nSi necesitas algo más, un asesor comercial está disponible para ayudarte 😊\n\n` +
         `⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
-      );
+      ));
       // null = ya se le avisó al cliente arriba; nota interna solo para el asesor/log.
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
         null,
@@ -1319,7 +1324,7 @@ export class BotService implements OnModuleInit {
       }`)
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.${avisoAsesoramiento}\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+      this.conSaludo(saludo, `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.${avisoAsesoramiento}\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`),
       notaCompleta,
     );
   }
@@ -1937,7 +1942,7 @@ export class BotService implements OnModuleInit {
     // detectado 2026-09-22).
     if (!itemsDetectados.length) {
       await enviar(
-        `¡Con gusto! 😊 Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
+        `Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
         `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
         `📦 Catálogo completo: https://diquimec.com.ec/product\n\n` +
         `Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
@@ -2287,8 +2292,8 @@ export class BotService implements OnModuleInit {
       const yaTieneLinks = historial.some((m) => m.role === 'assistant' && m.content.includes('diquimec.com.ec/catalogo'));
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
         (yaTieneLinks
-          ? `¡Con gusto! 😊 Ya tienes los catálogos que te compartí arriba.\n\n`
-          : `¡Con gusto! 📋 Aquí tienes nuestros catálogos:\n` +
+          ? `Ya tienes los catálogos que te compartí arriba 😊\n\n`
+          : `📋 Aquí tienes nuestros catálogos:\n` +
             `🔹 Catálogo general: https://diquimec.com.ec/product\n` +
             `🔹 Catálogo para emprendedores (con precios): https://diquimec.com.ec/catalogo\n\n`) +
         `Un asesor comercial 👤 te va a contactar para darte una atención más personalizada 😊`,
@@ -3705,7 +3710,7 @@ export class BotService implements OnModuleInit {
       // Cerrar sesión antes de derivar para evitar re-procesos
       await this.botSession.cerrar(sesion.ide_whbse, BotState.FINALIZADO);
       await this.sendText(ideEmpr, waId,
-        `Con mucho gusto 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!\n\n¡Que tengas un excelente día! 🌟`,
+        `Claro que sí 😊 En breve uno de nuestros asesores comerciales se pondrá en contacto contigo.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
       );
       // null = no enviar mensaje adicional al cliente (ya lo enviamos arriba)
       await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,

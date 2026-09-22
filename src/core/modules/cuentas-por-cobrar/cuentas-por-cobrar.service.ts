@@ -1253,10 +1253,17 @@ export class CuentasPorCobrarService extends BaseService {
                    ct.fecha_trans_ccctr, ct.observacion_ccctr,
                    fp.nombre_cndfp, v.nombre_vgven, cf.dias_credito_cccfa, cf.total_cccfa,
                    spp.saldo_por_pagar
+      ),
+      combinado AS (
+          SELECT * FROM diferencias
+          UNION ALL
+          SELECT * FROM sin_empr_sucu
       )
-      SELECT * FROM diferencias
-      UNION ALL
-      SELECT * FROM sin_empr_sucu
+      -- Postgres no permite expresiones/funciones en el ORDER BY de un UNION (solo nombres
+      -- de columna de salida) — error real: "invalid UNION/INTERSECT/EXCEPT ORDER BY clause".
+      -- Se mueve el UNION a un FROM (CTE combinado) y se ordena por fuera, donde sí se
+      -- permiten expresiones (bug encontrado 2026-09-22 al agregar el UNION con sin_empr_sucu).
+      SELECT * FROM combinado
       ORDER BY (estado LIKE 'CABECERA SIN%') DESC, ABS(saldo_desbalance) DESC
     `, dtoIn);
         query.addIntParam(1, dtoIn.ideEmpr);
