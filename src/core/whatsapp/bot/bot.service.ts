@@ -1393,14 +1393,17 @@ export class BotService implements OnModuleInit {
       // detectado 2026-09-17). No se reabre todo el flujo de cantidad/uso acá (agregaría
       // riesgo a un paso ya delicado) — se deja como nota interna para que el asesor lo
       // vea y lo agregue él mismo a la cotización.
-      // Si además de la ciudad pide el catálogo (ej. "o si me puede ayudar con catálogo",
-      // dicho por una instructora cuyas alumnas quieren comprar) se le comparte el de
-      // emprendedores, con precios — caso real detectado 2026-09-21: la petición quedaba
-      // solo como nota interna y la clienta nunca recibió el catálogo.
-      if (/cat[aá]logo|lista\s+de\s+precios/i.test(restoTexto ?? '')) {
-        await this.sendText(ideEmpr, waId,
-          `Te comparto también nuestro catálogo para emprendedores, con precios incluidos 😊\n👉 https://diquimec.com.ec/catalogo`,
-        );
+      // Si junto con la ciudad el cliente aprovecha para preguntar algo informativo
+      // (ubicación/horario/envío/catálogo — ej. "De Quito, ¿dónde están ubicados?") se
+      // responde de una vez: es el ÚLTIMO mensaje del flujo, no hay otro paso donde el bot
+      // lo vaya a retomar, así que sin esto la pregunta se perdía en silencio (caso real
+      // detectado 2026-09-21: "dónde están ubicados" nunca se contestó; y 2026-09-21:
+      // "o si me puede ayudar con catálogo" tampoco).
+      if (restoTexto) {
+        const tipoInfoCiudad = await this.botGpt.clasificarConsulta(restoTexto);
+        if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoCiudad)) {
+          await this.responderInfo(ideEmpr, waId, tipoInfoCiudad as any, nombreEmpresa, config);
+        }
       }
       // Corrección de cantidad junto con la ciudad (ej. "Desde Quito" + "Solo 1 Kg de cada
       // una", tras haber dicho 2 Kg) — es lo último que dijo el cliente, así que PREVALECE

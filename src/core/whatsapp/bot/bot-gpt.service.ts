@@ -499,6 +499,13 @@ export class BotGptService {
               'como si fueran kilogramos, sin ninguna conversión adicional. Ejemplos: "20 litros"→cantidad:20 | ' +
               '"5 galones"→cantidad:20 | "500 ml"→cantidad:0.5.\n' +
               '   - Si el cliente no menciona unidad, asume que el número ya está en la unidad de venta del producto.\n' +
+              '   - PREGUNTA DE PRECIO CON UNIDAD EXPLÍCITA: si el mensaje es una pregunta de precio ("a cómo cuesta", ' +
+              '"cuánto vale", "cuál es el precio de") pero especifica una cantidad/envase concreto (ej. "¿a cómo cuesta ' +
+              'un galón?", "¿cuánto vale el kilo?"), SÍ es una cantidad — extraela y convertila con las reglas de arriba, ' +
+              'NO la dejes en null (ej. "¿a cómo cuesta un galón?" de un producto en KG → cantidad:4, por la conversión ' +
+              'de volumen de arriba). Se resuelve como una cotización real por esa cantidad; el asesor ajusta el precio ' +
+              'exacto. Distinto de una pregunta de precio SIN ninguna cantidad/envase mencionado (ej. "cuánto cuesta?", ' +
+              '"cuál es el precio?"), que sigue las reglas de abajo (null, salvo que ya haya una cantidad de contexto).\n' +
               '   - Si el producto se vende por UNIDADES y el cliente da un conteo simple (ej: "5", "5 unidades"), ' +
               'no apliques conversión de masa — usa el número tal cual.\n' +
               '   - CANECA: si el cliente da la cantidad en CANECAS (ej: "6 canecas", "1 caneca"), una caneca pesa ' +
