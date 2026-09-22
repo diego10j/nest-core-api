@@ -350,7 +350,11 @@ export class BotGptService {
               'null si no pide orientación. IMPORTANTE: un FIN, problema o uso NO es un producto — NUNCA lo agregues a ' +
               '"items" como si lo fuera (ej. "algún producto para limpiar mi piscina" NO es un ítem; solo van los productos ' +
               'nombrados, como "pastillas de cloro"). Una pregunta directa sobre un producto concreto ("¿tienen ácido ' +
-              'peracético?") NO es asesoramiento.\n' +
+              'peracético?") NO es asesoramiento. Una pregunta GENÉRICA sobre el PROCESO de comprar (ej. "cómo hago para ' +
+              'obtener sus productos", "cómo puedo comprarles", "qué debo hacer para adquirir sus productos") tampoco es ' +
+              'asesoramiento — no describe ningún problema ni pide una recomendación técnica, solo pregunta el mecanismo ' +
+              'de compra; en ese caso "asesoramiento" queda null (ese caso ya lo resuelve el sistema sugiriendo el ' +
+              'catálogo y el portal web).\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null,' +
               '"cantidadTexto": string|null,"uso": string|null}], "asesoramiento": string|null}. No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },

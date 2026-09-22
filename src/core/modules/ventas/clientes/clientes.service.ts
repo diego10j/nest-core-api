@@ -663,7 +663,11 @@ export class ClientesService extends BaseService {
             ${joinPersona}
             WHERE
                 ${whereClause}
-                AND ct.ide_empr = ${dtoIn.ideEmpr}
+                -- COALESCE: algunas cxc_cabece_transa antiguas quedaron con ide_empr NULL;
+                -- si se filtra solo por ct.ide_empr esas filas se excluyen en silencio (NULL = x
+                -- nunca es true) y el saldo queda desfasado del que calcula getTrnCliente
+                -- (que sí filtra por dt.ide_empr, poblado de forma confiable en el detalle).
+                AND COALESCE(ct.ide_empr, dt.ide_empr) = ${dtoIn.ideEmpr}
                 AND dt.ide_sucu = ${dtoIn.ideSucu}
             GROUP BY
                 ct.ide_geper

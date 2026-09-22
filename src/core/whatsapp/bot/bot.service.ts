@@ -943,7 +943,14 @@ export class BotService implements OnModuleInit {
     // producto — eso generaba respuestas sin sentido como "cuéntame qué cantidad
     // necesitas de quiero saber los productos que disponen" (caso real 2026-09-13).
     if (!itemsNormalizados.length) {
-      await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
+      // Mismo criterio que manejarConsultaProductoClasica: primera instancia sugiere el
+      // catálogo y el portal web para autoservicio, antes de escalar a un asesor.
+      await this.sendText(ideEmpr, waId,
+        `¡Con gusto! 😊 Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
+        `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
+        `📦 Catálogo completo: https://diquimec.com.ec/product\n\n` +
+        `Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
+      );
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE_REDUCIDA, datos);
       return;
     }
@@ -1125,7 +1132,7 @@ export class BotService implements OnModuleInit {
   private async iniciarRecopilacionCotizacionRapida(
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, items: ItemCotizacionRapida[],
-    nombreBot: string, nombreEmpresa: string, pedirUso = false,
+    nombreBot: string, nombreEmpresa: string, pedirUso = false, saludo?: string,
   ): Promise<void> {
     const nuevosDatos: DatosSesion = { ...datos, cotizacion_rapida: { items, pedirUso } };
 
@@ -1141,10 +1148,10 @@ export class BotService implements OnModuleInit {
       // no expone la incertidumbre interna del bot (caso real detectado 2026-09-18).
       const intro = pedirUso
         ? '¡Con gusto te ayudo a levantar tu solicitud! 😊 Cuéntame'
-        : '¡Claro que sí! Cuéntame';
+        : '¡Claro que sí! 🙂 Cuéntame';
       // Separador '\n\n' entre cada "falta" (no ', ') — cuando alguna trae una lista
       // numerada de productos embebida, una coma la partía a mitad de línea.
-      await this.sendText(ideEmpr, waId, `${intro} 😊\n\n${faltantes.join('\n\n')}`);
+      await this.sendText(ideEmpr, waId, this.conSaludo(saludo, `${intro}\n\n${faltantes.join('\n\n')}`));
       return;
     }
 
@@ -1630,11 +1637,12 @@ export class BotService implements OnModuleInit {
 
     if (nombreCliente) {
       // Ya lo conocemos (memoria de una sesión anterior) — se saluda por su nombre y
-      // se responde de una vez a lo que haya escrito, sin gates de confirmación.
-      await this.sendText(ideEmpr, waId, `¡Hola de nuevo, *${nombreCliente}*! 😊`);
+      // se responde de una vez a lo que haya escrito, sin gates de confirmación. El
+      // saludo se funde con esa respuesta (ver conSaludo), no se manda aparte.
       const datosActualizados: DatosSesion = { ...datosSesion, productos: datosSesion?.productos ?? [] };
       await this.responderConsultaInicial(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosActualizados, texto, nombreEmpresa, config,
+        `¡Qué gusto tenerte de vuelta, *${nombreCliente}*! 🙂`,
       );
       return;
     }
@@ -1666,11 +1674,10 @@ export class BotService implements OnModuleInit {
       // Mismo criterio que handleAtencionLibreReducida: se presenta (nombre del bot +
       // empresa) aunque el cliente ya haya dado su nombre en el mismo mensaje — es el
       // primer contacto real, no tiene por qué saber con quién/qué empresa está hablando.
-      await this.sendText(ideEmpr, waId,
-        `¡Hola, *${nombreEnSaludo}*! Mucho gusto 😊 Soy *${nombreBot}*, asistente de *${nombreEmpresa}*.`,
-      );
+      // El saludo se funde con la respuesta real (ver conSaludo), no se manda aparte.
       await this.responderConsultaInicial(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, texto, nombreEmpresa, config,
+        `¡Hola, *${nombreEnSaludo}*! Mucho gusto 🙂 Soy *${nombreBot}*, asistente de *${nombreEmpresa}*.`,
       );
       return;
     }
@@ -1758,7 +1765,12 @@ export class BotService implements OnModuleInit {
           es_cliente_registrado: datos.cliente?.es_cliente_registrado ?? false,
         },
       };
-      await this.sendText(ideEmpr, waId, `¡Mucho gusto, *${nombre}*! 😊`);
+      // El saludo NO se manda aparte — se funde con el primer mensaje que responda a lo
+      // que el cliente preguntó (o con el menú, si no preguntó nada todavía). Antes salían
+      // dos mensajes de bot seguidos ("¡Mucho gusto!" + la respuesta real), lo que se leía
+      // como dos mensajes de bot en vez de uno de un agente humano (caso real detectado
+      // 2026-09-21/22, ver conSaludo).
+      const saludo = `¡Mucho gusto, *${nombre}*! 😊`;
       // Se combina lo que había preguntado en el saludo (ej. "Hola, tienen cera de
       // coco") CON el resto de esta respuesta, SIN el nombre ya extraído (ej. "Janneth
       // Pachacama quiero la ubicación" → restoTexto="quiero la ubicación") — antes se
@@ -1770,7 +1782,7 @@ export class BotService implements OnModuleInit {
       // respuesta traía nada más que el nombre, queda vacío.
       const textoParaResponder = [datosConNombre.texto_inicial, restoTexto].filter(Boolean).join('\n');
       await this.responderConsultaInicial(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoParaResponder, nombreEmpresa, config,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datosConNombre, textoParaResponder, nombreEmpresa, config, saludo,
       );
       return;
     }
@@ -1793,18 +1805,23 @@ export class BotService implements OnModuleInit {
   private async responderConsultaInicial(
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, textoInicial: string, nombreEmpresa: string, config: any,
+    // Saludo pendiente (ej. "¡Mucho gusto, Jonny! 🙂") a fundir con el PRIMER mensaje que
+    // esta función termine enviando — nunca se manda como mensaje aparte (ver conSaludo).
+    saludo?: string,
   ): Promise<void> {
     const tipoConsulta = await this.botGpt.clasificarConsulta(textoInicial);
 
     if (tipoConsulta === 'PRODUCTO') {
       await this.manejarConsultaProductoClasica(
-        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+        waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config, saludo,
       );
       return;
     }
 
     if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoConsulta)) {
-      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config);
+      await this.responderInfo(ideEmpr, waId, tipoConsulta as any, nombreEmpresa, config, saludo);
+      // Las categorías adicionales (si el mensaje combinaba varias) van SIN saludo — ya
+      // se usó en el mensaje de arriba.
       await this.responderInfoAdicional(ideEmpr, waId, tipoConsulta, textoInicial, nombreEmpresa, config);
 
       // El mensaje puede combinar la pregunta informativa con una consulta de producto en
@@ -1813,6 +1830,7 @@ export class BotService implements OnModuleInit {
       // del mensaje (el producto) se perdía en silencio (caso real detectado 2026-09-13).
       const { items: itemsExtra } = await this.botGpt.analizarLoteProductos(textoInicial, []);
       if (itemsExtra.some(esProductoConcreto)) {
+        // Sin saludo: el mensaje de responderInfo de arriba ya lo llevó.
         await this.manejarConsultaProductoClasica(
           waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
         );
@@ -1832,22 +1850,18 @@ export class BotService implements OnModuleInit {
       const { items: itemsMenu } = await this.botGpt.analizarLoteProductos(textoInicial, []);
       if (itemsMenu.some((i) => i.producto)) {
         await this.manejarConsultaProductoClasica(
-          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config,
+          waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, textoInicial, nombreEmpresa, config, saludo,
         );
         return;
       }
     }
 
     await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
-    await this.sendText(ideEmpr, waId,
-      `¡Perfecto! 😊 ¿En qué te puedo ayudar hoy?\n\n` +
-      `🧪 Cotización de productos\n` +
-      `📍 Ubicación y cómo llegar\n` +
-      `🕒 Horarios de atención\n` +
-      `🚚 Información de envíos\n` +
-      `📦 Catálogos y precios\n\n` +
-      `_Escribe lo que necesitas o *SALIR* para hablar con un asesor_`,
-    );
+    // Pregunta abierta, sin lista de viñetas — como la abriría un agente humano en vez de
+    // un menú de opciones (decisión 2026-09-22). Si el cliente responde algo vago
+    // ("no sé", "qué tienen"), GPT lo clasifica como GENERAL y handleAtencionLibre lo
+    // resuelve con el prompt de sistema — no hay un menú de respaldo explícito hoy.
+    await this.sendText(ideEmpr, waId, this.conSaludo(saludo, `Cuéntame, ¿en qué te puedo ayudar?`));
   }
 
   /**
@@ -1861,7 +1875,18 @@ export class BotService implements OnModuleInit {
   private async manejarConsultaProductoClasica(
     waId: string, phoneNumberId: string, ideWhcha: number, ideWhcue: number, ideEmpr: number,
     sesion: any, datos: DatosSesion, textoProducto: string, nombreEmpresa: string, config: any,
+    saludo?: string,
   ): Promise<void> {
+    // Saludo pendiente (si vino de responderConsultaInicial) — se funde con el PRIMER
+    // mensaje que esta función envíe, sin importar cuál de las ramas de abajo dispare
+    // primero; se consume una sola vez (ver conSaludo).
+    let saludoPendiente = saludo;
+    const enviar = (texto: string) => {
+      const mensajeFinal = this.conSaludo(saludoPendiente, texto);
+      saludoPendiente = undefined;
+      return this.sendText(ideEmpr, waId, mensajeFinal);
+    };
+
     // Antes de arrastrar al cliente por todo el flujo (identificación, dirección, forma
     // de pago) se verifica que AL MENOS UNO de los productos mencionados tenga algún
     // candidato en el catálogo interno — nada exige que sea el match correcto, solo que
@@ -1891,9 +1916,10 @@ export class BotService implements OnModuleInit {
       };
       if (!itemsDetectados.length) {
         await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-          `Tu consulta necesita la orientación de un asesor comercial 😊 Ya se la paso para que te ayude y te responderá lo antes posible.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+          this.conSaludo(saludoPendiente, `Voy a transferirte con un asesor comercial 👤 para que te ayude y te responda lo antes posible 😊\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`),
           `Consulta de asesoramiento (sin producto concreto): ${asesoramiento}\nMensaje original: "${textoProducto.trim()}"`,
         );
+        saludoPendiente = undefined;
         return;
       }
     }
@@ -1904,9 +1930,18 @@ export class BotService implements OnModuleInit {
     // de un producto — eso generaba respuestas sin sentido como "cuéntame qué cantidad
     // necesitas de quiero saber los productos que disponen" (caso real detectado
     // 2026-09-13). Se le pide que precise qué producto le interesa, sin arrastrar el
-    // mensaje vago a ningún lado.
+    // mensaje vago a ningún lado. Incluye el caso de una pregunta GENÉRICA sobre cómo
+    // comprar ("necesito saber cómo puedo hacer para obtener sus productos", sin nombrar
+    // ninguno puntual) — en primera instancia se sugiere revisar el catálogo y cotizar
+    // directo desde el portal web, en vez de escalar a un asesor sin necesidad (caso real
+    // detectado 2026-09-22).
     if (!itemsDetectados.length) {
-      await this.sendText(ideEmpr, waId, `¡Con gusto! 😊 Cuéntame qué productos necesitas cotizar y en qué cantidades, y te preparo la cotización.`);
+      await enviar(
+        `¡Con gusto! 😊 Puedes revisar nuestro catálogo con precios y generar tu cotización directo desde el portal web:\n` +
+        `📦 Catálogo para emprendedores: https://diquimec.com.ec/catalogo\n` +
+        `📦 Catálogo completo: https://diquimec.com.ec/product\n\n` +
+        `Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
+      );
       await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
       return;
     }
@@ -1919,7 +1954,7 @@ export class BotService implements OnModuleInit {
 
       if (estadoProducto.estado === 'NO_VENDEMOS') {
         const mensaje = estadoProducto.observacion?.trim() || 'Por el momento no comercializamos ese producto 😔';
-        await this.sendText(ideEmpr, waId, `${mensaje} ¿Te ayudo con algo más?`);
+        await enviar(`${mensaje} ¿Te ayudo con algo más?`);
         await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
         return;
       }
@@ -2006,13 +2041,14 @@ export class BotService implements OnModuleInit {
               || (pideRecomendacion && !!datos.recomendacionPedida);
             if (insiste) {
               await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-                `Con gusto 😊 Para orientarte mejor, te comunico con uno de nuestros asesores comerciales.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`,
+                this.conSaludo(saludoPendiente, `Con gusto 😊 Para orientarte mejor, te comunico con uno de nuestros asesores comerciales.\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`),
                 `El cliente insiste sobre ${nombresLista.join(', ')} (${pideRecomendacion ? 'pide recomendación/calidad' : 'sigue preguntando'}) pese a que ya se le compartió el catálogo con precios: "${textoProducto.trim()}".`
                 + (datos.notaClienteExtra ? `\n${datos.notaClienteExtra}` : ''),
               );
+              saludoPendiente = undefined;
               return;
             }
-            await this.sendText(ideEmpr, waId,
+            await enviar(
               pidePrecio
                 ? `Claro 😊 Los precios los encuentras en el catálogo que te compartí. Si quieres que te cotice, cuéntame qué productos necesitas y en qué cantidades, y lo armamos por aquí.`
                 : `Con gusto 😊 Te sugiero revisar el catálogo que te compartí, ahí están los productos con sus precios. Si quieres una cotización, dime qué productos y qué cantidades necesitas y te ayudo.`,
@@ -2023,7 +2059,7 @@ export class BotService implements OnModuleInit {
           }
 
           if (!yaEnviado) {
-            await this.sendText(ideEmpr, waId,
+            await enviar(
               this.armarMensajeDisponibles(nombresLista, links) +
               (itemsPendientes.length || !todosEspecificos ? '' : ' Si prefieres, dime la cantidad que necesitas y la generamos por aquí.'),
             );
@@ -2071,7 +2107,7 @@ export class BotService implements OnModuleInit {
       // cubrió TODOS los ítems detectados, ya se retornó antes.
       await this.iniciarRecopilacionCotizacionRapida(
         waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr, sesion, datos, itemsPendientes,
-        config?.nombre_bot || 'QuimIA', nombreEmpresa, pedirUso,
+        config?.nombre_bot || 'QuimIA', nombreEmpresa, pedirUso, saludoPendiente,
       );
     } else {
       // No sabemos su nombre: se pide directo, sin preguntar antes "¿ya compraste con
@@ -2079,7 +2115,7 @@ export class BotService implements OnModuleInit {
       // compraron antes, así que esa pregunta casi siempre era un mensaje de más. El
       // texto con el producto se guarda para procesarlo automáticamente en cuanto
       // tengamos el nombre (handleDatosNuevoCliente), sin que lo repita.
-      await this.sendText(ideEmpr, waId, `Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
+      await enviar(`Para brindarte una atención más personalizada 😊 ¿Me podrías indicar tu nombre?`);
       await this.botSession.update(sesion.ide_whbse, BotState.DATOS_NUEVO_CLIENTE, {
         ...datos,
         cliente: { nombres: '', correo: '', es_cliente_registrado: false, pendiente_campo: 'nombres' },
@@ -3846,11 +3882,12 @@ export class BotService implements OnModuleInit {
     tipo: 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO',
     nombreEmpresa: string,
     config: any,
+    saludo?: string,
   ): Promise<void> {
     const respuesta = this.construirTextoInfo(tipo, nombreEmpresa, config);
     if (!respuesta) return;
 
-    await this.sendText(ideEmpr, waId, respuesta);
+    await this.sendText(ideEmpr, waId, this.conSaludo(saludo, respuesta));
 
     if (tipo === 'UBICACION' && config?.lat_empresa && config?.lng_empresa) {
       try {
@@ -4020,9 +4057,9 @@ export class BotService implements OnModuleInit {
   private armarMensajeDisponibles(productos: string[], links: string[]): string {
     const cierre = `Lo puedes encontrar en nuestro catálogo de emprendedores, con precios incluidos: ${links.join(' | ')} — ahí mismo puedes generar tu cotización.`;
     if (productos.length <= 2) {
-      return `¡Sí, disponemos de ${productos.map((p) => `*${p}*`).join(' y ')}! 😊 ${cierre}`;
+      return `¡Sí, disponemos de ${productos.map((p) => `*${p}*`).join(' y ')}! 🙌 ${cierre}`;
     }
-    return `¡Sí, disponemos de estos productos! 😊\n\n${productos.map((p) => `• *${p}*`).join('\n')}\n\n${cierre}`;
+    return `¡Sí, disponemos de estos productos! 🙌\n\n${productos.map((p) => `• *${p}*`).join('\n')}\n\n${cierre}`;
   }
 
   private buildResumenProductos(productos: ProductoSesion[]): string {
@@ -4034,7 +4071,7 @@ export class BotService implements OnModuleInit {
 
 === ESTILO DE RESPUESTA ===
 - Eres mujer, cálida, amable y profesional. Tus mensajes transmiten confianza.
-- SIEMPRE usa emojis relevantes (📍 🕒 🚚 📦 🌐 ✅ 😊).
+- Usa emojis relevantes con moderación (📍 ubicación, 🕒 horario, 🚚 envíos, 📦 catálogo, ✅ confirmación). Para cordialidad varía entre 😊 🙂 🌸 🙌 — evita repetir siempre el mismo emoji en la misma conversación, se siente robotizado.
 - Usa *negrita de WhatsApp* (*texto*) para datos clave.
 - Usa _cursiva de WhatsApp_ (_texto_) para referencias secundarias.
 - Empieza con un encabezado cálido SOLO en el primer mensaje. En mensajes siguientes NO repitas el saludo ni te presentes de nuevo.
@@ -4622,6 +4659,16 @@ export class BotService implements OnModuleInit {
     // esBot=true → saveMessageSent marca es_bot_whmem=TRUE en el INSERT y no dispara
     // el hand-off a ASESOR (ese chequeo es solo para mensajes humanos).
     await this.ycloudService.sendText(ideEmpr, `+${waId}`, texto, undefined, undefined, true);
+  }
+
+  /**
+   * Antepone el saludo (ej. "¡Mucho gusto, Jonny!") al primer mensaje real del turno, para
+   * no mandarlo como mensaje aparte del que sigue (caso real detectado 2026-09-21: el
+   * cliente recibía "¡Mucho gusto!" y, un segundo después, el menú/respuesta en un mensaje
+   * separado — se leía como dos mensajes de bot en vez de uno de un agente humano).
+   */
+  private conSaludo(saludo: string | undefined, mensaje: string): string {
+    return saludo ? `${saludo} ${mensaje}` : mensaje;
   }
 
   private async sendButtons(

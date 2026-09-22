@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
+import { ValorDiferenteTransaccionException } from 'src/common/exceptions/valor-diferente-transaccion.exception';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
@@ -37,6 +38,7 @@ export class CxcTransaccionesSaveService extends BaseService {
                 'p_cxc_tipo_trans_cheque_posfechado',
                 'p_cxc_tipo_trans_sobrepago',
                 'p_cxc_monto_max_efectivo', // monto máximo (USD) cobrable en Efectivo
+                'p_cxc_tolerancia_valor_pago', // % de tolerancia entre valor ingresado y valor real de la(s) factura(s)
             ])
             .then((result) => {
                 this.variables = result;
@@ -66,6 +68,29 @@ export class CxcTransaccionesSaveService extends BaseService {
                 `No se puede cobrar en Efectivo un monto mayor a $${maximo.toFixed(2)} ` +
                 `(valor: $${valor.toFixed(2)}). Utilice Transferencia u otro medio de pago.`,
             );
+        }
+    }
+
+    /**
+     * Corta el guardado si `valor` excede significativamente a `valorTransaccion` y el
+     * frontend no envió `confirmarDiferencia` - evita crear un "saldo a favor" adicional
+     * en silencio cuando el valor viene de una lectura OCR errónea del comprobante
+     * escaneado (ej. "335.60" leído como "33560" por falta de separador decimal en la
+     * imagen). El usuario debe confirmar explícitamente antes de que se genere el excedente.
+     */
+    private validarDiferenciaValor(valor: number, valorTransaccion: number, confirmarDiferencia?: boolean): void {
+        const diferencia = Number((valor - valorTransaccion).toFixed(2));
+        if (diferencia <= 0) return;
+
+        const toleranciaPct = Number(this.variables.get('p_cxc_tolerancia_valor_pago') ?? 1) / 100;
+        const tolerancia = Math.max(1, valorTransaccion * toleranciaPct);
+
+        if (diferencia > tolerancia && !confirmarDiferencia) {
+            throw new ValorDiferenteTransaccionException({
+                valorIngresado: valor,
+                valorTransaccion,
+                diferencia,
+            });
         }
     }
 
@@ -105,6 +130,8 @@ export class CxcTransaccionesSaveService extends BaseService {
         } as any);
 
         const saldoAnterior = Number(factura.saldo_x_pagar);
+
+        this.validarDiferenciaValor(dtoIn.valor, saldoAnterior, dtoIn.confirmarDiferencia);
 
         // ─── PASO 3: DETERMINAR TIPO TRANSACCION CxC ─────────────────────────
         let ideCcttr: number;
@@ -304,6 +331,8 @@ export class CxcTransaccionesSaveService extends BaseService {
                 `La suma de los documentos (${sumaFacturas}) no puede superar el valor del cobro (${dtoIn.valor})`,
             );
         }
+
+        this.validarDiferenciaValor(dtoIn.valor, sumaFacturas, dtoIn.confirmarDiferencia);
 
         const esChequePostfechado = dtoIn.ideTettb === IDE_TETTB_CHEQUE_POSFECHADO_CXC;
         if (esChequePostfechado) {

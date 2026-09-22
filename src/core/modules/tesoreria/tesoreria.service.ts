@@ -37,6 +37,15 @@ PASO 3 — Extrae los siguientes campos:
   - Convierte a número puro: "$1,255.00" → 1255.00, "$ 1.255,00" → 1255.00.
   - Toma el valor que corresponda al monto transferido, no saldos de cuenta.
   - Si hay múltiples montos, elige el más destacado o el etiquetado como "Valor", "Monto", "Importe".
+  - OJO CON DECIMALES SIN SEPARADOR: en apps bancarias es común mostrar el monto con la parte
+    entera en tamaño grande y los centavos en tamaño pequeño (superíndice/alineado arriba), SIN
+    punto ni coma entre ambos. El OCR extrae esto como un solo número pegado (ej. la imagen
+    muestra "335" grande + "60" pequeño arriba y el OCR entrega "33560"). Un comprobante bancario
+    real casi nunca es un monto entero de 5+ dígitos sin decimales - si ves un número así de largo
+    y "sospechoso" (termina en 2 dígitos que podrían ser centavos, no hay otro monto con punto/coma
+    en el texto, o el número no calza con ningún separador de miles razonable), interpreta los
+    ÚLTIMOS 2 DÍGITOS como centavos: "33560" → 335.60, NO 33560.00. Si en cambio el texto SÍ trae
+    separador explícito (punto o coma antes de los últimos 2 dígitos), respétalo tal cual.
 
 "numeroComprobante": string | null
   - Etiquetas: "Comprobante Nro.", "N° Comprobante", "Nro. Comprobante", "No. Comprobante",
@@ -200,6 +209,11 @@ Extrae en JSON:
 "valor": number | null
   - Busca el monto más destacado visualmente (grande, negrita, recuadro).
   - "$1,255.00" → 1255.00, "$ 1.255,00" → 1255.00.
+  - PRESTA ESPECIAL ATENCIÓN AL TAMAÑO DE FUENTE: muchas apps bancarias muestran el monto con la
+    parte entera en fuente grande y los centavos en fuente pequeña, alineados arriba (superíndice),
+    SIN punto ni coma visible entre ambos (ej. "335" grande junto a un "60" pequeño arriba = $335.60,
+    NO $33560). Como SÍ puedes ver la imagen, usa la diferencia de tamaño/posición de los dígitos
+    para separar entero de centavos - no leas ambos grupos como un solo número entero.
 
 "numeroComprobante": string | null
   - Solo el número. Ignora prefijos como "Comprobante Nro.", "N°", "No.", "Transacción #".
@@ -432,11 +446,19 @@ export class TesoreriaService extends BaseService {
 
   /**
    * Procesa imagen de transferencia: OCR primero, con fallback a GPT-4o Vision.
+   *
+   * `valorEsperado` (opcional): valor de la(s) cuenta(s) por cobrar/pagar que el usuario ya
+   * tiene seleccionadas en el frontend ANTES de subir el comprobante. Si el valor leído por
+   * OCR difiere significativamente de esa pista, se reverifica automáticamente con GPT-4o
+   * Vision (que sí puede distinguir tamaños de fuente) antes de devolver el resultado - esto
+   * es lo que evita que un comprobante con centavos en superíndice sin separador ("335.60"
+   * mostrado como "335" grande + "60" pequeño) se lea como "33560".
    */
   async procesarImagenTransferencia(
     imageBuffer: Buffer,
     fileName: string,
     mimeType: string,
+    valorEsperado?: number,
   ): Promise<ResultadoOcrTransferenciaDto & { origen: string }> {
     this.logger.log(`Procesando imagen: ${fileName} (${mimeType})`);
 
@@ -445,7 +467,7 @@ export class TesoreriaService extends BaseService {
 
       if (!textoExtraido || textoExtraido.trim().length < 30) {
         this.logger.warn('Texto OCR insuficiente, usando GPT-4o Vision como fallback');
-        return this.procesarImagenTransferenciaVision(imageBuffer, mimeType, 'vision_fallback');
+        return this.procesarImagenTransferenciaVision(imageBuffer, mimeType, 'vision_fallback', valorEsperado);
       }
 
       this.logger.log(`Texto OCR extraído (${textoExtraido.length} caracteres)`);
@@ -455,7 +477,7 @@ export class TesoreriaService extends BaseService {
 
       resultado = await this.corregirParseo(textoExtraido, resultado);
 
-      return {
+      const resultadoOcr: ResultadoOcrTransferenciaDto & { origen: string } = {
         tipoTransferencia: resultado.tipoTransferencia ?? null,
         valor: resultado.valor ?? null,
         numeroComprobante: resultado.numeroComprobante ?? null,
@@ -469,24 +491,58 @@ export class TesoreriaService extends BaseService {
         textoOriginal: textoExtraido,
         origen: 'ocr',
       };
+
+      if (this.valorDifiereDelEsperado(resultadoOcr.valor, valorEsperado)) {
+        this.logger.warn(
+          `Valor OCR ($${resultadoOcr.valor}) difiere del esperado ($${valorEsperado}). `
+          + `Reverificando con GPT-4o Vision.`,
+        );
+        const resultadoVision = await this.procesarImagenTransferenciaVision(
+          imageBuffer, mimeType, 'vision_autocorreccion', valorEsperado,
+        );
+
+        if (!this.valorDifiereDelEsperado(resultadoVision.valor, valorEsperado)) {
+          return { ...resultadoVision, valorOcrOriginal: resultadoOcr.valor };
+        }
+
+        // Ni OCR ni Vision calzan con lo esperado: se devuelve la lectura OCR tal cual,
+        // marcada, para que el frontend avise al usuario (la confirmación final y
+        // definitiva de todas formas la exige el backend al guardar el pago/cobro).
+        return { ...resultadoOcr, alertaValor: true, valorEsperado };
+      }
+
+      return resultadoOcr;
     } catch (error) {
       this.logger.warn(`OCR falló, usando GPT-4o Vision como fallback: ${error.message}`);
-      return this.procesarImagenTransferenciaVision(imageBuffer, mimeType, 'vision_fallback');
+      return this.procesarImagenTransferenciaVision(imageBuffer, mimeType, 'vision_fallback', valorEsperado);
     }
   }
 
   /**
    * Procesa imagen directamente con GPT-4o Vision (sin OCR).
    * Más preciso pero más costoso. Ideal para frontend cuando el OCR no dio buen resultado.
+   *
+   * `valorEsperado` (opcional): si viene, se agrega como pista al prompt para ayudar a
+   * resolver ambigüedades de FORMATO (no para forzar un valor genuinamente distinto).
    */
   async procesarImagenTransferenciaVision(
     imageBuffer: Buffer,
     mimeType: string,
     origen: string = 'vision_direct',
+    valorEsperado?: number,
   ): Promise<ResultadoOcrTransferenciaDto & { origen: string }> {
     this.logger.log(`Procesando imagen con GPT-4o Vision (${mimeType})`);
 
-    const resultado = await this.gptService.parseImageToJson(VISION_PROMPT, imageBuffer, mimeType);
+    const prompt = valorEsperado != null
+      ? `${VISION_PROMPT}\n\nPISTA: el valor de esta transferencia debería rondar $${valorEsperado.toFixed(2)}. `
+        + 'Si el monto que ves en la imagen coincide con ese número pero el formato (dígitos de '
+        + 'distinto tamaño, sin separador decimal visible, centavos en superíndice) generaba '
+        + 'ambigüedad, usa la lectura que coincide con la pista. NO uses la pista para '
+        + 'sobreescribir un valor que genuinamente se ve distinto en la imagen - solo para '
+        + 'resolver ambigüedad de formato.'
+      : VISION_PROMPT;
+
+    const resultado = await this.gptService.parseImageToJson(prompt, imageBuffer, mimeType);
 
     return {
       tipoTransferencia: resultado.tipoTransferencia ?? null,
@@ -502,6 +558,13 @@ export class TesoreriaService extends BaseService {
       textoOriginal: null,
       origen,
     };
+  }
+
+  /** true si `valor` se aparta de `valorEsperado` más allá de una tolerancia razonable (redondeo). */
+  private valorDifiereDelEsperado(valor?: number | null, valorEsperado?: number): boolean {
+    if (valor == null || valorEsperado == null) return false;
+    const tolerancia = Math.max(0.02, valorEsperado * 0.005);
+    return Math.abs(valor - valorEsperado) > tolerancia;
   }
 
   /**

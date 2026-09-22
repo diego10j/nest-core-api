@@ -34,4 +34,12 @@ export const CUENTAS_POR_PAGAR_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.CUENTAS_POR_PAGAR.ID,
+    nom_para: 'p_cxp_tolerancia_valor_pago',
+    descripcion_para: 'Tolerancia (% del valor de la(s) factura(s), mínimo $1) entre el valor ingresado al registrar un pago y el valor real de la(s) factura(s) seleccionada(s). Si se supera, se exige confirmación explícita antes de guardar (evita pagos adicionales/saldo a favor por errores de lectura OCR del comprobante)',
+    valor_para: '1',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

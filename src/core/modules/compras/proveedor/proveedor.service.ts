@@ -160,7 +160,11 @@ export class ProveedorService extends BaseService {
         ${joinPersona}
         WHERE
             ${whereClause}
-            AND ct.ide_empr = ${dtoIn.ideEmpr}
+            -- COALESCE: mismo problema encontrado en ClientesService.getSaldo (CxC) - algunas
+            -- cxp_cabece_transa antiguas quedaron con ide_empr NULL, y filtrar solo por
+            -- ct.ide_empr las excluye en silencio (NULL = x nunca es true), desfasando el
+            -- saldo del que calcula getTrnProveedor (que filtra por dt.ide_empr, del detalle).
+            AND COALESCE(ct.ide_empr, dt.ide_empr) = ${dtoIn.ideEmpr}
             AND dt.ide_sucu = ${dtoIn.ideSucu}
         GROUP BY
             ct.ide_geper

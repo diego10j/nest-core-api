@@ -2,6 +2,7 @@ import {
     Controller,
     Get,
     Post,
+    Query,
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import {
     ApiBody,
     ApiConsumes,
     ApiOperation,
+    ApiQuery,
     ApiTags,
 } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
@@ -87,6 +89,12 @@ export class TesoreriaController {
     @Post('procesarImagenTransferencia')
     @ApiOperation({ summary: 'Procesa imagen de comprobante de transferencia bancaria (OCR con fallback a GPT-4o Vision)' })
     @ApiConsumes('multipart/form-data')
+    @ApiQuery({
+        name: 'valorEsperado',
+        required: false,
+        type: Number,
+        description: 'Valor de la(s) cuenta(s) por cobrar/pagar ya seleccionadas en el frontend antes de subir el comprobante. Si el valor leído difiere significativamente, se reverifica automáticamente con GPT-4o Vision antes de responder.',
+    })
     @ApiBody({
         schema: {
             type: 'object',
@@ -104,13 +112,23 @@ export class TesoreriaController {
     async procesarImagenTransferencia(
         @AppHeaders() headersParams: HeaderParamsDto,
         @UploadedFile() file: Express.Multer.File,
+        @Query('valorEsperado') valorEsperado?: string,
     ) {
-        return this.service.procesarImagenTransferencia(file.buffer, file.originalname, file.mimetype);
+        return this.service.procesarImagenTransferencia(
+            file.buffer, file.originalname, file.mimetype,
+            valorEsperado != null ? Number(valorEsperado) : undefined,
+        );
     }
 
     @Post('procesarImagenTransferenciaGpt')
     @ApiOperation({ summary: 'Procesa imagen directamente con GPT-4o Vision (sin OCR). Más preciso.' })
     @ApiConsumes('multipart/form-data')
+    @ApiQuery({
+        name: 'valorEsperado',
+        required: false,
+        type: Number,
+        description: 'Valor de la(s) cuenta(s) por cobrar/pagar ya seleccionadas en el frontend antes de subir el comprobante. Se usa como pista para resolver ambigüedades de formato de decimales.',
+    })
     @ApiBody({
         schema: {
             type: 'object',
@@ -128,7 +146,11 @@ export class TesoreriaController {
     async procesarImagenTransferenciaGpt(
         @AppHeaders() headersParams: HeaderParamsDto,
         @UploadedFile() file: Express.Multer.File,
+        @Query('valorEsperado') valorEsperado?: string,
     ) {
-        return this.service.procesarImagenTransferenciaVision(file.buffer, file.mimetype);
+        return this.service.procesarImagenTransferenciaVision(
+            file.buffer, file.mimetype, undefined,
+            valorEsperado != null ? Number(valorEsperado) : undefined,
+        );
     }
 }

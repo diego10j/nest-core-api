@@ -89,4 +89,8 @@ export class SavePagoCxPDto {
     @ValidateNested({ each: true })
     @Type(() => FacturaPagoCxPDto)
     facturas: FacturaPagoCxPDto[];
+
+    /** true cuando el usuario ya confirmó guardar pese a que valor difiere de la suma de facturas (ver ValorDiferenteTransaccionException) */
+    @IsOptional()
+    confirmarDiferencia?: boolean;
 }

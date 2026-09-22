@@ -41,4 +41,8 @@ export class SaveCobroCxCDto {
     @IsInt()
     @IsOptional()
     ideTeban?: number;
+
+    /** true cuando el usuario ya confirmó guardar pese a que valor difiere del saldo de la factura (ver ValorDiferenteTransaccionException) */
+    @IsOptional()
+    confirmarDiferencia?: boolean;
 }

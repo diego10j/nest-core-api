@@ -78,8 +78,26 @@ export class ResultadoOcrTransferenciaDto {
   textoOriginal?: string;
 
   @ApiProperty({
-    description: 'Origen de los datos: ocr, vision_direct, vision_fallback',
+    description: 'Origen de los datos: ocr, vision_direct, vision_fallback, vision_autocorreccion',
     example: 'ocr',
   })
   origen?: string;
+
+  @ApiProperty({
+    description: 'Solo cuando origen=vision_autocorreccion: valor que había leído el OCR antes de la reverificación con GPT-4o Vision',
+    required: false,
+  })
+  valorOcrOriginal?: number;
+
+  @ApiProperty({
+    description: 'true cuando el valor leído difiere del valorEsperado enviado por el frontend y ni OCR ni la reverificación con Vision lograron hacerlo calzar. El frontend debería resaltar el campo valor para que el usuario lo revise antes de guardar.',
+    required: false,
+  })
+  alertaValor?: boolean;
+
+  @ApiProperty({
+    description: 'Eco del valorEsperado enviado en la petición, presente cuando alertaValor=true',
+    required: false,
+  })
+  valorEsperado?: number;
 }
