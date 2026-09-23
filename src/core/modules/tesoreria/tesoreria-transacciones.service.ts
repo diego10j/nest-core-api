@@ -401,17 +401,18 @@ export class TransaccionesTesoreriaService extends BaseService {
      * Lanza excepción si algún movimiento bancario ya fue contabilizado (tiene ide_cnccc).
      */
     async anularTransaccionesOrdenPagoCxP(ide_cpcop: number, login: string): Promise<void> {
-        // 1. Obtener detalles pagados (ide_cpeo = 3) de la orden
+        // 1. Obtener detalles pagados (ide_cpeo = 3) de la orden, EXCLUYENDO los que se completaron
+        // con pagos asociados desde Tesorería (ide_teclb_asoc_cpcdop): esos movimientos no los creó
+        // la orden y no deben borrarse al anularla - solo se desvinculan (paso 5).
         const pagadosQuery = new SelectQuery(`
             SELECT ide_cpctr
             FROM   cxp_det_orden_pago
             WHERE  ide_cpcop = $1
               AND  ide_cpeo  = 3
+              AND  cardinality(ide_teclb_asoc_cpcdop) = 0
         `);
         pagadosQuery.addIntParam(1, ide_cpcop);
         const pagados = await this.dataSource.createSelectQuery(pagadosQuery);
-
-        if (pagados.length === 0) return;
 
         // 2. Para cada detalle pagado, localizar el registro de pago en cxp_detall_transa
         const transacciones: Array<{ ide_cpdtr: number; ide_teclb: number | null }> = [];
@@ -476,6 +477,7 @@ export class TransaccionesTesoreriaService extends BaseService {
                     fecha_cheque_cpcdop       = NULL,
                     observacion_cpcdop        = NULL,
                     foto_cpcdop               = NULL,
+                    ide_teclb_asoc_cpcdop     = '{}',
                     usuario_actua             = $2,
                     hora_actua                = NOW()
              WHERE  ide_cpcop = $1`,

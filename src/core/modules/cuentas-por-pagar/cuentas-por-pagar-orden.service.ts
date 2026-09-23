@@ -133,6 +133,8 @@ export class CuentasPorPagarOrdenService extends BaseService {
                 det.activo_cpcdop,
                 det.valor_pagado_banco_cpcdop,
                 det.fecha_cheque_cpcdop,
+                -- Movimientos de Tesorería asociados para completar el pago (vacío = pago clásico o pendiente)
+                to_jsonb(det.ide_teclb_asoc_cpcdop) AS ide_teclb_asoc_cpcdop,
                 -- Banco
                 det.ide_tecba,
                 b.nombre_teban                        AS nombre_banco,
@@ -193,7 +195,47 @@ export class CuentasPorPagarOrdenService extends BaseService {
         `);
         ctasQuery.addIntParam(1, dtoIn.ide_cpcop);
         const cuentasBancarias = await this.dataSource.createSelectQuery(ctasQuery);
-        return { cabecera, detalles, cuentasBancarias };
+
+        // Pagos de Tesorería asociados a los detalles (un registro por detalle × movimiento). El JOIN
+        // descarta ids huérfanos (movimiento borrado por fuera, p.ej. desde el sistema legado).
+        const pagosQuery = new SelectQuery(`
+            SELECT
+                det.ide_cpcdop,
+                lb.ide_teclb,
+                lb.fecha_trans_teclb,
+                lb.numero_teclb,
+                lb.valor_teclb,
+                cb.nombre_tecba                                   AS cuenta_banco,
+                b.nombre_teban                                    AS nombre_banco,
+                ttb.nombre_tettb                                  AS tipo_transaccion_banco,
+                ic.foto_teincb                                    AS foto,
+                COALESCE(SUM(dt.valor_cpdtr), 0)                  AS valor_aplicado
+            FROM cxp_det_orden_pago det
+            JOIN LATERAL unnest(det.ide_teclb_asoc_cpcdop) AS asoc(ide_teclb) ON true
+            JOIN tes_cab_libr_banc lb        ON lb.ide_teclb  = asoc.ide_teclb
+            LEFT JOIN cxp_detall_transa dt   ON dt.ide_teclb  = lb.ide_teclb
+                                            AND dt.ide_cpctr  = det.ide_cpctr
+                                            AND dt.numero_pago_cpdtr > 0
+            LEFT JOIN tes_cuenta_banco cb    ON cb.ide_tecba  = lb.ide_tecba
+            LEFT JOIN tes_banco b            ON b.ide_teban   = cb.ide_teban
+            LEFT JOIN tes_tip_tran_banc ttb  ON ttb.ide_tettb = lb.ide_tettb
+            LEFT JOIN LATERAL (
+                SELECT i.foto_teincb
+                  FROM tes_info_comprobante_banco i
+                 WHERE i.ide_teclb = lb.ide_teclb AND i.foto_teincb IS NOT NULL
+                 ORDER BY i.ide_teincb DESC
+                 LIMIT 1
+            ) ic ON true
+            WHERE det.ide_cpcop = $1
+              AND cardinality(det.ide_teclb_asoc_cpcdop) > 0
+            GROUP BY det.ide_cpcdop, lb.ide_teclb, lb.fecha_trans_teclb, lb.numero_teclb, lb.valor_teclb,
+                     cb.nombre_tecba, b.nombre_teban, ttb.nombre_tettb, ic.foto_teincb
+            ORDER BY det.ide_cpcdop, lb.fecha_trans_teclb, lb.ide_teclb
+        `);
+        pagosQuery.addIntParam(1, dtoIn.ide_cpcop);
+        const pagosAsociados = await this.dataSource.createSelectQuery(pagosQuery);
+
+        return { cabecera, detalles, cuentasBancarias, pagosAsociados };
     }
 
     /**

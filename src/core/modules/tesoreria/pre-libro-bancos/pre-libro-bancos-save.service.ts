@@ -8,6 +8,8 @@ import { CoreService } from 'src/core/core.service';
 import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asientos-automaticos.service';
 import { getCurrentDate, getCurrentTime } from 'src/util/helpers/date-util';
 
+import { AsociarPagoOrdenService } from '../asociar-pago-orden/asociar-pago-orden.service';
+
 import { AnularMovimientoDto } from './dto/anular-movimiento.dto';
 import { ReversarTransaccionDto } from './dto/reversar-transaccion.dto';
 import { SaveDepositoCajaDto } from './dto/save-deposito-caja.dto';
@@ -22,6 +24,7 @@ export class PreLibroBancosSaveService extends BaseService {
         private readonly core: CoreService,
         private readonly preLibroBancosService: PreLibroBancosService,
         private readonly asientosAutomaticosService: AsientosAutomaticosService,
+        private readonly asociarPagoOrdenService: AsociarPagoOrdenService,
     ) {
         super();
         this.core
@@ -117,6 +120,11 @@ export class PreLibroBancosSaveService extends BaseService {
             `SELECT DISTINCT ide_cpcfa FROM cxp_detall_transa WHERE ide_teclb = $1 AND numero_pago_cpdtr > 0`,
             [dtoIn.ideTeclb],
         );
+
+        // 4b. Si el movimiento estaba asociado a detalles de órdenes de pago (CxP), se desvinculan:
+        // esos detalles vuelven a pendiente y la orden se reabre, en vez de quedar "pagados"
+        // apoyados en un pago que deja de existir.
+        await this.asociarPagoOrdenService.desvincularMovimiento(dtoIn.ideTeclb, dtoIn.login);
 
         // 5. Eliminar transacciones CxC y CxP
         await this.dataSource.pool.query(

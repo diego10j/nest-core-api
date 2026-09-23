@@ -5,6 +5,13 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { RangoFechasDto } from 'src/common/dto/rango-fechas.dto';
 
+import { AsociarPagoOrdenService } from '../tesoreria/asociar-pago-orden/asociar-pago-orden.service';
+import {
+    AsociarPagosOrdenDto,
+    DesasociarPagosOrdenDto,
+    GetMovimientosAsociablesDto,
+} from '../tesoreria/asociar-pago-orden/dto/asociar-pago-orden.dto';
+
 import { CuentasPorPagarOrdenService } from './cuentas-por-pagar-orden.service';
 import { CuentasPorPagarSaveService } from './cuentas-por-pagar-save.service';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
@@ -23,6 +30,7 @@ export class CuentasPorPagarController {
         private readonly saveService: CuentasPorPagarSaveService,
         private readonly ordenService: CuentasPorPagarOrdenService,
         private readonly pagoOrdenEmailService: PagoOrdenEmailService,
+        private readonly asociarPagoOrdenService: AsociarPagoOrdenService,
     ) { }
 
     // ─── CONSULTAS CXP ────────────────────────────────────────────────────────
@@ -141,6 +149,24 @@ export class CuentasPorPagarController {
     @ApiOperation({ summary: 'Guardar o actualizar detalle de una orden de pago' })
     saveDetalleOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveDetallesOrdenDto) {
         return this.saveService.saveDetalleOrden({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getMovimientosAsociablesOrden')
+    @ApiOperation({ summary: 'Movimientos de Tesorería elegibles para completar el pago pendiente de un proveedor en una orden' })
+    getMovimientosAsociablesOrden(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetMovimientosAsociablesDto) {
+        return this.asociarPagoOrdenService.getMovimientosAsociables({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('asociarPagosOrden')
+    @ApiOperation({ summary: 'Asociar movimientos de Tesorería al pago de un proveedor en una orden (deben sumar el total del detalle)' })
+    asociarPagosOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: AsociarPagosOrdenDto) {
+        return this.asociarPagoOrdenService.asociarPagos({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('desasociarPagosOrden')
+    @ApiOperation({ summary: 'Quitar los pagos asociados de un proveedor en una orden (vuelve a pendiente)' })
+    desasociarPagosOrden(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: DesasociarPagosOrdenDto) {
+        return this.asociarPagoOrdenService.desasociarPagos({ ...headersParams, ...dtoIn });
     }
 
     @Post('reenviarNotificacionPago')

@@ -5,6 +5,7 @@ import { ContabilidadModule } from 'src/core/modules/contabilidad/contabilidad.m
 import { FilesModule } from 'src/core/modules/sistema/files/files.module';
 
 import { AnticipoProveedorSaveService } from './anticipo-proveedor/anticipo-proveedor-save.service';
+import { AsociarPagoOrdenService } from './asociar-pago-orden/asociar-pago-orden.service';
 import { AnticipoProveedorController } from './anticipo-proveedor/anticipo-proveedor.controller';
 import { AnticipoProveedorService } from './anticipo-proveedor/anticipo-proveedor.service';
 import { BancosSaveService } from './bancos/bancos-save.service';
@@ -58,6 +59,7 @@ import { TesoreriaService } from './tesoreria.service';
         TesoreriaService,
         TesoreriaLdService,
         TransaccionesTesoreriaService,
+        AsociarPagoOrdenService,
         PreLibroBancosService,
         PreLibroBancosSaveService,
         PreLibroBancosConciliacionService,
@@ -82,6 +84,7 @@ import { TesoreriaService } from './tesoreria.service';
     ],
     exports: [
         TransaccionesTesoreriaService,
+        AsociarPagoOrdenService,
         PreLibroBancosSaveService,
         CxpTransaccionesSaveService,
         ComprobanteBancoSaveService,

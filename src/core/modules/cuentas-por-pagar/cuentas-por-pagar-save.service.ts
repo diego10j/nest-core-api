@@ -360,6 +360,21 @@ export class CuentasPorPagarSaveService extends BaseService {
     async saveDetalleOrden(dtoIn: SaveDetallesOrdenDto & HeaderParamsDto) {
         const { ide_cpcop, detalles } = dtoIn;
 
+        // Un detalle completado con pagos asociados desde Tesorería no se edita desde aquí: este
+        // guardado actualizaría el movimiento "numero_pago = 1" de la cuenta por pagar, que en ese
+        // caso es un pago de Tesorería, no de la orden. Hay que desasociar primero.
+        const asociados = await this.dataSource.pool.query(
+            `SELECT ide_cpcdop FROM cxp_det_orden_pago
+              WHERE ide_cpcdop = ANY($1::int8[]) AND cardinality(ide_teclb_asoc_cpcdop) > 0`,
+            [detalles.map((d) => d.ide_cpcdop)],
+        );
+        if (asociados.rows.length > 0) {
+            throw new BadRequestException(
+                'El pago de este proveedor está asociado a movimientos de Tesorería. '
+                + 'Desasocie el pago antes de registrarlo o editarlo desde la orden.',
+            );
+        }
+
         // Actualizar cada detalle con estado PAGADA (3)
         for (const det of detalles) {
             const detQuery: ObjectQueryDto = {

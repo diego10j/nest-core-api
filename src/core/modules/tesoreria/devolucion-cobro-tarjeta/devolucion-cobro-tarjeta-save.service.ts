@@ -517,6 +517,14 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             throw new BadRequestException('Esta devolución de cobros con tarjeta ya se encuentra anulada');
         }
 
+        // anularMovimiento elimina el comprobante-banco ligado al ingreso (foto + datos OCR/IA),
+        // y la cabecera lo referencia por FK (ide_teincb): se libera antes para no bloquear la
+        // anulación. Idempotente si el proceso se reintenta tras un fallo a medias.
+        await this.dataSource.pool.query(
+            `UPDATE tes_cab_devol_cobro_tarjeta SET ide_teincb = NULL WHERE ide_tecdt = $1`,
+            [ideTecdt],
+        );
+
         // Orden: ingreso/retiro de la transferencia primero, luego el débito de cada retención
         // contabilizada (si hay), luego el pago de la comisión - cada movimiento es independiente.
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_ingreso });
