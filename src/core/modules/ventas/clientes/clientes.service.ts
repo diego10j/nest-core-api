@@ -1633,7 +1633,7 @@ export class ClientesService extends BaseService {
         retenciones AS (
             SELECT fb.ide_cccfa, SUM(dr.valor_cndre) AS total_retencion
             FROM facturas_base fb
-            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fb.ide_cncre
+            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fb.ide_cncre AND dr.ide_cccfa = fb.ide_cccfa
             WHERE fb.ide_cncre IS NOT NULL
             GROUP BY fb.ide_cccfa
         ),

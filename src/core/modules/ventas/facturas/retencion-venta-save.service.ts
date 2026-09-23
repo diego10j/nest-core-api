@@ -12,6 +12,7 @@ import {
     DetalleRetencionVentaDto,
     EditarRetencionVentaDto,
     SaveRetencionVentaDto,
+    SaveRetencionVentaLoteDto,
 } from './dto/save-retencion-venta.dto';
 
 const TABLE_RET_CAB = 'con_cabece_retenc';
@@ -22,6 +23,19 @@ const PK_RET_DET = 'ide_cndre';
 // con_deta_forma_pago.ide_cncfp = 3 (catálogo SRI de 4 opciones): valor fijo de "Tarjeta
 // crédito", igual que IDE_CNDFP_FIJO_POR_TIPO.tarjeta en el frontend (src/utils/forma-pago-tipo.ts).
 const IDE_CNDFP_TARJETA = 4;
+
+// con_cabece_impues -> con_impuesto.ide_cnimp: 1 = Renta, 0 = IVA (mismo criterio hardcoded que
+// AsientosAutomaticosService y DevolucionCobroTarjetaSaveService - no existe como variable de sistema).
+const IDE_CNIMP_RENTA = 1;
+
+// Tolerancia para el cuadre de bases contra el comprobante (centavos) - cubre redondeo de punto
+// flotante entre lo que reportan las facturas y lo que trae el XML, no diferencias reales.
+const TOLERANCIA_CUADRE_CENTAVOS = 2;
+
+/** Aritmética en centavos enteros (mismo criterio que DevolucionCobroTarjetaSaveService.toCents) -
+ * evita que sumar/restar N facturas en punto flotante arrastre error de redondeo. */
+const toCents = (value: number | string | null | undefined): number => Math.round(Number(value || 0) * 100);
+const centsToAmount = (cents: number): number => Number((cents / 100).toFixed(2));
 
 /**
  * Persistencia del comprobante de retención recibido en una venta (con_cabece_retenc,
@@ -167,6 +181,7 @@ export class RetencionVentaSaveService extends BaseService {
                 const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
                 insDet.values.set(PK_RET_DET, baseIdeCndre + idx);
                 insDet.values.set(PK_RET_CAB, ideCncre);
+                insDet.values.set('ide_cccfa', dtoIn.ide_cccfa);
                 insDet.values.set('ide_cncim', det.ide_cncim);
                 insDet.values.set('porcentaje_cndre', det.porcentaje_cndre);
                 insDet.values.set('base_cndre', det.base_cndre);
@@ -222,8 +237,239 @@ export class RetencionVentaSaveService extends BaseService {
     }
 
     /**
-     * Anula un comprobante de retención de venta: cambia su estado, desvincula la factura y
-     * elimina la transacción CxC de retención para restituir el saldo por cobrar.
+     * Crea el comprobante de retención de un procesador de tarjeta (ej. Bendo) que ampara VARIAS
+     * facturas de venta de un mismo depósito. El XML llega agregado (una sola base/valor por
+     * concepto para todo el lote, sin desglose por factura - ver RetencionVentaXmlService), así
+     * que la validez de la selección se comprueba reconstruyendo esos totales desde las propias
+     * facturas: la suma de `base_grabada_cccfa` de las facturas seleccionadas debe coincidir con
+     * la base de la línea de Renta del comprobante, y la suma de `valor_iva_cccfa` con la base de
+     * la línea de IVA - si no cuadra, la selección de facturas está incompleta o de más.
+     *
+     * Una vez validado, la retención de cada factura NO se prorratea por peso: se recalcula
+     * aplicando el mismo porcentaje del comprobante sobre la base/IVA propios de esa factura, lo
+     * que reconstruye el total del XML automáticamente (salvo el centavo de redondeo, que se
+     * ajusta en la última factura de cada concepto). Solo soporta un comprobante con como máximo
+     * una línea de Renta y una de IVA (caso real de todos los procesadores de tarjeta bajo la
+     * Res. NAC-DGERCGC14-00787) - si el XML trae más de una línea del mismo tipo de impuesto se
+     * rechaza explícitamente en vez de adivinar cómo repartirla.
+     */
+    async saveRetencionLote(dtoIn: SaveRetencionVentaLoteDto & HeaderParamsDto) {
+        try {
+            const { detalles, facturas: ideCccfaList } = dtoIn;
+            if (!detalles?.length) {
+                throw new BadRequestException('Debe ingresar detalles al comprobante de retención');
+            }
+            if (!ideCccfaList?.length) {
+                throw new BadRequestException('Debe seleccionar al menos una factura de venta');
+            }
+            const ideCccfaUnicos = [...new Set(ideCccfaList)];
+            if (ideCccfaUnicos.length !== ideCccfaList.length) {
+                throw new BadRequestException('Hay facturas repetidas en la selección');
+            }
+
+            // ── Tipo de impuesto (Renta/IVA) de cada línea del comprobante ─────
+            const ideCncimList = [...new Set(detalles.map((d) => d.ide_cncim))];
+            const qTipos = new SelectQuery(`
+                SELECT ide_cncim, ide_cnimp FROM con_cabece_impues WHERE ide_cncim = ANY($1)
+            `);
+            qTipos.addParam(1, ideCncimList);
+            const tipos = await this.dataSource.createSelectQuery(qTipos);
+            const tipoPorCncim = new Map(tipos.map((t) => [Number(t.ide_cncim), Number(t.ide_cnimp)]));
+
+            const lineasRenta = detalles.filter((d) => tipoPorCncim.get(d.ide_cncim) === IDE_CNIMP_RENTA);
+            const lineasIva = detalles.filter((d) => tipoPorCncim.get(d.ide_cncim) !== IDE_CNIMP_RENTA);
+            if (lineasRenta.length > 1 || lineasIva.length > 1) {
+                throw new BadRequestException(
+                    'El comprobante trae más de una línea del mismo tipo de impuesto (Renta o IVA); ' +
+                    'este caso no se distribuye automáticamente - regístrelo como retención simple por factura.',
+                );
+            }
+
+            // ── Facturas seleccionadas ──────────────────────────────────────────
+            const qFac = new SelectQuery(`
+                SELECT ide_cccfa, ide_geper, secuencial_cccfa, fecha_trans_cccfa, total_cccfa,
+                       ide_cncre, ide_ccefa, ide_cnccc, fact_mig_cccfa, ide_cndfp,
+                       COALESCE(base_grabada_cccfa, 0) AS base_grabada_cccfa,
+                       COALESCE(valor_iva_cccfa, 0) AS valor_iva_cccfa
+                FROM cxc_cabece_factura
+                WHERE ide_cccfa = ANY($1)
+            `);
+            qFac.addParam(1, ideCccfaUnicos);
+            const facturas = await this.dataSource.createSelectQuery(qFac);
+            if (facturas.length !== ideCccfaUnicos.length) {
+                throw new BadRequestException('Una o más facturas seleccionadas no existen.');
+            }
+            for (const f of facturas) {
+                if (f.ide_cncre) {
+                    throw new BadRequestException(
+                        `La factura N.${f.secuencial_cccfa} ya tiene un comprobante de retención registrado.`,
+                    );
+                }
+                if (Number(f.ide_ccefa) !== this.getVar('p_cxc_estado_factura_normal')) {
+                    throw new BadRequestException(`No se puede registrar retención sobre la factura anulada N.${f.secuencial_cccfa}.`);
+                }
+            }
+
+            // ── Cuadre: suma de las facturas debe reconstruir la base del XML ──
+            const sumaBaseRentaCents = facturas.reduce((s, f) => s + toCents(f.base_grabada_cccfa), 0);
+            const sumaIvaCents = facturas.reduce((s, f) => s + toCents(f.valor_iva_cccfa), 0);
+
+            if (lineasRenta[0]) {
+                const diff = sumaBaseRentaCents - toCents(lineasRenta[0].base_cndre);
+                if (Math.abs(diff) > TOLERANCIA_CUADRE_CENTAVOS) {
+                    throw new BadRequestException(
+                        `La base imponible de las facturas seleccionadas (${centsToAmount(sumaBaseRentaCents).toFixed(2)}) ` +
+                        `no coincide con la base del comprobante de retención (${Number(lineasRenta[0].base_cndre).toFixed(2)}). ` +
+                        `Revise la selección de facturas.`,
+                    );
+                }
+            }
+            if (lineasIva[0]) {
+                const diff = sumaIvaCents - toCents(lineasIva[0].base_cndre);
+                if (Math.abs(diff) > TOLERANCIA_CUADRE_CENTAVOS) {
+                    throw new BadRequestException(
+                        `El IVA de las facturas seleccionadas (${centsToAmount(sumaIvaCents).toFixed(2)}) ` +
+                        `no coincide con la base de IVA del comprobante de retención (${Number(lineasIva[0].base_cndre).toFixed(2)}). ` +
+                        `Revise la selección de facturas.`,
+                    );
+                }
+            }
+
+            const fechaEmision = toPgDate(dtoIn.fecha_emisi_cncre) || getCurrentDate();
+            await this.validarAntiDuplicado(dtoIn.autorizacion_cncre, dtoIn.numero_cncre);
+
+            // ── Distribución por factura, con ajuste de redondeo en la última ──
+            type Reparto = { ide_cccfa: number; ide_cncim: number; porcentaje: number; base: number; valorCents: number };
+            const construirReparto = (
+                linea: DetalleRetencionVentaDto | undefined,
+                campoBase: (f: any) => number,
+            ): Reparto[] => {
+                if (!linea) return [];
+                const totalLineaCents = toCents(linea.valor_cndre);
+                let acumuladoCents = 0;
+                const reparto = facturas.map((f, idx) => {
+                    const base = campoBase(f);
+                    const esUltima = idx === facturas.length - 1;
+                    let valorCents = Math.round(toCents(base) * (linea.porcentaje_cndre / 100));
+                    if (esUltima) valorCents = totalLineaCents - acumuladoCents;
+                    else acumuladoCents += valorCents;
+                    return { ide_cccfa: Number(f.ide_cccfa), ide_cncim: linea.ide_cncim, porcentaje: linea.porcentaje_cndre, base, valorCents };
+                });
+                return reparto;
+            };
+            const repartoRenta = construirReparto(lineasRenta[0], (f) => Number(f.base_grabada_cccfa));
+            const repartoIva = construirReparto(lineasIva[0], (f) => Number(f.valor_iva_cccfa));
+            const repartos = [...repartoRenta, ...repartoIva];
+
+            const totalPorFactura = new Map<number, number>();
+            for (const r of repartos) {
+                totalPorFactura.set(r.ide_cccfa, (totalPorFactura.get(r.ide_cccfa) ?? 0) + r.valorCents);
+            }
+            for (const f of facturas) {
+                const totalFacturaCents = totalPorFactura.get(Number(f.ide_cccfa)) ?? 0;
+                if (totalFacturaCents > toCents(f.total_cccfa)) {
+                    throw new BadRequestException(
+                        `El valor retenido para la factura N.${f.secuencial_cccfa} (${centsToAmount(totalFacturaCents).toFixed(2)}) ` +
+                        `no puede ser mayor al total de la factura (${Number(f.total_cccfa).toFixed(2)}).`,
+                    );
+                }
+            }
+
+            // ── Secuenciales ─────────────────────────────────────────────────
+            const ideCncre = await this.dataSource.getSeqTable(TABLE_RET_CAB, PK_RET_CAB, 1, dtoIn.login);
+            const baseIdeCndre = await this.dataSource.getSeqTable(TABLE_RET_DET, PK_RET_DET, repartos.length, dtoIn.login);
+            const facturasNoDocumentales = facturas.filter(
+                (f) => !(Number(f.ide_cndfp) === IDE_CNDFP_TARJETA || isDefined(f.fact_mig_cccfa)),
+            );
+            const baseIdeCcdtr = facturasNoDocumentales.length
+                ? await this.dataSource.getSeqTable('cxc_detall_transa', 'ide_ccdtr', facturasNoDocumentales.length, dtoIn.login)
+                : 0;
+
+            // ── Construcción de la transacción ───────────────────────────────
+            const listQuery: Query[] = [];
+
+            const insCab = new InsertQuery(TABLE_RET_CAB, PK_RET_CAB, dtoIn);
+            insCab.values.set(PK_RET_CAB, ideCncre);
+            insCab.values.set('ide_cnere', this.getVar('p_con_estado_comprobante_rete_normal'));
+            insCab.values.set('es_venta_cncre', true);
+            insCab.values.set('fecha_emisi_cncre', fechaEmision);
+            insCab.values.set('numero_cncre', dtoIn.numero_cncre);
+            insCab.values.set('autorizacion_cncre', dtoIn.autorizacion_cncre);
+            insCab.values.set(
+                'observacion_cncre',
+                dtoIn.observacion_cncre ?? `Retención - ${facturas.length} factura(s) de venta`,
+            );
+            insCab.values.set('fecha_ingre', getCurrentDate());
+            insCab.values.set('hora_ingre', getCurrentTime());
+            listQuery.push(insCab);
+
+            repartos.forEach((r, idx) => {
+                const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
+                insDet.values.set(PK_RET_DET, baseIdeCndre + idx);
+                insDet.values.set(PK_RET_CAB, ideCncre);
+                insDet.values.set('ide_cncim', r.ide_cncim);
+                insDet.values.set('ide_cccfa', r.ide_cccfa);
+                insDet.values.set('porcentaje_cndre', r.porcentaje);
+                insDet.values.set('base_cndre', r.base);
+                insDet.values.set('valor_cndre', centsToAmount(r.valorCents));
+                insDet.values.set('fecha_ingre', getCurrentDate());
+                insDet.values.set('hora_ingre', getCurrentTime());
+                listQuery.push(insDet);
+            });
+
+            let ccdtrIdx = 0;
+            for (const f of facturas) {
+                const totalFacturaCents = totalPorFactura.get(Number(f.ide_cccfa)) ?? 0;
+                const soloDocumental = Number(f.ide_cndfp) === IDE_CNDFP_TARJETA || isDefined(f.fact_mig_cccfa);
+
+                if (!soloDocumental && totalFacturaCents > 0) {
+                    const qTrn = new SelectQuery(`SELECT ide_ccctr FROM cxc_cabece_transa WHERE ide_cccfa = $1`);
+                    qTrn.addIntParam(1, Number(f.ide_cccfa));
+                    const trn = await this.dataSource.createSingleQuery(qTrn);
+                    if (!trn) {
+                        throw new BadRequestException(`La factura N.${f.secuencial_cccfa} no tiene transacción de cuenta por cobrar asociada.`);
+                    }
+                    const insTrn = new InsertQuery('cxc_detall_transa', 'ide_ccdtr', dtoIn);
+                    insTrn.values.set('ide_ccdtr', baseIdeCcdtr + ccdtrIdx);
+                    ccdtrIdx += 1;
+                    insTrn.values.set('ide_ccctr', Number(trn.ide_ccctr));
+                    insTrn.values.set('ide_cccfa', Number(f.ide_cccfa));
+                    insTrn.values.set('ide_ccttr', this.getVar('p_cxc_tipo_trans_retencion'));
+                    insTrn.values.set('ide_usua', dtoIn.ideUsua);
+                    insTrn.values.set('fecha_trans_ccdtr', f.fecha_trans_cccfa ?? getCurrentDate());
+                    insTrn.values.set('fecha_venci_ccdtr', f.fecha_trans_cccfa ?? getCurrentDate());
+                    insTrn.values.set('valor_ccdtr', centsToAmount(totalFacturaCents));
+                    insTrn.values.set('observacion_ccdtr', `V/. RETENCIÓN FACTURA N. ${f.secuencial_cccfa}`);
+                    insTrn.values.set('numero_pago_ccdtr', 0);
+                    insTrn.values.set('docum_relac_ccdtr', f.secuencial_cccfa);
+                    insTrn.values.set('ide_cnccc', f.ide_cnccc ?? null);
+                    insTrn.values.set('fecha_ingre', getCurrentDate());
+                    insTrn.values.set('hora_ingre', getCurrentTime());
+                    listQuery.push(insTrn);
+                }
+
+                const updFac = new UpdateQuery('cxc_cabece_factura', 'ide_cccfa', dtoIn);
+                updFac.values.set('ide_cncre', ideCncre);
+                updFac.where = 'ide_cccfa = $1';
+                updFac.addIntParam(1, Number(f.ide_cccfa));
+                listQuery.push(updFac);
+
+            }
+
+            await this.dataSource.createListQuery(listQuery);
+
+            return { message: 'ok', ide_cncre: ideCncre };
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new InternalServerErrorException(`Error al guardar la retención en lote: ${msg}`);
+        }
+    }
+
+    /**
+     * Anula un comprobante de retención de venta: cambia su estado, desvincula TODAS las
+     * facturas que amparaba (puede ser más de una - ver saveRetencionLote) y elimina sus
+     * transacciones CxC de retención para restituir el saldo por cobrar de cada una.
      */
     async anularRetencion(dtoIn: AnularRetencionVentaDto & HeaderParamsDto) {
         const qRet = new SelectQuery(`
@@ -235,11 +481,36 @@ export class RetencionVentaSaveService extends BaseService {
             throw new BadRequestException(`El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no existe.`);
         }
 
+        const qCiclo = new SelectQuery(`
+            SELECT 1 AS existe FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_cncre = $1 LIMIT 1
+        `);
+        qCiclo.addIntParam(1, dtoIn.ide_cncre);
+        if (await this.dataSource.createSingleQuery(qCiclo)) {
+            throw new BadRequestException(
+                'El comprobante ya fue contabilizado en una devolución de cobros con tarjeta. Anule primero esa devolución.',
+            );
+        }
+
         const qFac = new SelectQuery(`
-            SELECT ide_cccfa FROM cxc_cabece_factura WHERE ide_cncre = $1 LIMIT 1
+            SELECT ide_cccfa FROM cxc_cabece_factura WHERE ide_cncre = $1
         `);
         qFac.addIntParam(1, dtoIn.ide_cncre);
-        const factura = await this.dataSource.createSingleQuery(qFac);
+        const facturas = await this.dataSource.createSelectQuery(qFac);
+
+        // Misma regla que editarRetencion: si la retención ya se aplicó a un cobro, borrar su
+        // transacción CxC dejaría el pago huérfano - primero hay que reversar ese cobro.
+        const qPagada = new SelectQuery(`
+            SELECT 1 AS existe FROM cxc_detall_transa
+            WHERE ide_cccfa = ANY($1) AND ide_ccttr = $2 AND numero_pago_ccdtr <> 0
+            LIMIT 1
+        `);
+        qPagada.addParam(1, facturas.map((f) => Number(f.ide_cccfa)));
+        qPagada.addIntParam(2, this.getVar('p_cxc_tipo_trans_retencion'));
+        if (await this.dataSource.createSingleQuery(qPagada)) {
+            throw new BadRequestException(
+                'No se puede anular: la retención ya fue aplicada a un cobro. Reverse el cobro primero.',
+            );
+        }
 
         const listQuery: Query[] = [];
 
@@ -249,7 +520,7 @@ export class RetencionVentaSaveService extends BaseService {
         updRet.addIntParam(1, dtoIn.ide_cncre);
         listQuery.push(updRet);
 
-        if (factura?.ide_cccfa) {
+        for (const factura of facturas) {
             const updFac = new UpdateQuery('cxc_cabece_factura', 'ide_cccfa', dtoIn);
             updFac.values.set('ide_cncre', null);
             updFac.where = 'ide_cccfa = $1';
@@ -264,7 +535,11 @@ export class RetencionVentaSaveService extends BaseService {
         }
 
         await this.dataSource.createListQuery(listQuery);
-        return { message: 'ok', ide_cncre: dtoIn.ide_cncre, ide_cccfa: factura?.ide_cccfa ?? null };
+        return {
+            message: 'ok',
+            ide_cncre: dtoIn.ide_cncre,
+            facturas: facturas.map((f) => Number(f.ide_cccfa)),
+        };
     }
 
     /**
@@ -290,6 +565,30 @@ export class RetencionVentaSaveService extends BaseService {
             }
             if (Number(ret.ide_cnere) === this.getVar('p_con_estado_comprobante_rete_anulado')) {
                 throw new BadRequestException('No se puede editar un comprobante de retención anulado.');
+            }
+
+            if (dtoIn.detalles?.length) {
+                // Un comprobante en lote (varias facturas) tiene su valor repartido por factura:
+                // reemplazar sus líneas con un solo juego de detalles lo descuadraría.
+                const qLote = new SelectQuery(`SELECT COUNT(*) AS n FROM cxc_cabece_factura WHERE ide_cncre = $1`);
+                qLote.addIntParam(1, dtoIn.ide_cncre);
+                const lote = await this.dataSource.createSingleQuery(qLote);
+                if (Number(lote?.n) > 1) {
+                    throw new BadRequestException(
+                        'Este comprobante ampara varias facturas: no se pueden editar sus valores. Anúlelo y regístrelo de nuevo.',
+                    );
+                }
+                // Ya contabilizado en un ciclo: cambiar sus valores descuadraría la nota de débito
+                // y el asiento ya generados frente al neto esperado del ciclo.
+                const qCiclo = new SelectQuery(
+                    `SELECT 1 AS existe FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_cncre = $1 LIMIT 1`,
+                );
+                qCiclo.addIntParam(1, dtoIn.ide_cncre);
+                if (await this.dataSource.createSingleQuery(qCiclo)) {
+                    throw new BadRequestException(
+                        'El comprobante ya está aplicado a una devolución de cobros con tarjeta: no se pueden editar sus valores. Anule primero esa devolución.',
+                    );
+                }
             }
 
             const qPagada = new SelectQuery(`
@@ -324,11 +623,13 @@ export class RetencionVentaSaveService extends BaseService {
                 const qDup = new SelectQuery(`
                     SELECT 1 AS existe FROM ${TABLE_RET_CAB}
                     WHERE autorizacion_cncre = $1 AND numero_cncre = $2 AND es_venta_cncre = TRUE AND ide_cncre <> $3
+                      AND ide_cnere <> $4
                     LIMIT 1
                 `);
                 qDup.addStringParam(1, dtoIn.autorizacion_cncre);
                 qDup.addStringParam(2, dtoIn.numero_cncre);
                 qDup.addIntParam(3, dtoIn.ide_cncre);
+                qDup.addIntParam(4, this.getVar('p_con_estado_comprobante_rete_anulado'));
                 const dup = await this.dataSource.createSingleQuery(qDup);
                 if (dup) throw new BadRequestException('El comprobante de retención ya existe.');
                 updCab.values.set('numero_cncre', dtoIn.numero_cncre);
@@ -363,6 +664,7 @@ export class RetencionVentaSaveService extends BaseService {
                     const insDet = new InsertQuery(TABLE_RET_DET, PK_RET_DET, dtoIn);
                     insDet.values.set(PK_RET_DET, baseIdeCndre + idx);
                     insDet.values.set(PK_RET_CAB, dtoIn.ide_cncre);
+                    insDet.values.set('ide_cccfa', Number(ret.ide_cccfa));
                     insDet.values.set('ide_cncim', det.ide_cncim);
                     insDet.values.set('porcentaje_cndre', det.porcentaje_cndre);
                     insDet.values.set('base_cndre', det.base_cndre);
@@ -443,10 +745,13 @@ export class RetencionVentaSaveService extends BaseService {
         const qDup = new SelectQuery(`
             SELECT 1 AS existe FROM ${TABLE_RET_CAB}
             WHERE autorizacion_cncre = $1 AND numero_cncre = $2 AND es_venta_cncre = TRUE
+              AND ide_cnere <> $3
             LIMIT 1
         `);
         qDup.addStringParam(1, autorizacion);
         qDup.addStringParam(2, numero);
+        // Un comprobante anulado no cuenta: debe poder registrarse de nuevo
+        qDup.addIntParam(3, this.getVar('p_con_estado_comprobante_rete_anulado'));
         const dup = await this.dataSource.createSingleQuery(qDup);
         if (dup) throw new BadRequestException('El comprobante de retención ya existe.');
     }

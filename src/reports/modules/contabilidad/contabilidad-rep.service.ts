@@ -226,11 +226,13 @@ export class ContabilidadRepService {
     }
 
     const queryDetalles = new SelectQuery(`
-      SELECT d.ide_cndre, i.nombre_cncim, i.casillero_cncim, d.porcentaje_cndre, d.base_cndre, d.valor_cndre
+      SELECT MIN(d.ide_cndre) AS ide_cndre, i.nombre_cncim, i.casillero_cncim, d.porcentaje_cndre,
+             SUM(d.base_cndre) AS base_cndre, SUM(d.valor_cndre) AS valor_cndre
       FROM con_detall_retenc d
       LEFT JOIN con_cabece_impues i ON d.ide_cncim = i.ide_cncim
       WHERE d.ide_cncre = $1
-      ORDER BY d.ide_cndre
+      GROUP BY i.nombre_cncim, i.casillero_cncim, d.porcentaje_cndre
+      ORDER BY MIN(d.ide_cndre)
     `);
     queryDetalles.addIntParam(1, dtoIn.ide_cncre);
     const detalles = (await this.dataSource.createSelectQuery(queryDetalles)) as RetencionDetalle[];

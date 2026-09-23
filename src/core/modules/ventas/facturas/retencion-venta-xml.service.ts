@@ -98,6 +98,7 @@ export class RetencionVentaXmlService {
                     ide_cncim: Number(impuesto.ide_cncim),
                     nombre_cncim: impuesto.nombre_cncim ?? null,
                     casillero_cncim: impuesto.casillero_cncim ?? null,
+                    ide_cnimp: Number(impuesto.ide_cnimp ?? 0),
                     codigo_retencion_xml: codigoRetencion,
                     base_cndre: this.numero(det.find('baseImponible').first().text()),
                     porcentaje_cndre: this.numero(det.find('porcentajeRetener').first().text()),
@@ -187,6 +188,8 @@ export class RetencionVentaXmlService {
             FROM con_cabece_retenc
             WHERE autorizacion_cncre = $1
               AND es_venta_cncre = TRUE
+              -- Un comprobante anulado (ya desvinculado de sus facturas) no cuenta: debe poder cargarse de nuevo
+              AND EXISTS (SELECT 1 FROM cxc_cabece_factura f WHERE f.ide_cncre = con_cabece_retenc.ide_cncre)
             LIMIT 1
         `);
         q.addStringParam(1, autorizacion);
@@ -201,7 +204,7 @@ export class RetencionVentaXmlService {
      */
     private async getImpuestoPorCodigoRetencion(codigoRetencion: string) {
         const q = new SelectQuery(`
-            SELECT ide_cncim, nombre_cncim, casillero_cncim
+            SELECT ide_cncim, nombre_cncim, casillero_cncim, ide_cnimp
             FROM con_cabece_impues
             WHERE casillero_cncim = $1
                OR codigo_fe_retencion_cncim = $1

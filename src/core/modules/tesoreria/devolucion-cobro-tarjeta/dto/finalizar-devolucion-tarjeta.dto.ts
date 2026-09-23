@@ -94,10 +94,9 @@ export class ComprobanteTransferenciaDevolucionDto {
  * ciclo (pago de la comisión, retención opcional, transferencia del neto y trazabilidad) se
  * ejecuta en una sola llamada atómica (ver DevolucionCobroTarjetaSaveService.finalizar).
  *
- * La factura de comisión (`ideCpcfa`) y la retención (`ideCncre`, opcional) NO se crean aquí -
- * el frontend las guarda ANTES de llamar a este endpoint reutilizando los diálogos existentes de
- * Compras (CrearFacturaCxPDialog) y Ventas (RegistrarRetencionVentaDialog), que ya saben parsear
- * el XML y persistir con su propio flujo probado.
+ * La factura de comisión (`ideCpcfa`) NO se crea aquí - el frontend la guarda ANTES de llamar a
+ * este endpoint (CrearFacturaCxPDialog, Compras). La retención tampoco viaja en el payload: se
+ * registra aparte sobre las facturas de venta que ampara y aquí se toma de las facturas del ciclo.
  */
 export class FinalizarDevolucionTarjetaDto {
     @IsDateString()
@@ -129,11 +128,6 @@ export class FinalizarDevolucionTarjetaDto {
     @IsInt()
     @IsNotEmpty()
     ideCpcfa: number;
-
-    /** FK → con_cabece_retenc, comprobante de retención ya guardado - opcional */
-    @IsInt()
-    @IsOptional()
-    ideCncre?: number;
 
     @ValidateNested()
     @Type(() => ComprobanteTransferenciaDevolucionDto)

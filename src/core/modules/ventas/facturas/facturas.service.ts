@@ -187,7 +187,7 @@ export class FacturasService extends BaseService {
                 ff.ide_cccfa,
                 SUM(dr.valor_cndre) AS total_retencion
             FROM facturas_filtradas ff
-            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = ff.ide_cncre
+            INNER JOIN con_detall_retenc dr ON dr.ide_cncre = ff.ide_cncre AND dr.ide_cccfa = ff.ide_cccfa
             WHERE ff.ide_cncre IS NOT NULL
             GROUP BY ff.ide_cccfa
         ),
@@ -800,7 +800,7 @@ export class FacturasService extends BaseService {
                     fi.ide_cccfa,
                     SUM(dr.valor_cndre) AS total_retencion
                 FROM facturas_ids fi
-                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fi.ide_cncre
+                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = fi.ide_cncre AND dr.ide_cccfa = fi.ide_cccfa
                 WHERE fi.ide_cncre IS NOT NULL
                 GROUP BY fi.ide_cccfa
             ),
@@ -1480,9 +1480,11 @@ export class FacturasService extends BaseService {
                 INNER JOIN con_cabece_impues b ON a.ide_cncim = b.ide_cncim
             WHERE
                 a.ide_cncre = $1
+                AND a.ide_cccfa = $2
             `,
         );
         queryRetencionDetalles.addParam(1, resCabecera.ide_cncre);
+        queryRetencionDetalles.addParam(2, resCabecera.ide_cccfa);
 
         const resRetencionCabecera = await this.dataSource.createSingleQuery(queryRetencion);
         const resRetencionDetalles = await this.dataSource.createSelectQuery(queryRetencionDetalles);
@@ -1813,7 +1815,7 @@ export class FacturasService extends BaseService {
             retenciones AS (
                 SELECT cf.ide_cccfa, SUM(dr.valor_cndre) AS total_retencion
                 FROM cxc_cabece_factura cf
-                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = cf.ide_cncre
+                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = cf.ide_cncre AND dr.ide_cccfa = cf.ide_cccfa
                 WHERE cf.ide_cccfa IN (SELECT ide_cccfa FROM base)
                   AND cf.ide_cncre IS NOT NULL
                 GROUP BY cf.ide_cccfa
@@ -2062,7 +2064,7 @@ export class FacturasService extends BaseService {
             retenciones_agrupadas AS (
                 SELECT cf.ide_cccfa, SUM(dr.valor_cndre) AS total_retencion
                 FROM cxc_cabece_factura cf
-                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = cf.ide_cncre
+                INNER JOIN con_detall_retenc dr ON dr.ide_cncre = cf.ide_cncre AND dr.ide_cccfa = cf.ide_cccfa
                 WHERE cf.ide_cncre IS NOT NULL
                 GROUP BY cf.ide_cccfa
             ),

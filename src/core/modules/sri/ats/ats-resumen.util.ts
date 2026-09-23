@@ -114,6 +114,7 @@ const MESES = [
 
 /** Nombres de referencia para los códigos de tipo de comprobante de venta (paridad con el talón del SRI). */
 const NOMBRE_TIPO_VENTA: Record<string, string> = {
+    '1': 'Facturas',
     '04': 'Notas de Crédito',
     '18': 'Documentos Autorizados en Ventas Excepto NC',
 };

@@ -6,6 +6,7 @@ import { Auth } from 'src/core/auth';
 
 import { DevolucionCobroTarjetaSaveService } from './devolucion-cobro-tarjeta-save.service';
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
+import { AdjuntarRetencionDevolucionTarjetaDto } from './dto/adjuntar-retencion-devolucion-tarjeta.dto';
 import { AnularDevolucionTarjetaDto } from './dto/anular-devolucion-tarjeta.dto';
 import { FinalizarDevolucionTarjetaDto } from './dto/finalizar-devolucion-tarjeta.dto';
 import { GetDevolucionesTarjetaDto } from './dto/get-devoluciones-tarjeta.dto';
@@ -39,14 +40,25 @@ export class DevolucionCobroTarjetaController {
         return this.service.getFacturasTarjetaPendientes({ ...headersParams, ...dtoIn });
     }
 
-    @Get('getRetencionIdPorFactura/:ideCccfa')
+    @Get('getFacturasTarjetaSinRetencion')
     @Auth()
-    @ApiOperation({ summary: 'ide_cncre de una factura de venta, si tiene retención registrada' })
-    getRetencionIdPorFactura(
+    @ApiOperation({ summary: 'Facturas de venta cobradas con una cuenta de tarjeta que aún no tienen comprobante de retención (candidatas al registrar uno), estén o no liquidadas' })
+    getFacturasTarjetaSinRetencion(
         @AppHeaders() headersParams: HeaderParamsDto,
-        @Param('ideCccfa') ideCccfa: string,
+        @Query() dtoIn: GetFacturasTarjetaPendientesDto,
     ) {
-        return this.service.getRetencionIdPorFactura(Number(ideCccfa), headersParams);
+        return this.service.getFacturasTarjetaSinRetencion({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getRetencionesPorFacturas')
+    @Auth()
+    @ApiOperation({ summary: 'Comprobantes de retención que ya amparan las facturas indicadas (ids separados por coma), con la porción de IVA/Renta de esas facturas' })
+    getRetencionesPorFacturas(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Query('ids') ids: string,
+    ) {
+        const ideCccfaList = (ids ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
+        return this.service.getRetencionesPorFacturas(ideCccfaList, headersParams);
     }
 
     @Post('finalizar')
@@ -87,6 +99,17 @@ export class DevolucionCobroTarjetaController {
         @Query() dtoIn: GetReporteCobrosTarjetaDto,
     ) {
         return this.service.getReporteCobrosTarjeta({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('adjuntarRetencion/:ideTecdt')
+    @Auth()
+    @ApiOperation({ summary: 'Adjunta a un ciclo ya finalizado un comprobante de retención guardado después (ej. el correo de Bendo con el detalle llegó tarde)' })
+    adjuntarRetencion(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @Param('ideTecdt') ideTecdt: string,
+        @Body() dtoIn: AdjuntarRetencionDevolucionTarjetaDto,
+    ) {
+        return this.saveService.adjuntarRetencion(Number(ideTecdt), { ...headersParams, ...dtoIn });
     }
 
     @Post('anular/:ideTecdt')

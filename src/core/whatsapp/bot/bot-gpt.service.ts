@@ -117,6 +117,24 @@ export class BotGptService {
     return 'OTRO';
   }
 
+  /**
+   * Igual que los atajos por palabras de clasificarConsulta pero SIN el fallback a GPT:
+   * devuelve la categoría informativa solo si el texto trae palabras claras de
+   * ubicación/horario/envío/catálogo, y null en cualquier otro caso. Sirve para textos
+   * cortos donde GPT sobre-interpreta — ej. una ciudad suelta ("Rocafuerte Manabí") como
+   * respuesta a "¿desde qué ciudad nos escribes?" se clasificaba UBICACION ("¿tienen
+   * sucursal ahí?") y el bot respondía con la dirección de la empresa sin que nadie la
+   * pidiera (caso real detectado 2026-09-23).
+   */
+  clasificarInfoPorPalabras(texto: string): 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' | null {
+    const t = texto.toUpperCase();
+    if (/UBICACI[OÓ]N|DIRECCI[OÓ]N|D[OÓ]NDE EST[AÁ]N|COMO LLEGAR|MAPA|VALLE|CHILLOS|ESTADIO|SUCURSAL|SEDE|PUNTO\s*DE\s*VENTA/.test(t)) return 'UBICACION';
+    if (/HORARIO|QU[EÉ] HORA|ABREN|CIERRAN|ATIENDEN|LUNES|VIERNES|S[AÁ]BADO/.test(t)) return 'HORARIO';
+    if (/ENV[IÍ]O|ENV[IÍ]AN|DESPACHO|TRANSPORTE|DELIVER|NACIONAL|OTRA CIUDAD/.test(t)) return 'ENVIO';
+    if (/CAT[AÁ]LOGO|LISTA DE PRECIOS|PRECIOS\b|LISTA DE PRODUCTO/.test(t)) return 'CATALOGO';
+    return null;
+  }
+
   async clasificarConsulta(texto: string): Promise<IntencionConsulta> {
     const t = texto.toUpperCase();
 

@@ -70,6 +70,43 @@ export class SaveRetencionVentaDto {
     detalles: DetalleRetencionVentaDto[];
 }
 
+/**
+ * Comprobante de retención de un procesador de tarjeta (ej. Bendo) que ampara VARIAS facturas
+ * de venta de un mismo depósito - el XML del SRI llega agregado (un solo docSustento sin
+ * desglose por factura), así que `facturas` es la selección que el usuario arma a mano en el
+ * frontend, validada server-side contra `detalles` (ver RetencionVentaSaveService.saveRetencionLote).
+ */
+export class SaveRetencionVentaLoteDto {
+    @IsDateString()
+    @IsNotEmpty()
+    fecha_emisi_cncre: string;
+
+    @IsString()
+    @IsNotEmpty()
+    numero_cncre: string;
+
+    @IsString()
+    @IsNotEmpty()
+    autorizacion_cncre: string;
+
+    @IsString()
+    @IsOptional()
+    observacion_cncre?: string;
+
+    /** Líneas del comprobante TAL COMO viene en el XML (total del lote, sin desglosar) */
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => DetalleRetencionVentaDto)
+    @IsNotEmpty()
+    detalles: DetalleRetencionVentaDto[];
+
+    /** Facturas de venta que el usuario indica que cubre este comprobante */
+    @IsArray()
+    @IsInt({ each: true })
+    @IsNotEmpty()
+    facturas: number[];
+}
+
 export class AnularRetencionVentaDto {
     /** FK → con_cabece_retenc */
     @IsInt()

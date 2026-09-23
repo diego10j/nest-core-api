@@ -8,14 +8,12 @@ import { AsientosAutomaticosService } from 'src/core/modules/contabilidad/asient
 import { ComprobanteBancoSaveService } from 'src/core/modules/tesoreria/comprobante-banco/comprobante-banco-save.service';
 import { CxpTransaccionesSaveService } from 'src/core/modules/tesoreria/cxp-transacciones/cxp-transacciones-save.service';
 import { PreLibroBancosSaveService } from 'src/core/modules/tesoreria/pre-libro-bancos/pre-libro-bancos-save.service';
-import { toPgTimestampNow } from 'src/util/helpers/date-util';
+import { getCurrentDate, toPgTimestampNow } from 'src/util/helpers/date-util';
 
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
+import { AdjuntarRetencionDevolucionTarjetaDto } from './dto/adjuntar-retencion-devolucion-tarjeta.dto';
 import { AnularDevolucionTarjetaDto } from './dto/anular-devolucion-tarjeta.dto';
 import { FinalizarDevolucionTarjetaDto } from './dto/finalizar-devolucion-tarjeta.dto';
-
-/** Tipo de impuesto renta en con_cabece_impues.ide_cnimp (paridad AsientosAutomaticosService) */
-const IDE_CNIMP_RENTA = 1;
 
 /**
  * Aritmética monetaria en centavos enteros: JS no representa exactamente todos los decimales
@@ -35,11 +33,11 @@ const centsToAmount = (cents: number): number => Number((cents / 100).toFixed(2)
  * procesador (CxP) -> retención SRI recibida (opcional) -> transferencia del neto a la cuenta
  * real, dejando la cuenta del procesador en cero.
  *
- * La factura de comisión y la retención (si aplica) NO se crean aquí: el frontend las guarda
- * ANTES de llamar a este endpoint reutilizando los diálogos existentes de Compras
- * (CrearFacturaCxPDialog) y Ventas (RegistrarRetencionVentaDialog) - cada uno ya sabe parsear el
- * XML y persistir con su propio flujo probado. Este servicio solo recibe sus IDs (`ide_cpcfa`,
- * `ide_cncre`) y encadena el resto: pago de la comisión, nota de débito de la retención,
+ * La factura de comisión y el comprobante de retención (si aplica) NO se crean aquí: la comisión
+ * la guarda el frontend ANTES de llamar a este endpoint (CrearFacturaCxPDialog, Compras) y recibe
+ * su `ide_cpcfa`; la retención se registra aparte sobre las facturas de venta que ampara
+ * (RetencionVentaSaveService.saveRetencionLote) y aquí se toma sola de las facturas del ciclo.
+ * Este servicio encadena el resto: pago de la comisión, nota de débito de la retención,
  * transferencia del neto y trazabilidad, todo en una única llamada (finalizar).
  *
  * Nota sobre atomicidad: cada paso (pagar, generar asiento, transferir) usa su propio mecanismo
@@ -155,76 +153,25 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             if (pago.asiento_contable?.ide_cnccc) asientosGenerados.push(pago.asiento_contable.ide_cnccc);
 
             // ─── PASO 4: RETENCIÓN (OPCIONAL) ──────────────────────────────────
-            // El comprobante de retención de un procesador de tarjeta puede amparar VARIAS
-            // facturas de venta (esquema SRI v2.0.0 multi-documento sustento - caso Bendo), pero
-            // RegistrarRetencionVentaDialog/RetencionVentaSaveService vinculan el comprobante a
-            // UNA sola cxc_cabece_factura (ide_cncre es un campo puntual de esa tabla) - el
-            // frontend lo guarda contra la PRIMERA factura del lote como ancla documental/SRI
-            // antes de llamar a este endpoint. La trazabilidad real multi-factura vive en
-            // tes_det_devol_cobro_tarjeta_fact (PASO 8), no en ese vínculo.
-            let ideCncre: number | null = null;
-            let valorRetencionIvaCents = 0;
-            let valorRetencionRentaCents = 0;
-            let ideCncimIva: number | null = null;
-            let ideCncimRenta: number | null = null;
-
-            if (dtoIn.ideCncre) {
-                const detalle = await this.consultas.getDetalleRetencionVenta(dtoIn.ideCncre, dtoIn);
-                if (!detalle) {
-                    throw new BadRequestException(`La retención ide_cncre=${dtoIn.ideCncre} no existe`);
-                }
-                ideCncre = dtoIn.ideCncre;
-                for (const d of detalle.detalles) {
-                    if (Number(d.ide_cnimp) === IDE_CNIMP_RENTA) {
-                        valorRetencionRentaCents += toCents(d.valor_cndre);
-                        ideCncimRenta = Number(d.ide_cncim);
-                    } else {
-                        valorRetencionIvaCents += toCents(d.valor_cndre);
-                        ideCncimIva = Number(d.ide_cncim);
-                    }
-                }
-            }
-
-            const valorRetencionIva = centsToAmount(valorRetencionIvaCents);
-            const valorRetencionRenta = centsToAmount(valorRetencionRentaCents);
-            const totalRetencionCents = valorRetencionIvaCents + valorRetencionRentaCents;
-            const totalRetencion = centsToAmount(totalRetencionCents);
-            let ideTeclbDebitoRetencion: number | null = null;
-            if (totalRetencionCents > 0) {
-                const numeroDebito = await this.preLibroBancosSaveService.generarNumeroAutomatico(
-                    dtoIn.ideTecba, ideTettbNotaDebito, dtoIn,
-                );
-                const movDebito = await this.preLibroBancosSaveService.generarLibroBancoOtros({
-                    ...dtoIn,
-                    ideTecba: dtoIn.ideTecba,
-                    ideTettb: ideTettbNotaDebito,
-                    valor: totalRetencion,
-                    fecha: dtoIn.fecha,
-                    numero: numeroDebito,
-                    observacion: 'Retención SRI cobros con tarjeta',
-                    beneficiario: facturaComision.nom_geper ?? '',
-                });
-                ideTeclbDebitoRetencion = movDebito.ide_teclb;
-
-                const asientoRetencion = await this.asientosAutomaticosService.generarAsientoRetencionTarjeta({
-                    ...dtoIn,
-                    ideTeclb: ideTeclbDebitoRetencion,
-                    fecha: dtoIn.fecha,
+            // Un comprobante de retención del procesador (uno o varios por mes) se registra por
+            // su cuenta sobre las facturas que ampara (RetencionVentaSaveService.saveRetencionLote,
+            // con_detall_retenc.ide_cccfa) y puede cubrir cobros de varios depósitos: cada ciclo
+            // toma solo la porción de SUS facturas. Se contabiliza aquí (nota de débito + asiento)
+            // una vez por comprobante, y la trazabilidad queda en tes_det_devol_cobro_tarjeta_ret.
+            const retencionesCiclo = await this.consultas.getRetencionesPorFacturas(ideCccfaList, dtoIn);
+            const retencionAplicada = await this.aplicarRetenciones(
+                {
+                    retenciones: retencionesCiclo,
+                    contabilizar: true,
                     ideTecba: dtoIn.ideTecba,
                     ideGeper: dtoIn.ideGeper,
-                    valorRetencionIva,
-                    valorRetencionRenta,
-                    ideCncimIva,
-                    ideCncimRenta,
-                    observacion: 'Retención SRI cobros con tarjeta',
-                });
-                if (!asientoRetencion.generado) {
-                    throw new BadRequestException(
-                        `No se pudo generar el asiento de la retención: ${(asientoRetencion.advertencias ?? []).join('; ') || 'error desconocido'}`,
-                    );
-                }
-                if (asientoRetencion.ide_cnccc) asientosGenerados.push(asientoRetencion.ide_cnccc);
-            }
+                    beneficiario: facturaComision.nom_geper ?? '',
+                    fecha: dtoIn.fecha,
+                },
+                dtoIn,
+                asientosGenerados,
+            );
+            const totalRetencionCents = retencionAplicada.ivaCents + retencionAplicada.rentaCents;
 
             // ─── PASO 5: CALCULAR NETO Y COMPARAR CONTRA EL COMPROBANTE ────────
             // Total cobrado − comisión (con IVA) − retenciones, todo en centavos (ver toCents)
@@ -297,6 +244,11 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             const baseIdeTedtf = await this.dataSource.getSeqTable(
                 'tes_det_devol_cobro_tarjeta_fact', 'ide_tedtf', dtoIn.facturas.length, dtoIn.login,
             );
+            const baseIdeTedtr = retencionAplicada.filas.length
+                ? await this.dataSource.getSeqTable(
+                    'tes_det_devol_cobro_tarjeta_ret', 'ide_tedtr', retencionAplicada.filas.length, dtoIn.login,
+                )
+                : 0;
 
             const listQuery: ObjectQueryDto[] = [
                 {
@@ -311,19 +263,15 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                         ide_tecba: dtoIn.ideTecba,
                         ide_geper: dtoIn.ideGeper,
                         ide_cpcfa: ideCpcfa,
-                        ide_cncre: ideCncre,
                         ide_teincb: (comprobanteGuardado as any).ideTeincb ?? null,
                         ide_tecba_destino: dtoIn.ideTecbaDestino,
                         ide_teclb_pago_comision: pago.ide_teclb,
-                        ide_teclb_debito_retencion: ideTeclbDebitoRetencion,
                         ide_teclb_retiro: transferencia.ide_teclb_retiro,
                         ide_teclb_ingreso: transferencia.ide_teclb_ingreso,
                         fecha_tecdt: dtoIn.fecha,
                         valor_total_cobros_tecdt: valorTotalCobros,
                         valor_comision_tecdt: centsToAmount(valorComisionTotalCents - valorIvaComisionCents),
                         valor_iva_comision_tecdt: valorIvaComision,
-                        valor_retencion_iva_tecdt: valorRetencionIva,
-                        valor_retencion_renta_tecdt: valorRetencionRenta,
                         valor_neto_calculado_tecdt: valorNetoCalculado,
                         valor_neto_transferido_tecdt: dtoIn.comprobante.valorTeincb,
                         observacion_tecdt: dtoIn.observacion ?? null,
@@ -343,6 +291,7 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                         usuario_ingre: dtoIn.login,
                     },
                 })),
+                ...this.filasRetencionCiclo(ideTecdt, baseIdeTedtr, retencionAplicada.filas, dtoIn.login),
             ];
             await this.core.save({ ...dtoIn, listQuery, audit: false });
 
@@ -350,7 +299,6 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
                 message: 'ok',
                 ide_tecdt: ideTecdt,
                 ide_cpcfa: ideCpcfa,
-                ide_cncre: ideCncre,
                 valor_neto_calculado: valorNetoCalculado,
                 valor_neto_transferido: dtoIn.comprobante.valorTeincb,
                 advertencias,
@@ -371,6 +319,177 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
     }
 
     /**
+     * Aplica al ciclo las retenciones que ya amparan sus facturas y todavía no se contabilizaron
+     * (caso real: el comprobante de Bendo llegó después de conciliar el depósito, o cubre cobros
+     * de varios depósitos y cada ciclo toma su parte).
+     *
+     * `dtoIn.generarAsientoContable` es una decisión explícita del usuario (ver el DTO): si el
+     * depósito que ya se transfirió NO tenía descontada la retención, hay que contabilizarla
+     * recién ahora - misma nota de débito + asiento que el flujo normal (generarAsientoRetencionTarjeta:
+     * DEBE Retención IVA/Renta por Cobrar, HABER Banco Tarjeta) y se descuenta de
+     * valor_neto_calculado_tecdt. Si el depósito YA venía neto de la retención, generar ese asiento
+     * duplicaría el descuento (la cuenta de tarjeta ya se redujo por esa diferencia al registrar la
+     * transferencia real) - en ese caso solo queda la trazabilidad documental.
+     */
+    async adjuntarRetencion(ideTecdt: number, dtoIn: AdjuntarRetencionDevolucionTarjetaDto & HeaderParamsDto) {
+        const cab = await this.consultas.getDevolucionTarjetaById(ideTecdt, dtoIn);
+        if (!cab) {
+            throw new BadRequestException(`La devolución de cobros con tarjeta ide_tecdt=${ideTecdt} no existe`);
+        }
+        if (cab.anulado_tecdt) {
+            throw new BadRequestException('Este ciclo está anulado');
+        }
+        const pendientes = cab.retenciones_pendientes as Record<string, any>[];
+        if (!pendientes.length) {
+            throw new BadRequestException(
+                'Ninguna factura de este ciclo tiene un comprobante de retención pendiente de aplicar. Registre primero el comprobante.',
+            );
+        }
+
+        const asientosGenerados: number[] = [];
+        try {
+            const aplicada = await this.aplicarRetenciones(
+                {
+                    retenciones: pendientes,
+                    contabilizar: dtoIn.generarAsientoContable,
+                    ideTecba: cab.ide_tecba,
+                    ideGeper: cab.ide_geper,
+                    beneficiario: cab.proveedor ?? '',
+                    fecha: getCurrentDate(),
+                },
+                dtoIn,
+                asientosGenerados,
+            );
+
+            const baseIdeTedtr = await this.dataSource.getSeqTable(
+                'tes_det_devol_cobro_tarjeta_ret', 'ide_tedtr', aplicada.filas.length, dtoIn.login,
+            );
+            const listQuery: ObjectQueryDto[] = this.filasRetencionCiclo(
+                ideTecdt, baseIdeTedtr, aplicada.filas, dtoIn.login,
+            );
+            // El neto esperado solo baja cuando la retención se contabiliza ahora (nota de débito
+            // + asiento); si el depósito ya venía neto, queda el valor con que se liquidó.
+            if (dtoIn.generarAsientoContable) {
+                listQuery.unshift({
+                    operation: 'update',
+                    module: 'tes',
+                    tableName: 'cab_devol_cobro_tarjeta',
+                    primaryKey: 'ide_tecdt',
+                    object: {
+                        ide_tecdt: ideTecdt,
+                        valor_neto_calculado_tecdt: centsToAmount(
+                            toCents(cab.valor_neto_calculado_tecdt) - aplicada.ivaCents - aplicada.rentaCents,
+                        ),
+                    },
+                });
+            }
+            await this.core.save({ ...dtoIn, listQuery, audit: false });
+        } catch (error) {
+            for (const ideCnccc of asientosGenerados) {
+                await this.asientosAutomaticosService.eliminarAsiento(ideCnccc, dtoIn);
+            }
+            throw error;
+        }
+
+        return { message: 'ok', ide_tecdt: ideTecdt, comprobantes: pendientes.length };
+    }
+
+    /**
+     * Contabiliza (opcionalmente) la porción de cada comprobante de retención que corresponde a un
+     * ciclo: por comprobante, una nota de débito sobre la cuenta de tarjeta + el asiento
+     * (DEBE Retención IVA/Renta por Cobrar, HABER Banco Tarjeta) - mismo criterio que el flujo
+     * normal de finalizar(). Con `contabilizar = false` solo devuelve los valores (respaldo
+     * documental, sin movimiento). Los asientos generados se acumulan en `asientosGenerados` para
+     * la compensación best-effort del llamador si algo falla después.
+     */
+    private async aplicarRetenciones(
+        params: {
+            retenciones: Record<string, any>[];
+            contabilizar: boolean;
+            ideTecba: number;
+            ideGeper: number;
+            beneficiario: string;
+            fecha: string;
+        },
+        dtoIn: HeaderParamsDto,
+        asientosGenerados: number[],
+    ) {
+        const ideTettbNotaDebito = Number(this.variables.get('p_tes_nota_debito'));
+        const filas: { ide_cncre: number; ide_teclb: number | null; ivaCents: number; rentaCents: number }[] = [];
+
+        for (const r of params.retenciones) {
+            const ivaCents = toCents(r.valor_iva);
+            const rentaCents = toCents(r.valor_renta);
+            let ideTeclb: number | null = null;
+
+            if (params.contabilizar && ivaCents + rentaCents > 0) {
+                const observacion = `Retención SRI cobros con tarjeta N.${r.numero_cncre}`;
+                const numeroDebito = await this.preLibroBancosSaveService.generarNumeroAutomatico(
+                    params.ideTecba, ideTettbNotaDebito, dtoIn,
+                );
+                const movDebito = await this.preLibroBancosSaveService.generarLibroBancoOtros({
+                    ...dtoIn,
+                    ideTecba: params.ideTecba,
+                    ideTettb: ideTettbNotaDebito,
+                    valor: centsToAmount(ivaCents + rentaCents),
+                    fecha: params.fecha,
+                    numero: numeroDebito,
+                    observacion,
+                    beneficiario: params.beneficiario,
+                });
+                ideTeclb = movDebito.ide_teclb;
+
+                const asiento = await this.asientosAutomaticosService.generarAsientoRetencionTarjeta({
+                    ...dtoIn,
+                    ideTeclb,
+                    fecha: params.fecha,
+                    ideTecba: params.ideTecba,
+                    ideGeper: params.ideGeper,
+                    valorRetencionIva: centsToAmount(ivaCents),
+                    valorRetencionRenta: centsToAmount(rentaCents),
+                    ideCncimIva: r.ide_cncim_iva ? Number(r.ide_cncim_iva) : null,
+                    ideCncimRenta: r.ide_cncim_renta ? Number(r.ide_cncim_renta) : null,
+                    observacion,
+                });
+                if (!asiento.generado) {
+                    throw new BadRequestException(
+                        `No se pudo generar el asiento de la retención N.${r.numero_cncre}: ${(asiento.advertencias ?? []).join('; ') || 'error desconocido'}`,
+                    );
+                }
+                if (asiento.ide_cnccc) asientosGenerados.push(asiento.ide_cnccc);
+            }
+            filas.push({ ide_cncre: Number(r.ide_cncre), ide_teclb: ideTeclb, ivaCents, rentaCents });
+        }
+
+        return {
+            filas,
+            ivaCents: filas.reduce((sum, f) => sum + f.ivaCents, 0),
+            rentaCents: filas.reduce((sum, f) => sum + f.rentaCents, 0),
+        };
+    }
+
+    private filasRetencionCiclo(
+        ideTecdt: number,
+        baseIdeTedtr: number,
+        filas: { ide_cncre: number; ide_teclb: number | null; ivaCents: number; rentaCents: number }[],
+        login: string,
+    ): ObjectQueryDto[] {
+        return filas.map((f, i): ObjectQueryDto => ({
+            operation: 'insert',
+            module: 'tes',
+            tableName: 'det_devol_cobro_tarjeta_ret',
+            primaryKey: 'ide_tedtr',
+            object: {
+                ide_tedtr: baseIdeTedtr + i,
+                ide_tecdt: ideTecdt,
+                ide_cncre: f.ide_cncre,
+                ide_teclb_debito_retencion: f.ide_teclb,
+                usuario_ingre: login,
+            },
+        }));
+    }
+
+    /**
      * Anula un ciclo completo de Devolución de Cobros con Tarjeta, para permitir reingresarlo
      * desde cero (patrón "anular todo" de flete-consolidado). Reutiliza
      * PreLibroBancosSaveService.anularMovimiento (misma primitiva genérica que usa el resto de
@@ -385,10 +504,9 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
      * proveedor NO se anulan/eliminan: son documentos reales que el proveedor ya emitió. Solo se
      * revierte su PAGO (vía anularMovimiento sobre ide_teclb_pago_comision, que deja
      * pagado_cpcfa = false), para que al reingresar el proceso se pueda re-seleccionar/pagar la
-     * MISMA factura sin tener que volver a cargar el XML. La retención sí se desvincula de la
-     * factura de venta ancla (cxc_cabece_factura.ide_cncre = NULL) para que
-     * getRetencionIdPorFactura dejе de bloquear una nueva carga, pero el comprobante de retención
-     * en sí queda intacto (huérfano) para no perder el registro tributario ya recibido del SRI.
+     * MISMA factura sin tener que volver a cargar el XML. Del comprobante de retención solo se
+     * revierte su contabilización en este ciclo (nota de débito + asiento por comprobante); el
+     * comprobante sigue vinculado a las facturas.
      */
     async anular(ideTecdt: number, dtoIn: AnularDevolucionTarjetaDto & HeaderParamsDto) {
         const cab = await this.consultas.getDevolucionTarjetaById(ideTecdt, dtoIn);
@@ -399,24 +517,27 @@ export class DevolucionCobroTarjetaSaveService extends BaseService {
             throw new BadRequestException('Esta devolución de cobros con tarjeta ya se encuentra anulada');
         }
 
-        // Orden: ingreso/retiro de la transferencia primero, luego débito de la retención (si
-        // hay), luego el pago de la comisión - cada movimiento es independiente entre sí.
+        // Orden: ingreso/retiro de la transferencia primero, luego el débito de cada retención
+        // contabilizada (si hay), luego el pago de la comisión - cada movimiento es independiente.
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_ingreso });
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_retiro });
-        if (cab.ide_teclb_debito_retencion) {
-            await this.preLibroBancosSaveService.anularMovimiento({
-                ...dtoIn,
-                ideTeclb: cab.ide_teclb_debito_retencion,
-            });
+        for (const r of cab.retenciones as { ide_teclb_debito_retencion: number | null }[]) {
+            if (r.ide_teclb_debito_retencion) {
+                await this.preLibroBancosSaveService.anularMovimiento({
+                    ...dtoIn,
+                    ideTeclb: r.ide_teclb_debito_retencion,
+                });
+            }
         }
         await this.preLibroBancosSaveService.anularMovimiento({ ...dtoIn, ideTeclb: cab.ide_teclb_pago_comision });
 
-        if (cab.ide_cncre) {
-            await this.dataSource.pool.query(
-                `UPDATE cxc_cabece_factura SET ide_cncre = NULL WHERE ide_cncre = $1`,
-                [cab.ide_cncre],
-            );
-        }
+        // Se libera la porción de retención aplicada a este ciclo. Los comprobantes NO se tocan ni
+        // se desvinculan de las facturas: son documentos reales ya recibidos y valen igual para el
+        // ATS - al reingresar el ciclo se vuelven a tomar solos de las facturas.
+        await this.dataSource.pool.query(
+            `DELETE FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_tecdt = $1`,
+            [ideTecdt],
+        );
 
         // Libera las facturas de venta cubiertas para que vuelvan a aparecer como pendientes
         await this.dataSource.pool.query(

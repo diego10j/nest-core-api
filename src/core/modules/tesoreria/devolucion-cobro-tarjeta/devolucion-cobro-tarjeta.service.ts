@@ -10,6 +10,27 @@ import { GetFacturasTarjetaPendientesDto } from './dto/get-facturas-tarjeta-pend
 import { GetReporteCobrosTarjetaDto } from './dto/get-reporte-cobros-tarjeta.dto';
 
 /**
+ * Retención de un ciclo, DERIVADA (no se guarda en la cabecera): por cada comprobante vinculado en
+ * tes_det_devol_cobro_tarjeta_ret se suma con_detall_retenc SOLO de las facturas del ciclo
+ * (tes_det_devol_cobro_tarjeta_fact) - un mismo comprobante puede repartirse entre varios ciclos.
+ * Es el valor legal según los comprobantes; lo realmente contabilizado es el valor de la nota de
+ * débito de cada comprobante (tes_cab_libr_banc.valor_teclb) y lo esperado al liquidar queda
+ * congelado en valor_neto_calculado_tecdt.
+ */
+const SQL_JOIN_RETENCION_CICLO = `
+    LEFT JOIN LATERAL (
+        SELECT
+            COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp = 0), 0) AS iva,
+            COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp = 1), 0) AS renta
+        FROM tes_det_devol_cobro_tarjeta_ret rr
+        INNER JOIN con_detall_retenc d ON d.ide_cncre = rr.ide_cncre
+            AND d.ide_cccfa IN (SELECT tf.ide_cccfa FROM tes_det_devol_cobro_tarjeta_fact tf WHERE tf.ide_tecdt = c.ide_tecdt)
+        INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
+        WHERE rr.ide_tecdt = c.ide_tecdt
+    ) ret ON TRUE
+`;
+
+/**
  * Consultas de apoyo para el wizard de Devolución de Cobros con Tarjeta. La persistencia/
  * orquestación vive en DevolucionCobroTarjetaSaveService.
  */
@@ -133,80 +154,81 @@ export class DevolucionCobroTarjetaService extends BaseService {
     }
 
     /**
-     * Detalle de un comprobante de retención en venta YA registrado (con_cabece_retenc,
-     * es_venta_cncre = true), clasificado por tipo de impuesto (ide_cnimp = 1 → renta, resto →
-     * IVA) - mismo criterio que AsientosAutomaticosService.generarAsientoFacturaCxC - para
-     * cuando el usuario selecciona una retención ya cargada en vez de subir un XML nuevo.
+     * Comprobantes de retención de venta que ya amparan alguna de las facturas indicadas, con la
+     * porción de IVA/Renta que le corresponde a ESAS facturas (con_detall_retenc.ide_cccfa) - no
+     * el total del comprobante: un mismo comprobante (uno o varios por mes, ej. Bendo) puede
+     * cubrir facturas de varios depósitos, así que cada ciclo toma solo lo suyo. Solo cuentan los
+     * comprobantes aún vinculados a la factura (cxc_cabece_factura.ide_cncre - anular un
+     * comprobante la desvincula).
      */
-    async getDetalleRetencionVenta(ideCncre: number, dtoIn: HeaderParamsDto) {
-        const qCab = new SelectQuery(`
-            SELECT ide_cncre, es_venta_cncre, numero_cncre, autorizacion_cncre
-            FROM con_cabece_retenc
-            WHERE ide_cncre = $1 AND es_venta_cncre = TRUE
-        `);
-        qCab.addIntParam(1, ideCncre);
-        const cabecera = await this.dataSource.createSingleQuery(qCab);
-        if (!cabecera) return null;
-
-        const qDet = new SelectQuery(`
-            SELECT d.ide_cncim, d.valor_cndre, i.ide_cnimp
+    async getRetencionesPorFacturas(ideCccfaList: number[], dtoIn: HeaderParamsDto) {
+        if (!ideCccfaList.length) return [];
+        const query = new SelectQuery(`
+            SELECT r.ide_cncre, r.numero_cncre, r.autorizacion_cncre, r.fecha_emisi_cncre,
+                   COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp = 0), 0) AS valor_iva,
+                   COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp = 1), 0) AS valor_renta,
+                   MAX(d.ide_cncim) FILTER (WHERE i.ide_cnimp = 0) AS ide_cncim_iva,
+                   MAX(d.ide_cncim) FILTER (WHERE i.ide_cnimp = 1) AS ide_cncim_renta
             FROM con_detall_retenc d
+            INNER JOIN con_cabece_retenc r ON r.ide_cncre = d.ide_cncre
             INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
-            WHERE d.ide_cncre = $1
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = d.ide_cccfa AND cf.ide_cncre = d.ide_cncre
+            WHERE d.ide_cccfa = ANY($1)
+              AND r.es_venta_cncre = TRUE
+              AND cf.ide_empr = $2
+              AND cf.ide_sucu = $3
+            GROUP BY r.ide_cncre, r.numero_cncre, r.autorizacion_cncre, r.fecha_emisi_cncre
+            ORDER BY r.fecha_emisi_cncre, r.ide_cncre
         `);
-        qDet.addIntParam(1, ideCncre);
-        const detalles = await this.dataSource.createSelectQuery(qDet);
-
-        return { cabecera, detalles };
+        query.addParam(1, ideCccfaList);
+        query.addIntParam(2, dtoIn.ideEmpr);
+        query.addIntParam(3, dtoIn.ideSucu);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**
-     * Retención de una factura de venta, si tiene un comprobante ya registrado - usado por el
-     * wizard tanto para recuperar el id tras guardar la retención con el diálogo ya existente de
-     * Ventas (RegistrarRetencionVentaDialog, que no lo devuelve directamente) como para detectar
-     * ANTES de mostrar ese diálogo que la factura ya tiene retención (una factura solo admite
-     * UNA), y en ese caso mostrar el detalle ya cargado en vez de ofrecer cargar otra.
+     * Facturas de venta cobradas con la cuenta de tarjeta que aún NO tienen comprobante de
+     * retención, en cualquier estado del ciclo (pendientes de liquidar o ya liquidadas) - son las
+     * candidatas al registrar un comprobante de retención, que puede llegar antes o después de
+     * liquidar el depósito y cubrir cobros de varios depósitos (ver saveRetencionLote).
      */
-    async getRetencionIdPorFactura(ideCccfa: number, dtoIn: HeaderParamsDto) {
-        const qFac = new SelectQuery(`
-            SELECT ide_cncre FROM cxc_cabece_factura
-            WHERE ide_cccfa = $1 AND ide_empr = $2 AND ide_sucu = $3
+    async getFacturasTarjetaSinRetencion(dtoIn: GetFacturasTarjetaPendientesDto & HeaderParamsDto) {
+        const query = new SelectQuery(`
+            SELECT
+                cf.ide_cccfa,
+                cf.secuencial_cccfa,
+                cf.fecha_emisi_cccfa,
+                cf.total_cccfa,
+                cf.ide_geper,
+                p.nom_geper,
+                p.identificac_geper,
+                SUM(dt.valor_ccdtr) AS valor_cobrado_tarjeta,
+                COALESCE(cf.base_grabada_cccfa, 0) AS base_grabada_cccfa,
+                COALESCE(cf.valor_iva_cccfa, 0) AS valor_iva_cccfa,
+                MAX(tf.ide_tecdt) AS ide_tecdt
+            FROM cxc_detall_transa dt
+            INNER JOIN tes_cab_libr_banc lb ON lb.ide_teclb = dt.ide_teclb
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = dt.ide_cccfa
+            LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+            LEFT JOIN tes_det_devol_cobro_tarjeta_fact tf ON tf.ide_cccfa = cf.ide_cccfa
+            WHERE lb.ide_tecba = $1
+              AND dt.numero_pago_ccdtr > 0
+              AND dt.ide_cccfa IS NOT NULL
+              AND cf.ide_cncre IS NULL
+              AND cf.ide_empr = $2
+              AND cf.ide_sucu = $3
+              AND ($4::date IS NULL OR cf.fecha_emisi_cccfa >= $4)
+              AND ($5::date IS NULL OR cf.fecha_emisi_cccfa <= $5)
+            GROUP BY cf.ide_cccfa, cf.secuencial_cccfa, cf.fecha_emisi_cccfa, cf.total_cccfa,
+                     cf.ide_geper, p.nom_geper, p.identificac_geper, cf.base_grabada_cccfa, cf.valor_iva_cccfa
+            ORDER BY cf.fecha_emisi_cccfa ASC, cf.ide_cccfa ASC
         `);
-        qFac.addIntParam(1, ideCccfa);
-        qFac.addIntParam(2, dtoIn.ideEmpr);
-        qFac.addIntParam(3, dtoIn.ideSucu);
-        const factura = await this.dataSource.createSingleQuery(qFac);
-        const ideCncre = factura?.ide_cncre ? Number(factura.ide_cncre) : null;
-        if (!ideCncre) return { ide_cncre: null };
-
-        const qCab = new SelectQuery(`
-            SELECT numero_cncre, autorizacion_cncre, fecha_emisi_cncre
-            FROM con_cabece_retenc
-            WHERE ide_cncre = $1
-        `);
-        qCab.addIntParam(1, ideCncre);
-        const cabecera = await this.dataSource.createSingleQuery(qCab);
-
-        const qDet = new SelectQuery(`
-            SELECT d.ide_cncim, i.nombre_cncim, i.casillero_cncim,
-                   d.base_cndre, d.porcentaje_cndre, d.valor_cndre
-            FROM con_detall_retenc d
-            INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
-            WHERE d.ide_cncre = $1
-            ORDER BY d.ide_cndre
-        `);
-        qDet.addIntParam(1, ideCncre);
-        const detalles = await this.dataSource.createSelectQuery(qDet);
-        const totalRetencion = detalles.reduce((sum, d) => sum + Number(d.valor_cndre || 0), 0);
-
-        return {
-            ide_cncre: ideCncre,
-            numero_cncre: cabecera?.numero_cncre ?? null,
-            autorizacion_cncre: cabecera?.autorizacion_cncre ?? null,
-            fecha_emisi_cncre: cabecera?.fecha_emisi_cncre ?? null,
-            detalles,
-            total_retencion: Number(totalRetencion.toFixed(2)),
-        };
+        query.addIntParam(1, dtoIn.ideTecba);
+        query.addIntParam(2, dtoIn.ideEmpr);
+        query.addIntParam(3, dtoIn.ideSucu);
+        query.addParam(4, dtoIn.fechaDesde ?? null);
+        query.addParam(5, dtoIn.fechaHasta ?? null);
+        return this.dataSource.createSelectQuery(query);
     }
 
     /**
@@ -232,13 +254,12 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 p.nom_geper AS proveedor,
                 c.ide_cpcfa,
                 cf.numero_cpcfa,
-                c.ide_cncre,
                 cbd.nombre_tecba AS nombre_tecba_destino,
                 c.valor_total_cobros_tecdt,
                 c.valor_comision_tecdt,
                 c.valor_iva_comision_tecdt,
-                c.valor_retencion_iva_tecdt,
-                c.valor_retencion_renta_tecdt,
+                ret.iva AS valor_retencion_iva_tecdt,
+                ret.renta AS valor_retencion_renta_tecdt,
                 c.valor_neto_calculado_tecdt,
                 c.valor_neto_transferido_tecdt,
                 (SELECT COUNT(*) FROM tes_det_devol_cobro_tarjeta_fact d WHERE d.ide_tecdt = c.ide_tecdt) AS num_facturas,
@@ -249,6 +270,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
             LEFT JOIN gen_persona p ON p.ide_geper = c.ide_geper
             LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = c.ide_cpcfa
             LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = c.ide_tecba_destino
+            ${SQL_JOIN_RETENCION_CICLO}
             WHERE c.ide_empr = $1
               AND c.ide_sucu = $2
               AND ($3::date IS NULL OR c.fecha_tecdt >= $3)
@@ -291,10 +313,6 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 cf.numero_cpcfa,
                 cf.total_cpcfa,
                 cf.ide_cnccc AS ide_cnccc_comision,
-                c.ide_cncre,
-                r.numero_cncre,
-                r.autorizacion_cncre,
-                r.fecha_emisi_cncre,
                 c.ide_teincb,
                 ti.foto_teincb,
                 c.ide_tecba_destino,
@@ -303,17 +321,15 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 bd.foto_teban AS foto_teban_destino,
                 bd.color_teban AS color_teban_destino,
                 c.ide_teclb_pago_comision,
-                c.ide_teclb_debito_retencion,
                 c.ide_teclb_retiro,
                 c.ide_teclb_ingreso,
                 lbp.ide_cnccc AS ide_cnccc_pago_comision,
-                lbr.ide_cnccc AS ide_cnccc_retencion,
                 lbt.ide_cnccc AS ide_cnccc_transferencia,
                 c.valor_total_cobros_tecdt,
                 c.valor_comision_tecdt,
                 c.valor_iva_comision_tecdt,
-                c.valor_retencion_iva_tecdt,
-                c.valor_retencion_renta_tecdt,
+                ret.iva AS valor_retencion_iva_tecdt,
+                ret.renta AS valor_retencion_renta_tecdt,
                 c.valor_neto_calculado_tecdt,
                 c.valor_neto_transferido_tecdt,
                 c.observacion_tecdt,
@@ -323,13 +339,12 @@ export class DevolucionCobroTarjetaService extends BaseService {
             INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
             LEFT JOIN gen_persona p ON p.ide_geper = c.ide_geper
             LEFT JOIN cxp_cabece_factur cf ON cf.ide_cpcfa = c.ide_cpcfa
-            LEFT JOIN con_cabece_retenc r ON r.ide_cncre = c.ide_cncre
             LEFT JOIN tes_info_comprobante_banco ti ON ti.ide_teincb = c.ide_teincb
             LEFT JOIN tes_cab_libr_banc lbp ON lbp.ide_teclb = c.ide_teclb_pago_comision
-            LEFT JOIN tes_cab_libr_banc lbr ON lbr.ide_teclb = c.ide_teclb_debito_retencion
             LEFT JOIN tes_cab_libr_banc lbt ON lbt.ide_teclb = c.ide_teclb_retiro
             LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = c.ide_tecba_destino
             LEFT JOIN tes_banco bd ON bd.ide_teban = cbd.ide_teban
+            ${SQL_JOIN_RETENCION_CICLO}
             WHERE c.ide_tecdt = $1
               AND c.ide_empr = $2
               AND c.ide_sucu = $3
@@ -348,7 +363,8 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 cf.secuencial_cccfa,
                 cf.fecha_emisi_cccfa,
                 cf.ide_geper,
-                p.nom_geper AS cliente
+                p.nom_geper AS cliente,
+                cf.ide_cncre
             FROM tes_det_devol_cobro_tarjeta_fact f
             INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = f.ide_cccfa
             LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
@@ -358,37 +374,51 @@ export class DevolucionCobroTarjetaService extends BaseService {
         qDet.addIntParam(1, ideTecdt);
         const facturas = await this.dataSource.createSelectQuery(qDet);
 
-        let retencion: {
-            ide_cncre: number;
-            numero_cncre: string | null;
-            autorizacion_cncre: string | null;
-            fecha_emisi_cncre: string | null;
-            detalles: unknown[];
-            total_retencion: number;
-        } | null = null;
-        if (cabecera.ide_cncre) {
-            const qRetDet = new SelectQuery(`
-                SELECT d.ide_cncim, i.nombre_cncim, i.casillero_cncim,
-                       d.base_cndre, d.porcentaje_cndre, d.valor_cndre
-                FROM con_detall_retenc d
-                INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
-                WHERE d.ide_cncre = $1
-                ORDER BY d.ide_cndre
-            `);
-            qRetDet.addIntParam(1, cabecera.ide_cncre);
-            const detalles = await this.dataSource.createSelectQuery(qRetDet);
-            const totalRetencion = detalles.reduce((sum, d) => sum + Number(d.valor_cndre || 0), 0);
-            retencion = {
-                ide_cncre: cabecera.ide_cncre,
-                numero_cncre: cabecera.numero_cncre ?? null,
-                autorizacion_cncre: cabecera.autorizacion_cncre ?? null,
-                fecha_emisi_cncre: cabecera.fecha_emisi_cncre ?? null,
-                detalles,
-                total_retencion: Number(totalRetencion.toFixed(2)),
-            };
-        }
+        // Retenciones YA aplicadas a este ciclo (una fila por comprobante: el movimiento contable
+        // que la descontó, si lo hubo, y en detalles su porción de las facturas del ciclo) y las que ya
+        // amparan facturas del ciclo pero todavía no se aplicaron (ej. el comprobante llegó
+        // después de liquidar el depósito) - se muestran para poder adjuntarlas.
+        const ideCccfaList = facturas.map((f) => Number(f.ide_cccfa));
+        const qRet = new SelectQuery(`
+            SELECT rr.ide_tedtr, rr.ide_cncre, rr.ide_teclb_debito_retencion,
+                   r.numero_cncre, r.autorizacion_cncre, r.fecha_emisi_cncre,
+                   lb.ide_cnccc AS ide_cnccc_retencion, lb.valor_teclb AS valor_contabilizado
+            FROM tes_det_devol_cobro_tarjeta_ret rr
+            INNER JOIN con_cabece_retenc r ON r.ide_cncre = rr.ide_cncre
+            LEFT JOIN tes_cab_libr_banc lb ON lb.ide_teclb = rr.ide_teclb_debito_retencion
+            WHERE rr.ide_tecdt = $1
+            ORDER BY rr.ide_tedtr
+        `);
+        qRet.addIntParam(1, ideTecdt);
+        const filasRet = await this.dataSource.createSelectQuery(qRet);
 
-        return { ...cabecera, facturas, retencion };
+        const ideCncreList = filasRet.map((r) => Number(r.ide_cncre));
+        const qRetDet = new SelectQuery(`
+            SELECT d.ide_cncre, d.ide_cncim, i.nombre_cncim, i.casillero_cncim,
+                   SUM(d.base_cndre) AS base_cndre, MAX(d.porcentaje_cndre) AS porcentaje_cndre,
+                   SUM(d.valor_cndre) AS valor_cndre
+            FROM con_detall_retenc d
+            INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
+            WHERE d.ide_cncre = ANY($1) AND d.ide_cccfa = ANY($2)
+            GROUP BY d.ide_cncre, d.ide_cncim, i.nombre_cncim, i.casillero_cncim
+            ORDER BY d.ide_cncre, MIN(d.ide_cndre)
+        `);
+        qRetDet.addParam(1, ideCncreList);
+        qRetDet.addParam(2, ideCccfaList);
+        const detallesRet = ideCncreList.length ? await this.dataSource.createSelectQuery(qRetDet) : [];
+
+        const retenciones = filasRet.map((r) => {
+            const detalles = detallesRet.filter((d) => Number(d.ide_cncre) === Number(r.ide_cncre));
+            const total = detalles.reduce((sum, d) => sum + Number(d.valor_cndre || 0), 0);
+            return { ...r, detalles, total_retencion: Number(total.toFixed(2)) };
+        });
+
+        const aplicadas = new Set(ideCncreList);
+        const retencionesPendientes = (await this.getRetencionesPorFacturas(ideCccfaList, dtoIn)).filter(
+            (r) => !aplicadas.has(Number(r.ide_cncre)),
+        );
+
+        return { ...cabecera, facturas, retenciones, retenciones_pendientes: retencionesPendientes };
     }
 
     /**
@@ -398,11 +428,14 @@ export class DevolucionCobroTarjetaService extends BaseService {
      * facturas cobradas con tarjeta anteriores a este módulo (nunca pasarán por el nuevo proceso,
      * así que mostrarlas como "pendientes" para siempre solo sería ruido).
      *
-     * La comisión/IVA/retención/neto del ciclo (que es por CICLO, no por factura - un mismo
-     * comprobante de comisión puede amparar varias facturas) se prorratea según el peso de esta
-     * factura dentro del total cobrado del ciclo: valor_cccfa_tedtf / valor_total_cobros_tecdt.
-     * El rango de fechas filtra por la fecha del CICLO (fecha_tecdt), no por la fecha de emisión
-     * de la factura - es cuándo se registró en la nueva tabla, según lo pedido.
+     * La comisión/IVA/neto del ciclo (que es por CICLO, no por factura - un mismo comprobante de
+     * comisión puede amparar varias facturas) se prorratea según el peso de esta factura dentro
+     * del total cobrado del ciclo: valor_cccfa_tedtf / valor_total_cobros_tecdt. La retención NO
+     * se prorratea: se suma directo de con_detall_retenc filtrado por `ide_cccfa` - es la
+     * porción REAL de esta factura, ya calculada al guardar la retención (ver
+     * RetencionVentaSaveService.saveRetencionLote), no una aproximación por peso. El rango de
+     * fechas filtra por la fecha del CICLO (fecha_tecdt), no por la fecha de emisión de la
+     * factura - es cuándo se registró en la nueva tabla, según lo pedido.
      */
     async getReporteCobrosTarjeta(dtoIn: GetReporteCobrosTarjetaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
@@ -428,16 +461,33 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     CASE WHEN c.anulado_tecdt THEN 'default' ELSE 'success' END AS color_estado,
                     ROUND((c.valor_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_comision,
                     ROUND((c.valor_iva_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_iva_comision,
-                    ROUND(((c.valor_retencion_iva_tecdt + c.valor_retencion_renta_tecdt) * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_retencion,
-                    ROUND((c.valor_neto_calculado_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_calculado,
+                    COALESCE(ret.total, 0) AS valor_retencion,
+                    -- Neto por factura = su cobro menos su comisión (prorrateada) menos su
+                    -- retención REAL (no prorrateada) - más preciso que prorratear el neto del
+                    -- ciclo completo, ahora que la retención real por factura existe.
+                    tdf.valor_cccfa_tedtf
+                        - ROUND((c.valor_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2)
+                        - ROUND((c.valor_iva_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2)
+                        - COALESCE(ret.total, 0) AS valor_neto_calculado,
                     ROUND((c.valor_neto_transferido_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS valor_neto_acreditado,
-                    ROUND(((c.valor_neto_transferido_tecdt - c.valor_neto_calculado_tecdt) * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2) AS diferencia
+                    ROUND((c.valor_neto_transferido_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2)
+                        - (
+                            tdf.valor_cccfa_tedtf
+                            - ROUND((c.valor_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2)
+                            - ROUND((c.valor_iva_comision_tecdt * tdf.valor_cccfa_tedtf / NULLIF(c.valor_total_cobros_tecdt, 0))::numeric, 2)
+                            - COALESCE(ret.total, 0)
+                        ) AS diferencia
                 FROM tes_det_devol_cobro_tarjeta_fact tdf
                 INNER JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = tdf.ide_tecdt
                 INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = tdf.ide_cccfa
                 INNER JOIN tes_cuenta_banco cb ON cb.ide_tecba = c.ide_tecba
                 INNER JOIN tes_banco b ON b.ide_teban = cb.ide_teban
                 LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
+                LEFT JOIN LATERAL (
+                    SELECT SUM(d.valor_cndre) AS total
+                    FROM con_detall_retenc d
+                    WHERE d.ide_cncre = cf.ide_cncre AND d.ide_cccfa = cf.ide_cccfa
+                ) ret ON cf.ide_cncre IS NOT NULL
                 WHERE c.ide_empr = $1
                   AND c.ide_sucu = $2
                   AND ($3::date IS NULL OR c.fecha_tecdt >= $3)

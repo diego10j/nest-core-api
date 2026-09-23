@@ -452,6 +452,12 @@ export class AtsService extends BaseService {
     /**
      * Materializa ret_iva_cccfa/ret_fuente_cccfa del período (paridad legacy: se recalculan antes
      * de leer las ventas, no se mantienen incrementalmente).
+     *
+     * El filtro `b.ide_cccfa = cab.ide_cccfa` es necesario desde que un comprobante de retención
+     * puede amparar varias facturas de un mismo depósito con tarjeta (ver
+     * RetencionVentaSaveService.saveRetencionLote) - sin él, cada factura del lote heredaría el
+     * 100% de con_detall_retenc de ese ide_cncre en vez de solo su porción (con_detall_retenc
+     * trae una fila por factura desde la migración retencion_venta_detalle_factura_migration.sql).
      */
     private async actualizarRetencionesVenta(fechaInicio: string, fechaFin: string, ideSucu: number): Promise<void> {
         await this.dataSource.pool.query(
@@ -462,6 +468,7 @@ export class AtsService extends BaseService {
                  WHERE a.es_venta_cncre = TRUE
                    AND b.ide_cncim IN (SELECT ide_cncim FROM con_cabece_impues WHERE ide_cnimp = 0)
                    AND a.ide_cncre = cab.ide_cncre
+                   AND b.ide_cccfa = cab.ide_cccfa
              ),
              ret_fuente_cccfa = (
                  SELECT SUM(valor_cndre) FROM con_cabece_retenc a
@@ -469,6 +476,7 @@ export class AtsService extends BaseService {
                  WHERE a.es_venta_cncre = TRUE
                    AND b.ide_cncim IN (SELECT ide_cncim FROM con_cabece_impues WHERE ide_cnimp = 1)
                    AND a.ide_cncre = cab.ide_cncre
+                   AND b.ide_cccfa = cab.ide_cccfa
              )
              WHERE cab.fecha_emisi_cccfa BETWEEN $1 AND $2
                AND cab.ide_ccefa = $3

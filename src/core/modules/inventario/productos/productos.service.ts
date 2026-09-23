@@ -701,9 +701,18 @@ export class ProductosService extends BaseService {
                     s.egreso_cant * 2.0 / NULLIF(si.saldo + si.saldo + s.ingreso_cant - s.egreso_cant, 0),
                 2)
                 ELSE 0
-            END AS rotacion
+            END AS rotacion,
+            -- Costo promedio ponderado móvil (kardex PPMP) vigente a la fecha fin del rango.
+            -- Es el costo real del stock (el mismo que usa f_calcula_precio_venta); los
+            -- precio_promedio_* de arriba son solo promedios de los movimientos del período.
+            -- El kardex PPMP es por sucursal: no aplica el filtro de bodega.
+            pp.costo_unitario AS costo_promedio,
+            pp.fecha_costo AS fecha_costo_promedio
         FROM saldo_inicial si
         CROSS JOIN stats s
+        LEFT JOIN LATERAL f_costo_unitario_ppmp(
+            ${dtoIn.ideEmpr}, ${dtoIn.ideSucu}, $1, $3::date
+        ) pp ON true
         `,
             dtoIn,
         );

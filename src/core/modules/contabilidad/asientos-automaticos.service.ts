@@ -1503,17 +1503,17 @@ export class AsientosAutomaticosService extends BaseService {
                 ), 0) AS descuento_tarifa0
             FROM cxc_cabece_factura a
             LEFT JOIN (
-                SELECT d.ide_cncre, d.valor_cndre, f.ide_cncim
+                SELECT d.ide_cncre, d.ide_cccfa, d.valor_cndre, f.ide_cncim
                 FROM con_detall_retenc d
                 INNER JOIN con_cabece_impues f ON d.ide_cncim = f.ide_cncim
                 WHERE f.ide_cnimp = 1
-            ) retRenta ON a.ide_cncre = retRenta.ide_cncre
+            ) retRenta ON a.ide_cncre = retRenta.ide_cncre AND retRenta.ide_cccfa = a.ide_cccfa
             LEFT JOIN (
-                SELECT d.ide_cncre, d.valor_cndre, f.ide_cncim
+                SELECT d.ide_cncre, d.ide_cccfa, d.valor_cndre, f.ide_cncim
                 FROM con_detall_retenc d
                 INNER JOIN con_cabece_impues f ON d.ide_cncim = f.ide_cncim
                 WHERE f.ide_cnimp = 0
-            ) retIva ON a.ide_cncre = retIva.ide_cncre
+            ) retIva ON a.ide_cncre = retIva.ide_cncre AND retIva.ide_cccfa = a.ide_cccfa
             WHERE a.ide_cccfa = $1
         `);
         qDoc.addIntParam(1, dtoIn.ide_cccfa);

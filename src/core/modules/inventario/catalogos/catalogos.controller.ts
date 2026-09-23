@@ -19,6 +19,7 @@ import { FilesService } from '../../sistema/files/files.service';
 
 import { CatalogosSaveService } from './catalogos-save.service';
 import { CatalogosService } from './catalogos.service';
+import { BuscarCatalogosDto } from './dto/buscar-catalogos.dto';
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';
 import { GetCatalogosDto } from './dto/get-catalogos.dto';
 import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
@@ -57,6 +58,15 @@ export class CatalogosController {
         @Query() dtoIn: GetCatalogosDto,
     ) {
         return this.service.getListaCatalogos(dtoIn);
+    }
+
+    @Public()
+    @Get('buscarCatalogos')
+    @ApiOperation({ summary: 'Buscar catálogos por nombre/descripción o por productos que contienen (público)' })
+    buscarCatalogos(
+        @Query() dtoIn: BuscarCatalogosDto,
+    ) {
+        return this.service.buscarCatalogos(dtoIn);
     }
 
     @Public()

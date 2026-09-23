@@ -250,9 +250,10 @@ export class FacturasRepService {
           SUM(a.valor_cndre) OVER () AS totalretencion
         FROM con_detall_retenc a
           INNER JOIN con_cabece_impues b ON a.ide_cncim = b.ide_cncim
-        WHERE a.ide_cncre = $1
+        WHERE a.ide_cncre = $1 AND a.ide_cccfa = $2
       `);
       queryRetDet.addParam(1, cabecera.ide_cncre);
+      queryRetDet.addParam(2, dtoIn.ide_cccfa);
 
       const retCab = await this.dataSource.createSingleQuery(queryRetCab);
       const retDet = await this.dataSource.createSelectQuery(queryRetDet);

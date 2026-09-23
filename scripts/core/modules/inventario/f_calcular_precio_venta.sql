@@ -27,7 +27,12 @@ RETURNS TABLE (
 )
 AS $$
 DECLARE
-    v_precio_compra DECIMAL(12,2);
+    -- Sin typmod: el costo PPMP viene con 6 decimales desde f_costo_unitario_ppmp.
+    -- Con DECIMAL(12,2) se redondeaba a centavos y el costo, la utilidad y el precio
+    -- por porcentaje no cuadraban con el costo promedio del kardex (inv_kardex_ppmp).
+    -- (PostgreSQL ignora los typmod de parámetros y de columnas de RETURNS TABLE,
+    -- por eso basta con corregir esta variable local.)
+    v_precio_compra NUMERIC;
     v_fecha_compra DATE;
     v_iva DECIMAL(5,2);
     v_iva_factor DECIMAL(12,6);

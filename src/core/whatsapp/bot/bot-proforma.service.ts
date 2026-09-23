@@ -57,6 +57,10 @@ export interface ResultadoProforma {
   valorIva?: number;
   tarifaIva?: number;
   total?: number;
+  // Nombre de la provincia detectada (gen_provincia) a partir de la ciudad/provincia que dio
+  // el cliente — null si no se pudo resolver. Lo usa el bot para avisar del envío nacional
+  // cuando NO es Pichincha.
+  provinciaNombre?: string | null;
 }
 
 @Injectable()
@@ -171,6 +175,7 @@ export class BotProformaService {
 
     const ide_cccpr: number = resultado.data.ide_cccpr;
     const secuencial: string = resultado.data.secuencial_cccpr;
+    let provinciaNombre: string | null = null;
 
     // Actualizar cabecera con datos específicos de WhatsApp y del cliente
     try {
@@ -230,6 +235,12 @@ export class BotProformaService {
           ideGeprov = provRow?.ide_geprov ?? null;
         }
         this.logger.log(`[Proforma] Ciudad/provincia "${provinciaInput}" → ide_geprov=${ideGeprov}`);
+        if (ideGeprov != null) {
+          const nomProvQ = new SelectQuery(`SELECT nombre_geprov FROM gen_provincia WHERE ide_geprov = $1 LIMIT 1`);
+          nomProvQ.addIntParam(1, ideGeprov);
+          const nomProvRow = await this.dataSource.createSingleQuery(nomProvQ);
+          provinciaNombre = nomProvRow?.nombre_geprov ?? null;
+        }
       }
 
       // notas_cccpr: coordenadas GPS en JSON si el cliente compartió ubicación
@@ -400,6 +411,7 @@ export class BotProformaService {
       ide_cccpr, secuencial, automatica, conPrecio,
       productosConPrecio, productosSinPrecio, pdfBuffer,
       baseGrabada: baseGrabadaRet, baseTarifa0: 0, valorIva, tarifaIva, total,
+      provinciaNombre,
     };
   }
 

@@ -9,6 +9,9 @@ export interface DetalleXmlRetencion {
     ide_cncim: number;
     nombre_cncim: string | null;
     casillero_cncim: string | null;
+    /** con_impuesto.ide_cnimp (1 = Renta, 0 = IVA) - para que el frontend sepa contra qué campo
+     * de la factura (base_grabada_cccfa o valor_iva_cccfa) validar esta línea en un lote. */
+    ide_cnimp: number;
     /** <codigoRetencion> tal como viene en el XML, para mostrarlo si no hay nombre */
     codigo_retencion_xml: string;
     base_cndre: number;

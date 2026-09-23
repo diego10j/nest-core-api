@@ -8,6 +8,7 @@ import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery } from '../../../connection/helpers/select-query';
 import { CoreService } from '../../../core.service';
 
+import { BuscarCatalogosDto } from './dto/buscar-catalogos.dto';
 import { GetCatalogoByPathDto } from './dto/get-catalogo-by-path.dto';
 import { GetCatalogosDto } from './dto/get-catalogos.dto';
 import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
@@ -112,6 +113,112 @@ export class CatalogosService extends BaseService {
         }
 
         return result;
+    }
+
+    /**
+     * Buscador avanzado (público): devuelve los catálogos activos cuyo nombre/descripción
+     * coincide con la búsqueda O que contienen algún producto que coincide (nombre, otro
+     * nombre, código, descripción corta o tags). Cada palabra de la búsqueda debe aparecer
+     * (AND), sin distinguir mayúsculas ni tildes. Los productos considerados son los mismos
+     * que ve el público en getCatalogoByPath (activos y con stock o publicados sin stock).
+     * Misma estructura plana que getListaCatalogos + `coincidencias` y `productos_coincidentes`.
+     */
+    async buscarCatalogos(dtoIn: BuscarCatalogosDto) {
+        const ideEmpr = dtoIn.ideEmpr && dtoIn.ideEmpr > 0 ? dtoIn.ideEmpr : 0;
+        const tokens = Array.from(new Set(
+            (dtoIn.q || '')
+                .normalize('NFD')
+                .replace(/[̀-ͯ]/g, '')
+                .toLowerCase()
+                .split(/\s+/)
+                .filter((t) => t.length > 0),
+        )).slice(0, 5);
+        if (tokens.length === 0 || tokens.join('').length < 2) return [];
+
+        const cacheKey = `catalogo:buscar:${ideEmpr}:${tokens.join('|')}`;
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached) return JSON.parse(cached);
+        } catch (err) {
+            this.logger.warn(`Redis get failed for ${cacheKey}`, err);
+        }
+
+        // Sin depender de la extensión unaccent: se quitan tildes con translate().
+        const norm = (expr: string) =>
+            `translate(lower(${expr}), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunaeiouun')`;
+        const catText = norm(`concat_ws(' ', c.nombre_inccat, c.desc_corta_inccat, c.descripcion_inccat)`);
+        const prodText = norm(
+            `concat_ws(' ', a.nombre_inarti, a.otro_nombre_inarti, a.codigo_inarti, a.desc_corta_inarti, a.notas_inarti)`,
+        );
+        const catMatch = tokens.map((_, i) => `${catText} LIKE $${i + 1}`).join(' AND ');
+        const prodMatch = tokens.map((_, i) => `${prodText} LIKE $${i + 1}`).join(' AND ');
+
+        const conditions: string[] = ['c.estado_inccat = true'];
+        if (ideEmpr > 0) {
+            conditions.push(`c.ide_empr = ${ideEmpr}`);
+        }
+
+        const query = new SelectQuery(`
+            SELECT
+                c.ide_inccat       AS ide_cata,
+                c.ide_tipo_inccat  AS ide_tipo_cata,
+                c.nombre_inccat    AS nombre_cata,
+                c.desc_corta_inccat AS descripcion_corta_cata,
+                c.imagen_inccat    AS imagen_cata,
+                CASE WHEN c.estado_inccat = true THEN 1 ELSE 0 END AS activo_cata,
+                c.path_inccat      AS path_cata,
+                c.color_inccat     AS color_cata,
+                c.vistas_inccat    AS vistas_cata,
+                c.fecha_ingre      AS fecha_crea,
+                c.usuario_ingre    AS usuario_crea,
+                c.fecha_actua      AS fecha_modi,
+                c.usuario_actua    AS usuario_modi,
+                COALESCE(m.total, 0)            AS coincidencias,
+                COALESCE(m.nombres, ARRAY[]::text[]) AS productos_coincidentes,
+                (${catMatch})                   AS coincide_catalogo
+            FROM inv_cab_catalogo c
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*)::int AS total,
+                    (array_agg(a.nombre_inarti::text ORDER BY d.orden_indcat, a.nombre_inarti))[1:4] AS nombres
+                FROM inv_det_catalogo d
+                INNER JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+                WHERE d.ide_inccat = c.ide_inccat
+                  AND d.activo_indcat = true
+                  AND a.activo_inarti = true
+                  AND (
+                      d.publica_sin_stock_indcat = true
+                      OR COALESCE((
+                          SELECT SUM(dci.cantidad_indci * tci.signo_intci)
+                          FROM inv_det_comp_inve dci
+                          INNER JOIN inv_cab_comp_inve cci ON cci.ide_incci = dci.ide_incci
+                          INNER JOIN inv_tip_tran_inve tti ON tti.ide_intti = cci.ide_intti
+                          INNER JOIN inv_tip_comp_inve tci ON tci.ide_intci = tti.ide_intci
+                          WHERE dci.ide_inarti = d.ide_inarti
+                            AND cci.ide_empr = c.ide_empr
+                            AND cci.ide_inepi = 1
+                      ), 0) > 0
+                  )
+                  AND ${prodMatch}
+            ) m ON true
+            WHERE ${conditions.join(' AND ')}
+              AND ((${catMatch}) OR COALESCE(m.total, 0) > 0)
+            ORDER BY (${catMatch}) DESC, COALESCE(m.total, 0) DESC, c.orden_inccat, c.nombre_inccat
+        `);
+        tokens.forEach((tok, i) => {
+            const escaped = tok.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+            query.addParam(i + 1, `%${escaped}%`);
+        });
+
+        const rows = await this.dataSource.createSelectQuery(query);
+
+        try {
+            await this.redis.set(cacheKey, JSON.stringify(rows), 'EX', 120);
+        } catch (err) {
+            this.logger.warn(`Redis set failed for ${cacheKey}`, err);
+        }
+
+        return rows;
     }
 
     async getCatalogoById(dtoIn: IdCatalogoDto & HeaderParamsDto) {

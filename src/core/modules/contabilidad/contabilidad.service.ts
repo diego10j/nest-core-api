@@ -846,7 +846,7 @@ export class ContabilidadService extends BaseService {
                     WHERE d.ide_cncre = a.ide_cncre
                 ), 0) AS total_retenido,
                 EXISTS (
-                    SELECT 1 FROM tes_cab_devol_cobro_tarjeta t WHERE t.ide_cncre = a.ide_cncre
+                    SELECT 1 FROM tes_det_devol_cobro_tarjeta_ret t WHERE t.ide_cncre = a.ide_cncre
                 ) AS es_pago_tarjeta
             FROM con_cabece_retenc a
             ${joinDocumento}

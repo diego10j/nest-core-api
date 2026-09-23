@@ -1262,6 +1262,13 @@ export class BotService implements OnModuleInit {
       this.logger.error(`[Bot][Reducido] Error generando cotización rápida chat=${ideWhcha}: ${err.message}`, err.stack);
     }
 
+    // Aviso de envío nacional: solo si se DETECTÓ la provincia y no es Pichincha (donde está
+    // la empresa). Si la provincia no se pudo resolver, no se dice nada.
+    const provinciaDetectada = resultado?.provinciaNombre?.trim();
+    const avisoEnvio = provinciaDetectada && !/pichincha/i.test(provinciaDetectada)
+      ? `🚚 Realizamos envíos a nivel nacional por el transporte de tu preferencia.\n\n`
+      : '';
+
     if (resultado?.automatica && resultado.pdfBuffer) {
       let pdfEnviado = false;
       try {
@@ -1299,7 +1306,7 @@ export class BotService implements OnModuleInit {
           ? `📄 Adjuntamos el PDF con el detalle completo.`
           : `📄 En un momento te enviamos el PDF con el detalle completo.`) +
         avisoAsesoramiento +
-        `\n\nSi necesitas algo más, un asesor comercial está disponible para ayudarte 😊\n\n` +
+        `\n\n${avisoEnvio}Si necesitas algo más, un asesor comercial está disponible para ayudarte 😊\n\n` +
         `⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil.`,
       ));
       // null = ya se le avisó al cliente arriba; nota interna solo para el asesor/log.
@@ -1324,7 +1331,7 @@ export class BotService implements OnModuleInit {
       }`)
       .join('\n');
     await this.derivarAsesor(waId, phoneNumberId, ideWhcha, ideWhcue, ideEmpr,
-      this.conSaludo(saludo, `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\nUn asesor comercial 👤 la va a completar y te responderá lo antes posible.${avisoAsesoramiento}\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`),
+      this.conSaludo(saludo, `¡Perfecto! 😊 Ya registré tu cotización${referencia} ✅ con los siguientes detalles:\n${detalleProductos}\n\n${avisoEnvio}Un asesor comercial 👤 la va a completar y te responderá lo antes posible.${avisoAsesoramiento}\n\n⏰ *Horario de atención:* Lunes a viernes de 08:00 a 17:00 y sábados de 09:00 a 13:00. Fuera de este horario te responderemos el próximo día hábil. ¡Gracias!`),
       notaCompleta,
     );
   }
@@ -1411,10 +1418,13 @@ export class BotService implements OnModuleInit {
       // lo vaya a retomar, así que sin esto la pregunta se perdía en silencio (caso real
       // detectado 2026-09-21: "dónde están ubicados" nunca se contestó; y 2026-09-21:
       // "o si me puede ayudar con catálogo" tampoco).
+      // Solo por palabras claras (sin GPT): con GPT, una ciudad suelta ("Rocafuerte
+      // Manabí") se clasificaba UBICACION y el bot respondía con la dirección de la empresa
+      // y el pin sin que nadie lo pidiera (caso real detectado 2026-09-23).
       if (restoTexto) {
-        const tipoInfoCiudad = await this.botGpt.clasificarConsulta(restoTexto);
-        if (['UBICACION', 'HORARIO', 'ENVIO', 'CATALOGO'].includes(tipoInfoCiudad)) {
-          await this.responderInfo(ideEmpr, waId, tipoInfoCiudad as any, nombreEmpresa, config);
+        const tipoInfoCiudad = this.botGpt.clasificarInfoPorPalabras(restoTexto);
+        if (tipoInfoCiudad) {
+          await this.responderInfo(ideEmpr, waId, tipoInfoCiudad, nombreEmpresa, config);
         }
       }
       // Corrección de cantidad junto con la ciudad (ej. "Desde Quito" + "Solo 1 Kg de cada
