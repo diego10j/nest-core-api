@@ -45,6 +45,73 @@ const SQL_JOIN_LIQUIDACION_CICLO = `
 `;
 
 /**
+ * Avance de cada pago de una acreditación (alias: `f` = tes_det_devol_cobro_tarjeta_fact, `cf` =
+ * factura de venta, `c` = tes_cab_devol_cobro_tarjeta). Se DERIVA en vez de guardarse: los
+ * documentos llegan en cortes que no coinciden con las acreditaciones (y la retención también puede
+ * ligarse a la factura desde Ventas), así que un estado guardado quedaría desactualizado.
+ *   - "requiere": la comisión / retención solo se exige si el Excel de liquidación la informó (> 0).
+ *   - "con": la comisión está cuando hay una factura en un corte vigente (o es un ciclo anterior,
+ *     que la trae en la cabecera); la retención cuando hay comprobante en la factura o en un corte.
+ */
+const SQL_PAGO_REQUIERE_COMISION = `(COALESCE(f.valor_comision_tedtf, 0) + COALESCE(f.valor_iva_comision_tedtf, 0) > 0)`;
+const SQL_PAGO_REQUIERE_RETENCION = `(COALESCE(f.valor_ret_iva_tedtf, 0) + COALESCE(f.valor_ret_renta_tedtf, 0) > 0)`;
+const SQL_PAGO_CON_COMISION = `(
+    c.ide_cpcfa IS NOT NULL
+    OR EXISTS (
+        SELECT 1 FROM tes_det_corte_tarjeta dc
+        INNER JOIN tes_cab_corte_tarjeta ct ON ct.ide_tecct = dc.ide_tecct
+        WHERE dc.ide_cccfa = f.ide_cccfa AND ct.ide_cpcfa IS NOT NULL AND ct.anulado_tecct = FALSE
+    )
+)`;
+const SQL_PAGO_CON_RETENCION = `(
+    cf.ide_cncre IS NOT NULL
+    OR EXISTS (
+        SELECT 1 FROM tes_det_corte_tarjeta dc
+        INNER JOIN tes_cab_corte_tarjeta ct ON ct.ide_tecct = dc.ide_tecct
+        WHERE dc.ide_cccfa = f.ide_cccfa AND ct.ide_cncre IS NOT NULL AND ct.anulado_tecct = FALSE
+    )
+)`;
+
+/**
+ * Resumen por acreditación (alias `prog`): cuántos de sus pagos aún no tienen la factura de comisión
+ * o el comprobante de retención que les corresponde, y cuántos ya tienen algún avance.
+ */
+const SQL_JOIN_PROGRESO_ACREDITACION = `
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE ${SQL_PAGO_REQUIERE_COMISION} AND NOT ${SQL_PAGO_CON_COMISION}) AS pagos_sin_comision,
+            COUNT(*) FILTER (WHERE ${SQL_PAGO_REQUIERE_RETENCION} AND NOT ${SQL_PAGO_CON_RETENCION}) AS pagos_sin_retencion,
+            COUNT(*) FILTER (WHERE (${SQL_PAGO_REQUIERE_COMISION} AND ${SQL_PAGO_CON_COMISION})
+                                OR (${SQL_PAGO_REQUIERE_RETENCION} AND ${SQL_PAGO_CON_RETENCION})) AS pagos_con_avance
+        FROM tes_det_devol_cobro_tarjeta_fact f
+        INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = f.ide_cccfa
+        WHERE f.ide_tecdt = c.ide_tecdt
+    ) prog ON TRUE
+`;
+
+/**
+ * Estado de una acreditación (requiere SQL_JOIN_PROGRESO_ACREDITACION):
+ *   Anulada | Acreditada (nada de comisión/retención aún) | Parcial (algún avance) | Completa.
+ * Un ciclo anterior (con factura de comisión en la cabecera) ya nació completo.
+ */
+const SQL_ESTADO_ACREDITACION = `
+    CASE
+        WHEN c.anulado_tecdt THEN 'Anulada'
+        WHEN c.ide_cpcfa IS NOT NULL OR (prog.pagos_sin_comision = 0 AND prog.pagos_sin_retencion = 0) THEN 'Completa'
+        WHEN prog.pagos_con_avance = 0 THEN 'Acreditada'
+        ELSE 'Parcial'
+    END AS estado,
+    CASE
+        WHEN c.anulado_tecdt THEN 'error'
+        WHEN c.ide_cpcfa IS NOT NULL OR (prog.pagos_sin_comision = 0 AND prog.pagos_sin_retencion = 0) THEN 'success'
+        WHEN prog.pagos_con_avance = 0 THEN 'warning'
+        ELSE 'info'
+    END AS color_estado,
+    prog.pagos_sin_comision,
+    prog.pagos_sin_retencion
+`;
+
+/**
  * Consultas de apoyo del proceso de cobros con tarjeta (acreditaciones y cortes del procesador).
  * La persistencia/orquestación vive en DevolucionCobroTarjetaSaveService y CorteTarjetaSaveService.
  */
@@ -271,7 +338,9 @@ export class DevolucionCobroTarjetaService extends BaseService {
      * Listado unificado de la página principal del módulo: acreditaciones (una transferencia del
      * procesador, incluidos los ciclos anteriores con comisión y retención juntas) y cortes (factura
      * de comisión y/o comprobante de retención). El filtro `tipo` decide qué ramas del UNION
-     * aportan filas. Solo hay 2 estados (Activa/Anulada): cada registro se guarda completo.
+     * aportan filas. El estado de una acreditación se deriva de los documentos que ya cubren sus pagos
+     * (Acreditada / Parcial / Completa / Anulada, ver SQL_ESTADO_ACREDITACION); el de un corte es
+     * Activo/Anulado.
      */
     async getDevolucionesTarjeta(dtoIn: GetDevolucionesTarjetaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
@@ -282,8 +351,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     c.ide_tecdt,
                     NULL::bigint AS ide_tecct,
                     c.anulado_tecdt AS anulado,
-                    CASE WHEN c.anulado_tecdt THEN 'Anulada' ELSE 'Activa' END AS estado,
-                    CASE WHEN c.anulado_tecdt THEN 'error' ELSE 'success' END AS color_estado,
+                    ${SQL_ESTADO_ACREDITACION},
                     c.ide_tecba,
                     cb.nombre_tecba,
                     b.nombre_teban,
@@ -308,6 +376,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 LEFT JOIN tes_cuenta_banco cbd ON cbd.ide_tecba = c.ide_tecba_destino
                 ${SQL_JOIN_RETENCION_CICLO}
                 ${SQL_JOIN_LIQUIDACION_CICLO}
+                ${SQL_JOIN_PROGRESO_ACREDITACION}
                 WHERE $5::text IN ('todos', 'acreditacion')
                   AND c.ide_empr = $1
                   AND c.ide_sucu = $2
@@ -324,6 +393,8 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     ct.anulado_tecct AS anulado,
                     CASE WHEN ct.anulado_tecct THEN 'Anulado' ELSE 'Activo' END AS estado,
                     CASE WHEN ct.anulado_tecct THEN 'error' ELSE 'success' END AS color_estado,
+                    NULL::bigint AS pagos_sin_comision,
+                    NULL::bigint AS pagos_sin_retencion,
                     ct.ide_tecba,
                     cb.nombre_tecba,
                     b.nombre_teban,
@@ -373,8 +444,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 c.anulado_tecdt,
                 c.fecha_anula_tecdt,
                 c.motivo_anula_tecdt,
-                CASE WHEN c.anulado_tecdt THEN 'Anulada' ELSE 'Activa' END AS estado,
-                CASE WHEN c.anulado_tecdt THEN 'error' ELSE 'success' END AS color_estado,
+                ${SQL_ESTADO_ACREDITACION},
                 c.ide_tecba,
                 cb.nombre_tecba,
                 b.nombre_teban,
@@ -424,6 +494,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
             LEFT JOIN tes_banco bd ON bd.ide_teban = cbd.ide_teban
             ${SQL_JOIN_RETENCION_CICLO}
             ${SQL_JOIN_LIQUIDACION_CICLO}
+            ${SQL_JOIN_PROGRESO_ACREDITACION}
             WHERE c.ide_tecdt = $1
               AND c.ide_empr = $2
               AND c.ide_sucu = $3
@@ -448,8 +519,13 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 cf.fecha_emisi_cccfa,
                 cf.ide_geper,
                 p.nom_geper AS cliente,
-                cf.ide_cncre
+                cf.ide_cncre,
+                ${SQL_PAGO_REQUIERE_COMISION} AS requiere_comision,
+                ${SQL_PAGO_CON_COMISION} AS con_comision,
+                ${SQL_PAGO_REQUIERE_RETENCION} AS requiere_retencion,
+                ${SQL_PAGO_CON_RETENCION} AS con_retencion
             FROM tes_det_devol_cobro_tarjeta_fact f
+            INNER JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = f.ide_tecdt
             INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = f.ide_cccfa
             LEFT JOIN gen_persona p ON p.ide_geper = cf.ide_geper
             WHERE f.ide_tecdt = $1
