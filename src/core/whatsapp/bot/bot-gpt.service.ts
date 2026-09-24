@@ -768,6 +768,10 @@ export class BotGptService {
   async matchCatalogoProducto(
     texto: string,
     catalogos: { ide_cata: number; nombre_cata: string; descripcion_cata?: string | null; productos: { nombre: string }[] }[],
+    // Mensaje completo del cliente: trae los calificativos que el nombre extraído del
+    // producto pierde ("aceite", "grado farmacéutico", "USP", "al por mayor") y que
+    // deciden si el catálogo realmente corresponde.
+    contexto?: string,
   ): Promise<{ ide_cata: number; matchEspecifico: boolean } | null> {
     if (!catalogos.length) return null;
     // La descripción del catálogo (desc_corta_inccat/descripcion_inccat) es contexto EXTRA
@@ -800,9 +804,23 @@ export class BotGptService {
               '"matchEspecifico" = true SOLO si el texto coincide con UNO de los productos listados puntualmente; ' +
               'false si solo coincide con el tema/título general del catálogo o con su descripción. Si NO hay ningún ' +
               'catálogo ni producto que coincida con razonable certeza, responde {"ide_cata": null, "matchEspecifico": ' +
-              'false} — no adivines ni asumas coincidencias vagas.',
+              'false} — no adivines ni asumas coincidencias vagas.\n' +
+              'COINCIDIR EN UNA PALABRA NO BASTA: el producto del cliente debe ser el MISMO tipo de producto que el del ' +
+              'catálogo, no solo compartir una palabra. Si el cliente especifica una naturaleza o grado que el catálogo ' +
+              'no ofrece — ej. "aceite esencial", "grado farmacéutico", "USP", "alimenticio", "industrial", "al por ' +
+              'mayor" — y el catálogo es de OTRO tipo (ej. "Fragancias para velas" tiene una fragancia "menta", pero un ' +
+              'cliente que pide "menta piperita aceite grado farmacéutico / mentol USP" quiere una materia prima ' +
+              'farmacéutica, NO una fragancia para velas), responde {"ide_cata": null, "matchEspecifico": false} (caso ' +
+              'real detectado 2026-09-24: se le envió el catálogo de fragancias para velas a quien buscaba menta ' +
+              'piperita de grado farmacéutico). Ante la duda entre "mismo producto" y "solo comparte una palabra", ' +
+              'responde null.',
           },
-          { role: 'user', content: texto },
+          {
+            role: 'user',
+            content: contexto && contexto.trim() && contexto.trim() !== texto.trim()
+              ? `Producto a evaluar: ${texto}\nMensaje completo del cliente (contexto): ${contexto}`
+              : texto,
+          },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,

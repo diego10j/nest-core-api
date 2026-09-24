@@ -1002,7 +1002,7 @@ export class BotService implements OnModuleInit {
         // clásico: un solo match contra todo el texto le daba el link de UN catálogo
         // como si respondiera por TODOS los productos mencionados.
         const matches = await Promise.all(
-          items.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos)),
+          items.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos, texto)),
         );
         const conCatalogo = items.filter((_, i) => matches[i]?.ide_cata);
         itemsPendientes = items.filter((_, i) => !matches[i]?.ide_cata);
@@ -1964,7 +1964,7 @@ export class BotService implements OnModuleInit {
     let pedirUso = false;
     {
       const estadoProducto = await this.evaluarExistenciaProductos(
-        itemsDetectados.map((i) => i.producto), ideEmpr,
+        itemsDetectados.map((i) => i.producto), ideEmpr, textoProducto,
       );
 
       if (estadoProducto.estado === 'NO_VENDEMOS') {
@@ -2002,7 +2002,7 @@ export class BotService implements OnModuleInit {
         // catálogo de Ceras, pero el bot dio ese link como si también cubriera la
         // manteca de karité, que puede estar en otro catálogo o en ninguno).
         const matches = await Promise.all(
-          itemsDetectados.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos)),
+          itemsDetectados.map((item) => this.botGpt.matchCatalogoProducto(item.producto, catalogos, textoProducto)),
         );
         const conCatalogo = itemsDetectados.filter((_, i) => matches[i]?.ide_cata);
         itemsPendientes = itemsDetectados.filter((_, i) => !matches[i]?.ide_cata);
@@ -2155,7 +2155,7 @@ export class BotService implements OnModuleInit {
    *     igual (cantidad + uso) para que un asesor decida con contexto real.
    */
   private async evaluarExistenciaProductos(
-    nombresProducto: string[], ideEmpr: number,
+    nombresProducto: string[], ideEmpr: number, contexto?: string,
   ): Promise<
     { estado: 'EXISTE' } | { estado: 'NO_VENDEMOS'; observacion: string | null } | { estado: 'SIN_MATCH' }
   > {
@@ -2200,7 +2200,7 @@ export class BotService implements OnModuleInit {
     // de latencia a una respuesta de chat.
     const catalogos = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
     if (catalogos.length) {
-      const match = await this.botGpt.matchCatalogoProducto(nombresProducto.join(', '), catalogos);
+      const match = await this.botGpt.matchCatalogoProducto(nombresProducto.join(', '), catalogos, contexto);
       if (match?.ide_cata) return { estado: 'EXISTE' };
     }
     return { estado: 'SIN_MATCH' };
