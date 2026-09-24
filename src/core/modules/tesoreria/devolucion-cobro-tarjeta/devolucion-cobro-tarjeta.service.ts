@@ -346,6 +346,10 @@ export class DevolucionCobroTarjetaService extends BaseService {
         const query = new SelectQuery(`
             SELECT * FROM (
                 SELECT
+                    -- Primera columna = identidad de fila de la tabla (el backend la envía como key):
+                    -- debe ser UNICA entre acreditaciones y cortes (antes era tipo, que se repite y
+                    -- hacía que la tabla dibujara filas duplicadas).
+                    'acreditacion-' || c.ide_tecdt::text AS id_registro,
                     'acreditacion'::text AS tipo,
                     c.fecha_tecdt AS fecha,
                     c.ide_tecdt,
@@ -386,6 +390,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 UNION ALL
 
                 SELECT
+                    'corte-' || ct.ide_tecct::text AS id_registro,
                     'corte'::text AS tipo,
                     ct.fecha_tecct AS fecha,
                     NULL::bigint AS ide_tecdt,
@@ -422,6 +427,9 @@ export class DevolucionCobroTarjetaService extends BaseService {
                   AND ($3::date IS NULL OR ct.fecha_tecct >= $3)
                   AND ($4::date IS NULL OR ct.fecha_tecct <= $4)
             ) x
+            WHERE $6::text = 'todos'
+               OR ($6::text = 'anulado' AND x.anulado)
+               OR ($6::text <> 'anulado' AND NOT x.anulado AND LOWER(x.estado) = $6::text)
             ORDER BY x.fecha DESC, COALESCE(x.ide_tecdt, x.ide_tecct) DESC
         `);
         query.addIntParam(1, dtoIn.ideEmpr);
@@ -429,6 +437,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
         query.addParam(3, dtoIn.fechaDesde ?? null);
         query.addParam(4, dtoIn.fechaHasta ?? null);
         query.addParam(5, dtoIn.tipo ?? 'todos');
+        query.addParam(6, dtoIn.estado ?? 'todos');
         return this.dataSource.createQuery(query);
     }
 
