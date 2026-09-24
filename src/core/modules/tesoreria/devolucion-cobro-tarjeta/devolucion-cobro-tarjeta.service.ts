@@ -74,15 +74,13 @@ const SQL_PAGO_CON_RETENCION = `(
 
 /**
  * Resumen por acreditación (alias `prog`): cuántos de sus pagos aún no tienen la factura de comisión
- * o el comprobante de retención que les corresponde, y cuántos ya tienen algún avance.
+ * o el comprobante de retención que les corresponde.
  */
 const SQL_JOIN_PROGRESO_ACREDITACION = `
     LEFT JOIN LATERAL (
         SELECT
             COUNT(*) FILTER (WHERE ${SQL_PAGO_REQUIERE_COMISION} AND NOT ${SQL_PAGO_CON_COMISION}) AS pagos_sin_comision,
-            COUNT(*) FILTER (WHERE ${SQL_PAGO_REQUIERE_RETENCION} AND NOT ${SQL_PAGO_CON_RETENCION}) AS pagos_sin_retencion,
-            COUNT(*) FILTER (WHERE (${SQL_PAGO_REQUIERE_COMISION} AND ${SQL_PAGO_CON_COMISION})
-                                OR (${SQL_PAGO_REQUIERE_RETENCION} AND ${SQL_PAGO_CON_RETENCION})) AS pagos_con_avance
+            COUNT(*) FILTER (WHERE ${SQL_PAGO_REQUIERE_RETENCION} AND NOT ${SQL_PAGO_CON_RETENCION}) AS pagos_sin_retencion
         FROM tes_det_devol_cobro_tarjeta_fact f
         INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = f.ide_cccfa
         WHERE f.ide_tecdt = c.ide_tecdt
@@ -90,22 +88,21 @@ const SQL_JOIN_PROGRESO_ACREDITACION = `
 `;
 
 /**
- * Estado de una acreditación (requiere SQL_JOIN_PROGRESO_ACREDITACION):
- *   Anulada | Acreditada (nada de comisión/retención aún) | Parcial (algún avance) | Completa.
- * Un ciclo anterior (con factura de comisión en la cabecera) ya nació completo.
+ * Estados de los registros de cobros con tarjeta - son solo 3 y se usan igual en acreditaciones,
+ * cortes y el reporte de Ventas: Pendiente (falta la factura de comisión y/o la retención),
+ * Completa y Anulada. Un ciclo anterior (con factura de comisión en la cabecera) ya nació completo.
+ * Requiere SQL_JOIN_PROGRESO_ACREDITACION.
  */
 const SQL_ESTADO_ACREDITACION = `
     CASE
         WHEN c.anulado_tecdt THEN 'Anulada'
         WHEN c.ide_cpcfa IS NOT NULL OR (prog.pagos_sin_comision = 0 AND prog.pagos_sin_retencion = 0) THEN 'Completa'
-        WHEN prog.pagos_con_avance = 0 THEN 'Acreditada'
-        ELSE 'Parcial'
+        ELSE 'Pendiente'
     END AS estado,
     CASE
         WHEN c.anulado_tecdt THEN 'error'
         WHEN c.ide_cpcfa IS NOT NULL OR (prog.pagos_sin_comision = 0 AND prog.pagos_sin_retencion = 0) THEN 'success'
-        WHEN prog.pagos_con_avance = 0 THEN 'warning'
-        ELSE 'info'
+        ELSE 'warning'
     END AS color_estado,
     prog.pagos_sin_comision,
     prog.pagos_sin_retencion
@@ -339,8 +336,8 @@ export class DevolucionCobroTarjetaService extends BaseService {
      * procesador, incluidos los ciclos anteriores con comisión y retención juntas) y cortes (factura
      * de comisión y/o comprobante de retención). El filtro `tipo` decide qué ramas del UNION
      * aportan filas. El estado de una acreditación se deriva de los documentos que ya cubren sus pagos
-     * (Acreditada / Parcial / Completa / Anulada, ver SQL_ESTADO_ACREDITACION); el de un corte es
-     * Activo/Anulado.
+     * (Pendiente / Completa / Anulada, ver SQL_ESTADO_ACREDITACION); un corte vigente es Completa
+     * (se registra entero) y uno anulado, Anulada.
      */
     async getDevolucionesTarjeta(dtoIn: GetDevolucionesTarjetaDto & HeaderParamsDto) {
         const query = new SelectQuery(`
@@ -396,7 +393,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     NULL::bigint AS ide_tecdt,
                     ct.ide_tecct,
                     ct.anulado_tecct AS anulado,
-                    CASE WHEN ct.anulado_tecct THEN 'Anulado' ELSE 'Activo' END AS estado,
+                    CASE WHEN ct.anulado_tecct THEN 'Anulada' ELSE 'Completa' END AS estado,
                     CASE WHEN ct.anulado_tecct THEN 'error' ELSE 'success' END AS color_estado,
                     NULL::bigint AS pagos_sin_comision,
                     NULL::bigint AS pagos_sin_retencion,
@@ -596,7 +593,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 ct.anulado_tecct,
                 ct.fecha_anula_tecct,
                 ct.motivo_anula_tecct,
-                CASE WHEN ct.anulado_tecct THEN 'Anulado' ELSE 'Activo' END AS estado,
+                CASE WHEN ct.anulado_tecct THEN 'Anulada' ELSE 'Completa' END AS estado,
                 CASE WHEN ct.anulado_tecct THEN 'error' ELSE 'success' END AS color_estado,
                 ct.ide_tecba,
                 cb.nombre_tecba,
@@ -749,15 +746,20 @@ export class DevolucionCobroTarjetaService extends BaseService {
             base AS (
                 SELECT
                     d.*,
+                    -- Mismos estados que las acreditaciones y los cortes (Pendiente / Completa): el pago
+                    -- está completo cuando está acreditado y tiene la comisión y la retención que el
+                    -- Excel de liquidación informó (si no informó retención, no se la exige).
                     CASE
-                        WHEN d.acreditada AND d.con_comision AND d.con_retencion THEN 'Completo'
-                        WHEN NOT d.acreditada AND NOT d.con_comision AND NOT d.con_retencion THEN 'Cobrado'
-                        ELSE 'Parcial'
+                        WHEN d.acreditada
+                             AND (d.con_comision OR COALESCE(d.valor_comision, 0) + COALESCE(d.valor_iva_comision, 0) <= 0)
+                             AND (d.con_retencion OR COALESCE(d.retencion_liquidada, 0) <= 0)
+                        THEN 'Completa' ELSE 'Pendiente'
                     END AS estado,
                     CASE
-                        WHEN d.acreditada AND d.con_comision AND d.con_retencion THEN 'success'
-                        WHEN NOT d.acreditada AND NOT d.con_comision AND NOT d.con_retencion THEN 'default'
-                        ELSE 'warning'
+                        WHEN d.acreditada
+                             AND (d.con_comision OR COALESCE(d.valor_comision, 0) + COALESCE(d.valor_iva_comision, 0) <= 0)
+                             AND (d.con_retencion OR COALESCE(d.retencion_liquidada, 0) <= 0)
+                        THEN 'success' ELSE 'warning'
                     END AS color_estado,
                     -- Neto esperado del pago = cobro - comisión - retención (real si ya hay comprobante,
                     -- si no la del Excel); solo cuando el pago está acreditado y hay valores para calcularlo
