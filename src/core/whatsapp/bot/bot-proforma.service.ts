@@ -434,8 +434,10 @@ export class BotProformaService {
    * stock, que cambia más seguido que el catálogo. Cuando SÍ cambia el catálogo (producto
    * agregado/quitado, activar/desactivar, etc.) no hace falta invalidar acá: la clave usa
    * el mismo prefijo `catalogo:` que ya barre `CatalogosSaveService.invalidateCatalogCache()`
-   * con `KEYS catalogo:*` en cada save/delete/toggle de catálogo — se limpia sola. Si se
-   * cambia este prefijo, hay que revisar esa función para no perder la invalidación cruzada.
+   * con `SCAN catalogo:*` en cada save/delete/toggle de catálogo — se limpia sola. Los
+   * cambios de precio/stock también la borran vía `CatalogosCacheService`
+   * (README-CACHE-CATALOGOS.md). Si se cambia este prefijo, hay que revisar ambas funciones
+   * para no perder la invalidación cruzada.
    */
   async obtenerCatalogosDisponibles(ideEmpr: number): Promise<{
     ide_cata: number;

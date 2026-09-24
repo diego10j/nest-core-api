@@ -14,6 +14,20 @@ import { GetCatalogosDto } from './dto/get-catalogos.dto';
 import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
 import { IdCatalogoDto } from './dto/id-catalogo.dto';
 
+/** Prefijo de la caché del catálogo público. Formato: `catalogo:path:<path>:<ideEmpr>`. */
+export const CATALOGO_PATH_CACHE_PREFIX = 'catalogo:path:';
+
+/**
+ * TTL del catálogo público en Redis (25 h). No es el mecanismo de refresco: los cambios de
+ * precio/stock los aplica CatalogosCacheService (ver README-CACHE-CATALOGOS.md). La TTL solo
+ * es red de seguridad y debe superar al intervalo máximo de p_inv_catalogo_refresco_min (12 h).
+ */
+export const CATALOGO_PATH_CACHE_TTL_SEG = 25 * 60 * 60;
+
+export function catalogoPathCacheKey(path: string, ideEmpr: number) {
+    return `${CATALOGO_PATH_CACHE_PREFIX}${path}:${ideEmpr}`;
+}
+
 @Injectable()
 export class CatalogosService extends BaseService {
     private readonly logger = new Logger(CatalogosService.name);
@@ -314,7 +328,7 @@ export class CatalogosService extends BaseService {
 
     async getCatalogoByPath(dtoIn: GetCatalogoByPathDto) {
         const ideEmpr = dtoIn.ideEmpr && dtoIn.ideEmpr > 0 ? dtoIn.ideEmpr : 0;
-        const cacheKey = `catalogo:path:${dtoIn.path}:${ideEmpr}`;
+        const cacheKey = catalogoPathCacheKey(dtoIn.path, ideEmpr);
 
         try {
             const cached = await this.redis.get(cacheKey);
@@ -337,7 +351,7 @@ export class CatalogosService extends BaseService {
             ).catch(() => {});
 
             try {
-                await this.redis.set(cacheKey, JSON.stringify(result), 'EX', 600);
+                await this.redis.set(cacheKey, JSON.stringify(result), 'EX', CATALOGO_PATH_CACHE_TTL_SEG);
             } catch (err) {
                 this.logger.warn(`Redis set failed for ${cacheKey}`, err);
             }
@@ -348,6 +362,15 @@ export class CatalogosService extends BaseService {
 
     async getCatalogoByPathAuth(dtoIn: GetCatalogoByPathDto & HeaderParamsDto) {
         return this.fetchCatalogoByPath(dtoIn.path, dtoIn.ideEmpr, false);
+    }
+
+    /**
+     * Arma la versión pública de un catálogo (la misma que cachea getCatalogoByPath), sin
+     * leer ni escribir caché ni sumar vistas. La usa CatalogosCacheService para recalcular
+     * y reemplazar la entrada en Redis.
+     */
+    async construirCatalogoPublico(path: string, ideEmpr: number) {
+        return this.fetchCatalogoByPath(path, ideEmpr, true);
     }
 
     private async fetchCatalogoByPath(path: string, ideEmprFilter?: number, publicOnly = false) {
@@ -449,48 +472,34 @@ export class CatalogosService extends BaseService {
                             cdc.unidad_medida_incdc AS unidad_medida,
                             cdc.descripcion_incdc AS descripcion,
                             cdc.orden_incdc AS orden,
-                            COALESCE(cp.precio_fijo_incpa, 0) AS precio_fijo,
-                            cp.incluye_iva_incpa AS incluye_iva,
-                            COALESCE(
-                                ROUND(
-                                    cdc.cantidad_incdc * (
-                                        CASE
-                                            WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
-                                            ELSE cp.precio_fijo_incpa * (1 + COALESCE((
-                                                SELECT porcentaje_cnpim
-                                                FROM con_porcen_impues
-                                                WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-                                                  AND activo_cnpim = TRUE
-                                                ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                            ), 0.15))
-                                        END
-                                    ), 2
-                                ), 0
-                            ) AS precio_final,
+                            COALESCE(pv.precio_venta_sin_iva, 0) AS precio_fijo,
+                            TRUE AS incluye_iva,
+                            COALESCE(ROUND(cdc.cantidad_incdc * pv.precio_venta_con_iva, 2), 0) AS precio_final,
                             fp.nombre_cndfp,
                             cfp.nombre_cncfp
                         FROM inv_cant_det_catalogo cdc
+                        -- Misma regla de precio que proformas/POS: f_calcula_precio_venta resuelve
+                        -- precio fijo o % de utilidad sobre el costo PPMP. Solo se toman columnas de
+                        -- precio de venta: costo y utilidad no deben salir en el catálogo público.
+                        -- Casts explícitos: ide_inarti es bigint y la firma espera int.
+                        -- La función lanza excepción con cantidad <= 0 (abortaría todo el catálogo):
+                        -- se invoca en el target list tras el WHERE, que sí evita la llamada.
                         LEFT JOIN LATERAL (
-                            SELECT *
-                            FROM inv_conf_precios_articulo cp2
-                            WHERE cp2.ide_inarti = d.ide_inarti
-                              AND cp2.activo_incpa = true
-                              AND cp2.autorizado_incpa = true
-                              AND cp2.precio_fijo_incpa IS NOT NULL
-                              AND cp2.precio_fijo_incpa > 0
-                              AND (
-                                  (cp2.rangos_incpa = false AND cp2.rango1_cant_incpa = cdc.cantidad_incdc)
-                                  OR
-                                  (cp2.rangos_incpa = true AND cdc.cantidad_incdc >= cp2.rango1_cant_incpa
-                                   AND (cp2.rango2_cant_incpa IS NULL OR cdc.cantidad_incdc <= cp2.rango2_cant_incpa))
-                              )
-                            ORDER BY
-                                CASE WHEN cp2.rangos_incpa = false THEN 0 ELSE 1 END,
-                                cp2.rango1_cant_incpa
-                            LIMIT 1
-                        ) cp ON true
-                        LEFT JOIN con_deta_forma_pago fp ON cp.ide_cndfp = fp.ide_cndfp
-                        LEFT JOIN con_cabece_forma_pago cfp ON cp.ide_cncfp = cfp.ide_cncfp
+                            SELECT (x.r).precio_venta_sin_iva, (x.r).precio_venta_con_iva, (x.r).forma_pago_config
+                            FROM (
+                                SELECT f_calcula_precio_venta(
+                                    d.ide_inarti::int,
+                                    cdc.cantidad_incdc::numeric,
+                                    NULL::int,
+                                    NULL::numeric,
+                                    ${ideEmpr}::bigint,
+                                    NULL::bigint
+                                ) AS r
+                                WHERE cdc.cantidad_incdc > 0
+                            ) x
+                        ) pv ON true
+                        LEFT JOIN con_deta_forma_pago fp ON pv.forma_pago_config = fp.ide_cndfp
+                        LEFT JOIN con_cabece_forma_pago cfp ON fp.ide_cncfp = cfp.ide_cncfp
                         WHERE cdc.ide_indcat = d.ide_indcat
                           AND cdc.activo_incdc = true
                         ORDER BY cdc.orden_incdc
@@ -611,48 +620,34 @@ export class CatalogosService extends BaseService {
                             cdc.unidad_medida_incdc AS unidad_medida,
                             cdc.descripcion_incdc AS descripcion,
                             cdc.orden_incdc AS orden,
-                            COALESCE(cp.precio_fijo_incpa, 0) AS precio_fijo,
-                            cp.incluye_iva_incpa AS incluye_iva,
-                            COALESCE(
-                                ROUND(
-                                    cdc.cantidad_incdc * (
-                                        CASE
-                                            WHEN cp.incluye_iva_incpa THEN cp.precio_fijo_incpa
-                                            ELSE cp.precio_fijo_incpa * (1 + COALESCE((
-                                                SELECT porcentaje_cnpim
-                                                FROM con_porcen_impues
-                                                WHERE CURRENT_DATE BETWEEN fecha_desde_cnpim AND fecha_fin_cnpim
-                                                  AND activo_cnpim = TRUE
-                                                ORDER BY fecha_desde_cnpim DESC LIMIT 1
-                                            ), 0.15))
-                                        END
-                                    ), 2
-                                ), 0
-                            ) AS precio_final,
+                            COALESCE(pv.precio_venta_sin_iva, 0) AS precio_fijo,
+                            TRUE AS incluye_iva,
+                            COALESCE(ROUND(cdc.cantidad_incdc * pv.precio_venta_con_iva, 2), 0) AS precio_final,
                             fp.nombre_cndfp,
                             cfp.nombre_cncfp
                         FROM inv_cant_det_catalogo cdc
+                        -- Misma regla de precio que proformas/POS: f_calcula_precio_venta resuelve
+                        -- precio fijo o % de utilidad sobre el costo PPMP. Solo se toman columnas de
+                        -- precio de venta: costo y utilidad no deben salir en el catálogo público.
+                        -- Casts explícitos: ide_inarti es bigint y la firma espera int.
+                        -- La función lanza excepción con cantidad <= 0 (abortaría todo el catálogo):
+                        -- se invoca en el target list tras el WHERE, que sí evita la llamada.
                         LEFT JOIN LATERAL (
-                            SELECT *
-                            FROM inv_conf_precios_articulo cp2
-                            WHERE cp2.ide_inarti = d.ide_inarti
-                              AND cp2.activo_incpa = true
-                              AND cp2.autorizado_incpa = true
-                              AND cp2.precio_fijo_incpa IS NOT NULL
-                              AND cp2.precio_fijo_incpa > 0
-                              AND (
-                                  (cp2.rangos_incpa = false AND cp2.rango1_cant_incpa = cdc.cantidad_incdc)
-                                  OR
-                                  (cp2.rangos_incpa = true AND cdc.cantidad_incdc >= cp2.rango1_cant_incpa
-                                   AND (cp2.rango2_cant_incpa IS NULL OR cdc.cantidad_incdc <= cp2.rango2_cant_incpa))
-                              )
-                            ORDER BY
-                                CASE WHEN cp2.rangos_incpa = false THEN 0 ELSE 1 END,
-                                cp2.rango1_cant_incpa
-                            LIMIT 1
-                        ) cp ON true
-                        LEFT JOIN con_deta_forma_pago fp ON cp.ide_cndfp = fp.ide_cndfp
-                        LEFT JOIN con_cabece_forma_pago cfp ON cp.ide_cncfp = cfp.ide_cncfp
+                            SELECT (x.r).precio_venta_sin_iva, (x.r).precio_venta_con_iva, (x.r).forma_pago_config
+                            FROM (
+                                SELECT f_calcula_precio_venta(
+                                    d.ide_inarti::int,
+                                    cdc.cantidad_incdc::numeric,
+                                    NULL::int,
+                                    NULL::numeric,
+                                    ${ideEmpr}::bigint,
+                                    NULL::bigint
+                                ) AS r
+                                WHERE cdc.cantidad_incdc > 0
+                            ) x
+                        ) pv ON true
+                        LEFT JOIN con_deta_forma_pago fp ON pv.forma_pago_config = fp.ide_cndfp
+                        LEFT JOIN con_cabece_forma_pago cfp ON fp.ide_cncfp = cfp.ide_cncfp
                         WHERE cdc.ide_indcat = d.ide_indcat
                           AND cdc.activo_incdc = true
                         ORDER BY cdc.orden_incdc

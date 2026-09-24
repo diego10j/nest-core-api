@@ -17,6 +17,7 @@ import { v4 as uuid } from 'uuid';
 
 import { FilesService } from '../../sistema/files/files.service';
 
+import { CatalogosCacheService } from './catalogos-cache.service';
 import { CatalogosSaveService } from './catalogos-save.service';
 import { CatalogosService } from './catalogos.service';
 import { BuscarCatalogosDto } from './dto/buscar-catalogos.dto';
@@ -25,6 +26,7 @@ import { GetCatalogosDto } from './dto/get-catalogos.dto';
 import { GetTagsCatalogoDto } from './dto/get-tags-catalogo.dto';
 import { IdCatalogoDto } from './dto/id-catalogo.dto';
 import { IdDetCatalogoDto } from './dto/id-det-catalogo.dto';
+import { RefrescarCacheCatalogosDto } from './dto/refrescar-cache-catalogos.dto';
 import { SaveCatalogoDto } from './dto/save-catalogo.dto';
 import { SetActivoCatalogoDto } from './dto/set-activo-catalogo.dto';
 
@@ -37,6 +39,7 @@ export class CatalogosController {
     constructor(
         private readonly service: CatalogosService,
         private readonly saveService: CatalogosSaveService,
+        private readonly cacheService: CatalogosCacheService,
         private readonly filesService: FilesService,
     ) { }
 
@@ -168,6 +171,20 @@ export class CatalogosController {
         @Body() dtoIn: SetActivoCatalogoDto,
     ) {
         return this.saveService.setActivoDetalleCatalogo({ ...h, ...dtoIn });
+    }
+
+    // ─── CACHÉ ────────────────────────────────────────────────────────────────
+
+    @Post('refrescarCacheCatalogos')
+    @ApiOperation({
+        summary: 'Refresca ya la caché de catálogos públicos (pendientes de precio/stock, o todo con todo=true)',
+    })
+    refrescarCacheCatalogos(
+        @Body() dtoIn: RefrescarCacheCatalogosDto,
+    ) {
+        return dtoIn.todo
+            ? this.cacheService.refrescarTodo('manual')
+            : this.cacheService.procesarPendientes('manual');
     }
 
     // ─── UPLOAD IMÁGENES ──────────────────────────────────────────────────────

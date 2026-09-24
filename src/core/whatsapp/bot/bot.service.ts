@@ -1496,6 +1496,21 @@ export class BotService implements OnModuleInit {
       agregarNota(`El cliente mencionó otra cantidad después de la que ya se registró: "${texto.trim()}" — revisar cuál es la correcta.`);
     }
 
+    // Preguntas al asesor a mitad de la recopilación ("¿qué precio tiene el litro?", "¿cuánto
+    // es la cantidad mínima?"): el bot no las responde (el precio depende de la cantidad y la
+    // mínima la confirma el asesor) — se dejan registradas para que el asesor las conteste, y
+    // el cliente recibe el aviso de que se le responderá (ver consultaAsesoramiento). Antes
+    // solo se volvía a preguntar la cantidad, ignorando lo que había preguntado (caso real
+    // detectado 2026-09-24).
+    const preguntaPrecio = REGEX_PIDE_PRECIO.test(texto);
+    const preguntaMinimo = /(cu[aá]nto|cu[aá]l)\s+(es|son|ser[ií]a)\s+(el\s+|la\s+)?(cantidad\s+)?m[ií]nim/i.test(texto);
+    if (preguntaPrecio || preguntaMinimo) {
+      datos = {
+        ...datos,
+        consultaAsesoramiento: [datos.consultaAsesoramiento, `Preguntó: "${texto.trim()}"`].filter(Boolean).join(' | '),
+      };
+    }
+
     // Ciudad NO se pide acá: es un mensaje independiente aparte, después de que cantidad/
     // uso/nombre estén completos (ver preguntarCiudadOFinalizar) — antes se mezclaba con
     // esta pregunta desde el primer mensaje, lo que sonaba a formulario largo en vez de
@@ -1551,7 +1566,11 @@ export class BotService implements OnModuleInit {
 
     if (faltantes.length) {
       await this.botSession.update(sesion.ide_whbse, BotState.RECOPILANDO_COTIZACION_RAPIDA, nuevosDatos);
-      await this.sendText(ideEmpr, waId, `Gracias 🙌 Solo me falta:\n\n${faltantes.join('\n\n')}`);
+      await this.sendText(ideEmpr, waId,
+        preguntaPrecio
+          ? `El precio depende de la cantidad 😊 Cuéntame:\n\n${faltantes.join('\n\n')}`
+          : `Gracias 🙌 Solo me falta:\n\n${faltantes.join('\n\n')}`,
+      );
       return;
     }
 

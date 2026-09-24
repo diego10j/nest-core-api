@@ -34,4 +34,13 @@ export const INVENTARIO_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.INVENTARIO.ID,
+    nom_para: 'p_inv_catalogo_refresco_min',
+    descripcion_para:
+      'Minutos entre cada refresco de la caché de catálogos públicos con cambios de precio o stock (inv_catalogo_pendiente). Rango 1-720',
+    valor_para: '30',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

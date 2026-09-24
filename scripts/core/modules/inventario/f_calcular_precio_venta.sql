@@ -100,8 +100,16 @@ BEGIN
     WHERE ide_inarti = p_ide_inarti 
       AND activo_incpa = TRUE
       AND rangos_incpa = FALSE 
-      AND rango1_cant_incpa = p_cantidad 
+      AND rango1_cant_incpa = p_cantidad
       AND rango2_cant_incpa IS NULL
+      -- Solo configuraciones con precio fijo válido o % de utilidad: una fila exacta
+      -- sin ninguno de los dos (la validación permite precio_fijo = 0) se salta y la
+      -- búsqueda sigue con las prioridades 2-4, en vez de lanzar una excepción que
+      -- aborta consultas completas (p. ej. el catálogo, que calcula muchos precios a la vez).
+      AND (
+          (precio_fijo_incpa IS NOT NULL AND precio_fijo_incpa > 0)
+          OR porcentaje_util_incpa IS NOT NULL
+      )
       -- Filtro de forma de pago CORREGIDO
       AND (
           -- Si se especifica forma de pago, buscar solo esa o genéricas (NULL)
@@ -119,21 +127,29 @@ BEGIN
     LIMIT 1;
 
     IF FOUND THEN
-        -- Validar que tenga precio fijo configurado
-        IF v_rango.precio_fijo_incpa IS NULL OR v_rango.precio_fijo_incpa <= 0 THEN
-            RAISE EXCEPTION 'Configuración exacta encontrada pero sin precio fijo válido';
+        IF v_rango.precio_fijo_incpa IS NOT NULL AND v_rango.precio_fijo_incpa > 0 THEN
+            -- PRECIO FIJO EXACTO (comportamiento original, sin cambios)
+            precio_venta_sin_iva := v_rango.precio_fijo_incpa;
+
+            IF v_rango.incluye_iva_incpa THEN
+                precio_venta_con_iva := ROUND(precio_venta_sin_iva, 2);
+                precio_venta_sin_iva := ROUND(precio_venta_con_iva / (1 + v_iva_factor), 4);
+            ELSE
+                precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
+            END IF;
+
+            porcentaje_utilidad := ROUND(((precio_venta_sin_iva - v_precio_compra) / v_precio_compra) * 100, 2);
+            tipo_configuracion := 'PRECIO_FIJO_EXACTO';
+        ELSE
+            -- PORCENTAJE DE UTILIDAD sobre cantidad exacta: mismo cálculo que la prioridad 2.
+            -- Se reutiliza el tipo 'PORCENTAJE' (no uno nuevo) porque la calculadora de
+            -- precios del ERP (calcular-precios-dialog.tsx) decide qué mostrar según este valor.
+            porcentaje_utilidad := v_rango.porcentaje_util_incpa;
+            precio_venta_sin_iva := ROUND(v_precio_compra * (1 + porcentaje_utilidad / 100), 4);
+            precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
+            tipo_configuracion := 'PORCENTAJE';
         END IF;
 
-        precio_venta_sin_iva := v_rango.precio_fijo_incpa;
-        
-        IF v_rango.incluye_iva_incpa THEN
-            precio_venta_con_iva := ROUND(precio_venta_sin_iva, 2);
-            precio_venta_sin_iva := ROUND(precio_venta_con_iva / (1 + v_iva_factor), 4);
-        ELSE
-            precio_venta_con_iva := ROUND(precio_venta_sin_iva * (1 + v_iva_factor), 2);
-        END IF;
-        
-        porcentaje_utilidad := ROUND(((precio_venta_sin_iva - v_precio_compra) / v_precio_compra) * 100, 2);
         utilidad := ROUND(precio_venta_sin_iva - v_precio_compra, 2);
         utilidad_neta := ROUND(utilidad * p_cantidad, 2);
         porcentaje_utilidad_real := ROUND((utilidad / v_precio_compra) * 100, 2);
@@ -143,7 +159,6 @@ BEGIN
         porcentaje_iva := v_iva;
         valor_total_con_iva := ROUND(p_cantidad * precio_venta_con_iva, 2);
         forma_pago_config := v_rango.ide_cndfp;
-        tipo_configuracion := 'PRECIO_FIJO_EXACTO';
         rango_aplicado := '= ' || f_decimales(v_rango.rango1_cant_incpa, v_decim_stock_inarti);
         configuracion_prioridad := 1;
         

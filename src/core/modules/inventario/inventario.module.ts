@@ -9,6 +9,7 @@ import { FilesService } from '../sistema/files/files.service';
 
 import { BodegasController } from './bodegas/bodegas.controller';
 import { BodegasService } from './bodegas/bodegas.service';
+import { CatalogosCacheService } from './catalogos/catalogos-cache.service';
 import { CatalogosSaveService } from './catalogos/catalogos-save.service';
 import { CatalogosController } from './catalogos/catalogos.controller';
 import { CatalogosService } from './catalogos/catalogos.service';
@@ -52,6 +53,7 @@ import { ProductosService } from './productos/productos.service';
     EtiquetasSaveService,
     CatalogosService,
     CatalogosSaveService,
+    CatalogosCacheService,
     FilesService,
     FileTempService,
     HtmlProductService,

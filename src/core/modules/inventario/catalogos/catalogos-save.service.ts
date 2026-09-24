@@ -32,12 +32,22 @@ export class CatalogosSaveService extends BaseService {
      * con stock que usa el modo mensajes reducidos). Están acoplados solo por convención
      * de nombre — si se cambia el prefijo de una de las dos claves, hay que actualizar
      * la otra para no romper esta invalidación cruzada.
+     *
+     * Aquí se borra (no se recalcula) porque cambió la estructura del catálogo: la siguiente
+     * petición lo arma de nuevo. Los cambios de precio/stock los recalcula
+     * CatalogosCacheService (README-CACHE-CATALOGOS.md). SCAN en lugar de KEYS: no bloquea Redis.
      */
     private async invalidateCatalogCache() {
         try {
-            const keys = await this.redis.keys('catalogo:*');
+            const keys: string[] = [];
+            let cursor = '0';
+            do {
+                const [next, batch] = await this.redis.scan(cursor, 'MATCH', 'catalogo:*', 'COUNT', 200);
+                cursor = next;
+                keys.push(...batch);
+            } while (cursor !== '0');
             if (keys.length > 0) {
-                await this.redis.del(...keys);
+                await this.redis.del(...new Set(keys));
             }
         } catch (err) {
             this.logger.warn('Failed to invalidate catalog cache', err);
