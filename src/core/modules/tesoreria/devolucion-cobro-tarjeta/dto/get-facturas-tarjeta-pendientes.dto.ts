@@ -1,8 +1,8 @@
-import { IsDateString, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 /**
- * Filtro para listar facturas de venta cobradas con una cuenta de tarjeta que aún no están
- * cubiertas por ningún ciclo de Devolución de Cobros con Tarjeta (ver
+ * Filtro para listar los pagos (facturas de venta cobradas con una cuenta de tarjeta) que aún
+ * tienen algo por registrar: su acreditación o su corte (ver
  * DevolucionCobroTarjetaService.getFacturasTarjetaPendientes).
  */
 export class GetFacturasTarjetaPendientesDto {
@@ -18,4 +18,11 @@ export class GetFacturasTarjetaPendientesDto {
     @IsDateString()
     @IsOptional()
     fechaHasta?: string;
+}
+
+/** Números de liquidación del procesador (separados por coma) a verificar antes de registrarlos */
+export class GetLiquidacionesRegistradasDto {
+    @IsString()
+    @IsNotEmpty()
+    numeros: string;
 }

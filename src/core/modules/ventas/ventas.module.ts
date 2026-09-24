@@ -68,6 +68,6 @@ import { TransportesService } from './transportes/transportes.service';
     RetencionVentaXmlService,
     RetencionVentaSaveService,
   ],
-  exports: [FacturasService, FacturasSaveService],
+  exports: [FacturasService, FacturasSaveService, RetencionVentaSaveService],
 })
 export class VentasModule { }

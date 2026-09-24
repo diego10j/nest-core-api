@@ -470,8 +470,12 @@ export class RetencionVentaSaveService extends BaseService {
      * Anula un comprobante de retención de venta: cambia su estado, desvincula TODAS las
      * facturas que amparaba (puede ser más de una - ver saveRetencionLote) y elimina sus
      * transacciones CxC de retención para restituir el saldo por cobrar de cada una.
+     *
+     * Un comprobante contabilizado en un ciclo o en un corte de tarjeta no se puede anular desde
+     * aquí (primero se anula ese registro); `desdeCorteTarjeta` lo usa el propio corte, que ya
+     * reversa su contabilización y anula el comprobante como parte de su anulación.
      */
-    async anularRetencion(dtoIn: AnularRetencionVentaDto & HeaderParamsDto) {
+    async anularRetencion(dtoIn: AnularRetencionVentaDto & HeaderParamsDto, desdeCorteTarjeta = false) {
         const qRet = new SelectQuery(`
             SELECT ide_cncre FROM ${TABLE_RET_CAB} WHERE ide_cncre = $1 AND es_venta_cncre = TRUE
         `);
@@ -481,13 +485,9 @@ export class RetencionVentaSaveService extends BaseService {
             throw new BadRequestException(`El comprobante de retención ide_cncre=${dtoIn.ide_cncre} no existe.`);
         }
 
-        const qCiclo = new SelectQuery(`
-            SELECT 1 AS existe FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_cncre = $1 LIMIT 1
-        `);
-        qCiclo.addIntParam(1, dtoIn.ide_cncre);
-        if (await this.dataSource.createSingleQuery(qCiclo)) {
+        if (await this.estaContabilizadaEnTarjeta(dtoIn.ide_cncre, desdeCorteTarjeta)) {
             throw new BadRequestException(
-                'El comprobante ya fue contabilizado en una devolución de cobros con tarjeta. Anule primero esa devolución.',
+                'El comprobante ya fue contabilizado en un corte o una devolución de cobros con tarjeta. Anule primero ese registro.',
             );
         }
 
@@ -580,13 +580,9 @@ export class RetencionVentaSaveService extends BaseService {
                 }
                 // Ya contabilizado en un ciclo: cambiar sus valores descuadraría la nota de débito
                 // y el asiento ya generados frente al neto esperado del ciclo.
-                const qCiclo = new SelectQuery(
-                    `SELECT 1 AS existe FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_cncre = $1 LIMIT 1`,
-                );
-                qCiclo.addIntParam(1, dtoIn.ide_cncre);
-                if (await this.dataSource.createSingleQuery(qCiclo)) {
+                if (await this.estaContabilizadaEnTarjeta(dtoIn.ide_cncre)) {
                     throw new BadRequestException(
-                        'El comprobante ya está aplicado a una devolución de cobros con tarjeta: no se pueden editar sus valores. Anule primero esa devolución.',
+                        'El comprobante ya está contabilizado en un corte o una devolución de cobros con tarjeta: no se pueden editar sus valores. Anule primero ese registro.',
                     );
                 }
             }
@@ -739,6 +735,19 @@ export class RetencionVentaSaveService extends BaseService {
     private valorDetalle(det: DetalleRetencionVentaDto): number {
         if (isDefined(det.valor_cndre)) return Number(Number(det.valor_cndre).toFixed(2));
         return Number(((Number(det.base_cndre) * Number(det.porcentaje_cndre)) / 100).toFixed(2));
+    }
+
+    /** ¿El comprobante ya se contabilizó en un ciclo anterior o en un corte vigente de tarjeta? */
+    private async estaContabilizadaEnTarjeta(ideCncre: number, omitirCorte = false): Promise<boolean> {
+        const q = new SelectQuery(`
+            SELECT 1 AS existe FROM tes_det_devol_cobro_tarjeta_ret WHERE ide_cncre = $1
+            UNION ALL
+            SELECT 1 FROM tes_cab_corte_tarjeta WHERE ide_cncre = $1 AND anulado_tecct = FALSE AND $2::boolean = FALSE
+            LIMIT 1
+        `);
+        q.addIntParam(1, ideCncre);
+        q.addParam(2, omitirCorte);
+        return !!(await this.dataSource.createSingleQuery(q));
     }
 
     private async validarAntiDuplicado(autorizacion: string, numero: string) {

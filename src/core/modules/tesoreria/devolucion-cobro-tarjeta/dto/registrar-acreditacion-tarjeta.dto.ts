@@ -13,26 +13,53 @@ import {
     ValidateNested,
 } from 'class-validator';
 
-/** Una factura de venta cobrada con tarjeta cubierta por este ciclo de devolución */
-export class FacturaCubiertaDevolucionDto {
+/**
+ * Un pago (factura de venta cobrada con tarjeta) que cubre una acreditación, con los valores que
+ * el procesador aplicó según su Excel de liquidación. Si no se cargó el Excel solo viaja `valor`.
+ */
+export class PagoAcreditadoDto {
     /** FK → cxc_cabece_factura */
     @IsInt()
     @IsNotEmpty()
     ide_cccfa: number;
 
-    /** Valor cobrado con tarjeta de esta factura (para el cálculo del neto y la trazabilidad) */
+    /** Valor bruto cobrado con tarjeta de esta factura */
     @IsNumber()
     @Min(0.01)
     @IsNotEmpty()
     valor: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    comision?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    ivaComision?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    retIva?: number;
+
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    retRenta?: number;
+
+    /** Número de liquidación del procesador (trazabilidad) */
+    @IsString()
+    @IsOptional()
+    numeroLiquidacion?: string;
 }
 
 /**
  * Comprobante de la transferencia bancaria real del neto a la cuenta destino. `fotoTeincb` es
  * el nombre de archivo devuelto por POST tesoreria/comprobante-banco/uploadComprobante (subido
- * antes de Finalizar); el resto de campos son los detectados por OCR/IA
- * (procesarImagenTransferencia/procesarImagenTransferenciaGpt) y confirmados/corregidos por el
- * usuario en el wizard.
+ * antes de registrar); el resto de campos son los detectados por OCR/IA
+ * (procesarImagenTransferencia/procesarImagenTransferenciaGpt) y confirmados por el usuario.
  */
 export class ComprobanteTransferenciaDevolucionDto {
     @IsString()
@@ -90,20 +117,17 @@ export class ComprobanteTransferenciaDevolucionDto {
 }
 
 /**
- * Payload único del botón "Finalizar" del wizard de Devolución de Cobros con Tarjeta - todo el
- * ciclo (pago de la comisión, retención opcional, transferencia del neto y trazabilidad) se
- * ejecuta en una sola llamada atómica (ver DevolucionCobroTarjetaSaveService.finalizar).
- *
- * La factura de comisión (`ideCpcfa`) NO se crea aquí - el frontend la guarda ANTES de llamar a
- * este endpoint (CrearFacturaCxPDialog, Compras). La retención tampoco viaja en el payload: se
- * registra aparte sobre las facturas de venta que ampara y aquí se toma de las facturas del ciclo.
+ * Registro de UNA acreditación del procesador de tarjeta (una transferencia del neto a la cuenta
+ * real, que cubre 1..N pagos): mueve el neto desde la cuenta de tarjeta y guarda la trazabilidad.
+ * La comisión y la retención NO viajan aquí: llegan en los cortes del procesador y se registran
+ * aparte (ver RegistrarCorteTarjetaDto), en cualquier orden.
  */
-export class FinalizarDevolucionTarjetaDto {
+export class RegistrarAcreditacionTarjetaDto {
     @IsDateString()
     @IsNotEmpty()
     fecha: string;
 
-    /** FK → tes_cuenta_banco (cuenta del procesador de tarjeta, origen, bloqueada en el wizard) */
+    /** FK → tes_cuenta_banco (cuenta del procesador de tarjeta, origen) */
     @IsInt()
     @IsNotEmpty()
     ideTecba: number;
@@ -113,7 +137,7 @@ export class FinalizarDevolucionTarjetaDto {
     @IsNotEmpty()
     ideTecbaDestino: number;
 
-    /** FK → gen_persona (proveedor/procesador que factura la comisión, ej. Bendo) */
+    /** FK → gen_persona (procesador de tarjeta, ej. Bendo) */
     @IsInt()
     @IsNotEmpty()
     ideGeper: number;
@@ -121,13 +145,8 @@ export class FinalizarDevolucionTarjetaDto {
     @IsArray()
     @ArrayNotEmpty()
     @ValidateNested({ each: true })
-    @Type(() => FacturaCubiertaDevolucionDto)
-    facturas: FacturaCubiertaDevolucionDto[];
-
-    /** FK → cxp_cabece_factur, factura de comisión ya guardada (XML nuevo o ya cargada por Compras) */
-    @IsInt()
-    @IsNotEmpty()
-    ideCpcfa: number;
+    @Type(() => PagoAcreditadoDto)
+    facturas: PagoAcreditadoDto[];
 
     @ValidateNested()
     @Type(() => ComprobanteTransferenciaDevolucionDto)

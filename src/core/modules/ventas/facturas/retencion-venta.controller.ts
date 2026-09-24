@@ -10,7 +10,6 @@ import {
     AnularRetencionVentaDto,
     EditarRetencionVentaDto,
     SaveRetencionVentaDto,
-    SaveRetencionVentaLoteDto,
 } from './dto/save-retencion-venta.dto';
 import { RetencionVentaSaveService } from './retencion-venta-save.service';
 import { RetencionVentaXmlService } from './retencion-venta-xml.service';
@@ -62,18 +61,6 @@ export class RetencionVentaController {
         @Body() dtoIn: SaveRetencionVentaDto,
     ) {
         return this.saveService.saveRetencion({ ...headersParams, ...dtoIn });
-    }
-
-    @Post('saveRetencionLote')
-    @Auth()
-    @ApiOperation({
-        summary: 'Registrar un comprobante de retención de tarjeta que ampara varias facturas de venta de un mismo depósito, distribuyendo Renta/IVA entre ellas',
-    })
-    saveRetencionLote(
-        @AppHeaders() headersParams: HeaderParamsDto,
-        @Body() dtoIn: SaveRetencionVentaLoteDto,
-    ) {
-        return this.saveService.saveRetencionLote({ ...headersParams, ...dtoIn });
     }
 
     @Post('anularRetencion')

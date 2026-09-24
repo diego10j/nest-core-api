@@ -845,8 +845,11 @@ export class ContabilidadService extends BaseService {
                     SELECT SUM(d.valor_cndre) FROM con_detall_retenc d
                     WHERE d.ide_cncre = a.ide_cncre
                 ), 0) AS total_retenido,
-                EXISTS (
-                    SELECT 1 FROM tes_det_devol_cobro_tarjeta_ret t WHERE t.ide_cncre = a.ide_cncre
+                (
+                    EXISTS (SELECT 1 FROM tes_det_devol_cobro_tarjeta_ret t WHERE t.ide_cncre = a.ide_cncre)
+                    OR EXISTS (
+                        SELECT 1 FROM tes_cab_corte_tarjeta ct WHERE ct.ide_cncre = a.ide_cncre AND ct.anulado_tecct = FALSE
+                    )
                 ) AS es_pago_tarjeta
             FROM con_cabece_retenc a
             ${joinDocumento}
