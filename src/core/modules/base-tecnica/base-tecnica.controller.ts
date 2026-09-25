@@ -1,22 +1,19 @@
-import { Body, Controller, Get, HttpStatus, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
-import { BdtChatService } from './bdt-chat.service';
 import { BdtDatosService } from './bdt-datos.service';
 import { BdtProcesoService } from './bdt-proceso.service';
-import { BuscarProductosBdtDto } from './dto/buscar-productos-bdt.dto';
-import { CalificarConsultaDto } from './dto/calificar-consulta.dto';
-import { ChatBaseTecnicaDto } from './dto/chat-base-tecnica.dto';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
 import { IdeProcesoDto } from './dto/ide-proceso.dto';
+import { IdesDocumentosDto } from './dto/ides-documentos.dto';
 import { ProcesarProductoDto } from './dto/procesar-producto.dto';
 import { RevisarDocumentoDto } from './dto/revisar-documento.dto';
 import { SetVigenteOrigenDto } from './dto/set-vigente-origen.dto';
 import { UuidArchivoDto } from './dto/uuid-archivo.dto';
+import { UuidsArchivosDto } from './dto/uuids-archivos.dto';
 
 @ApiTags('BaseTecnica')
 @Controller('base-tecnica')
@@ -24,7 +21,6 @@ export class BaseTecnicaController {
   constructor(
     private readonly proceso: BdtProcesoService,
     private readonly datos: BdtDatosService,
-    private readonly chat: BdtChatService,
   ) {}
 
   // ------------------------------------------------------------------ procesamiento
@@ -42,7 +38,7 @@ export class BaseTecnicaController {
   @Post('extraerArchivo')
   @ApiOperation({
     summary:
-      'Extrae o vuelve a extraer UN adjunto (botón del diálogo "Ver texto"). Síncrono: responde con el ' +
+      'Extrae o vuelve a extraer UN adjunto (tab Datos técnicos: "Extraer" / "Volver a extraer"). Síncrono: responde con el ' +
       'documento resultante (ide_bddoc, estado, tipo).',
   })
   extraerArchivo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UuidArchivoDto) {
@@ -53,6 +49,29 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Elimina la extracción de un documento de la base técnica (el adjunto no se toca)' })
   eliminarExtraccion(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeDocumentoDto) {
     return this.proceso.eliminarExtraccion({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('eliminarExtracciones')
+  @ApiOperation({ summary: 'Elimina varias extracciones (al borrar sus adjuntos desde el explorador de archivos)' })
+  async eliminarExtracciones(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdesDocumentosDto) {
+    let eliminados = 0;
+    for (const ide_bddoc of dtoIn.ides_bddoc) {
+      // Uno ya eliminado (doble clic, otra pestaña) no debe cortar la limpieza del resto.
+      const ok = await this.proceso
+        .eliminarExtraccion({ ...headersParams, ide_bddoc })
+        .then(() => true)
+        .catch(() => false);
+      if (ok) eliminados++;
+    }
+    return { message: 'ok', eliminados };
+  }
+
+  @Post('getDocumentosPorArchivos')
+  @ApiOperation({
+    summary: 'Documentos de la base técnica de los adjuntos/carpetas indicados (confirmación antes de eliminar archivos)',
+  })
+  getDocumentosPorArchivos(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: UuidsArchivosDto) {
+    return this.datos.getDocumentosPorArchivos({ ...headersParams, ...dtoIn });
   }
 
   @Get('getProceso')
@@ -79,12 +98,6 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Documento completo: texto original, traducción, valores y secciones' })
   getDocumento(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeDocumentoDto) {
     return this.datos.getDocumento({ ...headersParams, ...dtoIn });
-  }
-
-  @Get('getDocumentoPorArchivo')
-  @ApiOperation({ summary: 'Documento técnico generado desde un adjunto (Ver texto del explorador de archivos)' })
-  getDocumentoPorArchivo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: UuidArchivoDto) {
-    return this.datos.getDocumentoPorArchivo({ ...headersParams, ...dtoIn });
   }
 
   @Get('getValores')
@@ -121,41 +134,5 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Marcar el origen (fabricante/grado) que se comercializa actualmente' })
   setVigenteOrigen(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SetVigenteOrigenDto) {
     return this.datos.setVigenteOrigen({ ...headersParams, ...dtoIn });
-  }
-
-  // ------------------------------------------------------------------ chat QuimIA
-
-  @Post('buscarProductos')
-  @ApiOperation({ summary: 'Productos con base técnica (selector "Cambiar producto" del chat)' })
-  buscarProductos(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: BuscarProductosBdtDto) {
-    return this.chat.buscarProductos({ ...headersParams, ...dtoIn });
-  }
-
-  @Post('chat')
-  @ApiOperation({
-    summary:
-      'Chat QuimIA sobre la base técnica. Responde NDJSON por eventos: producto, seleccion, sugerir_cambio, ' +
-      'delta, citas, sin_respuesta, sin_producto, aviso_ia, error, fin.',
-  })
-  async chatBaseTecnica(
-    @AppHeaders() headersParams: HeaderParamsDto,
-    @Body() dtoIn: ChatBaseTecnicaDto,
-    @Res() res: Response,
-  ) {
-    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.status(HttpStatus.OK);
-
-    await this.chat.responder({ ...headersParams, ...dtoIn }, (evento) => {
-      if (!res.writableEnded) res.write(`${JSON.stringify(evento)}\n`);
-    });
-    res.end();
-  }
-
-  @Post('calificarConsulta')
-  @ApiOperation({ summary: 'Feedback 👍/👎 de una respuesta del chat' })
-  calificarConsulta(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: CalificarConsultaDto) {
-    return this.chat.calificarConsulta({ ...headersParams, ...dtoIn });
   }
 }

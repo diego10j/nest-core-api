@@ -3,12 +3,13 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { BdtProcesoService, calcularHuella } from './bdt-proceso.service';
+import { BDT_CONFIG } from './constants/base-tecnica.constants';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
 import { IdeProcesoDto } from './dto/ide-proceso.dto';
 import { RevisarDocumentoDto } from './dto/revisar-documento.dto';
 import { SetVigenteOrigenDto } from './dto/set-vigente-origen.dto';
-import { UuidArchivoDto } from './dto/uuid-archivo.dto';
+import { UuidsArchivosDto } from './dto/uuids-archivos.dto';
 
 const lista = (rows: any[]) => ({ rowCount: rows.length, rows });
 
@@ -22,10 +23,11 @@ export class BdtDatosService {
 
   /**
    * Estado de la base técnica del producto + si hay adjuntos nuevos/modificados sin procesar
-   * (compara la huella actual de los adjuntos con la del último proceso).
+   * (compara la huella actual de los adjuntos con la del último proceso) + la lista de adjuntos
+   * que nunca se extrajeron (para extraerlos uno a uno desde el tab Datos técnicos).
    */
   async getResumenProducto(dto: IdeInartiDto & HeaderParamsDto) {
-    const [resumen, archivos, ultimaCorrida] = await Promise.all([
+    const [resumen, archivos, ultimaCorrida, extraidos] = await Promise.all([
       this.dataSource.pool.query(`SELECT * FROM bdt_producto WHERE ide_inarti = $1 AND ide_empr = $2`, [
         dto.ide_inarti,
         dto.ideEmpr,
@@ -37,15 +39,51 @@ export class BdtDatosService {
            FROM bdt_proceso WHERE ide_inarti = $1 AND ide_empr = $2 ORDER BY ide_bdrun DESC LIMIT 1`,
         [dto.ide_inarti, dto.ideEmpr],
       ),
+      this.dataSource.pool.query(
+        `SELECT uuid_origen_bddoc::text AS uuid FROM bdt_documento WHERE ide_inarti = $1 AND ide_empr = $2`,
+        [dto.ide_inarti, dto.ideEmpr],
+      ),
     ]);
     const producto = resumen.rows[0] ?? null;
     const huellaActual = calcularHuella(archivos);
+    const uuidsExtraidos = new Set(extraidos.rows.map((r) => r.uuid));
+    const archivosSinExtraer = archivos
+      .filter((a) => BDT_CONFIG.EXTENSIONES_SOPORTADAS.includes((a.nombre.split('.').pop() || '').toLowerCase()))
+      .filter((a) => !uuidsExtraidos.has(a.uuid))
+      .map(({ uuid, nombre, ruta, peso }) => ({ uuid, nombre, ruta, peso }));
     return {
       producto,
       totalAdjuntos: archivos.length,
+      archivosSinExtraer,
       hayCambiosSinProcesar: archivos.length > 0 && producto?.huella_archivos_bdprd !== huellaActual,
       ultimaCorrida: ultimaCorrida.rows[0] ?? null,
     };
+  }
+
+  /**
+   * Documentos de la base técnica generados desde los adjuntos indicados — si alguno es carpeta,
+   * incluye todo su contenido (subcarpetas). Lo usa el explorador de archivos ANTES de eliminar,
+   * para pedir confirmación y luego borrar también esas extracciones.
+   */
+  async getDocumentosPorArchivos(dto: UuidsArchivosDto & HeaderParamsDto) {
+    const r = await this.dataSource.pool.query(
+      `WITH RECURSIVE arbol AS (
+          SELECT ide_arch, uuid, carpeta_arch, 1 AS nivel
+            FROM sis_archivo WHERE uuid = ANY($1::uuid[]) AND ide_empr = $2
+          UNION ALL
+          SELECT h.ide_arch, h.uuid, h.carpeta_arch, a.nivel + 1
+            FROM sis_archivo h JOIN arbol a ON h.sis_ide_arch = a.ide_arch AND a.carpeta_arch = TRUE
+           WHERE a.nivel < 20
+       )
+       SELECT d.ide_bddoc, d.nombre_original_bddoc, d.tipo_bddoc, d.ide_inarti, p.nombre_bdprd
+         FROM bdt_documento d
+         LEFT JOIN bdt_producto p ON p.ide_inarti = d.ide_inarti
+        WHERE d.ide_empr = $2
+          AND d.uuid_origen_bddoc IN (SELECT uuid FROM arbol UNION SELECT unnest($1::uuid[]))
+        ORDER BY d.nombre_original_bddoc`,
+      [dto.uuids, dto.ideEmpr],
+    );
+    return lista(r.rows);
   }
 
   async getProceso(dto: IdeProcesoDto & HeaderParamsDto) {
@@ -77,20 +115,6 @@ export class BdtDatosService {
       [dto.ide_inarti, dto.ideEmpr],
     );
     return lista(r.rows);
-  }
-
-  /**
-   * Documento técnico generado a partir de un adjunto ("Ver texto" en el explorador de archivos).
-   * ide_bddoc = null si el archivo todavía no se ha procesado.
-   */
-  async getDocumentoPorArchivo(dto: UuidArchivoDto & HeaderParamsDto) {
-    const r = await this.dataSource.pool.query(
-      `SELECT ide_bddoc, estado_bddoc, tipo_bddoc FROM bdt_documento
-        WHERE uuid_origen_bddoc = $1::uuid AND ide_empr = $2
-        ORDER BY fecha_proceso_bddoc DESC NULLS LAST LIMIT 1`,
-      [dto.uuid, dto.ideEmpr],
-    );
-    return r.rows[0] ?? { ide_bddoc: null };
   }
 
   /** Documento completo para la vista de revisión: texto original, traducción, valores y secciones. */

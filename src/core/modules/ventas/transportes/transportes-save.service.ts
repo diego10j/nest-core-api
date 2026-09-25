@@ -32,6 +32,13 @@ import {
  * envío cuando se le borra la imagen de guía, para que quede pendiente de subir una nueva. */
 const ESTADO_ENVIO_PENDIENTE = 1;
 
+/** Destinatario de la guía en mayúsculas y sin espacios repetidos (mismo formato que nom_geper),
+ * para que la búsqueda en Registrar Envíos no dependa de cómo se tipeó. Vacío -> undefined. */
+function normalizarDestinatario(value: string | null | undefined): string | undefined {
+    const limpio = value?.replace(/\s+/g, ' ').trim().toUpperCase();
+    return limpio || undefined;
+}
+
 @Injectable()
 export class TransportesSaveService extends BaseService {
     private readonly logger = new Logger(TransportesSaveService.name);
@@ -225,6 +232,7 @@ export class TransportesSaveService extends BaseService {
         setIfDefined('fecha_fin_cctfa', dtoIn.fecha_fin_cctfa, null);
         setIfDefined('fecha_fin_real_cctfa', dtoIn.fecha_fin_real_cctfa, null);
         setIfDefined('path_imagen_guia_cctfa', dtoIn.path_imagen_guia_cctfa, null);
+        setIfDefined('destinatario_guia_cctfa', normalizarDestinatario(dtoIn.destinatario_guia_cctfa), null);
         setIfDefined('base_flete_cctfa', dtoIn.base_flete_cctfa, 0);
         setIfDefined('valor_iva_flete_cctfa', dtoIn.valor_iva_flete_cctfa, 0);
         setIfDefined('total_flete_cctfa', dtoIn.total_flete_cctfa, 0);
@@ -311,9 +319,13 @@ export class TransportesSaveService extends BaseService {
         if (actual.rows.length === 0) {
             throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
         }
+        // COALESCE: si no viene destinatario (o viene vacío) se conserva el que ya tenía.
         await this.dataSource.pool.query(
-            `UPDATE cxc_transporte_factura SET path_imagen_guia_cctfa = $1 WHERE ide_cctfa = $2`,
-            [dtoIn.path_imagen_guia_cctfa, dtoIn.ide_cctfa],
+            `UPDATE cxc_transporte_factura
+                SET path_imagen_guia_cctfa = $1,
+                    destinatario_guia_cctfa = COALESCE($2, destinatario_guia_cctfa)
+              WHERE ide_cctfa = $3`,
+            [dtoIn.path_imagen_guia_cctfa, normalizarDestinatario(dtoIn.destinatario_guia_cctfa) ?? null, dtoIn.ide_cctfa],
         );
         this.eliminarArchivoImagenEnvio(actual.rows[0].path_imagen_guia_cctfa);
         return { message: 'ok' };
@@ -341,12 +353,26 @@ export class TransportesSaveService extends BaseService {
 
     async completarEnvio(dtoIn: CompletarEnvioDto & HeaderParamsDto) {
         const current = await this.dataSource.pool.query(
-            `SELECT ide_cceen, ide_cccfa FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
+            `SELECT ide_cceen, ide_cccfa, es_transporte_propio_cctfa, destinatario_guia_cctfa
+               FROM cxc_transporte_factura WHERE ide_cctfa = $1`,
             [dtoIn.ide_cctfa],
         );
 
         if (current.rows.length === 0) {
             throw new BadRequestException(`Envío ide_cctfa=${dtoIn.ide_cctfa} no encontrado`);
+        }
+
+        // Envío por transporte externo: el destinatario de la guía es obligatorio - es el nombre
+        // con el que llega la factura del transportista y sin él no se puede identificar a qué
+        // factura de venta corresponde el envío en Registrar Envíos (la guía puede ir a nombre
+        // de otra persona distinta al cliente facturado).
+        const destinatario = normalizarDestinatario(dtoIn.destinatario_guia_cctfa);
+        if (
+            current.rows[0].es_transporte_propio_cctfa !== true &&
+            !destinatario &&
+            !normalizarDestinatario(current.rows[0].destinatario_guia_cctfa)
+        ) {
+            throw new BadRequestException('Ingrese el nombre del destinatario que figura en la guía de envío');
         }
 
         const setClauses: string[] = [];
@@ -363,6 +389,9 @@ export class TransportesSaveService extends BaseService {
 
         if (dtoIn.path_imagen_guia_cctfa !== undefined) {
             setClauses.push(`path_imagen_guia_cctfa = $${addParam(dtoIn.path_imagen_guia_cctfa)}`);
+        }
+        if (destinatario) {
+            setClauses.push(`destinatario_guia_cctfa = $${addParam(destinatario)}`);
         }
         if (dtoIn.fecha_fin_cctfa !== undefined) {
             setClauses.push(`fecha_fin_cctfa = $${addParam(dtoIn.fecha_fin_cctfa)}`);

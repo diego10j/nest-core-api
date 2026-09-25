@@ -303,10 +303,11 @@ CREATE INDEX IF NOT EXISTS idx_bdt_sin_trgm ON bdt_sinonimo USING GIN (sinonimo_
 CREATE TABLE IF NOT EXISTS bdt_consulta (
     ide_bdcon           SERIAL PRIMARY KEY,
     ide_inarti          INTEGER REFERENCES inv_articulo(ide_inarti),
-    canal_bdcon         VARCHAR(15) NOT NULL,   -- ASESOR | WHATSAPP | PORTAL
+    canal_bdcon         VARCHAR(15) NOT NULL,   -- ASESOR (chat del ERP) | API | TELEGRAM | WHATSAPP | PORTAL
     sesion_bdcon        UUID,                   -- agrupa los mensajes de una conversación del chat flotante
-    modo_bdcon          VARCHAR(15) NOT NULL DEFAULT 'DOCUMENTOS',
-                        -- DOCUMENTOS   respuesta basada solo en la base técnica (con citas)
+    modo_bdcon          VARCHAR(15) NOT NULL DEFAULT 'AGENTE',
+                        -- AGENTE       asistente con herramientas (base técnica + stock, precios, compras, clientes)
+                        -- DOCUMENTOS   (versión anterior) respuesta basada solo en la base técnica
                         -- IA_GENERAL   el usuario pidió respuesta de GPT tras "no encontrado" (se marca como generada por IA)
                         -- SELECCION    el bot pidió elegir entre varios productos
     citas_bdcon         JSONB,                  -- [{ide_bddoc, archivo, tipo, seccion, pagina}]
@@ -325,6 +326,11 @@ CREATE TABLE IF NOT EXISTS bdt_consulta (
 );
 CREATE INDEX IF NOT EXISTS idx_bdt_con_fecha  ON bdt_consulta (fecha_ingre DESC);
 CREATE INDEX IF NOT EXISTS idx_bdt_con_sesion ON bdt_consulta (sesion_bdcon);
+-- Herramientas que usó el asistente en la respuesta (consultar_stock, cotizar, listar_documentos…).
+ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS herramientas_bdcon TEXT[];
+-- Quién preguntó por canales externos (Telegram): teléfono y número autorizado (tlg_usuario).
+ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS telefono_bdcon VARCHAR(20);
+ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS ide_tlusu INTEGER;
 
 
 -- 10. Semilla mínima del diccionario de propiedades (ampliar con lo que aparezca en la fase 0)

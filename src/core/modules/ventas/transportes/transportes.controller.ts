@@ -30,6 +30,7 @@ import {
     EliminarImagenEnvioDto,
     ActualizarImagenEnvioDto,
     ActualizarTransportistaEnvioDto,
+    DetectarDestinatarioGuiaDto,
 } from './dto/save-transporte.dto';
 import { TransportesSaveService } from './transportes-save.service';
 import { TransportesService } from './transportes.service';
@@ -224,6 +225,13 @@ export class TransportesController {
         @UploadedFile() file: Express.Multer.File,
     ) {
         return { message: 'ok', fileName: file.filename };
+    }
+
+    @Post('detectarDestinatarioGuia')
+    @Auth()
+    @ApiOperation({ summary: 'Lee con IA el nombre del destinatario de una imagen de guía ya subida (uploadImagenEnvio)' })
+    detectarDestinatarioGuia(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: DetectarDestinatarioGuiaDto) {
+        return this.service.detectarDestinatarioGuia({ ...h, ...dtoIn });
     }
 
     @Public()

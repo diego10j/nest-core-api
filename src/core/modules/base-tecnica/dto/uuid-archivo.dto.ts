@@ -1,7 +1,7 @@
 import { IsUUID } from 'class-validator';
 
 export class UuidArchivoDto {
-  /** uuid del adjunto (sis_archivo.uuid) tal como lo usa el explorador de archivos. */
+  /** uuid del adjunto del producto (sis_archivo.uuid). */
   @IsUUID()
   uuid: string;
 }

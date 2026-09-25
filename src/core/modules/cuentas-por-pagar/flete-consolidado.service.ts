@@ -36,6 +36,9 @@ export interface EnvioParaConsolidar {
      * abrir su detalle (ViewFacturaDialog) desde el wizard de Registrar Envíos. */
     ide_cccfa: number;
     cliente: string;
+    /** Nombre del destinatario según la guía del transportista (puede diferir del cliente
+     * facturado) - es el nombre con el que suele venir la línea en la factura del transportista. */
+    destinatario_guia_cctfa: string | null;
     numero_factura_venta: string;
     fecha_emisi_cccfa: string;
     total_flete_cctfa: number;
@@ -127,10 +130,12 @@ export class FleteConsolidadoService extends BaseService {
                 e.ide_cctfa,
                 f.ide_cccfa,
                 b.nom_geper AS cliente,
+                e.destinatario_guia_cctfa,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 f.fecha_emisi_cccfa,
                 e.total_flete_cctfa,
+                e.path_imagen_guia_cctfa,
                 t.ide_geper AS ide_geper_transporte
             FROM cxc_transporte_factura e
             INNER JOIN cxc_cabece_factura f ON e.ide_cccfa = f.ide_cccfa
@@ -330,6 +335,7 @@ export class FleteConsolidadoService extends BaseService {
                 ide_cctfa: envio.ide_cctfa,
                 ide_cccfa: envio.ide_cccfa,
                 cliente: envio.cliente,
+                destinatario_guia_cctfa: envio.destinatario_guia_cctfa,
                 numero_factura_venta: envio.numero_factura_venta,
                 fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
                 total_flete_cctfa: envio.total_flete_cctfa,
@@ -371,6 +377,7 @@ export class FleteConsolidadoService extends BaseService {
                     ide_cctfa: envio.ide_cctfa,
                     ide_cccfa: envio.ide_cccfa,
                     cliente: envio.cliente,
+                    destinatario_guia_cctfa: envio.destinatario_guia_cctfa,
                     numero_factura_venta: envio.numero_factura_venta,
                     fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
                     total_flete_cctfa: envio.total_flete_cctfa,
@@ -411,6 +418,7 @@ export class FleteConsolidadoService extends BaseService {
                 ide_cctfa: envio.ide_cctfa,
                 ide_cccfa: envio.ide_cccfa,
                 cliente: envio.cliente,
+                destinatario_guia_cctfa: envio.destinatario_guia_cctfa,
                 numero_factura_venta: envio.numero_factura_venta,
                 fecha_emisi_cccfa: envio.fecha_emisi_cccfa,
                 total_flete_cctfa: envio.total_flete_cctfa,
@@ -433,11 +441,14 @@ export class FleteConsolidadoService extends BaseService {
     }
 
     async getFletesConsolidados(dtoIn: GetFletesConsolidadosDto & HeaderParamsDto) {
-        const aplicarFiltroEstado = dtoIn.ide_cpefc != null;
+        // Índices de parámetros asignados dinámicamente según los filtros presentes ($1/$2 son
+        // empresa/sucursal) - cada filtro opcional toma el siguiente libre.
+        let nextParam = 3;
+        const paramEstado = dtoIn.ide_cpefc != null ? nextParam++ : null;
+        const paramTransporte = dtoIn.ide_vgtra != null ? nextParam++ : null;
         const aplicarFiltroFecha = dtoIn.fechaInicio != null && dtoIn.fechaFin != null;
-        const paramEstado = 3;
-        const paramFechaInicio = aplicarFiltroEstado ? 4 : 3;
-        const paramFechaFin = paramFechaInicio + 1;
+        const paramFechaInicio = aplicarFiltroFecha ? nextParam++ : null;
+        const paramFechaFin = aplicarFiltroFecha ? nextParam++ : null;
         const query = new SelectQuery(
             `
             SELECT
@@ -453,6 +464,21 @@ export class FleteConsolidadoService extends BaseService {
                 cf.numero_cpcfa,
                 cf.total_cpcfa,
                 (SELECT COUNT(*) FROM cxp_det_flete_cons d WHERE d.ide_cpcfc = cc.ide_cpcfc) AS num_envios,
+                -- Clientes facturados + destinatarios de guía + N° de factura de venta de los
+                -- envíos del grupo, en un solo texto para la búsqueda global del listado: la
+                -- factura del transportista trae el nombre de la guía (que puede no ser el
+                -- cliente), así se encuentra el proceso buscando por cualquiera de los dos.
+                (SELECT string_agg(
+                            DISTINCT b.nom_geper
+                                || COALESCE(' → ' || NULLIF(e.destinatario_guia_cctfa, b.nom_geper), '')
+                                || ' (' || df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa || ')',
+                            ' · ')
+                   FROM cxp_det_flete_cons d
+                   INNER JOIN cxc_transporte_factura e ON e.ide_cctfa = d.ide_cctfa
+                   INNER JOIN cxc_cabece_factura f     ON f.ide_cccfa = e.ide_cccfa
+                   INNER JOIN cxc_datos_fac df         ON df.ide_ccdaf = f.ide_ccdaf
+                   INNER JOIN gen_persona b            ON b.ide_geper = f.ide_geper
+                  WHERE d.ide_cpcfc = cc.ide_cpcfc) AS clientes_destinatarios,
                 -- ABS(neto) para el monto y el signo de ese mismo neto para el tipo - antes se
                 -- sumaba ABS() envío a envío (SUM(ABS(a-b))), que da la magnitud BRUTA de los
                 -- descuadres individuales, no el descuadre real del grupo: con 3 envíos que
@@ -497,16 +523,28 @@ export class FleteConsolidadoService extends BaseService {
             WHERE cc.ide_empr = $1
               AND cc.ide_sucu = $2
               AND cc.activo_cpcfc = true
-              ${aplicarFiltroEstado ? `AND cc.ide_cpefc = $${paramEstado}` : ''}
-              ${aplicarFiltroFecha ? `AND cc.hora_ingre::date BETWEEN $${paramFechaInicio} AND $${paramFechaFin}` : ''}
+              ${paramEstado ? `AND cc.ide_cpefc = $${paramEstado}` : ''}
+              -- Transportista por ide_vgtra de sus envíos (no por ven_transporte.ide_geper, que no
+              -- está garantizado poblado - ver getFleteConsolidadoById).
+              ${paramTransporte ? `AND EXISTS (
+                    SELECT 1 FROM cxp_det_flete_cons d
+                    INNER JOIN cxc_transporte_factura e ON e.ide_cctfa = d.ide_cctfa
+                    WHERE d.ide_cpcfc = cc.ide_cpcfc AND e.ide_vgtra = $${paramTransporte})` : ''}
+              -- El proceso entra si se registró dentro del rango O si el rango de envíos que
+              -- cubre (fecha_desde/hasta) se cruza con él - antes solo se miraba la fecha de
+              -- registro, y buscar por la fecha de los envíos no encontraba el proceso.
+              ${aplicarFiltroFecha ? `AND (
+                    cc.hora_ingre::date BETWEEN $${paramFechaInicio}::date AND $${paramFechaFin}::date
+                    OR (cc.fecha_desde_cpcfc <= $${paramFechaFin}::date AND cc.fecha_hasta_cpcfc >= $${paramFechaInicio}::date))` : ''}
             ORDER BY cc.hora_ingre DESC
             `,
             dtoIn,
         );
         query.addIntParam(1, dtoIn.ideEmpr);
         query.addIntParam(2, dtoIn.ideSucu);
-        if (aplicarFiltroEstado) query.addIntParam(paramEstado, dtoIn.ide_cpefc);
-        if (aplicarFiltroFecha) {
+        if (paramEstado) query.addIntParam(paramEstado, dtoIn.ide_cpefc);
+        if (paramTransporte) query.addIntParam(paramTransporte, dtoIn.ide_vgtra);
+        if (paramFechaInicio && paramFechaFin) {
             query.addStringParam(paramFechaInicio, dtoIn.fechaInicio);
             query.addStringParam(paramFechaFin, dtoIn.fechaFin);
         }
@@ -617,6 +655,7 @@ export class FleteConsolidadoService extends BaseService {
                 COALESCE(cd.observacion_cpdfa, d.observacion_cpdfc) AS observacion_cpdfc,
                 e.total_flete_cctfa,
                 b.nom_geper AS cliente,
+                e.destinatario_guia_cctfa,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 CASE
@@ -674,6 +713,7 @@ export class FleteConsolidadoService extends BaseService {
                 t.ide_geper AS ide_geper_transporte,
                 t.nombre_vgtra,
                 b.nom_geper AS cliente,
+                e.destinatario_guia_cctfa,
                 df.establecimiento_ccdfa || '-' || df.pto_emision_ccdfa || '-' || f.secuencial_cccfa
                     AS numero_factura_venta,
                 f.fecha_emisi_cccfa,
@@ -709,11 +749,14 @@ export class FleteConsolidadoService extends BaseService {
         const prompt = `Eres un asistente contable. Te doy dos listas en JSON: "lineas" son las
 líneas de detalle de una factura de un transportista (cada una con su índice, una observación de
 texto libre y un valor en dólares), y "envios" son los envíos de mercancía que esa factura podría
-estar cobrando (cada uno con su cliente, el número de su factura de venta, la fecha, y el valor de
-flete que se le cobró originalmente al cliente). Empareja cada línea con el envío que más
-probablemente le corresponde: usa como pista principal la cercanía del valor, y como pista
-secundaria cualquier referencia de texto en la observación (número de factura, guía, nombre de
-cliente) que coincida con un envío. Cada línea debe emparejarse con un envío distinto (no
+estar cobrando (cada uno con su cliente facturado, el destinatario que figura en la guía de envío
+- "destinatario_guia_cctfa", que puede ser una persona distinta al cliente -, el número de su
+factura de venta, la fecha, y el valor de flete que se le cobró originalmente al cliente).
+Empareja cada línea con el envío que más probablemente le corresponde. Si la observación de la
+línea menciona un nombre de persona, compáralo PRIMERO contra "destinatario_guia_cctfa" y luego
+contra "cliente" (las facturas de transportistas suelen detallar el nombre del destinatario de la
+guía): una coincidencia de nombre es la pista más fuerte. Después usa la cercanía del valor y
+cualquier otra referencia de texto (número de factura, número de guía). Cada línea debe emparejarse con un envío distinto (no
 repitas envíos). Responde SOLO un JSON con la forma exacta:
 {"matches": [{"indexLinea": number, "ide_cctfa": number}]}`;
 

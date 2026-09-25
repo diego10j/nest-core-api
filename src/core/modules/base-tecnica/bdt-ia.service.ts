@@ -96,6 +96,25 @@ export class BdtIaService {
     };
   }
 
+  /** Una vuelta del agente QuimIA: la IA responde o pide ejecutar herramientas (function calling). */
+  async completarConHerramientas(messages: OpenAI.ChatCompletionMessageParam[], tools: OpenAI.ChatCompletionTool[]) {
+    const response = await this.openai.chat.completions.create({
+      model: BDT_CONFIG.MODELO_AGENTE,
+      temperature: 0.2,
+      max_tokens: 1500,
+      messages,
+      tools,
+      tool_choice: 'auto',
+      parallel_tool_calls: true,
+    });
+    return {
+      mensaje: response.choices[0]?.message,
+      tokensEntrada: response.usage?.prompt_tokens ?? 0,
+      tokensSalida: response.usage?.completion_tokens ?? 0,
+      modelo: response.model,
+    };
+  }
+
   /** Respuesta en streaming (chat en modo IA general). */
   async completarStream(messages: OpenAI.ChatCompletionMessageParam[]) {
     return this.openai.chat.completions.create({

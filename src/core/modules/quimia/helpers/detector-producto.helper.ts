@@ -1,4 +1,4 @@
-import { normalizarTexto } from './normalizar.helper';
+import { normalizarTexto } from '../../base-tecnica/helpers/normalizar.helper';
 
 /** Un nombre (del ERP o sinónimo detectado en documentos) que identifica a un producto. */
 export interface EntradaIndiceProducto {

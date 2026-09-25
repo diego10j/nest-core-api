@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class SetActivoTransDto {
@@ -21,6 +21,20 @@ export class ActualizarImagenEnvioDto {
     @IsString()
     @IsNotEmpty()
     path_imagen_guia_cctfa: string;
+
+    /** Opcional: al reemplazar la guía se puede corregir también el destinatario leído de ella. */
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    destinatario_guia_cctfa?: string;
+}
+
+/** Imagen de guía ya subida (uploadImagenEnvio) de la que se quiere leer el destinatario. */
+export class DetectarDestinatarioGuiaDto {
+    @IsString()
+    @IsNotEmpty()
+    @Matches(/^[\w-]+\.[a-z0-9]+$/i, { message: 'fileName no válido' })
+    fileName: string;
 }
 
 /** Borra la imagen de guía de un envío y lo regresa a PENDIENTE (ide_cceen = 1) para poder
@@ -205,6 +219,12 @@ export class SaveEnvioDto {
     @IsOptional()
     path_imagen_guia_cctfa?: string;
 
+    /** Nombre del destinatario tal como figura en la guía (puede diferir del cliente facturado). */
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    destinatario_guia_cctfa?: string;
+
     @IsOptional()
     base_flete_cctfa?: number;
 
@@ -273,6 +293,12 @@ export class CompletarEnvioDto {
     @IsString()
     @IsOptional()
     path_imagen_guia_cctfa?: string;
+
+    /** Nombre del destinatario tal como figura en la guía (puede diferir del cliente facturado). */
+    @IsString()
+    @IsOptional()
+    @MaxLength(200)
+    destinatario_guia_cctfa?: string;
 
     @IsString()
     @IsOptional()

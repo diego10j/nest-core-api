@@ -57,6 +57,10 @@ export const BDT_CONFIG = {
   // el modelo mini lo hace bien y cuesta ~15x menos que gpt-4o.
   MODELO_EXTRACCION: 'gpt-4o-mini',
   MODELO_CHAT: 'gpt-4o-mini',
+  /** Agente QuimIA (elige y combina herramientas: base técnica, stock, precios, compras…). */
+  MODELO_AGENTE: 'gpt-4o-mini',
+  /** Máximo de vueltas herramienta→respuesta por pregunta (evita bucles y controla costo). */
+  MAX_VUELTAS_AGENTE: 6,
   // Respuesta libre (sin documentos): aquí sí importa el criterio técnico del modelo.
   MODELO_IA_GENERAL: 'gpt-4o',
   MAX_TOKENS_EXTRACCION: 16000,

@@ -182,7 +182,12 @@ export class GptService {
     return JSON.parse(content);
   }
 
-  async parseImageToJson(prompt: string, imageBuffer: Buffer, mimeType: string) {
+  async parseImageToJson(
+    prompt: string,
+    imageBuffer: Buffer,
+    mimeType: string,
+    userText = 'Analiza esta imagen de comprobante de transferencia y extrae los datos solicitados.',
+  ) {
     const base64Image = imageBuffer.toString('base64');
     const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
@@ -198,7 +203,7 @@ export class GptService {
           content: [
             {
               type: 'text',
-              text: 'Analiza esta imagen de comprobante de transferencia y extrae los datos solicitados.',
+              text: userText,
             },
             {
               type: 'image_url',
