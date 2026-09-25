@@ -5,6 +5,7 @@ import { CoreController } from './core.controller';
 import { CoreService } from './core.service';
 import { IntegrationModule } from './integration/integration.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { BaseTecnicaModule } from './modules/base-tecnica/base-tecnica.module';
 import { ComprasModule } from './modules/compras/compras.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
 import { CuentasPorCobrarModule } from './modules/cuentas-por-cobrar/cuentas-por-cobrar.module';
@@ -45,6 +46,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     DepositoCajaModule,
     ChequeDevueltoModule,
     TalentoHumanoModule,
+    BaseTecnicaModule,
   ],
   providers: [CoreService, ModulosSistemaService],
 
