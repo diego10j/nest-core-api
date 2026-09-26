@@ -115,3 +115,26 @@ export function similitudPalabras(a: string, b: string): number {
   });
   return comunes / Math.min(pa.size, pb.size);
 }
+
+/**
+ * Caracteres que Postgres no acepta en TEXT/JSONB ("invalid byte sequence for encoding UTF8: 0x00"):
+ * el nulo y demás controles salvo tabulación y saltos de línea. Algunos PDF los traen en el texto.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROLES_INVALIDOS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
+
+export function limpiarTextoBd(texto: string): string {
+  return texto.replace(CONTROLES_INVALIDOS, '');
+}
+
+/** Aplica limpiarTextoBd a todos los textos de un objeto (resultado de la extracción) antes de guardarlo. */
+export function limpiarParaBd<T>(valor: T): T {
+  if (typeof valor === 'string') return limpiarTextoBd(valor) as T;
+  if (Array.isArray(valor)) return valor.map((v) => limpiarParaBd(v)) as T;
+  if (valor && typeof valor === 'object' && !(valor instanceof Date) && !Buffer.isBuffer(valor)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(valor as Record<string, unknown>)) out[k] = limpiarParaBd(v);
+    return out as T;
+  }
+  return valor;
+}

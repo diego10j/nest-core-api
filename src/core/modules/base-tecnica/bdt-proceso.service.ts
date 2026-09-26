@@ -12,7 +12,7 @@ import { FILE_STORAGE_CONSTANTS } from '../sistema/files/constants/files.constan
 import { BdtExtraccionService, DocumentoExtraido } from './bdt-extraccion.service';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
 import { ProcesarProductoDto } from './dto/procesar-producto.dto';
-import { claveEmpresa, normalizarCas, normalizarTexto, recortar } from './helpers/normalizar.helper';
+import { claveEmpresa, limpiarParaBd, normalizarCas, normalizarTexto, recortar } from './helpers/normalizar.helper';
 
 /** Adjunto del producto (lectura de sis_archivo, solo lectura). */
 export interface ArchivoProducto {
@@ -229,9 +229,12 @@ export class BdtProcesoService {
         : await this.insertarPendiente(ctx, archivo, hash);
 
       try {
-        const extr = await this.extraccion.extraer(
-          { buffer, nombre: archivo.nombre, extension, mime: archivo.mime },
-          { nombreProductoErp: ctx.nombreProducto, clavesPropiedad: propiedades.map((p) => p.clave_bdpro) },
+        // Sin caracteres nulos/de control: Postgres los rechaza en TEXT y JSONB.
+        const extr = limpiarParaBd(
+          await this.extraccion.extraer(
+            { buffer, nombre: archivo.nombre, extension, mime: archivo.mime },
+            { nombreProductoErp: ctx.nombreProducto, clavesPropiedad: propiedades.map((p) => p.clave_bdpro) },
+          ),
         );
         const estadoDoc = extr.confianza >= BDT_CONFIG.UMBRAL_APROBACION ? 'APROBADO' : 'REVISION';
         await this.persistir(ctx, ideBddoc, !existente, extr, estadoDoc, propiedades);

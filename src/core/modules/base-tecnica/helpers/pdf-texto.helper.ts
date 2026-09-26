@@ -1,5 +1,7 @@
 import { BDT_CONFIG } from '../constants/base-tecnica.constants';
 
+import { limpiarTextoBd } from './normalizar.helper';
+
 export interface PaginaTexto {
   numero: number;
   texto: string;
@@ -40,7 +42,7 @@ export async function extraerTextoPdf(buffer: Buffer): Promise<ResultadoTextoPdf
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
     const { items } = await page.getTextContent();
-    paginas.push({ numero: n, texto: reconstruirFilas(items as TextItem[]) });
+    paginas.push({ numero: n, texto: limpiarTextoBd(reconstruirFilas(items as TextItem[])) });
   }
 
   const limpias = quitarLineasRepetidas(paginas);
