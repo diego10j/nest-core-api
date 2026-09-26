@@ -1943,6 +1943,34 @@ export class BotService implements OnModuleInit {
     // lo concreto (los productos nombrados, si los hay) y al finalizar se deriva a un
     // asesor para que la responda (ver finalizarCotizacionRapida). Si NO hay ningún
     // producto concreto, se deriva de una vez.
+    // Sin producto puntual pero con un TEMA que coincide con un catálogo público ("deseo
+    // cotizar para empezar a hacer velas" → catálogo de ceras y aditivos para velas): se
+    // le comparte ese catálogo en primera instancia, en vez de derivar o de mandar el
+    // catálogo genérico (caso real detectado 2026-09-25: derivó directo a un asesor pese a
+    // existir un catálogo del tema). Si además pide una recomendación puntual, no se usa
+    // este atajo: eso es criterio comercial y va a un asesor.
+    if (!itemsDetectados.length && !(asesoramiento && REGEX_PIDE_RECOMENDACION.test(textoProducto))) {
+      const catalogosTema = await this.botProforma.obtenerCatalogosDisponibles(ideEmpr);
+      const matchTema = catalogosTema.length
+        ? await this.botGpt.matchCatalogoProducto(textoProducto, catalogosTema, textoProducto)
+        : null;
+      if (matchTema) {
+        const cat = catalogosTema.find((c) => c.ide_cata === matchTema.ide_cata);
+        const link = cat?.path_cata ? `https://diquimec.com.ec/catalogo/${cat.path_cata}` : 'https://diquimec.com.ec/catalogo';
+        await enviar(
+          `Tenemos el catálogo de *${cat?.nombre_cata ?? 'productos'}* con precios incluidos 😊\n👉 ${link}\n\n` +
+          `Ahí mismo puedes armar tu cotización. Si prefieres, cuéntame qué productos necesitas y en qué cantidades, y te ayudo a cotizarlos por aquí mismo.`,
+        );
+        datos = {
+          ...datos,
+          catalogosEnviados: [...new Set([...(datos.catalogosEnviados ?? []), matchTema.ide_cata])],
+          catalogoEnviadoEn: Date.now(),
+        };
+        await this.botSession.update(sesion.ide_whbse, BotState.ATENCION_LIBRE, datos);
+        return;
+      }
+    }
+
     if (asesoramiento) {
       datos = {
         ...datos,
