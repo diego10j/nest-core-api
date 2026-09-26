@@ -86,6 +86,12 @@ export function respuestaATelegram(
   if (r.sugerirCambio) {
     botones.push([{ text: `Cambiar a ${r.sugerirCambio.nombre}`.slice(0, 60), callback_data: `p:${r.sugerirCambio.ide_inarti}` }]);
   }
+  // Varias facturas/proformas con el mismo número: un botón por documento (envía el PDF).
+  r.opcionesArchivo.slice(0, 10).forEach((a) =>
+    botones.push([
+      { text: `📄 ${a.numero} · ${a.detalle}`.slice(0, 64), callback_data: `d:${a.tipo === 'FACTURA' ? 'F' : 'P'}:${a.id}` },
+    ]),
+  );
   // Notas de la base de conocimiento: "📝 título" (máximo 5) + "No, gracias".
   r.notas.slice(0, 5).forEach((n) => botones.push([{ text: `📝 ${n.titulo}`.slice(0, 60), callback_data: `k:${n.ide_cono}` }]));
   const ofrecerIa = r.sinRespuesta && !r.esIa && !r.opciones.length;

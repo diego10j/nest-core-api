@@ -120,6 +120,38 @@ export class QuimiaDocumentosErpService {
     return r.rows.map((x) => ({ ...x, total: Number(x.total) }));
   }
 
+  /**
+   * Documento elegido con un botón (Telegram): se vuelve a validar que sea de la empresa y, si es
+   * factura, de la sucursal.
+   */
+  async obtenerArchivo(tipo: TipoArchivoErp, id: number, ideEmpr: number, ideSucu: number | null): Promise<ArchivoErpQuimia | null> {
+    const r =
+      tipo === 'FACTURA'
+        ? await this.dataSource.pool.query(
+            `SELECT a.ide_cccfa AS id,
+                    CONCAT_WS('-', c.establecimiento_ccdfa, c.pto_emision_ccdfa, a.secuencial_cccfa) AS numero,
+                    TO_CHAR(a.fecha_emisi_cccfa, 'YYYY-MM-DD') AS fecha, b.nom_geper AS cliente, a.total_cccfa AS total,
+                    e.nombre_ccefa AS estado
+               FROM cxc_cabece_factura a
+               JOIN cxc_datos_fac c ON c.ide_ccdaf = a.ide_ccdaf
+               JOIN gen_persona b ON b.ide_geper = a.ide_geper
+               LEFT JOIN cxc_estado_factura e ON e.ide_ccefa = a.ide_ccefa
+              WHERE a.ide_cccfa = $1 AND a.ide_empr = $2 AND ($3::int IS NULL OR a.ide_sucu = $3)`,
+            [id, ideEmpr, ideSucu || null],
+          )
+        : await this.dataSource.pool.query(
+            `SELECT c.ide_cccpr AS id, c.secuencial_cccpr AS numero, TO_CHAR(c.fecha_cccpr, 'YYYY-MM-DD') AS fecha,
+                    COALESCE(p.nom_geper, c.solicitante_cccpr) AS cliente, c.total_cccpr AS total,
+                    CASE WHEN c.anulado_cccpr THEN 'ANULADA' ELSE NULL END AS estado
+               FROM cxc_cabece_proforma c
+               LEFT JOIN gen_persona p ON p.ide_geper = c.ide_geper
+              WHERE c.ide_cccpr = $1 AND c.ide_empr = $2`,
+            [id, ideEmpr],
+          );
+    const d = r.rows[0];
+    return d ? this.archivoDe(tipo, { ...d, total: Number(d.total) }) : null;
+  }
+
   archivoDe(tipo: TipoArchivoErp, d: DocumentoEncontrado): ArchivoErpQuimia {
     const etiqueta = tipo === 'FACTURA' ? 'Factura' : 'Proforma';
     return {

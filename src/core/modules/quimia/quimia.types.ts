@@ -37,6 +37,8 @@ export type EventoQuimia =
   | { tipo: 'notas'; notas: NotaQuimia[] }
   /** PDF de factura/proforma pedidos (el chat los abre; Telegram los envía como archivo). */
   | { tipo: 'archivos'; archivos: ArchivoErpQuimia[] }
+  /** Varias facturas/proformas con el mismo número: el usuario elige cuál (botones). */
+  | { tipo: 'opciones_archivo'; archivos: ArchivoErpQuimia[] }
   /** Fotos de la galería del producto (máximo 5). */
   | { tipo: 'imagenes'; imagenes: ImagenProductoQuimia[] }
   | { tipo: 'sin_respuesta' }
@@ -57,6 +59,8 @@ export interface RespuestaQuimia {
   /** Notas de la base de conocimiento relacionadas (se ofrecen como "Ver nota"). */
   notas: NotaQuimia[];
   archivos: ArchivoErpQuimia[];
+  /** Varias facturas/proformas con ese número para elegir. */
+  opcionesArchivo: ArchivoErpQuimia[];
   imagenes: ImagenProductoQuimia[];
   /** El usuario debe elegir un producto (botones / teclado en línea de Telegram). */
   opciones: ProductoCandidato[];

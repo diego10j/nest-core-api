@@ -35,6 +35,8 @@ export interface ContextoHerramientas {
   notas: NotaQuimia[];
   /** PDFs de facturas/proformas pedidos (tarjetas en el chat, archivos en Telegram). */
   archivos: ArchivoErpQuimia[];
+  /** Varias facturas/proformas con el mismo número: se muestran como botones para elegir. */
+  opcionesArchivo: ArchivoErpQuimia[];
   /** Fotos del producto pedidas (máximo 5). */
   imagenes: ImagenProductoQuimia[];
   emitir: (evento: EventoQuimia) => void;
@@ -567,12 +569,19 @@ export class QuimiaHerramientasService {
         : await this.documentosErp.buscarProformas(numero, ctx.usuario.ideEmpr);
     const elegido = args.id ? encontrados.find((d) => d.id === Number(args.id)) : encontrados.length === 1 ? encontrados[0] : null;
     const etiqueta = tipo === 'FACTURA' ? 'factura' : 'proforma';
+    this.logger.log(
+      `${etiqueta} "${numero}" · empresa ${ctx.usuario.ideEmpr}` +
+        `${tipo === 'FACTURA' ? ` · sucursal ${ctx.usuario.ideSucu || 'SIN FILTRO'}` : ''} → ${encontrados.length} encontrada(s)`,
+    );
     if (!encontrados.length) return { encontrado: false, mensaje: `No existe una ${etiqueta} con el número ${numero}.` };
     if (!elegido) {
+      ctx.opcionesArchivo = encontrados.map((d) => this.documentosErp.archivoDe(tipo, d));
       return {
         encontrado: false,
-        varias: encontrados,
-        mensaje: `Hay ${encontrados.length} ${etiqueta}s con ese número (distinta serie o fecha). Pregunta cuál (muestra número completo, fecha, cliente y total).`,
+        varias: encontrados.length,
+        mensaje:
+          `Hay ${encontrados.length} ${etiqueta}s con ese número. Se muestran botones (número, cliente, fecha y total) ` +
+          `para que el usuario elija y abra el PDF: responde en UNA línea que elija cuál, sin listarlas.`,
       };
     }
     const archivo = this.documentosErp.archivoDe(tipo, elegido);

@@ -59,6 +59,7 @@ export class QuimiaAgenteService {
       documentos: [],
       notas: [],
       archivos: [],
+      opcionesArchivo: [],
       imagenes: [],
       opciones: [],
       sugerirCambio: null,
@@ -87,6 +88,9 @@ export class QuimiaAgenteService {
           break;
         case 'archivos':
           r.archivos = e.archivos;
+          break;
+        case 'opciones_archivo':
+          r.opcionesArchivo = e.archivos;
           break;
         case 'imagenes':
           r.imagenes = e.imagenes;
@@ -198,6 +202,7 @@ export class QuimiaAgenteService {
       herramientasUsadas: [],
       // Base de conocimiento (notas del equipo): se busca en cada pregunta, relacionadas al producto primero.
       archivos: [],
+      opcionesArchivo: [],
       imagenes: [],
       notas: await this.conocimiento.buscar(dto.pregunta, usuario.ideEmpr, { ide_inarti: producto?.ide_inarti }),
       emitir,
@@ -257,7 +262,7 @@ export class QuimiaAgenteService {
         '\n\n¿Quieres que responda QuimIA con conocimiento técnico general (generado con IA)?';
     }
     // Pedir un archivo no se responde con IA general: si solo se listaron documentos, no hay "sin respuesta".
-    const entregoArchivos = ctx.archivos.length > 0 || ctx.imagenes.length > 0;
+    const entregoArchivos = ctx.archivos.length > 0 || ctx.opcionesArchivo.length > 0 || ctx.imagenes.length > 0;
     if (
       sinRespuesta &&
       (entregoArchivos ||
@@ -304,6 +309,7 @@ export class QuimiaAgenteService {
     if (citas.length) emitir({ tipo: 'citas', citas });
     if (ctx.documentos.length) emitir({ tipo: 'documentos', documentos: ctx.documentos });
     if (ctx.archivos.length) emitir({ tipo: 'archivos', archivos: ctx.archivos });
+    if (ctx.opcionesArchivo.length) emitir({ tipo: 'opciones_archivo', archivos: ctx.opcionesArchivo });
     if (ctx.imagenes.length) emitir({ tipo: 'imagenes', imagenes: ctx.imagenes });
     if (notas.length) emitir({ tipo: 'notas', notas });
     if (opciones) emitir(opciones);

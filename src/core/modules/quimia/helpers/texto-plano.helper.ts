@@ -44,6 +44,10 @@ export function formatearTextoPlano(r: RespuestaQuimia): string {
     partes.push('📄 PDF:\n' + r.archivos.map((a) => `• ${a.titulo} (${a.detalle})`).join('\n'));
   }
 
+  if (r.opcionesArchivo.length) {
+    partes.push('Elige el documento:\n' + r.opcionesArchivo.map((a, i) => `${i + 1}. ${a.titulo} (${a.detalle})`).join('\n'));
+  }
+
   if (r.notas.length) {
     partes.push('📝 Notas relacionadas:\n' + r.notas.map((n, i) => `${i + 1}. ${n.titulo}`).join('\n'));
   }

@@ -224,6 +224,22 @@ export class TelegramBotService {
     if (!numero?.activo_tlusu) return;
     const data = cb.data ?? '';
 
+    // Factura/proforma elegida entre varias con el mismo número: se envía el PDF.
+    if (data.startsWith('d:')) {
+      await this.api.editarBotones(cuenta.token, chatId, cb.message.message_id, []);
+      const [, t, id] = data.split(':');
+      const tipo = t === 'P' ? 'PROFORMA' : 'FACTURA';
+      const archivo = await this.documentosErp.obtenerArchivo(tipo, Number(id), cuenta.ide_empr, cuenta.ide_sucu);
+      if (!archivo) {
+        await this.api.enviarMensaje(cuenta.token, chatId, 'No encontré ese documento.');
+        return;
+      }
+      await this.api.enviarMensaje(cuenta.token, chatId, `✅ ${archivo.titulo}`);
+      const usuario = this.usuarioDe(cuenta);
+      await this.enviarAdjuntos(cuenta, chatId, { archivos: [archivo], imagenes: [] } as unknown as RespuestaQuimia, usuario);
+      return;
+    }
+
     // Ver nota: se quita solo ese botón (se pueden abrir las demás notas después).
     if (data.startsWith('k:')) {
       const ideCono = Number(data.slice(2));
@@ -361,13 +377,7 @@ export class TelegramBotService {
   ) {
     await this.api.escribiendo(cuenta.token, chatId);
     const producto = opciones.producto ?? conv.producto;
-    const usuario: UsuarioQuimia = {
-      ideEmpr: cuenta.ide_empr,
-      ideSucu: cuenta.ide_sucu ?? 0,
-      ideUsua: 0,
-      idePerf: 0,
-      login: (cuenta.usuario_erp_tlcue || 'TELEGRAM').slice(0, 30),
-    };
+    const usuario = this.usuarioDe(cuenta);
 
     const r: RespuestaQuimia = await this.agente.preguntar(
       {
@@ -413,6 +423,17 @@ export class TelegramBotService {
       `UPDATE tlg_usuario SET ultimo_acceso_tlusu = NOW(), total_consultas_tlusu = total_consultas_tlusu + 1 WHERE ide_tlusu = $1`,
       [numero.ide_tlusu],
     );
+  }
+
+  /** Usuario del ERP en cuyo nombre consulta el bot: empresa y sucursal de la cuenta de Telegram. */
+  private usuarioDe(cuenta: CuentaTelegram): UsuarioQuimia {
+    return {
+      ideEmpr: cuenta.ide_empr,
+      ideSucu: cuenta.ide_sucu ?? 0,
+      ideUsua: 0,
+      idePerf: 0,
+      login: (cuenta.usuario_erp_tlcue || 'TELEGRAM').slice(0, 30),
+    };
   }
 
   /** PDFs de factura/proforma como documentos y fotos del producto como fotos normales. */
