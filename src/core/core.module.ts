@@ -6,7 +6,6 @@ import { CoreService } from './core.service';
 import { IntegrationModule } from './integration/integration.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { BaseTecnicaModule } from './modules/base-tecnica/base-tecnica.module';
-import { QuimiaModule } from './modules/quimia/quimia.module';
 import { ComprasModule } from './modules/compras/compras.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
 import { CuentasPorCobrarModule } from './modules/cuentas-por-cobrar/cuentas-por-cobrar.module';
@@ -14,6 +13,8 @@ import { CuentasPorPagarModule } from './modules/cuentas-por-pagar/cuentas-por-p
 import { ImportacionesModule } from './modules/importaciones/importaciones.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProformasModule } from './modules/proformas/proformas.module';
+import { QuimiaModule } from './modules/quimia/quimia.module';
+import { ArchivoEventosModule } from './modules/sistema/files/archivo-eventos.module';
 import { SistemaModule } from './modules/sistema/sistema.module';
 import { SriModule } from './modules/sri/sri.module';
 import { TalentoHumanoModule } from './modules/talento-humano/talento-humano.module';
@@ -28,6 +29,8 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
+    // Global: emisor de archivos subidos (FilesService está declarado en varios módulos).
+    ArchivoEventosModule,
     AuditModule,
     WhatsappModule,
     ChartsModule,
