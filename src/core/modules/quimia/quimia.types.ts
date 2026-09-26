@@ -61,6 +61,9 @@ export interface RespuestaQuimia {
 export interface OrigenQuimia {
   telefono?: string | null;
   ide_tlusu?: number | null;
+  /** Cómo llegó la pregunta (Telegram: texto o nota de voz transcrita). */
+  entrada?: 'TEXTO' | 'AUDIO';
+  ide_qmtra?: number | null;
 }
 
 /** Usuario del ERP en cuyo nombre se consulta (empresa, sucursal y login para auditoría). */

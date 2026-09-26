@@ -18,6 +18,7 @@ import { TelegramBotService } from './telegram/telegram-bot.service';
 import { TelegramCuentaService } from './telegram/telegram-cuenta.service';
 import { TelegramRunnerService } from './telegram/telegram-runner.service';
 import { TelegramController } from './telegram/telegram.controller';
+import { TranscripcionService } from './transcripcion/transcripcion.service';
 
 /**
  * Asistente QuimIA: responde consultas de productos combinando la base técnica (documentos) con datos
@@ -37,6 +38,7 @@ import { TelegramController } from './telegram/telegram.controller';
     QuimiaProductosService,
     QuimiaClientesService,
     TelegramApiService,
+    TranscripcionService,
     TelegramCuentaService,
     TelegramBotService,
     TelegramRunnerService,

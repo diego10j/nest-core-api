@@ -2,13 +2,16 @@ import { randomUUID } from 'crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { HOST_API } from 'src/util/helpers/common-util';
 
 import { QuimiaAgenteService } from '../quimia-agente.service';
 import { QuimiaProductosService } from '../quimia-productos.service';
 import { ProductoCandidato, ProductoQuimia, RespuestaQuimia, UsuarioQuimia } from '../quimia.types';
+import { TRANSCRIPCION_CONFIG } from '../transcripcion/transcripcion.helper';
+import { TranscripcionService } from '../transcripcion/transcripcion.service';
 
-import { TelegramApiService, TelegramMensaje, TelegramUpdate, TelegramUsuario } from './telegram-api.service';
-import { CuentaTelegram } from './telegram-cuenta.service';
+import { ArchivoAudioTelegram, TelegramApiService, TelegramMensaje, TelegramUpdate, TelegramUsuario } from './telegram-api.service';
+import { CuentaTelegram, basePublica } from './telegram-cuenta.service';
 import { dividir, mismoTelefono, normalizarTelefono, respuestaATelegram } from './telegram-formato.helper';
 
 interface NumeroAutorizado {
@@ -42,7 +45,7 @@ const AYUDA = [
   '',
   'Comandos:',
   '/producto &lt;nombre&gt; — fijar el producto de la conversación',
-  '/nuevo — empezar una conversación nueva',
+  '/nuevo o /salir — empezar una conversación nueva',
   '/ayuda — ver esta ayuda',
 ].join('\n');
 
@@ -60,6 +63,7 @@ export class TelegramBotService {
     private readonly api: TelegramApiService,
     private readonly agente: QuimiaAgenteService,
     private readonly productos: QuimiaProductosService,
+    private readonly transcripcion: TranscripcionService,
   ) {}
 
   async procesarUpdate(cuenta: CuentaTelegram, update: TelegramUpdate): Promise<void> {
@@ -106,9 +110,22 @@ export class TelegramBotService {
       return;
     }
 
-    const texto = (msg.text ?? '').trim();
+    let texto = (msg.text ?? '').trim();
+    // Nota de voz / audio: se transcribe y sigue el mismo camino que un mensaje escrito.
+    let audio: { ide_qmtra: number | null } | undefined;
+    const archivoAudio = msg.voice ?? msg.audio;
+    if (archivoAudio) {
+      const transcrito = await this.transcribirAudio(cuenta, chatId, numero, archivoAudio);
+      if (!transcrito) return;
+      texto = transcrito.texto;
+      audio = { ide_qmtra: transcrito.ide_qmtra };
+    }
     if (!texto) {
-      await this.api.enviarMensaje(cuenta.token, chatId, 'Por ahora solo respondo mensajes de texto.');
+      await this.api.enviarMensaje(
+        cuenta.token,
+        chatId,
+        this.audiosHabilitados(cuenta) ? 'Envíame tu pregunta por texto o nota de voz.' : 'Por ahora solo respondo mensajes de texto.',
+      );
       return;
     }
 
@@ -122,43 +139,64 @@ export class TelegramBotService {
         case 'start':
         case 'ayuda':
         case 'help':
-          await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || AYUDA, { html: true });
+          await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta), { html: true });
           return;
         case 'nuevo':
-          await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, { sesion: randomUUID(), producto: null, historial: [], pendiente: null });
-          await this.api.enviarMensaje(cuenta.token, chatId, '🆕 Conversación nueva. ¿Qué necesitas saber?');
+        case 'salir':
+          await this.nuevaConversacion(cuenta, chatId, numero);
           return;
         case 'producto':
           await this.fijarProducto(cuenta, chatId, numero, conv, arg.trim());
           return;
         default:
-          await this.api.enviarMensaje(cuenta.token, chatId, AYUDA, { html: true });
+          await this.api.enviarMensaje(cuenta.token, chatId, this.ayuda(cuenta), { html: true });
           return;
       }
+    }
+
+    // "salir" / "nueva conversación" escritos sin barra también reinician.
+    if (/^(salir|nuevo|nueva conversaci[oó]n|reiniciar)[.!]?$/i.test(texto)) {
+      await this.nuevaConversacion(cuenta, chatId, numero);
+      return;
     }
 
     // ---- respuestas cortas a lo que quedó pendiente (alternativa a los botones)
     const opciones = conv.pendiente?.opciones ?? [];
     if (opciones.length && /^\d{1,2}$/.test(texto) && opciones[Number(texto) - 1]) {
       const o = opciones[Number(texto) - 1];
-      await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { producto: { ide_inarti: o.ide_inarti, nombre: o.nombre } });
+      await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { producto: { ide_inarti: o.ide_inarti, nombre: o.nombre }, audio });
       return;
     }
-    if (conv.pendiente?.sinRespuesta && /^(ia|si|sí)$/i.test(texto)) {
-      await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { modo: 'IA_GENERAL' });
+    if (conv.pendiente?.sinRespuesta && /^(ia|si|sí)[.!]?$/i.test(texto)) {
+      await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { modo: 'IA_GENERAL', audio });
+      return;
+    }
+    if (conv.pendiente && /^(no|no gracias|no, gracias)[.!]?$/i.test(texto)) {
+      conv.pendiente = null;
+      await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, conv);
+      await this.api.enviarMensaje(cuenta.token, chatId, 'Entendido 👍 ¿Algo más?');
       return;
     }
 
-    await this.preguntar(cuenta, chatId, numero, conv, texto);
+    await this.preguntar(cuenta, chatId, numero, conv, texto, { audio });
   }
 
-  /** Botones en línea: p:<ide_inarti> (elegir/cambiar producto) · ia (responder con IA general). */
+  /**
+   * Botones en línea: p:<ide_inarti> (elegir/cambiar producto) · ia (responder con IA general) · no.
+   * Al tocar uno se quitan los botones de elección de ese mensaje (se conservan los links a
+   * documentos) y se deja constancia de lo elegido, porque tocar un botón no aparece en el chat.
+   */
   private async procesarBoton(cuenta: CuentaTelegram, cb: NonNullable<TelegramUpdate['callback_query']>) {
     await this.api.responderCallback(cuenta.token, cb.id);
     const chatId = cb.message?.chat.id;
     if (!chatId) return;
     const numero = await this.getNumeroVinculado(cuenta, cb.from.id);
     if (!numero?.activo_tlusu) return;
+
+    const soloLinks = (cb.message?.reply_markup?.inline_keyboard ?? [])
+      .map((fila) => fila.filter((b) => b.url))
+      .filter((fila) => fila.length);
+    await this.api.editarBotones(cuenta.token, chatId, cb.message.message_id, soloLinks);
 
     const conv = await this.getConversacion(cuenta, chatId, numero.ide_tlusu);
     const pregunta = conv.pendiente?.pregunta;
@@ -167,16 +205,97 @@ export class TelegramBotService {
     if (data.startsWith('p:')) {
       const producto = await this.productos.getProducto(Number(data.slice(2)), cuenta.ide_empr);
       if (!producto) return;
+      await this.api.enviarMensaje(cuenta.token, chatId, `✅ ${producto.nombre}`);
       if (!pregunta) {
         conv.producto = producto;
         await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, conv);
-        await this.api.enviarMensaje(cuenta.token, chatId, `🧪 Producto: ${producto.nombre}. ¿Qué quieres saber?`);
+        await this.api.enviarMensaje(cuenta.token, chatId, '¿Qué quieres saber de este producto?');
         return;
       }
       await this.preguntar(cuenta, chatId, numero, conv, pregunta, { producto });
     } else if (data === 'ia' && pregunta) {
+      await this.api.enviarMensaje(cuenta.token, chatId, '✨ Respondiendo con IA general…');
       await this.preguntar(cuenta, chatId, numero, conv, pregunta, { modo: 'IA_GENERAL' });
+    } else if (data === 'no') {
+      conv.pendiente = null;
+      await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, conv);
+      await this.api.enviarMensaje(cuenta.token, chatId, 'Entendido 👍 ¿Algo más?');
     }
+  }
+
+  /**
+   * Nota de voz → texto (Groq y, si no entiende, OpenAI). Devuelve null si no se pudo usar el audio
+   * (deshabilitado, muy largo, no entendido); en ese caso ya se respondió al usuario.
+   */
+  private async transcribirAudio(
+    cuenta: CuentaTelegram,
+    chatId: number,
+    numero: NumeroAutorizado,
+    archivo: ArchivoAudioTelegram,
+  ): Promise<{ texto: string; ide_qmtra: number | null } | null> {
+    if (!this.audiosHabilitados(cuenta)) {
+      await this.api.enviarMensaje(cuenta.token, chatId, '🎙️ Las notas de voz no están habilitadas. Escríbeme tu pregunta, por favor.');
+      return null;
+    }
+    const maxSeg = cuenta.audio_max_seg_tlcue || 180;
+    if (archivo.duration > maxSeg) {
+      await this.api.enviarMensaje(
+        cuenta.token,
+        chatId,
+        `🎙️ El audio dura ${Math.round(archivo.duration)} s. Envía uno de hasta ${maxSeg} s o escribe tu pregunta.`,
+      );
+      return null;
+    }
+    if ((archivo.file_size ?? 0) > TRANSCRIPCION_CONFIG.MAX_BYTES_TELEGRAM) {
+      await this.api.enviarMensaje(cuenta.token, chatId, '🎙️ El audio es demasiado grande (máximo 20 MB).');
+      return null;
+    }
+
+    await this.api.escribiendo(cuenta.token, chatId);
+    const buffer = await this.api.descargarArchivo(cuenta.token, archivo.file_id);
+    const r = await this.transcripcion.transcribir({
+      audio: buffer,
+      mime: archivo.mime_type || 'audio/ogg',
+      duracionSeg: archivo.duration,
+      origen: 'TELEGRAM',
+      ideEmpr: cuenta.ide_empr,
+      usuario: (cuenta.usuario_erp_tlcue || 'TELEGRAM').slice(0, 50),
+      telefono: numero.telefono_tlusu,
+      groqApiKey: cuenta.groq_api_key || null,
+      respaldoOpenai: cuenta.audio_respaldo_openai_tlcue !== false,
+      vocabulario: cuenta.audio_vocabulario_tlcue,
+    });
+    if (!r.texto) {
+      await this.api.enviarMensaje(
+        cuenta.token,
+        chatId,
+        '🎙️ No pude entender el audio. ¿Puedes repetirlo con menos ruido o escribir tu pregunta?',
+      );
+      return null;
+    }
+    if (cuenta.audio_mostrar_texto_tlcue !== false) {
+      await this.api.enviarMensaje(cuenta.token, chatId, `🎙️ Entendí: «${r.texto}»`);
+    }
+    return { texto: r.texto.slice(0, 1000), ide_qmtra: r.ide_qmtra };
+  }
+
+  private ayuda(cuenta: CuentaTelegram): string {
+    return this.audiosHabilitados(cuenta) ? `${AYUDA}\n\n🎙️ También puedes enviarme notas de voz.` : AYUDA;
+  }
+
+  /** Notas de voz: activadas en la cuenta Y con API key de Groq configurada (sin Groq no se admiten). */
+  private audiosHabilitados(cuenta: CuentaTelegram): boolean {
+    return !!cuenta.audio_activo_tlcue && !!cuenta.groq_api_key;
+  }
+
+  private async nuevaConversacion(cuenta: CuentaTelegram, chatId: number, numero: NumeroAutorizado) {
+    await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, {
+      sesion: randomUUID(),
+      producto: null,
+      historial: [],
+      pendiente: null,
+    });
+    await this.api.enviarMensaje(cuenta.token, chatId, '🆕 Conversación nueva: olvidé el producto y el historial. ¿Qué necesitas saber?');
   }
 
   // ------------------------------------------------------------------ QuimIA
@@ -187,7 +306,7 @@ export class TelegramBotService {
     numero: NumeroAutorizado,
     conv: Conversacion,
     pregunta: string,
-    opciones: { producto?: ProductoQuimia; modo?: 'AGENTE' | 'IA_GENERAL' } = {},
+    opciones: { producto?: ProductoQuimia; modo?: 'AGENTE' | 'IA_GENERAL'; audio?: { ide_qmtra: number | null } } = {},
   ) {
     await this.api.escribiendo(cuenta.token, chatId);
     const producto = opciones.producto ?? conv.producto;
@@ -209,7 +328,12 @@ export class TelegramBotService {
       },
       usuario,
       'TELEGRAM',
-      { telefono: numero.telefono_tlusu, ide_tlusu: numero.ide_tlusu },
+      {
+        telefono: numero.telefono_tlusu,
+        ide_tlusu: numero.ide_tlusu,
+        entrada: opciones.audio ? 'AUDIO' : 'TEXTO',
+        ide_qmtra: opciones.audio?.ide_qmtra ?? null,
+      },
     );
 
     // Estado para la siguiente pregunta: producto activo, historial y lo pendiente (botones).
@@ -222,7 +346,7 @@ export class TelegramBotService {
         : null;
     await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, conv);
 
-    const { mensajes, botones } = respuestaATelegram(r);
+    const { mensajes, botones } = respuestaATelegram(r, (url) => this.urlPublica(cuenta, url));
     for (let i = 0; i < mensajes.length; i++) {
       const ultimo = i === mensajes.length - 1;
       await this.enviarHtml(cuenta, chatId, mensajes[i], ultimo ? botones : []);
@@ -232,6 +356,16 @@ export class TelegramBotService {
       `UPDATE tlg_usuario SET ultimo_acceso_tlusu = NOW(), total_consultas_tlusu = total_consultas_tlusu + 1 WHERE ide_tlusu = $1`,
       [numero.ide_tlusu],
     );
+  }
+
+  /**
+   * Los links a PDFs se arman con HOST_API (puede ser una IP interna). Para Telegram se reemplaza
+   * esa base por la URL pública de la cuenta, así abren desde cualquier celular.
+   */
+  private urlPublica(cuenta: CuentaTelegram, url: string): string {
+    const interna = HOST_API().replace(/\/+$/, '');
+    const publica = basePublica(cuenta.url_publica_tlcue);
+    return url.startsWith(interna) ? publica + url.slice(interna.length) : url;
   }
 
   /** HTML con respaldo en texto plano si Telegram rechaza el formato (etiqueta mal cerrada). */
@@ -317,7 +451,7 @@ export class TelegramBotService {
     await this.api.enviarMensaje(cuenta.token, chatId, `✅ Listo, ${numero.alias_tlusu}. Tu número quedó verificado.`, {
       teclado: quitarTeclado,
     });
-    await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || AYUDA, { html: true });
+    await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta), { html: true });
   }
 
   private async getNumeroVinculado(cuenta: CuentaTelegram, telegramUserId: number): Promise<NumeroAutorizado | null> {

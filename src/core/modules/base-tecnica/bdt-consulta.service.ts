@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { HOST_API } from 'src/util/helpers/common-util';
 
+import { BdtProcesoService } from './bdt-proceso.service';
 import { BDT_CONFIG, ESTADOS_FUENTE_CHAT, ETIQUETA_TIPO_DOCUMENTO } from './constants/base-tecnica.constants';
+import { clasificarPorNombre } from './helpers/clasificador.helper';
 import { normalizarTexto } from './helpers/normalizar.helper';
 
 export interface DocContexto {
@@ -59,7 +61,44 @@ export function urlDocumento(uuid: string, nombreArchivo: string): string {
  */
 @Injectable()
 export class BdtConsultaService {
-  constructor(private readonly dataSource: DataSourceService) {}
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly proceso: BdtProcesoService,
+  ) {}
+
+  /**
+   * Adjuntos del producto (PDF/imagen) que todavía NO están en la base técnica, con el tipo deducido
+   * del nombre del archivo. Permite entregar el link de "la ficha técnica" aunque aún no se haya
+   * procesado. tipo = null → todos; con tipo, también se incluyen los de nombre no reconocible.
+   */
+  async listarAdjuntosSinProcesar(ideInarti: number, ideEmpr: number, tipo: string | null, limite: number): Promise<DocumentoListado[]> {
+    const [archivos, extraidos] = await Promise.all([
+      this.proceso.listarArchivosProducto(ideInarti, ideEmpr),
+      this.dataSource.pool.query(`SELECT uuid_origen_bddoc::text AS uuid FROM bdt_documento WHERE ide_inarti = $1 AND ide_empr = $2`, [
+        ideInarti,
+        ideEmpr,
+      ]),
+    ]);
+    const yaExtraidos = new Set(extraidos.rows.map((r) => r.uuid));
+    const candidatos = archivos
+      .filter((a) => BDT_CONFIG.EXTENSIONES_SOPORTADAS.includes((a.nombre.split('.').pop() || '').toLowerCase()))
+      .filter((a) => !yaExtraidos.has(a.uuid))
+      .map((a) => ({ archivo: a, tipo: clasificarPorNombre(`${a.ruta} ${a.nombre}`) }));
+    const coinciden = tipo ? candidatos.filter((c) => c.tipo === tipo) : candidatos;
+    // Si pidieron un tipo y ningún nombre lo indica, se ofrecen los no reconocibles (puede ser ese).
+    const elegidos = coinciden.length || !tipo ? coinciden : candidatos.filter((c) => c.tipo === null);
+    return elegidos.slice(0, Math.min(Math.max(limite, 1), 10)).map(({ archivo, tipo: t }) => ({
+      ide_bddoc: 0,
+      tipo: t ?? 'SIN_CLASIFICAR',
+      tipo_etiqueta: t ? ETIQUETA_TIPO_DOCUMENTO[t] : 'Documento',
+      archivo: archivo.nombre,
+      url: urlDocumento(archivo.uuid, archivo.nombre),
+      fecha: null,
+      lote: null,
+      fabricante: null,
+      estado: 'SIN_PROCESAR',
+    }));
+  }
 
   /**
    * Documentos técnicos vigentes del producto, más recientes primero (COA por fecha de análisis

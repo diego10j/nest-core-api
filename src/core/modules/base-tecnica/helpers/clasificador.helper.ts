@@ -127,3 +127,16 @@ export function clasificarPorReglas(textoPrimeraPagina: string, textoCompleto: s
   const certeza = Math.min(1, ventaja / 8);
   return { tipo: primero[0] as TipoDocumentoBdt, certeza, puntajes };
 }
+
+/**
+ * Tipo probable de un adjunto solo por su nombre de archivo (sin leerlo). Se usa para ofrecer el
+ * link de documentos que aún no se procesaron en la base técnica: "FT-ACIDO CITRICO.pdf",
+ * "COA lote 123.pdf", "MSDS Novaprot.pdf"…
+ */
+export function clasificarPorNombre(nombreArchivo: string): TipoDocumentoBdt | null {
+  const n = normalizarTexto(nombreArchivo).replace(/[_.-]+/g, ' ');
+  if (/\b(M?SDS|HDS|FDS|HOJA(S)? DE (DATOS DE )?SEGURIDAD|FICHA DE (DATOS DE )?SEGURIDAD|SAFETY)\b/.test(n)) return 'HOJA_SEGURIDAD';
+  if (/\b(COA|C O A|CERTIFICADO|CERTIFICATE|ANALISIS|ANALYSIS|LOTE|BATCH|LOT)\b/.test(n)) return 'CERTIFICADO_ANALISIS';
+  if (/\b(FT|F T|TDS|FICHA|FICHA TECNICA|HOJA TECNICA|TECHNICAL|SPEC|SPECIFICATION|ESPECIFICACION(ES)?|DATA SHEET)\b/.test(n)) return 'FICHA_TECNICA';
+  return null;
+}

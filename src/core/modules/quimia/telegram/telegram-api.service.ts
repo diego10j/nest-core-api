@@ -14,6 +14,18 @@ export interface TelegramMensaje {
   chat: { id: number; type: string };
   text?: string;
   contact?: { phone_number: string; first_name?: string; user_id?: number };
+  /** Nota de voz (OGG/Opus). */
+  voice?: ArchivoAudioTelegram;
+  /** Archivo de audio (mp3, m4a…). */
+  audio?: ArchivoAudioTelegram & { file_name?: string };
+  reply_markup?: { inline_keyboard?: BotonTelegram[][] };
+}
+
+export interface ArchivoAudioTelegram {
+  file_id: string;
+  duration: number;
+  mime_type?: string;
+  file_size?: number;
 }
 
 export interface TelegramUpdate {
@@ -113,6 +125,24 @@ export class TelegramApiService {
           ? { reply_markup: opciones.teclado }
           : {}),
     });
+  }
+
+  /** Reemplaza los botones en línea de un mensaje ya enviado ([] = quitarlos todos). */
+  editarBotones(token: string, chatId: number, messageId: number, botones: BotonTelegram[][]) {
+    return this.llamar(token, 'editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: botones },
+    }).catch(() => undefined);
+  }
+
+  /** Descarga un archivo enviado al bot (la Bot API permite hasta 20 MB). */
+  async descargarArchivo(token: string, fileId: string): Promise<Buffer> {
+    const archivo = await this.llamar<{ file_path?: string }>(token, 'getFile', { file_id: fileId });
+    if (!archivo.file_path) throw new TelegramApiError('Telegram no entregó la ruta del archivo');
+    const res = await fetch(`https://api.telegram.org/file/bot${token}/${archivo.file_path}`);
+    if (!res.ok) throw new TelegramApiError(`No se pudo descargar el audio (HTTP ${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
   }
 
   escribiendo(token: string, chatId: number) {

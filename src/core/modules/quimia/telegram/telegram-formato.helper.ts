@@ -48,7 +48,10 @@ export function markdownATelegramHtml(markdown: string): string {
 }
 
 /** Mensaje(s) HTML + botones para responder en Telegram. */
-export function respuestaATelegram(r: RespuestaQuimia): { mensajes: string[]; botones: BotonTelegram[][] } {
+export function respuestaATelegram(
+  r: RespuestaQuimia,
+  url: (u: string) => string = (u) => u,
+): { mensajes: string[]; botones: BotonTelegram[][] } {
   const partes: string[] = [];
   partes.push(markdownATelegramHtml(r.texto || r.error || 'Sin respuesta'));
 
@@ -57,8 +60,8 @@ export function respuestaATelegram(r: RespuestaQuimia): { mensajes: string[]; bo
       '📄 <b>Fuentes</b>\n' +
         r.citas
           .map((c, i) => {
-            const url = c.pagina ? `${c.url}#page=${c.pagina}` : c.url;
-            return `[${i + 1}] <a href="${escapar(url)}">${escapar(c.archivo)}</a> · ${escapar(
+            const enlace = url(c.pagina ? `${c.url}#page=${c.pagina}` : c.url);
+            return `[${i + 1}] <a href="${escapar(enlace)}">${escapar(c.archivo)}</a> · ${escapar(
               [c.tipo_etiqueta, c.seccion, c.pagina ? `pág. ${c.pagina}` : null].filter(Boolean).join(' · '),
             )}`;
           })
@@ -69,8 +72,10 @@ export function respuestaATelegram(r: RespuestaQuimia): { mensajes: string[]; bo
   const botones: BotonTelegram[][] = [];
   // Documentos pedidos: un botón por documento que abre el PDF.
   r.documentos.slice(0, 6).forEach((d) => {
-    const etiqueta = [d.tipo_etiqueta, d.lote ? `lote ${d.lote}` : null, d.fecha].filter(Boolean).join(' · ');
-    botones.push([{ text: `📎 ${etiqueta}`.slice(0, 60), url: d.url }]);
+    // Sin lote ni fecha (ej. adjunto aún sin procesar) se muestra el nombre del archivo.
+    const detalle = [d.lote ? `lote ${d.lote}` : null, d.fecha].filter(Boolean);
+    const etiqueta = [d.tipo_etiqueta, ...(detalle.length ? detalle : [d.archivo.replace(/\.[a-z0-9]{2,4}$/i, '')])].join(' · ');
+    botones.push([{ text: `📎 ${etiqueta}`.slice(0, 60), url: url(d.url) }]);
   });
   // Elegir producto / cambiar de producto / respuesta de IA.
   r.opciones.slice(0, 8).forEach((o) => botones.push([{ text: `🧪 ${o.nombre}`.slice(0, 60), callback_data: `p:${o.ide_inarti}` }]));
@@ -78,7 +83,10 @@ export function respuestaATelegram(r: RespuestaQuimia): { mensajes: string[]; bo
     botones.push([{ text: `Cambiar a ${r.sugerirCambio.nombre}`.slice(0, 60), callback_data: `p:${r.sugerirCambio.ide_inarti}` }]);
   }
   if (r.sinRespuesta && !r.esIa && !r.opciones.length) {
-    botones.push([{ text: '✨ Responder con IA', callback_data: 'ia' }]);
+    botones.push([
+      { text: '✨ Sí, responder con IA', callback_data: 'ia' },
+      { text: 'No, gracias', callback_data: 'no' },
+    ]);
   }
 
   return { mensajes: dividir(partes.join('\n\n')), botones };

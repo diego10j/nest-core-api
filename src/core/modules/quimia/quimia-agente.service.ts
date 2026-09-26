@@ -231,6 +231,11 @@ export class QuimiaAgenteService {
       textoFinal +=
         '\n\n¿Quieres que responda QuimIA con conocimiento técnico general (generado con IA)?';
     }
+    // Pedir un archivo no se responde con IA general: si solo se listaron documentos, no hay "sin respuesta".
+    if (sinRespuesta && ctx.herramientasUsadas.includes('listar_documentos') && !ctx.herramientasUsadas.includes('consultar_base_tecnica')) {
+      sinRespuesta = false;
+      textoFinal = textoFinal.replace(/\n*¿Quieres que responda QuimIA con conocimiento técnico general[^\n]*$/, '').trim();
+    }
     let opciones: EventoQuimia | null = null;
     if (textoFinal.startsWith(MARCADOR_ELEGIR_PRODUCTO)) {
       textoFinal = textoFinal.slice(MARCADOR_ELEGIR_PRODUCTO.length).trim();
@@ -360,8 +365,8 @@ export class QuimiaAgenteService {
         `INSERT INTO bdt_consulta (ide_inarti, canal_bdcon, sesion_bdcon, modo_bdcon, pregunta_bdcon, respuesta_bdcon,
                                    documentos_bdcon, citas_bdcon, herramientas_bdcon, sin_dato_bdcon, modelo_ia_bdcon,
                                    tokens_entrada_bdcon, tokens_salida_bdcon, ide_empr, usuario_ingre,
-                                   telefono_bdcon, ide_tlusu)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                                   telefono_bdcon, ide_tlusu, entrada_bdcon, ide_qmtra)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          RETURNING ide_bdcon`,
         [
           datos.ideInarti ?? dto.ide_inarti ?? null,
@@ -381,6 +386,8 @@ export class QuimiaAgenteService {
           usuario.login,
           usuario.origen?.telefono ?? null,
           usuario.origen?.ide_tlusu ?? null,
+          usuario.origen?.entrada ?? 'TEXTO',
+          usuario.origen?.ide_qmtra ?? null,
         ],
       );
       ide = r.rows[0].ide_bdcon;

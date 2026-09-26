@@ -54,9 +54,11 @@ export class TelegramRunnerService implements OnApplicationBootstrap, OnModuleDe
       return;
     }
     if (cuenta.modo_tlcue === 'WEBHOOK') {
-      const url = rutaWebhook(cuenta.ide_tlcue);
+      const url = rutaWebhook(cuenta.ide_tlcue, cuenta.url_publica_tlcue);
       if (!url.startsWith('https://')) {
-        const msg = `Telegram exige HTTPS para el webhook y HOST_API es ${url.split('/api/')[0]}. Usa el modo POLLING.`;
+        const msg =
+          `Telegram exige HTTPS para el webhook y la URL pública es ${url.split('/api/')[0]}. ` +
+          'Configura la "URL pública del backend" (el mismo dominio https del webhook de YCloud) o usa POLLING.';
         await this.cuentas.registrarError(ideTlcue, msg);
         throw new Error(msg);
       }

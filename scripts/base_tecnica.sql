@@ -331,6 +331,9 @@ ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS herramientas_bdcon TEXT[];
 -- Quién preguntó por canales externos (Telegram): teléfono y número autorizado (tlg_usuario).
 ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS telefono_bdcon VARCHAR(20);
 ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS ide_tlusu INTEGER;
+-- Si la pregunta llegó por texto o por nota de voz (y su transcripción en qmi_transcripcion).
+ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS entrada_bdcon VARCHAR(10) NOT NULL DEFAULT 'TEXTO';
+ALTER TABLE bdt_consulta ADD COLUMN IF NOT EXISTS ide_qmtra INTEGER;
 
 
 -- 10. Semilla mínima del diccionario de propiedades (ampliar con lo que aparezca en la fase 0)

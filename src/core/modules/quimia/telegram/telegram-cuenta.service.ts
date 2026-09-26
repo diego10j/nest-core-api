@@ -6,6 +6,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { HOST_API } from 'src/util/helpers/common-util';
 
 import { decrypt, encrypt } from '../../sri/configuracion/crypto.util';
+import { TranscripcionService } from '../transcripcion/transcripcion.service';
 
 import { IdeUsuarioTelegramDto, SetActivoUsuarioTelegramDto } from './dto/ide-telegram.dto';
 import { SaveCuentaTelegramDto } from './dto/save-cuenta-telegram.dto';
@@ -20,6 +21,7 @@ export interface CuentaTelegram {
   token: string;
   bot_username_tlcue: string | null;
   modo_tlcue: 'POLLING' | 'WEBHOOK';
+  url_publica_tlcue: string | null;
   webhook_secret_tlcue: string | null;
   ultimo_update_tlcue: number;
   ide_sucu: number | null;
@@ -27,10 +29,25 @@ export interface CuentaTelegram {
   mensaje_bienvenida_tlcue: string | null;
   activo_tlcue: boolean;
   ide_empr: number;
+  // notas de voz
+  audio_activo_tlcue: boolean;
+  groq_api_key: string;
+  audio_max_seg_tlcue: number;
+  audio_respaldo_openai_tlcue: boolean;
+  audio_mostrar_texto_tlcue: boolean;
+  audio_vocabulario_tlcue: string | null;
 }
 
-/** Ruta pública del webhook (Telegram exige HTTPS). */
-export const rutaWebhook = (ideTlcue: number) => `${HOST_API()}/api/quimia/telegram/webhook/${ideTlcue}`;
+/**
+ * Base pública del backend para Telegram: la configurada en la cuenta (el mismo dominio https que
+ * usa el webhook de YCloud) o, si no hay, HOST_API. Sin "/" final ni "/api".
+ */
+export const basePublica = (urlPublica: string | null | undefined) =>
+  (urlPublica?.trim() || HOST_API()).replace(/\/+$/, '').replace(/\/api$/, '');
+
+/** Ruta del webhook que se registra en Telegram (exige HTTPS). */
+export const rutaWebhook = (ideTlcue: number, urlPublica?: string | null) =>
+  `${basePublica(urlPublica)}/api/quimia/telegram/webhook/${ideTlcue}`;
 
 /**
  * Configuración del canal Telegram (pantalla Administración → Canal Telegram): cuenta del bot y
@@ -44,6 +61,7 @@ export class TelegramCuentaService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly api: TelegramApiService,
+    private readonly transcripcion: TranscripcionService,
   ) {}
 
   // ------------------------------------------------------------------ cuenta
@@ -55,19 +73,26 @@ export class TelegramCuentaService {
               (SELECT COUNT(*) FROM tlg_usuario u WHERE u.ide_tlcue = c.ide_tlcue AND u.activo_tlusu)::int AS numeros_activos,
               (SELECT COUNT(*) FROM tlg_usuario u WHERE u.ide_tlcue = c.ide_tlcue AND u.chat_id_tlusu IS NOT NULL)::int AS numeros_vinculados,
               (SELECT COUNT(*) FROM bdt_consulta q WHERE q.canal_bdcon = 'TELEGRAM' AND q.ide_empr = c.ide_empr
-                  AND q.fecha_ingre >= NOW() - INTERVAL '30 days')::int AS consultas_30_dias
+                  AND q.fecha_ingre >= NOW() - INTERVAL '30 days')::int AS consultas_30_dias,
+              (SELECT COUNT(*) FROM qmi_transcripcion t WHERE t.ide_empr = c.ide_empr AND t.origen_qmtra = 'TELEGRAM'
+                  AND t.fecha_ingre >= NOW() - INTERVAL '30 days')::int AS audios_30_dias,
+              (SELECT COALESCE(SUM(t.costo_usd_qmtra), 0) FROM qmi_transcripcion t WHERE t.ide_empr = c.ide_empr
+                  AND t.origen_qmtra = 'TELEGRAM' AND t.fecha_ingre >= NOW() - INTERVAL '30 days')::float AS costo_audios_30_dias
          FROM tlg_cuenta c WHERE c.ide_empr = $1 ORDER BY c.activo_tlcue DESC, c.ide_tlcue LIMIT 1`,
       [dto.ideEmpr],
     );
     const c = r.rows[0];
     if (!c) return { cuenta: null };
-    const { token_tlcue, webhook_secret_tlcue: _s, ...resto } = c;
+    const { token_tlcue, webhook_secret_tlcue: _s, groq_api_key_tlcue, ...resto } = c;
     const token = this.descifrar(token_tlcue);
+    const groq = this.descifrar(groq_api_key_tlcue);
     return {
       cuenta: {
         ...resto,
         token_mascara: token ? `${token.split(':')[0]}:••••••••${token.slice(-4)}` : null,
-        webhook_url_esperada: rutaWebhook(c.ide_tlcue),
+        groq_key_mascara: groq ? `gsk_••••••••${groq.slice(-4)}` : null,
+        webhook_url_esperada: rutaWebhook(c.ide_tlcue, c.url_publica_tlcue),
+        host_api: HOST_API(),
         enlace_bot: c.bot_username_tlcue ? `https://t.me/${c.bot_username_tlcue}` : null,
       },
     };
@@ -87,11 +112,44 @@ export class TelegramCuentaService {
       }
     }
 
+    const groqKey = dto.groq_api_key_tlcue?.trim();
+    if (groqKey) {
+      try {
+        await this.transcripcion.validarGroqKey(groqKey);
+      } catch (error) {
+        throw new BadRequestException(`Groq rechazó la API key: ${(error as Error).message}`);
+      }
+    }
+    // Las notas de voz requieren la API key de Groq (nueva o ya guardada y no quitada).
+    if (dto.audio_activo_tlcue) {
+      let tieneGroq = !!groqKey;
+      if (!tieneGroq && dto.ide_tlcue && !dto.quitar_groq_api_key) {
+        const actual = await this.dataSource.pool.query(
+          `SELECT groq_api_key_tlcue FROM tlg_cuenta WHERE ide_tlcue = $1 AND ide_empr = $2`,
+          [dto.ide_tlcue, dto.ideEmpr],
+        );
+        tieneGroq = !!this.descifrar(actual.rows[0]?.groq_api_key_tlcue ?? null);
+      }
+      if (!tieneGroq) {
+        throw new BadRequestException('Para activar las notas de voz ingresa la API key de Groq.');
+      }
+    }
+    const audio = {
+      activo: dto.audio_activo_tlcue ?? false,
+      maxSeg: dto.audio_max_seg_tlcue ?? 180,
+      respaldo: dto.audio_respaldo_openai_tlcue ?? true,
+      mostrar: dto.audio_mostrar_texto_tlcue ?? true,
+      vocabulario: dto.audio_vocabulario_tlcue?.trim() || null,
+    };
+
     let ide = dto.ide_tlcue;
     if (ide) {
       await this.dataSource.pool.query(
         `UPDATE tlg_cuenta SET nombre_tlcue = $2, modo_tlcue = $3, ide_sucu = $4, usuario_erp_tlcue = $5,
-                mensaje_bienvenida_tlcue = $6, activo_tlcue = $7,
+                mensaje_bienvenida_tlcue = $6, activo_tlcue = $7, url_publica_tlcue = $14,
+                audio_activo_tlcue = $15, audio_max_seg_tlcue = $16, audio_respaldo_openai_tlcue = $17,
+                audio_mostrar_texto_tlcue = $18, audio_vocabulario_tlcue = $19,
+                groq_api_key_tlcue = CASE WHEN $21 THEN NULL ELSE COALESCE($20, groq_api_key_tlcue) END,
                 token_tlcue = COALESCE($8, token_tlcue),
                 bot_id_tlcue = COALESCE($9, bot_id_tlcue), bot_username_tlcue = COALESCE($10, bot_username_tlcue),
                 bot_nombre_tlcue = COALESCE($11, bot_nombre_tlcue),
@@ -112,14 +170,24 @@ export class TelegramCuentaService {
           bot?.first_name ?? null,
           dto.login,
           dto.ideEmpr,
+          dto.url_publica_tlcue?.trim() || null,
+          audio.activo,
+          audio.maxSeg,
+          audio.respaldo,
+          audio.mostrar,
+          audio.vocabulario,
+          groqKey ? encrypt(groqKey) : null,
+          dto.quitar_groq_api_key === true,
         ],
       );
     } else {
       const r = await this.dataSource.pool.query(
         `INSERT INTO tlg_cuenta (nombre_tlcue, token_tlcue, bot_id_tlcue, bot_username_tlcue, bot_nombre_tlcue, modo_tlcue,
                                  webhook_secret_tlcue, ide_sucu, usuario_erp_tlcue, mensaje_bienvenida_tlcue,
-                                 activo_tlcue, estado_conexion_tlcue, ultima_conexion_tlcue, ide_empr, usuario_ingre)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'CONECTADO', NOW(), $12, $13)
+                                 activo_tlcue, estado_conexion_tlcue, ultima_conexion_tlcue, ide_empr, usuario_ingre,
+                                 url_publica_tlcue, audio_activo_tlcue, audio_max_seg_tlcue, audio_respaldo_openai_tlcue,
+                                 audio_mostrar_texto_tlcue, audio_vocabulario_tlcue, groq_api_key_tlcue)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'CONECTADO', NOW(), $12, $13, $14, $15, $16, $17, $18, $19, $20)
          RETURNING ide_tlcue`,
         [
           dto.nombre_tlcue,
@@ -135,6 +203,13 @@ export class TelegramCuentaService {
           dto.activo_tlcue,
           dto.ideEmpr,
           dto.login,
+          dto.url_publica_tlcue?.trim() || null,
+          audio.activo,
+          audio.maxSeg,
+          audio.respaldo,
+          audio.mostrar,
+          audio.vocabulario,
+          groqKey ? encrypt(groqKey) : null,
         ],
       );
       ide = r.rows[0].ide_tlcue;
@@ -180,7 +255,12 @@ export class TelegramCuentaService {
     );
     if (!r.rows.length) throw new BadRequestException('Cuenta de Telegram no encontrada');
     const c = r.rows[0];
-    return { ...c, token: this.descifrar(c.token_tlcue), ultimo_update_tlcue: Number(c.ultimo_update_tlcue ?? 0) };
+    return {
+      ...c,
+      token: this.descifrar(c.token_tlcue),
+      groq_api_key: this.descifrar(c.groq_api_key_tlcue),
+      ultimo_update_tlcue: Number(c.ultimo_update_tlcue ?? 0),
+    };
   }
 
   async getCuentasActivas(): Promise<CuentaTelegram[]> {
@@ -284,10 +364,12 @@ export class TelegramCuentaService {
   async getConsultas(ideTlcue: number, ideEmpr: number) {
     const r = await this.dataSource.pool.query(
       `SELECT q.ide_bdcon, q.fecha_ingre, q.telefono_bdcon, u.alias_tlusu, q.pregunta_bdcon, q.respuesta_bdcon,
-              q.modo_bdcon, q.herramientas_bdcon, q.sin_dato_bdcon, q.util_bdcon,
+              q.modo_bdcon, q.herramientas_bdcon, q.sin_dato_bdcon, q.util_bdcon, q.entrada_bdcon,
+              t.duracion_seg_qmtra, t.proveedor_qmtra, t.respaldo_qmtra, t.costo_usd_qmtra,
               COALESCE(q.tokens_entrada_bdcon, 0) + COALESCE(q.tokens_salida_bdcon, 0) AS tokens
          FROM bdt_consulta q
          LEFT JOIN tlg_usuario u ON u.ide_tlusu = q.ide_tlusu
+         LEFT JOIN qmi_transcripcion t ON t.ide_qmtra = q.ide_qmtra
         WHERE q.canal_bdcon = 'TELEGRAM' AND q.ide_empr = $2
           AND (u.ide_tlcue = $1 OR u.ide_tlcue IS NULL)
         ORDER BY q.ide_bdcon DESC

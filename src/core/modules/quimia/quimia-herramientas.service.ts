@@ -252,19 +252,34 @@ export class QuimiaHerramientasService {
 
         case 'listar_documentos': {
           const tipo = args.tipo && args.tipo !== 'TODOS' ? args.tipo : null;
-          const docs = await this.bdtConsulta.listarDocumentos(producto.ide_inarti, u.ideEmpr, tipo, args.limite || 3);
-          ctx.documentos.push(...docs.filter((d) => !ctx.documentos.some((x) => x.ide_bddoc === d.ide_bddoc)));
+          const limite = Number(args.limite) || 3;
+          const docs = await this.bdtConsulta.listarDocumentos(producto.ide_inarti, u.ideEmpr, tipo, limite);
+          // Respaldo: adjuntos del producto aún no procesados en la base técnica (link directo).
+          const sinProcesar =
+            docs.length < limite
+              ? await this.bdtConsulta.listarAdjuntosSinProcesar(producto.ide_inarti, u.ideEmpr, tipo, limite - docs.length)
+              : [];
+          const todos = [...docs, ...sinProcesar];
+          ctx.documentos.push(
+            ...todos.filter((d) => !ctx.documentos.some((x) => x.url === d.url)),
+          );
           return this.json({
             producto: producto.nombre,
-            total: docs.length,
-            nota: 'Los links de los documentos se muestran automáticamente al usuario; no escribas las URL.',
-            documentos: docs.map(({ tipo_etiqueta, archivo, fecha: f, lote, fabricante, estado }) => ({
+            total: todos.length,
+            nota:
+              'Los links se muestran automáticamente al usuario como botones/tarjetas; no escribas URL. ' +
+              (sinProcesar.length
+                ? 'Los marcados sin_procesar son adjuntos del producto aún no leídos por la base técnica (el tipo se dedujo del nombre del archivo): entrégalos igual.'
+                : '') +
+              (!todos.length ? 'No hay documentos de ese tipo adjuntos al producto.' : ''),
+            documentos: todos.map(({ tipo_etiqueta, archivo, fecha: f, lote, fabricante, estado }) => ({
               tipo: tipo_etiqueta,
               archivo,
               fecha: f,
               lote,
               fabricante,
               pendiente_revision: estado === 'REVISION',
+              sin_procesar: estado === 'SIN_PROCESAR',
             })),
           });
         }
