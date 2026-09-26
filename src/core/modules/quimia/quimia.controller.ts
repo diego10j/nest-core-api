@@ -1,12 +1,14 @@
-import { Body, Controller, HttpStatus, Post, Res } from '@nestjs/common';
+import { Body, Controller, HttpStatus, NotFoundException, Post, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { BuscarProductosQuimiaDto } from './dto/buscar-productos-quimia.dto';
 import { CalificarConsultaDto } from './dto/calificar-consulta.dto';
 import { ChatQuimiaDto, PreguntarQuimiaDto } from './dto/chat-quimia.dto';
+import { GetNotaQuimiaDto } from './dto/get-nota-quimia.dto';
 import { QuimiaAgenteService } from './quimia-agente.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { UsuarioQuimia } from './quimia.types';
@@ -25,6 +27,7 @@ export class QuimiaController {
   constructor(
     private readonly agente: QuimiaAgenteService,
     private readonly productos: QuimiaProductosService,
+    private readonly conocimiento: QuimiaConocimientoService,
   ) {}
 
   @Post('chat')
@@ -60,6 +63,14 @@ export class QuimiaController {
   async buscarProductos(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: BuscarProductosQuimiaDto) {
     const rows = await this.productos.buscar(dtoIn.texto ?? '', usuarioDe(headersParams), 20);
     return { rowCount: rows.length, rows };
+  }
+
+  @Post('getNota')
+  @ApiOperation({ summary: 'Nota de la base de conocimiento ofrecida por QuimIA ("Ver nota"): contenido e imágenes' })
+  async getNota(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GetNotaQuimiaDto) {
+    const nota = await this.conocimiento.obtener(dtoIn, headersParams.ideEmpr);
+    if (!nota) throw new NotFoundException('La nota no existe o fue archivada');
+    return nota;
   }
 
   @Post('calificarConsulta')

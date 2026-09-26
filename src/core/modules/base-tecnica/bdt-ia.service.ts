@@ -73,16 +73,17 @@ export class BdtIaService {
     };
   }
 
-  /** Llamada con respuesta JSON libre (chat en modo documentos). */
+  /** Llamada con respuesta JSON libre (chat en modo documentos, contenido de publicación). */
   async completarJson<T>(
     messages: OpenAI.ChatCompletionMessageParam[],
     schema: Record<string, unknown>,
     nombre: string,
+    opts: { modelo?: string; temperatura?: number; maxTokens?: number } = {},
   ): Promise<{ datos: T; tokensEntrada: number; tokensSalida: number; modelo: string }> {
     const response = await this.openai.chat.completions.create({
-      model: BDT_CONFIG.MODELO_CHAT,
-      temperature: 0.1,
-      max_tokens: 2000,
+      model: opts.modelo ?? BDT_CONFIG.MODELO_CHAT,
+      temperature: opts.temperatura ?? 0.1,
+      max_tokens: opts.maxTokens ?? 2000,
       messages,
       response_format: { type: 'json_schema', json_schema: { name: nombre, strict: true, schema } },
     });

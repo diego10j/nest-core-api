@@ -1,3 +1,5 @@
+import { resaltar } from '../conocimiento/conocimiento-quimia.helper';
+import { NotaCompleta } from '../conocimiento/quimia-conocimiento.service';
 import { RespuestaQuimia } from '../quimia.types';
 
 import { BotonTelegram } from './telegram-api.service';
@@ -27,6 +29,8 @@ export function markdownATelegramHtml(markdown: string): string {
         .join(' · ');
     }
     l = escapar(l);
+    // notas de la base de conocimiento en línea → 📝 título
+    l = l.replace(/\s?\[([^\]]*)\]\(#nota-[0-9a-f-]+\)/gi, ' 📝 <i>$1</i>');
     // citas en línea → [n]
     l = l.replace(/\s?\[[^\]]*\]\(#cita-([\d-]+)\)/g, (_m, ids: string) =>
       ` [${ids
@@ -82,11 +86,16 @@ export function respuestaATelegram(
   if (r.sugerirCambio) {
     botones.push([{ text: `Cambiar a ${r.sugerirCambio.nombre}`.slice(0, 60), callback_data: `p:${r.sugerirCambio.ide_inarti}` }]);
   }
-  if (r.sinRespuesta && !r.esIa && !r.opciones.length) {
+  // Notas de la base de conocimiento: "📝 título" (máximo 5) + "No, gracias".
+  r.notas.slice(0, 5).forEach((n) => botones.push([{ text: `📝 ${n.titulo}`.slice(0, 60), callback_data: `k:${n.ide_cono}` }]));
+  const ofrecerIa = r.sinRespuesta && !r.esIa && !r.opciones.length;
+  if (ofrecerIa) {
     botones.push([
       { text: '✨ Sí, responder con IA', callback_data: 'ia' },
       { text: 'No, gracias', callback_data: 'no' },
     ]);
+  } else if (r.notas.length) {
+    botones.push([{ text: 'No, gracias', callback_data: 'no' }]);
   }
 
   return { mensajes: dividir(partes.join('\n\n')), botones };
@@ -125,4 +134,28 @@ export function mismoTelefono(a: string, b: string): boolean {
   const x = normalizarTelefono(a);
   const y = normalizarTelefono(b);
   return x.length >= 9 && y.length >= 9 && x.slice(-9) === y.slice(-9);
+}
+
+/**
+ * Nota de la base de conocimiento → mensaje(s) HTML de Telegram: título, categoría/tags, contenido con
+ * los términos de la búsqueda en negrilla. Las imágenes se envían aparte como fotos.
+ */
+export function notaATelegram(nota: NotaCompleta, terminos: string[]): string[] {
+  const meta = [nota.categoria, nota.tags.length ? nota.tags.map((t) => `#${t.replace(/\s+/g, '_')}`).join(' ') : null, nota.fecha]
+    .filter(Boolean)
+    .join(' · ');
+  const cuerpo = nota.texto
+    .split('\n')
+    .map((linea) => {
+      const titulo = linea.match(/^#{1,6}\s+(.+)$/);
+      const html = resaltar(escapar(titulo ? titulo[1] : linea), terminos, '<b>', '</b>').texto;
+      return titulo ? `<b><u>${html.replace(/<\/?b>/g, '')}</u></b>` : html;
+    })
+    .join('\n')
+    // Las imágenes llegan como fotos después del texto.
+    .replace(/\[imagen(?::\s*([^\]]*))?\]/g, (_m, pie?: string) => `🖼️ <i>${pie ? `${pie} (imagen abajo)` : 'imagen abajo'}</i>`)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const cabecera = `📝 <b>${escapar(nota.titulo)}</b>${meta ? `\n<i>${escapar(meta)}</i>` : ''}`;
+  return dividir(`${cabecera}\n\n${cuerpo || '<i>(sin texto)</i>'}`);
 }

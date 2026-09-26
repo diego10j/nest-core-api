@@ -1,3 +1,4 @@
+import { NotaQuimia } from '../conocimiento/quimia-conocimiento.service';
 import { CanalQuimia, ProductoQuimia } from '../quimia.types';
 
 /** Marcadores que la IA pone al inicio de su respuesta y el backend convierte en acciones. */
@@ -8,6 +9,8 @@ export function buildPromptAgente(opts: {
   producto: ProductoQuimia | null;
   canal: CanalQuimia;
   hoy: string;
+  /** Notas de la base de conocimiento que coinciden con la pregunta (etiquetas N1…N5). */
+  notas?: NotaQuimia[];
 }): string {
   const formato =
     opts.canal === 'TELEGRAM'
@@ -33,6 +36,13 @@ CÓMO TRABAJAR
   Precio promedio / costo → consultar_precios. "¿Tiene configuración de precios?" →
   consultar_configuracion_precios. "¿A qué precio cotizar X kg?" → cotizar (cantidad en la unidad del
   producto; si piden otra unidad y no es convertible con seguridad, acláralo). Mejores clientes → mejores_clientes.
+- Precio de un producto para una cantidad ("precio de 50 kg de X") → cotizar. Si el producto no tiene
+  configuración de precios, cotizar devuelve las ventas en cantidades similares: sigue su "instruccion".
+  Si piden precio sin cantidad, pregunta la cantidad o usa consultar_precios.
+- "Envíame la factura 1029", "el PDF de la proforma 350" → obtener_documento_pdf. El PDF se entrega solo
+  (tarjeta en el ERP, archivo en Telegram): no escribas links. Si hay varias con ese número, pregunta cuál.
+- "Imágenes / fotos del producto X" → imagenes_producto (se muestran solas, máximo 5). Si no tiene, di
+  que el producto no tiene imágenes cargadas.
 - CLIENTES: primero buscar_cliente para obtener su ide_geper (si hay varios parecidos, pregunta cuál).
   Datos de contacto, dirección, provincia, ciudad, teléfonos, correo, ubicación → datos_cliente (si hay
   link de mapa, inclúyelo). Cuánto debe → deuda_cliente. "¿A qué precio le vendí X a tal cliente?" →
@@ -42,6 +52,23 @@ CÓMO TRABAJAR
   tal ciudad?" → costo_envio (peso en kg; convierte si te dan otra unidad de peso).
 - Si buscar_producto devuelve varios productos parecidos y no está claro cuál es, empieza tu respuesta
   con ${MARCADOR_ELEGIR_PRODUCTO} y pide que elija (los botones se muestran solos). Si devuelve uno, úsalo.
+
+BASE DE CONOCIMIENTO (notas internas del equipo)
+- Son políticas y acuerdos internos de DIQUIMEC (productos que no se venden o con restricciones,
+  presentaciones permitidas, cuentas bancarias, procedimientos, tips). Tienen PRIORIDAD sobre los
+  datos del ERP: si una nota dice que un producto no se vende, se vende solo en cierta presentación o
+  tiene una condición especial, dilo primero y claramente, aunque haya stock o precio, y también si el
+  producto no aparece en el catálogo.
+- Usa solo las notas que realmente respondan o condicionen la pregunta; ignora las que no aplican.
+  SIEMPRE que uses un dato de una nota, pon su etiqueta justo después del dato:
+  "Solo se vende en sacos de 25 kg [N1]", "Cuenta corriente 2100123456 [N2]".
+- Si la pregunta no está cubierta por las notas de abajo y parece una política o dato interno
+  (cuentas, procedimientos, condiciones), usa buscar_base_conocimiento.
+- Las imágenes de las notas no las puedes ver ("[imagen: …]"): si la nota tiene imágenes relevantes,
+  indica que el detalle está en la imagen de la nota. El usuario verá botones para abrir las notas.
+- Si la respuesta sale de una nota, no uses ${MARCADOR_NO_ENCONTRADO}.
+NOTAS ENCONTRADAS PARA ESTA PREGUNTA:
+${notasContexto(opts.notas)}
 
 CITAS DE LA BASE TÉCNICA
 - consultar_base_tecnica etiqueta los documentos como [D1], [D2]… Cuando uses un dato técnico, pon la
@@ -70,6 +97,19 @@ ESTILO
 - No cierres con ofrecimientos genéricos ("si necesitas más información, házmelo saber").
 - Es un canal interno: puedes mostrar costos, proveedores y clientes.
 `.trim();
+}
+
+/** Notas encontradas para la pregunta, etiquetadas [N1]… para que la IA las cite. */
+export function notasContexto(notas: NotaQuimia[] | undefined, desde = 0): string {
+  if (!notas?.length) return '- No hay notas que coincidan con esta pregunta.';
+  return notas
+    .map((n, i) => {
+      const meta = [n.categoria, n.tags.length ? `tags: ${n.tags.join(', ')}` : null, n.fecha ? `actualizada ${n.fecha}` : null, n.relacionada ? 'relacionada con el producto/cliente de la consulta' : null]
+        .filter(Boolean)
+        .join(' · ');
+      return `[N${desde + i + 1}] "${n.titulo}"${meta ? ` (${meta})` : ''}\n${n.fragmento}`;
+    })
+    .join('\n\n');
 }
 
 export function buildPromptIaGeneral(nombreProducto: string | null, identificacion: string | null): string {

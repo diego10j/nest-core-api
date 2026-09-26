@@ -63,6 +63,8 @@ export const BDT_CONFIG = {
   MAX_VUELTAS_AGENTE: 6,
   // Respuesta libre (sin documentos): aquí sí importa el criterio técnico del modelo.
   MODELO_IA_GENERAL: 'gpt-4o',
+  /** Contenido de publicación del producto (redacción comercial a partir de la base técnica). */
+  MODELO_CONTENIDO: 'gpt-4o',
   MAX_TOKENS_EXTRACCION: 16000,
 
   /** Menos caracteres por página que esto = página escaneada (imagen sin capa de texto). */
@@ -79,7 +81,7 @@ export const BDT_CONFIG = {
   CONCURRENCIA: 2,
 
   /** Confianza calculada >= esto → APROBADO automático; menor → REVISION. */
-  UMBRAL_APROBACION: 0.85,
+  UMBRAL_APROBACION: 0.9,
 
   /** word_similarity mínimo para considerar que la pregunta menciona un producto. */
   UMBRAL_SIMILITUD_PRODUCTO: 0.45,

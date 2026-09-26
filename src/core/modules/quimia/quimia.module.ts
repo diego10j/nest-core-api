@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ProformasReportsModule } from 'src/reports/modules/proformas/proformas-reports.module';
+import { VentasReportsModule } from 'src/reports/modules/ventas/ventas-reports.module';
 
 import { CoreService } from '../../core.service';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +10,8 @@ import { ConfigPreciosProductosService } from '../inventario/productos/config-pr
 import { ProductosService } from '../inventario/productos/productos.service';
 import { VentasModule } from '../ventas/ventas.module';
 
+import { QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
+import { QuimiaDocumentosErpService } from './erp/quimia-documentos-erp.service';
 import { QuimiaAgenteService } from './quimia-agente.service';
 import { QuimiaClientesService } from './quimia-clientes.service';
 import { QuimiaHerramientasService } from './quimia-herramientas.service';
@@ -30,13 +34,15 @@ import { TranscripcionService } from './transcripcion/transcripcion.service';
  * Los servicios de productos/precios se re-proveen aquí, igual que hacen otros módulos del proyecto.
  */
 @Module({
-  imports: [ConfigModule, BaseTecnicaModule, VentasModule],
+  imports: [ConfigModule, BaseTecnicaModule, VentasModule, VentasReportsModule, ProformasReportsModule],
   controllers: [QuimiaController, TelegramController],
   providers: [
     QuimiaAgenteService,
     QuimiaHerramientasService,
     QuimiaProductosService,
     QuimiaClientesService,
+    QuimiaConocimientoService,
+    QuimiaDocumentosErpService,
     TelegramApiService,
     TranscripcionService,
     TelegramCuentaService,

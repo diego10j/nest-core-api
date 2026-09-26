@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { BaseTecnicaController } from './base-tecnica.controller';
 import { BdtConsultaService } from './bdt-consulta.service';
+import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
 import { BdtExtraccionService } from './bdt-extraccion.service';
 import { BdtIaService } from './bdt-ia.service';
@@ -16,7 +17,14 @@ import { BdtProcesoService } from './bdt-proceso.service';
  */
 @Module({
   controllers: [BaseTecnicaController],
-  providers: [BdtIaService, BdtExtraccionService, BdtProcesoService, BdtDatosService, BdtConsultaService],
+  providers: [
+    BdtIaService,
+    BdtExtraccionService,
+    BdtProcesoService,
+    BdtDatosService,
+    BdtConsultaService,
+    BdtContenidoService,
+  ],
   // El asistente QuimIA (módulo quimia) usa la IA y las consultas de la base técnica.
   exports: [BdtIaService, BdtConsultaService],
 })

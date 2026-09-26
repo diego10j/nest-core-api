@@ -1,5 +1,8 @@
 import { CitaDocumento, DocumentoListado } from '../base-tecnica/bdt-consulta.service';
 
+import { NotaQuimia } from './conocimiento/quimia-conocimiento.service';
+import { ArchivoErpQuimia, ImagenProductoQuimia } from './erp/quimia-documentos-erp.service';
+
 /** Canal por el que llega la pregunta (se registra en bdt_consulta.canal_bdcon). */
 export type CanalQuimia = 'ASESOR' | 'API' | 'TELEGRAM';
 
@@ -30,6 +33,12 @@ export type EventoQuimia =
   | { tipo: 'delta'; texto: string }
   | { tipo: 'citas'; citas: CitaDocumento[] }
   | { tipo: 'documentos'; documentos: DocumentoListado[] }
+  /** Notas de la base de conocimiento que coinciden (botones "Ver nota", máximo 5). */
+  | { tipo: 'notas'; notas: NotaQuimia[] }
+  /** PDF de factura/proforma pedidos (el chat los abre; Telegram los envía como archivo). */
+  | { tipo: 'archivos'; archivos: ArchivoErpQuimia[] }
+  /** Fotos de la galería del producto (máximo 5). */
+  | { tipo: 'imagenes'; imagenes: ImagenProductoQuimia[] }
   | { tipo: 'sin_respuesta' }
   | { tipo: 'sin_producto' }
   | { tipo: 'aviso_ia' }
@@ -45,6 +54,10 @@ export interface RespuestaQuimia {
   producto: ProductoQuimia | null;
   citas: CitaDocumento[];
   documentos: DocumentoListado[];
+  /** Notas de la base de conocimiento relacionadas (se ofrecen como "Ver nota"). */
+  notas: NotaQuimia[];
+  archivos: ArchivoErpQuimia[];
+  imagenes: ImagenProductoQuimia[];
   /** El usuario debe elegir un producto (botones / teclado en línea de Telegram). */
   opciones: ProductoCandidato[];
   sugerirCambio: ProductoCandidato | null;

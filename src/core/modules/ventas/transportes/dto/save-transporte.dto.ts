@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class SetActivoTransDto {
@@ -57,6 +57,12 @@ export class EscanearGuiaEnvioDto {
     @IsBoolean()
     @IsOptional()
     forzarIA?: boolean;
+
+    /** IVA vigente configurado en el sistema (p.ej. 15): si los montos leídos por OCR no
+     * cuadran con él, se relee la guía con GPT Vision. */
+    @IsNumber()
+    @IsOptional()
+    porcentajeIva?: number;
 }
 
 /** Borra la imagen de guía de un envío y lo regresa a PENDIENTE (ide_cceen = 1) para poder

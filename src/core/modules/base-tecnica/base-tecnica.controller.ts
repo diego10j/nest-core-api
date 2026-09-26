@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
@@ -21,6 +22,7 @@ export class BaseTecnicaController {
   constructor(
     private readonly proceso: BdtProcesoService,
     private readonly datos: BdtDatosService,
+    private readonly contenido: BdtContenidoService,
   ) {}
 
   // ------------------------------------------------------------------ procesamiento
@@ -78,6 +80,16 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Avance/resultado de una corrida de procesamiento' })
   getProceso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeProcesoDto) {
     return this.datos.getProceso({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('generarContenidoProducto')
+  @ApiOperation({
+    summary:
+      'Genera descripción corta, descripción larga (HTML) y otros nombres del producto a partir de su base técnica. ' +
+      'Si no hay documentos técnicos devuelve con_base_tecnica = false (el frontend ofrece generar solo con GPT).',
+  })
+  generarContenidoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeInartiDto) {
+    return this.contenido.generarContenidoProducto({ ...headersParams, ...dtoIn });
   }
 
   // ------------------------------------------------------------------ consulta (tab Datos técnicos)

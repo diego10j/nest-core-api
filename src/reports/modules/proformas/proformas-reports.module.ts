@@ -8,5 +8,6 @@ import { ProformasRepService } from './proformas-rep.service';
     imports: [ProformasModule],
     controllers: [ProformasRepController],
     providers: [ProformasRepService],
+    exports: [ProformasRepService],
 })
 export class ProformasReportsModule { }

@@ -41,16 +41,23 @@ const BLOQUE_FONDO = 24;
 // cual tinta (negro puro). Entre ambos se estira el contraste.
 const UMBRAL_PAPEL = 0.88;
 const UMBRAL_TINTA = 0.35;
+const GAMMA_TINTA = 1.2;
 const MARGEN_BLANCO_PX = 24;
 // OCR.space (plan gratuito) rechaza archivos de más de 1 MB.
 const OCR_MAX_BYTES = 1_000_000;
 const OCR_MIN_CARACTERES = 40;
 
 const DESCRIPCION_CAMPOS = `
-Campos a extraer (usa null si el dato no aparece o no se lee con certeza razonable):
+REGLA PRINCIPAL: NO INVENTES NI ADIVINES. Muchas guías se llenan A MANO: si un dato está
+manuscrito y no se lee con total claridad, está tapado, borroso o solo se leen partes, devuelve
+null para ese dato. Es preferible null a un valor dudoso. No completes, corrijas ni "normalices"
+nombres con lo que parezca probable.
+Campos a extraer:
 - "destinatario": NOMBRE COMPLETO de la persona o empresa que RECIBE el paquete (aparece como
   "Destinatario", "Consignatario", "Para", "Recibe", "Cliente destino"). Solo el nombre: sin
   cédula, RUC, teléfono ni dirección. NUNCA el remitente (quien envía).
+- "destinatarioLegible": true SOLO si leíste el nombre completo del destinatario letra por letra
+  sin dudas; false si tuviste que suponer alguna parte (en ese caso "destinatario" = null).
 - "fechaEnvio": fecha de emisión / envío / admisión de la guía, en formato "YYYY-MM-DD". Las
   fechas en Ecuador se escriben con el DÍA primero (dd/mm/aaaa).
 - "baseImponible": subtotal del flete ANTES de IVA ("Subtotal", "Base imponible", "Valor
@@ -70,7 +77,7 @@ Campos a extraer (usa null si el dato no aparece o no se lee con certeza razonab
   "Orden de trabajo", "Orden de servicio", "Tracking", "Envío", "Encomienda", "Boleto",
   "Ticket", o la etiqueta literal si es otra.
 Responde SOLO un JSON con la forma exacta:
-{"destinatario": string|null, "fechaEnvio": string|null, "baseImponible": number|null,
+{"destinatario": string|null, "destinatarioLegible": boolean, "fechaEnvio": string|null, "baseImponible": number|null,
  "iva": number|null, "total": number|null, "numeroDocumento": string|null,
  "tipoDocumento": string|null}`;
 
@@ -168,19 +175,20 @@ export class GuiaEnvioScanService {
         const fileName = this.guardarJpeg(escaneada);
         await this.eliminarSiNoEstaEnUso(dtoIn.fileName);
 
-        const { datos, origen } = await this.leerDatos(escaneada, fileName, empresa);
+        const { datos, origen } = await this.leerDatos(escaneada, fileName, empresa, dtoIn.porcentajeIva);
         return { fileName, origen, datos };
     }
 
     /**
-     * Efecto "escáner" (tipo Adobe Scan, modo documento):
-     * 1. Orientación EXIF, tamaño de trabajo (reduce fotos enormes, agranda hasta x2 las chicas)
-     *    y escala de grises.
-     * 2. Estima el brillo del PAPEL en cada zona (máximo por bloques -> suavizado) y divide cada
-     *    píxel por él: elimina sombras, iluminación despareja y colores de fondo (papel rosado,
-     *    bandas de color, la mesa), que quedan todos en blanco.
-     * 3. Estira el contraste: papel -> blanco puro, tinta -> negro, con una curva que mantiene
-     *    legibles los trazos finos. Enfoque suave y un margen blanco.
+     * Efecto "escáner a color" (tipo Adobe Scan, modo documento):
+     * 1. Orientación EXIF y tamaño de trabajo (reduce fotos enormes, agranda hasta x2 las chicas
+     *    para mejorar la resolución de la letra pequeña).
+     * 2. Estima el color del PAPEL en cada zona, por canal (máximo por bloques -> suavizado), y
+     *    divide cada píxel por él: elimina sombras, iluminación despareja y tintes de fondo (papel
+     *    rosado/amarillo, la mesa), que quedan en blanco. La tinta, sellos y logos CONSERVAN su
+     *    color (azul del esfero, rojo del sello), porque solo se quita el color del papel.
+     * 3. Lo que es papel pasa a blanco puro; el resto estira su contraste por canal con una curva
+     *    suave que mantiene colores y trazos finos. Auto-recorte a la hoja, enfoque y margen.
      * No corrige perspectiva (foto en ángulo): eso requiere detectar las esquinas (fase 2).
      */
     private async generarEscaneo(input: Buffer): Promise<Buffer> {
@@ -191,65 +199,80 @@ export class GuiaEnvioScanService {
         const ladoMayor = Math.max(meta.width ?? 0, meta.height ?? 0) || LADO_MAX_ESCANEO;
         const ladoObjetivo = Math.min(LADO_MAX_ESCANEO, ladoMayor * FACTOR_MAX_AMPLIACION);
 
-        const { data: gris, info } = await sharp(input)
+        const { data: rgb, info } = await sharp(input)
             .rotate()
             .resize({ width: ladoObjetivo, height: ladoObjetivo, fit: 'inside', kernel: 'lanczos3' })
-            .toColourspace('b-w')
+            .removeAlpha()
+            .toColourspace('srgb')
             .raw()
             .toBuffer({ resolveWithObject: true });
         const { width, height, channels } = info;
 
-        // Fondo: máximo de cada bloque BLOQUE_FONDO x BLOQUE_FONDO (siempre cae en papel).
+        // Color del papel: máximo de cada bloque BLOQUE_FONDO x BLOQUE_FONDO, por canal (siempre
+        // cae en papel, que es lo más claro de la zona).
         const bw = Math.ceil(width / BLOQUE_FONDO);
         const bh = Math.ceil(height / BLOQUE_FONDO);
-        const maximos = Buffer.alloc(bw * bh);
+        const maximos = Buffer.alloc(bw * bh * 3);
         for (let y = 0; y < height; y++) {
             const fila = Math.floor(y / BLOQUE_FONDO) * bw;
             for (let x = 0; x < width; x++) {
-                const v = gris[(y * width + x) * channels];
-                const idx = fila + Math.floor(x / BLOQUE_FONDO);
-                if (v > maximos[idx]) maximos[idx] = v;
+                const p = (y * width + x) * channels;
+                const b = (fila + Math.floor(x / BLOQUE_FONDO)) * 3;
+                for (let c = 0; c < 3; c++) {
+                    if (rgb[p + c] > maximos[b + c]) maximos[b + c] = rgb[p + c];
+                }
             }
         }
         // Mediana: descarta bloques atípicos (un brillo/reflejo aislado); blur: transición suave
         // entre bloques. Luego se lleva al tamaño completo con interpolación.
-        const grilla = await sharp(maximos, { raw: { width: bw, height: bh, channels: 1 } })
+        const grilla = await sharp(maximos, { raw: { width: bw, height: bh, channels: 3 } })
             .median(3)
             .blur(1.2)
-            .toColourspace('b-w')
             .raw()
             .toBuffer({ resolveWithObject: true });
-        const fondo = await sharp(grilla.data, { raw: { width: bw, height: bh, channels: grilla.info.channels } })
+        const gc = grilla.info.channels;
+        const fondo = await sharp(grilla.data, { raw: { width: bw, height: bh, channels: gc } })
             .resize(width, height, { kernel: 'cubic', fit: 'fill' })
-            .toColourspace('b-w')
             .raw()
             .toBuffer({ resolveWithObject: true });
-        const fondoCh = fondo.info.channels;
-        const recorte = this.detectarHoja(grilla.data, grilla.info.channels, bw, bh, width, height);
+        const fc = fondo.info.channels;
+
+        const lumGrilla = Buffer.alloc(bw * bh);
+        for (let i = 0; i < bw * bh; i++) {
+            lumGrilla[i] = Math.round(
+                0.299 * grilla.data[i * gc] + 0.587 * grilla.data[i * gc + 1] + 0.114 * grilla.data[i * gc + 2],
+            );
+        }
+        const recorte = this.detectarHoja(lumGrilla, 1, bw, bh, width, height);
 
         // Se escribe solo el rectángulo de la hoja (o la imagen completa si no hay recorte).
         const r = recorte ?? { left: 0, top: 0, width, height };
-        const salida = Buffer.alloc(r.width * r.height);
+        const salida = Buffer.alloc(r.width * r.height * 3);
         const rango = UMBRAL_PAPEL - UMBRAL_TINTA;
+        const relacion = [0, 0, 0];
         for (let y = 0; y < r.height; y++) {
             for (let x = 0; x < r.width; x++) {
                 const i = (y + r.top) * width + (x + r.left);
-                const papel = Math.max(fondo.data[i * fondoCh], 1);
-                const relacion = gris[i * channels] / papel;
-                let v: number;
-                if (relacion >= UMBRAL_PAPEL) {
-                    v = 255;
-                } else if (relacion <= UMBRAL_TINTA) {
-                    v = 0;
-                } else {
-                    // Curva con gamma > 1: oscurece los medios tonos para que la tinta quede firme.
-                    v = Math.round(255 * ((relacion - UMBRAL_TINTA) / rango) ** 1.4);
+                for (let c = 0; c < 3; c++) {
+                    relacion[c] = rgb[i * channels + c] / Math.max(fondo.data[i * fc + c], 1);
                 }
-                salida[y * r.width + x] = v;
+                const lum = 0.299 * relacion[0] + 0.587 * relacion[1] + 0.114 * relacion[2];
+                const o = (y * r.width + x) * 3;
+                if (lum >= UMBRAL_PAPEL) {
+                    salida[o] = 255;
+                    salida[o + 1] = 255;
+                    salida[o + 2] = 255;
+                } else {
+                    for (let c = 0; c < 3; c++) {
+                        const t = Math.min(1, Math.max(0, (relacion[c] - UMBRAL_TINTA) / rango));
+                        // Curva suave (gamma > 1): tinta firme sin "quemar" los colores.
+                        salida[o + c] = Math.round(255 * t ** GAMMA_TINTA);
+                    }
+                }
             }
         }
 
-        return sharp(salida, { raw: { width: r.width, height: r.height, channels: 1 } })
+        return sharp(salida, { raw: { width: r.width, height: r.height, channels: 3 } })
             .sharpen({ sigma: 0.8 })
             .extend({
                 top: MARGEN_BLANCO_PX,
@@ -258,7 +281,8 @@ export class GuiaEnvioScanService {
                 right: MARGEN_BLANCO_PX,
                 background: { r: 255, g: 255, b: 255 },
             })
-            .jpeg({ quality: 90, mozjpeg: true })
+            // 4:4:4: sin submuestreo de color, para que los bordes de letras de color no se ensucien.
+            .jpeg({ quality: 90, mozjpeg: true, chromaSubsampling: '4:4:4' })
             .toBuffer();
     }
 
@@ -341,13 +365,17 @@ ${DESCRIPCION_CAMPOS}`;
         imagen: Buffer,
         fileName: string,
         empresa: string,
+        porcentajeIva?: number,
     ): Promise<{ datos: DatosGuiaEnvio; origen: OrigenEscaneoGuia }> {
         let datosOcr: DatosGuiaEnvio | null = null;
         try {
             const texto = await this.ocrService.extractTextFromImage(await this.copiaParaOcr(imagen), fileName);
             if (texto.trim().length >= OCR_MIN_CARACTERES) {
-                datosOcr = this.normalizar(await this.gptService.parseTextToJson(this.prompt(empresa, 'texto'), texto));
-                if (!this.requiereVision(datosOcr)) return { datos: datosOcr, origen: 'ocr' };
+                datosOcr = this.normalizar(
+                    await this.gptService.parseTextToJson(this.prompt(empresa, 'texto'), texto),
+                    empresa,
+                );
+                if (!this.requiereVision(datosOcr, porcentajeIva)) return { datos: datosOcr, origen: 'ocr' };
                 this.logger.log('Datos OCR incompletos o inconsistentes, reintentando con GPT Vision');
             }
         } catch (error) {
@@ -378,7 +406,7 @@ ${DESCRIPCION_CAMPOS}`;
             'image/jpeg',
             'Lee esta guía de envío y extrae los datos solicitados.',
         );
-        return this.normalizar(res);
+        return this.normalizar(res, empresa);
     }
 
     /** Copia comprimida (< 1 MB) para OCR.space; en gris un documento comprime muy bien. */
@@ -394,14 +422,44 @@ ${DESCRIPCION_CAMPOS}`;
         return sharp(imagen).resize({ width: 1000, height: 1000, fit: 'inside' }).jpeg({ quality: 55 }).toBuffer();
     }
 
-    private requiereVision(d: DatosGuiaEnvio) {
+    private requiereVision(d: DatosGuiaEnvio, porcentajeIva?: number) {
         if (!d.destinatario || d.total == null) return true;
-        return !this.montosCuadran(d);
+        return !this.montosCuadran(d, porcentajeIva);
     }
 
-    private montosCuadran(d: DatosGuiaEnvio) {
+    /** Base + IVA = total y, si hay IVA, que sea la base por el IVA vigente del sistema (misma
+     * regla que valida el frontend antes de permitir aplicar los montos). */
+    private montosCuadran(d: DatosGuiaEnvio, porcentajeIva?: number) {
         if (d.baseImponible == null || d.iva == null || d.total == null) return true;
-        return Math.abs(d.baseImponible + d.iva - d.total) <= 0.02;
+        if (Math.abs(d.baseImponible + d.iva - d.total) > 0.02) return false;
+        if (d.iva > 0 && porcentajeIva) {
+            return Math.abs((d.baseImponible * porcentajeIva) / 100 - d.iva) <= 0.02;
+        }
+        return true;
+    }
+
+    /**
+     * Descarta nombres que no parecen legibles de verdad (guías manuscritas mal leídas): con
+     * dígitos o símbolos raros, sin al menos una palabra de 3+ letras, casi sin letras, o que
+     * en realidad son el remitente (la propia empresa). Mejor "no detectado" que un nombre
+     * inventado: el usuario lo digita o usa el del cliente.
+     */
+    private nombreConfiable(nombre: string | null, empresa: string): string | null {
+        if (!nombre) return null;
+        const limpio = nombre.toUpperCase();
+        if (/[0-9?_*#@=<>{}[\]|\\/]/.test(limpio)) return null;
+        const letras = (limpio.match(/[A-ZÁÉÍÓÚÑÜ]/g) ?? []).length;
+        if (letras < 4 || letras / limpio.replace(/\s/g, '').length < 0.8) return null;
+        if (!limpio.split(' ').some((p) => /^[A-ZÁÉÍÓÚÑÜ]{3,}$/.test(p.replace(/[.,]/g, '')))) return null;
+        // Es el remitente si contiene TODAS las palabras significativas de alguno de los nombres
+        // de la empresa (razón social o nombre corto) - una palabra suelta en común no basta.
+        const esRemitente = empresa
+            .toUpperCase()
+            .split(' / ')
+            .map((n) => n.split(/\s+/).filter((p) => p.replace(/[.,]/g, '').length >= 4))
+            .some((palabras) => palabras.length > 0 && palabras.every((p) => limpio.includes(p)));
+        if (esRemitente) return null;
+        return limpio;
     }
 
     private vacio(): DatosGuiaEnvio {
@@ -426,7 +484,7 @@ ${DESCRIPCION_CAMPOS}`;
 
     /** Limpia la respuesta del modelo: tipos, formato de fecha, montos y deriva el monto que
      * falte cuando los otros dos están (base + IVA = total). */
-    private normalizar(res: any): DatosGuiaEnvio {
+    private normalizar(res: any, empresa = ''): DatosGuiaEnvio {
         const texto = (v: unknown) =>
             typeof v === 'string' && v.trim() ? v.replace(/\s+/g, ' ').trim() : null;
         const monto = (v: unknown) => {
@@ -450,7 +508,7 @@ ${DESCRIPCION_CAMPOS}`;
         };
 
         const datos: DatosGuiaEnvio = {
-            destinatario: texto(res?.destinatario)?.toUpperCase() ?? null,
+            destinatario: res?.destinatarioLegible === false ? null : this.nombreConfiable(texto(res?.destinatario), empresa),
             fechaEnvio: fecha(res?.fechaEnvio),
             baseImponible: monto(res?.baseImponible),
             iva: monto(res?.iva),

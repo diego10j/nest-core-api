@@ -5,6 +5,15 @@ import { BdtConsultaService, DocContexto, DocumentoListado } from '../base-tecni
 import { ConfigPreciosProductosService } from '../inventario/productos/config-precios.service';
 import { ProductosService } from '../inventario/productos/productos.service';
 
+import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
+import {
+  ArchivoErpQuimia,
+  ImagenProductoQuimia,
+  MAX_FOTOS_PRODUCTO,
+  QuimiaDocumentosErpService,
+  TipoArchivoErp,
+} from './erp/quimia-documentos-erp.service';
+import { notasContexto } from './prompts/quimia.prompt';
 import { ESTADOS_CLIENTES, HERRAMIENTAS_CLIENTES, QuimiaClientesService } from './quimia-clientes.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { EventoQuimia, ProductoQuimia, UsuarioQuimia } from './quimia.types';
@@ -22,6 +31,12 @@ export interface ContextoHerramientas {
   /** Último resultado de buscar_producto (para ofrecer botones de selección). */
   ultimaBusqueda: { ide_inarti: number; nombre: string; documentos_tecnicos: number }[];
   herramientasUsadas: string[];
+  /** Notas de la base de conocimiento que ve la IA (etiquetas N1, N2… en este orden). */
+  notas: NotaQuimia[];
+  /** PDFs de facturas/proformas pedidos (tarjetas en el chat, archivos en Telegram). */
+  archivos: ArchivoErpQuimia[];
+  /** Fotos del producto pedidas (máximo 5). */
+  imagenes: ImagenProductoQuimia[];
   emitir: (evento: EventoQuimia) => void;
 }
 
@@ -153,6 +168,47 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'obtener_documento_pdf',
+      description:
+        'Genera el PDF de una FACTURA o PROFORMA del ERP por su número ("la factura 1029", "proforma 350", "factura 001-002-000001029") para entregarlo al usuario. El PDF se envía solo: no escribas links.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo: { type: 'string', enum: ['FACTURA', 'PROFORMA'] },
+          numero: { type: 'string', description: 'Número tal como lo dijo el usuario (secuencial o completo)' },
+          id: { type: 'integer', description: 'Solo si una búsqueda anterior devolvió varias y el usuario eligió una (id)' },
+        },
+        required: ['tipo', 'numero'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'imagenes_producto',
+      description: `Fotos del producto cargadas en su galería (máximo ${MAX_FOTOS_PRODUCTO}). Úsala cuando pidan imágenes, fotos o cómo se ve el producto. Las fotos se muestran solas.`,
+      parameters: { type: 'object', properties: { ...idProducto } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_base_conocimiento',
+      description:
+        'Busca en la base de conocimiento interna (notas del equipo): políticas de venta, productos restringidos o que no se venden, presentaciones permitidas, cuentas bancarias, procedimientos y acuerdos con clientes o proveedores. Las notas vienen etiquetadas [N#].',
+      parameters: {
+        type: 'object',
+        properties: {
+          texto: { type: 'string', description: 'Qué se busca (palabras clave)' },
+          ide_geper: { type: 'integer', description: 'Cliente/proveedor (de buscar_cliente) para incluir sus notas relacionadas' },
+        },
+        required: ['texto'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'mejores_clientes',
       description: 'Mejores clientes del producto por ventas netas en un periodo.',
       parameters: {
@@ -173,6 +229,9 @@ export const TODAS_HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [...HERRAM
 const MENSAJE_ESTADO: Record<string, string> = {
   ...ESTADOS_CLIENTES,
   buscar_producto: 'Buscando el producto…',
+  buscar_base_conocimiento: 'Revisando la base de conocimiento…',
+  obtener_documento_pdf: 'Generando el PDF…',
+  imagenes_producto: 'Buscando las fotos del producto…',
   consultar_base_tecnica: 'Revisando la documentación técnica…',
   listar_documentos: 'Buscando los documentos…',
   consultar_stock: 'Consultando el stock…',
@@ -205,6 +264,8 @@ export class QuimiaHerramientasService {
     private readonly bdtConsulta: BdtConsultaService,
     private readonly quimiaProductos: QuimiaProductosService,
     private readonly quimiaClientes: QuimiaClientesService,
+    private readonly conocimiento: QuimiaConocimientoService,
+    private readonly documentosErp: QuimiaDocumentosErpService,
   ) {}
 
   /** Ejecuta una herramienta y devuelve el texto (JSON compacto) que recibe la IA. */
@@ -220,6 +281,8 @@ export class QuimiaHerramientasService {
 
     try {
       if (nombre === 'buscar_producto') return this.json(await this.buscarProducto(args.texto, ctx));
+      if (nombre === 'buscar_base_conocimiento') return await this.buscarConocimiento(args, ctx);
+      if (nombre === 'obtener_documento_pdf') return this.json(await this.documentoPdf(args, ctx));
       // Clientes y transporte no requieren producto activo (compras_cliente lo recibe si aplica).
       if (this.quimiaClientes.esHerramienta(nombre)) {
         return this.json(await this.quimiaClientes.ejecutar(nombre, args, ctx.usuario, ctx.producto));
@@ -375,6 +438,18 @@ export class QuimiaHerramientasService {
           ]);
           const rows = (precios as any[]) ?? [];
           const saldo = Number(stock?.saldo ?? 0);
+          const tieneConfig = rows.some((p) => p.precio_venta_sin_iva != null);
+          if (!tieneConfig) {
+            return this.json({
+              producto: producto.nombre,
+              cantidad,
+              unidad: stock?.siglas_inuni ?? null,
+              stock_disponible: num(saldo, 3),
+              stock_suficiente: saldo >= cantidad,
+              tiene_precio_configurado: false,
+              ...(await this.ventasSimilares(base, cantidad)),
+            });
+          }
           return this.json({
             producto: producto.nombre,
             cantidad,
@@ -392,6 +467,19 @@ export class QuimiaHerramientasService {
               tipo_configuracion: p.tipo_configuracion,
               utilidad_porcentaje: num(p.porcentaje_utilidad, 2),
             })),
+          });
+        }
+
+        case 'imagenes_producto': {
+          const r = await this.documentosErp.fotosProducto(producto.ide_inarti, u.ideEmpr);
+          if (!r.fotos.length) {
+            return this.json({ producto: producto.nombre, total: 0, mensaje: 'El producto no tiene imágenes cargadas.' });
+          }
+          ctx.imagenes = r.fotos.map((archivo) => ({ archivo, producto: producto.nombre }));
+          return this.json({
+            producto: producto.nombre,
+            total: r.fotos.length,
+            mensaje: `Las fotos se adjuntan solas. Responde en una línea, ej.: "Te envío ${r.fotos.length === 1 ? 'la foto' : `las ${r.fotos.length} fotos`} de ${producto.nombre}."`,
           });
         }
 
@@ -422,6 +510,100 @@ export class QuimiaHerramientasService {
       this.logger.error(`Herramienta ${nombre}: ${error?.message}`, error?.stack);
       return this.json({ error: `No se pudo consultar (${nombre}). Indícalo al usuario.` });
     }
+  }
+
+  /**
+   * Sin configuración de precios: ventas del producto en cantidades similares (±30%, mismo criterio
+   * que "Ventas" del producto) de los últimos 24 meses. Últimas 10 + máximo, mínimo y promedio.
+   */
+  private async ventasSimilares(base: Record<string, any>, cantidad: number) {
+    const r = await this.productos.getVentasProducto({ ...base, fechaInicio: haceMeses(24), fechaFin: hoy(), cantidad } as any);
+    const ventas = ((r as any)?.rows ?? [])
+      .filter((v: any) => v.estado_venta !== 'TOTALMENTE_DEVUELTA' && Number(v.precio_ccdfa) > 0)
+      .slice(0, 10)
+      .map((v: any) => ({
+        fecha: fecha(v.fecha_emisi_cccfa),
+        factura: v.secuencial_cccfa,
+        cliente: v.nom_geper,
+        cantidad: num(v.cantidad_ccdfa, 3),
+        unidad: v.siglas_inuni,
+        precio_unitario: num(v.precio_ccdfa),
+      }));
+    if (!ventas.length) {
+      return {
+        ventas_similares: [],
+        instruccion:
+          'Indica que el producto no tiene configuración de precios y que no hay ventas en cantidades similares ' +
+          '(±30%) en los últimos 24 meses para sugerir un precio.',
+      };
+    }
+    const max = ventas.reduce((a, b) => (b.precio_unitario > a.precio_unitario ? b : a));
+    const min = ventas.reduce((a, b) => (b.precio_unitario < a.precio_unitario ? b : a));
+    const totalCant = ventas.reduce((s, v) => s + (v.cantidad ?? 0), 0);
+    const promedio = totalCant
+      ? ventas.reduce((s, v) => s + v.precio_unitario * (v.cantidad ?? 0), 0) / totalCant
+      : ventas.reduce((s, v) => s + v.precio_unitario, 0) / ventas.length;
+    return {
+      ventas_similares: ventas,
+      precio_maximo: { precio_unitario: max.precio_unitario, cantidad: max.cantidad, fecha: max.fecha, cliente: max.cliente },
+      precio_minimo: { precio_unitario: min.precio_unitario, cantidad: min.cantidad, fecha: min.fecha, cliente: min.cliente },
+      precio_promedio_sugerido: num(promedio),
+      total_sugerido_sin_iva: num(promedio * cantidad, 2),
+      instruccion:
+        'Responde: "No encontré configuración de precios para este producto, pero las últimas ventas en cantidades ' +
+        'similares son:" y lista las ventas (fecha, cliente, cantidad, precio unitario; en el chat del ERP como tabla). ' +
+        'Al final: precio máximo (con su cantidad), precio mínimo (con su cantidad) y precio promedio sugerido ' +
+        '(ponderado por cantidad) con el total para la cantidad pedida. Precios sin IVA.',
+    };
+  }
+
+  /** Factura/proforma por número: una coincidencia → se entrega el PDF; varias → la IA pregunta cuál. */
+  private async documentoPdf(args: Record<string, any>, ctx: ContextoHerramientas) {
+    const tipo: TipoArchivoErp = args.tipo === 'PROFORMA' ? 'PROFORMA' : 'FACTURA';
+    const numero = String(args.numero ?? '').trim();
+    const encontrados =
+      tipo === 'FACTURA'
+        ? await this.documentosErp.buscarFacturas(numero, ctx.usuario.ideEmpr, ctx.usuario.ideSucu)
+        : await this.documentosErp.buscarProformas(numero, ctx.usuario.ideEmpr);
+    const elegido = args.id ? encontrados.find((d) => d.id === Number(args.id)) : encontrados.length === 1 ? encontrados[0] : null;
+    const etiqueta = tipo === 'FACTURA' ? 'factura' : 'proforma';
+    if (!encontrados.length) return { encontrado: false, mensaje: `No existe una ${etiqueta} con el número ${numero}.` };
+    if (!elegido) {
+      return {
+        encontrado: false,
+        varias: encontrados,
+        mensaje: `Hay ${encontrados.length} ${etiqueta}s con ese número (distinta serie o fecha). Pregunta cuál (muestra número completo, fecha, cliente y total).`,
+      };
+    }
+    const archivo = this.documentosErp.archivoDe(tipo, elegido);
+    if (!ctx.archivos.some((a) => a.tipo === tipo && a.id === archivo.id)) ctx.archivos.push(archivo);
+    return {
+      encontrado: true,
+      documento: { ...elegido, tipo },
+      mensaje: 'El PDF se entrega automáticamente como archivo: confirma brevemente qué documento es (número, cliente, fecha, total).',
+    };
+  }
+
+  /** Notas nuevas se agregan a ctx.notas con etiquetas que continúan la numeración (N6, N7…). */
+  private async buscarConocimiento(args: Record<string, any>, ctx: ContextoHerramientas): Promise<string> {
+    const encontradas = await this.conocimiento.buscar(
+      String(args.texto || ctx.pregunta),
+      ctx.usuario.ideEmpr,
+      { ide_inarti: ctx.producto?.ide_inarti, ide_geper: Number(args.ide_geper) || null },
+      MAX_NOTAS_QUIMIA,
+    );
+    if (!encontradas.length) return this.json({ total: 0, mensaje: 'No hay notas en la base de conocimiento sobre esto.' });
+    const etiquetas = encontradas.map((n) => {
+      let i = ctx.notas.findIndex((x) => x.ide_cono === n.ide_cono);
+      if (i < 0) {
+        ctx.notas.push(n);
+        i = ctx.notas.length - 1;
+      }
+      return i;
+    });
+    return etiquetas
+      .map((i) => notasContexto([ctx.notas[i]], i))
+      .join('\n\n');
   }
 
   private async buscarProducto(texto: string, ctx: ContextoHerramientas) {

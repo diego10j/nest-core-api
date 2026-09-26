@@ -1,6 +1,6 @@
 import { RespuestaQuimia } from '../quimia.types';
 
-import { citasATextoPlano } from './citas-en-linea.helper';
+import { citasATextoPlano, notasATextoPlano } from './citas-en-linea.helper';
 
 /**
  * Convierte la respuesta en texto listo para un chat de texto (Telegram/WhatsApp): quita el markdown
@@ -10,7 +10,7 @@ import { citasATextoPlano } from './citas-en-linea.helper';
 export function formatearTextoPlano(r: RespuestaQuimia): string {
   const partes: string[] = [];
 
-  const texto = citasATextoPlano(r.texto)
+  const texto = notasATextoPlano(citasATextoPlano(r.texto))
     .replace(/\*\*(.+?)\*\*/g, '*$1*')
     .replace(/^\|?\s*-{3,}.*$/gm, '')
     .replace(/^\|(.+)\|$/gm, (_m, fila: string) =>
@@ -38,6 +38,14 @@ export function formatearTextoPlano(r: RespuestaQuimia): string {
       '📄 Fuentes:\n' +
         r.citas.map((c, i) => `[${i + 1}] ${c.referencia}\n  ${c.url}${c.pagina ? `#page=${c.pagina}` : ''}`).join('\n'),
     );
+  }
+
+  if (r.archivos.length) {
+    partes.push('📄 PDF:\n' + r.archivos.map((a) => `• ${a.titulo} (${a.detalle})`).join('\n'));
+  }
+
+  if (r.notas.length) {
+    partes.push('📝 Notas relacionadas:\n' + r.notas.map((n, i) => `${i + 1}. ${n.titulo}`).join('\n'));
   }
 
   if (r.opciones.length) {

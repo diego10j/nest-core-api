@@ -53,6 +53,8 @@ interface ContextoCorrida {
   ideEmpr: number;
   login: string;
   forzar: boolean;
+  /** Extracción de un archivo desde el diálogo del documento: re-extrae aunque esté APROBADO. */
+  individual?: boolean;
   nombreProducto: string;
   existentes: DocumentoExistente[];
   detalle: DetalleArchivo[];
@@ -212,7 +214,10 @@ export class BdtProcesoService {
       }
 
       const existente = porHash ?? porUuid;
-      if (existente && !ctx.forzar && existente.hash_bddoc === hash && this.estaAlDia(existente)) {
+      // Un documento APROBADO (automático o por un usuario) no se vuelve a extraer en "Procesar", ni
+      // con forzar ni al cambiar la versión del extractor: solo desde "Extraer" en su diálogo.
+      const aprobado = existente?.estado_bddoc === 'APROBADO' && !ctx.individual;
+      if (existente && existente.hash_bddoc === hash && (aprobado || (!ctx.forzar && this.estaAlDia(existente)))) {
         ctx.contadores.sinCambios++;
         detalle.estado = 'SIN_CAMBIOS';
         detalle.estado_documento = existente.estado_bddoc;
@@ -817,6 +822,7 @@ export class BdtProcesoService {
       [ideInarti, dto.ideEmpr, dto.login],
     );
     const ctx = await this.crearContexto(ins.rows[0].ide_bdrun, ideInarti, dto.ideEmpr, dto.login, true, producto.nombre);
+    ctx.individual = true;
 
     await this.procesarArchivo(ctx, archivo, await this.getPropiedades());
     await this.aplicarVigencias(ctx, archivos);

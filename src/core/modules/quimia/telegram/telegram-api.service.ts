@@ -127,6 +127,48 @@ export class TelegramApiService {
     });
   }
 
+  /** Envía un archivo (PDF) como documento, subiendo los bytes. */
+  async enviarDocumento(token: string, chatId: number, archivo: { buffer: Buffer; nombre: string; mime: string }, pie?: string | null) {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (pie) form.append('caption', pie.slice(0, 1000));
+    form.append('document', new Blob([new Uint8Array(archivo.buffer)], { type: archivo.mime }), archivo.nombre);
+    return this.subir(token, 'sendDocument', form);
+  }
+
+  private async subir(token: string, metodo: string, form: FormData) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/${metodo}`, { method: 'POST', body: form, signal: controller.signal });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string; error_code?: number };
+      if (!data.ok) throw new TelegramApiError(data.description || `Error HTTP ${res.status}`, data.error_code ?? res.status);
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Envía una imagen como foto normal. Con bytes se sube el archivo (multipart); con una URL,
+   * Telegram la descarga (debe ser pública).
+   */
+  async enviarFoto(
+    token: string,
+    chatId: number,
+    foto: { buffer: Buffer; nombre: string; mime: string } | string,
+    pie?: string | null,
+  ) {
+    if (typeof foto === 'string') {
+      return this.llamar(token, 'sendPhoto', { chat_id: chatId, photo: foto, ...(pie ? { caption: pie.slice(0, 1000) } : {}) }, 60000);
+    }
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (pie) form.append('caption', pie.slice(0, 1000));
+    form.append('photo', new Blob([new Uint8Array(foto.buffer)], { type: foto.mime }), foto.nombre);
+    return this.subir(token, 'sendPhoto', form);
+  }
+
   /** Reemplaza los botones en línea de un mensaje ya enviado ([] = quitarlos todos). */
   editarBotones(token: string, chatId: number, messageId: number, botones: BotonTelegram[][]) {
     return this.llamar(token, 'editMessageReplyMarkup', {

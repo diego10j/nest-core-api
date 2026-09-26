@@ -55,3 +55,38 @@ export function citasATextoPlano(texto: string): string {
       .join(',')}]`,
   );
 }
+
+/** Grupo de etiquetas de notas: "[N1]", "[N1][N3]", "[N1, N2]" + puntuación siguiente. */
+const GRUPO_NOTAS = /[ \t]*(\[N\d+(?:\s*,\s*N\d+)*\](?:[ \t,;]*\[N\d+(?:\s*,\s*N\d+)*\])*)([.,;:])?/g;
+
+/** Prefijo del href que el chat reconoce como nota de la base de conocimiento: "#nota-<uuid>". */
+export const PREFIJO_NOTA = '#nota-';
+
+/**
+ * Convierte las etiquetas [N1] (notas de la base de conocimiento) en links `[título](#nota-<uuid>)`
+ * que el chat dibuja como chip y abre la nota. Etiquetas sin nota se descartan. Devuelve también
+ * los índices de las notas citadas.
+ */
+export function convertirNotasEnLinea(
+  texto: string,
+  notas: { uuid: string; titulo: string }[],
+): { texto: string; citadas: number[] } {
+  const citadas = new Set<number>();
+  const resultado = texto.replace(GRUPO_NOTAS, (_m, grupo: string, puntuacion?: string) => {
+    const indices = [...new Set([...grupo.matchAll(/N(\d+)/g)].map((e) => Number(e[1]) - 1))].filter((i) => notas[i]);
+    const p = puntuacion ?? '';
+    if (!indices.length) return p;
+    indices.forEach((i) => citadas.add(i));
+    const chips = indices.map((i) => {
+      const t = notas[i].titulo.replace(/[[\]]/g, '');
+      return `[${t.length > 32 ? `${t.slice(0, 31)}…` : t}](${PREFIJO_NOTA}${notas[i].uuid})`;
+    });
+    return `${p} ${chips.join(' ')}`;
+  });
+  return { texto: resultado.replace(/[ \t]+\n/g, '\n').trim(), citadas: [...citadas] };
+}
+
+/** Para canales de texto: "[título](#nota-uuid)" → "(📝 título)". */
+export function notasATextoPlano(texto: string): string {
+  return texto.replace(/\s?\[([^\]]*)\]\(#nota-[0-9a-f-]+\)/gi, ' (📝 $1)');
+}

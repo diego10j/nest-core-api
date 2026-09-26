@@ -4,6 +4,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { HOST_API } from 'src/util/helpers/common-util';
 
+import { ImagenNota } from '../conocimiento/conocimiento-quimia.helper';
+import { QuimiaConocimientoService } from '../conocimiento/quimia-conocimiento.service';
+import { QuimiaDocumentosErpService } from '../erp/quimia-documentos-erp.service';
 import { QuimiaAgenteService } from '../quimia-agente.service';
 import { QuimiaProductosService } from '../quimia-productos.service';
 import { ProductoCandidato, ProductoQuimia, RespuestaQuimia, UsuarioQuimia } from '../quimia.types';
@@ -12,7 +15,7 @@ import { TranscripcionService } from '../transcripcion/transcripcion.service';
 
 import { ArchivoAudioTelegram, TelegramApiService, TelegramMensaje, TelegramUpdate, TelegramUsuario } from './telegram-api.service';
 import { CuentaTelegram, basePublica } from './telegram-cuenta.service';
-import { dividir, mismoTelefono, normalizarTelefono, respuestaATelegram } from './telegram-formato.helper';
+import { dividir, mismoTelefono, normalizarTelefono, notaATelegram, respuestaATelegram } from './telegram-formato.helper';
 
 interface NumeroAutorizado {
   ide_tlusu: number;
@@ -25,8 +28,23 @@ interface Conversacion {
   sesion: string;
   producto: ProductoQuimia | null;
   historial: { role: 'user' | 'assistant'; contenido: string }[];
-  pendiente: { pregunta: string; opciones?: ProductoCandidato[]; sinRespuesta?: boolean } | null;
+  pendiente: {
+    pregunta: string;
+    opciones?: ProductoCandidato[];
+    sinRespuesta?: boolean;
+    /** Notas ofrecidas ("Ver nota") con los términos a resaltar. */
+    notas?: NotaPendiente[];
+  } | null;
 }
+
+interface NotaPendiente {
+  ide_cono: number;
+  titulo: string;
+  terminos: string[];
+}
+
+/** Máximo de imágenes de una nota que se envían como fotos. */
+const MAX_FOTOS_NOTA = 10;
 
 const TECLADO_CONTACTO = {
   keyboard: [[{ text: '📱 Compartir mi número', request_contact: true }]],
@@ -42,6 +60,7 @@ const AYUDA = [
   '• ¿A qué precio cotizo 25 kg de vitamina E acetato?',
   '• ¿Cuánto debe Laboratorios ABC y cada cuánto compra?',
   '• ¿Qué transporte lleva a Loja? ¿Cuánto cuesta enviar 5 kg?',
+  '• ¿Cuál es la cuenta del Banco Pichincha? (notas de la base de conocimiento)',
   '',
   'Comandos:',
   '/producto &lt;nombre&gt; — fijar el producto de la conversación',
@@ -64,6 +83,8 @@ export class TelegramBotService {
     private readonly agente: QuimiaAgenteService,
     private readonly productos: QuimiaProductosService,
     private readonly transcripcion: TranscripcionService,
+    private readonly conocimiento: QuimiaConocimientoService,
+    private readonly documentosErp: QuimiaDocumentosErpService,
   ) {}
 
   async procesarUpdate(cuenta: CuentaTelegram, update: TelegramUpdate): Promise<void> {
@@ -167,6 +188,13 @@ export class TelegramBotService {
       await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { producto: { ide_inarti: o.ide_inarti, nombre: o.nombre }, audio });
       return;
     }
+    const notas = conv.pendiente?.notas ?? [];
+    const pideNota = texto.match(/^(?:ver\s+)?nota\s*(\d)$/i) ?? (!opciones.length ? texto.match(/^(\d)$/) : null);
+    if (notas.length && pideNota && notas[Number(pideNota[1]) - 1]) {
+      const n = notas[Number(pideNota[1]) - 1];
+      await this.mostrarNota(cuenta, chatId, n.ide_cono, n.terminos);
+      return;
+    }
     if (conv.pendiente?.sinRespuesta && /^(ia|si|sí)[.!]?$/i.test(texto)) {
       await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { modo: 'IA_GENERAL', audio });
       return;
@@ -192,6 +220,28 @@ export class TelegramBotService {
     if (!chatId) return;
     const numero = await this.getNumeroVinculado(cuenta, cb.from.id);
     if (!numero?.activo_tlusu) return;
+    const data = cb.data ?? '';
+
+    // Ver nota: se quita solo ese botón (se pueden abrir las demás notas después).
+    if (data.startsWith('k:')) {
+      const ideCono = Number(data.slice(2));
+      const filas = (cb.message?.reply_markup?.inline_keyboard ?? [])
+        .map((fila) => fila.filter((b) => b.callback_data !== data))
+        .filter((fila) => fila.length);
+      const quedanNotas = filas.some((f) => f.some((b) => b.callback_data?.startsWith('k:')));
+      const otras = filas.some((f) => f.some((b) => b.callback_data && !b.callback_data.startsWith('k:') && b.callback_data !== 'no'));
+      // Si ya no quedan notas ni otras opciones, el "No, gracias" sobra.
+      await this.api.editarBotones(
+        cuenta.token,
+        chatId,
+        cb.message.message_id,
+        quedanNotas || otras ? filas : filas.map((f) => f.filter((b) => b.url)).filter((f) => f.length),
+      );
+      const conv = await this.getConversacion(cuenta, chatId, numero.ide_tlusu);
+      const terminos = conv.pendiente?.notas?.find((n) => n.ide_cono === ideCono)?.terminos ?? [];
+      await this.mostrarNota(cuenta, chatId, ideCono, terminos);
+      return;
+    }
 
     const soloLinks = (cb.message?.reply_markup?.inline_keyboard ?? [])
       .map((fila) => fila.filter((b) => b.url))
@@ -200,7 +250,6 @@ export class TelegramBotService {
 
     const conv = await this.getConversacion(cuenta, chatId, numero.ide_tlusu);
     const pregunta = conv.pendiente?.pregunta;
-    const data = cb.data ?? '';
 
     if (data.startsWith('p:')) {
       const producto = await this.productos.getProducto(Number(data.slice(2)), cuenta.ide_empr);
@@ -341,8 +390,13 @@ export class TelegramBotService {
     conv.producto = r.producto ?? producto ?? null;
     conv.historial = [...conv.historial, { role: 'user' as const, contenido: pregunta }, { role: 'assistant' as const, contenido: textoLimpio }].slice(-10);
     conv.pendiente =
-      r.opciones.length || r.sinRespuesta || r.sugerirCambio
-        ? { pregunta, opciones: r.opciones.length ? r.opciones : r.sugerirCambio ? [r.sugerirCambio] : undefined, sinRespuesta: r.sinRespuesta }
+      r.opciones.length || r.sinRespuesta || r.sugerirCambio || r.notas.length
+        ? {
+            pregunta,
+            opciones: r.opciones.length ? r.opciones : r.sugerirCambio ? [r.sugerirCambio] : undefined,
+            sinRespuesta: r.sinRespuesta,
+            notas: r.notas.length ? r.notas.map((n) => ({ ide_cono: n.ide_cono, titulo: n.titulo, terminos: n.terminos })) : undefined,
+          }
         : null;
     await this.guardarConversacion(cuenta, chatId, numero.ide_tlusu, conv);
 
@@ -351,11 +405,73 @@ export class TelegramBotService {
       const ultimo = i === mensajes.length - 1;
       await this.enviarHtml(cuenta, chatId, mensajes[i], ultimo ? botones : []);
     }
+    await this.enviarAdjuntos(cuenta, chatId, r, usuario);
 
     await this.dataSource.pool.query(
       `UPDATE tlg_usuario SET ultimo_acceso_tlusu = NOW(), total_consultas_tlusu = total_consultas_tlusu + 1 WHERE ide_tlusu = $1`,
       [numero.ide_tlusu],
     );
+  }
+
+  /** PDFs de factura/proforma como documentos y fotos del producto como fotos normales. */
+  private async enviarAdjuntos(cuenta: CuentaTelegram, chatId: number, r: RespuestaQuimia, usuario: UsuarioQuimia) {
+    for (const a of r.archivos) {
+      try {
+        await this.api.escribiendo(cuenta.token, chatId);
+        const pdf = await this.documentosErp.generarPdf(a, usuario);
+        await this.api.enviarDocumento(cuenta.token, chatId, { buffer: pdf, nombre: a.nombreArchivo, mime: 'application/pdf' }, `${a.titulo}\n${a.detalle}`);
+      } catch (error) {
+        this.logger.warn(`PDF ${a.titulo}: ${(error as Error).message}`);
+        await this.api.enviarMensaje(cuenta.token, chatId, `📄 No se pudo generar el PDF de ${a.titulo}.`).catch(() => undefined);
+      }
+    }
+    for (const img of r.imagenes) {
+      const foto = this.documentosErp.leerFoto(img.archivo);
+      if (!foto) continue;
+      await this.api.enviarFoto(cuenta.token, chatId, foto, img.producto).catch((error) => {
+        this.logger.warn(`Foto ${img.archivo}: ${(error as Error).message}`);
+      });
+    }
+  }
+
+  /**
+   * Muestra una nota de la base de conocimiento: texto con las coincidencias en negrilla y luego sus
+   * imágenes como fotos normales (se suben desde el disco; si es una URL externa la descarga Telegram).
+   */
+  private async mostrarNota(cuenta: CuentaTelegram, chatId: number, ideCono: number, terminos: string[]) {
+    await this.api.escribiendo(cuenta.token, chatId);
+    const nota = await this.conocimiento.obtener({ ide_cono: ideCono }, cuenta.ide_empr);
+    if (!nota) {
+      await this.api.enviarMensaje(cuenta.token, chatId, 'La nota ya no existe o fue archivada.');
+      return;
+    }
+    for (const html of notaATelegram(nota, terminos)) {
+      await this.enviarHtml(cuenta, chatId, html, []);
+    }
+    for (const img of nota.imagenes.slice(0, MAX_FOTOS_NOTA)) {
+      await this.enviarImagen(cuenta, chatId, img);
+    }
+    if (nota.imagenes.length > MAX_FOTOS_NOTA) {
+      await this.api.enviarMensaje(cuenta.token, chatId, `La nota tiene ${nota.imagenes.length} imágenes; se enviaron las primeras ${MAX_FOTOS_NOTA}.`);
+    }
+  }
+
+  private async enviarImagen(cuenta: CuentaTelegram, chatId: number, img: ImagenNota) {
+    try {
+      const archivo = await this.conocimiento.leerImagen(img);
+      if (archivo) {
+        await this.api.enviarFoto(cuenta.token, chatId, archivo, img.pie);
+        return;
+      }
+      if (/^https?:\/\//i.test(img.url)) {
+        await this.api.enviarFoto(cuenta.token, chatId, this.urlPublica(cuenta, img.url), img.pie);
+      }
+    } catch (error) {
+      this.logger.warn(`Imagen de nota (${img.url}): ${(error as Error).message}`);
+      await this.api
+        .enviarMensaje(cuenta.token, chatId, `🖼️ No se pudo enviar una imagen${img.pie ? ` (${img.pie})` : ''} de la nota.`)
+        .catch(() => undefined);
+    }
   }
 
   /**
