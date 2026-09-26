@@ -24,8 +24,18 @@ const IGNORADAS = new Set([
   'DAME', 'CUAL', 'CUALES', 'COMO', 'TIENE', 'TIENEN', 'PARA', 'CON', 'POR', 'QUE', 'DEL', 'LOS', 'LAS',
   'UNA', 'UNO', 'SUS', 'ESTE', 'ESTA', 'ESE', 'ESA', 'PRODUCTO', 'PRODUCTOS', 'SIRVE', 'SIRVEN',
   'PUREZA', 'CONCENTRACION', 'LOTE', 'LOTES', 'ULTIMO', 'ULTIMOS', 'FICHA', 'TECNICA', 'HOJA', 'SEGURIDAD',
-  'CERTIFICADO', 'ANALISIS', 'THE', 'AND', 'FOR', 'WHAT', 'WITH',
+  'CERTIFICADO', 'ANALISIS', 'THE', 'AND', 'FOR', 'WHAT', 'WITH', 'FACTURA', 'FACTURAS', 'PROFORMA',
+  'PROFORMAS', 'PDF', 'QUIERO', 'ENVIAME', 'MANDAME', 'NECESITO',
 ]);
+
+/**
+ * Pedido de un documento del ERP por número ("quiero factura 1000", "pdf de la proforma 350"): no se
+ * busca producto en la pregunta (el número se confundía con "FRASCO CILINDRICO 1000 CC").
+ */
+export function esPedidoDocumentoErp(pregunta: string): boolean {
+  const t = normalizarTexto(pregunta);
+  return /\b(FACTURAS?|PROFORMAS?|FACT|PROF)\b[^0-9]{0,25}\d/.test(t);
+}
 
 /** Máximo de productos que se ofrecen para elegir cuando la pregunta es ambigua. */
 export const MAX_OPCIONES_PRODUCTO = 10;
@@ -136,11 +146,17 @@ function detectar(
     palabras(e.texto).forEach((w) => porRaiz.has(w.slice(0, 6)) || porRaiz.set(w.slice(0, 6), w));
     const lista = [...porRaiz.values()];
     let cobertura = 0;
+    let conPalabra = false;
     for (const w of lista) {
       const peso = coincide(w, palabrasPregunta);
-      if (peso) cobertura += idf(w) * peso;
+      if (peso) {
+        cobertura += idf(w) * peso;
+        if (!/^\d+$/.test(w)) conPalabra = true;
+      }
     }
-    if (!cobertura) continue;
+    // Un número suelto ("1000", "25") no identifica un producto: solo ayuda a desempatar cuando
+    // también coincide alguna palabra del nombre.
+    if (!cobertura || !conPalabra) continue;
     const similitud = cobertura / lista.reduce((acc, w) => acc + idf(w), 0);
     const previo = mejores.get(e.ide_inarti);
     if (!previo || cobertura > previo.cobertura || (cobertura === previo.cobertura && similitud > previo.similitud)) {

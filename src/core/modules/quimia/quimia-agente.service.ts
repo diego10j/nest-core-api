@@ -9,6 +9,7 @@ import { BDT_CONFIG, MENSAJE_IA_GENERAL } from '../base-tecnica/constants/base-t
 import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { ChatQuimiaDto } from './dto/chat-quimia.dto';
 import { convertirCitasEnLinea, convertirNotasEnLinea } from './helpers/citas-en-linea.helper';
+import { esPedidoDocumentoErp } from './helpers/detector-producto.helper';
 import { formatearTextoPlano } from './helpers/texto-plano.helper';
 import {
   MARCADOR_ELEGIR_PRODUCTO,
@@ -146,7 +147,10 @@ export class QuimiaAgenteService {
     let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr) : null;
     // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
     // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
-    const candidatos = await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
+    // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.
+    const candidatos = esPedidoDocumentoErp(dto.pregunta)
+      ? []
+      : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
     const eleccion = this.productos.elegir(candidatos);
 
     if (producto) {

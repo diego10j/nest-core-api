@@ -60,6 +60,8 @@ const AYUDA = [
   '• ¿A qué precio cotizo 25 kg de vitamina E acetato?',
   '• ¿Cuánto debe Laboratorios ABC y cada cuánto compra?',
   '• ¿Qué transporte lleva a Loja? ¿Cuánto cuesta enviar 5 kg?',
+  '• Envíame la factura 1029 · Dame la proforma 350 (llega el PDF)',
+  '• Fotos del ácido cítrico anhidro',
   '• ¿Cuál es la cuenta del Banco Pichincha? (notas de la base de conocimiento)',
   '',
   'Comandos:',
