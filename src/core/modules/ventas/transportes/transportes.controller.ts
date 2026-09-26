@@ -30,8 +30,10 @@ import {
     EliminarImagenEnvioDto,
     ActualizarImagenEnvioDto,
     ActualizarTransportistaEnvioDto,
-    DetectarDestinatarioGuiaDto,
+    EscanearGuiaEnvioDto,
+    RotarImagenEnvioDto,
 } from './dto/save-transporte.dto';
+import { GuiaEnvioScanService } from './guia-envio-scan.service';
 import { TransportesSaveService } from './transportes-save.service';
 import { TransportesService } from './transportes.service';
 
@@ -48,6 +50,7 @@ export class TransportesController {
         private readonly service: TransportesService,
         private readonly saveService: TransportesSaveService,
         private readonly filesService: FilesService,
+        private readonly guiaScanService: GuiaEnvioScanService,
     ) { }
 
     // ─── TRANSPORTE ───────────────────────────────────────────────────────────
@@ -220,18 +223,27 @@ export class TransportesController {
             },
         }),
     }))
-    uploadImagenEnvio(
+    async uploadImagenEnvio(
         @AppHeaders() _h: HeaderParamsDto,
         @UploadedFile() file: Express.Multer.File,
     ) {
+        // Fotos de celular: se aplica la rotación EXIF para que el archivo quede "derecho".
+        await this.guiaScanService.normalizarOrientacion(file.path);
         return { message: 'ok', fileName: file.filename };
     }
 
-    @Post('detectarDestinatarioGuia')
+    @Post('rotarImagenEnvio')
     @Auth()
-    @ApiOperation({ summary: 'Lee con IA el nombre del destinatario de una imagen de guía ya subida (uploadImagenEnvio)' })
-    detectarDestinatarioGuia(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: DetectarDestinatarioGuiaDto) {
-        return this.service.detectarDestinatarioGuia({ ...h, ...dtoIn });
+    @ApiOperation({ summary: 'Gira una imagen de guía ya subida (90, -90 o 180 grados); devuelve el nombre del archivo nuevo' })
+    rotarImagenEnvio(@Body() dtoIn: RotarImagenEnvioDto) {
+        return this.guiaScanService.rotar(dtoIn);
+    }
+
+    @Post('escanearGuiaEnvio')
+    @Auth()
+    @ApiOperation({ summary: 'Escanea una guía ya subida: la deja con fondo blanco tipo escáner y lee destinatario, fecha, montos y N° de guía/orden (OCR con respaldo GPT Vision)' })
+    escanearGuiaEnvio(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: EscanearGuiaEnvioDto) {
+        return this.guiaScanService.escanear({ ...h, ...dtoIn });
     }
 
     @Public()

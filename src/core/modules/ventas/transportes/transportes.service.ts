@@ -1,11 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
-import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
@@ -14,7 +10,7 @@ import { GptService } from 'src/core/integration/gpt/gpt.service';
 import { ConsultarTarifasDto } from './dto/consultar-tarifas.dto';
 import { GetEnviosPorTransporteDto } from './dto/get-envios-transporte.dto';
 import { GetTarifasByTransporteDto } from './dto/get-tarifas-transporte.dto';
-import { DetectarDestinatarioGuiaDto, GetFacturasParaRutaDto, GetRutasDto } from './dto/save-transporte.dto';
+import { GetFacturasParaRutaDto, GetRutasDto } from './dto/save-transporte.dto';
 
 /** Resumen generado por IA sobre un lote de tarifas históricas para un peso buscado -
  * ver `TransportesService.analizarTarifasConIA`. */
@@ -31,17 +27,8 @@ export type ResumenTarifasIA = {
 const TOLERANCIA_INFERIOR_PCT = 30;
 const TOLERANCIA_SUPERIOR_PCT = 35;
 
-const MIME_POR_EXTENSION: Record<string, string> = {
-    jpg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-    gif: 'image/gif',
-};
-
 @Injectable()
 export class TransportesService extends BaseService {
-    private readonly logger = new Logger(TransportesService.name);
-
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly core: CoreService,
@@ -301,59 +288,6 @@ export class TransportesService extends BaseService {
     }
 
     // ─── RUTA (ven_ruta) ──────────────────────────────────────────────────────
-
-    /** Lee con IA de visión el nombre del DESTINATARIO de una guía de transporte ya subida
-     * (uploadImagenEnvio) para prellenar el campo obligatorio "Destinatario de la guía" en
-     * Completar Envío. Nunca falla por no encontrarlo: devuelve `destinatario: null` y el
-     * usuario lo escribe (o usa el nombre del cliente facturado). */
-    async detectarDestinatarioGuia(dtoIn: DetectarDestinatarioGuiaDto & HeaderParamsDto) {
-        const filePath = path.join(envs.pathDrive, 'ventas', 'envios', path.basename(dtoIn.fileName));
-        if (!fs.existsSync(filePath)) {
-            throw new NotFoundException(`Imagen no encontrada: ${dtoIn.fileName}`);
-        }
-        const ext = path.extname(filePath).slice(1).toLowerCase();
-        const mimeType = MIME_POR_EXTENSION[ext];
-        if (!mimeType) {
-            return { destinatario: null, confianza: null };
-        }
-
-        // El remitente de la guía casi siempre es la propia empresa - se le pasa su nombre al
-        // modelo para que no lo confunda con el destinatario.
-        const empresa = await this.dataSource.pool.query(
-            `SELECT nom_empr, nom_corto_empr FROM sis_empresa WHERE ide_empr = $1`,
-            [dtoIn.ideEmpr],
-        );
-        const nombresEmpresa = [empresa.rows[0]?.nom_empr, empresa.rows[0]?.nom_corto_empr]
-            .filter(Boolean)
-            .join(' / ');
-
-        const prompt = `Eres un asistente que lee guías de envío de empresas de transporte/courier de Ecuador
-(Servientrega, Tramaco, Laar, cooperativas de buses, etc.).
-Extrae el NOMBRE COMPLETO de la persona o empresa DESTINATARIA (quien recibe el paquete; también
-aparece como "Destinatario", "Consignatario", "Para", "Recibe", "Cliente destino").
-NO devuelvas el REMITENTE (quien envía)${nombresEmpresa ? `; el remitente normalmente es "${nombresEmpresa}"` : ''}.
-No devuelvas cédulas, teléfonos ni direcciones, solo el nombre tal como está escrito.
-Responde SOLO un JSON: {"destinatario": string | null, "confianza": "alta" | "media" | "baja"}.
-Si no puedes leer el destinatario con certeza razonable, usa null.`;
-
-        try {
-            const buffer = fs.readFileSync(filePath);
-            const res = await this.gptService.parseImageToJson(
-                prompt,
-                buffer,
-                mimeType,
-                'Lee esta guía de envío y extrae el nombre del destinatario.',
-            );
-            const destinatario =
-                typeof res?.destinatario === 'string' && res.destinatario.trim()
-                    ? res.destinatario.replace(/\s+/g, ' ').trim().toUpperCase()
-                    : null;
-            return { destinatario, confianza: destinatario ? (res?.confianza ?? null) : null };
-        } catch (error) {
-            this.logger.warn(`No se pudo detectar el destinatario de la guía ${dtoIn.fileName}: ${error}`);
-            return { destinatario: null, confianza: null };
-        }
-    }
 
     async getRutas(dtoIn: GetRutasDto & HeaderParamsDto) {
         const condFecha = [];

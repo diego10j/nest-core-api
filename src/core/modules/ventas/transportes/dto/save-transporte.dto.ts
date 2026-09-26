@@ -29,12 +29,34 @@ export class ActualizarImagenEnvioDto {
     destinatario_guia_cctfa?: string;
 }
 
-/** Imagen de guía ya subida (uploadImagenEnvio) de la que se quiere leer el destinatario. */
-export class DetectarDestinatarioGuiaDto {
+/** Nombre de archivo de una imagen de guía ya subida (uploadImagenEnvio) - solo el nombre, sin
+ * rutas, para que no se pueda leer/escribir fuera de la carpeta de envíos. */
+const FILE_NAME_IMAGEN_ENVIO = /^[\w-]+\.[a-z0-9]+$/i;
+
+/** Gira una imagen de guía ya subida (fotos tomadas de lado). Devuelve un archivo nuevo. */
+export class RotarImagenEnvioDto {
     @IsString()
     @IsNotEmpty()
-    @Matches(/^[\w-]+\.[a-z0-9]+$/i, { message: 'fileName no válido' })
+    @Matches(FILE_NAME_IMAGEN_ENVIO, { message: 'fileName no válido' })
     fileName: string;
+
+    @IsIn([90, -90, 180])
+    grados: 90 | -90 | 180;
+}
+
+/** Escanea una imagen de guía ya subida: la deja con aspecto de documento escaneado (fondo
+ * blanco) y lee sus datos (destinatario, fecha, montos, N° de guía/orden de trabajo). */
+export class EscanearGuiaEnvioDto {
+    @IsString()
+    @IsNotEmpty()
+    @Matches(FILE_NAME_IMAGEN_ENVIO, { message: 'fileName no válido' })
+    fileName: string;
+
+    /** true = leer directo con GPT Vision (botón "Análisis avanzado"), sin OCR ni reprocesar
+     * la imagen (ya viene escaneada). */
+    @IsBoolean()
+    @IsOptional()
+    forzarIA?: boolean;
 }
 
 /** Borra la imagen de guía de un envío y lo regresa a PENDIENTE (ide_cceen = 1) para poder
