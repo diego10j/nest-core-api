@@ -18,6 +18,7 @@ import { AsignarUsuarioDto } from './dto/asignar-usuario.dto';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { GetMisNotificacionesDto } from './dto/get-mis-notificaciones.dto';
 import { GetPlantillasDto } from './dto/get-plantillas.dto';
+import { SaveTelegramPlantillaDto } from './dto/save-telegram-plantilla.dto';
 import { UpdateNotificacionDto } from './dto/update-notificacion.dto';
 import { NotificacionesService } from './notificaciones.service';
 
@@ -54,6 +55,28 @@ export class NotificacionesController {
     @Body() dto: UpdateNotificacionDto,
   ) {
     return this.service.updatePlantilla({ ...h, ...dto, uuid });
+  }
+
+  @Get('plantillas/:uuid/telegram')
+  @ApiOperation({ summary: 'Canal Telegram de la plantilla: estado, números autorizados y últimos envíos' })
+  getTelegramPlantilla(@AppHeaders() h: HeaderParamsDto, @Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.service.getTelegramPlantilla(uuid, h.ideEmpr);
+  }
+
+  @Put('plantillas/:uuid/telegram')
+  @ApiOperation({ summary: 'Habilita Telegram en la plantilla y elige los números que la reciben' })
+  saveTelegramPlantilla(
+    @AppHeaders() h: HeaderParamsDto,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: SaveTelegramPlantillaDto,
+  ) {
+    return this.service.saveTelegramPlantilla(uuid, dto, h);
+  }
+
+  @Post('plantillas/:uuid/telegram/prueba')
+  @ApiOperation({ summary: 'Envía una notificación de prueba por Telegram a los números seleccionados' })
+  probarTelegramPlantilla(@AppHeaders() h: HeaderParamsDto, @Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.service.probarTelegramPlantilla(uuid, h);
   }
 
   @Delete('plantillas/:uuid')

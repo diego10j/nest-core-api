@@ -25,4 +25,14 @@ export class SaveUsuarioTelegramDto {
   @IsOptional()
   @MaxLength(300)
   observacion_tlusu?: string;
+
+  /** Recibe alertas del sistema (ej. OpenAI sin saldo). */
+  @IsBoolean()
+  @IsOptional()
+  recibe_alertas_tlusu?: boolean;
+
+  /** Puede usar los comandos del bot (/ventas, /resumen…). */
+  @IsBoolean()
+  @IsOptional()
+  comandos_tlusu?: boolean;
 }

@@ -13,10 +13,8 @@ import { HOST_API, isDefined } from 'src/util/helpers/common-util';
 import { toDate, FORMAT_DATETIME_DB, getCurrentDateTime } from 'src/util/helpers/date-util';
 import { detectMimeType, getStaticImage } from 'src/util/helpers/file-utils';
 
+import { ArchivoSubidoEmitter } from './archivo-subido.emitter';
 import { FILE_STORAGE_CONSTANTS } from './constants/files.constants';
-
-// Tamaños predefinidos de thumbnail (añadir más según necesidad)
-const THUMB_SIZES = [200, 400, 800] as const;
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
@@ -28,6 +26,9 @@ import { UploadFileDto } from './dto/upload-file.dto';
 import { FileTempService } from './file-temp.service';
 import { getExtensionFile, getFileType, getUuidNameFile } from './helpers/fileNamer.helper';
 
+// Tamaños predefinidos de thumbnail (añadir más según necesidad)
+const THUMB_SIZES = [200, 400, 800] as const;
+
 @Injectable()
 export class FilesService {
   private tableName = 'sis_archivo';
@@ -37,6 +38,7 @@ export class FilesService {
     private readonly errorLog: ErrorsLoggerService,
     private readonly dataSource: DataSourceService,
     private readonly tempFilesService: FileTempService,
+    private readonly archivoSubido: ArchivoSubidoEmitter,
   ) {
     // Crear directorios necesarios al arrancar
     for (const dir of [FILE_STORAGE_CONSTANTS.BASE_PATH, FILE_STORAGE_CONSTANTS.CACHE_DIR]) {
@@ -203,6 +205,8 @@ export class FilesService {
         await this.dataSource.getSeqTable(this.tableName, this.primaryKey, 1, dto.login),
       );
       await this.dataSource.createQuery(insertQuery);
+      // Aviso para quien reaccione a archivos nuevos (ej. la base técnica extrae los de productos).
+      this.archivoSubido.emitir({ uuid: name, ideEmpr: Number(dto.ideEmpr ?? dto.ide_empr), accion: 'SUBIDO' });
     } else {
       const updateQuery = new UpdateQuery(this.tableName, this.primaryKey, dto);
       const whereClause = `nombre_arch = $1 AND ${isDefined(sis_ide_arch) ? 'sis_ide_arch = $2' : 'sis_ide_arch IS NULL'}`;
@@ -403,7 +407,8 @@ export class FilesService {
             nombre_arch,
             carpeta_arch,
             sis_ide_arch,
-            ide_inarti
+            ide_inarti,
+            ide_empr
         FROM
             sis_archivo
         WHERE
@@ -471,6 +476,7 @@ export class FilesService {
     updateQuery.where = `uuid = $1`;
     updateQuery.addParam(1, id);
     await this.dataSource.createQuery(updateQuery);
+    if (item.ide_empr) this.archivoSubido.emitir({ uuid: id, ideEmpr: Number(item.ide_empr), accion: 'MOVIDO' });
 
     return {
       message: `${item.carpeta_arch ? 'Carpeta' : 'Archivo'} movido exitosamente`,

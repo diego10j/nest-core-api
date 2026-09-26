@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
+import { SelectQuery } from 'src/core/connection/helpers';
 
 import { BdtProcesoService, calcularHuella } from './bdt-proceso.service';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
+import { GetDocumentosTecnicosDto } from './dto/get-documentos-tecnicos.dto';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
 import { IdeProcesoDto } from './dto/ide-proceso.dto';
@@ -20,6 +22,55 @@ export class BdtDatosService {
     private readonly dataSource: DataSourceService,
     private readonly proceso: BdtProcesoService,
   ) {}
+
+  /**
+   * Listado general de documentos extraídos (página Base Técnica), compatible con DataTableQuery
+   * (paginación, orden y búsqueda global). Filtros opcionales por estado, tipo, método, confianza,
+   * categoría del producto, fecha de extracción, vigencia y origen.
+   */
+  async getDocumentosTecnicos(dto: GetDocumentosTecnicosDto & HeaderParamsDto) {
+    const params: unknown[] = [];
+    const p = (v: unknown) => {
+      params.push(v);
+      return `$${params.length}`;
+    };
+    const partes = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    const cond: string[] = [];
+    if (partes(dto.estados).length) cond.push(`d.estado_bddoc = ANY(${p(partes(dto.estados))}::text[])`);
+    if (partes(dto.tipos).length) cond.push(`d.tipo_bddoc = ANY(${p(partes(dto.tipos))}::text[])`);
+    if (dto.metodo) cond.push(`d.metodo_extraccion_bddoc = ${p(dto.metodo)}`);
+    if (partes(dto.confianzas).length) {
+      const rangos = partes(dto.confianzas).map((c) =>
+        c === 'BAJA' ? 'd.confianza_bddoc < 0.9' : c === 'MEDIA' ? 'd.confianza_bddoc BETWEEN 0.9 AND 0.95' : 'd.confianza_bddoc > 0.95',
+      );
+      cond.push(`(${rangos.join(' OR ')})`);
+    }
+    if (partes(dto.categorias).length) cond.push(`a.ide_incate = ANY(${p(partes(dto.categorias).map(Number))}::int[])`);
+    if (dto.fechaDesde) cond.push(`d.fecha_proceso_bddoc >= ${p(dto.fechaDesde)}::date`);
+    if (dto.fechaHasta) cond.push(`d.fecha_proceso_bddoc < ${p(dto.fechaHasta)}::date + 1`);
+    if (dto.soloVigentes === 'true') cond.push('d.vigente_bddoc');
+    if (dto.origen === 'REUTILIZADOS') cond.push('d.ide_bddoc_origen IS NOT NULL');
+    if (dto.origen === 'MEJORADOS') cond.push(`d.modelo_ia_bddoc LIKE ${p(`%${BDT_CONFIG.MODELO_TRANSCRIPCION}%`)}`);
+    if (dto.producto?.trim()) cond.push(`a.nombre_inarti ILIKE ${p(`%${dto.producto.trim()}%`)}`);
+
+    const q = new SelectQuery(
+      `SELECT d.ide_bddoc, d.ide_inarti, a.nombre_inarti, c.nombre_incate, d.nombre_original_bddoc, d.uuid_origen_bddoc::text AS uuid,
+              d.tipo_bddoc, d.estado_bddoc, d.confianza_bddoc, d.metodo_extraccion_bddoc, d.vigente_bddoc,
+              f.nombre_bdfab, d.lote_detectado_bddoc, d.fecha_referencia_bddoc, d.fecha_proceso_bddoc,
+              COALESCE(d.usuario_actua, d.usuario_ingre) AS usuario, d.modelo_ia_bddoc, d.costo_usd_bddoc,
+              d.ide_bddoc_origen, d.motivos_revision_bddoc, d.paginas_bddoc, d.error_bddoc
+         FROM bdt_documento d
+         JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+         LEFT JOIN inv_categoria c ON c.ide_incate = a.ide_incate
+         LEFT JOIN bdt_producto_fabricante pf ON pf.ide_bdpfa = d.ide_bdpfa
+         LEFT JOIN bdt_fabricante f ON f.ide_bdfab = pf.ide_bdfab
+        WHERE d.ide_empr = ${Number(dto.ideEmpr)} ${cond.length ? `AND ${cond.join(' AND ')}` : ''}
+        ORDER BY d.fecha_proceso_bddoc DESC NULLS LAST, d.ide_bddoc DESC`,
+      dto,
+    );
+    params.forEach((v, i) => q.addParam(i + 1, v));
+    return this.dataSource.createQuery(q);
+  }
 
   /**
    * Estado de la base técnica del producto + si hay adjuntos nuevos/modificados sin procesar

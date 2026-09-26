@@ -9,9 +9,11 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { FILE_STORAGE_CONSTANTS } from '../sistema/files/constants/files.constants';
 
-import { BdtExtraccionService, DocumentoExtraido } from './bdt-extraccion.service';
+import { AlertasIaService } from './alertas-ia.service';
+import { BdtExtraccionService, DocumentoExtraido, ExtraccionPrevia } from './bdt-extraccion.service';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
 import { ProcesarProductoDto } from './dto/procesar-producto.dto';
+import { CuentaIaError } from './helpers/errores-ia.helper';
 import { claveEmpresa, limpiarParaBd, normalizarCas, normalizarTexto, recortar } from './helpers/normalizar.helper';
 
 /** Adjunto del producto (lectura de sis_archivo, solo lectura). */
@@ -34,9 +36,14 @@ interface DocumentoExistente {
   intentos_bddoc: number;
 }
 
-interface DetalleArchivo {
+export interface DetalleArchivo {
   archivo: string;
   carpeta: string;
+  /** Producto (corridas masivas: varios productos en una corrida). */
+  producto?: string;
+  /** Extracción copiada de otro producto con el mismo documento (sin IA). */
+  reutilizado?: boolean;
+  costo?: number;
   estado: 'PROCESADO' | 'SIN_CAMBIOS' | 'OMITIDO' | 'ERROR';
   tipo?: string;
   estado_documento?: string;
@@ -46,7 +53,7 @@ interface DetalleArchivo {
   ms?: number;
 }
 
-interface ContextoCorrida {
+export interface ContextoCorrida {
   /** null en operaciones que no son una corrida (ej. eliminar una extracción). */
   ideBdrun: number | null;
   ideInarti: number;
@@ -55,6 +62,8 @@ interface ContextoCorrida {
   forzar: boolean;
   /** Extracción de un archivo desde el diálogo del documento: re-extrae aunque esté APROBADO. */
   individual?: boolean;
+  /** "Extracción mejorada": transcripción + extracción con el modelo superior, sin reutilizar. */
+  mejorado?: boolean;
   nombreProducto: string;
   existentes: DocumentoExistente[];
   detalle: DetalleArchivo[];
@@ -65,8 +74,13 @@ interface ContextoCorrida {
     revision: number;
     errores: number;
     tokens: number;
+    reutilizados: number;
+    costo: number;
   };
 }
+
+/** Máximo de líneas de detalle guardadas por corrida (las masivas pueden tener miles de archivos). */
+const MAX_DETALLE_CORRIDA = 300;
 
 interface Propiedad {
   ide_bdpro: number;
@@ -86,10 +100,13 @@ interface Propiedad {
 export class BdtProcesoService {
   private readonly logger = new Logger(BdtProcesoService.name);
   private cachePropiedades: { expira: number; data: Propiedad[] } | null = null;
+  /** Adjuntos que se están leyendo ahora (masivo, automático y manual no leen el mismo a la vez). */
+  private readonly enLectura = new Set<string>();
 
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly extraccion: BdtExtraccionService,
+    private readonly alertas: AlertasIaService,
   ) {}
 
   // ------------------------------------------------------------------ inicio de corrida
@@ -143,7 +160,7 @@ export class BdtProcesoService {
       nombreProducto: producto.nombre,
       existentes: [],
       detalle: [],
-      contadores: { procesados: 0, sinCambios: 0, omitidos: 0, revision: 0, errores: 0, tokens: 0 },
+      contadores: nuevosContadores(),
     };
 
     try {
@@ -182,6 +199,7 @@ export class BdtProcesoService {
     const inicio = Date.now();
     const extension = (archivo.nombre.split('.').pop() || '').toLowerCase();
     const detalle: DetalleArchivo = { archivo: archivo.nombre, carpeta: archivo.ruta, estado: 'PROCESADO' };
+    let liberar = false;
 
     try {
       if (!BDT_CONFIG.EXTENSIONES_SOPORTADAS.includes(extension)) {
@@ -196,6 +214,15 @@ export class BdtProcesoService {
         detalle.error = 'Archivo mayor a 25 MB';
         return;
       }
+
+      if (this.enLectura.has(archivo.uuid)) {
+        ctx.contadores.sinCambios++;
+        detalle.estado = 'SIN_CAMBIOS';
+        detalle.error = 'Se está leyendo en otra corrida';
+        return;
+      }
+      this.enLectura.add(archivo.uuid);
+      liberar = true;
 
       const ruta = join(FILE_STORAGE_CONSTANTS.BASE_PATH, archivo.nombre_disco);
       if (!existsSync(ruta)) throw new Error('El archivo no existe en el almacenamiento');
@@ -229,26 +256,63 @@ export class BdtProcesoService {
         : await this.insertarPendiente(ctx, archivo, hash);
 
       try {
+        const paraExtraer = { buffer, nombre: archivo.nombre, extension, mime: archivo.mime };
+        const contexto = { nombreProductoErp: ctx.nombreProducto, clavesPropiedad: propiedades.map((p) => p.clave_bdpro) };
+        // Huella del texto (gratis): encuentra el mismo documento guardado de nuevo en otro archivo.
+        const hashTexto = await this.extraccion.huellaTexto(paraExtraer);
+
+        // El mismo documento ya extraído (en este u otro producto): se reutiliza sin IA. "Extraer" y
+        // "Extracción mejorada" del diálogo siempre leen de nuevo.
+        const previa = ctx.individual ? null : await this.buscarExtraccionPrevia(ctx, archivo.uuid, hash, hashTexto);
+        let extr: DocumentoExtraido;
+        if (previa) {
+          extr = this.extraccion.reutilizar(previa, paraExtraer, contexto);
+        } else if (ctx.mejorado) {
+          extr = await this.extraccion.extraerMejorado(paraExtraer, contexto);
+        } else {
+          extr = await this.extraccion.extraer(paraExtraer, contexto);
+        }
         // Sin caracteres nulos/de control: Postgres los rechaza en TEXT y JSONB.
-        const extr = limpiarParaBd(
-          await this.extraccion.extraer(
-            { buffer, nombre: archivo.nombre, extension, mime: archivo.mime },
-            { nombreProductoErp: ctx.nombreProducto, clavesPropiedad: propiedades.map((p) => p.clave_bdpro) },
-          ),
-        );
-        const estadoDoc = extr.confianza >= BDT_CONFIG.UMBRAL_APROBACION ? 'APROBADO' : 'REVISION';
-        await this.persistir(ctx, ideBddoc, !existente, extr, estadoDoc, propiedades);
+        extr = limpiarParaBd(extr);
+
+        // Un documento aprobado por una persona sigue aprobado al reutilizarlo, salvo que no coincida
+        // con este producto.
+        const aprobadoPrevio =
+          previa?.estado === 'APROBADO' && !extr.motivosRevision.includes('PRODUCTO_NO_COINCIDE');
+        const estadoDoc = aprobadoPrevio || extr.confianza >= BDT_CONFIG.UMBRAL_APROBACION ? 'APROBADO' : 'REVISION';
+        await this.persistir(ctx, ideBddoc, !existente, extr, estadoDoc, propiedades, {
+          hashTexto,
+          ideOrigen: previa?.ide_bddoc ?? null,
+        });
 
         ctx.contadores.procesados++;
         ctx.contadores.tokens += extr.tokensEntrada + extr.tokensSalida;
+        ctx.contadores.costo += extr.costoUsd;
+        if (previa) ctx.contadores.reutilizados++;
         if (estadoDoc === 'REVISION') ctx.contadores.revision++;
         Object.assign(detalle, {
           tipo: extr.tipo,
           estado_documento: estadoDoc,
           confianza: extr.confianza,
           motivos: extr.motivosRevision,
+          reutilizado: !!previa,
+          costo: Math.round(extr.costoUsd * 100000) / 100000,
         });
       } catch (error) {
+        // Cuenta de OpenAI sin saldo / API key inválida: no es un error del documento. Se deshace el
+        // "PROCESANDO" (queda pendiente como antes), se avisa al administrador y se detiene la corrida.
+        const problema = this.alertas.reportar(error, { ideEmpr: ctx.ideEmpr, origen: `extracción de ${archivo.nombre}` });
+        if (problema) {
+          if (existente) {
+            await this.dataSource.pool.query(`UPDATE bdt_documento SET estado_bddoc = $2 WHERE ide_bddoc = $1`, [
+              ideBddoc,
+              existente.estado_bddoc,
+            ]);
+          } else {
+            await this.dataSource.pool.query(`DELETE FROM bdt_documento WHERE ide_bddoc = $1`, [ideBddoc]);
+          }
+          throw new CuentaIaError(problema);
+        }
         await this.dataSource.pool.query(
           `UPDATE bdt_documento
               SET estado_bddoc = 'ERROR', error_bddoc = $2, intentos_bddoc = intentos_bddoc + 1,
@@ -259,15 +323,57 @@ export class BdtProcesoService {
         throw error;
       }
     } catch (error) {
-      ctx.contadores.errores++;
       detalle.estado = 'ERROR';
       detalle.error = error?.message ?? 'Error desconocido';
       this.logger.warn(`[${ctx.ideBdrun}] ${archivo.nombre}: ${detalle.error}`);
+      // Sin saldo: se corta la corrida (quien la lanzó decide pausar o avisar).
+      if (error instanceof CuentaIaError) throw error;
+      ctx.contadores.errores++;
     } finally {
+      if (liberar) this.enLectura.delete(archivo.uuid);
       detalle.ms = Date.now() - inicio;
+      if (ctx.nombreProducto) detalle.producto = ctx.nombreProducto;
       ctx.detalle.push(detalle);
+      if (ctx.detalle.length > MAX_DETALLE_CORRIDA) ctx.detalle.splice(0, ctx.detalle.length - MAX_DETALLE_CORRIDA);
       await this.actualizarAvance(ctx).catch(() => undefined);
     }
+  }
+
+  /**
+   * Extracción ya hecha del mismo documento: mismo archivo (hash) o PDF con el mismo texto guardado de
+   * nuevo (hash de texto). Preferencia: aprobada, mismo archivo, mayor confianza, más reciente.
+   */
+  private async buscarExtraccionPrevia(
+    ctx: ContextoCorrida,
+    uuid: string,
+    hash: string,
+    hashTexto: string | null,
+  ): Promise<(ExtraccionPrevia & { ide_bddoc: number; estado: string }) | null> {
+    const r = await this.dataSource.pool.query(
+      `SELECT ide_bddoc, estado_bddoc, datos_bddoc, texto_original_bddoc, metodo_extraccion_bddoc, paginas_bddoc,
+              motivos_revision_bddoc, modelo_ia_bddoc
+         FROM bdt_documento
+        WHERE ide_empr = $1 AND uuid_origen_bddoc <> $2::uuid
+          AND estado_bddoc IN ('APROBADO', 'REVISION') AND datos_bddoc IS NOT NULL
+          AND (hash_bddoc = $3 OR ($4::text IS NOT NULL AND hash_texto_bddoc = $4))
+        ORDER BY (estado_bddoc = 'APROBADO') DESC, (hash_bddoc = $3) DESC, confianza_bddoc DESC NULLS LAST,
+                 fecha_proceso_bddoc DESC NULLS LAST
+        LIMIT 1`,
+      [ctx.ideEmpr, uuid, hash, hashTexto],
+    );
+    const d = r.rows[0];
+    if (!d) return null;
+    return {
+      ide_bddoc: d.ide_bddoc,
+      estado: d.estado_bddoc,
+      datos: d.datos_bddoc,
+      textoOriginal: d.texto_original_bddoc,
+      metodo: d.metodo_extraccion_bddoc === 'VISION' ? 'VISION' : 'TEXTO',
+      paginas: d.paginas_bddoc ?? 1,
+      motivos: d.motivos_revision_bddoc ?? [],
+      // Se guarda la cadena "REUTILIZADO <modelo original>": el modelo de la extracción original.
+      modelo: String(d.modelo_ia_bddoc ?? '').replace(/^REUTILIZADO\s*/, ''),
+    };
   }
 
   private estaAlDia(doc: DocumentoExistente): boolean {
@@ -321,6 +427,7 @@ export class BdtProcesoService {
     extr: DocumentoExtraido,
     estadoDoc: string,
     propiedades: Propiedad[],
+    extra: { hashTexto?: string | null; ideOrigen?: number | null } = {},
   ) {
     const client = await this.dataSource.pool.connect();
     try {
@@ -393,7 +500,8 @@ export class BdtProcesoService {
             tokens_entrada_bddoc = $30, tokens_salida_bddoc = $31, intentos_bddoc = intentos_bddoc + 1,
             error_bddoc = NULL, fecha_proceso_bddoc = NOW(),
             usuario_revisa_bddoc = NULL, fecha_revisa_bddoc = NULL,
-            usuario_actua = $32, fecha_actua = NOW()
+            usuario_actua = $32, fecha_actua = NOW(),
+            hash_texto_bddoc = $33, ide_bddoc_origen = $34, costo_usd_bddoc = $35
           WHERE ide_bddoc = $1`,
         [
           ideBddoc,
@@ -429,6 +537,9 @@ export class BdtProcesoService {
           extr.tokensEntrada,
           extr.tokensSalida,
           ctx.login,
+          extra.hashTexto ?? null,
+          extra.ideOrigen ?? null,
+          Math.round(extr.costoUsd * 100000) / 100000,
         ],
       );
 
@@ -485,7 +596,9 @@ export class BdtProcesoService {
       await this.registrarSinonimos(client, ctx, ideBddoc, extr);
 
       await this.historial(client, ctx, ideBddoc, esNuevo ? 'DOCUMENTO_NUEVO' : 'DOCUMENTO_ACTUALIZADO', {
-        descripcion: `${extr.tipo.replace(/_/g, ' ')} · ${estadoDoc} · confianza ${(extr.confianza * 100).toFixed(0)}%`,
+        descripcion:
+          `${extr.tipo.replace(/_/g, ' ')} · ${estadoDoc} · confianza ${(extr.confianza * 100).toFixed(0)}%` +
+          (extra.ideOrigen ? ` · reutilizado del documento ${extra.ideOrigen} (sin costo IA)` : ''),
         despues: { tipo: extr.tipo, estado: estadoDoc, confianza: extr.confianza, motivos: extr.motivosRevision },
       });
       if (!esNuevo) {
@@ -765,9 +878,21 @@ export class BdtProcesoService {
     const c = ctx.contadores;
     await this.dataSource.pool.query(
       `UPDATE bdt_proceso SET procesados_bdrun = $2, sin_cambios_bdrun = $3, omitidos_bdrun = $4,
-              revision_bdrun = $5, errores_bdrun = $6, tokens_bdrun = $7, detalle_bdrun = $8
+              revision_bdrun = $5, errores_bdrun = $6, tokens_bdrun = $7, detalle_bdrun = $8,
+              reutilizados_bdrun = $9, costo_usd_bdrun = $10
         WHERE ide_bdrun = $1`,
-      [ctx.ideBdrun, c.procesados, c.sinCambios, c.omitidos, c.revision, c.errores, c.tokens, JSON.stringify(ctx.detalle)],
+      [
+        ctx.ideBdrun,
+        c.procesados,
+        c.sinCambios,
+        c.omitidos,
+        c.revision,
+        c.errores,
+        c.tokens,
+        JSON.stringify(ctx.detalle),
+        c.reutilizados,
+        Math.round(c.costo * 100000) / 100000,
+      ],
     );
   }
 
@@ -804,13 +929,109 @@ export class BdtProcesoService {
     );
   }
 
+  // ------------------------------------------------------------------ lotes (masivo / automático / mejorado)
+
+  /**
+   * Adjuntos SIN extracción de los productos activos (todas las carpetas, sin papelera, extensión
+   * soportada y hasta 25 MB). Un adjunto que ya tiene extracción (en cualquier estado) no está pendiente.
+   */
+  async listarPendientes(
+    ideEmpr: number,
+    ideInarti: number | null = null,
+  ): Promise<{ ide_inarti: number; producto: string; uuid: string; nombre: string; peso: number }[]> {
+    const r = await this.dataSource.pool.query(
+      `WITH RECURSIVE arbol AS (
+          SELECT a.ide_arch, a.carpeta_arch, a.ide_inarti, 1 AS nivel
+            FROM sis_archivo a
+            JOIN inv_articulo i ON i.ide_inarti = a.ide_inarti AND COALESCE(i.activo_inarti, TRUE)
+           WHERE a.ide_empr = $1 AND a.sis_ide_arch IS NULL AND a.ide_inarti IS NOT NULL
+             AND ($2::int IS NULL OR a.ide_inarti = $2)
+             AND COALESCE(a.papelera_arch, FALSE) = FALSE
+          UNION ALL
+          SELECT h.ide_arch, h.carpeta_arch, p.ide_inarti, p.nivel + 1
+            FROM sis_archivo h
+            JOIN arbol p ON h.sis_ide_arch = p.ide_arch AND p.carpeta_arch = TRUE
+           WHERE COALESCE(h.papelera_arch, FALSE) = FALSE AND p.nivel < 20
+       )
+       SELECT t.ide_inarti, i.nombre_inarti AS producto, a.uuid::text AS uuid, a.nombre_arch AS nombre,
+              COALESCE(a.peso_arch, 0)::bigint AS peso
+         FROM arbol t
+         JOIN sis_archivo a ON a.ide_arch = t.ide_arch
+         JOIN inv_articulo i ON i.ide_inarti = t.ide_inarti
+        WHERE COALESCE(t.carpeta_arch, FALSE) = FALSE AND a.nombre2_arch IS NOT NULL
+          AND LOWER(SUBSTRING(a.nombre_arch FROM '\\.([A-Za-z0-9]+)$')) = ANY($3::text[])
+          AND COALESCE(a.peso_arch, 0) <= $4
+          AND NOT EXISTS (SELECT 1 FROM bdt_documento d
+                           WHERE d.ide_empr = $1 AND d.ide_inarti = t.ide_inarti AND d.uuid_origen_bddoc = a.uuid)
+        ORDER BY i.nombre_inarti, a.nombre_arch`,
+      [ideEmpr, ideInarti, BDT_CONFIG.EXTENSIONES_SOPORTADAS, BDT_CONFIG.MAX_BYTES_ARCHIVO],
+    );
+    return r.rows.map((x) => ({ ...x, peso: Number(x.peso) }));
+  }
+
+  /**
+   * Procesa algunos adjuntos de UN producto dentro de una corrida existente (masiva o automática) o
+   * la "extracción mejorada" de documentos ya extraídos. Los contadores y el detalle son los de la
+   * corrida (compartidos entre productos). debeParar se consulta antes de cada archivo.
+   */
+  async procesarArchivosDeProducto(opts: {
+    ideBdrun: number;
+    ideInarti: number;
+    ideEmpr: number;
+    login: string;
+    uuids: string[];
+    mejorado?: boolean;
+    contadores: ContextoCorrida['contadores'];
+    detalle: DetalleArchivo[];
+    debeParar?: () => Promise<boolean>;
+    alIniciarArchivo?: (nombre: string) => Promise<void>;
+  }): Promise<void> {
+    const producto = await this.getProductoErp(opts.ideInarti);
+    await this.upsertProductoBase(opts.ideInarti, opts.ideEmpr, producto);
+    const archivos = await this.listarArchivosProducto(opts.ideInarti, opts.ideEmpr);
+    const objetivo = archivos.filter((a) => opts.uuids.includes(a.uuid));
+    if (!objetivo.length) return;
+
+    const ctx = await this.crearContexto(opts.ideBdrun, opts.ideInarti, opts.ideEmpr, opts.login, !!opts.mejorado, producto.nombre);
+    ctx.contadores = opts.contadores;
+    ctx.detalle = opts.detalle;
+    // Mejorada: se relee aunque esté aprobado y sin reutilizar extracciones de otros productos.
+    ctx.individual = !!opts.mejorado;
+    ctx.mejorado = !!opts.mejorado;
+
+    const propiedades = await this.getPropiedades();
+    let detenido = false;
+    await ejecutarConConcurrencia(objetivo, BDT_CONFIG.CONCURRENCIA, async (archivo) => {
+      if (detenido || (opts.debeParar && (await opts.debeParar()))) {
+        detenido = true;
+        return;
+      }
+      await opts.alIniciarArchivo?.(archivo.nombre);
+      await this.procesarArchivo(ctx, archivo, propiedades);
+    });
+
+    await this.aplicarVigencias(ctx, archivos);
+    // Huella al día solo si ya no le queda nada pendiente al producto.
+    const faltan = detenido ? 1 : (await this.listarPendientes(opts.ideEmpr, opts.ideInarti)).length;
+    await this.actualizarResumenProducto(ctx, faltan ? {} : { huella: calcularHuella(archivos) });
+  }
+
+  /** Producto dueño de un adjunto (null si el archivo no está en las carpetas de un producto). */
+  async productoDeArchivo(uuid: string, ideEmpr: number): Promise<number | null> {
+    try {
+      return await this.getProductoDeArchivo(uuid, ideEmpr);
+    } catch {
+      return null;
+    }
+  }
+
   // ------------------------------------------------------------------ operaciones sobre un documento
 
   /**
    * Extrae (o vuelve a extraer) UN adjunto, sin recorrer el resto del producto. Síncrono: la
    * respuesta trae el resultado (un documento tarda ~10-30 s). Siempre relee aunque no haya cambiado.
    */
-  async procesarArchivoIndividual(dto: { uuid: string } & HeaderParamsDto) {
+  async procesarArchivoIndividual(dto: { uuid: string; mejorado?: boolean } & HeaderParamsDto) {
     const ideInarti = await this.getProductoDeArchivo(dto.uuid, dto.ideEmpr);
     const producto = await this.getProductoErp(ideInarti);
     await this.upsertProductoBase(ideInarti, dto.ideEmpr, producto);
@@ -826,8 +1047,15 @@ export class BdtProcesoService {
     );
     const ctx = await this.crearContexto(ins.rows[0].ide_bdrun, ideInarti, dto.ideEmpr, dto.login, true, producto.nombre);
     ctx.individual = true;
+    ctx.mejorado = dto.mejorado === true;
 
-    await this.procesarArchivo(ctx, archivo, await this.getPropiedades());
+    try {
+      await this.procesarArchivo(ctx, archivo, await this.getPropiedades());
+    } catch (error) {
+      if (!(error instanceof CuentaIaError)) throw error;
+      await this.finalizarCorrida(ctx, 'FALLIDO');
+      throw new BadRequestException(error.message);
+    }
     await this.aplicarVigencias(ctx, archivos);
     // Sin huella: los demás adjuntos del producto pueden seguir sin procesar.
     await this.actualizarResumenProducto(ctx);
@@ -907,7 +1135,7 @@ export class BdtProcesoService {
       nombreProducto,
       existentes: existentes.rows,
       detalle: [],
-      contadores: { procesados: 0, sinCambios: 0, omitidos: 0, revision: 0, errores: 0, tokens: 0 },
+      contadores: nuevosContadores(),
     };
   }
 
@@ -979,6 +1207,10 @@ export class BdtProcesoService {
     this.cachePropiedades = { expira: Date.now() + 10 * 60 * 1000, data: r.rows };
     return r.rows;
   }
+}
+
+export function nuevosContadores(): ContextoCorrida['contadores'] {
+  return { procesados: 0, sinCambios: 0, omitidos: 0, revision: 0, errores: 0, tokens: 0, reutilizados: 0, costo: 0 };
 }
 
 /** Huella de los adjuntos soportados: cambia si se agrega, quita o modifica alguno. */

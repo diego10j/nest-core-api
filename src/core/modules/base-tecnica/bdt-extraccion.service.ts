@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
+
+import { Injectable, Logger } from '@nestjs/common';
 
 import { BdtIaService, EntradaDocumentoIa } from './bdt-ia.service';
 import {
@@ -6,11 +8,13 @@ import {
   ETIQUETA_TIPO_DOCUMENTO,
   NATURALEZAS_VALOR_BDT,
   TipoDocumentoBdt,
+  costoIa,
 } from './constants/base-tecnica.constants';
 import { clasificarPorReglas } from './helpers/clasificador.helper';
 import {
   esCasValido,
   esValorNumerico,
+  normalizarTexto,
   parseFecha,
   parseNumero,
   recortar,
@@ -75,19 +79,193 @@ export interface DocumentoExtraido {
   modelo: string;
   tokensEntrada: number;
   tokensSalida: number;
+  /** Costo IA en USD (suma de todas las llamadas; 0 si se reutilizó otra extracción). */
+  costoUsd: number;
+}
+
+/** Extracción ya guardada (bdt_documento) que se reutiliza para el mismo documento en otro producto. */
+export interface ExtraccionPrevia {
+  datos: ExtraccionDocumento;
+  textoOriginal: string | null;
+  metodo: 'TEXTO' | 'VISION';
+  paginas: number;
+  motivos: string[];
+  modelo: string;
 }
 
 /**
  * Lee un archivo (PDF con texto, PDF escaneado o imagen) y devuelve su contenido técnico
  * estructurado. No toca la base de datos: la persistencia es de BdtProcesoService.
  */
+/** "<<<PÁGINA N>>>\n..." (transcripción de la relectura) → páginas. */
+function paginasDeTranscripcion(texto: string): PaginaTexto[] {
+  const partes = texto.split(/^<<<P[ÁA]GINA\s*(\d+)>>>\s*$/im);
+  const paginas: PaginaTexto[] = [];
+  if (partes[0]?.trim()) paginas.push({ numero: 1, texto: partes[0].trim() });
+  for (let i = 1; i < partes.length; i += 2) {
+    const t = (partes[i + 1] ?? '').trim();
+    if (t) paginas.push({ numero: Number(partes[i]), texto: t });
+  }
+  return paginas;
+}
+
+/** "[Página N]\n..." (texto_original_bddoc guardado) → páginas. */
+function paginasDeTextoOriginal(texto: string | null): PaginaTexto[] {
+  if (!texto) return [];
+  const partes = texto.split(/^\[P[áa]gina\s*(\d+)\]\s*$/im);
+  const paginas: PaginaTexto[] = [];
+  for (let i = 1; i < partes.length; i += 2) {
+    const t = (partes[i + 1] ?? '').trim();
+    if (t) paginas.push({ numero: Number(partes[i]), texto: t });
+  }
+  return paginas.length ? paginas : [{ numero: 1, texto: texto.trim() }];
+}
+
 @Injectable()
 export class BdtExtraccionService {
+  private readonly logger = new Logger(BdtExtraccionService.name);
+
   constructor(private readonly ia: BdtIaService) {}
 
+  /**
+   * Extrae con el modelo económico. Si el documento es escaneado/imagen y la confianza queda en
+   * UMBRAL_RELECTURA (85%) o menos, se vuelve a leer con MODELO_RELECTURA_VISION y se queda la mejor
+   * lectura. Solo en esos casos, para no subir el costo de los demás documentos.
+   */
   async extraer(
     archivo: ArchivoParaExtraer,
     contexto: { nombreProductoErp: string; clavesPropiedad: string[] },
+  ): Promise<DocumentoExtraido> {
+    const primera = await this.leer(archivo, contexto);
+    if (primera.metodo !== 'VISION' || primera.confianza > BDT_CONFIG.UMBRAL_RELECTURA) return primera;
+
+    try {
+      const segunda = await this.releer(archivo, contexto);
+      if (!segunda) return primera;
+      const puntos = (d: DocumentoExtraido) => d.secciones.length + d.valores.length;
+      const mejor =
+        segunda.confianza > primera.confianza || (segunda.confianza === primera.confianza && puntos(segunda) >= puntos(primera))
+          ? segunda
+          : primera;
+      this.logger.log(
+        `${archivo.nombre}: relectura ${segunda.modelo} ${(primera.confianza * 100).toFixed(0)}% → ` +
+          `${(segunda.confianza * 100).toFixed(0)}% (se usa ${mejor === segunda ? 'la relectura' : 'la primera lectura'})`,
+      );
+      // Costo real: se pagaron las dos lecturas.
+      return {
+        ...mejor,
+        tokensEntrada: primera.tokensEntrada + segunda.tokensEntrada,
+        tokensSalida: primera.tokensSalida + segunda.tokensSalida,
+        costoUsd: primera.costoUsd + segunda.costoUsd,
+      };
+    } catch (error) {
+      this.logger.warn(`${archivo.nombre}: relectura falló (${(error as Error).message}); se usa la primera lectura`);
+      return primera;
+    }
+  }
+
+  /** Relectura: transcripción en texto plano con MODELO_TRANSCRIPCION y extracción normal de texto. */
+  private async releer(
+    archivo: ArchivoParaExtraer,
+    contexto: { nombreProductoErp: string; clavesPropiedad: string[] },
+  ): Promise<DocumentoExtraido | null> {
+    const entrada: EntradaDocumentoIa =
+      archivo.extension === 'pdf'
+        ? { tipo: 'pdf', base64: archivo.buffer.toString('base64'), nombreArchivo: archivo.nombre }
+        : {
+            tipo: 'imagen',
+            base64: archivo.buffer.toString('base64'),
+            mime: archivo.mime || `image/${archivo.extension === 'jpg' ? 'jpeg' : archivo.extension}`,
+          };
+    const tr = await this.ia.transcribirDocumento(entrada);
+    const paginas = paginasDeTranscripcion(tr.texto);
+    if (!paginas.length) return null;
+    const r = await this.leer(archivo, contexto, paginas);
+    return {
+      ...r,
+      modelo: `${tr.modelo.replace(/-\d{4}-\d{2}-\d{2}$/, '')}+${r.modelo.replace(/-\d{4}-\d{2}-\d{2}$/, '')}`.slice(0, 50),
+      tokensEntrada: r.tokensEntrada + tr.tokensEntrada,
+      tokensSalida: r.tokensSalida + tr.tokensSalida,
+      costoUsd: r.costoUsd + costoIa(tr.modelo, tr.tokensEntrada, tr.tokensSalida),
+    };
+  }
+
+  /**
+   * "Extracción mejorada" (botón del diálogo / lote): escaneado o imagen → transcripción + extracción
+   * (siempre, sin esperar a que la confianza sea baja); PDF con texto → extracción con un modelo mejor.
+   */
+  async extraerMejorado(
+    archivo: ArchivoParaExtraer,
+    contexto: { nombreProductoErp: string; clavesPropiedad: string[] },
+  ): Promise<DocumentoExtraido> {
+    const escaneado = archivo.extension !== 'pdf' || (await extraerTextoPdf(archivo.buffer)).escaneado;
+    if (escaneado) {
+      const r = await this.releer(archivo, contexto);
+      if (r) return r;
+    }
+    return this.leer(archivo, contexto, undefined, BDT_CONFIG.MODELO_EXTRACCION_MEJORADA);
+  }
+
+  /**
+   * Huella del TEXTO de un PDF con texto (gratis, sin IA): detecta el mismo documento guardado de
+   * nuevo (otro archivo, mismos datos). null si es escaneado/imagen o no tiene texto suficiente.
+   */
+  async huellaTexto(archivo: ArchivoParaExtraer): Promise<string | null> {
+    if (archivo.extension !== 'pdf') return null;
+    try {
+      const pdf = await extraerTextoPdf(archivo.buffer);
+      if (pdf.escaneado) return null;
+      const texto = normalizarTexto(pdf.paginas.map((p) => p.texto).join(' '))
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .trim();
+      return texto.length >= 200 ? createHash('sha256').update(texto).digest('hex') : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reutiliza la extracción de OTRO producto (mismo documento): sin IA, costo 0. Solo se recalcula lo
+   * que depende del producto (confianza contra el nombre del producto, vigencias al persistir).
+   */
+  reutilizar(
+    previa: ExtraccionPrevia,
+    archivo: Pick<ArchivoParaExtraer, 'nombre'>,
+    contexto: { nombreProductoErp: string },
+  ): DocumentoExtraido {
+    const paginas = paginasDeTextoOriginal(previa.textoOriginal);
+    const esVision = previa.metodo === 'VISION';
+    const textoPlano = paginas.map((p) => p.texto).join('\n');
+    const reglas = esVision
+      ? clasificarPorReglas('', '', archivo.nombre)
+      : clasificarPorReglas(paginas[0]?.texto ?? '', textoPlano, archivo.nombre);
+    // Motivos que dependen de cómo se leyó el documento (no del producto) se conservan.
+    const motivos = previa.motivos.filter((m) => ['DOCUMENTO_ESCANEADO', 'DOCUMENTO_RECORTADO', 'RESPUESTA_TRUNCADA'].includes(m));
+    return this.construir({
+      datos: previa.datos,
+      paginas,
+      sinOriginalPorSeccion: esVision,
+      metodo: previa.metodo,
+      totalPaginas: previa.paginas || paginas.length || 1,
+      reglas,
+      motivos,
+      nombreProductoErp: contexto.nombreProductoErp,
+      modelo: `REUTILIZADO ${previa.modelo || ''}`.trim().slice(0, 50),
+      tokensEntrada: 0,
+      tokensSalida: 0,
+      costoUsd: 0,
+    });
+  }
+
+  /**
+   * @param transcripcion páginas ya transcritas de un escaneado (relectura): se extrae como texto,
+   * pero el documento sigue siendo escaneado (método VISION).
+   */
+  private async leer(
+    archivo: ArchivoParaExtraer,
+    contexto: { nombreProductoErp: string; clavesPropiedad: string[] },
+    transcripcion?: PaginaTexto[],
+    modeloExtraccion?: string,
   ): Promise<DocumentoExtraido> {
     const motivos: string[] = [];
     let paginas: PaginaTexto[] = [];
@@ -95,7 +273,17 @@ export class BdtExtraccionService {
     let esEscaneado = true;
     let entrada: EntradaDocumentoIa;
 
-    if (archivo.extension === 'pdf') {
+    if (transcripcion) {
+      paginas = transcripcion;
+      totalPaginas = transcripcion.length;
+      esEscaneado = false;
+      let texto = textoConPaginas(paginas);
+      if (texto.length > BDT_CONFIG.MAX_CARACTERES_EXTRACCION) {
+        texto = texto.slice(0, BDT_CONFIG.MAX_CARACTERES_EXTRACCION);
+        motivos.push('DOCUMENTO_RECORTADO');
+      }
+      entrada = { tipo: 'texto', texto };
+    } else if (archivo.extension === 'pdf') {
       const pdf = await extraerTextoPdf(archivo.buffer);
       paginas = pdf.paginas;
       totalPaginas = pdf.totalPaginas;
@@ -130,7 +318,9 @@ export class BdtExtraccionService {
       nombreProductoErp: contexto.nombreProductoErp,
       esEscaneado,
     });
-    const ia = await this.ia.extraerDocumento(prompt, entrada);
+    const ia = modeloExtraccion
+      ? await this.ia.extraerDocumento(prompt, entrada, modeloExtraccion)
+      : await this.ia.extraerDocumento(prompt, entrada);
     const datos = ia.datos;
 
     // Escaneado: el "texto original" es la transcripción que hizo la IA.
@@ -139,8 +329,43 @@ export class BdtExtraccionService {
       paginas = [{ numero: 1, texto: transcripcion }];
       motivos.push('DOCUMENTO_ESCANEADO');
     }
+    if (transcripcion) motivos.push('DOCUMENTO_ESCANEADO');
     if (ia.truncado) motivos.push('RESPUESTA_TRUNCADA');
 
+    return this.construir({
+      datos,
+      paginas,
+      sinOriginalPorSeccion: esEscaneado,
+      metodo: esEscaneado || transcripcion ? 'VISION' : 'TEXTO',
+      totalPaginas,
+      reglas,
+      motivos,
+      nombreProductoErp: contexto.nombreProductoErp,
+      modelo: ia.modelo,
+      tokensEntrada: ia.tokensEntrada,
+      tokensSalida: ia.tokensSalida,
+      costoUsd: costoIa(ia.modelo, ia.tokensEntrada, ia.tokensSalida),
+    });
+  }
+
+  /** Arma el resultado a partir de la respuesta de la IA (nueva o reutilizada): valores, secciones, confianza. */
+  private construir(p: {
+    datos: ExtraccionDocumento;
+    paginas: PaginaTexto[];
+    /** Escaneado leído en una sola llamada: no hay texto original por sección. */
+    sinOriginalPorSeccion: boolean;
+    metodo: 'TEXTO' | 'VISION';
+    totalPaginas: number;
+    reglas: ReturnType<typeof clasificarPorReglas>;
+    motivos: string[];
+    nombreProductoErp: string;
+    modelo: string;
+    tokensEntrada: number;
+    tokensSalida: number;
+    costoUsd: number;
+  }): DocumentoExtraido {
+    const { datos, paginas, reglas, motivos } = p;
+    const esEscaneado = p.sinOriginalPorSeccion;
     const tipo = datos.tipo_documento;
     const idioma = (datos.idioma || '').toLowerCase().slice(0, 5) || null;
     const esEspanol = idioma === 'es';
@@ -174,7 +399,7 @@ export class BdtExtraccionService {
       valores,
       secciones,
       fechas,
-      nombreProductoErp: contexto.nombreProductoErp,
+      nombreProductoErp: p.nombreProductoErp,
       motivos,
     });
 
@@ -184,8 +409,8 @@ export class BdtExtraccionService {
       tipo,
       tipoFuente: reglas.tipo === tipo && reglas.certeza >= 0.5 ? 'REGLAS' : 'IA',
       idioma,
-      metodo: esEscaneado ? 'VISION' : 'TEXTO',
-      paginas: totalPaginas,
+      metodo: p.metodo,
+      paginas: p.totalPaginas,
       textoOriginal,
       textoEs: esEspanol ? null : secciones.map((s) => `## ${s.titulo}\n${s.contenidoEs}`).join('\n\n') || null,
       markdown: this.generarMarkdown(tipo, datos, valores, secciones, fechas),
@@ -195,9 +420,10 @@ export class BdtExtraccionService {
       fechas,
       confianza,
       motivosRevision: motivos,
-      modelo: ia.modelo,
-      tokensEntrada: ia.tokensEntrada,
-      tokensSalida: ia.tokensSalida,
+      modelo: p.modelo,
+      tokensEntrada: p.tokensEntrada,
+      tokensSalida: p.tokensSalida,
+      costoUsd: p.costoUsd,
     };
   }
 

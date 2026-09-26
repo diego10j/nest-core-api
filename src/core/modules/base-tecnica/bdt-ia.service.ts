@@ -5,6 +5,12 @@ import { envs } from 'src/config/envs';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
 import { ExtraccionDocumento, SCHEMA_EXTRACCION } from './prompts/extraccion.prompt';
 
+/** 40+ saltos de línea / espacios seguidos al final de la respuesta = el modelo quedó en bucle. */
+const BUCLE_SALIDA = /(?:\\n|\\u000a|\\r|\s){40,}$/;
+
+/** La respuesta de extracción entró en bucle y se cortó (se puede reintentar). */
+export class BucleSalidaError extends Error {}
+
 export interface ResultadoExtraccionIa {
   datos: ExtraccionDocumento;
   modelo: string;
@@ -28,13 +34,22 @@ export class BdtIaService {
   private readonly logger = new Logger(BdtIaService.name);
   private readonly openai = new OpenAI({ apiKey: envs.openaiApiKey });
 
-  async extraerDocumento(promptSistema: string, entrada: EntradaDocumentoIa): Promise<ResultadoExtraccionIa> {
+  async extraerDocumento(
+    promptSistema: string,
+    entrada: EntradaDocumentoIa,
+    modelo: string = BDT_CONFIG.MODELO_EXTRACCION,
+    maxTokens: number = BDT_CONFIG.MAX_TOKENS_EXTRACCION,
+  ): Promise<ResultadoExtraccionIa> {
     const contenidoUsuario = this.buildContenido(entrada);
 
-    const response = await this.openai.chat.completions.create({
-      model: BDT_CONFIG.MODELO_EXTRACCION,
+    // En streaming para cortar a tiempo si el modelo entra en bucle: a veces, tras transcribir bien,
+    // sigue escribiendo "\n" hasta el límite de tokens (se pagarían miles de tokens basura).
+    const stream = await this.openai.chat.completions.create({
+      model: modelo,
       temperature: 0,
-      max_tokens: BDT_CONFIG.MAX_TOKENS_EXTRACCION,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
       messages: [
         { role: 'system', content: promptSistema },
         { role: 'user', content: contenidoUsuario as any },
@@ -45,11 +60,27 @@ export class BdtIaService {
       },
     });
 
-    const choice = response.choices[0];
-    const truncado = choice?.finish_reason === 'length';
-    const contenido = choice?.message?.content;
+    let contenido = '';
+    let finRazon: string | null = null;
+    let modeloUsado = modelo;
+    let refusal = '';
+    let usage: OpenAI.CompletionUsage | undefined;
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      contenido += delta?.content ?? '';
+      refusal += (delta as { refusal?: string } | undefined)?.refusal ?? '';
+      finRazon = chunk.choices[0]?.finish_reason ?? finRazon;
+      modeloUsado = chunk.model || modeloUsado;
+      if (chunk.usage) usage = chunk.usage;
+      if (BUCLE_SALIDA.test(contenido.slice(-400))) {
+        stream.controller.abort();
+        throw new BucleSalidaError(`${modeloUsado}: la respuesta entró en bucle (saltos de línea repetidos)`);
+      }
+    }
+
+    const truncado = finRazon === 'length';
     if (!contenido) {
-      throw new Error(choice?.message?.refusal || 'La IA no devolvió contenido');
+      throw new Error(refusal || 'La IA no devolvió contenido');
     }
 
     let datos: ExtraccionDocumento;
@@ -66,10 +97,41 @@ export class BdtIaService {
 
     return {
       datos,
+      modelo: modeloUsado,
+      tokensEntrada: usage?.prompt_tokens ?? 0,
+      tokensSalida: usage?.completion_tokens ?? 0,
+      truncado,
+    };
+  }
+
+  /**
+   * Transcripción en texto plano de un escaneado/imagen (sin JSON: la transcripción larga dentro de
+   * una respuesta estructurada hacía entrar al modelo en bucle). Páginas marcadas <<<PÁGINA N>>>.
+   */
+  async transcribirDocumento(entrada: EntradaDocumentoIa): Promise<{ texto: string; modelo: string; tokensEntrada: number; tokensSalida: number }> {
+    const response = await this.openai.chat.completions.create({
+      model: BDT_CONFIG.MODELO_TRANSCRIPCION,
+      temperature: 0,
+      max_tokens: BDT_CONFIG.MAX_TOKENS_TRANSCRIPCION,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Transcribe TODO el texto visible de este documento escaneado, página por página, en su idioma original, ' +
+            'sin traducir ni resumir. Antes de cada página escribe una línea "<<<PÁGINA N>>>". Tablas: una fila por ' +
+            'línea con las celdas separadas por " | ". No agregues comentarios ni líneas en blanco repetidas. ' +
+            'Termina al acabar la última página.',
+        },
+        { role: 'user', content: this.buildContenido(entrada).filter((c: any) => c.type !== 'text') as any },
+      ],
+    });
+    const choice = response.choices[0];
+    if (choice?.finish_reason === 'length') throw new Error('La transcripción superó el límite de tokens');
+    return {
+      texto: choice?.message?.content?.trim() ?? '',
       modelo: response.model,
       tokensEntrada: response.usage?.prompt_tokens ?? 0,
       tokensSalida: response.usage?.completion_tokens ?? 0,
-      truncado,
     };
   }
 
@@ -101,7 +163,8 @@ export class BdtIaService {
   async completarConHerramientas(messages: OpenAI.ChatCompletionMessageParam[], tools: OpenAI.ChatCompletionTool[]) {
     const response = await this.openai.chat.completions.create({
       model: BDT_CONFIG.MODELO_AGENTE,
-      temperature: 0.2,
+      // 0: respuestas pegadas a lo que devuelven las herramientas (sin "completar" datos).
+      temperature: 0,
       max_tokens: 1500,
       messages,
       tools,

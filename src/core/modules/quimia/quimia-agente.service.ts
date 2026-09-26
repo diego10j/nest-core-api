@@ -2,14 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
+import { AlertasIaService } from '../base-tecnica/alertas-ia.service';
 import { BdtConsultaService, CitaDocumento } from '../base-tecnica/bdt-consulta.service';
 import { BdtIaService } from '../base-tecnica/bdt-ia.service';
-import { BDT_CONFIG, MENSAJE_IA_GENERAL } from '../base-tecnica/constants/base-tecnica.constants';
+import { BDT_CONFIG, MENSAJE_IA_GENERAL, costoIa } from '../base-tecnica/constants/base-tecnica.constants';
 
 import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { ChatQuimiaDto } from './dto/chat-quimia.dto';
 import { convertirCitasEnLinea, convertirNotasEnLinea } from './helpers/citas-en-linea.helper';
 import { esPedidoDocumentoErp } from './helpers/detector-producto.helper';
+import { sugerenciasSeguimiento } from './helpers/presentacion.helper';
 import { formatearTextoPlano } from './helpers/texto-plano.helper';
 import {
   MARCADOR_ELEGIR_PRODUCTO,
@@ -21,7 +23,7 @@ import { ContextoHerramientas, QuimiaHerramientasService, TODAS_HERRAMIENTAS_QUI
 import { QuimiaProductosService } from './quimia-productos.service';
 import { CanalQuimia, Emitir, EventoQuimia, OrigenQuimia, RespuestaQuimia, UsuarioQuimia } from './quimia.types';
 
-type UsuarioConOrigen = UsuarioQuimia & { origen?: OrigenQuimia };
+type UsuarioConOrigen = UsuarioQuimia & { origen?: OrigenQuimia; inicio?: number };
 
 /**
  * Asistente QuimIA. Núcleo independiente del canal: recibe la pregunta + el usuario del ERP y emite
@@ -42,6 +44,7 @@ export class QuimiaAgenteService {
     private readonly herramientas: QuimiaHerramientasService,
     private readonly bdtConsulta: BdtConsultaService,
     private readonly conocimiento: QuimiaConocimientoService,
+    private readonly alertas: AlertasIaService,
   ) {}
 
   /** API JSON (Telegram u otros clientes): misma lógica que el chat, respuesta completa. */
@@ -61,6 +64,8 @@ export class QuimiaAgenteService {
       archivos: [],
       opcionesArchivo: [],
       imagenes: [],
+      graficos: [],
+      borrador: null,
       opciones: [],
       sugerirCambio: null,
       sinRespuesta: false,
@@ -91,6 +96,12 @@ export class QuimiaAgenteService {
           break;
         case 'opciones_archivo':
           r.opcionesArchivo = e.archivos;
+          break;
+        case 'graficos':
+          r.graficos = e.graficos;
+          break;
+        case 'borrador_proforma':
+          r.borrador = e.borrador;
           break;
         case 'imagenes':
           r.imagenes = e.imagenes;
@@ -131,7 +142,7 @@ export class QuimiaAgenteService {
     emitir: Emitir,
   ): Promise<void> {
     // El origen viaja con el usuario hasta el registro de la consulta.
-    const u = { ...usuario, origen };
+    const u = { ...usuario, origen, inicio: Date.now() };
     try {
       if (dto.modo === 'IA_GENERAL') {
         await this.responderIaGeneral(dto, u, canal, emitir);
@@ -140,7 +151,16 @@ export class QuimiaAgenteService {
       }
     } catch (error) {
       this.logger.error(`QuimIA: ${error?.message}`, error?.stack);
-      emitir({ tipo: 'error', mensaje: 'No se pudo procesar la consulta. Intenta nuevamente.' });
+      const problema = this.alertas.reportar(error, { ideEmpr: usuario.ideEmpr, origen: `QuimIA (${canal})` });
+      emitir({
+        tipo: 'error',
+        mensaje:
+          problema === 'SIN_SALDO'
+            ? 'QuimIA no puede responder ahora: la cuenta de OpenAI se quedó sin saldo. Ya se avisó al administrador.'
+            : problema === 'API_KEY'
+              ? 'QuimIA no puede responder: la API key de OpenAI no es válida. Ya se avisó al administrador.'
+              : 'No se pudo procesar la consulta. Intenta nuevamente.',
+      });
       emitir({ tipo: 'fin', modo: dto.modo ?? 'AGENTE', ide_bdcon: null });
     }
   }
@@ -204,6 +224,11 @@ export class QuimiaAgenteService {
       archivos: [],
       opcionesArchivo: [],
       imagenes: [],
+      // Tablas/indicadores solo en el chat del ERP; Telegram recibe todo en texto.
+      bloques: canal === 'ASESOR' ? [] : undefined,
+      graficos: [],
+      canal,
+      telefono: usuario.origen?.telefono ?? null,
       notas: await this.conocimiento.buscar(dto.pregunta, usuario.ideEmpr, { ide_inarti: producto?.ide_inarti }),
       emitir,
     };
@@ -306,6 +331,10 @@ export class QuimiaAgenteService {
     ].slice(0, MAX_NOTAS_QUIMIA);
 
     emitir({ tipo: 'delta', texto: textoFinal });
+    if (ctx.bloques?.length) emitir({ tipo: 'bloques', bloques: ctx.bloques });
+    if (ctx.borrador) emitir({ tipo: 'borrador_proforma', borrador: ctx.borrador });
+    // Telegram: los gráficos de reportes llegan como imagen.
+    if (!ctx.bloques && ctx.graficos.length) emitir({ tipo: 'graficos', graficos: ctx.graficos });
     if (citas.length) emitir({ tipo: 'citas', citas });
     if (ctx.documentos.length) emitir({ tipo: 'documentos', documentos: ctx.documentos });
     if (ctx.archivos.length) emitir({ tipo: 'archivos', archivos: ctx.archivos });
@@ -314,6 +343,10 @@ export class QuimiaAgenteService {
     if (notas.length) emitir({ tipo: 'notas', notas });
     if (opciones) emitir(opciones);
     if (sinRespuesta) emitir({ tipo: 'sin_respuesta' });
+    if (canal === 'ASESOR' && !opciones && !ctx.opcionesArchivo.length) {
+      const sugerencias = sugerenciasSeguimiento(ctx.herramientasUsadas, ctx.producto?.nombre ?? null);
+      if (sugerencias.length) emitir({ tipo: 'sugerencias', sugerencias });
+    }
 
     await this.cerrar(dto, usuario, canal, emitir, {
       modo: 'AGENTE',
@@ -439,6 +472,15 @@ export class QuimiaAgenteService {
         ],
       );
       ide = r.rows[0].ide_bdcon;
+      // Panel de uso: tiempo de respuesta y costo IA (aparte: sin scripts/quimia_comandos.sql no se pierde la consulta).
+      const costo = datos.modelo ? costoIa(datos.modelo, datos.tokensEntrada ?? 0, datos.tokensSalida ?? 0) : 0;
+      await this.dataSource.pool
+        .query(`UPDATE bdt_consulta SET ms_respuesta_bdcon = $2, costo_usd_bdcon = $3 WHERE ide_bdcon = $1`, [
+          ide,
+          usuario.inicio ? Date.now() - usuario.inicio : null,
+          Math.round(costo * 100000) / 100000,
+        ])
+        .catch(() => undefined);
       if (datos.notas?.length) {
         // Aparte: sin scripts/quimia_conocimiento.sql solo se pierde este dato, no la consulta.
         await this.dataSource.pool

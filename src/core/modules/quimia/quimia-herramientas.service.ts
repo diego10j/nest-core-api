@@ -13,10 +13,13 @@ import {
   QuimiaDocumentosErpService,
   TipoArchivoErp,
 } from './erp/quimia-documentos-erp.service';
+import { BorradorProforma, QuimiaProformasService } from './erp/quimia-proformas.service';
+import { AVISO_EN_PANTALLA, BloqueChat, GraficoChat, bloquesDe } from './helpers/presentacion.helper';
 import { notasContexto } from './prompts/quimia.prompt';
 import { ESTADOS_CLIENTES, HERRAMIENTAS_CLIENTES, QuimiaClientesService } from './quimia-clientes.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { EventoQuimia, ProductoQuimia, UsuarioQuimia } from './quimia.types';
+import { CATALOGO_REPORTES, QuimiaReportesService } from './reportes/quimia-reportes.service';
 
 /** Estado de una conversación mientras el agente usa herramientas. */
 export interface ContextoHerramientas {
@@ -39,6 +42,15 @@ export interface ContextoHerramientas {
   opcionesArchivo: ArchivoErpQuimia[];
   /** Fotos del producto pedidas (máximo 5). */
   imagenes: ImagenProductoQuimia[];
+  /** Chat del ERP: tablas/indicadores con los datos de las herramientas (Telegram no los usa). */
+  bloques?: BloqueChat[];
+  /** Gráficos de reportes: en Telegram se envían como imagen. */
+  graficos: GraficoChat[];
+  /** Borrador de proforma preparado (se confirma con un botón, nunca lo crea la IA). */
+  borrador?: BorradorProforma | null;
+  /** Canal de la conversación y teléfono (Telegram) para el borrador. */
+  canal?: string;
+  telefono?: string | null;
   emitir: (evento: EventoQuimia) => void;
 }
 
@@ -187,6 +199,60 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'preparar_proforma',
+      description:
+        'Prepara un BORRADOR de proforma para un cliente con productos y cantidades (precios según la configuración de ' +
+        'precios, o el precio indicado por el usuario). El usuario lo revisa y lo crea con un botón: NO afirmes que la ' +
+        'proforma está creada. Antes obtén ide_geper con buscar_cliente e ide_inarti con buscar_producto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ide_geper: { type: 'integer', description: 'Cliente (de buscar_cliente)' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                ide_inarti: { type: 'integer' },
+                cantidad: { type: 'number', description: 'En la unidad del producto' },
+                precio: { type: 'number', description: 'Precio unitario sin IVA SOLO si el usuario lo indicó' },
+              },
+              required: ['ide_inarti', 'cantidad'],
+            },
+          },
+          observacion: { type: 'string', description: 'Observación para la proforma (opcional)' },
+        },
+        required: ['ide_geper', 'items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reporte_ventas',
+      description:
+        'Reportes de ventas de la empresa con gráfico y tabla (los mismos del ERP): resumen diario de ventas (hoy o días ' +
+        'atrás: ventas, cobros, utilidad, formas de pago, top clientes/artículos), ventas anuales, ventas ' +
+        'mensuales de un año, ventas diarias recientes, mejores clientes y productos más vendidos. Úsala para "¿cómo van las ' +
+        'ventas?", "ventas de este año", "ventas por mes", "ventas de la última semana", "top clientes".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reporte: { type: 'string', enum: CATALOGO_REPORTES.map((r) => r.clave) },
+          anio: { type: 'integer', description: 'Año (VENTAS_MENSUALES)' },
+          anios: { type: 'integer', description: 'Cuántos años (VENTAS_ANUALES, por defecto 5)' },
+          dias: { type: 'integer', description: 'Días (VENTAS_DIARIAS, por defecto 15)' },
+          dias_atras: { type: 'integer', description: 'RESUMEN_DIARIO: 0 = hoy, 1 = ayer…' },
+          meses: { type: 'integer', description: 'Meses hacia atrás (TOP_CLIENTES / TOP_PRODUCTOS, por defecto 12)' },
+          limite: { type: 'integer', description: 'Cuántos (TOP_CLIENTES / TOP_PRODUCTOS)' },
+        },
+        required: ['reporte'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'imagenes_producto',
       description: `Fotos del producto cargadas en su galería (máximo ${MAX_FOTOS_PRODUCTO}). Úsala cuando pidan imágenes, fotos o cómo se ve el producto. Las fotos se muestran solas.`,
       parameters: { type: 'object', properties: { ...idProducto } },
@@ -233,6 +299,8 @@ const MENSAJE_ESTADO: Record<string, string> = {
   buscar_producto: 'Buscando el producto…',
   buscar_base_conocimiento: 'Revisando la base de conocimiento…',
   obtener_documento_pdf: 'Generando el PDF…',
+  reporte_ventas: 'Preparando el reporte de ventas…',
+  preparar_proforma: 'Preparando el borrador de la proforma…',
   imagenes_producto: 'Buscando las fotos del producto…',
   consultar_base_tecnica: 'Revisando la documentación técnica…',
   listar_documentos: 'Buscando los documentos…',
@@ -268,10 +336,31 @@ export class QuimiaHerramientasService {
     private readonly quimiaClientes: QuimiaClientesService,
     private readonly conocimiento: QuimiaConocimientoService,
     private readonly documentosErp: QuimiaDocumentosErpService,
+    private readonly reportes: QuimiaReportesService,
+    private readonly proformasQuimia: QuimiaProformasService,
   ) {}
 
-  /** Ejecuta una herramienta y devuelve el texto (JSON compacto) que recibe la IA. */
+  /**
+   * Ejecuta una herramienta y devuelve el texto (JSON compacto) que recibe la IA. En el chat del ERP
+   * (ctx.bloques definido) los datos tabulares se guardan como bloques visuales y se le pide a la IA
+   * que no los repita.
+   */
   async ejecutar(nombre: string, argsJson: string, ctx: ContextoHerramientas): Promise<string> {
+    const texto = await this.ejecutarHerramienta(nombre, argsJson, ctx);
+    if (!ctx.bloques) return texto;
+    let datos: Record<string, any>;
+    try {
+      datos = JSON.parse(texto);
+    } catch {
+      return texto; // no es JSON (ej. documentos de la base técnica)
+    }
+    const nuevos = bloquesDe(nombre, datos).filter((b) => !ctx.bloques.some((x) => x.titulo === b.titulo));
+    if (!nuevos.length) return texto;
+    ctx.bloques.push(...nuevos);
+    return this.json({ ...datos, _en_pantalla: AVISO_EN_PANTALLA });
+  }
+
+  private async ejecutarHerramienta(nombre: string, argsJson: string, ctx: ContextoHerramientas): Promise<string> {
     let args: Record<string, any> = {};
     try {
       args = JSON.parse(argsJson || '{}');
@@ -285,6 +374,33 @@ export class QuimiaHerramientasService {
       if (nombre === 'buscar_producto') return this.json(await this.buscarProducto(args.texto, ctx));
       if (nombre === 'buscar_base_conocimiento') return await this.buscarConocimiento(args, ctx);
       if (nombre === 'obtener_documento_pdf') return this.json(await this.documentoPdf(args, ctx));
+      if (nombre === 'preparar_proforma') {
+        const b = await this.proformasQuimia.prepararBorrador(args as any, ctx.usuario, ctx.canal ?? 'ASESOR', ctx.telefono ?? null);
+        ctx.borrador = b;
+        return this.json({
+          borrador: {
+            cliente: b.cliente.nombre,
+            lineas: b.lineas.map((l) => `${l.cantidad} ${l.unidad ?? ''} ${l.producto} a ${l.precio ?? 'SIN PRECIO'} = ${l.total ?? '-'}`),
+            subtotal: b.subtotal,
+            iva: b.iva,
+            total: b.total,
+          },
+          avisos: b.avisos,
+          mensaje:
+            'El borrador se muestra al usuario con el botón "Crear proforma". Resume en 1-2 frases (cliente y total) e ' +
+            'indica los avisos si hay. NO digas que la proforma fue creada.',
+        });
+      }
+      if (nombre === 'reporte_ventas') {
+        const r = await this.reportes.ejecutar(String(args.reporte), args, ctx.usuario);
+        ctx.graficos.push(...(r.bloques.filter((b) => b.tipo === 'grafico') as GraficoChat[]));
+        if (ctx.bloques) {
+          ctx.bloques.push(...r.bloques);
+          return this.json({ reporte: r.titulo, resumen: r.texto, _en_pantalla: AVISO_EN_PANTALLA });
+        }
+        // Telegram: el gráfico se envía como imagen; la IA resume con el texto.
+        return this.json({ reporte: r.titulo, datos: r.texto, grafico: 'Se envía como imagen después de tu respuesta.' });
+      }
       // Clientes y transporte no requieren producto activo (compras_cliente lo recibe si aplica).
       if (this.quimiaClientes.esHerramienta(nombre)) {
         return this.json(await this.quimiaClientes.ejecutar(nombre, args, ctx.usuario, ctx.producto));
@@ -312,7 +428,13 @@ export class QuimiaHerramientasService {
           }
           // Las etiquetas D1, D2… se mantienen únicas si la herramienta se llama más de una vez.
           ctx.docsContexto = r.docs;
-          return r.texto;
+          // Recordatorio junto a los datos: el modelo tiende a "completar" listas (presentaciones, usos)
+          // con conocimiento general cuando el documento trae solo una parte.
+          return (
+            `${r.texto}\n\n` +
+            'IMPORTANTE: responde solo con lo que dice esta documentación, citando [D…]. No agregues valores, ' +
+            'presentaciones, usos ni dosis que no estén escritos arriba; si falta una parte, di que los documentos no la indican.'
+          );
         }
 
         case 'listar_documentos': {

@@ -57,7 +57,7 @@ export class BdtContenidoService {
       ],
       SCHEMA_CONTENIDO_PRODUCTO as unknown as Record<string, unknown>,
       'contenido_producto',
-      { modelo: BDT_CONFIG.MODELO_CONTENIDO, temperatura: 0.3, maxTokens: 3000 },
+      { modelo: BDT_CONFIG.MODELO_CONTENIDO, temperatura: 0, maxTokens: 3000 },
     );
     this.logger.log(
       `Contenido ide_inarti=${dto.ide_inarti}: ${docs.length} docs, tokens ${tokensEntrada}/${tokensSalida}`,
@@ -76,7 +76,7 @@ export class BdtContenidoService {
     return {
       con_base_tecnica: true,
       // Mismas claves que /gpt/generateContentProduct: el formulario las asigna igual.
-      descripcionCorta: datos.descripcion_corta.trim(),
+      descripcionCorta: this.sinEmojis(datos.descripcion_corta),
       descripcionLarga: this.limpiarHtml(datos.descripcion_larga_html),
       otrosNombres: otrosNombres.join(', '),
       documentos: docs.map((d) => d.nombre_original_bddoc),
@@ -93,6 +93,14 @@ export class BdtContenidoService {
       [ideInarti, ideEmpr, nombreProducto],
     );
     return r.rows.map((x) => x.sinonimo_bdsin);
+  }
+
+  /** La descripción corta va sin emojis (el prompt lo pide; esto lo garantiza). */
+  private sinEmojis(texto: string): string {
+    return (texto ?? '')
+      .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 
   private limpiarHtml(html: string): string {

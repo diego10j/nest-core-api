@@ -1,17 +1,21 @@
-import { Body, Controller, HttpStatus, NotFoundException, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, NotFoundException, Post, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
+import { BorradorProformaDto } from './dto/borrador-proforma.dto';
 import { BuscarProductosQuimiaDto } from './dto/buscar-productos-quimia.dto';
 import { CalificarConsultaDto } from './dto/calificar-consulta.dto';
 import { ChatQuimiaDto, PreguntarQuimiaDto } from './dto/chat-quimia.dto';
 import { GetNotaQuimiaDto } from './dto/get-nota-quimia.dto';
+import { GetUsoQuimiaDto } from './dto/get-uso-quimia.dto';
+import { QuimiaProformasService } from './erp/quimia-proformas.service';
 import { QuimiaAgenteService } from './quimia-agente.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { UsuarioQuimia } from './quimia.types';
+import { QuimiaUsoService } from './uso/quimia-uso.service';
 
 const usuarioDe = (h: HeaderParamsDto): UsuarioQuimia => ({
   ideEmpr: h.ideEmpr,
@@ -28,7 +32,27 @@ export class QuimiaController {
     private readonly agente: QuimiaAgenteService,
     private readonly productos: QuimiaProductosService,
     private readonly conocimiento: QuimiaConocimientoService,
+    private readonly uso: QuimiaUsoService,
+    private readonly proformas: QuimiaProformasService,
   ) {}
+
+  @Post('crearProforma')
+  @ApiOperation({ summary: 'Crea la proforma del borrador preparado por QuimIA (usuario logueado)' })
+  crearProforma(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: BorradorProformaDto) {
+    return this.proformas.crear(dtoIn.uuid, { tipo: 'ERP', headers: headersParams });
+  }
+
+  @Post('cancelarProforma')
+  @ApiOperation({ summary: 'Descarta el borrador de proforma' })
+  cancelarProforma(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: BorradorProformaDto) {
+    return this.proformas.cancelar(dtoIn.uuid, headersParams.ideEmpr);
+  }
+
+  @Get('getUso')
+  @ApiOperation({ summary: 'Panel de uso de QuimIA: KPIs, costos, preguntas sin respuesta, calificaciones y uso por persona' })
+  getUso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetUsoQuimiaDto) {
+    return this.uso.getUso(dtoIn, headersParams.ideEmpr);
+  }
 
   @Post('chat')
   @ApiOperation({

@@ -8,21 +8,28 @@ import { AuditService } from '../audit/audit.service';
 import { BaseTecnicaModule } from '../base-tecnica/base-tecnica.module';
 import { ConfigPreciosProductosService } from '../inventario/productos/config-precios.service';
 import { ProductosService } from '../inventario/productos/productos.service';
+import { ProformasModule } from '../proformas/proformas.module';
 import { VentasModule } from '../ventas/ventas.module';
 
 import { QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { QuimiaDocumentosErpService } from './erp/quimia-documentos-erp.service';
+import { QuimiaProformasService } from './erp/quimia-proformas.service';
 import { QuimiaAgenteService } from './quimia-agente.service';
 import { QuimiaClientesService } from './quimia-clientes.service';
 import { QuimiaHerramientasService } from './quimia-herramientas.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { QuimiaController } from './quimia.controller';
+import { QuimiaReportesService } from './reportes/quimia-reportes.service';
+import { TelegramAlertasService } from './telegram/telegram-alertas.service';
 import { TelegramApiService } from './telegram/telegram-api.service';
 import { TelegramBotService } from './telegram/telegram-bot.service';
+import { TelegramComandosService } from './telegram/telegram-comandos.service';
 import { TelegramCuentaService } from './telegram/telegram-cuenta.service';
+import { TelegramNotificacionesService } from './telegram/telegram-notificaciones.service';
 import { TelegramRunnerService } from './telegram/telegram-runner.service';
 import { TelegramController } from './telegram/telegram.controller';
 import { TranscripcionService } from './transcripcion/transcripcion.service';
+import { QuimiaUsoService } from './uso/quimia-uso.service';
 
 /**
  * Asistente QuimIA: responde consultas de productos combinando la base técnica (documentos) con datos
@@ -34,7 +41,7 @@ import { TranscripcionService } from './transcripcion/transcripcion.service';
  * Los servicios de productos/precios se re-proveen aquí, igual que hacen otros módulos del proyecto.
  */
 @Module({
-  imports: [ConfigModule, BaseTecnicaModule, VentasModule, VentasReportsModule, ProformasReportsModule],
+  imports: [ConfigModule, BaseTecnicaModule, VentasModule, VentasReportsModule, ProformasReportsModule, ProformasModule],
   controllers: [QuimiaController, TelegramController],
   providers: [
     QuimiaAgenteService,
@@ -43,11 +50,17 @@ import { TranscripcionService } from './transcripcion/transcripcion.service';
     QuimiaClientesService,
     QuimiaConocimientoService,
     QuimiaDocumentosErpService,
+    QuimiaProformasService,
+    QuimiaReportesService,
+    QuimiaUsoService,
     TelegramApiService,
     TranscripcionService,
     TelegramCuentaService,
     TelegramBotService,
     TelegramRunnerService,
+    TelegramAlertasService,
+    TelegramNotificacionesService,
+    TelegramComandosService,
     ProductosService,
     ConfigPreciosProductosService,
     AuditService,

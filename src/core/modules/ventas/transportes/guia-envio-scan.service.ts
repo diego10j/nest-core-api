@@ -37,11 +37,17 @@ const FACTOR_MAX_AMPLIACION = 2;
 // Tamaño de bloque para estimar el brillo del papel (fondo) - bastante más grande que el grosor
 // de un trazo de texto, para que el máximo de cada bloque caiga siempre sobre papel.
 const BLOQUE_FONDO = 24;
-// Relación píxel/fondo a partir de la cual se considera papel (blanco puro) y por debajo de la
-// cual tinta (negro puro). Entre ambos se estira el contraste.
-const UMBRAL_PAPEL = 0.88;
-const UMBRAL_TINTA = 0.35;
-const GAMMA_TINTA = 1.2;
+// "Oscuridad" (0 = papel, 1 = negro) bajo la cual un píxel es papel -> blanco puro, y rango en
+// el que se estira el trazo. Gamma < 1 REFUERZA el trazo pálido (copias a carbón, esfero suave).
+const UMBRAL_PAPEL = 0.07;
+const RANGO_TINTA = 0.45;
+const GAMMA_TINTA = 0.75;
+// Clasificación papel vs. mesa sobre el color promedio de cada bloque.
+const PAPEL_LUM_MIN = 0.6;
+const PAPEL_SAT_MAX = 0.25;
+// Enderezado: inclinación máxima buscada y holgura del rectángulo de la hoja (perspectiva leve).
+const ANGULO_MAX_ENDEREZAR = 10;
+const MARGEN_RECTANGULO_BLOQUES = 1;
 const MARGEN_BLANCO_PX = 24;
 // OCR.space (plan gratuito) rechaza archivos de más de 1 MB.
 const OCR_MAX_BYTES = 1_000_000;
@@ -180,16 +186,17 @@ export class GuiaEnvioScanService {
     }
 
     /**
-     * Efecto "escáner a color" (tipo Adobe Scan, modo documento):
-     * 1. Orientación EXIF y tamaño de trabajo (reduce fotos enormes, agranda hasta x2 las chicas
-     *    para mejorar la resolución de la letra pequeña).
-     * 2. Estima el color del PAPEL en cada zona, por canal (máximo por bloques -> suavizado), y
-     *    divide cada píxel por él: elimina sombras, iluminación despareja y tintes de fondo (papel
-     *    rosado/amarillo, la mesa), que quedan en blanco. La tinta, sellos y logos CONSERVAN su
-     *    color (azul del esfero, rojo del sello), porque solo se quita el color del papel.
-     * 3. Lo que es papel pasa a blanco puro; el resto estira su contraste por canal con una curva
-     *    suave que mantiene colores y trazos finos. Auto-recorte a la hoja, enfoque y margen.
-     * No corrige perspectiva (foto en ángulo): eso requiere detectar las esquinas (fase 2).
+     * Efecto "escáner a color" (tipo Adobe Scan, modo documento), afinado con fotos reales de
+     * guías (Servientrega, Jhetro manuscrita y copia a carbón celeste sobre mesa de madera):
+     * 1. Orientación EXIF y tamaño de trabajo (reduce fotos enormes, agranda hasta x2 las chicas).
+     * 2. Color del PAPEL por zona y por canal (máximo por bloques -> suavizado). Cada píxel se
+     *    expresa como "oscuridad" respecto de ese papel: quita sombras, iluminación despareja y
+     *    el tinte del papel (rosado/celeste/amarillo), conservando el color de tinta y sellos.
+     * 3. La mesa/fondo de la foto (ver mascaraExterior) queda en blanco, se recorta y se endereza
+     *    la hoja si estaba girada unos grados.
+     * 4. Curva que REFUERZA el trazo pálido (copias a carbón) en vez de aclararlo; lo que es
+     *    papel pasa a blanco puro. Enfoque suave y margen blanco.
+     * No corrige perspectiva fuerte (foto muy en ángulo): eso requiere detectar esquinas (fase 2).
      */
     private async generarEscaneo(input: Buffer): Promise<Buffer> {
         const sharp = (await import('sharp')).default;
@@ -207,11 +214,10 @@ export class GuiaEnvioScanService {
             .raw()
             .toBuffer({ resolveWithObject: true });
         const { width, height, channels } = info;
-
-        // Color del papel: máximo de cada bloque BLOQUE_FONDO x BLOQUE_FONDO, por canal (siempre
-        // cae en papel, que es lo más claro de la zona).
         const bw = Math.ceil(width / BLOQUE_FONDO);
         const bh = Math.ceil(height / BLOQUE_FONDO);
+
+        // ── Color del papel: máximo por bloque y canal -> mediana + blur -> tamaño completo.
         const maximos = Buffer.alloc(bw * bh * 3);
         for (let y = 0; y < height; y++) {
             const fila = Math.floor(y / BLOQUE_FONDO) * bw;
@@ -223,56 +229,111 @@ export class GuiaEnvioScanService {
                 }
             }
         }
-        // Mediana: descarta bloques atípicos (un brillo/reflejo aislado); blur: transición suave
-        // entre bloques. Luego se lleva al tamaño completo con interpolación.
         const grilla = await sharp(maximos, { raw: { width: bw, height: bh, channels: 3 } })
             .median(3)
             .blur(1.2)
             .raw()
             .toBuffer({ resolveWithObject: true });
-        const gc = grilla.info.channels;
-        const fondo = await sharp(grilla.data, { raw: { width: bw, height: bh, channels: gc } })
+        const fondo = await sharp(grilla.data, { raw: { width: bw, height: bh, channels: grilla.info.channels } })
             .resize(width, height, { kernel: 'cubic', fit: 'fill' })
             .raw()
             .toBuffer({ resolveWithObject: true });
         const fc = fondo.info.channels;
 
-        const lumGrilla = Buffer.alloc(bw * bh);
-        for (let i = 0; i < bw * bh; i++) {
-            lumGrilla[i] = Math.round(
-                0.299 * grilla.data[i * gc] + 0.587 * grilla.data[i * gc + 1] + 0.114 * grilla.data[i * gc + 2],
-            );
-        }
-        const recorte = this.detectarHoja(lumGrilla, 1, bw, bh, width, height);
+        // ── Mesa / fondo de la foto -> blanco (máscara suavizada a tamaño completo).
+        const promedios = await sharp(rgb, { raw: { width, height, channels } })
+            .resize(bw, bh, { fit: 'fill' })
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+        const { exterior, angulo } = this.mascaraExterior(promedios.data, promedios.info.channels, bw, bh);
+        const mascara = await sharp(Buffer.from(this.dilatar(exterior, bw, bh).map((v) => v * 255)), {
+            raw: { width: bw, height: bh, channels: 1 },
+        })
+            .resize(width, height, { kernel: 'cubic', fit: 'fill' })
+            .blur(3)
+            .toColourspace('b-w')
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+        const mc = mascara.info.channels;
 
-        // Se escribe solo el rectángulo de la hoja (o la imagen completa si no hay recorte).
-        const r = recorte ?? { left: 0, top: 0, width, height };
+        // ── Nivel real del papel: el máximo por bloque queda por encima del papel promedio (brillos,
+        // ruido), así que se calibra con la mediana-alta de la relación píxel/fondo en la hoja.
+        const hist = new Uint32Array(256);
+        for (let i = 0; i < width * height; i += 7) {
+            if (mascara.data[i * mc] > 10) continue;
+            let suma = 0;
+            for (let c = 0; c < 3; c++) suma += rgb[i * channels + c] / Math.max(fondo.data[i * fc + c], 1);
+            hist[Math.min(255, Math.round((suma / 3) * 200))]++;
+        }
+        const totalHist = hist.reduce((a, b) => a + b, 0);
+        let nivelPapel = 0.95;
+        for (let k = 0, acc = 0; k < 256; k++) {
+            acc += hist[k];
+            if (acc >= totalHist * 0.6) {
+                nivelPapel = Math.max(k / 200, 0.5);
+                break;
+            }
+        }
+
+        // ── Recorte a la hoja (todo lo que no es exterior).
+        let x0 = bw, y0 = bh, x1 = -1, y1 = -1;
+        for (let y = 0; y < bh; y++) {
+            for (let x = 0; x < bw; x++) {
+                if (exterior[y * bw + x]) continue;
+                x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+                y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+            }
+        }
+        const r = x1 < 0
+            ? { left: 0, top: 0, width, height }
+            : {
+                left: x0 * BLOQUE_FONDO,
+                top: y0 * BLOQUE_FONDO,
+                width: Math.min(width, (x1 + 1) * BLOQUE_FONDO) - x0 * BLOQUE_FONDO,
+                height: Math.min(height, (y1 + 1) * BLOQUE_FONDO) - y0 * BLOQUE_FONDO,
+            };
+
+        // ── Render: oscuridad respecto del papel -> blanco puro bajo el umbral; sobre él, curva
+        // (gamma < 1) que refuerza el trazo pálido conservando el color de cada canal.
         const salida = Buffer.alloc(r.width * r.height * 3);
-        const rango = UMBRAL_PAPEL - UMBRAL_TINTA;
-        const relacion = [0, 0, 0];
+        const oscuridad = [0, 0, 0];
         for (let y = 0; y < r.height; y++) {
             for (let x = 0; x < r.width; x++) {
                 const i = (y + r.top) * width + (x + r.left);
-                for (let c = 0; c < 3; c++) {
-                    relacion[c] = rgb[i * channels + c] / Math.max(fondo.data[i * fc + c], 1);
-                }
-                const lum = 0.299 * relacion[0] + 0.587 * relacion[1] + 0.114 * relacion[2];
                 const o = (y * r.width + x) * 3;
-                if (lum >= UMBRAL_PAPEL) {
+                for (let c = 0; c < 3; c++) {
+                    oscuridad[c] = Math.max(
+                        0,
+                        1 - rgb[i * channels + c] / Math.max(fondo.data[i * fc + c], 1) / nivelPapel,
+                    );
+                }
+                const lum = 0.299 * oscuridad[0] + 0.587 * oscuridad[1] + 0.114 * oscuridad[2];
+                if (lum < UMBRAL_PAPEL) {
                     salida[o] = 255;
                     salida[o + 1] = 255;
                     salida[o + 2] = 255;
-                } else {
-                    for (let c = 0; c < 3; c++) {
-                        const t = Math.min(1, Math.max(0, (relacion[c] - UMBRAL_TINTA) / rango));
-                        // Curva suave (gamma > 1): tinta firme sin "quemar" los colores.
-                        salida[o + c] = Math.round(255 * t ** GAMMA_TINTA);
-                    }
+                    continue;
+                }
+                const exteriorPeso = mascara.data[i * mc] / 255;
+                for (let c = 0; c < 3; c++) {
+                    const t = Math.min(1, Math.max(0, (oscuridad[c] - UMBRAL_PAPEL) / RANGO_TINTA)) ** GAMMA_TINTA;
+                    const v = 255 * (1 - t);
+                    salida[o + c] = Math.round(v + (255 - v) * exteriorPeso);
                 }
             }
         }
 
-        return sharp(salida, { raw: { width: r.width, height: r.height, channels: 3 } })
+        let resultado: { data: Buffer; width: number; height: number } = { data: salida, width: r.width, height: r.height };
+        if (Math.abs(angulo) >= 0.5) {
+            const girada = await sharp(salida, { raw: { width: r.width, height: r.height, channels: 3 } })
+                .rotate(-angulo, { background: '#ffffff' })
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+            resultado = { data: girada.data, width: girada.info.width, height: girada.info.height };
+        }
+
+        return sharp(resultado.data, { raw: { width: resultado.width, height: resultado.height, channels: 3 } })
+            .trim({ background: '#ffffff', threshold: 10 })
             .sharpen({ sigma: 0.8 })
             .extend({
                 top: MARGEN_BLANCO_PX,
@@ -287,57 +348,119 @@ export class GuiaEnvioScanService {
     }
 
     /**
-     * Auto-recorte a la hoja: en la grilla de brillo del papel, los bloques claros son la hoja
-     * y los oscuros lo que la rodea (mesa, fondo de la foto). Devuelve el rectángulo que cubre
-     * las filas/columnas mayoritariamente claras, metido un bloque hacia adentro para no dejar el
-     * borde de la hoja (que tras normalizar quedaría como un marco negro). null = la hoja ya
-     * ocupa toda la foto o no se pudo detectar con seguridad (no se recorta).
+     * Qué bloques NO son la hoja (mesa, fondo de la foto), sobre el color promedio de cada bloque:
+     * 1. Papel = claro y poco saturado (la madera es saturada; una copia celeste/rosada/amarilla
+     *    no). Se usa el promedio, no el máximo: el máximo agarra los reflejos de la veta.
+     * 2. Exterior = no-papel conectado al borde de la foto (las franjas de color DENTRO de la
+     *    guía no tocan el borde y se conservan).
+     * 3. Solo la zona restante más grande es la hoja: islas sueltas (reflejos) -> exterior.
+     * 4. Rectángulo inclinado que mejor encierra la hoja (probando -10°..10°, ignorando salientes
+     *    con percentiles): lo que queda fuera -> exterior. Su ángulo sirve para enderezarla.
      */
-    private detectarHoja(
-        grilla: Buffer,
-        ch: number,
-        bw: number,
-        bh: number,
-        width: number,
-        height: number,
-    ): { left: number; top: number; width: number; height: number } | null {
-        const valores = Array.from({ length: bw * bh }, (_, i) => grilla[i * ch]).sort((a, b) => a - b);
-        const referencia = valores[Math.floor(valores.length * 0.9)];
-        if (!referencia) return null;
-        const esPapel = (x: number, y: number) => grilla[(y * bw + x) * ch] >= referencia * 0.6;
-
-        const filas: number[] = [];
-        for (let y = 0; y < bh; y++) {
-            let n = 0;
-            for (let x = 0; x < bw; x++) if (esPapel(x, y)) n++;
-            if (n >= bw * 0.5) filas.push(y);
+    private mascaraExterior(prom: Buffer, ch: number, bw: number, bh: number) {
+        const n = bw * bh;
+        const lum = new Float32Array(n);
+        const esPapel = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+            const [r, g, b] = [prom[i * ch], prom[i * ch + 1], prom[i * ch + 2]];
+            lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
         }
-        const cols: number[] = [];
-        for (let x = 0; x < bw; x++) {
-            let n = 0;
-            for (let y = 0; y < bh; y++) if (esPapel(x, y)) n++;
-            if (n >= bh * 0.5) cols.push(x);
+        const referencia = Array.from(lum).sort((a, b) => a - b)[Math.floor(n * 0.9)];
+        for (let i = 0; i < n; i++) {
+            const [r, g, b] = [prom[i * ch], prom[i * ch + 1], prom[i * ch + 2]];
+            const mx = Math.max(r, g, b);
+            const saturacion = mx ? (mx - Math.min(r, g, b)) / mx : 0;
+            esPapel[i] = lum[i] >= referencia * PAPEL_LUM_MIN && saturacion < PAPEL_SAT_MAX ? 1 : 0;
         }
-        if (!filas.length || !cols.length) return null;
 
-        const y0 = filas[0] + 1;
-        const y1 = filas[filas.length - 1];
-        const x0 = cols[0] + 1;
-        const x1 = cols[cols.length - 1];
-        const hayMargen = filas[0] > 0 || cols[0] > 0 || y1 < bh - 1 || x1 < bw - 1;
-        if (!hayMargen || y1 <= y0 || x1 <= x0) return null;
-
-        const left = x0 * BLOQUE_FONDO;
-        const top = y0 * BLOQUE_FONDO;
-        const rect = {
-            left,
-            top,
-            width: Math.min(width, x1 * BLOQUE_FONDO) - left,
-            height: Math.min(height, y1 * BLOQUE_FONDO) - top,
+        const vecinos = (i: number) => {
+            const x = i % bw;
+            const y = (i / bw) | 0;
+            return [x > 0 ? i - 1 : -1, x < bw - 1 ? i + 1 : -1, y > 0 ? i - bw : -1, y < bh - 1 ? i + bw : -1];
         };
-        // Sanidad: si "la hoja" resulta muy chica, la detección no es confiable.
-        if (rect.width * rect.height < width * height * 0.25) return null;
-        return rect;
+
+        // 2. No-papel conectado al borde.
+        const exterior = new Uint8Array(n);
+        const pila: number[] = [];
+        for (let x = 0; x < bw; x++) pila.push(x, (bh - 1) * bw + x);
+        for (let y = 0; y < bh; y++) pila.push(y * bw, y * bw + bw - 1);
+        while (pila.length) {
+            const i = pila.pop()!;
+            if (exterior[i] || esPapel[i]) continue;
+            exterior[i] = 1;
+            vecinos(i).forEach((j) => j >= 0 && pila.push(j));
+        }
+
+        // 3. Zona interior más grande.
+        const comp = new Int32Array(n).fill(-1);
+        let mayor = -1;
+        let mayorTam = 0;
+        for (let s = 0, id = 0; s < n; s++) {
+            if (exterior[s] || comp[s] >= 0) continue;
+            let tam = 0;
+            const st = [s];
+            comp[s] = id;
+            while (st.length) {
+                const i = st.pop()!;
+                tam++;
+                vecinos(i).forEach((j) => {
+                    if (j >= 0 && !exterior[j] && comp[j] < 0) {
+                        comp[j] = id;
+                        st.push(j);
+                    }
+                });
+            }
+            if (tam > mayorTam) {
+                mayorTam = tam;
+                mayor = id;
+            }
+            id++;
+        }
+        for (let i = 0; i < n; i++) if (!exterior[i] && comp[i] !== mayor) exterior[i] = 1;
+
+        // 4. Rectángulo inclinado.
+        const puntos: [number, number][] = [];
+        for (let i = 0; i < n; i++) if (!exterior[i]) puntos.push([(i % bw) + 0.5, ((i / bw) | 0) + 0.5]);
+        if (puntos.length < n * 0.2) return { exterior: new Uint8Array(n), angulo: 0 }; // detección dudosa
+        const pct = (arr: number[], q: number) => arr[Math.round(q * (arr.length - 1))];
+        let mejor = { angulo: 0, cos: 1, sin: 0, u0: 0, u1: 0, v0: 0, v1: 0, area: Infinity };
+        for (let a = -ANGULO_MAX_ENDEREZAR; a <= ANGULO_MAX_ENDEREZAR; a += 0.5) {
+            const t = (a * Math.PI) / 180;
+            const [cos, sin] = [Math.cos(t), Math.sin(t)];
+            const us = puntos.map(([x, y]) => x * cos + y * sin).sort((p, q) => p - q);
+            const vs = puntos.map(([x, y]) => -x * sin + y * cos).sort((p, q) => p - q);
+            const cand = { angulo: a, cos, sin, u0: pct(us, 0.005), u1: pct(us, 0.995), v0: pct(vs, 0.005), v1: pct(vs, 0.995), area: 0 };
+            cand.area = (cand.u1 - cand.u0) * (cand.v1 - cand.v0);
+            if (cand.area < mejor.area) mejor = cand;
+        }
+        for (let i = 0; i < n; i++) {
+            const x = (i % bw) + 0.5;
+            const y = ((i / bw) | 0) + 0.5;
+            const u = x * mejor.cos + y * mejor.sin;
+            const v = -x * mejor.sin + y * mejor.cos;
+            const m = MARGEN_RECTANGULO_BLOQUES;
+            if (u < mejor.u0 - m || u > mejor.u1 + m || v < mejor.v0 - m || v > mejor.v1 + m) exterior[i] = 1;
+        }
+        return { exterior, angulo: mejor.angulo };
+    }
+
+    /** Crece la máscara exterior 1 bloque para "comerse" el borde de la hoja / sombra. */
+    private dilatar(mask: Uint8Array, bw: number, bh: number) {
+        const out = new Uint8Array(mask.length);
+        for (let y = 0; y < bh; y++) {
+            for (let x = 0; x < bw; x++) {
+                let v = 0;
+                for (let dy = -1; dy <= 1 && !v; dy++) {
+                    for (let dx = -1; dx <= 1 && !v; dx++) {
+                        const xx = x + dx;
+                        const yy = y + dy;
+                        if (xx >= 0 && yy >= 0 && xx < bw && yy < bh && mask[yy * bw + xx]) v = 1;
+                    }
+                }
+                out[y * bw + x] = v;
+            }
+        }
+        return out;
     }
 
     // ─── Lectura de datos ─────────────────────────────────────────────────────

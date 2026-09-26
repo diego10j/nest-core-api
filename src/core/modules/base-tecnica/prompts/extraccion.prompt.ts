@@ -217,7 +217,7 @@ REGLAS DE EXTRACCIÓN
    ("specification available in separate document"), documento incompleto, etc.
 ${
   opts.esEscaneado
-    ? '10. El documento es escaneado/imagen: en "transcripcion_original" transcribe TODO el texto visible en su idioma original, respetando filas de tablas con " | ".'
+    ? '10. El documento es escaneado/imagen: en "transcripcion_original" transcribe TODO el texto visible en su idioma original, respetando filas de tablas con " | ". Usa como máximo UN salto de línea seguido (nunca líneas en blanco repetidas) y cierra el texto apenas termines la última página.'
     : '10. "transcripcion_original": null (el texto ya fue extraído).'
 }
 `.trim();

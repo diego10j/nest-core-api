@@ -2,6 +2,8 @@ import { CitaDocumento, DocumentoListado } from '../base-tecnica/bdt-consulta.se
 
 import { NotaQuimia } from './conocimiento/quimia-conocimiento.service';
 import { ArchivoErpQuimia, ImagenProductoQuimia } from './erp/quimia-documentos-erp.service';
+import { BorradorProforma } from './erp/quimia-proformas.service';
+import { BloqueChat, GraficoChat } from './helpers/presentacion.helper';
 
 /** Canal por el que llega la pregunta (se registra en bdt_consulta.canal_bdcon). */
 export type CanalQuimia = 'ASESOR' | 'API' | 'TELEGRAM';
@@ -39,6 +41,14 @@ export type EventoQuimia =
   | { tipo: 'archivos'; archivos: ArchivoErpQuimia[] }
   /** Varias facturas/proformas con el mismo número: el usuario elige cuál (botones). */
   | { tipo: 'opciones_archivo'; archivos: ArchivoErpQuimia[] }
+  /** Chat del ERP: datos de las consultas como tablas / indicadores con formato. */
+  | { tipo: 'bloques'; bloques: BloqueChat[] }
+  /** Telegram: gráficos de reportes (se envían como imagen). */
+  | { tipo: 'graficos'; graficos: GraficoChat[] }
+  /** Borrador de proforma: se crea solo con el botón "Crear proforma". */
+  | { tipo: 'borrador_proforma'; borrador: BorradorProforma }
+  /** Chat del ERP: preguntas de seguimiento sugeridas. */
+  | { tipo: 'sugerencias'; sugerencias: string[] }
   /** Fotos de la galería del producto (máximo 5). */
   | { tipo: 'imagenes'; imagenes: ImagenProductoQuimia[] }
   | { tipo: 'sin_respuesta' }
@@ -61,6 +71,9 @@ export interface RespuestaQuimia {
   archivos: ArchivoErpQuimia[];
   /** Varias facturas/proformas con ese número para elegir. */
   opcionesArchivo: ArchivoErpQuimia[];
+  /** Gráficos de reportes (Telegram los envía como imagen). */
+  graficos: GraficoChat[];
+  borrador: BorradorProforma | null;
   imagenes: ImagenProductoQuimia[];
   /** El usuario debe elegir un producto (botones / teclado en línea de Telegram). */
   opciones: ProductoCandidato[];

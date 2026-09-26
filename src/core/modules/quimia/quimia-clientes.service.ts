@@ -49,7 +49,7 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'compras_cliente',
       description:
-        'Compras del cliente (facturas de venta). Con ide_inarti: a qué precio se le vendió ese producto (historial de precios y cantidades). Sin producto: cada cuánto compra (frecuencia), últimas compras y productos que más compra.',
+        'Compras del cliente (facturas de venta). Con ide_inarti: a qué precio se le vendió ese producto (historial de precios y cantidades). Sin producto: qué productos compra (con último precio y fecha de última compra de cada uno), cada cuánto compra (frecuencia) y últimas compras.',
       parameters: {
         type: 'object',
         properties: {
@@ -306,12 +306,27 @@ export class QuimiaClientesService {
     const dias = fechas.slice(1).map((f, i) => (Date.parse(f) - Date.parse(fechas[i])) / 86_400_000);
     const promedio = dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null;
     const ultima = fechas[fechas.length - 1] ?? null;
-    const porProducto = new Map<string, { veces: number; cantidad: number; unidad: string; total: number }>();
+    const porProducto = new Map<
+      string,
+      { veces: number; cantidad: number; unidad: string; total: number; ultimaFecha: string | null; ultimoPrecio: number | null }
+    >();
     lineas.forEach((l) => {
-      const p = porProducto.get(l.producto) ?? { veces: 0, cantidad: 0, unidad: l.unidad, total: 0 };
+      const p = porProducto.get(l.producto) ?? {
+        veces: 0,
+        cantidad: 0,
+        unidad: l.unidad,
+        total: 0,
+        ultimaFecha: null,
+        ultimoPrecio: null,
+      };
       p.veces++;
       p.cantidad += l.cantidad ?? 0;
       p.total += l.total_neto ?? 0;
+      // Última compra de cada producto: la fecha más reciente y su precio.
+      if (l.fecha && (!p.ultimaFecha || l.fecha > p.ultimaFecha)) {
+        p.ultimaFecha = l.fecha;
+        p.ultimoPrecio = l.precio;
+      }
       porProducto.set(l.producto, p);
     });
 
@@ -327,8 +342,16 @@ export class QuimiaClientesService {
       total_comprado_usd: num(lineas.reduce((a, l) => a + (l.total_neto ?? 0), 0)),
       productos_mas_comprados: [...porProducto.entries()]
         .sort((a, b) => b[1].total - a[1].total)
-        .slice(0, 10)
-        .map(([producto, p]) => ({ producto, veces: p.veces, cantidad: num(p.cantidad, 3), unidad: p.unidad, total_usd: num(p.total) })),
+        .slice(0, 25)
+        .map(([producto, p]) => ({
+          producto,
+          veces: p.veces,
+          cantidad: num(p.cantidad, 3),
+          unidad: p.unidad,
+          ultimo_precio: p.ultimoPrecio,
+          ultima_compra: p.ultimaFecha,
+          total_usd: num(p.total),
+        })),
       ultimas_facturas: fechas.slice(-8).reverse(),
     };
   }

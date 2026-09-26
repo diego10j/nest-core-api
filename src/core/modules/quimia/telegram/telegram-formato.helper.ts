@@ -73,7 +73,27 @@ export function respuestaATelegram(
     );
   }
 
+  // Borrador de proforma: detalle + botones Crear / Cancelar.
+  if (r.borrador) {
+    const b = r.borrador;
+    const f = (v: number | null) => (v == null ? 'sin precio' : `$${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v)}`);
+    partes.push(
+      [
+        `🧾 <b>Borrador de proforma</b> · ${escapar(b.cliente.nombre)}`,
+        ...b.lineas.map((l) => `• ${l.cantidad} ${escapar(l.unidad ?? '')} ${escapar(l.producto)} × ${f(l.precio)} = ${f(l.total)}`),
+        `Subtotal ${f(b.subtotal)} · IVA ${f(b.iva)} · <b>Total ${f(b.total)}</b>`,
+        ...b.avisos.map((a) => `⚠️ ${escapar(a)}`),
+      ].join('\n'),
+    );
+  }
+
   const botones: BotonTelegram[][] = [];
+  if (r.borrador) {
+    botones.push([
+      { text: '✅ Crear proforma', callback_data: `pf:c:${r.borrador.uuid}` },
+      { text: '❌ Cancelar', callback_data: `pf:x:${r.borrador.uuid}` },
+    ]);
+  }
   // Documentos pedidos: un botón por documento que abre el PDF.
   r.documentos.slice(0, 6).forEach((d) => {
     // Sin lote ni fecha (ej. adjunto aún sin procesar) se muestra el nombre del archivo.

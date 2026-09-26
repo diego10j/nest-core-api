@@ -71,6 +71,6 @@ import { TransportesService } from './transportes/transportes.service';
     RetencionVentaSaveService,
   ],
   // ClientesService y TransportesService: los consulta el asistente QuimIA (módulo quimia).
-  exports: [FacturasService, FacturasSaveService, RetencionVentaSaveService, ClientesService, TransportesService],
+  exports: [FacturasService, FacturasSaveService, RetencionVentaSaveService, ClientesService, TransportesService, VentasBiService],
 })
 export class VentasModule { }

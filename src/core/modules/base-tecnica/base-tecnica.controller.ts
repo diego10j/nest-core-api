@@ -3,13 +3,18 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
+import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
+import { ConfiguracionBdtDto } from './dto/configuracion-bdt.dto';
+import { GetDocumentosTecnicosDto } from './dto/get-documentos-tecnicos.dto';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
 import { IdeProcesoDto } from './dto/ide-proceso.dto';
 import { IdesDocumentosDto } from './dto/ides-documentos.dto';
+import { PausarMasivoDto } from './dto/pausar-masivo.dto';
 import { ProcesarProductoDto } from './dto/procesar-producto.dto';
 import { RevisarDocumentoDto } from './dto/revisar-documento.dto';
 import { SetVigenteOrigenDto } from './dto/set-vigente-origen.dto';
@@ -23,7 +28,65 @@ export class BaseTecnicaController {
     private readonly proceso: BdtProcesoService,
     private readonly datos: BdtDatosService,
     private readonly contenido: BdtContenidoService,
+    private readonly masivo: BdtMasivoService,
+    private readonly automatico: BdtAutomaticoService,
   ) {}
+
+  // ------------------------------------------------------------------ página Base Técnica (mantenimiento)
+
+  @Get('getDocumentosTecnicos')
+  @ApiOperation({ summary: 'Listado general de documentos extraídos (DataTableQuery) con filtros' })
+  getDocumentosTecnicos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDocumentosTecnicosDto) {
+    return this.datos.getDocumentosTecnicos({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getResumenGeneral')
+  @ApiOperation({ summary: 'Totales para las tarjetas: por estado, pendientes, reutilizados y costos' })
+  getResumenGeneral(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.masivo.getResumen(headersParams.ideEmpr);
+  }
+
+  @Get('getProcesoMasivo')
+  @ApiOperation({ summary: 'Avance de la última extracción masiva / mejorada (barra de avance)' })
+  getProcesoMasivo(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.masivo.getEstado(headersParams.ideEmpr);
+  }
+
+  @Post('iniciarMasivo')
+  @ApiOperation({ summary: 'Extrae en segundo plano todos los adjuntos pendientes de los productos activos' })
+  iniciarMasivo(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.masivo.iniciar(headersParams);
+  }
+
+  @Post('pausarMasivo')
+  @ApiOperation({ summary: 'Pausa o reanuda la extracción masiva en curso' })
+  pausarMasivo(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: PausarMasivoDto) {
+    return this.masivo.pausar(headersParams.ideEmpr, dtoIn.pausar);
+  }
+
+  @Post('cancelarMasivo')
+  @ApiOperation({ summary: 'Cancela la extracción masiva en curso (al terminar el documento actual)' })
+  cancelarMasivo(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.masivo.cancelar(headersParams.ideEmpr);
+  }
+
+  @Post('extraerMejorado')
+  @ApiOperation({ summary: '"Extracción mejorada" en lote de documentos seleccionados (segundo plano)' })
+  extraerMejorado(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdesDocumentosDto) {
+    return this.masivo.iniciarMejorado({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getConfiguracion')
+  @ApiOperation({ summary: 'Configuración: extracción automática al subir archivos y tope diario' })
+  getConfiguracion(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.automatico.getConfiguracion(headersParams.ideEmpr);
+  }
+
+  @Post('saveConfiguracion')
+  @ApiOperation({ summary: 'Guarda la configuración de la base técnica' })
+  saveConfiguracion(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ConfiguracionBdtDto) {
+    return this.automatico.saveConfiguracion({ ...dtoIn, ideEmpr: headersParams.ideEmpr, login: headersParams.login });
+  }
 
   // ------------------------------------------------------------------ procesamiento
 

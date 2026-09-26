@@ -296,7 +296,8 @@ export class TelegramCuentaService {
     const r = await this.dataSource.pool.query(
       `SELECT u.ide_tlusu, u.ide_tlcue, u.telefono_tlusu, u.alias_tlusu, u.activo_tlusu, u.observacion_tlusu,
               u.chat_id_tlusu IS NOT NULL AS vinculado, u.telegram_username_tlusu, u.fecha_vinculacion_tlusu,
-              u.ultimo_acceso_tlusu, u.total_consultas_tlusu, u.usuario_ingre, u.fecha_ingre, u.fecha_actua
+              u.ultimo_acceso_tlusu, u.total_consultas_tlusu, u.usuario_ingre, u.fecha_ingre, u.fecha_actua,
+              u.recibe_alertas_tlusu, u.comandos_tlusu
          FROM tlg_usuario u
         WHERE u.ide_tlcue = $1 AND u.ide_empr = $2
         ORDER BY u.activo_tlusu DESC, u.alias_tlusu`,
@@ -324,16 +325,38 @@ export class TelegramCuentaService {
             telegram_user_id_tlusu = CASE WHEN telefono_tlusu = $2 THEN telegram_user_id_tlusu END,
             fecha_vinculacion_tlusu = CASE WHEN telefono_tlusu = $2 THEN fecha_vinculacion_tlusu END,
             telefono_tlusu = $2, alias_tlusu = $3, activo_tlusu = $4, observacion_tlusu = $5,
-            usuario_actua = $6, fecha_actua = NOW()
+            usuario_actua = $6, fecha_actua = NOW(), recibe_alertas_tlusu = COALESCE($8, recibe_alertas_tlusu),
+            comandos_tlusu = COALESCE($9, comandos_tlusu)
           WHERE ide_tlusu = $1 AND ide_empr = $7`,
-        [dto.ide_tlusu, telefono, dto.alias_tlusu, dto.activo_tlusu, dto.observacion_tlusu ?? null, dto.login, dto.ideEmpr],
+        [
+          dto.ide_tlusu,
+          telefono,
+          dto.alias_tlusu,
+          dto.activo_tlusu,
+          dto.observacion_tlusu ?? null,
+          dto.login,
+          dto.ideEmpr,
+          dto.recibe_alertas_tlusu ?? null,
+          dto.comandos_tlusu ?? null,
+        ],
       );
       return { message: 'ok', ide_tlusu: dto.ide_tlusu };
     }
     const r = await this.dataSource.pool.query(
-      `INSERT INTO tlg_usuario (ide_tlcue, telefono_tlusu, alias_tlusu, activo_tlusu, observacion_tlusu, ide_empr, usuario_ingre)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ide_tlusu`,
-      [dto.ide_tlcue, telefono, dto.alias_tlusu, dto.activo_tlusu, dto.observacion_tlusu ?? null, dto.ideEmpr, dto.login],
+      `INSERT INTO tlg_usuario (ide_tlcue, telefono_tlusu, alias_tlusu, activo_tlusu, observacion_tlusu, ide_empr, usuario_ingre,
+                                recibe_alertas_tlusu, comandos_tlusu)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ide_tlusu`,
+      [
+        dto.ide_tlcue,
+        telefono,
+        dto.alias_tlusu,
+        dto.activo_tlusu,
+        dto.observacion_tlusu ?? null,
+        dto.ideEmpr,
+        dto.login,
+        dto.recibe_alertas_tlusu ?? false,
+        dto.comandos_tlusu ?? false,
+      ],
     );
     return { message: 'ok', ide_tlusu: r.rows[0].ide_tlusu };
   }

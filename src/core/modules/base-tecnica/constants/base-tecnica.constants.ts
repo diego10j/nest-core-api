@@ -56,6 +56,18 @@ export const BDT_CONFIG = {
   // gpt-4o-mini: la extracción es transcribir/estructurar lo que ya dice el documento, no razonar;
   // el modelo mini lo hace bien y cuesta ~15x menos que gpt-4o.
   MODELO_EXTRACCION: 'gpt-4o-mini',
+  /**
+   * Relectura SOLO de escaneados/imágenes que salieron con confianza <= UMBRAL_RELECTURA: gpt-4o-mini
+   * lee los escaneados de forma irregular (ej. SDS de 5 páginas con 5-8 de 16 secciones).
+   * Paso 1: MODELO_TRANSCRIPCION transcribe el documento en texto plano (estable y completo; en JSON
+   * estructurado entraba en bucle). Paso 2: ese texto va por la extracción normal de texto.
+   * Costo medido en una SDS escaneada de 5 páginas: ~$0.005 la transcripción + ~$0.001 la extracción.
+   */
+  MODELO_TRANSCRIPCION: 'gpt-4.1-mini',
+  /** "Extracción mejorada" de un PDF con texto (botón del diálogo / lote): mejor criterio que el mini. */
+  MODELO_EXTRACCION_MEJORADA: 'gpt-4.1-mini',
+  UMBRAL_RELECTURA: 0.85,
+  MAX_TOKENS_TRANSCRIPCION: 16000,
   MODELO_CHAT: 'gpt-4o-mini',
   /** Agente QuimIA (elige y combina herramientas: base técnica, stock, precios, compras…). */
   MODELO_AGENTE: 'gpt-4o-mini',
@@ -98,3 +110,20 @@ export const BDT_CONFIG = {
 export const MENSAJE_IA_GENERAL =
   '⚠️ *Respuesta generada con IA: no proviene de la documentación técnica cargada al producto. ' +
   'Verifícala antes de compartirla con un cliente.*';
+
+/** Precio de lista OpenAI (USD por 1M tokens: entrada, salida) para registrar el costo de cada extracción. */
+const PRECIOS_IA: Record<string, [number, number]> = {
+  'gpt-4o-mini': [0.15, 0.6],
+  'gpt-4.1-mini': [0.4, 1.6],
+  'gpt-4.1': [2, 8],
+  'gpt-4o': [2.5, 10],
+};
+
+/** Costo en USD de una llamada (el modelo puede venir con fecha: "gpt-4o-mini-2024-07-18"). */
+export function costoIa(modelo: string, tokensEntrada: number, tokensSalida: number): number {
+  const base = Object.keys(PRECIOS_IA)
+    .sort((a, b) => b.length - a.length)
+    .find((m) => modelo.startsWith(m));
+  const [pe, ps] = base ? PRECIOS_IA[base] : PRECIOS_IA['gpt-4o'];
+  return (tokensEntrada * pe + tokensSalida * ps) / 1_000_000;
+}

@@ -169,6 +169,17 @@ export class TelegramApiService {
     return this.subir(token, 'sendPhoto', form);
   }
 
+  /**
+   * Menú "/" del bot. Con scope de chat, cada número ve solo sus comandos
+   * (https://core.telegram.org/bots/api#setmycommands).
+   */
+  setMyCommands(token: string, comandos: { command: string; description: string }[], chatId?: number) {
+    return this.llamar<boolean>(token, 'setMyCommands', {
+      commands: comandos,
+      ...(chatId ? { scope: { type: 'chat', chat_id: chatId } } : { scope: { type: 'all_private_chats' } }),
+    });
+  }
+
   /** Reemplaza los botones en línea de un mensaje ya enviado ([] = quitarlos todos). */
   editarBotones(token: string, chatId: number, messageId: number, botones: BotonTelegram[][]) {
     return this.llamar(token, 'editMessageReplyMarkup', {

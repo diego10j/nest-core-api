@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
@@ -7,7 +7,9 @@ import { AsignarUsuarioDto } from './dto/asignar-usuario.dto';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { GetMisNotificacionesDto } from './dto/get-mis-notificaciones.dto';
 import { GetPlantillasDto } from './dto/get-plantillas.dto';
+import { SaveTelegramPlantillaDto } from './dto/save-telegram-plantilla.dto';
 import { UpdateNotificacionDto } from './dto/update-notificacion.dto';
+import { NotificacionCanalEmitter } from './notificacion-canal.emitter';
 import { NotificacionesGateway } from './notificaciones.gateway';
 
 @Injectable()
@@ -19,6 +21,7 @@ export class NotificacionesService {
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly gateway: NotificacionesGateway,
+    private readonly canales: NotificacionCanalEmitter,
   ) {}
 
   // ========== PLANTILLAS ==========
@@ -41,6 +44,11 @@ export class NotificacionesService {
         n.activo_noti,
         n.botones_noti,
         n.notificar_todos_noti,
+        n.telegram_activo_noti,
+        (
+          SELECT COUNT(*) FROM sis_notificacion_telegram t
+          WHERE t.ide_noti = n.ide_noti
+        )::int AS total_telegram,
         n.fecha_reg_noti,
         (
           SELECT COUNT(*) FROM sis_notificacion_usuario nu
@@ -420,6 +428,87 @@ export class NotificacionesService {
     });
   }
 
+  // ========== CANAL TELEGRAM ==========
+
+  /** Sección "Canal Telegram" de la plantilla: estado, números autorizados (seleccionados o no) y últimos envíos. */
+  async getTelegramPlantilla(uuid: string, ideEmpr: number) {
+    const plantilla = await this.getPlantillaByUuid(uuid, ideEmpr);
+    const [numeros, envios, activo] = await Promise.all([
+      this.dataSource.pool.query(
+        `SELECT u.ide_tlusu, u.alias_tlusu, u.telefono_tlusu, u.activo_tlusu,
+                u.chat_id_tlusu IS NOT NULL AS vinculado, u.telegram_username_tlusu,
+                (t.ide_nttg IS NOT NULL) AS seleccionado
+           FROM tlg_usuario u
+           JOIN tlg_cuenta c ON c.ide_tlcue = u.ide_tlcue
+           LEFT JOIN sis_notificacion_telegram t ON t.ide_tlusu = u.ide_tlusu AND t.ide_noti = $1
+          WHERE u.ide_empr = $2
+          ORDER BY u.activo_tlusu DESC, u.alias_tlusu`,
+        [plantilla.ide_noti, ideEmpr],
+      ),
+      this.dataSource.pool.query(
+        `SELECT ide_netg, alias_netg, titulo_netg, estado_netg, prueba_netg, error_netg, fecha_netg
+           FROM sis_notificacion_envio_tlg
+          WHERE ide_noti = $1 ORDER BY fecha_netg DESC LIMIT 20`,
+        [plantilla.ide_noti],
+      ),
+      this.dataSource.pool.query(`SELECT telegram_activo_noti FROM sis_notificacion WHERE ide_noti = $1`, [plantilla.ide_noti]),
+    ]);
+    return {
+      telegramActivo: !!activo.rows[0]?.telegram_activo_noti,
+      numeros: numeros.rows,
+      envios: envios.rows,
+    };
+  }
+
+  /** Guarda si la plantilla va por Telegram y a qué números (solo números autorizados de la empresa). */
+  async saveTelegramPlantilla(uuid: string, dto: SaveTelegramPlantillaDto, h: HeaderParamsDto) {
+    const plantilla = await this.getPlantillaByUuid(uuid, h.ideEmpr);
+    const client = await this.dataSource.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE sis_notificacion SET telegram_activo_noti = $2, usuario_actua = $3, fecha_actua_noti = NOW() WHERE ide_noti = $1`,
+        [plantilla.ide_noti, dto.telegramActivo, h.login],
+      );
+      await client.query(`DELETE FROM sis_notificacion_telegram WHERE ide_noti = $1 AND NOT (ide_tlusu = ANY($2::int[]))`, [
+        plantilla.ide_noti,
+        dto.idesTlusu,
+      ]);
+      await client.query(
+        `INSERT INTO sis_notificacion_telegram (ide_noti, ide_tlusu, usuario_ingre)
+         SELECT $1, u.ide_tlusu, $4 FROM tlg_usuario u WHERE u.ide_tlusu = ANY($2::int[]) AND u.ide_empr = $3
+         ON CONFLICT (ide_noti, ide_tlusu) DO NOTHING`,
+        [plantilla.ide_noti, dto.idesTlusu, h.ideEmpr, h.login],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+    return { message: 'ok' };
+  }
+
+  /** "Enviar prueba": muestra cómo llegará la notificación a los números seleccionados. */
+  async probarTelegramPlantilla(uuid: string, h: HeaderParamsDto) {
+    const plantilla = await this.getPlantillaByUuid(uuid, h.ideEmpr);
+    const r = await this.dataSource.pool.query(`SELECT COUNT(*)::int AS total FROM sis_notificacion_telegram WHERE ide_noti = $1`, [
+      plantilla.ide_noti,
+    ]);
+    if (!r.rows[0].total) throw new BadRequestException('Selecciona al menos un número y guarda antes de enviar una prueba');
+    this.canales.emitirTelegram({
+      ideNoti: plantilla.ide_noti,
+      ideEmpr: h.ideEmpr,
+      codigo: plantilla.codigo_noti,
+      icono: plantilla.icono_noti ?? '🔔',
+      titulo: `Prueba · ${plantilla.nombre_noti}`,
+      mensaje: `Así llegará la notificación «${plantilla.nombre_noti}» (${plantilla.codigo_noti}). Enviada por ${h.login}.`,
+      prueba: true,
+    });
+    return { destinatarios: r.rows[0].total };
+  }
+
   // ========== MÉTODOS PRIVADOS ==========
 
   private async _enviarCore(
@@ -430,7 +519,8 @@ export class NotificacionesService {
     ctx: { ideEmpr: number; ideUsuaOrigen: number | null; login: string },
   ) {
     const plantilla = await this.dataSource.pool.query(
-      `SELECT ide_noti, icono_noti, color_noti, modulo_noti, nombre_noti, botones_noti, codigo_noti, notificar_todos_noti
+      `SELECT ide_noti, icono_noti, color_noti, modulo_noti, nombre_noti, botones_noti, codigo_noti, notificar_todos_noti,
+              telegram_activo_noti
        FROM sis_notificacion
        WHERE codigo_noti = $1 AND ide_empr = $2 AND activo_noti = TRUE
        LIMIT 1`,
@@ -440,6 +530,18 @@ export class NotificacionesService {
     if (plantilla.rowCount === 0) return;
 
     const p = plantilla.rows[0];
+
+    // Canal Telegram: independiente de los usuarios del ERP (una plantilla puede ir solo por Telegram).
+    if (p.telegram_activo_noti) {
+      this.canales.emitirTelegram({
+        ideNoti: p.ide_noti,
+        ideEmpr: ctx.ideEmpr,
+        codigo: p.codigo_noti,
+        icono: p.icono_noti ?? '🔔',
+        titulo,
+        mensaje,
+      });
+    }
 
     let usuarios;
 

@@ -7,13 +7,16 @@ import { HOST_API } from 'src/util/helpers/common-util';
 import { ImagenNota } from '../conocimiento/conocimiento-quimia.helper';
 import { QuimiaConocimientoService } from '../conocimiento/quimia-conocimiento.service';
 import { QuimiaDocumentosErpService } from '../erp/quimia-documentos-erp.service';
+import { QuimiaProformasService } from '../erp/quimia-proformas.service';
 import { QuimiaAgenteService } from '../quimia-agente.service';
 import { QuimiaProductosService } from '../quimia-productos.service';
 import { ProductoCandidato, ProductoQuimia, RespuestaQuimia, UsuarioQuimia } from '../quimia.types';
+import { graficoAPng } from '../reportes/grafico-imagen.helper';
 import { TRANSCRIPCION_CONFIG } from '../transcripcion/transcripcion.helper';
 import { TranscripcionService } from '../transcripcion/transcripcion.service';
 
 import { ArchivoAudioTelegram, TelegramApiService, TelegramMensaje, TelegramUpdate, TelegramUsuario } from './telegram-api.service';
+import { TelegramComandosService } from './telegram-comandos.service';
 import { CuentaTelegram, basePublica } from './telegram-cuenta.service';
 import { dividir, mismoTelefono, normalizarTelefono, notaATelegram, respuestaATelegram } from './telegram-formato.helper';
 
@@ -87,6 +90,8 @@ export class TelegramBotService {
     private readonly transcripcion: TranscripcionService,
     private readonly conocimiento: QuimiaConocimientoService,
     private readonly documentosErp: QuimiaDocumentosErpService,
+    private readonly comandos: TelegramComandosService,
+    private readonly proformasQuimia: QuimiaProformasService,
   ) {}
 
   async procesarUpdate(cuenta: CuentaTelegram, update: TelegramUpdate): Promise<void> {
@@ -162,7 +167,12 @@ export class TelegramBotService {
         case 'start':
         case 'ayuda':
         case 'help':
-          await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta), { html: true });
+          await this.api.enviarMensaje(
+            cuenta.token,
+            chatId,
+            (cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta)) + (await this.comandos.ayudaComandos(numero.ide_tlusu)),
+            { html: true },
+          );
           return;
         case 'nuevo':
         case 'salir':
@@ -172,7 +182,14 @@ export class TelegramBotService {
           await this.fijarProducto(cuenta, chatId, numero, conv, arg.trim());
           return;
         default:
-          await this.api.enviarMensaje(cuenta.token, chatId, this.ayuda(cuenta), { html: true });
+          // Comandos configurados en Administración → Telegram → Comandos (/ventas, /resumen…).
+          if (await this.comandos.ejecutarDesdeTelegram(cuenta, numero, chatId, nombre, arg)) return;
+          await this.api.enviarMensaje(
+            cuenta.token,
+            chatId,
+            `No conozco el comando /${nombre}.\n\n${this.ayuda(cuenta)}${await this.comandos.ayudaComandos(numero.ide_tlusu)}`,
+            { html: true },
+          );
           return;
       }
     }
@@ -223,6 +240,37 @@ export class TelegramBotService {
     const numero = await this.getNumeroVinculado(cuenta, cb.from.id);
     if (!numero?.activo_tlusu) return;
     const data = cb.data ?? '';
+
+    // Borrador de proforma: crear (usuario automático del bot, igual que WhatsApp) o cancelar.
+    if (data.startsWith('pf:')) {
+      await this.api.editarBotones(cuenta.token, chatId, cb.message.message_id, []);
+      const [, accion, uuid] = data.split(':');
+      if (accion === 'x') {
+        await this.proformasQuimia.cancelar(uuid, cuenta.ide_empr);
+        await this.api.enviarMensaje(cuenta.token, chatId, 'Borrador descartado 👍');
+        return;
+      }
+      try {
+        await this.api.escribiendo(cuenta.token, chatId);
+        const p = await this.proformasQuimia.crear(uuid, {
+          tipo: 'TELEGRAM',
+          ideEmpr: cuenta.ide_empr,
+          ideSucu: cuenta.ide_sucu ?? 0,
+          alias: numero.alias_tlusu,
+        });
+        await this.api.enviarMensaje(
+          cuenta.token,
+          chatId,
+          `✅ Proforma <b>#${p.secuencial}</b> creada · total $${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(p.total)}`,
+          { html: true },
+        );
+        const pdf = await this.documentosErp.generarPdf({ tipo: 'PROFORMA', id: p.ide_cccpr }, this.usuarioDe(cuenta));
+        await this.api.enviarDocumento(cuenta.token, chatId, { buffer: pdf, nombre: `proforma-${p.secuencial}.pdf`, mime: 'application/pdf' });
+      } catch (error) {
+        await this.api.enviarMensaje(cuenta.token, chatId, `No se pudo crear la proforma: ${(error as Error).message}`);
+      }
+      return;
+    }
 
     // Factura/proforma elegida entre varias con el mismo número: se envía el PDF.
     if (data.startsWith('d:')) {
@@ -448,6 +496,15 @@ export class TelegramBotService {
         await this.api.enviarMensaje(cuenta.token, chatId, `📄 No se pudo generar el PDF de ${a.titulo}.`).catch(() => undefined);
       }
     }
+    // Gráficos de reportes pedidos en lenguaje natural ("¿cómo van las ventas?"): foto PNG.
+    for (const g of r.graficos ?? []) {
+      try {
+        const png = await graficoAPng(g);
+        await this.api.enviarFoto(cuenta.token, chatId, { buffer: png, nombre: 'grafico.png', mime: 'image/png' }, g.titulo);
+      } catch (error) {
+        this.logger.warn(`Gráfico ${g.titulo}: ${(error as Error).message}`);
+      }
+    }
     for (const img of r.imagenes) {
       const foto = this.documentosErp.leerFoto(img.archivo);
       if (!foto) continue;
@@ -590,7 +647,14 @@ export class TelegramBotService {
     await this.api.enviarMensaje(cuenta.token, chatId, `✅ Listo, ${numero.alias_tlusu}. Tu número quedó verificado.`, {
       teclado: quitarTeclado,
     });
-    await this.api.enviarMensaje(cuenta.token, chatId, cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta), { html: true });
+    await this.api.enviarMensaje(
+      cuenta.token,
+      chatId,
+      (cuenta.mensaje_bienvenida_tlcue || this.ayuda(cuenta)) + (await this.comandos.ayudaComandos(numero.ide_tlusu)),
+      { html: true },
+    );
+    // Menú "/" con los comandos a los que tiene acceso este número.
+    this.comandos.sincronizarMenus(cuenta.ide_tlcue, numero.ide_tlusu).catch(() => undefined);
   }
 
   private async getNumeroVinculado(cuenta: CuentaTelegram, telegramUserId: number): Promise<NumeroAutorizado | null> {
