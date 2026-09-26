@@ -377,7 +377,9 @@ export class BotGptService {
               'obtener sus productos", "cómo puedo comprarles", "qué debo hacer para adquirir sus productos") tampoco es ' +
               'asesoramiento — no describe ningún problema ni pide una recomendación técnica, solo pregunta el mecanismo ' +
               'de compra; en ese caso "asesoramiento" queda null (ese caso ya lo resuelve el sistema sugiriendo el ' +
-              'catálogo y el portal web).\n' +
+              'catálogo y el portal web). Un interés GENERAL en una actividad ("deseo cotizar para empezar a hacer ' +
+              'velas", "quiero empezar con jabones") sin describir un problema ni pedir una recomendación concreta ' +
+              'tampoco es asesoramiento: queda null (el sistema lo resuelve con el catálogo de ese tema).\n' +
               'Responde SOLO JSON válido: {"completo": bool, "items":[{"producto":"nombre del producto","cantidad": number|null,' +
               '"cantidadTexto": string|null,"uso": string|null}], "asesoramiento": string|null}. No incluyas la palabra FIN ni frases de cierre como si fueran un producto.',
           },
