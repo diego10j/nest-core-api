@@ -391,7 +391,7 @@ export class TelegramBotService {
       return;
     }
     const usuario = { ideEmpr: cuenta.ide_empr, ideSucu: cuenta.ide_sucu ?? 0, ideUsua: 0, idePerf: 0, login: 'TELEGRAM' };
-    const encontrados = await this.productos.buscar(texto, usuario, 8);
+    const encontrados = await this.productos.buscar(texto, usuario);
     if (!encontrados.length) {
       await this.api.enviarMensaje(cuenta.token, chatId, `No encontré productos con "${texto}".`);
       return;

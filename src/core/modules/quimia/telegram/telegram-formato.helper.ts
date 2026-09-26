@@ -78,7 +78,7 @@ export function respuestaATelegram(
     botones.push([{ text: `📎 ${etiqueta}`.slice(0, 60), url: url(d.url) }]);
   });
   // Elegir producto / cambiar de producto / respuesta de IA.
-  r.opciones.slice(0, 8).forEach((o) => botones.push([{ text: `🧪 ${o.nombre}`.slice(0, 60), callback_data: `p:${o.ide_inarti}` }]));
+  r.opciones.slice(0, 10).forEach((o) => botones.push([{ text: `🧪 ${o.nombre}`.slice(0, 60), callback_data: `p:${o.ide_inarti}` }]));
   if (r.sugerirCambio) {
     botones.push([{ text: `Cambiar a ${r.sugerirCambio.nombre}`.slice(0, 60), callback_data: `p:${r.sugerirCambio.ide_inarti}` }]);
   }

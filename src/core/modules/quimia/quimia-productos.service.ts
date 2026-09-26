@@ -3,8 +3,17 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { ProductosService } from '../inventario/productos/productos.service';
 
-import { EntradaIndiceProducto, detectarProductos, elegirProductoDetectado } from './helpers/detector-producto.helper';
+import {
+  EntradaIndiceProducto,
+  MAX_OPCIONES_PRODUCTO,
+  detectarProductos,
+  detectarProductosTolerante,
+  elegirProductoDetectado,
+} from './helpers/detector-producto.helper';
 import { ProductoCandidato, ProductoQuimia, UsuarioQuimia } from './quimia.types';
+
+/** Parecido mínimo (0..1, trigramas) para que la búsqueda aproximada considere un producto. */
+const UMBRAL_APROXIMADO = 0.35;
 
 /** Producto encontrado en el catálogo del ERP (para la herramienta y el selector del chat). */
 export interface ProductoCatalogo {
@@ -15,6 +24,8 @@ export interface ProductoCatalogo {
   stock: number;
   categoria: string | null;
   documentos_tecnicos: number;
+  /** Solo en la búsqueda aproximada: qué tan parecido es al texto buscado (0..1). */
+  parecido?: number;
 }
 
 /**
@@ -31,9 +42,19 @@ export class QuimiaProductosService {
   ) {}
 
   /** Productos mencionados en la pregunta, ordenados por relevancia (ver detector-producto.helper). */
-  async detectar(texto: string, ideEmpr: number): Promise<ProductoCandidato[]> {
-    const candidatos = detectarProductos(texto, await this.getIndice(ideEmpr));
-    return candidatos.slice(0, 8).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos }) => ({
+  async detectar(texto: string, ideEmpr: number, opciones: { tolerante?: boolean } = {}): Promise<ProductoCandidato[]> {
+    const indice = await this.getIndice(ideEmpr);
+    let candidatos = detectarProductos(texto, indice);
+    // Respaldo tolerante a errores de escritura o de transcripción de voz, SOLO cuando el filtro
+    // exacto no identifica un producto (nada, o solo coincidencias genéricas: en "ácido estiárico"
+    // el exacto encuentra todos los ÁCIDOS). Se usa si cubre más de la pregunta que el exacto.
+    if (opciones.tolerante !== false && elegirProductoDetectado(candidatos).tipo !== 'uno') {
+      const tolerantes = detectarProductosTolerante(texto, indice);
+      if (tolerantes.length && (!candidatos.length || tolerantes[0].cobertura > candidatos[0].cobertura + 1e-9)) {
+        candidatos = tolerantes;
+      }
+    }
+    return candidatos.slice(0, MAX_OPCIONES_PRODUCTO).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos }) => ({
       ide_inarti,
       nombre,
       coincidencia,
@@ -55,11 +76,19 @@ export class QuimiaProductosService {
     return r.rows[0] ?? null;
   }
 
-  /** Búsqueda libre en el catálogo (reutiliza la búsqueda de productos del ERP, con stock). */
-  async buscar(texto: string, usuario: UsuarioQuimia, limite = 8): Promise<ProductoCatalogo[]> {
+  /**
+   * Búsqueda libre en el catálogo: primero la búsqueda exacta del ERP (con stock); solo si no
+   * encuentra nada, la búsqueda aproximada (buscarAproximado).
+   */
+  async buscar(texto: string, usuario: UsuarioQuimia, limite = MAX_OPCIONES_PRODUCTO): Promise<ProductoCatalogo[]> {
     const valor = (texto ?? '').trim();
     if (!valor) return this.recientesConBaseTecnica(usuario.ideEmpr, limite);
 
+    const exactos = await this.buscarExacto(valor, usuario, limite);
+    return exactos.length ? exactos : this.buscarAproximado(valor, usuario.ideEmpr, limite);
+  }
+
+  private async buscarExacto(valor: string, usuario: UsuarioQuimia, limite: number): Promise<ProductoCatalogo[]> {
     const rows = await this.productos.searchProducto({
       ...usuario,
       value: valor,
@@ -77,6 +106,50 @@ export class QuimiaProductosService {
         documentos_tecnicos: 0,
       })),
       usuario.ideEmpr,
+    );
+  }
+
+  /**
+   * Búsqueda aproximada en el catálogo por nombre_inarti y otro_nombre_inarti (trigramas, sin
+   * tildes): tolera errores de escritura o de transcripción. Máximo `limite` (10) productos,
+   * ordenados por parecido. Se usa SOLO cuando la búsqueda exacta no encuentra nada.
+   */
+  async buscarAproximado(texto: string, ideEmpr: number, limite = MAX_OPCIONES_PRODUCTO): Promise<ProductoCatalogo[]> {
+    const r = await this.dataSource.pool.query(
+      `WITH q AS (SELECT UPPER(bdt_f_unaccent($1)) AS t),
+       candidatos AS (
+          SELECT a.ide_inarti, a.nombre_inarti AS nombre, a.codigo_inarti AS codigo, u.siglas_inuni AS unidad,
+                 c.nombre_incate AS categoria,
+                 GREATEST(
+                   similarity(UPPER(bdt_f_unaccent(a.nombre_inarti)), q.t),
+                   word_similarity(q.t, UPPER(bdt_f_unaccent(a.nombre_inarti))),
+                   COALESCE(similarity(UPPER(bdt_f_unaccent(a.otro_nombre_inarti)), q.t), 0),
+                   COALESCE(word_similarity(q.t, UPPER(bdt_f_unaccent(a.otro_nombre_inarti))), 0)
+                 ) AS parecido
+            FROM inv_articulo a
+            LEFT JOIN inv_unidad u ON u.ide_inuni = a.ide_inuni
+            LEFT JOIN inv_categoria c ON c.ide_incate = a.ide_incate, q
+           WHERE a.ide_empr = $2 AND a.activo_inarti = TRUE AND a.nivel_inarti = 'HIJO'
+       )
+       SELECT * FROM candidatos WHERE parecido >= $3 ORDER BY parecido DESC, nombre LIMIT $4`,
+      [texto, ideEmpr, UMBRAL_APROXIMADO, limite],
+    );
+    // Se descartan los que quedan muy por debajo del mejor: en "ácido estiárico" los demás ÁCIDOS
+    // solo se parecen por la palabra genérica.
+    const mejor = Number(r.rows[0]?.parecido ?? 0);
+    const cercanos = r.rows.filter((p) => Number(p.parecido) >= mejor * 0.75);
+    return this.conDocumentos(
+      cercanos.map((p) => ({
+        ide_inarti: p.ide_inarti,
+        nombre: p.nombre,
+        codigo: p.codigo ?? null,
+        unidad: p.unidad ?? null,
+        stock: null,
+        categoria: p.categoria ?? null,
+        documentos_tecnicos: 0,
+        parecido: Math.round(Number(p.parecido) * 100) / 100,
+      })),
+      ideEmpr,
     );
   }
 

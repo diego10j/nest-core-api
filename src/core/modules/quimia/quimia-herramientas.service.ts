@@ -425,15 +425,25 @@ export class QuimiaHerramientasService {
   }
 
   private async buscarProducto(texto: string, ctx: ContextoHerramientas) {
-    const resultados = await this.quimiaProductos.buscar(texto, ctx.usuario, 8);
+    const resultados = await this.quimiaProductos.buscar(texto, ctx.usuario);
     ctx.ultimaBusqueda = resultados.map((p) => ({
       ide_inarti: p.ide_inarti,
       nombre: p.nombre,
       documentos_tecnicos: p.documentos_tecnicos,
     }));
-    if (resultados.length === 1) this.fijarProducto(ctx, resultados[0]);
+    // Con una sola coincidencia exacta se fija el producto; una aproximada la confirma la IA.
+    if (resultados.length === 1 && resultados[0].parecido === undefined) this.fijarProducto(ctx, resultados[0]);
+    const aproximada = resultados.some((p) => p.parecido !== undefined);
     return {
       total: resultados.length,
+      ...(aproximada
+        ? {
+            nota:
+              'No hubo coincidencia exacta: son productos de nombre PARECIDO (posible error de escritura o de ' +
+              'transcripción). Si hay uno claramente igual a lo pedido úsalo indicando el nombre correcto; si no, ' +
+              `empieza con ${'[ELEGIR_PRODUCTO]'} para que el usuario elija.`,
+          }
+        : {}),
       productos: resultados.map((p) => ({
         ide_inarti: p.ide_inarti,
         nombre: p.nombre,
@@ -441,6 +451,7 @@ export class QuimiaHerramientasService {
         unidad: p.unidad,
         stock: p.stock,
         tiene_documentos_tecnicos: p.documentos_tecnicos > 0,
+        ...(p.parecido !== undefined ? { parecido: p.parecido } : {}),
       })),
     };
   }

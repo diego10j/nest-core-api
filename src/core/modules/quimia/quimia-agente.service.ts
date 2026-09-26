@@ -130,7 +130,9 @@ export class QuimiaAgenteService {
 
   private async responderAgente(dto: ChatQuimiaDto, usuario: UsuarioConOrigen, canal: CanalQuimia, emitir: Emitir) {
     let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr) : null;
-    const candidatos = await this.productos.detectar(dto.pregunta, usuario.ideEmpr);
+    // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
+    // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
+    const candidatos = await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
     const eleccion = this.productos.elegir(candidatos);
 
     if (producto) {
