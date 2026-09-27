@@ -212,6 +212,75 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
       );
       break;
 
+    case 'deuda_proveedor': {
+      b.push(
+        indicadores('Cuentas por pagar al proveedor', [
+          { etiqueta: 'Le debemos', valor: d.saldo_total, formato: 'moneda', destacado: true,
+            color: Number(d.saldo_total) > 0 ? 'warning' : 'success' },
+          { etiqueta: 'Vencido', valor: d.total_vencido, formato: 'moneda', color: Number(d.total_vencido) > 0 ? 'error' : null },
+          { etiqueta: 'Facturas pendientes', valor: d.documentos_pendientes, formato: 'numero' },
+          { etiqueta: 'Facturas vencidas', valor: d.documentos_vencidos, formato: 'numero' },
+        ]),
+      );
+      const filas = d.pendientes as Dato[] | undefined;
+      b.push(
+        tabla('Facturas pendientes (más urgentes primero)', [
+          { clave: 'factura', etiqueta: 'Factura' },
+          { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
+          { clave: 'vence', etiqueta: 'Vence', formato: 'fecha' },
+          { clave: 'dias_vencido', etiqueta: 'Días venc.', formato: 'numero' },
+          { clave: 'total', etiqueta: 'Total', formato: 'moneda' },
+          { clave: 'saldo', etiqueta: 'Saldo', formato: 'moneda' },
+        ], filas, filas?.length ? { total: { factura: 'Total', total: sumar(filas, 'total'), saldo: sumar(filas, 'saldo') } } : {}),
+      );
+      break;
+    }
+
+    case 'pagos_por_vencer': {
+      const filas = d.pagos as Dato[] | undefined;
+      b.push(
+        indicadores(String(d.criterio ?? 'Pagos a proveedores'), [
+          { etiqueta: 'Total a pagar', valor: d.total, formato: 'moneda', destacado: true, color: Number(d.total) > 0 ? 'warning' : 'success' },
+          { etiqueta: 'Documentos', valor: d.cantidad, formato: 'numero' },
+        ]),
+        tabla('Detalle', [
+          { clave: 'proveedor', etiqueta: 'Proveedor' },
+          { clave: 'factura', etiqueta: 'Factura' },
+          { clave: 'vence', etiqueta: 'Vence', formato: 'fecha' },
+          { clave: 'dias_vencido', etiqueta: 'Días venc.', formato: 'numero' },
+          { clave: 'total_factura', etiqueta: 'Total factura', formato: 'moneda' },
+          { clave: 'saldo', etiqueta: 'Saldo', formato: 'moneda' },
+        ], filas, filas?.length ? { total: { proveedor: 'Total', saldo: d.total } } : {}),
+      );
+      break;
+    }
+
+    case 'ventas_producto': {
+      const unidad = d.unidad ? ` (${d.unidad})` : '';
+      const m = d.mes_consultado as Dato | undefined;
+      b.push(
+        indicadores(`Ventas de ${d.producto} · ${d.anio}`, [
+          m && { etiqueta: `Cantidad ${m.nombre ?? `mes ${m.mes}`}${unidad}`, valor: m.cantidad, formato: 'cantidad', destacado: true },
+          m && { etiqueta: `Ventas netas ${m.nombre ?? `mes ${m.mes}`}`, valor: m.ventas_netas, formato: 'moneda', destacado: true },
+          { etiqueta: `Cantidad del año${unidad}`, valor: d.total_anio?.cantidad, formato: 'cantidad' },
+          { etiqueta: 'Ventas netas del año', valor: d.total_anio?.ventas_netas, formato: 'moneda' },
+          { etiqueta: 'Facturas del año', valor: d.total_anio?.facturas, formato: 'numero' },
+        ]),
+      );
+      const filas = d.meses as Dato[] | undefined;
+      b.push(
+        tabla(`Por mes · ${d.anio}`, [
+          { clave: 'nombre', etiqueta: 'Mes' },
+          { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
+          { clave: 'cantidad', etiqueta: `Cantidad${unidad}`, formato: 'cantidad' },
+          { clave: 'ventas_netas', etiqueta: 'Ventas netas', formato: 'moneda' },
+        ], filas, filas?.length
+          ? { total: { nombre: 'Total', facturas: sumar(filas, 'facturas'), cantidad: sumar(filas, 'cantidad'), ventas_netas: sumar(filas, 'ventas_netas') } }
+          : {}),
+      );
+      break;
+    }
+
     case 'compras_cliente':
       if (d.ventas) {
         b.push(

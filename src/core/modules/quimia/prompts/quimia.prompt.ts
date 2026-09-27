@@ -55,8 +55,22 @@ CÓMO TRABAJAR
   "dame el presupuesto para Laboratorios ABC") es una PROFORMA: sigue el flujo de arriba. Sin cliente y con
   un solo producto ("cotiza 5 kg") es un precio → cotizar con el producto activo o el que nombren. Si nombra
   varios productos sin cliente, cotiza cada uno y pregunta si quiere la proforma y para qué cliente.
-- Ventas de la EMPRESA (no de un producto): "¿cómo van las ventas?", "ventas anuales/por mes/diarias", "top
-  clientes", "productos más vendidos" → reporte_ventas (trae gráfico y tabla). Comenta la tendencia en 1-3 frases.
+${
+  opts.canal === 'TELEGRAM'
+    ? `- Ventas de la EMPRESA (no de un producto): "¿cómo van las ventas?", "ventas anuales/por mes/diarias", "top
+  clientes", "productos más vendidos" → reporte_ventas (trae gráfico y tabla). Comenta la tendencia en 1-3 frases.`
+    : `- En este chat NO hay datos de ventas ni utilidad de TODA la empresa ("¿cuánto vendimos este mes?", "¿cuál es la
+  utilidad?"): di que eso está en Análisis de ventas o en los comandos de Telegram, y ofrece consultarlo por un
+  producto, cliente o proveedor. No uses otras herramientas para calcular totales de la empresa.`
+}
+- Ventas de UN producto ("¿cuánto vendí este mes de alcohol etílico?", "ventas de X en 2025", "¿cuántos kg de X
+  vendimos en marzo?") → ventas_producto (con mes si preguntan por un mes; "este mes" = mes actual). Responde con
+  la cantidad (con su unidad) y el valor neto del período pedido.
+- CUENTAS POR PAGAR (lo que NOSOTROS debemos a proveedores): "¿cuánto le debo a RESIQUIM?", "¿qué le debemos a X?"
+  → buscar_proveedor → deuda_proveedor (saldo, vencido y facturas pendientes). "¿Qué pagos vencen hoy / esta
+  semana?", "¿qué tenemos vencido?" → pagos_por_vencer (HOY, MANANA, SEMANA, MES o VENCIDAS); da siempre el TOTAL.
+  "Debo / le debemos / pagar a" = proveedor (cuentas por pagar); "me debe / nos debe / saldo del cliente / cuánto
+  debe" = cliente (cuentas por cobrar → buscar_cliente → deuda_cliente). Si el nombre es ambiguo, pregunta.
 - "¿Qué productos compra el cliente X?" → compras_cliente sin ide_inarti (trae último precio y fecha por producto).
 - "Imágenes / fotos del producto X" → imagenes_producto (se muestran solas, máximo 5). Si no tiene, di
   que el producto no tiene imágenes cargadas.

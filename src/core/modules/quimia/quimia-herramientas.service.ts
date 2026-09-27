@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 
 import { BdtConsultaService, DocContexto, DocumentoListado } from '../base-tecnica/bdt-consulta.service';
+import { InventarioBiService } from '../inventario/data-bi/inventario-bi.service';
 import { ConfigPreciosProductosService } from '../inventario/productos/config-precios.service';
 import { ProductosService } from '../inventario/productos/productos.service';
 
@@ -122,6 +123,24 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
       name: 'consultar_stock',
       description: 'Stock actual (existencia) del producto, total y por bodega.',
       parameters: { type: 'object', properties: { ...idProducto } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ventas_producto',
+      description:
+        'Ventas de UN producto por mes (mismo dato que la página del producto): "¿cuánto vendí este mes de X?", ' +
+        '"ventas de X en 2025", "¿cuántos kg de X vendimos en marzo?". Cantidad neta, ventas netas (sin IVA, ' +
+        'descontadas notas de crédito) y facturas, por mes y total del año.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...idProducto,
+          anio: { type: 'integer', description: 'Año (por defecto el actual)' },
+          mes: { type: 'integer', description: 'Mes 1-12 si preguntan por un mes ("este mes" = mes actual)' },
+        },
+      },
     },
   },
   {
@@ -314,6 +333,17 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
 /** Todas las herramientas del agente: productos/base técnica + clientes/transporte. */
 export const TODAS_HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [...HERRAMIENTAS_QUIMIA, ...HERRAMIENTAS_CLIENTES];
 
+/**
+ * Herramientas por canal. En el chat del ERP no hay reportes de la EMPRESA (ventas/utilidad totales:
+ * reporte_ventas): eso es de los comandos de Telegram y de Análisis de ventas. Ahí las ventas se consultan
+ * por producto, cliente o proveedor.
+ */
+export function herramientasPara(canal: string): OpenAI.ChatCompletionTool[] {
+  return canal === 'ASESOR'
+    ? TODAS_HERRAMIENTAS_QUIMIA.filter((t) => (t as any).function?.name !== 'reporte_ventas')
+    : TODAS_HERRAMIENTAS_QUIMIA;
+}
+
 const MENSAJE_ESTADO: Record<string, string> = {
   ...ESTADOS_CLIENTES,
   buscar_producto: 'Buscando el producto…',
@@ -321,6 +351,7 @@ const MENSAJE_ESTADO: Record<string, string> = {
   obtener_documento_pdf: 'Generando el PDF…',
   imagenes_factura: 'Buscando las imágenes de la factura…',
   reporte_ventas: 'Preparando el reporte de ventas…',
+  ventas_producto: 'Consultando las ventas del producto…',
   preparar_proforma: 'Preparando el borrador de la proforma…',
   imagenes_producto: 'Buscando las fotos del producto…',
   consultar_base_tecnica: 'Revisando la documentación técnica…',
@@ -359,6 +390,7 @@ export class QuimiaHerramientasService {
     private readonly documentosErp: QuimiaDocumentosErpService,
     private readonly reportes: QuimiaReportesService,
     private readonly proformasQuimia: QuimiaProformasService,
+    private readonly inventarioBi: InventarioBiService,
   ) {}
 
   /**
@@ -411,6 +443,13 @@ export class QuimiaHerramientasService {
           mensaje:
             'El borrador se muestra al usuario con el botón "Crear proforma". Resume en 1-2 frases (cliente y total) e ' +
             'indica los avisos si hay. NO digas que la proforma fue creada.',
+        });
+      }
+      if (nombre === 'reporte_ventas' && ctx.canal === 'ASESOR') {
+        return this.json({
+          error:
+            'Los reportes de ventas de toda la empresa no están disponibles en este chat. Pregunta por un producto, ' +
+            'cliente o proveedor, o usa Análisis de ventas / los comandos de Telegram.',
         });
       }
       if (nombre === 'reporte_ventas') {
@@ -490,6 +529,37 @@ export class QuimiaHerramientasService {
               pendiente_revision: estado === 'REVISION',
               sin_procesar: estado === 'SIN_PROCESAR',
             })),
+          });
+        }
+
+        case 'ventas_producto': {
+          const ahora = new Date();
+          const anio = Number(args.anio) >= 2000 ? Number(args.anio) : ahora.getFullYear();
+          const mes = Number(args.mes) >= 1 && Number(args.mes) <= 12 ? Number(args.mes) : null;
+          const [r, stock] = await Promise.all([
+            this.inventarioBi.getTotalVentasMensualesProducto({ ...base, ...SIN_PAGINAR, periodo: anio } as any),
+            this.productos.getStock(producto.ide_inarti).catch(() => null),
+          ]);
+          const filas: any[] = Array.isArray(r) ? r : ((r as any)?.rows ?? []);
+          const meses = filas.map((m) => ({
+            mes: Number(m.ide_gemes ?? m.mes),
+            nombre: m.nombre_gemes ?? null,
+            facturas: Number(m.num_facturas ?? 0),
+            cantidad: num(m.cantidad_neta, 3) ?? 0,
+            ventas_netas: num(m.ventas_netas, 2) ?? 0,
+          }));
+          const suma = (k: 'facturas' | 'cantidad' | 'ventas_netas') => meses.reduce((a, m) => a + Number(m[k] ?? 0), 0);
+          const delMes = mes ? meses.find((m) => m.mes === mes) : null;
+          return this.json({
+            producto: producto.nombre,
+            anio,
+            unidad: stock?.siglas_inuni ?? null,
+            ...(mes
+              ? { mes_consultado: delMes ?? { mes, facturas: 0, cantidad: 0, ventas_netas: 0 } }
+              : {}),
+            total_anio: { facturas: suma('facturas'), cantidad: num(suma('cantidad'), 3), ventas_netas: num(suma('ventas_netas'), 2) },
+            meses: meses.filter((m) => m.facturas || m.cantidad || m.ventas_netas),
+            nota: anio === ahora.getFullYear() ? 'Año en curso: el total es a la fecha.' : undefined,
           });
         }
 

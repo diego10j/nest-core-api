@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
+import { ProveedorService } from '../compras/proveedor/proveedor.service';
+import { CuentasPorPagarService } from '../cuentas-por-pagar/cuentas-por-pagar.service';
 import { ClientesService } from '../ventas/clientes/clientes.service';
 import { FacturasService } from '../ventas/facturas/facturas.service';
 import { TransportesService } from '../ventas/transportes/transportes.service';
@@ -13,7 +15,53 @@ const idCliente = {
 };
 
 /** Herramientas de clientes y transporte del asistente QuimIA (se suman a HERRAMIENTAS_QUIMIA). */
+const idProveedor = {
+  ide_geper: { type: 'integer', description: 'ID del proveedor (obtenido con buscar_proveedor)' },
+};
+
 export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_proveedor',
+      description: 'Busca un PROVEEDOR por nombre o RUC (para "cuánto le debo a X", "qué le debo a X"). Devuelve su ide_geper.',
+      parameters: {
+        type: 'object',
+        properties: { texto: { type: 'string', description: 'Nombre o RUC del proveedor' } },
+        required: ['texto'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'deuda_proveedor',
+      description:
+        'Cuánto le DEBEMOS a un proveedor (cuentas por pagar): saldo total, vencido y documentos pendientes ordenados por ' +
+        'urgencia (factura, fecha, vencimiento, saldo, días vencido). Mismo dato que Cuentas por pagar del ERP.',
+      parameters: { type: 'object', properties: { ...idProveedor }, required: ['ide_geper'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pagos_por_vencer',
+      description:
+        'Cuentas por PAGAR (a proveedores) según vencimiento: "¿qué pagos vencen hoy?", "pagos de esta semana", "¿qué ' +
+        'tenemos vencido?". Lista proveedor, factura, vencimiento y saldo, con el total. Opcional: un proveedor.',
+      parameters: {
+        type: 'object',
+        properties: {
+          periodo: {
+            type: 'string',
+            enum: ['HOY', 'MANANA', 'SEMANA', 'MES', 'VENCIDAS'],
+            description: 'HOY (por defecto), MANANA, SEMANA (próximos 7 días), MES (próximos 30 días) o VENCIDAS',
+          },
+          ...idProveedor,
+        },
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -41,7 +89,8 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'deuda_cliente',
       description:
-        'Cuánto debe el cliente: saldo pendiente, monto vencido, facturas por pagar/vencidas, total comprado y cobrado.',
+        'Cuánto NOS debe el cliente / saldo del cliente (cuentas por cobrar): saldo pendiente, monto vencido, facturas ' +
+        'por pagar/vencidas, total comprado y cobrado. "¿Cuánto me debe X?", "¿cuál es el saldo de X?".',
       parameters: { type: 'object', properties: { ...idCliente }, required: ['ide_geper'] },
     },
   },
@@ -116,6 +165,9 @@ export const ESTADOS_CLIENTES: Record<string, string> = {
   deuda_cliente: 'Consultando la cartera del cliente…',
   compras_cliente: 'Analizando las compras del cliente…',
   envios_cliente: 'Consultando los envíos del cliente…',
+  buscar_proveedor: 'Buscando el proveedor…',
+  deuda_proveedor: 'Consultando cuentas por pagar…',
+  pagos_por_vencer: 'Revisando los pagos por vencer…',
   transportes_destino: 'Buscando transportistas…',
   costo_envio: 'Cotizando el transporte…',
 };
@@ -206,6 +258,8 @@ export class QuimiaClientesService {
     private readonly clientes: ClientesService,
     private readonly transportes: TransportesService,
     private readonly facturas: FacturasService,
+    private readonly proveedores: ProveedorService,
+    private readonly cxp: CuentasPorPagarService,
   ) {}
 
   esHerramienta(nombre: string) {
@@ -237,6 +291,12 @@ export class QuimiaClientesService {
           args.unidad ? String(args.unidad) : null,
           usuario,
         );
+      case 'buscar_proveedor':
+        return this.buscarProveedor(String(args.texto ?? ''), usuario);
+      case 'deuda_proveedor':
+        return this.deudaProveedor(Number(args.ide_geper), usuario);
+      case 'pagos_por_vencer':
+        return this.pagosPorVencer(String(args.periodo ?? 'HOY').toUpperCase(), args.ide_geper ? Number(args.ide_geper) : null, usuario);
       default:
         return { error: `Herramienta desconocida: ${nombre}` };
     }
@@ -633,6 +693,108 @@ export class QuimiaClientesService {
         };
       }),
       tarifas_configuradas: (tarifas as any).transportes ?? [],
+    };
+  }
+
+  // ------------------------------------------------------------------ proveedores / cuentas por pagar
+
+  /** Proveedores por nombre o RUC (ProveedorService.searchProveedor, el autocompletado del ERP). */
+  private async buscarProveedor(texto: string, u: UsuarioQuimia) {
+    const valor = texto.trim();
+    if (!valor) return { error: 'Indica el nombre o RUC del proveedor' };
+    const r: any = await this.proveedores.searchProveedor({ ...u, value: valor, limit: 8 } as any);
+    const rows: any[] = Array.isArray(r) ? r : (r?.rows ?? []);
+    if (!rows.length) return { encontrados: 0, mensaje: `No hay un proveedor que coincida con "${valor}".` };
+    return {
+      encontrados: rows.length,
+      proveedores: rows.map((p) => ({ ide_geper: p.ide_geper, nombre: p.nom_geper, ruc: p.identificac_geper })),
+      ...(rows.length > 1 ? { mensaje: 'Si no está claro cuál es, pregunta al usuario.' } : {}),
+    };
+  }
+
+  /**
+   * Cuánto le debemos a un proveedor: saldo (ProveedorService.getSaldo) y documentos pendientes por
+   * urgencia (CuentasPorPagarService.getCuentasPorPagarProveedorPendientes), de la sucursal del usuario.
+   */
+  private async deudaProveedor(ideGeper: number, u: UsuarioQuimia) {
+    if (!ideGeper) return { error: 'Primero busca el proveedor con buscar_proveedor' };
+    const [saldo, pendientes] = await Promise.all([
+      this.proveedores.getSaldo({ ...u, ide_geper: ideGeper } as any),
+      this.cxp.getCuentasPorPagarProveedorPendientes({ ...u, ...SIN_PAGINAR, ide_geper: ideGeper } as any),
+    ]);
+    const filaSaldo: any = Array.isArray(saldo) ? saldo[0] : ((saldo as any)?.rows?.[0] ?? saldo);
+    const docs: any[] = (Array.isArray(pendientes) ? pendientes : ((pendientes as any)?.rows ?? [])).filter(
+      (d) => Number(d.saldo_x_pagar) > 0.004,
+    );
+    const vencidos = docs.filter((d) => Number(d.dias_vencido) > 0);
+    const total = docs.reduce((a, d) => a + Number(d.saldo_x_pagar), 0);
+    return {
+      saldo_total: num(filaSaldo?.saldo ?? total),
+      total_vencido: num(vencidos.reduce((a, d) => a + Number(d.saldo_x_pagar), 0)),
+      documentos_pendientes: docs.length,
+      documentos_vencidos: vencidos.length,
+      pendientes: docs.slice(0, 15).map((d) => ({
+        factura: d.numero_cpcfa ?? null,
+        fecha: fecha(d.fecha),
+        vence: fecha(d.fecha_vence),
+        total: num(d.total_cpcfa),
+        saldo: num(d.saldo_x_pagar),
+        dias_vencido: Number(d.dias_vencido ?? 0),
+        estado: d.estado_obligacion ?? null,
+      })),
+      moneda: 'USD',
+    };
+  }
+
+  /**
+   * Pagos a proveedores por vencimiento (CuentasPorPagarService.getCuentasPorPagar, solo pendientes, de la
+   * sucursal): HOY, MANANA, SEMANA (7 días), MES (30 días) o VENCIDAS, con el total.
+   */
+  private async pagosPorVencer(periodo: string, ideGeper: number | null, u: UsuarioQuimia) {
+    const r: any = await this.cxp.getCuentasPorPagar({
+      ...u,
+      ...SIN_PAGINAR,
+      fechaInicio: '2000-01-01',
+      fechaFin: hoy(),
+      activos: 'true',
+      ...(ideGeper ? { ide_geper: ideGeper } : {}),
+    } as any);
+    const rows: any[] = Array.isArray(r) ? r : (r?.rows ?? []);
+    const dia = (offset: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offset);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const hoyStr = dia(0);
+    const rangos: Record<string, [string, string, string]> = {
+      HOY: [hoyStr, hoyStr, 'vencen hoy'],
+      MANANA: [dia(1), dia(1), 'vencen mañana'],
+      SEMANA: [hoyStr, dia(7), 'vencen en los próximos 7 días'],
+      MES: [hoyStr, dia(30), 'vencen en los próximos 30 días'],
+    };
+    const esVencidas = periodo === 'VENCIDAS';
+    const [desde, hasta, etiqueta] = rangos[periodo] ?? rangos.HOY;
+    const lista = rows
+      .filter((d) => Number(d.saldo_x_pagar) > 0.004)
+      .map((d) => ({ ...d, _vence: fecha(d.fecha_vence) }))
+      .filter((d) => (esVencidas ? d._vence && d._vence < hoyStr : d._vence && d._vence >= desde && d._vence <= hasta))
+      .sort((a, b) => String(a._vence).localeCompare(String(b._vence)) || Number(b.saldo_x_pagar) - Number(a.saldo_x_pagar));
+    const total = lista.reduce((a, d) => a + Number(d.saldo_x_pagar), 0);
+    return {
+      criterio: esVencidas ? 'Pagos a proveedores ya vencidos' : `Pagos a proveedores que ${etiqueta}`,
+      cantidad: lista.length,
+      total: num(total),
+      pagos: lista.slice(0, 40).map((d) => ({
+        proveedor: d.nom_geper,
+        factura: d.numero_cpcfa ?? null,
+        fecha: fecha(d.fecha),
+        vence: d._vence,
+        total_factura: num(d.total_cpcfa),
+        saldo: num(d.saldo_x_pagar),
+        dias_vencido: Number(d.dias_vencido ?? 0),
+      })),
+      ...(lista.length > 40 ? { nota: `Se muestran 40 de ${lista.length}; el total incluye todos.` } : {}),
+      moneda: 'USD',
     };
   }
 }

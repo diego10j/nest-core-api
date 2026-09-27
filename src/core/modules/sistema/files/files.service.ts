@@ -1,5 +1,6 @@
+import { createHash } from 'crypto';
 import { createReadStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
-import { writeFile } from 'fs/promises';
+import { rename, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 import { Injectable, BadRequestException } from '@nestjs/common';
@@ -127,11 +128,18 @@ export class FilesService {
             a.descargas_arch AS descargas,
             -- to_jsonb: no falla si aún no existe la columna (scripts/marca_agua.sql)
             to_jsonb(a) ->> 'marca_agua_arch' AS marca_agua,
+            a.nombre2_arch AS disco,
+            us.nom_usua AS usuario_nombre,
+            us.avatar_usua AS usuario_avatar,
             COALESCE(agg.num_arch, 0) AS num_arch,
             COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch
         FROM
             sis_archivo a
         LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
+        -- Nombre y avatar de quien subió el archivo (usuario_ingre guarda el login = nick_usua)
+        LEFT JOIN LATERAL (
+            SELECT u.nom_usua, u.avatar_usua FROM sis_usuario u WHERE u.nick_usua = a.usuario_ingre LIMIT 1
+        ) us ON TRUE
         WHERE ${whereClause}
               AND ide_empr = ${dto.ideEmpr}
                ${mode !== 'trash' ? `AND papelera_arch = FALSE` : ''}
@@ -599,18 +607,26 @@ export class FilesService {
       const sharp = (await import('sharp')).default;
 
       // ── Construir clave de caché ──────────────────────────────────────
+      // Incluye la ruta completa, la extensión original y la fecha/tamaño del archivo: dos imágenes con
+      // el mismo nombre (foto.jpg / foto.png, u otra carpeta) no comparten miniatura, y si el archivo
+      // cambia (marca de agua, reemplazo) se genera una nueva sin tener que borrar la caché.
       const baseName = originalPath.split('/').pop() ?? 'image';
       const nameNoExt = baseName.replace(/\.[^.]+$/, '');
+      const origStat = statSync(originalPath);
+      const huella = createHash('sha1')
+        .update(`${originalPath}|${origStat.size}|${origStat.mtimeMs}`)
+        .digest('hex')
+        .slice(0, 10);
       const suffix = [
         options.width   ? `w${options.width}` : '',
         options.toWebp  ? 'webp'              : '',
       ].filter(Boolean).join('_');
       const ext        = options.toWebp ? 'webp' : (baseName.split('.').pop() ?? 'jpg');
-      const cachedName = `${suffix}_${nameNoExt}.${ext}`;
+      const cachedName = `${suffix}_${nameNoExt}_${huella}.${ext}`;
       const cachedPath = join(FILE_STORAGE_CONSTANTS.CACHE_DIR, cachedName);
 
-      // ── Generar thumbnail si no existe ───────────────────────────────
-      if (!existsSync(cachedPath)) {
+      // ── Generar thumbnail si no existe (o quedó vacío por una escritura fallida) ──
+      if (!existsSync(cachedPath) || statSync(cachedPath).size === 0) {
         // Validar que el width pedido sea uno de los permitidos (evitar flood de archivos)
         if (options.width && !(THUMB_SIZES as readonly number[]).includes(options.width)) {
           // Forzar al tamaño permitido más cercano
@@ -627,7 +643,10 @@ export class FilesService {
           pipeline = pipeline.webp({ quality: 82 });
         }
         const buffer = await pipeline.toBuffer();
-        await writeFile(cachedPath, buffer);
+        // Escritura atómica: otro pedido simultáneo nunca lee una miniatura a medio escribir.
+        const temporal = `${cachedPath}.${process.pid}-${Date.now()}.tmp`;
+        await writeFile(temporal, buffer);
+        await rename(temporal, cachedPath);
       }
 
       // ── Responder desde caché ─────────────────────────────────────────

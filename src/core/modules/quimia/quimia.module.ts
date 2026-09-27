@@ -6,6 +6,8 @@ import { VentasReportsModule } from 'src/reports/modules/ventas/ventas-reports.m
 import { CoreService } from '../../core.service';
 import { AuditService } from '../audit/audit.service';
 import { BaseTecnicaModule } from '../base-tecnica/base-tecnica.module';
+import { ProveedorService } from '../compras/proveedor/proveedor.service';
+import { CuentasPorPagarService } from '../cuentas-por-pagar/cuentas-por-pagar.service';
 import { InventarioBiService } from '../inventario/data-bi/inventario-bi.service';
 import { ConfigPreciosProductosService } from '../inventario/productos/config-precios.service';
 import { ProductosService } from '../inventario/productos/productos.service';
@@ -64,8 +66,11 @@ import { QuimiaUsoService } from './uso/quimia-uso.service';
     TelegramComandosService,
     ProductosService,
     ConfigPreciosProductosService,
-    // Top productos de Análisis de ventas (mismo servicio que su endpoint, filtra por sucursal).
+    // Top productos de Análisis de ventas y ventas mensuales del producto (mismos servicios que sus endpoints).
     InventarioBiService,
+    // Proveedores y cuentas por pagar ("¿cuánto le debo a X?", "¿qué pagos vencen hoy?").
+    ProveedorService,
+    CuentasPorPagarService,
     AuditService,
     CoreService,
   ],

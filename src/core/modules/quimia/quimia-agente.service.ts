@@ -19,7 +19,7 @@ import {
   buildPromptAgente,
   buildPromptIaGeneral,
 } from './prompts/quimia.prompt';
-import { ContextoHerramientas, QuimiaHerramientasService, TODAS_HERRAMIENTAS_QUIMIA } from './quimia-herramientas.service';
+import { ContextoHerramientas, QuimiaHerramientasService, herramientasPara } from './quimia-herramientas.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { CanalQuimia, Emitir, EventoQuimia, OrigenQuimia, RespuestaQuimia, UsuarioQuimia } from './quimia.types';
 
@@ -264,7 +264,7 @@ export class QuimiaAgenteService {
         role: 'system',
         content: buildPromptAgente({ producto: ctx.producto, canal, hoy, notas: ctx.notas }),
       };
-      const r = await this.ia.completarConHerramientas(messages, TODAS_HERRAMIENTAS_QUIMIA);
+      const r = await this.ia.completarConHerramientas(messages, herramientasPara(canal));
       tokensEntrada += r.tokensEntrada;
       tokensSalida += r.tokensSalida;
       modelo = r.modelo;
