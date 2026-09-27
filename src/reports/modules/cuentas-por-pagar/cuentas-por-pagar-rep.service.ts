@@ -107,11 +107,12 @@ export class CuentasPorPagarRepService {
         }
 
         const data: LiquidacionCompraRep = { cabecera, detalles, reembolsos };
-        const docDefinition = liquidacionCompraReport(data, empresa, barcodeDataUrl, ambienteTexto);
+        const rucProveedor = await this.empresaRepService.getRucProveedorSri();
+        const docDefinition = liquidacionCompraReport(data, empresa, barcodeDataUrl, ambienteTexto, rucProveedor);
         try {
             return this.printerService.createPdf(docDefinition);
         } catch {
-            const docFallback = liquidacionCompraReport(data, empresa, undefined, ambienteTexto);
+            const docFallback = liquidacionCompraReport(data, empresa, undefined, ambienteTexto, rucProveedor);
             return this.printerService.createPdf(docFallback);
         }
     }

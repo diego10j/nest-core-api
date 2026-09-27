@@ -258,11 +258,12 @@ export class ContabilidadRepService {
     }
 
     const data: ComprobanteRetencionRep = { cabecera, detalles, total };
-    const docDefinition = comprobanteRetencionReport(data, empresa, barcodeDataUrl, ambienteTexto);
+    const rucProveedor = await this.empresaRepService.getRucProveedorSri();
+    const docDefinition = comprobanteRetencionReport(data, empresa, barcodeDataUrl, ambienteTexto, rucProveedor);
     try {
       return this.printerService.createPdf(docDefinition);
     } catch {
-      const docFallback = comprobanteRetencionReport(data, empresa, undefined, ambienteTexto);
+      const docFallback = comprobanteRetencionReport(data, empresa, undefined, ambienteTexto, rucProveedor);
       return this.printerService.createPdf(docFallback);
     }
   }

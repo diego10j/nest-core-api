@@ -19,6 +19,7 @@ import { diskStorage, memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { ArchivosCompartidosService } from './archivos-compartidos.service';
 import { ALLOWED_IMAGE_MIMES, FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
@@ -28,6 +29,7 @@ import { GetFilesDto } from './dto/get-files.dto';
 import { ArchivoUuidDto } from './dto/marca-agua.dto';
 import { MoveFileDto } from './dto/move-file.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
+import { ReutilizarArchivoDto } from './dto/reutilizar-archivo.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FilesService } from './files.service';
 import { fileNamer } from './helpers';
@@ -42,7 +44,26 @@ export class FilesController {
     private readonly filesService: FilesService,
     private readonly configService: ConfigService,
     private readonly marcaAgua: MarcaAguaService,
+    private readonly compartidos: ArchivosCompartidosService,
   ) { }
+
+  @Get('getProductosArchivo')
+  @ApiOperation({ summary: 'Productos que comparten el mismo archivo ("Reutilizar documento")' })
+  getProductosArchivo(@AppHeaders() h: HeaderParamsDto, @Query() dtoIn: ArchivoUuidDto) {
+    return this.compartidos.productos(dtoIn.uuid, h);
+  }
+
+  @Post('reutilizarArchivo')
+  @ApiOperation({ summary: 'Asocia un archivo a otros productos sin copiarlo (mismo archivo en disco)' })
+  reutilizarArchivo(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: ReutilizarArchivoDto) {
+    return this.compartidos.reutilizar(dtoIn.uuid, dtoIn.productos, h);
+  }
+
+  @Post('desvincularArchivo')
+  @ApiOperation({ summary: 'Quita un archivo compartido de un producto sin borrarlo de los demás' })
+  desvincularArchivo(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: ArchivoUuidDto) {
+    return this.compartidos.desvincular(dtoIn.uuid, h);
+  }
 
   @Post('aplicarMarcaAgua')
   @ApiOperation({ summary: 'Pone la marca de agua con el logo de la empresa a un PDF o imagen y reemplaza el archivo' })

@@ -2,10 +2,20 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { getRucProveedorSri } from 'src/core/modules/sri/xml/info-adicional-sri.util';
+import { VariablesService } from 'src/core/variables/variables.service';
 
 @Injectable()
 export class EmpresaRepService {
-  constructor(private readonly dataSource: DataSourceService) { }
+  constructor(
+    private readonly dataSource: DataSourceService,
+    private readonly variablesService: VariablesService,
+  ) { }
+
+  /** "RUC Proveedor" que va al final de Información Adicional en los RIDE (resolución SRI). */
+  async getRucProveedorSri(): Promise<string | undefined> {
+    return getRucProveedorSri(this.variablesService);
+  }
 
   private async fetchAndCacheEmpresa(ideEmpr: number): Promise<Empresa> {
     const query = new SelectQuery(`

@@ -125,7 +125,12 @@ export class BdtDatosService {
     const r = await this.dataSource.pool.query(
       `WITH RECURSIVE arbol AS (
           SELECT ide_arch, uuid, carpeta_arch, 1 AS nivel
-            FROM sis_archivo WHERE uuid = ANY($1::uuid[]) AND ide_empr = $2
+            FROM sis_archivo
+           WHERE ide_empr = $2
+             AND (uuid = ANY($1::uuid[])
+                  -- Archivo compartido entre productos: se elimina de todos, con sus extracciones.
+                  OR (carpeta_arch = FALSE AND nombre2_arch IN (
+                        SELECT nombre2_arch FROM sis_archivo WHERE uuid = ANY($1::uuid[]) AND carpeta_arch = FALSE)))
           UNION ALL
           SELECT h.ide_arch, h.uuid, h.carpeta_arch, a.nivel + 1
             FROM sis_archivo h JOIN arbol a ON h.sis_ide_arch = a.ide_arch AND a.carpeta_arch = TRUE

@@ -34,4 +34,12 @@ export const GENERAL_VARS = [
     activo_para: true,
     es_empr_para: false,
   },
+  {
+    ide_modu: MODULOS.GENERAL.ID,
+    nom_para: 'p_gen_ruc_proveedor_sri',
+    descripcion_para: 'RUC del proveedor que se agrega en Información Adicional de todos los comprobantes electrónicos (XML y RIDE) como "RUC Proveedor" (resolución SRI). Vacío = no se agrega',
+    valor_para: '1719020883001',
+    activo_para: true,
+    es_empr_para: false,
+  },
 ];

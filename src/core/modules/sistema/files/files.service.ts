@@ -129,6 +129,12 @@ export class FilesService {
             -- to_jsonb: no falla si aún no existe la columna (scripts/marca_agua.sql)
             to_jsonb(a) ->> 'marca_agua_arch' AS marca_agua,
             a.nombre2_arch AS disco,
+            a.ide_inarti,
+            -- En cuántos productos está este mismo archivo ("Reutilizar documento"); 1 = solo este.
+            CASE WHEN a.carpeta_arch THEN NULL ELSE (
+                SELECT COUNT(*) FROM sis_archivo x
+                 WHERE x.nombre2_arch = a.nombre2_arch AND x.ide_empr = a.ide_empr AND COALESCE(x.papelera_arch, FALSE) = FALSE
+            ) END AS compartido_en,
             us.nom_usua AS usuario_nombre,
             us.avatar_usua AS usuario_avatar,
             COALESCE(agg.num_arch, 0) AS num_arch,
@@ -162,6 +168,8 @@ export class FilesService {
       obj.isFavorited = obj.favorita_arch;
       obj.marcaAgua = !!obj.marca_agua;
       delete obj.marca_agua;
+      obj.compartidoEn = obj.compartido_en == null ? undefined : Number(obj.compartido_en);
+      delete obj.compartido_en;
       obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
       obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
       delete obj.fecha_ingre;
@@ -247,6 +255,16 @@ export class FilesService {
    * @returns
    */
   async deleteFiles(dto: DeleteFilesDto & HeaderParamsDto): Promise<ResultQuery> {
+    // Archivo compartido entre productos ("Reutilizar documento"): se elimina de todos.
+    const grupo = await this.dataSource.pool.query(
+      `SELECT DISTINCT x.uuid::text AS uuid
+         FROM sis_archivo a
+         JOIN sis_archivo x ON x.nombre2_arch = a.nombre2_arch AND x.ide_empr = a.ide_empr AND x.carpeta_arch = FALSE
+        WHERE a.uuid = ANY($1::uuid[]) AND a.carpeta_arch = FALSE`,
+      [dto.values],
+    );
+    dto.values = [...new Set([...dto.values, ...grupo.rows.map((r) => r.uuid)])];
+
     const query = new SelectQuery(`
         SELECT
             ide_arch,
@@ -274,17 +292,22 @@ export class FilesService {
       deleteQuery.addParam(1, dto.values);
       await this.dataSource.createQuery(deleteQuery);
 
-      data.forEach((row) => {
-        // Elimina archivos
-        if (row.carpeta_arch === false) {
-          const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, row.name);
+      // Elimina los archivos físicos que ya no usa ningún registro (uno compartido se borra una sola vez).
+      const discos = [...new Set(data.filter((row) => row.carpeta_arch === false && row.name).map((row) => row.name as string))];
+      const enUso = discos.length
+        ? await this.dataSource.pool.query(`SELECT DISTINCT nombre2_arch FROM sis_archivo WHERE nombre2_arch = ANY($1::text[])`, [discos])
+        : { rows: [] as any[] };
+      const siguenEnUso = new Set(enUso.rows.map((r) => r.nombre2_arch));
+      discos
+        .filter((d) => !siguenEnUso.has(d))
+        .forEach((d) => {
+          const filePath = join(FILE_STORAGE_CONSTANTS.BASE_PATH, d);
           try {
             unlinkSync(filePath);
           } catch (error) {
             this.errorLog.createErrorLog(`No se pudo borrar el archivo ${filePath} : ${error}`);
           }
-        }
-      });
+        });
       return {
         message: 'Archivos borrados exitosamente',
       } as ResultQuery;

@@ -5,6 +5,7 @@ import {
     buildEncabezadoRide,
     buildInfoAdicionalSection,
     buildPanelContraparte,
+    campoRucProveedor,
     campoTexto,
     fmtNumero,
     hairlineTableLayout,
@@ -25,6 +26,7 @@ export const comprobanteRetencionReport = (
     empresa: Empresa,
     barcodeDataUrl?: string,
     ambienteTexto?: string,
+    rucProveedor?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, total } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cncre);
@@ -115,6 +117,7 @@ export const comprobanteRetencionReport = (
 
     const infoAdicional = buildInfoAdicionalSection([
         { nombre: 'Observación', valor: cabecera.observacion_cncre },
+        campoRucProveedor(rucProveedor),
     ]);
 
     return {

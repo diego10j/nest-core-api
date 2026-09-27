@@ -79,7 +79,7 @@ export function buildFacturaXml(comprobante: ComprobanteDto, emisor: EmisorDto):
     ? `			<guiaRemision>${comprobante.guiaremision}</guiaRemision>\n`
     : '';
 
-  const infoAdicional = buildInfoAdicionalComprobante(comprobante, CORREO_POR_DEFECTO);
+  const infoAdicional = buildInfoAdicionalComprobante(comprobante, CORREO_POR_DEFECTO, emisor.rucProveedor);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
      <factura id="comprobante" version="1.1.0">

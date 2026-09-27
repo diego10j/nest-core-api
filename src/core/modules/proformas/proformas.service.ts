@@ -26,6 +26,8 @@ import { fNumber, roundTo, roundPrecio } from 'src/util/helpers/number-util';
 import { assignIfDefined } from 'src/util/helpers/sql-util';
 import { normalizarUrl } from 'src/util/helpers/string-util';
 
+import { normalizarTexto } from '../base-tecnica/helpers/normalizar.helper';
+
 import { AnularProformaDto } from './dto/anular-proforma.dto';
 import { AssignProformaDto } from './dto/assign-proforma.dto';
 import { CreateProformaWebDto } from './dto/create-proforma-web.dto';
@@ -1215,7 +1217,7 @@ ORDER BY prof.secuencial_cccpr DESC
     const resolvedDetalles = dtoIn.detalles.map((detalle) => {
       const siglas     = detalle.unidad?.toUpperCase() ?? null;
       const ideInuni   = siglas ? (unidadMap.get(siglas) ?? null) : null;
-      const nombreProd = detalle.producto?.toUpperCase();
+      const nombreProd = normalizarTexto(detalle.producto);
 
       const ideInarti =
         detalle.ide_prod
@@ -1428,33 +1430,47 @@ ORDER BY prof.secuencial_cccpr DESC
     return map;
   }
 
+  /**
+   * Resuelve ide_inarti por nombre, sin distinguir tildes, mayúsculas ni espacios repetidos
+   * ("CERA DE SOYA DE ALTO PUNTO DE FUSIÓN" ↔ "CERA DE SOYA DE ALTO PUNTO DE FUSION"): el portal
+   * web puede enviar el nombre con que publicó el producto aunque luego se edite en el ERP.
+   * También cubre los ítems con uuid_prod, como respaldo si el UUID no resuelve.
+   * Si varios artículos normalizan al mismo nombre, se prefiere el activo y de nivel HIJO.
+   */
   private async lookupArticulos(
     detalles: { ide_prod?: number; ideInarti?: number; uuid_prod?: string; producto: string }[],
     ideEmpr: number,
   ): Promise<Map<string, number>> {
-    // Solo buscar por nombre los ítems sin ningún identificador directo
     const nombres = Array.from(new Set(
       detalles
-        .filter((d) => !d.ide_prod && !d.ideInarti && !d.uuid_prod)
-        .map((d) => d.producto?.toUpperCase())
-        .filter((s): s is string => !!s),
+        .filter((d) => !d.ide_prod && !d.ideInarti)
+        .map((d) => normalizarTexto(d.producto))
+        .filter((s) => !!s),
     ));
 
     const map = new Map<string, number>();
     if (nombres.length === 0) return map;
 
     const query = new SelectQuery(`
-      SELECT UPPER(nombre_inarti) AS nombre_inarti, ide_inarti
-      FROM inv_articulo
-      WHERE UPPER(nombre_inarti) = ANY($1)
-        AND ide_empr = $2
+      SELECT DISTINCT ON (nombre_norm) nombre_norm, ide_inarti
+      FROM (
+        SELECT ide_inarti, activo_inarti, nivel_inarti,
+               TRIM(regexp_replace(UPPER(bdt_f_unaccent(nombre_inarti)), '\\s+', ' ', 'g')) AS nombre_norm
+        FROM inv_articulo
+        WHERE ide_empr = $2
+      ) a
+      WHERE nombre_norm = ANY($1)
+      ORDER BY nombre_norm,
+               (activo_inarti IS TRUE) DESC,
+               (nivel_inarti = 'HIJO') DESC,
+               ide_inarti DESC
     `);
     query.addParam(1, nombres);
     query.addIntParam(2, ideEmpr);
 
     const rows = await this.dataSource.createSelectQuery(query);
     for (const row of rows) {
-      map.set(row.nombre_inarti, row.ide_inarti);
+      map.set(row.nombre_norm, row.ide_inarti);
     }
 
     return map;

@@ -11,7 +11,9 @@ export interface ArchivoSubidoEvent {
    * MARCA_AGUA / REEMPLAZADO: el contenido cambió en el mismo archivo (hashAnterior → hashNuevo); la base
    * técnica actualiza su hash para no volver a extraerlo.
    */
-  accion: 'SUBIDO' | 'MOVIDO' | 'MARCA_AGUA' | 'REEMPLAZADO';
+  accion: 'SUBIDO' | 'MOVIDO' | 'MARCA_AGUA' | 'REEMPLAZADO' | 'DESVINCULADO';
+  /** DESVINCULADO: quién quitó el documento del producto (historial de la base técnica). */
+  login?: string;
   hashAnterior?: string;
   hashNuevo?: string;
   /** Tamaño y versión (fechas) antes del cambio: la base técnica mantiene al día la huella del producto. */

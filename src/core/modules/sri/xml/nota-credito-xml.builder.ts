@@ -67,7 +67,7 @@ export function buildNotaCreditoXml(comprobante: ComprobanteDto, emisor: EmisorD
 `;
   }
 
-  const infoAdicional = buildInfoAdicionalComprobante(comprobante, CORREO_POR_DEFECTO);
+  const infoAdicional = buildInfoAdicionalComprobante(comprobante, CORREO_POR_DEFECTO, emisor.rucProveedor);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
      <notaCredito id="comprobante" version="1.1.0">

@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { Content, StyleDictionary, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { NOMBRE_CAMPO_RUC_PROVEEDOR } from 'src/core/modules/sri/xml/info-adicional-sri.util';
 import { footerSection } from 'src/reports/common/sections/footer.section';
 import { fCurrency } from 'src/util/helpers/common-util';
 import { fDate } from 'src/util/helpers/date-util';
@@ -284,6 +285,7 @@ export const facturaElectronicaReport = (
     empresa: Empresa,
     barcodeDataUrl?: string,
     ambienteTexto?: string,
+    rucProveedor?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, pagos, transporte, guiaremision } = data;
 
@@ -629,6 +631,12 @@ export const facturaElectronicaReport = (
         infoAdicRows.push([
             { text: 'Observación:', fontSize: 7.5, bold: true, color: GRIS_TEXTO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], width: '30%' },
             { text: cabecera.infoadicional3_srcom, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
+        ]);
+    }
+    if (rucProveedor) {
+        infoAdicRows.push([
+            { text: `${NOMBRE_CAMPO_RUC_PROVEEDOR}:`, fontSize: 7.5, bold: true, color: GRIS_TEXTO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean], width: '30%' },
+            { text: rucProveedor, fontSize: 7.5, color: NEGRO, border: [false, false, false, false] as [boolean, boolean, boolean, boolean] },
         ]);
     }
     const infoAdicionalSection: Content = {

@@ -5,6 +5,7 @@ import {
     buildEncabezadoRide,
     buildInfoAdicionalSection,
     buildPanelContraparte,
+    campoRucProveedor,
     campoTexto,
     fmtNumero,
     hairlineTableLayout,
@@ -25,6 +26,7 @@ export const notaCreditoReport = (
     empresa: Empresa,
     barcodeDataUrl?: string,
     ambienteTexto?: string,
+    rucProveedor?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cpcno);
@@ -140,7 +142,7 @@ export const notaCreditoReport = (
 
     const seccionBottom: Content = {
         columns: [
-            { width: '55%', stack: [buildInfoAdicionalSection([{ nombre: 'Observación', valor: cabecera.observacion_cpcno }])], margin: [0, 4, 10, 0] as [number, number, number, number] },
+            { width: '55%', stack: [buildInfoAdicionalSection([{ nombre: 'Observación', valor: cabecera.observacion_cpcno }, campoRucProveedor(rucProveedor)])], margin: [0, 4, 10, 0] as [number, number, number, number] },
             { width: '45%', stack: [colDerecha] },
         ],
         margin: [0, 4, 0, 0] as [number, number, number, number],

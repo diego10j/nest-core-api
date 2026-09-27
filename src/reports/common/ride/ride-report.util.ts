@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { Content, StyleDictionary } from 'pdfmake/interfaces';
 import { Empresa } from 'src/core/modules/sistema/admin/interfaces/empresa';
+import { NOMBRE_CAMPO_RUC_PROVEEDOR } from 'src/core/modules/sri/xml/info-adicional-sri.util';
 import { fDate } from 'src/util/helpers/date-util';
 import { getStaticImage } from 'src/util/helpers/file-utils';
 
@@ -366,6 +367,11 @@ export function campoTexto(label: string, valor: string): object {
         ],
         margin: [0, 1.5, 0, 1.5] as [number, number, number, number],
     };
+}
+
+/** Fila "RUC Proveedor" (resolución SRI) — va siempre al final de Información Adicional. */
+export function campoRucProveedor(rucProveedor?: string | null): { nombre: string; valor?: string | null } {
+    return { nombre: NOMBRE_CAMPO_RUC_PROVEEDOR, valor: rucProveedor };
 }
 
 /** Sección "Información Adicional" (campoAdicional nombre/valor), estilo factura.report.ts. */

@@ -2,7 +2,7 @@ import { ComprobanteDto } from '../cel/dto/comprobante.dto';
 import { EmisorDto } from '../cel/dto/emisor.dto';
 
 import { formatFechaSri } from './fecha-sri.util';
-import { isCorreoValido } from './info-adicional-sri.util';
+import { buildCampoRucProveedor, isCorreoValido } from './info-adicional-sri.util';
 import { fNumero } from './numero-sri.util';
 import { buildReembolsosXml } from './reembolso-xml.util';
 import { getCodigoPorcentajeIva, CODIGO_PORCENTAJE_IVA_0, TipoImpuestoCodigo } from './tipo-impuesto-iva.util';
@@ -81,6 +81,7 @@ export function buildLiquidacionCompraXml(comprobante: ComprobanteDto, emisor: E
   if (comprobante.infoAdicional3) {
     infoAdicional += `      		<campoAdicional nombre="Observación">${comprobante.infoAdicional3}</campoAdicional> \n`;
   }
+  infoAdicional += buildCampoRucProveedor(emisor.rucProveedor);
   infoAdicional += '		</infoAdicional> \n';
 
   // Reembolso de gastos (Anexo 17 SRI): solo si la liquidación tiene líneas de reembolso.

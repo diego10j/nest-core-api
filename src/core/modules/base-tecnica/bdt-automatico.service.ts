@@ -54,6 +54,19 @@ export class BdtAutomaticoService implements OnModuleInit, OnModuleDestroy {
       await this.actualizarHash(e);
       return;
     }
+    // Documento compartido que se quitó de un producto: se elimina su extracción en ese producto.
+    if (e.accion === 'DESVINCULADO') {
+      const docs = await this.dataSource.pool.query(
+        `SELECT ide_bddoc FROM bdt_documento WHERE uuid_origen_bddoc = $1::uuid AND ide_empr = $2`,
+        [e.uuid, e.ideEmpr],
+      );
+      for (const d of docs.rows) {
+        await this.proceso
+          .eliminarExtraccion({ ide_bddoc: d.ide_bddoc, ideEmpr: e.ideEmpr, login: e.login ?? 'SISTEMA' } as any)
+          .catch((err) => this.logger.warn(`Extracción del documento desvinculado ${e.uuid}: ${(err as Error).message}`));
+      }
+      return;
+    }
     const ideInarti = await this.proceso.productoDeArchivo(e.uuid, e.ideEmpr);
     if (!ideInarti) return; // no es un adjunto de producto
     const clave = `${e.ideEmpr}:${ideInarti}`;

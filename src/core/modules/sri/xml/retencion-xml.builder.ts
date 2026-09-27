@@ -2,7 +2,7 @@ import { ComprobanteDto } from '../cel/dto/comprobante.dto';
 import { EmisorDto } from '../cel/dto/emisor.dto';
 
 import { formatFechaSri } from './fecha-sri.util';
-import { isCorreoValido } from './info-adicional-sri.util';
+import { buildCampoRucProveedor, isCorreoValido } from './info-adicional-sri.util';
 import { fNumero } from './numero-sri.util';
 
 const CORREO_POR_DEFECTO = 'ventas@produquimic.com.ec';
@@ -37,6 +37,7 @@ export function buildRetencionXml(comprobante: ComprobanteDto, emisor: EmisorDto
   if (comprobante.agenteRetencion) {
     infoAdicional += `      		<campoAdicional nombre="AGENTE DE RETENCION">${comprobante.agenteRetencion}</campoAdicional> \n`;
   }
+  infoAdicional += buildCampoRucProveedor(emisor.rucProveedor);
   infoAdicional += '		</infoAdicional> \n';
 
   return `<?xml version="1.0" encoding="UTF-8"?>

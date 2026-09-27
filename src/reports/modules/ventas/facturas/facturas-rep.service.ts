@@ -317,12 +317,13 @@ export class FacturasRepService {
       transporte,
     };
 
-    const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl, ambienteTexto);
+    const rucProveedor = await this.empresaRepService.getRucProveedorSri();
+    const docDefinition = facturaElectronicaReport(facturaRep, empresa, barcodeDataUrl, ambienteTexto, rucProveedor);
     try {
       return this.printerService.createPdf(docDefinition);
     } catch {
       // Si falla por imágenes, reintentar sin barcode
-      const docFallback = facturaElectronicaReport(facturaRep, empresa, undefined, ambienteTexto);
+      const docFallback = facturaElectronicaReport(facturaRep, empresa, undefined, ambienteTexto, rucProveedor);
       return this.printerService.createPdf(docFallback);
     }
   }

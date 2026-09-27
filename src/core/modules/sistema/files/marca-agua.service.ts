@@ -115,7 +115,10 @@ export class MarcaAguaService {
       const hashNuevo = createHash('sha256').update(salida).digest('hex');
       await this.registrar(uuid, ideEmpr, login, salida.length);
       if (EXT_IMAGEN.includes(ext)) await this.borrarMiniaturas(arch.nombre2_arch);
-      this.archivoEventos.emitir({ uuid, ideEmpr, accion: 'MARCA_AGUA', hashAnterior, hashNuevo, ...estadoAnterior(arch) });
+      // Un archivo compartido entre productos es el mismo en disco: cada producto actualiza su hash.
+      for (const u of await this.uuidsDelGrupo(uuid, ideEmpr)) {
+        this.archivoEventos.emitir({ uuid: u, ideEmpr, accion: 'MARCA_AGUA', hashAnterior, hashNuevo, ...estadoAnterior(arch) });
+      }
       this.logger.log(`Marca de agua: ${arch.nombre_arch} (${uuid})`);
       return { aplicada: true, uuid, hashAnterior, hashNuevo, peso: salida.length };
     } catch (error) {
@@ -173,21 +176,33 @@ export class MarcaAguaService {
 
       await this.dataSource.pool.query(
         `UPDATE sis_archivo SET peso_arch = $3, usuario_actua = $4, fecha_actua = NOW(), hora_actua = NOW()
-          WHERE uuid = $1::uuid AND ide_empr = $2`,
+          WHERE ide_empr = $2 AND nombre2_arch = (SELECT nombre2_arch FROM sis_archivo WHERE uuid = $1::uuid)`,
         [uuid, ideEmpr, nuevo.length, login.slice(0, 50)],
       );
       await this.dataSource.pool
-        .query(`UPDATE sis_archivo SET marca_agua_arch = ${traeSello ? 'NOW()' : 'NULL'} WHERE uuid = $1::uuid AND ide_empr = $2`, [uuid, ideEmpr])
+        .query(`UPDATE sis_archivo SET marca_agua_arch = ${traeSello ? 'NOW()' : 'NULL'} WHERE ide_empr = $2 AND nombre2_arch = (SELECT nombre2_arch FROM sis_archivo WHERE uuid = $1::uuid)`, [uuid, ideEmpr])
         .catch(() => undefined);
       if (EXT_IMAGEN.includes(ext)) await this.borrarMiniaturas(arch.nombre2_arch);
       const hashAnterior = createHash('sha256').update(anterior).digest('hex');
       const hashNuevo = createHash('sha256').update(nuevo).digest('hex');
-      this.archivoEventos.emitir({ uuid, ideEmpr, accion: 'REEMPLAZADO', hashAnterior, hashNuevo, ...estadoAnterior(arch) });
+      for (const u of await this.uuidsDelGrupo(uuid, ideEmpr)) {
+        this.archivoEventos.emitir({ uuid: u, ideEmpr, accion: 'REEMPLAZADO', hashAnterior, hashNuevo, ...estadoAnterior(arch) });
+      }
       this.logger.log(`Archivo reemplazado: ${arch.nombre_arch} (${uuid}) por ${nombreSubido}`);
       return { uuid, nombre: arch.nombre_arch, peso: nuevo.length, marcaAgua: traeSello, hashNuevo };
     } finally {
       this.enProceso.delete(uuid);
     }
+  }
+
+  /** Registros que comparten el archivo en disco (el propio incluido). */
+  private async uuidsDelGrupo(uuid: string, ideEmpr: number): Promise<string[]> {
+    const r = await this.dataSource.pool.query(
+      `SELECT uuid::text AS uuid FROM sis_archivo
+        WHERE ide_empr = $2 AND nombre2_arch = (SELECT nombre2_arch FROM sis_archivo WHERE uuid = $1::uuid)`,
+      [uuid, ideEmpr],
+    );
+    return r.rows.length ? r.rows.map((x) => x.uuid) : [uuid];
   }
 
   // ------------------------------------------------------------------ PDF
@@ -272,11 +287,11 @@ export class MarcaAguaService {
   private async registrar(uuid: string, ideEmpr: number, login: string, peso: number) {
     await this.dataSource.pool.query(
       `UPDATE sis_archivo SET peso_arch = $3, usuario_actua = $4, fecha_actua = NOW(), hora_actua = NOW()
-        WHERE uuid = $1::uuid AND ide_empr = $2`,
+        WHERE ide_empr = $2 AND nombre2_arch = (SELECT nombre2_arch FROM sis_archivo WHERE uuid = $1::uuid)`,
       [uuid, ideEmpr, peso, login.slice(0, 50)],
     );
     await this.dataSource.pool
-      .query(`UPDATE sis_archivo SET marca_agua_arch = NOW() WHERE uuid = $1::uuid AND ide_empr = $2`, [uuid, ideEmpr])
+      .query(`UPDATE sis_archivo SET marca_agua_arch = NOW() WHERE ide_empr = $2 AND nombre2_arch = (SELECT nombre2_arch FROM sis_archivo WHERE uuid = $1::uuid)`, [uuid, ideEmpr])
       .catch((e) => this.logger.warn(`sis_archivo.marca_agua_arch (¿falta scripts/marca_agua.sql?): ${(e as Error).message}`));
   }
 

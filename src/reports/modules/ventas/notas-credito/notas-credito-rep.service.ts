@@ -83,11 +83,12 @@ export class NotasCreditoRepService {
         }
 
         const data: NotaCreditoRep = { cabecera, detalles };
-        const docDefinition = notaCreditoReport(data, empresa, barcodeDataUrl, ambienteTexto);
+        const rucProveedor = await this.empresaRepService.getRucProveedorSri();
+        const docDefinition = notaCreditoReport(data, empresa, barcodeDataUrl, ambienteTexto, rucProveedor);
         try {
             return this.printerService.createPdf(docDefinition);
         } catch {
-            const docFallback = notaCreditoReport(data, empresa, undefined, ambienteTexto);
+            const docFallback = notaCreditoReport(data, empresa, undefined, ambienteTexto, rucProveedor);
             return this.printerService.createPdf(docFallback);
         }
     }

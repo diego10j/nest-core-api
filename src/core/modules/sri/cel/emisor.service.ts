@@ -3,9 +3,11 @@ import { Redis } from 'ioredis';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { SelectQuery } from 'src/core/connection/helpers';
+import { VariablesService } from 'src/core/variables/variables.service';
 
 import { BaseService } from '../../../../common/base-service';
 import { DataSourceService } from '../../../connection/datasource.service';
+import { getRucProveedorSri } from '../xml/info-adicional-sri.util';
 
 import { EmisorDto } from './dto/emisor.dto';
 
@@ -14,6 +16,7 @@ export class EmisorService extends BaseService {
   constructor(
     private readonly dataSource: DataSourceService,
     @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
+    private readonly variablesService: VariablesService,
   ) {
     super();
   }
@@ -27,7 +30,7 @@ export class EmisorService extends BaseService {
     // Check cache
     const cachedEmisor = await this.redisClient.get(cacheKey);
     if (cachedEmisor) {
-      return JSON.parse(cachedEmisor);
+      return this.conRucProveedor(JSON.parse(cachedEmisor));
     }
     const query = new SelectQuery(
       `
@@ -57,10 +60,15 @@ export class EmisorService extends BaseService {
     if (res) {
       // Save cache
       await this.redisClient.set(cacheKey, JSON.stringify(res));
-      return res;
+      return this.conRucProveedor(res);
     } else {
       throw new BadRequestException(`No existe Emisor SRI para la sucursal: ${dtoIn.ideSucu}`);
     }
+  }
+
+  /** Se agrega fuera del caché del emisor para que un cambio en la variable aplique de inmediato. */
+  private async conRucProveedor(emisor: EmisorDto): Promise<EmisorDto> {
+    return { ...emisor, rucProveedor: await getRucProveedorSri(this.variablesService) };
   }
 
   async clearCacheEmisor(_dtoIn: QueryOptionsDto & HeaderParamsDto) {

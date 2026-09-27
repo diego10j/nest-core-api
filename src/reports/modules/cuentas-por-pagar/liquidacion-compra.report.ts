@@ -5,6 +5,7 @@ import {
     buildEncabezadoRide,
     buildInfoAdicionalSection,
     buildPanelContraparte,
+    campoRucProveedor,
     campoTexto,
     fmtNumero,
     hairlineTableLayout,
@@ -25,6 +26,7 @@ export const liquidacionCompraReport = (
     empresa: Empresa,
     barcodeDataUrl?: string,
     ambienteTexto?: string,
+    rucProveedor?: string,
 ): TDocumentDefinitions => {
     const { cabecera, detalles, reembolsos } = data;
     const { estab, ptoEmi, secuencial } = splitNumeroDocumento(cabecera.numero_cpcfa);
@@ -150,7 +152,7 @@ export const liquidacionCompraReport = (
 
     const colIzquierda: Content = {
         stack: [
-            buildInfoAdicionalSection([{ nombre: 'Observación', valor: cabecera.observacion_cpcfa }]),
+            buildInfoAdicionalSection([{ nombre: 'Observación', valor: cabecera.observacion_cpcfa }, campoRucProveedor(rucProveedor)]),
             ...(reembolsos.length > 0
                 ? [{
                     stack: [

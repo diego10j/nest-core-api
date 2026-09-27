@@ -26,6 +26,8 @@ export interface ArchivoProducto {
   peso: number;
   ruta: string;
   version: string;
+  /** El mismo archivo está asociado a otros productos ("Reutilizar documento"). */
+  compartido?: boolean;
 }
 
 interface DocumentoExistente {
@@ -295,6 +297,15 @@ export class BdtProcesoService {
         }
         // Sin caracteres nulos/de control: Postgres los rechaza en TEXT y JSONB.
         extr = limpiarParaBd(extr);
+        // Documento compartido entre productos (p. ej. la ficha de los colores para velas): no nombra a
+        // cada producto, así que "producto no coincide" no aplica ni resta confianza.
+        if (archivo.compartido && extr.motivosRevision.includes('PRODUCTO_NO_COINCIDE')) {
+          extr = {
+            ...extr,
+            motivosRevision: extr.motivosRevision.filter((m) => m !== 'PRODUCTO_NO_COINCIDE'),
+            confianza: Math.min(1, Math.round((extr.confianza + 0.1) * 100) / 100),
+          };
+        }
 
         // Un documento aprobado por una persona sigue aprobado al reutilizarlo, salvo que no coincida
         // con este producto.
@@ -1216,7 +1227,11 @@ export class BdtProcesoService {
        )
        SELECT a.uuid::text AS uuid, a.nombre_arch AS nombre, a.nombre2_arch AS nombre_disco,
               a.type_arch AS mime, COALESCE(a.peso_arch, 0)::bigint AS peso, t.ruta,
-              CONCAT_WS(' ', a.fecha_actua, a.hora_actua, a.fecha_ingre, a.hora_ingre) AS version
+              CONCAT_WS(' ', a.fecha_actua, a.hora_actua, a.fecha_ingre, a.hora_ingre) AS version,
+              -- Mismo archivo en disco asociado a otros productos ("Reutilizar documento").
+              EXISTS (SELECT 1 FROM sis_archivo x
+                       WHERE x.nombre2_arch = a.nombre2_arch AND x.ide_arch <> a.ide_arch AND x.ide_empr = a.ide_empr
+                         AND COALESCE(x.papelera_arch, FALSE) = FALSE) AS compartido
          FROM arbol t
          JOIN sis_archivo a ON a.ide_arch = t.ide_arch
         WHERE COALESCE(t.carpeta_arch, FALSE) = FALSE AND a.nombre2_arch IS NOT NULL
