@@ -8,6 +8,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { FILE_STORAGE_CONSTANTS } from '../sistema/files/constants/files.constants';
+import { MarcaAguaService, admiteMarcaAgua } from '../sistema/files/marca-agua.service';
 
 import { AlertasIaService } from './alertas-ia.service';
 import { BdtExtraccionService, DocumentoExtraido, ExtraccionPrevia } from './bdt-extraccion.service';
@@ -31,6 +32,8 @@ interface DocumentoExistente {
   ide_bddoc: number;
   uuid_origen_bddoc: string;
   hash_bddoc: string;
+  /** Hash antes de la marca de agua / reemplazo (el mismo documento sin marca se sigue reconociendo). */
+  hash_original_bddoc: string | null;
   version_extractor_bddoc: number;
   estado_bddoc: string;
   intentos_bddoc: number;
@@ -107,7 +110,23 @@ export class BdtProcesoService {
     private readonly dataSource: DataSourceService,
     private readonly extraccion: BdtExtraccionService,
     private readonly alertas: AlertasIaService,
+    private readonly marcaAgua: MarcaAguaService,
   ) {}
+
+  /**
+   * Marca de agua al adjunto ya extraído y aprobado. Nunca hace fallar la extracción: si no se puede
+   * (PDF protegido, sin logo…) queda en el log. El hash del documento lo actualiza BdtAutomaticoService
+   * al recibir el aviso MARCA_AGUA.
+   */
+  private async ponerMarcaAgua(ctx: ContextoCorrida, archivo: ArchivoProducto) {
+    if (!admiteMarcaAgua(archivo.nombre_disco)) return;
+    try {
+      const r = await this.marcaAgua.aplicarAArchivo(archivo.uuid, ctx.ideEmpr, 'BASE_TECNICA');
+      if ('motivo' in r && !/ya tiene marca/i.test(r.motivo)) this.logger.warn(`Marca de agua ${archivo.nombre}: ${r.motivo}`);
+    } catch (error) {
+      this.logger.warn(`Marca de agua ${archivo.nombre}: ${(error as Error).message}`);
+    }
+  }
 
   // ------------------------------------------------------------------ inicio de corrida
 
@@ -172,8 +191,9 @@ export class BdtProcesoService {
       ]);
 
       const existentes = await this.dataSource.pool.query<DocumentoExistente>(
-        `SELECT ide_bddoc, uuid_origen_bddoc, hash_bddoc, version_extractor_bddoc, estado_bddoc, intentos_bddoc
-           FROM bdt_documento WHERE ide_inarti = $1 AND ide_empr = $2`,
+        `SELECT ide_bddoc, uuid_origen_bddoc, hash_bddoc, version_extractor_bddoc, estado_bddoc, intentos_bddoc,
+                to_jsonb(d) ->> 'hash_original_bddoc' AS hash_original_bddoc
+           FROM bdt_documento d WHERE ide_inarti = $1 AND ide_empr = $2`,
         [ideInarti, ideEmpr],
       );
       ctx.existentes = existentes.rows;
@@ -229,7 +249,8 @@ export class BdtProcesoService {
       const buffer = await fs.readFile(ruta);
       const hash = createHash('sha256').update(buffer).digest('hex');
 
-      const porHash = ctx.existentes.find((d) => d.hash_bddoc === hash);
+      const mismoArchivo = (d: DocumentoExistente) => d.hash_bddoc === hash || d.hash_original_bddoc === hash;
+      const porHash = ctx.existentes.find(mismoArchivo);
       const porUuid = ctx.existentes.find((d) => d.uuid_origen_bddoc === archivo.uuid);
 
       // El mismo PDF adjunto dos veces en el producto (otra carpeta): se procesa una sola vez.
@@ -244,7 +265,7 @@ export class BdtProcesoService {
       // Un documento APROBADO (automático o por un usuario) no se vuelve a extraer en "Procesar", ni
       // con forzar ni al cambiar la versión del extractor: solo desde "Extraer" en su diálogo.
       const aprobado = existente?.estado_bddoc === 'APROBADO' && !ctx.individual;
-      if (existente && existente.hash_bddoc === hash && (aprobado || (!ctx.forzar && this.estaAlDia(existente)))) {
+      if (existente && mismoArchivo(existente) && (aprobado || (!ctx.forzar && this.estaAlDia(existente)))) {
         ctx.contadores.sinCambios++;
         detalle.estado = 'SIN_CAMBIOS';
         detalle.estado_documento = existente.estado_bddoc;
@@ -284,6 +305,9 @@ export class BdtProcesoService {
           hashTexto,
           ideOrigen: previa?.ide_bddoc ?? null,
         });
+        // Extraído del original y aprobado (confianza >= 90% o extracción aprobada reutilizada): el
+        // archivo se reemplaza por su versión con la marca de agua de la empresa.
+        if (estadoDoc === 'APROBADO') await this.ponerMarcaAgua(ctx, archivo);
 
         ctx.contadores.procesados++;
         ctx.contadores.tokens += extr.tokensEntrada + extr.tokensSalida;
@@ -352,11 +376,13 @@ export class BdtProcesoService {
     const r = await this.dataSource.pool.query(
       `SELECT ide_bddoc, estado_bddoc, datos_bddoc, texto_original_bddoc, metodo_extraccion_bddoc, paginas_bddoc,
               motivos_revision_bddoc, modelo_ia_bddoc
-         FROM bdt_documento
+         FROM bdt_documento d
         WHERE ide_empr = $1 AND uuid_origen_bddoc <> $2::uuid
           AND estado_bddoc IN ('APROBADO', 'REVISION') AND datos_bddoc IS NOT NULL
-          AND (hash_bddoc = $3 OR ($4::text IS NOT NULL AND hash_texto_bddoc = $4))
-        ORDER BY (estado_bddoc = 'APROBADO') DESC, (hash_bddoc = $3) DESC, confianza_bddoc DESC NULLS LAST,
+          AND (hash_bddoc = $3 OR to_jsonb(d) ->> 'hash_original_bddoc' = $3
+               OR ($4::text IS NOT NULL AND hash_texto_bddoc = $4))
+        ORDER BY (estado_bddoc = 'APROBADO') DESC,
+                 (hash_bddoc = $3 OR to_jsonb(d) ->> 'hash_original_bddoc' = $3) DESC, confianza_bddoc DESC NULLS LAST,
                  fecha_proceso_bddoc DESC NULLS LAST
         LIMIT 1`,
       [ctx.ideEmpr, uuid, hash, hashTexto],
@@ -1122,8 +1148,9 @@ export class BdtProcesoService {
     nombreProducto: string,
   ): Promise<ContextoCorrida> {
     const existentes = await this.dataSource.pool.query<DocumentoExistente>(
-      `SELECT ide_bddoc, uuid_origen_bddoc, hash_bddoc, version_extractor_bddoc, estado_bddoc, intentos_bddoc
-         FROM bdt_documento WHERE ide_inarti = $1 AND ide_empr = $2`,
+      `SELECT ide_bddoc, uuid_origen_bddoc, hash_bddoc, version_extractor_bddoc, estado_bddoc, intentos_bddoc,
+              to_jsonb(d) ->> 'hash_original_bddoc' AS hash_original_bddoc
+         FROM bdt_documento d WHERE ide_inarti = $1 AND ide_empr = $2`,
       [ideInarti, ideEmpr],
     );
     return {

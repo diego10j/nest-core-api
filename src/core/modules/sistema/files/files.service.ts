@@ -125,6 +125,8 @@ export class FilesService {
             a.usuario_ingre,
             a.favorita_arch,
             a.descargas_arch AS descargas,
+            -- to_jsonb: no falla si aún no existe la columna (scripts/marca_agua.sql)
+            to_jsonb(a) ->> 'marca_agua_arch' AS marca_agua,
             COALESCE(agg.num_arch, 0) AS num_arch,
             COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch
         FROM
@@ -150,6 +152,8 @@ export class FilesService {
       obj.tags = [];
       obj.shared = [];
       obj.isFavorited = obj.favorita_arch;
+      obj.marcaAgua = !!obj.marca_agua;
+      delete obj.marca_agua;
       obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
       obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
       delete obj.fecha_ingre;

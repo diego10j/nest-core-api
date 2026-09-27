@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
+import { BdtMarcaAguaService } from './bdt-marca-agua.service';
 import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 import { ConfiguracionBdtDto } from './dto/configuracion-bdt.dto';
@@ -30,6 +31,7 @@ export class BaseTecnicaController {
     private readonly contenido: BdtContenidoService,
     private readonly masivo: BdtMasivoService,
     private readonly automatico: BdtAutomaticoService,
+    private readonly marcaAgua: BdtMarcaAguaService,
   ) {}
 
   // ------------------------------------------------------------------ página Base Técnica (mantenimiento)
@@ -50,6 +52,24 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Avance de la última extracción masiva / mejorada (barra de avance)' })
   getProcesoMasivo(@AppHeaders() headersParams: HeaderParamsDto) {
     return this.masivo.getEstado(headersParams.ideEmpr);
+  }
+
+  @Get('getMarcaAguaMasivo')
+  @ApiOperation({ summary: 'Avance de la marca de agua a documentos aprobados (y cuántos faltan)' })
+  getMarcaAguaMasivo(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.marcaAgua.getEstado(headersParams.ideEmpr);
+  }
+
+  @Post('iniciarMarcaAgua')
+  @ApiOperation({ summary: 'Pone la marca de agua a los documentos aprobados que aún no la tienen (segundo plano)' })
+  iniciarMarcaAgua(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.marcaAgua.iniciar(headersParams);
+  }
+
+  @Post('cancelarMarcaAgua')
+  @ApiOperation({ summary: 'Detiene la marca de agua masiva' })
+  cancelarMarcaAgua(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.marcaAgua.cancelar(headersParams.ideEmpr);
   }
 
   @Post('iniciarMasivo')

@@ -3,7 +3,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { ArchivoSubidoEmitter, ArchivoSubidoEvent } from '../sistema/files/archivo-subido.emitter';
 
-import { BdtProcesoService, DetalleArchivo, nuevosContadores } from './bdt-proceso.service';
+import { BdtProcesoService, DetalleArchivo, calcularHuella, nuevosContadores } from './bdt-proceso.service';
 import { CuentaIaError } from './helpers/errores-ia.helper';
 
 /** Espera tras el último archivo de un producto: una subida de varios archivos se procesa junta. */
@@ -49,6 +49,11 @@ export class BdtAutomaticoService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async alArchivo(e: ArchivoSubidoEvent) {
+    // Marca de agua o reemplazo del mismo archivo: no es un documento nuevo, se conserva lo extraído.
+    if (e.accion === 'MARCA_AGUA' || e.accion === 'REEMPLAZADO') {
+      await this.actualizarHash(e);
+      return;
+    }
     const ideInarti = await this.proceso.productoDeArchivo(e.uuid, e.ideEmpr);
     if (!ideInarti) return; // no es un adjunto de producto
     const clave = `${e.ideEmpr}:${ideInarti}`;
@@ -62,6 +67,58 @@ export class BdtAutomaticoService implements OnModuleInit, OnModuleDestroy {
           .catch((err) => this.logger.error(`Extracción automática ${clave}: ${(err as Error).message}`, (err as Error).stack));
       }, ESPERA_AGRUPAR_MS),
     );
+  }
+
+  /**
+   * El archivo cambió de contenido (marca de agua / reemplazo): el documento pasa a reconocerse por el
+   * hash nuevo y guarda el anterior en hash_original_bddoc (así el mismo PDF sin marca en otro producto
+   * sigue reutilizando esta extracción). Sin esto "Procesar" lo tomaría como un documento distinto.
+   */
+  private async actualizarHash(e: ArchivoSubidoEvent) {
+    if (!e.hashAnterior || !e.hashNuevo || e.hashAnterior === e.hashNuevo) return;
+    await this.actualizarHashDocumento(e);
+    await this.actualizarHuellaProducto(e).catch((err) => this.logger.warn(`Huella del producto (${e.uuid}): ${(err as Error).message}`));
+  }
+
+  /**
+   * La marca de agua cambia el tamaño y la fecha del archivo, que forman la huella de adjuntos del
+   * producto: sin esto el producto mostraría "hay cambios sin procesar". Solo se actualiza si la huella
+   * estaba al día ANTES del cambio (calculada con el tamaño/versión anteriores): así no se oculta otro
+   * cambio real pendiente.
+   */
+  private async actualizarHuellaProducto(e: ArchivoSubidoEvent) {
+    if (e.pesoAnterior === undefined || e.versionAnterior === undefined) return;
+    const doc = await this.dataSource.pool.query(
+      `SELECT DISTINCT ide_inarti FROM bdt_documento WHERE uuid_origen_bddoc = $1::uuid AND ide_empr = $2`,
+      [e.uuid, e.ideEmpr],
+    );
+    for (const { ide_inarti } of doc.rows) {
+      const archivos = await this.proceso.listarArchivosProducto(ide_inarti, e.ideEmpr);
+      const antes = archivos.map((a) => (a.uuid === e.uuid ? { ...a, peso: e.pesoAnterior!, version: e.versionAnterior! } : a));
+      await this.dataSource.pool.query(
+        `UPDATE bdt_producto SET huella_archivos_bdprd = $4
+          WHERE ide_inarti = $1 AND ide_empr = $2 AND huella_archivos_bdprd = $3`,
+        [ide_inarti, e.ideEmpr, calcularHuella(antes), calcularHuella(archivos)],
+      );
+    }
+  }
+
+  private async actualizarHashDocumento(e: ArchivoSubidoEvent) {
+    const params = [e.uuid, e.ideEmpr, e.hashAnterior, e.hashNuevo];
+    try {
+      await this.dataSource.pool.query(
+        `UPDATE bdt_documento
+            SET hash_original_bddoc = COALESCE(hash_original_bddoc, $3), hash_bddoc = $4
+          WHERE uuid_origen_bddoc = $1::uuid AND ide_empr = $2 AND hash_bddoc = $3`,
+        params,
+      );
+    } catch (error) {
+      // Sin scripts/marca_agua.sql (no existe hash_original_bddoc): al menos el hash nuevo.
+      this.logger.warn(`Hash del documento ${e.uuid}: ${(error as Error).message}`);
+      await this.dataSource.pool
+        .query(`UPDATE bdt_documento SET hash_bddoc = $4 WHERE uuid_origen_bddoc = $1::uuid AND ide_empr = $2 AND hash_bddoc = $3`, params)
+        .catch((err) => this.logger.error(`Hash del documento ${e.uuid}: ${(err as Error).message}`));
+    }
   }
 
   private async procesar(ideEmpr: number, ideInarti: number) {

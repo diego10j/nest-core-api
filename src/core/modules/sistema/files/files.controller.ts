@@ -25,12 +25,14 @@ import { CreateFolderDto } from './dto/create-folder.dto';
 import { DeleteFilesDto } from './dto/delete-files.dto';
 import { FavoriteFileDto } from './dto/favorite-file.dto';
 import { GetFilesDto } from './dto/get-files.dto';
+import { ArchivoUuidDto } from './dto/marca-agua.dto';
 import { MoveFileDto } from './dto/move-file.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FilesService } from './files.service';
 import { fileNamer } from './helpers';
 import { fileOriginalNamer } from './helpers/fileNamer.helper';
+import { MarcaAguaService } from './marca-agua.service';
 
 
 @ApiTags('Sistema-Files')
@@ -38,8 +40,23 @@ import { fileOriginalNamer } from './helpers/fileNamer.helper';
 export class FilesController {
   constructor(
     private readonly filesService: FilesService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly marcaAgua: MarcaAguaService,
   ) { }
+
+  @Post('aplicarMarcaAgua')
+  @ApiOperation({ summary: 'Pone la marca de agua con el logo de la empresa a un PDF o imagen y reemplaza el archivo' })
+  aplicarMarcaAgua(@AppHeaders() h: HeaderParamsDto, @Body() dtoIn: ArchivoUuidDto) {
+    return this.marcaAgua.aplicarAArchivo(dtoIn.uuid, h.ideEmpr, h.login);
+  }
+
+  @Post('reemplazarArchivo')
+  @ApiOperation({ summary: 'Reemplaza el contenido de un archivo conservando nombre, carpeta y uuid (límite 100MB)' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 }, storage: memoryStorage() }))
+  reemplazarArchivo(@AppHeaders() h: HeaderParamsDto, @UploadedFile() file: Express.Multer.File, @Body() dtoIn: ArchivoUuidDto) {
+    if (!file) throw new BadRequestException('No se recibió el archivo o es demasiado grande');
+    return this.marcaAgua.reemplazarContenido(dtoIn.uuid, h.ideEmpr, file.buffer, file.originalname, h.login);
+  }
 
   @Get('image/tesoreria/:imageName')
   @ApiOperation({ summary: 'Servir imagen estática de tesorería' })

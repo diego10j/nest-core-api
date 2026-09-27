@@ -6,8 +6,17 @@ export interface ArchivoSubidoEvent {
   /** uuid del archivo (sis_archivo.uuid). */
   uuid: string;
   ideEmpr: number;
-  /** SUBIDO: archivo nuevo · MOVIDO: se movió a otra carpeta (ej. a la carpeta de un producto). */
-  accion: 'SUBIDO' | 'MOVIDO';
+  /**
+   * SUBIDO: archivo nuevo · MOVIDO: se movió a otra carpeta (ej. a la carpeta de un producto) ·
+   * MARCA_AGUA / REEMPLAZADO: el contenido cambió en el mismo archivo (hashAnterior → hashNuevo); la base
+   * técnica actualiza su hash para no volver a extraerlo.
+   */
+  accion: 'SUBIDO' | 'MOVIDO' | 'MARCA_AGUA' | 'REEMPLAZADO';
+  hashAnterior?: string;
+  hashNuevo?: string;
+  /** Tamaño y versión (fechas) antes del cambio: la base técnica mantiene al día la huella del producto. */
+  pesoAnterior?: number;
+  versionAnterior?: string;
 }
 
 /**

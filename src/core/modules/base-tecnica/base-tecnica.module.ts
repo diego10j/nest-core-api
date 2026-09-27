@@ -10,6 +10,7 @@ import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
 import { BdtExtraccionService } from './bdt-extraccion.service';
 import { BdtIaService } from './bdt-ia.service';
+import { BdtMarcaAguaService } from './bdt-marca-agua.service';
 import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 
@@ -33,6 +34,7 @@ import { BdtProcesoService } from './bdt-proceso.service';
     BdtContenidoService,
     BdtMasivoService,
     BdtAutomaticoService,
+    BdtMarcaAguaService,
     AlertasIaService,
   ],
   // El asistente QuimIA (módulo quimia) usa la IA y las consultas de la base técnica.

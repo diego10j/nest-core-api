@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+
+import { MarcaAguaService } from '../sistema/files/marca-agua.service';
 
 import { BdtProcesoService, calcularHuella } from './bdt-proceso.service';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
@@ -18,9 +20,12 @@ const lista = (rows: any[]) => ({ rowCount: rows.length, rows });
 /** Lecturas y revisión manual de la base técnica (tab "Datos técnicos" del producto). */
 @Injectable()
 export class BdtDatosService {
+  private readonly logger = new Logger(BdtDatosService.name);
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly proceso: BdtProcesoService,
+    private readonly marcaAgua: MarcaAguaService,
   ) {}
 
   /**
@@ -171,7 +176,11 @@ export class BdtDatosService {
   /** Documento completo para la vista de revisión: texto original, traducción, valores y secciones. */
   async getDocumento(dto: IdeDocumentoDto & HeaderParamsDto) {
     const doc = await this.dataSource.pool.query(
-      `SELECT d.*, f.nombre_bdfab, f.pais_bdfab, p.nombre_bdprv, l.numero_bdlot
+      `SELECT d.*, f.nombre_bdfab, f.pais_bdfab, p.nombre_bdprv, l.numero_bdlot,
+              -- Marca de agua / versión del archivo (el visor recarga el PDF cuando cambia)
+              (SELECT to_jsonb(a) ->> 'marca_agua_arch' FROM sis_archivo a WHERE a.uuid = d.uuid_origen_bddoc) AS marca_agua_archivo,
+              (SELECT COALESCE(a.fecha_actua::text, '') || ' ' || COALESCE(a.hora_actua::text, '') || ' ' || a.peso_arch::text
+                 FROM sis_archivo a WHERE a.uuid = d.uuid_origen_bddoc) AS version_archivo
          FROM bdt_documento d
          LEFT JOIN bdt_producto_fabricante pf ON pf.ide_bdpfa = d.ide_bdpfa
          LEFT JOIN bdt_fabricante f ON f.ide_bdfab = pf.ide_bdfab
@@ -271,7 +280,7 @@ export class BdtDatosService {
     try {
       await client.query('BEGIN');
       const actual = await client.query(
-        `SELECT ide_inarti, tipo_bddoc, estado_bddoc, nombre_original_bddoc FROM bdt_documento
+        `SELECT ide_inarti, tipo_bddoc, estado_bddoc, nombre_original_bddoc, uuid_origen_bddoc FROM bdt_documento
           WHERE ide_bddoc = $1 AND ide_empr = $2 FOR UPDATE`,
         [dto.ide_bddoc, dto.ideEmpr],
       );
@@ -364,6 +373,13 @@ export class BdtDatosService {
       );
 
       await client.query('COMMIT');
+      // Aprobado por una persona: igual que al superar el 90% automáticamente, el archivo lleva la marca
+      // de agua (en segundo plano; no retrasa ni hace fallar la aprobación).
+      if (dto.estado === 'APROBADO' && doc.uuid_origen_bddoc) {
+        this.marcaAgua
+          .aplicarAArchivo(doc.uuid_origen_bddoc, dto.ideEmpr, dto.login)
+          .catch((e) => this.logger.warn(`Marca de agua al aprobar ${doc.nombre_original_bddoc}: ${(e as Error).message}`));
+      }
       return { message: 'ok' };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
