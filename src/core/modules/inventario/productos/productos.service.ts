@@ -2769,10 +2769,22 @@ export class ProductosService extends BaseService {
                 a.descargas_arch AS descargas,
                 COALESCE(agg.num_arch, 0) AS num_arch,
                 COALESCE(agg.sum_peso_arch, 0) AS sum_peso_arch,
-                a.ide_inarti
+                a.ide_inarti,
+                -- Mismos datos que FilesService.getFiles (vista de archivos del ERP):
+                to_jsonb(a) ->> 'marca_agua_arch' AS marca_agua,
+                a.nombre2_arch AS disco,
+                us.nom_usua AS usuario_nombre,
+                us.avatar_usua AS usuario_avatar,
+                CASE WHEN a.carpeta_arch THEN NULL ELSE (
+                    SELECT COUNT(*) FROM sis_archivo x
+                     WHERE x.nombre2_arch = a.nombre2_arch AND x.ide_empr = a.ide_empr AND COALESCE(x.papelera_arch, FALSE) = FALSE
+                ) END AS compartido_en
             FROM
                 sis_archivo a
             LEFT JOIN archivo_aggregates agg ON a.ide_arch = agg.sis_ide_arch
+            LEFT JOIN LATERAL (
+                SELECT u.nom_usua, u.avatar_usua FROM sis_usuario u WHERE u.nick_usua = a.usuario_ingre LIMIT 1
+            ) us ON TRUE
             WHERE ${whereClause}
                   AND ide_empr = ${dto.ideEmpr}
                    ${mode !== 'trash' ? `AND papelera_arch = FALSE` : ''}
@@ -2796,6 +2808,10 @@ export class ProductosService extends BaseService {
                 obj.createdAt = toDate(obj.fecha_ingre, FORMAT_DATETIME_DB());
                 obj.modifiedAt = toDate(obj.fecha_actua || obj.fecha_ingre, FORMAT_DATETIME_DB());
                 obj.ide_inarti = obj.ide_inarti;
+                obj.marcaAgua = !!obj.marca_agua;
+                obj.compartidoEn = obj.compartido_en == null ? undefined : Number(obj.compartido_en);
+                delete obj.marca_agua;
+                delete obj.compartido_en;
                 delete obj.fecha_ingre;
                 delete obj.fecha_actua;
                 delete obj.sum_peso_arch;
