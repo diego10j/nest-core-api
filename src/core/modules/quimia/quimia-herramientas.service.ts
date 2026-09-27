@@ -231,9 +231,9 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'reporte_ventas',
       description:
-        'Reportes de ventas de la empresa con gráfico y tabla (los mismos del ERP): resumen diario de ventas (hoy o días ' +
-        'atrás: ventas, cobros, utilidad, formas de pago, top clientes/artículos), ventas anuales, ventas ' +
-        'mensuales de un año, ventas diarias recientes, mejores clientes y productos más vendidos. Úsala para "¿cómo van las ' +
+        'Reportes de ventas de la sucursal con gráfico y tabla (los mismos del ERP): resumen diario de facturas (hoy, días ' +
+        'atrás o una fecha: cobranza, desglose de ventas, utilidad, top 10 clientes/artículos, vendedores), ventas anuales, ' +
+        'ventas de un año por mes (KPIs, total y utilidad, base imponible, base 0, notas de crédito, IVA), ventas diarias recientes, mejores clientes y productos más vendidos. Úsala para "¿cómo van las ' +
         'ventas?", "ventas de este año", "ventas por mes", "ventas de la última semana", "top clientes".',
       parameters: {
         type: 'object',
@@ -243,6 +243,7 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
           anios: { type: 'integer', description: 'Cuántos años (VENTAS_ANUALES, por defecto 5)' },
           dias: { type: 'integer', description: 'Días (VENTAS_DIARIAS, por defecto 15)' },
           dias_atras: { type: 'integer', description: 'RESUMEN_DIARIO: 0 = hoy, 1 = ayer…' },
+          fecha: { type: 'string', description: 'RESUMEN_DIARIO de un día concreto: YYYY-MM-DD o DD/MM/YYYY' },
           meses: { type: 'integer', description: 'Meses hacia atrás (TOP_CLIENTES / TOP_PRODUCTOS, por defecto 12)' },
           limite: { type: 'integer', description: 'Cuántos (TOP_CLIENTES / TOP_PRODUCTOS)' },
         },
@@ -693,7 +694,7 @@ export class QuimiaHerramientasService {
     const etiqueta = tipo === 'FACTURA' ? 'factura' : 'proforma';
     this.logger.log(
       `${etiqueta} "${numero}" · empresa ${ctx.usuario.ideEmpr}` +
-        `${tipo === 'FACTURA' ? ` · sucursal ${ctx.usuario.ideSucu || 'SIN FILTRO'}` : ''} → ${encontrados.length} encontrada(s)`,
+        `${tipo === 'FACTURA' ? ` · sucursal ${ctx.usuario.ideSucu ?? 'SIN FILTRO'}` : ''} → ${encontrados.length} encontrada(s)`,
     );
     if (!encontrados.length) return { encontrado: false, mensaje: `No existe una ${etiqueta} con el número ${numero}.` };
     if (!elegido) {

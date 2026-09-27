@@ -23,6 +23,8 @@ function corto(v: number, formato?: string): string {
  * doble resolución. Se usa para enviar los gráficos por Telegram como una foto normal.
  */
 export async function graficoAPng(g: GraficoChat, ancho = 900, alto = 480): Promise<Buffer> {
+  // Valores sobre varias series: más ancho para que las etiquetas no se monten.
+  if (g.valores && g.series.length > 1) ancho = Math.max(ancho, 110 * g.categorias.length + 120);
   const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: ancho, height: alto });
   const muchas = g.categorias.length > 12;
   chart.setOption({
@@ -43,10 +45,10 @@ export async function graficoAPng(g: GraficoChat, ancho = 900, alto = 480): Prom
       symbolSize: 6,
       itemStyle: g.clase === 'barras' ? { borderRadius: [5, 5, 0, 0] } : undefined,
       label: {
-        show: g.categorias.length <= 12 && g.series.length === 1,
+        show: g.valores || (g.categorias.length <= 12 && g.series.length === 1),
         position: 'top',
-        fontSize: 11,
-        formatter: (p: { value: number }) => (p.value == null ? '' : corto(p.value, g.formato)),
+        fontSize: g.series.length > 1 ? 10 : 11,
+        formatter: (p: { value: number }) => (!p.value ? '' : corto(p.value, g.formato)),
       },
     })),
   });

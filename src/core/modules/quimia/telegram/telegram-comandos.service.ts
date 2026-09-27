@@ -2,10 +2,10 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
-import { GraficoChat } from '../helpers/presentacion.helper';
 import { UsuarioQuimia } from '../quimia.types';
 import { graficoAPng } from '../reportes/grafico-imagen.helper';
-import { CATALOGO_REPORTES, QuimiaReportesService, ResultadoReporte } from '../reportes/quimia-reportes.service';
+import { CATALOGO_REPORTES, QuimiaReportesService, ResultadoReporte, fechaDeArgumento } from '../reportes/quimia-reportes.service';
+import { tablaAPng } from '../reportes/tabla-imagen.helper';
 
 import { TelegramApiService } from './telegram-api.service';
 import { CuentaTelegram, TelegramCuentaService } from './telegram-cuenta.service';
@@ -218,7 +218,18 @@ export class TelegramComandosService {
     }
 
     const def = this.reportes.definicion(c.reporte_qmcom);
+    // "/ventas 2025", "/resumen 1" → número del parámetro del reporte; "/resumen 25/09/2026" → fecha.
     const valor = argumento.trim().match(/^\d+$/) ? Number(argumento.trim()) : undefined;
+    const fecha = valor === undefined ? fechaDeArgumento(argumento) : null;
+    if (argumento.trim() && valor === undefined && !fecha) {
+      await this.api.enviarMensaje(
+        cuenta.token,
+        chatId,
+        `No entendí "${escapar(argumento.trim())}". Ejemplos: /${c.comando_qmcom} 2025 · /${c.comando_qmcom} 25/09/2026`,
+        { html: true },
+      );
+      return true;
+    }
     const usuario: UsuarioQuimia = {
       ideEmpr: cuenta.ide_empr,
       ideSucu: cuenta.ide_sucu ?? 0,
@@ -233,7 +244,7 @@ export class TelegramComandosService {
     try {
       resultado = await this.reportes.ejecutar(
         c.reporte_qmcom,
-        { ...c.parametros_qmcom, ...(def && valor !== undefined ? { [def.argumento]: valor } : {}) },
+        { ...c.parametros_qmcom, ...(def && valor !== undefined ? { [def.argumento]: valor } : {}), ...(fecha ? { fecha } : {}) },
         usuario,
       );
       await this.enviarResultado(cuenta, chatId, resultado);
@@ -268,14 +279,22 @@ export class TelegramComandosService {
     return true;
   }
 
-  /** Texto del reporte + sus gráficos como fotos. */
+  /** Texto del reporte + sus gráficos y tablas anchas como fotos (en el orden del reporte). */
   private async enviarResultado(cuenta: CuentaTelegram, chatId: number, r: ResultadoReporte) {
-    const [primera, ...resto] = r.texto.split('\n');
-    const html = `<b>${escapar(primera)}</b>${resto.length ? `\n${escapar(resto.join('\n'))}` : ''}`;
+    let html = r.mensajeHtml;
+    if (!html) {
+      const [primera, ...resto] = r.texto.split('\n');
+      html = `<b>${escapar(primera)}</b>${resto.length ? `\n${escapar(resto.join('\n'))}` : ''}`;
+    }
     await this.api.enviarMensaje(cuenta.token, chatId, html.slice(0, 3900), { html: true });
-    for (const g of r.bloques.filter((b) => b.tipo === 'grafico') as GraficoChat[]) {
-      const png = await graficoAPng(g);
-      await this.api.enviarFoto(cuenta.token, chatId, { buffer: png, nombre: 'grafico.png', mime: 'image/png' }, g.titulo);
+    for (const b of r.bloques) {
+      if (b.tipo === 'grafico') {
+        const png = await graficoAPng(b);
+        await this.api.enviarFoto(cuenta.token, chatId, { buffer: png, nombre: 'grafico.png', mime: 'image/png' }, b.titulo);
+      } else if (b.tipo === 'tabla' && b.imagen) {
+        const png = await tablaAPng(b);
+        await this.api.enviarFoto(cuenta.token, chatId, { buffer: png, nombre: 'tabla.png', mime: 'image/png' }, b.titulo);
+      }
     }
   }
 

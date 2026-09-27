@@ -2042,19 +2042,21 @@ export class FacturasService extends BaseService {
         queryTopArticulos.addIntParam(3, dtoIn.ideSucu);
 
         // ── 7. Utilidad del día ────────────────────────────────────────────────
-        // Llama directamente a f_utilidad_ventas con el mismo día como inicio y fin
+        // Llama directamente a f_utilidad_ventas con el mismo día como inicio y fin, de la misma sucursal
+        // que el resto del resumen (sin id_sucursal sumaba todas las sucursales de la empresa).
         const queryUtilidadDia = new SelectQuery(`
             SELECT
                 COUNT(*)                                                                                       AS total_items,
                 COUNT(*) FILTER (WHERE hace_kardex_inarti = true AND precio_compra = 0)                        AS items_sin_precio_compra,
                 COALESCE(SUM(utilidad_neta), 0)                                                                AS total_utilidad
-            FROM f_utilidad_ventas($1::BIGINT, $2::DATE, $3::DATE)
+            FROM f_utilidad_ventas($1::BIGINT, $2::DATE, $3::DATE, NULL::BIGINT, $4::BIGINT)
              WHERE nota_credito = 0
             AND hace_kardex_inarti = true
         `);
         queryUtilidadDia.addIntParam(1, dtoIn.ideEmpr);
         queryUtilidadDia.addParam(2, dtoIn.fecha);
         queryUtilidadDia.addParam(3, dtoIn.fecha);
+        queryUtilidadDia.addIntParam(4, dtoIn.ideSucu);
 
         // ── 8. Detalle facturas del día con estado de pago ────────────────────
         const queryDetalle = new SelectQuery(`

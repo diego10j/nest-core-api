@@ -98,7 +98,7 @@ export class QuimiaDocumentosErpService {
         ORDER BY a.fecha_emisi_cccfa DESC, a.ide_cccfa DESC
         LIMIT 10`,
       // Sin sucursal (cuenta de Telegram sin sucursal configurada) no se filtra.
-      [ideEmpr, secuencial, establecimiento, punto, ideSucu || null],
+      [ideEmpr, secuencial, establecimiento, punto, ideSucu ?? null],
     );
     return r.rows.map((x) => ({ ...x, total: Number(x.total) }));
   }
@@ -137,7 +137,7 @@ export class QuimiaDocumentosErpService {
                JOIN gen_persona b ON b.ide_geper = a.ide_geper
                LEFT JOIN cxc_estado_factura e ON e.ide_ccefa = a.ide_ccefa
               WHERE a.ide_cccfa = $1 AND a.ide_empr = $2 AND ($3::int IS NULL OR a.ide_sucu = $3)`,
-            [id, ideEmpr, ideSucu || null],
+            [id, ideEmpr, ideSucu ?? null],
           )
         : await this.dataSource.pool.query(
             `SELECT c.ide_cccpr AS id, c.secuencial_cccpr AS numero, TO_CHAR(c.fecha_cccpr, 'YYYY-MM-DD') AS fecha,

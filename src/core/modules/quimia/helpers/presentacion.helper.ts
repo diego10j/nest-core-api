@@ -21,6 +21,8 @@ export interface TablaChat {
   filas: Record<string, unknown>[];
   /** Fila de totales (mismas claves que las columnas). */
   total?: Record<string, unknown> | null;
+  /** Telegram: se envía como imagen (tablas anchas que en texto no se leen en el celular). */
+  imagen?: boolean;
 }
 
 export interface IndicadorChat {
@@ -49,6 +51,8 @@ export interface GraficoChat {
   series: { nombre: string; datos: (number | null)[] }[];
   /** Formato de los valores del eje Y y etiquetas. */
   formato?: FormatoDato;
+  /** Muestra el valor sobre cada barra/punto (también con varias series). */
+  valores?: boolean;
 }
 
 export type BloqueChat = TablaChat | IndicadoresChat | GraficoChat;

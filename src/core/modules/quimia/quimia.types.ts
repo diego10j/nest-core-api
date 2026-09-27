@@ -21,6 +21,10 @@ export interface ProductoCandidato extends ProductoQuimia {
   similitud: number;
   /** Documentos técnicos procesados (0 = sin base técnica). */
   documentos: number;
+  /** Solo se parece: la pregunta nombra otra sustancia (ver detector-producto.helper). */
+  conflicto?: boolean;
+  /** Palabras propias del nombre que están en la pregunta. */
+  palabras?: number;
 }
 
 /**

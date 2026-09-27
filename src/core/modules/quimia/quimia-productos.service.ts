@@ -54,13 +54,15 @@ export class QuimiaProductosService {
         candidatos = tolerantes;
       }
     }
-    return candidatos.slice(0, MAX_OPCIONES_PRODUCTO).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos }) => ({
+    return candidatos.slice(0, MAX_OPCIONES_PRODUCTO).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos, conflicto, palabras }) => ({
       ide_inarti,
       nombre,
       coincidencia,
       cobertura,
       similitud,
       documentos,
+      conflicto,
+      palabras,
     }));
   }
 

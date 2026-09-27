@@ -17,6 +17,14 @@ export interface CandidatoDetectado {
   /** 0..1 — qué parte (ponderada) del nombre del producto aparece en la pregunta. */
   similitud: number;
   documentos: number;
+  /**
+   * La pregunta nombra OTRO producto que comparte palabras con este: al nombre le falta una palabra
+   * y la pregunta trae otra del catálogo que este no cubre ("hidróxido de SODIO" ≠ "hidróxido de
+   * CALCIO"). No se elige solo: el agente decide con buscar_producto y las notas.
+   */
+  conflicto?: boolean;
+  /** Palabras del nombre que están en la pregunta (sin números ni empaques/unidades). */
+  palabras?: number;
 }
 
 // Palabras de la pregunta que nunca identifican un producto.
@@ -25,8 +33,23 @@ const IGNORADAS = new Set([
   'UNA', 'UNO', 'SUS', 'ESTE', 'ESTA', 'ESE', 'ESA', 'PRODUCTO', 'PRODUCTOS', 'SIRVE', 'SIRVEN',
   'PUREZA', 'CONCENTRACION', 'LOTE', 'LOTES', 'ULTIMO', 'ULTIMOS', 'FICHA', 'TECNICA', 'HOJA', 'SEGURIDAD',
   'CERTIFICADO', 'ANALISIS', 'THE', 'AND', 'FOR', 'WHAT', 'WITH', 'FACTURA', 'FACTURAS', 'PROFORMA',
-  'PROFORMAS', 'PDF', 'QUIERO', 'ENVIAME', 'MANDAME', 'NECESITO',
+  'PROFORMAS', 'PDF', 'QUIERO', 'ENVIAME', 'MANDAME', 'NECESITO', 'PRECIO', 'PRECIOS', 'CUANTO', 'CUANTOS',
+  'CUANTA', 'CUESTA', 'COTIZA', 'COTIZAR', 'COTIZAME', 'VENDER', 'VENDO', 'VENDEMOS', 'VENDEN', 'VENDE', 'PUEDO', 'STOCK', 'SIGO', 'HAY',
 ]);
+
+/**
+ * Empaques y unidades ("¿a cuánto vendo el SACO?", "60 KILOS"): como los números, ayudan a desempatar
+ * pero no identifican un producto por sí solas. Por raíz de 6 letras.
+ */
+const GENERICAS = new Set(
+  ['SACO', 'SACOS', 'KILO', 'KILOS', 'KILOGRAMO', 'KILOGRAMOS', 'KGS', 'GRAMO', 'GRAMOS', 'LITRO', 'LITROS',
+    'GALON', 'GALONES', 'CANECA', 'CANECAS', 'TAMBOR', 'TAMBORES', 'BIDON', 'BIDONES', 'FUNDA', 'FUNDAS',
+    'CAJA', 'CAJAS', 'UNIDAD', 'UNIDADES', 'PRESENTACION'].map((w) => w.slice(0, 6)),
+);
+// Números y cantidades pegadas a su unidad ("5KG", "250ML", "20LT") tampoco identifican: son la cantidad
+// pedida ("cotiza 5kg"), no el nombre del producto.
+const CANTIDAD = /^\d+(?:KGS?|GRS?|G|LTS?|L|ML|CC|GL|GAL|LB)?$/;
+const noIdentifica = (w: string) => CANTIDAD.test(w) || GENERICAS.has(w.slice(0, 6));
 
 /**
  * Pedido de un documento del ERP por número ("quiero factura 1000", "pdf de la proforma 350"): no se
@@ -35,6 +58,15 @@ const IGNORADAS = new Set([
 export function esPedidoDocumentoErp(pregunta: string): boolean {
   const t = normalizarTexto(pregunta);
   return /\b(FACTURAS?|PROFORMAS?|FACT|PROF)\b[^0-9]{0,25}\d/.test(t);
+}
+
+/**
+ * Pedido de crear una proforma / cotización ("crea una proforma a consumidor final de 5 kg de cera de
+ * coco y 5 kg de cera de soya"): nombra varios productos a propósito, así que no se detecta producto ni
+ * se ofrece "¿cambio de producto?": el agente busca cada producto y prepara el borrador.
+ */
+export function esPedidoProforma(pregunta: string): boolean {
+  return /\b(PROFORMAS?|COTIZACION(ES)?)\b/.test(normalizarTexto(pregunta));
 }
 
 /** Máximo de productos que se ofrecen para elegir cuando la pregunta es ambigua. */
@@ -146,18 +178,26 @@ function detectar(
     palabras(e.texto).forEach((w) => porRaiz.has(w.slice(0, 6)) || porRaiz.set(w.slice(0, 6), w));
     const lista = [...porRaiz.values()];
     let cobertura = 0;
-    let conPalabra = false;
+    let coinciden = 0;
+    let faltaEnPregunta = false;
     for (const w of lista) {
       const peso = coincide(w, palabrasPregunta);
       if (peso) {
         cobertura += idf(w) * peso;
-        if (!/^\d+$/.test(w)) conPalabra = true;
+        if (!noIdentifica(w)) coinciden++;
+      } else if (!noIdentifica(w)) {
+        faltaEnPregunta = true;
       }
     }
-    // Un número suelto ("1000", "25") no identifica un producto: solo ayuda a desempatar cuando
-    // también coincide alguna palabra del nombre.
-    if (!cobertura || !conPalabra) continue;
+    // Un número o un empaque sueltos ("1000", "saco") no identifican un producto: solo ayudan a
+    // desempatar cuando también coincide alguna palabra del nombre.
+    if (!cobertura || !coinciden) continue;
     const similitud = cobertura / lista.reduce((acc, w) => acc + idf(w), 0);
+    // Palabra de la pregunta que existe en el catálogo pero no en este nombre (ej. "SODIO").
+    const sobraEnPregunta = palabrasPregunta.some(
+      (q) => !noIdentifica(q) && df.has(q.slice(0, 6)) && !lista.some((w) => coincide(w, [q])),
+    );
+    const conflicto = faltaEnPregunta && sobraEnPregunta;
     const previo = mejores.get(e.ide_inarti);
     if (!previo || cobertura > previo.cobertura || (cobertura === previo.cobertura && similitud > previo.similitud)) {
       mejores.set(e.ide_inarti, {
@@ -167,6 +207,8 @@ function detectar(
         cobertura,
         similitud: Math.round(similitud * 100) / 100,
         documentos: e.documentos,
+        conflicto,
+        palabras: coinciden,
       });
     }
   }
@@ -180,8 +222,10 @@ function detectar(
  * - varios: empate (ej. "ácido cítrico" → anhidro y monohidratado) → preguntar al usuario.
  */
 export function elegirProductoDetectado(
-  candidatos: CandidatoDetectado[],
+  todos: CandidatoDetectado[],
 ): { tipo: 'ninguno' } | { tipo: 'uno'; producto: CandidatoDetectado } | { tipo: 'varios'; opciones: CandidatoDetectado[] } {
+  // Un producto que solo se parece (nombra otra sustancia) nunca se elige ni se ofrece por sí solo.
+  const candidatos = todos.filter((c) => !c.conflicto);
   const [top] = candidatos;
   if (!top) return { tipo: 'ninguno' };
   const empatados = candidatos.filter((c) => c.cobertura >= top.cobertura * 0.9);
@@ -192,4 +236,12 @@ export function elegirProductoDetectado(
   if (completos.length === 1) return { tipo: 'uno', producto: completos[0] };
 
   return { tipo: 'varios', opciones: empatados.slice(0, MAX_OPCIONES_PRODUCTO) };
+}
+
+/**
+ * Coincidencia suficiente para interrumpir una conversación con otro producto activo: la mitad del
+ * nombre, o dos palabras propias ("detergente polvo" → DETERGENTE INDUSTRIAL EN POLVO AZUL).
+ */
+export function esCoincidenciaFuerte(c: Pick<CandidatoDetectado, 'similitud' | 'palabras'>): boolean {
+  return c.similitud >= 0.5 || (c.palabras ?? 0) >= 2;
 }

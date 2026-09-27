@@ -10,7 +10,7 @@ import { BDT_CONFIG, MENSAJE_IA_GENERAL, costoIa } from '../base-tecnica/constan
 import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { ChatQuimiaDto } from './dto/chat-quimia.dto';
 import { convertirCitasEnLinea, convertirNotasEnLinea } from './helpers/citas-en-linea.helper';
-import { esPedidoDocumentoErp } from './helpers/detector-producto.helper';
+import { esCoincidenciaFuerte, esPedidoDocumentoErp, esPedidoProforma } from './helpers/detector-producto.helper';
 import { sugerenciasSeguimiento } from './helpers/presentacion.helper';
 import { formatearTextoPlano } from './helpers/texto-plano.helper';
 import {
@@ -171,30 +171,32 @@ export class QuimiaAgenteService {
     let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr) : null;
     // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
     // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
-    // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.
-    const candidatos = esPedidoDocumentoErp(dto.pregunta)
+    // "Quiero la factura 1000" (documento del ERP) o "crea una proforma de 5 kg de X y 5 kg de Y" (varios
+    // productos a propósito): no se busca producto en la pregunta ni se interrumpe con "¿cambio de producto?".
+    const candidatos = esPedidoDocumentoErp(dto.pregunta) || esPedidoProforma(dto.pregunta)
       ? []
       : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
     const eleccion = this.productos.elegir(candidatos);
 
     if (producto) {
-      // La pregunta nombra claramente OTRO producto: se propone el cambio en vez de responder
-      // sobre el producto equivocado. Solo con coincidencias fuertes (>= 50% del nombre): una
-      // pregunta de clientes o transporte ("¿cuánto debe Laboratorios ABC?") no debe interrumpir
-      // por una palabra suelta que se parezca a algún producto.
-      const activoMencionado = candidatos.some((c) => c.ide_inarti === producto.ide_inarti);
-      const fuertes = this.productos.elegir(candidatos.filter((c) => c.similitud >= 0.5));
-      if (!activoMencionado && fuertes.tipo === 'uno') {
-        const texto = `Tu pregunta parece ser sobre **${fuertes.producto.nombre}**, no sobre **${producto.nombre}**. ¿Cambio de producto?`;
+      // La pregunta nombra claramente OTRO producto: se propone el cambio en vez de responder sobre el
+      // producto equivocado. El activo cuenta como mencionado solo si está entre los que MÁS cubren la
+      // pregunta ("detergente polvo azul" con DETERGENTE 5 KG activo → es el AZUL). Solo coincidencias
+      // fuertes interrumpen: "¿cuánto debe Laboratorios ABC?" o "¿a cuánto vendo el saco?" no.
+      const principales = eleccion.tipo === 'uno' ? [eleccion.producto] : eleccion.tipo === 'varios' ? eleccion.opciones : [];
+      const activoMencionado = principales.some((c) => c.ide_inarti === producto.ide_inarti);
+      const fuertes = principales.filter(esCoincidenciaFuerte);
+      if (!activoMencionado && fuertes.length === 1) {
+        const texto = `Tu pregunta parece ser sobre **${fuertes[0].nombre}**, no sobre **${producto.nombre}**. ¿Cambio de producto?`;
         emitir({ tipo: 'delta', texto });
-        emitir({ tipo: 'sugerir_cambio', producto: fuertes.producto });
+        emitir({ tipo: 'sugerir_cambio', producto: fuertes[0] });
         await this.cerrar(dto, usuario, canal, emitir, { modo: 'SELECCION', ideInarti: producto.ide_inarti, respuesta: texto });
         return;
       }
-      if (!activoMencionado && fuertes.tipo === 'varios') {
+      if (!activoMencionado && fuertes.length > 1) {
         const texto = `Tu pregunta menciona otros productos. ¿A cuál te refieres? (o sigue con **${producto.nombre}**)`;
         emitir({ tipo: 'delta', texto });
-        emitir({ tipo: 'seleccion', opciones: fuertes.opciones });
+        emitir({ tipo: 'seleccion', opciones: fuertes });
         await this.cerrar(dto, usuario, canal, emitir, { modo: 'SELECCION', ideInarti: producto.ide_inarti, respuesta: texto });
         return;
       }

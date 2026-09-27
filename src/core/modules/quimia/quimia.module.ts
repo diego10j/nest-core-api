@@ -6,6 +6,7 @@ import { VentasReportsModule } from 'src/reports/modules/ventas/ventas-reports.m
 import { CoreService } from '../../core.service';
 import { AuditService } from '../audit/audit.service';
 import { BaseTecnicaModule } from '../base-tecnica/base-tecnica.module';
+import { InventarioBiService } from '../inventario/data-bi/inventario-bi.service';
 import { ConfigPreciosProductosService } from '../inventario/productos/config-precios.service';
 import { ProductosService } from '../inventario/productos/productos.service';
 import { ProformasModule } from '../proformas/proformas.module';
@@ -63,6 +64,8 @@ import { QuimiaUsoService } from './uso/quimia-uso.service';
     TelegramComandosService,
     ProductosService,
     ConfigPreciosProductosService,
+    // Top productos de Análisis de ventas (mismo servicio que su endpoint, filtra por sucursal).
+    InventarioBiService,
     AuditService,
     CoreService,
   ],

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
+import { InventarioBiService } from '../../inventario/data-bi/inventario-bi.service';
 import { VentasBiService } from '../../ventas/data-bi/ventas-bi.service';
 import { FacturasService } from '../../ventas/facturas/facturas.service';
 import { BloqueChat, GraficoChat, IndicadoresChat, TablaChat } from '../helpers/presentacion.helper';
@@ -33,8 +34,10 @@ export interface DefinicionReporte {
 export interface ResultadoReporte {
   titulo: string;
   bloques: BloqueChat[];
-  /** Resumen en texto (Telegram, historial y para que la IA lo comente). */
+  /** Resumen en texto (historial y para que la IA lo comente). */
   texto: string;
+  /** Mensaje de Telegram de los comandos (HTML). Sin él se envía `texto`. */
+  mensajeHtml?: string;
 }
 
 const anioActual = () => new Date().getFullYear();
@@ -45,8 +48,9 @@ export const CATALOGO_REPORTES: DefinicionReporte[] = [
     clave: 'RESUMEN_DIARIO',
     nombre: 'Resumen diario de ventas',
     descripcion:
-      'Resumen del día (mismo dato que Facturas → Resumen diario): ventas, contado/crédito, cobros, utilidad, ventas ' +
-      'por hora, formas de pago, top clientes y artículos. De la sucursal del usuario.',
+      'Resumen del día (mismo dato que Ventas → Resumen diario de facturas): indicadores de cobranza, desglose de ventas, ' +
+      'utilidad, top 10 clientes, top 10 artículos y detalle por vendedor. De la sucursal del usuario. Acepta una fecha ' +
+      '(/resumen 25/09/2026) o días atrás (/resumen 1 = ayer).',
     parametros: [{ clave: 'dias_atras', etiqueta: 'Días atrás (0 = hoy, 1 = ayer)', defecto: 0, min: 0, max: 60 }],
     argumento: 'dias_atras',
   },
@@ -59,8 +63,10 @@ export const CATALOGO_REPORTES: DefinicionReporte[] = [
   },
   {
     clave: 'VENTAS_MENSUALES',
-    nombre: 'Ventas mensuales',
-    descripcion: 'Ventas netas y utilidad por mes de un año.',
+    nombre: 'Ventas del año por mes',
+    descripcion:
+      'Mismo dato que la card Ventas anuales de Análisis de ventas: KPIs, gráfico de total ventas y utilidad por mes y ' +
+      'detalle mensual (facturas, base imponible, base 0, notas de crédito, IVA, total, utilidad). Año actual o /ventas 2025.',
     parametros: [{ clave: 'anio', etiqueta: 'Año (0 = año actual)', defecto: 0, min: 0, max: 2100 }],
     argumento: 'anio',
   },
@@ -84,7 +90,7 @@ export const CATALOGO_REPORTES: DefinicionReporte[] = [
   {
     clave: 'TOP_PRODUCTOS',
     nombre: 'Productos más vendidos',
-    descripcion: 'Productos con mayor cantidad vendida en el período.',
+    descripcion: 'Productos con más ventas en el período (mismo dato que Top productos de Análisis de ventas).',
     parametros: [
       { clave: 'meses', etiqueta: 'Meses hacia atrás', defecto: 12, min: 1, max: 60 },
       { clave: 'limite', etiqueta: 'Cantidad de productos', defecto: 10, min: 3, max: 30 },
@@ -104,6 +110,47 @@ const n = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Numbe
 const usd = (v: number) => `$${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
 const cifra = (v: number, dec = 0) => new Intl.NumberFormat('en-US', { maximumFractionDigits: dec }).format(v);
 const filasDe = (r: any): any[] => (Array.isArray(r) ? r : (r?.rows ?? []));
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const nombreMes = (nombre: unknown, numero: unknown) => {
+  const t = String(nombre ?? '').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : (MESES[Number(numero) - 1] ?? String(numero));
+};
+/** Fecha local (Ecuador) del servidor en YYYY-MM-DD, no UTC: después de las 19:00 UTC ya sería "mañana". */
+const fechaLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+interface Seccion {
+  titulo: string;
+  lineas: string[];
+}
+
+/** Texto plano (IA / historial) y HTML de Telegram (títulos en negrita) de las mismas secciones. */
+function textos(encabezado: string, secciones: Seccion[]): { texto: string; mensajeHtml: string } {
+  const con = secciones.filter((s) => s.lineas.length);
+  return {
+    texto: [encabezado, ...con.flatMap((s) => ['', s.titulo, ...s.lineas])].join('\n'),
+    mensajeHtml: [`<b>${esc(encabezado)}</b>`, ...con.flatMap((s) => ['', `<b>${esc(s.titulo)}</b>`, ...s.lineas.map(esc)])].join('\n'),
+  };
+}
+
+/**
+ * Fecha escrita por el usuario → YYYY-MM-DD: "26/09/2026", "26-09-2026", "26/9/26", "26/09" (año actual)
+ * o "2026-09-26". Null si no es una fecha válida.
+ */
+export function fechaDeArgumento(valor: string): string | null {
+  const t = (valor ?? '').trim();
+  let d: number, m: number, a: number;
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const lat = t.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?$/);
+  if (iso) [a, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (lat) {
+    [d, m] = [Number(lat[1]), Number(lat[2])];
+    a = lat[3] ? Number(lat[3].length === 2 ? `20${lat[3]}` : lat[3]) : anioActual();
+  } else return null;
+  const f = new Date(a, m - 1, d);
+  if (f.getFullYear() !== a || f.getMonth() !== m - 1 || f.getDate() !== d || a < 2000) return null;
+  return fechaLocal(f);
+}
 
 /**
  * Reportes de ventas para QuimIA y los comandos de Telegram. Reutiliza los servicios de Análisis de
@@ -114,6 +161,7 @@ export class QuimiaReportesService {
   constructor(
     private readonly ventasBi: VentasBiService,
     private readonly facturas: FacturasService,
+    private readonly inventarioBi: InventarioBiService,
   ) {}
 
   definicion(clave: string): DefinicionReporte | undefined {
@@ -138,13 +186,22 @@ export class QuimiaReportesService {
 
   async ejecutar(clave: string, parametros: Record<string, unknown>, usuario: UsuarioQuimia): Promise<ResultadoReporte> {
     const p = this.resolverParametros(clave, parametros);
-    const h = { ideEmpr: usuario.ideEmpr, ideSucu: usuario.ideSucu, ideUsua: usuario.ideUsua, idePerf: usuario.idePerf, login: usuario.login };
+    // ide_sucu: los servicios de Análisis de datos filtran la sucursal por este parámetro (sin él suman
+    // todas las sucursales de la empresa); el resumen diario usa ideSucu.
+    const h = {
+      ideEmpr: usuario.ideEmpr,
+      ideSucu: usuario.ideSucu,
+      ideUsua: usuario.ideUsua,
+      idePerf: usuario.idePerf,
+      login: usuario.login,
+      ide_sucu: [usuario.ideSucu],
+    };
     switch (clave as ClaveReporte) {
       case 'RESUMEN_DIARIO': {
+        // Fecha pedida ("/resumen 25/09/2026") o días atrás desde hoy.
         const d = new Date();
         d.setDate(d.getDate() - p.dias_atras);
-        // Fecha local (Ecuador) del servidor, no UTC: después de las 19:00 UTC ya sería "mañana".
-        const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const fecha = (typeof parametros.fecha === 'string' && fechaDeArgumento(parametros.fecha)) || fechaLocal(d);
         const r: any = await this.facturas.getResumenDiarioFacturas({ ...h, ...SIN_PAGINAR, fecha } as any);
         return this.resumenDiario(r?.row ?? {}, fecha);
       }
@@ -166,7 +223,7 @@ export class QuimiaReportesService {
       case 'TOP_PRODUCTOS':
         return this.topProductos(
           filasDe(
-            await this.ventasBi.getTopProductosVendidos({
+            await this.inventarioBi.getTopProductos({
               ...h,
               ...SIN_PAGINAR,
               fechaInicio: haceMeses(p.meses),
@@ -186,69 +243,91 @@ export class QuimiaReportesService {
   private resumenDiario(r: any, fecha: string): ResultadoReporte {
     const m = r.metricas ?? {};
     const g = r.graficas ?? {};
+    const u = r.utilidad ?? {};
     const dia = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(0, 4)}`;
-    const titulo = `Resumen diario de ventas · ${dia}`;
-    const utilidad = n(r.utilidad?.total_utilidad);
-    const ventas = n(m.ventas_netas ?? m.total_ventas_netas);
+    const titulo = `Resumen diario de facturas · ${dia}`;
     if (!n(m.total_facturas)) {
+      const texto = `📋 ${titulo}\nNo hay facturas registradas ese día en la sucursal.`;
       return {
         titulo,
         bloques: [{ tipo: 'indicadores', titulo, items: [{ etiqueta: 'Facturas', valor: 0, formato: 'numero' }] }],
-        texto: `📋 ${titulo}
-No hay facturas registradas ese día en la sucursal.`,
+        texto,
+        mensajeHtml: `<b>📋 ${esc(titulo)}</b>\nNo hay facturas registradas ese día en la sucursal.`,
       };
     }
-    const porHora = (g.por_hora ?? []) as any[];
-    const bloques: BloqueChat[] = [
-      {
-        tipo: 'indicadores',
-        titulo,
-        items: [
-          { etiqueta: 'Ventas netas', valor: ventas, formato: 'moneda', destacado: true },
-          { etiqueta: 'Facturas', valor: n(m.total_facturas), formato: 'numero' },
-          { etiqueta: 'Ticket promedio', valor: n(m.ticket_promedio), formato: 'moneda' },
-          { etiqueta: 'Utilidad', valor: utilidad, formato: 'moneda', color: utilidad >= 0 ? 'success' : 'error' },
-          { etiqueta: `Contado (${n(m.facturas_contado)})`, valor: n(m.total_contado), formato: 'moneda' },
-          { etiqueta: `Crédito (${n(m.facturas_credito)})`, valor: n(m.total_credito), formato: 'moneda' },
-          { etiqueta: 'Cobrado', valor: n(m.total_cobrado), formato: 'moneda', color: 'success' },
-          { etiqueta: 'Pendiente de cobro', valor: n(m.total_pendiente), formato: 'moneda', color: n(m.total_pendiente) > 0 ? 'warning' : null },
-          n(m.monto_notas_credito) > 0 && { etiqueta: 'Notas de crédito', valor: n(m.monto_notas_credito), formato: 'moneda' },
-          n(m.facturas_anuladas) > 0 && { etiqueta: 'Anuladas', valor: n(m.facturas_anuladas), formato: 'numero', color: 'error' },
-        ].filter(Boolean) as IndicadoresChat['items'],
-      },
-    ];
-    if (porHora.length > 1) {
-      bloques.push({
-        tipo: 'grafico',
-        titulo: `Ventas por hora · ${dia}`,
-        clase: 'barras',
-        categorias: porHora.map((x) => String(x.etiqueta ?? x.hora)),
-        series: [{ nombre: 'Ventas', datos: porHora.map((x) => Math.round(n(x.total) * 100) / 100) }],
-        formato: 'moneda',
-      });
-    }
-    const formas = ((g.por_forma_pago ?? []) as any[]).map((x) => ({ forma: x.nombre, facturas: n(x.cantidad), total: n(x.total) }));
-    if (formas.length) {
-      bloques.push({
-        tipo: 'tabla',
-        titulo: 'Por forma de pago',
-        columnas: [
-          { clave: 'forma', etiqueta: 'Forma de pago' },
-          { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
-          { clave: 'total', etiqueta: 'Total', formato: 'moneda' },
-        ],
-        filas: formas,
-      });
-    }
-    const clientes = ((g.top_clientes ?? []) as any[]).map((x) => ({
-      cliente: x.nom_geper,
+
+    // Mismos cálculos que la página Ventas → Resumen diario de facturas.
+    const facturado = n(m.total_facturado);
+    const cobrado = n(m.total_cobrado);
+    const pendiente = n(m.total_pendiente);
+    const notasCredito = n(m.monto_notas_credito);
+    const recaudacion = facturado > 0 ? (cobrado / facturado) * 100 : 0;
+    const ventasNetas = n(m.total_ventas_netas ?? m.ventas_netas);
+    const utilidad = n(u.total_utilidad);
+    const margen = ventasNetas > 0 ? (utilidad / ventasNetas) * 100 : 0;
+    const sinCosto = n(u.items_sin_precio_compra);
+
+    const clientes = ((g.top_clientes ?? []) as any[]).slice(0, 10).map((x) => ({
+      cliente: String(x.nom_geper ?? ''),
       facturas: n(x.cantidad_facturas),
       total: n(x.total_neto),
     }));
+    const articulos = ((g.top_articulos ?? []) as any[]).slice(0, 10).map((x) => ({
+      producto: String(x.nombre_inarti ?? ''),
+      cantidad: n(x.cantidad_vendida),
+      unidad: x.siglas_inuni ?? '',
+      total: n(x.total_neto),
+    }));
+    // Detalle por vendedor: agrupado desde las facturas del día (igual que la página).
+    const porVendedor = new Map<string, { facturas: number; total: number }>();
+    for (const f of (r.facturas ?? []) as any[]) {
+      const nombre = String(f.nombre_vgven ?? '').trim() || 'Sin vendedor';
+      const v = porVendedor.get(nombre) ?? { facturas: 0, total: 0 };
+      v.facturas += 1;
+      v.total += n(f.total_cccfa);
+      porVendedor.set(nombre, v);
+    }
+    const totalVendedores = [...porVendedor.values()].reduce((a, v) => a + v.total, 0);
+    const vendedores = [...porVendedor.entries()]
+      .map(([vendedor, v]) => ({ vendedor, facturas: v.facturas, total: v.total, porcentaje: totalVendedores ? (v.total / totalVendedores) * 100 : 0 }))
+      .sort((a, b) => b.total - a.total);
+
+    const bloques: BloqueChat[] = [
+      {
+        tipo: 'indicadores',
+        titulo: `Indicadores de cobranza · ${dia}`,
+        items: [
+          { etiqueta: `Total por cobrar (${cifra(n(m.total_facturas))} docs)`, valor: facturado, formato: 'moneda', destacado: true },
+          { etiqueta: `Total cobrado (${cifra(recaudacion, 1)}%)`, valor: cobrado, formato: 'moneda', color: 'success' },
+          { etiqueta: `Pendiente por cobrar (${cifra(n(m.facturas_credito))} a crédito)`, valor: pendiente, formato: 'moneda', color: pendiente > 0 ? 'warning' : null },
+          notasCredito > 0 && { etiqueta: `Notas de crédito (${cifra(n(m.facturas_con_nota_credito))})`, valor: notasCredito, formato: 'moneda', color: 'error' },
+        ].filter(Boolean) as IndicadoresChat['items'],
+      },
+      {
+        tipo: 'indicadores',
+        titulo: 'Desglose de ventas',
+        items: [
+          { etiqueta: 'Base grabada', valor: n(m.total_base_grabada), formato: 'moneda' },
+          { etiqueta: 'Base tarifa 0%', valor: n(m.total_base0), formato: 'moneda' },
+          { etiqueta: 'IVA', valor: n(m.total_iva), formato: 'moneda' },
+          { etiqueta: notasCredito > 0 ? 'Ventas netas (desc. NC)' : 'Ventas netas', valor: ventasNetas, formato: 'moneda', destacado: true },
+        ],
+      },
+      {
+        tipo: 'indicadores',
+        titulo: 'Utilidad de ventas',
+        items: [
+          { etiqueta: 'Utilidad', valor: utilidad, formato: 'moneda', color: utilidad >= 0 ? 'success' : 'error', destacado: true },
+          { etiqueta: 'Margen sobre ventas netas', valor: margen, formato: 'porcentaje' },
+          { etiqueta: 'Artículos vendidos', valor: n(u.total_items), formato: 'numero' },
+          sinCosto > 0 && { etiqueta: 'Sin precio de compra', valor: sinCosto, formato: 'numero', color: 'warning' },
+        ].filter(Boolean) as IndicadoresChat['items'],
+      },
+    ];
     if (clientes.length) {
       bloques.push({
         tipo: 'tabla',
-        titulo: 'Top clientes del día',
+        titulo: 'Top 10 clientes',
         columnas: [
           { clave: 'cliente', etiqueta: 'Cliente' },
           { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
@@ -257,37 +336,74 @@ No hay facturas registradas ese día en la sucursal.`,
         filas: clientes,
       });
     }
-    const articulos = ((g.top_articulos ?? []) as any[]).map((x) => ({
-      producto: x.nombre_inarti,
-      cantidad: n(x.cantidad_vendida),
-      unidad: x.siglas_inuni ?? null,
-      total: n(x.total_neto),
-    }));
     if (articulos.length) {
       bloques.push({
         tipo: 'tabla',
-        titulo: 'Top artículos del día',
+        titulo: 'Top 10 artículos',
         columnas: [
           { clave: 'producto', etiqueta: 'Artículo' },
           { clave: 'cantidad', etiqueta: 'Cantidad', formato: 'cantidad' },
+          { clave: 'unidad', etiqueta: 'Unidad' },
           { clave: 'total', etiqueta: 'Total neto', formato: 'moneda' },
         ],
         filas: articulos,
       });
     }
-    const texto = [
-      `📋 ${titulo}`,
-      `Ventas netas: ${usd(ventas)} · ${cifra(n(m.total_facturas))} facturas · ticket ${usd(n(m.ticket_promedio))}`,
-      `Contado: ${usd(n(m.total_contado))} · Crédito: ${usd(n(m.total_credito))}`,
-      `Cobrado: ${usd(n(m.total_cobrado))} · Pendiente: ${usd(n(m.total_pendiente))}`,
-      `Utilidad: ${usd(utilidad)}`,
-      ...(formas.length ? ['', '💳 Formas de pago:', ...formas.map((f) => `• ${f.forma}: ${usd(f.total)} (${f.facturas})`)] : []),
-      ...(clientes.length ? ['', '🏆 Top clientes:', ...clientes.slice(0, 5).map((c, i) => `${i + 1}. ${c.cliente}: ${usd(c.total)}`)] : []),
-      ...(articulos.length
-        ? ['', '📦 Top artículos:', ...articulos.slice(0, 5).map((a, i) => `${i + 1}. ${a.producto}: ${cifra(a.cantidad, 2)} ${a.unidad ?? ''} · ${usd(a.total)}`)]
-        : []),
-    ].join('\n');
-    return { titulo, bloques, texto };
+    if (vendedores.length) {
+      bloques.push({
+        tipo: 'tabla',
+        titulo: 'Detalle por vendedor',
+        columnas: [
+          { clave: 'vendedor', etiqueta: 'Vendedor' },
+          { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
+          { clave: 'total', etiqueta: 'Total', formato: 'moneda' },
+          { clave: 'porcentaje', etiqueta: '%', formato: 'porcentaje' },
+        ],
+        filas: vendedores,
+        total: { vendedor: 'Total', facturas: vendedores.reduce((a, v) => a + v.facturas, 0), total: totalVendedores, porcentaje: 100 },
+      });
+    }
+
+    const secciones: Seccion[] = [
+      {
+        titulo: '💰 Indicadores de cobranza',
+        lineas: [
+          `Total por cobrar: ${usd(facturado)} (${cifra(n(m.total_facturas))} docs)`,
+          `Total cobrado: ${usd(cobrado)} · ${cifra(recaudacion, 1)}% recaudado`,
+          `Pendiente por cobrar: ${usd(pendiente)} (${cifra(n(m.facturas_credito))} a crédito)`,
+          ...(notasCredito > 0 ? [`Notas de crédito: ${usd(notasCredito)} (${cifra(n(m.facturas_con_nota_credito))})`] : []),
+        ],
+      },
+      {
+        titulo: '🧾 Desglose de ventas',
+        lineas: [
+          `Base grabada: ${usd(n(m.total_base_grabada))}`,
+          `Base tarifa 0%: ${usd(n(m.total_base0))}`,
+          `IVA: ${usd(n(m.total_iva))}`,
+          `Ventas netas: ${usd(ventasNetas)}`,
+        ],
+      },
+      {
+        titulo: '📈 Utilidad de ventas',
+        lineas: [
+          `Utilidad: ${usd(utilidad)} · margen ${cifra(margen, 1)}%`,
+          `${cifra(n(u.total_items))} artículos vendidos${sinCosto > 0 ? ` · ${cifra(sinCosto)} sin precio de compra` : ''}`,
+        ],
+      },
+      {
+        titulo: '🏆 Top 10 clientes',
+        lineas: clientes.map((c, i) => `${i + 1}. ${c.cliente}: ${usd(c.total)} (${cifra(c.facturas)} fact.)`),
+      },
+      {
+        titulo: '📦 Top 10 artículos',
+        lineas: articulos.map((a, i) => `${i + 1}. ${a.producto}: ${cifra(a.cantidad, 3)} ${a.unidad} · ${usd(a.total)}`),
+      },
+      {
+        titulo: '👤 Detalle por vendedor',
+        lineas: vendedores.map((v) => `${v.vendedor}: ${usd(v.total)} · ${cifra(v.facturas)} fact. · ${cifra(v.porcentaje, 1)}%`),
+      },
+    ];
+    return { titulo, bloques, ...textos(`📋 ${titulo}`, secciones) };
   }
 
   private ventasAnuales(rows: any[], anios: number): ResultadoReporte {
@@ -349,58 +465,105 @@ No hay facturas registradas ese día en la sucursal.`,
     return { titulo, bloques: [indicadores, grafico, tabla], texto };
   }
 
+  /** Mismo dato que la card "Ventas anuales" de Análisis de ventas: KPIs, gráfico total/utilidad y detalle por mes. */
   private ventasMensuales(rows: any[], anio: number): ResultadoReporte {
     const filas = rows.map((r) => ({
-      mes: String(r.nombre_gemes ?? r.ide_gemes),
+      mes: nombreMes(r.nombre_gemes, r.ide_gemes),
       facturas: n(r.num_facturas),
-      ventas: n(r.ventas_netas),
+      base_imponible: n(r.ventas_con_iva),
+      base0: n(r.ventas0),
+      notas_credito: n(r.total_nota_credito),
+      iva: n(r.iva),
+      total: n(r.total),
       utilidad: n(r.utilidad),
+      ventas_netas: n(r.ventas_netas),
     }));
-    const total = filas.reduce((a, f) => a + f.ventas, 0);
-    const utilidad = filas.reduce((a, f) => a + f.utilidad, 0);
-    const mejor = [...filas].sort((a, b) => b.ventas - a.ventas)[0];
-    const titulo = `Ventas mensuales ${anio}`;
+    const suma = (k: keyof (typeof filas)[number]) => filas.reduce((a, f) => a + (f[k] as number), 0);
+    // Promedios sobre los meses con datos (igual que la página).
+    const meses = filas.filter((f) => f.total > 0 || f.facturas > 0).length || 1;
+    const ventasNetas = suma('ventas_netas');
+    const utilidad = suma('utilidad');
+    const facturas = suma('facturas');
+    const enCurso = anio === anioActual();
+    const titulo = `Ventas ${anio}${enCurso ? ' (a la fecha)' : ''}`;
+
+    const tabla: TablaChat = {
+      tipo: 'tabla',
+      titulo: `Detalle por mes · ${anio}`,
+      columnas: [
+        { clave: 'mes', etiqueta: 'Mes' },
+        { clave: 'facturas', etiqueta: '# Fact.', formato: 'numero' },
+        { clave: 'base_imponible', etiqueta: 'Base imponible', formato: 'moneda' },
+        { clave: 'base0', etiqueta: 'Base 0', formato: 'moneda' },
+        { clave: 'notas_credito', etiqueta: 'Notas crédito', formato: 'moneda' },
+        { clave: 'iva', etiqueta: 'IVA', formato: 'moneda' },
+        { clave: 'total', etiqueta: 'Total', formato: 'moneda' },
+        { clave: 'utilidad', etiqueta: 'Utilidad', formato: 'moneda' },
+      ],
+      filas: filas.map(({ ventas_netas: _v, ...f }) => f),
+      total: {
+        mes: 'Total',
+        facturas,
+        base_imponible: suma('base_imponible'),
+        base0: suma('base0'),
+        notas_credito: suma('notas_credito'),
+        iva: suma('iva'),
+        total: suma('total'),
+        utilidad,
+      },
+      imagen: true,
+    };
+    const bloques: BloqueChat[] = [
+      {
+        tipo: 'indicadores',
+        titulo,
+        items: [
+          { etiqueta: 'Total ventas netas', valor: ventasNetas, formato: 'moneda', destacado: true },
+          { etiqueta: 'Promedio ventas mensuales', valor: ventasNetas / meses, formato: 'moneda' },
+          { etiqueta: 'Total utilidad', valor: utilidad, formato: 'moneda', color: utilidad >= 0 ? 'success' : 'error' },
+          { etiqueta: 'Promedio utilidad mensual', valor: utilidad / meses, formato: 'moneda' },
+          { etiqueta: 'Total facturas', valor: facturas, formato: 'numero' },
+          { etiqueta: 'Promedio facturas mensuales', valor: Math.round(facturas / meses), formato: 'numero' },
+        ],
+      },
+      {
+        tipo: 'grafico',
+        titulo: `Ventas anuales ${anio}`,
+        subtitulo: 'Total de ventas y utilidad por mes',
+        clase: 'barras',
+        categorias: filas.map((f) => f.mes.slice(0, 3)),
+        series: [
+          { nombre: 'Total Ventas', datos: filas.map((f) => Math.round(f.total * 100) / 100) },
+          { nombre: 'Utilidad', datos: filas.map((f) => Math.round(f.utilidad * 100) / 100) },
+        ],
+        formato: 'moneda',
+        valores: true,
+      },
+      tabla,
+    ];
+    const kpis = [
+      `Total ventas netas: ${usd(ventasNetas)} · promedio mensual ${usd(ventasNetas / meses)}`,
+      `Total utilidad: ${usd(utilidad)} · promedio mensual ${usd(utilidad / meses)}`,
+      `Total facturas: ${cifra(facturas)} · promedio mensual ${cifra(Math.round(facturas / meses))}`,
+    ];
+    const texto = [
+      `📊 ${titulo}${enCurso ? ' — año en curso: no comparar como año completo' : ''}`,
+      ...kpis,
+      '',
+      'Detalle por mes (# fact. · base imponible · base 0 · notas de crédito · IVA · total · utilidad):',
+      ...filas
+        .filter((f) => f.facturas || f.total)
+        .map(
+          (f) =>
+            `${f.mes}: ${cifra(f.facturas)} · ${usd(f.base_imponible)} · ${usd(f.base0)} · ${usd(f.notas_credito)} · ${usd(f.iva)} · ` +
+            `${usd(f.total)} · ${usd(f.utilidad)}`,
+        ),
+    ].join('\n');
     return {
       titulo,
-      bloques: [
-        {
-          tipo: 'indicadores',
-          titulo: 'Resumen',
-          items: [
-            { etiqueta: `Ventas ${anio}`, valor: total, formato: 'moneda', destacado: true },
-            { etiqueta: 'Utilidad', valor: utilidad, formato: 'moneda', color: utilidad >= 0 ? 'success' : 'error' },
-            { etiqueta: 'Margen', valor: total ? (utilidad / total) * 100 : null, formato: 'porcentaje' },
-            mejor && mejor.ventas > 0 && { etiqueta: 'Mejor mes', valor: `${mejor.mes} (${usd(mejor.ventas)})` },
-          ].filter(Boolean) as IndicadoresChat['items'],
-        },
-        {
-          tipo: 'grafico',
-          titulo,
-          clase: 'barras',
-          categorias: filas.map((f) => f.mes.slice(0, 3)),
-          series: [
-            { nombre: 'Ventas netas', datos: filas.map((f) => Math.round(f.ventas * 100) / 100) },
-            { nombre: 'Utilidad', datos: filas.map((f) => Math.round(f.utilidad * 100) / 100) },
-          ],
-          formato: 'moneda',
-        },
-        {
-          tipo: 'tabla',
-          titulo: 'Detalle por mes',
-          columnas: [
-            { clave: 'mes', etiqueta: 'Mes' },
-            { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
-            { clave: 'ventas', etiqueta: 'Ventas netas', formato: 'moneda' },
-            { clave: 'utilidad', etiqueta: 'Utilidad', formato: 'moneda' },
-          ],
-          filas,
-          total: { mes: 'Total', facturas: filas.reduce((a, f) => a + f.facturas, 0), ventas: total, utilidad },
-        },
-      ],
-      texto: [
-        `📊 ${titulo}: ${usd(total)} · utilidad ${usd(utilidad)}`,
-        ...filas.filter((f) => f.ventas).map((f) => `${f.mes}: ${usd(f.ventas)}`),
-      ].join('\n'),
+      bloques,
+      texto,
+      mensajeHtml: [`<b>📊 ${esc(titulo)}</b>`, ...kpis.map(esc), '', '<i>Gráfico y detalle por mes a continuación.</i>'].join('\n'),
     };
   }
 
@@ -489,10 +652,14 @@ No hay facturas registradas ese día en la sucursal.`,
   }
 
   private topProductos(rows: any[], meses: number): ResultadoReporte {
+    // Mismo dato que "Top productos" de Análisis de ventas (ordenado por ventas netas de notas de crédito).
     const filas = rows.map((r) => ({
-      producto: r.nombre_inarti,
-      cantidad: n(r.total_cantidad),
+      producto: r.producto ?? r.nombre_inarti,
+      cantidad: n(r.cantidad_vendida ?? r.total_cantidad),
       unidad: r.siglas_inuni ?? null,
+      facturas: n(r.num_facturas),
+      ventas: n(r.total_ventas),
+      porcentaje: n(r.porcentaje),
     }));
     const titulo = `Productos más vendidos (últimos ${meses} meses)`;
     return {
@@ -503,12 +670,19 @@ No hay facturas registradas ese día en la sucursal.`,
           titulo,
           columnas: [
             { clave: 'producto', etiqueta: 'Producto' },
-            { clave: 'cantidad', etiqueta: 'Cantidad vendida', formato: 'cantidad' },
+            { clave: 'cantidad', etiqueta: 'Cantidad', formato: 'cantidad' },
+            { clave: 'unidad', etiqueta: 'Unidad' },
+            { clave: 'facturas', etiqueta: 'Facturas', formato: 'numero' },
+            { clave: 'ventas', etiqueta: 'Ventas', formato: 'moneda' },
+            { clave: 'porcentaje', etiqueta: '% ventas', formato: 'porcentaje' },
           ],
           filas,
         },
       ],
-      texto: [`📦 ${titulo}`, ...filas.map((f, i) => `${i + 1}. ${f.producto}: ${cifra(f.cantidad, 2)} ${f.unidad ?? ''}`.trim())].join('\n'),
+      texto: [
+        `📦 ${titulo}`,
+        ...filas.map((f, i) => `${i + 1}. ${f.producto}: ${usd(f.ventas)} · ${cifra(f.cantidad, 2)} ${f.unidad ?? ''} · ${cifra(f.porcentaje, 1)}%`),
+      ].join('\n'),
     };
   }
 }

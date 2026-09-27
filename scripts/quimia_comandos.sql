@@ -37,9 +37,8 @@ INSERT INTO qmi_comando (ide_tlcue, comando_qmcom, descripcion_qmcom, reporte_qm
 SELECT c.ide_tlcue, v.comando, v.descripcion, v.reporte, v.parametros::jsonb, v.orden, c.ide_empr, 'SISTEMA'
   FROM tlg_cuenta c
  CROSS JOIN (VALUES
-     ('resumen',        'Resumen de ventas del día (/resumen 1 = ayer)',        'RESUMEN_DIARIO',   '{"dias_atras": 0}', 1),
-     ('ventas',         'Ventas anuales con gráfico',                           'VENTAS_ANUALES',   '{"anios": 5}',      2),
-     ('ventas_mes',     'Ventas por mes del año (/ventas_mes 2025)',            'VENTAS_MENSUALES', '{"anio": 0}',       3),
+     ('resumen',        'Resumen diario de facturas (/resumen 25/09/2026)',     'RESUMEN_DIARIO',   '{"dias_atras": 0}', 1),
+     ('ventas',         'Ventas del año por mes con gráfico (/ventas 2025)',    'VENTAS_MENSUALES', '{"anio": 0}',       2),
      ('ventas_diarias', 'Ventas de los últimos días (/ventas_diarias 30)',      'VENTAS_DIARIAS',   '{"dias": 15}',      4),
      ('top_clientes',   'Mejores clientes de los últimos 12 meses',             'TOP_CLIENTES',     '{"meses": 12, "limite": 10}', 5)
  ) AS v(comando, descripcion, reporte, parametros, orden)
@@ -79,3 +78,16 @@ EXCEPTION WHEN OTHERS THEN
     -- Si el catálogo tiene otras columnas obligatorias, crearlo desde el ERP con el nombre "Agente IA".
     RAISE NOTICE 'No se pudo crear el tipo de proforma Agente IA (%): créalo en el catálogo con ese nombre', SQLERRM;
 END $$;
+
+-- 7. /ventas pasa a ser el detalle del año por mes (card "Ventas anuales" de Análisis de ventas) y
+--    /ventas_mes queda desactivado porque hace lo mismo. Solo si siguen como se sembraron.
+UPDATE qmi_comando
+   SET reporte_qmcom = 'VENTAS_MENSUALES', parametros_qmcom = '{"anio": 0}',
+       descripcion_qmcom = 'Ventas del año por mes con gráfico (/ventas 2025)', fecha_actua = NOW(), usuario_actua = 'SISTEMA'
+ WHERE comando_qmcom = 'ventas' AND reporte_qmcom = 'VENTAS_ANUALES';
+UPDATE qmi_comando
+   SET descripcion_qmcom = 'Resumen diario de facturas (/resumen 25/09/2026)', fecha_actua = NOW(), usuario_actua = 'SISTEMA'
+ WHERE comando_qmcom = 'resumen' AND reporte_qmcom = 'RESUMEN_DIARIO' AND descripcion_qmcom LIKE 'Resumen de ventas del día%';
+UPDATE qmi_comando
+   SET activo_qmcom = FALSE, fecha_actua = NOW(), usuario_actua = 'SISTEMA'
+ WHERE comando_qmcom = 'ventas_mes' AND reporte_qmcom = 'VENTAS_MENSUALES' AND usuario_actua IS NULL;
