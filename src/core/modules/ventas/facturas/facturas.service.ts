@@ -910,6 +910,7 @@ export class FacturasService extends BaseService {
         }
 
         const condIdeCceen = dtoIn.ide_cceen ? `AND e.ide_cceen = ${dtoIn.ide_cceen}` : '';
+        const condIdeGeper = isDefined(dtoIn.ide_geper) ? `AND a.ide_geper = ${Number(dtoIn.ide_geper)}` : '';
 
         const query = new SelectQuery(
             `
@@ -921,6 +922,7 @@ export class FacturasService extends BaseService {
                   AND a.ide_sucu  = ${dtoIn.ideSucu}
                   AND a.ide_ccefa = ${estadoNormal}
                   ${condIdeUsua}
+                  ${condIdeGeper}
             )
             SELECT
                 a.ide_cccfa,

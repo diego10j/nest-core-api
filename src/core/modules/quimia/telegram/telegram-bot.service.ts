@@ -506,10 +506,12 @@ export class TelegramBotService {
       }
     }
     for (const img of r.imagenes) {
-      const foto = this.documentosErp.leerFoto(img.archivo);
+      const foto = this.documentosErp.leerFoto(img.archivo, img.origen);
       if (!foto) continue;
-      await this.api.enviarFoto(cuenta.token, chatId, foto, img.producto).catch((error) => {
-        this.logger.warn(`Foto ${img.archivo}: ${(error as Error).message}`);
+      // Un comprobante o guía escaneado en PDF va como documento (sendPhoto solo acepta imágenes).
+      const enviar = foto.mime === 'application/pdf' ? this.api.enviarDocumento(cuenta.token, chatId, foto, img.producto) : this.api.enviarFoto(cuenta.token, chatId, foto, img.producto);
+      await enviar.catch((error) => {
+        this.logger.warn(`Imagen ${img.archivo}: ${(error as Error).message}`);
       });
     }
   }

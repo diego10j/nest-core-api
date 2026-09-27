@@ -199,6 +199,25 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'imagenes_factura',
+      description:
+        'Imágenes registradas de una FACTURA (las mismas del detalle de la factura en el ERP): GUIA = foto de la guía de ' +
+        'envío / evidencia de entrega; COMPROBANTE_PAGO = foto del comprobante de cada cobro (transferencia, depósito). ' +
+        '"Envíame la guía de la factura 1000", "el comprobante de pago de la factura 1029". Las imágenes se envían solas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo: { type: 'string', enum: ['GUIA', 'COMPROBANTE_PAGO', 'AMBOS'] },
+          numero: { type: 'string', description: 'Número de la factura tal como lo dijo el usuario' },
+          id: { type: 'integer', description: 'Solo si una búsqueda anterior devolvió varias y el usuario eligió una (id)' },
+        },
+        required: ['tipo', 'numero'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'preparar_proforma',
       description:
         'Prepara un BORRADOR de proforma para un cliente con productos y cantidades (precios según la configuración de ' +
@@ -300,6 +319,7 @@ const MENSAJE_ESTADO: Record<string, string> = {
   buscar_producto: 'Buscando el producto…',
   buscar_base_conocimiento: 'Revisando la base de conocimiento…',
   obtener_documento_pdf: 'Generando el PDF…',
+  imagenes_factura: 'Buscando las imágenes de la factura…',
   reporte_ventas: 'Preparando el reporte de ventas…',
   preparar_proforma: 'Preparando el borrador de la proforma…',
   imagenes_producto: 'Buscando las fotos del producto…',
@@ -375,6 +395,7 @@ export class QuimiaHerramientasService {
       if (nombre === 'buscar_producto') return this.json(await this.buscarProducto(args.texto, ctx));
       if (nombre === 'buscar_base_conocimiento') return await this.buscarConocimiento(args, ctx);
       if (nombre === 'obtener_documento_pdf') return this.json(await this.documentoPdf(args, ctx));
+      if (nombre === 'imagenes_factura') return this.json(await this.imagenesFactura(args, ctx));
       if (nombre === 'preparar_proforma') {
         const b = await this.proformasQuimia.prepararBorrador(args as any, ctx.usuario, ctx.canal ?? 'ASESOR', ctx.telefono ?? null);
         ctx.borrador = b;
@@ -600,7 +621,7 @@ export class QuimiaHerramientasService {
           if (!r.fotos.length) {
             return this.json({ producto: producto.nombre, total: 0, mensaje: 'El producto no tiene imágenes cargadas.' });
           }
-          ctx.imagenes = r.fotos.map((archivo) => ({ archivo, producto: producto.nombre }));
+          ctx.imagenes = r.fotos.map((archivo) => ({ archivo, producto: producto.nombre, origen: 'PRODUCTO' as const }));
           return this.json({
             producto: producto.nombre,
             total: r.fotos.length,
@@ -714,6 +735,64 @@ export class QuimiaHerramientasService {
       documento: { ...elegido, tipo },
       mensaje: 'El PDF se entrega automáticamente como archivo: confirma brevemente qué documento es (número, cliente, fecha, total).',
     };
+  }
+
+  /**
+   * Guía de envío / comprobantes de pago de una factura por su número (misma búsqueda por sucursal que el
+   * PDF). Las imágenes van a ctx.imagenes: el chat las muestra con visor y Telegram las envía como fotos.
+   */
+  private async imagenesFactura(args: Record<string, any>, ctx: ContextoHerramientas) {
+    const tipo = ['GUIA', 'COMPROBANTE_PAGO'].includes(args.tipo) ? String(args.tipo) : 'AMBOS';
+    const numero = String(args.numero ?? '').trim();
+    const encontrados = await this.documentosErp.buscarFacturas(numero, ctx.usuario.ideEmpr, ctx.usuario.ideSucu);
+    const elegido = args.id ? encontrados.find((d) => d.id === Number(args.id)) : encontrados.length === 1 ? encontrados[0] : null;
+    if (!encontrados.length) return { encontrado: false, mensaje: `No existe una factura con el número ${numero} en esta sucursal.` };
+    if (!elegido) {
+      return {
+        encontrado: false,
+        varias: encontrados.map((d) => ({ id: d.id, numero: d.numero, fecha: d.fecha, cliente: d.cliente, total: d.total })),
+        mensaje: 'Hay varias facturas con ese número: pregunta cuál (número completo, cliente o fecha) y vuelve a llamar con su id.',
+      };
+    }
+    const r = await this.documentosErp.imagenesFactura(elegido.id, ctx.usuario);
+    const factura = `factura ${elegido.numero}`;
+    const respuesta: Record<string, unknown> = { factura: { ...elegido }, enviadas: [] as string[] };
+    const enviadas = respuesta.enviadas as string[];
+
+    if (tipo !== 'COMPROBANTE_PAGO') {
+      if (r.guia) {
+        ctx.imagenes.push({ archivo: r.guia, producto: `Guía de envío · ${factura}`, origen: 'ENVIO' });
+        enviadas.push('guía de envío');
+      }
+      respuesta.guia = r.guia
+        ? { transporte: r.transporte?.tipo, destinatario: r.transporte?.destinatario, fecha_envio: r.transporte?.fecha_envio }
+        : !r.transporte
+          ? 'La factura no tiene envío registrado.'
+          : r.transporte.guia_registrada
+            ? 'La guía está registrada pero el archivo ya no existe en el servidor.'
+            : `El envío (${r.transporte.tipo}) no tiene imagen de guía cargada.`;
+    }
+    if (tipo !== 'GUIA') {
+      const conFoto = r.pagos.filter((p) => p.foto);
+      conFoto.forEach((p) =>
+        ctx.imagenes.push({
+          archivo: p.foto!,
+          producto: `Comprobante de pago · ${factura}${p.valor != null ? ` · $${p.valor.toFixed(2)}` : ''}${p.fecha ? ` · ${p.fecha}` : ''}`,
+          origen: 'COMPROBANTE',
+        }),
+      );
+      if (conFoto.length) enviadas.push(`${conFoto.length} comprobante(s) de pago`);
+      respuesta.pagos = r.pagos.length
+        ? r.pagos.map(({ foto, foto_registrada, ...p }) => ({
+            ...p,
+            imagen: foto ? 'enviada' : p.efectivo ? 'pago en efectivo (sin comprobante)' : foto_registrada ? 'archivo no encontrado' : 'sin foto',
+          }))
+        : `La factura no tiene cobros registrados (estado: ${r.estadoPago ?? 'pendiente'}).`;
+    }
+    respuesta.mensaje = enviadas.length
+      ? `Se envían solas (${enviadas.join(' y ')}): confirma en una línea qué se envía; si falta alguna, explica por qué.`
+      : 'No hay imágenes para enviar: explica el motivo con los datos de arriba.';
+    return respuesta;
   }
 
   /** Notas nuevas se agregan a ctx.notas con etiquetas que continúan la numeración (N6, N7…). */

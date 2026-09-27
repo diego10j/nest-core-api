@@ -1,13 +1,15 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { ProformasRepService } from 'src/reports/modules/proformas/proformas-rep.service';
 import { FacturasRepService } from 'src/reports/modules/ventas/facturas/facturas-rep.service';
 import { detectMimeType } from 'src/util/helpers/file-utils';
 
 import { FILE_STORAGE_CONSTANTS } from '../../sistema/files/constants/files.constants';
+import { FacturasService } from '../../ventas/facturas/facturas.service';
 import { UsuarioQuimia } from '../quimia.types';
 
 /** Máximo de fotos del producto que QuimIA envía. */
@@ -26,12 +28,50 @@ export interface ArchivoErpQuimia {
   nombreArchivo: string;
 }
 
-/** Foto de la galería del producto (inv_articulo.fotos_inarti). */
+/**
+ * De dónde es la imagen (cada una vive en su carpeta y el ERP la sirve por su propio endpoint):
+ * - PRODUCTO: foto_inarti / fotos_inarti → /sistema/files/image
+ * - ENVIO: guía o evidencia de envío (cxc_transporte_factura.path_imagen_guia_cctfa) → ventas/envios
+ * - COMPROBANTE: foto del comprobante de cobro (tes_info_comprobante_banco.foto_teincb) → temp_media
+ */
+export type OrigenImagenQuimia = 'PRODUCTO' | 'ENVIO' | 'COMPROBANTE';
+
+/** Imagen que QuimIA entrega (chat: miniatura con visor; Telegram: foto normal). */
 export interface ImagenProductoQuimia {
-  /** Nombre del archivo en el almacenamiento (el chat arma la URL con /sistema/files/image). */
+  /** Nombre del archivo en su almacenamiento. */
   archivo: string;
+  /** Título / pie de foto (nombre del producto, "Guía de envío · factura 001-002-1000"…). */
   producto: string;
+  /** Sin origen = PRODUCTO (conversaciones guardadas antes de este cambio). */
+  origen?: OrigenImagenQuimia;
 }
+
+/** Carpeta de cada origen (la misma que usa el endpoint de descarga del ERP). */
+const carpetaImagen = (origen: OrigenImagenQuimia = 'PRODUCTO') =>
+  origen === 'ENVIO'
+    ? join(envs.pathDrive, 'ventas', 'envios')
+    : origen === 'COMPROBANTE'
+      ? FILE_STORAGE_CONSTANTS.TEMP_DIR
+      : FILE_STORAGE_CONSTANTS.BASE_PATH;
+
+/** Ruta en disco de una imagen, o null si no existe o el nombre no es seguro. */
+export function rutaImagenQuimia(archivo: string, origen?: OrigenImagenQuimia): string | null {
+  const nombre = (archivo ?? '').trim();
+  if (!nombre || nombre.includes('..') || nombre.startsWith('/') || /^https?:/i.test(nombre)) return null;
+  const ruta = join(carpetaImagen(origen), nombre);
+  return existsSync(ruta) ? ruta : null;
+}
+
+/** Nombre de archivo de un elemento de la galería: texto, o un objeto con name/url/archivo/path. */
+const nombreFoto = (v: unknown): string | null => {
+  if (typeof v === 'string') return v.trim() || null;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const x = o.name ?? o.nombre ?? o.archivo ?? o.fileName ?? o.path ?? o.url ?? o.src;
+    return typeof x === 'string' && x.trim() ? x.trim() : null;
+  }
+  return null;
+};
 
 export interface DocumentoEncontrado {
   id: number;
@@ -65,10 +105,13 @@ const soloDigitos = (s: string) => (s ?? '').replace(/\D/g, '');
  */
 @Injectable()
 export class QuimiaDocumentosErpService {
+  private readonly logger = new Logger(QuimiaDocumentosErpService.name);
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly facturasRep: FacturasRepService,
     private readonly proformasRep: ProformasRepService,
+    private readonly facturas: FacturasService,
   ) {}
 
   /**
@@ -195,17 +238,60 @@ export class QuimiaDocumentosErpService {
     );
     const f = r.rows[0];
     if (!f) return { producto: '', fotos: [] };
-    const galeria = listaFotos(f.fotos_inarti);
-    const todas = [...new Set([f.foto_inarti, ...galeria].filter((x): x is string => !!x && typeof x === 'string'))];
-    const fotos = todas.filter((x) => existsSync(join(FILE_STORAGE_CONSTANTS.BASE_PATH, x))).slice(0, MAX_FOTOS_PRODUCTO);
-    return { producto: f.nombre_inarti, fotos };
+    // Misma galería del detalle del producto: foto principal + fotos_inarti (sin repetir). Si la galería
+    // está vacía queda la principal.
+    const todas = [
+      ...new Set([f.foto_inarti, ...listaFotos(f.fotos_inarti)].map(nombreFoto).filter((x): x is string => !!x && x.toUpperCase() !== 'NOIMAGE')),
+    ];
+    const fotos = todas.filter((x) => rutaImagenQuimia(x, 'PRODUCTO'));
+    if (fotos.length < todas.length) {
+      this.logger.warn(
+        `Producto ${ideInarti}: ${todas.length - fotos.length} foto(s) registradas no están en ${carpetaImagen('PRODUCTO')}: ` +
+          todas.filter((x) => !fotos.includes(x)).join(', '),
+      );
+    }
+    return { producto: f.nombre_inarti, fotos: fotos.slice(0, MAX_FOTOS_PRODUCTO) };
   }
 
-  /** Bytes de una foto del producto (para enviarla por Telegram). */
-  leerFoto(archivo: string): { buffer: Buffer; nombre: string; mime: string } | null {
-    if (!archivo || archivo.includes('..') || archivo.includes('/')) return null;
-    const ruta = join(FILE_STORAGE_CONSTANTS.BASE_PATH, archivo);
-    if (!existsSync(ruta)) return null;
-    return { buffer: readFileSync(ruta), nombre: archivo, mime: detectMimeType(archivo) || 'image/jpeg' };
+  /** Bytes de una imagen (para enviarla por Telegram), desde la carpeta de su origen. */
+  leerFoto(archivo: string, origen?: OrigenImagenQuimia): { buffer: Buffer; nombre: string; mime: string } | null {
+    const ruta = rutaImagenQuimia(archivo, origen);
+    if (!ruta) return null;
+    const nombre = archivo.split('/').pop() || archivo;
+    return { buffer: readFileSync(ruta), nombre, mime: detectMimeType(nombre) || 'image/jpeg' };
+  }
+
+  /**
+   * Guía de envío y comprobantes de cobro de una factura, tal como los muestra el detalle de la factura
+   * del ERP (FacturasService.getFacturaById): transporte.path_imagen_guia_cctfa y
+   * pagos.detalles[].comprobante_foto. Solo los archivos que existen en disco.
+   */
+  async imagenesFactura(ideCccfa: number, usuario: UsuarioQuimia) {
+    const r: any = await this.facturas.getFacturaById({ ...usuario, ide_cccfa: ideCccfa } as any);
+    const f = r?.row ?? {};
+    const t = f.transporte ?? null;
+    const guia = t?.path_imagen_guia_cctfa && rutaImagenQuimia(t.path_imagen_guia_cctfa, 'ENVIO') ? String(t.path_imagen_guia_cctfa) : null;
+    const pagos = ((f.pagos?.detalles ?? []) as any[]).map((p) => ({
+      fecha: p.fecha_trans_ccdtr ? String(p.fecha_trans_ccdtr instanceof Date ? p.fecha_trans_ccdtr.toISOString() : p.fecha_trans_ccdtr).slice(0, 10) : null,
+      valor: p.valor_ccdtr != null ? Number(p.valor_ccdtr) : null,
+      cuenta: p.cuenta ?? null,
+      numero: p.comprobante_numero ?? p.docum_relac_ccdtr ?? null,
+      efectivo: !!p.comprobante_es_efectivo,
+      foto: p.comprobante_foto && rutaImagenQuimia(p.comprobante_foto, 'COMPROBANTE') ? String(p.comprobante_foto) : null,
+      foto_registrada: !!p.comprobante_foto,
+    }));
+    return {
+      transporte: t
+        ? {
+            tipo: t.es_transporte_propio_cctfa ? 'Transporte propio' : (t.nombre_vgtra ?? t.nombre_transporte ?? 'Retiro en oficina'),
+            destinatario: t.destinatario_guia_cctfa ?? null,
+            fecha_envio: t.fecha_envio_cctfa ? String(t.fecha_envio_cctfa instanceof Date ? t.fecha_envio_cctfa.toISOString() : t.fecha_envio_cctfa).slice(0, 10) : null,
+            guia_registrada: !!t.path_imagen_guia_cctfa,
+          }
+        : null,
+      guia,
+      pagos,
+      estadoPago: f.pagos?.estado ?? null,
+    };
   }
 }

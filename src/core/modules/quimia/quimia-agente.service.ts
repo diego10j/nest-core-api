@@ -10,7 +10,7 @@ import { BDT_CONFIG, MENSAJE_IA_GENERAL, costoIa } from '../base-tecnica/constan
 import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { ChatQuimiaDto } from './dto/chat-quimia.dto';
 import { convertirCitasEnLinea, convertirNotasEnLinea } from './helpers/citas-en-linea.helper';
-import { esCoincidenciaFuerte, esPedidoDocumentoErp, esPedidoProforma } from './helpers/detector-producto.helper';
+import { esCoincidenciaFuerte, esPedidoDocumentoErp, esPedidoProforma, mencionaVariosProductos } from './helpers/detector-producto.helper';
 import { sugerenciasSeguimiento } from './helpers/presentacion.helper';
 import { formatearTextoPlano } from './helpers/texto-plano.helper';
 import {
@@ -171,14 +171,25 @@ export class QuimiaAgenteService {
     let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr) : null;
     // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
     // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
-    // "Quiero la factura 1000" (documento del ERP) o "crea una proforma de 5 kg de X y 5 kg de Y" (varios
-    // productos a propósito): no se busca producto en la pregunta ni se interrumpe con "¿cambio de producto?".
-    const candidatos = esPedidoDocumentoErp(dto.pregunta) || esPedidoProforma(dto.pregunta)
+    // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.
+    const candidatos = esPedidoDocumentoErp(dto.pregunta)
       ? []
       : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
     const eleccion = this.productos.elegir(candidatos);
+    // Cotización / proforma ("cotiza 5 kg de cera de palma y 5 kg de cera de coco a consumidor final") o
+    // varios productos en la misma pregunta: nunca se interrumpe con "¿cambio de producto?" ni "¿a cuál te
+    // refieres?"; el agente busca cada producto. Si la pregunta nombra otros productos, el activo no se
+    // usa en este turno (en Telegram la conversación lo conserva para las siguientes preguntas).
+    const pedidoVarios = esPedidoProforma(dto.pregunta) || mencionaVariosProductos(candidatos);
 
-    if (producto) {
+    if (pedidoVarios) {
+      // Un solo producto claro en el pedido ("cotiza 5 kg de cera de palma") → ese; varios → ninguno fijo.
+      const unico =
+        eleccion.tipo === 'uno' && esCoincidenciaFuerte(eleccion.producto) && !mencionaVariosProductos(candidatos) ? eleccion.producto : null;
+      const otros = candidatos.some((c) => !c.conflicto && esCoincidenciaFuerte(c) && c.ide_inarti !== producto?.ide_inarti);
+      if (unico) producto = { ide_inarti: unico.ide_inarti, nombre: unico.nombre };
+      else if (producto && otros && !candidatos.some((c) => c.ide_inarti === producto.ide_inarti)) producto = null;
+    } else if (producto) {
       // La pregunta nombra claramente OTRO producto: se propone el cambio en vez de responder sobre el
       // producto equivocado. El activo cuenta como mencionado solo si está entre los que MÁS cubren la
       // pregunta ("detergente polvo azul" con DETERGENTE 5 KG activo → es el AZUL). Solo coincidencias

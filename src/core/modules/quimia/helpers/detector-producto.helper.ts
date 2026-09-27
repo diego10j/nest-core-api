@@ -25,6 +25,8 @@ export interface CandidatoDetectado {
   conflicto?: boolean;
   /** Palabras del nombre que están en la pregunta (sin números ni empaques/unidades). */
   palabras?: number;
+  /** Raíces de esas palabras (para saber si dos productos nombran cosas distintas). */
+  cubiertas?: string[];
 }
 
 // Palabras de la pregunta que nunca identifican un producto.
@@ -61,12 +63,24 @@ export function esPedidoDocumentoErp(pregunta: string): boolean {
 }
 
 /**
- * Pedido de crear una proforma / cotización ("crea una proforma a consumidor final de 5 kg de cera de
- * coco y 5 kg de cera de soya"): nombra varios productos a propósito, así que no se detecta producto ni
- * se ofrece "¿cambio de producto?": el agente busca cada producto y prepara el borrador.
+ * Pedido de proforma / cotización / presupuesto ("cotiza 5 kg de cera de palma y 5 kg de cera de coco a
+ * consumidor final", "dame el presupuesto de…"): puede nombrar varios productos a propósito, así que no se
+ * ofrece "¿cambio de producto?": el agente busca cada producto y cotiza o prepara el borrador.
  */
 export function esPedidoProforma(pregunta: string): boolean {
-  return /\b(PROFORMAS?|COTIZACION(ES)?)\b/.test(normalizarTexto(pregunta));
+  return /\b(PROFORMAS?|COTIZ[A-Z]*|PRESUPUESTOS?)\b/.test(normalizarTexto(pregunta));
+}
+
+/**
+ * La pregunta nombra VARIOS productos distintos ("5 kg de cera de palma y 5 kg de cera de coco"): hay dos
+ * coincidencias fuertes y cada una cubre una palabra propia que la otra no (PALMA / COCO). No es lo mismo
+ * que la ambigüedad de "ácido cítrico" (anhidro y monohidratado cubren las mismas palabras).
+ */
+export function mencionaVariosProductos(candidatos: CandidatoDetectado[]): boolean {
+  const fuertes = candidatos.filter((c) => !c.conflicto && esCoincidenciaFuerte(c) && c.cubiertas?.length);
+  return fuertes.some((a, i) =>
+    fuertes.slice(i + 1).some((b) => a.cubiertas!.some((w) => !b.cubiertas!.includes(w)) && b.cubiertas!.some((w) => !a.cubiertas!.includes(w))),
+  );
 }
 
 /** Máximo de productos que se ofrecen para elegir cuando la pregunta es ambigua. */
@@ -179,12 +193,16 @@ function detectar(
     const lista = [...porRaiz.values()];
     let cobertura = 0;
     let coinciden = 0;
+    const cubiertas: string[] = [];
     let faltaEnPregunta = false;
     for (const w of lista) {
       const peso = coincide(w, palabrasPregunta);
       if (peso) {
         cobertura += idf(w) * peso;
-        if (!noIdentifica(w)) coinciden++;
+        if (!noIdentifica(w)) {
+          coinciden++;
+          cubiertas.push(w.slice(0, 6));
+        }
       } else if (!noIdentifica(w)) {
         faltaEnPregunta = true;
       }
@@ -209,6 +227,7 @@ function detectar(
         documentos: e.documentos,
         conflicto,
         palabras: coinciden,
+        cubiertas,
       });
     }
   }

@@ -19,6 +19,10 @@ export class EnviosFacturasDto extends QueryOptionsDto {
   @IsInt()
   @IsOptional()
   ide_cceen?: number;
+  /** Solo los envíos de un cliente (QuimIA: "últimos envíos de Pepito Pérez"). */
+  @IsInt()
+  @IsOptional()
+  ide_geper?: number;
 }
 
 export class GetEnvioFacturaDetalleDto {

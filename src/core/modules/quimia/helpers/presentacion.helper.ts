@@ -252,21 +252,67 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
       break;
 
     case 'envios_cliente': {
-      const filas = d.envios as Dato[] | undefined;
       b.push(
-        tabla('Envíos al cliente', [
+        tabla('Transportes usados', [
+          { clave: 'transporte', etiqueta: 'Transporte' },
+          { clave: 'envios', etiqueta: 'Envíos', formato: 'numero' },
+          { clave: 'ultimo_envio', etiqueta: 'Último', formato: 'fecha' },
+          { clave: 'flete_cobrado', etiqueta: 'Flete cobrado', formato: 'moneda' },
+          { clave: 'costo_real', etiqueta: 'Costo real', formato: 'moneda' },
+        ], d.transportes_usados),
+      );
+      const filas = d.ultimos_envios as Dato[] | undefined;
+      b.push(
+        tabla('Últimos envíos', [
           { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
           { clave: 'factura', etiqueta: 'Factura' },
           { clave: 'transporte', etiqueta: 'Transporte' },
-          { clave: 'enviado', etiqueta: 'Enviado' },
-          { clave: 'costo_real', etiqueta: 'Costo', formato: 'moneda' },
-        ], filas, filas?.length ? { total: { fecha: 'Total', costo_real: sumar(filas, 'costo_real') } } : {}),
+          { clave: 'enviado', etiqueta: 'Peso' },
+          { clave: 'valor_facturado', etiqueta: 'Facturado', formato: 'moneda' },
+          { clave: 'flete_cobrado', etiqueta: 'Flete cobrado', formato: 'moneda' },
+          { clave: 'costo_real', etiqueta: 'Costo real', formato: 'moneda' },
+          { clave: 'estado', etiqueta: 'Estado' },
+        ], filas, filas?.length
+          ? {
+              total: {
+                fecha: 'Total',
+                valor_facturado: sumar(filas, 'valor_facturado'),
+                flete_cobrado: sumar(filas, 'flete_cobrado'),
+                costo_real: sumar(filas, 'costo_real'),
+              },
+            }
+          : {}),
       );
       break;
     }
 
     case 'transportes_destino':
     case 'costo_envio': {
+      if (herramienta === 'costo_envio') {
+        const a = d.analisis as Dato | null;
+        b.push(
+          indicadores(`Transporte a ${d.destino}${d.peso ? ` · ${d.peso}` : ''}`, [
+            { etiqueta: 'Envíos encontrados', valor: d.envios_encontrados, formato: 'numero' },
+            a?.sugerenciaPrecio != null && { etiqueta: 'Precio sugerido', valor: a.sugerenciaPrecio, formato: 'moneda', destacado: true },
+            a?.confianza && { etiqueta: 'Confianza', valor: String(a.confianza).toUpperCase(), color: a.confianza === 'alta' ? 'success' : a.confianza === 'media' ? 'warning' : null },
+          ]),
+          tabla('Costo por transportista', [
+            { clave: 'transporte', etiqueta: 'Transporte' },
+            { clave: 'envios', etiqueta: 'Envíos', formato: 'numero' },
+            { clave: 'costo_promedio', etiqueta: 'Promedio', formato: 'moneda' },
+            { clave: 'costo_minimo', etiqueta: 'Mínimo', formato: 'moneda' },
+            { clave: 'costo_maximo', etiqueta: 'Máximo', formato: 'moneda' },
+          ], d.por_transportista, { subtitulo: d.criterio ?? null }),
+          tabla('Envíos recientes', [
+            { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
+            { clave: 'transporte', etiqueta: 'Transporte' },
+            { clave: 'ciudad', etiqueta: 'Ciudad' },
+            { clave: 'enviado', etiqueta: 'Enviado' },
+            { clave: 'costo', etiqueta: 'Costo', formato: 'moneda' },
+            { clave: 'tipo_costo', etiqueta: 'Tipo' },
+          ], d.ultimos_envios),
+        );
+      }
       const transportes = (d.transportes ?? d.tarifas_configuradas ?? []) as Dato[];
       const filas = transportes.flatMap((t) =>
         (t.tarifas?.length ? t.tarifas : [{}]).flatMap((tf: Dato) =>
@@ -280,7 +326,7 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
         ),
       );
       b.push(
-        tabla(`Transportes a ${d.destino}`, [
+        tabla(herramienta === 'costo_envio' ? 'Tarifas configuradas' : `Transportes a ${d.destino}`, [
           { clave: 'transporte', etiqueta: 'Transporte' },
           { clave: 'destino', etiqueta: 'Destino' },
           { clave: 'tarifa', etiqueta: 'Tarifa' },
@@ -288,17 +334,6 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
           { clave: 'envios', etiqueta: 'Envíos', formato: 'numero' },
         ], filas),
       );
-      if (herramienta === 'costo_envio') {
-        b.push(
-          tabla(`Envíos de peso similar (${d.peso_kg} kg)`, [
-            { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
-            { clave: 'transporte', etiqueta: 'Transporte' },
-            { clave: 'ciudad', etiqueta: 'Ciudad' },
-            { clave: 'enviado', etiqueta: 'Enviado' },
-            { clave: 'costo_real', etiqueta: 'Costo real', formato: 'moneda' },
-          ], d.envios_historicos_similares),
-        );
-      }
       break;
     }
 
@@ -332,6 +367,7 @@ export function sugerenciasSeguimiento(herramientas: string[], producto: string 
     compras_cliente: ['¿Cuánto debe este cliente?', '¿Dónde está ubicado?'],
     datos_cliente: ['¿Cuánto debe?', '¿Cada cuánto compra?'],
     transportes_destino: ['¿Cuánto cuesta enviar 10 kg?'],
+    costo_envio: ['¿Y con 20 kg?', '¿Qué transportes llegan ahí?'],
   };
   const vistas = new Set<string>();
   const salida: string[] = [];

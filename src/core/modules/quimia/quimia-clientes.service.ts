@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { ClientesService } from '../ventas/clientes/clientes.service';
+import { FacturasService } from '../ventas/facturas/facturas.service';
 import { TransportesService } from '../ventas/transportes/transportes.service';
 
 import { ProductoQuimia, UsuarioQuimia } from './quimia.types';
@@ -66,7 +67,9 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'envios_cliente',
       description:
-        'Envíos realizados al cliente: transportista, fecha, factura, costo del flete (estimado y real), peso/cantidad enviada y destinatario.',
+        'Envíos del cliente (mismo dato que Reportes → Envío de facturas, de la sucursal): transportes que se le han ' +
+        'usado y sus últimos envíos con fecha, factura, transporte, peso enviado, flete cobrado al cliente, costo real ' +
+        'pagado al transportista, valor facturado y estado.',
       parameters: {
         type: 'object',
         properties: { ...idCliente, limite: { type: 'integer', description: 'Cuántos envíos (por defecto 10)' } },
@@ -91,14 +94,17 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'costo_envio',
       description:
-        'Costo referencial de enviar un peso a una ciudad: tarifas configuradas de los transportistas y envíos históricos reales de peso similar.',
+        'Cotizador de transporte (mismo dato que Consultar tarifas): "cotizar transporte de 5 kg a Loja", "¿cuánto cuesta ' +
+        'enviar a Cuenca?". Envíos reales a ese destino (de peso similar si se indica), costo promedio por transportista, ' +
+        'análisis con precio sugerido y tarifas configuradas. El peso y la unidad son opcionales.',
       parameters: {
         type: 'object',
         properties: {
-          ciudad: { type: 'string', description: 'Ciudad, cantón o provincia de destino' },
-          peso_kg: { type: 'number', description: 'Peso en kilogramos' },
+          ciudad: { type: 'string', description: 'Ciudad, cantón o provincia de destino (obligatorio)' },
+          peso: { type: 'number', description: 'Peso o cantidad a enviar (opcional)' },
+          unidad: { type: 'string', description: 'Unidad del peso: kg (por defecto), g, lb, litros, galones, unidades' },
         },
-        required: ['ciudad', 'peso_kg'],
+        required: ['ciudad'],
       },
     },
   },
@@ -109,12 +115,16 @@ export const ESTADOS_CLIENTES: Record<string, string> = {
   datos_cliente: 'Consultando datos del cliente…',
   deuda_cliente: 'Consultando la cartera del cliente…',
   compras_cliente: 'Analizando las compras del cliente…',
-  envios_cliente: 'Consultando envíos…',
+  envios_cliente: 'Consultando los envíos del cliente…',
   transportes_destino: 'Buscando transportistas…',
-  costo_envio: 'Calculando el costo del envío…',
+  costo_envio: 'Cotizando el transporte…',
 };
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+/** Fecha local (Ecuador) del servidor, no UTC: después de las 19:00 UTC ya sería "mañana". */
+const hoy = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const haceMeses = (meses: number) => {
   const d = new Date();
   d.setMonth(d.getMonth() - meses);
@@ -124,10 +134,70 @@ const num = (v: unknown, dec = 2) => (v === null || v === undefined || v === '' 
 const fecha = (v: unknown) => (v ? String(v instanceof Date ? v.toISOString() : v).slice(0, 10) : null);
 const SIN_PAGINAR = { lazy: 'false', schema: 'false' } as const;
 
+/** Nombres con que escriben la unidad → siglas / nombres posibles en inv_unidad. */
+function normalizarUnidad(texto: string): string[] {
+  const t = texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.\s]/g, '');
+  const grupos: string[][] = [
+    ['kg', 'kgs', 'kilo', 'kilos', 'kilogramo', 'kilogramos'],
+    ['g', 'gr', 'grs', 'gramo', 'gramos'],
+    ['lb', 'lbs', 'libra', 'libras'],
+    ['l', 'lt', 'lts', 'litro', 'litros'],
+    ['gl', 'gal', 'galon', 'galones'],
+    ['ml', 'mililitro', 'mililitros'],
+    ['u', 'un', 'und', 'unid', 'unidad', 'unidades'],
+  ];
+  return grupos.find((g) => g.includes(t)) ?? [t];
+}
+
 /**
- * Consultas de clientes y transporte para QuimIA. Reutiliza ClientesService y TransportesService
- * (exportados por VentasModule); solo la lista de envíos de un cliente es una consulta propia de
- * lectura porque no existe un método equivalente.
+ * Costo de un envío como lo muestra Consultar tarifas: el real si el flete ya se pagó; si es flete al
+ * cobro (se paga en la entrega) el real aún no es confiable y se usa el estimado.
+ */
+function costoEnvioFila(r: any): { monto: number | null; esReal: boolean; cobroDestino: boolean } {
+  const cobroDestino = r.flete_pagado_cctfa === false;
+  const real = r.costo_real != null && Number(r.costo_real) > 0 ? Number(r.costo_real) : null;
+  if (!cobroDestino && real != null) return { monto: real, esReal: true, cobroDestino: false };
+  return { monto: r.costo_estimado != null ? Number(r.costo_estimado) : null, esReal: false, cobroDestino };
+}
+
+/**
+ * Resumen cuando el backend no hace el análisis con IA (10 envíos o menos): mismo cálculo que la
+ * página Consultar tarifas (resumenLocal) — rango, promedio y precio sugerido según la dispersión.
+ */
+function resumenLocalTarifas(rows: any[]) {
+  if (!rows.length) return null;
+  const montos = rows.map(costoEnvioFila).filter((c) => c.monto != null);
+  if (!montos.length) {
+    return {
+      resumen: `Se encontraron ${rows.length} envío(s) con peso similar, pero ninguno tiene un costo de flete registrado.`,
+      sugerenciaPrecio: null,
+      confianza: 'baja',
+    };
+  }
+  if (montos.length < 3) return null;
+  const v = montos.map((c) => c.monto as number);
+  const promedio = v.reduce((a, b) => a + b, 0) / v.length;
+  const desviacion = Math.sqrt(v.reduce((a, x) => a + (x - promedio) ** 2, 0) / v.length);
+  const dispersion = promedio > 0 ? desviacion / promedio : 1;
+  const confianza = v.length >= 5 && dispersion <= 0.15 ? 'alta' : dispersion <= 0.35 ? 'media' : 'baja';
+  return {
+    resumen:
+      `${v.length} envíos con costo registrado para un peso similar, entre $${Math.min(...v).toFixed(2)} y ` +
+      `$${Math.max(...v).toFixed(2)} (promedio $${promedio.toFixed(2)}).` +
+      (montos.some((c) => !c.esReal) ? ' Algunos valores son estimados (aún no cobrados).' : ''),
+    sugerenciaPrecio: confianza !== 'baja' ? Math.round(promedio * 100) / 100 : null,
+    confianza,
+  };
+}
+
+/**
+ * Consultas de clientes y transporte para QuimIA. Reutiliza los servicios de las páginas del ERP
+ * (ClientesService, TransportesService, FacturasService, exportados por VentasModule) para que el bot
+ * responda lo mismo que el ERP.
  */
 @Injectable()
 export class QuimiaClientesService {
@@ -135,6 +205,7 @@ export class QuimiaClientesService {
     private readonly dataSource: DataSourceService,
     private readonly clientes: ClientesService,
     private readonly transportes: TransportesService,
+    private readonly facturas: FacturasService,
   ) {}
 
   esHerramienta(nombre: string) {
@@ -160,7 +231,12 @@ export class QuimiaClientesService {
       case 'transportes_destino':
         return this.transportesDestino(String(args.ciudad ?? ''), usuario);
       case 'costo_envio':
-        return this.costoEnvio(String(args.ciudad ?? ''), Number(args.peso_kg), usuario);
+        return this.costoEnvio(
+          String(args.ciudad ?? ''),
+          Number(args.peso ?? args.peso_kg) > 0 ? Number(args.peso ?? args.peso_kg) : null,
+          args.unidad ? String(args.unidad) : null,
+          usuario,
+        );
       default:
         return { error: `Herramienta desconocida: ${nombre}` };
     }
@@ -356,40 +432,83 @@ export class QuimiaClientesService {
     };
   }
 
+  /**
+   * Envíos del cliente: mismo dato que Reportes → Envío de facturas (FacturasService.getReporteEnviosFacturas,
+   * filtrado por cliente y por la sucursal del usuario). Flete cobrado al cliente = total_flete_cctfa;
+   * costo real (pagado al transportista) = total_flete_real_cctfa; valor facturado = total de la factura.
+   */
   private async enviosCliente(ideGeper: number, limite: number, u: UsuarioQuimia) {
-    const r = await this.dataSource.pool.query(
-      `SELECT f.secuencial_cccfa AS factura,
-              COALESCE(e.fecha_envio_cctfa, e.fecha_inicio_cctfa, f.fecha_emisi_cccfa) AS fecha_envio,
-              t.nombre_vgtra AS transporte, e.es_transporte_propio_cctfa AS propio,
-              e.total_flete_cctfa AS costo_estimado, e.total_flete_real_cctfa AS costo_real,
-              e.flete_pagado_cctfa AS flete_pagado, e.destinatario_guia_cctfa AS destinatario,
-              (SELECT json_agg(json_build_object('cantidad', s.total, 'unidad', s.siglas) ORDER BY s.total DESC)
-                 FROM (SELECT COALESCE(un.siglas_inuni, 'unid.') AS siglas, SUM(d.cantidad_ccdfa) AS total
-                         FROM cxc_deta_factura d
-                         JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
-                         LEFT JOIN inv_unidad un ON un.ide_inuni = a.ide_inuni
-                        WHERE d.ide_cccfa = e.ide_cccfa AND a.hace_kardex_inarti = TRUE
-                        GROUP BY COALESCE(un.siglas_inuni, 'unid.')) s) AS enviado
-         FROM cxc_transporte_factura e
-         JOIN cxc_cabece_factura f ON f.ide_cccfa = e.ide_cccfa
-         LEFT JOIN ven_transporte t ON t.ide_vgtra = e.ide_vgtra
-        WHERE f.ide_geper = $1 AND e.ide_empr = $2
-        ORDER BY fecha_envio DESC
-        LIMIT $3`,
-      [ideGeper, u.ideEmpr, limite],
+    if (!ideGeper) return { error: 'Primero busca el cliente con buscar_cliente' };
+    const r: any = await this.facturas.getReporteEnviosFacturas({
+      ...u,
+      ...SIN_PAGINAR,
+      fechaInicio: '2000-01-01',
+      fechaFin: hoy(),
+      ide_geper: ideGeper,
+    } as any);
+    const rows: any[] = Array.isArray(r) ? r : (r?.rows ?? []);
+    if (!rows.length) return { total_envios: 0, mensaje: 'El cliente no tiene envíos registrados en esta sucursal.' };
+
+    // Peso/cantidad enviada por factura: artículos de kardex agrupados por unidad (misma regla que
+    // Consultar tarifas → detalle_unidades).
+    const ultimos = rows.slice(0, limite);
+    const pesos = await this.dataSource.pool.query(
+      `SELECT d.ide_cccfa, COALESCE(un.siglas_inuni, 'unid.') AS unidad, SUM(d.cantidad_ccdfa) AS cantidad
+         FROM cxc_deta_factura d
+         JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
+         LEFT JOIN inv_unidad un ON un.ide_inuni = a.ide_inuni
+        WHERE d.ide_cccfa = ANY($1::int[]) AND a.hace_kardex_inarti = TRUE
+        GROUP BY d.ide_cccfa, COALESCE(un.siglas_inuni, 'unid.')
+        ORDER BY cantidad DESC`,
+      [ultimos.map((e) => e.ide_cccfa)],
     );
+    const enviadoDe = (id: number) =>
+      pesos.rows
+        .filter((p) => p.ide_cccfa === id)
+        .map((p) => `${num(p.cantidad, 3)} ${p.unidad}`)
+        .join(', ') || null;
+    const tipo = (e: any) => (e.es_transporte_propio_cctfa ? 'Transporte propio' : e.ide_vgtra ? e.nombre_transporte : 'Retiro en oficina');
+
+    // Transportes usados (todo el historial del cliente en la sucursal).
+    const porTransporte = new Map<string, { envios: number; ultimo: string | null; cobrado: number; costo_real: number }>();
+    for (const e of rows) {
+      const t = tipo(e) ?? 'Sin transporte';
+      const x = porTransporte.get(t) ?? { envios: 0, ultimo: null, cobrado: 0, costo_real: 0 };
+      x.envios += 1;
+      const f = fecha(e.fecha_envio_cctfa ?? e.fecha_emisi_cccfa);
+      if (f && (!x.ultimo || f > x.ultimo)) x.ultimo = f;
+      x.cobrado += Number(e.total_flete_cctfa ?? 0);
+      x.costo_real += Number(e.total_flete_real_cctfa ?? 0);
+      porTransporte.set(t, x);
+    }
     return {
-      total: r.rows.length,
-      envios: r.rows.map((e) => ({
-        fecha: fecha(e.fecha_envio),
-        factura: e.factura,
-        transporte: e.propio ? 'Transporte propio' : e.transporte,
-        costo_estimado: num(e.costo_estimado),
-        costo_real: num(e.costo_real),
-        flete_pagado: e.flete_pagado,
-        destinatario: e.destinatario,
-        enviado: (e.enviado ?? []).map((x) => `${num(x.cantidad, 3)} ${x.unidad}`).join(', ') || null,
+      total_envios: rows.length,
+      transportes_usados: [...porTransporte.entries()]
+        .map(([transporte, x]) => ({
+          transporte,
+          envios: x.envios,
+          ultimo_envio: x.ultimo,
+          flete_cobrado: num(x.cobrado),
+          costo_real: num(x.costo_real),
+        }))
+        .sort((a, b) => b.envios - a.envios),
+      ultimos_envios: ultimos.map((e) => ({
+        fecha: fecha(e.fecha_envio_cctfa ?? e.fecha_emisi_cccfa),
+        factura: [e.establecimiento_ccdfa, e.pto_emision_ccdfa, e.secuencial_cccfa].filter(Boolean).join('-'),
+        transporte: tipo(e),
+        estado: e.estado_envio ?? null,
+        destinatario: e.destinatario_guia_cctfa ?? null,
+        enviado: enviadoDe(e.ide_cccfa),
+        valor_facturado: num(e.total_cccfa),
+        flete_cobrado: num(e.total_flete_cctfa),
+        costo_real: e.flete_pagado_cctfa ? num(e.total_flete_real_cctfa) : null,
+        flete_pagado: !!e.flete_pagado_cctfa,
+        diferencia: e.tipo_diferencia_flete ? `${e.tipo_diferencia_flete} ${num(e.diferencia_flete)}` : null,
+        factura_flete: e.numero_factura_flete ?? null,
       })),
+      nota:
+        'flete_cobrado = lo cobrado al cliente por el flete; costo_real = lo pagado al transportista (null si aún no ' +
+        'está pagado / flete al cobro); valor_facturado = total de la factura.',
     };
   }
 
@@ -419,36 +538,101 @@ export class QuimiaClientesService {
     };
   }
 
-  private async costoEnvio(ciudad: string, pesoKg: number, u: UsuarioQuimia) {
-    if (!ciudad.trim() || !(pesoKg > 0)) return { error: 'Indica la ciudad y el peso en kg' };
-    const kg = await this.dataSource.pool.query(
-      `SELECT ide_inuni FROM inv_unidad WHERE LOWER(TRIM(siglas_inuni)) IN ('kg', 'kgs', 'kilo', 'kilos') ORDER BY ide_inuni LIMIT 1`,
+  /**
+   * Cotizador de transporte: mismo dato que Ventas → Transportes → Consultar tarifas
+   * (TransportesService.consultarTarifas): envíos históricos a ese destino, filtrados por peso similar
+   * (-30% / +35%) si se indica el peso, con el costo por transportista y el análisis de la página. Se
+   * suman las tarifas configuradas de los transportistas que llegan a ese destino.
+   */
+  private async costoEnvio(ciudad: string, peso: number | null, unidad: string | null, u: UsuarioQuimia) {
+    const destino = ciudad.trim();
+    if (!destino) return { error: 'Indica la ciudad de destino' };
+
+    // Destino como en la página (provincia / cantón); si no se reconoce, búsqueda por texto.
+    const lugar = await this.dataSource.pool.query(
+      `SELECT c.ide_gecant, c.nombre_gecant, p.ide_geprov, p.nombre_geprov,
+              unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) AS es_canton,
+              unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1)) AS es_provincia
+         FROM gen_canton c
+         JOIN gen_provincia p ON p.ide_geprov = c.ide_geprov
+        WHERE unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) OR unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1))
+        ORDER BY es_canton DESC
+        LIMIT 1`,
+      [destino],
     );
-    const [tarifas, historico] = await Promise.all([
-      this.transportesDestino(ciudad, u),
-      this.transportes
-        .consultarTarifas({
-          ...u,
-          descripcion: ciudad.trim(),
-          ...(kg.rows[0] ? { peso: pesoKg, ide_inuni: kg.rows[0].ide_inuni } : {}),
-          ...SIN_PAGINAR,
-        } as any)
-        .catch(() => ({ rows: [], resumenIA: null })),
+    const l = lugar.rows[0];
+    const filtroDestino = l?.es_canton ? { ide_gecant: l.ide_gecant } : l?.es_provincia ? { ide_geprov: l.ide_geprov } : { descripcion: destino };
+    const destinoTxt = l?.es_canton ? `${l.nombre_gecant} (${l.nombre_geprov})` : l?.es_provincia ? `Provincia de ${l.nombre_geprov}` : destino;
+
+    // Unidad del peso (opcional, kg por defecto) → ide_inuni del catálogo de unidades.
+    let ideInuni: number | null = null;
+    let siglas: string | null = null;
+    if (peso && peso > 0) {
+      const alias = normalizarUnidad(unidad ?? 'kg');
+      const un = await this.dataSource.pool.query(
+        `SELECT ide_inuni, siglas_inuni FROM inv_unidad
+          WHERE LOWER(TRIM(siglas_inuni)) = ANY($1::text[]) OR unaccent(LOWER(TRIM(nombre_inuni))) = ANY($1::text[])
+          ORDER BY ide_inuni LIMIT 1`,
+        [alias],
+      );
+      if (!un.rows[0]) return { error: `No reconozco la unidad "${unidad}". Usa kg, g, litros, galones o unidades.` };
+      ideInuni = un.rows[0].ide_inuni;
+      siglas = un.rows[0].siglas_inuni;
+    }
+    const conPeso = ideInuni != null;
+
+    const [tarifas, resultado] = await Promise.all([
+      this.transportesDestino(destino, u),
+      this.transportes.consultarTarifas({
+        ...u,
+        ...filtroDestino,
+        ...(conPeso ? { peso, ide_inuni: ideInuni } : {}),
+      } as any),
     ]);
-    const envios = ((historico as any)?.rows ?? []).slice(0, 12);
+    const rows: any[] = (resultado as any)?.rows ?? [];
+    const analisis = (resultado as any)?.resumenIA ?? (conPeso ? resumenLocalTarifas(rows) : null);
+
+    // Costo por transportista (mismo criterio de la página: costo real si el flete ya se pagó, si no el estimado).
+    const porTransporte = new Map<string, number[]>();
+    for (const r of rows) {
+      const c = costoEnvioFila(r);
+      if (c.monto == null) continue;
+      porTransporte.set(r.nombre_vgtra, [...(porTransporte.get(r.nombre_vgtra) ?? []), c.monto]);
+    }
     return {
-      destino: ciudad,
-      peso_kg: pesoKg,
+      destino: destinoTxt,
+      peso: conPeso ? `${peso} ${siglas}` : null,
+      envios_encontrados: rows.length,
+      criterio: conPeso
+        ? `Envíos a ${destinoTxt} con ${peso} ${siglas} (entre -30% y +35%)`
+        : `Todos los envíos a ${destinoTxt} (sin filtrar por peso)`,
+      analisis,
+      por_transportista: [...porTransporte.entries()]
+        .map(([transporte, costos]) => ({
+          transporte,
+          envios: costos.length,
+          costo_promedio: num(costos.reduce((a, b) => a + b, 0) / costos.length),
+          costo_minimo: num(Math.min(...costos)),
+          costo_maximo: num(Math.max(...costos)),
+        }))
+        .sort((a, b) => b.envios - a.envios),
+      ultimos_envios: rows.slice(0, 10).map((r) => {
+        const c = costoEnvioFila(r);
+        return {
+          fecha: fecha(r.fecha_envio),
+          factura: r.secuencial_cccfa,
+          cliente: r.cliente,
+          ciudad: r.nombre_gecant ?? r.nombre_geprov,
+          transporte: r.nombre_vgtra,
+          enviado:
+            (conPeso && r.cantidad_unidad_buscada != null
+              ? `${num(r.cantidad_unidad_buscada, 3)} ${siglas}`
+              : (r.detalle_unidades ?? []).map((x: any) => `${num(x.cantidad, 3)} ${x.unidad}`).join(', ')) || null,
+          costo: c.monto,
+          tipo_costo: c.cobroDestino ? 'Estimado (flete al cobro)' : c.esReal ? 'Real' : 'Estimado',
+        };
+      }),
       tarifas_configuradas: (tarifas as any).transportes ?? [],
-      envios_historicos_similares: envios.map((e) => ({
-        fecha: fecha(e.fecha_envio),
-        transporte: e.nombre_vgtra,
-        ciudad: e.nombre_gecant,
-        enviado: e.cantidad_unidad_buscada != null ? `${num(e.cantidad_unidad_buscada, 3)} kg` : null,
-        costo_real: num(e.costo_real),
-        costo_estimado: num(e.costo_estimado),
-      })),
-      analisis: (historico as any)?.resumenIA ?? null,
     };
   }
 }

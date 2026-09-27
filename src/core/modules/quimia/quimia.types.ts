@@ -25,6 +25,7 @@ export interface ProductoCandidato extends ProductoQuimia {
   conflicto?: boolean;
   /** Palabras propias del nombre que están en la pregunta. */
   palabras?: number;
+  cubiertas?: string[];
 }
 
 /**
