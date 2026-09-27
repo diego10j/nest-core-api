@@ -246,9 +246,14 @@ export class QuimiaAgenteService {
       emitir,
     };
     const hoy = new Date().toISOString().slice(0, 10);
+    // Cliente / proveedor fijado en el chat del ERP como contexto de la conversación.
+    const persona =
+      dto.persona_tipo && dto.persona_id
+        ? { tipo: dto.persona_tipo, ide_geper: Number(dto.persona_id), nombre: (dto.persona_nombre ?? '').slice(0, 250) }
+        : null;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: 'system', content: buildPromptAgente({ producto, canal, hoy, notas: ctx.notas }) },
+      { role: 'system', content: buildPromptAgente({ producto, canal, hoy, notas: ctx.notas, persona }) },
       ...this.historial(dto),
       { role: 'user', content: dto.pregunta },
     ];
@@ -262,7 +267,7 @@ export class QuimiaAgenteService {
       // Si una herramienta fijó el producto, el sistema lo refleja en las vueltas siguientes.
       messages[0] = {
         role: 'system',
-        content: buildPromptAgente({ producto: ctx.producto, canal, hoy, notas: ctx.notas }),
+        content: buildPromptAgente({ producto: ctx.producto, canal, hoy, notas: ctx.notas, persona }),
       };
       const r = await this.ia.completarConHerramientas(messages, herramientasPara(canal));
       tokensEntrada += r.tokensEntrada;

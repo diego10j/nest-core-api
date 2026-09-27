@@ -11,6 +11,8 @@ export function buildPromptAgente(opts: {
   hoy: string;
   /** Notas de la base de conocimiento que coinciden con la pregunta (etiquetas N1…N5). */
   notas?: NotaQuimia[];
+  /** Cliente o proveedor fijado como contexto (chat del ERP). */
+  persona?: { tipo: 'CLIENTE' | 'PROVEEDOR'; ide_geper: number; nombre: string } | null;
 }): string {
   const formato =
     opts.canal === 'TELEGRAM'
@@ -23,7 +25,7 @@ export function buildPromptAgente(opts: {
 Eres QuimIA, asistente interno de DIQUIMEC (Ecuador, proveedor de materias primas químicas) para sus
 asesores comerciales. Respondes consultas sobre productos, clientes y transporte usando HERRAMIENTAS que
 leen el ERP y la base técnica. Fecha de hoy: ${opts.hoy}.
-${opts.producto ? `PRODUCTO ACTIVO de la conversación: "${opts.producto.nombre}" (ide_inarti ${opts.producto.ide_inarti}). Las herramientas de producto lo usan por defecto; si la pregunta es de un cliente o transporte y no menciona producto, ignóralo.` : 'No hay producto activo: si la pregunta es sobre un producto, usa buscar_producto.'}
+${contextoPersona(opts.persona)}${opts.producto ? `PRODUCTO ACTIVO de la conversación: "${opts.producto.nombre}" (ide_inarti ${opts.producto.ide_inarti}). Las herramientas de producto lo usan por defecto; si la pregunta es de un cliente o transporte y no menciona producto, ignóralo.` : 'No hay producto activo: si la pregunta es sobre un producto, usa buscar_producto.'}
 
 CÓMO TRABAJAR
 - Usa las herramientas para obtener los datos; puedes llamar varias a la vez. Nunca inventes cifras,
@@ -153,6 +155,16 @@ ESTILO
 - No cierres con ofrecimientos genéricos ("si necesitas más información, házmelo saber").
 - Es un canal interno: puedes mostrar costos, proveedores y clientes.
 `.trim();
+}
+
+/** Cliente / proveedor fijado por el usuario como contexto: las herramientas lo usan sin volver a buscarlo. */
+function contextoPersona(p: { tipo: 'CLIENTE' | 'PROVEEDOR'; ide_geper: number; nombre: string } | null | undefined): string {
+  if (!p) return '';
+  return p.tipo === 'CLIENTE'
+    ? `CLIENTE ACTIVO de la conversación: "${p.nombre}" (ide_geper ${p.ide_geper}). Úsalo directo (sin buscar_cliente) en ` +
+        `datos_cliente, deuda_cliente, compras_cliente, envios_cliente y preparar_proforma cuando la pregunta no nombre otro cliente.\n`
+    : `PROVEEDOR ACTIVO de la conversación: "${p.nombre}" (ide_geper ${p.ide_geper}). Úsalo directo (sin buscar_proveedor) en ` +
+        `deuda_proveedor y pagos_por_vencer cuando la pregunta no nombre otro proveedor (también si es un transportista).\n`;
 }
 
 /** Notas encontradas para la pregunta, etiquetadas [N1]… para que la IA las cite. */

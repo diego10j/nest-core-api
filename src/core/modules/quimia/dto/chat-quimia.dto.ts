@@ -36,6 +36,20 @@ export class ChatQuimiaDto {
   @IsOptional()
   ide_inarti?: number;
 
+  /** Cliente o proveedor fijado como contexto de la conversación (chat del ERP). */
+  @IsIn(['CLIENTE', 'PROVEEDOR'])
+  @IsOptional()
+  persona_tipo?: 'CLIENTE' | 'PROVEEDOR';
+
+  @IsInt()
+  @IsOptional()
+  persona_id?: number;
+
+  @IsString()
+  @MaxLength(250)
+  @IsOptional()
+  persona_nombre?: string;
+
   /**
    * AGENTE: responde con herramientas (base técnica + ERP).
    * IA_GENERAL: el usuario aceptó una respuesta de conocimiento general tras "no encontrado".
