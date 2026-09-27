@@ -3,7 +3,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { ProductosService } from '../inventario/productos/productos.service';
 
-import {
+import { soloProductosNombrados,
   EntradaIndiceProducto,
   MAX_OPCIONES_PRODUCTO,
   detectarProductos,
@@ -42,13 +42,19 @@ export class QuimiaProductosService {
   ) {}
 
   /** Productos mencionados en la pregunta, ordenados por relevancia (ver detector-producto.helper). */
-  async detectar(texto: string, ideEmpr: number, opciones: { tolerante?: boolean } = {}): Promise<ProductoCandidato[]> {
+  async detectar(
+    texto: string,
+    ideEmpr: number,
+    opciones: { tolerante?: boolean; preguntaDePersona?: boolean } = {},
+  ): Promise<ProductoCandidato[]> {
     const indice = await this.getIndice(ideEmpr);
     let candidatos = detectarProductos(texto, indice);
+    // Pregunta de cliente / proveedor: solo productos nombrados de verdad, sin tolerancia a errores.
+    if (opciones.preguntaDePersona) candidatos = soloProductosNombrados(candidatos);
     // Respaldo tolerante a errores de escritura o de transcripción de voz, SOLO cuando el filtro
     // exacto no identifica un producto (nada, o solo coincidencias genéricas: en "ácido estiárico"
     // el exacto encuentra todos los ÁCIDOS). Se usa si cubre más de la pregunta que el exacto.
-    if (opciones.tolerante !== false && elegirProductoDetectado(candidatos).tipo !== 'uno') {
+    if (opciones.tolerante !== false && !opciones.preguntaDePersona && elegirProductoDetectado(candidatos).tipo !== 'uno') {
       const tolerantes = detectarProductosTolerante(texto, indice);
       if (tolerantes.length && (!candidatos.length || tolerantes[0].cobertura > candidatos[0].cobertura + 1e-9)) {
         candidatos = tolerantes;

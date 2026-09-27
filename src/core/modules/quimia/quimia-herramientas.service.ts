@@ -51,6 +51,8 @@ export interface ContextoHerramientas {
   borrador?: BorradorProforma | null;
   /** Canal de la conversación y teléfono (Telegram) para el borrador. */
   canal?: string;
+  /** Cliente / proveedor ya fijado como contexto en esta respuesta (para avisar solo si cambia). */
+  personaFijada?: { tipo: 'CLIENTE' | 'PROVEEDOR'; ide_geper: number; nombre: string };
   telefono?: string | null;
   emitir: (evento: EventoQuimia) => void;
 }
@@ -464,7 +466,9 @@ export class QuimiaHerramientasService {
       }
       // Clientes y transporte no requieren producto activo (compras_cliente lo recibe si aplica).
       if (this.quimiaClientes.esHerramienta(nombre)) {
-        return this.json(await this.quimiaClientes.ejecutar(nombre, args, ctx.usuario, ctx.producto));
+        const resultado = await this.quimiaClientes.ejecutar(nombre, args, ctx.usuario, ctx.producto);
+        await this.fijarPersona(nombre, args, ctx);
+        return this.json(resultado);
       }
 
       const producto = await this.resolverProducto(args.ide_inarti, ctx);
@@ -771,6 +775,25 @@ export class QuimiaHerramientasService {
         'Al final: precio máximo (con su cantidad), precio mínimo (con su cantidad) y precio promedio sugerido ' +
         '(ponderado por cantidad) con el total para la cantidad pedida. Precios sin IVA.',
     };
+  }
+
+/**
+   * Al consultar un cliente o proveedor concreto, el chat del ERP lo fija como contexto (etiqueta junto al
+   * producto): "¿cuánto me debe Minmetec?" deja fijado a Minmetec y "¿cada cuánto compra?" ya se refiere
+   * a él. Solo se avisa cuando cambia.
+   */
+  private async fijarPersona(nombre: string, args: Record<string, any>, ctx: ContextoHerramientas) {
+    const tipo = ['datos_cliente', 'deuda_cliente', 'compras_cliente', 'envios_cliente'].includes(nombre)
+      ? 'CLIENTE'
+      : ['deuda_proveedor', 'compras_proveedor', 'pagos_por_vencer'].includes(nombre)
+        ? 'PROVEEDOR'
+        : null;
+    const id = Number(args.ide_geper);
+    if (!tipo || !id || (ctx.personaFijada?.tipo === tipo && ctx.personaFijada.ide_geper === id)) return;
+    const nombrePersona = await this.quimiaClientes.nombrePersona(id, ctx.usuario.ideEmpr);
+    if (!nombrePersona) return;
+    ctx.personaFijada = { tipo, ide_geper: id, nombre: nombrePersona };
+    ctx.emitir({ tipo: 'persona', persona: ctx.personaFijada });
   }
 
   /** Factura/proforma por número: una coincidencia → se entrega el PDF; varias → la IA pregunta cuál. */

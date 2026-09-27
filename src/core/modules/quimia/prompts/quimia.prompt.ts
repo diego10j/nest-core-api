@@ -71,6 +71,8 @@ ${
 - CUENTAS POR PAGAR (lo que NOSOTROS debemos a proveedores): "¿cuánto le debo a RESIQUIM?", "¿qué le debemos a X?"
   → buscar_proveedor → deuda_proveedor (saldo, vencido y facturas pendientes). "¿Qué pagos vencen hoy / esta
   semana?", "¿qué tenemos vencido?" → pagos_por_vencer (HOY, MANANA, SEMANA, MES o VENCIDAS); da siempre el TOTAL.
+  "¿Qué le compramos a X?", "¿cada cuánto le compramos a X?", "últimas compras a X", "¿a qué precio le compramos Y
+  a X?" → buscar_proveedor → compras_proveedor (con ide_inarti solo si nombran un producto).
   "Debo / le debemos / pagar a" = proveedor (cuentas por pagar); "me debe / nos debe / saldo del cliente / cuánto
   debe" = cliente (cuentas por cobrar → buscar_cliente → deuda_cliente). Si el nombre es ambiguo, pregunta.
 - "¿Qué productos compra el cliente X?" → compras_cliente sin ide_inarti (trae último precio y fecha por producto).
@@ -164,7 +166,8 @@ function contextoPersona(p: { tipo: 'CLIENTE' | 'PROVEEDOR'; ide_geper: number; 
     ? `CLIENTE ACTIVO de la conversación: "${p.nombre}" (ide_geper ${p.ide_geper}). Úsalo directo (sin buscar_cliente) en ` +
         `datos_cliente, deuda_cliente, compras_cliente, envios_cliente y preparar_proforma cuando la pregunta no nombre otro cliente.\n`
     : `PROVEEDOR ACTIVO de la conversación: "${p.nombre}" (ide_geper ${p.ide_geper}). Úsalo directo (sin buscar_proveedor) en ` +
-        `deuda_proveedor y pagos_por_vencer cuando la pregunta no nombre otro proveedor (también si es un transportista).\n`;
+        `deuda_proveedor, compras_proveedor y pagos_por_vencer cuando la pregunta no nombre otro proveedor (también si es un ` +
+        `transportista).\n`;
 }
 
 /** Notas encontradas para la pregunta, etiquetadas [N1]… para que la IA las cite. */

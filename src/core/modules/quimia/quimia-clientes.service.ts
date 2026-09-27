@@ -45,6 +45,28 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'compras_proveedor',
+      description:
+        'Lo que le COMPRAMOS a un proveedor (facturas de compra): "¿qué le compramos a X?", "¿cada cuánto le compramos?", ' +
+        '"últimas compras a X", "¿a qué precio le compramos Y a X?". Frecuencia, última compra, productos con último ' +
+        'precio y fecha. Con ide_inarti: historial de precios de ese producto con el proveedor.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...idProveedor,
+          ide_inarti: {
+            type: 'integer',
+            description: 'Producto: SOLO si la pregunta nombra un producto o dice "este producto"; si no, omitir.',
+          },
+          meses: { type: 'integer', description: 'Meses hacia atrás (por defecto 24)' },
+        },
+        required: ['ide_geper'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'pagos_por_vencer',
       description:
         'Cuentas por PAGAR (a proveedores) según vencimiento: "¿qué pagos vencen hoy?", "pagos de esta semana", "¿qué ' +
@@ -104,7 +126,12 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
         type: 'object',
         properties: {
           ...idCliente,
-          ide_inarti: { type: 'integer', description: 'Producto (omitir para analizar todas sus compras)' },
+          ide_inarti: {
+            type: 'integer',
+            description:
+              'Producto: SOLO si la pregunta nombra un producto o dice "este producto". "¿Cada cuánto compra?", "¿qué ' +
+              'compra?" o "sus últimas compras" → omitir, aunque haya un producto activo.',
+          },
           meses: { type: 'integer', description: 'Meses hacia atrás (por defecto 24)' },
         },
         required: ['ide_geper'],
@@ -167,6 +194,7 @@ export const ESTADOS_CLIENTES: Record<string, string> = {
   envios_cliente: 'Consultando los envíos del cliente…',
   buscar_proveedor: 'Buscando el proveedor…',
   deuda_proveedor: 'Consultando cuentas por pagar…',
+  compras_proveedor: 'Analizando las compras al proveedor…',
   pagos_por_vencer: 'Revisando los pagos por vencer…',
   transportes_destino: 'Buscando transportistas…',
   costo_envio: 'Cotizando el transporte…',
@@ -295,6 +323,13 @@ export class QuimiaClientesService {
         return this.buscarProveedor(String(args.texto ?? ''), usuario);
       case 'deuda_proveedor':
         return this.deudaProveedor(Number(args.ide_geper), usuario);
+      case 'compras_proveedor':
+        return this.comprasProveedor(
+          Number(args.ide_geper),
+          args.ide_inarti ? Number(args.ide_inarti) : null,
+          Number(args.meses) || 24,
+          usuario,
+        );
       case 'pagos_por_vencer':
         return this.pagosPorVencer(String(args.periodo ?? 'HOY').toUpperCase(), args.ide_geper ? Number(args.ide_geper) : null, usuario);
       default:
@@ -426,6 +461,14 @@ export class QuimiaClientesService {
         producto: nombre,
         periodo_meses: meses,
         veces_vendido: ventas.length,
+        // Que no haya comprado ESTE producto no significa que no compre: se informa el total.
+        ...(!ventas.length
+          ? {
+              aviso:
+                `No compró ${nombre} en el período, pero tiene ${new Set(lineas.map((l) => l.ide_cccfa)).size} factura(s) ` +
+                'de otros productos. Si la pregunta no era de este producto, vuelve a llamar sin ide_inarti.',
+            }
+          : {}),
         ultimo_precio: ventas[0]?.precio ?? null,
         ultima_fecha: ventas[0]?.fecha ?? null,
         precio_minimo: precios.length ? Math.min(...precios) : null,
@@ -433,6 +476,25 @@ export class QuimiaClientesService {
         precio_promedio: precios.length ? num(precios.reduce((a, b) => a + b, 0) / precios.length, 4) : null,
         ventas: ventas.slice(0, 15).map(({ ide_cccfa: _i, ...v }) => v),
         nota: 'Precios unitarios sin IVA según la factura.',
+      };
+    }
+
+    // Sin compras en el período: se busca la última compra histórica antes de decir que no compra.
+    if (!lineas.length && meses < 120) {
+      const hist: any = await this.clientes
+        .getDetalleVentasCliente({ ...u, ide_geper: ideGeper, fechaInicio: haceMeses(120), fechaFin: hoy(), ...SIN_PAGINAR } as any)
+        .catch(() => null);
+      const filas: any[] = hist?.rows ?? [];
+      const ultimaHist = filas.map((l) => fecha(l.fecha_emisi_cccfa)).filter(Boolean).sort().pop() ?? null;
+      return {
+        periodo_meses: meses,
+        facturas: 0,
+        sin_compras_en_periodo: true,
+        ultima_compra_historica: ultimaHist,
+        facturas_ultimos_10_anios: new Set(filas.map((l) => l.ide_cccfa)).size,
+        nota: ultimaHist
+          ? `No compró en los últimos ${meses} meses; su última compra fue el ${ultimaHist}.`
+          : 'No hay facturas del cliente en esta sucursal.',
       };
     }
 
@@ -796,5 +858,132 @@ export class QuimiaClientesService {
       ...(lista.length > 40 ? { nota: `Se muestran 40 de ${lista.length}; el total incluye todos.` } : {}),
       moneda: 'USD',
     };
+  }
+
+  /**
+   * Compras a un proveedor (ProveedorService.getDetalleComprasProveedor, el detalle de la ficha del
+   * proveedor) con la unidad de cada producto (getProductosProveedor). Igual que compras_cliente: sin
+   * producto → frecuencia y productos que le compramos; con producto → historial de precios.
+   */
+  private async comprasProveedor(ideGeper: number, ideInarti: number | null, meses: number, u: UsuarioQuimia) {
+    if (!ideGeper) return { error: 'Primero busca el proveedor con buscar_proveedor' };
+    type LineaCompra = { fecha: string | null; factura: string; producto: string; cantidad: number | null; precio: number | null; total: number | null };
+    const leer = async (m: number): Promise<LineaCompra[]> => {
+      const r: any = await this.proveedores.getDetalleComprasProveedor({
+        ...u,
+        ...SIN_PAGINAR,
+        ide_geper: ideGeper,
+        fechaInicio: haceMeses(m),
+        fechaFin: hoy(),
+      } as any);
+      return (Array.isArray(r) ? r : (r?.rows ?? [])).map((l: any) => ({
+        fecha: fecha(l.fecha_emisi_cpcfa),
+        factura: l.numero_cpcfa as string,
+        producto: l.nombre_inarti as string,
+        cantidad: num(l.cantidad_cpdfa, 3),
+        precio: num(l.precio_cpdfa, 4),
+        total: num(l.valor_cpdfa),
+      }));
+    };
+    const lineas = await leer(meses);
+
+    // Sin compras en el período: última compra histórica antes de decir que no le compramos.
+    if (!lineas.length) {
+      const hist = meses < 120 ? await leer(120).catch(() => []) : [];
+      const ultimaHist = hist.map((l) => l.fecha).filter(Boolean).sort().pop() ?? null;
+      return {
+        periodo_meses: meses,
+        facturas: 0,
+        sin_compras_en_periodo: true,
+        ultima_compra_historica: ultimaHist,
+        nota: ultimaHist
+          ? `No le compramos en los últimos ${meses} meses; la última compra fue el ${ultimaHist}.`
+          : 'No hay facturas de compra de este proveedor.',
+      };
+    }
+
+    // Unidad por producto (la ficha del proveedor la trae; el detalle no).
+    const prods: any = await this.proveedores.getProductosProveedor({ ...u, ...SIN_PAGINAR, ide_geper: ideGeper } as any).catch(() => null);
+    const unidades = new Map<string, string | null>(
+      (Array.isArray(prods) ? prods : (prods?.rows ?? [])).map((p: any) => [p.nombre_inarti, p.unidad || null]),
+    );
+
+    if (ideInarti) {
+      const r2 = await this.dataSource.pool.query(`SELECT nombre_inarti FROM inv_articulo WHERE ide_inarti = $1`, [ideInarti]);
+      const nombre = r2.rows[0]?.nombre_inarti ?? null;
+      const compras = lineas.filter((l) => l.producto === nombre).reverse();
+      const precios = compras.map((c) => c.precio).filter((p) => p !== null) as number[];
+      return {
+        producto: nombre,
+        unidad: unidades.get(nombre) ?? null,
+        periodo_meses: meses,
+        veces_comprado: compras.length,
+        ...(!compras.length
+          ? {
+              aviso:
+                `No le compramos ${nombre} en el período, pero hay ${new Set(lineas.map((l) => l.factura)).size} factura(s) ` +
+                'de otros productos. Si la pregunta no era de este producto, vuelve a llamar sin ide_inarti.',
+            }
+          : {}),
+        ultimo_precio: compras[0]?.precio ?? null,
+        ultima_fecha: compras[0]?.fecha ?? null,
+        precio_minimo: precios.length ? Math.min(...precios) : null,
+        precio_maximo: precios.length ? Math.max(...precios) : null,
+        precio_promedio: precios.length ? num(precios.reduce((a, b) => a + b, 0) / precios.length, 4) : null,
+        compras: compras.slice(0, 15),
+        nota: 'Precios unitarios sin IVA según la factura de compra.',
+      };
+    }
+
+    // Fechas distintas con compra (varias facturas el mismo día cuentan como una compra).
+    const unicas: string[] = [...new Set(lineas.map((l) => String(l.fecha ?? '')).filter(Boolean))].sort();
+    const dias = unicas.slice(1).map((f, i) => (Date.parse(f) - Date.parse(unicas[i])) / 86_400_000);
+    const promedio = dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null;
+    const ultima = unicas[unicas.length - 1] ?? null;
+    const porProducto = new Map<string, { veces: number; cantidad: number; total: number; ultimaFecha: string | null; ultimoPrecio: number | null }>();
+    lineas.forEach((l) => {
+      const p = porProducto.get(l.producto) ?? { veces: 0, cantidad: 0, total: 0, ultimaFecha: null, ultimoPrecio: null };
+      p.veces++;
+      p.cantidad += l.cantidad ?? 0;
+      p.total += l.total ?? 0;
+      if (l.fecha && (!p.ultimaFecha || l.fecha >= p.ultimaFecha)) {
+        p.ultimaFecha = l.fecha;
+        p.ultimoPrecio = l.precio;
+      }
+      porProducto.set(l.producto, p);
+    });
+    return {
+      periodo_meses: meses,
+      facturas: new Set(lineas.map((l) => l.factura)).size,
+      primera_compra: unicas[0] ?? null,
+      ultima_compra: ultima,
+      dias_desde_ultima_compra: ultima ? Math.round((Date.now() - Date.parse(ultima)) / 86_400_000) : null,
+      dias_promedio_entre_compras: promedio,
+      proxima_compra_estimada:
+        promedio !== null && ultima ? new Date(Date.parse(ultima) + promedio * 86_400_000).toISOString().slice(0, 10) : null,
+      total_comprado_usd: num(lineas.reduce((a, l) => a + (l.total ?? 0), 0)),
+      productos_comprados: [...porProducto.entries()]
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 25)
+        .map(([producto, p]) => ({
+          producto,
+          veces: p.veces,
+          cantidad: num(p.cantidad, 3),
+          unidad: unidades.get(producto) ?? null,
+          ultimo_precio: p.ultimoPrecio,
+          ultima_compra: p.ultimaFecha,
+          total_usd: num(p.total),
+        })),
+      nota: 'Compras de toda la empresa a este proveedor (la ficha del proveedor no filtra por sucursal).',
+    };
+  }
+
+  /** Nombre de un cliente / proveedor (para fijarlo como contexto del chat). */
+  async nombrePersona(ideGeper: number, ideEmpr: number): Promise<string | null> {
+    if (!ideGeper) return null;
+    const r = await this.dataSource.pool
+      .query(`SELECT nom_geper FROM gen_persona WHERE ide_geper = $1 AND ide_empr = $2`, [ideGeper, ideEmpr])
+      .catch(() => null);
+    return r?.rows?.[0]?.nom_geper ?? null;
   }
 }

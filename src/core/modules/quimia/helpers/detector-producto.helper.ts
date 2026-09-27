@@ -36,7 +36,10 @@ const IGNORADAS = new Set([
   'PUREZA', 'CONCENTRACION', 'LOTE', 'LOTES', 'ULTIMO', 'ULTIMOS', 'FICHA', 'TECNICA', 'HOJA', 'SEGURIDAD',
   'CERTIFICADO', 'ANALISIS', 'THE', 'AND', 'FOR', 'WHAT', 'WITH', 'FACTURA', 'FACTURAS', 'PROFORMA',
   'PROFORMAS', 'PDF', 'QUIERO', 'ENVIAME', 'MANDAME', 'NECESITO', 'PRECIO', 'PRECIOS', 'CUANTO', 'CUANTOS',
-  'CUANTA', 'CUESTA', 'COTIZA', 'COTIZAR', 'COTIZAME', 'VENDER', 'VENDO', 'VENDEMOS', 'VENDEN', 'VENDE', 'PUEDO', 'STOCK', 'SIGO', 'HAY',
+  'CUANTA', 'CUESTA', 'COTIZA', 'COTIZAR', 'COTIZAME', 'VENDER',
+  // Preguntas de clientes / proveedores / cartera: nunca identifican un producto ("CLIENTE" ≈ "CALIENTE").
+  'CLIENTE', 'CLIENTES', 'PROVEEDOR', 'PROVEEDORES', 'DEBE', 'DEBEN', 'DEBO', 'DEBEMOS', 'SALDO', 'SALDOS', 'CARTERA',
+  'COMPRA', 'COMPRAS', 'COMPRAN', 'COMPRO', 'COMPRAMOS', 'COMPRADO', 'CADA', 'PAGO', 'PAGOS', 'VENCE', 'VENCEN', 'VENCIDO', 'VENCIDAS', 'ENVIOS', 'VENDO', 'VENDEMOS', 'VENDEN', 'VENDE', 'PUEDO', 'STOCK', 'SIGO', 'HAY',
 ]);
 
 /**
@@ -81,6 +84,31 @@ export function mencionaVariosProductos(candidatos: CandidatoDetectado[]): boole
   return fuertes.some((a, i) =>
     fuertes.slice(i + 1).some((b) => a.cubiertas!.some((w) => !b.cubiertas!.includes(w)) && b.cubiertas!.some((w) => !a.cubiertas!.includes(w))),
   );
+}
+
+/**
+ * La pregunta es sobre un cliente o proveedor ("¿cuánto me debe el cliente X?", "¿cuánto le debo a Y?",
+ * "saldo de X", "¿cada cuánto compra?"): no se usa la detección tolerante de productos (un nombre de
+ * cliente parecido a una palabra de un producto fijaba un producto sin sentido).
+ */
+export function esPreguntaDePersona(pregunta: string): boolean {
+  return /\b(CLIENTES?|PROVEEDOR(ES)?|ME DEBE|NOS DEBE|LE DEBO|LE DEBEMOS|SALDOS?|CARTERA|CADA CUANTO|LE COMPRAMOS|LE COMPRO|COMPRAS A)\b/.test(
+    normalizarTexto(pregunta),
+  );
+}
+
+/**
+ * En preguntas de cliente / proveedor el nombre de la persona suele coincidir con una palabra de un
+ * producto (el proveedor QUIMPAC y el producto "QUIMPAC CLORO"). Solo cuentan los productos nombrados de
+ * verdad: 2+ palabras propias o el nombre completo. Para ellos no aplica el conflicto (la palabra que
+ * "sobra" en la pregunta es el nombre del cliente / proveedor).
+ */
+export function soloProductosNombrados<T extends Pick<CandidatoDetectado, 'palabras' | 'similitud' | 'conflicto'>>(
+  candidatos: T[],
+): T[] {
+  return candidatos
+    .filter((c) => (c.palabras ?? 0) >= 2 || c.similitud >= 0.99)
+    .map((c) => ({ ...c, conflicto: false }));
 }
 
 /** Máximo de productos que se ofrecen para elegir cuando la pregunta es ambigua. */

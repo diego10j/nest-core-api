@@ -10,7 +10,13 @@ import { BDT_CONFIG, MENSAJE_IA_GENERAL, costoIa } from '../base-tecnica/constan
 import { MAX_NOTAS_QUIMIA, NotaQuimia, QuimiaConocimientoService } from './conocimiento/quimia-conocimiento.service';
 import { ChatQuimiaDto } from './dto/chat-quimia.dto';
 import { convertirCitasEnLinea, convertirNotasEnLinea } from './helpers/citas-en-linea.helper';
-import { esCoincidenciaFuerte, esPedidoDocumentoErp, esPedidoProforma, mencionaVariosProductos } from './helpers/detector-producto.helper';
+import {
+  esCoincidenciaFuerte,
+  esPedidoDocumentoErp,
+  esPedidoProforma,
+  esPreguntaDePersona,
+  mencionaVariosProductos,
+} from './helpers/detector-producto.helper';
 import { sugerenciasSeguimiento } from './helpers/presentacion.helper';
 import { formatearTextoPlano } from './helpers/texto-plano.helper';
 import {
@@ -174,7 +180,10 @@ export class QuimiaAgenteService {
     // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.
     const candidatos = esPedidoDocumentoErp(dto.pregunta)
       ? []
-      : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, { tolerante: !producto });
+      : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, {
+          tolerante: !producto,
+          preguntaDePersona: esPreguntaDePersona(dto.pregunta),
+        });
     const eleccion = this.productos.elegir(candidatos);
     // Cotización / proforma ("cotiza 5 kg de cera de palma y 5 kg de cera de coco a consumidor final") o
     // varios productos en la misma pregunta: nunca se interrumpe con "¿cambio de producto?" ni "¿a cuál te
@@ -251,6 +260,7 @@ export class QuimiaAgenteService {
       dto.persona_tipo && dto.persona_id
         ? { tipo: dto.persona_tipo, ide_geper: Number(dto.persona_id), nombre: (dto.persona_nombre ?? '').slice(0, 250) }
         : null;
+    if (persona) ctx.personaFijada = persona;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: buildPromptAgente({ producto, canal, hoy, notas: ctx.notas, persona }) },

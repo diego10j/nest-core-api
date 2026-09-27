@@ -236,6 +236,46 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
       break;
     }
 
+    case 'compras_proveedor':
+      if (d.compras) {
+        b.push(
+          indicadores(`Compras de ${d.producto} al proveedor (${d.periodo_meses} meses)`, [
+            { etiqueta: 'Veces comprado', valor: d.veces_comprado, formato: 'numero' },
+            { etiqueta: 'Último precio', valor: d.ultimo_precio, formato: 'precio', destacado: true },
+            { etiqueta: 'Mínimo', valor: d.precio_minimo, formato: 'precio' },
+            { etiqueta: 'Máximo', valor: d.precio_maximo, formato: 'precio' },
+            { etiqueta: 'Promedio', valor: d.precio_promedio, formato: 'precio' },
+          ]),
+          tabla('Detalle de compras', [
+            { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
+            { clave: 'factura', etiqueta: 'Factura' },
+            { clave: 'cantidad', etiqueta: 'Cantidad', formato: 'cantidad' },
+            { clave: 'precio', etiqueta: 'Precio', formato: 'precio' },
+            { clave: 'total', etiqueta: 'Total', formato: 'moneda' },
+          ], d.compras),
+        );
+      } else if (d.productos_comprados) {
+        b.push(
+          indicadores(`Compras al proveedor (${d.periodo_meses} meses)`, [
+            { etiqueta: 'Facturas', valor: d.facturas, formato: 'numero' },
+            { etiqueta: 'Le compramos cada', valor: d.dias_promedio_entre_compras, formato: 'dias', destacado: true },
+            { etiqueta: 'Última compra', valor: d.ultima_compra, formato: 'fecha' },
+            { etiqueta: 'Próxima estimada', valor: d.proxima_compra_estimada, formato: 'fecha', color: 'info' },
+            { etiqueta: 'Total comprado', valor: d.total_comprado_usd, formato: 'moneda' },
+          ]),
+          tabla('Productos que le compramos', [
+            { clave: 'producto', etiqueta: 'Producto' },
+            { clave: 'veces', etiqueta: 'Veces', formato: 'numero' },
+            { clave: 'cantidad', etiqueta: 'Cantidad', formato: 'cantidad' },
+            { clave: 'unidad', etiqueta: 'Unidad' },
+            { clave: 'ultimo_precio', etiqueta: 'Último precio', formato: 'precio' },
+            { clave: 'ultima_compra', etiqueta: 'Última compra', formato: 'fecha' },
+            { clave: 'total_usd', etiqueta: 'Total', formato: 'moneda' },
+          ], d.productos_comprados),
+        );
+      }
+      break;
+
     case 'pagos_por_vencer': {
       const filas = d.pagos as Dato[] | undefined;
       b.push(

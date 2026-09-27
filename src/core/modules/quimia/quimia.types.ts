@@ -34,6 +34,8 @@ export interface ProductoCandidato extends ProductoQuimia {
  */
 export type EventoQuimia =
   | ({ tipo: 'producto' } & ProductoQuimia)
+  /** Cliente / proveedor consultado: el chat del ERP lo fija como contexto (etiqueta junto al producto). */
+  | { tipo: 'persona'; persona: { tipo: 'CLIENTE' | 'PROVEEDOR'; ide_geper: number; nombre: string } }
   | { tipo: 'seleccion'; opciones: ProductoCandidato[] }
   | { tipo: 'sugerir_cambio'; producto: ProductoCandidato }
   | { tipo: 'estado'; texto: string }
