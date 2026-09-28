@@ -174,7 +174,8 @@ export class QuimiaAgenteService {
   // ------------------------------------------------------------------ agente con herramientas
 
   private async responderAgente(dto: ChatQuimiaDto, usuario: UsuarioConOrigen, canal: CanalQuimia, emitir: Emitir) {
-    let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr) : null;
+    // Un servicio que quedó como producto activo (conversaciones anteriores al filtro) se ignora.
+    let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr, { soloProductos: true }) : null;
     // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
     // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
     // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.

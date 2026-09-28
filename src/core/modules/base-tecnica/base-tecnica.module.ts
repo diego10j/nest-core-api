@@ -8,6 +8,7 @@ import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtConsultaService } from './bdt-consulta.service';
 import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
+import { BdtImportadorService } from './bdt-importador.service';
 import { BdtExtraccionService } from './bdt-extraccion.service';
 import { BdtIaService } from './bdt-ia.service';
 import { BdtMarcaAguaService } from './bdt-marca-agua.service';
@@ -32,6 +33,7 @@ import { BdtProcesoService } from './bdt-proceso.service';
     BdtDatosService,
     BdtConsultaService,
     BdtContenidoService,
+    BdtImportadorService,
     BdtMasivoService,
     BdtAutomaticoService,
     BdtMarcaAguaService,

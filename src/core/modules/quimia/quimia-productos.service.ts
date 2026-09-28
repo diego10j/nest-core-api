@@ -77,9 +77,11 @@ export class QuimiaProductosService {
     return elegirProductoDetectado(candidatos);
   }
 
-  async getProducto(ideInarti: number, ideEmpr: number): Promise<ProductoQuimia | null> {
+  /** soloProductos: descarta servicios (ide_intpr <> 1), para el producto activo de una conversación. */
+  async getProducto(ideInarti: number, ideEmpr: number, opciones: { soloProductos?: boolean } = {}): Promise<ProductoQuimia | null> {
     const r = await this.dataSource.pool.query(
-      `SELECT ide_inarti, nombre_inarti AS nombre FROM inv_articulo WHERE ide_inarti = $1 AND ide_empr = $2`,
+      `SELECT ide_inarti, nombre_inarti AS nombre FROM inv_articulo
+        WHERE ide_inarti = $1 AND ide_empr = $2 ${opciones.soloProductos ? 'AND ide_intpr = 1' : ''}`,
       [ideInarti, ideEmpr],
     );
     return r.rows[0] ?? null;
@@ -202,6 +204,9 @@ export class QuimiaProductosService {
             FROM inv_articulo a
             LEFT JOIN bdt_producto p ON p.ide_inarti = a.ide_inarti
            WHERE a.ide_empr = $1 AND a.activo_inarti = TRUE AND a.nivel_inarti = 'HIJO'
+             -- Solo productos: servicios como "TRANSPORTE EN VENTAS" (flete de facturas) se detectaban
+             -- en "¿qué transporte lleva a Loja?" y quedaban como producto activo de la conversación.
+             AND a.ide_intpr = 1
        )
        SELECT ide_inarti, nombre_inarti AS nombre, nombre_inarti AS texto, documentos FROM art
        UNION ALL

@@ -210,7 +210,10 @@ REGLAS DE EXTRACCIÓN
    el COA lo indica para ese lote). País de origen ("Country of origin", "Made in") en "pais_origen".
 6. lote: solo en COA (número de lote/batch, país de origen, presentación, cumple = true si declara
    conformidad general "Complies"/"Conforme"/"Pass", false si declara no conforme, null si no dice).
-7. fabricante = quien fabrica/emite el documento; proveedor = distribuidor si se menciona uno distinto.
+7. fabricante = quien fabrica el producto (o emite el documento si es el fabricante); proveedor =
+   distribuidor, importador o exportador distinto del fabricante que aparezca en el documento (ej. el
+   "Supplier"/"Distribuidor" de la sección 1 de una SDS, o una empresa local que re-emite la ficha).
+   DIQUIMEC como cliente/consignatario/destinatario NO es proveedor ni fabricante.
 8. producto.sinonimos: otros nombres que el documento da al producto (nombre químico, inglés, INCI,
    E-number…), sin repetir el nombre principal.
 9. En "observaciones" anota brevemente problemas: texto ilegible, tabla dudosa, datos en otro documento

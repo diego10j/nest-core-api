@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
+import { BdtImportadorService } from './bdt-importador.service';
 import { BdtMarcaAguaService } from './bdt-marca-agua.service';
 import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
@@ -32,6 +33,7 @@ export class BaseTecnicaController {
     private readonly masivo: BdtMasivoService,
     private readonly automatico: BdtAutomaticoService,
     private readonly marcaAgua: BdtMarcaAguaService,
+    private readonly importador: BdtImportadorService,
   ) {}
 
   // ------------------------------------------------------------------ página Base Técnica (mantenimiento)
@@ -40,6 +42,16 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Listado general de documentos extraídos (DataTableQuery) con filtros' })
   getDocumentosTecnicos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDocumentosTecnicosDto) {
     return this.datos.getDocumentosTecnicos({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getDocumentosConProveedor')
+  @ApiOperation({
+    summary:
+      'Documentos extraídos que mencionan a un proveedor local (gen_persona con RUC, ej. el importador). ' +
+      'Omite los que mencionan a la propia empresa (importaciones propias).',
+  })
+  getDocumentosConProveedor(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.importador.getDocumentosConProveedor(headersParams);
   }
 
   @Get('getResumenGeneral')

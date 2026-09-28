@@ -114,7 +114,20 @@ export class TelegramRunnerService implements OnApplicationBootstrap, OnModuleDe
   /** Webhook: valida el secreto y encola el update (la respuesta HTTP no espera a la IA). */
   async recibirWebhook(ideTlcue: number, secreto: string | undefined, update: TelegramUpdate): Promise<boolean> {
     const cuenta = await this.cuentas.getCuentaInterna(ideTlcue).catch(() => null);
-    if (!cuenta || !cuenta.activo_tlcue || !secreto || secreto !== cuenta.webhook_secret_tlcue) return false;
+    // Se responde 200 igual (si no, Telegram reintenta sin fin), pero se deja rastro del motivo.
+    const motivo = !cuenta
+      ? 'la cuenta no existe'
+      : !cuenta.activo_tlcue
+        ? 'la cuenta está inactiva'
+        : !secreto
+          ? 'llegó sin secreto (x-telegram-bot-api-secret-token)'
+          : secreto !== cuenta.webhook_secret_tlcue
+            ? 'el secreto no coincide (¿otro servidor registró el webhook con el mismo bot?)'
+            : null;
+    if (motivo) {
+      this.logger.warn(`Telegram webhook cuenta ${ideTlcue} descartado: ${motivo}`);
+      return false;
+    }
     this.encolar(cuenta, update);
     return true;
   }
