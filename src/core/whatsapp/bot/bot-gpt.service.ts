@@ -569,6 +569,10 @@ export class BotGptService {
               'producto puntual sin contestar (ej. respondió "1. 10kg" pero había un producto 2 que no tocó) — no ' +
               'uses null solo porque no repitió el nombre en una respuesta de una sola cantidad para todos (ver ' +
               'regla de arriba). ' +
+              'Si el cliente menciona MÁS DE UNA cantidad para el MISMO producto en el mismo mensaje, típicamente ' +
+              'corrigiéndose ("1 kg... tal vez mejor 3 kilos", "2 litros, no espera, 5 litros") usa la ÚLTIMA que ' +
+              'mencionó — es la que prevalece, igual que si lo hubiera dicho en un mensaje aparte corrigiendo al ' +
+              'anterior.\n' +
               '"cantidadTexto": el texto EXACTO que el cliente usó para expresar esa cantidad, tal cual lo escribió ' +
               '(ej. "6 canecas", "1 galón", "20kg", "cantidad mínima") — se usa para mostrárselo de vuelta al cliente ' +
               'en el resumen de su cotización, en vez del número ya convertido internamente. null si ese producto ' +

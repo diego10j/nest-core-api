@@ -68,6 +68,10 @@ export class ApiPersonaService extends BaseService {
           // Origin/Referer que usa el portal web de servicios de Quito.
           Origin: 'https://servicios.quito.gob.ec',
           Referer: 'https://servicios.quito.gob.ec/',
+          // Cookies de Google Analytics que envía el portal web. No influyen en la lógica de la
+          // consulta, pero se replican por si el backend las inspecciona.
+          Cookie:
+            '_ga_W44GVCPPP5=GS2.1.s1790611195$o1$g1$t1790611856$j60$l0$h0; _ga=GA1.3.567901751.1790611195; _ga_TFG7P9SB2Q=GS2.1.s1790611195$o1$g1$t1790611856$j60$l0$h0; _gid=GA1.3.587425867.1790611196',
         },
       };
 

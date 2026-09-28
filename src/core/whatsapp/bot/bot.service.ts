@@ -1501,6 +1501,18 @@ export class BotService implements OnModuleInit {
       agregarNota(`El cliente mencionó otra cantidad después de la que ya se registró: "${texto.trim()}" — revisar cuál es la correcta.`);
     }
 
+    // Más de una cantidad candidata para el mismo mensaje (ej. "1 kg de cada una... tal vez 3
+    // kilos de cada una" llegado en una sola ráfaga por el debounce) — el extractor toma una
+    // sola cantidad por producto sin avisar cuál descartó. Se anota para que el asesor
+    // confirme cuál es la real (caso real detectado 2026-10-01: la cotización cerró con "1 kg"
+    // sin que quedara registro de que la clienta también mencionó "3 kilos").
+    if (
+      itemsSinCantidad.length > 0 &&
+      (texto.match(/\d+([.,]\d+)?\s*(kg|kilos?|kilogramos?|g|gr|gramos?|lb|libras?|l|lts?|litros?|gal(on(es)?)?|ml|toneladas?|tn|canecas?)\b/gi) ?? []).length > 1
+    ) {
+      agregarNota(`El cliente mencionó más de una cantidad en el mismo mensaje: "${texto.trim()}" — se usó una sola, confirmar con el cliente cuál es la correcta.`);
+    }
+
     // Preguntas al asesor a mitad de la recopilación ("¿qué precio tiene el litro?", "¿cuánto
     // es la cantidad mínima?"): el bot no las responde (el precio depende de la cantidad y la
     // mínima la confirma el asesor) — se dejan registradas para que el asesor las conteste, y
