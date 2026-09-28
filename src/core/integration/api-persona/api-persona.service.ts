@@ -63,6 +63,11 @@ export class ApiPersonaService extends BaseService {
         timeout: 30000, // 30 segundos
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json, text/plain, */*',
+          // El backend puede validar el origen del request (CORS/gating). Se envían los mismos
+          // Origin/Referer que usa el portal web de servicios de Quito.
+          Origin: 'https://servicios.quito.gob.ec',
+          Referer: 'https://servicios.quito.gob.ec/',
         },
       };
 
