@@ -5,9 +5,11 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { AsientosAutomaticosService } from './asientos-automaticos.service';
 import { ContabilidadService } from './contabilidad.service';
+import { MayorizacionProcesoService } from './mayorizacion-proceso.service';
 import { EstadosFinancierosDto } from './dto/estados-financieros.dto';
 import { LibroDiarioDto } from './dto/libro-diario.dto';
 import { LibroMayorDto } from './dto/libro-mayor.dto';
+import { IniciarMayorizacionDto } from './dto/iniciar-mayorizacion.dto';
 import { LogMayorizacionDto } from './dto/log-mayorizacion.dto';
 import { PeriodoFechaDto, PeriodoIdDto } from './dto/periodo.dto';
 import { ReporteRetencionesDto } from './dto/reporte-retenciones.dto';
@@ -19,6 +21,7 @@ export class ContabilidadController {
     constructor(
         private readonly contabilidadService: ContabilidadService,
         private readonly asientosService: AsientosAutomaticosService,
+        private readonly mayorizacionProceso: MayorizacionProcesoService,
     ) { }
 
     @Get('getLibroDiario')
@@ -97,6 +100,28 @@ export class ContabilidadController {
     @ApiOperation({ summary: 'Totales de actividad (generados/anulados/advertencias/errores) de Mayorizar por período' })
     getActividadMayorizacion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: LogMayorizacionDto) {
         return this.asientosService.getActividadMayorizacion({ ...headersParams, ...dtoIn });
+    }
+
+    @Post('iniciarMayorizacion')
+    @ApiOperation({
+        summary:
+            'Genera/anula en SEGUNDO PLANO los asientos de los documentos seleccionados (Mayorizar). ' +
+            'El avance se consulta con getProcesoMayorizacion; una sola corrida activa por empresa.',
+    })
+    iniciarMayorizacion(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IniciarMayorizacionDto) {
+        return this.mayorizacionProceso.iniciar({ ...headersParams, ...dtoIn });
+    }
+
+    @Get('getProcesoMayorizacion')
+    @ApiOperation({ summary: 'Avance de la corrida de Mayorizar en curso (o la última) de la empresa' })
+    getProcesoMayorizacion(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.mayorizacionProceso.getEstado(headersParams.ideEmpr);
+    }
+
+    @Post('cancelarMayorizacion')
+    @ApiOperation({ summary: 'Detiene la corrida de Mayorizar al terminar el documento actual' })
+    cancelarMayorizacion(@AppHeaders() headersParams: HeaderParamsDto) {
+        return this.mayorizacionProceso.cancelar(headersParams.ideEmpr);
     }
 
     @Post('getResumenCuentasMayorizacion')

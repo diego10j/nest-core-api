@@ -6,7 +6,7 @@ import { BdtConsultaService } from './bdt-consulta.service';
 import { BdtIaService } from './bdt-ia.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 import { BDT_CONFIG } from './constants/base-tecnica.constants';
-import { IdeInartiDto } from './dto/ide-inarti.dto';
+import { GenerarContenidoDto } from './dto/generar-contenido.dto';
 import { normalizarTexto } from './helpers/normalizar.helper';
 import {
   ContenidoProductoIa,
@@ -38,7 +38,8 @@ export class BdtContenidoService {
     private readonly ia: BdtIaService,
   ) {}
 
-  async generarContenidoProducto(dto: IdeInartiDto & HeaderParamsDto) {
+  /** complementar = el usuario aceptó que GPT complete lo que los documentos no cubren. */
+  async generarContenidoProducto(dto: GenerarContenidoDto & HeaderParamsDto) {
     const producto = await this.proceso.getProductoErp(dto.ide_inarti);
     const { docs, texto } = await this.consulta.construirContexto(
       dto.ide_inarti,
@@ -52,7 +53,7 @@ export class BdtContenidoService {
 
     const { datos, tokensEntrada, tokensSalida } = await this.ia.completarJson<ContenidoProductoIa>(
       [
-        { role: 'system', content: promptContenidoProducto(sinonimos) },
+        { role: 'system', content: promptContenidoProducto(sinonimos, dto.complementar === true) },
         { role: 'user', content: texto },
       ],
       SCHEMA_CONTENIDO_PRODUCTO as unknown as Record<string, unknown>,
@@ -80,6 +81,9 @@ export class BdtContenidoService {
       descripcionLarga: this.limpiarHtml(datos.descripcion_larga_html),
       otrosNombres: otrosNombres.join(', '),
       documentos: docs.map((d) => d.nombre_original_bddoc),
+      informacion_suficiente: datos.informacion_suficiente !== false,
+      faltantes: datos.faltantes ?? [],
+      complementado: dto.complementar === true,
     };
   }
 

@@ -138,3 +138,70 @@ export function limpiarParaBd<T>(valor: T): T {
   }
   return valor;
 }
+
+// ------------------------------------------------------------------ chino / japonés / coreano (CJK)
+
+/** Ideogramas chinos, kana japoneses, hangul coreano y la puntuación CJK (、。「」【】…). */
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303F\uFF5F-\uFF9F\uFFE0-\uFFEE]/gu;
+/** Letras/números/signos ASCII en ancho completo (Ａ１（％）) que traen los documentos chinos. */
+const ANCHO_COMPLETO = /[\uFF01-\uFF5E]/g;
+
+// Versiones sin /g para .test() (una regex global guarda lastIndex entre llamadas).
+const HAY_CJK = new RegExp(CJK.source, 'u');
+const HAY_ANCHO_COMPLETO = new RegExp(ANCHO_COMPLETO.source);
+
+export function tieneCjk(texto: string | null | undefined): boolean {
+  return !!texto && HAY_CJK.test(texto);
+}
+
+/**
+ * Quita el texto chino/japonés/coreano de los documentos bilingües ("含量 Assay | 99.5%" → "Assay | 99.5%"):
+ * convierte el ancho completo a ASCII, borra los caracteres CJK y limpia los separadores que quedan
+ * huérfanos ("外观/Appearance" → "Appearance"). Las líneas que eran solo CJK desaparecen.
+ */
+export function quitarCjk(texto: string): string {
+  if (!tieneCjk(texto) && !HAY_ANCHO_COMPLETO.test(texto)) return texto;
+  return texto
+    .replace(ANCHO_COMPLETO, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(CJK, ' ')
+    .split('\n')
+    .map((linea) =>
+      linea
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\|(\s*\|)+/g, '|') // celdas que quedaron vacías: "a |  | b" → "a | b"
+        .replace(/\/(\s*\/)+/g, '/')
+        // Separadores huérfanos en los bordes; "|" no, para no romper filas de tablas markdown.
+        .replace(/^[\s/\\,;:·-]+|[\s/\\,;:·-]+$/g, '')
+        .replace(/\(\s*\)/g, '')
+        .trim(),
+    )
+    .filter((linea) => /[\p{L}\p{N}]/u.test(linea))
+    .join('\n');
+}
+
+/**
+ * Quita CJK de todos los textos de la respuesta estructurada de la IA (valores, secciones, producto,
+ * fabricante…). Un texto que era solo CJK queda en null; en listas (sinónimos) se descarta.
+ * `excluir`: claves que no se tocan (ej. la transcripción original de un escaneado).
+ */
+export function quitarCjkDeDatos<T>(valor: T, excluir: string[] = []): T {
+  if (typeof valor === 'string') {
+    if (!tieneCjk(valor)) return quitarCjk(valor) as T;
+    const limpio = quitarCjk(valor).trim();
+    // "水分（％）" → "(%)": sin letras ya no dice nada → null (el valor usa su clave normalizada).
+    return (/\p{L}/u.test(limpio) ? limpio : null) as T;
+  }
+  if (Array.isArray(valor)) {
+    return valor
+      .map((v) => quitarCjkDeDatos(v, excluir))
+      .filter((v) => v !== null && v !== '') as T;
+  }
+  if (valor && typeof valor === 'object' && !(valor instanceof Date) && !Buffer.isBuffer(valor)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(valor as Record<string, unknown>)) {
+      out[k] = excluir.includes(k) ? v : quitarCjkDeDatos(v, excluir);
+    }
+    return out as T;
+  }
+  return valor;
+}

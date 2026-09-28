@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { DataSourceService } from 'src/core/connection/datasource.service';
 
 import { BdtConsultaService, DocContexto, DocumentoListado } from '../base-tecnica/bdt-consulta.service';
 import { InventarioBiService } from '../inventario/data-bi/inventario-bi.service';
@@ -171,7 +172,7 @@ export const HERRAMIENTAS_QUIMIA: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'consultar_precios',
       description:
-        'Costo promedio (precio promedio de compra ponderado), últimos precios de compra por proveedor y precio promedio/mínimo/máximo de venta del producto.',
+        'Última compra (fecha, proveedor, cantidad, costo unitario, totales con y sin IVA), costo promedio ponderado (PPM) a hoy, últimos precios de compra por proveedor y precio promedio/mínimo/máximo de venta. Úsala para "¿cuál fue el último precio de compra?".',
       parameters: {
         type: 'object',
         properties: { ...idProducto, meses: { type: 'integer', description: 'Meses para las ventas (por defecto 12)' } },
@@ -368,6 +369,8 @@ const MENSAJE_ESTADO: Record<string, string> = {
 };
 
 const hoy = () => new Date().toISOString().slice(0, 10);
+/** Tarifa de IVA vigente en Ecuador (la misma que usan los borradores de proforma). */
+const TARIFA_IVA = 15;
 const haceMeses = (meses: number) => {
   const d = new Date();
   d.setMonth(d.getMonth() - meses);
@@ -393,6 +396,7 @@ export class QuimiaHerramientasService {
     private readonly reportes: QuimiaReportesService,
     private readonly proformasQuimia: QuimiaProformasService,
     private readonly inventarioBi: InventarioBiService,
+    private readonly dataSource: DataSourceService,
   ) {}
 
   /**
@@ -519,7 +523,7 @@ export class QuimiaHerramientasService {
             producto: producto.nombre,
             total: todos.length,
             nota:
-              'Los links se muestran automáticamente al usuario como botones/tarjetas; no escribas URL. ' +
+              'Los archivos se entregan solos (en Telegram se envía el PDF; en el ERP una tarjeta que lo abre); no escribas URL. ' +
               (sinProcesar.length
                 ? 'Los marcados sin_procesar son adjuntos del producto aún no leídos por la base técnica (el tipo se dedujo del nombre del archivo): entrégalos igual.'
                 : '') +
@@ -604,15 +608,42 @@ export class QuimiaHerramientasService {
 
         case 'consultar_precios': {
           const meses = Number(args.meses) || 12;
-          const [costo, ultimos, ventas] = await Promise.all([
+          const [costo, ultimos, ventas, art] = await Promise.all([
             this.productos.getCostoProducto({ ...base, fecha: hoy() } as any),
             this.productos.getUltimosPreciosCompras(base as any),
             this.productos.getKpiVentasProducto({ ...base, fechaInicio: haceMeses(meses), fechaFin: hoy() } as any),
+            this.dataSource.pool.query(`SELECT iva_inarti FROM inv_articulo WHERE ide_inarti = $1`, [producto.ide_inarti]),
           ]);
+          // Última compra (de cualquier proveedor): el query ya viene ordenado por fecha descendente.
+          const u0 = (ultimos.rows ?? [])[0];
+          const gravaIva = Number(art.rows[0]?.iva_inarti) === 1;
+          const totalSinIva = u0 ? num(u0.total, 2) : null;
+          const ivaCompra = u0 && gravaIva ? num((Number(u0.total) * TARIFA_IVA) / 100, 2) : 0;
           return this.json({
             producto: producto.nombre,
+            ultima_compra: u0
+              ? {
+                  fecha: fecha(u0.fecha_ultima_compra),
+                  proveedor: u0.nom_geper,
+                  cantidad: num(u0.cantidad, 3),
+                  unidad: u0.siglas_inuni,
+                  costo_unitario: num(u0.precio),
+                  total_sin_iva: totalSinIva,
+                  iva: gravaIva ? `${TARIFA_IVA}%` : 'no graba IVA',
+                  total_con_iva: totalSinIva != null ? num(totalSinIva + (ivaCompra ?? 0), 2) : null,
+                }
+              : null,
+            costo_promedio_ppm_hoy: num(costo?.costo_calculado),
+            fecha_costo: hoy(),
             costo_promedio_compra: num(costo?.costo_calculado),
             tipo_costo: costo?.tipo_costo_usado,
+            instruccion: u0
+              ? 'Si preguntan por la última compra / último precio de compra, responde con este formato:\n' +
+                '"La última compra fue el <fecha dd/mm/aaaa> a <proveedor> por <cantidad> <unidad> de <producto> a un costo unitario de $<costo_unitario>.\n' +
+                '• Total de la compra sin IVA: $<total_sin_iva>\n' +
+                '• Total de la compra con IVA: $<total_con_iva>\n' +
+                '**Costo promedio (PPM) al <fecha_costo dd/mm/aaaa>: $<costo_promedio_ppm_hoy>**"'
+              : 'No hay compras registradas del producto.',
             ultimos_precios_compra_por_proveedor: (ultimos.rows ?? []).slice(0, 8).map((x) => ({
               proveedor: x.nom_geper,
               fecha: fecha(x.fecha_ultima_compra),
@@ -677,16 +708,29 @@ export class QuimiaHerramientasService {
             stock_disponible: num(saldo, 3),
             stock_suficiente: saldo >= cantidad,
             tiene_precio_configurado: rows.some((p) => p.precio_venta_sin_iva != null),
-            precios: rows.slice(0, 10).map((p) => ({
-              forma_pago: [p.nombre_cncfp, p.nombre_cndfp].filter(Boolean).join(' / ') || null,
-              precio_unitario_sin_iva: num(p.precio_venta_sin_iva),
-              precio_unitario_con_iva: num(p.precio_venta_con_iva),
-              porcentaje_iva: num(p.porcentaje_iva, 2),
-              total_sin_iva: p.precio_venta_sin_iva != null ? num(Number(p.precio_venta_sin_iva) * cantidad, 2) : null,
-              total_con_iva: p.precio_venta_con_iva != null ? num(Number(p.precio_venta_con_iva) * cantidad, 2) : null,
-              tipo_configuracion: p.tipo_configuracion,
-              utilidad_porcentaje: num(p.porcentaje_utilidad, 2),
-            })),
+            precios: rows.slice(0, 10).map((p) => {
+              const totalSinIva = p.precio_venta_sin_iva != null ? num(Number(p.precio_venta_sin_iva) * cantidad, 2) : null;
+              const totalConIva = p.precio_venta_con_iva != null ? num(Number(p.precio_venta_con_iva) * cantidad, 2) : null;
+              return {
+                forma_pago: [p.nombre_cncfp, p.nombre_cndfp].filter(Boolean).join(' / ') || null,
+                precio_unitario_sin_iva: num(p.precio_venta_sin_iva),
+                precio_unitario_con_iva: num(p.precio_venta_con_iva),
+                porcentaje_iva: num(p.porcentaje_iva, 2),
+                total_sin_iva: totalSinIva,
+                valor_iva: totalSinIva != null && totalConIva != null ? num(totalConIva - totalSinIva, 2) : null,
+                total_con_iva: totalConIva,
+                tipo_configuracion: p.tipo_configuracion,
+                utilidad_porcentaje: num(p.porcentaje_utilidad, 2),
+              };
+            }),
+            instruccion:
+              'Responde con este formato (una línea por dato; si hay varias formas de pago, un bloque por cada una con su forma de pago como subtítulo):\n' +
+              `${num(cantidad, 3)} ${stock?.siglas_inuni ?? ''} de ${producto.nombre}\n` +
+              '• Precio unitario: $<precio_unitario_sin_iva> + IVA\n' +
+              '• Total sin IVA: $<total_sin_iva>\n' +
+              '• IVA <porcentaje_iva>%: $<valor_iva>\n' +
+              `**Precio final (${num(cantidad, 3)} ${stock?.siglas_inuni ?? ''}): $<total_con_iva>**\n` +
+              'Luego una línea con el stock (si alcanza o no).',
           });
         }
 

@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { HOST_API } from 'src/util/helpers/common-util';
 
+import { BdtConsultaService } from '../../base-tecnica/bdt-consulta.service';
 import { ImagenNota } from '../conocimiento/conocimiento-quimia.helper';
 import { QuimiaConocimientoService } from '../conocimiento/quimia-conocimiento.service';
 import { QuimiaDocumentosErpService } from '../erp/quimia-documentos-erp.service';
@@ -45,6 +46,11 @@ interface NotaPendiente {
   titulo: string;
   terminos: string[];
 }
+
+/** Documentos técnicos que se envían como archivo por respuesta. */
+const MAX_DOCUMENTOS_ENVIO = 5;
+/** Telegram acepta documentos de hasta 50 MB subidos por un bot. */
+const MAX_BYTES_DOCUMENTO_TELEGRAM = 45 * 1024 * 1024;
 
 /** Máximo de imágenes de una nota que se envían como fotos. */
 const MAX_FOTOS_NOTA = 10;
@@ -92,6 +98,7 @@ export class TelegramBotService {
     private readonly documentosErp: QuimiaDocumentosErpService,
     private readonly comandos: TelegramComandosService,
     private readonly proformasQuimia: QuimiaProformasService,
+    private readonly bdtConsulta: BdtConsultaService,
   ) {}
 
   async procesarUpdate(cuenta: CuentaTelegram, update: TelegramUpdate): Promise<void> {
@@ -484,8 +491,25 @@ export class TelegramBotService {
     };
   }
 
-  /** PDFs de factura/proforma como documentos y fotos del producto como fotos normales. */
+  /** PDFs de factura/proforma y documentos técnicos como archivos; fotos del producto como fotos normales. */
   private async enviarAdjuntos(cuenta: CuentaTelegram, chatId: number, r: RespuestaQuimia, usuario: UsuarioQuimia) {
+    // Documentos técnicos (ficha, COA, hoja de seguridad): el archivo en sí, como una factura.
+    for (const d of (r.documentos ?? []).slice(0, MAX_DOCUMENTOS_ENVIO)) {
+      const detalle = [d.tipo_etiqueta, d.lote ? `lote ${d.lote}` : null, d.fecha].filter(Boolean).join(' · ');
+      try {
+        await this.api.escribiendo(cuenta.token, chatId);
+        const archivo = d.uuid ? await this.bdtConsulta.leerAdjunto(d.uuid) : null;
+        if (!archivo) throw new Error('El archivo no está en el almacenamiento');
+        if (archivo.buffer.length > MAX_BYTES_DOCUMENTO_TELEGRAM) throw new Error('Archivo mayor a 45 MB');
+        await this.api.enviarDocumento(cuenta.token, chatId, { buffer: archivo.buffer, nombre: d.archivo, mime: archivo.mime }, detalle);
+      } catch (error) {
+        this.logger.warn(`Documento ${d.archivo}: ${(error as Error).message}`);
+        // Respaldo: el link de descarga (como antes).
+        await this.api
+          .enviarMensaje(cuenta.token, chatId, `📎 ${detalle || d.archivo}\n${this.urlPublica(cuenta, d.url)}`)
+          .catch(() => undefined);
+      }
+    }
     for (const a of r.archivos) {
       try {
         await this.api.escribiendo(cuenta.token, chatId);

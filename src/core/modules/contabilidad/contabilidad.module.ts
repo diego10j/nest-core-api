@@ -20,6 +20,7 @@ import { FlujoEfectivoService } from './flujo-efectivo/flujo-efectivo.service';
 import { FormasPagoController } from './formas-pago/formas-pago.controller';
 import { FormasPagoService } from './formas-pago/formas-pago.service';
 import { PlanCuentasController } from './plan-cuentas/plan-cuentas.controller';
+import { MayorizacionProcesoService } from './mayorizacion-proceso.service';
 import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
 
 @Module({
@@ -44,6 +45,7 @@ import { PlanCuentasService } from './plan-cuentas/plan-cuentas.service';
     FlujoEfectivoService,
     ComprobanteContabilidadService,
     AsientosAutomaticosService,
+    MayorizacionProcesoService,
     ConfigImpuestosService,
     ConfigAsientosService,
   ],

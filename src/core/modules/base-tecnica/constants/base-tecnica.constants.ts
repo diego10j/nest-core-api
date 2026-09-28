@@ -81,6 +81,12 @@ export const BDT_CONFIG = {
 
   /** Menos caracteres por página que esto = página escaneada (imagen sin capa de texto). */
   MIN_CARACTERES_POR_PAGINA: 80,
+  /**
+   * Página con imágenes que cubren >= esta fracción y con menos de MAX_CARACTERES_PAGINA_IMAGEN de
+   * texto = el contenido está en la imagen (texto solo en membrete/pie): se lee como escaneado.
+   */
+  MIN_COBERTURA_IMAGEN: 0.35,
+  MAX_CARACTERES_PAGINA_IMAGEN: 1000,
   /** Tope de texto enviado a la extracción (~15k tokens). Lo que exceda se corta y va a REVISION. */
   MAX_CARACTERES_EXTRACCION: 60000,
   MAX_BYTES_ARCHIVO: 25 * 1024 * 1024,

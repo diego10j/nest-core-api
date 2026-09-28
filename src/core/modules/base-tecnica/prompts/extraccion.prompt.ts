@@ -216,12 +216,18 @@ REGLAS DE EXTRACCIÓN
    DIQUIMEC como cliente/consignatario/destinatario NO es proveedor ni fabricante.
 8. producto.sinonimos: otros nombres que el documento da al producto (nombre químico, inglés, INCI,
    E-number…), sin repetir el nombre principal.
-9. En "observaciones" anota brevemente problemas: texto ilegible, tabla dudosa, datos en otro documento
+9. DOCUMENTOS EN CHINO (u otro idioma asiático, a menudo bilingües chino/inglés): NUNCA escribas
+   caracteres chinos, japoneses ni coreanos en el JSON (salvo en "transcripcion_original"). Si el dato
+   aparece también en inglés, usa la versión en inglés ("含量 Assay" → "Assay"); si solo está en chino,
+   tradúcelo (nombre_original, valor_texto, especificacion, títulos, contenido_es, nombres, direcciones).
+   Nombres de empresas y personas: usa su nombre en inglés/pinyin si el documento lo trae; si no, null.
+   En producto.sinonimos NO incluyas nombres en chino.
+10. En "observaciones" anota brevemente problemas: texto ilegible, tabla dudosa, datos en otro documento
    ("specification available in separate document"), documento incompleto, etc.
 ${
   opts.esEscaneado
-    ? '10. El documento es escaneado/imagen: en "transcripcion_original" transcribe TODO el texto visible en su idioma original, respetando filas de tablas con " | ". Usa como máximo UN salto de línea seguido (nunca líneas en blanco repetidas) y cierra el texto apenas termines la última página.'
-    : '10. "transcripcion_original": null (el texto ya fue extraído).'
+    ? '11. El documento es escaneado/imagen: en "transcripcion_original" transcribe TODO el texto visible en su idioma original, respetando filas de tablas con " | ". Usa como máximo UN salto de línea seguido (nunca líneas en blanco repetidas) y cierra el texto apenas termines la última página.'
+    : '11. "transcripcion_original": null (el texto ya fue extraído).'
 }
 `.trim();
 }

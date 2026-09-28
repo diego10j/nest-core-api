@@ -17,6 +17,7 @@ import {
   normalizarTexto,
   parseFecha,
   parseNumero,
+  quitarCjkDeDatos,
   recortar,
   similitudPalabras,
 } from './helpers/normalizar.helper';
@@ -364,7 +365,10 @@ export class BdtExtraccionService {
     tokensSalida: number;
     costoUsd: number;
   }): DocumentoExtraido {
-    const { datos, paginas, reglas, motivos } = p;
+    const { paginas, reglas, motivos } = p;
+    // Documentos chinos bilingües: lo que se guarda y se muestra (valores, secciones, resumen,
+    // sinónimos, fabricante…) va solo en español/inglés. El texto original se conserva tal cual.
+    const datos = quitarCjkDeDatos(p.datos, ['transcripcion_original']);
     const esEscaneado = p.sinOriginalPorSeccion;
     const tipo = datos.tipo_documento;
     const idioma = (datos.idioma || '').toLowerCase().slice(0, 5) || null;
@@ -429,6 +433,8 @@ export class BdtExtraccionService {
 
   private normalizarValores(datos: ExtraccionDocumento): ValorExtraido[] {
     return (datos.valores ?? [])
+      // Etiqueta que era solo chino (quedó null al limpiar CJK): se usa la clave normalizada.
+      .map((v) => ({ ...v, nombre_original: v.nombre_original?.trim() || v.clave }))
       .filter((v) => v.nombre_original?.trim())
       .map((v) => {
         const operador = ['=', '>=', '<=', '>', '<', 'RANGO', 'TEXTO'].includes(v.operador ?? '') ? v.operador : null;

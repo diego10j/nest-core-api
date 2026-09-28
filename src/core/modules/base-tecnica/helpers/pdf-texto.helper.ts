@@ -39,22 +39,65 @@ export async function extraerTextoPdf(buffer: Buffer): Promise<ResultadoTextoPdf
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const paginas: PaginaTexto[] = [];
 
+  const coberturas: number[] = [];
+
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
     const { items } = await page.getTextContent();
     paginas.push({ numero: n, texto: limpiarTextoBd(reconstruirFilas(items as TextItem[])) });
+    coberturas.push(await coberturaImagenes(page).catch(() => 0));
   }
 
   const limpias = quitarLineasRepetidas(paginas);
-  const paginasSinTexto = limpias.filter(
-    (p) => p.texto.replace(/\s+/g, '').length < BDT_CONFIG.MIN_CARACTERES_POR_PAGINA,
-  ).length;
+  // Página sin texto (escaneada) o con el contenido en una IMAGEN y apenas algo de texto (membrete,
+  // pie, disclaimer): ej. una ficha con la tabla pegada como imagen. Leerla como texto dejaría a la
+  // IA solo con el pie de página; se lee como escaneado (la IA ve la imagen de cada página).
+  const paginasSinTexto = limpias.filter((p, i) => {
+    const caracteres = p.texto.replace(/\s+/g, '').length;
+    if (caracteres < BDT_CONFIG.MIN_CARACTERES_POR_PAGINA) return true;
+    return coberturas[i] >= BDT_CONFIG.MIN_COBERTURA_IMAGEN && caracteres < BDT_CONFIG.MAX_CARACTERES_PAGINA_IMAGEN;
+  }).length;
 
   return {
     totalPaginas: pdf.numPages,
     paginas: limpias,
     escaneado: pdf.numPages > 0 && paginasSinTexto / pdf.numPages > 0.5,
   };
+}
+
+// Operaciones de pdf.js (OPS): save, restore, transform y las que pintan una imagen.
+const OP_SAVE = 10;
+const OP_RESTORE = 11;
+const OP_TRANSFORM = 12;
+const OPS_IMAGEN = new Set([85, 86, 87, 88]); // paintImageXObject, paintInlineImageXObject(Group), paintImageXObjectRepeat
+
+/**
+ * Fracción de la página cubierta por imágenes (0..1+; puede pasar de 1 si se superponen). Sigue la
+ * matriz de transformación del operator list: una imagen se dibuja en el cuadrado unitario escalado
+ * por la matriz vigente, así que su área es |det(matriz)|.
+ */
+async function coberturaImagenes(page: any): Promise<number> {
+  const ops = await page.getOperatorList();
+  const { width, height } = page.getViewport({ scale: 1 });
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const pila: number[][] = [];
+  let area = 0;
+  ops.fnArray.forEach((fn: number, i: number) => {
+    if (fn === OP_SAVE) pila.push(ctm.slice());
+    else if (fn === OP_RESTORE) ctm = pila.pop() ?? [1, 0, 0, 1, 0, 0];
+    else if (fn === OP_TRANSFORM) {
+      const [a, b, c, d, e, f] = ops.argsArray[i];
+      ctm = [
+        ctm[0] * a + ctm[2] * b,
+        ctm[1] * a + ctm[3] * b,
+        ctm[0] * c + ctm[2] * d,
+        ctm[1] * c + ctm[3] * d,
+        ctm[0] * e + ctm[2] * f + ctm[4],
+        ctm[1] * e + ctm[3] * f + ctm[5],
+      ];
+    } else if (OPS_IMAGEN.has(fn)) area += Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]);
+  });
+  return width * height ? area / (width * height) : 0;
 }
 
 function reconstruirFilas(items: TextItem[]): string {

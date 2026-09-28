@@ -1,6 +1,11 @@
+import { existsSync, promises as fs } from 'fs';
+import { join } from 'path';
+
 import { Injectable } from '@nestjs/common';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { HOST_API } from 'src/util/helpers/common-util';
+
+import { FILE_STORAGE_CONSTANTS } from '../sistema/files/constants/files.constants';
 
 import { BdtProcesoService } from './bdt-proceso.service';
 import { BDT_CONFIG, ESTADOS_FUENTE_CHAT, ETIQUETA_TIPO_DOCUMENTO } from './constants/base-tecnica.constants';
@@ -39,6 +44,8 @@ export interface CitaDocumento {
 
 export interface DocumentoListado {
   ide_bddoc: number;
+  /** uuid del adjunto original (sis_archivo): para enviar el archivo en sí (Telegram). */
+  uuid: string;
   tipo: string;
   tipo_etiqueta: string;
   archivo: string;
@@ -89,6 +96,7 @@ export class BdtConsultaService {
     const elegidos = coinciden.length || !tipo ? coinciden : candidatos.filter((c) => c.tipo === null);
     return elegidos.slice(0, Math.min(Math.max(limite, 1), 10)).map(({ archivo, tipo: t }) => ({
       ide_bddoc: 0,
+      uuid: archivo.uuid,
       tipo: t ?? 'SIN_CLASIFICAR',
       tipo_etiqueta: t ? ETIQUETA_TIPO_DOCUMENTO[t] : 'Documento',
       archivo: archivo.nombre,
@@ -128,6 +136,7 @@ export class BdtConsultaService {
     );
     return r.rows.map((d) => ({
       ide_bddoc: d.ide_bddoc,
+      uuid: d.uuid,
       tipo: d.tipo_bddoc,
       tipo_etiqueta: ETIQUETA_TIPO_DOCUMENTO[d.tipo_bddoc] ?? d.tipo_bddoc,
       archivo: d.nombre_original_bddoc,
@@ -137,6 +146,27 @@ export class BdtConsultaService {
       fabricante: d.fabricante,
       estado: d.estado_bddoc,
     }));
+  }
+
+  /**
+   * Archivo original de un documento (PDF/imagen del gestor documental) para enviarlo tal cual, como
+   * los PDF de factura/proforma. null si ya no existe en el almacenamiento.
+   */
+  async leerAdjunto(uuid: string): Promise<{ buffer: Buffer; nombre: string; mime: string } | null> {
+    const r = await this.dataSource.pool.query(
+      `SELECT nombre2_arch AS disco, nombre_arch AS nombre, type_arch AS mime FROM sis_archivo WHERE uuid = $1::uuid`,
+      [uuid],
+    );
+    const a = r.rows[0];
+    if (!a) return null;
+    const ruta = join(FILE_STORAGE_CONSTANTS.BASE_PATH, a.disco);
+    if (!existsSync(ruta)) return null;
+    const extension = (a.nombre.split('.').pop() || '').toLowerCase();
+    return {
+      buffer: await fs.readFile(ruta),
+      nombre: a.nombre,
+      mime: a.mime || (extension === 'pdf' ? 'application/pdf' : `image/${extension === 'jpg' ? 'jpeg' : extension}`),
+    };
   }
 
   /**

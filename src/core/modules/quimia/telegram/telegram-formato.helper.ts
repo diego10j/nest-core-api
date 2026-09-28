@@ -94,13 +94,7 @@ export function respuestaATelegram(
       { text: '❌ Cancelar', callback_data: `pf:x:${r.borrador.uuid}` },
     ]);
   }
-  // Documentos pedidos: un botón por documento que abre el PDF.
-  r.documentos.slice(0, 6).forEach((d) => {
-    // Sin lote ni fecha (ej. adjunto aún sin procesar) se muestra el nombre del archivo.
-    const detalle = [d.lote ? `lote ${d.lote}` : null, d.fecha].filter(Boolean);
-    const etiqueta = [d.tipo_etiqueta, ...(detalle.length ? detalle : [d.archivo.replace(/\.[a-z0-9]{2,4}$/i, '')])].join(' · ');
-    botones.push([{ text: `📎 ${etiqueta}`.slice(0, 60), url: url(d.url) }]);
-  });
+  // Documentos pedidos (COA, fichas, hojas de seguridad): se envían como archivos (enviarAdjuntos), no como link.
   // Elegir producto / cambiar de producto / respuesta de IA.
   // Numerados: el usuario también puede responder "2" (mismo orden que conv.pendiente.opciones).
   r.opciones

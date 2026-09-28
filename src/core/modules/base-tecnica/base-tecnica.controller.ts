@@ -11,6 +11,7 @@ import { BdtMarcaAguaService } from './bdt-marca-agua.service';
 import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 import { ConfiguracionBdtDto } from './dto/configuracion-bdt.dto';
+import { GenerarContenidoDto } from './dto/generar-contenido.dto';
 import { GetDocumentosTecnicosDto } from './dto/get-documentos-tecnicos.dto';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
@@ -183,7 +184,7 @@ export class BaseTecnicaController {
       'Genera descripción corta, descripción larga (HTML) y otros nombres del producto a partir de su base técnica. ' +
       'Si no hay documentos técnicos devuelve con_base_tecnica = false (el frontend ofrece generar solo con GPT).',
   })
-  generarContenidoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdeInartiDto) {
+  generarContenidoProducto(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarContenidoDto) {
     return this.contenido.generarContenidoProducto({ ...headersParams, ...dtoIn });
   }
 
@@ -229,6 +230,23 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Bitácora de cambios de la base técnica del producto' })
   getHistorial(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: IdeInartiDto) {
     return this.datos.getHistorial({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('aprobarDocumentos')
+  @ApiOperation({
+    summary: 'Aprueba en lote los documentos seleccionados que están en revisión (misma lógica que revisarDocumento)',
+  })
+  async aprobarDocumentos(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: IdesDocumentosDto) {
+    let aprobados = 0;
+    const errores: string[] = [];
+    for (const ide_bddoc of dtoIn.ides_bddoc) {
+      // Uno que falle (ya aprobado en otra pestaña, eliminado) no corta el resto del lote.
+      await this.datos
+        .revisarDocumento({ ...headersParams, ide_bddoc, estado: 'APROBADO' })
+        .then(() => aprobados++)
+        .catch((e) => errores.push(`${ide_bddoc}: ${e?.message ?? e}`));
+    }
+    return { message: 'ok', aprobados, errores };
   }
 
   @Post('revisarDocumento')

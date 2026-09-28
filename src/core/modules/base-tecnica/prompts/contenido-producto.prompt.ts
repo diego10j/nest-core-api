@@ -3,16 +3,22 @@ export interface ContenidoProductoIa {
   descripcion_corta: string;
   descripcion_larga_html: string;
   otros_nombres: string[];
+  /** false = los documentos no alcanzan para una descripción útil (qué es + usos/especificaciones). */
+  informacion_suficiente: boolean;
+  /** Qué no se encontró en los documentos (ej. "Usos y aplicaciones", "Descripción general"). */
+  faltantes: string[];
 }
 
 export const SCHEMA_CONTENIDO_PRODUCTO = {
   type: 'object',
   additionalProperties: false,
-  required: ['descripcion_corta', 'descripcion_larga_html', 'otros_nombres'],
+  required: ['descripcion_corta', 'descripcion_larga_html', 'otros_nombres', 'informacion_suficiente', 'faltantes'],
   properties: {
     descripcion_corta: { type: 'string' },
     descripcion_larga_html: { type: 'string' },
     otros_nombres: { type: 'array', items: { type: 'string' } },
+    informacion_suficiente: { type: 'boolean' },
+    faltantes: { type: 'array', items: { type: 'string' } },
   },
 } as const;
 
@@ -20,7 +26,7 @@ export const SCHEMA_CONTENIDO_PRODUCTO = {
  * Contenido de publicación del producto (botón "Generar Contenido" de Editar Producto) redactado a
  * partir de la base técnica. El editor del ERP (tiptap) no admite tablas: solo h6, p, ul/li, strong.
  */
-export function promptContenidoProducto(sinonimosDocumentos: string[]): string {
+export function promptContenidoProducto(sinonimosDocumentos: string[], complementar = false): string {
   const sinonimos = sinonimosDocumentos.length
     ? `Otros nombres que ya aparecen en los documentos del producto: ${sinonimosDocumentos.join(' | ')}.`
     : 'Los documentos no registran otros nombres para el producto.';
@@ -34,10 +40,19 @@ análisis) ya extraída: documentos, valores técnicos y secciones. Tu redacció
 dicen esos documentos: es la descripción REAL del producto, no una genérica.
 
 REGLAS DE CONTENIDO (OBLIGATORIAS)
-- USA ÚNICAMENTE información que esté escrita en la documentación entregada. NO agregues nada de tu
+${
+  complementar
+    ? `- El usuario AUTORIZÓ complementar con conocimiento general porque los documentos no alcanzan.
+  Los datos de los documentos tienen prioridad y se usan tal cual. Solo para las secciones que los
+  documentos NO cubren (descripción general, características, usos y aplicaciones) puedes usar
+  conocimiento técnico general, ampliamente conocido y prudente del producto.
+- Aun complementando, NUNCA inventes valores numéricos, especificaciones, dosis, normas ni
+  presentaciones/empaques: esos datos solo si están en los documentos.`
+    : `- USA ÚNICAMENTE información que esté escrita en la documentación entregada. NO agregues nada de tu
   conocimiento general: ni presentaciones/empaques, ni valores, ni dosis, ni usos, ni normas, ni
   ventajas que los documentos no mencionen. Si un dato no está en los documentos, NO lo pongas y omite
-  la sección completa. Es preferible una descripción más corta que un dato inventado.
+  la sección completa. Es preferible una descripción más corta que un dato inventado.`
+}
 - Presentación: solo las presentaciones/empaques que aparecen literalmente en los documentos (campo
   "presentación" o sección de empaque). No completes con presentaciones "habituales" del mercado.
 - Prioriza la ficha técnica; usa la hoja de seguridad para identificación/composición/manejo y los
@@ -68,5 +83,10 @@ SALIDA (JSON)
    Toma primero los de los documentos; si no hay (o no son relevantes), usa los nombres alternos que
    conozcas con certeza (única excepción a la regla de no usar conocimiento propio). Si no hay
    ninguno relevante, devuelve [].
+4. informacion_suficiente: true solo si LOS DOCUMENTOS permiten describir qué es el producto y además
+   sus usos/aplicaciones o sus especificaciones principales. false si solo hay datos sueltos (ej. un
+   certificado de análisis de un lote sin descripción ni usos).${complementar ? ' (Evalúalo sobre los documentos, no sobre lo complementado.)' : ''}
+5. faltantes: nombres de las secciones importantes que los documentos NO cubren (ej. "Descripción
+   general", "Usos y aplicaciones", "Especificaciones", "Características"). [] si no falta nada.
 `.trim();
 }
