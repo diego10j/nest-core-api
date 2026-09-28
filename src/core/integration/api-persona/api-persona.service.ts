@@ -54,51 +54,39 @@ export class ApiPersonaService extends BaseService {
 
   async consultaCedula(dtoIn: CedulaDto) {
     try {
-      const URL = `https://si.secap.gob.ec/sisecap/logeo_web/json/busca_persona_registro_civil.php`;
+      // Migrado desde el registro del Registro Civil vía SECAP (que sumó Cloudflare Turnstile y
+      // dejó de ser consumible desde un servidor externo) al servicio de personas del Municipio
+      // de Quito, que expone una API JSON directa.
+      const URL = `https://psmbackend.quito.gob.ec/api/persona/consultar-persona`;
 
       const requestConfig: AxiosRequestConfig = {
         timeout: 30000, // 30 segundos
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Origin: 'https://si.secap.gob.ec',
-          Referer: 'https://si.secap.gob.ec/sisecap/logeo_web/usuario_nuevo.php',
-          Host: 'si.secap.gob.ec',
-          Cookie:
-            '_ga_Y03VNXB8DL=GS1.1.1738356390.1.1.1738357032.0.0.0; _ga=GA1.3.666650771.1738356390; PHPSESSID=hfqg3dndo3bv4dhlv9ke5p9vo3',
-          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
         },
       };
 
       const data = {
-        documento: dtoIn.cedula,
-        tipo: 1,
+        strAccion: '1',
+        strIdentificacion: dtoIn.cedula,
+        strTipoIdentificacion: 'C',
       };
 
       const resp = await this.httpService.axiosRef.post(URL, data, requestConfig);
       const parsed = this.parsearRespuesta(resp.data);
 
-      // El Registro Civil a veces responde 200 OK con el error de negocio embebido en el body
-      // (ej. cédula inválida) en vez de un status HTTP de error.
-      const mensajeNegocio = this.extraerMensajeError(parsed);
-      if (mensajeNegocio) {
-        throw new BadRequestException(`No se encontraron datos para la cédula ingresada: ${mensajeNegocio}`);
-      }
-      // Defensa adicional: si no vino un error explícito pero tampoco vino el dato esperado
-      // (ej. el servicio respondió un shape inesperado), no se devuelve un objeto a medias —
-      // eso rompía el frontend con "Cannot read properties of undefined" en vez de mostrar un
-      // mensaje claro.
-      if (!parsed || typeof parsed !== 'object' || !parsed.nombre) {
+      // El servicio puede responder 200 OK con un objeto vacío / sin nombres cuando la cédula no
+      // existe. Se valida que venga el dato esperado; si no, se devuelve un mensaje claro en vez de
+      // un objeto a medias que rompería el frontend con "Cannot read properties of undefined".
+      const nombreCompleto = parsed?.PE_DENOMINACION || parsed?.PE_NOMBRES || parsed?.PE_APELLIDOS;
+      if (!parsed || typeof parsed !== 'object' || !nombreCompleto) {
         throw new BadRequestException('No se encontraron datos para la cédula ingresada.');
       }
 
       return parsed;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      const mensaje = this.extraerMensajeError(error.response?.data);
       console.error('❌ Error en consultaCedula:', error.response?.data || error.message);
-      if (mensaje) {
-        throw new BadRequestException(`No se encontraron datos para la cédula ingresada: ${mensaje}`);
-      }
       throw new InternalServerErrorException('No se pudo consultar la cédula. Intente nuevamente.');
     }
   }

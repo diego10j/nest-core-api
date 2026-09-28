@@ -111,4 +111,96 @@ export class QuimiaUsoService {
       usuarios: usuarios.map((u) => ({ ...u, costo: Number(u.costo) })),
     };
   }
+
+  /**
+   * Monitor de conversaciones (Administración → Telegram → Conversaciones): preguntas y respuestas de
+   * QuimIA con KPIs por canal y por persona. La persona es el usuario del ERP (canal ASESOR) o el teléfono
+   * (canal TELEGRAM). Las opciones de los filtros se calculan sin el filtro de persona para no vaciar el combo.
+   */
+  async getConversaciones(
+    dto: { fechaDesde: string; fechaHasta: string; canal?: string | null; usuario?: string | null; telefono?: string | null },
+    ideEmpr: number,
+  ) {
+    const base = [ideEmpr, dto.fechaDesde, dto.fechaHasta, dto.canal || null];
+    const filtroBase = `c.ide_empr = $1 AND c.fecha_ingre >= $2::date AND c.fecha_ingre < $3::date + 1
+                        AND c.canal_bdcon IN ('ASESOR', 'TELEGRAM') AND ($4::text IS NULL OR c.canal_bdcon = $4)`;
+    const params = [...base, dto.usuario || null, dto.telefono || null];
+    const filtro = `${filtroBase}
+                    AND ($5::text IS NULL OR (c.canal_bdcon = 'ASESOR' AND c.usuario_ingre = $5))
+                    AND ($6::text IS NULL OR (c.canal_bdcon = 'TELEGRAM' AND c.telefono_bdcon = $6))`;
+    // Persona legible: alias de Telegram (con su número) o usuario del ERP.
+    const persona = `CASE WHEN c.canal_bdcon = 'TELEGRAM'
+                          THEN COALESCE(u.alias_tlusu || ' (' || c.telefono_bdcon || ')', u.alias_tlusu, c.telefono_bdcon, '—')
+                          ELSE COALESCE(c.usuario_ingre, '—') END`;
+    const q = (sql: string, p: unknown[] = params) => this.dataSource.pool.query(sql, p).then((r) => r.rows);
+
+    const [kpis, serie, personas, filas, usuarios, telefonos] = await Promise.all([
+      q(`SELECT COUNT(*)::int AS consultas,
+                COUNT(*) FILTER (WHERE c.canal_bdcon = 'ASESOR')::int AS erp,
+                COUNT(*) FILTER (WHERE c.canal_bdcon = 'TELEGRAM')::int AS telegram,
+                COUNT(*) FILTER (WHERE c.fecha_ingre >= CURRENT_DATE)::int AS hoy,
+                COUNT(DISTINCT CASE WHEN c.canal_bdcon = 'TELEGRAM' THEN 'T' || COALESCE(c.telefono_bdcon, '')
+                                    ELSE 'E' || COALESCE(c.usuario_ingre, '') END)::int AS personas,
+                COUNT(*) FILTER (WHERE c.entrada_bdcon = 'AUDIO')::int AS por_voz,
+                COUNT(*) FILTER (WHERE c.sin_dato_bdcon)::int AS sin_respuesta,
+                COUNT(*) FILTER (WHERE c.util_bdcon)::int AS positivas,
+                COUNT(*) FILTER (WHERE c.util_bdcon = FALSE)::int AS negativas,
+                ROUND(AVG(c.ms_respuesta_bdcon) FILTER (WHERE c.modo_bdcon <> 'COMANDO'))::int AS ms_promedio,
+                TO_CHAR(MAX(c.fecha_ingre), 'YYYY-MM-DD HH24:MI') AS ultima
+           FROM bdt_consulta c WHERE ${filtro}`),
+      q(`SELECT TO_CHAR(c.fecha_ingre::date, 'YYYY-MM-DD') AS fecha,
+                COUNT(*) FILTER (WHERE c.canal_bdcon = 'ASESOR')::int AS erp,
+                COUNT(*) FILTER (WHERE c.canal_bdcon = 'TELEGRAM')::int AS telegram
+           FROM bdt_consulta c WHERE ${filtro}
+          GROUP BY c.fecha_ingre::date ORDER BY c.fecha_ingre::date`),
+      q(`SELECT ${persona} AS persona, c.canal_bdcon AS canal,
+                MAX(c.usuario_ingre) FILTER (WHERE c.canal_bdcon = 'ASESOR') AS usuario,
+                MAX(c.telefono_bdcon) AS telefono, COUNT(*)::int AS consultas,
+                COUNT(*) FILTER (WHERE c.sin_dato_bdcon)::int AS sin_respuesta,
+                COUNT(*) FILTER (WHERE c.util_bdcon = FALSE)::int AS negativas,
+                TO_CHAR(MAX(c.fecha_ingre), 'YYYY-MM-DD HH24:MI') AS ultima
+           FROM bdt_consulta c LEFT JOIN tlg_usuario u ON u.ide_tlusu = c.ide_tlusu
+          WHERE ${filtro}
+          GROUP BY 1, 2 ORDER BY consultas DESC LIMIT 15`),
+      q(`SELECT c.ide_bdcon, TO_CHAR(c.fecha_ingre, 'YYYY-MM-DD HH24:MI:SS') AS fecha, c.canal_bdcon AS canal,
+                ${persona} AS persona, c.usuario_ingre AS usuario, c.telefono_bdcon AS telefono,
+                c.pregunta_bdcon AS pregunta, LEFT(c.respuesta_bdcon, 4000) AS respuesta,
+                c.modo_bdcon AS modo, c.entrada_bdcon AS entrada, c.herramientas_bdcon AS herramientas,
+                c.sin_dato_bdcon AS sin_respuesta, c.util_bdcon AS util, c.ms_respuesta_bdcon AS ms,
+                a.nombre_inarti AS producto
+           FROM bdt_consulta c
+           LEFT JOIN tlg_usuario u ON u.ide_tlusu = c.ide_tlusu
+           LEFT JOIN inv_articulo a ON a.ide_inarti = c.ide_inarti
+          WHERE ${filtro}
+          ORDER BY c.fecha_ingre DESC, c.ide_bdcon DESC LIMIT 300`),
+      q(
+        `SELECT c.usuario_ingre AS valor, COUNT(*)::int AS consultas
+           FROM bdt_consulta c WHERE ${filtroBase} AND c.canal_bdcon = 'ASESOR' AND c.usuario_ingre IS NOT NULL
+          GROUP BY 1 ORDER BY consultas DESC`,
+        base,
+      ),
+      q(
+        `SELECT c.telefono_bdcon AS valor, MAX(u.alias_tlusu) AS alias, COUNT(*)::int AS consultas
+           FROM bdt_consulta c LEFT JOIN tlg_usuario u ON u.ide_tlusu = c.ide_tlusu
+          WHERE ${filtroBase} AND c.canal_bdcon = 'TELEGRAM' AND c.telefono_bdcon IS NOT NULL
+          GROUP BY 1 ORDER BY consultas DESC`,
+        base,
+      ),
+    ]);
+
+    const k = kpis[0] ?? {};
+    return {
+      kpis: {
+        ...k,
+        porcentaje_sin_respuesta: k.consultas ? Math.round((k.sin_respuesta / k.consultas) * 1000) / 10 : 0,
+        satisfaccion: k.positivas + k.negativas ? Math.round((k.positivas / (k.positivas + k.negativas)) * 1000) / 10 : null,
+      },
+      serie,
+      personas,
+      conversaciones: filas,
+      /** Se devolvieron solo las 300 más recientes. */
+      recortado: filas.length === 300 && k.consultas > 300,
+      opciones: { usuarios, telefonos },
+    };
+  }
 }

@@ -9,6 +9,7 @@ import { BorradorProformaDto } from './dto/borrador-proforma.dto';
 import { BuscarProductosQuimiaDto } from './dto/buscar-productos-quimia.dto';
 import { CalificarConsultaDto } from './dto/calificar-consulta.dto';
 import { ChatQuimiaDto, PreguntarQuimiaDto } from './dto/chat-quimia.dto';
+import { GetConversacionesQuimiaDto } from './dto/get-conversaciones-quimia.dto';
 import { GetNotaQuimiaDto } from './dto/get-nota-quimia.dto';
 import { GetUsoQuimiaDto } from './dto/get-uso-quimia.dto';
 import { QuimiaProformasService } from './erp/quimia-proformas.service';
@@ -52,6 +53,12 @@ export class QuimiaController {
   @ApiOperation({ summary: 'Panel de uso de QuimIA: KPIs, costos, preguntas sin respuesta, calificaciones y uso por persona' })
   getUso(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetUsoQuimiaDto) {
     return this.uso.getUso(dtoIn, headersParams.ideEmpr);
+  }
+
+  @Get('getConversaciones')
+  @ApiOperation({ summary: 'Monitor de preguntas y respuestas de QuimIA (ERP y Telegram) con KPIs por canal y persona' })
+  getConversaciones(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetConversacionesQuimiaDto) {
+    return this.uso.getConversaciones(dtoIn, headersParams.ideEmpr);
   }
 
   @Post('chat')

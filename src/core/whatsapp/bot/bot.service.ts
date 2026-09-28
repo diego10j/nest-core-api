@@ -41,6 +41,11 @@ const VENTANA_RAFAGA_CATALOGO_MS = 60_000;
 // "Voy a revisar y te comento", "luego te aviso": cierre cortés, no una consulta.
 const REGEX_CIERRE_REVISARA = /\b(voy|vamos)\s+a\s+(revisar|ver|mirar|chequear)\b|\b(te|les)\s+(comento|aviso|escribo|confirmo)\b|\blo\s+reviso\b/i;
 const REGEX_PIDE_PRECIO =/\b(precio|precios|costo|costos|valor|cu[aá]nto\s+(cuesta|vale|est[aá]|cobran)|a\s+c[oó]mo)\b/i;
+// El cliente pregunta qué presentaciones/formatos manejan, en vez de decir cuánto necesita
+// ("qué presentaciones disponen", "en qué presentaciones venden", "cómo lo venden") — incluye
+// cuando lista varias unidades COMO OPCIONES a preguntar ("tal vez un litro, un galón o una
+// caneca"), que no es lo mismo que elegir una.
+const REGEX_PIDE_PRESENTACION = /presentaci(o|ó)n(es)?|\bc[oó]mo\s+(lo\s+|la\s+)?venden\b|\ben\s+qu[eé]\s+(formato|empaque)/i;
 const REGEX_PIDE_RECOMENDACION = /\b(recomiend\w*|recomendaci[oó]n|sugiere\w*|aconsej\w*|calidad|mejor(es)?)\b|cu[aá]l\s+(es\s+)?(me\s+sirve|conviene)/i;
 // Incluye la forma femenina ("asesora", "vendedora"): sin ella, "Ayúdeme con una asesora"
 // no se reconocía como pedido de asesor y el bot seguía con el saludo (caso real
@@ -1504,7 +1509,18 @@ export class BotService implements OnModuleInit {
     // detectado 2026-09-24).
     const preguntaPrecio = REGEX_PIDE_PRECIO.test(texto);
     const preguntaMinimo = /(cu[aá]nto|cu[aá]l)\s+(es|son|ser[ií]a)\s+(el\s+|la\s+)?(cantidad\s+)?m[ií]nim/i.test(texto);
-    if (preguntaPrecio || preguntaMinimo) {
+    // Pregunta qué presentaciones/formatos manejan (ej. "en qué presentaciones disponen,
+    // tal vez un litro, un galón o una caneca") — listar varias unidades es preguntar cuáles
+    // existen, NO elegir una, así que NO se le pasa al extractor de cantidades (adivinaba una
+    // de las unidades mencionadas). Se trata igual que "cantidad mínima" (cantidad=0, deja
+    // avanzar y cerrar la cotización — no se queda preguntando en loop) pero con su propio
+    // texto ("cantidades disponibles a confirmar" en vez de "(cantidad mínima)"), para que
+    // ni el cliente ni el asesor lean que pidió la mínima cuando en realidad preguntó qué
+    // presentaciones existen — además de la nota en consultaAsesoramiento de abajo (caso real
+    // detectado 2026-09-28: "un litro un galón o una caneca" cerró la cotización con "un
+    // galón" para dos productos, sin que el cliente lo hubiera elegido).
+    const preguntaPresentacion = REGEX_PIDE_PRESENTACION.test(texto);
+    if (preguntaPrecio || preguntaMinimo || preguntaPresentacion) {
       datos = {
         ...datos,
         consultaAsesoramiento: [datos.consultaAsesoramiento, `Preguntó: "${texto.trim()}"`].filter(Boolean).join(' | '),
@@ -1520,10 +1536,12 @@ export class BotService implements OnModuleInit {
         ? this.botGpt.extraerNombreYCiudad(texto, true, false)
         : Promise.resolve({ nombre: null, ciudad: null }),
       itemsSinCantidad.length
-        ? this.botGpt.extraerCantidadesPorProducto(
-            itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
-            texto,
-          )
+        ? (preguntaPresentacion
+            ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidades disponibles a confirmar' })))
+            : this.botGpt.extraerCantidadesPorProducto(
+                itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
+                texto,
+              ))
         : Promise.resolve([] as { cantidad: number | null; cantidadTexto?: string | null }[]),
       itemsSinUso.length
         ? this.botGpt.extraerUsosPorProducto(nombresUnicosUso, texto)

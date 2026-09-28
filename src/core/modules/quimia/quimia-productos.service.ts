@@ -60,7 +60,9 @@ export class QuimiaProductosService {
         candidatos = tolerantes;
       }
     }
-    return candidatos.slice(0, MAX_OPCIONES_PRODUCTO).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos, conflicto, palabras, cubiertas }) => ({
+    // Sin recortar aquí: elegir() filtra los conflictos y después limita a MAX_OPCIONES_PRODUCTO; recortar
+    // antes dejaba menos de 10 opciones válidas cuando entre los 10 primeros había conflictos.
+    return candidatos.slice(0, MAX_OPCIONES_PRODUCTO * 3).map(({ ide_inarti, nombre, coincidencia, cobertura, similitud, documentos, conflicto, palabras, cubiertas, completo }) => ({
       ide_inarti,
       nombre,
       coincidencia,
@@ -70,6 +72,7 @@ export class QuimiaProductosService {
       conflicto,
       palabras,
       cubiertas,
+      completo,
     }));
   }
 

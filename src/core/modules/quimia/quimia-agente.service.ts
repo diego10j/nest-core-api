@@ -207,17 +207,21 @@ export class QuimiaAgenteService {
       const principales = eleccion.tipo === 'uno' ? [eleccion.producto] : eleccion.tipo === 'varios' ? eleccion.opciones : [];
       const activoMencionado = principales.some((c) => c.ide_inarti === producto.ide_inarti);
       const fuertes = principales.filter(esCoincidenciaFuerte);
-      if (!activoMencionado && fuertes.length === 1) {
+      if (!activoMencionado && fuertes.length === 1 && principales.length === 1) {
         const texto = `Tu pregunta parece ser sobre **${fuertes[0].nombre}**, no sobre **${producto.nombre}**. ¿Cambio de producto?`;
         emitir({ tipo: 'delta', texto });
         emitir({ tipo: 'sugerir_cambio', producto: fuertes[0] });
         await this.cerrar(dto, usuario, canal, emitir, { modo: 'SELECCION', ideInarti: producto.ide_inarti, respuesta: texto });
         return;
       }
-      if (!activoMencionado && fuertes.length > 1) {
+      if (!activoMencionado && fuertes.length >= 1) {
+        // Hace falta al menos una coincidencia fuerte para interrumpir, pero se ofrecen TODOS los empatados
+        // (hasta 10), los fuertes primero: filtrar solo los fuertes dejaba fuera productos nombrados de verdad
+        // ("glucosa" → faltaba GLUCOSA TG X300 y aparecían COCO GLUCOSIDE / POLYGLUCOSIDES).
+        const opciones = [...fuertes, ...principales.filter((c) => !fuertes.includes(c))];
         const texto = `Tu pregunta menciona otros productos. ¿A cuál te refieres? (o sigue con **${producto.nombre}**)`;
         emitir({ tipo: 'delta', texto });
-        emitir({ tipo: 'seleccion', opciones: fuertes });
+        emitir({ tipo: 'seleccion', opciones });
         await this.cerrar(dto, usuario, canal, emitir, { modo: 'SELECCION', ideInarti: producto.ide_inarti, respuesta: texto });
         return;
       }

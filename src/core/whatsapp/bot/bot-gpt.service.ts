@@ -517,7 +517,12 @@ export class BotGptService {
               'un nombre de persona/empresa, una pregunta sobre otro tema, un saludo), NO le fuerces un valor a los ' +
               'productos: ahí sí dejalos en null, es la única forma de que el bot vuelva a preguntar en vez de ' +
               'inventar que "cantidad mínima" fue la respuesta (caso real detectado 2026-09-16: el cliente escribió ' +
-              'su nombre, "MICHELLE MOLINA", y se interpretó como si fuera la cantidad de dos productos).\n' +
+              'su nombre, "MICHELLE MOLINA", y se interpretó como si fuera la cantidad de dos productos). TAMPOCO es ' +
+              'una cantidad elegida cuando el cliente PREGUNTA qué presentaciones/formatos manejan y lista varias ' +
+              'unidades como OPCIONES conectadas por "o" (ej. "en qué presentaciones disponen, tal vez un litro, un ' +
+              'galón o una caneca") — es una pregunta sobre lo que existe, no una elección; no tomes ninguna de esas ' +
+              'unidades como la cantidad, dejalas en null (caso real detectado 2026-09-28: "un litro un galón o una ' +
+              'caneca" se tomó como si hubiera elegido "un galón" para los dos productos).\n' +
               '   - Equivalencias de masa: 1000 mg = 1 g, 1000 g = 1 kg, 1 tonelada = 1000 kg, 1 libra (lb) = 0.453592 kg.\n' +
               '   - Si el producto es una FRAGANCIA o ESENCIA (por su nombre) y el cliente da la cantidad en ' +
               'mililitros (ml), trátalo como gramos (densidad ≈ 1, 1ml = 1g) y luego conviértelo a la unidad de ' +

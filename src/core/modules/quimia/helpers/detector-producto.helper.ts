@@ -27,6 +27,10 @@ export interface CandidatoDetectado {
   palabras?: number;
   /** Raíces de esas palabras (para saber si dos productos nombran cosas distintas). */
   cubiertas?: string[];
+  /** Palabras del nombre que están en la pregunta tal cual (no solo por raíz): desempata el orden. */
+  exactas?: number;
+  /** La pregunta trae el nombre entero, códigos y cantidades incluidos. */
+  completo?: boolean;
 }
 
 // Palabras de la pregunta que nunca identifican un producto.
@@ -54,7 +58,10 @@ const GENERICAS = new Set(
 // Números y cantidades pegadas a su unidad ("5KG", "250ML", "20LT") tampoco identifican: son la cantidad
 // pedida ("cotiza 5kg"), no el nombre del producto.
 const CANTIDAD = /^\d+(?:KGS?|GRS?|G|LTS?|L|ML|CC|GL|GAL|LB)?$/;
-const noIdentifica = (w: string) => CANTIDAD.test(w) || GENERICAS.has(w.slice(0, 6));
+// Códigos de presentación / modelo pegados al nombre ("GLUCOSA TG X300", "SC X15KG", "X25"): son raros en el
+// catálogo (IDF alto) y, contados como palabra del nombre, hundían la similitud del producto que sí se nombró.
+const CODIGO = /^[A-Z]{1,3}\d+[A-Z]*$/;
+const noIdentifica = (w: string) => CANTIDAD.test(w) || CODIGO.test(w) || GENERICAS.has(w.slice(0, 6));
 
 /**
  * Pedido de un documento del ERP por número ("quiero factura 1000", "pdf de la proforma 350"): no se
@@ -103,11 +110,11 @@ export function esPreguntaDePersona(pregunta: string): boolean {
  * verdad: 2+ palabras propias o el nombre completo. Para ellos no aplica el conflicto (la palabra que
  * "sobra" en la pregunta es el nombre del cliente / proveedor).
  */
-export function soloProductosNombrados<T extends Pick<CandidatoDetectado, 'palabras' | 'similitud' | 'conflicto'>>(
+export function soloProductosNombrados<T extends Pick<CandidatoDetectado, 'palabras' | 'similitud' | 'conflicto' | 'completo'>>(
   candidatos: T[],
 ): T[] {
   return candidatos
-    .filter((c) => (c.palabras ?? 0) >= 2 || c.similitud >= 0.99)
+    .filter((c) => (c.palabras ?? 0) >= 2 || (c.completo ?? c.similitud >= 0.99))
     .map((c) => ({ ...c, conflicto: false }));
 }
 
@@ -221,24 +228,34 @@ function detectar(
     const lista = [...porRaiz.values()];
     let cobertura = 0;
     let coinciden = 0;
+    let exactas = 0;
+    let pesoNombre = 0;
     const cubiertas: string[] = [];
     let faltaEnPregunta = false;
     for (const w of lista) {
       const peso = coincide(w, palabrasPregunta);
       if (peso) {
         cobertura += idf(w) * peso;
+        pesoNombre += idf(w);
         if (!noIdentifica(w)) {
           coinciden++;
           cubiertas.push(w.slice(0, 6));
+          if (palabrasPregunta.includes(w)) exactas++;
         }
       } else if (!noIdentifica(w)) {
         faltaEnPregunta = true;
+        pesoNombre += idf(w);
       }
     }
     // Un número o un empaque sueltos ("1000", "saco") no identifican un producto: solo ayudan a
     // desempatar cuando también coincide alguna palabra del nombre.
     if (!cobertura || !coinciden) continue;
-    const similitud = cobertura / lista.reduce((acc, w) => acc + idf(w), 0);
+    // Cantidades, empaques y códigos que NO están en la pregunta no restan similitud: "glucosa" nombra
+    // por completo a "GLUCOSA TG X300".
+    const similitud = cobertura / pesoNombre;
+    // Nombre completo en la pregunta, códigos incluidos: solo así se elige sin preguntar entre empatados
+    // ("glucosa" no elige GLUCOSA TG X300 frente a GLUCOSA EN POLVO; "glucosa tg x300" sí).
+    const completo = cobertura / lista.reduce((acc, w) => acc + idf(w), 0) >= 0.99;
     // Palabra de la pregunta que existe en el catálogo pero no en este nombre (ej. "SODIO").
     const sobraEnPregunta = palabrasPregunta.some(
       (q) => !noIdentifica(q) && df.has(q.slice(0, 6)) && !lista.some((w) => coincide(w, [q])),
@@ -256,11 +273,17 @@ function detectar(
         conflicto,
         palabras: coinciden,
         cubiertas,
+        exactas,
+        completo,
       });
     }
   }
 
-  return [...mejores.values()].sort((a, b) => b.cobertura - a.cobertura || b.similitud - a.similitud);
+  // A igual cobertura, primero los que tienen la palabra tal cual ("GLUCOSA") y después los que solo
+  // comparten la raíz de 6 letras ("GLUCOSIDE").
+  return [...mejores.values()].sort(
+    (a, b) => b.cobertura - a.cobertura || (b.exactas ?? 0) - (a.exactas ?? 0) || b.similitud - a.similitud,
+  );
 }
 
 /**
@@ -279,7 +302,7 @@ export function elegirProductoDetectado(
   if (empatados.length === 1) return { tipo: 'uno', producto: top };
 
   // Si la pregunta contiene el nombre completo de uno solo de los empatados, es ese.
-  const completos = empatados.filter((c) => c.similitud >= 0.99);
+  const completos = empatados.filter((c) => c.completo ?? c.similitud >= 0.99);
   if (completos.length === 1) return { tipo: 'uno', producto: completos[0] };
 
   return { tipo: 'varios', opciones: empatados.slice(0, MAX_OPCIONES_PRODUCTO) };

@@ -133,7 +133,11 @@ export class BotProformaService {
     const detalles = datos.productos.map((p) => {
       let observacionProducto = p.nombre;
       if (p.uso_generico) observacionProducto += ` — Uso: ${p.uso_generico}`;
-      if (p.cantidad === 0) observacionProducto += ' - CANTIDAD MINIMA';
+      // cantidad=0 es el sentinel de "sin cantidad puntual" (cantidad mínima, o presentaciones
+      // por confirmar cuando el cliente preguntó qué manejan en vez de elegir una — ver
+      // handleRecopilandoCotizacionRapida) — se usa cantidadTexto si vino, para no llamarlo
+      // "CANTIDAD MINIMA" cuando en realidad no fue eso lo que pidió el cliente.
+      if (p.cantidad === 0) observacionProducto += ` - ${(p.cantidadTexto || 'CANTIDAD MINIMA').toUpperCase()}`;
       return {
         // Siempre en MAYÚSCULAS — el nombre llega como lo escribió el cliente
         // ("percarbonato de sodio"), pero el detalle de una proforma del ERP va en

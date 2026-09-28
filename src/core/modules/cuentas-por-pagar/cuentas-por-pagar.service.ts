@@ -36,7 +36,8 @@ export class CuentasPorPagarService extends BaseService {
 
   async getCuentasPorPagar(dtoIn: CuentasPorPagarDto & HeaderParamsDto) {
 
-    const soloPendientes = dtoIn.activos ? 'having saldo_x_pagar > 0' : '';
+    // Postgres no admite alias del SELECT en HAVING: se repite la expresión de saldo_x_pagar.
+    const soloPendientes = dtoIn.activos ? 'HAVING SUM(dt.valor_cpdtr * tt.signo_cpttr) > 0' : '';
     const condicionProveedor = dtoIn.ide_geper ? `AND ct.ide_geper = ${Number(dtoIn.ide_geper)}` : '';
     const estadoFacturaNormal = this.variables.get('p_cxp_estado_factura_normal');
     const query = new SelectQuery(

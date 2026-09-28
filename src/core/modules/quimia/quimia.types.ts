@@ -26,6 +26,8 @@ export interface ProductoCandidato extends ProductoQuimia {
   /** Palabras propias del nombre que están en la pregunta. */
   palabras?: number;
   cubiertas?: string[];
+  /** La pregunta trae el nombre entero (códigos incluidos). */
+  completo?: boolean;
 }
 
 /**

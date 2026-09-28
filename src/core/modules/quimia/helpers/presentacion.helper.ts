@@ -169,6 +169,7 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
             etiqueta: 'Total sugerido (sin IVA)', valor: d.total_sugerido_sin_iva, formato: 'moneda', destacado: true },
           d.precio_maximo && { etiqueta: `Máximo (${d.precio_maximo.cantidad} ${unidad ?? ''})`, valor: d.precio_maximo.precio_unitario, formato: 'precio' },
           d.precio_minimo && { etiqueta: `Mínimo (${d.precio_minimo.cantidad} ${unidad ?? ''})`, valor: d.precio_minimo.precio_unitario, formato: 'precio' },
+          d.costo_ppm_hoy != null && { etiqueta: 'Costo PPM hoy', valor: d.costo_ppm_hoy, formato: 'precio' },
         ]),
         tabla('Precio según forma de pago', [
           { clave: 'forma_pago', etiqueta: 'Forma de pago' },
@@ -182,6 +183,7 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
           { clave: 'cliente', etiqueta: 'Cliente' },
           { clave: 'cantidad', etiqueta: 'Cantidad', formato: 'cantidad' },
           { clave: 'precio_unitario', etiqueta: 'P. unitario', formato: 'precio' },
+          { clave: 'costo_ppm_fecha', etiqueta: 'Costo PPM', formato: 'precio' },
         ], d.ventas_similares),
       );
       break;

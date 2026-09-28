@@ -378,6 +378,8 @@ const haceMeses = (meses: number) => {
 };
 const num = (v: unknown, decimales = 4) => (v === null || v === undefined || v === '' ? null : Number(Number(v).toFixed(decimales)));
 const fecha = (v: unknown) => (v ? String(v instanceof Date ? v.toISOString() : v).slice(0, 10) : null);
+/** YYYY-MM-DD → dd/mm/aaaa (formato de fechas de las respuestas). */
+const fechaDmy = (iso: string) => iso.split('-').reverse().join('/');
 /** Opciones para llamar a los servicios de consulta sin paginación ni esquema de columnas. */
 const SIN_PAGINAR = { lazy: 'false', schema: 'false' } as const;
 
@@ -683,14 +685,21 @@ export class QuimiaHerramientasService {
         case 'cotizar': {
           const cantidad = Number(args.cantidad);
           if (!(cantidad > 0)) return this.json({ error: 'La cantidad debe ser mayor a 0' });
-          const [precios, stock] = await Promise.all([
+          const [precios, stock, costoHoy] = await Promise.all([
             this.configPrecios.getPrecioVentaProducto({ ...u, ide_inarti: producto.ide_inarti, cantidad } as any),
             this.productos.getStock(producto.ide_inarti),
+            this.costoPpm(base, hoy()),
           ]);
           const rows = (precios as any[]) ?? [];
           const saldo = Number(stock?.saldo ?? 0);
           const tieneConfig = rows.some((p) => p.precio_venta_sin_iva != null);
+          // Referencia de costo al final de toda cotización (canal interno): se distingue en cursiva.
+          const notaPpm =
+            costoHoy != null
+              ? `Termina SIEMPRE con esta línea en cursiva, separada por una línea en blanco: "_Nota: Costo PPM al ${fechaDmy(hoy())}: $${costoHoy}_"`
+              : 'El producto no tiene costo PPM (sin compras): termina con la línea en cursiva "_Nota: sin costo PPM registrado._"';
           if (!tieneConfig) {
+            const similares = await this.ventasSimilares(base, cantidad);
             return this.json({
               producto: producto.nombre,
               cantidad,
@@ -698,7 +707,10 @@ export class QuimiaHerramientasService {
               stock_disponible: num(saldo, 3),
               stock_suficiente: saldo >= cantidad,
               tiene_precio_configurado: false,
-              ...(await this.ventasSimilares(base, cantidad)),
+              costo_ppm_hoy: costoHoy,
+              fecha_costo: hoy(),
+              ...similares,
+              instruccion: `${similares.instruccion}\n${notaPpm}`,
             });
           }
           return this.json({
@@ -707,7 +719,9 @@ export class QuimiaHerramientasService {
             unidad: stock?.siglas_inuni ?? null,
             stock_disponible: num(saldo, 3),
             stock_suficiente: saldo >= cantidad,
-            tiene_precio_configurado: rows.some((p) => p.precio_venta_sin_iva != null),
+            tiene_precio_configurado: true,
+            costo_ppm_hoy: costoHoy,
+            fecha_costo: hoy(),
             precios: rows.slice(0, 10).map((p) => {
               const totalSinIva = p.precio_venta_sin_iva != null ? num(Number(p.precio_venta_sin_iva) * cantidad, 2) : null;
               const totalConIva = p.precio_venta_con_iva != null ? num(Number(p.precio_venta_con_iva) * cantidad, 2) : null;
@@ -730,7 +744,8 @@ export class QuimiaHerramientasService {
               '• Total sin IVA: $<total_sin_iva>\n' +
               '• IVA <porcentaje_iva>%: $<valor_iva>\n' +
               `**Precio final (${num(cantidad, 3)} ${stock?.siglas_inuni ?? ''}): $<total_con_iva>**\n` +
-              'Luego una línea con el stock (si alcanza o no).',
+              'Luego una línea con el stock (si alcanza o no).\n' +
+              notaPpm,
           });
         }
 
@@ -776,6 +791,12 @@ export class QuimiaHerramientasService {
     }
   }
 
+  /** Costo PPM del producto a una fecha (mismo cálculo que consultar_precios). null si no tiene compras. */
+  private async costoPpm(base: Record<string, any>, f: string): Promise<number | null> {
+    const c = await this.productos.getCostoProducto({ ...base, fecha: f } as any).catch(() => null);
+    return c && c.tipo_costo_usado !== 'SIN_COSTO' ? num(c.costo_calculado) : null;
+  }
+
   /**
    * Sin configuración de precios: ventas del producto en cantidades similares (±30%, mismo criterio
    * que "Ventas" del producto) de los últimos 24 meses. Últimas 10 + máximo, mínimo y promedio.
@@ -792,7 +813,12 @@ export class QuimiaHerramientasService {
         cantidad: num(v.cantidad_ccdfa, 3),
         unidad: v.siglas_inuni,
         precio_unitario: num(v.precio_ccdfa),
+        costo_ppm_fecha: null as number | null,
       }));
+    // Costo PPM a la fecha de cada venta (una consulta por fecha distinta): referencia del margen de ese día.
+    const fechas = [...new Set(ventas.map((v) => v.fecha).filter(Boolean))] as string[];
+    const costos = new Map(await Promise.all(fechas.map(async (f) => [f, await this.costoPpm(base, f)] as const)));
+    ventas.forEach((v) => (v.costo_ppm_fecha = v.fecha ? (costos.get(v.fecha) ?? null) : null));
     if (!ventas.length) {
       return {
         ventas_similares: [],
@@ -815,7 +841,8 @@ export class QuimiaHerramientasService {
       total_sugerido_sin_iva: num(promedio * cantidad, 2),
       instruccion:
         'Responde: "No encontré configuración de precios para este producto, pero las últimas ventas en cantidades ' +
-        'similares son:" y lista las ventas (fecha, cliente, cantidad, precio unitario; en el chat del ERP como tabla). ' +
+        'similares son:" y lista las ventas (fecha, cliente, cantidad, precio unitario y "Costo PPM" = costo_ppm_fecha, ' +
+        'el costo promedio a la fecha de esa venta; en el chat del ERP como tabla). ' +
         'Al final: precio máximo (con su cantidad), precio mínimo (con su cantidad) y precio promedio sugerido ' +
         '(ponderado por cantidad) con el total para la cantidad pedida. Precios sin IVA.',
     };
