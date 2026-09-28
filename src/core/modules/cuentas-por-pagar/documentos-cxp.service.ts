@@ -141,7 +141,10 @@ export class DocumentosCxPService extends BaseService {
      */
     async getReporteDocumentos(dtoIn: GetDocumentosCxPDto & HeaderParamsDto) {
         const estadoNormal = this.variables.get('p_cxp_estado_factura_normal');
-        const condicionTipo = dtoIn.ide_cntdo ? `AND a.ide_cntdo = ${dtoIn.ide_cntdo}` : '';
+        const ideCntdo = dtoIn.soloLiquidaciones
+            ? Number(this.variables.get('p_con_tipo_documento_liquidacion_compra'))
+            : dtoIn.ide_cntdo;
+        const condicionTipo = ideCntdo ? `AND a.ide_cntdo = ${ideCntdo}` : '';
 
         const query = new SelectQuery(
             `
