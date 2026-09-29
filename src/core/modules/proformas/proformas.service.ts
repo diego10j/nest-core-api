@@ -1873,6 +1873,9 @@ ORDER BY prof.secuencial_cccpr DESC
    *  - Cotizaciones efectivas (con factura)     → tabla de conversión
    *  - Detalle de proformas del día
    */
+  // Sin filtro por sucursal a propósito: las proformas del portal web y del bot de WhatsApp se guardan con
+  // ide_sucu = 0 (createProformaWeb), sea cual sea la sucursal de quien consulta, y la lista de gestión de
+  // proformas tampoco filtra por sucursal. Filtrarlas aquí hacía desaparecer esos canales del resumen.
   async getResumenDiarioProformas(dtoIn: ResumenDiarioProformasDto & HeaderParamsDto) {
     const estadoFacturaNormal = this.variables.get('p_cxc_estado_factura_normal');
 
@@ -1890,7 +1893,7 @@ ORDER BY prof.secuencial_cccpr DESC
           COALESCE(c.enviado_cccpr, false) AS enviado_cccpr
         FROM cxc_cabece_proforma c
         WHERE c.fecha_cccpr = $1
-          AND c.ide_empr = $2 AND c.ide_sucu = $3
+          AND c.ide_empr = $2
       )
       SELECT
         -- Totales generales
@@ -1918,7 +1921,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryMetricas.addParam(1, dtoIn.fecha);
     queryMetricas.addIntParam(2, dtoIn.ideEmpr);
-    queryMetricas.addIntParam(3, dtoIn.ideSucu);
 
     // ── 10. Métricas de facturación (sección independiente) ───────────────────
     const queryMetricasFacturacion = new SelectQuery(`
@@ -1930,7 +1932,7 @@ ORDER BY prof.secuencial_cccpr DESC
           c.utilidad_cccpr
         FROM cxc_cabece_proforma c
         WHERE c.fecha_cccpr = $1
-          AND c.ide_empr    = $2 AND c.ide_sucu = $3
+          AND c.ide_empr    = $2
           AND COALESCE(c.anulado_cccpr, false) = false
       ),
       -- Una fila por proforma convertida, con lo facturado en total (una proforma puede tener más de una factura).
@@ -1977,7 +1979,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryMetricasFacturacion.addParam(1, dtoIn.fecha);
     queryMetricasFacturacion.addIntParam(2, dtoIn.ideEmpr);
-    queryMetricasFacturacion.addIntParam(3, dtoIn.ideSucu);
 
     // ── 2. Distribución por vendedor ─────────────────────────────────────────
     const queryPorVendedor = new SelectQuery(`
@@ -2000,13 +2001,12 @@ ORDER BY prof.secuencial_cccpr DESC
       FROM cxc_cabece_proforma c
       LEFT JOIN ven_vendedor v ON c.ide_vgven = v.ide_vgven
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
       GROUP BY v.ide_vgven, v.nombre_vgven
       ORDER BY total_cotizado DESC
     `);
     queryPorVendedor.addParam(1, dtoIn.fecha);
     queryPorVendedor.addIntParam(2, dtoIn.ideEmpr);
-    queryPorVendedor.addIntParam(3, dtoIn.ideSucu);
 
     // ── 3. Distribución por usuario responsable ───────────────────────────────
     const queryPorUsuario = new SelectQuery(`
@@ -2045,13 +2045,12 @@ ORDER BY prof.secuencial_cccpr DESC
       FROM cxc_cabece_proforma c
       LEFT JOIN sis_usuario u ON c.ide_usua = u.ide_usua
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
       GROUP BY u.ide_usua, u.nom_usua
       ORDER BY total_cotizado DESC
     `);
     queryPorUsuario.addParam(1, dtoIn.fecha);
     queryPorUsuario.addIntParam(2, dtoIn.ideEmpr);
-    queryPorUsuario.addIntParam(3, dtoIn.ideSucu);
 
     // ── 4. Distribución por tipo de proforma ─────────────────────────────────
     const queryPorTipo = new SelectQuery(`
@@ -2062,14 +2061,13 @@ ORDER BY prof.secuencial_cccpr DESC
       FROM cxc_cabece_proforma c
       LEFT JOIN cxc_tipo_proforma t ON c.ide_cctpr = t.ide_cctpr
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
         AND COALESCE(c.anulado_cccpr, false) = false
       GROUP BY t.nombre_cctpr
       ORDER BY total DESC
     `);
     queryPorTipo.addParam(1, dtoIn.fecha);
     queryPorTipo.addIntParam(2, dtoIn.ideEmpr);
-    queryPorTipo.addIntParam(3, dtoIn.ideSucu);
 
     // ── 5. Proformas por hora ─────────────────────────────────────────────────
     const queryPorHora = new SelectQuery(`
@@ -2087,7 +2085,6 @@ ORDER BY prof.secuencial_cccpr DESC
         FROM cxc_cabece_proforma
         WHERE fecha_cccpr = $1
           AND ide_empr    = $2
-          AND ide_sucu    = $3
           AND COALESCE(anulado_cccpr, false) = false
           AND hora_ingre IS NOT NULL
       ) h
@@ -2096,7 +2093,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryPorHora.addParam(1, dtoIn.fecha);
     queryPorHora.addIntParam(2, dtoIn.ideEmpr);
-    queryPorHora.addIntParam(3, dtoIn.ideSucu);
 
     // ── 6. Top 10 solicitantes ────────────────────────────────────────────────
     const queryTopSolicitantes = new SelectQuery(`
@@ -2116,7 +2112,7 @@ ORDER BY prof.secuencial_cccpr DESC
         )                                              AS convertidas
       FROM cxc_cabece_proforma c
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
         AND COALESCE(c.anulado_cccpr, false) = false
       GROUP BY c.solicitante_cccpr, c.correo_cccpr
       ORDER BY total_cotizado DESC
@@ -2124,7 +2120,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryTopSolicitantes.addParam(1, dtoIn.fecha);
     queryTopSolicitantes.addIntParam(2, dtoIn.ideEmpr);
-    queryTopSolicitantes.addIntParam(3, dtoIn.ideSucu);
 
     // ── 7. Top 10 artículos cotizados ─────────────────────────────────────────
     const queryTopArticulos = new SelectQuery(`
@@ -2142,7 +2137,7 @@ ORDER BY prof.secuencial_cccpr DESC
       INNER JOIN inv_articulo a        ON d.ide_inarti = a.ide_inarti
       LEFT  JOIN inv_unidad u          ON a.ide_inuni  = u.ide_inuni
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
         AND COALESCE(c.anulado_cccpr, false) = false
       GROUP BY a.codigo_inarti, a.nombre_inarti, a.uuid, u.siglas_inuni
       ORDER BY total_cotizado DESC
@@ -2150,7 +2145,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryTopArticulos.addParam(1, dtoIn.fecha);
     queryTopArticulos.addIntParam(2, dtoIn.ideEmpr);
-    queryTopArticulos.addIntParam(3, dtoIn.ideSucu);
 
     // ── 8. Cotizaciones efectivas (proformas convertidas a factura) ───────────
     const queryCotizacionesEfectivas = new SelectQuery(`
@@ -2181,13 +2175,12 @@ ORDER BY prof.secuencial_cccpr DESC
       LEFT  JOIN ven_vendedor v ON c.ide_vgven = v.ide_vgven
       LEFT  JOIN sis_usuario  u ON c.ide_usua  = u.ide_usua
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr    = $2 AND c.ide_sucu = $3
+        AND c.ide_empr    = $2
         AND COALESCE(c.anulado_cccpr, false) = false
       ORDER BY c.secuencial_cccpr DESC
     `);
     queryCotizacionesEfectivas.addParam(1, dtoIn.fecha);
     queryCotizacionesEfectivas.addIntParam(2, dtoIn.ideEmpr);
-    queryCotizacionesEfectivas.addIntParam(3, dtoIn.ideSucu);
 
     // ── 9. Detalle de proformas del día ───────────────────────────────────────
     const queryDetalle = new SelectQuery(`
@@ -2246,12 +2239,11 @@ ORDER BY prof.secuencial_cccpr DESC
          LIMIT 1
       ) f ON TRUE
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr    = $2 AND c.ide_sucu = $3
+        AND c.ide_empr    = $2
       ORDER BY c.hora_ingre, c.ide_cccpr
     `);
     queryDetalle.addParam(1, dtoIn.fecha);
     queryDetalle.addIntParam(2, dtoIn.ideEmpr);
-    queryDetalle.addIntParam(3, dtoIn.ideSucu);
 
     // ── 11. Cotizaciones por canal (WhatsApp, página web, manual…) ───────────
     const queryPorCanal = new SelectQuery(`
@@ -2273,13 +2265,12 @@ ORDER BY prof.secuencial_cccpr DESC
         )                                                                           AS convertidas
       FROM cxc_cabece_proforma c
       WHERE c.fecha_cccpr = $1
-        AND c.ide_empr = $2 AND c.ide_sucu = $3
+        AND c.ide_empr = $2
       GROUP BY 1
       ORDER BY total_cotizado DESC, total_proformas DESC
     `);
     queryPorCanal.addParam(1, dtoIn.fecha);
     queryPorCanal.addIntParam(2, dtoIn.ideEmpr);
-    queryPorCanal.addIntParam(3, dtoIn.ideSucu);
 
     // ── 12. Cotizaciones por provincia (la de la proforma o, si no tiene, la del cliente) ──
     const queryPorProvincia = new SelectQuery(`
@@ -2309,7 +2300,7 @@ ORDER BY prof.secuencial_cccpr DESC
            LIMIT 1
         ) d ON TRUE
         WHERE c.fecha_cccpr = $1
-          AND c.ide_empr = $2 AND c.ide_sucu = $3
+          AND c.ide_empr = $2
           AND COALESCE(c.anulado_cccpr, false) = false
       ) x
       LEFT JOIN gen_provincia pr ON pr.ide_geprov = x.ide_geprov
@@ -2318,7 +2309,6 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     queryPorProvincia.addParam(1, dtoIn.fecha);
     queryPorProvincia.addIntParam(2, dtoIn.ideEmpr);
-    queryPorProvincia.addIntParam(3, dtoIn.ideSucu);
 
     // ── Ejecutar todo en paralelo ─────────────────────────────────────────────
     const [
