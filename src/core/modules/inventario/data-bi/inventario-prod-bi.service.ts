@@ -883,7 +883,7 @@ export class InventarioProductoBiService extends BaseService {
                         FROM inv_det_comp_inve dci2
                         JOIN inv_cab_comp_inve cci2 ON cci2.ide_incci = dci2.ide_incci
                         JOIN inv_tip_tran_inve tti2 ON tti2.ide_intti = cci2.ide_intti
-                        JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intti
+                        JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intci
                         WHERE dci2.ide_inarti = iart.ide_inarti 
                         AND tci2.signo_intci = -1
                         AND cci2.fecha_trans_incci >= ${fechaCorte} - INTERVAL '${diasAnalisis} days'
@@ -1094,7 +1094,7 @@ export class InventarioProductoBiService extends BaseService {
                     FROM inv_det_comp_inve dci2
                     JOIN inv_cab_comp_inve cci2 ON cci2.ide_incci = dci2.ide_incci
                     JOIN inv_tip_tran_inve tti2 ON tti2.ide_intti = cci2.ide_intti
-                    JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intti
+                    JOIN inv_tip_comp_inve tci2 ON tci2.ide_intci = tti2.ide_intci
                     WHERE dci2.ide_inarti = iart.ide_inarti 
                     AND tci2.signo_intci = -1
                     AND cci2.fecha_trans_incci >= ${fechaCorte} - INTERVAL '${diasAnalisis} days'

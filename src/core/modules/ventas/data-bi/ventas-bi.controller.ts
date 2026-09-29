@@ -10,6 +10,7 @@ import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dt
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
+import { FacturasProvinciaDto } from './dto/facturas-provincia.dto';
 import { RangoFechasSucursalDto } from './dto/rango-fechas-sucursal.dto';
 import { SucursalDto } from './dto/sucursal.dto';
 import { TopClientesDto } from './dto/top-clientes.dto';
@@ -108,6 +109,16 @@ export class VentasBiController {
   @Auth()
   getTotalVentasPorHora(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTotalVentasPorHora({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getFacturasPorProvincia')
+  @ApiOperation({ summary: 'Facturas emitidas y valor por provincia del cliente en un rango de fechas' })
+  @Auth()
+  getFacturasPorProvincia(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: FacturasProvinciaDto) {
+    return this.service.getFacturasPorProvincia({
       ...headersParams,
       ...dtoIn,
     });

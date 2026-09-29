@@ -18,6 +18,8 @@ import { CategoriasService } from './categorias/categorias.service';
 import { ComprobantesInvController } from './comprobantes/comprobantes.controller';
 import { ComprobantesInvService } from './comprobantes/comprobantes.service';
 import { InventarioBiController } from './data-bi/inventario-bi.controller';
+import { InventarioDashboardController } from './data-bi/inventario-dashboard.controller';
+import { InventarioDashboardService } from './data-bi/inventario-dashboard.service';
 import { InventarioBiService } from './data-bi/inventario-bi.service';
 import { InventarioProductoBiService } from './data-bi/inventario-prod-bi.service';
 import { EtiquetasSaveService } from './etiquetas/etiquetas-save.service';
@@ -38,7 +40,7 @@ import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [ConfigModule, IntegrationModule],
-  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController, ControlStockController],
+  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController, ControlStockController, InventarioDashboardController],
   providers: [
     ProductosService,
     ProductosConsultaIaService,
@@ -61,6 +63,7 @@ import { ProductosService } from './productos/productos.service';
     HtmlProductService,
     CategoriasService,
     ControlStockService,
+    InventarioDashboardService,
   ],
 })
 export class InventarioModule { }

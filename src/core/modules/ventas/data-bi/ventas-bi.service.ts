@@ -16,6 +16,7 @@ import { VariacionVentasPeriodoDto } from '../facturas/dto/variacion-periodos.dt
 import { VentasDiariasDto } from '../facturas/dto/ventas-diarias.dto';
 import { VentasMensualesDto } from '../facturas/dto/ventas-mensuales.dto';
 
+import { FacturasProvinciaDto } from './dto/facturas-provincia.dto';
 import { RangoFechasSucursalDto } from './dto/rango-fechas-sucursal.dto';
 import { SucursalDto } from './dto/sucursal.dto';
 import { TopClientesDto } from './dto/top-clientes.dto';
@@ -667,6 +668,57 @@ GROUP BY
     EXTRACT(HOUR FROM c.hora_ingre)
 ORDER BY
     hora  `);
+        query.addStringParam(1, dtoIn.fechaInicio);
+        query.addStringParam(2, dtoIn.fechaFin);
+
+        return this.dataSource.createQuery(query);
+    }
+
+    /**
+     * Facturas emitidas y valor facturado por provincia del cliente (facturas en estado normal). La provincia es la de
+     * la persona y, si no la tiene, la de su dirección activa (la predeterminada primero), igual que en
+     * "Clientes por Ubicación". Las facturas de clientes sin provincia salen en una fila aparte (ide_geprov = null).
+     * Con ide_sucu se filtra por la sucursal de la factura (sin él, todas las de la empresa).
+     */
+    async getFacturasPorProvincia(dtoIn: FacturasProvinciaDto & HeaderParamsDto) {
+        const empresa = Number(dtoIn.ideEmpr);
+        const normal = Number(this.variables.get('p_cxc_estado_factura_normal'));
+        const sucursales = (dtoIn.ide_sucu ?? []).map(Number).filter((s) => Number.isInteger(s));
+        const whereSucursal = sucursales.length ? `AND f.ide_sucu = ANY (ARRAY[${sucursales.join(',')}]::INT[])` : '';
+        const wherePunto = isDefined(dtoIn.ide_ccdaf) ? `AND f.ide_ccdaf = ${Number(dtoIn.ide_ccdaf)}` : '';
+
+        const query = new SelectQuery(`
+WITH fac AS (
+    SELECT f.ide_cccfa, f.ide_geper, f.total_cccfa
+      FROM cxc_cabece_factura f
+     WHERE f.fecha_emisi_cccfa BETWEEN $1 AND $2
+       AND f.ide_ccefa = ${normal}
+       AND f.ide_empr = ${empresa}
+       ${whereSucursal}
+       ${wherePunto}
+),
+ubi AS (
+    SELECT fac.ide_cccfa, fac.ide_geper, fac.total_cccfa,
+           COALESCE(p.ide_geprov, d.ide_geprov) AS ide_geprov
+      FROM fac
+      LEFT JOIN gen_persona p ON p.ide_geper = fac.ide_geper
+      LEFT JOIN LATERAL (
+            SELECT dp.ide_geprov
+              FROM gen_direccion_persona dp
+             WHERE dp.ide_geper = fac.ide_geper AND COALESCE(dp.activo_gedirp, TRUE) AND dp.ide_geprov IS NOT NULL
+             ORDER BY dp.defecto_gedirp DESC NULLS LAST, dp.ide_gedirp DESC
+             LIMIT 1
+      ) d ON TRUE
+)
+SELECT u.ide_geprov,
+       COALESCE(pr.nombre_geprov, 'Sin provincia') AS provincia,
+       COUNT(*)::int AS facturas,
+       COALESCE(SUM(u.total_cccfa), 0) AS ventas,
+       COUNT(DISTINCT u.ide_geper)::int AS clientes
+  FROM ubi u
+  LEFT JOIN gen_provincia pr ON pr.ide_geprov = u.ide_geprov
+ GROUP BY u.ide_geprov, pr.nombre_geprov
+ ORDER BY ventas DESC`);
         query.addStringParam(1, dtoIn.fechaInicio);
         query.addStringParam(2, dtoIn.fechaFin);
 
