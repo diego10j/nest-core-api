@@ -489,7 +489,7 @@ export class CuentasPorPagarService extends BaseService {
             cf.fecha_emisi_cpcfa    BETWEEN $1 AND $2
             OR ct.fecha_trans_cpctr BETWEEN $3 AND $4
           )
-          AND dt.ide_sucu   = $5
+          AND ct.ide_sucu   = $5
           AND ct.ide_empr   = $6
         GROUP BY
           ct.ide_geper, p.nom_geper, p.identificac_geper, p.uuid,
