@@ -7,9 +7,14 @@ import { TesoreriaService } from 'src/core/modules/tesoreria/tesoreria.service';
 
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
 
-/** Retenciones que la empresa aplica al procesador, tasas estándar (servicios): 3% renta, 70% IVA. */
-const RET_FUENTE = 0.03;
-const RET_IVA = 0.70;
+// Casilleros de retención (con_cabece_impues.casillero_cncim) con que el procesador de tarjeta
+// retiene sobre cada transacción: se resuelve su porcentaje VIGENTE desde con_vigenc_impues /
+// con_detall_impues (igual que el motor de retenciones de compras), no un valor fijo.
+const CASILLERO_RET_RENTA = '3440';
+const CASILLERO_RET_IVA = '729';
+// con_cabece_impues.ide_cnimp: 0 = IVA, 1 = renta.
+const IDE_CNIMP_IVA = 0;
+const IDE_CNIMP_RENTA = 1;
 /** Cantidad máxima de pagos que puede cubrir una sola transferencia (poda del subset-sum). */
 const MAX_PAGOS_COMBINACION = 6;
 
@@ -28,6 +33,10 @@ interface PagoConNeto {
 interface TasasCuenta {
     porcentajeComision: number;
     ivaComision: boolean;
+    /** % de retención en la fuente (renta) vigente para el procesador; 0 si no aplica. */
+    porcentajeRetRenta: number;
+    /** % de retención de IVA vigente para el procesador; 0 si no aplica. */
+    porcentajeRetIva: number;
 }
 
 export interface SugerenciaIdentificacion {
@@ -109,8 +118,8 @@ export class IdentificarPagoService extends BaseService {
         const iva = Number(pago.valor_iva_cccfa) || 0;
         const comision = bruto * (tasas.porcentajeComision / 100);
         const ivaComision = tasas.ivaComision ? comision * 0.15 : 0;
-        const retFuente = base * RET_FUENTE;
-        const retIva = iva * RET_IVA;
+        const retFuente = base * (tasas.porcentajeRetRenta / 100);
+        const retIva = iva * (tasas.porcentajeRetIva / 100);
         return r2(bruto - comision - ivaComision - retFuente - retIva);
     }
 
@@ -158,16 +167,69 @@ export class IdentificarPagoService extends BaseService {
         const query = new SelectQuery(`
             SELECT
                 COALESCE(porcentaje_comision_tecba, 0) AS porcentaje_comision,
-                COALESCE(iva_comision_tecba, true) AS iva_comision
+                COALESCE(iva_comision_tecba, true) AS iva_comision,
+                ide_geper_comision_tecba
             FROM tes_cuenta_banco
             WHERE ide_tecba = $1
         `);
         query.addIntParam(1, ideTecba);
         const row = await this.dataSource.createSingleQuery(query);
         if (!row) throw new BadRequestException('La cuenta de tarjeta no existe.');
+
+        // ide_geper del procesador: define su tipo de contribuyente para el % de retención vigente.
+        const ideGeperProcesador = row.ide_geper_comision_tecba != null ? Number(row.ide_geper_comision_tecba) : null;
+        const [porcentajeRetRenta, porcentajeRetIva] = await Promise.all([
+            this.getPorcentajeRetencionVigente(CASILLERO_RET_RENTA, IDE_CNIMP_RENTA, ideGeperProcesador),
+            this.getPorcentajeRetencionVigente(CASILLERO_RET_IVA, IDE_CNIMP_IVA, ideGeperProcesador),
+        ]);
+
         return {
             porcentajeComision: Number(row.porcentaje_comision) || 0,
             ivaComision: row.iva_comision === true || row.iva_comision === 'true',
+            porcentajeRetRenta,
+            porcentajeRetIva,
         };
+    }
+
+    /**
+     * Porcentaje de retención VIGENTE de un casillero (por su código), para el tipo de contribuyente
+     * del procesador: vigencia activa (con_vigenc_impues) → detalle (con_detall_impues), con fallback
+     * al valor por defecto del casillero (con_cabece_impues.valor_defecto_cncim). Mismo criterio que
+     * RetencionesCxpService.getPorcentajeImpuesto, pero anclado en el código de casillero y sin
+     * exigir un tipo de documento (aquí solo se estima). 0 si no está configurado.
+     */
+    private async getPorcentajeRetencionVigente(
+        casilleroCodigo: string,
+        ideCnimp: number,
+        ideGeperProcesador: number | null,
+    ): Promise<number> {
+        const q = new SelectQuery(`
+            SELECT d.porcentaje_cndim
+            FROM con_detall_impues d
+            INNER JOIN con_vigenc_impues v ON v.ide_cnvim = d.ide_cnvim AND v.estado_cnvim IS TRUE
+            INNER JOIN con_cabece_impues c ON c.ide_cncim = v.ide_cncim
+            WHERE c.casillero_cncim = $1
+              AND c.ide_cnimp = $2
+              AND ($3::int IS NULL OR d.ide_cntco = (SELECT ide_cntco FROM gen_persona WHERE ide_geper = $3))
+            ORDER BY d.porcentaje_cndim DESC
+            LIMIT 1
+        `);
+        q.addStringParam(1, casilleroCodigo);
+        q.addIntParam(2, ideCnimp);
+        q.addParam(3, ideGeperProcesador);
+        const row = await this.dataSource.createSingleQuery(q);
+        if (row?.porcentaje_cndim != null) return Number(row.porcentaje_cndim);
+
+        // Fallback: valor por defecto del casillero.
+        const qDefecto = new SelectQuery(`
+            SELECT valor_defecto_cncim
+            FROM con_cabece_impues
+            WHERE casillero_cncim = $1 AND ide_cnimp = $2
+            LIMIT 1
+        `);
+        qDefecto.addStringParam(1, casilleroCodigo);
+        qDefecto.addIntParam(2, ideCnimp);
+        const defecto = await this.dataSource.createSingleQuery(qDefecto);
+        return defecto?.valor_defecto_cncim != null ? Number(defecto.valor_defecto_cncim) : 0;
     }
 }
