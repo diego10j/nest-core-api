@@ -161,6 +161,14 @@ export class TransportesSaveService extends BaseService {
 
     async saveEnvio(dtoIn: SaveEnvioDto & HeaderParamsDto) {
         const isUpdate = dtoIn.ide_cctfa != null;
+
+        // Factura editada de "con transporte" a "Retira en sucursal": el envío existente debe
+        // quedar limpio, no solo con es_transporte_propio=false (el resto de campos, al venir
+        // undefined en un UPDATE, se conservaban y el envío seguía figurando con transportista y flete).
+        if (isUpdate && dtoIn.retira_en_sucursal) {
+            return this.resetEnvioARetiroEnSucursal(dtoIn.ide_cctfa!, dtoIn);
+        }
+
         const pk = isUpdate ? dtoIn.ide_cctfa! : await this.dataSource.getSeqTable('cxc_transporte_factura', 'ide_cctfa', 1, dtoIn.login);
 
         let ideGecam = dtoIn.ide_gecam ?? null;
@@ -256,6 +264,63 @@ export class TransportesSaveService extends BaseService {
 
         await this.core.save({ ...dtoIn, listQuery, audit: false });
         return { message: 'ok', ide_cctfa: pk };
+    }
+
+    /** Deja un envío existente en el estado de "Retira en sucursal": sin transportista, chofer,
+     * camión, flete, imagen de guía ni correo, y de vuelta en PENDIENTE. Se rechaza si el flete ya
+     * está consolidado/facturado por el transportista (cxp_det_flete_cons / ide_cpcfa), porque
+     * borrar el flete dejaría inconsistente la cuenta por pagar. */
+    private async resetEnvioARetiroEnSucursal(ideCctfa: number, dtoIn: HeaderParamsDto) {
+        const actual = await this.dataSource.pool.query(
+            `SELECT e.path_imagen_guia_cctfa,
+                    e.ide_cpcfa,
+                    EXISTS (SELECT 1 FROM cxp_det_flete_cons d WHERE d.ide_cctfa = e.ide_cctfa) AS en_flete_consolidado
+               FROM cxc_transporte_factura e
+              WHERE e.ide_cctfa = $1`,
+            [ideCctfa],
+        );
+        if (actual.rows.length === 0) {
+            throw new BadRequestException(`Envío ide_cctfa=${ideCctfa} no encontrado`);
+        }
+        const envio = actual.rows[0];
+        if (envio.ide_cpcfa != null || envio.en_flete_consolidado) {
+            throw new BadRequestException(
+                'El flete de este envío ya fue consolidado o facturado por el transportista: no se puede cambiar a "Retira en sucursal". ' +
+                'Anule primero el flete consolidado.',
+            );
+        }
+
+        await this.dataSource.pool.query(
+            `UPDATE cxc_transporte_factura
+                SET ide_vgtra = NULL,
+                    es_transporte_propio_cctfa = false,
+                    ide_gecam = NULL,
+                    ide_geper = NULL,
+                    ide_cceen = $1,
+                    fecha_inicio_cctfa = NULL,
+                    fecha_fin_cctfa = NULL,
+                    fecha_fin_real_cctfa = NULL,
+                    path_imagen_guia_cctfa = NULL,
+                    destinatario_guia_cctfa = NULL,
+                    base_flete_cctfa = 0,
+                    valor_iva_flete_cctfa = 0,
+                    total_flete_cctfa = 0,
+                    base_flete_real_cctfa = 0,
+                    valor_iva_flete_real_cctfa = 0,
+                    total_flete_real_cctfa = 0,
+                    flete_pagado_cctfa = true,
+                    comentario_cctfa = NULL,
+                    enviar_por_correo_cctfa = false,
+                    correo_cctfa = NULL,
+                    fecha_envio_cctfa = NULL,
+                    usuario_actua = $2,
+                    fecha_actua = CURRENT_DATE,
+                    hora_actua = CURRENT_TIME
+              WHERE ide_cctfa = $3`,
+            [ESTADO_ENVIO_PENDIENTE, dtoIn.login, ideCctfa],
+        );
+        this.eliminarArchivoImagenEnvio(envio.path_imagen_guia_cctfa);
+        return { message: 'ok', ide_cctfa: ideCctfa };
     }
 
     /** Corrige la empresa de transporte de un envío ya creado (p.ej. el vendedor eligió

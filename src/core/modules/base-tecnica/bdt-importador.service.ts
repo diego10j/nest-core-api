@@ -92,7 +92,7 @@ export class BdtImportadorService {
         [dto.ideEmpr],
       ),
       this.dataSource.pool.query(
-        `SELECT d.ide_bddoc, d.ide_inarti, a.nombre_inarti, d.nombre_original_bddoc, d.tipo_bddoc, d.estado_bddoc,
+        `SELECT d.ide_bddoc, d.ide_inarti, a.uuid::text AS uuid_inarti, a.nombre_inarti, d.nombre_original_bddoc, d.tipo_bddoc, d.estado_bddoc,
                 d.vigente_bddoc, d.fabricante_detectado_bddoc, d.proveedor_detectado_bddoc, d.texto_original_bddoc
            FROM bdt_documento d
            JOIN inv_articulo a ON a.ide_inarti = d.ide_inarti
@@ -141,6 +141,7 @@ export class BdtImportadorService {
       rows.push({
         ide_bddoc: d.ide_bddoc,
         ide_inarti: d.ide_inarti,
+        uuid_inarti: d.uuid_inarti,
         nombre_inarti: d.nombre_inarti,
         nombre_original_bddoc: d.nombre_original_bddoc,
         tipo_bddoc: d.tipo_bddoc,

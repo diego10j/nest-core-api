@@ -10,6 +10,8 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { FilesModule } from '../sistema/files/files.module';
 import { SriModule } from '../sri/sri.module';
 
+import { ClientesUbicacionController } from './clientes-ubicacion/clientes-ubicacion.controller';
+import { ClientesUbicacionService } from './clientes-ubicacion/clientes-ubicacion.service';
 import { ClientesSaveService } from './clientes/clientes-save.service';
 import { ClientesController } from './clientes/clientes.controller';
 import { ClientesService } from './clientes/clientes.service';
@@ -40,6 +42,7 @@ import { TransportesService } from './transportes/transportes.service';
   imports: [ConfigModule, WhatsappModule, SriModule, FilesModule, ContabilidadModule, IntegrationModule],
   controllers: [
     ClientesController,
+    ClientesUbicacionController,
     FacturasController,
     PuntoVentaController,
     VentasBiController,
@@ -52,6 +55,7 @@ import { TransportesService } from './transportes/transportes.service';
   providers: [
     ClientesService,
     ClientesSaveService,
+    ClientesUbicacionService,
     AuditService,
     CoreService,
     FacturasService,

@@ -17,6 +17,8 @@ const IDE_CNIMP_IVA = 0;
 const IDE_CNIMP_RENTA = 1;
 /** Cantidad máxima de pagos que puede cubrir una sola transferencia (poda del subset-sum). */
 const MAX_PAGOS_COMBINACION = 6;
+/** Tolerancia de redondeo por pago (centavos): la retención de IVA (70 %) suele caer en media centésima. */
+const TOLERANCIA_POR_PAGO = 0.02;
 
 const r2 = (n: number): number => Number((Number(n) || 0).toFixed(2));
 
@@ -80,7 +82,21 @@ export class IdentificarPagoService extends BaseService {
         ideTecba: number,
         headers: HeaderParamsDto,
     ): Promise<SugerenciaIdentificacion> {
-        const ocr = await this.tesoreria.procesarImagenTransferencia(buffer, fileName, mimeType);
+        let ocr = await this.tesoreria.procesarImagenTransferencia(buffer, fileName, mimeType);
+        // Un valor entero es sospechoso: en varios bancos los centavos van en superíndice pequeño y el
+        // OCR los pierde. Se relee con Vision (distingue tamaños de fuente) y se acepta solo si confirma
+        // la misma parte entera y agrega centavos.
+        if (ocr.valor != null && ocr.valor > 0 && Number.isInteger(ocr.valor)) {
+            try {
+                const vision = await this.tesoreria.procesarImagenTransferenciaVision(buffer, mimeType, 'vision_centavos');
+                if (vision.valor != null && Math.floor(vision.valor) === ocr.valor && vision.valor > ocr.valor) {
+                    this.logger.log(`Centavos recuperados con Vision: ${ocr.valor} → ${vision.valor}`);
+                    ocr = { ...ocr, valor: vision.valor, origen: vision.origen };
+                }
+            } catch (e) {
+                this.logger.warn(`Relectura con Vision falló: ${(e as Error).message}`);
+            }
+        }
         const valor = r2(ocr.valor ?? 0);
         if (valor <= 0) {
             throw new BadRequestException('No se detectó el valor de la transferencia en el comprobante.');
@@ -100,6 +116,13 @@ export class IdentificarPagoService extends BaseService {
             }));
 
         const pagos = this.buscarCoincidencia(conNeto, valor);
+        if (pagos.length === 0) {
+            // Solo se acepta coincidencia exacta (± redondeo): se deja rastro para calibrar las tasas.
+            this.logger.warn(
+                `Sin coincidencia para $${valor}. Tasas: ${JSON.stringify(tasas)}. `
+                + `Pendientes (neto estimado/bruto): ${conNeto.map((p) => `#${p.secuencial_cccfa}=${p.netoEstimado}/${p.bruto}`).join(', ')}`,
+            );
+        }
         const netoEstimadoTotal = r2(pagos.reduce((s, p) => s + p.netoEstimado, 0));
 
         return {
@@ -126,32 +149,28 @@ export class IdentificarPagoService extends BaseService {
     /**
      * Busca el pago —o la combinación de pagos— cuyo neto estimado coincide con el valor transferido.
      * Prefiere un único pago; si no, prueba combinaciones (una transferencia puede cubrir varios).
-     * Tolerancia relativa por si la comisión/retención tiene pequeños redondeos.
+     * Solo tolera redondeo de centavos (TOLERANCIA_POR_PAGO por pago), nunca un porcentaje: dos pagos
+     * de valor parecido no deben confundirse. Si más de un pago cuadra igual, es ambiguo y no se
+     * sugiere ninguno (el usuario los marca a mano).
      */
     private buscarCoincidencia(pagos: PagoConNeto[], valor: number): PagoConNeto[] {
-        const tolerancia = Math.max(0.10, valor * 0.01);
+        const toleranciaPara = (cantidad: number) => TOLERANCIA_POR_PAGO * cantidad + 0.005;
 
-        // 1) Un solo pago (el más cercano dentro de la tolerancia).
-        let mejorUno: PagoConNeto | null = null;
-        for (const p of pagos) {
-            if (Math.abs(p.netoEstimado - valor) <= tolerancia) {
-                if (!mejorUno || Math.abs(p.netoEstimado - valor) < Math.abs(mejorUno.netoEstimado - valor)) {
-                    mejorUno = p;
-                }
-            }
-        }
-        if (mejorUno) return [mejorUno];
+        // 1) Un solo pago.
+        const unicos = pagos.filter((p) => Math.abs(p.netoEstimado - valor) <= toleranciaPara(1));
+        if (unicos.length === 1) return unicos;
+        if (unicos.length > 1) return [];
 
         // 2) Combinación de pagos (subset-sum acotado): backtracking con poda sobre netos descendentes.
         const orden = [...pagos].sort((a, b) => b.netoEstimado - a.netoEstimado);
         let mejor: PagoConNeto[] | null = null;
         const buscar = (desde: number, actuales: PagoConNeto[], suma: number) => {
             if (mejor || actuales.length > MAX_PAGOS_COMBINACION) return;
-            if (actuales.length >= 2 && Math.abs(suma - valor) <= tolerancia) {
+            if (actuales.length >= 2 && Math.abs(suma - valor) <= toleranciaPara(actuales.length)) {
                 mejor = [...actuales];
                 return;
             }
-            if (suma - valor > tolerancia) return; // ya se pasó (netos positivos)
+            if (suma - valor > toleranciaPara(MAX_PAGOS_COMBINACION)) return; // ya se pasó (netos positivos)
             for (let i = desde; i < orden.length; i++) {
                 actuales.push(orden[i]);
                 buscar(i + 1, actuales, r2(suma + orden[i].netoEstimado));

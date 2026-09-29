@@ -59,7 +59,7 @@ export class BdtDatosService {
     if (dto.producto?.trim()) cond.push(`a.nombre_inarti ILIKE ${p(`%${dto.producto.trim()}%`)}`);
 
     const q = new SelectQuery(
-      `SELECT d.ide_bddoc, d.ide_inarti, a.nombre_inarti, c.nombre_incate, d.nombre_original_bddoc, d.uuid_origen_bddoc::text AS uuid,
+      `SELECT d.ide_bddoc, d.ide_inarti, a.uuid::text AS uuid_inarti, a.nombre_inarti, c.nombre_incate, d.nombre_original_bddoc, d.uuid_origen_bddoc::text AS uuid,
               d.tipo_bddoc, d.estado_bddoc, d.confianza_bddoc, d.metodo_extraccion_bddoc, d.vigente_bddoc,
               f.nombre_bdfab, d.lote_detectado_bddoc, d.fecha_referencia_bddoc, d.fecha_proceso_bddoc,
               COALESCE(d.usuario_actua, d.usuario_ingre) AS usuario, d.modelo_ia_bddoc, d.costo_usd_bddoc,

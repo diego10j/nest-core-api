@@ -118,7 +118,7 @@ export class BdtArchivosService {
   /** Un registro por producto con cuántos archivos tiene de cada tipo. */
   private sqlCobertura(ideEmpr: number, incluirInactivos: boolean): string {
     return `
-      SELECT p.ide_inarti, p.nombre_inarti, p.codigo_inarti, c.nombre_incate, p.ide_incate,
+      SELECT p.ide_inarti, p.uuid::text AS uuid_inarti, p.nombre_inarti, p.codigo_inarti, c.nombre_incate, p.ide_incate,
              COALESCE(p.activo_inarti, TRUE) AS activo,
              COUNT(f.ide_arch)::int AS total_archivos,
              COUNT(*) FILTER (WHERE f.tipo = 'FICHA_TECNICA')::int AS fichas,
@@ -132,7 +132,7 @@ export class BdtArchivosService {
         LEFT JOIN inv_categoria c ON c.ide_incate = p.ide_incate
         LEFT JOIN (${this.sqlArchivos(ideEmpr)}) f ON f.ide_inarti = p.ide_inarti
        WHERE p.ide_empr = ${Number(ideEmpr)} ${incluirInactivos ? '' : 'AND COALESCE(p.activo_inarti, TRUE)'}
-       GROUP BY p.ide_inarti, p.nombre_inarti, p.codigo_inarti, c.nombre_incate, p.ide_incate, p.activo_inarti`;
+       GROUP BY p.ide_inarti, p.uuid, p.nombre_inarti, p.codigo_inarti, c.nombre_incate, p.ide_incate, p.activo_inarti`;
   }
 
   /** Listado de archivos (DataTableQuery: paginación, orden y búsqueda global) con filtros. */
@@ -162,7 +162,7 @@ export class BdtArchivosService {
         : 'f.fecha_carga DESC, f.ide_arch DESC';
 
     const q = new SelectQuery(
-      `SELECT f.ide_arch, f.uuid, f.ide_inarti, p.nombre_inarti, p.codigo_inarti, cat.nombre_incate,
+      `SELECT f.ide_arch, f.uuid, f.ide_inarti, p.uuid::text AS uuid_inarti, p.nombre_inarti, p.codigo_inarti, cat.nombre_incate,
               COALESCE(p.activo_inarti, TRUE) AS activo, f.nombre_arch, f.ext, f.peso_arch, f.tipo, f.extraccion,
               f.formato, f.estado_bddoc, f.confianza_bddoc, f.ide_bddoc, f.fecha_documento::date::text AS fecha_documento,
               f.fecha_vencimiento::date::text AS fecha_vencimiento,
@@ -201,7 +201,7 @@ export class BdtArchivosService {
     if (dto.cobertura) cond.push(cobertura[dto.cobertura]);
 
     const q = new SelectQuery(
-      `SELECT x.ide_inarti, x.nombre_inarti, x.codigo_inarti, x.nombre_incate, x.activo, x.total_archivos,
+      `SELECT x.ide_inarti, x.uuid_inarti, x.nombre_inarti, x.codigo_inarti, x.nombre_incate, x.activo, x.total_archivos,
               x.fichas, x.coas, x.hojas, x.otros, x.peso_total, x.ultima_carga, x.ultimo_coa
          FROM (${this.sqlCobertura(dto.ideEmpr, dto.incluirInactivos === 'true')}) x
         ${cond.length ? `WHERE ${cond.join(' AND ')}` : ''}
@@ -222,7 +222,7 @@ export class BdtArchivosService {
       `(SELECT COALESCE(json_agg(t ORDER BY ${orden}), '[]'::json) FROM (${select}) t)`;
     const r = await this.dataSource.pool.query(
       `WITH f AS (
-         SELECT x.*, p.nombre_inarti
+         SELECT x.*, p.nombre_inarti, p.uuid::text AS uuid_inarti
            FROM (${this.sqlArchivos(dto.ideEmpr)}) x
            JOIN inv_articulo p ON p.ide_inarti = x.ide_inarti AND p.ide_empr = ${Number(dto.ideEmpr)}
           WHERE COALESCE(p.activo_inarti, TRUE)
@@ -237,21 +237,21 @@ export class BdtArchivosService {
            't.peso DESC',
          )} AS por_formato,
          ${agg(
-           `SELECT ide_arch, uuid, nombre_arch, ext, peso_arch, ide_inarti, nombre_inarti, tipo FROM f
+           `SELECT ide_arch, uuid, nombre_arch, ext, peso_arch, ide_inarti, uuid_inarti, nombre_inarti, tipo FROM f
              ORDER BY peso_arch DESC, ide_arch LIMIT 10`,
            't.peso_arch DESC, t.ide_arch',
          )} AS mas_pesados,
          ${agg(
-           `SELECT ide_inarti, nombre_inarti, COUNT(*)::int AS archivos, COALESCE(SUM(peso_arch), 0)::bigint AS peso,
+           `SELECT ide_inarti, uuid_inarti, nombre_inarti, COUNT(*)::int AS archivos, COALESCE(SUM(peso_arch), 0)::bigint AS peso,
                    COUNT(*) FILTER (WHERE tipo = 'FICHA_TECNICA')::int AS fichas,
                    COUNT(*) FILTER (WHERE tipo = 'CERTIFICADO_ANALISIS')::int AS coas,
                    COUNT(*) FILTER (WHERE tipo = 'HOJA_SEGURIDAD')::int AS hojas
-              FROM f GROUP BY ide_inarti, nombre_inarti
+              FROM f GROUP BY ide_inarti, uuid_inarti, nombre_inarti
              ORDER BY archivos DESC, peso DESC, nombre_inarti LIMIT 10`,
            't.archivos DESC, t.peso DESC, t.nombre_inarti',
          )} AS productos_top,
          ${agg(
-           `SELECT ide_arch, uuid, nombre_arch, ext, descargas, ide_inarti, nombre_inarti, tipo FROM f
+           `SELECT ide_arch, uuid, nombre_arch, ext, descargas, ide_inarti, uuid_inarti, nombre_inarti, tipo FROM f
              WHERE descargas > 0 ORDER BY descargas DESC, ide_arch LIMIT 10`,
            't.descargas DESC, t.ide_arch',
          )} AS mas_descargados,

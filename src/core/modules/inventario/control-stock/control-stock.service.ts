@@ -97,7 +97,7 @@ export class ControlStockService extends BaseService {
                      (CURRENT_DATE - b.ultima_salida) AS dias_sin_salida,
                      ROUND(b.salidas_90 / ${DIAS_ANALISIS}.0, 4) AS consumo_diario
                 FROM (
-                  SELECT a.ide_inarti, a.codigo_inarti, a.nombre_inarti, a.ide_incate, c.nombre_incate, u.siglas_inuni,
+                  SELECT a.ide_inarti, a.uuid::text AS uuid_inarti, a.codigo_inarti, a.nombre_inarti, a.ide_incate, c.nombre_incate, u.siglas_inuni,
                          COALESCE(a.decim_stock_inarti, 2)::int AS decim,
                          ROUND(COALESCE(m.saldo, 0), COALESCE(a.decim_stock_inarti, 2)::int) AS saldo,
                          NULLIF(a.cant_stock1_inarti, 0) AS stock_minimo,
@@ -172,7 +172,7 @@ export class ControlStockService extends BaseService {
     if (partes(dto.estados).length) cond.push(`s.estado = ANY(${p(partes(dto.estados))}::text[])`);
 
     const q = new SelectQuery(
-      `SELECT s.ide_inarti, s.codigo_inarti, s.nombre_inarti, s.nombre_incate, s.ide_incate, s.siglas_inuni,
+      `SELECT s.ide_inarti, s.uuid_inarti, s.codigo_inarti, s.nombre_inarti, s.nombre_incate, s.ide_incate, s.siglas_inuni,
               s.saldo, s.stock_minimo, s.stock_ideal, s.estado, s.costo_unitario, s.valor_stock, s.porcentaje_valor,
               s.salidas_90, s.dias_cobertura, to_char(s.ultima_salida, 'YYYY-MM-DD') AS ultima_salida, s.dias_sin_salida,
               s.inmovil, s.alerta, s.prioridad, s.sugerido_reposicion, s.valor_reposicion
@@ -226,18 +226,18 @@ export class ControlStockService extends BaseService {
            't.valor DESC',
          )} AS por_categoria,
          ${agg(
-           `SELECT ide_inarti, nombre_inarti, nombre_incate, siglas_inuni, saldo, valor_stock, porcentaje_valor
+           `SELECT ide_inarti, uuid_inarti, nombre_inarti, nombre_incate, siglas_inuni, saldo, valor_stock, porcentaje_valor
               FROM b WHERE saldo > 0 ORDER BY valor_stock DESC, saldo DESC LIMIT 10`,
            't.valor_stock DESC, t.saldo DESC',
          )} AS mas_stock,
          ${agg(
-           `SELECT ide_inarti, nombre_inarti, siglas_inuni, estado, saldo, stock_minimo, stock_ideal, salidas_90,
+           `SELECT ide_inarti, uuid_inarti, nombre_inarti, siglas_inuni, estado, saldo, stock_minimo, stock_ideal, salidas_90,
                    dias_cobertura, sugerido_reposicion, prioridad
               FROM b WHERE alerta ORDER BY prioridad, valor_reposicion DESC, nombre_inarti LIMIT 10`,
            't.prioridad, t.sugerido_reposicion DESC NULLS LAST, t.nombre_inarti',
          )} AS alertas_top,
          ${agg(
-           `SELECT ide_inarti, nombre_inarti, siglas_inuni, saldo, valor_stock, dias_sin_salida
+           `SELECT ide_inarti, uuid_inarti, nombre_inarti, siglas_inuni, saldo, valor_stock, dias_sin_salida
               FROM b WHERE inmovil ORDER BY valor_stock DESC, nombre_inarti LIMIT 10`,
            't.valor_stock DESC, t.nombre_inarti',
          )} AS inmovil_top`,

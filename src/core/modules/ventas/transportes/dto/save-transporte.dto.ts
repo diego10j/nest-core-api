@@ -214,6 +214,13 @@ export class SaveEnvioDto {
     @IsOptional()
     ide_vgtra?: number;
 
+    /** true = el cliente "Retira en sucursal": deja el envío sin transportista, chofer, flete,
+     * imagen de guía ni datos de correo (mismo estado que un envío recién creado como retiro).
+     * Se usa al editar una factura que antes tenía transporte. Ignora el resto de campos. */
+    @IsBoolean()
+    @IsOptional()
+    retira_en_sucursal?: boolean;
+
     @IsBoolean()
     @IsOptional()
     es_transporte_propio_cctfa?: boolean;
