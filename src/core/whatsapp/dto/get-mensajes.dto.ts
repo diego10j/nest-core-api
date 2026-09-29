@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsPositive } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
+import { IsInt, IsBoolean, IsNotEmpty, IsOptional, IsPositive } from 'class-validator';
 
 export class GetMensajesDto {
   @IsInt()
@@ -24,4 +24,15 @@ export class GetMensajesDto {
   @IsOptional()
   @Type(() => Number)
   afterId?: number;
+
+  /**
+   * true = consulta de solo lectura desde otro módulo (ej. "Ver conversación" en el detalle
+   * de una proforma) — no marca el chat como leído ni descuenta su contador de no leídos.
+   * Sin esto, abrir esa vista silenciaba en el dashboard de WhatsApp un chat que el agente
+   * todavía no había revisado ahí.
+   */
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  soloLectura?: boolean;
 }

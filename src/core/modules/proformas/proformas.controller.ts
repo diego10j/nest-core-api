@@ -182,4 +182,14 @@ export class ProformasController {
       ...dtoIn,
     });
   }
+
+  @Get('getWhatsappChat')
+  @ApiOperation({ summary: 'Chat de WhatsApp que originó la proforma (para "Ver conversación"), null si no aplica' })
+  @Auth()
+  getWhatsappChat(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetProformaDto) {
+    return this.service.getWhatsappChat({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
 }

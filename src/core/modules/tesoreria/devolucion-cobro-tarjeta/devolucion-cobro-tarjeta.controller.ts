@@ -1,5 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+    BadRequestException, Body, Controller, Get, Param, Post, Query,
+    UploadedFile, UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
@@ -7,6 +11,8 @@ import { Auth } from 'src/core/auth';
 import { CorteTarjetaSaveService } from './corte-tarjeta-save.service';
 import { DevolucionCobroTarjetaSaveService } from './devolucion-cobro-tarjeta-save.service';
 import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.service';
+import { IdentificarPagoService } from './identificar-pago.service';
+import { LiquidacionPdfService } from './liquidacion-pdf.service';
 import { AnularDevolucionTarjetaDto } from './dto/anular-devolucion-tarjeta.dto';
 import { GetDevolucionesTarjetaDto } from './dto/get-devoluciones-tarjeta.dto';
 import {
@@ -31,6 +37,8 @@ export class DevolucionCobroTarjetaController {
         private readonly service: DevolucionCobroTarjetaService,
         private readonly saveService: DevolucionCobroTarjetaSaveService,
         private readonly corteService: CorteTarjetaSaveService,
+        private readonly liquidacionPdfService: LiquidacionPdfService,
+        private readonly identificarPagoService: IdentificarPagoService,
     ) { }
 
     @Get('getFacturasTarjetaPendientes')
@@ -52,6 +60,57 @@ export class DevolucionCobroTarjetaController {
     ) {
         const numeros = dtoIn.numeros.split(',').map((n) => n.trim()).filter(Boolean);
         return this.service.getLiquidacionesRegistradas(numeros, headersParams);
+    }
+
+    @Post('parsearLiquidacionPdf')
+    @Auth()
+    @ApiOperation({ summary: 'Extrae las transacciones del PDF "Comprobante de Pago" del procesador (Bendo), en la misma forma que el Excel de liquidación' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'PDF de liquidación del procesador' },
+            },
+            required: ['file'],
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    parsearLiquidacionPdf(
+        @AppHeaders() _headersParams: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+    ) {
+        if (!file) throw new BadRequestException('No se recibió el archivo PDF.');
+        if (file.mimetype !== 'application/pdf' && !/\.pdf$/i.test(file.originalname)) {
+            throw new BadRequestException('El archivo debe ser un PDF.');
+        }
+        return this.liquidacionPdfService.parsearLiquidacionPdf(file.buffer);
+    }
+
+    @Post('identificarPorComprobante')
+    @Auth()
+    @ApiOperation({ summary: 'Identifica el/los pago(s) pendiente(s) que corresponden a una acreditación a partir de la imagen del comprobante bancario (cuando no llegó el Excel ni el PDF de liquidación)' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'Imagen del comprobante bancario (PNG, JPG)' },
+            },
+            required: ['file'],
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    identificarPorComprobante(
+        @AppHeaders() headersParams: HeaderParamsDto,
+        @UploadedFile() file: Express.Multer.File,
+        @Query('ideTecba') ideTecba: string,
+    ) {
+        if (!file) throw new BadRequestException('No se recibió la imagen del comprobante.');
+        if (!ideTecba) throw new BadRequestException('Falta la cuenta de tarjeta (ideTecba).');
+        return this.identificarPagoService.identificarPorComprobante(
+            file.buffer, file.originalname, file.mimetype, Number(ideTecba), headersParams,
+        );
     }
 
     @Post('registrarAcreditacion')

@@ -14,8 +14,11 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import * as path from 'path';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
@@ -141,23 +144,31 @@ export class WhatsappController {
     });
   }
 
+  // Sin throttle: un chat con muchas fotos pide decenas de archivos a la vez y el límite global
+  // (300/min por IP, compartido con todo el ERP) las dejaba en 429 → imágenes en blanco.
   @Get('media/:filename')
+  @SkipThrottle()
   @Header('Cache-Control', 'public, max-age=86400')
   async serveMedia(@Param('filename') filename: string, @Res() res: Response) {
-    const filePath = this.service.fileTempService.getWhatsAppMediaPath(filename);
+    // basename: sin esto "..%2F..%2F" salía de la carpeta de medios (sendFile con ruta absoluta no lo impide).
+    const filePath = this.service.fileTempService.getWhatsAppMediaPath(path.basename(filename));
     res.sendFile(filePath, (err) => {
-      if (err) res.status(404).json({ message: 'Archivo no encontrado' });
+      if (err && !res.headersSent) res.status(404).json({ message: 'Archivo no encontrado' });
     });
   }
 
   @Get('download/:id')
+  @SkipThrottle()
   async download(@Param('id') messageId: string, @Res() res: Response) {
     const fileInfo = await this.service.downloadMedia(messageId);
-    // La URL puede ser absoluta (http o https, según envs.hostApi / CDN de YCloud) o solo el nombre de archivo.
-    if (/^https?:\/\//i.test(fileInfo.url ?? '')) {
-      return res.redirect(fileInfo.url);
-    }
-    return res.redirect(`/api/whatsapp/media/${fileInfo.url}`);
+    const url = fileInfo.url ?? '';
+    // Archivo propio: redirección RELATIVA a /media. La URL guardada lleva el HOST_API con que se guardó
+    // (IP interna, http…), que desde el navegador puede no ser accesible o bloquearse en una página https.
+    const propio = url.match(/\/api\/whatsapp\/media\/([^/?#]+)/);
+    if (propio) return res.redirect(`/api/whatsapp/media/${propio[1]}`);
+    // Link externo (CDN de YCloud) o solo el nombre de archivo.
+    if (/^https?:\/\//i.test(url)) return res.redirect(url);
+    return res.redirect(`/api/whatsapp/media/${path.basename(url)}`);
   }
 
   @Get('getAgentesCuenta')

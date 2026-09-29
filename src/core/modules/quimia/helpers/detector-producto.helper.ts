@@ -44,6 +44,9 @@ const IGNORADAS = new Set([
   // Preguntas de clientes / proveedores / cartera: nunca identifican un producto ("CLIENTE" ≈ "CALIENTE").
   'CLIENTE', 'CLIENTES', 'PROVEEDOR', 'PROVEEDORES', 'DEBE', 'DEBEN', 'DEBO', 'DEBEMOS', 'SALDO', 'SALDOS', 'CARTERA',
   'COMPRA', 'COMPRAS', 'COMPRAN', 'COMPRO', 'COMPRAMOS', 'COMPRADO', 'CADA', 'PAGO', 'PAGOS', 'VENCE', 'VENCEN', 'VENCIDO', 'VENCIDAS', 'ENVIOS', 'VENDO', 'VENDEMOS', 'VENDEN', 'VENDE', 'PUEDO', 'STOCK', 'SIGO', 'HAY',
+  // Conversación / preguntas de conocimiento general ("¿qué otros nombres tiene…?", "sí, pero…").
+  'PERO', 'OTRO', 'OTRA', 'OTROS', 'OTRAS', 'NOMBRE', 'NOMBRES', 'SINONIMO', 'SINONIMOS', 'MATERIA', 'MATERIAS',
+  'PRIMA', 'PRIMAS', 'USO', 'USOS', 'TIPO', 'TIPOS',
 ]);
 
 /**
@@ -53,7 +56,11 @@ const IGNORADAS = new Set([
 const GENERICAS = new Set(
   ['SACO', 'SACOS', 'KILO', 'KILOS', 'KILOGRAMO', 'KILOGRAMOS', 'KGS', 'GRAMO', 'GRAMOS', 'LITRO', 'LITROS',
     'GALON', 'GALONES', 'CANECA', 'CANECAS', 'TAMBOR', 'TAMBORES', 'BIDON', 'BIDONES', 'FUNDA', 'FUNDAS',
-    'CAJA', 'CAJAS', 'UNIDAD', 'UNIDADES', 'PRESENTACION'].map((w) => w.slice(0, 6)),
+    'CAJA', 'CAJAS', 'UNIDAD', 'UNIDADES', 'PRESENTACION',
+    // Grado / calidad: distinguen variantes de un producto ya nombrado ("glicerina USP" vs "glicerina grado
+    // alimenticio"), pero solos no nombran ninguno: "sí, pero grado alimenticio" listaba 10 sabores.
+    'GRADO', 'ALIMENTICIO', 'ALIMENTARIO', 'FARMACEUTICO', 'COSMETICO', 'INDUSTRIAL', 'TECNICO', 'CALIDAD',
+    'USP', 'FCC', 'REACTIVO', 'ANALITICO'].map((w) => w.slice(0, 6)),
 );
 // Números y cantidades pegadas a su unidad ("5KG", "250ML", "20LT") tampoco identifican: son la cantidad
 // pedida ("cotiza 5kg"), no el nombre del producto.

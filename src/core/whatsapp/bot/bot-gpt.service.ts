@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI, { toFile } from 'openai';
 import { envs } from 'src/config/envs';
+import { TRANSCRIPCION_CONFIG, evaluarTranscripcion } from 'src/core/modules/quimia/transcripcion/transcripcion.helper';
 
 export type IntencionCliente = 'CONFIRMAR' | 'CANCELAR' | 'ASESOR' | 'LISTO' | 'SALIR' | 'OTRO';
 export type IntencionConsulta = 'UBICACION' | 'HORARIO' | 'ENVIO' | 'CATALOGO' | 'PRODUCTO' | 'GENERAL';
@@ -26,12 +27,21 @@ export class BotGptService {
 
   /**
    * Transcribe una nota de voz de WhatsApp (normalmente audio/ogg). Devuelve `null` si
-   * la llamada falla o el resultado viene vacío (silencio/ruido) — en ese caso el
+   * la llamada falla o el resultado no es confiable (vacío, alucinación de Whisper con
+   * audio en silencio/ruido, o eco de la propia pista de vocabulario) — en ese caso el
    * llamador debe tratarlo como "audio no entendido" y derivar a un asesor humano.
    * Idioma forzado a español (todos los clientes de DIQUIMEC escriben en español) para
    * mejorar precisión frente a autodetección.
+   *
+   * Reutiliza la misma pista de vocabulario y el mismo evaluador de confianza que
+   * TranscripcionService (quimia/transcripcion, hoy solo Telegram) usa para su respaldo
+   * de OpenAI — mismo modelo (gpt-4o-mini-transcribe), sin depender de una API key de
+   * Groq (WhatsApp/DIQUIMEC no tiene una configurada). Groq como proveedor principal
+   * queda fuera de alcance: requeriría agregar esa key a la config del bot de WhatsApp,
+   * es una decisión de costo/alcance aparte, no una corrección de este bug puntual.
    */
   async transcribirAudio(buffer: Buffer, mimeType: string): Promise<string | null> {
+    const prompt = `Consulta de un cliente de DIQUIMEC por WhatsApp. Términos: ${TRANSCRIPCION_CONFIG.VOCABULARIO_BASE}.`.slice(0, 800);
     try {
       const ext = mimeType.includes('ogg') ? 'ogg'
         : mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
@@ -45,10 +55,18 @@ export class BotGptService {
         model: 'gpt-4o-mini-transcribe',
         file,
         language: 'es',
+        prompt,
       });
 
-      const texto = resp.text?.trim();
-      return texto || null;
+      // gpt-4o-mini-transcribe no entrega segmentos (no_speech_prob/avg_logprob) ni
+      // duración — se evalúa solo el texto (vacío/alucinación/eco de la pista), igual que
+      // TranscripcionService.transcribirOpenai cuando actúa como respaldo.
+      const evaluacion = evaluarTranscripcion(resp.text, null, undefined, prompt);
+      if (!evaluacion.ok) {
+        this.logger.warn(`transcribirAudio: transcripción descartada (${evaluacion.motivo}): "${resp.text?.trim()}"`);
+        return null;
+      }
+      return resp.text.trim();
     } catch (err) {
       this.logger.error(`transcribirAudio error: ${err.message}`);
       return null;

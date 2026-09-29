@@ -17,7 +17,7 @@ import {
 } from './erp/quimia-documentos-erp.service';
 import { BorradorProforma, QuimiaProformasService } from './erp/quimia-proformas.service';
 import { AVISO_EN_PANTALLA, BloqueChat, GraficoChat, bloquesDe } from './helpers/presentacion.helper';
-import { notasContexto } from './prompts/quimia.prompt';
+import { MARCADOR_ELEGIR_PRODUCTO, MARCADOR_NO_ENCONTRADO, notasContexto } from './prompts/quimia.prompt';
 import { ESTADOS_CLIENTES, HERRAMIENTAS_CLIENTES, QuimiaClientesService } from './quimia-clientes.service';
 import { QuimiaProductosService } from './quimia-productos.service';
 import { EventoQuimia, ProductoQuimia, UsuarioQuimia } from './quimia.types';
@@ -991,14 +991,23 @@ export class QuimiaHerramientasService {
     // Con una sola coincidencia exacta se fija el producto; una aproximada la confirma la IA.
     if (resultados.length === 1 && resultados[0].parecido === undefined) this.fijarProducto(ctx, resultados[0]);
     const aproximada = resultados.some((p) => p.parecido !== undefined);
+    if (!resultados.length) {
+      return {
+        total: 0,
+        mensaje:
+          `"${texto}" no existe en el catálogo del ERP. Si ya probaste otros nombres (químico, comercial, INCI) y ` +
+          `tampoco aparece, empieza tu respuesta con ${MARCADOR_NO_ENCONTRADO} y di que no está en el catálogo.`,
+      };
+    }
     return {
       total: resultados.length,
       ...(aproximada
         ? {
             nota:
               'No hubo coincidencia exacta: son productos de nombre PARECIDO (posible error de escritura o de ' +
-              'transcripción). Si hay uno claramente igual a lo pedido úsalo indicando el nombre correcto; si no, ' +
-              `empieza con ${'[ELEGIR_PRODUCTO]'} para que el usuario elija.`,
+              'transcripción). Si hay uno claramente igual a lo pedido úsalo indicando el nombre correcto; si varios ' +
+              `podrían serlo, empieza con ${MARCADOR_ELEGIR_PRODUCTO} para que el usuario elija; si NINGUNO es lo ` +
+              `pedido, empieza con ${MARCADOR_NO_ENCONTRADO} (no está en el catálogo).`,
           }
         : {}),
       productos: resultados.map((p) => ({

@@ -463,6 +463,50 @@ ORDER BY prof.secuencial_cccpr DESC
     };
   }
 
+  /**
+   * Chat de WhatsApp que originó una proforma (para "Ver conversación" en el detalle). No
+   * existe un ide_whcha guardado en la cabecera — se busca por coincidencia de teléfono
+   * contra wha_chat (comparando solo los últimos 9 dígitos, para no depender de que ambos
+   * traigan el mismo formato local/internacional: "0987654321" vs "593987654321"), y si el
+   * mismo número tiene más de un chat, se prioriza el que estuvo activo más cerca de la
+   * fecha en que se creó la proforma. Por eso el teléfono de una proforma de WhatsApp no se
+   * deja editar en el formulario (ver proforma-form.tsx) — cambiarlo rompería este vínculo.
+   * Devuelve null si la proforma no es de WhatsApp o no se encontró ningún chat con ese
+   * número.
+   */
+  async getWhatsappChat(dtoIn: GetProformaDto & HeaderParamsDto) {
+    const cabQ = new SelectQuery(`
+      SELECT referencia_cccpr, telefono_cccpr, fecha_ingre, hora_ingre, fecha_cccpr
+      FROM cxc_cabece_proforma
+      WHERE ide_cccpr = $1 AND ide_empr = $2
+    `);
+    cabQ.addIntParam(1, dtoIn.ide_cccpr);
+    cabQ.addIntParam(2, dtoIn.ideEmpr);
+    const cabecera = await this.dataSource.createSingleQuery(cabQ);
+
+    if (!cabecera || (cabecera.referencia_cccpr ?? '').toLowerCase() !== 'whatsapp' || !cabecera.telefono_cccpr) {
+      return null;
+    }
+
+    const momentoCreacion = cabecera.fecha_ingre
+      ? `${cabecera.fecha_ingre}T${cabecera.hora_ingre || '00:00:00'}`
+      : cabecera.fecha_cccpr;
+
+    const chatQ = new SelectQuery(`
+      SELECT ide_whcha, ide_whcue, nombre_whcha, name_whcha, wa_id_whcha
+      FROM wha_chat
+      WHERE ide_empr = $1
+        AND RIGHT(regexp_replace(wa_id_whcha, '\\D', '', 'g'), 9)
+          = RIGHT(regexp_replace($2, '\\D', '', 'g'), 9)
+      ORDER BY ABS(EXTRACT(EPOCH FROM (COALESCE(fecha_msg_whcha, fecha_crea_whcha) - $3::timestamp)))
+      LIMIT 1
+    `);
+    chatQ.addIntParam(1, dtoIn.ideEmpr);
+    chatQ.addParam(2, cabecera.telefono_cccpr);
+    chatQ.addParam(3, momentoCreacion);
+    return this.dataSource.createSingleQuery(chatQ);
+  }
+
   private calcularTotalesProforma(detalles: DetaProformaDto[], tarifaIva: number) {
     let baseTarifa0 = 0;
     let baseGrabada = 0;

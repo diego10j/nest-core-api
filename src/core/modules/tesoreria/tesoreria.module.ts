@@ -83,6 +83,7 @@ import { TesoreriaService } from './tesoreria.service';
         CoreService,
     ],
     exports: [
+        TesoreriaService,
         TransaccionesTesoreriaService,
         AsociarPagoOrdenService,
         PreLibroBancosSaveService,

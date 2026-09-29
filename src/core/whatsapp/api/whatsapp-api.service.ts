@@ -196,7 +196,7 @@ export class WhatsappApiService {
    * @returns
    */
   async getMensajes(dto: GetMensajesDto & HeaderParamsDto) {
-    this.whatsappDb.setMensajesLeidosChat(dto);
+    if (!dto.soloLectura) this.whatsappDb.setMensajesLeidosChat(dto);
     return await this.whatsappDb.getMensajes(dto);
   }
 

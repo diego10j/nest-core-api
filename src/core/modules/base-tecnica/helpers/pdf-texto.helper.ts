@@ -21,6 +21,29 @@ interface TextItem {
   height?: number;
 }
 
+export interface OpcionesTextoPdf {
+  /** Aplica la rotación de la página (para documentos apaisados/rotados como comprobantes de pago). */
+  rotarPagina?: boolean;
+}
+
+/** Lleva un punto del espacio del PDF al espacio VISUAL de la página (con su rotación aplicada). */
+interface Orientador {
+  punto: (x: number, y: number) => { x: number; y: number };
+  /** true = las filas se ordenan de arriba a abajo por Y visual (que crece hacia abajo). */
+  ascendente: boolean;
+}
+
+function orientadorPagina(page: any): Orientador {
+  const viewport = page.getViewport({ scale: 1 });
+  return {
+    punto: (x, y) => {
+      const [vx, vy] = viewport.convertToViewportPoint(x, y);
+      return { x: vx, y: vy };
+    },
+    ascendente: true,
+  };
+}
+
 /** Separación horizontal (pt) a partir de la cual dos fragmentos de una fila son celdas distintas. */
 const ESPACIO_ENTRE_CELDAS = 12;
 
@@ -34,7 +57,10 @@ const importEsm = new Function('specifier', 'return import(specifier)') as (s: s
  * el resultado "5,61" quedaba separado de "pH ... 5,00 - 6,00"); agrupando por coordenada Y y
  * ordenando por X, cada fila de la tabla sale junta: "pH (Directo, 25°C) | 5,00 - 6,00 | 5,61".
  */
-export async function extraerTextoPdf(buffer: Buffer): Promise<ResultadoTextoPdf> {
+export async function extraerTextoPdf(
+  buffer: Buffer,
+  opciones?: OpcionesTextoPdf,
+): Promise<ResultadoTextoPdf> {
   const { getDocumentProxy } = await importEsm('unpdf');
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const paginas: PaginaTexto[] = [];
@@ -44,7 +70,12 @@ export async function extraerTextoPdf(buffer: Buffer): Promise<ResultadoTextoPdf
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
     const { items } = await page.getTextContent();
-    paginas.push({ numero: n, texto: limpiarTextoBd(reconstruirFilas(items as TextItem[])) });
+    // Documentos con rotación de página (ej. comprobantes en apaisado): las coordenadas del texto
+    // vienen en el espacio SIN rotar y la tabla sale desordenada. Con `rotarPagina` se lleva cada
+    // fragmento al espacio visual con el viewport y las filas se ordenan de arriba a abajo. Por
+    // defecto (base tecnica: COAs/SDS sin rotar) el comportamiento no cambia.
+    const orientar = opciones?.rotarPagina ? orientadorPagina(page) : undefined;
+    paginas.push({ numero: n, texto: limpiarTextoBd(reconstruirFilas(items as TextItem[], orientar)) });
     coberturas.push(await coberturaImagenes(page).catch(() => 0));
   }
 
@@ -100,14 +131,15 @@ async function coberturaImagenes(page: any): Promise<number> {
   return width * height ? area / (width * height) : 0;
 }
 
-function reconstruirFilas(items: TextItem[]): string {
+function reconstruirFilas(items: TextItem[], orientar?: Orientador): string {
   const filas: { y: number; celdas: { x: number; w: number; s: string }[] }[] = [];
 
   for (const it of items) {
     const s = (it.str ?? '').trim();
     if (!s || !it.transform) continue;
-    const x = it.transform[4];
-    const y = it.transform[5];
+    const { x, y } = orientar
+      ? orientar.punto(it.transform[4], it.transform[5])
+      : { x: it.transform[4], y: it.transform[5] };
     const tolerancia = Math.max(2, (it.height || 10) * 0.4);
     let fila = filas.find((f) => Math.abs(f.y - y) <= tolerancia);
     if (!fila) {
@@ -118,7 +150,7 @@ function reconstruirFilas(items: TextItem[]): string {
   }
 
   return filas
-    .sort((a, b) => b.y - a.y)
+    .sort((a, b) => (orientar?.ascendente ? a.y - b.y : b.y - a.y))
     .map((f) => {
       const celdas = f.celdas.sort((a, b) => a.x - b.x);
       let linea = '';
