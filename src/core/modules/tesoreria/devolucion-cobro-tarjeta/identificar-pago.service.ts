@@ -35,6 +35,11 @@ interface PagoConNeto {
 interface TasasCuenta {
     porcentajeComision: number;
     ivaComision: boolean;
+    /**
+     * Comisión + IVA de comisión REAL sobre el bruto (mediana de lo que el procesador ya liquidó en
+     * esta cuenta). null si no hay historial: entonces se usa la comisión configurada.
+     */
+    factorComisionHistorico: number | null;
     /** % de retención en la fuente (renta) vigente para el procesador; 0 si no aplica. */
     porcentajeRetRenta: number;
     /** % de retención de IVA vigente para el procesador; 0 si no aplica. */
@@ -139,11 +144,13 @@ export class IdentificarPagoService extends BaseService {
         const bruto = Number(pago.valor_cobrado_tarjeta) || 0;
         const base = Number(pago.base_grabada_cccfa) || 0;
         const iva = Number(pago.valor_iva_cccfa) || 0;
-        const comision = bruto * (tasas.porcentajeComision / 100);
-        const ivaComision = tasas.ivaComision ? comision * 0.15 : 0;
+        // Comisión + IVA: lo realmente liquidado en la cuenta manda sobre lo configurado.
+        const comisionTotal = tasas.factorComisionHistorico != null
+            ? bruto * tasas.factorComisionHistorico
+            : bruto * (tasas.porcentajeComision / 100) * (tasas.ivaComision ? 1.15 : 1);
         const retFuente = base * (tasas.porcentajeRetRenta / 100);
         const retIva = iva * (tasas.porcentajeRetIva / 100);
-        return r2(bruto - comision - ivaComision - retFuente - retIva);
+        return r2(bruto - comisionTotal - retFuente - retIva);
     }
 
     /**
@@ -205,9 +212,40 @@ export class IdentificarPagoService extends BaseService {
         return {
             porcentajeComision: Number(row.porcentaje_comision) || 0,
             ivaComision: row.iva_comision === true || row.iva_comision === 'true',
+            factorComisionHistorico: await this.getFactorComisionHistorico(ideTecba),
             porcentajeRetRenta,
             porcentajeRetIva,
         };
+    }
+
+    /**
+     * (comisión + IVA de comisión) / bruto que el procesador ya aplicó en las últimas acreditaciones
+     * vigentes de la cuenta: es la mediana de las liquidaciones reales. null si aún no hay ninguna.
+     */
+    private async getFactorComisionHistorico(ideTecba: number): Promise<number | null> {
+        const q = new SelectQuery(`
+            SELECT (tf.valor_comision_tedtf + COALESCE(tf.valor_iva_comision_tedtf, 0)) / tf.valor_cccfa_tedtf AS factor
+            FROM tes_det_devol_cobro_tarjeta_fact tf
+            INNER JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = tf.ide_tecdt
+            WHERE c.ide_tecba = $1
+              AND c.anulado_tecdt = FALSE
+              AND tf.valor_comision_tedtf IS NOT NULL
+              AND tf.valor_cccfa_tedtf > 0
+            ORDER BY tf.ide_tedtf DESC
+            LIMIT 30
+        `);
+        q.addIntParam(1, ideTecba);
+        const rows = await this.dataSource.createSelectQuery(q);
+        const factores = (rows as any[])
+            .map((r) => Number(r.factor))
+            .filter((f) => Number.isFinite(f) && f > 0)
+            .sort((a, b) => a - b);
+        if (factores.length === 0) return null;
+        const mitad = Math.floor(factores.length / 2);
+        const mediana = factores.length % 2 ? factores[mitad] : (factores[mitad - 1] + factores[mitad]) / 2;
+        // Los montos liquidados vienen redondeados a centavos: se vuelve a la tarifa nominal (con IVA
+        // 15 %, a 2 decimales de porcentaje: 4,00 % y no 4,0019 %) para no arrastrar ese ruido.
+        return Math.round((mediana / 1.15) * 10000) / 10000 * 1.15;
     }
 
     /**
