@@ -100,6 +100,8 @@ export function respuestaATelegram(
   r.opciones
     .slice(0, 10)
     .forEach((o, i) => botones.push([{ text: `${i + 1}. ${o.nombre}`.slice(0, 60), callback_data: `p:${o.ide_inarti}` }]));
+  // Salida cuando el producto buscado no está entre las opciones (también se puede escribir "ninguno").
+  if (r.opciones.length) botones.push([{ text: '🚫 No es ninguno de esos', callback_data: 'nn' }]);
   if (r.sugerirCambio) {
     botones.push([{ text: `Cambiar a ${r.sugerirCambio.nombre}`.slice(0, 60), callback_data: `p:${r.sugerirCambio.ide_inarti}` }]);
   }

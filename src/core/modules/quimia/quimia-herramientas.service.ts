@@ -33,6 +33,8 @@ export interface ContextoHerramientas {
   docsContexto: DocContexto[];
   /** Documentos listados con link (se muestran como tarjetas / links). */
   documentos: DocumentoListado[];
+  /** Productos que el usuario descartó con "No es ninguno de esos": no se vuelven a ofrecer. */
+  descartados?: number[];
   /** Último resultado de buscar_producto (para ofrecer botones de selección). */
   ultimaBusqueda: { ide_inarti: number; nombre: string; documentos_tecnicos: number }[];
   herramientasUsadas: string[];
@@ -982,7 +984,9 @@ export class QuimiaHerramientasService {
   }
 
   private async buscarProducto(texto: string, ctx: ContextoHerramientas) {
-    const resultados = await this.quimiaProductos.buscar(texto, ctx.usuario);
+    // Solo productos ACTIVOS (el catálogo del ERP ya filtra); sin los que el usuario descartó ("No es ninguno").
+    const descartados = new Set(ctx.descartados ?? []);
+    const resultados = (await this.quimiaProductos.buscar(texto, ctx.usuario)).filter((p) => !descartados.has(p.ide_inarti));
     ctx.ultimaBusqueda = resultados.map((p) => ({
       ide_inarti: p.ide_inarti,
       nombre: p.nombre,
@@ -992,11 +996,26 @@ export class QuimiaHerramientasService {
     if (resultados.length === 1 && resultados[0].parecido === undefined) this.fijarProducto(ctx, resultados[0]);
     const aproximada = resultados.some((p) => p.parecido !== undefined);
     if (!resultados.length) {
+      // Ningún producto activo: si existe INACTIVO se sugiere (puede ser el que busca, dado de baja o reemplazado).
+      const inactivos = texto?.trim() ? await this.quimiaProductos.buscarInactivos(texto, ctx.usuario.ideEmpr) : [];
       return {
         total: 0,
-        mensaje:
-          `"${texto}" no existe en el catálogo del ERP. Si ya probaste otros nombres (químico, comercial, INCI) y ` +
-          `tampoco aparece, empieza tu respuesta con ${MARCADOR_NO_ENCONTRADO} y di que no está en el catálogo.`,
+        ...(inactivos.length
+          ? {
+              productos_inactivos: inactivos,
+              mensaje:
+                `No hay un producto ACTIVO "${texto}", pero en el ERP existe(n) INACTIVO(s): ` +
+                `${inactivos.map((p) => p.nombre).join(', ')}. Empieza con ${MARCADOR_NO_ENCONTRADO}, di que no está ` +
+                'como producto activo y sugiere el inactivo ("Existe X, pero está inactivo en el ERP"). No lo trates ' +
+                'como producto disponible (sin precios ni cotización); solo si el usuario lo pide expresamente, puedes ' +
+                'consultar su historial con su ide_inarti.',
+            }
+          : {
+              mensaje:
+                `"${texto}" no existe en el catálogo del ERP (ni activo ni inactivo). Si ya probaste otros nombres ` +
+                `(químico, comercial, INCI) y tampoco aparece, empieza tu respuesta con ${MARCADOR_NO_ENCONTRADO} y di ` +
+                'que no está en el catálogo.',
+            }),
       };
     }
     return {

@@ -15,6 +15,7 @@ import {
   esPedidoDocumentoErp,
   esPedidoProforma,
   esPreguntaDePersona,
+  esPreguntaFormulacion,
   mencionaVariosProductos,
 } from './helpers/detector-producto.helper';
 import { sugerenciasSeguimiento } from './helpers/presentacion.helper';
@@ -27,7 +28,7 @@ import {
 } from './prompts/quimia.prompt';
 import { ContextoHerramientas, QuimiaHerramientasService, herramientasPara } from './quimia-herramientas.service';
 import { QuimiaProductosService } from './quimia-productos.service';
-import { CanalQuimia, Emitir, EventoQuimia, OrigenQuimia, RespuestaQuimia, UsuarioQuimia } from './quimia.types';
+import { CanalQuimia, Emitir, EventoQuimia, OrigenQuimia, ProductoQuimia, RespuestaQuimia, UsuarioQuimia } from './quimia.types';
 
 type UsuarioConOrigen = UsuarioQuimia & { origen?: OrigenQuimia; inicio?: number };
 
@@ -175,24 +176,37 @@ export class QuimiaAgenteService {
 
   private async responderAgente(dto: ChatQuimiaDto, usuario: UsuarioConOrigen, canal: CanalQuimia, emitir: Emitir) {
     // Un servicio que quedó como producto activo (conversaciones anteriores al filtro) se ignora.
-    let producto = dto.ide_inarti ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr, { soloProductos: true }) : null;
+    // "No es ninguno de esos": se responde sin producto activo ni detección (volvería a ofrecer los mismos);
+    // el agente busca por otros nombres sin los descartados, o sugiere un inactivo / "no está en el catálogo".
+    const descartados = dto.descartados?.length ? dto.descartados : null;
+    let producto =
+      dto.ide_inarti && !descartados ? await this.productos.getProducto(dto.ide_inarti, usuario.ideEmpr, { soloProductos: true }) : null;
     // Con producto activo no se usa la detección tolerante: una palabra parecida no debe interrumpir la
     // conversación con "¿cambio de producto?" (el agente igual puede buscar con buscar_producto).
     // "Quiero la factura 1000": es un documento del ERP, no se busca producto en la pregunta.
-    const candidatos = esPedidoDocumentoErp(dto.pregunta)
-      ? []
-      : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, {
-          tolerante: !producto,
-          preguntaDePersona: esPreguntaDePersona(dto.pregunta),
-        });
+    const candidatos =
+      esPedidoDocumentoErp(dto.pregunta) || descartados
+        ? []
+        : await this.productos.detectar(dto.pregunta, usuario.ideEmpr, {
+            tolerante: !producto,
+            preguntaDePersona: esPreguntaDePersona(dto.pregunta),
+          });
     const eleccion = this.productos.elegir(candidatos);
+    // Formulación ("¿qué % de aceite de jojoba y extracto de avena le pongo a mi jabón con mi base?"): nombra
+    // ingredientes a propósito. No se interrumpe con "¿cambio de producto?" y el producto activo (la base) se
+    // conserva; el agente consulta la base técnica de cada ingrediente.
+    const formulacion = esPreguntaFormulacion(dto.pregunta);
     // Cotización / proforma ("cotiza 5 kg de cera de palma y 5 kg de cera de coco a consumidor final") o
     // varios productos en la misma pregunta: nunca se interrumpe con "¿cambio de producto?" ni "¿a cuál te
     // refieres?"; el agente busca cada producto. Si la pregunta nombra otros productos, el activo no se
     // usa en este turno (en Telegram la conversación lo conserva para las siguientes preguntas).
     const pedidoVarios = esPedidoProforma(dto.pregunta) || mencionaVariosProductos(candidatos);
 
-    if (pedidoVarios) {
+    if (formulacion) {
+      if (!producto && eleccion.tipo === 'uno' && esCoincidenciaFuerte(eleccion.producto)) {
+        producto = { ide_inarti: eleccion.producto.ide_inarti, nombre: eleccion.producto.nombre };
+      }
+    } else if (pedidoVarios) {
       // Un solo producto claro en el pedido ("cotiza 5 kg de cera de palma") → ese; varios → ninguno fijo.
       const unico =
         eleccion.tipo === 'uno' && esCoincidenciaFuerte(eleccion.producto) && !mencionaVariosProductos(candidatos) ? eleccion.producto : null;
@@ -257,8 +271,10 @@ export class QuimiaAgenteService {
       canal,
       telefono: usuario.origen?.telefono ?? null,
       notas: await this.conocimiento.buscar(dto.pregunta, usuario.ideEmpr, { ide_inarti: producto?.ide_inarti }),
+      descartados: descartados ?? undefined,
       emitir,
     };
+    const situacion = { descartoOpciones: !!descartados, formulacion };
     const hoy = new Date().toISOString().slice(0, 10);
     // Cliente / proveedor fijado en el chat del ERP como contexto de la conversación.
     const persona =
@@ -268,7 +284,7 @@ export class QuimiaAgenteService {
     if (persona) ctx.personaFijada = persona;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: 'system', content: buildPromptAgente({ producto, canal, hoy, notas: ctx.notas, persona }) },
+      { role: 'system', content: buildPromptAgente({ producto, canal, hoy, notas: ctx.notas, persona, ...situacion }) },
       ...this.historial(dto),
       { role: 'user', content: dto.pregunta },
     ];
@@ -282,7 +298,7 @@ export class QuimiaAgenteService {
       // Si una herramienta fijó el producto, el sistema lo refleja en las vueltas siguientes.
       messages[0] = {
         role: 'system',
-        content: buildPromptAgente({ producto: ctx.producto, canal, hoy, notas: ctx.notas, persona }),
+        content: buildPromptAgente({ producto: ctx.producto, canal, hoy, notas: ctx.notas, persona, ...situacion }),
       };
       const r = await this.ia.completarConHerramientas(messages, herramientasPara(canal));
       tokensEntrada += r.tokensEntrada;
@@ -412,8 +428,10 @@ export class QuimiaAgenteService {
     }
 
     emitir({ tipo: 'aviso_ia' });
+    emitir({ tipo: 'estado', texto: 'Revisando la documentación técnica de los productos…' });
+    const contextoTecnico = await this.contextoTecnicoIaGeneral(dto.pregunta, producto, usuario.ideEmpr);
     const stream = await this.ia.completarStream([
-      { role: 'system', content: buildPromptIaGeneral(producto?.nombre ?? null, identificacion) },
+      { role: 'system', content: buildPromptIaGeneral(producto?.nombre ?? null, identificacion, contextoTecnico) },
       ...this.historial(dto),
       { role: 'user', content: dto.pregunta },
     ]);
@@ -443,6 +461,37 @@ export class QuimiaAgenteService {
       tokensEntrada,
       tokensSalida,
     });
+  }
+
+  /**
+   * Documentación técnica (base técnica de DIQUIMEC) del producto activo y de los productos del catálogo que
+   * nombra la pregunta, para que la respuesta de IA general parta de datos reales (dosis, especificaciones,
+   * compatibilidades) y no solo de conocimiento general. Solo consultas SQL (sin costo de IA); recortado para
+   * no inflar el prompt.
+   */
+  private async contextoTecnicoIaGeneral(pregunta: string, producto: ProductoQuimia | null, ideEmpr: number): Promise<string> {
+    const MAX_POR_PRODUCTO = 4000;
+    const MAX_TOTAL = 14000;
+    const candidatos = await this.productos.detectar(pregunta, ideEmpr, { tolerante: false }).catch(() => []);
+    const productos = [
+      ...(producto ? [producto] : []),
+      ...candidatos.filter((c) => !c.conflicto && esCoincidenciaFuerte(c)).map((c) => ({ ide_inarti: c.ide_inarti, nombre: c.nombre })),
+    ]
+      .filter((p, i, arr) => arr.findIndex((x) => x.ide_inarti === p.ide_inarti) === i)
+      .slice(0, 5);
+    if (!productos.length) return '';
+
+    const partes = await Promise.all(
+      productos.map(async (p) => {
+        const r = await this.bdtConsulta.construirContexto(p.ide_inarti, ideEmpr, pregunta, p.nombre).catch(() => null);
+        const texto = r?.texto?.trim();
+        return texto
+          ? `### ${p.nombre}\n${texto.length > MAX_POR_PRODUCTO ? `${texto.slice(0, MAX_POR_PRODUCTO)}… (recortado)` : texto}`
+          : `### ${p.nombre}\n(Sin documentación técnica cargada.)`;
+      }),
+    );
+    const todo = partes.join('\n\n');
+    return todo.length > MAX_TOTAL ? `${todo.slice(0, MAX_TOTAL)}… (recortado)` : todo;
   }
 
   // ------------------------------------------------------------------ apoyo

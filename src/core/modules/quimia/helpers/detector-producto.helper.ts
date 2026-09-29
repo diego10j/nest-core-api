@@ -89,6 +89,17 @@ export function esPedidoProforma(pregunta: string): boolean {
 }
 
 /**
+ * Pregunta de FORMULACIÓN: cuánto poner de uno o varios ingredientes, cómo combinarlos con una base, dosis,
+ * receta ("¿qué porcentaje de aceite de jojoba y extracto de avena le puedo poner a mi jabón con mi base?").
+ * Nombra ingredientes a propósito: no es un cambio de producto, y el producto activo (la base) sigue en contexto.
+ */
+export function esPreguntaFormulacion(pregunta: string): boolean {
+  return /\b(FORMUL[A-Z]*|PORCENTAJES?|DOSIS|DOSIFIC[A-Z]*|RECETAS?|CUANTO\s+(?:DE\s+[A-Z ]{0,40})?(?:LE\s+|SE\s+)?(?:PUEDO|DEBO|PODRIA|HAY\s+QUE)\s+(?:PONER|AGREGAR|ANADIR|USAR|ECHAR|INCORPORAR)|COMBINAR|MEZCLAR|INCORPORAR|CONCENTRACION\s+DE\s+USO|NIVEL\s+DE\s+USO)\b/.test(
+    normalizarTexto(pregunta),
+  );
+}
+
+/**
  * La pregunta nombra VARIOS productos distintos ("5 kg de cera de palma y 5 kg de cera de coco"): hay dos
  * coincidencias fuertes y cada una cubre una palabra propia que la otra no (PALMA / COCO). No es lo mismo
  * que la ambigüedad de "ácido cítrico" (anhidro y monohidratado cubren las mismas palabras).

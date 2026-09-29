@@ -397,53 +397,51 @@ export function bloquesDe(herramienta: string, d: Dato): BloqueChat[] {
       break;
     }
 
+    // Transporte: todo sale de los envíos REALES (no hay tarifas configuradas).
     case 'transportes_destino':
     case 'costo_envio': {
-      if (herramienta === 'costo_envio') {
-        const a = d.analisis as Dato | null;
-        b.push(
-          indicadores(`Transporte a ${d.destino}${d.peso ? ` · ${d.peso}` : ''}`, [
-            { etiqueta: 'Envíos encontrados', valor: d.envios_encontrados, formato: 'numero' },
-            a?.sugerenciaPrecio != null && { etiqueta: 'Precio sugerido', valor: a.sugerenciaPrecio, formato: 'moneda', destacado: true },
-            a?.confianza && { etiqueta: 'Confianza', valor: String(a.confianza).toUpperCase(), color: a.confianza === 'alta' ? 'success' : a.confianza === 'media' ? 'warning' : null },
-          ]),
-          tabla('Costo por transportista', [
+      const a = d.analisis as Dato | null;
+      const conAproximado = (d.por_transportista ?? []).some((t: Dato) => t.costo_aproximado_para_peso != null);
+      b.push(
+        indicadores(`Transporte a ${d.destino}${d.peso ? ` · ${d.peso}` : ''}`, [
+          { etiqueta: 'Envíos encontrados', valor: d.envios_encontrados ?? d.envios_registrados, formato: 'numero' },
+          { etiqueta: 'Transportistas', valor: (d.por_transportista ?? []).length, formato: 'numero' },
+          a?.sugerenciaPrecio != null && { etiqueta: 'Precio sugerido', valor: a.sugerenciaPrecio, formato: 'moneda', destacado: true },
+          a?.confianza && { etiqueta: 'Confianza', valor: String(a.confianza).toUpperCase(), color: a.confianza === 'alta' ? 'success' : a.confianza === 'media' ? 'warning' : null },
+        ]),
+        tabla(
+          'Costo real por transportista',
+          [
             { clave: 'transporte', etiqueta: 'Transporte' },
             { clave: 'envios', etiqueta: 'Envíos', formato: 'numero' },
-            { clave: 'costo_promedio', etiqueta: 'Promedio', formato: 'moneda' },
-            { clave: 'costo_minimo', etiqueta: 'Mínimo', formato: 'moneda' },
-            { clave: 'costo_maximo', etiqueta: 'Máximo', formato: 'moneda' },
-          ], d.por_transportista, { subtitulo: d.criterio ?? null }),
-          tabla('Envíos recientes', [
-            { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
-            { clave: 'transporte', etiqueta: 'Transporte' },
-            { clave: 'ciudad', etiqueta: 'Ciudad' },
-            { clave: 'enviado', etiqueta: 'Enviado' },
-            { clave: 'costo', etiqueta: 'Costo', formato: 'moneda' },
-            { clave: 'tipo_costo', etiqueta: 'Tipo' },
-          ], d.ultimos_envios),
-        );
-      }
-      const transportes = (d.transportes ?? d.tarifas_configuradas ?? []) as Dato[];
-      const filas = transportes.flatMap((t) =>
-        (t.tarifas?.length ? t.tarifas : [{}]).flatMap((tf: Dato) =>
-          (tf.opciones?.length ? tf.opciones : [{}]).map((o: Dato) => ({
+            { clave: 'ultimo_envio', etiqueta: 'Último', formato: 'fecha' },
+            { clave: 'promedio', etiqueta: 'Promedio', formato: 'moneda' },
+            { clave: 'minimo', etiqueta: 'Mínimo', formato: 'moneda' },
+            { clave: 'maximo', etiqueta: 'Máximo', formato: 'moneda' },
+            { clave: 'por_kg', etiqueta: '$/kg', formato: 'precio' },
+            ...(conAproximado ? [{ clave: 'aproximado', etiqueta: `Aprox. ${d.peso}`, formato: 'moneda' as const }] : []),
+          ],
+          (d.por_transportista ?? []).map((t: Dato) => ({
             transporte: t.transporte,
-            destino: [tf.ciudad, tf.canton, tf.provincia].filter(Boolean).join(' · ') || (t.cobertura_nacional ? 'Cobertura nacional' : null),
-            tarifa: o.nombre ?? null,
-            precio: o.precio ?? null,
-            envios: t.envios_realizados,
+            envios: t.envios,
+            ultimo_envio: t.ultimo_envio,
+            promedio: t.costo_real?.promedio ?? t.costo_estimado_sin_confirmar?.promedio ?? null,
+            minimo: t.costo_real?.minimo ?? null,
+            maximo: t.costo_real?.maximo ?? null,
+            por_kg: t.costo_real_por_kg?.promedio ?? null,
+            aproximado: t.costo_aproximado_para_peso ?? null,
           })),
+          { subtitulo: d.criterio ?? 'Costo real = lo que cobró el transportista (flete pagado)' },
         ),
-      );
-      b.push(
-        tabla(herramienta === 'costo_envio' ? 'Tarifas configuradas' : `Transportes a ${d.destino}`, [
+        tabla('Últimos envíos', [
+          { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
+          { clave: 'factura', etiqueta: 'Factura' },
+          { clave: 'cliente', etiqueta: 'Cliente' },
           { clave: 'transporte', etiqueta: 'Transporte' },
-          { clave: 'destino', etiqueta: 'Destino' },
-          { clave: 'tarifa', etiqueta: 'Tarifa' },
-          { clave: 'precio', etiqueta: 'Precio', formato: 'moneda' },
-          { clave: 'envios', etiqueta: 'Envíos', formato: 'numero' },
-        ], filas),
+          { clave: 'enviado', etiqueta: 'Enviado' },
+          { clave: 'costo', etiqueta: 'Costo', formato: 'moneda' },
+          { clave: 'tipo_costo', etiqueta: 'Tipo' },
+        ], d.ultimos_envios),
       );
       break;
     }

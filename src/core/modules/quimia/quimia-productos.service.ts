@@ -167,6 +167,32 @@ export class QuimiaProductosService {
     );
   }
 
+  /**
+   * Productos INACTIVOS que coinciden con el texto (nombre, otro nombre o código; exacto o parecido). Solo se
+   * consulta cuando no hay ningún producto activo: el agente lo sugiere ("existe X pero está inactivo").
+   */
+  async buscarInactivos(texto: string, ideEmpr: number, limite = 5): Promise<{ ide_inarti: number; nombre: string; codigo: string | null }[]> {
+    const r = await this.dataSource.pool.query(
+      `WITH q AS (SELECT UPPER(bdt_f_unaccent($1)) AS t)
+       SELECT a.ide_inarti, a.nombre_inarti AS nombre, a.codigo_inarti AS codigo,
+              GREATEST(
+                similarity(UPPER(bdt_f_unaccent(a.nombre_inarti)), q.t),
+                word_similarity(q.t, UPPER(bdt_f_unaccent(a.nombre_inarti))),
+                COALESCE(word_similarity(q.t, UPPER(bdt_f_unaccent(a.otro_nombre_inarti))), 0)
+              ) AS parecido
+         FROM inv_articulo a, q
+        WHERE a.ide_empr = $2 AND a.activo_inarti = FALSE AND a.nivel_inarti = 'HIJO' AND a.ide_intpr = 1
+          AND (UPPER(bdt_f_unaccent(a.nombre_inarti)) LIKE '%' || q.t || '%'
+               OR UPPER(bdt_f_unaccent(COALESCE(a.otro_nombre_inarti, ''))) LIKE '%' || q.t || '%'
+               OR UPPER(COALESCE(a.codigo_inarti, '')) = q.t
+               OR word_similarity(q.t, UPPER(bdt_f_unaccent(a.nombre_inarti))) >= $3)
+        ORDER BY parecido DESC, a.nombre_inarti
+        LIMIT $4`,
+      [texto.trim(), ideEmpr, UMBRAL_APROXIMADO + 0.15, limite],
+    );
+    return r.rows.map(({ ide_inarti, nombre, codigo }) => ({ ide_inarti, nombre, codigo: codigo ?? null }));
+  }
+
   private async recientesConBaseTecnica(ideEmpr: number, limite: number): Promise<ProductoCatalogo[]> {
     const r = await this.dataSource.pool.query(
       `SELECT p.ide_inarti, a.nombre_inarti AS nombre, a.codigo_inarti AS codigo, u.siglas_inuni AS unidad,
@@ -174,7 +200,7 @@ export class QuimiaProductosService {
          FROM bdt_producto p
          JOIN inv_articulo a ON a.ide_inarti = p.ide_inarti
          LEFT JOIN inv_unidad u ON u.ide_inuni = a.ide_inuni
-        WHERE p.ide_empr = $1 AND p.total_documentos_bdprd > 0
+        WHERE p.ide_empr = $1 AND p.total_documentos_bdprd > 0 AND a.activo_inarti = TRUE
         ORDER BY p.fecha_ultimo_proceso_bdprd DESC NULLS LAST
         LIMIT $2`,
       [ideEmpr, limite],

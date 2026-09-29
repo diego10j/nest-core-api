@@ -66,6 +66,16 @@ export class ChatQuimiaDto {
   @ValidateNested({ each: true })
   @Type(() => MensajeQuimiaDto)
   historial?: MensajeQuimiaDto[];
+
+  /**
+   * "No es ninguno de esos": productos ofrecidos para elegir que el usuario descartó. La pregunta se vuelve a
+   * responder sin producto activo, sin detectar productos y sin volver a ofrecer estos.
+   */
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsInt({ each: true })
+  @IsOptional()
+  descartados?: number[];
 }
 
 /** API JSON (Telegram u otros integradores): igual que el chat + el canal de origen. */

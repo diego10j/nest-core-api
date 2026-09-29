@@ -157,7 +157,9 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'transportes_destino',
-      description: 'Qué transportistas llevan a una ciudad/cantón o provincia, con sus tarifas configuradas.',
+      description:
+        'Qué transportistas llevan a una ciudad/cantón o provincia según los ENVÍOS REALES registrados: cuántos envíos, ' +
+        'el último, lo que realmente nos cobró cada uno (promedio, mínimo, máximo) y el costo real por kg.',
       parameters: {
         type: 'object',
         properties: { ciudad: { type: 'string', description: 'Ciudad, cantón o provincia de destino' } },
@@ -170,9 +172,9 @@ export const HERRAMIENTAS_CLIENTES: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'costo_envio',
       description:
-        'Cotizador de transporte (mismo dato que Consultar tarifas): "cotizar transporte de 5 kg a Loja", "¿cuánto cuesta ' +
-        'enviar a Cuenca?". Envíos reales a ese destino (de peso similar si se indica), costo promedio por transportista, ' +
-        'análisis con precio sugerido y tarifas configuradas. El peso y la unidad son opcionales.',
+        'Costo aproximado de un envío según el HISTORIAL REAL (mismo dato que Consultar tarifas): "cotizar transporte de 5 kg ' +
+        'a Loja", "¿cuánto cuesta enviar a Cuenca?". Envíos reales a ese destino (de peso similar si se indica), lo que ' +
+        'realmente cobró cada transportista, costo real por kg y un aproximado para el peso pedido. Peso y unidad opcionales.',
       parameters: {
         type: 'object',
         properties: {
@@ -634,29 +636,86 @@ export class QuimiaClientesService {
     };
   }
 
-  private async transportesDestino(ciudad: string, u: UsuarioQuimia) {
-    if (!ciudad.trim()) return { error: 'Indica la ciudad de destino' };
-    const rows = await this.transportes.getTransportesPorDestino({ ...u, ciudad_vgttr: ciudad.trim() } as any);
+  /** Destino como en Consultar tarifas: cantón o provincia reconocidos; si no, búsqueda por texto. */
+  private async resolverDestino(destino: string) {
+    const lugar = await this.dataSource.pool.query(
+      `SELECT c.ide_gecant, c.nombre_gecant, p.ide_geprov, p.nombre_geprov,
+              unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) AS es_canton,
+              unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1)) AS es_provincia
+         FROM gen_canton c
+         JOIN gen_provincia p ON p.ide_geprov = c.ide_geprov
+        WHERE unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) OR unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1))
+        ORDER BY es_canton DESC
+        LIMIT 1`,
+      [destino],
+    );
+    const l = lugar.rows[0];
     return {
-      destino: ciudad,
-      transportes: (rows ?? []).slice(0, 10).map((t) => ({
-        transporte: t.label,
-        cobertura_nacional: t.cobertura_nacional_vgtra,
-        cobra_flete_al_cliente: t.flete_cobro_vgtra,
-        envios_realizados: Number(t.num_envios ?? 0),
-        tarifas: (t.tarifas ?? []).slice(0, 5).map((tf) => ({
-          provincia: tf.nombre_geprov,
-          canton: tf.nombre_gecant,
-          ciudad: tf.ciudad_vgttr,
-          opciones: [1, 2, 3, 4]
-            .filter((i) => tf[`activo${i}_vgttr`] !== false && tf[`precio${i}_vgttr`] != null)
-            .map((i) => ({
-              nombre: tf[`nombre${i}_vgttr`],
-              precio: num(tf[`precio${i}_vgttr`]),
-              descripcion: tf[`descripcion${i}_vgttr`],
-            })),
-        })),
-      })),
+      filtro: l?.es_canton ? { ide_gecant: l.ide_gecant } : l?.es_provincia ? { ide_geprov: l.ide_geprov } : { descripcion: destino },
+      texto: l?.es_canton ? `${l.nombre_gecant} (${l.nombre_geprov})` : l?.es_provincia ? `Provincia de ${l.nombre_geprov}` : destino,
+    };
+  }
+
+  /**
+   * Resumen por transportista a partir de los ENVÍOS REALES (no de tarifas configuradas: dependen del
+   * transportista y varían). El costo que cuenta es lo que el transportista nos cobró de verdad
+   * (flete pagado); el estimado solo se informa aparte cuando no hay costo real. Con los kg enviados se
+   * calcula el costo real por kg, que sirve para aproximar el costo de un envío de otro peso.
+   */
+  private resumenPorTransportista(rows: any[]) {
+    const esKg = (unidad: unknown) => /^(KG|KGS|KILO|KILOS|KILOGRAMOS?)$/i.test(String(unidad ?? '').trim());
+    const grupos = new Map<string, any[]>();
+    rows.forEach((r) => grupos.set(r.nombre_vgtra ?? 'Sin transportista', [...(grupos.get(r.nombre_vgtra ?? 'Sin transportista') ?? []), r]));
+    const stats = (v: number[]) =>
+      v.length
+        ? { promedio: num(v.reduce((a, b) => a + b, 0) / v.length), minimo: num(Math.min(...v)), maximo: num(Math.max(...v)) }
+        : null;
+    return [...grupos.entries()]
+      .map(([transporte, envios]) => {
+        const reales = envios.filter((r) => r.flete_pagado_cctfa !== false && Number(r.costo_real) > 0);
+        const costosReales = reales.map((r) => Number(r.costo_real));
+        const porKg = reales
+          .map((r) => {
+            const kg = (r.detalle_unidades ?? []).filter((x: any) => esKg(x.unidad)).reduce((a: number, x: any) => a + Number(x.cantidad ?? 0), 0);
+            return kg > 0 ? Number(r.costo_real) / kg : null;
+          })
+          .filter((x): x is number => x != null);
+        const estimados = envios
+          .filter((r) => !reales.includes(r) && Number(r.costo_estimado) > 0)
+          .map((r) => Number(r.costo_estimado));
+        return {
+          transporte,
+          envios: envios.length,
+          ultimo_envio: fecha(envios[0]?.fecha_envio),
+          envios_con_costo_real: reales.length,
+          costo_real: stats(costosReales),
+          costo_real_por_kg: porKg.length ? { ...stats(porKg), envios_con_peso_kg: porKg.length } : null,
+          ...(costosReales.length ? {} : { costo_estimado_sin_confirmar: stats(estimados) }),
+        };
+      })
+      .sort((a, b) => b.envios - a.envios)
+      .slice(0, 10);
+  }
+
+  /**
+   * Qué transportistas llevan a un destino: los que realmente han enviado ahí (envíos registrados), con
+   * cuántos envíos, el último y lo que costaron en realidad. No usa tarifas configuradas.
+   */
+  private async transportesDestino(ciudad: string, u: UsuarioQuimia) {
+    const destino = ciudad.trim();
+    if (!destino) return { error: 'Indica la ciudad de destino' };
+    const d = await this.resolverDestino(destino);
+    const r: any = await this.transportes.consultarTarifas({ ...u, ...d.filtro } as any);
+    const rows: any[] = r?.rows ?? [];
+    return {
+      destino: d.texto,
+      envios_registrados: rows.length,
+      nota:
+        (rows.length >= 300 ? 'Se analizaron los 300 envíos más recientes. ' : '') +
+        'Datos de envíos reales a ese destino. costo_real = lo que nos cobró el transportista (flete pagado); ' +
+        'costo_real_por_kg sirve para aproximar otro peso. No hay tarifas: no las menciones.',
+      por_transportista: this.resumenPorTransportista(rows),
+      ultimos_envios: this.ultimosEnvios(rows, null),
     };
   }
 
@@ -670,21 +729,7 @@ export class QuimiaClientesService {
     const destino = ciudad.trim();
     if (!destino) return { error: 'Indica la ciudad de destino' };
 
-    // Destino como en la página (provincia / cantón); si no se reconoce, búsqueda por texto.
-    const lugar = await this.dataSource.pool.query(
-      `SELECT c.ide_gecant, c.nombre_gecant, p.ide_geprov, p.nombre_geprov,
-              unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) AS es_canton,
-              unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1)) AS es_provincia
-         FROM gen_canton c
-         JOIN gen_provincia p ON p.ide_geprov = c.ide_geprov
-        WHERE unaccent(UPPER(c.nombre_gecant)) = unaccent(UPPER($1)) OR unaccent(UPPER(p.nombre_geprov)) = unaccent(UPPER($1))
-        ORDER BY es_canton DESC
-        LIMIT 1`,
-      [destino],
-    );
-    const l = lugar.rows[0];
-    const filtroDestino = l?.es_canton ? { ide_gecant: l.ide_gecant } : l?.es_provincia ? { ide_geprov: l.ide_geprov } : { descripcion: destino };
-    const destinoTxt = l?.es_canton ? `${l.nombre_gecant} (${l.nombre_geprov})` : l?.es_provincia ? `Provincia de ${l.nombre_geprov}` : destino;
+    const { filtro: filtroDestino, texto: destinoTxt } = await this.resolverDestino(destino);
 
     // Unidad del peso (opcional, kg por defecto) → ide_inuni del catálogo de unidades.
     let ideInuni: number | null = null;
@@ -703,59 +748,75 @@ export class QuimiaClientesService {
     }
     const conPeso = ideInuni != null;
 
-    const [tarifas, resultado] = await Promise.all([
-      this.transportesDestino(destino, u),
-      this.transportes.consultarTarifas({
-        ...u,
-        ...filtroDestino,
-        ...(conPeso ? { peso, ide_inuni: ideInuni } : {}),
-      } as any),
-    ]);
-    const rows: any[] = (resultado as any)?.rows ?? [];
-    const analisis = (resultado as any)?.resumenIA ?? (conPeso ? resumenLocalTarifas(rows) : null);
+    const resultado: any = await this.transportes.consultarTarifas({
+      ...u,
+      ...filtroDestino,
+      ...(conPeso ? { peso, ide_inuni: ideInuni } : {}),
+    } as any);
+    let rows: any[] = resultado?.rows ?? [];
+    const analisis = resultado?.resumenIA ?? (conPeso ? resumenLocalTarifas(rows) : null);
 
-    // Costo por transportista (mismo criterio de la página: costo real si el flete ya se pagó, si no el estimado).
-    const porTransporte = new Map<string, number[]>();
-    for (const r of rows) {
-      const c = costoEnvioFila(r);
-      if (c.monto == null) continue;
-      porTransporte.set(r.nombre_vgtra, [...(porTransporte.get(r.nombre_vgtra) ?? []), c.monto]);
+    // Sin envíos de peso similar: se usan todos los envíos al destino y el costo real por kg para aproximar.
+    let sinPesoSimilar = false;
+    if (conPeso && !rows.length) {
+      const todos: any = await this.transportes.consultarTarifas({ ...u, ...filtroDestino } as any);
+      rows = todos?.rows ?? [];
+      sinPesoSimilar = rows.length > 0;
     }
+    const porTransportista = this.resumenPorTransportista(rows);
+    const esKgPedido = conPeso && /^(kg|kgs)$/i.test(String(siglas ?? '').trim());
     return {
       destino: destinoTxt,
       peso: conPeso ? `${peso} ${siglas}` : null,
       envios_encontrados: rows.length,
-      criterio: conPeso
-        ? `Envíos a ${destinoTxt} con ${peso} ${siglas} (entre -30% y +35%)`
-        : `Todos los envíos a ${destinoTxt} (sin filtrar por peso)`,
-      analisis,
-      por_transportista: [...porTransporte.entries()]
-        .map(([transporte, costos]) => ({
-          transporte,
-          envios: costos.length,
-          costo_promedio: num(costos.reduce((a, b) => a + b, 0) / costos.length),
-          costo_minimo: num(Math.min(...costos)),
-          costo_maximo: num(Math.max(...costos)),
-        }))
-        .sort((a, b) => b.envios - a.envios),
-      ultimos_envios: rows.slice(0, 10).map((r) => {
-        const c = costoEnvioFila(r);
-        return {
-          fecha: fecha(r.fecha_envio),
-          factura: r.secuencial_cccfa,
-          cliente: r.cliente,
-          ciudad: r.nombre_gecant ?? r.nombre_geprov,
-          transporte: r.nombre_vgtra,
-          enviado:
-            (conPeso && r.cantidad_unidad_buscada != null
-              ? `${num(r.cantidad_unidad_buscada, 3)} ${siglas}`
-              : (r.detalle_unidades ?? []).map((x: any) => `${num(x.cantidad, 3)} ${x.unidad}`).join(', ')) || null,
-          costo: c.monto,
-          tipo_costo: c.cobroDestino ? 'Estimado (flete al cobro)' : c.esReal ? 'Real' : 'Estimado',
-        };
-      }),
-      tarifas_configuradas: (tarifas as any).transportes ?? [],
+      criterio: sinPesoSimilar
+        ? `No hay envíos a ${destinoTxt} de peso similar a ${peso} ${siglas}: se muestran todos los envíos a ese destino`
+        : conPeso
+          ? `Envíos a ${destinoTxt} con ${peso} ${siglas} (entre -30% y +35%)`
+          : `Todos los envíos a ${destinoTxt} (sin filtrar por peso)`,
+      analisis: sinPesoSimilar ? null : analisis,
+      por_transportista: porTransportista.map((t) => ({
+        ...t,
+        // Aproximado para el peso pedido con el costo real por kg de ese transportista a ese destino.
+        ...(esKgPedido && t.costo_real_por_kg?.promedio != null
+          ? { costo_aproximado_para_peso: num(Number(t.costo_real_por_kg.promedio) * Number(peso)) }
+          : {}),
+      })),
+      nota:
+        'Todo sale de envíos reales. costo_real = lo que nos cobró el transportista (flete pagado); ' +
+        'costo_aproximado_para_peso = costo real por kg promedio × peso pedido (referencial: los fletes tienen mínimos ' +
+        'y varían). No hay tarifas configuradas: no las menciones.',
+      ultimos_envios: this.ultimosEnvios(rows, conPeso && !sinPesoSimilar ? siglas : null),
     };
+  }
+
+  /**
+   * Últimos envíos al destino con fecha, factura, cliente, transporte, lo enviado y el costo: primero los que
+   * tienen costo Y cantidad (sirven de referencia para cotizar), completando con los demás hasta `limite`.
+   */
+  private ultimosEnvios(rows: any[], siglasBuscadas: string | null, limite = 10) {
+    const filas = rows.map((r) => {
+      const c = costoEnvioFila(r);
+      const enviado =
+        (siglasBuscadas && r.cantidad_unidad_buscada != null
+          ? `${num(r.cantidad_unidad_buscada, 3)} ${siglasBuscadas}`
+          : (r.detalle_unidades ?? []).map((x: any) => `${num(x.cantidad, 3)} ${x.unidad}`).join(', ')) || null;
+      return {
+        fecha: fecha(r.fecha_envio),
+        factura: r.secuencial_cccfa,
+        cliente: r.cliente,
+        ciudad: r.nombre_gecant ?? r.nombre_geprov,
+        transporte: r.nombre_vgtra,
+        enviado,
+        costo: c.monto,
+        tipo_costo: c.cobroDestino ? 'Estimado (flete al cobro)' : c.esReal ? 'Real' : 'Estimado',
+      };
+    });
+    const completos = filas.filter((f) => f.costo != null && f.enviado);
+    const resto = filas.filter((f) => !completos.includes(f));
+    return [...completos, ...resto]
+      .slice(0, limite)
+      .sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
   }
 
   // ------------------------------------------------------------------ proveedores / cuentas por pagar

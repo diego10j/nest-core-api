@@ -214,6 +214,13 @@ export class TelegramBotService {
       await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, { producto: { ide_inarti: o.ide_inarti, nombre: o.nombre }, audio });
       return;
     }
+    if (opciones.length && /^(ninguno|ninguna|ningun[oa] de es[oa]s|no es ningun[oa]( de es[oa]s)?)[.!]?$/i.test(texto)) {
+      await this.preguntar(cuenta, chatId, numero, conv, conv.pendiente.pregunta, {
+        descartados: opciones.map((o) => o.ide_inarti),
+        audio,
+      });
+      return;
+    }
     const notas = conv.pendiente?.notas ?? [];
     const pideNota = texto.match(/^(?:ver\s+)?nota\s*(\d)$/i) ?? (!opciones.length ? texto.match(/^(\d)$/) : null);
     if (notas.length && pideNota && notas[Number(pideNota[1]) - 1]) {
@@ -236,7 +243,8 @@ export class TelegramBotService {
   }
 
   /**
-   * Botones en línea: p:<ide_inarti> (elegir/cambiar producto) · ia (responder con IA general) · no.
+   * Botones en línea: p:<ide_inarti> (elegir/cambiar producto) · nn (no es ninguno de esos) · ia (responder
+   * con IA general) · no.
    * Al tocar uno se quitan los botones de elección de ese mensaje (se conservan los links a
    * documentos) y se deja constancia de lo elegido, porque tocar un botón no aparece en el chat.
    */
@@ -335,6 +343,11 @@ export class TelegramBotService {
         return;
       }
       await this.preguntar(cuenta, chatId, numero, conv, pregunta, { producto });
+    } else if (data === 'nn' && pregunta) {
+      await this.api.enviarMensaje(cuenta.token, chatId, '🚫 No es ninguno de esos');
+      await this.preguntar(cuenta, chatId, numero, conv, pregunta, {
+        descartados: (conv.pendiente?.opciones ?? []).map((o) => o.ide_inarti),
+      });
     } else if (data === 'ia' && pregunta) {
       await this.api.enviarMensaje(cuenta.token, chatId, '✨ Respondiendo con IA general…');
       await this.preguntar(cuenta, chatId, numero, conv, pregunta, { modo: 'IA_GENERAL' });
@@ -428,10 +441,16 @@ export class TelegramBotService {
     numero: NumeroAutorizado,
     conv: Conversacion,
     pregunta: string,
-    opciones: { producto?: ProductoQuimia; modo?: 'AGENTE' | 'IA_GENERAL'; audio?: { ide_qmtra: number | null } } = {},
+    opciones: {
+      producto?: ProductoQuimia;
+      modo?: 'AGENTE' | 'IA_GENERAL';
+      audio?: { ide_qmtra: number | null };
+      /** "No es ninguno de esos": productos ofrecidos que el usuario descartó. */
+      descartados?: number[];
+    } = {},
   ) {
     await this.api.escribiendo(cuenta.token, chatId);
-    const producto = opciones.producto ?? conv.producto;
+    const producto = opciones.descartados ? null : (opciones.producto ?? conv.producto);
     const usuario = this.usuarioDe(cuenta);
 
     const r: RespuestaQuimia = await this.agente.preguntar(
@@ -441,6 +460,7 @@ export class TelegramBotService {
         ide_inarti: producto?.ide_inarti,
         modo: opciones.modo ?? 'AGENTE',
         historial: conv.historial,
+        ...(opciones.descartados ? { descartados: opciones.descartados } : {}),
       },
       usuario,
       'TELEGRAM',
@@ -454,7 +474,7 @@ export class TelegramBotService {
 
     // Estado para la siguiente pregunta: producto activo, historial y lo pendiente (botones).
     const textoLimpio = r.texto.replace(/\s?\[[^\]]*\]\(#cita-[\d-]+\)/g, '').slice(0, 3000);
-    conv.producto = r.producto ?? producto ?? null;
+    conv.producto = r.producto ?? (opciones.descartados ? conv.producto : producto) ?? null;
     conv.historial = [...conv.historial, { role: 'user' as const, contenido: pregunta }, { role: 'assistant' as const, contenido: textoLimpio }].slice(-10);
     conv.pendiente =
       r.opciones.length || r.sinRespuesta || r.sugerirCambio || r.notas.length
