@@ -99,8 +99,8 @@ export class ClientesUbicacionService extends BaseService {
                           CASE WHEN d.ide_geprov IS NOT DISTINCT FROM COALESCE(p.ide_geprov, d.ide_geprov) THEN d.ide_gecant END
                  ) AS ide_gecant,
                  g.lat, g.lon, g.direccion_gps,
-                 COALESCE(dc.n_dir, 0)::int AS n_dir,
-                 COALESCE(dc.n_problemas, 0)::int AS n_problemas,
+                 COALESCE(g.n_dir, 0)::int AS n_dir,
+                 COALESCE(g.n_problemas, 0)::int AS n_problemas,
                  ${sqlDistanciaKm('g.lat', 'g.lon', 'e.latitud_empr', 'e.longitud_empr')} AS distancia_km
             FROM gen_persona p
             LEFT JOIN LATERAL (
@@ -110,19 +110,21 @@ export class ClientesUbicacionService extends BaseService {
                ORDER BY dp.defecto_gedirp DESC NULLS LAST, dp.ide_gedirp DESC
                LIMIT 1
             ) d ON TRUE
-            -- Coordenadas del cliente: la de su dirección activa con GPS válido (la predeterminada primero).
+            -- Coordenadas del cliente: la de su dirección activa con GPS válido (la predeterminada primero) y el conteo
+            -- de direcciones, todo en una sola pasada por las direcciones.
             LEFT JOIN (
-              SELECT DISTINCT ON (x.ide_geper) x.ide_geper, x.lat, x.lon, x.direccion_gedirp AS direccion_gps
-                FROM (${this.sqlDirecciones(dto)}) x
-               WHERE x.activo AND x.estado_geo = 'OK'
-               ORDER BY x.ide_geper, x.defecto DESC, x.ide_gedirp DESC
-            ) g ON g.ide_geper = p.ide_geper
-            LEFT JOIN (
-              SELECT x.ide_geper, COUNT(*) FILTER (WHERE x.activo)::int AS n_dir,
+              SELECT x.ide_geper,
+                     (array_agg(x.lat ORDER BY x.defecto DESC, x.ide_gedirp DESC)
+                        FILTER (WHERE x.activo AND x.estado_geo = 'OK'))[1] AS lat,
+                     (array_agg(x.lon ORDER BY x.defecto DESC, x.ide_gedirp DESC)
+                        FILTER (WHERE x.activo AND x.estado_geo = 'OK'))[1] AS lon,
+                     (array_agg(x.direccion_gedirp ORDER BY x.defecto DESC, x.ide_gedirp DESC)
+                        FILTER (WHERE x.activo AND x.estado_geo = 'OK'))[1] AS direccion_gps,
+                     COUNT(*) FILTER (WHERE x.activo)::int AS n_dir,
                      COUNT(*) FILTER (WHERE x.activo AND x.estado_geo IN ('INVALIDA', 'FUERA', 'INVERTIDA'))::int AS n_problemas
                 FROM (${this.sqlDirecciones(dto)}) x
                GROUP BY x.ide_geper
-            ) dc ON dc.ide_geper = p.ide_geper
+            ) g ON g.ide_geper = p.ide_geper
             LEFT JOIN sis_empresa e ON e.ide_empr = ${empresa}
            WHERE p.es_cliente_geper = TRUE AND p.ide_empr = ${empresa} AND COALESCE(p.activo_geper, TRUE)
         ) cli
