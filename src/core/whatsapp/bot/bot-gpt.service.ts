@@ -1011,8 +1011,14 @@ export class BotGptService {
               '"somos representantes de...", "cuento con [producto] por varios sacos, estoy dispuesto a dejarlo a un ' +
               'precio de liquidación") — la clave es que el que ESCRIBE dice tener el producto/stock y busca ' +
               'colocarlo/rematarlo/liquidarlo, aunque no diga literalmente "vendo" u "ofrezco" — y NO un cliente ' +
-              'preguntando si LA EMPRESA vende algo. Ante la duda, responde NO (favorece no bloquear a un cliente ' +
-              'real). Responde SOLO "SI" o "NO".',
+              'preguntando si LA EMPRESA vende algo. CUIDADO con mensajes cortos tipo "[producto] de venta" o ' +
+              '"[producto] en venta", sobre todo si empiezan con un tanteo como "de pronto", "tal vez" o "acaso": ' +
+              'en español ecuatoriano esa es una forma común y humilde de preguntar "¿tienen/venden [producto]?" — ' +
+              'es un CLIENTE preguntando, NO alguien ofreciendo su propio stock (ej. "de pronto goma arábiga de ' +
+              'venta" = "¿tal vez tienen goma arábiga a la venta?", NO "tengo goma arábiga para vender" — caso real ' +
+              'detectado 2026-10-05, se derivó por error como oferta de proveedor). Un proveedor real suena más ' +
+              'directo/afirmativo y casi siempre menciona que ÉL tiene el stock, cantidad o precio de liquidación. ' +
+              'Ante la duda, responde NO (favorece no bloquear a un cliente real). Responde SOLO "SI" o "NO".',
           },
           { role: 'user', content: texto },
         ],
