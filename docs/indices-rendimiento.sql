@@ -29,9 +29,19 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cxc_cabece_factura_ptoemi_fecha
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cxc_cabece_factura_geper
     ON cxc_cabece_factura (ide_geper, fecha_emisi_cccfa);
 
+-- Proformas convertidas: el resumen y el análisis de proformas buscan las facturas por el secuencial de la proforma.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cxc_cabece_factura_num_proforma
+    ON cxc_cabece_factura (num_proforma_cccfa)
+    WHERE num_proforma_cccfa IS NOT NULL;
+
 -- Envíos de la factura (mirada de transportes).
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cxc_transporte_factura_cccfa
     ON cxc_transporte_factura (ide_cccfa);
+
+-- Proformas: filtro por empresa, sucursal y fecha (resumen diario y análisis de proformas).
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cxc_cabece_proforma_fecha
+    ON cxc_cabece_proforma (ide_empr, ide_sucu, fecha_cccpr)
+    INCLUDE (secuencial_cccpr, total_cccpr, anulado_cccpr);
 
 -- ── Clientes y direcciones ───────────────────────────────────────────────────────────────────────
 -- Listado de clientes activos de la empresa (índice parcial: solo los que son cliente).

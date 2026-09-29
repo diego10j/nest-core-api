@@ -47,6 +47,7 @@ export class ProformasBiController {
 
   @Get('getEfectividadPorVendedor')
   @ApiOperation({ summary: 'Obtener tasa de conversión de proformas por vendedor' })
+  @Auth()
   getEfectividadPorVendedor(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getEfectividadPorVendedor({
       ...headersParams,
@@ -66,6 +67,7 @@ export class ProformasBiController {
 
   @Get('getTendenciaDiaria')
   @ApiOperation({ summary: 'Obtener tendencia diaria de proformas emitidas' })
+  @Auth()
   getTendenciaDiaria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTendenciaDiaria({
       ...headersParams,
@@ -75,6 +77,7 @@ export class ProformasBiController {
 
   @Get('getTopClientes')
   @ApiOperation({ summary: 'Obtener top de clientes con más proformas generadas' })
+  @Auth()
   getTopClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTopClientes({
       ...headersParams,
@@ -84,6 +87,7 @@ export class ProformasBiController {
 
   @Get('getTiempoConversion')
   @ApiOperation({ summary: 'Obtener tiempo promedio de conversión de proforma a factura' })
+  @Auth()
   getTiempoConversion(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getTiempoConversion({
       ...headersParams,
@@ -93,6 +97,7 @@ export class ProformasBiController {
 
   @Get('getResumenCotizaciones')
   @ApiOperation({ summary: 'Obtener resumen de cotizaciones por estado (aprobadas, rechazadas, pendientes)' })
+  @Auth()
   getResumenCotizaciones(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getResumenCotizaciones({
       ...headersParams,
@@ -102,12 +107,14 @@ export class ProformasBiController {
 
   @Get('getVariacionCotizaciones')
   @ApiOperation({ summary: 'Obtener variación de cotizaciones entre períodos' })
+  @Auth()
   getVariacionCotizaciones(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SucursalDto) {
     return this.service.getVariacionCotizaciones({ ...headersParams, ...dtoIn });
   }
 
   @Get('getComportamientoClientes')
   @ApiOperation({ summary: 'Obtener comportamiento de clientes en proformas (frecuencia, monto)' })
+  @Auth()
   getComportamientoClientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getComportamientoClientes({
       ...headersParams,
@@ -117,6 +124,7 @@ export class ProformasBiController {
 
   @Get('getCotizacionesPendientes')
   @ApiOperation({ summary: 'Obtener cotizaciones pendientes de respuesta en un rango de fechas' })
+  @Auth()
   getCotizacionesPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getCotizacionesPendientes({
       ...headersParams,
@@ -126,6 +134,7 @@ export class ProformasBiController {
 
   @Get('getAnalisisPerdidas')
   @ApiOperation({ summary: 'Obtener análisis de proformas perdidas (rechazadas o vencidas)' })
+  @Auth()
   getAnalisisPerdidas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getAnalisisPerdidas({
       ...headersParams,
@@ -135,6 +144,7 @@ export class ProformasBiController {
 
   @Get('getEfectividadPorTipo')
   @ApiOperation({ summary: 'Obtener efectividad de conversión agrupada por tipo de proforma' })
+  @Auth()
   getEfectividadPorTipo(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getEfectividadPorTipo({
       ...headersParams,
@@ -144,8 +154,59 @@ export class ProformasBiController {
 
   @Get('getHisConversionPorCliente')
   @ApiOperation({ summary: 'Obtener historial de conversión de proformas por cliente' })
+  @Auth()
   getHisConversionPorCliente(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
     return this.service.getHisConversionPorCliente({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getCotizacionesPorCanal')
+  @ApiOperation({ summary: 'Cotizaciones por canal de origen (WhatsApp, página web, manual…) con su conversión' })
+  @Auth()
+  getCotizacionesPorCanal(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getCotizacionesPorCanal({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getCotizacionesPorCanalMensual')
+  @ApiOperation({ summary: 'Cotizaciones por mes y canal de origen' })
+  @Auth()
+  getCotizacionesPorCanalMensual(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getCotizacionesPorCanalMensual({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getCotizacionesPorProvincia')
+  @ApiOperation({ summary: 'Cotizaciones por provincia (para el mapa del Ecuador)' })
+  @Auth()
+  getCotizacionesPorProvincia(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getCotizacionesPorProvincia({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getCotizacionesPorHorario')
+  @ApiOperation({ summary: 'Cotizaciones por día de la semana y hora (mapa de calor)' })
+  @Auth()
+  getCotizacionesPorHorario(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getCotizacionesPorHorario({
+      ...headersParams,
+      ...dtoIn,
+    });
+  }
+
+  @Get('getEnvejecimientoPendientes')
+  @ApiOperation({ summary: 'Antigüedad de las cotizaciones sin facturar, por tramos de días' })
+  @Auth()
+  getEnvejecimientoPendientes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+    return this.service.getEnvejecimientoPendientes({
       ...headersParams,
       ...dtoIn,
     });
