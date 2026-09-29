@@ -28,6 +28,8 @@ import { HtmlProductService } from './html-product/html-product.service';
 import { MenudeoSaveService } from './menudeo/menudeo-save.service';
 import { MenudeoController } from './menudeo/menudeo.controller';
 import { MenudeoService } from './menudeo/menudeo.service';
+import { ControlStockController } from './control-stock/control-stock.controller';
+import { ControlStockService } from './control-stock/control-stock.service';
 import { ConfigPreciosProductosService } from './productos/config-precios.service';
 import { ProductosConsultaIaController } from './productos/productos-consulta-ia.controller';
 import { ProductosConsultaIaService } from './productos/productos-consulta-ia.service';
@@ -36,7 +38,7 @@ import { ProductosService } from './productos/productos.service';
 
 @Module({
   imports: [ConfigModule, IntegrationModule],
-  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController],
+  controllers: [ProductosController, ProductosConsultaIaController, BodegasController, ComprobantesInvController, InventarioBiController, MenudeoController, EtiquetasController, CatalogosController, HtmlProductController, CategoriasController, ControlStockController],
   providers: [
     ProductosService,
     ProductosConsultaIaService,
@@ -58,6 +60,7 @@ import { ProductosService } from './productos/productos.service';
     FileTempService,
     HtmlProductService,
     CategoriasService,
+    ControlStockService,
   ],
 })
 export class InventarioModule { }
