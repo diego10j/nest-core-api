@@ -13,6 +13,8 @@ import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
 import { SucursalDto } from '../dto/sucursal.dto';
 import { canalProformaSql } from '../proformas-canal.sql';
 
+import { AgrupacionTendencia, TendenciaDiariaDto } from './dto/tendencia-diaria.dto';
+
 /**
  * Análisis de proformas (cotizaciones). Criterios comunes a todas las consultas:
  *  - Solo cuentan las proformas NO anuladas, salvo donde se indica lo contrario.
@@ -122,25 +124,60 @@ export class ProformasBiService extends BaseService {
     return this.dataSource.createQuery(query);
   }
 
-  /** Cotizaciones por día del rango, incluyendo los días sin cotizaciones (en cero) para que la línea sea continua. */
-  async getTendenciaDiaria(dtoIn: RangoFechasDto & HeaderParamsDto) {
-    const query = new SelectQuery(`
+  /**
+   * Las consultas de esta clase son "lazy" por defecto: sin `pagination` en la petición devuelven solo 100 filas. Se usa en
+   * consultas de gráficos con resultado ya acotado: si quien consulta no pide una página (la tabla sí lo hace), se
+   * devuelve completo.
+   */
+  private serieCompleta(query: SelectQuery, dtoIn: { pagination?: unknown }): SelectQuery {
+    if (!isDefined(dtoIn.pagination)) query.setLazy(false);
+    return query;
+  }
+
+  /**
+   * Cotizaciones del rango AGRUPADAS en la base de datos por día, semana o mes, con los períodos sin cotizaciones en
+   * cero para que la línea sea continua. Agrupar aquí (y no en el navegador) evita enviar una fila por día cuando el
+   * rango es largo: como máximo salen ~90 filas por día, ~60 por semana o una por mes.
+   *
+   * La agrupación se elige sola según los días del rango y se limita para no devolver demasiadas filas (más de 92
+   * días no se ofrece "por día"; más de 400, tampoco "por semana"). Cada fila trae la agrupación realmente usada.
+   */
+  async getTendenciaDiaria(dtoIn: TendenciaDiariaDto & HeaderParamsDto) {
+    const dias = Math.max(
+      Math.round((new Date(dtoIn.fechaFin).getTime() - new Date(dtoIn.fechaInicio).getTime()) / 86400000) + 1,
+      1,
+    );
+    let agrupacion: AgrupacionTendencia = dtoIn.agrupacion ?? (dias <= 62 ? 'dia' : dias <= 200 ? 'semana' : 'mes');
+    if (agrupacion === 'dia' && dias > 92) agrupacion = 'semana';
+    if (agrupacion === 'semana' && dias > 400) agrupacion = 'mes';
+    // Valores fijos (nunca texto del usuario) porque se incrustan en el SQL.
+    const unidad = { dia: 'day', semana: 'week', mes: 'month' }[agrupacion];
+
+    const query = new SelectQuery(
+      `
     SELECT
-        d.dia::date                                   AS fecha,
+        p.periodo::date                               AS fecha,
         COALESCE(x.cantidad_cotizaciones, 0)          AS cantidad_cotizaciones,
-        COALESCE(x.valor_total, 0)                    AS valor_total
-    FROM generate_series($1::date, $2::date, INTERVAL '1 day') AS d(dia)
+        COALESCE(x.valor_total, 0)                    AS valor_total,
+        '${agrupacion}'::text                          AS agrupacion
+    FROM generate_series(date_trunc('${unidad}', $1::timestamp), $2::timestamp, INTERVAL '1 ${unidad}') AS p(periodo)
     LEFT JOIN (
-        SELECT c.fecha_cccpr AS fecha, COUNT(*) AS cantidad_cotizaciones, SUM(c.total_cccpr) AS valor_total
+        SELECT date_trunc('${unidad}', c.fecha_cccpr::timestamp)::date AS periodo,
+               COUNT(*)                                     AS cantidad_cotizaciones,
+               SUM(c.total_cccpr)                           AS valor_total
           FROM cxc_cabece_proforma c
          WHERE c.fecha_cccpr BETWEEN $3 AND $4
            AND COALESCE(c.anulado_cccpr, FALSE) = FALSE
            AND c.ide_empr = ${Number(dtoIn.ideEmpr)}
            ${this.whereSucursal(dtoIn, 'c')}
-         GROUP BY c.fecha_cccpr
-    ) x ON x.fecha = d.dia::date
-    ORDER BY d.dia
-    `);
+         GROUP BY 1
+    ) x ON x.periodo = p.periodo::date
+    ORDER BY p.periodo
+    `,
+      dtoIn,
+    );
+    // Resultado pequeño (ya agrupado): si no se pide una página, se devuelve completo.
+    this.serieCompleta(query, dtoIn);
     query.addStringParam(1, dtoIn.fechaInicio);
     query.addStringParam(2, dtoIn.fechaFin);
     query.addStringParam(3, dtoIn.fechaInicio);
@@ -643,6 +680,8 @@ export class ProformasBiService extends BaseService {
     ORDER BY 1, 2`);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
+    // Alimenta un gráfico: se devuelven todas las filas, no solo la primera página de 100.
+    query.setLazy(false);
     return this.dataSource.createQuery(query);
   }
 
@@ -701,6 +740,8 @@ export class ProformasBiService extends BaseService {
     ORDER BY 1, 2`);
     query.addParam(1, dtoIn.fechaInicio);
     query.addParam(2, dtoIn.fechaFin);
+    // Alimenta un gráfico: se devuelven todas las filas, no solo la primera página de 100.
+    query.setLazy(false);
     return this.dataSource.createQuery(query);
   }
 

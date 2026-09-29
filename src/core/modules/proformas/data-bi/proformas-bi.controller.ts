@@ -8,6 +8,7 @@ import { Auth } from 'src/core/auth';
 import { ProformasMensualesDto } from '../dto/proformas-mensuales.dto';
 import { SucursalDto } from '../dto/sucursal.dto';
 
+import { TendenciaDiariaDto } from './dto/tendencia-diaria.dto';
 import { ProformasBiService } from './proformas-bi.service';
 
 @ApiTags('Proformas-DataBI')
@@ -68,7 +69,7 @@ export class ProformasBiController {
   @Get('getTendenciaDiaria')
   @ApiOperation({ summary: 'Obtener tendencia diaria de proformas emitidas' })
   @Auth()
-  getTendenciaDiaria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: RangoFechasDto) {
+  getTendenciaDiaria(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TendenciaDiariaDto) {
     return this.service.getTendenciaDiaria({
       ...headersParams,
       ...dtoIn,
