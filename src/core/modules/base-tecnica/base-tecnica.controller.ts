@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { BdtArchivosService } from './bdt-archivos.service';
 import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtContenidoService } from './bdt-contenido.service';
 import { BdtDatosService } from './bdt-datos.service';
@@ -12,6 +13,8 @@ import { BdtMasivoService } from './bdt-masivo.service';
 import { BdtProcesoService } from './bdt-proceso.service';
 import { ConfiguracionBdtDto } from './dto/configuracion-bdt.dto';
 import { GenerarContenidoDto } from './dto/generar-contenido.dto';
+import { GetArchivosCargadosDto } from './dto/get-archivos-cargados.dto';
+import { GetCoberturaProductosDto } from './dto/get-cobertura-productos.dto';
 import { GetDocumentosTecnicosDto } from './dto/get-documentos-tecnicos.dto';
 import { IdeDocumentoDto } from './dto/ide-documento.dto';
 import { IdeInartiDto } from './dto/ide-inarti.dto';
@@ -35,6 +38,7 @@ export class BaseTecnicaController {
     private readonly automatico: BdtAutomaticoService,
     private readonly marcaAgua: BdtMarcaAguaService,
     private readonly importador: BdtImportadorService,
+    private readonly archivos: BdtArchivosService,
   ) {}
 
   // ------------------------------------------------------------------ página Base Técnica (mantenimiento)
@@ -43,6 +47,38 @@ export class BaseTecnicaController {
   @ApiOperation({ summary: 'Listado general de documentos extraídos (DataTableQuery) con filtros' })
   getDocumentosTecnicos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDocumentosTecnicosDto) {
     return this.datos.getDocumentosTecnicos({ ...headersParams, ...dtoIn });
+  }
+
+  // ------------------------------------------------------------------ página Archivos cargados (control de adjuntos)
+
+  @Get('getArchivosCargados')
+  @ApiOperation({
+    summary:
+      'Adjuntos de todos los productos (DataTableQuery) con su tipo (ficha/COA/hoja), duplicados por tipo y si se extrajeron',
+  })
+  getArchivosCargados(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetArchivosCargadosDto) {
+    return this.archivos.getArchivosCargados({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getCoberturaProductos')
+  @ApiOperation({ summary: 'Por producto: cuántas fichas, COA y hojas de seguridad tiene (y cuáles le faltan)' })
+  getCoberturaProductos(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetCoberturaProductosDto) {
+    return this.archivos.getCoberturaProductos({ ...headersParams, ...dtoIn });
+  }
+
+  @Get('getDashboardArchivos')
+  @ApiOperation({
+    summary:
+      'Dashboard de archivos de productos: por tipo y formato (cantidad y peso), más pesados, productos con más archivos, más descargados y cargas por mes',
+  })
+  getDashboardArchivos(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.archivos.getDashboardArchivos(headersParams);
+  }
+
+  @Get('getResumenArchivos')
+  @ApiOperation({ summary: 'Totales de las tarjetas de la página Archivos cargados' })
+  getResumenArchivos(@AppHeaders() headersParams: HeaderParamsDto) {
+    return this.archivos.getResumenArchivos(headersParams);
   }
 
   @Get('getDocumentosConProveedor')

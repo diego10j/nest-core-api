@@ -4,6 +4,7 @@ import { FilesModule } from '../sistema/files/files.module';
 
 import { AlertasIaService } from './alertas-ia.service';
 import { BaseTecnicaController } from './base-tecnica.controller';
+import { BdtArchivosService } from './bdt-archivos.service';
 import { BdtAutomaticoService } from './bdt-automatico.service';
 import { BdtConsultaService } from './bdt-consulta.service';
 import { BdtContenidoService } from './bdt-contenido.service';
@@ -37,6 +38,7 @@ import { BdtProcesoService } from './bdt-proceso.service';
     BdtMasivoService,
     BdtAutomaticoService,
     BdtMarcaAguaService,
+    BdtArchivosService,
     AlertasIaService,
   ],
   // El asistente QuimIA (módulo quimia) usa la IA y las consultas de la base técnica.
