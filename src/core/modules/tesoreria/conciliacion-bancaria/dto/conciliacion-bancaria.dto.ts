@@ -51,6 +51,10 @@ export class GetMovimientosErpDto extends QueryOptionsDto {
 
     @IsOptional() @Transform(aBooleano) @IsBoolean()
     soloPendientes?: boolean;
+
+    /** true = solo los movimientos DENTRO del mes (sin los de los días vecinos que entran por la tolerancia). */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    soloPeriodo?: boolean;
 }
 
 /** Crea la conciliación (cuenta + mes) que después recibe los archivos del banco. */

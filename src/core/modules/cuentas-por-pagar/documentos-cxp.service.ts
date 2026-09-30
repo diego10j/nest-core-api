@@ -74,6 +74,25 @@ export class DocumentosCxPService extends BaseService {
     }
 
     /**
+     * Tipo de documento "Liquidación de Compra" — a propósito NO está en
+     * getListDataTiposDocumentoCxP (ver comentario ahí: ese combo es para el alta manual desde
+     * Compras y la excluye adrede, solo se emite por la vía electrónica dedicada). El
+     * formulario de Liquidaciones (liquidacion-compra-form.tsx) necesita igual su ide_cntdo
+     * real para guardar el documento y para filtrar sustento tributario/proveedores — antes lo
+     * buscaba adentro de ese mismo combo filtrado y nunca lo encontraba, así que el formulario
+     * siempre mostraba "no se encontró el tipo de documento" (caso real detectado 2026-09-30).
+     */
+    async getTipoDocumentoLiquidacionCompra() {
+        const ideCntdo = this.variables.get('p_con_tipo_documento_liquidacion_compra');
+        const query = new SelectQuery(`
+            SELECT CAST(ide_cntdo AS VARCHAR) AS value, nombre_cntdo AS label
+            FROM con_tipo_document
+            WHERE ide_cntdo = ${ideCntdo}
+        `);
+        return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
      * Retorna el listado de documentos CxP en un rango de fechas
      */
     async getDocumentos(dtoIn: GetDocumentosCxPDto & HeaderParamsDto) {

@@ -349,7 +349,7 @@ export class ConciliacionBancariaService extends BaseService {
      */
     async getMovimientosErp(dtoIn: GetMovimientosErpDto & HeaderParamsDto) {
         const cabecera = await this.getCabecera(dtoIn.ideTecnc, dtoIn);
-        const { sql, params } = this.sqlErp(cabecera, !!dtoIn.soloPendientes, await this.estadoLibroNormal());
+        const { sql, params } = this.sqlErp(cabecera, !!dtoIn.soloPendientes, await this.estadoLibroNormal(), !!dtoIn.soloPeriodo);
         const query = new SelectQuery(sql, dtoIn);
         params.forEach((valor, i) => query.addParam(i + 1, valor));
         return this.dataSource.createQuery(query);
@@ -362,7 +362,7 @@ export class ConciliacionBancariaService extends BaseService {
         return rows;
     }
 
-    private sqlErp(cabecera: ConciliacionCabecera, soloPendientes: boolean, estadoNormal: number) {
+    private sqlErp(cabecera: ConciliacionCabecera, soloPendientes: boolean, estadoNormal: number, soloPeriodo = false) {
         const sql = `
             SELECT a.ide_teclb, a.fecha_trans_teclb::text AS fecha_trans_teclb, a.numero_teclb,
                    a.num_comprobante_teclb, a.beneficiari_teclb, a.observacion_teclb, a.ide_cnccc,
@@ -377,6 +377,7 @@ export class ConciliacionBancariaService extends BaseService {
               AND a.fecha_trans_teclb BETWEEN ($3::date - $5::int) AND ($4::date + $5::int)
               AND (m.ide_tecmt IS NULL OR m.ide_tecnc = $6)
               ${soloPendientes ? 'AND m.ide_tecmt IS NULL' : ''}
+              ${soloPeriodo ? 'AND a.fecha_trans_teclb BETWEEN $3::date AND $4::date' : ''}
             ORDER BY a.fecha_trans_teclb, a.ide_teclb
         `;
         const params = [

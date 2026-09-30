@@ -53,6 +53,13 @@ export class DocumentosCxPController {
         return this.service.getListDataTiposDocumentoCxP();
     }
 
+    @Get('getTipoDocumentoLiquidacionCompra')
+    @Auth()
+    @ApiOperation({ summary: 'Tipo de documento "Liquidación de Compra" (no viene en el combo general)' })
+    getTipoDocumentoLiquidacionCompra() {
+        return this.service.getTipoDocumentoLiquidacionCompra();
+    }
+
     @Get('getDocumentos')
     @Auth()
     @ApiOperation({ summary: 'Listar documentos CxP en rango de fechas' })
