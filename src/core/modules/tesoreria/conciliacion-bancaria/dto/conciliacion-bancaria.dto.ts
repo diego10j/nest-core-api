@@ -1,8 +1,11 @@
 import { Transform } from 'class-transformer';
 import {
-    ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min,
+    ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength,
 } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+
+/** Un query string "false" llega como texto: la conversión implícita lo volvería true, por eso el Transform. */
+const aBooleano = ({ value }: { value: unknown }) => value === true || value === 'true' || value === '1';
 
 export class GetResumenMensualDto {
     @IsInt() @Min(2000) @Max(2100)
@@ -13,6 +16,10 @@ export class GetResumenMensualDto {
 }
 
 export class GetConciliacionesDto extends QueryOptionsDto {
+    /** Incluye las conciliaciones anuladas (historial de lo revertido). */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    incluirAnuladas?: boolean;
+
     @IsOptional() @IsInt() @Min(2000) @Max(2100)
     anio?: number;
 
@@ -38,9 +45,6 @@ export class GetMovimientosBancoDto extends QueryOptionsDto {
     estado?: string;
 }
 
-/** Un query string "false" llega como texto: la conversión implícita lo volvería true, por eso el Transform. */
-const aBooleano = ({ value }: { value: unknown }) => value === true || value === 'true' || value === '1';
-
 export class GetMovimientosErpDto extends QueryOptionsDto {
     @IsInt()
     ideTecnc: number;
@@ -49,11 +53,10 @@ export class GetMovimientosErpDto extends QueryOptionsDto {
     soloPendientes?: boolean;
 }
 
-/** Campos del formulario multipart de analizarArchivo / cargarArchivo (el archivo va aparte). */
-export class CargarArchivoDto {
-    /** Obligatorio al cargar; en analizarArchivo es opcional (se detecta por el contenido). */
-    @IsOptional() @IsInt()
-    ideTecba?: number;
+/** Crea la conciliación (cuenta + mes) que después recibe los archivos del banco. */
+export class CrearConciliacionDto {
+    @IsInt()
+    ideTecba: number;
 
     @IsInt() @Min(2000) @Max(2100)
     anio: number;
@@ -63,6 +66,44 @@ export class CargarArchivoDto {
 
     @IsOptional() @IsInt() @Min(0) @Max(15)
     toleranciaDias?: number;
+}
+
+/**
+ * Campos del formulario multipart de analizarArchivo / cargarArchivo (el archivo va aparte). La
+ * conciliación ya existe: la cuenta y el mes salen de ella y contra ellos se valida el archivo.
+ */
+export class CargarArchivoDto {
+    @IsInt()
+    ideTecnc: number;
+
+    /**
+     * true = además de cargar, corre el cruce automático. La pantalla de "Carga de estados de cuenta" no lo
+     * manda (solo sube el archivo); el cruce lo hace después quien concilia.
+     */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    procesar?: boolean;
+
+    /** En analizarArchivo: consultar a la IA si el archivo corresponde a la cuenta/mes (por defecto sí). */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    validarConIa?: boolean;
+}
+
+export class AnularConciliacionDto extends IdConciliacionDto {
+    /** Motivo de la anulación: queda en la observación de la conciliación. */
+    @IsString() @MinLength(5) @MaxLength(300)
+    motivo: string;
+}
+
+/** Historial de archivos cargados (pantalla de carga), paginado por el motor genérico de tablas. */
+export class GetArchivosCargadosDto extends QueryOptionsDto {
+    @IsOptional() @IsInt() @Min(2000) @Max(2100)
+    anio?: number;
+
+    @IsOptional() @IsInt() @Min(1) @Max(12)
+    mes?: number;
+
+    @IsOptional() @IsInt()
+    ideTecba?: number;
 }
 
 export class ConciliarManualDto extends IdConciliacionDto {

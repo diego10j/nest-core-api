@@ -208,7 +208,7 @@ Resaltar en la vista las filas que corresponden a un movimiento ya conciliado / 
 
 ## 10. Comparador banco ↔ ERP (vista tipo "merge" con faltantes y alertas)
 
-Estado: **plan, sin implementar.** Reemplaza la idea anterior de un "buscador" aparte: la búsqueda pasa a
+Estado: **Fase 1 implementada (solo revisión: pestaña Comparar y página de Consulta).** Reemplaza la idea anterior de un "buscador" aparte: la búsqueda pasa a
 ser una función del comparador.
 
 ### Objetivo
@@ -315,3 +315,53 @@ motivo (tooltip/etiqueta). El color siempre va con ícono y texto (accesibilidad
 2. ¿Los umbrales de advertencia (fechas ≥ 1 día, confianza < 70) le parecen bien?
 3. ¿La exportación (Excel/PDF) de la comparación con colores entra en la primera entrega o en la Fase 2?
 4. ¿Los movimientos **Ignorados** se muestran o se ocultan por defecto?
+
+
+## 11. Flujo por actividades (implementado)
+
+Las tareas se separan en **tres pantallas**, para que no solo el contador tenga acceso a todo. Cada una es una
+opción de menú propia (permisos independientes por perfil): *Tesorería › Conciliación ›*
+
+| Pantalla | Quién | Qué hace |
+|---|---|---|
+| **Carga de Estados de Cuenta** | quien sube los archivos | Crea la conciliación (cuenta + mes), le carga el estado de cuenta con vista previa y validaciones, ve los archivos cargados y **anula** (revierte) un mes para rehacerlo. **No** cruza nada. |
+| **Conciliación Bancaria** | quien concilia (contador) | Tablero del mes: *Procesar* (cruce automático) lo cargado, conciliar manualmente, sugerencias (suma / IA), comparar, cerrar/reabrir. |
+| **Consulta de Conciliaciones** | cualquiera que necesite ver | Solo lectura: saldos, diferencia, archivos descargables y la comparación banco ↔ ERP (faltantes en rojo, advertencias en amarillo). |
+
+### Etapas de una conciliación
+`Falta archivo` → (cargar) → `Por procesar` → (procesar) → `En proceso` → (cerrar) → `Cerrada`; en cualquier
+momento `Anulada`. La etapa se deduce de los datos (archivos cargados, movimientos, cruces): no hay columna nueva.
+
+### Flujo
+1. **Crear** (Carga): cuenta + mes. No se permite un mes futuro ni duplicar cuenta+mes; para rehacer hay que
+   anular la existente.
+2. **Cargar archivo** (Carga): al elegirlo se lee y se valida **contra esa conciliación** (mismas reglas al analizar
+   y al cargar; el servidor no confía en el front). Resultado con niveles:
+   - **Error (bloquea)**: la cuenta del archivo no es la de la conciliación; el archivo es de otro mes (sin
+     movimientos del mes); ya se cargó el mismo archivo; no aporta movimientos nuevos.
+   - **Advertencia (se puede aceptar marcando "revisé las advertencias")**: el archivo no trae cuenta; movimientos
+     de otro mes que no se cargarán; saldos que no encadenan; el saldo inicial no continúa el saldo final del mes
+     anterior o el ya cargado; **verificación con IA** que dice que no corresponde o no puede confirmarlo.
+   - **Info / OK**: corte parcial, formato, cuenta y periodo correctos, continuidad de saldos.
+   - La **IA es solo orientativa**: recibe el encabezado del archivo (sin correos), unos pocos movimientos y lo
+     esperado; si falla o tarda, se informa y se sigue con las reglas del sistema. No se consulta si ya hay errores.
+3. **Procesar** (Conciliación): el cruce automático ya no corre al cargar (salvo `procesar=true`); lo corre quien
+   concilia con el botón *Procesar* o *Cruce automático*.
+4. **Consultar** (Consulta): solo lectura.
+5. **Anular** (Carga o Conciliación): pide un **motivo** (queda en la observación), **libera todos los cruces** (el
+   libro de bancos vuelve a no conciliado), funciona también con conciliaciones **cerradas**, y deja la cuenta/mes
+   libre para crearla de nuevo. Los archivos y movimientos quedan en la anulada como historial (*Ver anuladas*).
+
+### Backend
+- `POST crearConciliacion`, `POST analizarArchivo` / `cargarArchivo` (ahora con `ideTecnc`, más `procesar`,
+  `validarConIa`), `POST anular` (con `motivo`), `GET getArchivosCargados`, `getConciliaciones?incluirAnuladas`.
+- Código: `carga-estados-cuenta.service.ts` (crear, validar, cargar, IA), `carga-util.ts` (helpers compartidos).
+
+### Despliegue (además de lo de la §5)
+Importar el menú con las **tres** opciones nuevas (Carga de Estados de Cuenta, Conciliación Bancaria, Consulta de
+Conciliaciones) y dar permiso a cada perfil según su actividad.
+
+### Pendiente
+- [ ] Probar el flujo completo con datos reales y la IA real (hoy solo con IA simulada y Postgres embebido).
+- [ ] Mostrar el estado "anulada" con su motivo al abrir el detalle (hoy el motivo está en el tooltip de la etapa).
+- [ ] Permisos finos dentro de una pantalla (ej. que solo contabilidad pueda cerrar).

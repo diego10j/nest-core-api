@@ -30,18 +30,31 @@ export class EstadoCuentaParserService {
     async leer(buffer: Buffer, nombreOriginal: string): Promise<EstadoCuentaLeido> {
         const ext = path.extname(nombreOriginal).toLowerCase();
         let parseado: EstadoCuentaParseado | null = null;
+        let encabezado: string[] = [];
 
         try {
             if (ext === '.pdf') {
                 const paginas = await textoPaginasPdf(buffer);
-                if (esDeuna(paginas)) parseado = parsearDeuna(paginas);
+                if (esDeuna(paginas)) {
+                    parseado = parsearDeuna(paginas);
+                    encabezado = (paginas[0] ?? '').split('\n').slice(0, 14);
+                }
             } else if (ext === '.csv') {
                 const contenido = textoDeCsv(buffer);
-                if (esPichincha(contenido)) parseado = parsearPichincha(contenido, nombreOriginal);
+                if (esPichincha(contenido)) {
+                    parseado = parsearPichincha(contenido, nombreOriginal);
+                    encabezado = contenido.split(/\r?\n/).slice(0, 3);
+                }
             } else if (ext === '.xlsx') {
                 const filas = await leerPrimeraHojaXlsx(buffer);
-                if (esGuayaquil(filas)) parseado = parsearGuayaquil(filas);
-                else if (esProdubanco(filas)) parseado = parsearProdubanco(filas);
+                const cabecera = () => filas.slice(0, 12).map((f) => f.filter((c) => c !== null && c !== '').join(' | '));
+                if (esGuayaquil(filas)) {
+                    parseado = parsearGuayaquil(filas);
+                    encabezado = cabecera();
+                } else if (esProdubanco(filas)) {
+                    parseado = parsearProdubanco(filas);
+                    encabezado = cabecera();
+                }
             } else if (ext === '.xls') {
                 throw new BadRequestException('El formato .xls antiguo no se puede leer: ábralo en Excel y guárdelo como .xlsx.');
             }
@@ -68,6 +81,8 @@ export class EstadoCuentaParserService {
                 + (detalle ? `. Salto en: ${detalle}.` : '.'),
             );
         }
+        // Sin correos: el encabezado se envía a la IA y no necesita datos de contacto
+        parseado.encabezado = encabezado.map((l) => l.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '(correo)')).filter((l) => l.trim() !== '');
         return { ...parseado, saldoInicial: saldos.inicial, saldoFinal: saldos.final, cadenaConsistente: saldos.consistente };
     }
 }

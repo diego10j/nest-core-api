@@ -6,7 +6,7 @@ import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
 import {
-    GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto,
+    GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto,
 } from './dto/conciliacion-bancaria.dto';
 import { aCentavos, deCentavos } from './parsers/parser-util';
 
@@ -102,7 +102,9 @@ export class ConciliacionBancariaService extends BaseService {
                     n.saldo_final_erp_tecnc, n.fecha_ultimo_mov_tecnc::text AS fecha_ultimo_mov_tecnc,
                     COALESCE(s.total, 0) AS total_movimientos,
                     COALESCE(s.conciliados, 0) AS conciliados,
-                    COALESCE(s.por_revisar, 0) AS por_revisar
+                    COALESCE(s.por_revisar, 0) AS por_revisar,
+                    COALESCE(f.num_archivos, 0) AS num_archivos,
+                    f.ultima_carga
              FROM tes_cuenta_banco a
              INNER JOIN tes_banco b ON b.ide_teban = a.ide_teban
              LEFT JOIN tes_tip_cuen_banc c ON c.ide_tetcb = a.ide_tetcb
@@ -114,6 +116,10 @@ export class ConciliacionBancariaService extends BaseService {
                         COUNT(*) FILTER (WHERE m.estado_tecmv IN ('PENDIENTE', 'FALTANTE')) AS por_revisar
                  FROM tes_conciliacion_mov m WHERE m.ide_tecnc = n.ide_tecnc
              ) s ON true
+             LEFT JOIN LATERAL (
+                 SELECT COUNT(*) AS num_archivos, MAX(r.hora_ingre) AS ultima_carga
+                 FROM tes_conciliacion_archivo r WHERE r.ide_tecnc = n.ide_tecnc
+             ) f ON true
              WHERE a.ide_sucu = $1
                AND COALESCE(a.activo_tecba, true) = true
                AND COALESCE(b.es_caja_teban, false) = false
@@ -124,13 +130,45 @@ export class ConciliacionBancariaService extends BaseService {
     }
 
     /** Historial de conciliaciones de la sucursal, paginado por el motor genérico de tablas. */
-    async getConciliaciones(dtoIn: GetConciliacionesDto & HeaderParamsDto) {
+    /** Historial de archivos de estados de cuenta cargados (pantalla de carga), con su cuenta y mes. */
+    async getArchivosCargados(dtoIn: GetArchivosCargadosDto & HeaderParamsDto) {
         const condiciones: string[] = ['n.ide_sucu = $1', 'n.anulado_tecnc = false'];
         const valores: number[] = [dtoIn.ideSucu];
         const agregar = (columna: string, valor: number | undefined) => {
             if (valor === undefined || valor === null) return;
             valores.push(valor);
-            condiciones.push(`${columna} = $${valores.length}`);
+            condiciones.push(`${columna} = ${valores.length}`);
+        };
+        agregar('n.anio_tecnc', dtoIn.anio);
+        agregar('n.mes_tecnc', dtoIn.mes);
+        agregar('n.ide_tecba', dtoIn.ideTecba);
+
+        const query = new SelectQuery(`
+            SELECT r.ide_tecar, r.ide_tecnc, n.ide_tecba, a.nombre_tecba, b.nombre_teban, b.foto_teban, b.color_teban,
+                   n.anio_tecnc, n.mes_tecnc, r.nombre_original_tecar, r.formato_tecar,
+                   r.fecha_desde_tecar::text AS fecha_desde_tecar, r.fecha_hasta_tecar::text AS fecha_hasta_tecar,
+                   r.num_movimientos_tecar, r.num_nuevos_tecar, r.num_duplicados_tecar,
+                   r.saldo_inicial_tecar, r.saldo_final_tecar, r.tamano_tecar, r.advertencias_tecar,
+                   n.estado_tecnc, r.usuario_ingre, r.hora_ingre
+            FROM tes_conciliacion_archivo r
+            INNER JOIN tes_conciliacion n ON n.ide_tecnc = r.ide_tecnc
+            INNER JOIN tes_cuenta_banco a ON a.ide_tecba = n.ide_tecba
+            INNER JOIN tes_banco b ON b.ide_teban = a.ide_teban
+            WHERE ${condiciones.join(' AND ')}
+            ORDER BY r.hora_ingre DESC, r.ide_tecar DESC
+        `, dtoIn);
+        valores.forEach((valor, i) => query.addIntParam(i + 1, valor));
+        return this.dataSource.createQuery(query);
+    }
+
+    async getConciliaciones(dtoIn: GetConciliacionesDto & HeaderParamsDto) {
+        const condiciones: string[] = ['n.ide_sucu = $1'];
+        if (!dtoIn.incluirAnuladas) condiciones.push('n.anulado_tecnc = false');
+        const valores: number[] = [dtoIn.ideSucu];
+        const agregar = (columna: string, valor: number | undefined) => {
+            if (valor === undefined || valor === null) return;
+            valores.push(valor);
+            condiciones.push(`${columna} = ${valores.length}`);
         };
         agregar('n.anio_tecnc', dtoIn.anio);
         agregar('n.mes_tecnc', dtoIn.mes);
@@ -142,13 +180,19 @@ export class ConciliacionBancariaService extends BaseService {
                    n.fecha_desde_tecnc::text AS fecha_desde_tecnc, n.fecha_hasta_tecnc::text AS fecha_hasta_tecnc,
                    n.fecha_ultimo_mov_tecnc::text AS fecha_ultimo_mov_tecnc,
                    n.saldo_inicial_banco_tecnc, n.saldo_final_banco_tecnc, n.saldo_final_erp_tecnc,
-                   n.usuario_ingre, n.hora_ingre,
+                   n.usuario_ingre, n.hora_ingre, n.anulado_tecnc, n.observacion_tecnc,
                    COALESCE(s.total, 0) AS total_movimientos,
                    COALESCE(s.conciliados, 0) AS conciliados,
-                   COALESCE(s.por_revisar, 0) AS por_revisar
+                   COALESCE(s.por_revisar, 0) AS por_revisar,
+                   COALESCE(f.num_archivos, 0) AS num_archivos,
+                   f.ultima_carga
             FROM tes_conciliacion n
             INNER JOIN tes_cuenta_banco a ON a.ide_tecba = n.ide_tecba
             INNER JOIN tes_banco b ON b.ide_teban = a.ide_teban
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS num_archivos, MAX(r.hora_ingre) AS ultima_carga
+                FROM tes_conciliacion_archivo r WHERE r.ide_tecnc = n.ide_tecnc
+            ) f ON true
             LEFT JOIN LATERAL (
                 SELECT COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE m.estado_tecmv = 'CONCILIADO') AS conciliados,

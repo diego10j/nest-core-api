@@ -12,11 +12,13 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 
+import { CargaEstadosCuentaService } from './carga-estados-cuenta.service';
+import { ComparacionConciliacionService } from './comparacion-conciliacion.service';
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria-save.service';
 import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
 import {
-    ActualizarToleranciaDto, CargarArchivoDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
-    GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
+    ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
+    GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
     MarcarMovimientosDto, SugerirDto,
 } from './dto/conciliacion-bancaria.dto';
 
@@ -29,12 +31,11 @@ const cuerpoArchivo = {
         type: 'object',
         properties: {
             file: { type: 'string', format: 'binary', description: 'Estado de cuenta del banco (.xlsx, .csv o .pdf)' },
-            ideTecba: { type: 'number', description: 'Cuenta bancaria del ERP (opcional al analizar)' },
-            anio: { type: 'number' },
-            mes: { type: 'number' },
-            toleranciaDias: { type: 'number' },
+            ideTecnc: { type: 'number', description: 'Conciliación (cuenta + mes) a la que se carga' },
+            procesar: { type: 'boolean', description: 'Correr el cruce automático después de cargar' },
+            validarConIa: { type: 'boolean', description: 'Verificar con IA que el archivo corresponde (solo al analizar)' },
         },
-        required: ['file', 'anio', 'mes'],
+        required: ['file', 'ideTecnc'],
     },
 };
 
@@ -48,6 +49,8 @@ export class ConciliacionBancariaController {
     constructor(
         private readonly service: ConciliacionBancariaService,
         private readonly saveService: ConciliacionBancariaSaveService,
+        private readonly comparacionService: ComparacionConciliacionService,
+        private readonly cargaService: CargaEstadosCuentaService,
     ) { }
 
     // ─── CONSULTAS ───────────────────────────────────────────────────────────
@@ -62,6 +65,12 @@ export class ConciliacionBancariaController {
     @ApiOperation({ summary: 'Listado de conciliaciones (filtrable por año, mes y cuenta)' })
     getConciliaciones(@AppHeaders() h: HeaderParamsDto, @Query() dto: GetConciliacionesDto) {
         return this.service.getConciliaciones({ ...h, ...dto });
+    }
+
+    @Get('getArchivosCargados')
+    @ApiOperation({ summary: 'Historial de estados de cuenta cargados (pantalla de carga)' })
+    getArchivosCargados(@AppHeaders() h: HeaderParamsDto, @Query() dto: GetArchivosCargadosDto) {
+        return this.service.getArchivosCargados({ ...h, ...dto });
     }
 
     @Get('getConciliacion')
@@ -88,6 +97,12 @@ export class ConciliacionBancariaController {
         return this.service.getCruces(dto.ideTecnc, h);
     }
 
+    @Get('getComparacion')
+    @ApiOperation({ summary: 'Comparación banco ↔ ERP (solo lectura): bloques alineados con faltantes en rojo y advertencias en amarillo' })
+    getComparacion(@AppHeaders() h: HeaderParamsDto, @Query() dto: IdConciliacionDto) {
+        return this.comparacionService.getComparacion(dto.ideTecnc, h);
+    }
+
     @Get('descargarArchivo/:ideTecar')
     @ApiOperation({ summary: 'Descargar el archivo original del banco que se cargó a una conciliación' })
     async descargarArchivo(
@@ -106,8 +121,14 @@ export class ConciliacionBancariaController {
 
     // ─── CARGA ───────────────────────────────────────────────────────────────
 
+    @Post('crearConciliacion')
+    @ApiOperation({ summary: 'Crea la conciliación (cuenta + mes) que después recibe los archivos del banco' })
+    crearConciliacion(@AppHeaders() h: HeaderParamsDto, @Body() dto: CrearConciliacionDto) {
+        return this.cargaService.crearConciliacion({ ...h, ...dto });
+    }
+
     @Post('analizarArchivo')
-    @ApiOperation({ summary: 'Vista previa de un estado de cuenta: banco, cuenta del ERP detectada, periodo, saldos y movimientos nuevos (no guarda nada)' })
+    @ApiOperation({ summary: 'Vista previa y validaciones de un estado de cuenta contra la conciliación creada: cuenta, mes, saldos, duplicados y verificación con IA (no guarda nada)' })
     @ApiConsumes('multipart/form-data')
     @ApiBody(cuerpoArchivo)
     @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_BYTES_ARCHIVO } }))
@@ -117,11 +138,11 @@ export class ConciliacionBancariaController {
         @Body() dto: CargarArchivoDto,
     ) {
         if (!file) throw new BadRequestException('No se recibió el archivo.');
-        return this.saveService.analizarArchivo(file.buffer, file.originalname, { ...h, ...dto });
+        return this.cargaService.analizarArchivo(file.buffer, file.originalname, { ...h, ...dto });
     }
 
     @Post('cargarArchivo')
-    @ApiOperation({ summary: 'Carga el estado de cuenta a la conciliación de la cuenta y el mes (la crea si no existe; si existe agrega solo los movimientos nuevos) y corre el cruce automático' })
+    @ApiOperation({ summary: 'Carga el estado de cuenta a la conciliación creada (agrega solo los movimientos nuevos); el cruce lo corre después quien concilia, salvo procesar=true' })
     @ApiConsumes('multipart/form-data')
     @ApiBody(cuerpoArchivo)
     @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_BYTES_ARCHIVO } }))
@@ -131,7 +152,7 @@ export class ConciliacionBancariaController {
         @Body() dto: CargarArchivoDto,
     ) {
         if (!file) throw new BadRequestException('No se recibió el archivo.');
-        return this.saveService.cargarArchivo(file, { ...h, ...dto });
+        return this.cargaService.cargarArchivo(file, { ...h, ...dto });
     }
 
     // ─── CRUCES ──────────────────────────────────────────────────────────────
@@ -187,8 +208,8 @@ export class ConciliacionBancariaController {
     }
 
     @Post('anular')
-    @ApiOperation({ summary: 'Anula la conciliación y libera todos sus cruces' })
-    anular(@AppHeaders() h: HeaderParamsDto, @Body() dto: IdConciliacionDto) {
+    @ApiOperation({ summary: 'Anula la conciliación (también cerrada), revierte sus cruces y permite rehacerla' })
+    anular(@AppHeaders() h: HeaderParamsDto, @Body() dto: AnularConciliacionDto) {
         return this.saveService.anular({ ...h, ...dto });
     }
 }

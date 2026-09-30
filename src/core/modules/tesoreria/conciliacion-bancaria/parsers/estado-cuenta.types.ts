@@ -25,6 +25,8 @@ export interface EstadoCuentaParseado {
     fechaHasta: string | null;
     movimientos: MovimientoBanco[];
     advertencias: string[];
+    /** Primeras líneas del archivo tal cual (banco, cuenta, titular, periodo): para que la IA verifique a qué corresponde. */
+    encabezado?: string[];
 }
 
 /** Hoja de cálculo ya leída: filas de celdas con texto o número (columna 0 = A). */
