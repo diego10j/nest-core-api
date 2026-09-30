@@ -60,7 +60,7 @@ No son de la plantilla, pero nadie los importa: `pages/whatsapp/sections/chat-ro
 
 | Acción | Paquetes |
 |---|---|
-| **Quitar** (solo las usa código muerto o nadie) | `firebase`, `aws-amplify`, `@supabase/supabase-js`, `@auth0/auth0-react`, `@fullcalendar/{core,daygrid,interaction,list,react,timegrid,timeline}`, `@react-pdf/renderer`, `react-organizational-chart`, `embla-carousel-auto-height`, `embla-carousel-fade`, `date-fns` (si aparece) |
+| **Quitar** (solo las usa código muerto o nadie) | `firebase`, `aws-amplify`, `@supabase/supabase-js`, `@auth0/auth0-react`, `@fullcalendar/{core,daygrid,interaction,list,react,timegrid,timeline}`, `@react-pdf/renderer`, `react-organizational-chart`, `embla-carousel-auto-height`, `embla-carousel-fade` |
 | **Quitar al eliminar el selector de fuentes** de la plantilla | `@fontsource-variable/{dm-sans,inter,nunito-sans}` (el tema solo usa Public Sans y Barlow) |
 | **No quitar aunque parezcan sin uso** | `apexcharts` (peer de `react-apexcharts`), `@emotion/styled` y `stylis` (peers de MUI), `@tiptap/core` y `@tiptap/pm` (peers de tiptap) |
 | **Ojo con `@tiptap/starter-kit`** | Nadie lo importa, pero arrastra las extensiones que sí importa el código (`extension-bold`, `-heading`, …), hoy sin declarar en `package.json`. Antes de quitarlo, añadir esas extensiones de forma explícita |
@@ -81,7 +81,7 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
 **Fase 1: seguridad urgente (1–2 días)** → puntos 1 a 4 y 6 de la sección 1. No depende de la limpieza y debe ir primero.
 
 **Fase 2: rutas de demostración (1 día)**
-- Quitar de `routes/sections/` `components.tsx`, `auth-demo.tsx`, y las entradas de demo en `main.tsx` y `dashboard.tsx` (≈2 100 de las 2 172 líneas de ese archivo son ERP; solo salen unas 12 rutas).
+- Quitar de `routes/sections/` `components.tsx`, `auth-demo.tsx`, y las entradas de demo en `main.tsx` y `dashboard.tsx` (las rutas de demostración ocupan unas 300 de sus 2 172 líneas; el resto es ERP).
 - Borrar las páginas y secciones del bloque A. Compilar (`yarn tsc`) tras cada carpeta.
 
 **Fase 3: proveedores de autenticación (½ día)**
