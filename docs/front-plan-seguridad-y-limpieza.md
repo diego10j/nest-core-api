@@ -90,7 +90,7 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
   - **`sign-up` JWT:** el backend no tiene `auth/sign-up`, se borra.
 - **Puntos de enganche** (código del ERP que enlaza a páginas que se borran; hay que limpiarlos en la misma fase): `auth/guard/auth-guard.tsx` (mapa de proveedores), `layouts/auth-centered|auth-split|simple/layout.tsx` (enlace `paths.faqs`; el split además referencia `firebase.signIn`), `layouts/main/footer.tsx` (`about`, `contact`), `layouts/main/nav/mobile/nav-mobile-list.tsx` (`paths.components`), `sections/checkout/context/checkout-provider.tsx`.
 
-**Fase 1: seguridad urgente (1–2 días)** → puntos 1 a 4 y 6 de la sección 1. No depende de la limpieza y debe ir primero.
+**Fase 1: seguridad urgente (1–2 días)** ✅ *hecha en la rama `claude/front-fase1-seguridad` de `react-front-erp` (XSS de WhatsApp, saneado de HTML, Markdown, cabeceras, `yarn.lock`). Pendiente de esa fase: token de la impresora y `xlsx`.* → puntos 1 a 4 y 6 de la sección 1. No depende de la limpieza y debe ir primero.
 
 **Fase 2: rutas de demostración (1 día)**
 - Quitar de `routes/sections/` `components.tsx`, `auth-demo.tsx`, y las entradas de demo en `main.tsx` y `dashboard.tsx` (las rutas de demostración ocupan unas 300 de sus 2 172 líneas; el resto es ERP).
@@ -125,7 +125,11 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
 - No ejecuté la aplicación ni el build completo; los números de bundle saldrán de la Fase 0.
 - El grafo cuenta como import las líneas comentadas (`// import …`), así que el resultado es un mínimo: es posible que sobre algo más.
 
-## 5. Decisión pendiente: la ruta `/`
+## 5. Decisión tomada: la ruta `/`
+
+**Elegida la opción A** (este servidor es solo el ERP, no el sitio comercial): `/` redirige a `/dashboard` y se borra el bloque de marketing en la Fase 2.
+
+### Contexto original
 
 Hoy `/` muestra `HomeView`: una **landing pública de marketing** dentro de `MainLayout` (cabecera y pie de página de marketing), visible para cualquiera sin iniciar sesión. Mezcla contenido adaptado a ProERP con restos de Minimals ("For designer", "A dark theme…", "Right-to-left", "Interface Starter Kit", "Minimal Design System"). Son 12 secciones en `sections/home`, más `layouts/main` y las páginas que enlaza (`about-us`, `contact-us`, `faqs`, `pricing`, `payment`).
 
