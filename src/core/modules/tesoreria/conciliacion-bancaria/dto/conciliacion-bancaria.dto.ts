@@ -68,6 +68,18 @@ export class CrearConciliacionDto {
     toleranciaDias?: number;
 }
 
+/** Corrige la cuenta/mes/año de una conciliación creada por error (mientras no tenga archivos). */
+export class EditarConciliacionDto extends IdConciliacionDto {
+    @IsInt()
+    ideTecba: number;
+
+    @IsInt() @Min(2000) @Max(2100)
+    anio: number;
+
+    @IsInt() @Min(1) @Max(12)
+    mes: number;
+}
+
 /**
  * Campos del formulario multipart de analizarArchivo / cargarArchivo (el archivo va aparte). La
  * conciliación ya existe: la cuenta y el mes salen de ella y contra ellos se valida el archivo.

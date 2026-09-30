@@ -13,7 +13,7 @@ import {
 } from './carga-util';
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria-save.service';
 import { ConciliacionBancariaService, ConciliacionCabecera } from './conciliacion-bancaria.service';
-import { CargarArchivoDto, CrearConciliacionDto } from './dto/conciliacion-bancaria.dto';
+import { CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto } from './dto/conciliacion-bancaria.dto';
 import { EstadoCuentaLeido, EstadoCuentaParserService } from './parsers/estado-cuenta-parser.service';
 import { aCentavos, calcularSaldosCadena, deCentavos } from './parsers/parser-util';
 
@@ -55,27 +55,7 @@ export class CargaEstadosCuentaService {
     // ─── 1. CREAR ────────────────────────────────────────────────────────────
 
     async crearConciliacion(dtoIn: CrearConciliacionDto & HeaderParamsDto) {
-        const cuentas = await this.consultas.getCuentasConciliables(dtoIn.ideEmpr, dtoIn.ideSucu);
-        const cuenta = cuentas.find((c) => Number(c.ide_tecba) === Number(dtoIn.ideTecba));
-        if (!cuenta) {
-            throw new BadRequestException('La cuenta no existe, está inactiva o pertenece a otra sucursal: cambie de sucursal para conciliarla.');
-        }
-        const hoy = new Date();
-        if (dtoIn.anio * 12 + dtoIn.mes > hoy.getFullYear() * 12 + hoy.getMonth() + 1) {
-            throw new BadRequestException('No se puede crear la conciliación de un mes futuro.');
-        }
-
-        const { rows: existentes } = await this.dataSource.pool.query(
-            `SELECT ide_tecnc, estado_tecnc FROM tes_conciliacion
-             WHERE ide_tecba = $1 AND anio_tecnc = $2 AND mes_tecnc = $3 AND anulado_tecnc = false`,
-            [dtoIn.ideTecba, dtoIn.anio, dtoIn.mes],
-        );
-        if (existentes.length > 0) {
-            throw new BadRequestException(
-                `Ya existe la conciliación de "${cuenta.nombre_tecba}" para ${String(dtoIn.mes).padStart(2, '0')}/${dtoIn.anio} (${existentes[0].estado_tecnc}). Úsela, o anúlela primero si necesita rehacerla.`,
-            );
-        }
-
+        const cuenta = await this.validarCuentaYPeriodo(dtoIn, dtoIn.ideTecba, dtoIn.anio, dtoIn.mes);
         const ideTecnc = await this.dataSource.getSeqTable('tes_conciliacion', 'ide_tecnc', 1, dtoIn.login);
         await this.dataSource.pool.query(
             `INSERT INTO tes_conciliacion (ide_tecnc, ide_empr, ide_sucu, ide_tecba, anio_tecnc, mes_tecnc,
@@ -85,6 +65,58 @@ export class CargaEstadosCuentaService {
                 primerDiaMes(dtoIn.anio, dtoIn.mes), ultimoDiaMes(dtoIn.anio, dtoIn.mes), dtoIn.toleranciaDias ?? 3, dtoIn.login],
         );
         return { message: 'Conciliación creada. Ahora cargue el estado de cuenta del banco.', ideTecnc };
+    }
+
+    /**
+     * Corrige la cuenta, el mes o el año de una conciliación creada por error. Solo mientras NO tenga archivos
+     * cargados: con archivos, sus movimientos ya se validaron contra el mes original, así que lo correcto es
+     * anularla y crearla de nuevo.
+     */
+    async editarConciliacion(dtoIn: EditarConciliacionDto & HeaderParamsDto) {
+        const cabecera = await this.consultas.getCabecera(dtoIn.ideTecnc, dtoIn);
+        this.consultas.assertAbierta(cabecera);
+        const { rows: archivos } = await this.dataSource.pool.query(
+            'SELECT COUNT(*) AS n FROM tes_conciliacion_archivo WHERE ide_tecnc = $1', [dtoIn.ideTecnc],
+        );
+        if (Number(archivos[0].n) > 0) {
+            throw new BadRequestException(
+                'La conciliación ya tiene archivos cargados, así que no se puede cambiar su cuenta o mes: anúlela y créela de nuevo con los datos correctos.',
+            );
+        }
+        const cuenta = await this.validarCuentaYPeriodo(dtoIn, dtoIn.ideTecba, dtoIn.anio, dtoIn.mes, dtoIn.ideTecnc);
+        await this.dataSource.pool.query(
+            `UPDATE tes_conciliacion SET ide_tecba = $2, ide_sucu = $3, anio_tecnc = $4, mes_tecnc = $5,
+                    fecha_desde_tecnc = $6, fecha_hasta_tecnc = $7, usuario_actua = $8, hora_actua = NOW()
+             WHERE ide_tecnc = $1`,
+            [dtoIn.ideTecnc, dtoIn.ideTecba, cuenta.ide_sucu, dtoIn.anio, dtoIn.mes,
+                primerDiaMes(dtoIn.anio, dtoIn.mes), ultimoDiaMes(dtoIn.anio, dtoIn.mes), dtoIn.login],
+        );
+        return { message: 'Conciliación actualizada.' };
+    }
+
+    /** Validaciones comunes de crear y editar: cuenta de la sucursal, mes no futuro y cuenta+mes sin duplicar. */
+    private async validarCuentaYPeriodo(headers: HeaderParamsDto, ideTecba: number, anio: number, mes: number, ideExcluir?: number) {
+        const cuentas = await this.consultas.getCuentasConciliables(headers.ideEmpr, headers.ideSucu);
+        const cuenta = cuentas.find((c) => Number(c.ide_tecba) === Number(ideTecba));
+        if (!cuenta) {
+            throw new BadRequestException('La cuenta no existe, está inactiva o pertenece a otra sucursal: cambie de sucursal para conciliarla.');
+        }
+        const hoy = new Date();
+        if (anio * 12 + mes > hoy.getFullYear() * 12 + hoy.getMonth() + 1) {
+            throw new BadRequestException('No se puede crear la conciliación de un mes futuro.');
+        }
+        const { rows: existentes } = await this.dataSource.pool.query(
+            `SELECT ide_tecnc, estado_tecnc FROM tes_conciliacion
+             WHERE ide_tecba = $1 AND anio_tecnc = $2 AND mes_tecnc = $3 AND anulado_tecnc = false
+               AND ($4::bigint IS NULL OR ide_tecnc <> $4)`,
+            [ideTecba, anio, mes, ideExcluir ?? null],
+        );
+        if (existentes.length > 0) {
+            throw new BadRequestException(
+                `Ya existe la conciliación de "${cuenta.nombre_tecba}" para ${String(mes).padStart(2, '0')}/${anio} (${existentes[0].estado_tecnc}). Úsela, o anúlela primero si necesita rehacerla.`,
+            );
+        }
+        return cuenta;
     }
 
     // ─── 2. ANALIZAR (vista previa + validaciones) ───────────────────────────

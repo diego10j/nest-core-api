@@ -17,7 +17,7 @@ import { ComparacionConciliacionService } from './comparacion-conciliacion.servi
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria-save.service';
 import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
 import {
-    ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
+    ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
     GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
     MarcarMovimientosDto, SugerirDto,
 } from './dto/conciliacion-bancaria.dto';
@@ -125,6 +125,12 @@ export class ConciliacionBancariaController {
     @ApiOperation({ summary: 'Crea la conciliación (cuenta + mes) que después recibe los archivos del banco' })
     crearConciliacion(@AppHeaders() h: HeaderParamsDto, @Body() dto: CrearConciliacionDto) {
         return this.cargaService.crearConciliacion({ ...h, ...dto });
+    }
+
+    @Post('editarConciliacion')
+    @ApiOperation({ summary: 'Corrige la cuenta, el mes o el año de una conciliación creada por error (solo si aún no tiene archivos cargados)' })
+    editarConciliacion(@AppHeaders() h: HeaderParamsDto, @Body() dto: EditarConciliacionDto) {
+        return this.cargaService.editarConciliacion({ ...h, ...dto });
     }
 
     @Post('analizarArchivo')
