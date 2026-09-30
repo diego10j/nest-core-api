@@ -24,6 +24,7 @@ import { ComparacionConciliacionService } from './conciliacion-bancaria/comparac
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria/conciliacion-bancaria-save.service';
 import { ConciliacionBancariaController } from './conciliacion-bancaria/conciliacion-bancaria.controller';
 import { ConciliacionBancariaService } from './conciliacion-bancaria/conciliacion-bancaria.service';
+import { DiferenciasConciliacionService } from './conciliacion-bancaria/diferencias-conciliacion.service';
 import { EstadoCuentaParserService } from './conciliacion-bancaria/parsers/estado-cuenta-parser.service';
 import { CxcTransaccionesSaveService } from './cxc-transacciones/cxc-transacciones-save.service';
 import { CxcTransaccionesController } from './cxc-transacciones/cxc-transacciones.controller';
@@ -90,6 +91,7 @@ import { TesoreriaService } from './tesoreria.service';
         ConciliacionBancariaService,
         ConciliacionBancariaSaveService,
         ComparacionConciliacionService,
+        DiferenciasConciliacionService,
         CargaEstadosCuentaService,
         EstadoCuentaParserService,
         CoreService,

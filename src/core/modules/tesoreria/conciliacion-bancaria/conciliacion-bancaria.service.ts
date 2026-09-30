@@ -5,6 +5,7 @@ import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
 import { CoreService } from 'src/core/core.service';
 
+import { primerDiaMes, ultimoDiaMes } from './carga-util';
 import {
     GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto,
 } from './dto/conciliacion-bancaria.dto';
@@ -104,7 +105,8 @@ export class ConciliacionBancariaService extends BaseService {
                     COALESCE(s.conciliados, 0) AS conciliados,
                     COALESCE(s.por_revisar, 0) AS por_revisar,
                     COALESCE(f.num_archivos, 0) AS num_archivos,
-                    f.ultima_carga
+                    f.ultima_carga,
+                    COALESCE(g.movimientos_erp, 0) AS movimientos_erp
              FROM tes_cuenta_banco a
              INNER JOIN tes_banco b ON b.ide_teban = a.ide_teban
              LEFT JOIN tes_tip_cuen_banc c ON c.ide_tetcb = a.ide_tetcb
@@ -120,11 +122,19 @@ export class ConciliacionBancariaService extends BaseService {
                  SELECT COUNT(*) AS num_archivos, MAX(r.hora_ingre) AS ultima_carga
                  FROM tes_conciliacion_archivo r WHERE r.ide_tecnc = n.ide_tecnc
              ) f ON true
+             LEFT JOIN LATERAL (
+                 SELECT COUNT(*) AS movimientos_erp FROM tes_cab_libr_banc l
+                 WHERE l.ide_tecba = a.ide_tecba AND l.ide_teelb = $4 AND l.fecha_trans_teclb BETWEEN $5::date AND $6::date
+             ) g ON true
              WHERE a.ide_sucu = $1
                AND COALESCE(a.activo_tecba, true) = true
                AND COALESCE(b.es_caja_teban, false) = false
+               AND ($7::boolean = false OR COALESCE(g.movimientos_erp, 0) > 0 OR n.ide_tecnc IS NOT NULL)
              ORDER BY b.nombre_teban, a.nombre_tecba`,
-            [dtoIn.ideSucu, dtoIn.anio, dtoIn.mes],
+            [
+                dtoIn.ideSucu, dtoIn.anio, dtoIn.mes, await this.estadoLibroNormal(),
+                primerDiaMes(dtoIn.anio, dtoIn.mes), ultimoDiaMes(dtoIn.anio, dtoIn.mes), !!dtoIn.soloConMovimientos,
+            ],
         );
         return rows;
     }

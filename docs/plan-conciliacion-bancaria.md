@@ -390,3 +390,25 @@ Estado: **implementado.** El banco puede cambiar el diseño de su PDF/Excel y el
 - **Probado** con IA simulada (tramos, orden, cadena de saldos con las 166 filas reales del PDF de septiembre, filas
   inválidas, archivo vacío, caché). **No probado con GPT real**: conviene probar con un PDF real de otro banco.
 - Pendiente: si un banco se usa seguido en modo IA, escribirle un lector exacto (más barato y determinístico).
+
+## 13. Diferencias en Conciliación (implementado) y filtro del tablero
+
+**Para quién**: auxiliares que deben identificar qué movimientos faltan registrar. Es de **solo lectura y sin saldos**
+(los saldos ni siquiera salen del servidor en estos endpoints).
+
+- **Lista** (`Tesorería › Conciliación › Diferencias en Conciliación`): mes/año, una tarjeta por cuenta con dos cifras
+  grandes (**Faltan en el ERP** / **Faltan en el banco**), situación (Sin conciliación, Sin archivo, Por procesar,
+  Con diferencias, Sin diferencias), filtros rápidos y las cuentas con diferencias primero.
+  Endpoint: `GET tesoreria/conciliacion-bancaria/getResumenDiferencias?anio&mes`.
+- **Detalle** (clic en la cuenta): tres cifras que son también las pestañas — *Faltan en el ERP* (en el banco y no en
+  el ERP), *Faltan en el banco* (en el ERP y no en el banco) y *Con diferencia de monto* (cruzados con monto distinto).
+  Cada lista tiene texto guía, búsqueda, filtro ingreso/egreso, orden, paginación y **CSV**.
+  Endpoint: `GET tesoreria/conciliacion-bancaria/getDiferencias?ideTecnc`.
+  Sin cargar/procesar el estado de cuenta no hay diferencias: se explica con un mensaje.
+- **Tablero Conciliación Bancaria**: `getResumenMensual` acepta `soloConMovimientos=true` y solo devuelve cuentas con
+  movimientos en el ERP en el mes **o** con una conciliación ya creada (una cuenta sin movimientos no se muestra).
+- **Por conciliar**: parámetro `soloPeriodo` en `getMovimientosErp` (ver solo el mes o incluir días vecinos ±tolerancia).
+- **Despliegue**: backend y front juntos (los parámetros nuevos los rechaza el backend viejo con 400); importar la
+  opción de menú nueva *Diferencias en Conciliación*.
+- **Probado**: PG embebido (conteos del tablero, listas por cuenta, que no haya campos de saldo, exclusión de cuentas sin
+  movimientos) + revisión visual en arnés con datos simulados. **No probado** con la BD real ni con sesión iniciada.

@@ -13,6 +13,10 @@ export class GetResumenMensualDto {
 
     @IsInt() @Min(1) @Max(12)
     mes: number;
+
+    /** true = solo las cuentas con movimientos en el ERP ese mes o con conciliación ya creada. */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    soloConMovimientos?: boolean;
 }
 
 export class GetConciliacionesDto extends QueryOptionsDto {

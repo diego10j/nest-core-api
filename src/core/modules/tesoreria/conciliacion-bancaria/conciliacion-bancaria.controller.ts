@@ -16,6 +16,7 @@ import { CargaEstadosCuentaService } from './carga-estados-cuenta.service';
 import { ComparacionConciliacionService } from './comparacion-conciliacion.service';
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria-save.service';
 import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
+import { DiferenciasConciliacionService } from './diferencias-conciliacion.service';
 import {
     ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
     GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
@@ -51,6 +52,7 @@ export class ConciliacionBancariaController {
         private readonly saveService: ConciliacionBancariaSaveService,
         private readonly comparacionService: ComparacionConciliacionService,
         private readonly cargaService: CargaEstadosCuentaService,
+        private readonly diferenciasService: DiferenciasConciliacionService,
     ) { }
 
     // ─── CONSULTAS ───────────────────────────────────────────────────────────
@@ -95,6 +97,18 @@ export class ConciliacionBancariaController {
     @ApiOperation({ summary: 'Cruces vigentes (banco <-> ERP) agrupados' })
     getCruces(@AppHeaders() h: HeaderParamsDto, @Query() dto: IdConciliacionDto) {
         return this.service.getCruces(dto.ideTecnc, h);
+    }
+
+    @Get('getResumenDiferencias')
+    @ApiOperation({ summary: 'Tablero del mes para auxiliares: por cuenta, cuántos movimientos faltan en el ERP y en el banco (sin saldos)' })
+    getResumenDiferencias(@AppHeaders() h: HeaderParamsDto, @Query() dto: GetResumenMensualDto) {
+        return this.diferenciasService.getResumenDiferencias({ ...h, ...dto });
+    }
+
+    @Get('getDiferencias')
+    @ApiOperation({ summary: 'Movimientos con diferencia de una conciliación (faltan en el ERP, faltan en el banco, cruzados con diferencia de monto), sin saldos' })
+    getDiferencias(@AppHeaders() h: HeaderParamsDto, @Query() dto: IdConciliacionDto) {
+        return this.diferenciasService.getDiferencias(dto.ideTecnc, h);
     }
 
     @Get('getComparacion')
