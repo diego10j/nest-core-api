@@ -74,7 +74,7 @@ export function parsearPichincha(contenido: string, nombreArchivo: string): Esta
     }
 
     // La cuenta va en el nombre del archivo: el bloque de dígitos más largo (mínimo 6)
-    const bloques = nombreArchivo.match(/\d{6,}/g) ?? [];
+    const bloques: string[] = nombreArchivo.match(/\d{6,}/g) ?? [];
     const cuenta = bloques.sort((a, b) => b.length - a.length)[0] ?? null;
     if (!cuenta) advertencias.push('El CSV de Pichincha no trae la cuenta y el nombre del archivo no la incluye: seleccione la cuenta manualmente.');
 

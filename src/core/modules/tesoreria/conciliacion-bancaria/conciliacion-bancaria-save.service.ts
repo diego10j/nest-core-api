@@ -28,7 +28,7 @@ const MAX_DIFERENCIA_IA = 500;
 /** Cantidad máxima de movimientos por lado que se le envían a la IA en una consulta. */
 const MAX_ITEMS_IA = 60;
 
-interface MovBancoFila {
+export interface MovBancoFila {
     ide_tecmv: number;
     fecha_tecmv: string;
     documento_tecmv: string;
@@ -38,7 +38,7 @@ interface MovBancoFila {
     estado_tecmv: string;
 }
 
-interface ErpFila {
+export interface ErpFila {
     ide_teclb: number;
     fecha_trans_teclb: string;
     numero_teclb: string | null;
