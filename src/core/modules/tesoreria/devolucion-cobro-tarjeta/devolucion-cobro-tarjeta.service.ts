@@ -73,6 +73,19 @@ const SQL_PAGO_CON_RETENCION = `(
 )`;
 
 /**
+ * La factura (alias `cf`) pertenece a una acreditación de un CICLO ANTERIOR vigente (con factura de
+ * comisión en la cabecera): ese modelo antiguo ya nació completo, su comisión está en la cabecera y su
+ * retención ligada por tes_det_devol_cobro_tarjeta_ret (no por cf.ide_cncre), así que no le falta
+ * ningún corte.
+ */
+const SQL_FACTURA_EN_CICLO_ANTERIOR = `EXISTS (
+    SELECT 1
+    FROM tes_det_devol_cobro_tarjeta_fact tfc
+    INNER JOIN tes_cab_devol_cobro_tarjeta cc ON cc.ide_tecdt = tfc.ide_tecdt
+    WHERE tfc.ide_cccfa = cf.ide_cccfa AND cc.ide_cpcfa IS NOT NULL AND cc.anulado_tecdt = FALSE
+)`;
+
+/**
  * Resumen por acreditación (alias `prog`): cuántos de sus pagos aún no tienen la factura de comisión
  * o el comprobante de retención que les corresponde.
  */
@@ -149,6 +162,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
                     (
                         cf.ide_cncre IS NOT NULL
                         OR EXISTS (SELECT 1 FROM tes_det_corte_tarjeta dc WHERE dc.ide_cccfa = cf.ide_cccfa)
+                        OR ${SQL_FACTURA_EN_CICLO_ANTERIOR}
                     ) AS en_corte,
                     tf.valor_comision_tedtf + tf.valor_iva_comision_tedtf AS comision_liquidada,
                     tf.valor_ret_iva_tedtf + tf.valor_ret_renta_tedtf AS retencion_liquidada
@@ -260,7 +274,8 @@ export class DevolucionCobroTarjetaService extends BaseService {
                 cf.ide_cncre,
                 EXISTS (
                     SELECT 1 FROM tes_det_corte_tarjeta dc WHERE dc.ide_cccfa = cf.ide_cccfa
-                ) AS en_corte
+                ) AS en_corte,
+                ${SQL_FACTURA_EN_CICLO_ANTERIOR} AS en_ciclo_anterior
             FROM cxc_cabece_factura cf
             WHERE cf.ide_cccfa = ANY($2)
               AND cf.ide_empr = $3
@@ -539,6 +554,7 @@ export class DevolucionCobroTarjetaService extends BaseService {
         `);
         qDet.addIntParam(1, ideTecdt);
         const facturas = await this.dataSource.createSelectQuery(qDet);
+        const desgloseCorte = cabecera.ide_cpcfa == null ? await this.getDesgloseDesdeCortes(ideTecdt, facturas) : null;
 
         // Retenciones de un ciclo anterior (una fila por comprobante: el movimiento contable que la
         // descontó y, en detalles, su porción de las facturas del ciclo). Vacío en acreditaciones nuevas.
@@ -577,7 +593,81 @@ export class DevolucionCobroTarjetaService extends BaseService {
             return { ...r, detalles, total_retencion: Number(total.toFixed(2)) };
         });
 
-        return { ...cabecera, facturas, retenciones };
+        return { ...cabecera, facturas, retenciones, desglose_corte: desgloseCorte };
+    }
+
+    /**
+     * Desglose REAL de una acreditación que llegó sin liquidación del procesador (identificada por la
+     * imagen del banco: sus líneas no traen comisión ni retención), derivado de los cortes vigentes de
+     * sus pagos. Se deriva al leer y no se guarda: un corte anulado deja de aportar solo.
+     *   - Comisión: la factura de comisión del corte (sin IVA / IVA) prorrateada por peso (valor
+     *     cobrado) entre TODOS los pagos del corte, porque el procesador cobra un % del cobro.
+     *   - Retención: la real del comprobante por factura (con_detall_retenc), separada renta / IVA.
+     * `completo` es true solo si TODAS las líneas tienen su comisión y su retención; solo entonces hay
+     * un neto que comparar con lo transferido. null si la acreditación sí trae desglose propio.
+     */
+    private async getDesgloseDesdeCortes(ideTecdt: number, facturas: Record<string, any>[]) {
+        const traeDesglose = facturas.some(
+            (f) => Number(f.valor_comision_tedtf || 0) + Number(f.valor_iva_comision_tedtf || 0)
+                + Number(f.valor_ret_iva_tedtf || 0) + Number(f.valor_ret_renta_tedtf || 0) > 0,
+        );
+        if (traeDesglose || facturas.length === 0) return null;
+
+        const q = new SelectQuery(`
+            SELECT
+                f.ide_cccfa,
+                f.valor_cccfa_tedtf AS bruto,
+                ROUND(cm.sin_iva * f.valor_cccfa_tedtf / NULLIF(cm.peso, 0), 2) AS comision,
+                ROUND(cm.iva * f.valor_cccfa_tedtf / NULLIF(cm.peso, 0), 2) AS iva_comision,
+                rt.renta AS ret_renta,
+                rt.iva AS ret_iva
+            FROM tes_det_devol_cobro_tarjeta_fact f
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = f.ide_cccfa
+            LEFT JOIN LATERAL (
+                SELECT (cp.total_cpcfa - COALESCE(cp.valor_iva_cpcfa, 0)) AS sin_iva,
+                       COALESCE(cp.valor_iva_cpcfa, 0) AS iva,
+                       (SELECT SUM(dt.valor_ccdtr)
+                        FROM tes_det_corte_tarjeta dc2
+                        INNER JOIN cxc_detall_transa dt ON dt.ide_cccfa = dc2.ide_cccfa AND dt.numero_pago_ccdtr > 0
+                        INNER JOIN tes_cab_libr_banc lb ON lb.ide_teclb = dt.ide_teclb AND lb.ide_tecba = ct.ide_tecba
+                        WHERE dc2.ide_tecct = ct.ide_tecct) AS peso
+                FROM tes_det_corte_tarjeta dc
+                INNER JOIN tes_cab_corte_tarjeta ct ON ct.ide_tecct = dc.ide_tecct
+                INNER JOIN cxp_cabece_factur cp ON cp.ide_cpcfa = ct.ide_cpcfa
+                WHERE dc.ide_cccfa = f.ide_cccfa AND ct.anulado_tecct = FALSE
+                LIMIT 1
+            ) cm ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp = 1), 0) AS renta,
+                       COALESCE(SUM(d.valor_cndre) FILTER (WHERE i.ide_cnimp <> 1), 0) AS iva
+                FROM con_detall_retenc d
+                INNER JOIN con_cabece_impues i ON i.ide_cncim = d.ide_cncim
+                WHERE d.ide_cncre = cf.ide_cncre AND d.ide_cccfa = cf.ide_cccfa
+            ) rt ON cf.ide_cncre IS NOT NULL
+            WHERE f.ide_tecdt = $1
+        `);
+        q.addIntParam(1, ideTecdt);
+        const filas = await this.dataSource.createSelectQuery(q);
+
+        const cents = (v: unknown) => Math.round(Number(v || 0) * 100);
+        let comision = 0, ivaComision = 0, retIva = 0, retRenta = 0, neto = 0;
+        let completo = filas.length > 0;
+        for (const r of filas) {
+            if (r.comision == null || r.ret_renta == null) completo = false;
+            comision += cents(r.comision);
+            ivaComision += cents(r.iva_comision);
+            retIva += cents(r.ret_iva);
+            retRenta += cents(r.ret_renta);
+            neto += cents(r.bruto) - cents(r.comision) - cents(r.iva_comision) - cents(r.ret_iva) - cents(r.ret_renta);
+        }
+        return {
+            completo,
+            comision: comision / 100,
+            iva_comision: ivaComision / 100,
+            retencion_iva: retIva / 100,
+            retencion_renta: retRenta / 100,
+            neto_calculado: completo ? neto / 100 : null,
+        };
     }
 
     /**

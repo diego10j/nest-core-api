@@ -5,9 +5,9 @@ import { ContabilidadModule } from 'src/core/modules/contabilidad/contabilidad.m
 import { FilesModule } from 'src/core/modules/sistema/files/files.module';
 
 import { AnticipoProveedorSaveService } from './anticipo-proveedor/anticipo-proveedor-save.service';
-import { AsociarPagoOrdenService } from './asociar-pago-orden/asociar-pago-orden.service';
 import { AnticipoProveedorController } from './anticipo-proveedor/anticipo-proveedor.controller';
 import { AnticipoProveedorService } from './anticipo-proveedor/anticipo-proveedor.service';
+import { AsociarPagoOrdenService } from './asociar-pago-orden/asociar-pago-orden.service';
 import { BancosSaveService } from './bancos/bancos-save.service';
 import { BancosController } from './bancos/bancos.controller';
 import { BancosService } from './bancos/bancos.service';
@@ -19,6 +19,10 @@ import { ChequesService } from './cheques/cheques.service';
 import { ComprobanteBancoSaveService } from './comprobante-banco/comprobante-banco-save.service';
 import { ComprobanteBancoController } from './comprobante-banco/comprobante-banco.controller';
 import { ComprobanteBancoService } from './comprobante-banco/comprobante-banco.service';
+import { ConciliacionBancariaSaveService } from './conciliacion-bancaria/conciliacion-bancaria-save.service';
+import { ConciliacionBancariaController } from './conciliacion-bancaria/conciliacion-bancaria.controller';
+import { ConciliacionBancariaService } from './conciliacion-bancaria/conciliacion-bancaria.service';
+import { EstadoCuentaParserService } from './conciliacion-bancaria/parsers/estado-cuenta-parser.service';
 import { CxcTransaccionesSaveService } from './cxc-transacciones/cxc-transacciones-save.service';
 import { CxcTransaccionesController } from './cxc-transacciones/cxc-transacciones.controller';
 import { CxcTransaccionesService } from './cxc-transacciones/cxc-transacciones.service';
@@ -54,6 +58,7 @@ import { TesoreriaService } from './tesoreria.service';
         CxpTransaccionesController,
         AnticipoProveedorController,
         TesoreriaBiController,
+        ConciliacionBancariaController,
     ],
     providers: [
         TesoreriaService,
@@ -80,6 +85,9 @@ import { TesoreriaService } from './tesoreria.service';
         AnticipoProveedorService,
         AnticipoProveedorSaveService,
         TesoreriaBiService,
+        ConciliacionBancariaService,
+        ConciliacionBancariaSaveService,
+        EstadoCuentaParserService,
         CoreService,
     ],
     exports: [

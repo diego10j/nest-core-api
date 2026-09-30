@@ -42,6 +42,20 @@ const UMBRAL_FORMA_PAGO = 500;
  *    excluyen antes con `continue`), así que aquí `pagoExterior` es siempre el valor local fijo.
  *  - El bloque de `tipoProv`/`denoPr` para `ide_cntdo=11` tampoco se alcanzaba por la misma razón.
  */
+/**
+ * El validador del ATS rechaza signos de puntuación en <razonSocial> ("DIQUIMEC S.A.S." no pasa; sí
+ * "DIQUIMEC SAS"): se dejan solo letras (con Ñ), dígitos y espacios, sin acentos, y se colapsan espacios.
+ */
+function limpiarRazonSocialAts(nombre: string | null | undefined): string {
+    return (nombre ?? '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, (m, i, s) => (s[i - 1] === 'N' || s[i - 1] === 'n' ? m : ''))
+        .normalize('NFC')
+        .replace(/[^A-Za-z0-9Ññ ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 @Injectable()
 export class AtsService extends BaseService {
     constructor(
@@ -121,7 +135,7 @@ export class AtsService extends BaseService {
             anio,
             mes,
             ruc: empresa.identicicacion_sucu,
-            razonSocial: empresa.nom_sucu,
+            razonSocial: limpiarRazonSocialAts(empresa.nom_sucu),
             numEstabRuc: `00${establecimientos.length}`,
             opcionAnexo: opcion,
             compras: compras ?? [],
@@ -533,13 +547,11 @@ export class AtsService extends BaseService {
             const formasPago = Array.from(formasPagoSet);
             ventas.push({
                 ...cliente,
-                // Tabla 4 (TIPOS COMPROBANTES AUTORIZADOS) de la ficha técnica del ATS: código 1 =
-                // Factura. getVentas() solo lee cxc_cabece_factura (facturas de venta
-                // electrónicas), así que es el código correcto para todas sus filas - antes
-                // tenía el literal "18" ("Documentos autorizados... excepto N/C N/D", un
-                // catch-all genérico, no específico de factura). getNotasCreditoVenta() ya usa
-                // el código correcto ('04') para su propio tipo de comprobante.
-                tipoComprobante: '1',
+                // En VENTAS el ATS no usa el '01' de las compras: las facturas se reportan con el
+                // código 18 ("Documentos autorizados utilizados en ventas excepto N/C y N/D") y las
+                // notas de crédito con '04' (getNotasCreditoVenta). Un '1' (o '01') lo rechaza el
+                // validador del SRI ("tipoComprobante contiene un valor incorrecto").
+                tipoComprobante: '18',
                 tipoEmision: 'E',
                 numeroComprobantes: Number(fila.numcomprobantes ?? 0),
                 baseNoGraIva: Number(fila.base_no_objeto_iva ?? 0),

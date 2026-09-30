@@ -472,8 +472,17 @@ ORDER BY prof.secuencial_cccpr DESC
    * número.
    */
   async getWhatsappChat(dtoIn: GetProformaDto & HeaderParamsDto) {
+    // hora_ingre (columna TIME) no vuelve como "HH:MM:SS": el type-parser global (ver
+    // getTimeISOFormat) le antepone una fecha ficticia fija ("1989-07-11T...") para poder
+    // tratarlo como ISO en otros lugares — combinarlo en JS con fecha_ingre requeriría
+    // desarmar ese string a mano y es frágil. El patrón que ya usa el resto del proyecto
+    // (ver bdt-archivos.service.ts) es sumar fecha + hora directo en SQL, sin traer ninguno
+    // de los dos valores a JS — Postgres nunca ve el artificio del type-parser porque la
+    // cuenta se hace toda de su lado (caso real detectado 2026-09-30: el string armado a
+    // mano en JS daba "2026-09-30T1989-07-11T08:53:06", timestamp inválido).
     const cabQ = new SelectQuery(`
-      SELECT referencia_cccpr, telefono_cccpr, fecha_ingre, hora_ingre, fecha_cccpr
+      SELECT referencia_cccpr, telefono_cccpr,
+             COALESCE(fecha_ingre + COALESCE(hora_ingre, TIME '00:00'), fecha_cccpr::timestamp) AS momento_creacion
       FROM cxc_cabece_proforma
       WHERE ide_cccpr = $1 AND ide_empr = $2
     `);
@@ -484,10 +493,6 @@ ORDER BY prof.secuencial_cccpr DESC
     if (!cabecera || (cabecera.referencia_cccpr ?? '').toLowerCase() !== 'whatsapp' || !cabecera.telefono_cccpr) {
       return null;
     }
-
-    const momentoCreacion = cabecera.fecha_ingre
-      ? `${cabecera.fecha_ingre}T${cabecera.hora_ingre || '00:00:00'}`
-      : cabecera.fecha_cccpr;
 
     // wha_chat no tiene ide_empr ni ide_whcue: la empresa sale de la cuenta de WhatsApp a la que pertenece el chat
     // (wha_chat.phone_number_id_whcha = wha_cuenta.id_cuenta_whcue), igual que en whatsapp-db.service.
@@ -509,7 +514,7 @@ ORDER BY prof.secuencial_cccpr DESC
     `);
     chatQ.addIntParam(1, dtoIn.ideEmpr);
     chatQ.addParam(2, cabecera.telefono_cccpr);
-    chatQ.addParam(3, momentoCreacion);
+    chatQ.addParam(3, cabecera.momento_creacion);
     return this.dataSource.createSingleQuery(chatQ);
   }
 

@@ -72,6 +72,11 @@ export class CorteTarjetaSaveService extends BaseService {
                     `La factura ide_cccfa=${ideCccfa} no corresponde a un cobro registrado con la cuenta de tarjeta seleccionada`,
                 );
             }
+            if (f.en_ciclo_anterior) {
+                throw new BadRequestException(
+                    `La factura N.${f.secuencial_cccfa} pertenece a un ciclo anterior que ya incluye su comisión y retención`,
+                );
+            }
             if (f.en_corte) {
                 throw new BadRequestException(`La factura N.${f.secuencial_cccfa} ya pertenece a otro corte`);
             }
