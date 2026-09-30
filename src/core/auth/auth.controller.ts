@@ -6,6 +6,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
 import { AuthService } from './auth.service';
 import { Auth, GetUser } from './decorators';
+import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
@@ -20,6 +21,7 @@ import { AuthUser } from './interfaces';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
+  @Public()
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({
@@ -33,6 +35,7 @@ export class AuthController {
     return this.authService.login(dtoIn, ip);
   }
 
+  @Public()
   @Post('refresh')
   @UseGuards(JwtRefreshGuard)
   @ApiOperation({ summary: 'Renovar access token', description: 'Usa refresh token (rotación) para obtener nuevos tokens. El refresh token anterior es invalidado.' })
@@ -70,6 +73,7 @@ export class AuthController {
     return this.authService.getMenuByRol(dtoIn);
   }
 
+  @Public()
   @Post('validarHorarioLogin')
   @ApiOperation({ summary: 'Validar horario de login por perfil' })
   validarHorarioLogin(@Body() dtoIn: HorarioLoginDto) {

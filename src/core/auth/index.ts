@@ -34,10 +34,12 @@ export { ValidRoles } from './interfaces/valid-roles';
 export { Auth } from './decorators/auth.decorator';
 export { GetUser } from './decorators/get-user.decorator';
 export { RoleProtected } from './decorators/role-protected.decorator';
+export { Public } from './decorators/public.decorator';
 export { RawHeaders } from './decorators/raw-headers.decorator';
 
 // Guards
 export { UserRoleGuard } from './guards/user-role.guard';
+export { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 // Exceptions
 export { UserNotFoundException } from './exceptions/user-not-found.exception';

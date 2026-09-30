@@ -37,6 +37,8 @@ interface EnvVars {
   YCLOUD_API_KEY?: string;
   YCLOUD_WEBHOOK_VERIFY_TOKEN?: string;
   YCLOUD_API_URL?: string;
+
+  AUTH_GUARD_MODE: 'enforce' | 'warn';
 }
 
 const envsSchema = z
@@ -102,6 +104,9 @@ const envsSchema = z
     YCLOUD_API_KEY: z.string().optional(),
     YCLOUD_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
     YCLOUD_API_URL: z.string().optional().default('https://api.ycloud.com/v2'),
+
+    // 'warn' = solo loguea lo que el guard JWT global rechazaría (rollout); 'enforce' = rechaza.
+    AUTH_GUARD_MODE: z.enum(['enforce', 'warn']).optional().default('enforce'),
   })
   .passthrough();
 
@@ -150,4 +155,6 @@ export const envs = {
   ycloudApiKey: envVars.YCLOUD_API_KEY,
   ycloudWebhookVerifyToken: envVars.YCLOUD_WEBHOOK_VERIFY_TOKEN,
   ycloudApiUrl: envVars.YCLOUD_API_URL,
+
+  authGuardMode: envVars.AUTH_GUARD_MODE,
 };

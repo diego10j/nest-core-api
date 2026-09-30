@@ -7,6 +7,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 import { AuthModule } from './core/auth/auth.module';
+import { JwtAuthGuard } from './core/auth/guards/jwt-auth.guard';
 import { DataSourceModule } from './core/connection/datasource.module';
 import { CoreModule } from './core/core.module';
 import { MailModule } from './core/email/mail.module';
@@ -43,6 +44,11 @@ import { ReportsModule } from './reports/reports.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Guard JWT global: todo endpoint exige token salvo los marcados con @Public()
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })

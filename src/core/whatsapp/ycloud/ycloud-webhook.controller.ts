@@ -12,6 +12,8 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { envs } from 'src/config/envs';
 
+import { Public } from '../../auth/decorators/public.decorator';
+
 import { YcloudService } from './ycloud.service';
 
 @ApiTags('YCloud-Webhook')
@@ -21,6 +23,7 @@ export class YcloudWebhookController {
 
   constructor(private readonly ycloudService: YcloudService) { }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Verificar token de webhook de YCloud' })
   verifyWebhook(
@@ -36,6 +39,7 @@ export class YcloudWebhookController {
     throw new HttpException('Verification token mismatch', HttpStatus.FORBIDDEN);
   }
 
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Recibir eventos de webhook de YCloud' })
   async handleWebhook(@Body() body: any, @Res() res: any) {

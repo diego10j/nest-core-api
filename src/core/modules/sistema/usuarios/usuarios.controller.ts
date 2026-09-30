@@ -13,6 +13,7 @@ import { AuthUser } from 'src/core/auth/interfaces';
 import { fileNamer, fileFilter } from 'src/core/modules/sistema/files/helpers';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { Public } from '../../../auth/decorators/public.decorator';
 
 import { ChangePasswordPerfilDto } from './dto/change-password-perfil.dto';
 import { ConfigPasswordDto } from './dto/config-password.dto';
@@ -166,6 +167,7 @@ export class UsuariosController {
     return this.service.uploadAvatar(file, user.ide_usua, headersParams.login);
   }
 
+  @Public()
   @Get('getAvatar/:fileName')
   @ApiOperation({ summary: 'Obtener imagen de avatar de perfil con soporte para thumbnail (?w=N). Si no existe retorna avatar.png' })
   async getAvatar(
