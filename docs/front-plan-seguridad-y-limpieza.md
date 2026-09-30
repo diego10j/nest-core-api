@@ -76,7 +76,19 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
 **Fase 0: preparación (½ día)**
 - Commitear `yarn.lock`; rama `chore/limpieza-minimals`.
 - `yarn build` y anotar el tamaño del bundle como línea base.
-- **Decisiones tuyas antes de borrar:** (a) cruzar los `path` del menú del ERP (los que guarda la BD y llegan por `getMenuByRol`) con las rutas del bloque A, porque el menú es dinámico y este análisis no lo ve; (b) confirmar que `/` (landing de marketing `HomeView`) puede ser un redirect a `/dashboard` o al login; (c) qué hacer con `dashboard/file` y `dashboard/file-manager` (el ERP reutiliza `ArchivoUsuario`); (d) el `sign-up` JWT: el backend no tiene `auth/sign-up`.
+- **Decisiones resueltas:**
+  - **Menú.** Se genera desde `sis_opcion` (`tipo_opci` = ruta) y esas opciones salen de `layouts/nav-config-dashboard.tsx` (lo usa `pages/sistema/opciones/opcion-list.tsx` con `f_generar_opciones_proerp`). Evalué ese archivo: **209 rutas de menú y ninguna coincide con las rutas de demostración a borrar.** Falta solo confirmar la BD real (puede tener opciones antiguas que ya no estén en ese archivo):
+    ```sql
+    SELECT ide_opci, nom_opci, tipo_opci
+    FROM sis_opcion
+    WHERE ide_sist = 2
+      AND tipo_opci ~ '^/(components|auth-demo|about-us|contact-us|faqs|pricing|payment|coming-soon|maintenance|post|product|dashboard/(ecommerce|analytics|banking|booking|course|order|invoice|post|product|job|tour|mail|chat|calendar|kanban|params|blank|permission|user/(profile|cards|list|new|edit)))(/|$)';
+    ```
+    Si devuelve filas, esas opciones hay que desactivarlas antes de borrar la ruta.
+  - **File manager.** Fue modificado para el ERP (marca de agua, reutilizar archivo, vista por producto), así que **se conserva** junto con `dashboard/file` y `FileButton`. Sus 2 archivos sueltos sin uso (`file-manager-action-selected.tsx`, `file-manager-file-item-slots.tsx`) pasan a la sección B para revisarlos.
+  - **Pendiente:** qué hacer con `/` (landing pública de marketing, ver sección 5).
+  - **`sign-up` JWT:** el backend no tiene `auth/sign-up`, se borra.
+- **Puntos de enganche** (código del ERP que enlaza a páginas que se borran; hay que limpiarlos en la misma fase): `auth/guard/auth-guard.tsx` (mapa de proveedores), `layouts/auth-centered|auth-split|simple/layout.tsx` (enlace `paths.faqs`; el split además referencia `firebase.signIn`), `layouts/main/footer.tsx` (`about`, `contact`), `layouts/main/nav/mobile/nav-mobile-list.tsx` (`paths.components`), `sections/checkout/context/checkout-provider.tsx`.
 
 **Fase 1: seguridad urgente (1–2 días)** → puntos 1 a 4 y 6 de la sección 1. No depende de la limpieza y debe ir primero.
 
@@ -111,3 +123,12 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
 - El grafo no ve `import.meta.glob`, rutas armadas con strings ni recursos referenciados solo desde el menú dinámico de la BD.
 - Las rutas marcadas como demo son una clasificación mía (por nombre y por uso de `_mock`); conviene confirmarla con el menú real.
 - No ejecuté la aplicación ni el build completo; los números de bundle saldrán de la Fase 0.
+- El grafo cuenta como import las líneas comentadas (`// import …`), así que el resultado es un mínimo: es posible que sobre algo más.
+
+## 5. Decisión pendiente: la ruta `/`
+
+Hoy `/` muestra `HomeView`: una **landing pública de marketing** dentro de `MainLayout` (cabecera y pie de página de marketing), visible para cualquiera sin iniciar sesión. Mezcla contenido adaptado a ProERP con restos de Minimals ("For designer", "A dark theme…", "Right-to-left", "Interface Starter Kit", "Minimal Design System"). Son 12 secciones en `sections/home`, más `layouts/main` y las páginas que enlaza (`about-us`, `contact-us`, `faqs`, `pricing`, `payment`).
+
+- **Opción A: redirigir `/` a `/dashboard`.** Quien no tenga sesión cae en el login (lo hace `AuthGuard`). Es lo que la propia plantilla sugiere en un comentario de `routes/sections/index.tsx` (`<Navigate to={CONFIG.auth.redirectPath} />`). Borra el bloque de marketing completo.
+- **Opción B: conservar la landing** como página comercial de ProERP. Habría que quitar los textos de Minimals y decidir si se mantiene `pricing`, `faqs`, `about-us` y `contact-us`.
+- Si ya tienes el sitio comercial en otro lado (como `page-diquimec`), la opción A es la recomendable.

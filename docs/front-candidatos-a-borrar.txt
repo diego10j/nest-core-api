@@ -2,7 +2,7 @@
 # Generado por análisis estático del grafo de imports (src/ -> alias, import dinámico y lazy).
 # No detecta import.meta.glob ni rutas armadas con strings: revisar antes de borrar. Borrar por fases (ver plan).
 
-## A) Plantilla Minimals (870 archivos)
+## A) Plantilla Minimals (868 archivos)
 _mock/_map/cities.ts
 _mock/_map/countries.ts
 actions/blog.ts
@@ -638,8 +638,6 @@ sections/faqs/faqs-hero.tsx
 sections/faqs/faqs-list.tsx
 sections/faqs/view/faqs-view.tsx
 sections/faqs/view/index.ts
-sections/file-manager/file-manager-action-selected.tsx
-sections/file-manager/file-manager-file-item-slots.tsx
 sections/home/home-for-designer.tsx
 sections/home/home-highlight-features.tsx
 sections/home/home-hugepack-elements.tsx
@@ -874,7 +872,7 @@ utils/charts-util.ts
 utils/storage-available.ts
 vite-env.d.ts
 
-## B) Posibles huérfanos del ERP — NO son de la plantilla, confirmar uno a uno (41 archivos)
+## B) Posibles huérfanos del ERP — NO son de la plantilla, confirmar uno a uno (43 archivos)
 api/modules/inventario/alibaba.ts
 api/modules/sistema/calendar.ts
 api/modules/sri/comprobantes.ts
@@ -916,3 +914,5 @@ pages/whatsapp/utils/initial-conversation.tsx
 utils/format-time_old.ts
 utils/helper.ts
 utils/valida-identi.ts
+sections/file-manager/file-manager-action-selected.tsx
+sections/file-manager/file-manager-file-item-slots.tsx
