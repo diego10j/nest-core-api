@@ -11,7 +11,8 @@ import { DevolucionCobroTarjetaService } from './devolucion-cobro-tarjeta.servic
 // retiene sobre cada transacción: se resuelve su porcentaje VIGENTE desde con_vigenc_impues /
 // con_detall_impues (igual que el motor de retenciones de compras), no un valor fijo.
 const CASILLERO_RET_RENTA = '3440';
-const CASILLERO_RET_IVA = '729';
+// IVA 70 % (con_cabece_impues.ide_cncim 13). El '729' que había aquí no existe en el catálogo.
+const CASILLERO_RET_IVA = '723';
 // con_cabece_impues.ide_cnimp: 0 = IVA, 1 = renta.
 const IDE_CNIMP_IVA = 0;
 const IDE_CNIMP_RENTA = 1;
@@ -57,6 +58,8 @@ export interface SugerenciaIdentificacion {
     netoEstimadoTotal: number;
     /** Diferencia entre el valor detectado y el neto estimado de la sugerencia. */
     diferencia: number;
+    /** Solo si no hubo coincidencia: tasas usadas y neto estimado del pago más cercano (para calibrar). */
+    diagnostico?: string;
 }
 
 /**
@@ -130,12 +133,27 @@ export class IdentificarPagoService extends BaseService {
         }
         const netoEstimadoTotal = r2(pagos.reduce((s, p) => s + p.netoEstimado, 0));
 
+        let diagnostico: string | undefined;
+        if (pagos.length === 0) {
+            const cercano = [...conNeto].sort(
+                (a, b) => Math.abs(a.netoEstimado - valor) - Math.abs(b.netoEstimado - valor),
+            )[0];
+            const comision = tasas.factorComisionHistorico != null
+                ? `comisión+IVA ${r2(tasas.factorComisionHistorico * 100)}% (histórico)`
+                : `comisión ${tasas.porcentajeComision}%${tasas.ivaComision ? '+IVA' : ''} (configurada)`;
+            diagnostico = `${conNeto.length} pago(s) por acreditar. Tasas: ${comision}, ret. renta ${tasas.porcentajeRetRenta}%, ret. IVA ${tasas.porcentajeRetIva}%. `
+                + (cercano
+                    ? `Más cercano: ${cercano.secuencial_cccfa} (cobrado ${cercano.bruto}) con neto estimado ${cercano.netoEstimado}.`
+                    : 'No hay pagos por acreditar.');
+        }
+
         return {
             valorDetectado: valor,
             comprobante: ocr as unknown as Record<string, unknown>,
             pagos,
             netoEstimadoTotal,
             diferencia: r2(valor - netoEstimadoTotal),
+            diagnostico,
         };
     }
 
@@ -204,29 +222,41 @@ export class IdentificarPagoService extends BaseService {
 
         // ide_geper del procesador: define su tipo de contribuyente para el % de retención vigente.
         const ideGeperProcesador = row.ide_geper_comision_tecba != null ? Number(row.ide_geper_comision_tecba) : null;
-        const [porcentajeRetRenta, porcentajeRetIva] = await Promise.all([
+        const [tablaRenta, tablaIva, historicas] = await Promise.all([
             this.getPorcentajeRetencionVigente(CASILLERO_RET_RENTA, IDE_CNIMP_RENTA, ideGeperProcesador),
             this.getPorcentajeRetencionVigente(CASILLERO_RET_IVA, IDE_CNIMP_IVA, ideGeperProcesador),
+            this.getTasasHistoricas(ideTecba),
         ]);
 
         return {
             porcentajeComision: Number(row.porcentaje_comision) || 0,
             ivaComision: row.iva_comision === true || row.iva_comision === 'true',
-            factorComisionHistorico: await this.getFactorComisionHistorico(ideTecba),
-            porcentajeRetRenta,
-            porcentajeRetIva,
+            factorComisionHistorico: historicas.factorComision,
+            // Lo realmente retenido en la cuenta manda; la tabla de impuestos es el respaldo.
+            porcentajeRetRenta: historicas.pctRetRenta ?? tablaRenta,
+            porcentajeRetIva: historicas.pctRetIva ?? tablaIva,
         };
     }
 
     /**
-     * (comisión + IVA de comisión) / bruto que el procesador ya aplicó en las últimas acreditaciones
-     * vigentes de la cuenta: es la mediana de las liquidaciones reales. null si aún no hay ninguna.
+     * Tasas REALES que el procesador ya aplicó en las últimas acreditaciones vigentes de la cuenta:
+     * comisión + IVA sobre el bruto, retención de renta sobre la base y retención de IVA sobre el IVA
+     * de la factura. Cada una es la mediana de las liquidaciones reales; null si no hay datos. Manda
+     * sobre lo configurado / tablas de impuestos, que pueden no estar cargados o no reflejar el contrato.
      */
-    private async getFactorComisionHistorico(ideTecba: number): Promise<number | null> {
+    private async getTasasHistoricas(ideTecba: number): Promise<{
+        factorComision: number | null;
+        pctRetRenta: number | null;
+        pctRetIva: number | null;
+    }> {
         const q = new SelectQuery(`
-            SELECT (tf.valor_comision_tedtf + COALESCE(tf.valor_iva_comision_tedtf, 0)) / tf.valor_cccfa_tedtf AS factor
+            SELECT
+                (tf.valor_comision_tedtf + COALESCE(tf.valor_iva_comision_tedtf, 0)) / tf.valor_cccfa_tedtf AS factor_comision,
+                CASE WHEN cf.base_grabada_cccfa > 0 THEN tf.valor_ret_renta_tedtf / cf.base_grabada_cccfa END AS ratio_renta,
+                CASE WHEN cf.valor_iva_cccfa > 0 THEN tf.valor_ret_iva_tedtf / cf.valor_iva_cccfa END AS ratio_iva
             FROM tes_det_devol_cobro_tarjeta_fact tf
             INNER JOIN tes_cab_devol_cobro_tarjeta c ON c.ide_tecdt = tf.ide_tecdt
+            INNER JOIN cxc_cabece_factura cf ON cf.ide_cccfa = tf.ide_cccfa
             WHERE c.ide_tecba = $1
               AND c.anulado_tecdt = FALSE
               AND tf.valor_comision_tedtf IS NOT NULL
@@ -235,17 +265,27 @@ export class IdentificarPagoService extends BaseService {
             LIMIT 30
         `);
         q.addIntParam(1, ideTecba);
-        const rows = await this.dataSource.createSelectQuery(q);
-        const factores = (rows as any[])
-            .map((r) => Number(r.factor))
-            .filter((f) => Number.isFinite(f) && f > 0)
-            .sort((a, b) => a - b);
-        if (factores.length === 0) return null;
-        const mitad = Math.floor(factores.length / 2);
-        const mediana = factores.length % 2 ? factores[mitad] : (factores[mitad - 1] + factores[mitad]) / 2;
-        // Los montos liquidados vienen redondeados a centavos: se vuelve a la tarifa nominal (con IVA
-        // 15 %, a 2 decimales de porcentaje: 4,00 % y no 4,0019 %) para no arrastrar ese ruido.
-        return Math.round((mediana / 1.15) * 10000) / 10000 * 1.15;
+        const rows = (await this.dataSource.createSelectQuery(q)) as any[];
+
+        // Los montos liquidados vienen redondeados a centavos: la mediana se lleva a la tarifa nominal
+        // (a 2 decimales de porcentaje: 3,00 % y no 2,996 %) para no arrastrar ese ruido.
+        const medianaNominal = (campo: string): number | null => {
+            const v = rows.map((r) => Number(r[campo])).filter((n) => Number.isFinite(n) && n > 0).sort((x, y) => x - y);
+            if (v.length === 0) return null;
+            const m = Math.floor(v.length / 2);
+            const mediana = v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+            return Math.round(mediana * 10000) / 10000;
+        };
+        const comision = medianaNominal('factor_comision');
+        const renta = medianaNominal('ratio_renta');
+        const iva = medianaNominal('ratio_iva');
+        return {
+            // Comisión + IVA de comisión (15 %): se nominaliza sobre la comisión sola (4,00 % y no 4,0019 %).
+            factorComision: comision != null ? (Math.round((comision / 1.15) * 10000) / 10000) * 1.15 : null,
+            // Las retenciones son tarifas redondas (3 %, 70 %, 2,75 %...): múltiplos de 0,25 %.
+            pctRetRenta: renta != null ? Math.round(renta * 400) / 4 : null,
+            pctRetIva: iva != null ? Math.round(iva * 400) / 4 : null,
+        };
     }
 
     /**
@@ -275,7 +315,9 @@ export class IdentificarPagoService extends BaseService {
         q.addIntParam(2, ideCnimp);
         q.addParam(3, ideGeperProcesador);
         const row = await this.dataSource.createSingleQuery(q);
-        if (row?.porcentaje_cndim != null) return Number(row.porcentaje_cndim);
+        // Un detalle en 0 % (p. ej. IVA 70 % trae filas por tipo de contribuyente con 0,00) no es la
+        // tarifa: se trata como "no configurado" y se usa el valor por defecto del casillero.
+        if (row?.porcentaje_cndim != null && Number(row.porcentaje_cndim) > 0) return Number(row.porcentaje_cndim);
 
         // Fallback: valor por defecto del casillero.
         const qDefecto = new SelectQuery(`
