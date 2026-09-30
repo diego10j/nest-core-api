@@ -413,8 +413,20 @@ Estado: **implementado.** El banco puede cambiar el diseño de su PDF/Excel y el
 - **Probado**: PG embebido (conteos del tablero, listas por cuenta, que no haya campos de saldo, exclusión de cuentas sin
   movimientos) + revisión visual en arnés con datos simulados. **No probado** con la BD real ni con sesión iniciada.
 - **Comparar sin saldos**: el detalle de diferencias incluye el comparador lado a lado (`CompararTab` con `sinSaldos`;
-  `getComparacion?sinSaldos=true` no calcula ni envía ningún saldo). El comparador tiene el switch "Solo con diferencias"
-  (encendido por defecto en la vista de auxiliares) y es el mismo componente en todas las páginas.
+  `getComparacion?sinSaldos=true` no calcula ni envía ningún saldo). En esta vista el comparador abre con el filtro "Diferencias"
+  y es el mismo componente en todas las páginas.
 - **Validar nuevamente**: botón en el detalle de diferencias. Reutiliza `conciliarAutomatico` (solo reglas exactas,
   sin IA): tras registrar en el ERP los movimientos que faltaban, se vuelve a cruzar y los que ya coinciden salen de las
   listas; lo ambiguo o con monto distinto se queda para revisión manual. Deshabilitado si la conciliación está cerrada.
+- **Correcciones en el ERP desde Diferencias** (nuevo servicio `ajustes-erp-conciliacion.service.ts`):
+  - *Actualizar fecha* (`POST actualizarFechaErp {ideTecnc, ideTeclb}`): solo en cruces 1 a 1; pone en `tes_cab_libr_banc` la fecha
+    del banco (`fecha_trans_teclb`, y `fecha_venci_teclb` si era igual, y `fecha_concilia_teclb`). El asiento contable conserva su
+    fecha. Lista nueva "Con fecha distinta" (`fechasDistintas` en `getDiferencias`).
+  - *Registrar transacción* (`POST registrarMovimientoBanco` / `registrarMovimientosBanco` en lote): crea el movimiento en
+    `tes_cab_libr_banc` (egreso = `p_tes_nota_debito`, ingreso = `p_tes_nota_credito`, con la fecha/valor/documento del banco), genera
+    el asiento contra la cuenta contable del banco (egreso: DEBE cuenta elegida / HABER banco; ingreso al revés) con
+    `AsientosAutomaticosService.generarAsientoMovimientoBancario` y lo cruza de inmediato (MANUAL, regla `REGISTRO_BANCO`).
+    La cuenta contable es obligatoria y por defecto es la de la variable de sistema **`p_tes_cuenta_comision_bancaria`** (10163 = 6.3.01
+    Comisiones bancarias; agregada a `variables.json` para importarla). Si el asiento falla se deshace el movimiento.
+  - En el banco, dos movimientos con el mismo monto y fecha pero distinto documento ya **no** se marcan "¿Repetido?" (cada comisión
+    trae su propia referencia); solo si coincide también el documento.

@@ -19,6 +19,7 @@ import { ChequesService } from './cheques/cheques.service';
 import { ComprobanteBancoSaveService } from './comprobante-banco/comprobante-banco-save.service';
 import { ComprobanteBancoController } from './comprobante-banco/comprobante-banco.controller';
 import { ComprobanteBancoService } from './comprobante-banco/comprobante-banco.service';
+import { AjustesErpConciliacionService } from './conciliacion-bancaria/ajustes-erp-conciliacion.service';
 import { CargaEstadosCuentaService } from './conciliacion-bancaria/carga-estados-cuenta.service';
 import { ComparacionConciliacionService } from './conciliacion-bancaria/comparacion-conciliacion.service';
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria/conciliacion-bancaria-save.service';
@@ -92,6 +93,7 @@ import { TesoreriaService } from './tesoreria.service';
         ConciliacionBancariaSaveService,
         ComparacionConciliacionService,
         DiferenciasConciliacionService,
+        AjustesErpConciliacionService,
         CargaEstadosCuentaService,
         EstadoCuentaParserService,
         CoreService,

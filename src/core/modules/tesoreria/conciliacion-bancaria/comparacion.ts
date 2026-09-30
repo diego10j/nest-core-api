@@ -129,14 +129,19 @@ export function construirComparacion(entrada: EntradaComparacion): ResultadoComp
         g.erp.forEach((id) => erpCruzado.add(id));
     });
 
-    // Repetidos por lado (fecha + monto), para detectar posibles duplicados
-    const repeticiones = (items: Array<{ fecha: string; valor: number }>) => {
+    // Repetidos por lado, para detectar posibles duplicados. En el ERP: misma fecha y monto. En el banco (documento
+    // oficial) cada movimiento trae su propio número de referencia, así que dos con el mismo monto y fecha pero con
+    // referencia distinta NO son repetidos (p. ej. las comisiones de 0,36 de cada transferencia); solo cuenta como
+    // posible duplicado si también coincide el documento.
+    const repeticiones = <T extends { fecha: string; valor: number }>(items: T[], clave: (i: T) => string) => {
         const mapa = new Map<string, number>();
-        items.forEach((i) => mapa.set(`${i.fecha}|${cents(i.valor)}`, (mapa.get(`${i.fecha}|${cents(i.valor)}`) ?? 0) + 1));
+        items.forEach((i) => mapa.set(clave(i), (mapa.get(clave(i)) ?? 0) + 1));
         return mapa;
     };
-    const repBanco = repeticiones(entrada.banco);
-    const repErp = repeticiones(entrada.erp);
+    const claveBanco = (b: CmpBanco) => `${b.fecha}|${cents(b.valor)}|${(b.documento ?? '').trim()}`;
+    const claveErp = (e: CmpErp) => `${e.fecha}|${cents(e.valor)}`;
+    const repBanco = repeticiones(entrada.banco, claveBanco);
+    const repErp = repeticiones(entrada.erp, claveErp);
 
     const fueraDelMes = (fecha: string) => fecha < entrada.desde || fecha > entrada.hasta;
     const bloques: BloqueComparacion[] = [];
@@ -203,8 +208,8 @@ export function construirComparacion(entrada: EntradaComparacion): ResultadoComp
         } else {
             alertas.push(alertaRoja('BANCO_SIN_ERP', b.estado === 'FALTANTE' ? `Marcado como falta en el ERP${b.nota ? `: ${b.nota}` : ''}` : 'Falta en el ERP'));
         }
-        if ((repBanco.get(`${b.fecha}|${cents(b.valor)}`) ?? 0) > 1) {
-            alertas.push(alertaAmarilla('DUPLICADO', 'Posible duplicado: mismo monto y fecha aparecen varias veces en el banco'));
+        if ((repBanco.get(claveBanco(b)) ?? 0) > 1) {
+            alertas.push(alertaAmarilla('DUPLICADO', 'Posible duplicado: mismo documento, monto y fecha aparecen varias veces en el banco'));
         }
         if (entrada.saltosBanco.has(b.ide_tecmv)) alertas.push(alertaAmarilla('SALTO_SALDO', 'El saldo del banco no encadena en este movimiento'));
         bloques.push({
@@ -221,7 +226,7 @@ export function construirComparacion(entrada: EntradaComparacion): ResultadoComp
         if (!e.en_periodo) { erpFueraDeMesSinCruce += 1; continue; }
         const alertas: Alerta[] = [alertaRoja('ERP_SIN_BANCO', 'Falta en el banco')];
         if (e.conciliado_legado) alertas.push(alertaAmarilla('LEGADO', 'Marcado como conciliado con el flujo antiguo, pero sin cruce en esta conciliación'));
-        if ((repErp.get(`${e.fecha}|${cents(e.valor)}`) ?? 0) > 1) {
+        if ((repErp.get(claveErp(e)) ?? 0) > 1) {
             alertas.push(alertaAmarilla('DUPLICADO', 'Posible duplicado: mismo monto y fecha aparecen varias veces en el ERP'));
         }
         bloques.push({

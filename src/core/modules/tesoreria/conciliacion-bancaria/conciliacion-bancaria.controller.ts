@@ -12,15 +12,16 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 
+import { AjustesErpConciliacionService } from './ajustes-erp-conciliacion.service';
 import { CargaEstadosCuentaService } from './carga-estados-cuenta.service';
 import { ComparacionConciliacionService } from './comparacion-conciliacion.service';
 import { ConciliacionBancariaSaveService } from './conciliacion-bancaria-save.service';
 import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
 import { DiferenciasConciliacionService } from './diferencias-conciliacion.service';
 import {
-    ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
+    ActualizarFechaErpDto, ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
     GetArchivosCargadosDto, GetComparacionDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
-    MarcarMovimientosDto, SugerirDto,
+    MarcarMovimientosDto, RegistrarMovimientoBancoDto, RegistrarMovimientosBancoDto, SugerirDto,
 } from './dto/conciliacion-bancaria.dto';
 
 const DIR_CONCILIACIONES = path.join(envs.pathDrive, 'tesoreria', 'conciliaciones');
@@ -53,6 +54,7 @@ export class ConciliacionBancariaController {
         private readonly comparacionService: ComparacionConciliacionService,
         private readonly cargaService: CargaEstadosCuentaService,
         private readonly diferenciasService: DiferenciasConciliacionService,
+        private readonly ajustesErpService: AjustesErpConciliacionService,
     ) { }
 
     // ─── CONSULTAS ───────────────────────────────────────────────────────────
@@ -225,6 +227,24 @@ export class ConciliacionBancariaController {
     @ApiOperation({ summary: 'Reabre una conciliación cerrada' })
     reabrir(@AppHeaders() h: HeaderParamsDto, @Body() dto: IdConciliacionDto) {
         return this.saveService.reabrir({ ...h, ...dto });
+    }
+
+    @Post('actualizarFechaErp')
+    @ApiOperation({ summary: 'Iguala la fecha de un movimiento del ERP (cruce 1 a 1) a la fecha que tiene en el banco' })
+    actualizarFechaErp(@AppHeaders() h: HeaderParamsDto, @Body() dto: ActualizarFechaErpDto) {
+        return this.ajustesErpService.actualizarFechaErp({ ...h, ...dto });
+    }
+
+    @Post('registrarMovimientoBanco')
+    @ApiOperation({ summary: 'Registra en el libro de bancos (con asiento contable) un movimiento del banco que faltaba en el ERP y lo concilia' })
+    registrarMovimientoBanco(@AppHeaders() h: HeaderParamsDto, @Body() dto: RegistrarMovimientoBancoDto) {
+        return this.ajustesErpService.registrarMovimientoBanco({ ...h, ...dto });
+    }
+
+    @Post('registrarMovimientosBanco')
+    @ApiOperation({ summary: 'Registra varios movimientos del banco (mismo asiento contra la misma cuenta) y los concilia' })
+    registrarMovimientosBanco(@AppHeaders() h: HeaderParamsDto, @Body() dto: RegistrarMovimientosBancoDto) {
+        return this.ajustesErpService.registrarMovimientosBanco({ ...h, ...dto });
     }
 
     @Post('anular')

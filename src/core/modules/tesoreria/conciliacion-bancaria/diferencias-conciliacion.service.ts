@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 
+import { AjustesErpConciliacionService } from './ajustes-erp-conciliacion.service';
 import { primerDiaMes, ultimoDiaMes } from './carga-util';
 import { CmpBanco, CmpErp, CmpMatch, construirComparacion } from './comparacion';
 import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
 import { GetResumenMensualDto } from './dto/conciliacion-bancaria.dto';
+import { diasEntre } from './matching';
 
 /**
  * "Diferencias en Conciliación": la vista para AUXILIARES que solo revisan qué movimientos falta identificar
@@ -18,6 +20,7 @@ export class DiferenciasConciliacionService {
     constructor(
         private readonly dataSource: DataSourceService,
         private readonly consultas: ConciliacionBancariaService,
+        private readonly ajustes: AjustesErpConciliacionService,
     ) { }
 
     /**
@@ -178,6 +181,26 @@ export class DiferenciasConciliacionService {
                 motivos: b.alertas.filter((a) => a.codigo === 'DIFERENCIA' || a.codigo === 'SIGNO').map((a) => a.texto),
             }));
 
+        // Cruces 1 a 1 cuyas fechas no coinciden (el monto sí): se pueden corregir igualando la fecha del ERP a la del banco
+        const fechasDistintas = bloques
+            .filter((b) => b.tipo === 'CRUCE' && tieneCodigo(b, 'FECHAS') && !tieneCodigo(b, 'DIFERENCIA') && !tieneCodigo(b, 'SIGNO')
+                && b.banco.length === 1 && b.erp.length === 1 && b.banco[0].fecha !== b.erp[0].fecha)
+            .map((b) => ({
+                ide_tecmv: b.banco[0].ide_tecmv,
+                ide_teclb: b.erp[0].ide_teclb,
+                fechaBanco: b.banco[0].fecha,
+                fechaErp: b.erp[0].fecha,
+                dias: Math.abs(diasEntre(b.banco[0].fecha, b.erp[0].fecha)),
+                documento: b.banco[0].documento,
+                descripcion: b.banco[0].descripcion,
+                numero: b.erp[0].numero,
+                beneficiario: b.erp[0].beneficiario,
+                valor: b.banco[0].valor,
+                otroMes: !b.erp[0].en_periodo,
+            }))
+            .sort((x, y) => x.fechaBanco.localeCompare(y.fechaBanco));
+        const cuentaComision = await this.ajustes.getCuentaComision(headers.ideEmpr);
+
         return {
             cabecera: {
                 ide_tecnc: cabecera.ide_tecnc,
@@ -191,6 +214,8 @@ export class DiferenciasConciliacionService {
                 tolerancia_dias: cabecera.tolerancia_dias_tecnc,
                 num_archivos: Number(archivos[0].n),
                 totalMovimientosBanco: banco.length,
+                /** Cuenta contable de gasto sugerida al registrar un movimiento (variable p_tes_cuenta_comision_bancaria). */
+                cuentaComision,
                 /** Hay al menos un cruce: alguien ya corrió el proceso; antes de eso "todo falta" no significa nada. */
                 procesada: matches.length > 0,
             },
@@ -198,12 +223,14 @@ export class DiferenciasConciliacionService {
                 faltanEnErp: faltanEnErp.length,
                 faltanEnBanco: faltanEnBanco.length,
                 conDiferencia: conDiferencia.length,
+                fechasDistintas: fechasDistintas.length,
                 ignorados: contadores.ignorados,
                 erpFueraDeMesSinCruce: contadores.erpFueraDeMesSinCruce,
             },
             faltanEnErp,
             faltanEnBanco,
             conDiferencia,
+            fechasDistintas,
         };
     }
 }

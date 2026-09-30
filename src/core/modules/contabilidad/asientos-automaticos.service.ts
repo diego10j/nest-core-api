@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BaseService } from 'src/common/base-service';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
@@ -1089,6 +1089,68 @@ export class AsientosAutomaticosService extends BaseService {
                 advertencias: [...advertencias, `Error: ${error instanceof Error ? error.message : String(error)}`],
             };
         }
+    }
+
+    /**
+     * Asiento de un movimiento de libro de bancos contra UNA cuenta contable elegida (típico: una comisión o un
+     * cargo que el banco hizo y no estaba registrado). Siempre cuadra contra la cuenta contable del banco:
+     *
+     *   EGRESO  (banco nos debita)      DEBE: cuenta elegida      HABER: banco
+     *   INGRESO (banco nos acredita)    DEBE: banco               HABER: cuenta elegida
+     *
+     * A diferencia de los otros asientos automáticos de este servicio NO es tolerante: si falta la cuenta contable
+     * del banco o el asiento no se puede generar (p. ej. no hay periodo contable para la fecha) lanza el error, para
+     * que quien lo llama pueda deshacer el movimiento que acaba de crear. Vincula ide_cnccc en tes_cab_libr_banc.
+     */
+    async generarAsientoMovimientoBancario(dtoIn: {
+        ideTeclb: number;
+        ideTecba: number;
+        ideCndpcContra: number;
+        fecha: string;
+        valor: number;
+        esEgreso: boolean;
+        observacion: string;
+        referencia?: string;
+    } & HeaderParamsDto): Promise<{ ide_cnccc: number; numero_cnccc: string }> {
+        const ctaBanco = await this.dataSource.pool.query(
+            'SELECT ide_cndpc FROM tes_cuenta_banco WHERE ide_tecba = $1 LIMIT 1',
+            [dtoIn.ideTecba],
+        );
+        const ideCndpcBanco = ctaBanco.rows[0]?.ide_cndpc ?? null;
+        if (!ideCndpcBanco) {
+            throw new BadRequestException('La cuenta bancaria no tiene cuenta contable configurada (tes_cuenta_banco.ide_cndpc).');
+        }
+        const valor = Number(Number(dtoIn.valor).toFixed(2));
+        if (!(valor > 0)) throw new BadRequestException('El valor del movimiento debe ser mayor a 0');
+
+        const referencia = (dtoIn.referencia ?? 'TES_CAB_LIBR_BANC').substring(0, 100);
+        const lineaContra = {
+            ide_cnlap: dtoIn.esEgreso ? this.lugarDebe : this.lugarHaber,
+            ide_cndpc: dtoIn.ideCndpcContra, valor_cndcc: valor,
+            observacion_cndcc: dtoIn.observacion.substring(0, 190), referencia_cndcc: referencia,
+        };
+        const lineaBanco = {
+            ide_cnlap: dtoIn.esEgreso ? this.lugarHaber : this.lugarDebe,
+            ide_cndpc: Number(ideCndpcBanco), valor_cndcc: valor,
+            observacion_cndcc: dtoIn.observacion.substring(0, 190), referencia_cndcc: 'TES_CUENTA_BANCO',
+        };
+        const saveDto = {
+            isUpdate: false,
+            data: {
+                ide_cntcm: IDE_CNTCM_DIARIO,
+                fecha_trans_cnccc: dtoIn.fecha,
+                observacion_cnccc: `[AUTO-TES] ${dtoIn.observacion}`.substring(0, 190),
+                automatico_cnccc: true,
+            },
+            detalles: dtoIn.esEgreso ? [lineaContra, lineaBanco] : [lineaBanco, lineaContra],
+        } as SaveComprobanteDto;
+
+        const result = await this.comprobanteService.saveAutomatico({ ...dtoIn, ...saveDto } as any);
+        await this.dataSource.pool.query(
+            'UPDATE tes_cab_libr_banc SET ide_cnccc = $1 WHERE ide_teclb = $2',
+            [result.ide_cnccc, dtoIn.ideTeclb],
+        );
+        return { ide_cnccc: result.ide_cnccc, numero_cnccc: result.numero_cnccc };
     }
 
     /**

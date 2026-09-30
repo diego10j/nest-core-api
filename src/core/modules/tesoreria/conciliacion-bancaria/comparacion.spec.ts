@@ -85,10 +85,23 @@ describe('construirComparacion', () => {
 
     it('detecta posibles duplicados y el conciliado del flujo antiguo sin cruce', () => {
         const r = construirComparacion(entrada({
-            banco: [banco(1, '2026-08-05', 50), banco(2, '2026-08-05', 50)], erp: [erp(10, '2026-08-07', 20, { conciliado_legado: true })],
+            banco: [banco(1, '2026-08-05', 50, { documento: 'D1' }), banco(2, '2026-08-05', 50, { documento: 'D1' })],
+            erp: [erp(10, '2026-08-07', 20, { conciliado_legado: true })],
         }));
         expect(r.bloques.filter((b) => b.tipo === 'SOLO_BANCO').every((b) => codigos(b).includes('DUPLICADO'))).toBe(true);
         expect(codigos(r.bloques.find((b) => b.tipo === 'SOLO_ERP')!)).toContain('LEGADO');
+    });
+
+    it('en el banco, mismo monto y fecha con distinta referencia NO es repetido (comisiones por transferencia)', () => {
+        const r = construirComparacion(entrada({
+            banco: [
+                banco(1, '2026-06-16', -0.36, { documento: '0001590830', descripcion: '16642068-COSTO OPER CASH' }),
+                banco(2, '2026-06-16', -0.36, { documento: '0001590401', descripcion: '16642088-COSTO OPER CASH' }),
+                banco(3, '2026-06-16', -0.05, { documento: '0001590884' }), banco(4, '2026-06-16', -0.05, { documento: '0001591013' }),
+            ],
+            desde: '2026-06-01', hasta: '2026-06-30',
+        }));
+        expect(r.bloques.some((b) => codigos(b).includes('DUPLICADO'))).toBe(false);
     });
 
     it('un movimiento del ERP de otro mes sin cruce no es faltante: solo se cuenta', () => {

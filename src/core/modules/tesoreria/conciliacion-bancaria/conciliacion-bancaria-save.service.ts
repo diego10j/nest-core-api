@@ -390,7 +390,7 @@ Responde SOLO un JSON: {"sugerencias":[{"idsBanco":[number],"idsErp":[number],"c
      * Inserta un cruce (grupo) y sincroniza los dos lados. Filas del match = max(N, M) para que cada
      * movimiento aparezca al menos una vez sin repetir ningún par (banco[i mod N], erp[i mod M]).
      */
-    private async crearGrupo(
+    async crearGrupo(
         client: Pick<PoolClient, 'query'>,
         cabecera: ConciliacionCabecera,
         idsBanco: number[],
@@ -439,7 +439,7 @@ Responde SOLO un JSON: {"sugerencias":[{"idsBanco":[number],"idsErp":[number],"c
     }
 
     /** Foto de los saldos del ERP en la cabecera (para el listado/tablero sin recalcular cada fila). */
-    private async sincronizarSnapshot(client: Pick<PoolClient, 'query'>, cabecera: ConciliacionCabecera) {
+    async sincronizarSnapshot(client: Pick<PoolClient, 'query'>, cabecera: ConciliacionCabecera) {
         const [inicial, final] = await Promise.all([
             this.consultas.getSaldoErp(cabecera.ide_tecba, diaAnterior(cabecera.fecha_desde_tecnc)),
             this.consultas.getSaldoErp(cabecera.ide_tecba, cabecera.fecha_hasta_tecnc),

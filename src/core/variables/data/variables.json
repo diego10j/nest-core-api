@@ -1506,6 +1506,16 @@
         },
         {
             "ide_modu": 7,
+            "nom_para": "p_tes_cuenta_comision_bancaria",
+            "descripcion_para": "Cuenta contable de gasto por defecto (6.3.01 Comisiones bancarias) al registrar desde la conciliacion bancaria un movimiento que el banco cobro y no esta en el libro de bancos ",
+            "valor_para": "10163",
+            "tabla_para": "con_det_plan_cuen",
+            "campo_codigo_para": "ide_cndpc",
+            "campo_nombre_para": "nombre_cndpc",
+            "activo_para": true
+        },
+        {
+            "ide_modu": 7,
             "nom_para": "p_tes_tip_tran_reversar_mas",
             "descripcion_para": "Indica que se realiza una transaccion inversa (+) ",
             "valor_para": "10",

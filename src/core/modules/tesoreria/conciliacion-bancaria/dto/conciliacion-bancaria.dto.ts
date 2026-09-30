@@ -114,6 +114,39 @@ export class CargarArchivoDto {
     validarConIa?: boolean;
 }
 
+export class ActualizarFechaErpDto extends IdConciliacionDto {
+    /** Movimiento del libro de bancos (ERP) cuya fecha se iguala a la del banco. */
+    @IsInt()
+    ideTeclb: number;
+}
+
+export class RegistrarMovimientoBancoDto extends IdConciliacionDto {
+    /** Movimiento del estado de cuenta que falta en el ERP. */
+    @IsInt()
+    ideTecmv: number;
+
+    /** Cuenta contable (con_det_plan_cuen) contra la que se hace el asiento: obligatoria. */
+    @IsInt()
+    ideCndpc: number;
+
+    /** Detalle para el libro y el asiento (por defecto, la descripción del banco). */
+    @IsOptional() @IsString() @MaxLength(180)
+    observacion?: string;
+}
+
+/** Registrar varios movimientos del banco de una vez (p. ej. las comisiones de cada transferencia) contra la misma cuenta. */
+export class RegistrarMovimientosBancoDto extends IdConciliacionDto {
+    @IsArray() @ArrayNotEmpty() @ArrayMaxSize(200) @IsInt({ each: true })
+    ideTecmvs: number[];
+
+    @IsInt()
+    ideCndpc: number;
+
+    /** Si se omite, cada movimiento usa su propia descripción del banco. */
+    @IsOptional() @IsString() @MaxLength(180)
+    observacion?: string;
+}
+
 export class AnularConciliacionDto extends IdConciliacionDto {
     /** Motivo de la anulación: queda en la observación de la conciliación. */
     @IsString() @MinLength(5) @MaxLength(300)
