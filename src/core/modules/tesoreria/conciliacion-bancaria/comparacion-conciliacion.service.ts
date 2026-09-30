@@ -22,7 +22,11 @@ export class ComparacionConciliacionService {
         private readonly consultas: ConciliacionBancariaService,
     ) { }
 
-    async getComparacion(ideTecnc: number, headers: HeaderParamsDto) {
+    /**
+     * `sinSaldos`: versión para auxiliares (página de diferencias). No se consulta ni se calcula ningún saldo:
+     * ni el del ERP, ni el del archivo, ni la diferencia acumulada, ni los saltos de la cadena de saldos.
+     */
+    async getComparacion(ideTecnc: number, headers: HeaderParamsDto, sinSaldos = false) {
         const cabecera = await this.consultas.getCabecera(ideTecnc, headers);
 
         const [{ rows: filasBanco }, { rows: filasMatch }, filasErp, saldoInicialErp] = await Promise.all([
@@ -40,7 +44,7 @@ export class ComparacionConciliacionService {
                 [ideTecnc],
             ),
             this.consultas.consultarErp(cabecera, false),
-            this.consultas.getSaldoErp(cabecera.ide_tecba, diaAnterior(cabecera.fecha_desde_tecnc)),
+            sinSaldos ? Promise.resolve(0) : this.consultas.getSaldoErp(cabecera.ide_tecba, diaAnterior(cabecera.fecha_desde_tecnc)),
         ]);
 
         const banco: CmpBanco[] = filasBanco.map((r) => ({
@@ -50,7 +54,7 @@ export class ComparacionConciliacionService {
             descripcion: r.descripcion ?? '',
             referencia: r.referencia ?? '',
             valor: Number(r.monto) * Number(r.signo),
-            saldo: r.saldo === null ? null : Number(r.saldo),
+            saldo: sinSaldos || r.saldo === null ? null : Number(r.saldo),
             estado: r.estado,
             nota: r.nota,
         }));
@@ -81,7 +85,7 @@ export class ComparacionConciliacionService {
         const saltosBanco = new Set<number>();
         const movs = banco.map((b) => ({ ...b, monto: Math.abs(b.valor), signo: (b.valor >= 0 ? 1 : -1) as 1 | -1, oficina: '' })) as unknown as MovimientoBanco[];
         const saldos = calcularSaldosCadena(movs);
-        if (saldos.inicial !== null && !saldos.consistente) {
+        if (!sinSaldos && saldos.inicial !== null && !saldos.consistente) {
             detectarSaltosDeSaldo(movs, saldos.inicial).forEach((s) => saltosBanco.add(banco[s.indice].ide_tecmv));
         }
 
@@ -89,7 +93,7 @@ export class ComparacionConciliacionService {
             desde: cabecera.fecha_desde_tecnc,
             hasta: cabecera.fecha_hasta_tecnc,
             toleranciaDias: cabecera.tolerancia_dias_tecnc,
-            saldoInicialBanco: cabecera.saldo_inicial_banco_tecnc,
+            saldoInicialBanco: sinSaldos ? null : cabecera.saldo_inicial_banco_tecnc,
             saldoInicialErp,
             banco, erp, matches, saltosBanco,
         });

@@ -183,6 +183,8 @@ export class DiferenciasConciliacionService {
                 ide_tecnc: cabecera.ide_tecnc,
                 nombre_tecba: cabecera.nombre_tecba,
                 nombre_teban: cabecera.nombre_teban,
+                foto_teban: cabecera.foto_teban,
+                color_teban: cabecera.color_teban,
                 anio: cabecera.anio_tecnc,
                 mes: cabecera.mes_tecnc,
                 estado: cabecera.estado_tecnc,

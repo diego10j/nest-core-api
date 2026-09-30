@@ -19,7 +19,7 @@ import { ConciliacionBancariaService } from './conciliacion-bancaria.service';
 import { DiferenciasConciliacionService } from './diferencias-conciliacion.service';
 import {
     ActualizarToleranciaDto, AnularConciliacionDto, CargarArchivoDto, CrearConciliacionDto, EditarConciliacionDto, CerrarConciliacionDto, ConciliarManualDto, DesconciliarDto,
-    GetArchivosCargadosDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
+    GetArchivosCargadosDto, GetComparacionDto, GetConciliacionesDto, GetMovimientosBancoDto, GetMovimientosErpDto, GetResumenMensualDto, IdConciliacionDto,
     MarcarMovimientosDto, SugerirDto,
 } from './dto/conciliacion-bancaria.dto';
 
@@ -113,8 +113,8 @@ export class ConciliacionBancariaController {
 
     @Get('getComparacion')
     @ApiOperation({ summary: 'Comparación banco ↔ ERP (solo lectura): bloques alineados con faltantes en rojo y advertencias en amarillo' })
-    getComparacion(@AppHeaders() h: HeaderParamsDto, @Query() dto: IdConciliacionDto) {
-        return this.comparacionService.getComparacion(dto.ideTecnc, h);
+    getComparacion(@AppHeaders() h: HeaderParamsDto, @Query() dto: GetComparacionDto) {
+        return this.comparacionService.getComparacion(dto.ideTecnc, h, !!dto.sinSaldos);
     }
 
     @Get('descargarArchivo/:ideTecar')

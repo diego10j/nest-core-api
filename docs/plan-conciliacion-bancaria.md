@@ -412,3 +412,9 @@ Estado: **implementado.** El banco puede cambiar el diseño de su PDF/Excel y el
   opción de menú nueva *Diferencias en Conciliación*.
 - **Probado**: PG embebido (conteos del tablero, listas por cuenta, que no haya campos de saldo, exclusión de cuentas sin
   movimientos) + revisión visual en arnés con datos simulados. **No probado** con la BD real ni con sesión iniciada.
+- **Comparar sin saldos**: el detalle de diferencias incluye el comparador lado a lado (`CompararTab` con `sinSaldos`;
+  `getComparacion?sinSaldos=true` no calcula ni envía ningún saldo). El comparador tiene el switch "Solo con diferencias"
+  (encendido por defecto en la vista de auxiliares) y es el mismo componente en todas las páginas.
+- **Validar nuevamente**: botón en el detalle de diferencias. Reutiliza `conciliarAutomatico` (solo reglas exactas,
+  sin IA): tras registrar en el ERP los movimientos que faltaban, se vuelve a cruzar y los que ya coinciden salen de las
+  listas; lo ambiguo o con monto distinto se queda para revisión manual. Deshabilitado si la conciliación está cerrada.

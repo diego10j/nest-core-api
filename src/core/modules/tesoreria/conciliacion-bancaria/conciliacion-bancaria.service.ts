@@ -28,6 +28,8 @@ export interface ConciliacionCabecera {
     observacion_tecnc: string | null;
     nombre_tecba: string;
     nombre_teban: string;
+    foto_teban: string | null;
+    color_teban: string | null;
 }
 
 /** Tablas de la conciliación + libro de bancos: consultas de LECTURA (las escrituras están en el servicio -save). */
@@ -59,7 +61,7 @@ export class ConciliacionBancariaService extends BaseService {
                     n.fecha_desde_tecnc::text AS fecha_desde_tecnc, n.fecha_hasta_tecnc::text AS fecha_hasta_tecnc,
                     n.fecha_ultimo_mov_tecnc::text AS fecha_ultimo_mov_tecnc,
                     n.saldo_inicial_banco_tecnc, n.saldo_final_banco_tecnc, n.tolerancia_dias_tecnc,
-                    n.estado_tecnc, n.observacion_tecnc, a.nombre_tecba, b.nombre_teban
+                    n.estado_tecnc, n.observacion_tecnc, a.nombre_tecba, b.nombre_teban, b.foto_teban, b.color_teban
              FROM tes_conciliacion n
              INNER JOIN tes_cuenta_banco a ON a.ide_tecba = n.ide_tecba
              INNER JOIN tes_banco b ON b.ide_teban = a.ide_teban

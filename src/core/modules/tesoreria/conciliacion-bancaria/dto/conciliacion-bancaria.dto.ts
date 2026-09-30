@@ -39,6 +39,12 @@ export class IdConciliacionDto {
     ideTecnc: number;
 }
 
+export class GetComparacionDto extends IdConciliacionDto {
+    /** true = sin ningún saldo (ni del banco, ni del ERP, ni diferencia acumulada): vista para auxiliares. */
+    @IsOptional() @Transform(aBooleano) @IsBoolean()
+    sinSaldos?: boolean;
+}
+
 /** Listado paginado por el motor genérico de tablas (rows/columns/pagination), como el resto de Tesorería. */
 export class GetMovimientosBancoDto extends QueryOptionsDto {
     @IsInt()
