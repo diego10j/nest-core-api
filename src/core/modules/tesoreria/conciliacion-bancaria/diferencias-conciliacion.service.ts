@@ -199,7 +199,7 @@ export class DiferenciasConciliacionService {
                 otroMes: !b.erp[0].en_periodo,
             }))
             .sort((x, y) => x.fechaBanco.localeCompare(y.fechaBanco));
-        const cuentaComision = await this.ajustes.getCuentaComision(headers.ideEmpr);
+        const cuentasSugeridas = await this.ajustes.getCuentasSugeridas(headers.ideEmpr);
 
         return {
             cabecera: {
@@ -214,8 +214,9 @@ export class DiferenciasConciliacionService {
                 tolerancia_dias: cabecera.tolerancia_dias_tecnc,
                 num_archivos: Number(archivos[0].n),
                 totalMovimientosBanco: banco.length,
-                /** Cuenta contable de gasto sugerida al registrar un movimiento (variable p_tes_cuenta_comision_bancaria). */
-                cuentaComision,
+                /** Cuentas contables sugeridas al registrar un movimiento: comisiones si el banco debitó, otros ingresos si acreditó. */
+                cuentaComision: cuentasSugeridas.comision,
+                cuentaOtrosIngresos: cuentasSugeridas.otrosIngresos,
                 /** Hay al menos un cruce: alguien ya corrió el proceso; antes de eso "todo falta" no significa nada. */
                 procesada: matches.length > 0,
             },

@@ -430,3 +430,9 @@ Estado: **implementado.** El banco puede cambiar el diseño de su PDF/Excel y el
     Comisiones bancarias; agregada a `variables.json` para importarla). Si el asiento falla se deshace el movimiento.
   - En el banco, dos movimientos con el mismo monto y fecha pero distinto documento ya **no** se marcan "¿Repetido?" (cada comisión
     trae su propia referencia); solo si coincide también el documento.
+- **Cuenta contable sugerida según el signo**: egreso (el banco debitó) → `p_tes_cuenta_comision_bancaria` (10163, 6.3.01 Comisiones
+  bancarias); ingreso (el banco acreditó) → `p_tes_cuenta_otros_ingresos` (10106, 4.2.01 Otros ingresos). Ambas en `variables.json` para
+  importar. Un lote no puede mezclar ingresos y egresos. La observación (máx. 180 caracteres, con contador) por defecto es la
+  descripción del banco y se puede editar.
+- **Archivos del banco cargados**: cada archivo se muestra como tarjeta (tipo PDF/XLSX/CSV, banco, período que cubre, quién y cuándo
+  lo cargó, tamaño) con un botón «Descargar» con texto; la tabla de "Archivos cargados" tiene la columna «Archivo original» con el mismo botón.

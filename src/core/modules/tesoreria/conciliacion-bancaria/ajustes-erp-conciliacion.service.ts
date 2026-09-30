@@ -29,14 +29,26 @@ export class AjustesErpConciliacionService extends BaseService {
     ) {
         super();
         this.listo = this.core
-            .getVariables(['p_tes_estado_lib_banco_normal', 'p_tes_nota_debito', 'p_tes_nota_credito', 'p_tes_cuenta_comision_bancaria'])
+            .getVariables(['p_tes_estado_lib_banco_normal', 'p_tes_nota_debito', 'p_tes_nota_credito', 'p_tes_cuenta_comision_bancaria', 'p_tes_cuenta_otros_ingresos'])
             .then((result) => { this.variables = result; });
     }
 
-    /** Cuenta contable de gasto por defecto (variable de sistema p_tes_cuenta_comision_bancaria), o null si no está configurada/existe. */
-    async getCuentaComision(ideEmpr: number) {
+    /**
+     * Cuentas contables sugeridas al registrar un movimiento del banco: si el banco DEBITÓ, la de comisiones bancarias
+     * (p_tes_cuenta_comision_bancaria); si ACREDITÓ, la de otros ingresos (p_tes_cuenta_otros_ingresos). Cada una es null si la
+     * variable no está configurada o la cuenta no existe.
+     */
+    async getCuentasSugeridas(ideEmpr: number) {
+        const [comision, otrosIngresos] = await Promise.all([
+            this.getCuentaVariable('p_tes_cuenta_comision_bancaria', ideEmpr),
+            this.getCuentaVariable('p_tes_cuenta_otros_ingresos', ideEmpr),
+        ]);
+        return { comision, otrosIngresos };
+    }
+
+    private async getCuentaVariable(variable: string, ideEmpr: number) {
         await this.listo;
-        const ide = Number(this.variables.get('p_tes_cuenta_comision_bancaria'));
+        const ide = Number(this.variables.get(variable));
         if (!ide) return null;
         const { rows } = await this.dataSource.pool.query(
             'SELECT ide_cndpc, codig_recur_cndpc, nombre_cndpc FROM con_det_plan_cuen WHERE ide_cndpc = $1 AND ide_empr = $2',
