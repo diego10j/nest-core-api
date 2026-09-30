@@ -1371,6 +1371,14 @@ export class ProductosService extends BaseService {
                  WHERE cp.ide_inarti = iart.ide_inarti LIMIT 1) AS ultima_fecha_compra,
                 (SELECT cp.precio_indci FROM compras_periodo cp 
                  WHERE cp.ide_inarti = iart.ide_inarti LIMIT 1) AS ultimo_precio_compra,
+                -- Costo promedio ponderado móvil (kardex PPMP) vigente hoy, por sucursal: es el costo real del stock.
+                -- ultimo_precio_compra es solo el precio de la última factura de compra.
+                (SELECT pp.costo_unitario
+                 FROM f_costo_unitario_ppmp(${dtoIn.ideEmpr}, ${dtoIn.ideSucu}, iart.ide_inarti, CURRENT_DATE) pp
+                ) AS costo_promedio,
+                (SELECT pp.fecha_costo
+                 FROM f_costo_unitario_ppmp(${dtoIn.ideEmpr}, ${dtoIn.ideSucu}, iart.ide_inarti, CURRENT_DATE) pp
+                ) AS fecha_costo_promedio,
                 CASE
                     WHEN COALESCE(SUM(cantidad_indci * signo_intci), 0) <= 0 THEN 'SIN STOCK'
                     WHEN iart.cant_stock1_inarti IS NULL AND iart.cant_stock2_inarti IS NULL THEN 'EN STOCK'

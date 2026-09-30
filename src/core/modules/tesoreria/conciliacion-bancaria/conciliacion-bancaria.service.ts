@@ -137,7 +137,7 @@ export class ConciliacionBancariaService extends BaseService {
         const agregar = (columna: string, valor: number | undefined) => {
             if (valor === undefined || valor === null) return;
             valores.push(valor);
-            condiciones.push(`${columna} = ${valores.length}`);
+            condiciones.push(`${columna} = $${valores.length}`);
         };
         agregar('n.anio_tecnc', dtoIn.anio);
         agregar('n.mes_tecnc', dtoIn.mes);
@@ -168,7 +168,7 @@ export class ConciliacionBancariaService extends BaseService {
         const agregar = (columna: string, valor: number | undefined) => {
             if (valor === undefined || valor === null) return;
             valores.push(valor);
-            condiciones.push(`${columna} = ${valores.length}`);
+            condiciones.push(`${columna} = $${valores.length}`);
         };
         agregar('n.anio_tecnc', dtoIn.anio);
         agregar('n.mes_tecnc', dtoIn.mes);

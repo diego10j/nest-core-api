@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { Server } from 'socket.io';
 
 import { AppModule } from './app.module';
+import { EndpointExceptionFilter } from './common/filters/endpoint-exception.filter';
 import { envs } from './config/envs';
 import { SocketIoAdapter } from './socket-io.adapter';
 
@@ -82,6 +83,9 @@ async function bootstrap() {
 
   app.use(json({ limit: '100mb' }));
   app.use(urlencoded({ extended: true, limit: '100mb' }));
+
+  // Toda respuesta de error incluye el endpoint (y método) donde ocurrió
+  app.useGlobalFilters(new EndpointExceptionFilter());
 
   app.useGlobalPipes(
     new ValidationPipe({
