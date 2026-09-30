@@ -365,3 +365,28 @@ Conciliaciones) y dar permiso a cada perfil según su actividad.
 - [ ] Probar el flujo completo con datos reales y la IA real (hoy solo con IA simulada y Postgres embebido).
 - [ ] Mostrar el estado "anulada" con su motivo al abrir el detalle (hoy el motivo está en el tooltip de la etapa).
 - [ ] Permisos finos dentro de una pantalla (ej. que solo contabilidad pueda cerrar).
+
+## 12. Lectura con IA de cualquier estado de cuenta (formato cambiante)
+
+Estado: **implementado.** El banco puede cambiar el diseño de su PDF/Excel y el sistema debe seguir leyéndolo.
+
+- **Dos niveles** (`parsers/estado-cuenta-parser.service.ts`):
+  1. **Lectores exactos** (Guayaquil, Produbanco, Pichincha, Deuna): rápidos, sin costo, determinísticos.
+  2. **Plan B con IA** (`parsers/parser-ia.ts`): se usa cuando el archivo **no** es de un formato conocido **o** cuando un
+     lector conocido deja filas sin leer (el banco cambió algo). Sirve para **PDF, .xlsx y .csv**.
+- **Cómo lee la IA**: el texto (líneas del PDF / filas del Excel) se parte en tramos de 70 líneas, se consulta a GPT en
+  paralelo (3 a la vez) y cada respuesta se **valida y normaliza en el servidor**: fechas ISO reales, montos con
+  coma/punto/paréntesis, signo por débito/crédito o monto+tipo, filas inválidas descartadas y contadas.
+- **Validación aritmética**: igual que con los lectores exactos se comprueba la **cadena de saldos**; además se cuenta
+  cuántas líneas del texto empiezan con fecha y se avisa si la IA devolvió bastantes menos ("puede faltar alguno").
+- **Siempre con advertencia**: lo leído con IA aparece como formato "Lectura con IA" y exige revisar la vista previa.
+  Si el lector exacto y la IA difieren, se usa el que trajo más movimientos.
+- **Mismo resultado al analizar y al cargar**: la lectura se guarda 20 min en memoria por huella del archivo, así que
+  la carga no vuelve a consultar a la IA ni puede dar otro resultado que la vista previa.
+- **PDF escaneado** (sin texto): se rechaza con un mensaje claro (habría que descargar el original del banco).
+- **Privacidad**: para la lectura con IA se envía a OpenAI el **contenido del estado de cuenta** (movimientos,
+  descripciones y número de cuenta); solo con los lectores exactos no sale nada del servidor. A la verificación de
+  "¿corresponde a esta cuenta/mes?" solo van el encabezado (sin correos) y 6 movimientos.
+- **Probado** con IA simulada (tramos, orden, cadena de saldos con las 166 filas reales del PDF de septiembre, filas
+  inválidas, archivo vacío, caché). **No probado con GPT real**: conviene probar con un PDF real de otro banco.
+- Pendiente: si un banco se usa seguido en modo IA, escribirle un lector exacto (más barato y determinístico).
