@@ -1,12 +1,21 @@
-import { WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from '@nestjs/websockets';
+import { ModuleRef } from '@nestjs/core';
+import { WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { envs } from 'src/config/envs';
+import { createSocketAuthMiddleware } from 'src/core/auth/guards/socket-auth.middleware';
 
 @WebSocketGateway(Number(envs.whatsappSocketPort), {
   transports: ['websocket', 'polling'], // Si se requiere polling, de lo contrario solo websocket
 })
-export class WhatsappGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class WhatsappGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
+
+  constructor(private readonly moduleRef: ModuleRef) {}
+
+  afterInit(server: Server) {
+    // Todos los eventos se emiten a todos los sockets: solo deben recibirlos usuarios autenticados.
+    server.use(createSocketAuthMiddleware(this.moduleRef, 'whatsapp'));
+  }
 
   handleConnection(client: Socket) {
     console.log(`Cliente conectado: ${client.id}`);
