@@ -90,7 +90,12 @@ export const BDT_CONFIG = {
   /** Tope de texto enviado a la extracción (~15k tokens). Lo que exceda se corta y va a REVISION. */
   MAX_CARACTERES_EXTRACCION: 60000,
   MAX_BYTES_ARCHIVO: 25 * 1024 * 1024,
-  EXTENSIONES_SOPORTADAS: ['pdf', 'jpg', 'jpeg', 'png', 'webp'] as string[],
+  /**
+   * Solo PDF se escanea e identifica (ficha técnica, certificado de análisis, hoja de seguridad).
+   * Las imágenes (fotos del producto, etiquetas) se suben como adjuntos normales sin extracción
+   * ni costo de IA. Para volver a leer imágenes: ['pdf', 'jpg', 'jpeg', 'png', 'webp'].
+   */
+  EXTENSIONES_SOPORTADAS: ['pdf'] as string[],
 
   /** Un documento en ERROR se reintenta en cada "Procesar" hasta este número; luego requiere forzar. */
   MAX_INTENTOS: 3,
