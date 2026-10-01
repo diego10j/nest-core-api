@@ -111,7 +111,17 @@ export class SriSoapClientService {
       return data;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new InternalServerErrorException(`Error de comunicación con el servicio web del SRI (${url}): ${msg}`);
+      // El SRI suele explicar el 500 en el cuerpo (SOAP Fault). Se incluye recortado para poder
+      // diagnosticar sin tener que repetir la llamada con un proxy; es texto del SRI, sin secretos.
+      const body = axios.isAxiosError(err) && typeof err.response?.data === 'string' ? err.response.data : '';
+      const detalle = body
+        ? ` | Respuesta del SRI: ${body.replace(/\s+/g, ' ').trim().slice(0, 600)}`
+        : axios.isAxiosError(err) && err.code
+          ? ` | Código de red: ${err.code}`
+          : '';
+      throw new InternalServerErrorException(
+        `Error de comunicación con el servicio web del SRI (${url}): ${msg}${detalle}`,
+      );
     }
   }
 }
