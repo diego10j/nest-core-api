@@ -76,3 +76,21 @@ Hay 190 `aria-label` en todo el proyecto frente a ~688 botones de icono, y 0 uso
 4. **Fase 3 (teclado y estructura, P3 + P4)**.
 5. **Fase 4 (contraste y táctil, P5)** tras la medición con axe.
 Cada fase en su rama, con `yarn build` y revisión visual antes de fusionar; los cambios son de atributos y semántica, no alteran el flujo del ERP.
+
+## 7. Estado de la corrección (rama `claude/front-accesibilidad` del front)
+Hecho (tsc 0 errores, `yarn build` ok, eslint 0 errores):
+- A1: ~330 `IconButton` con `aria-label` (según icono/handler; los de mostrar/ocultar y expandir/contraer usan etiqueta dinámica). Botones dentro de `<Tooltip><span>` también.
+- A2: ~85 elementos clicables con `role="button"`, `tabIndex={0}` y Enter/Espacio (`src/utils/a11y.ts`, `activateOnKey`); filas (`TableRow`) con `tabIndex` + teclado.
+- A3: `alt` en todas las imágenes (decorativas con `alt=""`).
+- A4–A6: `TextField`/`Select`/`Switch`/`Checkbox` con nombre (`aria-label` o `slotProps.htmlInput`).
+- A7: MUI 7 enlaza `aria-labelledby` solo cuando hay `DialogTitle`; se añadió `aria-label` a los 10 diálogos sin título.
+- A8/A10: foco visible en el dropzone de subida; el enlace `href="#"` del login es ahora un botón con aviso (no existe ruta de recuperación de contraseña).
+- Global: foco visible (`:focus-visible`), `prefers-reduced-motion`, "Saltar al contenido", `aria-current="page"` y `aria-label` en el menú, título de pestaña según la opción de menú activa, DataTable con `aria-selected`/`aria-rowcount`/`aria-busy`.
+- Prevención: `eslint-plugin-jsx-a11y` + regla de `IconButton` sin nombre, en modo aviso.
+
+Pendiente / revisar:
+- Medir con axe, teclado y lector de pantalla (sección 4); contraste de color y tamaño táctil (P5) no se tocaron.
+- Las celdas `TableCell` del gestor de archivos siguen con `onClick` solo de mouse (la acción está en su menú y casilla).
+- `outline: none` se mantiene en el editor (ProseMirror), `EditableCell` y zonas con foco propio ya estilizado.
+- Los `aria-label` de campos derivan del placeholder o del contexto: conviene revisar redacción con el equipo.
+- Subir el lint a error (2) cuando queden 0 avisos.
