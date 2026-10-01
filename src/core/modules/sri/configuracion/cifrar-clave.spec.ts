@@ -24,6 +24,11 @@ describe('ConfiguracionService.cifrarClave', () => {
     expect(decrypt(valor)).toBe('mi-api-key-123');
   });
 
+  it('con la clave mal formada responde 409 con un mensaje claro (no un 500)', () => {
+    process.env.SRI_ENCRYPTION_KEY = '<pegue aquí el resultado de: openssl rand -base64 32>';
+    expect(() => service().cifrarClave('x')).toThrow(/32 bytes/);
+  });
+
   it('sin SRI_ENCRYPTION_KEY responde 409 y NO cifra con la clave antigua (pública)', () => {
     expect(() => service().cifrarClave('x')).toThrow(ConflictException);
   });

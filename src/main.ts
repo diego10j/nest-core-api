@@ -144,12 +144,15 @@ async function bootstrap() {
 
   await app.listen(envs.port);
   logger.log(`App running on port ${envs.port}`);
-  if (!isEncryptionKeyConfigured()) {
-    logger.warn(
-      'SRI_ENCRYPTION_KEY no está configurada: los secretos (clave de la firma SRI, Telegram, Groq) se cifran con la clave antigua del código, que es pública. Genere una con `openssl rand -base64 32` y agréguela al .env.',
-    );
+  try {
+    if (!isEncryptionKeyConfigured()) {
+      logger.warn(
+        'SRI_ENCRYPTION_KEY no está configurada: los secretos (clave de la firma SRI, Telegram, Groq) se cifran con la clave antigua del código, que es pública. Genere una con `openssl rand -base64 32` y agréguela al .env.',
+      );
+    }
+  } catch (error) {
+    logger.error(`${(error as Error).message}. Hasta corregirla no se podrán guardar ni leer valores cifrados con la clave nueva.`);
   }
-  logger.log(`Swagger docs: http://${envs.hostApi}/docs`);
 
   const server = app.getHttpServer();
   const io: Server = socketIoAdapter.getIoInstance();

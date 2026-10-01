@@ -67,7 +67,13 @@ export class ConfiguracionService {
      * clave antigua del código, que es pública.
      */
     cifrarClave(password: string): { valor: string; formato: 'v3' } {
-        if (!isEncryptionKeyConfigured()) {
+        let configurada: boolean;
+        try {
+            configurada = isEncryptionKeyConfigured();
+        } catch (error) {
+            throw new ConflictException((error as Error).message);
+        }
+        if (!configurada) {
             throw new ConflictException(
                 'Configure SRI_ENCRYPTION_KEY en el servidor antes de cifrar: sin ella el valor se cifraría con la clave antigua, que es pública.',
             );
