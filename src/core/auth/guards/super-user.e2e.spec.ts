@@ -1,4 +1,4 @@
-/* eslint-disable no-undef, import/order */
+/* eslint-disable no-undef */
 import { Body, Controller, INestApplication, Module, Post } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';

@@ -1,4 +1,4 @@
-/* eslint-disable no-undef, import/order, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-undef, @typescript-eslint/no-explicit-any */
 import { ModuleRef } from '@nestjs/core';
 
 jest.mock('../../../config/envs', () => ({ envs: { authGuardMode: 'enforce' } }));

@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
+import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
@@ -122,7 +123,7 @@ export class AdminController {
 
   @Post('generarOpciones')
   @ApiOperation({ summary: 'Generar opciones de menú masivamente a partir de estructura JSON' })
-  @Auth()
+  @RequireMenu('/dashboard/sistema/opciones')
   generarConteoInventario(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
     return this.adminService.generarOpciones({
       ...headersParams,
@@ -176,7 +177,7 @@ export class AdminController {
 
   @Get('getOpcionesPerfil')
   @ApiOperation({ summary: 'Obtener opciones del menú asignadas a un perfil' })
-  @Auth()
+  @RequireMenu('/dashboard/seguridad/perfil-opcion')
   getOpcionesPerfil(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilSistemaDto) {
     return this.adminService.getOpcionesPerfil({
       ...headersParams,
@@ -186,7 +187,7 @@ export class AdminController {
 
   @Post('saveOpcionesPerfil')
   @ApiOperation({ summary: 'Guardar opciones de menú asignadas a un perfil' })
-  @Auth()
+  @RequireMenu('/dashboard/seguridad/perfil-opcion')
   saveOpcionesPerfil(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: PerfilSistemaDto) {
     return this.adminService.saveOpcionesPerfil({
       ...headersParams,

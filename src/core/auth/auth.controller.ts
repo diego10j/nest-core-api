@@ -7,6 +7,7 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { AuthService } from './auth.service';
 import { Auth, GetUser } from './decorators';
 import { Public } from './decorators/public.decorator';
+import { RequireMenu } from './decorators/require-menu.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { HorarioLoginDto } from './dto/horario-login.dto';
 import { LoginUserDto } from './dto/login-user.dto';
@@ -115,7 +116,7 @@ export class AuthController {
   }
 
   @Post('resetPassword')
-  @Auth()
+  @RequireMenu('/dashboard/sistema/usuarios/list')
   @ApiBearerAuth('BearerAuth')
   @ApiOperation({ summary: 'Resetear contraseña', description: 'Resetea contraseña de usuario a valor por defecto (solo admins)' })
   @ApiResponse({ status: 200, description: 'Contraseña reseteada' })

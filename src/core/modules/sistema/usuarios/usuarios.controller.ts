@@ -9,6 +9,7 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 import { Auth, GetUser } from 'src/core/auth';
+import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
 import { AuthUser } from 'src/core/auth/interfaces';
 import { fileNamer, fileFilter } from 'src/core/modules/sistema/files/helpers';
 
@@ -83,7 +84,7 @@ export class UsuariosController {
 
   @Get('getConfigPassword')
   @ApiOperation({ summary: 'Obtener configuración de política de contraseñas de un usuario' })
-  @Auth()
+  @RequireMenu('/dashboard/sistema/usuarios/list')
   getConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
     return this.service.getConfigPassword({
       ...headersParams,
@@ -93,7 +94,7 @@ export class UsuariosController {
 
   @Post('saveConfigPassword')
   @ApiOperation({ summary: 'Guardar configuración de política de contraseñas para un usuario' })
-  @Auth()
+  @RequireMenu('/dashboard/sistema/usuarios/list')
   saveConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ConfigPasswordDto) {
     return this.service.saveConfigPassword({
       ...headersParams,

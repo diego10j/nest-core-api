@@ -17,6 +17,7 @@ import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
+import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
 import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 import { v4 as uuid } from 'uuid';
 
@@ -65,6 +66,7 @@ export class ConfiguracionController {
     }
 
     @Post('saveEmisor')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Crear o actualizar configuración de emisor SRI' })
     saveEmisor(
         @AppHeaders() h: HeaderParamsDto,
@@ -74,6 +76,7 @@ export class ConfiguracionController {
     }
 
     @Post('saveFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Guardar metadata de firma digital (contraseña, representante, etc.)' })
     saveFirma(
         @AppHeaders() h: HeaderParamsDto,
@@ -83,6 +86,7 @@ export class ConfiguracionController {
     }
 
     @Post('uploadFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Subir archivo .p12 de firma digital' })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
@@ -119,6 +123,7 @@ export class ConfiguracionController {
     }
 
     @Post('validateFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Validar contraseña de la firma digital contra el archivo .p12' })
     validateFirma(
         @AppHeaders() h: HeaderParamsDto,
