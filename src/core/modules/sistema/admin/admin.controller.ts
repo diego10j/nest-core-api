@@ -4,7 +4,6 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
-import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
@@ -155,8 +154,8 @@ export class AdminController {
   }
 
   @Post('eliminarRutasObsoletas')
-  @ApiOperation({ summary: 'Elimina las opciones obsoletas y sus permisos (solo administradores)' })
-  @SuperUser()
+  @ApiOperation({ summary: 'Elimina las opciones obsoletas y sus permisos' })
+  @RequireMenu('/dashboard/sistema/opciones')
   eliminarRutasObsoletas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EliminarRutasObsoletasDto) {
     return this.adminService.eliminarRutasObsoletas({ ...headersParams, ...dtoIn });
   }
