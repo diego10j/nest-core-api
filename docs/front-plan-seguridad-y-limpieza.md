@@ -141,6 +141,7 @@ Consecuencias para la Fase 2:
 | 1. Seguridad urgente | `claude/front-fase1-seguridad` | Hecha. Pendiente: token de la impresora y `xlsx` |
 | Landing con textos del ERP | `claude/front-landing-erp` | Hecha |
 | 2. Rutas de demostración, 3. Solo JWT, 4. Mocks, 6. Dependencias | `claude/front-fase2-limpieza` (parte de la rama de la landing) | Hecha: 869 archivos borrados, JS de 16,55 a 13,08 MB, `tsc`, `eslint` y `yarn build` pasan |
+| Token de la impresora | `claude/front-token-impresora` (parte de la rama de la fase 2) y `claude/token-obligatorio` en `pos-print-agent` | Hecha. Ver `docs/token-impresora.md` |
 | 5. Huérfanos del ERP | — | Pendiente: 42 archivos de la sección B, a revisar contigo |
 | 7. Verificación | — | Falta el recorrido manual de los módulos del ERP |
 
