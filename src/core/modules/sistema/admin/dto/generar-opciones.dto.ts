@@ -94,3 +94,13 @@ export class EliminarRutasObsoletasDto extends GenerarOpcionesDto {
   @IsNotEmpty()
   ide_opci: number[];
 }
+
+/** Importa solo las opciones elegidas en el diálogo: se recalcula en el servidor con el mismo archivo de menú. */
+export class ImportarOpcionesDto extends GenerarOpcionesDto {
+  @ApiProperty({ description: 'Claves (ruta o "grupo:<titulo>") de las opciones elegidas', type: [String] })
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @IsNotEmpty()
+  claves: string[];
+}

@@ -4,6 +4,8 @@ export interface OpcionBd {
   nom_opci: string;
   tipo_opci: string | null;
   activo_opci?: boolean | null;
+  icono_opci?: string | null;
+  orden_opci?: number | null;
   perfiles?: number;
 }
 
@@ -11,6 +13,7 @@ export interface MenuNodo {
   title?: string;
   subheader?: string;
   path?: string;
+  icon?: string;
   children?: MenuNodo[];
   items?: MenuNodo[];
 }

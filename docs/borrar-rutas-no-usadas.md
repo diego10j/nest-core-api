@@ -27,3 +27,14 @@ Una opción obsoleta que aún tiene un hijo en uso **no se elimina** (el diálog
 - Confirmar que el front desplegado es el que corresponde (si el archivo de menú está desactualizado, aparecerían rutas vigentes como obsoletas). El diálogo permite revisar la lista antes de aceptar.
 - Si la BD tiene otras tablas que referencian `sis_opcion` con clave foránea, el borrado falla completo (transacción) y muestra el error; no queda nada a medias.
 - La pantalla elimina; para recuperar una opción hay que volver a importarla (los permisos de perfil habría que reasignarlos).
+
+## Importar con selección
+
+`Importar` ya no ejecuta `f_generar_opciones_proerp` a ciegas (esa función **desactiva todo lo que no venga en el JSON**).
+Ahora:
+
+1. `POST sistema/admin/previewImportarOpciones` compara el archivo de menú con `sis_opcion` y devuelve cada ruta/grupo como `nueva`, `cambios` (nombre, grupo, icono, orden, reactivar) o `igual`. No escribe nada.
+2. El usuario marca en el diálogo lo que quiere.
+3. `POST sistema/admin/importarOpcionesSeleccionadas` (`claves`) recalcula en el servidor, crea los grupos padre que falten y aplica insert/update en una sola transacción. **No desactiva nada**; para retirar rutas se usa "Borrar rutas no usadas".
+
+La función SQL `f_generar_opciones_proerp` y el endpoint `generarOpciones` se conservan sin cambios.

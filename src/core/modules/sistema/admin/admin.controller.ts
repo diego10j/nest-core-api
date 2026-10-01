@@ -9,7 +9,7 @@ import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { AdminService } from './admin.service';
-import { EliminarRutasObsoletasDto, GenerarOpcionesDto } from './dto/generar-opciones.dto';
+import { EliminarRutasObsoletasDto, GenerarOpcionesDto, ImportarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
@@ -132,6 +132,20 @@ export class AdminController {
     });
   }
 
+
+  @Post('previewImportarOpciones')
+  @ApiOperation({ summary: 'Vista previa de la importación: compara el archivo de menú con las opciones de la BD' })
+  @RequireMenu('/dashboard/sistema/opciones')
+  previewImportarOpciones(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
+    return this.adminService.previewImportarOpciones({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('importarOpcionesSeleccionadas')
+  @ApiOperation({ summary: 'Importa solo las opciones elegidas del archivo de menú (no desactiva las demás)' })
+  @RequireMenu('/dashboard/sistema/opciones')
+  importarOpcionesSeleccionadas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ImportarOpcionesDto) {
+    return this.adminService.importarOpcionesSeleccionadas({ ...headersParams, ...dtoIn });
+  }
 
   @Post('getRutasObsoletas')
   @ApiOperation({ summary: 'Detecta las opciones de menú de la BD que ya no están en el archivo de rutas' })

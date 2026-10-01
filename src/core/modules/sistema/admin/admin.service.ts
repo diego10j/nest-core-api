@@ -3,17 +3,18 @@ import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 
-import { EliminarRutasObsoletasDto, GenerarOpcionesDto } from './dto/generar-opciones.dto';
+import { EliminarRutasObsoletasDto, GenerarOpcionesDto, ImportarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { RucDto } from './dto/ruc.dto';
+import { aplanarMenu, compararMenuConBd, planificarImportacion } from './helpers/importar-opciones';
 import { calcularRutasObsoletas, extraerRutasYGrupos, OpcionBd } from './helpers/rutas-obsoletas';
 
 @Injectable()
@@ -174,6 +175,87 @@ export class AdminService {
   }
 
   /**
+   * Vista previa de la importación: compara el archivo de menú con sis_opcion y marca cada ruta/grupo
+   * como nueva, con cambios o igual. No escribe nada.
+   */
+  async previewImportarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
+    const nodos = aplanarMenu(dtoIn.json);
+    if (!nodos.some((n) => n.path)) {
+      throw new BadRequestException('El archivo de menú no contiene rutas; no hay nada que importar');
+    }
+    const comparados = compararMenuConBd(nodos, await this.getOpcionesSistema());
+    const cuenta = (e: string) => comparados.filter((n) => n.estado === e).length;
+    return {
+      data: comparados,
+      nuevas: cuenta('nueva'),
+      conCambios: cuenta('cambios'),
+      iguales: cuenta('igual'),
+      message: 'ok',
+    };
+  }
+
+  /**
+   * Importa solo lo elegido, sin desactivar nada más (a diferencia de generarOpciones). Recalcula en el
+   * servidor contra la BD actual; crea los grupos padre que falten. Todo en una sola transacción.
+   */
+  async importarOpcionesSeleccionadas(dtoIn: ImportarOpcionesDto & HeaderParamsDto) {
+    const nodos = aplanarMenu(dtoIn.json);
+    const comparados = compararMenuConBd(nodos, await this.getOpcionesSistema());
+    const plan = planificarImportacion(comparados, dtoIn.claves);
+    if (plan.crear.length + plan.actualizar.length === 0) {
+      throw new BadRequestException('No hay opciones para importar (puede que ya estén al día)');
+    }
+
+    const audit = { login: dtoIn.login };
+    const idPorClave = new Map<string, number>();
+    comparados.forEach((n) => n.ide_opci != null && idPorClave.set(n.clave, n.ide_opci));
+    if (plan.crear.length > 0) {
+      let seq = await this.dataSource.getSeqTable('sis_opcion', 'ide_opci', plan.crear.length, dtoIn.login);
+      plan.crear.forEach((n) => idPorClave.set(n.clave, seq++));
+    }
+    const padreDe = (clave: string | null) => (clave ? (idPorClave.get(clave) ?? null) : null);
+
+    const queries: Query[] = [];
+    for (const n of plan.crear) {
+      const ins = new InsertQuery('sis_opcion', 'ide_opci', audit);
+      ins.values.set('ide_opci', idPorClave.get(n.clave));
+      ins.values.set('sis_ide_opci', padreDe(n.claveHijoDe));
+      ins.values.set('nom_opci', n.titulo);
+      ins.values.set('tipo_opci', n.path);
+      ins.values.set('auditoria_opci', false);
+      ins.values.set('ide_sist', this.idSistema());
+      ins.values.set('activo_opci', true);
+      ins.values.set('icono_opci', n.icono);
+      ins.values.set('orden_opci', n.orden);
+      queries.push(ins);
+    }
+    for (const n of plan.actualizar) {
+      const upd = new UpdateQuery('sis_opcion', 'ide_opci', audit);
+      upd.values.set('nom_opci', n.titulo);
+      upd.values.set('sis_ide_opci', padreDe(n.claveHijoDe));
+      upd.values.set('activo_opci', true);
+      upd.values.set('refe_opci', null);
+      upd.values.set('icono_opci', n.icono);
+      upd.values.set('orden_opci', n.orden);
+      upd.where = 'ide_opci = $1 AND ide_sist = $2';
+      upd.addIntParam(1, Number(n.ide_opci));
+      upd.addIntParam(2, this.idSistema());
+      queries.push(upd);
+    }
+
+    await this.dataSource.createListQuery(queries);
+    this.logger.log(
+      `Importación selectiva por ${dtoIn.login}: ${plan.crear.length} nuevas, ${plan.actualizar.length} actualizadas`,
+    );
+    return {
+      insertadas: plan.crear.length,
+      actualizadas: plan.actualizar.length,
+      gruposAgregados: plan.gruposAgregados,
+      message: `Se importaron ${plan.crear.length} opciones nuevas y se actualizaron ${plan.actualizar.length}`,
+    };
+  }
+
+  /**
    * Compara las opciones guardadas en sis_opcion contra el archivo de menú (el mismo JSON que se
    * importa con generarOpciones) y devuelve las rutas obsoletas: las que ya no están en el archivo.
    */
@@ -231,14 +313,14 @@ export class AdminService {
 
   private async getOpcionesSistema(): Promise<OpcionBd[]> {
     const query = new SelectQuery(`
-      SELECT o.ide_opci, o.sis_ide_opci, o.nom_opci, o.tipo_opci, o.activo_opci,
+      SELECT o.ide_opci, o.sis_ide_opci, o.nom_opci, o.tipo_opci, o.activo_opci, o.icono_opci, o.orden_opci,
              (SELECT COUNT(1) FROM sis_perfil_opcion p WHERE p.ide_opci = o.ide_opci) AS perfiles
       FROM sis_opcion o
       WHERE o.ide_sist = $1
       ORDER BY o.nom_opci`);
     query.addIntParam(1, this.idSistema());
     const rows = await this.dataSource.createSelectQuery(query);
-    return rows.map((r: any) => ({ ...r, ide_opci: Number(r.ide_opci), sis_ide_opci: r.sis_ide_opci == null ? null : Number(r.sis_ide_opci), perfiles: Number(r.perfiles) }));
+    return rows.map((r: any) => ({ ...r, ide_opci: Number(r.ide_opci), sis_ide_opci: r.sis_ide_opci == null ? null : Number(r.sis_ide_opci), orden_opci: r.orden_opci == null ? null : Number(r.orden_opci), perfiles: Number(r.perfiles) }));
   }
 
   /**
