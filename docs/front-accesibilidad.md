@@ -84,7 +84,7 @@ Hecho (tsc 0 errores, `yarn build` ok, eslint 0 errores):
 - A3: `alt` en todas las imágenes (decorativas con `alt=""`).
 - A4–A6: `TextField`/`Select`/`Switch`/`Checkbox` con nombre (`aria-label` o `slotProps.htmlInput`).
 - A7: MUI 7 enlaza `aria-labelledby` solo cuando hay `DialogTitle`; se añadió `aria-label` a los 10 diálogos sin título.
-- A8/A10: foco visible en el dropzone de subida; el enlace `href="#"` del login es ahora un botón con aviso (no existe ruta de recuperación de contraseña).
+- A8/A10: foco visible en el dropzone de subida; se quitó el enlace "¿Olvidaste tu contraseña?" del login (`href="#"`, no existe ruta de recuperación de contraseña).
 - Global: foco visible (`:focus-visible`), `prefers-reduced-motion`, "Saltar al contenido", `aria-current="page"` y `aria-label` en el menú, título de pestaña según la opción de menú activa, DataTable con `aria-selected`/`aria-rowcount`/`aria-busy`.
 - Prevención: `eslint-plugin-jsx-a11y` + regla de `IconButton` sin nombre, en modo aviso.
 
