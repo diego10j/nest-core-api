@@ -133,3 +133,19 @@ Consecuencias para la Fase 2:
 - **Se quedan:** `sections/home` (hero, beneficios, módulos, preguntas frecuentes y cierre), `layouts/main` (cabecera y pie) y las rutas `/`, `/#modules` y `/#faqs`.
 - **Se siguen borrando:** `about-us`, `contact-us`, `faqs`, `pricing`, `payment`, `coming-soon`, `maintenance`, `post` y `product` (páginas de plantilla que la landing ya no enlaza).
 - **Ya hecho en esa rama:** sección de precios eliminada, 7 secciones de landing sin uso borradas, botón "Purchase" del menú móvil (enlazaba a la tienda de Minimals), pie de página y redes sociales de ejemplo.
+
+## 6. Estado de ejecución
+
+| Fase | Rama (`react-front-erp`) | Estado |
+|---|---|---|
+| 1. Seguridad urgente | `claude/front-fase1-seguridad` | Hecha. Pendiente: token de la impresora y `xlsx` |
+| Landing con textos del ERP | `claude/front-landing-erp` | Hecha |
+| 2. Rutas de demostración, 3. Solo JWT, 4. Mocks, 6. Dependencias | `claude/front-fase2-limpieza` (parte de la rama de la landing) | Hecha: 869 archivos borrados, JS de 16,55 a 13,08 MB, `tsc`, `eslint` y `yarn build` pasan |
+| 5. Huérfanos del ERP | — | Pendiente: 42 archivos de la sección B, a revisar contigo |
+| 7. Verificación | — | Falta el recorrido manual de los módulos del ERP |
+
+**Orden de fusión:** `front-fase1-seguridad` (independiente, solo el `package.json` puede dar un conflicto trivial de dependencias), luego `front-landing-erp`, luego `front-fase2-limpieza`.
+
+**Se conservó porque está adaptado al ERP** (y por eso difiere del plan inicial): el calendario (`pages/dashboard/calendar`, `sections/calendar`, API `api/modules/sistema/calendar.ts`; no está en el menú), el administrador de archivos y `workspaces-popover.tsx`. Se eliminó `dashboard/file` (usaba solo datos de ejemplo).
+
+**Siguen en `package.json` a propósito:** `@tiptap/starter-kit` (arrastra extensiones que el editor importa sin declararlas), `mapbox-gl`/`react-map-gl` (los usa el formulario de direcciones de clientes), las fuentes del selector de tema y `apexcharts`/`@emotion/styled`/`stylis`/`@tiptap/core`/`@tiptap/pm` (peers).
