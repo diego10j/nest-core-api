@@ -127,12 +127,9 @@ Con el `yarn.lock` commiteado, `yarn remove <paquete>` los quita limpiamente.
 
 ## 5. Decisión tomada: la ruta `/`
 
-**Elegida la opción A** (este servidor es solo el ERP, no el sitio comercial): `/` redirige a `/dashboard` y se borra el bloque de marketing en la Fase 2.
+**La landing se conserva** (cambio de decisión: antes se había elegido redirigir a `/dashboard`). Se actualizó con las funcionalidades reales del ERP en la rama `claude/front-landing-erp` de `react-front-erp`.
 
-### Contexto original
-
-Hoy `/` muestra `HomeView`: una **landing pública de marketing** dentro de `MainLayout` (cabecera y pie de página de marketing), visible para cualquiera sin iniciar sesión. Mezcla contenido adaptado a ProERP con restos de Minimals ("For designer", "A dark theme…", "Right-to-left", "Interface Starter Kit", "Minimal Design System"). Son 12 secciones en `sections/home`, más `layouts/main` y las páginas que enlaza (`about-us`, `contact-us`, `faqs`, `pricing`, `payment`).
-
-- **Opción A: redirigir `/` a `/dashboard`.** Quien no tenga sesión cae en el login (lo hace `AuthGuard`). Es lo que la propia plantilla sugiere en un comentario de `routes/sections/index.tsx` (`<Navigate to={CONFIG.auth.redirectPath} />`). Borra el bloque de marketing completo.
-- **Opción B: conservar la landing** como página comercial de ProERP. Habría que quitar los textos de Minimals y decidir si se mantiene `pricing`, `faqs`, `about-us` y `contact-us`.
-- Si ya tienes el sitio comercial en otro lado (como `page-diquimec`), la opción A es la recomendable.
+Consecuencias para la Fase 2:
+- **Se quedan:** `sections/home` (hero, beneficios, módulos, preguntas frecuentes y cierre), `layouts/main` (cabecera y pie) y las rutas `/`, `/#modules` y `/#faqs`.
+- **Se siguen borrando:** `about-us`, `contact-us`, `faqs`, `pricing`, `payment`, `coming-soon`, `maintenance`, `post` y `product` (páginas de plantilla que la landing ya no enlaza).
+- **Ya hecho en esa rama:** sección de precios eliminada, 7 secciones de landing sin uso borradas, botón "Purchase" del menú móvil (enlazaba a la tienda de Minimals), pie de página y redes sociales de ejemplo.
