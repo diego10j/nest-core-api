@@ -21,6 +21,7 @@ interface EnvVars {
   JWT_SECRET_EXPIRES_TIME: string;
   JWT_REFRESH_SECRET: string;
   JWT_REFRESH_EXPIRES_TIME: string;
+  APP_LOGIN_URL: string;
 
   FORMAT_DATE_BD: string;
   FORMAT_TIME_BD: string;
@@ -40,6 +41,9 @@ interface EnvVars {
 
   AUTH_GUARD_MODE: 'enforce' | 'warn';
 }
+
+// Valor por defecto público (repo abierto): en producción debe definirse JWT_REFRESH_SECRET propio
+export const DEFAULT_JWT_REFRESH_SECRET = 'refresh_secret_change_me';
 
 const envsSchema = z
   .object({
@@ -75,8 +79,10 @@ const envsSchema = z
 
     JWT_SECRET: z.string(),
     JWT_SECRET_EXPIRES_TIME: z.string(),
-    JWT_REFRESH_SECRET: z.string().optional().default('refresh_secret_change_me'),
+    JWT_REFRESH_SECRET: z.string().optional().default(DEFAULT_JWT_REFRESH_SECRET),
     JWT_REFRESH_EXPIRES_TIME: z.string().optional().default('7d'),
+    // URL de inicio de sesión del ERP que se muestra en el correo de credenciales (opcional)
+    APP_LOGIN_URL: z.string().optional().default(''),
 
     FORMAT_DATE_BD: z.string(),
     FORMAT_TIME_BD: z.string(),
@@ -139,6 +145,7 @@ export const envs = {
   jwtSecretExpiresTime: envVars.JWT_SECRET_EXPIRES_TIME,
   jwtRefreshSecret: envVars.JWT_REFRESH_SECRET,
   jwtRefreshExpiresTime: envVars.JWT_REFRESH_EXPIRES_TIME,
+  appLoginUrl: envVars.APP_LOGIN_URL,
 
   formatDateBd: envVars.FORMAT_DATE_BD,
   formatTimeBd: envVars.FORMAT_TIME_BD,

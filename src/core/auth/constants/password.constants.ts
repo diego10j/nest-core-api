@@ -2,7 +2,6 @@ export const PASSWORD_CONFIG = {
     SALT_ROUNDS: 10,
     MIN_LENGTH: 4,
     MAX_LENGTH: 50,
-    DEFAULT_PASSWORD: 'Temporal1'
 };
 
 export const PASSWORD_MESSAGES = {

@@ -32,15 +32,17 @@ Verificación de código eliminado: ninguna ruta rota, ningún módulo faltante 
 ## 3. Seguridad del backend: mejoras propuestas (por prioridad)
 | # | Hallazgo | Riesgo | Propuesta |
 |---|---|---|---|
-| S1 | `GET ventas/pos-punto-venta/getConfigPOS?ide_usua=` toma el usuario de la **query**, no del token | **Alto**: cualquier usuario autenticado puede pedir la configuración de impresora (incluido el token de la impresora, ahora servido desde backend) de otro usuario | Usar el `ideUsua` de los headers validados contra el JWT e ignorar el parámetro |
-| S2 | `errors/getAllErrorLog` y `clearAllErrorLog` sin restricción | **Medio-alto**: cualquier usuario autenticado lee trazas/SQL de errores y puede borrar el registro | `@SuperUser()` |
-| S3 | Dependencias: `liquidjs` (RCE crítico) está en `package.json` pero **no se importa en `src`**; `tar` crítico vía `bcrypt > node-pre-gyp` | Medio | Quitar `liquidjs`; actualizar `bcrypt` (o `resolutions` de `tar`). `yarn audit` total: 3 críticas, 387 altas (mayoría transitivas/dev) |
-| S4 | `JWT_REFRESH_SECRET` por defecto `refresh_secret_change_me` | Alto si no se define en producción | Avisar/abortar al arrancar si usa el valor por defecto en producción |
+| S1 (descartado) | `GET ventas/pos-punto-venta/getConfigPOS?ide_usua=` toma el usuario de la **query**, no del token | **Alto**: cualquier usuario autenticado puede pedir la configuración de impresora (incluido el token de la impresora, ahora servido desde backend) de otro usuario | Usar el `ideUsua` de los headers validados contra el JWT e ignorar el parámetro |
+| S2 ✔ | `errors/getAllErrorLog` y `clearAllErrorLog` sin restricción | **Medio-alto**: cualquier usuario autenticado lee trazas/SQL de errores y puede borrar el registro | `@SuperUser()` |
+| S3 ✔ | Dependencias: `liquidjs` (RCE crítico) está en `package.json` pero **no se importa en `src`**; `tar` crítico vía `bcrypt > node-pre-gyp` | Medio | Quitar `liquidjs`; actualizar `bcrypt` (o `resolutions` de `tar`). `yarn audit` total: 3 críticas, 387 altas (mayoría transitivas/dev) |
+| S4 ✔ | `JWT_REFRESH_SECRET` por defecto `refresh_secret_change_me` | Alto si no se define en producción | Avisar/abortar al arrancar si usa el valor por defecto en producción |
 | S5 | Webhook de YCloud: verificación con `===` sobre el token y sin validación de firma de los POST | Medio: cualquiera que conozca la URL puede inyectar eventos | Validar la firma HMAC del proveedor y comparar con `timingSafeEqual` |
 | S6 | CORS: lista con `localhost`, IP de LAN y dominios de desarrollo en producción | Bajo-medio | Separar lista por entorno (`NODE_ENV`) |
 | S7 | Swagger en `/docs` | Bajo-medio | Confirmar que no es público en producción (proteger o deshabilitar) |
 | S8 | Endpoints genéricos `core/*` (inyección vía `condition`, escritura de tablas) | **Alto** | Ya acordado como fase aparte |
 | S9 | Repo público | Alto | Pendiente: deploy key de solo lectura y luego hacerlo privado (`docs/repo-privado.md`) |
-| S10 | Contraseña por defecto `Temporal1` | Medio | Decisión pendiente |
+| S10 ✔ | Contraseña por defecto `Temporal1` | Medio | Hecho: clave aleatoria por usuario enviada por correo (`docs/clave-temporal-usuarios.md`) |
 
 Ya resuelto en rondas anteriores: guard JWT global, validación de headers contra el token, sockets autenticados, autorización por menú, `@SuperUser`, firma SRI cifrada, token de impresora fuera del bundle.
+
+Estado: S2 (`@SuperUser` en errores), S3 (`liquidjs` eliminado; `bcrypt` 5→6, que quita `tar`), S4 (aviso al arrancar con secreto por defecto; no aborta para no tumbar un servidor en marcha) y S10 aplicados. S1 descartado por decisión del propietario. S5–S7 y S8–S9 siguen pendientes.

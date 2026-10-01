@@ -6,6 +6,7 @@ import { isDefined } from 'src/util/helpers/common-util';
 import { getCurrentDate } from 'src/util/helpers/date-util';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { TemporaryPasswordService } from '../../../auth/application/services/temporary-password.service';
 import { DataSourceService } from '../../../connection/datasource.service';
 import { SelectQuery, InsertQuery, UpdateQuery } from '../../../connection/helpers';
 import { CoreService } from '../../../core.service';
@@ -22,6 +23,7 @@ export class UsuariosService {
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
     private readonly configService: ConfigService,
+    private readonly temporaryPassword: TemporaryPasswordService,
   ) { }
 
   // -------------------------------- USUARIO ---------------------------- //
@@ -166,11 +168,9 @@ export class UsuariosService {
       this.validatePasswordStrength(dto.password_uscl);
     }
 
-    // Hashear la contraseña
-    const hashedPassword = await bcrypt.hash(dto.password_uscl, 10);
-
     let ide_uscl: number;
     let message: string;
+    let maskedEmail: string | undefined;
 
     // Si viene ide_uscl, entonces actualiza el registro existente
     if (isDefined(dto.ide_uscl)) {
@@ -206,6 +206,18 @@ export class UsuariosService {
         throw new BadRequestException(`El usuario ya tiene una configuración de contraseña. Use ide_uscl: ${registroExistente.ide_uscl} para actualizarla.`);
       }
 
+      // Contraseña inicial: la que indique el administrador o, si no viene, una temporal aleatoria
+      // enviada al correo del usuario (se envía ANTES de guardar; si falla no se crea nada).
+      let plainPassword = dto.password_uscl;
+      const generada = !plainPassword;
+      if (generada) {
+        const credentials = await this.temporaryPassword.prepare(dto.ide_usua, 'alta', dto.login);
+        await credentials.send();
+        plainPassword = credentials.password;
+        maskedEmail = credentials.maskedEmail;
+      }
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
       // No existe registro, crear uno nuevo
       // Obtener el siguiente ID de secuencia
       ide_uscl = await this.dataSource.getSeqTable('sis_usuario_clave', 'ide_uscl');
@@ -223,7 +235,18 @@ export class UsuariosService {
 
       await this.dataSource.createQuery(insertQuery);
 
-      message = 'Configuración de contraseña creada exitosamente';
+      // Una clave temporal obliga a cambiarla en el primer inicio de sesión
+      if (generada) {
+        const flagQuery = new UpdateQuery('sis_usuario', 'ide_usua');
+        flagQuery.values.set('cambia_clave_usua', true);
+        flagQuery.where = 'ide_usua = $1';
+        flagQuery.addNumberParam(1, dto.ide_usua);
+        await this.dataSource.createQuery(flagQuery);
+      }
+
+      message = generada
+        ? `Configuración de contraseña creada. Se envió una contraseña temporal a ${maskedEmail}.`
+        : 'Configuración de contraseña creada exitosamente';
     }
 
     return {

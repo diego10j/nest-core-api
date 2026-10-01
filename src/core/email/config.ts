@@ -22,4 +22,5 @@ export const BUILTIN_TEMPLATES = {
   PASSWORD_RESET: 'password-reset',
   PASSWORD_CHANGE: 'password-change',
   NOTIFICATION: 'notification',
+  CREDENCIALES_ACCESO: 'credenciales-acceso',
 };
