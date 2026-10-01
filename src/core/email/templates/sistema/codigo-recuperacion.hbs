@@ -1,0 +1,22 @@
+{{> partials/header}}
+        <h2>Recuperar contraseña</h2>
+        <p>Hola <strong>{{nombre}}</strong>,</p>
+        <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta en {{appName}}.
+        Ingresa este código en la pantalla de recuperación:</p>
+
+        <div class="info-card" style="text-align:center;">
+            <div class="card-title">Tu código de verificación</div>
+            <p style="margin:12px 0;font-family:Consolas,'Courier New',monospace;font-size:34px;font-weight:700;letter-spacing:10px;">{{codigo}}</p>
+        </div>
+
+        <div class="obs-block">
+            <strong>Importante:</strong> el código vence en {{minutos}} minutos y solo se puede usar una vez.
+            No lo compartas con nadie; el equipo de {{appName}} nunca te lo pedirá.
+        </div>
+
+        <p style="font-size:12px;color:#888;">
+            Si no solicitaste este cambio, ignora este mensaje: tu contraseña seguirá igual.
+            Si recibes varios códigos que no pediste, avisa al administrador del sistema.
+        </p>
+        <p>Saludos cordiales,<br>El equipo de {{appName}}</p>
+{{> partials/footer}}

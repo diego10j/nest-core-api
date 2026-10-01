@@ -1,0 +1,871 @@
+# Listado de archivos por hallazgo (heuristica estatica, ver docs/front-accesibilidad.md)
+# Rutas relativas a react-front-erp/src
+
+
+## A1 IconButton sin nombre accesible (310)
+components/phone-input/list-popover.tsx:195
+components/phone-input/phone-input.tsx:114
+components/upload/components/preview-multi-file.tsx:75
+layouts/components/account-drawer.tsx:355
+layouts/components/searchbar/index.tsx:157
+layouts/dashboard/nav-mobile.tsx:87
+auth/view/jwt/jwt-sign-up-view.tsx:119
+auth/view/jwt/jwt-sign-in-view.tsx:132
+sections/base-tecnica/documento-tecnico-dialog.tsx:341
+sections/base-tecnica/quimia-chat/quimia-nota-dialog.tsx:89
+sections/base-tecnica/quimia-chat/quimia-chat.tsx:383
+sections/base-tecnica/quimia-chat/quimia-chat.tsx:569
+sections/correos/view/correos-view.tsx:707
+sections/correos/view/correos-view.tsx:801
+sections/correos/view/correos-view.tsx:971
+sections/correos/view/correos-view.tsx:978
+sections/correos/view/correos-view.tsx:1063
+sections/correos/view/correos-view.tsx:1066
+sections/account/view/account-perfil-view.tsx:162
+sections/base-conocimiento/conocimiento-view-dialog.tsx:305
+sections/base-conocimiento/conocimiento-adjuntos.tsx:117
+sections/base-conocimiento/conocimiento-adjuntos.tsx:122
+sections/base-conocimiento/conocimiento-form-dialog.tsx:322
+sections/base-conocimiento/conocimiento-grid.tsx:116
+sections/calendar/calendar-toolbar.tsx:122
+sections/calendar/calendar-toolbar.tsx:128
+sections/calendar/calendar-toolbar.tsx:145
+sections/calendar/calendar-filters.tsx:94
+sections/file-manager/file-manager-preview.tsx:222
+sections/file-manager/file-manager-file-item.tsx:179
+sections/file-manager/file-manager-reutilizar-dialog.tsx:179
+sections/file-manager/file-manager-table-row.tsx:269
+sections/file-manager/file-manager-file-item-slots.tsx:245
+sections/file-manager/file-recent-item.tsx:82
+sections/file-manager/file-manager-folder-item.tsx:159
+sections/file-manager/file-widget.tsx:25
+sections/file-manager/file-manager-file-details.tsx:74
+sections/file-manager/file-manager-panel.tsx:40
+sections/file-manager/file-manager-panel.tsx:72
+core/components/incrementer-button/incrementer-button.tsx:40
+core/components/incrementer-button/incrementer-button.tsx:51
+core/components/change-password/ChangePasswordDialog.tsx:231
+core/components/change-password/ChangePasswordDialog.tsx:255
+core/components/change-password/ChangePasswordDialog.tsx:382
+core/components/viewDialog/pdfView/PdfPreview.tsx:88
+core/components/common/buscar-producto-dialog.tsx:288
+core/components/common/buscar-producto-dialog.tsx:537
+core/components/common/buscar-producto-dialog.tsx:647
+core/components/common/punto-emision-selector.tsx:149
+core/components/common/avatar-select-dialog.tsx:75
+core/components/common/search-asiento-cliente/SearchAsientoCliente.tsx:139
+core/components/common/view-comprobante-inventario-dialog/ViewComprobanteInventarioDialog.tsx:138
+core/components/common/view-comprobante-inventario-dialog/ViewComprobanteInventarioDialog.tsx:321
+core/components/common/search-persona/SearchPersona.tsx:188
+core/components/common/view-documento-cxp-dialog/ViewDocumentoCxPDialog.tsx:87
+core/components/common/search-producto/SearchProducto.tsx:193
+core/components/common/search-cliente/SearchCliente.tsx:195
+core/components/common/cargar-xml-factura-dialog/CargarXmlFacturaDialog.tsx:160
+core/components/common/search-documento-cxc/SearchDocumentoCxC.tsx:147
+core/components/common/search-asiento-proveedor/SearchAsientoProveedor.tsx:139
+core/components/common/search-proveedor/SearchProveedorDocumentoCxP.tsx:191
+core/components/common/search-proveedor/SearchProveedor.tsx:201
+core/components/common/search-factura-nota-credito/SearchFacturaNotaCredito.tsx:168
+core/components/common/search-cuenta-contable/SearchCuentaContable.tsx:193
+core/components/common/view-asiento-contable/ViewAsientoContable.tsx:1032
+core/components/common/update-variable/multivalues-variable-dialog.tsx:146
+core/components/common/select-producto/SelectProducto.tsx:309
+core/components/common/select-producto/SelectProducto.tsx:578
+core/components/common/audit-popover/AuditPopover.tsx:190
+core/components/common/audit-popover/AuditPopover.tsx:248
+core/components/common/search-documento-cxp/SearchDocumentoCxP.tsx:154
+core/components/common/view-factura-dialog/ViewFacturaDialog.tsx:100
+core/components/common/view-movimiento-banco-dialog/ViewMovimientoBancoDialog.tsx:192
+core/components/common/search-libro-banco-proveedor/SearchLibroBancoProveedor.tsx:139
+core/components/common/search-libro-banco-cliente/SearchLibroBancoCliente.tsx:139
+core/components/dataTable/DataTablePagination.tsx:164
+core/components/dataTable/DataTablePagination.tsx:173
+core/components/dataTable/DataTablePagination.tsx:200
+core/components/dataTable/DataTablePagination.tsx:209
+core/components/dataTable/DataTableToolbar.tsx:398
+core/components/dataTable/DataTableToolbar.tsx:433
+core/components/dataTable/DataTableToolbar.tsx:437
+pages/talento-humano/empleados/sections/educacion-tab.tsx:171
+pages/talento-humano/empleados/sections/educacion-tab.tsx:174
+pages/talento-humano/empleados/sections/cuenta-bancaria-tab.tsx:174
+pages/talento-humano/empleados/sections/cuenta-bancaria-tab.tsx:177
+pages/talento-humano/empleados/sections/experiencia-laboral-tab.tsx:175
+pages/talento-humano/empleados/sections/experiencia-laboral-tab.tsx:178
+pages/talento-humano/catalogos/feriados-list.tsx:186
+pages/talento-humano/catalogos/feriados-list.tsx:230
+pages/cuentas-por-cobrar/sections/mover-detalle-cxc-dialog.tsx:149
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:331
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:1820
+pages/cuentas-por-cobrar/sections/transaccion-cxc-detalle-form-dialog.tsx:235
+pages/cuentas-por-cobrar/reportes/sections/ver-diferencia-cliente-dialog.tsx:277
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:626
+pages/cuentas-por-pagar/ordenes-pago-details.tsx:436
+pages/cuentas-por-pagar/sections/ver-pagos-cxp-dialog.tsx:128
+pages/cuentas-por-pagar/sections/registrar-pago-cxp-dialog.tsx:1570
+pages/cuentas-por-pagar/sections/mover-detalle-cxp-dialog.tsx:149
+pages/cuentas-por-pagar/sections/transaccion-cxp-detalle-form-dialog.tsx:237
+pages/cuentas-por-pagar/sections/retencion-cxp-dialog.tsx:331
+pages/cuentas-por-pagar/sections/retencion-cxp-dialog.tsx:689
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:223
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:262
+pages/seguridad/permisos/perfil-opcion.tsx:314
+pages/seguridad/permisos/perfil-opcion.tsx:511
+pages/compras/liquidaciones-compra/sections/liquidacion-compra-toolbar.tsx:198
+pages/compras/proveedores/proveedor-cta-bancaria.tsx:181
+pages/compras/proveedores/sections/proveedor-cta-bancaria-frm.tsx:185
+pages/compras/documentos-por-pagar/sections/documento-cxp-reembolso-table.tsx:184
+pages/compras/documentos-por-pagar/sections/crear-factura-cxp-dialog.tsx:145
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:317
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:320
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:329
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:2081
+pages/compras/documentos-por-pagar/sections/importar-xml-cxp-dialog.tsx:334
+pages/importaciones/importacion-details.tsx:2032
+pages/importaciones/crear-importacion.tsx:1790
+pages/importaciones/crear-importacion.tsx:2703
+pages/importaciones/crear-importacion.tsx:2714
+pages/importaciones/secciones/rentabilidad-table.tsx:95
+pages/importaciones/secciones/select-factura-import-dialog.tsx:190
+pages/importaciones/secciones/select-factura-import-dialog.tsx:212
+pages/importaciones/secciones/select-documento-pagar-dialog.tsx:236
+pages/importaciones/secciones/select-documento-pagar-dialog.tsx:285
+pages/importaciones/secciones/factura-importacion-dialog.tsx:219
+pages/ventas/facturacion/sections/factura-form.tsx:3856
+pages/ventas/facturacion/sections/transporte-selector.tsx:139
+pages/ventas/facturacion/sections/factura-pagos-info.tsx:180
+pages/ventas/facturacion/sections/catalogo-productos.tsx:384
+pages/ventas/facturacion/sections/catalogo-productos.tsx:408
+pages/ventas/facturacion/sections/catalogo-productos.tsx:454
+pages/ventas/facturacion/sections/factura-ver-xml-dialog.tsx:129
+pages/ventas/facturacion/sections/factura-toolbar.tsx:288
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:486
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:930
+pages/ventas/facturacion/sections/guia-scan-result-dialog.tsx:224
+pages/ventas/facturacion/sections/factura-nota-credito-dialog.tsx:92
+pages/ventas/facturacion/sections/factura-retencion-dialog.tsx:212
+pages/ventas/facturacion/sections/factura-guia-remision-dialog.tsx:94
+pages/ventas/reportes/pago-facturas-list.tsx:337
+pages/ventas/reportes/sections/transacciones-cliente-dialog.tsx:118
+pages/ventas/clientes/sections/cliente-contacto.tsx:130
+pages/ventas/clientes/sections/cliente-frt.tsx:694
+pages/ventas/clientes/sections/cliente-direccion-frm.tsx:647
+pages/ventas/clientes/sections/cliente-direccion.tsx:133
+pages/ventas/transportes/consultar-tarifas.tsx:403
+pages/ventas/transportes/envios-transporte-dialog.tsx:270
+pages/ventas/transportes/tarifa-form-dialog.tsx:154
+pages/ventas/transportes/tarifa-form-dialog.tsx:308
+pages/ventas/transportes/transporte-dialog.tsx:411
+pages/ventas/transportes/transporte-dialog.tsx:567
+pages/ventas/transportes/transporte-dialog.tsx:711
+pages/ventas/transportes/transporte-dialog.tsx:714
+pages/ventas/transportes/transporte-view-dialog.tsx:80
+pages/ventas/transportes/transporte-view-dialog.tsx:254
+pages/ventas/transportes/consultar-destino-dialog.tsx:478
+pages/ventas/transportes/consultar-destino-dialog.tsx:557
+pages/ventas/transportes/sections/select-factura-flete-dialog.tsx:132
+pages/ventas/transportes/sections/ruta-form.tsx:423
+pages/ventas/transportes/sections/ruta-form.tsx:430
+pages/ventas/notas-credito/sections/nota-credito-toolbar.tsx:167
+pages/ventas/configuracion-pos/sections/agregar-usuario-dialog.tsx:91
+pages/ventas/configuracion-pos/sections/usuario-punto-venta-dialog.tsx:173
+pages/ventas/configuracion-pos/sections/usuario-punto-venta-dialog.tsx:231
+pages/ventas/configuracion-pos/sections/pos-punto-venta-form-dialog.tsx:283
+pages/ventas/configuracion-pos/sections/pos-punto-venta-form-dialog.tsx:506
+pages/ventas/data-bi/sections/variacion-periodos-chart.tsx:493
+pages/contabilidad/config-asientos/sections/det-conf-asie-table.tsx:119
+pages/contabilidad/config-asientos/sections/det-conf-asie-table.tsx:122
+pages/contabilidad/plan-cuentas/sections/PlanCuentaFormDialog.tsx:202
+pages/contabilidad/plan-cuentas/sections/CabPlanFormDialog.tsx:156
+pages/contabilidad/config-impuestos/sections/DetalleFormDialog.tsx:90
+pages/contabilidad/config-impuestos/sections/ImpuestoFormDialog.tsx:72
+pages/contabilidad/config-impuestos/sections/CasilleroFormDialog.tsx:80
+pages/contabilidad/config-impuestos/sections/VigenciaFormDialog.tsx:86
+pages/contabilidad/flujo-efectivo/sections/clasificacion-form-dialog.tsx:168
+pages/contabilidad/asiento-contable/asiento-contable-edit.tsx:201
+pages/contabilidad/asiento-contable/asiento-contable-create.tsx:133
+pages/inventario/productos/sections/select-prod-config-precio.tsx:338
+pages/inventario/productos/sections/select-prod-config-precio.tsx:699
+pages/inventario/productos/sections/proveedores-precios-dialog.tsx:85
+pages/inventario/productos/sections/buscar-producto-lista.tsx:211
+pages/inventario/productos/sections/html-extract-dialog.tsx:133
+pages/inventario/productos/sections/get-precio-producto-old.tsx:476
+pages/inventario/productos/sections/calcular-precios-dialog.tsx:654
+pages/inventario/productos/sections/clientes-producto-dialog.tsx:53
+pages/inventario/productos/sections/etiquetas-categoria.tsx:454
+pages/inventario/productos/sections/producto-frt.tsx:159
+pages/inventario/productos/sections/producto-frt.tsx:274
+pages/inventario/productos/sections/producto-frt.tsx:1445
+pages/inventario/productos/sections/producto-frt.tsx:1508
+pages/inventario/productos/sections/config-precios-form-dialog.tsx:131
+pages/inventario/productos/sections/base-tecnica/documentos-proveedor-dialog.tsx:94
+pages/inventario/catalogos/catalogo-details.tsx:335
+pages/inventario/catalogos/catalogo-details.tsx:1267
+pages/inventario/catalogos/catalogo-details.tsx:1307
+pages/inventario/catalogos/sections/catalogo-form.tsx:219
+pages/inventario/catalogos/sections/catalogo-form.tsx:270
+pages/inventario/catalogos/sections/catalogo-form.tsx:303
+pages/inventario/catalogos/sections/catalogo-form.tsx:498
+pages/inventario/catalogos/sections/catalogo-form.tsx:508
+pages/inventario/catalogos/sections/catalogo-form.tsx:1440
+pages/inventario/catalogos/sections/catalogo-form.tsx:1450
+pages/inventario/catalogos/sections/catalogo-form.tsx:1566
+pages/inventario/catalogos/sections/catalogo-form.tsx:1613
+pages/inventario/comprobantes/comprobante-details.tsx:218
+pages/inventario/comprobantes/comprobante-details.tsx:617
+pages/inventario/comprobantes/comprobante-details.tsx:626
+pages/inventario/comprobantes/comprobante-details.tsx:635
+pages/inventario/comprobantes/comprobante-details.tsx:644
+pages/inventario/comprobantes/comprobante-edit.tsx:391
+pages/inventario/comprobantes/comprobante-edit.tsx:788
+pages/inventario/comprobantes/comprobante-edit.tsx:797
+pages/inventario/comprobantes/comprobante-edit.tsx:806
+pages/inventario/comprobantes/comprobante-edit.tsx:815
+pages/inventario/comprobantes/comprobante-check.tsx:413
+pages/inventario/comprobantes/comprobante-check.tsx:819
+pages/inventario/comprobantes/comprobante-check.tsx:828
+pages/inventario/comprobantes/comprobante-check.tsx:837
+pages/inventario/comprobantes/comprobante-check.tsx:846
+pages/inventario/comprobantes/sections/verifica-ingreso-dialogo.tsx:355
+pages/inventario/comprobantes/sections/verifica-egreso-dialogo.tsx:609
+pages/inventario/comprobantes/sections/details-toolbar.tsx:78
+pages/inventario/comprobantes/sections/analisis-rotacion-prod-chart.tsx:742
+pages/inventario/comprobantes/sections/productos-bajo-stock-dialog.tsx:294
+pages/inventario/comprobantes/sections/prediccion-stock-chart.tsx:700
+pages/inventario/comprobantes/sections/productos-mayor-stock-dialog.tsx:279
+pages/inventario/comprobantes/sections/registro-lote-ingreso-dialogo.tsx:284
+pages/inventario/comprobantes/sections/components/photo-evidence-upload.tsx:75
+pages/inventario/comprobantes/sections/components/verification-dialog-header.tsx:66
+pages/inventario/etiquetas/sections/metricas-etiquetas-dialog.tsx:122
+pages/inventario/bodegas/sections/ajustar-conteo-dialog.tsx:572
+pages/inventario/bodegas/sections/ajustar-conteo-dialog.tsx:769
+pages/inventario/bodegas/sections/validar-conteo-dtq.tsx:478
+pages/inventario/bodegas/sections/validar-conteo-dtq.tsx:614
+pages/inventario/bodegas/sections/registra-conteo-dialog.tsx:174
+pages/inventario/bodegas/sections/registra-conteo-dialog.tsx:222
+pages/inventario/bodegas/sections/reconteo-dialog.tsx:195
+pages/inventario/bodegas/sections/reconteo-dialog.tsx:257
+pages/inventario/bodegas/sections/generar-conteo-dialog.tsx:311
+pages/inventario/menudeo/formas-list.tsx:261
+pages/inventario/menudeo/comprobante-create.tsx:369
+pages/inventario/menudeo/stock-menudeo.tsx:171
+pages/inventario/menudeo/comprobante-edit.tsx:301
+pages/inventario/menudeo/comprobante-edit.tsx:371
+pages/inventario/menudeo/create-menudeo.tsx:337
+pages/inventario/menudeo/productos-menudeo-list.tsx:238
+pages/inventario/menudeo/sections/PresentacionFormDialog.tsx:216
+pages/inventario/menudeo/sections/AgregarProductoMenudeoDialog.tsx:112
+pages/inventario/menudeo/sections/AgregarProductoMenudeoDialog.tsx:147
+pages/inventario/menudeo/sections/FormaFormDialog.tsx:161
+pages/inventario/menudeo/sections/CopiarPresentacionesDialog.tsx:148
+pages/inventario/menudeo/sections/CopiarPresentacionesDialog.tsx:174
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:34
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:62
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:76
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:90
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:104
+pages/whatsapp/sections/chat-room-attachments.tsx:118
+pages/whatsapp/sections/chat-room-attachments.tsx:128
+pages/whatsapp/sections/chat-message-item.tsx:328
+pages/whatsapp/sections/chat-message-item.tsx:331
+pages/whatsapp/sections/chat-message-item.tsx:334
+pages/whatsapp/sections/chat-header-detail.tsx:277
+pages/whatsapp/sections/chat-header-detail.tsx:398
+pages/whatsapp/sections/chat-nav.tsx:191
+pages/whatsapp/sections/chat-nav.tsx:218
+pages/whatsapp/sections/chat-message-input.tsx:498
+pages/whatsapp/sections/chat-message-input.tsx:562
+pages/whatsapp/sections/chat-message-input.tsx:704
+pages/tesoreria/transferencia-cuentas.tsx:638
+pages/tesoreria/sections/devolucion-cobro-tarjeta-view.tsx:187
+pages/tesoreria/sections/deposito-caja-view.tsx:313
+pages/tesoreria/sections/completar-deposito-caja-form.tsx:428
+pages/tesoreria/sections/registrar-pago-cxp.tsx:1114
+pages/tesoreria/sections/registrar-pago-cxc.tsx:998
+pages/tesoreria/anticipo-proveedores/sections/registrar-anticipo-proveedor-dialog.tsx:758
+pages/tesoreria/catalogos/bancos-list.tsx:798
+pages/tesoreria/catalogos/cajas-list.tsx:350
+pages/sistema/notificaciones/notificacion-panel.tsx:110
+pages/sistema/notificaciones/sections/plantilla-usuarios-dialog.tsx:136
+pages/sistema/notificaciones/sections/plantilla-usuarios-dialog.tsx:176
+pages/sistema/notificaciones/sections/plantilla-usuarios-dialog.tsx:263
+pages/sistema/notificaciones/sections/plantilla-form.tsx:287
+pages/sistema/telegram/sections/instrucciones-telegram-dialog.tsx:45
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:213
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:332
+pages/sistema/opciones/sections/opcion-form-dialog.tsx:199
+pages/sistema/whatsapp/cuenta-web-whatsapp.tsx:39
+pages/sistema/whatsapp/bot-config-list.tsx:228
+pages/sistema/whatsapp/bot-config-list.tsx:365
+pages/sistema/whatsapp/bot-sessions-list.tsx:123
+pages/sistema/whatsapp/bot-sessions-list.tsx:174
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:246
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:402
+pages/sistema/whatsapp/sections/preview-message.tsx:173
+pages/sistema/whatsapp/sections/agente-form-dialog.tsx:129
+pages/sistema/whatsapp/sections/qr-whatsapp.tsx:91
+pages/sistema/variables-sistema/sections/variables-sistema-edit-dialog.tsx:165
+pages/sistema/variables-sistema/sections/config-variable-dialog.tsx:152
+pages/sri/ats.tsx:385
+pages/sri/configuracion-emision.tsx:449
+pages/proformas/sections/proforma-email-dialog.tsx:196
+pages/proformas/sections/proforma-email-dialog.tsx:482
+pages/proformas/sections/proforma-form.tsx:1759
+pages/proformas/sections/proforma-files-selector.tsx:443
+pages/proformas/sections/buscar-cliente-dialog.tsx:176
+pages/proformas/sections/buscar-cliente-dialog.tsx:217
+
+## A2 Elementos no semanticos con onClick (div/Box/Stack/TableCell/TableRow sin role ni teclado) (109)
+core/components/common/audit-popover/AuditPopover.tsx:169 <Stack>
+core/components/common/avatar-select-dialog.tsx:127 <Box>
+core/components/common/buscar-producto-dialog.tsx:806 <TableRow>
+core/components/common/cargar-xml-factura-dialog/CargarXmlFacturaDialog.tsx:181 <Box>
+core/components/common/search-cliente/SearchCliente.tsx:224 <Box>
+core/components/common/search-persona/SearchPersona.tsx:208 <Box>
+core/components/common/search-proveedor/SearchProveedor.tsx:229 <Box>
+core/components/common/view-movimiento-banco-dialog/ViewMovimientoBancoDialog.tsx:313 <Box>
+core/components/dataTable/ConfigDataTable.tsx:113 <Box>
+core/components/dataTable/ConfigDataTable.tsx:133 <Box>
+core/components/dataTable/ConfigDataTable.tsx:280 <Box>
+core/components/dataTable/RowDataTable.tsx:198 <TableRow>
+core/components/rol/SelectRolDialog.tsx:278 <Box>
+layouts/components/searchbar/index.tsx:100 <Box>
+pages/compras/proveedores/sections/proveedor-transacciones-dtq.tsx:219 <Box>
+pages/contabilidad/mayorizar/mayorizar.tsx:881 <TableRow>
+pages/contabilidad/mayorizar/mayorizar.tsx:888 <TableCell>
+pages/contabilidad/plan-cuentas/sections/CabPlanCuentasInfo.tsx:184 <TableRow>
+pages/contabilidad/plan-cuentas/sections/CabPlanCuentasInfo.tsx:235 <TableCell>
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:1807 <Box>
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:2400 <Box>
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:1051 <TableCell>
+pages/cuentas-por-pagar/ordenes-pago-details.tsx:651 <Typography>
+pages/cuentas-por-pagar/ordenes-pago-details.tsx:970 <Typography>
+pages/cuentas-por-pagar/sections/asociar-pago-orden-panel.tsx:293 <TableRow>
+pages/cuentas-por-pagar/sections/registrar-pago-cxp-dialog.tsx:1557 <Box>
+pages/cuentas-por-pagar/sections/registrar-pago-dialog.tsx:1851 <Box>
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:371 <TableRow>
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:392 <TableCell>
+pages/cuentas-por-pagar/sections/ver-pagos-cxp-dialog.tsx:207 <Box>
+pages/cuentas-por-pagar/sections/ver-pagos-cxp-dialog.tsx:339 <Box>
+pages/importaciones/crear-importacion.tsx:2600 <Box>
+pages/importaciones/importacion-details.tsx:1932 <Box>
+pages/importaciones/secciones/select-documento-pagar-dialog.tsx:366 <TableRow>
+pages/importaciones/secciones/select-factura-import-dialog.tsx:281 <TableRow>
+pages/inventario/catalogos/catalogo-details.tsx:361 <Box>
+pages/inventario/catalogos/catalogo-details.tsx:841 <Paper>
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:310 <TableRow>
+pages/inventario/catalogos/sections/catalogo-form.tsx:1391 <Box>
+pages/inventario/catalogos/sections/catalogo-form.tsx:1631 <Box>
+pages/inventario/catalogos/sections/catalogo-form.tsx:462 <TableCell>
+pages/inventario/catalogos/sections/catalogo-form.tsx:466 <TableCell>
+pages/inventario/catalogos/sections/catalogo-form.tsx:616 <Box>
+pages/inventario/comprobantes/sections/components/photo-evidence-upload.tsx:67 <Box>
+pages/inventario/comprobantes/sections/verifica-egreso-dialogo.tsx:588 <TableRow>
+pages/inventario/menudeo/formas-list.tsx:401 <Box>
+pages/inventario/productos/base-tecnica.tsx:217 <Typography>
+pages/inventario/productos/sections/archivos-cargados/archivos-tabla.tsx:186 <Typography>
+pages/inventario/productos/sections/base-tecnica/documentos-proveedor-dialog.tsx:172 <Typography>
+pages/inventario/productos/sections/calcular-precios-dialog.tsx:879 <Box>
+pages/inventario/productos/sections/config-precios-producto.tsx:494 <Typography>
+pages/inventario/productos/sections/get-precio-producto-old.tsx:573 <Box>
+pages/inventario/productos/sections/producto-frt.tsx:1015 <Box>
+pages/inventario/productos/sections/producto-frt.tsx:110 <Box>
+pages/inventario/productos/sections/producto-frt.tsx:228 <Box>
+pages/proformas/sections/buscar-cliente-dialog.tsx:339 <TableRow>
+pages/proformas/sections/proforma-files-selector.tsx:140 <Box>
+pages/proformas/sections/proforma-files-selector.tsx:309 <Box>
+pages/proformas/sections/proforma-files-selector.tsx:385 <Box>
+pages/sistema/notificaciones/notificacion-item.tsx:99 <Box>
+pages/sistema/notificaciones/sections/plantilla-telegram-card.tsx:163 <Box>
+pages/sistema/telegram/telegram-conversaciones.tsx:214 <Box>
+pages/sistema/whatsapp/sections/campania-form.tsx:413 <Box>
+pages/tesoreria/catalogos/bancos-list.tsx:586 <Box>
+pages/tesoreria/catalogos/bancos-list.tsx:705 <Box>
+pages/tesoreria/catalogos/cajas-list.tsx:322 <Box>
+pages/tesoreria/consulta-movimientos.tsx:1059 <Box>
+pages/tesoreria/consulta-movimientos.tsx:378 <Typography>
+pages/tesoreria/diferencias-contables.tsx:281 <Typography>
+pages/tesoreria/diferencias-contables.tsx:655 <Box>
+pages/tesoreria/posicion-consolidada.tsx:333 <Stack>
+pages/tesoreria/sections/deposito-caja-view.tsx:472 <Box>
+pages/tesoreria/sections/devolucion-cobro-tarjeta-view.tsx:722 <Box>
+pages/tesoreria/sections/pagos-documentos-step.tsx:754 <TableRow>
+pages/ventas/clientes/sections/transacciones-dtq.tsx:196 <Box>
+pages/ventas/facturacion/sections/catalogo-productos.tsx:588 <Stack>
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:866 <Box>
+pages/ventas/facturacion/sections/envio-section.tsx:210 <Stack>
+pages/ventas/facturacion/sections/envio-section.tsx:241 <Stack>
+pages/ventas/facturacion/sections/envio-section.tsx:294 <Stack>
+pages/ventas/facturacion/sections/envio-section.tsx:307 <Stack>
+pages/ventas/facturacion/sections/factura-pagos-info.tsx:365 <Box>
+pages/ventas/facturacion/sections/registrar-retencion-venta-dialog.tsx:176 <Box>
+pages/ventas/facturacion/sections/transporte-selector.tsx:157 <Stack>
+pages/ventas/reportes/sections/clientes-ubicacion/transportes-ubicacion.tsx:91 <TableRow>
+pages/ventas/reportes/sections/envio-factura-view.tsx:445 <Box>
+pages/ventas/transportes/consultar-destino-dialog.tsx:97 <Stack>
+pages/ventas/transportes/sections/select-factura-flete-dialog.tsx:209 <TableRow>
+pages/ventas/transportes/transporte-dialog.tsx:113 <Stack>
+pages/ventas/transportes/transporte-view-dialog.tsx:74 <TableRow>
+pages/whatsapp/sections/chat-message-media.tsx:102 <Box>
+pages/whatsapp/sections/chat-message-media.tsx:126 <Box>
+pages/whatsapp/sections/chat-message-media.tsx:206 <Stack>
+pages/whatsapp/sections/chat-room-attachments.tsx:33 <Stack>
+pages/whatsapp/sections/chat-search.tsx:113 <Box>
+sections/base-conocimiento/conocimiento-view-dialog.tsx:403 <Box>
+sections/correos/view/correos-view.tsx:349 <Box>
+sections/correos/view/correos-view.tsx:764 <Box>
+sections/file-manager/file-manager-file-details.tsx:84 <Box>
+sections/file-manager/file-manager-file-item.tsx:157 <Stack>
+sections/file-manager/file-manager-file-item.tsx:192 <Box>
+sections/file-manager/file-manager-file-item.tsx:247 <Stack>
+sections/file-manager/file-manager-folder-item.tsx:133 <Box>
+sections/file-manager/file-manager-folder-item.tsx:205 <Paper>
+sections/file-manager/file-manager-table-row.tsx:198 <TableCell>
+sections/file-manager/file-manager-table-row.tsx:229 <TableCell>
+sections/file-manager/file-manager-table-row.tsx:233 <TableCell>
+sections/file-manager/file-manager-table-row.tsx:239 <TableCell>
+sections/file-manager/file-manager-table-row.tsx:245 <TableCell>
+
+## A3 Imagenes sin alt (15)
+pages/tesoreria/catalogos/bancos-list.tsx:731
+sections/base-tecnica/documento-tecnico-dialog.tsx:708
+sections/base-conocimiento/conocimiento-adjuntos.tsx:81
+sections/file-manager/file-manager-file-item-slots.tsx:86
+sections/file-manager/file-manager-folder-item.tsx:184
+core/components/common/view-movimiento-banco-dialog/ViewMovimientoBancoDialog.tsx:313
+pages/compras/liquidaciones-compra/sections/liquidacion-compra-toolbar.tsx:167
+pages/compras/liquidaciones-compra/sections/liquidacion-compra-toolbar.tsx:302
+pages/ventas/facturacion/sections/factura-toolbar.tsx:216
+pages/ventas/facturacion/sections/factura-toolbar.tsx:557
+pages/ventas/notas-credito/sections/nota-credito-toolbar.tsx:154
+pages/whatsapp/sections/chat-thumbanail-file.tsx:50
+pages/whatsapp/sections/chat-thumbanail-file.tsx:65
+pages/sri/ats.tsx:131
+pages/sri/sections/talon-resumen.tsx:204
+
+## A4 TextField sin label ni aria-label (56)
+components/phone-input/phone-input.tsx:164
+components/editor/components/link-block.tsx:86
+components/editor/components/image-block.tsx:65
+components/hook-form/rhf-catalog.tsx:285
+sections/base-tecnica/documento-tecnico-dialog.tsx:428
+sections/base-tecnica/quimia-chat/quimia-chat.tsx:542
+sections/correos/view/correos-view.tsx:994
+sections/correos/view/correos-view.tsx:1002
+sections/correos/view/correos-view.tsx:1010
+sections/correos/view/correos-view.tsx:1019
+sections/file-manager/file-manager-share-dialog.tsx:55
+core/components/common/view-asiento-contable/ViewAsientoContable.tsx:1019
+core/components/common/select-producto/SelectProducto.tsx:334
+core/components/common/select-producto/SelectProducto.tsx:583
+core/components/dataTable/FilterColumn.tsx:573
+core/components/dataTable/DataTableToolbar.tsx:413
+pages/talento-humano/empleados/empleados-list.tsx:181
+pages/talento-humano/catalogos/parametria-rubros.tsx:222
+pages/talento-humano/catalogos/parametria-rubros.tsx:232
+pages/talento-humano/catalogos/parametria-rubros.tsx:389
+pages/talento-humano/catalogos/departamentos-list.tsx:93
+pages/cuentas-por-pagar/sections/retencion-cxp-dialog.tsx:631
+pages/compras/documentos-por-pagar/sections/documento-cxp-reembolso-table.tsx:114
+pages/compras/documentos-por-pagar/sections/documento-cxp-reembolso-table.tsx:130
+pages/compras/documentos-por-pagar/sections/documento-cxp-reembolso-table.tsx:152
+pages/ventas/facturacion/sections/factura-form.tsx:2494
+pages/ventas/facturacion/sections/catalogo-productos.tsx:688
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:1059
+pages/ventas/facturacion/sections/factura-retencion-dialog.tsx:288
+pages/ventas/transportes/sections/ruta-form.tsx:640
+pages/contabilidad/config-asientos/sections/config-asientos-dtq.tsx:119
+pages/contabilidad/asiento-contable/asiento-contable-edit.tsx:183
+pages/contabilidad/asiento-contable/asiento-contable-edit.tsx:192
+pages/contabilidad/asiento-contable/asiento-contable-create.tsx:125
+pages/inventario/productos/sections/select-prod-config-precio.tsx:365
+pages/inventario/productos/sections/select-prod-config-precio.tsx:704
+pages/inventario/catalogos/catalogo-details.tsx:322
+pages/inventario/catalogos/sections/catalogo-form.tsx:1703
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:205
+pages/inventario/comprobantes/comprobante-details.tsx:205
+pages/inventario/comprobantes/comprobante-edit.tsx:378
+pages/inventario/comprobantes/comprobante-check.tsx:400
+pages/inventario/bodegas/sections/ajustar-conteo-dialog.tsx:254
+pages/inventario/bodegas/sections/validar-conteo-dtq.tsx:832
+pages/whatsapp/sections/chat-search.tsx:83
+pages/whatsapp/sections/chat-responder-bot-dialog.tsx:108
+pages/tesoreria/catalogos/cuentas-caja-list.tsx:352
+pages/tesoreria/catalogos/cuentas-banco-list.tsx:280
+pages/sistema/notificaciones/sections/plantilla-usuarios-dialog.tsx:183
+pages/sistema/whatsapp/bot-sessions-list.tsx:101
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:381
+pages/sistema/whatsapp/sections/campania-form.tsx:543
+pages/sistema/whatsapp/sections/campania-form.tsx:605
+pages/sistema/whatsapp/sections/campania-form.tsx:625
+pages/proformas/sections/proforma-email-dialog.tsx:515
+pages/proformas/sections/proforma-email-dialog.tsx:563
+
+## A5 Switch sin nombre accesible (82)
+components/settings/drawer/base-option.tsx:38
+sections/base-tecnica/producto-base-tecnica-view.tsx:343
+core/components/form/FormTable.tsx:534
+core/components/common/simulador-cuenta-tarjeta-dialog.tsx:189
+core/components/common/simulador-cuenta-tarjeta-dialog.tsx:284
+core/components/dataTable/ConfigDataTable.tsx:148
+core/components/dataTable/ConfigDataTable.tsx:427
+core/components/dataTable/ConfigDataTable.tsx:437
+core/components/dataTable/ConfigDataTable.tsx:447
+core/components/dataTable/ConfigDataTable.tsx:457
+core/components/dataTable/ConfigDataTable.tsx:469
+core/components/dataTable/ConfigDataTable.tsx:479
+core/components/dataTable/ConfigDataTable.tsx:489
+core/components/dataTable/ConfigDataTable.tsx:501
+core/components/dataTable/ConfigDataTable.tsx:511
+core/components/dataTable/DataTablePopoverOptions.tsx:110
+core/components/dataTable/DataTablePopoverOptions.tsx:116
+core/components/dataTable/DataTablePopoverOptions.tsx:125
+pages/talento-humano/vacaciones-permisos/vacaciones-list.tsx:231
+pages/talento-humano/empleados/sections/educacion-tab.tsx:282
+pages/talento-humano/empleados/sections/cuenta-bancaria-tab.tsx:268
+pages/talento-humano/empleados/sections/empleado-form.tsx:452
+pages/talento-humano/empleados/sections/empleado-form.tsx:465
+pages/talento-humano/catalogos/cargos-list.tsx:117
+pages/talento-humano/catalogos/rubros-list.tsx:307
+pages/compras/proveedores/sections/proveedor-dtq.tsx:122
+pages/ventas/facturacion/sections/factura-form.tsx:3949
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:716
+pages/ventas/facturacion/sections/envio-section.tsx:138
+pages/ventas/facturacion/sections/envio-section.tsx:630
+pages/ventas/reportes/pago-facturas-list.tsx:948
+pages/ventas/reportes/cobros-tarjeta-list.tsx:378
+pages/ventas/reportes/saldos-clientes-list.tsx:165
+pages/ventas/clientes/sections/cliente-dtq.tsx:107
+pages/ventas/clientes/sections/cliente-direccion-frm.tsx:350
+pages/ventas/transportes/transporte-dialog.tsx:137
+pages/ventas/configuracion-pos/sections/usuario-punto-venta-dialog.tsx:223
+pages/ventas/configuracion-pos/sections/pos-punto-venta-form-dialog.tsx:372
+pages/ventas/configuracion-pos/sections/pos-punto-venta-form-dialog.tsx:500
+pages/contabilidad/config-asientos/sections/det-conf-asie-form-dialog.tsx:203
+pages/contabilidad/config-impuestos/sections/VigenciaFormDialog.tsx:121
+pages/inventario/productos/stock-productos.tsx:205
+pages/inventario/productos/producto-list.tsx:124
+pages/inventario/productos/sections/select-prod-config-precio.tsx:385
+pages/inventario/productos/sections/get-precio-producto-old.tsx:592
+pages/inventario/productos/sections/calcular-precios-dialog.tsx:904
+pages/inventario/productos/sections/control-stock/productos-stock-tabla.tsx:337
+pages/inventario/productos/sections/base-tecnica/configuracion-tecnica-dialog.tsx:62
+pages/inventario/productos/sections/base-tecnica/filtros-base-tecnica.tsx:216
+pages/inventario/productos/sections/archivos-cargados/cobertura-tabla.tsx:316
+pages/inventario/productos/sections/archivos-cargados/filtros-archivos.tsx:204
+pages/inventario/bodegas/sections/validar-conteo-dtq.tsx:717
+pages/whatsapp/sections/chat-header-detail.tsx:150
+pages/whatsapp/sections/chat-nav-filters.tsx:329
+pages/tesoreria/reportes/sections/registrar-cheque-devuelto-dialog.tsx:206
+pages/tesoreria/catalogos/bancos-list.tsx:563
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:373
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:382
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:391
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:434
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:447
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:483
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:518
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:629
+pages/sistema/notificaciones/sections/plantilla-telegram-card.tsx:119
+pages/sistema/usuarios/sections/usuario-dtq.tsx:120
+pages/sistema/telegram/telegram-comandos.tsx:204
+pages/sistema/telegram/telegram-comandos.tsx:390
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:208
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:312
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:321
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:337
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:280
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:344
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:361
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:392
+pages/sistema/telegram/sections/cuenta-telegram-card.tsx:396
+pages/sistema/opciones/sections/opcion-sortable-list.tsx:153
+pages/sistema/general/personas/personas-list.tsx:232
+pages/sistema/whatsapp/sections/bot-config-dtq.tsx:139
+pages/sistema/whatsapp/sections/bot-config-dtq.tsx:200
+pages/proformas/sections/precio-cliente-dialog.tsx:2470
+
+## A6 Checkbox sin nombre accesible (41)
+sections/file-manager/file-manager-reutilizar-dialog.tsx:246
+sections/file-manager/file-manager-action-selected.tsx:51
+sections/file-manager/file-manager-folder-item.tsx:172
+sections/file-manager/file-manager-file-details.tsx:128
+core/components/common/buscar-producto-dialog.tsx:777
+core/components/common/buscar-producto-dialog.tsx:819
+core/components/common/select-producto/SelectProducto.tsx:388
+core/components/common/select-producto/SelectProducto.tsx:440
+core/components/common/select-producto/SelectProducto.tsx:512
+core/components/dropdown/DropdownMultiple.tsx:85
+core/components/dataTable/RowDataTable.tsx:233
+pages/talento-humano/asistencia/aprobar-permisos.tsx:167
+pages/talento-humano/asistencia/aprobar-permisos.tsx:193
+pages/talento-humano/asistencia/aprobar-vacaciones.tsx:174
+pages/talento-humano/asistencia/aprobar-vacaciones.tsx:199
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:960
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:1055
+pages/cuentas-por-pagar/sections/asociar-pago-orden-panel.tsx:301
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:315
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:395
+pages/ventas/facturacion/sections/guia-scan-result-dialog.tsx:263
+pages/ventas/notas-credito/sections/nota-credito-form.tsx:522
+pages/contabilidad/mayorizar/mayorizar.tsx:845
+pages/contabilidad/mayorizar/mayorizar.tsx:901
+pages/inventario/productos/sections/select-prod-config-precio.tsx:433
+pages/inventario/productos/sections/select-prod-config-precio.tsx:487
+pages/inventario/productos/sections/select-prod-config-precio.tsx:598
+pages/inventario/productos/sections/config-precios-producto.tsx:487
+pages/inventario/productos/sections/config-precios-producto.tsx:691
+pages/inventario/catalogos/sections/catalogo-form.tsx:395
+pages/inventario/catalogos/sections/catalogo-form.tsx:463
+pages/inventario/catalogos/sections/catalogo-form.tsx:467
+pages/inventario/catalogos/sections/catalogo-form.tsx:1798
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:243
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:264
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:285
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:329
+pages/inventario/menudeo/sections/CopiarPresentacionesDialog.tsx:190
+pages/inventario/menudeo/sections/CopiarPresentacionesDialog.tsx:266
+pages/whatsapp/sections/chat-list-add.tsx:78
+pages/sistema/notificaciones/sections/plantilla-telegram-card.tsx:180
+
+## A7 Dialog sin aria-labelledby (192)
+components/hook-form/rhf-catalog.tsx:392
+components/custom-date-range-picker/custom-date-range-picker.tsx:52
+components/custom-dialog/confirm-dialog.tsx:22
+layouts/components/searchbar/index.tsx:210
+sections/base-tecnica/documento-tecnico-dialog.tsx:239
+sections/base-tecnica/procesar-base-tecnica-button.tsx:114
+sections/base-tecnica/quimia-chat/quimia-nota-dialog.tsx:70
+sections/base-conocimiento/conocimiento-view-dialog.tsx:179
+sections/base-conocimiento/conocimiento-form-dialog.tsx:301
+sections/calendar/view/calendar-view.tsx:92
+sections/file-manager/file-manager-preview.tsx:181
+sections/file-manager/file-manager-reutilizar-dialog.tsx:169
+sections/file-manager/file-manager-new-folder-dialog.tsx:98
+sections/file-manager/file-manager-share-dialog.tsx:40
+sections/file-manager/file-manager-create-folder-dialog.tsx:67
+core/components/change-password/ChangePasswordDialog.tsx:168
+core/components/viewDialog/pdfView/PdfPreview.tsx:70
+core/components/common/buscar-producto-dialog.tsx:498
+core/components/common/avatar-select-dialog.tsx:63
+core/components/common/simulador-cuenta-tarjeta-dialog.tsx:152
+core/components/common/view-comprobante-inventario-dialog/ViewComprobanteInventarioDialog.tsx:98
+core/components/common/view-documento-cxp-dialog/ViewDocumentoCxPDialog.tsx:58
+core/components/common/cargar-xml-factura-dialog/CargarXmlFacturaDialog.tsx:124
+core/components/common/view-asiento-contable/ViewAsientoContable.tsx:771
+core/components/common/update-variable/multivalues-variable-dialog.tsx:98
+core/components/common/select-producto/SelectProducto.tsx:283
+core/components/common/select-producto/SelectProducto.tsx:574
+core/components/common/view-factura-dialog/ViewFacturaDialog.tsx:73
+core/components/common/view-movimiento-banco-dialog/ViewMovimientoBancoDialog.tsx:146
+core/components/common/view-retencion-venta-dialog/ViewRetencionVentaDialog.tsx:46
+core/components/rol/SelectRolDialog.tsx:197
+core/components/dataTable/ConfigDataTable.tsx:268
+pages/talento-humano/empleados/sections/empleado-view-dialog.tsx:51
+pages/talento-humano/empleados/sections/educacion-tab.tsx:191
+pages/talento-humano/empleados/sections/cuenta-bancaria-tab.tsx:194
+pages/talento-humano/empleados/sections/experiencia-laboral-tab.tsx:195
+pages/talento-humano/catalogos/parametria-rubros.tsx:108
+pages/talento-humano/rol-pagos/rol-pagos-details.tsx:440
+pages/cuentas-por-cobrar/sections/clientes-pago-destiempo-dialog.tsx:149
+pages/cuentas-por-cobrar/sections/mover-detalle-cxc-dialog.tsx:112
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:1116
+pages/cuentas-por-cobrar/sections/registrar-cobro-dialog.tsx:2119
+pages/cuentas-por-cobrar/sections/transaccion-cxc-detalle-form-dialog.tsx:198
+pages/cuentas-por-cobrar/reportes/sections/ver-diferencia-cliente-dialog.tsx:223
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:1274
+pages/cuentas-por-pagar/aprobar-orden-pago.tsx:1325
+pages/cuentas-por-pagar/sections/ver-pagos-cxp-dialog.tsx:90
+pages/cuentas-por-pagar/sections/registrar-pago-cxp-dialog.tsx:812
+pages/cuentas-por-pagar/sections/registrar-pago-cxp-dialog.tsx:1826
+pages/cuentas-por-pagar/sections/mover-detalle-cxp-dialog.tsx:112
+pages/cuentas-por-pagar/sections/reenviar-pago-email-dialog.tsx:82
+pages/cuentas-por-pagar/sections/pagos-asociados-dialog.tsx:100
+pages/cuentas-por-pagar/sections/registrar-pago-dialog.tsx:629
+pages/cuentas-por-pagar/sections/registrar-pago-dialog.tsx:1560
+pages/cuentas-por-pagar/sections/transaccion-cxp-detalle-form-dialog.tsx:200
+pages/cuentas-por-pagar/sections/retencion-cxp-dialog.tsx:290
+pages/cuentas-por-pagar/sections/seleccionar-facturas-dialog.tsx:195
+pages/compras/proveedores/sections/proveedor-cta-bancaria-frm.tsx:137
+pages/compras/documentos-por-pagar/sections/crear-factura-cxp-dialog.tsx:81
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:225
+pages/compras/documentos-por-pagar/sections/importar-xml-cxp-dialog.tsx:313
+pages/importaciones/secciones/select-factura-import-dialog.tsx:143
+pages/importaciones/secciones/pago-form-dialog.tsx:75
+pages/importaciones/secciones/select-documento-pagar-dialog.tsx:189
+pages/importaciones/secciones/costo-form-dialog.tsx:116
+pages/importaciones/secciones/documento-upload-dialog.tsx:139
+pages/importaciones/secciones/cambiar-estado-dialog.tsx:58
+pages/importaciones/secciones/factura-importacion-dialog.tsx:170
+pages/importaciones/secciones/envio-form-dialog.tsx:157
+pages/ventas/facturacion/sections/factura-form.tsx:2877
+pages/ventas/facturacion/sections/factura-form.tsx:2989
+pages/ventas/facturacion/sections/factura-form.tsx:3178
+pages/ventas/facturacion/sections/factura-form.tsx:4813
+pages/ventas/facturacion/sections/factura-pagos-info.tsx:130
+pages/ventas/facturacion/sections/catalogo-productos.tsx:504
+pages/ventas/facturacion/sections/factura-ver-xml-dialog.tsx:100
+pages/ventas/facturacion/sections/factura-toolbar.tsx:392
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:473
+pages/ventas/facturacion/sections/factura-reenviar-email-dialog.tsx:79
+pages/ventas/facturacion/sections/registrar-retencion-venta-dialog.tsx:129
+pages/ventas/facturacion/sections/guia-scan-result-dialog.tsx:195
+pages/ventas/facturacion/sections/factura-nota-credito-dialog.tsx:76
+pages/ventas/facturacion/sections/factura-retencion-dialog.tsx:196
+pages/ventas/facturacion/sections/factura-guia-remision-dialog.tsx:68
+pages/ventas/reportes/pago-facturas-list.tsx:301
+pages/ventas/reportes/sections/transacciones-cliente-dialog.tsx:75
+pages/ventas/clientes/sections/cliente-direccion-frm.tsx:599
+pages/ventas/clientes/sections/cliente-contacto-frm.tsx:96
+pages/ventas/transportes/envios-transporte-dialog.tsx:240
+pages/ventas/transportes/tarifa-form-dialog.tsx:126
+pages/ventas/transportes/transporte-dialog.tsx:374
+pages/ventas/transportes/transporte-view-dialog.tsx:226
+pages/ventas/transportes/consultar-destino-dialog.tsx:443
+pages/ventas/transportes/sections/select-factura-flete-dialog.tsx:89
+pages/ventas/transportes/sections/ruta-form.tsx:635
+pages/ventas/transportes/sections/completar-flete-consolidado-dialog.tsx:202
+pages/ventas/configuracion-pos/sections/agregar-usuario-dialog.tsx:54
+pages/ventas/configuracion-pos/sections/usuario-punto-venta-dialog.tsx:122
+pages/ventas/configuracion-pos/sections/pos-punto-venta-form-dialog.tsx:246
+pages/contabilidad/config-asientos/sections/det-conf-asie-form-dialog.tsx:150
+pages/contabilidad/plan-cuentas/sections/PlanCuentaFormDialog.tsx:163
+pages/contabilidad/plan-cuentas/sections/CabPlanFormDialog.tsx:119
+pages/contabilidad/config-impuestos/sections/DetalleFormDialog.tsx:87
+pages/contabilidad/config-impuestos/sections/ImpuestoFormDialog.tsx:69
+pages/contabilidad/config-impuestos/sections/CasilleroFormDialog.tsx:77
+pages/contabilidad/config-impuestos/sections/VigenciaFormDialog.tsx:83
+pages/contabilidad/flujo-efectivo/sections/clasificacion-form-dialog.tsx:131
+pages/inventario/productos/sections/select-prod-config-precio.tsx:317
+pages/inventario/productos/sections/select-prod-config-precio.tsx:695
+pages/inventario/productos/sections/proveedores-precios-dialog.tsx:39
+pages/inventario/productos/sections/html-extract-dialog.tsx:95
+pages/inventario/productos/sections/get-precio-producto-old.tsx:453
+pages/inventario/productos/sections/config-precios-producto.tsx:368
+pages/inventario/productos/sections/calcular-precios-dialog.tsx:601
+pages/inventario/productos/sections/clientes-producto-dialog.tsx:28
+pages/inventario/productos/sections/etiquetas-categoria.tsx:407
+pages/inventario/productos/sections/producto-frt.tsx:1439
+pages/inventario/productos/sections/producto-frt.tsx:1468
+pages/inventario/productos/sections/config-precios-form-dialog.tsx:110
+pages/inventario/productos/sections/base-tecnica/configuracion-tecnica-dialog.tsx:57
+pages/inventario/productos/sections/base-tecnica/documentos-proveedor-dialog.tsx:68
+pages/inventario/catalogos/catalogo-details.tsx:1193
+pages/inventario/catalogos/sections/catalogo-form.tsx:1967
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:184
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:423
+pages/inventario/comprobantes/sections/verifica-ingreso-dialogo.tsx:843
+pages/inventario/comprobantes/sections/verifica-egreso-dialogo.tsx:855
+pages/inventario/comprobantes/sections/productos-bajo-stock-dialog.tsx:218
+pages/inventario/comprobantes/sections/productos-mayor-stock-dialog.tsx:211
+pages/inventario/comprobantes/sections/registro-lote-ingreso-dialogo.tsx:542
+pages/inventario/etiquetas/etiquetas-print.tsx:934
+pages/inventario/etiquetas/sections/edit-etiqueta-dialog.tsx:197
+pages/inventario/etiquetas/sections/metricas-etiquetas-dialog.tsx:79
+pages/inventario/bodegas/sections/ajustar-conteo-dialog.tsx:151
+pages/inventario/bodegas/sections/ajustar-conteo-dialog.tsx:529
+pages/inventario/bodegas/sections/validar-conteo-dtq.tsx:439
+pages/inventario/bodegas/sections/agrega-producto-conteo-dialog.tsx:125
+pages/inventario/bodegas/sections/registra-conteo-dialog.tsx:190
+pages/inventario/bodegas/sections/reconteo-dialog.tsx:225
+pages/inventario/bodegas/sections/generar-conteo-dialog.tsx:274
+pages/inventario/menudeo/formas-list.tsx:694
+pages/inventario/menudeo/formas-list.tsx:754
+pages/inventario/menudeo/comprobante-details.tsx:379
+pages/inventario/menudeo/stock-menudeo.tsx:141
+pages/inventario/menudeo/productos-menudeo-list.tsx:738
+pages/inventario/menudeo/sections/PresentacionFormDialog.tsx:181
+pages/inventario/menudeo/sections/AgregarProductoMenudeoDialog.tsx:229
+pages/inventario/menudeo/sections/FormaFormDialog.tsx:119
+pages/inventario/menudeo/sections/AgregarInsumoDialog.tsx:168
+pages/inventario/menudeo/sections/CopiarPresentacionesDialog.tsx:116
+pages/whatsapp/sections/chat-list-add.tsx:63
+pages/whatsapp/sections/chat-room-participant-dialog.tsx:24
+pages/whatsapp/sections/chat-responder-bot-dialog.tsx:76
+pages/whatsapp/sections/mensajes-rapidos-dialog.tsx:253
+pages/whatsapp/sections/chat-label-select.tsx:48
+pages/whatsapp/sections/chat-header-detail.tsx:262
+pages/tesoreria/transferencia-cuentas.tsx:743
+pages/tesoreria/consulta-movimientos.tsx:929
+pages/tesoreria/diferencias-contables.tsx:544
+pages/tesoreria/sections/devolucion-cobro-tarjeta-view.tsx:180
+pages/tesoreria/sections/corte-tarjeta-detalle-dialog.tsx:88
+pages/tesoreria/sections/completar-deposito-caja-form.tsx:508
+pages/tesoreria/sections/registrar-acreditacion-form.tsx:654
+pages/tesoreria/sections/registrar-pago-cxp.tsx:1203
+pages/tesoreria/sections/registrar-pago-cxc.tsx:1087
+pages/tesoreria/reportes/sections/registrar-cheque-devuelto-dialog.tsx:156
+pages/tesoreria/anticipo-proveedores/sections/registrar-anticipo-proveedor-dialog.tsx:481
+pages/tesoreria/anticipo-proveedores/sections/registrar-anticipo-proveedor-dialog.tsx:857
+pages/tesoreria/catalogos/sections/cuenta-banco-form-dialog.tsx:299
+pages/sistema/notificaciones/sections/plantilla-usuarios-dialog.tsx:149
+pages/sistema/telegram/telegram-comandos.tsx:328
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:287
+pages/sistema/telegram/sections/instrucciones-telegram-dialog.tsx:38
+pages/sistema/opciones/sections/opcion-form-dialog.tsx:162
+pages/sistema/whatsapp/bot-config-list.tsx:192
+pages/sistema/whatsapp/bot-sessions-list.tsx:138
+pages/sistema/whatsapp/sections/message-editor.tsx:503
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:183
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:196
+pages/sistema/whatsapp/sections/preview-campania-dialog.tsx:220
+pages/sistema/whatsapp/sections/agente-form-dialog.tsx:111
+pages/sistema/whatsapp/sections/qr-whatsapp.tsx:81
+pages/sistema/variables-sistema/sections/variables-sistema-edit-dialog.tsx:128
+pages/sistema/variables-sistema/sections/config-variable-dialog.tsx:103
+pages/sri/ats.tsx:364
+pages/proformas/proforma-edit.tsx:276
+pages/proformas/sections/proforma-email-dialog.tsx:405
+pages/proformas/sections/proforma-form.tsx:2743
+pages/proformas/sections/proforma-form.tsx:3520
+pages/proformas/sections/proforma-whatsapp-chat-dialog.tsx:53
+pages/proformas/sections/precio-cliente-dialog.tsx:1053
+pages/proformas/sections/buscar-cliente-dialog.tsx:128
+
+## A8 outline: none (perdida del foco visible) (8)
+components/editor/styles.tsx:21
+components/editor/styles.tsx:116
+components/editor/styles.tsx:213
+components/upload/upload.tsx:85
+core/components/map/ecuador/EcuadorMap.tsx:564
+core/components/dataTable/EditableCell.tsx:135
+pages/ventas/facturacion/sections/factura-ver-xml-dialog.tsx:171
+pages/ventas/facturacion/sections/completar-envio-dialog.tsx:860
+
+## A9 autoFocus (revisar caso por caso) (34)
+components/phone-input/list-popover.tsx:130
+components/phone-input/list-popover.tsx:181
+components/editor/editor.tsx:210
+components/hook-form/rhf-select.tsx:354
+components/hook-form/rhf-catalog.tsx:287
+components/hook-form/rhf-catalog.tsx:407
+components/hook-form/rhf-code.tsx:60
+layouts/components/searchbar/index.tsx:226
+sections/base-tecnica/quimia-chat/quimia-selector-contexto.tsx:136
+sections/file-manager/file-manager-reutilizar-dialog.tsx:215
+core/components/common/buscar-producto-dialog.tsx:620
+core/components/common/punto-emision-selector.tsx:125
+core/components/rol/SelectRolDialog.tsx:265
+core/components/dropdown/Dropdown.tsx:173
+core/components/dataTable/EditableCell.tsx:480
+core/components/dataTable/EditableCell.tsx:492
+core/components/dataTable/EditableCell.tsx:506
+core/components/dataTable/EditableCell.tsx:530
+core/components/dataTable/EditableCell.tsx:574
+core/components/dataTable/EditableCell.tsx:605
+core/components/dataTable/FilterColumn.tsx:501
+core/components/dataTable/DataTableToolbar.tsx:415
+pages/cuentas-por-pagar/sections/reenviar-pago-email-dialog.tsx:178
+pages/compras/documentos-por-pagar/sections/documento-cxp-form.tsx:307
+pages/ventas/facturacion/sections/factura-reenviar-email-dialog.tsx:155
+pages/inventario/catalogos/sections/catalogo-buscar-producto-dialog.tsx:435
+pages/inventario/etiquetas/sections/edit-etiqueta-dialog.tsx:230
+pages/inventario/menudeo/sections/FormaFormDialog.tsx:177
+pages/inventario/menudeo/sections/AgregarInsumoDialog.tsx:300
+pages/whatsapp/sections/chat-responder-bot-dialog.tsx:116
+pages/whatsapp/sections/mensajes-rapidos-dialog.tsx:285
+pages/sistema/telegram/sections/usuarios-telegram-card.tsx:292
+pages/sistema/opciones/sections/opcion-form-dialog.tsx:207
+pages/proformas/sections/buscar-cliente-dialog.tsx:194
+
+## A10 Link href="#" (1)
+auth/view/jwt/jwt-sign-in-view.tsx:142
