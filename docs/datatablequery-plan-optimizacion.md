@@ -70,3 +70,17 @@ Pruebas: e2e de `getTableQuery` (paginación, filtros, orden, `lastPage`) antes 
 - Cada fase en su rama, build del front (`yarn build`) y e2e del back en verde antes de fusionar.
 - Fases 1 y 2 detrás de pruebas comparativas con las mismas consultas reales (misma data, mismas páginas).
 - Seguridad de `core/*` (B6) queda en su fase aparte ya acordada.
+
+## 7. Resultado de la validación en navegador y acciones (front, rama `claude/front-rendimiento-bundle`)
+Hallazgos de la revisión con agente sobre el build real, y qué se hizo:
+
+| Hallazgo | Acción |
+|---|---|
+| Entry de 3,9 MB / 1,2 MB gzip en todas las páginas | Causa real (por análisis estático + visualizer): `layouts/dashboard/layout.tsx` importaba `QuimiaChat` (→ BlockNote, ProseMirror, lightbox, markdown) y `ChangePasswordDialog` (→ `hook-form` → TipTap + lowlight/highlight.js). Ahora ambos son `lazy`, y `RHFEditor` carga el editor bajo demanda. Entry: **~2,2 MB / ~690 KB gzip** (−43 % gzip). |
+| `xlsx` estático en `exportDataTable.tsx` | `import('xlsx')` dentro de las funciones de exportar; igual en `leerLiquidacion` (tesorería). Exportar sigue igual (ahora asíncrono, con try/catch). |
+| `No HydrateFallback element provided` | `HydrateFallback: () => null` en la ruta raíz (no cambia lo que se ve). |
+| Rutas del dashboard con `lazy:` | Correcto; los chunks compartidos venían de los imports estáticos del layout, no de las rutas. |
+| `getProformas` 1,8 s | Sin cambios aún: la consulta ya usa CTEs filtradas por período. Lo más probable es el patrón de paginación lazy (la consulta completa se ejecuta dos veces: COUNT + datos; punto B1/B2 de la sección 2) y un índice en `cxc_cabece_factura(num_proforma_cccfa)`. Falta `EXPLAIN (ANALYZE, BUFFERS)` real (Fase 0). |
+| Reconexiones del socket de WhatsApp (`31.220.100.73:3003`) | Sin cambios: depende del servidor externo del bot (ping timeout); revisar allí. |
+
+Siguiente tramo del entry (por tamaño sin minificar): `@mui/x-date-pickers` (~500 KB, por `LocalizationProvider` en `app.tsx` y páginas), `motion-dom`/`framer-motion` (~400 KB, `components/animate`), `src/components/iconify` (~190 KB de iconos offline), `src/assets/illustrations` (~140 KB), `zod` y `react-hook-form`. Ver `ANALYZE=true yarn build`.
