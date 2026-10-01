@@ -1,7 +1,7 @@
 // src/menu/dto/menu-item.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsString, IsOptional, IsArray, ValidateNested, IsNotEmpty } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 export class MenuItemDto {
   @ApiPropertyOptional({ description: 'Título de la opción de menú' })
@@ -83,4 +83,14 @@ export class GenerarOpcionesDto {
   @Type(() => MenuItemDto)
   @IsNotEmpty()
   json: MenuItemDto[];
+}
+
+/** Confirma la eliminación de las rutas obsoletas: se recalculan en el servidor con el mismo archivo de menú. */
+export class EliminarRutasObsoletasDto extends GenerarOpcionesDto {
+  @ApiProperty({ description: 'ide_opci de las rutas obsoletas a eliminar (las mostradas en el diálogo)', type: [Number] })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsInt({ each: true })
+  @IsNotEmpty()
+  ide_opci: number[];
 }

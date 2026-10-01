@@ -50,8 +50,8 @@ Credenciales: el número y el token de cada cuenta están **en la base de datos*
 3. **Log del backend:** vigilar errores de YCloud (token vencido, plantilla rechazada, número inválido).
 4. **Calidad del número** en Meta Business: mantenerla alta (pocas quejas, respuestas rápidas) para no perder límites de envío.
 
-### Fase 5: limpieza opcional
-- Quitar la opción "Campañas" del menú en la BD (`sis_opcion`) o regenerar el menú.
+### Fase 5: limpieza
+- **Quitar la opción "Campañas" del menú:** en Administración → Opciones: 1) pulsar **Importar** (marca como inactivas las opciones que ya no están en el archivo de menú); 2) pulsar **Borrar rutas no usadas** (solo administradores): compara el archivo de menú contra `sis_opcion`, muestra las rutas obsoletas y, al aceptar, borra sus permisos (`sis_perfil_opcion`) y las opciones (`sis_opcion`).
 - Si no se necesita el histórico, archivar las tablas de campañas; no es urgente ni se borró nada.
 
 ## 4. Riesgos y vuelta atrás
