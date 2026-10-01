@@ -83,10 +83,3 @@ export interface WaWebhookPayload {
 }
 
 // ─── Respuesta de envío ───────────────────────────────────────────────────────
-
-export interface WaSendResponse {
-  messaging_product: 'whatsapp';
-  contacts: Array<{ input: string; wa_id: string }>;
-  messages: Array<{ id: string }>;
-}
-

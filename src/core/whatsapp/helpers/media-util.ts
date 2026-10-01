@@ -1,7 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
 
-import { FILE_STORAGE_CONSTANTS } from 'src/core/modules/sistema/files/constants/files.constants';
 
 import { MediaFile } from '../api/interface/whatsapp';
 
@@ -178,45 +175,4 @@ export function getContentDisposition(fileInfo: MediaFile): string {
 /** Verifica si el MIME type corresponde a un video */
 export function isVideoFile(mimeType: string): boolean {
     return Object.values(MIME_TYPES.VIDEOS).some((mt) => mt === mimeType);
-}
-
-/**
- * Lee un archivo desde la carpeta de temporales y lo convierte en un objeto Multer.File.
- * Usado para campañas con media (Cloud API).
- */
-export async function createFileFromTempPath(fileName: string): Promise<Express.Multer.File> {
-    const directoryPath = FILE_STORAGE_CONSTANTS.TEMP_DIR;
-    const fullPath = path.join(directoryPath, fileName);
-    const normalizedPath = path.normalize(fullPath);
-
-    if (!fs.existsSync(normalizedPath)) {
-        throw new Error(`El archivo no existe en la ruta: ${normalizedPath}`);
-    }
-
-    const stats = fs.statSync(normalizedPath);
-    if (!stats.isFile()) {
-        throw new Error('La ruta proporcionada no es un archivo válido');
-    }
-
-    const fileContent = fs.readFileSync(normalizedPath);
-    if (fileContent.length === 0) {
-        throw new Error('El archivo está vacío');
-    }
-
-    const mimeType = detectMimeType(fileName) || getDefaultMimeTypeFromExtension(fileName);
-
-    const multerFile: Express.Multer.File = {
-        fieldname: 'file',
-        originalname: fileName,
-        encoding: '7bit',
-        mimetype: mimeType,
-        size: stats.size,
-        destination: directoryPath,
-        filename: path.basename(fileName),
-        path: normalizedPath,
-        buffer: fileContent,
-        stream: fs.createReadStream(normalizedPath),
-    };
-
-    return multerFile;
 }

@@ -1,21 +1,26 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
+import { envs } from 'src/config/envs';
 import { DataSourceService } from 'src/core/connection/datasource.service';
-import { DeleteQuery, InsertQuery, Query, SelectQuery } from 'src/core/connection/helpers';
+import { DeleteQuery, InsertQuery, Query, SelectQuery, UpdateQuery } from 'src/core/connection/helpers';
 import { ResultQuery } from 'src/core/connection/interfaces/resultQuery';
 import { CoreService } from 'src/core/core.service';
 import { isDefined } from 'src/util/helpers/common-util';
 
-import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
+import { EliminarRutasObsoletasDto, GenerarOpcionesDto, ImportarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
 import { PerfilDto } from './dto/perfil.dto';
 import { RucDto } from './dto/ruc.dto';
+import { aplanarMenu, compararMenuConBd, planificarImportacion } from './helpers/importar-opciones';
+import { calcularRutasObsoletas, extraerRutasYGrupos, OpcionBd } from './helpers/rutas-obsoletas';
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly dataSource: DataSourceService,
     private readonly core: CoreService,
@@ -167,6 +172,155 @@ export class AdminService {
       data: rows,
       message: 'ok',
     } as ResultQuery;
+  }
+
+  /**
+   * Vista previa de la importación: compara el archivo de menú con sis_opcion y marca cada ruta/grupo
+   * como nueva, con cambios o igual. No escribe nada.
+   */
+  async previewImportarOpciones(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
+    const nodos = aplanarMenu(dtoIn.json);
+    if (!nodos.some((n) => n.path)) {
+      throw new BadRequestException('El archivo de menú no contiene rutas; no hay nada que importar');
+    }
+    const comparados = compararMenuConBd(nodos, await this.getOpcionesSistema());
+    const cuenta = (e: string) => comparados.filter((n) => n.estado === e).length;
+    return {
+      data: comparados,
+      nuevas: cuenta('nueva'),
+      conCambios: cuenta('cambios'),
+      iguales: cuenta('igual'),
+      message: 'ok',
+    };
+  }
+
+  /**
+   * Importa solo lo elegido, sin desactivar nada más (a diferencia de generarOpciones). Recalcula en el
+   * servidor contra la BD actual; crea los grupos padre que falten. Todo en una sola transacción.
+   */
+  async importarOpcionesSeleccionadas(dtoIn: ImportarOpcionesDto & HeaderParamsDto) {
+    const nodos = aplanarMenu(dtoIn.json);
+    const comparados = compararMenuConBd(nodos, await this.getOpcionesSistema());
+    const plan = planificarImportacion(comparados, dtoIn.claves);
+    if (plan.crear.length + plan.actualizar.length === 0) {
+      throw new BadRequestException('No hay opciones para importar (puede que ya estén al día)');
+    }
+
+    const audit = { login: dtoIn.login };
+    const idPorClave = new Map<string, number>();
+    comparados.forEach((n) => n.ide_opci != null && idPorClave.set(n.clave, n.ide_opci));
+    if (plan.crear.length > 0) {
+      let seq = await this.dataSource.getSeqTable('sis_opcion', 'ide_opci', plan.crear.length, dtoIn.login);
+      plan.crear.forEach((n) => idPorClave.set(n.clave, seq++));
+    }
+    const padreDe = (clave: string | null) => (clave ? (idPorClave.get(clave) ?? null) : null);
+
+    const queries: Query[] = [];
+    for (const n of plan.crear) {
+      const ins = new InsertQuery('sis_opcion', 'ide_opci', audit);
+      ins.values.set('ide_opci', idPorClave.get(n.clave));
+      ins.values.set('sis_ide_opci', padreDe(n.claveHijoDe));
+      ins.values.set('nom_opci', n.titulo);
+      ins.values.set('tipo_opci', n.path);
+      ins.values.set('auditoria_opci', false);
+      ins.values.set('ide_sist', this.idSistema());
+      ins.values.set('activo_opci', true);
+      ins.values.set('icono_opci', n.icono);
+      ins.values.set('orden_opci', n.orden);
+      queries.push(ins);
+    }
+    for (const n of plan.actualizar) {
+      const upd = new UpdateQuery('sis_opcion', 'ide_opci', audit);
+      upd.values.set('nom_opci', n.titulo);
+      upd.values.set('sis_ide_opci', padreDe(n.claveHijoDe));
+      upd.values.set('activo_opci', true);
+      upd.values.set('refe_opci', null);
+      upd.values.set('icono_opci', n.icono);
+      upd.values.set('orden_opci', n.orden);
+      upd.where = 'ide_opci = $1 AND ide_sist = $2';
+      upd.addIntParam(1, Number(n.ide_opci));
+      upd.addIntParam(2, this.idSistema());
+      queries.push(upd);
+    }
+
+    await this.dataSource.createListQuery(queries);
+    this.logger.log(
+      `Importación selectiva por ${dtoIn.login}: ${plan.crear.length} nuevas, ${plan.actualizar.length} actualizadas`,
+    );
+    return {
+      insertadas: plan.crear.length,
+      actualizadas: plan.actualizar.length,
+      gruposAgregados: plan.gruposAgregados,
+      message: `Se importaron ${plan.crear.length} opciones nuevas y se actualizaron ${plan.actualizar.length}`,
+    };
+  }
+
+  /**
+   * Compara las opciones guardadas en sis_opcion contra el archivo de menú (el mismo JSON que se
+   * importa con generarOpciones) y devuelve las rutas obsoletas: las que ya no están en el archivo.
+   */
+  async getRutasObsoletas(dtoIn: GenerarOpcionesDto & HeaderParamsDto) {
+    const { paths } = extraerRutasYGrupos(dtoIn.json);
+    // Sin ninguna ruta, el archivo no es un menú válido: todo parecería obsoleto
+    if (paths.size === 0) {
+      throw new BadRequestException('El archivo de menú no contiene rutas; no se puede detectar lo obsoleto');
+    }
+    const opciones = await this.getOpcionesSistema();
+    const resultado = calcularRutasObsoletas(opciones, dtoIn.json);
+    return { ...resultado, totalOpcionesBd: opciones.length, message: 'ok' };
+  }
+
+  /**
+   * Elimina las rutas obsoletas confirmadas: primero sus permisos (sis_perfil_opcion) y luego la
+   * opción (sis_opcion), en una sola transacción. Se recalcula en el servidor: solo se borra lo que
+   * hoy es obsoleto Y fue confirmado; un ide_opci cualquiera no se elimina.
+   */
+  async eliminarRutasObsoletas(dtoIn: EliminarRutasObsoletasDto & HeaderParamsDto) {
+    const { paths } = extraerRutasYGrupos(dtoIn.json);
+    if (paths.size === 0) {
+      throw new BadRequestException('El archivo de menú no contiene rutas; no se puede eliminar nada');
+    }
+    const opciones = await this.getOpcionesSistema();
+    const { candidatas } = calcularRutasObsoletas(opciones, dtoIn.json);
+    const permitidas = new Set(candidatas.map((o) => Number(o.ide_opci)));
+    const ids = [...new Set(dtoIn.ide_opci.map(Number))].filter((id) => permitidas.has(id));
+    if (ids.length === 0) {
+      throw new BadRequestException('No hay rutas obsoletas para eliminar (puede que ya se hayan eliminado)');
+    }
+
+    const delPermisos = new DeleteQuery('sis_perfil_opcion', dtoIn);
+    delPermisos.where = 'ide_opci = ANY($1)';
+    delPermisos.addArrayNumberParam(1, ids);
+
+    const delOpciones = new DeleteQuery('sis_opcion', dtoIn);
+    delOpciones.where = 'ide_opci = ANY($1) AND ide_sist = $2';
+    delOpciones.addArrayNumberParam(1, ids);
+    delOpciones.addIntParam(2, this.idSistema());
+
+    const mensajes = await this.dataSource.createListQuery([delPermisos, delOpciones]);
+    this.logger.warn(
+      `Rutas obsoletas eliminadas por ${dtoIn.login}: ${candidatas
+        .filter((o) => ids.includes(Number(o.ide_opci)))
+        .map((o) => `${o.tipo_opci ?? o.nom_opci} (#${o.ide_opci})`)
+        .join(', ')}`,
+    );
+    return { eliminadas: ids.length, mensajes, message: `Se eliminaron ${ids.length} opciones obsoletas y sus permisos` };
+  }
+
+  private idSistema(): number {
+    return Number(envs.idSistema);
+  }
+
+  private async getOpcionesSistema(): Promise<OpcionBd[]> {
+    const query = new SelectQuery(`
+      SELECT o.ide_opci, o.sis_ide_opci, o.nom_opci, o.tipo_opci, o.activo_opci, o.icono_opci, o.orden_opci,
+             (SELECT COUNT(1) FROM sis_perfil_opcion p WHERE p.ide_opci = o.ide_opci) AS perfiles
+      FROM sis_opcion o
+      WHERE o.ide_sist = $1
+      ORDER BY o.nom_opci`);
+    query.addIntParam(1, this.idSistema());
+    const rows = await this.dataSource.createSelectQuery(query);
+    return rows.map((r: any) => ({ ...r, ide_opci: Number(r.ide_opci), sis_ide_opci: r.sis_ide_opci == null ? null : Number(r.sis_ide_opci), orden_opci: r.orden_opci == null ? null : Number(r.orden_opci), perfiles: Number(r.perfiles) }));
   }
 
   /**

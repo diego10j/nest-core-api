@@ -4,11 +4,12 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { Auth } from 'src/core/auth';
 import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
+import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
 
 import { AdminService } from './admin.service';
-import { GenerarOpcionesDto } from './dto/generar-opciones.dto';
+import { EliminarRutasObsoletasDto, GenerarOpcionesDto, ImportarOpcionesDto } from './dto/generar-opciones.dto';
 import { HorarioDto } from './dto/horario.dto';
 import { OpcionDto } from './dto/opcion.dto';
 import { PerfilSistemaDto } from './dto/perfil-sistema.dto';
@@ -131,6 +132,34 @@ export class AdminController {
     });
   }
 
+
+  @Post('previewImportarOpciones')
+  @ApiOperation({ summary: 'Vista previa de la importación: compara el archivo de menú con las opciones de la BD' })
+  @RequireMenu('/dashboard/sistema/opciones')
+  previewImportarOpciones(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
+    return this.adminService.previewImportarOpciones({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('importarOpcionesSeleccionadas')
+  @ApiOperation({ summary: 'Importa solo las opciones elegidas del archivo de menú (no desactiva las demás)' })
+  @RequireMenu('/dashboard/sistema/opciones')
+  importarOpcionesSeleccionadas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ImportarOpcionesDto) {
+    return this.adminService.importarOpcionesSeleccionadas({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('getRutasObsoletas')
+  @ApiOperation({ summary: 'Detecta las opciones de menú de la BD que ya no están en el archivo de rutas' })
+  @RequireMenu('/dashboard/sistema/opciones')
+  getRutasObsoletas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GenerarOpcionesDto) {
+    return this.adminService.getRutasObsoletas({ ...headersParams, ...dtoIn });
+  }
+
+  @Post('eliminarRutasObsoletas')
+  @ApiOperation({ summary: 'Elimina las opciones obsoletas y sus permisos (solo administradores)' })
+  @SuperUser()
+  eliminarRutasObsoletas(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EliminarRutasObsoletasDto) {
+    return this.adminService.eliminarRutasObsoletas({ ...headersParams, ...dtoIn });
+  }
 
   // -------------------------------- PERFILES ---------------------------- //
 

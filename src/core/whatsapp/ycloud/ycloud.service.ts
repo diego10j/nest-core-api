@@ -1293,112 +1293,6 @@ export class YcloudService {
     }
   }
 
-  // ─── Campaign helpers ─────────────────────────────────────────
-
-  async enviarMensajeTextoCampania(
-    ideEmpr: number,
-    telefono: string,
-    texto: string,
-    ideUsua?: number,
-  ): Promise<{ messageId: string }> {
-    const config = await this.assertConfig(ideEmpr);
-
-    const payload: YcloudTextPayload = {
-      from: config.displayPhoneNumber,
-      to: telefono,
-      type: 'text',
-      text: { body: texto, preview_url: false },
-    };
-
-    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
-    const messageId = resp.messages?.[0]?.id || resp.id;
-
-    await this.saveMessageSent(
-      {
-        telefono,
-        tipo: 'text',
-        texto,
-        idWts: messageId,
-        ideUsua,
-        tiempoRespuesta: null,
-        esCampania: true,
-      },
-      config,
-    );
-
-    await this.metricsService.logSyncEvent({
-      ideEmpr,
-      idMensaje: messageId,
-      tipo: 'S',
-      payloadYcloud: resp,
-      estado: 'PENDING',
-    });
-
-    return { messageId };
-  }
-
-  async enviarMensajeMediaCampania(
-    ideEmpr: number,
-    telefono: string,
-    caption: string,
-    file: Express.Multer.File,
-    ideUsua?: number,
-  ): Promise<{ messageId: string }> {
-    const config = await this.assertConfig(ideEmpr);
-
-    const mimeType = file.mimetype;
-    const { mediaId } = await this.uploadMedia(ideEmpr, file.buffer, mimeType, file.originalname);
-
-    const mediaType = mimeType.startsWith('image')
-      ? 'image'
-      : mimeType.startsWith('video')
-        ? 'video'
-        : mimeType.startsWith('audio')
-          ? 'audio'
-          : 'document';
-
-    const from = config.displayPhoneNumber;
-    let payload: YcloudMessagePayload;
-    if (mediaType === 'image') {
-      payload = { from, to: telefono, type: 'image', image: { id: mediaId, caption } };
-    } else if (mediaType === 'video') {
-      payload = { from, to: telefono, type: 'video', video: { id: mediaId, caption } };
-    } else if (mediaType === 'audio') {
-      payload = { from, to: telefono, type: 'audio', audio: { id: mediaId } };
-    } else {
-      payload = { from, to: telefono, type: 'document', document: { id: mediaId, filename: file.originalname, caption } };
-    }
-
-    const resp: YcloudSendResponse = await this.apiPost('/whatsapp/messages', payload);
-    const messageId = resp.messages?.[0]?.id || resp.id;
-
-    await this.saveMessageSent(
-      {
-        telefono,
-        tipo: mediaType,
-        texto: caption || null,
-        idWts: messageId,
-        mediaId,
-        fileName: file.originalname,
-        mimeType,
-        ideUsua,
-        tiempoRespuesta: null,
-        esCampania: true,
-      },
-      config,
-    );
-
-    await this.metricsService.logSyncEvent({
-      ideEmpr,
-      idMensaje: messageId,
-      tipo: 'S',
-      payloadYcloud: resp,
-      estado: 'PENDING',
-    });
-
-    return { messageId };
-  }
-
   // ─── Save message in DB ───────────────────────────────────────
 
   async saveMessageSent(data: MessageSaveData, config: YcloudCacheConfig): Promise<any> {
@@ -1470,10 +1364,9 @@ export class YcloudService {
       // Emitir siempre sin + para que coincida con wa_id_whcha en el frontend
       this.whatsappGateway.sendMessageToClients(normalizedPhone);
 
-      // Una campaña masiva NO cuenta como "asesor tomó el chat" — solo el envío 1:1
-      // de un humano (API/ERP) dispara el hand-off.
+      // Solo el envío 1:1 de un humano (API/ERP) dispara el hand-off al asesor.
       const chat = chatRow.rows[0];
-      if (!esBot && !data.esCampania && chat?.bot_activo_whcha && chat.bot_modo_whcha === 'BOT') {
+      if (!esBot && chat?.bot_activo_whcha && chat.bot_modo_whcha === 'BOT') {
         await this.chatLock.runExclusive(chat.ide_whcha, () =>
           this.derivarPorAgenteHumano(chat.ide_whcha, 'API/ERP', normalizedPhone),
         );
