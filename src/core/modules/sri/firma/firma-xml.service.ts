@@ -32,7 +32,7 @@ export class FirmaXmlService {
       throw new BadRequestException(`Tipo de comprobante no soportado para firma: ${coddoc}`);
     }
 
-    const firma = await this.firmaService.getFirma(dtoIn);
+    const firma = await this.firmaService.getFirmaParaFirmar(dtoIn);
     const p12Path = this.resolveRutaFirma(firma.rutaFirma);
     let p12Data: Buffer;
     try {

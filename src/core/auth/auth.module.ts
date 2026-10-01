@@ -7,7 +7,7 @@ import { RedisModule } from '../../redis/redis.module';
 import { CoreModule } from '../core.module';
 import { AuditService } from '../modules/audit/audit.service';
 
-import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService, RefreshTokenService } from './application/services';
+import { TokenService, SessionService, TokenBlacklistService, LoginAttemptsService, RefreshTokenService, SocketAuthService } from './application/services';
 import {
   ValidateUserCredentialsUseCase,
   BuildAuthUserUseCase,
@@ -89,6 +89,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TokenBlacklistService,
     RefreshTokenService,
     LoginAttemptsService,
+    SocketAuthService,
 
     // ========== Repository Implementations (Infrastructure Layer) ==========
     // Dependency Inversion: Las implementaciones se inyectan usando tokens
@@ -120,6 +121,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TokenBlacklistService,
     RefreshTokenService,
     LoginAttemptsService,
+    SocketAuthService,
   ],
 })
 export class AuthModule { }

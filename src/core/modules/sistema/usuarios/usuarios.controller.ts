@@ -9,10 +9,12 @@ import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
 import { Auth, GetUser } from 'src/core/auth';
+import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
 import { AuthUser } from 'src/core/auth/interfaces';
 import { fileNamer, fileFilter } from 'src/core/modules/sistema/files/helpers';
 
 import { QueryOptionsDto } from '../../../../common/dto/query-options.dto';
+import { Public } from '../../../auth/decorators/public.decorator';
 
 import { ChangePasswordPerfilDto } from './dto/change-password-perfil.dto';
 import { ConfigPasswordDto } from './dto/config-password.dto';
@@ -82,7 +84,7 @@ export class UsuariosController {
 
   @Get('getConfigPassword')
   @ApiOperation({ summary: 'Obtener configuración de política de contraseñas de un usuario' })
-  @Auth()
+  @RequireMenu('/dashboard/sistema/usuarios/list')
   getConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: PerfilUsuarioDto) {
     return this.service.getConfigPassword({
       ...headersParams,
@@ -92,7 +94,7 @@ export class UsuariosController {
 
   @Post('saveConfigPassword')
   @ApiOperation({ summary: 'Guardar configuración de política de contraseñas para un usuario' })
-  @Auth()
+  @RequireMenu('/dashboard/sistema/usuarios/list')
   saveConfigPassword(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ConfigPasswordDto) {
     return this.service.saveConfigPassword({
       ...headersParams,
@@ -166,6 +168,7 @@ export class UsuariosController {
     return this.service.uploadAvatar(file, user.ide_usua, headersParams.login);
   }
 
+  @Public()
   @Get('getAvatar/:fileName')
   @ApiOperation({ summary: 'Obtener imagen de avatar de perfil con soporte para thumbnail (?w=N). Si no existe retorna avatar.png' })
   async getAvatar(

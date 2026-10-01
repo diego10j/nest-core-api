@@ -5,20 +5,25 @@ import {
     Body,
     Controller,
     Get,
+    Header,
     Post,
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
+import { RequireMenu } from 'src/core/auth/decorators/require-menu.decorator';
+import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 import { v4 as uuid } from 'uuid';
 
 import { ConfiguracionSaveService } from './configuracion-save.service';
 import { ConfiguracionService } from './configuracion.service';
+import { CifrarClaveDto } from './dto/cifrar-clave.dto';
 import { SaveEmisorDto } from './dto/save-emisor.dto';
 import { SaveFirmaDto } from './dto/save-firma.dto';
 import { ValidateFirmaDto } from './dto/validate-firma.dto';
@@ -34,6 +39,20 @@ export class ConfiguracionController {
         private readonly saveService: ConfiguracionSaveService,
     ) { }
 
+    @Post('cifrarClave')
+    @SuperUser()
+    @Throttle({ default: { limit: 10, ttl: 60000 } })
+    @Header('Cache-Control', 'no-store')
+    @ApiOperation({
+        summary: 'Cifrar una clave para guardarla en la BD (solo administradores del sistema)',
+        description:
+            'Devuelve el texto cifrado con SRI_ENCRYPTION_KEY (formato ENC:v3). Solo cifra: no hay endpoint para descifrar. ' +
+            'Responde 409 si SRI_ENCRYPTION_KEY no está configurada.',
+    })
+    cifrarClave(@Body() dto: CifrarClaveDto) {
+        return this.service.cifrarClave(dto.password);
+    }
+
     @Get('getEmisor')
     @ApiOperation({ summary: 'Obtener configuración del emisor SRI por empresa/sucursal' })
     getEmisor(@AppHeaders() h: HeaderParamsDto) {
@@ -47,6 +66,7 @@ export class ConfiguracionController {
     }
 
     @Post('saveEmisor')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Crear o actualizar configuración de emisor SRI' })
     saveEmisor(
         @AppHeaders() h: HeaderParamsDto,
@@ -56,6 +76,7 @@ export class ConfiguracionController {
     }
 
     @Post('saveFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Guardar metadata de firma digital (contraseña, representante, etc.)' })
     saveFirma(
         @AppHeaders() h: HeaderParamsDto,
@@ -65,6 +86,7 @@ export class ConfiguracionController {
     }
 
     @Post('uploadFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Subir archivo .p12 de firma digital' })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
@@ -101,6 +123,7 @@ export class ConfiguracionController {
     }
 
     @Post('validateFirma')
+    @RequireMenu('/dashboard/sri/configuracion-emision')
     @ApiOperation({ summary: 'Validar contraseña de la firma digital contra el archivo .p12' })
     validateFirma(
         @AppHeaders() h: HeaderParamsDto,
