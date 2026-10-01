@@ -35,11 +35,13 @@ export { Auth } from './decorators/auth.decorator';
 export { GetUser } from './decorators/get-user.decorator';
 export { RoleProtected } from './decorators/role-protected.decorator';
 export { Public } from './decorators/public.decorator';
+export { SuperUser } from './decorators/super-user.decorator';
 export { RawHeaders } from './decorators/raw-headers.decorator';
 
 // Guards
 export { UserRoleGuard } from './guards/user-role.guard';
 export { JwtAuthGuard } from './guards/jwt-auth.guard';
+export { SuperUserGuard } from './guards/super-user.guard';
 
 // Exceptions
 export { UserNotFoundException } from './exceptions/user-not-found.exception';

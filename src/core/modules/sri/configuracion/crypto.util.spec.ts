@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+ 
 import { decrypt, encrypt, isEncryptionKeyConfigured } from './crypto.util';
 
 // Valor generado con la implementación ORIGINAL (antes de existir v3): debe seguir leyéndose.

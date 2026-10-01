@@ -5,20 +5,24 @@ import {
     Body,
     Controller,
     Get,
+    Header,
     Post,
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { envs } from 'src/config/envs';
+import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 import { v4 as uuid } from 'uuid';
 
 import { ConfiguracionSaveService } from './configuracion-save.service';
 import { ConfiguracionService } from './configuracion.service';
+import { CifrarClaveDto } from './dto/cifrar-clave.dto';
 import { SaveEmisorDto } from './dto/save-emisor.dto';
 import { SaveFirmaDto } from './dto/save-firma.dto';
 import { ValidateFirmaDto } from './dto/validate-firma.dto';
@@ -33,6 +37,20 @@ export class ConfiguracionController {
         private readonly service: ConfiguracionService,
         private readonly saveService: ConfiguracionSaveService,
     ) { }
+
+    @Post('cifrarClave')
+    @SuperUser()
+    @Throttle({ default: { limit: 10, ttl: 60000 } })
+    @Header('Cache-Control', 'no-store')
+    @ApiOperation({
+        summary: 'Cifrar una clave para guardarla en la BD (solo administradores del sistema)',
+        description:
+            'Devuelve el texto cifrado con SRI_ENCRYPTION_KEY (formato ENC:v3). Solo cifra: no hay endpoint para descifrar. ' +
+            'Responde 409 si SRI_ENCRYPTION_KEY no está configurada.',
+    })
+    cifrarClave(@Body() dto: CifrarClaveDto) {
+        return this.service.cifrarClave(dto.password);
+    }
 
     @Get('getEmisor')
     @ApiOperation({ summary: 'Obtener configuración del emisor SRI por empresa/sucursal' })
