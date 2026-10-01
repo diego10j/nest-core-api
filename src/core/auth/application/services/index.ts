@@ -5,3 +5,4 @@ export { LoginAttemptsService } from './login-attempts.service';
 export { RefreshTokenService } from './refresh-token.service';
 export { SocketAuthService } from './socket-auth.service';
 export { TemporaryPasswordService } from './temporary-password.service';
+export { PasswordRecoveryService } from './password-recovery.service';

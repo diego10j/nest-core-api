@@ -38,6 +38,7 @@ export class TemplateService {
       { name: 'password-change', module: 'sistema' },
       { name: 'notification', module: 'sistema' },
       { name: 'credenciales-acceso', module: 'sistema' },
+      { name: 'codigo-recuperacion', module: 'sistema' },
       { name: 'proforma-envio', module: 'proformas' },
     ];
 
