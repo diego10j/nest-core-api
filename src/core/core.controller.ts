@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { SearchTableDto } from 'src/common/dto/search-table.dto';
+import { SuperUser } from 'src/core/auth/decorators/super-user.decorator';
 
 import { Auth } from './auth';
 import {
@@ -146,6 +147,7 @@ export class CoreController {
   }
 
   @Post('refreshTableColumns')
+  @SuperUser()
   @ApiOperation({ summary: 'Refrescar caché de metadatos de columnas de una tabla' })
   refreshTableColumns(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ColumnsTableDto) {
     return this.service.refreshTableColumns({
@@ -155,6 +157,7 @@ export class CoreController {
   }
 
   @Post('clearCacheRedis')
+  @SuperUser()
   @ApiOperation({ summary: 'Limpiar toda la caché Redis del servidor' })
   clearTableColumnsCache() {
     return this.service.clearCacheRedis();

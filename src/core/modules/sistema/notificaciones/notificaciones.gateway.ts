@@ -1,11 +1,13 @@
+import { ModuleRef } from '@nestjs/core';
 import {
   OnGatewayConnection,
-  OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
 import { envs } from 'src/config/envs';
+import { createSocketAuthMiddleware } from 'src/core/auth/guards/socket-auth.middleware';
 
 export interface NotificacionPayload {
   uuid: string;
@@ -29,23 +31,26 @@ export interface BadgePayload {
   namespace: '/notificaciones',
   transports: ['websocket', 'polling'],
 })
-export class NotificacionesGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class NotificacionesGateway implements OnGatewayInit, OnGatewayConnection {
   @WebSocketServer()
-  server: Server;
+  server: Namespace;
 
-  handleConnection(client: Socket) {
-    const ideUsua = client.handshake.auth?.ide_usua;
-    if (ideUsua != null) {
-      client.join(`usua:${ideUsua}`);
-    }
+  constructor(private readonly moduleRef: ModuleRef) {}
+
+  afterInit(server: Namespace) {
+    server.use(createSocketAuthMiddleware(this.moduleRef, 'notificaciones'));
   }
 
-  handleDisconnect(client: Socket) {
-    const ideUsua = client.handshake.auth?.ide_usua;
+  handleConnection(client: Socket) {
+    // La sala sale del token verificado, nunca de lo que declare el cliente.
+    // Solo en modo 'warn' (rollout) se tolera el ide_usua declarado por clientes sin token.
+    let ideUsua: number | undefined = client.data.user?.ide_usua;
+    if (ideUsua == null && envs.authGuardMode === 'warn') {
+      const declared = Number(client.handshake.auth?.ide_usua);
+      if (Number.isFinite(declared)) ideUsua = declared;
+    }
     if (ideUsua != null) {
-      client.leave(`usua:${ideUsua}`);
+      client.join(`usua:${ideUsua}`);
     }
   }
 

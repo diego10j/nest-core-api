@@ -17,6 +17,8 @@ import { diskStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { Public } from '../../../auth/decorators/public.decorator';
+
 import { BaseConocimientoService } from './base-conocimiento.service';
 import { CONOCIMIENTO_STORAGE } from './constants/base-conocimiento.constants';
 import { ArticuloUuidDto } from './dto/articulo-uuid.dto';
@@ -103,6 +105,7 @@ export class BaseConocimientoController {
     return this.service.getArchivos({ ...headersParams, ...dtoIn });
   }
 
+  @Public()
   @Get('downloadArchivo/:uuid')
   @ApiOperation({ summary: 'Descargar/servir un adjunto por uuid' })
   downloadArchivo(@Res() res: Response, @Param('uuid') uuid: string) {

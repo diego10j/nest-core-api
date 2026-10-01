@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import { AppModule } from './app.module';
 import { EndpointExceptionFilter } from './common/filters/endpoint-exception.filter';
 import { envs } from './config/envs';
+import { isEncryptionKeyConfigured } from './core/modules/sri/configuracion/crypto.util';
 import { SocketIoAdapter } from './socket-io.adapter';
 
 async function bootstrap() {
@@ -143,7 +144,15 @@ async function bootstrap() {
 
   await app.listen(envs.port);
   logger.log(`App running on port ${envs.port}`);
-  logger.log(`Swagger docs: http://${envs.hostApi}/docs`);
+  try {
+    if (!isEncryptionKeyConfigured()) {
+      logger.warn(
+        'SRI_ENCRYPTION_KEY no está configurada: los secretos (clave de la firma SRI, Telegram, Groq) se cifran con la clave antigua del código, que es pública. Genere una con `openssl rand -base64 32` y agréguela al .env.',
+      );
+    }
+  } catch (error) {
+    logger.error(`${(error as Error).message}. Hasta corregirla no se podrán guardar ni leer valores cifrados con la clave nueva.`);
+  }
 
   const server = app.getHttpServer();
   const io: Server = socketIoAdapter.getIoInstance();

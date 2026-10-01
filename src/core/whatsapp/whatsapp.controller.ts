@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import {
   BadRequestException,
   Body,
@@ -14,8 +16,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import * as path from 'path';
-
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -27,6 +27,7 @@ import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { Auth } from '../auth';
+import { Public } from '../auth/decorators/public.decorator';
 import { FILE_STORAGE_CONSTANTS } from '../modules/sistema/files/constants/files.constants';
 
 import { ChatEtiquetaDto } from './api/dto/chat-etiqueta.dto';
@@ -146,6 +147,7 @@ export class WhatsappController {
 
   // Sin throttle: un chat con muchas fotos pide decenas de archivos a la vez y el límite global
   // (300/min por IP, compartido con todo el ERP) las dejaba en 429 → imágenes en blanco.
+  @Public()
   @Get('media/:filename')
   @SkipThrottle()
   @Header('Cache-Control', 'public, max-age=86400')
@@ -157,6 +159,7 @@ export class WhatsappController {
     });
   }
 
+  @Public()
   @Get('download/:id')
   @SkipThrottle()
   async download(@Param('id') messageId: string, @Res() res: Response) {
@@ -323,6 +326,7 @@ export class WhatsappController {
     return this.service.whatsappApi.validateWhatsAppNumber(headersParams.ideEmpr, telefono);
   }
 
+  @Public()
   @Get('getServeFile/:filename')
   @Header('Cache-Control', 'public, max-age=3600')
   @ApiOperation({ summary: 'Descarga un archivo temporal del servidor' })

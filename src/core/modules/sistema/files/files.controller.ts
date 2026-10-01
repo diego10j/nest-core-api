@@ -19,6 +19,8 @@ import { diskStorage, memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 
+import { Public } from '../../../auth/decorators/public.decorator';
+
 import { ArchivosCompartidosService } from './archivos-compartidos.service';
 import { ALLOWED_IMAGE_MIMES, FILE_STORAGE_CONSTANTS } from './constants/files.constants';
 import { CheckExistFileDto } from './dto/check-exist-file.dto';
@@ -79,6 +81,7 @@ export class FilesController {
     return this.marcaAgua.reemplazarContenido(dtoIn.uuid, h.ideEmpr, file.buffer, file.originalname, h.login);
   }
 
+  @Public()
   @Get('image/tesoreria/:imageName')
   @ApiOperation({ summary: 'Servir imagen estática de tesorería' })
   getTesoreriaImage(@Res() res: Response, @Param('imageName') imageName: string) {
@@ -86,6 +89,7 @@ export class FilesController {
     res.sendFile(path);
   }
 
+  @Public()
   @Get('image/:imageName')
   @ApiOperation({ summary: 'Servir imagen estática. Soporta ?w=N (resize) y ?webp=1 (conversión)' })
   async getStaticImage(
@@ -235,6 +239,7 @@ export class FilesController {
     });
   }
 
+  @Public()
   @Get('downloadFile/:uuid')
   @ApiOperation({ summary: 'Descargar archivo por UUID' })
   downloadFile(@Res() res: Response, @Param('uuid') uuid: string) {
@@ -299,6 +304,7 @@ export class FilesController {
     return this.filesService.downloadTmpFile(fileName, res);
   }
 
+  @Public()
   @Get('imageTmp/:imageName')
   @ApiOperation({ summary: 'Servir imagen temporal por nombre' })
   getStaticImageTmp(@Res() res: Response, @Param('imageName') imageName: string) {

@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
 import { DataSourceService } from 'src/core/connection/datasource.service';
 import { SelectQuery } from 'src/core/connection/helpers';
+
+import { encrypt, isEncryptionKeyConfigured } from './crypto.util';
 
 const EMISOR_COLUMNS = `
     se.ide_sremi,
@@ -56,5 +58,26 @@ export class ConfiguracionService {
             LIMIT 1
         `);
         return this.dataSource.createSingleQuery(query);
+    }
+
+    /**
+     * Cifra un texto con la clave del sistema (SRI_ENCRYPTION_KEY) para guardarlo en la BD, por
+     * ejemplo la clave de una firma o una API key. Solo cifra: no existe la operación inversa.
+     * Sin la clave configurada se negaría la operación, porque el valor quedaría cifrado con la
+     * clave antigua del código, que es pública.
+     */
+    cifrarClave(password: string): { valor: string; formato: 'v3' } {
+        let configurada: boolean;
+        try {
+            configurada = isEncryptionKeyConfigured();
+        } catch (error) {
+            throw new ConflictException((error as Error).message);
+        }
+        if (!configurada) {
+            throw new ConflictException(
+                'Configure SRI_ENCRYPTION_KEY en el servidor antes de cifrar: sin ella el valor se cifraría con la clave antigua, que es pública.',
+            );
+        }
+        return { valor: encrypt(password), formato: 'v3' };
     }
 }
