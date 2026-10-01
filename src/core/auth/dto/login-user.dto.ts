@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, Matches, ValidateIf } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 export class LoginUserDto extends PartialType(QueryOptionsDto) {
@@ -18,17 +18,11 @@ export class LoginUserDto extends PartialType(QueryOptionsDto) {
   @ValidateIf((o) => !o.email || o.login)
   login?: string;
 
-  @ApiProperty({ description: 'Contraseña (mín 6 chars, 1 mayúscula, 1 minúscula, 1 número)', example: 'Admin123@' })
+  @ApiProperty({ description: 'Contraseña', example: 'Admin123@' })
   @IsString()
   @IsNotEmpty({ message: 'La contraseña es obligatoria' })
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
   @MaxLength(50)
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]{6,}$/,
-    {
-      message: 'La contraseña debe contener al menos: 1 mayúscula, 1 minúscula y 1 número',
-    }
-  )
   password: string;
 
   /**
