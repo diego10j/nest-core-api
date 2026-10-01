@@ -1520,7 +1520,14 @@ export class BotService implements OnModuleInit {
     // solo se volvía a preguntar la cantidad, ignorando lo que había preguntado (caso real
     // detectado 2026-09-24).
     const preguntaPrecio = REGEX_PIDE_PRECIO.test(texto);
-    const preguntaMinimo = /(cu[aá]nto|cu[aá]l)\s+(es|son|ser[ií]a)\s+(el\s+|la\s+)?(cantidad\s+)?m[ií]nim/i.test(texto);
+    // Dos formas de preguntar lo mismo: "¿cuál es la cantidad mínima?" y "¿venden/manejan
+    // cantidades mínimas?" — esta segunda se perdía (no matcheaba) y el extractor de
+    // cantidades la tomaba como si el cliente hubiera ELEGIDO la mínima, cerrando la
+    // cotización sin que lo hubiera pedido (caso real detectado 2026-10-07: "también quisiera
+    // saber si venden mínimas cantidades" cerró con "cantidad mínima" para Betaina anhidra).
+    const preguntaMinimo =
+      /(cu[aá]nto|cu[aá]l)\s+(es|son|ser[ií]a)\s+(el\s+|la\s+)?(cantidad\s+)?m[ií]nim/i.test(texto) ||
+      /\b(venden|manejan|hay|tienen|disponen)\b[^.!?]{0,20}m[ií]nim/i.test(texto);
     // Pregunta qué presentaciones/formatos manejan (ej. "en qué presentaciones disponen,
     // tal vez un litro, un galón o una caneca") — listar varias unidades es preguntar cuáles
     // existen, NO elegir una, así que NO se le pasa al extractor de cantidades (adivinaba una
@@ -1532,10 +1539,32 @@ export class BotService implements OnModuleInit {
     // detectado 2026-09-28: "un litro un galón o una caneca" cerró la cotización con "un
     // galón" para dos productos, sin que el cliente lo hubiera elegido).
     const preguntaPresentacion = REGEX_PIDE_PRESENTACION.test(texto);
-    if (preguntaPrecio || preguntaMinimo || preguntaPresentacion) {
+    // Pide ficha técnica / hoja de seguridad / certificado de análisis — el bot no tiene esos
+    // documentos a mano, se le pasa al asesor en vez de dejarlo caer en silencio (caso real
+    // detectado 2026-10-07: "quisiera que me colabores con la ficha técnica" se ignoró, el bot
+    // solo repitió la pregunta de cantidad sin dejar ningún rastro del pedido).
+    const pideFichaTecnica = /\bficha\s+t[eé]cnica|hoja\s+de\s+seguridad|\bCOA\b|certificado\s+de\s+an[aá]lisis/i.test(texto);
+    if (preguntaPrecio || preguntaMinimo || preguntaPresentacion || pideFichaTecnica) {
       datos = {
         ...datos,
         consultaAsesoramiento: [datos.consultaAsesoramiento, `Preguntó: "${texto.trim()}"`].filter(Boolean).join(' | '),
+      };
+    }
+
+    // El cliente da el volumen/peso del PRODUCTO FINAL que quiere preparar con estos
+    // ingredientes (ej. "para preparar unos 14 litros de shampoo"), no la cantidad de CADA
+    // ingrediente — son cosas muy distintas en una fórmula (un champú de 14 litros no lleva
+    // 14 litros de goma xantana, lleva una fracción). Si se deja pasar al extractor de
+    // cantidades, la regla de "una sola cantidad aplica a todos" la copia tal cual a cada
+    // ingrediente pendiente, generando una cotización con cantidades absurdas (caso real
+    // detectado 2026-10-07: 7 materias primas de un champú salieron todas con "14 litros").
+    // Se trata igual que "cantidades disponibles a confirmar": cantidad=0 con su propio texto,
+    // deja avanzar y cerrar la cotización, y el asesor calcula la fórmula real.
+    const esVolumenProductoFinal = /\b(preparar|elaborar|fabricar|producir|armar|hacer)\b[^.!?]{0,40}\b\d+([.,]\d+)?\s*(ml|mililitros?|l|lt|lts|litros?|kg|kilos?|kilogramos?|g|gr|gramos?|unidades?|und)\b[^.!?]{0,20}\bde\b/i.test(texto);
+    if (esVolumenProductoFinal) {
+      datos = {
+        ...datos,
+        consultaAsesoramiento: [datos.consultaAsesoramiento, `Dio el volumen del producto FINAL, no de cada ingrediente: "${texto.trim()}" — calcular la fórmula real con el asesor, no son litros/kg de cada materia prima.`].filter(Boolean).join(' | '),
       };
     }
 
@@ -1550,10 +1579,12 @@ export class BotService implements OnModuleInit {
       itemsSinCantidad.length
         ? (preguntaPresentacion
             ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidades disponibles a confirmar' })))
-            : this.botGpt.extraerCantidadesPorProducto(
-                itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
-                texto,
-              ))
+            : esVolumenProductoFinal
+              ? Promise.resolve(itemsSinCantidad.map(() => ({ cantidad: 0, cantidadTexto: 'cantidad a definir según fórmula' })))
+              : this.botGpt.extraerCantidadesPorProducto(
+                  itemsSinCantidad.map((i) => ({ nombre: i.producto, siglas_unidad: 'KG', nombre_unidad: 'Kilogramos' })),
+                  texto,
+                ))
         : Promise.resolve([] as { cantidad: number | null; cantidadTexto?: string | null }[]),
       itemsSinUso.length
         ? this.botGpt.extraerUsosPorProducto(nombresUnicosUso, texto)

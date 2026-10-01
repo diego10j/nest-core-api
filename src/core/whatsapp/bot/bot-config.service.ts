@@ -191,14 +191,19 @@ export class BotConfigService {
         h.nombre_tihor AS nombre_horario,
         (SELECT MAX(hora_ingre) FROM wha_bot_activacion_log WHERE ide_whcue = $1) AS ultima_activacion,
         (SELECT accion        FROM wha_bot_activacion_log WHERE ide_whcue = $1 ORDER BY hora_ingre DESC LIMIT 1) AS ultima_accion,
-        -- Informativo: mensajes enviados por el bot en el mes calendario actual (reinicia cada mes)
+        -- Informativo: mensajes enviados por el bot en el mes calendario actual (reinicia cada mes).
+        -- fecha_whmem es timestamp naive con UTC real (ver glosario wha_chat-wha_mensaje), así que
+        -- se interpreta como UTC y se compara contra el inicio de mes en hora local del servidor;
+        -- comparar naive contra LOCALTIMESTAMP contaba como del mes nuevo los mensajes de las
+        -- últimas 5h del mes anterior (hora Ecuador).
         (SELECT COUNT(DISTINCT m.id_whmem)::int
            FROM wha_mensaje m
           WHERE m.phone_number_id_whmem = (SELECT id_cuenta_whcue FROM wha_cuenta WHERE ide_whcue = $1)
             AND m.tipo_whmem = 'YCLOUD'
             AND m.es_bot_whmem = TRUE
             AND m.direction_whmem = '1'
-            AND m.fecha_whmem >= date_trunc('month', LOCALTIMESTAMP)) AS mensajes_bot_mes
+            AND (m.fecha_whmem AT TIME ZONE 'UTC')
+                >= date_trunc('month', LOCALTIMESTAMP) AT TIME ZONE current_setting('TimeZone')) AS mensajes_bot_mes
       FROM wha_bot_config cfg
       LEFT JOIN sis_tipo_horario h ON h.ide_tihor = cfg.ide_tihor
       WHERE cfg.ide_whcue = $1

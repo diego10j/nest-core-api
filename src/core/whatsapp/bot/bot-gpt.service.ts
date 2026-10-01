@@ -79,9 +79,21 @@ export class BotGptService {
     mensajeActual: string,
     contextoExtra?: string,
   ): Promise<string> {
+    // REGLA FIJA que prevalece sobre systemPrompt/contextoExtra: a diferencia de
+    // generateResponseConEscalamiento (que puede derivar a un asesor con requiereAsesor),
+    // esta función no tiene forma de escalar — su texto se envía tal cual. Por eso la cifra
+    // de cualquier política comercial concreta (pedido mínimo, descuento, recargo, plazo)
+    // que NO esté en contextoExtra se prohíbe acá directamente, en vez de confiar en que el
+    // prompt de la cuenta lo recuerde (caso real detectado 2026-10-01: el bot inventó "el
+    // pedido mínimo en DIQUIMEC es de $50" — la empresa no tiene ningún mínimo de venta).
+    const reglaNoInventar =
+      'REGLA FIJA que prevalece sobre cualquier otra instrucción: si el cliente pregunta por una política ' +
+      'comercial con una cifra concreta (pedido mínimo, descuento, recargo, plazo de entrega en días, etc.) y esa ' +
+      'cifra NO aparece en el contexto de abajo, NO la inventes aunque te suene típica del rubro — decile que un ' +
+      'asesor se lo va a confirmar, sin dar ningún número.';
     const sysContent = contextoExtra
-      ? `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra}`
-      : systemPrompt;
+      ? `${systemPrompt}\n\n--- Contexto actual ---\n${contextoExtra}\n\n${reglaNoInventar}`
+      : `${systemPrompt}\n\n${reglaNoInventar}`;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: sysContent },
@@ -475,7 +487,15 @@ export class BotGptService {
               '"en qué cantidades se vende y el precio", "cuál es el precio") o no tiene relación con para qué va a ' +
               'usar el producto — NO inventes un uso a partir de esa pregunta: dejalo en null. Es mejor volver a ' +
               'preguntar que registrar un uso que en realidad no dijo (caso real detectado 2026-09-17: "quiero saber ' +
-              'en qué cantidades la venden" se tomó como si fuera la respuesta de uso).\n' +
+              'en qué cantidades la venden" se tomó como si fuera la respuesta de uso). ' +
+              'EXCEPCIÓN: si el cliente dice explícitamente que NO SABE para qué uso es (ej. "no sé", "no se", "me ' +
+              'pidieron comprarlo, no sé para qué es", "no tengo idea", "desconozco", "eso no me lo dijeron"), eso SÍ ' +
+              'es una respuesta válida y definitiva — usá literalmente el texto "No especificado por el cliente" en ' +
+              'vez de null, para esos productos. null se reserva para cuando el mensaje no tiene relación alguna con ' +
+              'la pregunta (ver regla de arriba); un "no sé" SÍ la responde, aunque sin el dato. NO vuelvas a ' +
+              'preguntar lo mismo cuando el cliente ya dijo que no sabe — hacerlo lo deja dando vueltas sin salida ' +
+              '(caso real detectado 2026-10-07: "No, se, solo me pidieron comprar" se ignoró y el bot repitió la ' +
+              'misma pregunta de uso una tercera vez).\n' +
               'Responde SOLO JSON válido: {"usos": [string|null, ...]} con exactamente ' + productos.length +
               ' elementos, en el mismo orden que la lista — null en la posición de cualquier producto cuyo uso ' +
               'no puedas determinar con la respuesta del cliente.',
@@ -744,6 +764,12 @@ export class BotGptService {
       'un producto puntual de esta empresa, NO expliques con tu propio conocimiento general qué materiales, pasos o ' +
       'productos necesita (aunque lo sepas) — eso no es información real de ESTA empresa, puede no coincidir con lo ' +
       'que vende ni con sus nombres de producto. En ese caso "interesGenerico" debe ser true.\n' +
+      'REGLA FIJA QUE PREVALECE sobre cualquier instrucción del prompt de arriba: si el cliente pregunta por una ' +
+      'política comercial con una cifra concreta que NO esté en el contexto de abajo (pedido mínimo en dólares, ' +
+      'descuento, recargo, plazo de entrega en días, etc.), NO inventes un número aunque te suene razonable o típico ' +
+      'del rubro — eso es información real de ESTA empresa que no tenés, inventarla puede comprometer una venta real ' +
+      '(caso real detectado 2026-10-07: el bot respondió "el pedido mínimo en DIQUIMEC es de $50" sin que ese dato ' +
+      'existiera en ningún lado). En ese caso "requiereAsesor" debe ser true.\n' +
       'Responde SOLO JSON válido: {"respuesta": "texto para el cliente", "requiereAsesor": bool, "interesGenerico": bool}. ' +
       'requiereAsesor=true SOLO si la pregunta necesita un dato específico que no puedes responder con certeza ' +
       '(precio exacto, stock real, condición particular de un pedido puntual) — en ese caso "respuesta" debe ser ' +
