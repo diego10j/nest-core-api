@@ -4,7 +4,6 @@ import {
   BadRequestException,
   Body,
   Controller,
-  Delete,
   Get,
   Header,
   InternalServerErrorException,
@@ -23,7 +22,6 @@ import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { IdeDto } from 'src/common/dto/ide.dto';
 import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
 import { Auth } from '../auth';
@@ -37,27 +35,21 @@ import { ListContactDto } from './api/dto/list-contact.dto';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
 import { BotConfigService } from './bot/bot-config.service';
 import { BotService } from './bot/bot.service';
-import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
 import { EnviarMensajeDto } from './dto/enviar-mensaje.dto';
 import { GetChatsPorFiltroDto } from './dto/get-chats-por-filtro.dto';
 import { GetChatsDto } from './dto/get-chats.dto';
-import { GetDetalleCampaniaDto } from './dto/get-detalle-camp';
 import { GetMensajesDto } from './dto/get-mensajes.dto';
-import { SaveCampaniaDto } from './dto/save-campania.dto';
 import { SearchChatDto } from './dto/search-chat.dto';
 import { TelefonoDto } from './dto/telefono.dto';
-import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
-import { YcloudCampaniaService } from './ycloud/ycloud-camp.service';
 
 @Controller('whatsapp')
 export class WhatsappController {
   constructor(
     private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
-    private readonly whatsappCamp: YcloudCampaniaService,
     private readonly botConfig: BotConfigService,
     private readonly botService: BotService,
   ) { }
@@ -327,65 +319,6 @@ export class WhatsappController {
     @Res() response: Response,
   ) {
     return this.service.fileTempService.downloadFile(response, filename);
-  }
-
-  // ---------------------------- CAMPAÑAS
-
-  @Get('getListaCampanias')
-  @Auth()
-  getListaCampanias(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.whatsappDbService.getListaCampanias({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Get('getDetalleCampania')
-  @Auth()
-  getDetalleCampania(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: GetDetalleCampaniaDto) {
-    return this.whatsappDbService.getDetalleCampania({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Post('sendCampania')
-  @Auth()
-  sendCampania(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: EnviarCampaniaDto) {
-    return this.whatsappCamp.sendCampania({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Post('saveCampania')
-  @Auth()
-  saveCampania(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: SaveCampaniaDto) {
-    return this.whatsappCamp.saveCampania({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
-
-  @Delete('deleteDetailCampaniaById')
-  @Auth()
-  deleteDetailCampaniaById(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: IdeDto) {
-    return this.whatsappCamp.deleteDetailCampaniaById(dtoIn.ide);
-  }
-
-  @Post('updateEstadoCampania')
-  @Auth()
-  updateEstadoCampania(@AppHeaders() _headersParams: HeaderParamsDto, @Body() dtoIn: UpdateEstadoCampaniaDto) {
-    return this.whatsappCamp.updateCampaignStatus(dtoIn.ide_whcenv, dtoIn.ide_whesce);
-  }
-
-  @Get('getCampaniaById')
-  @Auth()
-  getCampaniaById(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: EnviarCampaniaDto) {
-    return this.whatsappDbService.getCampaniaById({
-      ...headersParams,
-      ...dtoIn,
-    });
   }
 
   // ─── Bot por chat ──────────────────────────────────────────────

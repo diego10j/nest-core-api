@@ -22,7 +22,6 @@ import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappGateway } from './whatsapp.gateway';
 import { WhatsappService } from './whatsapp.service';
-import { YcloudCampaniaService } from './ycloud/ycloud-camp.service';
 import { YcloudMetricsService } from './ycloud/ycloud-metrics.service';
 import { YcloudWebhookController } from './ycloud/ycloud-webhook.controller';
 import { YcloudWindowService } from './ycloud/ycloud-window.service';
@@ -50,7 +49,6 @@ import { YcloudService } from './ycloud/ycloud.service';
     ChatLockService,
     // YCloud
     YcloudService,
-    YcloudCampaniaService,
     YcloudWindowService,
     YcloudMetricsService,
     // Bot QuimIA
@@ -72,7 +70,6 @@ import { YcloudService } from './ycloud/ycloud.service';
     WhatsappService,
     FileTempService,
     YcloudService,
-    YcloudCampaniaService,
     YcloudWindowService,
     YcloudMetricsService,
     BotConfigService,

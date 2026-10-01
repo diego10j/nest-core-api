@@ -2,8 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Param,
-  ParseIntPipe,
   Post,
   Query,
   UploadedFile,
@@ -14,10 +12,7 @@ import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import { AppHeaders } from 'src/common/decorators/header-params.decorator';
 import { HeaderParamsDto } from 'src/common/dto/common-params.dto';
-import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 
-import { EnviarCampaniaDto } from '../dto/enviar-campania.dto';
-import { SaveCampaniaDto } from '../dto/save-campania.dto';
 
 import { SendDocumentDto } from './dto/send-document.dto';
 import { SendMediaDto } from './dto/send-media.dto';
@@ -25,7 +20,6 @@ import { SendTemplateDto } from './dto/send-template.dto';
 import { SendTextDto } from './dto/send-text.dto';
 import { SyncLogQueryDto } from './dto/sync-log-query.dto';
 import { YcloudMetricsQueryDto } from './dto/ycloud-metrics-query.dto';
-import { YcloudCampaniaService } from './ycloud-camp.service';
 import { YcloudMetricsService } from './ycloud-metrics.service';
 import { YcloudWindowService } from './ycloud-window.service';
 import { YcloudService } from './ycloud.service';
@@ -35,7 +29,6 @@ import { YcloudService } from './ycloud.service';
 export class YcloudController {
   constructor(
     private readonly ycloudService: YcloudService,
-    private readonly ycloudCampService: YcloudCampaniaService,
     private readonly windowService: YcloudWindowService,
     private readonly metricsService: YcloudMetricsService,
   ) {}
@@ -277,53 +270,5 @@ export class YcloudController {
     @Query('phone') phone: string,
   ) {
     return this.ycloudService.validateNumber(h.ideEmpr, phone);
-  }
-
-  @Get('campanias')
-  @ApiOperation({ summary: 'Listar campanias YCloud' })
-  getCampanias(
-    @AppHeaders() h: HeaderParamsDto,
-    @Query() dto: QueryOptionsDto,
-  ) {
-    return this.ycloudCampService.getCampanias({ ...h, ...dto });
-  }
-
-  @Post('campania')
-  @ApiOperation({ summary: 'Guardar campania YCloud' })
-  async saveCampania(
-    @AppHeaders() h: HeaderParamsDto,
-    @Body() dto: SaveCampaniaDto,
-  ) {
-    return this.ycloudCampService.saveCampania({ ...h, ...dto });
-  }
-
-  @Post('campania/enviar')
-  @ApiOperation({ summary: 'Enviar campania YCloud' })
-  async sendCampania(
-    @AppHeaders() h: HeaderParamsDto,
-    @Body() dto: EnviarCampaniaDto,
-  ) {
-    return this.ycloudCampService.sendCampania({ ...h, ...dto });
-  }
-
-  @Get('campania/:ideWhcenv')
-  @ApiOperation({ summary: 'Obtener detalle de campania YCloud' })
-  getCampaniaById(
-    @AppHeaders() h: HeaderParamsDto,
-    @Param('ideWhcenv', ParseIntPipe) ideWhcenv: number,
-  ) {
-    return this.ycloudCampService.getCampaniaById({
-      ide_whcenv: ideWhcenv,
-      ...h,
-    });
-  }
-
-  @Post('campania/detalle/:ideWhdenv')
-  @ApiOperation({ summary: 'Eliminar detalle de campania YCloud' })
-  async deleteDetailCampaniaById(
-    @AppHeaders() _h: HeaderParamsDto,
-    @Param('ideWhdenv', ParseIntPipe) ideWhdenv: number,
-  ) {
-    return this.ycloudCampService.deleteDetailCampaniaById(ideWhdenv);
   }
 }
