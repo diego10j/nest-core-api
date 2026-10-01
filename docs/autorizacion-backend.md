@@ -11,7 +11,7 @@ El guard JWT global solo garantiza que hay una sesión válida. Faltaba controla
 | Alta | `POST sistema/admin/generarOpciones`, `GET/POST sistema/admin/getOpcionesPerfil`, `saveOpcionesPerfil` | Cualquier usuario podía reescribir el menú o los permisos de un perfil | Corregido |
 | Alta | `POST sri/configuracion/saveEmisor`, `saveFirma`, `uploadFirma`, `validateFirma` | Cualquier usuario podía cambiar la firma electrónica y el emisor del SRI | Corregido |
 | Media | `POST core/clearCacheRedis`, `refreshTableColumns` | Cualquier usuario podía vaciar toda la caché de Redis (incluidos los bloqueos de login) | Corregido (solo administradores) |
-| **Crítica** | `POST core/save`, `GET core/getTableQuery`, `getTreeModel`, `isUnique` | Endpoints genéricos: el cliente envía módulo, tabla, columnas y la `condition` como **texto SQL** que se concatena. Cualquier usuario con sesión puede leer o modificar cualquier tabla | **Pendiente** (ver abajo) |
+| **Crítica** | `POST core/save`, `GET core/getTableQuery`, `getTreeModel`, `isUnique` | Endpoints genéricos: el cliente envía módulo, tabla, columnas y la `condition` como **texto SQL** que se concatena. Cualquier usuario con sesión puede leer o modificar cualquier tabla | **Fase aparte** (ver abajo; decidido dejarlo para después) |
 | Alta | `GET ventas/pos-punto-venta/getConfigPOS?ide_usua=` | Devuelve el token de la impresora de **cualquier** usuario que se pida | Pendiente |
 
 ## Qué se hizo: `@RequireMenu(...)`
@@ -42,8 +42,9 @@ Se verificó en `react-front-erp` que estos endpoints solo los llaman las pantal
 ## Despliegue
 Usa el mismo interruptor `AUTH_GUARD_MODE` que la autenticación: con `warn` solo registra en el log lo que bloquearía (`[warn-mode] ... denegado a <login>: el perfil N no tiene la opción ...`); con `enforce` responde 403. Primero `warn`, revisar el log unos días y luego `enforce`.
 
-## Pendiente: los endpoints genéricos (`core/*`)
-Es el riesgo mayor que queda. El front arma las operaciones (`save`, `getTableQuery`…) indicando tabla y condiciones, y el backend las ejecuta tal cual. Propuesta, por fases y con modo `warn` primero:
+## Fase aparte: los endpoints genéricos (`core/*`)
+Decidido dejarla para una fase propia, porque es el cambio más delicado (una tabla que falte en la lista bloquea un guardado legítimo). Es el riesgo mayor que queda. El front arma las operaciones (`save`, `getTableQuery`…) indicando tabla y condiciones, y el backend las ejecuta tal cual. Propuesta, por pasos y con modo `warn` primero:
+0. **Sin cambiar nada:** inventariar las tablas que el front escribe por `core/save` y los formatos de `condition` que envía, para ver la lista antes de activar nada.
 1. **Lista de tablas permitidas** para `core/save`, construida a partir de las que el front realmente escribe; el resto se rechaza (las claves, firmas, permisos y credenciales tienen sus endpoints propios).
 2. **Validar `condition`**: solo comparaciones simples (`columna = número`, `IN (...)`, combinadas con `AND`), nada de subconsultas ni comentarios.
 3. Validar nombres de tabla y columna contra el catálogo de la BD en vez de concatenarlos.
