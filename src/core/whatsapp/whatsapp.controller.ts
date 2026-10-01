@@ -35,7 +35,6 @@ import { ChatFavoritoDto } from './api/dto/chat-favorito.dto';
 import { ChatNoLeidoDto } from './api/dto/chat-no-leido.dto';
 import { ListContactDto } from './api/dto/list-contact.dto';
 import { ListaChatDto } from './api/dto/lista-chat.dto';
-import { MensajeChatDto } from './api/dto/mensaje-chat.dto';
 import { BotConfigService } from './bot/bot-config.service';
 import { BotService } from './bot/bot.service';
 import { EnviarCampaniaDto } from './dto/enviar-campania.dto';
@@ -49,16 +48,16 @@ import { SearchChatDto } from './dto/search-chat.dto';
 import { TelefonoDto } from './dto/telefono.dto';
 import { UpdateEstadoCampaniaDto } from './dto/update-estado-campania';
 import { UploadMediaDto } from './dto/upload-media.dto';
-import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappService } from './whatsapp.service';
+import { YcloudCampaniaService } from './ycloud/ycloud-camp.service';
 
 @Controller('whatsapp')
 export class WhatsappController {
   constructor(
     private readonly service: WhatsappService,
     private readonly whatsappDbService: WhatsappDbService,
-    private readonly whatsappCamp: WhatsappCampaniaService,
+    private readonly whatsappCamp: YcloudCampaniaService,
     private readonly botConfig: BotConfigService,
     private readonly botService: BotService,
   ) { }
@@ -188,7 +187,7 @@ export class WhatsappController {
   @Get('getListasContacto')
   @Auth()
   getListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: TelefonoDto) {
-    return this.service.whatsappApi.getListasContacto({
+    return this.service.whatsappChat.getListasContacto({
       ...headersParams,
       ...dtoIn,
     });
@@ -197,7 +196,7 @@ export class WhatsappController {
   @Get('getListas')
   @Auth()
   getListas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappApi.getListas({
+    return this.service.whatsappChat.getListas({
       ...headersParams,
       ...dtoIn,
     });
@@ -206,7 +205,7 @@ export class WhatsappController {
   @Get('getEtiquetas')
   @Auth()
   getEtiquetas(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappApi.getEtiquetas({
+    return this.service.whatsappChat.getEtiquetas({
       ...headersParams,
       ...dtoIn,
     });
@@ -224,7 +223,7 @@ export class WhatsappController {
   @Post('setMensajesLeidosChat')
   @Auth()
   setMensajesLeidosChat(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: GetMensajesDto) {
-    return this.service.whatsappApi.setMensajesLeidosChat({
+    return this.service.whatsappChat.setMensajesLeidosChat({
       ...headersParams,
       ...dtoIn,
     });
@@ -233,7 +232,7 @@ export class WhatsappController {
   @Post('setChatNoLeido')
   @Auth()
   setChatNoLeido(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatNoLeidoDto) {
-    return this.service.whatsappApi.setChatNoLeido({
+    return this.service.whatsappChat.setChatNoLeido({
       ...headersParams,
       ...dtoIn,
     });
@@ -242,7 +241,7 @@ export class WhatsappController {
   @Post('setChatFavorito')
   @Auth()
   setChatFavorito(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatFavoritoDto) {
-    return this.service.whatsappApi.setChatFavorito({
+    return this.service.whatsappChat.setChatFavorito({
       ...headersParams,
       ...dtoIn,
     });
@@ -251,7 +250,7 @@ export class WhatsappController {
   @Post('setEtiquetaChat')
   @Auth()
   setEtiquetaChat(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: ChatEtiquetaDto) {
-    return this.service.whatsappApi.setEtiquetaChat({
+    return this.service.whatsappChat.setEtiquetaChat({
       ...headersParams,
       ...dtoIn,
     });
@@ -260,7 +259,7 @@ export class WhatsappController {
   @Get('getContactosLista')
   @Auth()
   getContactosLista(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ListaChatDto) {
-    return this.service.whatsappApi.getContactosLista({
+    return this.service.whatsappChat.getContactosLista({
       ...headersParams,
       ...dtoIn,
     });
@@ -269,7 +268,7 @@ export class WhatsappController {
   @Get('getTotalMensajes')
   @Auth()
   getTotalMensajes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: QueryOptionsDto) {
-    return this.service.whatsappApi.getTotalMensajes({
+    return this.service.whatsappChat.getTotalMensajes({
       ...headersParams,
       ...dtoIn,
     });
@@ -278,7 +277,7 @@ export class WhatsappController {
   @Get('findContacto')
   @Auth()
   findContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchChatDto) {
-    return this.service.whatsappApi.findContacto({
+    return this.service.whatsappChat.findContacto({
       ...headersParams,
       ...dtoIn,
     });
@@ -287,7 +286,7 @@ export class WhatsappController {
   @Get('findTextoMensajes')
   @Auth()
   findTextoMensajes(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: SearchChatDto) {
-    return this.service.whatsappApi.findTextoMensajes({
+    return this.service.whatsappChat.findTextoMensajes({
       ...headersParams,
       ...dtoIn,
     });
@@ -305,25 +304,17 @@ export class WhatsappController {
   @Post('saveListasContacto')
   @Auth()
   saveListasContacto(@AppHeaders() headersParams: HeaderParamsDto, @Query() dtoIn: ListContactDto) {
-    return this.service.whatsappApi.saveListasContacto({
+    return this.service.whatsappChat.saveListasContacto({
       ...headersParams,
       ...dtoIn,
     });
   }
 
-  @Post('activarNumero')
-  @Auth()
-  activarNumero(@AppHeaders() headersParams: HeaderParamsDto, @Body() dtoIn: MensajeChatDto) {
-    return this.service.whatsappApi.activarNumero({
-      ...headersParams,
-      ...dtoIn,
-    });
-  }
 
   @Get('validateWhatsAppNumber')
   @ApiOperation({ summary: 'Valida si un número tiene WhatsApp activo (Cloud API)' })
   async validateWhatsAppNumber(@AppHeaders() headersParams: HeaderParamsDto, @Query('telefono') telefono: string) {
-    return this.service.whatsappApi.validateWhatsAppNumber(headersParams.ideEmpr, telefono);
+    return this.service.whatsappChat.validateWhatsAppNumber(headersParams.ideEmpr, telefono);
   }
 
   @Public()

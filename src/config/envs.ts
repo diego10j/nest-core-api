@@ -27,7 +27,6 @@ interface EnvVars {
   FORMAT_TIME_BD: string;
   PATH_DRIVE: string;
 
-  WHATSAPP_API_URL: string;
   WHATSAPP_SOCKET_PORT: number;
 
   OPENAI_API_KEY: string;
@@ -87,7 +86,6 @@ const envsSchema = z
     FORMAT_TIME_BD: z.string(),
     PATH_DRIVE: z.string(),
 
-    WHATSAPP_API_URL: z.string(),
     WHATSAPP_SOCKET_PORT: z
       .string()
       .refine((val) => !isNaN(Number(val)), {
@@ -149,7 +147,6 @@ export const envs = {
   formatTimeBd: envVars.FORMAT_TIME_BD,
   pathDrive: envVars.PATH_DRIVE,
 
-  whatsappApiUrl: envVars.WHATSAPP_API_URL,
   whatsappSocketPort: envVars.WHATSAPP_SOCKET_PORT,
 
   openaiApiKey: envVars.OPENAI_API_KEY,

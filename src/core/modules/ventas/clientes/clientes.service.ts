@@ -22,10 +22,10 @@ import { ExistClienteDto } from './dto/exist-client.dto';
 import { GetClientesDto } from './dto/get-clientes.dto';
 import { GetDetalleDiferenciaClienteDto } from './dto/get-detalle-diferencia-cliente.dto';
 import { GetDiferenciasContablesCxcDto } from './dto/get-diferencias-contables-cxc.dto';
-import { IdeCcctrDto } from './dto/ide-ccctr.dto';
 import { ReporteSeguidoresDto } from './dto/get-reporte-seguidores.dto';
 import { GetSaldosClientesDto } from './dto/get-saldos-clientes.dto';
 import { IdClienteDto } from './dto/id-cliente.dto';
+import { IdeCcctrDto } from './dto/ide-ccctr.dto';
 import { SearchAsientoClienteDto } from './dto/search-asiento-cliente.dto';
 import { SearchDocumentoCxCDto } from './dto/search-documento-cxc.dto';
 import { SearchLibroBancoClienteDto } from './dto/search-libro-banco-cliente.dto';
@@ -1855,7 +1855,7 @@ export class ClientesService extends BaseService {
 
     async validarWhatsAppCliente(dto: ValidaWhatsAppCliente & HeaderParamsDto): Promise<ResultQuery> {
         // Validar si el número tiene WhatsApp
-        const validation = await this.whatsapp.whatsappApi.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
+        const validation = await this.whatsapp.whatsappChat.validateWhatsAppNumber(dto.ideEmpr, dto.telefono);
 
         if (!validation?.isValid) {
             return {

@@ -4,7 +4,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { ProformasModule } from '../modules/proformas/proformas.module';
 import { FileTempService } from '../modules/sistema/files/file-temp.service';
 
-import { WhatsappApiService } from './api/whatsapp-api.service';
+import { WhatsappChatService } from './api/whatsapp-chat.service';
 import { BotConfigService } from './bot/bot-config.service';
 import { BotDebounceService } from './bot/bot-debounce.service';
 import { BotGptService } from './bot/bot-gpt.service';
@@ -18,7 +18,6 @@ import { BotService } from './bot/bot.service';
 import { ChatLockService } from './chat-lock.service';
 import { MensajeRapidoController } from './mensaje-rapido/mensaje-rapido.controller';
 import { MensajeRapidoService } from './mensaje-rapido/mensaje-rapido.service';
-import { WhatsappCampaniaService } from './whatsapp-camp.service';
 import { WhatsappDbService } from './whatsapp-db.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappGateway } from './whatsapp.gateway';
@@ -43,12 +42,11 @@ import { YcloudService } from './ycloud/ycloud.service';
     MensajeRapidoController,
   ],
   providers: [
-    WhatsappApiService,
+    WhatsappChatService,
     WhatsappGateway,
     WhatsappDbService,
     WhatsappService,
     FileTempService,
-    WhatsappCampaniaService,
     ChatLockService,
     // YCloud
     YcloudService,
@@ -68,12 +66,11 @@ import { YcloudService } from './ycloud/ycloud.service';
     MensajeRapidoService,
   ],
   exports: [
-    WhatsappApiService,
+    WhatsappChatService,
     WhatsappGateway,
     WhatsappDbService,
     WhatsappService,
     FileTempService,
-    WhatsappCampaniaService,
     YcloudService,
     YcloudCampaniaService,
     YcloudWindowService,
