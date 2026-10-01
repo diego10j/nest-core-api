@@ -47,3 +47,11 @@ Los valores guardados antes de activar la fase B siguen cifrados con la clave an
 3. Rotar el token de Telegram y la clave de Groq.
 4. Dato del servidor: **no guarda copias de disco**. Con eso el archivo .p12 solo existe en el disco del servidor, y filtrar la BD no alcanza para firmar facturas: el riesgo real de la clave del .p12 es bajo y rotarla es opcional. Lo que sí conviene rotar es Telegram y Groq (D).
 5. Ventana para la fase C (respaldo de BD, ejecutar el script, firmar una factura real).
+
+## Requisito previo de la fase B: ampliar `password_srfid`
+
+La columna `sri_firma_digital.password_srfid` era `varchar(80)` y un valor `ENC:v3:...` no cabe (error `value too long for type character varying(80)` en `saveFirma`). Ejecutar antes de activar `SRI_ENCRYPTION_KEY`:
+
+`scripts/core/sri_firma_password_ampliar_migration.sql` (`ALTER ... TYPE varchar(255)`).
+
+`tlg_cuenta.token_tlcue` y `groq_api_key_tlcue` ya son `TEXT`.
