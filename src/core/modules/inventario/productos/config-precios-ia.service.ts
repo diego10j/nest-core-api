@@ -68,6 +68,10 @@ export type ConfigPrecioPropuesta = {
   precio_min: number;
   precio_max: number;
   razon: string;
+  /** false: se muestra para que el usuario la vea, pero no se propone aplicarla (viene desmarcada). */
+  sugerida: boolean;
+  /** Por qué no se sugiere (solo si sugerida = false). */
+  motivo: string | null;
 };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -87,11 +91,12 @@ function percentil(valores: number[], p: number): number {
 
 const margenLinea = (l: Linea) => ((l.precio - l.costo) / l.costo) * 100;
 
-/** Margen del conjunto: utilidad total / costo total (ponderado por el valor vendido). */
+/**
+ * Margen típico del conjunto: mediana de los márgenes de cada línea. No se pondera por cantidad: una venta grande
+ * a margen bajo no debe arrastrar al resto (en productos caros las cantidades pequeñas son las de mayor utilidad).
+ */
 function margenPonderado(lineas: Linea[]): number {
-  const costo = lineas.reduce((a, l) => a + l.costo * l.cantidad, 0);
-  const util = lineas.reduce((a, l) => a + (l.precio - l.costo) * l.cantidad, 0);
-  return costo > 0 ? (util / costo) * 100 : 0;
+  return lineas.length > 0 ? mediana(lineas.map(margenLinea)) : 0;
 }
 
 const ESQUEMA_RESPUESTA = {
@@ -541,6 +546,8 @@ export class ConfigPreciosIaService {
 
     // ── El modelo decide los cortes y el tipo de precio; los valores se calculan aquí con los datos reales ──
     const advertenciasServidor: string[] = [];
+    // Configuraciones que se descartan pero se muestran desmarcadas, para que el usuario decida.
+    const omitidas: ConfigPrecioPropuesta[] = [];
     // Todo tipo de pago con ventas suficientes (p. ej. Crédito) tiene configuración aunque la IA lo omita:
     // parte de un solo rango y el refinamiento lo divide si hace falta.
     const propuestasIa = [...(respuesta.configuraciones ?? [])];
@@ -556,6 +563,36 @@ export class ConfigPreciosIaService {
         });
       }
     });
+    // Cantidades mínimas con precio estándar (suelen tener la mayor utilidad): se detectan con los datos aunque la IA
+    // no las haya separado, si su margen se aparta claramente del que tienen las cantidades mayores.
+    tiposDisponibles.forEach((tipo) => {
+      if (tipo === null) return;
+      const lt = validas.filter((l) => l.tipo === tipo);
+      const porCantidad = new Map<number, Linea[]>();
+      lt.forEach((l) => porCantidad.set(l.cantidad, [...(porCantidad.get(l.cantidad) ?? []), l]));
+      [...porCantidad.entries()]
+        .filter(([, ls]) => ls.length >= 3)
+        .sort((x, y) => x[0] - y[0])
+        .slice(0, 4)
+        .forEach(([cantidad, ls]) => {
+          const med = mediana(ls.map((l) => l.precio));
+          const estables = ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length;
+          const mayores = lt.filter((l) => l.cantidad > cantidad);
+          if (estables / ls.length < 0.7 || mayores.length < 3) return;
+          if (Math.abs(margenPonderado(ls) - margenPonderado(mayores)) <= 8) return;
+          if (propuestasIa.some((t) => t.ide_cncfp === tipo && t.exacta && Math.abs(t.desde - cantidad) < paso / 2))
+            return;
+          propuestasIa.push({
+            ide_cncfp: tipo,
+            desde: cantidad,
+            hasta: null,
+            patron: 'precio_fijo',
+            exacta: true,
+            razon: 'Cantidad pequeña con precio estándar y utilidad distinta a la de las cantidades mayores',
+          });
+        });
+    });
+
     let tiers = this.normalizar(
       this.refinar(this.normalizar(propuestasIa, tiposDisponibles, paso, umbrales), validas, umbrales, paso),
       tiposDisponibles,
@@ -583,12 +620,6 @@ export class ConfigPreciosIaService {
       const constante = constantes >= 3 && constantes / ls.length >= 0.7;
       const nombre = t.ide_cncfp === null ? 'Otras formas de pago' : (ls[0].nombreTipo ?? 'Tipo de pago');
 
-      if (t.exacta && !constante) {
-        advertenciasServidor.push(
-          `${nombre}: la cantidad ${t.desde} no tiene un precio estándar (los precios varían); no se propone precio fijo para ella.`,
-        );
-        return null;
-      }
       const fijo = t.patron === 'precio_fijo' && constante;
       if (t.patron === 'precio_fijo' && !constante && ls.length >= 3) {
         advertenciasServidor.push(
@@ -606,7 +637,7 @@ export class ConfigPreciosIaService {
       const coherentes = fijo ? constantes : ls.filter((l) => Math.abs(margenLinea(l) - margen) <= 5).length;
       const margenes = ls.map(margenLinea);
 
-      return {
+      const cfg: ConfigPrecioPropuesta = {
         ide_cncfp: t.ide_cncfp,
         nombre_cncfp: nombre,
         rango1: t.desde,
@@ -624,7 +655,18 @@ export class ConfigPreciosIaService {
         precio_min: r4(percentil(precios, 0.1)),
         precio_max: r4(percentil(precios, 0.9)),
         razon: t.razon,
+        sugerida: true,
+        motivo: null,
       };
+      if (t.exacta && !constante) {
+        omitidas.push({
+          ...cfg,
+          sugerida: false,
+          motivo: 'Sus precios varían: no hay un precio estándar para esta cantidad. Se muestra como % de utilidad.',
+        });
+        return null;
+      }
+      return cfg;
     };
 
     const calcularTodos = () =>
@@ -647,6 +689,13 @@ export class ConfigPreciosIaService {
         ),
     );
     if (redundantes.length > 0) {
+      redundantes.forEach((e) =>
+        omitidas.push({
+          ...e,
+          sugerida: false,
+          motivo: 'Ya la cubre un rango con el mismo precio fijo; es redundante.',
+        }),
+      );
       tiers = tiers.filter(
         (t) => !redundantes.some((e) => e.ide_cncfp === t.ide_cncfp && e.rango1 === t.desde && t.exacta),
       );
@@ -662,6 +711,11 @@ export class ConfigPreciosIaService {
         )
         .sort((x, y) => x.ventas - y.ventas)[0];
       if (!debil) break;
+      omitidas.push({
+        ...debil,
+        sugerida: false,
+        motivo: `Solo ${debil.ventas} venta${debil.ventas === 1 ? '' : 's'}: se fusionó con el rango vecino. Si la marcas, se superpone con él.`,
+      });
       tiers = this.normalizar(
         tiers.filter((t) => !(t.ide_cncfp === debil.ide_cncfp && t.desde === debil.rango1 && !t.exacta)),
         tiposDisponibles,
@@ -753,8 +807,16 @@ export class ConfigPreciosIaService {
       lineasAnalizadas: validas.length,
       lineasDescartadas: lineas.length - validas.length,
       resumen: respuesta.resumen,
-      advertencias,
-      configuraciones: propuestas.sort(
+      advertencias: [...new Set(advertencias)],
+      configuraciones: [
+        ...propuestas,
+        ...omitidas.filter(
+          (o, idx) =>
+            omitidas.findIndex((x) => x.ide_cncfp === o.ide_cncfp && x.exacta === o.exacta && x.rango1 === o.rango1) ===
+              idx &&
+            !propuestas.some((p) => p.ide_cncfp === o.ide_cncfp && p.exacta === o.exacta && p.rango1 === o.rango1),
+        ),
+      ].sort(
         (a, b) =>
           (a.ide_cncfp ?? 99) - (b.ide_cncfp ?? 99) || Number(b.exacta) - Number(a.exacta) || a.rango1 - b.rango1,
       ),
