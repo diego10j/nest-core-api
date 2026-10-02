@@ -635,7 +635,9 @@ export class ConfigPreciosIaService {
       const margen = margenPonderado(ls);
       const constantes = ls.filter((l) => Math.abs(l.precio - med) / med <= 0.015).length;
       // Un precio estándar solo se acepta si de verdad se repite (≥3 ventas y ≥70 % de las del rango).
-      const constante = constantes >= 3 && constantes / ls.length >= 0.7;
+      // En una cantidad exacta bastan 2 ventas si ambas fueron exactamente al mismo precio (productos caros, poco vendidos).
+      const constante =
+        (constantes >= 3 && constantes / ls.length >= 0.7) || (t.exacta && ls.length >= 2 && constantes === ls.length);
       const nombre = t.ide_cncfp === null ? 'Otras formas de pago' : (ls[0].nombreTipo ?? 'Tipo de pago');
 
       const fijo = t.patron === 'precio_fijo' && constante;
@@ -680,7 +682,10 @@ export class ConfigPreciosIaService {
         omitidas.push({
           ...cfg,
           sugerida: false,
-          motivo: 'Sus precios varían: no hay un precio estándar para esta cantidad. Se muestra como % de utilidad.',
+          motivo:
+            ls.length < 3
+              ? `Solo ${ls.length} venta${ls.length === 1 ? '' : 's'}: no alcanza para confirmar un precio estándar. Se muestra como % de utilidad; puedes marcarla si la conoces.`
+              : 'Sus precios varían: no hay un precio estándar para esta cantidad. Se muestra como % de utilidad.',
         });
         return null;
       }
